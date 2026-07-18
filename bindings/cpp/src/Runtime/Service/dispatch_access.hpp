@@ -95,7 +95,69 @@ struct dispatch_access_t
         out.failure_errno = native_.failure_errno;
         out.part_offset = native_.part_offset;
         out.part_count = native_.part_count;
+        decode_kind_data (out, native_);
         return out;
+    }
+
+    // Copies kind_data into a batch-independent buffer and, for the record
+    // kinds that carry a known control payload, decodes it into a typed value.
+    static void decode_kind_data (receive_record_t &out_,
+                                  const zlink_mesh_receive_record_t &native_)
+    {
+        if (!native_.kind_data || native_.kind_data_size == 0)
+            return;
+        const uint8_t *bytes = static_cast<const uint8_t *> (native_.kind_data);
+        out_.kind_data.assign (bytes, bytes + native_.kind_data_size);
+
+        if (native_.kind == ZLINK_MESH_RECORD_SEND_READY
+            && native_.kind_data_size >= sizeof (zlink_mesh_send_ready_data_t)) {
+            const auto *d = static_cast<const zlink_mesh_send_ready_data_t *> (native_.kind_data);
+            send_ready_data_t sr;
+            sr.destination_kind = static_cast<destination_kind_t> (d->destination_kind);
+            sr.target_node_rid = zlink::detail::native_routing_id (d->target_node_rid);
+            sr.target_spot_rid = zlink::detail::native_routing_id (d->target_spot_rid);
+            sr.target_actor = zlink::detail::actor_model_access_t::from_native (d->target_actor);
+            if (d->channel_name && d->channel_name_size > 0)
+                sr.channel_name.assign (d->channel_name, d->channel_name_size);
+            out_.send_ready = std::move (sr);
+        } else if (native_.kind == ZLINK_MESH_RECORD_TRANSFER_CONTROL
+                   && native_.kind_data_size >= sizeof (zlink_actor_transfer_control_t)) {
+            const auto *d = static_cast<const zlink_actor_transfer_control_t *> (native_.kind_data);
+            transfer_control_t tc;
+            tc.phase = static_cast<transfer_control_phase_t> (d->phase);
+            tc.role = static_cast<transfer_control_role_t> (d->role);
+            tc.transfer_id_high = d->transfer_id.high;
+            tc.transfer_id_low = d->transfer_id.low;
+            tc.actor = zlink::detail::actor_model_access_t::from_native (d->actor);
+            tc.membership_epoch = d->membership_epoch;
+            tc.final_sequence = d->final_sequence;
+            tc.result_code = d->result_code;
+            tc.failure_errno = d->failure_errno;
+            out_.transfer_control = std::move (tc);
+        } else if (native_.kind == ZLINK_MESH_RECORD_SPOT_CONTROL
+                   && native_.kind_data_size >= sizeof (zlink_actor_control_record_t)) {
+            const auto *d = static_cast<const zlink_actor_control_record_t *> (native_.kind_data);
+            actor_control_t ac;
+            ac.kind = static_cast<lifecycle_kind_t> (d->kind);
+            ac.previous_actor = zlink::detail::actor_model_access_t::from_native (d->previous_actor);
+            ac.current_actor = zlink::detail::actor_model_access_t::from_native (d->current_actor);
+            ac.previous_spot_rid = zlink::detail::native_routing_id (d->previous_spot_rid);
+            ac.current_spot_rid = zlink::detail::native_routing_id (d->current_spot_rid);
+            ac.previous_spot_generation = d->previous_spot_generation;
+            ac.current_spot_generation = d->current_spot_generation;
+            ac.previous_membership_epoch = d->previous_membership_epoch;
+            ac.current_membership_epoch = d->current_membership_epoch;
+            ac.result_code = d->result_code;
+            out_.actor_control = std::move (ac);
+        } else if (native_.operation_kind == ZLINK_MESH_OPERATION_ACTOR_JOIN
+                   && native_.kind_data_size >= sizeof (zlink_actor_join_completion_t)) {
+            const auto *d = static_cast<const zlink_actor_join_completion_t *> (native_.kind_data);
+            join_completion_t jc;
+            jc.join_result = static_cast<join_admission_t> (d->join_result);
+            jc.actor = zlink::detail::actor_model_access_t::from_native (d->actor);
+            jc.location = zlink::detail::actor_model_access_t::from_native (d->location);
+            out_.join_completion = std::move (jc);
+        }
     }
 };
 

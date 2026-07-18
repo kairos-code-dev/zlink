@@ -92,7 +92,6 @@ class xpub_socket_t;
 class timer_t;
 namespace service
 {
-class spot_node_t;
 class spot_t;
 class send_operation_t;
 class send_submit_operation_t;

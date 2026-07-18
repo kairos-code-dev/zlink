@@ -20,7 +20,6 @@ class stream_socket_t;
 namespace service
 {
 class actor_t;
-class spot_node_t;
 } // namespace service
 
 namespace detail
@@ -110,7 +109,6 @@ class message_t
     friend class advanced::external_message_t;
     friend class stream_socket_t;
     friend class service::actor_t;
-    friend class service::spot_node_t;
     friend struct detail::message_access_t;
 
     void close_noexcept () noexcept;

@@ -5,6 +5,7 @@
 #include <boost/asio.hpp>
 #include <zlink.hpp>
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
@@ -253,8 +254,39 @@ struct mesh_record_t
     }
 };
 
+//  One dispatch turn over a single claimed ready owner. It drains the *whole*
+//  receive batch — every record, not just record 0 — retaining an owned copy of
+//  each record's parts while the claim is still held so reply tokens stay valid,
+//  and only then releases the claim to rearm the owner's remaining mailbox work.
+//  This keeps record/reply-token lifetime and multi-record preservation in one
+//  place instead of leaking those rules into each caller.
+inline bool mesh_drain_claim (zlink::service::claim_t &claim_,
+                              zlink::service::receive_batch_t &batch_,
+                              std::vector<mesh_record_t> &out_records_)
+{
+    using namespace zlink::service;
+    if (!claim_.valid ())
+        return false;
+    batch_.reset ();
+    receive_requirements_t required;
+    const int brc = claim_.recv_batch (batch_, required, zlink::recv_flags_t::none);
+    if (brc != static_cast<int> (zlink::recv_result_t::ok))
+        return false;
+    const size_t count = batch_.count ();
+    for (size_t i = 0; i < count; ++i) {
+        mesh_record_t rec;
+        rec.record = batch_.at (i);
+        rec.parts = batch_.retain_message (i);
+        out_records_.push_back (std::move (rec));
+    }
+    return true;
+}
+
 //  Drives the pull loop until a record whose owner is @p want_owner and whose
-//  domain intersects @p want_domain arrives, then returns it. Returns false on
+//  domain intersects @p want_domain arrives, then returns the first such record.
+//  Every record in a claimed batch is drained and preserved during the turn (so
+//  sibling application records and completions are never dropped); the claim is
+//  released only after the whole batch has been captured. Returns false on
 //  timeout. Application traffic (requests, sends, multicast) lands on the
 //  application domain; completions of the caller's own requests land on the
 //  infrastructure domain.
@@ -287,18 +319,14 @@ inline bool mesh_pull_one (zlink::service::mesh_node_t &node_,
             if ((record.domain & want_domain_) == ready_domain_t::none)
                 continue;
             claim_t claim = ready.take_claim (i);
-            if (!claim.valid ())
-                continue;
-            batch.reset ();
-            receive_requirements_t required;
-            const int brc = claim.recv_batch (batch, required, zlink::recv_flags_t::none);
-            if (brc != static_cast<int> (zlink::recv_result_t::ok) || batch.count () == 0) {
-                claim.release ();
-                continue;
-            }
-            out_.record = batch.at (0);
-            out_.parts = batch.retain_message (0);
+            std::vector<mesh_record_t> drained;
+            const bool ok = mesh_drain_claim (claim, batch, drained);
+            // Release rearms the owner only after every record + reply token in
+            // the batch has been captured above.
             claim.release ();
+            if (!ok || drained.empty ())
+                continue;
+            out_ = std::move (drained.front ());
             return true;
         }
     }
@@ -314,10 +342,16 @@ inline std::vector<zlink::message_t> make_parts (const std::string &text_)
 }
 
 //  Starts a single-node mesh with one channel and returns the started node's
-//  own routing id (used for local self-addressing in the guide samples).
+//  own routing id (used for local self-addressing in the guide samples). Core
+//  requires a routing id, a bind endpoint and at least one channel before
+//  start(), so a unique per-node routing id is assigned here first.
 inline zlink::routing_id_t
 mesh_start_single_node (zlink::service::mesh_node_t &node_, const std::string &channel_name_)
 {
+    static std::atomic<uint64_t> counter{0};
+    std::ostringstream rid;
+    rid << "node-" << channel_name_ << '-' << counter.fetch_add (1u, std::memory_order_relaxed);
+    node_.set_routing_id (zlink::routing_id_t::from (rid.str ()));
     node_.set_bind (unique_tcp ("mesh-node"));
     node_.add_channel_name (channel_name_);
     node_.start ();

@@ -82,9 +82,11 @@ spot_t::spot_t (spot_t &&other_) noexcept : _impl (std::move (other_._impl)) {}
 spot_t &spot_t::operator= (spot_t &&other_) noexcept
 {
     if (this != &other_) {
-        if (_impl && _impl->handle)
-            (void) zlink_spot_destroy (&_impl->handle);
-        _impl = std::move (other_._impl);
+        // Core clears the handle only on a successful close; on busy the handle
+        // is retained. Swap rather than overwrite so a resource whose teardown
+        // failed is not silently discarded.
+        (void) close ();
+        _impl.swap (other_._impl);
     }
     return *this;
 }
@@ -105,29 +107,35 @@ spot_status_t spot_t::status () const
 routing_id_t spot_t::routing_id () const { return status ().spot_rid (); }
 
 submit_result_t spot_t::send_to_channel (const std::string &channel_name_,
-                                         std::vector<message_t> &parts_,
-                                         send_flags_t flags_)
+                                         const std::vector<message_t> &parts_,
+                                         send_flags_t flags_,
+                                         mesh_metadata_t metadata_)
 {
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_spot_send_to_channel (
-            _impl->handle, channel_name_.c_str (), nullptr, native_, count_,
+            _impl->handle, channel_name_.c_str (), meta_ptr, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
 submit_result_t spot_t::request_to_channel (const std::string &channel_name_,
-                                            std::vector<message_t> &parts_,
+                                            const std::vector<message_t> &parts_,
                                             operation_id_t &operation_id_out_,
                                             send_flags_t flags_,
-                                            std::chrono::milliseconds timeout_)
+                                            std::chrono::milliseconds timeout_,
+                                            mesh_metadata_t metadata_)
 {
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id = make_op_id ();
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_spot_request_to_channel (
-            _impl->handle, channel_name_.c_str (), nullptr, native_, count_, &op_id,
+            _impl->handle, channel_name_.c_str (), meta_ptr, native_, count_, &op_id,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });
@@ -141,15 +149,18 @@ submit_result_t spot_t::request_to_channel (const std::string &channel_name_,
 submit_result_t spot_t::send_to_spot (const routing_id_t &target_node_rid_,
                                       const routing_id_t &target_spot_rid_,
                                       uint64_t target_spot_generation_,
-                                      std::vector<message_t> &parts_,
-                                      send_flags_t flags_)
+                                      const std::vector<message_t> &parts_,
+                                      send_flags_t flags_,
+                                      mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t node_rid = zlink::detail::routing_id_native_value (target_node_rid_);
     const zlink_routing_id_t spot_rid = zlink::detail::routing_id_native_value (target_spot_rid_);
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_spot_send_to_spot (
-            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, nullptr, native_, count_,
+            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, meta_ptr, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
@@ -158,18 +169,21 @@ submit_result_t spot_t::send_to_spot (const routing_id_t &target_node_rid_,
 submit_result_t spot_t::request_to_spot (const routing_id_t &target_node_rid_,
                                          const routing_id_t &target_spot_rid_,
                                          uint64_t target_spot_generation_,
-                                         std::vector<message_t> &parts_,
+                                         const std::vector<message_t> &parts_,
                                          operation_id_t &operation_id_out_,
                                          send_flags_t flags_,
-                                         std::chrono::milliseconds timeout_)
+                                         std::chrono::milliseconds timeout_,
+                                         mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t node_rid = zlink::detail::routing_id_native_value (target_node_rid_);
     const zlink_routing_id_t spot_rid = zlink::detail::routing_id_native_value (target_spot_rid_);
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id = make_op_id ();
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_spot_request_to_spot (
-            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, nullptr, native_, count_,
+            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, meta_ptr, native_, count_,
             &op_id, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });
@@ -182,15 +196,25 @@ submit_result_t spot_t::request_to_spot (const routing_id_t &target_node_rid_,
 
 submit_result_t spot_t::publish (const std::string &channel_name_,
                                  const std::string &topic_,
-                                 std::vector<message_t> &parts_,
-                                 send_flags_t flags_)
+                                 const std::vector<message_t> &parts_,
+                                 send_flags_t flags_,
+                                 mesh_metadata_t metadata_,
+                                 publish_detail_t *detail_out_)
 {
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    zlink_mesh_publish_detail_t native_detail;
+    std::memset (&native_detail, 0, sizeof (native_detail));
+    native_detail.struct_size = sizeof (native_detail);
+    native_detail.version = ZLINK_SPOT_ABI_VERSION;
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_spot_publish (
-            _impl->handle, channel_name_.c_str (), topic_.c_str (), nullptr, native_, count_,
-            nullptr, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
+            _impl->handle, channel_name_.c_str (), topic_.c_str (), meta_ptr, native_, count_,
+            &native_detail, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
+    if (rc == ZLINK_SUBMIT_OK)
+        detail::store_publish_detail (detail_out_, native_detail);
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
@@ -200,6 +224,15 @@ void spot_t::set_nodrop (bool nodrop_)
     zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
       zlink_spot_set_publish_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
                                      sizeof (value))));
+}
+
+bool spot_t::nodrop () const
+{
+    uint32_t value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_spot_get_publish_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value, &len)));
+    return value != 0;
 }
 
 void spot_t::set_subscription (const std::string &channel_name_,
@@ -220,10 +253,11 @@ void spot_t::unset_subscription (const std::string &channel_name_,
                                      static_cast<zlink_spot_subscription_kind_t> (kind_))));
 }
 
-void spot_t::close ()
+close_result_t spot_t::close ()
 {
-    if (_impl && _impl->handle)
-        (void) zlink_spot_destroy (&_impl->handle);
+    if (!(_impl && _impl->handle))
+        return close_result_t::ok;
+    return static_cast<close_result_t> (zlink_spot_destroy (&_impl->handle));
 }
 
 } // namespace service

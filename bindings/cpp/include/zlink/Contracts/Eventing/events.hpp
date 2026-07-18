@@ -57,8 +57,7 @@ enum class monitor_target_kind_t : int
 {
     socket = 0,
     discovery = 1,
-    spot = 2,
-    spot_node = 3
+    spot = 2
 };
 
 using monitor_event_type_t = monitor_event;

@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace zlink
@@ -14,6 +15,23 @@ namespace detail
 {
 struct service_model_access_t;
 } // namespace detail
+
+/// @brief An immutable, non-owning view over outbound application metadata
+///        bytes. Passed to service send/request/publish; the referenced bytes
+///        must outlive the call. An empty view means "no metadata".
+using mesh_metadata_t = std::span<const uint8_t>;
+
+/// @brief Target admission/drop accounting reported by a publish.
+struct publish_detail_t
+{
+    uint32_t snapshot_remote_target_count = 0;
+    uint32_t admitted_remote_target_count = 0;
+    uint32_t dropped_remote_target_count = 0;
+    uint32_t unreachable_remote_target_count = 0;
+    uint32_t snapshot_local_spot_count = 0;
+    uint32_t admitted_local_spot_count = 0;
+    uint32_t dropped_local_spot_count = 0;
+};
 
 /// @brief The lifecycle state of a mesh node.
 enum class mesh_node_state_t : int

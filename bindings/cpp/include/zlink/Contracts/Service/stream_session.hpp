@@ -2,10 +2,12 @@
 #pragma once
 
 #include "../Core/routing_id.hpp"
+#include "../Errors/results.hpp"
 #include "../Messaging/message.hpp"
 #include "../Sockets/results.hpp"
 #include "actor_models.hpp"
 #include "dispatch.hpp"
+#include "mesh_node_models.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -77,7 +79,7 @@ class stream_session_service_t
 
     void start ();
     request_result_t shutdown (std::chrono::milliseconds timeout_ = {});
-    void close ();
+    close_result_t close ();
     stream_session_status_t status () const;
 
     submit_result_t bind_actor (const routing_id_t &session_rid_,
@@ -93,14 +95,16 @@ class stream_session_service_t
 
     submit_result_t send_to_actor (const routing_id_t &session_rid_,
                                    const actor_ref_t &actor_,
-                                   std::vector<message_t> &parts_,
-                                   send_flags_t flags_ = send_flags_t::none);
+                                   const std::vector<message_t> &parts_,
+                                   send_flags_t flags_ = send_flags_t::none,
+                                   mesh_metadata_t metadata_ = {});
     submit_result_t request_to_actor (const routing_id_t &session_rid_,
                                       const actor_ref_t &actor_,
-                                      std::vector<message_t> &parts_,
+                                      const std::vector<message_t> &parts_,
                                       operation_id_t &operation_id_out_,
                                       send_flags_t flags_ = send_flags_t::none,
-                                      std::chrono::milliseconds timeout_ = {});
+                                      std::chrono::milliseconds timeout_ = {},
+                                      mesh_metadata_t metadata_ = {});
 
   private:
     struct impl;

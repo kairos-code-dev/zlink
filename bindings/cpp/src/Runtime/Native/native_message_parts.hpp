@@ -305,6 +305,71 @@ inline int submit_message_array (std::vector<message_t> &parts_, SubmitFn submit
       });
 }
 
+//  Builds a borrowed, zero-copy native view over @p parts_ and runs @p body_.
+//
+//  Service send/request/reply/create carry parts as borrowed/read-only: Core
+//  keeps caller ownership on both success and failure and copies synchronously
+//  what it needs. Unlike the raw-socket move/consume path this adapter never
+//  moves, mutates, or invalidates the caller's messages — it wraps each part's
+//  payload in a non-owning zlink_msg_t (NULL free-fn) that references the same
+//  buffer, hands the view array to Core, then closes only the views. The caller
+//  messages remain valid in every outcome.
+template <typename BodyFn>
+inline int with_borrowed_native_parts (const std::vector<message_t> &parts_, BodyFn body_)
+{
+    const size_t n = parts_.size ();
+    for (size_t i = 0; i < n; ++i) {
+        if (!parts_[i].valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+
+    auto run = [&] (zlink_msg_t *views_, size_t count_) -> int {
+        size_t built = 0;
+        for (; built < count_; ++built) {
+            const zlink_msg_t *src = detail::native_handle (parts_[built]);
+            const size_t size = zlink_msg_size (src);
+            const int irc =
+              size == 0
+                ? zlink_msg_init (&views_[built])
+                : zlink_msg_init_data (&views_[built],
+                                       zlink_msg_data (const_cast<zlink_msg_t *> (src)), size,
+                                       nullptr, nullptr);
+            if (irc != 0) {
+                errno = EINVAL;
+                break;
+            }
+        }
+        if (built != count_) {
+            for (size_t i = 0; i < built; ++i)
+                (void) zlink_msg_close (&views_[i]);
+            return -1;
+        }
+
+        const int rc = body_ (views_, count_);
+        for (size_t i = 0; i < count_; ++i)
+            (void) zlink_msg_close (&views_[i]);
+        return rc;
+    };
+
+    if (n <= native_part_stack_capacity) {
+        std::array<zlink_msg_t, native_part_stack_capacity> views;
+        return run (views.data (), n);
+    }
+    std::vector<zlink_msg_t> views (n);
+    return run (views.data (), n);
+}
+
+template <typename SubmitFn>
+inline int submit_borrowed_message_array (const std::vector<message_t> &parts_, SubmitFn submit_)
+{
+    return detail::with_borrowed_native_parts (
+      parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
+          return submit_ (native_parts_, part_count_);
+      });
+}
+
 template <typename SubmitFn>
 inline int submit_message_parts_no_wait (send_result_t &result_,
                                          std::vector<message_t> &parts_,

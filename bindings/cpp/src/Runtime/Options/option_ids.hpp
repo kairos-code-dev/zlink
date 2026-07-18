@@ -88,14 +88,4 @@ enum class stream_option_id : int
     notify = 13569
 };
 
-enum class spot_node_option_id : int
-{
-    router_admission_hwm_profile = 13838,
-    router_admission_hwm = 13839,
-    pubsub_admission_hwm_profile = 13840,
-    pubsub_admission_hwm = 13841,
-    dispatch_workers_min = 13842,
-    dispatch_workers_max = 13843
-};
-
 } // namespace zlink::detail

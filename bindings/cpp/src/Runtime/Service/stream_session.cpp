@@ -71,10 +71,12 @@ stream_session_service_t &
 stream_session_service_t::operator= (stream_session_service_t &&other_) noexcept
 {
     if (this != &other_) {
-        if (_impl && _impl->handle)
-            (void) zlink_stream_session_service_destroy (&_impl->handle);
-        _impl = std::move (other_._impl);
-        _last_error = other_._last_error;
+        // Core clears the handle only on a successful close; on busy it is
+        // retained. Swap rather than overwrite so a resource whose teardown
+        // failed is not silently discarded.
+        (void) close ();
+        _impl.swap (other_._impl);
+        std::swap (_last_error, other_._last_error);
     }
     return *this;
 }
@@ -96,10 +98,11 @@ request_result_t stream_session_service_t::shutdown (std::chrono::milliseconds t
       _impl->handle, zlink::detail::native_timeout_ms (timeout_)));
 }
 
-void stream_session_service_t::close ()
+close_result_t stream_session_service_t::close ()
 {
-    if (_impl && _impl->handle)
-        (void) zlink_stream_session_service_destroy (&_impl->handle);
+    if (!(_impl && _impl->handle))
+        return close_result_t::ok;
+    return static_cast<close_result_t> (zlink_stream_session_service_destroy (&_impl->handle));
 }
 
 stream_session_status_t stream_session_service_t::status () const
@@ -184,14 +187,17 @@ stream_session_service_t::bindings (const routing_id_t &session_rid_) const
 
 submit_result_t stream_session_service_t::send_to_actor (const routing_id_t &session_rid_,
                                                          const actor_ref_t &actor_,
-                                                         std::vector<message_t> &parts_,
-                                                         send_flags_t flags_)
+                                                         const std::vector<message_t> &parts_,
+                                                         send_flags_t flags_,
+                                                         mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t session_rid = zlink::detail::routing_id_native_value (session_rid_);
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_stream_session_send_to_actor (
-            _impl->handle, &session_rid, zlink::detail::actor_ref_native (actor_), nullptr, native_,
+            _impl->handle, &session_rid, zlink::detail::actor_ref_native (actor_), meta_ptr, native_,
             count_, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
@@ -199,17 +205,20 @@ submit_result_t stream_session_service_t::send_to_actor (const routing_id_t &ses
 
 submit_result_t stream_session_service_t::request_to_actor (const routing_id_t &session_rid_,
                                                             const actor_ref_t &actor_,
-                                                            std::vector<message_t> &parts_,
+                                                            const std::vector<message_t> &parts_,
                                                             operation_id_t &operation_id_out_,
                                                             send_flags_t flags_,
-                                                            std::chrono::milliseconds timeout_)
+                                                            std::chrono::milliseconds timeout_,
+                                                            mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t session_rid = zlink::detail::routing_id_native_value (session_rid_);
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id = make_op_id ();
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_stream_session_request_to_actor (
-            _impl->handle, &session_rid, zlink::detail::actor_ref_native (actor_), nullptr, native_,
+            _impl->handle, &session_rid, zlink::detail::actor_ref_native (actor_), meta_ptr, native_,
             count_, &op_id, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });

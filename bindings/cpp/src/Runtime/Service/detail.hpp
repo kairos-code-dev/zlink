@@ -10,12 +10,14 @@
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Service/mesh_node_models.hpp>
 #include <zlink/Contracts/Sockets/results.hpp>
 
 #include <cerrno>
 #include <functional>
 #include <future>
 #include <memory>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +38,7 @@ using zlink::detail::get_string_option;
 using zlink::detail::last_error;
 using zlink::detail::move_parts_to_native;
 using zlink::detail::restore_parts_from_native;
+using zlink::detail::submit_borrowed_message_array;
 using zlink::detail::submit_message_array;
 using zlink::detail::submit_message_parts;
 using zlink::detail::submit_message_parts_close_on_failure;
@@ -55,6 +58,32 @@ inline void move_to_native_or_reject (message_t &message_, zlink_msg_t *native_)
         (void) zlink_msg_close (native_);
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
     }
+}
+
+// Builds a borrowed native metadata view from an immutable byte span. Returns
+// nullptr (Core's "no metadata") for an empty span so callers need no branch.
+inline const zlink_mesh_metadata_view_t *
+make_metadata_view (zlink_mesh_metadata_view_t &view_, mesh_metadata_t metadata_) noexcept
+{
+    if (metadata_.empty ())
+        return nullptr;
+    view_.data = metadata_.data ();
+    view_.size = metadata_.size ();
+    return &view_;
+}
+
+inline void store_publish_detail (publish_detail_t *out_,
+                                  const zlink_mesh_publish_detail_t &native_) noexcept
+{
+    if (!out_)
+        return;
+    out_->snapshot_remote_target_count = native_.snapshot_remote_target_count;
+    out_->admitted_remote_target_count = native_.admitted_remote_target_count;
+    out_->dropped_remote_target_count = native_.dropped_remote_target_count;
+    out_->unreachable_remote_target_count = native_.unreachable_remote_target_count;
+    out_->snapshot_local_spot_count = native_.snapshot_local_spot_count;
+    out_->admitted_local_spot_count = native_.admitted_local_spot_count;
+    out_->dropped_local_spot_count = native_.dropped_local_spot_count;
 }
 
 inline std::function<void ()> make_spot_request_progress (void *spot_)

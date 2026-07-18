@@ -17,7 +17,6 @@ namespace zlink
 namespace service
 {
 class spot_t;
-class spot_node_t;
 } // namespace service
 
 /**

@@ -168,15 +168,13 @@ add_library(zlink_cpp STATIC
   src/Runtime/Sockets/router.cpp
   src/Runtime/Sockets/stream.cpp
   src/Runtime/Service/actor.cpp
-  src/Runtime/Service/actor_operations.cpp
+  src/Runtime/Service/dispatch.cpp
   src/Runtime/Service/reply_operations.cpp
   src/Runtime/Service/request_reply.cpp
   src/Runtime/Service/send_operations.cpp
   src/Runtime/Service/spot.cpp
-  src/Runtime/Service/spot_receive.cpp
-  src/Runtime/Service/spot_send.cpp
-  src/Runtime/Service/spot_node.cpp
-  src/Runtime/Service/spot_route_bridge.cpp
+  src/Runtime/Service/mesh_node.cpp
+  src/Runtime/Service/stream_session.cpp
 )
 add_library(zlink::cpp ALIAS zlink_cpp)
 
@@ -347,7 +345,6 @@ if(ZLINK_CPP_BUILD_SAMPLES)
     actor_sequential_example.cpp
     spot_pubsub_example.cpp
     spot_rpc_example.cpp
-    spot_channel_example.cpp
     spot_timer_example.cpp
   )
   file(GLOB ZLINK_CPP_SAMPLE_FILES CONFIGURE_DEPENDS

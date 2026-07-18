@@ -5,7 +5,7 @@
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Service/spot_state.hpp>
-#include <zlink/Contracts/Service/spot.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 
 namespace zlink
 {

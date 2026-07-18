@@ -10,6 +10,7 @@
 #include <zlink/Contracts/Messaging/received.hpp>
 #include <zlink/Contracts/Sockets/results.hpp>
 #include <zlink/Contracts/Service/actor_models.hpp>
+#include <zlink/Contracts/Service/operation_builder_base.hpp>
 #include "../Core/routing_id_access.hpp"
 
 namespace zlink

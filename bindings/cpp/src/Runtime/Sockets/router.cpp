@@ -6,7 +6,7 @@
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/spot_state.hpp>
-#include <zlink/Contracts/Service/spot.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 
 namespace zlink
 {
@@ -81,41 +81,6 @@ service::reply_operation_t router_socket_t::reply (const routing_id_t &routing_i
     state_ptr->kind = service::detail::spot_operation_kind_t::raw_reply;
     state_ptr->raw.socket = detail::native_handle (*this);
     state_ptr->raw.target.first_rid = routing_id_;
-    state_ptr->spot.request_seq = request_seq_;
-    return service::reply_operation_t (std::move (state_ptr));
-}
-
-service::send_operation_t router_socket_t::send_to_spot (const routing_id_t &dest_node_rid_,
-                                                         const routing_id_t &dest_spot_rid_)
-{
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_router_send_spot;
-    state_ptr->raw.socket = detail::native_handle (*this);
-    state_ptr->raw.target.first_rid = dest_node_rid_;
-    state_ptr->raw.target.second_rid = dest_spot_rid_;
-    return service::send_operation_t (std::move (state_ptr));
-}
-
-service::request_operation_t router_socket_t::request_to_spot (const routing_id_t &dest_node_rid_,
-                                                               const routing_id_t &dest_spot_rid_)
-{
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_router_request_spot;
-    state_ptr->raw.socket = detail::native_handle (*this);
-    state_ptr->raw.target.first_rid = dest_node_rid_;
-    state_ptr->raw.target.second_rid = dest_spot_rid_;
-    return service::request_operation_t (std::move (state_ptr));
-}
-
-service::reply_operation_t router_socket_t::reply_to_spot (const routing_id_t &dest_node_rid_,
-                                                           const routing_id_t &dest_spot_rid_,
-                                                           uint64_t request_seq_)
-{
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_router_reply_spot;
-    state_ptr->raw.socket = detail::native_handle (*this);
-    state_ptr->raw.target.first_rid = dest_node_rid_;
-    state_ptr->raw.target.second_rid = dest_spot_rid_;
     state_ptr->spot.request_seq = request_seq_;
     return service::reply_operation_t (std::move (state_ptr));
 }

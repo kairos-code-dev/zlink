@@ -1,62 +1,101 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "spot.hpp"
+#include "../Core/routing_id.hpp"
+#include "../Messaging/message.hpp"
+#include "../Sockets/results.hpp"
+#include "actor_models.hpp"
+#include "dispatch.hpp"
+
+#include <chrono>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace zlink
 {
 namespace service
 {
 
-/// @brief A handle to a local actor: join/leave spots, receive messages, and send to its bound session.
+class mesh_node_t;
+
+/// @brief The admission outcome of an actor join.
+enum class actor_join_result_t : int
+{
+    accepted = 0,
+    rejected = 1
+};
+
+/// @brief A handle to a local actor: join/leave spots, message peers, and manage
+///        its bound STREAM session. Non-owning view onto its hosting mesh node.
 class actor_t
 {
   public:
+    actor_t () noexcept;
     ~actor_t ();
 
-    actor_t (actor_t &&other) noexcept;
-
-    actor_t &operator= (actor_t &&other) noexcept;
+    actor_t (actor_t &&other_) noexcept;
+    actor_t &operator= (actor_t &&other_) noexcept;
 
     actor_t (const actor_t &) = delete;
     actor_t &operator= (const actor_t &) = delete;
 
     bool valid () const noexcept { return _active; }
 
-    actor_ref_t ref () const { return _ref; }
+    const actor_ref_t &ref () const noexcept { return _ref; }
 
-    void close (std::chrono::milliseconds timeout_ = {});
+    // Spot membership.
+    submit_result_t join_spot (const routing_id_t &target_node_rid_,
+                               const routing_id_t &target_spot_rid_,
+                               uint64_t target_spot_generation_,
+                               std::vector<message_t> &creation_parts_,
+                               operation_id_t &operation_id_out_,
+                               std::chrono::milliseconds timeout_ = {});
+    submit_result_t join_entry_spot (const routing_id_t &target_node_rid_,
+                                     std::vector<message_t> &creation_parts_,
+                                     operation_id_t &operation_id_out_,
+                                     std::chrono::milliseconds timeout_ = {});
+    submit_result_t leave_spot (uint64_t expected_membership_epoch_,
+                                operation_id_t &operation_id_out_,
+                                std::chrono::milliseconds timeout_ = {});
 
-    actor_join_operation_t join (spot_t &spot_)
-    {
-        return _node->join_actor (_ref, _node->routing_id (), spot_.routing_id ());
-    }
+    // Peer messaging (this actor as source).
+    submit_result_t send_to (const actor_ref_t &target_actor_,
+                             std::vector<message_t> &parts_,
+                             send_flags_t flags_ = send_flags_t::none);
+    submit_result_t request_to (const actor_ref_t &target_actor_,
+                                std::vector<message_t> &parts_,
+                                operation_id_t &operation_id_out_,
+                                send_flags_t flags_ = send_flags_t::none,
+                                std::chrono::milliseconds timeout_ = {});
 
-    actor_leave_operation_t leave (spot_t &spot_)
-    {
-        return _node->leave_actor (_ref, spot_.routing_id ());
-    }
+    // Bound STREAM session.
+    submit_result_t send_bound_session (std::vector<message_t> &parts_,
+                                        send_flags_t flags_ = send_flags_t::none);
+    submit_result_t close_bound_session (uint64_t expected_binding_generation_,
+                                         operation_id_t &operation_id_out_,
+                                         std::chrono::milliseconds timeout_ = {});
 
-    std::optional<actor_part_t> recv_part (recv_flags_t flags_ = recv_flags_t::none)
-    {
-        return _node->recv_actor_part (_ref, flags_);
-    }
-
-    send_operation_t send_bound_session () { return _node->send_bound_session_msg (_ref); }
-
-    void close_bound_session (std::chrono::milliseconds timeout_ = {});
+    // Lifecycle.
+    submit_result_t destroy (operation_id_t &operation_id_out_,
+                             std::chrono::milliseconds timeout_ = {});
 
   private:
-    actor_t (spot_node_t &node_, const std::string &actor_id_);
-    actor_t (spot_node_t &node_, const std::string &actor_id_, std::vector<message_t> &request_);
+    actor_t (mesh_node_t &node_, const actor_ref_t &ref_) noexcept;
 
-    friend class spot_node_t;
+    friend class mesh_node_t;
 
-    spot_node_t *_node;
+    mesh_node_t *_node;
     actor_ref_t _ref;
     bool _active;
     int _last_error;
 };
+
+/// @brief Replies to an actor-join request received via dispatch.
+submit_result_t actor_join_reply (const reply_token_t &token_,
+                                  actor_join_result_t join_result_,
+                                  std::vector<message_t> &parts_,
+                                  send_flags_t flags_ = send_flags_t::none);
 
 } // namespace service
 } // namespace zlink

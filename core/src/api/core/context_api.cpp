@@ -152,7 +152,16 @@ int zlink_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optv
         errno = EFAULT;
         return -1;
     }
-    return (static_cast<zlink::ctx_t *> (ctx_))->set (option_, optval_, optvallen_);
+    //  C ABI seal: option handling may reach allocating runtime paths
+    //  (auto-HWM recalc task registration); allocation failure surfaces as
+    //  a config error, never as an escaped exception.
+    try {
+        return (static_cast<zlink::ctx_t *> (ctx_))->set (option_, optval_, optvallen_);
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return -1;
+    }
 }
 
 int zlink_ctx_get (void *ctx_, zlink_ctx_option_t option_, zlink_config_result_t *error_out_)
@@ -186,6 +195,13 @@ zlink_config_result_t zlink_ctx_auto_hwm_recalculate (void *ctx_)
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    return zlink::config_result_internal::from_rc (
-      (static_cast<zlink::ctx_t *> (ctx_))->auto_hwm_recalculate_now ());
+    //  Same C ABI seal as zlink_ctx_set_ext.
+    try {
+        return zlink::config_result_internal::from_rc (
+          (static_cast<zlink::ctx_t *> (ctx_))->auto_hwm_recalculate_now ());
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return ZLINK_CONFIG_INTERNAL_ERROR;
+    }
 }

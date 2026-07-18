@@ -80,29 +80,35 @@ uint64_t service_control_runtime_t::add_periodic_task (service_control_task_fn *
         return 0;
     }
 
-    task_entry_t task;
-    task.id = _next_task_id++;
-    if (task.id == 0)
-        task.id = _next_task_id++;
-    task.fn = fn_;
-    task.arg = arg_;
-    task.interval_ms = interval_ms_;
-    task.next_run_ms = run_immediately_ ? now : now + interval_ms_;
+    uint64_t task_id = _next_task_id++;
+    if (task_id == 0)
+        task_id = _next_task_id++;
 
-    std::pair<std::map<uint64_t, task_entry_t>::iterator, bool> inserted =
-      _tasks.insert (std::make_pair (task.id, task));
+    //  The whole add is one sealed transaction: every allocation (the task
+    //  entry and its one schedule node) happens here, and any failure rolls
+    //  back to the pre-call state with ENOMEM. After this returns, wakeup,
+    //  reschedule and removal of the task are allocation-free.
+    std::map<uint64_t, task_entry_t>::iterator task_it = _tasks.end ();
     try {
-        schedule_task_locked (&inserted.first->second);
+        task_it = _tasks.emplace (task_id, task_entry_t ()).first;
+        task_entry_t &task = task_it->second;
+        task.id = task_id;
+        task.fn = fn_;
+        task.arg = arg_;
+        task.interval_ms = interval_ms_;
+        task.next_run_ms = run_immediately_ ? now : now + interval_ms_;
+        task.schedule_it =
+          _schedule.insert (std::make_pair (task.next_run_ms, task.id));
+        task.scheduled = true;
     }
     catch (const std::bad_alloc &) {
-        //  Strong rollback: a task entry without a schedule slot would be
-        //  invisible to the loop but still claim the ID.
-        _tasks.erase (inserted.first);
+        if (task_it != _tasks.end ())
+            _tasks.erase (task_it);
         errno = ENOMEM;
         return 0;
     }
     _cv.broadcast ();
-    return task.id;
+    return task_id;
 }
 
 int service_control_runtime_t::remove_task (uint64_t task_id_)
@@ -155,7 +161,14 @@ bool service_control_runtime_t::is_current_thread () const
 void service_control_runtime_t::run (void *arg_)
 {
     service_control_runtime_t *self = static_cast<service_control_runtime_t *> (arg_);
-    self->loop ();
+    //  The loop is allocation-free in steady state; this is a last-resort
+    //  seal so an escaped allocation failure ends this worker instead of
+    //  calling std::terminate for the whole process.
+    try {
+        self->loop ();
+    }
+    catch (const std::bad_alloc &) {
+    }
 }
 
 void service_control_runtime_t::schedule_task_locked (task_entry_t *task_)
@@ -164,7 +177,15 @@ void service_control_runtime_t::schedule_task_locked (task_entry_t *task_)
         return;
 
     deschedule_task_locked (task_);
-    task_->schedule_it = _schedule.insert (std::make_pair (task_->next_run_ms, task_->id));
+    //  Reuses the node allocated at add time: rekey and move it back in.
+    //  This path therefore never allocates and never throws.
+    if (!task_->cached_node.empty ()) {
+        task_->cached_node.key () = task_->next_run_ms;
+        task_->schedule_it = _schedule.insert (std::move (task_->cached_node));
+    } else {
+        task_->schedule_it =
+          _schedule.insert (std::make_pair (task_->next_run_ms, task_->id));
+    }
     task_->scheduled = true;
 }
 
@@ -173,7 +194,8 @@ void service_control_runtime_t::deschedule_task_locked (task_entry_t *task_)
     if (!task_ || !task_->scheduled)
         return;
 
-    _schedule.erase (task_->schedule_it);
+    //  Extract keeps the node allocated for the next schedule_task_locked.
+    task_->cached_node = _schedule.extract (task_->schedule_it);
     task_->scheduled = false;
 }
 
@@ -181,12 +203,18 @@ void service_control_runtime_t::loop ()
 {
     zlink::clock_t clock;
 
+    //  One due call per pass, and each reschedule reuses the task's cached
+    //  schedule node: the steady-state loop performs no allocation, so no
+    //  bad_alloc can unwind the worker thread and terminate the process.
     while (true) {
-        std::vector<due_call_t> due_calls;
+        due_call_t call;
+        call.task_id = 0;
+        call.fn = NULL;
+        call.arg = NULL;
 
         {
             scoped_lock_t lock (_sync);
-            while (due_calls.empty () && !_stopping) {
+            while (call.task_id == 0 && !_stopping) {
                 const uint64_t now = clock.now_ms ();
 
                 while (!_schedule.empty ()) {
@@ -195,26 +223,26 @@ void service_control_runtime_t::loop ()
                         break;
 
                     const uint64_t task_id = next->second;
-                    _schedule.erase (next);
-
                     std::map<uint64_t, task_entry_t>::iterator task_it = _tasks.find (task_id);
-                    if (task_it == _tasks.end ())
+                    if (task_it == _tasks.end ()) {
+                        _schedule.erase (next);
                         continue;
+                    }
 
                     task_entry_t &task = task_it->second;
+                    task.cached_node = _schedule.extract (next);
                     task.scheduled = false;
 
                     task.next_run_ms = now + task.interval_ms;
                     schedule_task_locked (&task);
 
-                    due_call_t call;
                     call.task_id = task.id;
                     call.fn = task.fn;
                     call.arg = task.arg;
-                    due_calls.push_back (call);
+                    break;
                 }
 
-                if (!due_calls.empty () || _stopping)
+                if (call.task_id != 0 || _stopping)
                     break;
 
                 if (_schedule.empty ()) {
@@ -232,25 +260,17 @@ void service_control_runtime_t::loop ()
 
             if (_stopping)
                 break;
+
+            _active_task_id = call.task_id;
         }
 
-        for (size_t i = 0; i < due_calls.size (); ++i) {
-            due_call_t call = due_calls[i];
-            {
-                scoped_lock_t lock (_sync);
-                if (_tasks.find (call.task_id) == _tasks.end ())
-                    continue;
-                _active_task_id = call.task_id;
-            }
+        call.fn (call.arg);
 
-            call.fn (call.arg);
-
-            {
-                scoped_lock_t lock (_sync);
-                if (_active_task_id == call.task_id) {
-                    _active_task_id = 0;
-                    _cv.broadcast ();
-                }
+        {
+            scoped_lock_t lock (_sync);
+            if (_active_task_id == call.task_id) {
+                _active_task_id = 0;
+                _cv.broadcast ();
             }
         }
     }

@@ -50,6 +50,11 @@ class service_control_runtime_t
         uint64_t next_run_ms;
         bool scheduled;
         std::multimap<uint64_t, uint64_t>::iterator schedule_it;
+        //  The task's schedule slot is allocated exactly once, at add time.
+        //  Descheduling extracts the node here and rescheduling moves it
+        //  back, so wakeup and every periodic tick are allocation-free and
+        //  cannot throw after the task exists.
+        std::multimap<uint64_t, uint64_t>::node_type cached_node;
     };
 
     struct due_call_t

@@ -52,17 +52,15 @@ internal sealed class PlayServer(SampleSettings settings)
                 .Bind(settings.PlayEndpoint)
                 .RegisterSession<PlaySession>();
 
-            options.AddSpotMesh(SampleNodes.PlaySpot)
-                .EnableRouter(settings.SpotEndpoint)
+            var mesh = options.AddRouteMesh(SampleNodes.PlaySpot)
+                .Listen(settings.SpotEndpoint)
                 .SetRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
-                .ConnectRouter(
-                    RoutingId.From(settings.PeerPlaySpotNodeRid), settings.PeerSpotEndpoint)
-                .EnablePubSub(settings.SpotPubSubEndpoint)
-                .ConnectPeerPub(settings.PeerSpotPubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
                 .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();
+            mesh.PeerConnections.Connect(
+                RoutingId.From(settings.PeerPlaySpotNodeRid), settings.PeerSpotEndpoint);
         });
 
         return builder.Build();

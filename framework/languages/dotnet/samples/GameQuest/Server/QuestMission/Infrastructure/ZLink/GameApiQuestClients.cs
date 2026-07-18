@@ -45,7 +45,7 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkChannelClient channels) :
                 channels.SendToChannel(
                         SampleNames.GameApiChannel,
                         new QuestProgressNotify(playerId, progress))
-                    .Submit(cancellationToken);
+                    .TrySubmit();
 
             if (!string.IsNullOrWhiteSpace(completedQuestId))
             {
@@ -53,7 +53,7 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkChannelClient channels) :
                 channels.SendToChannel(
                         SampleNames.GameApiChannel,
                         new QuestCompletedNotify(playerId, completed, true))
-                    .Submit(cancellationToken);
+                    .TrySubmit();
             }
 
             return ValueTask.FromResult(new QuestProgressNotifyResult(true, null, null));

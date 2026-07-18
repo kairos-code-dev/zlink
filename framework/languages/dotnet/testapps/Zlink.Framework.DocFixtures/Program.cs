@@ -51,19 +51,9 @@ internal static class FixtureSamples
         builder.Services.AddZLinkFramework(options =>
         {
             {
-                var spotMesh = options.AddSpotMesh("game.stage");
-                {
-                    var spot = spotMesh;
-                    {
-                        var router = spot.EnableRouter("tcp://127.0.0.1:7302");
-                    }
-                    {
-                        var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7301");
-                    }
-                    {
-                    }
-                    spot.AddSpotFactory<FixtureStageSpot>();
-                }
+                var mesh = options.AddRouteMesh("game.stage");
+                mesh.Listen("tcp://127.0.0.1:7302");
+                mesh.AddSpotFactory<FixtureStageSpot>();
             }
         });
         return builder;
@@ -101,17 +91,9 @@ internal static class FixtureSamples
             }
 
             {
-                var spotMesh = options.AddSpotMesh("game.stage");
-                {
-                    var spot = spotMesh;
-                    {
-                        var router = spot.EnableRouter("tcp://127.0.0.1:7605");
-                    }
-                    {
-                        var pubsub = spot.EnablePubSub("tcp://127.0.0.1:7604");
-                    }
-                    spot.AddSpotFactory<FixtureStageSpot>();
-                }
+                var mesh = options.AddRouteMesh("game.stage");
+                mesh.Listen("tcp://127.0.0.1:7605");
+                mesh.AddSpotFactory<FixtureStageSpot>();
             }
         });
         builder.Services.AddZLinkMonitoring(options =>
@@ -135,15 +117,10 @@ internal static class FixtureSamples
             }
 
             {
-                var spotMesh = options.AddSpotMesh("game.stage");
-                {
-                    var spot = spotMesh;
-                    {
-                        var router = spot.EnableRouter("tcp://127.0.0.1:7702");
-                    }
-                    spot.AddSpotFactory<FixtureActorSpot>();
-                    spot.AddActorFactory<FixtureActorFactory>("hero");
-                }
+                var mesh = options.AddRouteMesh("game.stage");
+                mesh.Listen("tcp://127.0.0.1:7702");
+                mesh.AddSpotFactory<FixtureActorSpot>();
+                mesh.AddActorFactory<FixtureActorFactory>("hero");
             }
         });
         return builder;
@@ -177,8 +154,9 @@ internal sealed class FixtureSpotTimerHandler
         CancellationToken cancellationToken)
     {
         _ = tick;
-        spot.Context.Outbound.Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
-                .Submit(cancellationToken);
+        _ = spot.Context.Outbound
+            .Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+            .TrySubmit();
         return ValueTask.CompletedTask;
     }
 }

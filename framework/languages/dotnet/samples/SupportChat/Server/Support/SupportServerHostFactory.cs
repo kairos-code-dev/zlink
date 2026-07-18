@@ -50,10 +50,9 @@ public static class SupportServerHostFactory
                 .AddHandlerGroup("support");
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddSpotMesh(SampleNames.SupportSpotDiscovery)
-                .EnableRouter(topology.SupportEntrySpotRouterEndpoint)
+            options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
+                .Listen(topology.SupportEntrySpotRouterEndpoint)
                 .SetRoutingId(topology.SupportEntryRid)
-                .EnablePubSub(topology.SupportEntrySpotEndpoint)
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
                 .AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>(SampleNames.SupportActorType)

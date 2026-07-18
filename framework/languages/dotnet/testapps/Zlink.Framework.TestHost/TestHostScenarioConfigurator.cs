@@ -164,29 +164,17 @@ internal static class TestHostScenarioConfigurator
         services.AddZLinkFramework(framework =>
         {
             {
-                var spotMesh = framework.AddSpotMesh(options.DiscoveryChannelName
-                                                     ?? throw new InvalidOperationException(
-                                                         "SPOT node mode requires --discovery-channel."));
+                var mesh = framework.AddRouteMesh(options.DiscoveryChannelName
+                                                  ?? throw new InvalidOperationException(
+                                                      "SPOT node mode requires --discovery-channel."));
+                _ = options.SpotNodeName
+                    ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
+                var spotBindEndpoint = options.SpotBindEndpoint
+                                       ?? throw new InvalidOperationException(
+                                           "SPOT node mode requires --spot-bind-endpoint.");
+                mesh.Listen(spotBindEndpoint);
 
-                {
-                    _ = options.SpotNodeName
-                        ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
-                    var spot = spotMesh;
-                    var spotBindEndpoint = options.SpotBindEndpoint
-                                           ?? throw new InvalidOperationException(
-                                               "SPOT node mode requires --spot-bind-endpoint.");
-
-                    if (options.EnablePubSub)
-                    {
-                        var pubsub = spot.EnablePubSub(spotBindEndpoint);
-                    }
-                    else
-                    {
-                        var router = spot.EnableRouter(spotBindEndpoint);
-                    }
-
-                    if (options.EnableSpotFactory) spot.AddSpotFactory<StartupStageSpot>();
-                }
+                if (options.EnableSpotFactory) mesh.AddSpotFactory<StartupStageSpot>();
             }
         });
 

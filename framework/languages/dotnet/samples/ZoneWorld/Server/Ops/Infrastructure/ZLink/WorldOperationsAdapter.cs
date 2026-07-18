@@ -16,7 +16,7 @@ internal sealed class WorldOperationsAdapter(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.AnnounceTopic,
                 new WorldAnnounceEvent(announcementId, text))
-            .Submit();
+            .TrySubmit();
 
     public void PublishMaintenanceChange(string nodeId, bool enabled) =>
         fanout
@@ -24,7 +24,7 @@ internal sealed class WorldOperationsAdapter(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.MaintenanceTopic,
                 new NodeMaintenanceChangedEvent(nodeId, enabled))
-            .Submit();
+            .TrySubmit();
 
     public ValueTask<ApplyNodeMaintenanceRes?> TryApplyMaintenanceAsync(
         string nodeId,

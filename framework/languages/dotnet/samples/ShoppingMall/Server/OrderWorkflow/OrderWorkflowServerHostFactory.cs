@@ -63,11 +63,10 @@ public static class OrderWorkflowServerHostFactory
                 .EnableServer(instance.ChannelEndpoint)
                 .SetRoutingId(instance.RouteRid)
                 .AddHandlerGroup("order-workflow");
-            options.AddSpotMesh(SampleNames.OrderWorkflowRouteChannel)
-                .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)
-                .EnableRouter(instance.SpotRouterEndpoint)
+            options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
+                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
+                .Listen(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)
-                .EnablePubSub(instance.SpotEndpoint)
                 .AddSpotFactory<OrderWorkflowSpot>();
         });
 

@@ -232,7 +232,7 @@ internal sealed class BingoRoom(
                         ItemName = BingoRewardItems.GoldenDauberName,
                         Rarity = BingoRewardItems.LegendaryRarity
                     })
-                .Submit(cancellationToken);
+                .TrySubmit();
             logger.LogInformation(
                 "bingo reward: published. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,

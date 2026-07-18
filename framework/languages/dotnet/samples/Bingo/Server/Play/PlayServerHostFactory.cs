@@ -60,12 +60,11 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-                .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
+            options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
+                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
                 .SetRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
-                .EnableRouter(node.SpotRouterEndpoint)
-                .EnablePubSub(node.SpotPubEndpoint)
+                .Listen(node.SpotRouterEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)

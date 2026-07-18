@@ -40,10 +40,9 @@ public static class SessionServerHostFactory
                 .EnableClient();
             options.AddClientServerChannel(SampleNames.SupportChannel)
                 .EnableClient();
-            options.AddSpotMesh(SampleNames.SupportSpotDiscovery)
-                .EnableRouter(session.RouterEndpoint)
-                .SetRoutingId(session.RoutingId)
-                .EnablePubSub(session.PubEndpoint);
+            options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
+                .Listen(session.RouterEndpoint)
+                .SetRoutingId(session.RoutingId);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<SupportChatSession>();

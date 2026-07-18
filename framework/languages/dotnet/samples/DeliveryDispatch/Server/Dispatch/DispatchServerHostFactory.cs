@@ -51,8 +51,8 @@ public static class DispatchServerHostFactory
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
                 .AddHandlerGroup(SampleNames.DispatchChannel);
-            options.AddSpotMesh(SampleNames.CourierActorDiscovery)
-                .EnableRouter(topology.DispatchSpotRouterEndpoint)
+            options.AddRouteMesh(SampleNames.CourierActorDiscovery)
+                .Listen(topology.DispatchSpotRouterEndpoint)
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableClient()
@@ -91,7 +91,7 @@ public static class DispatchServerHostFactory
                 request.PickupAddress,
                 request.DropoffAddress);
             channels.SendToChannel(SampleNames.DispatchChannel, assign)
-                .Submit(cancellationToken);
+                .TrySubmit();
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new CreateDeliveryRes(request.DeliveryId));

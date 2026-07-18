@@ -26,9 +26,8 @@ internal sealed class LocationEventHandler(
 
         var live = topology.Topology
             .Where(entry => entry.MeshName == ZoneWorldNames.ZoneMesh
-                            && entry.State == ZLinkLocationTopologyState.Ready
-                            && entry.NodeRid is not null)
-            .Select(entry => entry.NodeRid!.Value.ToString())
+                            && entry.State == ZLinkLocationTopologyState.Ready)
+            .Select(entry => entry.NodeRid.ToString())
             .ToHashSet(StringComparer.Ordinal);
 
         nodes.ApplyLiveRoutingIds(live);

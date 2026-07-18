@@ -222,7 +222,7 @@ public sealed class ZoneSpot(
         {
             Context.Outbound
                 .Publish(ZoneWorldNames.BorderTopic(ZoneId, borderEvent.ToZoneId), borderEvent)
-                .Submit();
+                .TrySubmit();
         }
 
         return ValueTask.CompletedTask;

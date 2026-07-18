@@ -44,11 +44,10 @@ public static class SessionServerHostFactory
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+            options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
                 .SetRoutingIdAllocationGroup("bingo.session")
-                .EnableRouter(session.RouterEndpoint)
-                .EnablePubSub(session.PubEndpoint);
+                .Listen(session.RouterEndpoint);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<BingoSession>();

@@ -63,7 +63,7 @@ internal sealed class WorldAnnounceSubscriber(
                 // nothing is dropped, the subscriber just reports success.
                 routes
                     .SendToSpot(handle, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
-                    .Submit();
+                    .TrySubmit();
             }
             catch (Exception error)
             {

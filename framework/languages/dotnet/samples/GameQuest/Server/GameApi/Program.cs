@@ -71,11 +71,10 @@ internal static class Program
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
                 .RegisterSession<GameQuestSession>();
-            options.AddSpotMesh(SampleNames.SessionSpotDiscovery)
-                .EnableRouter(topology.GameApiSpotRouterEndpoint(apiName))
+            options.AddRouteMesh(SampleNames.SessionSpotDiscovery)
+                .Listen(topology.GameApiSpotRouterEndpoint(apiName))
                 .SetRoutingId(topology.GameApiSpotRid(apiName))
                 .SetEntrySpotRoutingId(topology.GameApiSpotRid(apiName))
-                .EnablePubSub(topology.GameApiSpotEndpoint(apiName))
                 .AddEntrySpot<GameQuestEntrySpot>()
                 .AddActorFactory<PlayerSessionActorFactory>(SampleNames.SessionActorType);
         });

@@ -50,7 +50,7 @@ internal sealed class OpsReportAdapter(
             .SendToChannel(
                 ZoneWorldNames.ReportChannel,
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
-            .Submit();
+            .TrySubmit();
 
     public void ReportNodeStatus(
         string nodeRid,
@@ -66,7 +66,7 @@ internal sealed class OpsReportAdapter(
                     zones,
                     playerCount,
                     maintenanceEnabled))
-            .Submit();
+            .TrySubmit();
 }
 
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>

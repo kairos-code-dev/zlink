@@ -983,14 +983,14 @@ API를 다른 언어의 구현 기준으로 사용하지 않는다.
 | S8-02 | AddRouteMesh·ChannelName 구현 | 복수 logical membership과 정식 `.NET` interface가 source snapshot과 일치 | 완료 | AddRouteMesh(meshName):IZLinkMeshNodeBuilder + ChannelName:IZLinkMeshChannelBuilder (spec 05 exact-interface), 구 AddSpotMesh/SpotNodeBuilder 제거 no-hit 0, build 0/0 |
 | S8-02A | RouteMesh runtime-options DI 구현 | 기존 `IZLinkChannelRuntimeOptions` 제거, `IZLinkRouteMeshRuntimeOptions` singleton 등록, MeshNode socket setter의 startup-only 오류와 runtime channel Weight 반영 통과 | 완료 | IZLinkRouteMeshRuntimeOptions singleton DI, 구 IZLinkChannelRuntimeOptions 제거, MeshNode socket setter startup-only + runtime Channel Weight 반영 |
 | S8-03 | MeshNode-owned handler·Spot·Actor 등록 구현 | channel·route handler context와 모든 Spot·Actor builder 멤버 보존 | 완료 | NodeSend/NodeRequest→route handler(ZLinkRouteHandlerInvoker), ChannelSend/ChannelRequest→channel-membership handler(ChannelName keyed), reply token 경유. Spot/Actor builder 멤버 보존, DI 스캔 |
-| S8-04 | location descriptor와 connection planner 구현 | Redis 자동 discovery와 manual `IZLinkMeshPeerConnections`가 같은 admission을 사용하고 MeshName 범위, expected RID pin, lifecycle generation, descriptor revision, source 병합과 ready index 검증 | 미착수 | - |
-| S8-04A | Redis Actor transfer authority 구현 | participant-set CAS, transfer token, lease, prepared/commit/abort crash recovery, unsupported store startup failure와 distributed transfer E2E 통과 | 미착수 | - |
-| S8-04B | Redis production 기본 정책 구현 | Redis extension 명시 등록, 자동 discovery·분산 Spot/Actor 주소 조회를 사용하면서 location store를 등록하지 않은 구성의 startup failure, 사용자 store capability와 test-only in-memory 경계 검증 | 미착수 | - |
+| S8-04 | location descriptor와 connection planner 구현 | Redis 자동 discovery와 manual `IZLinkMeshPeerConnections`가 같은 admission을 사용하고 MeshName 범위, expected RID pin, lifecycle generation, descriptor revision, source 병합과 ready index 검증 | 진행 | MeshName scope·role filter·expected-RID pin·store fencing generation ✓. 미완=ZLinkPeerLocation→ZLinkMeshNodeDescriptor migration(descriptor revision·multi-source merge·단일 ready index·lifecycle generation) — 대규모 아키텍처 변경, gap 90 §12.33. 후속 batch |
+| S8-04A | Redis Actor transfer authority 구현 | participant-set CAS, transfer token, lease, prepared/commit/abort crash recovery, unsupported store startup failure와 distributed transfer E2E 통과 | 완료 | IZLinkActorTransferStore(prepare/commit/activate/abort/takeover/resolve, participant-set CAS·transfer id·recovery lease) — in-memory state machine + Redis Lua per-transition. coordinator cross-node 호출+distributed E2E는 build-only 미실행. commit actor-row rewrite는 actor-row-shape gap 90 §12.27 결합(코드에 기록) |
+| S8-04B | Redis production 기본 정책 구현 | Redis extension 명시 등록, 자동 discovery·분산 Spot/Actor 주소 조회를 사용하면서 location store를 등록하지 않은 구성의 startup failure, 사용자 store capability와 test-only in-memory 경계 검증 | 완료 | production fail-fast(distributed Spot/Actor/transfer without store → ValidateSpotNode 실패, auto-discovery는 store 없이 선택 불가로 구조적 차단) + UseInMemoryLocationStores internal/test-only 경계 검증 |
 | S8-05 | channel/direct/Spot/Actor 전송 연결 | bindings MeshNode public API만 사용 | 완료 | compile-green 전환(Option B): 프레임워크-소유 dispatch record가 MeshNode public API만 사용해 channel/direct/Spot/Actor 전송 배선 |
 | S8-06 | ready/claim pump 구현 | infrastructure 우선 drain, Node·Spot·Actor keyed scheduling과 claim leak 0건 | 완료 | DrainReady pump seam이 record를 per-owner serial-executor 큐로 fan, claim은 finally 해제(leak 0). MeshOperationId↔Completion 콜백 테이블 |
-| S8-06A | S/S metadata 연결 | Node·Channel·Spot direct send/request와 Logical Multicast의 mutation snapshot, immutable handler view, malformed ingress, 1024 경계, relay allowlist, reply 비자동복사와 일반 reply metadata 미지원 통과 | 미착수 | - |
-| S8-06B | Spot timer 연결 | `Task.Delay` 기반 tick이 lifecycle generation과 cancel 규칙을 거쳐 keyed scheduler에 제출되고 Core timer FFI를 사용하지 않음 | 미착수 | - |
-| S8-07 | Logical Multicast와 NoDrop 연결 | 기본 true와 명시적 false 회귀 통과 | 미착수 | - |
+| S8-06A | S/S metadata 연결 | Node·Channel·Spot direct send/request와 Logical Multicast의 mutation snapshot, immutable handler view, malformed ingress, 1024 경계, relay allowlist, reply 비자동복사와 일반 reply metadata 미지원 통과 | 진행 | ZLinkMeshMetadataCodec(Core validate_metadata byte-identical: [v1][count][keylen][key][vallen BE][val], 1024-byte, dup-key reject) + receive-seam decode(malformed protocol-drop, immutable view). 미완=full send-builder public API(IZLinkMetadataCall) + cross-Received context threading — frozen binding Received 타입 제약(후속 batch) |
+| S8-06B | Spot timer 연결 | `Task.Delay` 기반 tick이 lifecycle generation과 cancel 규칙을 거쳐 keyed scheduler에 제출되고 Core timer FFI를 사용하지 않음 | 완료 | Task.Delay tick이 per-owner keyed serial executor 경유, stop-token/generation gated, Core timer FFI 미사용 — 검증만(변경 불필요) |
+| S8-07 | Logical Multicast와 NoDrop 연결 | 기본 true와 명시적 false 회귀 통과 | 진행 | NoDrop default=true는 Core spot publish-plane 기본으로 동작 ✓. explicit-false는 frozen-binding gap(zlink_spot_set_publish_option Core+internal P/Invoke 존재하나 public ISpot 미노출) — ApplyRoleConfig가 config 포착+apply site 표시(후속 batch) |
 | S8-08 | 기존 topology API와 runtime 제거 | v10 plan·review record만 제외하고 builder, registration, production `UseInMemoryLocationStores()`, bridge, Spot·Actor–STREAM service part와 Actor join/lifecycle 전용 wrapper, test와 현재 docs no-hit | 진행 | 구 spot-node builder·SpotRouteBridge wrapper 제거, production UseInMemoryLocationStores test-only화 + 미등록 store startup fail-fast(S8-04B). 전수 no-hit는 리뷰 단계 확정 |
 | S8-09 | `.NET` sample 전환 | 분산 sample은 공식 Redis extension을 등록하고 지정된 manual sample은 `IZLinkMeshPeerConnections`를 사용하며 S2 inventory 반영 후 `samples/run_samples.sh` 전체 통과 | 미착수 | - |
 | S8-10 | `.NET` framework E2E 전환 | `e2e/run_e2e_all.sh`의 전체 config 통과 | 미착수 | - |
@@ -1022,6 +1022,38 @@ S8 완료 gate:
 - [ ] 두 리뷰어 결과가 모두 `DOTNET REVIEW CLEAN`이다.
 - [ ] 두 clean 결과 뒤 S8-11의 package·consumer 종료 검증이 통과했다.
 - [ ] S8-11 뒤 S8-17/18에서 최종 `.NET` internals를 한 번 반영하고 source와의 일치를 확인했다.
+
+### 12.9 실행 로그 (order·method 변경, 2026-07-18)
+
+coordinator가 자율 판단으로 순서·방법을 변경한 내역과 framework 구현이 드러낸
+binding-surface gap을 기록한다(사용자 지시: 변경은 로그로 남기고 모든 항목을 완료).
+
+**순서·방법 변경**
+
+- framework 전환 아키텍처를 **Option B**(framework-소유 dispatch record가 MeshReceiveRecord에서
+  생성, bindings의 Received/TopicMessage로 되돌리지 않음. DrainReady pump가 record를 per-owner
+  serial-executor 큐로 fan, claim은 finally 해제. MeshOperationId↔Completion 콜백 테이블이
+  builder `.Submit(callback)`을 대체)로 확정. 근거=bindings CLEAN 표면이 framework에서
+  Received/TopicMessage를 직접 생성할 수 없어(binding-gap) spec 근거로 record 소유를 framework에 둠.
+- 구현 항목을 파일-disjoint 기준으로 **병렬 실행**(S8-04군 / S8-06군 / UnitTests drift)해 통합.
+
+**framework가 드러낸 binding-surface gap (후속 batch — spec 근거 확인 후 binding 추가 + focused 재리뷰)**
+
+1. **Received metadata**(S8-06A): handler context가 send-metadata를 immutable view로 노출하려면
+   binding `Received` 타입이 metadata를 실어야 함(spec 02-handler-interfaces 근거). 현 frozen `Received`는
+   확장 불가 → codec+seam decode만 착지, full send-builder API·context threading 잔여.
+2. **ISpot NoDrop setter**(S8-07): explicit-false를 spot publish-plane에 반영하려면
+   `zlink_spot_set_publish_option`(Core+internal P/Invoke 존재)을 public `ISpot`에 노출해야 함.
+   default-true는 Core 기본으로 이미 동작.
+3. **actor-row generation 필드**(S8-04A, gap 90 §12.27): `ZLinkActorLocation`에
+   OwnerNodeGeneration/MembershipEpoch/SpotGeneration 부재 → transfer commit의 actor-location-row
+   rewrite가 상태만 진행. descriptor 모델 정렬(§12.33/S8-04)과 함께 처리.
+
+이 gap들은 "다른 언어 구현만으로 신규 public contract 추가 금지" 원칙(AGENTS.md)에 따라 각기
+spec/guide 근거를 확인한 뒤 binding에 추가하고, 해당 lane bindings의 focused 재리뷰를 1회 재개방한다.
+
+**완료(2026-07-18)**: S8-02/02A/03/05/06/16(빌더·DI·handler dispatch·전송 배선·pump·MeshName),
+S8-04A/04B(Redis transfer authority·production 정책), S8-06B(timer 검증). Framework+AspNetCore+Redis 0/0.
 
 ## 13. S8-CPP·JVM·NODE lane 상세 — C++·Java/Kotlin·Node.js framework 단계
 

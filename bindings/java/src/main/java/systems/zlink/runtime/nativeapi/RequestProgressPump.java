@@ -42,22 +42,12 @@ public final class RequestProgressPump {
         track(future, socketHandle, threadName, Kind.SPOT);
     }
 
-    public static void trackSpotRouteBridgeRequest(CompletableFuture<?> future,
-                                                   MemorySegment bridgeHandle,
-                                                   String threadName) {
-        track(future, bridgeHandle, threadName, Kind.SPOT_ROUTE_BRIDGE);
-    }
-
     public static void stopSocketProgress(MemorySegment socketHandle) {
         stopProgress(socketHandle, Kind.SOCKET);
     }
 
     public static void stopSpotProgress(MemorySegment socketHandle) {
         stopProgress(socketHandle, Kind.SPOT);
-    }
-
-    public static void stopSpotRouteBridgeProgress(MemorySegment bridgeHandle) {
-        stopProgress(bridgeHandle, Kind.SPOT_ROUTE_BRIDGE);
     }
 
     private static void track(CompletableFuture<?> future,
@@ -122,8 +112,7 @@ public final class RequestProgressPump {
 
     private enum Kind {
         SOCKET,
-        SPOT,
-        SPOT_ROUTE_BRIDGE
+        SPOT
     }
 
     private record Key(Kind kind, long address) {
@@ -177,11 +166,6 @@ public final class RequestProgressPump {
         }
 
         private void runLoop() {
-            if (key.kind() == Kind.SPOT_ROUTE_BRIDGE) {
-                runBridgeLoop();
-                return;
-            }
-
             MemorySegment poller = MemorySegment.NULL;
             try {
                 poller = Native.pollerNew();
@@ -239,33 +223,5 @@ public final class RequestProgressPump {
             }
         }
 
-        private void runBridgeLoop() {
-            try {
-                for (;;) {
-                    if (stopping.get() || pending.get() <= 0) {
-                        break;
-                    }
-                    try {
-                        Native.spotRouteBridgeDrain(socketHandle);
-                    } catch (Throwable ignored) {
-                        break;
-                    }
-                    try {
-                        Thread.sleep(POLL_RECHECK_TIMEOUT_MS);
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            } finally {
-                running.set(false);
-                if (!stopping.get() && pending.get() > 0) {
-                    ensureRunning();
-                    return;
-                }
-                PUMPS.remove(key, this);
-                thread = null;
-            }
-        }
     }
 }

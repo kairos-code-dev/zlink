@@ -80,11 +80,8 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
     void attachSendSender(Received result) {
         RoutingId nodeRid = result.getRoutingId().orElse(null);
         if (nodeRid == null) return;
-        RoutingId spotRid = result.spotRid().orElse(null);
         ContractAccess.receivedSetSendSender(result, (parts, flags) ->
-            spotRid == null
-                ? sendInternal(nodeRid, parts, flags)
-                : sendToSpotInternal(nodeRid, spotRid, parts, flags));
+            sendInternal(nodeRid, parts, flags));
     }
     public void setSendReadyHandler(SendReadyHandler handler) { runtime().setSendReadyHandler(handler); }
 
@@ -117,60 +114,6 @@ final class NativeRouterSocket extends NativeSocketBase implements RouterSocket 
             InternalAccess.routerReply(this, rid, requestSequence, parts));
     }
 
-    public SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid) {
-        return MessageOperations.send((parts, flags) ->
-            sendToSpotInternal(destNodeRid, destSpotRid, parts, flags));
-    }
-
-    private boolean sendToSpotInternal(RoutingId destNodeRid, RoutingId destSpotRid,
-                                       List<Message> parts, SendFlags flags) {
-        return InternalAccess.routerSendToSpot(this, destNodeRid, destSpotRid,
-            parts, flags);
-    }
-
-    public RequestOperation requestToSpot(RoutingId destNodeRid,
-                                   RoutingId destSpotRid) {
-        return MessageOperations.request(
-            (parts, flags, timeout) ->
-                requestToSpotAsync(destNodeRid, destSpotRid, parts, flags,
-                  timeout),
-            (parts, callback, flags, timeout) ->
-                requestToSpotCallback(destNodeRid, destSpotRid, parts,
-                  callback, flags, timeout));
-    }
-
-    private CompletableFuture<List<Message>> requestToSpotAsync(
-            RoutingId destNodeRid,
-            RoutingId destSpotRid,
-            List<Message> parts,
-            SendFlags flags,
-            Duration timeout) {
-        return InternalAccess.routerRequestToSpotAsync(this, destNodeRid,
-          destSpotRid, parts, timeout, flags);
-    }
-
-    private boolean requestToSpotCallback(RoutingId destNodeRid,
-                                          RoutingId destSpotRid,
-                                          List<Message> parts,
-                                          RequestCallback callback,
-                                          SendFlags flags,
-                                          Duration timeout) {
-        return InternalAccess.routerRequestToSpotCallback(this, destNodeRid,
-          destSpotRid, parts, callback::onComplete, flags, timeout);
-    }
-
-    public ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                               long requestSeq) {
-        return MessageOperations.reply(parts ->
-            InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,
-              requestSeq, parts));
-    }
-
-    void replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                     long requestSeq, List<Message> parts) {
-        InternalAccess.routerReplyToSpot(this, destNodeRid, destSpotRid,
-          requestSeq, parts);
-    }
     @Override
     public void close() {
         debug("router close begin");

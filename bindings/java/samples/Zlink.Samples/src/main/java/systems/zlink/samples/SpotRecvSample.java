@@ -1,69 +1,74 @@
+/* SPDX-License-Identifier: MPL-2.0 */
 package systems.zlink.samples;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.MeshNodeOptions;
+import systems.zlink.contracts.service.spot.ReadyBatch;
+import systems.zlink.contracts.service.spot.ReceiveBatch;
+import systems.zlink.contracts.service.spot.RecordKind;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.messaging.TopicMessage;
-import java.time.Duration;
-import java.time.Instant;
+import systems.zlink.contracts.service.spot.SubscriptionKind;
+import systems.zlink.contracts.sockets.SendFlags;
+import java.util.List;
 
 public final class SpotRecvSample {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         SampleSupport.ensureNative();
-        String channelName = "sample";
-        String topic = SampleSupport.SPOT_TOPIC;
-        String published = topic + "/" + SampleSupport.SPOT_PAYLOAD;
-        String publisherEndpoint = SampleSupport.tcpEndpoint();
-        String subscriberEndpoint = SampleSupport.tcpEndpoint();
-
-        try (Context ctx = Zlink.createContext();
-             SpotNode publisherNode = ctx.createSpotNode();
-             SpotNode subscriberNode = ctx.createSpotNode();
-             Spot publisher = publisherNode.createSpot();
-             Spot subscriber = subscriberNode.createSpot()) {
-            publisherNode.setRoutingId(RoutingId.from(
-                "z-java-spot-recv-publisher".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            subscriberNode.setRoutingId(RoutingId.from(
-                "a-java-spot-recv-subscriber".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            publisher.setRoutingId(RoutingId.from(
-                "z-java-spot-recv-publisher-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            subscriber.setRoutingId(RoutingId.from(
-                "a-java-spot-recv-subscriber-spot".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-            publisherNode.setPubBind(publisherEndpoint);
-            subscriberNode.setPubBind(subscriberEndpoint);
+        final String serviceName = "direct";
+        final String channel = "room";
+        final String topic = "room:lobby";
+        final String payload = "hello-spot";
+        try (Context publisherContext = Zlink.createContext();
+             Context subscriberContext = Zlink.createContext();
+             MeshNode publisherNode = publisherContext.createMeshNode(
+                 new MeshNodeOptions("spot-recv", null));
+             MeshNode subscriberNode = subscriberContext.createMeshNode(
+                 new MeshNodeOptions("spot-recv", null))) {
+            String publisherEndpoint = SampleSupport.tcpEndpoint();
+            String subscriberEndpoint = SampleSupport.tcpEndpoint();
+            publisherNode.addChannel(channel);
+            subscriberNode.addChannel(channel);
+            publisherNode.setBind(publisherEndpoint);
+            subscriberNode.setBind(subscriberEndpoint);
+            publisherNode.start();
+            subscriberNode.start();
             publisherNode.connectPeer(subscriberEndpoint);
             subscriberNode.connectPeer(publisherEndpoint);
-            subscriber.setSubscription(topic);
-            SampleSupport.waitSpotPeerConnected(publisherNode);
-            SampleSupport.waitSpotPeerConnected(subscriberNode);
 
-            Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
-            while (Instant.now().isBefore(deadline)) {
-                try (Message payload = Message.from(SampleSupport.SPOT_PAYLOAD)) {
-                    publisher.publish(topic).message(payload).submit();
-                }
-                try (TopicMessage topicMessage = new TopicMessage()) {
-                    if (!subscriber.subscribe(topicMessage, RecvFlags.DONT_WAIT)) {
-                        Thread.onSpinWait();
-                        continue;
+            try (Spot publisher = publisherNode.createSpot();
+                 Spot subscriber = subscriberNode.createSpot();
+                 ReadyBatch ready = ReadyBatch.create(16);
+                 ReceiveBatch recv = ReceiveBatch.create(64, 256, 1 << 16)) {
+                subscriber.setSubscription(channel, topic, SubscriptionKind.EXACT);
+                SampleSupport.waitMeshPeerConnected(publisherNode);
+                SampleSupport.waitMeshPeerConnected(subscriberNode);
+
+                String[] received = {null, null};
+                SampleSupport.waitUntil("spot recv sample", () -> {
+                    try (Message message = Message.from(payload)) {
+                        publisher.publish(channel, topic, List.of(message),
+                            SendFlags.NONE);
                     }
-                    String value = topicMessage.topic() + "/"
-                        + topicMessage.singlePartOrThrow().toUtf8String();
-                    if (!published.equals(value)) {
-                        throw new IllegalStateException(
-                            "unexpected delivery: " + value);
-                    }
-                    System.out.println("[spot/recv] service: \"" + channelName
-                        + "\" tick: 1 publish: \"" + published
-                        + "\" -> recv: \"" + value + "\"");
-                    return;
-                }
+                    SampleSupport.pumpReady(subscriberNode, ready, recv,
+                        (record, batch, index) -> {
+                            if (record.kind() != RecordKind.SPOT_MULTICAST) {
+                                return;
+                            }
+                            List<Message> parts = batch.retainMessage(index);
+                            received[0] = record.topic();
+                            received[1] = parts.get(0).toUtf8String();
+                            SampleSupport.closeAll(parts);
+                        });
+                    return received[1] != null;
+                });
+
+                System.out.println("[spot/recv] service: \"" + serviceName
+                    + "\" tick: 1 publish: \"" + topic + "/" + payload
+                    + "\" -> recv: \"" + received[0] + "/" + received[1] + "\"");
             }
-            throw new IllegalStateException("spot delivery did not arrive");
         }
     }
 }

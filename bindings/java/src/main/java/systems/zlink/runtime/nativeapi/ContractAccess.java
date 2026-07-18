@@ -321,8 +321,6 @@ public final class ContractAccess {
 
         int refCount(Object msg);
 
-        String getProperty(Object msg, String property);
-
         void closeVector(Object parts, long count);
 
         Message[] materializeVector(Object parts, long count,
@@ -880,11 +878,6 @@ public final class ContractAccess {
 
     public static int nativeMessageRefCount(Object msg) {
         return nativeMessageAccess().refCount(msg);
-    }
-
-    public static String nativeMessageGetProperty(Object msg,
-                                                  String property) {
-        return nativeMessageAccess().getProperty(msg, property);
     }
 
     public static void nativeMessageCloseVector(Object parts, long count) {

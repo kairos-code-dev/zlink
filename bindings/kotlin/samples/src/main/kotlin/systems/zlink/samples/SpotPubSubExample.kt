@@ -1,52 +1,63 @@
 // 자립형 가이드 예제: SPOT 토픽 pub/sub.
-// 한 노드가 토픽에 publish하면, 그 토픽을 구독한 다른 노드가 받는다.
+// 한 노드가 채널 토픽에 publish하면, 그 토픽을 구독한 다른 노드가 받는다.
 //   bindings/java/gradlew -p . :kotlin-samples:runSpotPubSubExample --no-daemon
 package systems.zlink.samples
 
 import systems.zlink.contracts.core.Zlink
 import systems.zlink.contracts.messaging.Message
-import systems.zlink.contracts.messaging.TopicMessage
-import systems.zlink.contracts.sockets.RecvFlags
-import java.time.Duration
+import systems.zlink.contracts.service.spot.MeshNodeOptions
+import systems.zlink.contracts.service.spot.ReadyBatch
+import systems.zlink.contracts.service.spot.ReceiveBatch
+import systems.zlink.contracts.service.spot.RecordKind
+import systems.zlink.contracts.service.spot.SubscriptionKind
+import systems.zlink.contracts.sockets.SendFlags
 
 fun main() {
 // --8<-- [start:doc]
+    val channel = "room"
     val topic = "room:lobby"
-    val pubEndpoint = SampleSupport.tcpEndpoint()
-    val subEndpoint = SampleSupport.tcpEndpoint()
     Zlink.createContext().use { ctx ->
-        ctx.createSpotNode().use { publisherNode ->
-            ctx.createSpotNode().use { subscriberNode ->
+        ctx.createMeshNode(MeshNodeOptions("spot-pubsub", null)).use { publisherNode ->
+            ctx.createMeshNode(MeshNodeOptions("spot-pubsub", null)).use { subscriberNode ->
+                val pubEndpoint = SampleSupport.tcpEndpoint()
+                val subEndpoint = SampleSupport.tcpEndpoint()
+                publisherNode.addChannel(channel)
+                subscriberNode.addChannel(channel)
+                publisherNode.setBind(pubEndpoint)
+                subscriberNode.setBind(subEndpoint)
+                publisherNode.start()
+                subscriberNode.start()
+                publisherNode.connectPeer(subEndpoint)
+                subscriberNode.connectPeer(pubEndpoint)
+
                 publisherNode.createSpot().use { publisher ->
                     subscriberNode.createSpot().use { subscriber ->
-                        publisherNode.setPubBind(pubEndpoint)
-                        subscriberNode.setPubBind(subEndpoint)
-                        publisherNode.connectPeer(subEndpoint)
-                        subscriberNode.connectPeer(pubEndpoint)
-                        // 구독자는 받을 토픽을 등록한다.
-                        subscriber.setSubscription(topic)
-                        SampleSupport.waitSpotPeerConnected(publisherNode)
-                        SampleSupport.waitSpotPeerConnected(subscriberNode)
+                        ReadyBatch.create(16).use { ready ->
+                            ReceiveBatch.create(64, 256, 1 shl 16).use { recv ->
+                                // 구독자는 받을 채널 토픽을 등록한다.
+                                subscriber.setSubscription(channel, topic, SubscriptionKind.EXACT)
+                                SampleSupport.waitMeshPeerConnected(publisherNode)
+                                SampleSupport.waitMeshPeerConnected(subscriberNode)
 
-                        // 도착할 때까지 반복 발행한다.
-                        var receivedTopic: String? = null
-                        var payload: String? = null
-                        val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
-                        while (System.nanoTime() < deadline) {
-                            Message.from("hello-everyone").use { m ->
-                                publisher.publish(topic).message(m).submit()
-                            }
-                            TopicMessage().use { tm ->
-                                if (subscriber.subscribe(tm, RecvFlags.DONT_WAIT)) {
-                                    receivedTopic = tm.topic()
-                                    payload = tm.singlePartOrThrow().toUtf8String()
+                                val got = arrayOfNulls<String>(2)
+                                SampleSupport.waitUntil("spot delivery") {
+                                    Message.from("hello-everyone").use { m ->
+                                        publisher.publish(channel, topic, listOf(m), SendFlags.NONE)
+                                    }
+                                    SampleSupport.pumpReady(subscriberNode, ready, recv) { record, batch, index ->
+                                        if (record.kind() == RecordKind.SPOT_MULTICAST) {
+                                            val parts = batch.retainMessage(index)
+                                            got[0] = record.topic()
+                                            got[1] = parts[0].toUtf8String()
+                                            SampleSupport.closeAll(parts)
+                                        }
+                                    }
+                                    got[1] != null
                                 }
+
+                                println("[spot/pubsub] topic \"${got[0]}\" -> recv: \"${got[1]}\"")
                             }
-                            if (payload != null) break
-                            Thread.sleep(10)
                         }
-                        checkNotNull(payload) { "spot delivery did not arrive" }
-                        println("[spot/pubsub] topic \"$receivedTopic\" -> recv: \"$payload\"")
                     }
                 }
             }

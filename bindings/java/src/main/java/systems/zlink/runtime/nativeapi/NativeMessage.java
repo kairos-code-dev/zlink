@@ -29,8 +29,6 @@ public final class NativeMessage {
     private static final MethodHandle MH_MSG_REFCNT = NativeSymbols.downcallCritical("zlink_msg_refcnt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_GETS = NativeSymbols.downcall("zlink_msg_gets",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSGV_CLOSE = NativeSymbols.downcallAny(
             new String[] {"zlink_multipart_close", "zlink_msgv_close"},
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
@@ -122,14 +120,6 @@ public final class NativeMessage {
         }
     }
 
-    public static MemorySegment messageGetProperty(MemorySegment msg, MemorySegment property) {
-        try {
-            return (MemorySegment) MH_MSG_GETS.invokeExact(msg, property);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_gets failed", t);
-        }
-    }
-
     public static void messageVectorClose(MemorySegment parts, long count) {
         try {
             MH_MSGV_CLOSE.invokeExact(parts, count);
@@ -157,22 +147,6 @@ public final class NativeMessage {
                 userData);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_handler failed", t);
-        }
-    }
-
-    public static int routerRecv(MemorySegment router,
-                                 MemorySegment sourceNodeRidOut,
-                                 MemorySegment sourceSpotRidOut,
-                                 MemorySegment requestSeqOut,
-                                 MemorySegment partsOut,
-                                 MemorySegment partCountOut,
-                                 int flags) {
-        try {
-            return Native.routerRecv(router, sourceNodeRidOut,
-                sourceSpotRidOut, requestSeqOut, partsOut, partCountOut,
-                flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_recv_part failed", t);
         }
     }
 

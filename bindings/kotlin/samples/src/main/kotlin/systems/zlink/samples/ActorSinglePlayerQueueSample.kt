@@ -1,91 +1,72 @@
+// SPDX-License-Identifier: MPL-2.0
 package systems.zlink.samples
 
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.contracts.core.Zlink
-import systems.zlink.contracts.eventing.MonitorEventType
-import systems.zlink.contracts.messaging.Message
-import systems.zlink.contracts.messaging.Received
-import systems.zlink.contracts.sockets.RecvFlags
-import systems.zlink.contracts.sockets.RequestResult
-import systems.zlink.contracts.service.spot.SpotDispatchEvent
-import java.time.Duration
+import systems.zlink.contracts.service.spot.MeshNodeOptions
+import systems.zlink.contracts.service.spot.ReadyBatch
+import systems.zlink.contracts.service.spot.ReceiveBatch
+import java.util.concurrent.CountDownLatch
 
 fun main() {
     SampleSupport.ensureNative()
-    val endpoint = SampleSupport.tcpEndpoint()
-
     Zlink.createContext().use { ctx ->
-        ctx.createSpotNode().use { node ->
+        ctx.createMeshNode(MeshNodeOptions("actor-single-player-queue", null)).use { node ->
+            node.setBind(SampleSupport.tcpEndpoint())
+            node.addChannel("app")
+            node.start()
             node.createSpot().use { spot ->
-                ctx.createStreamSocket().use { stream ->
-                    stream.monitorOpen(MonitorEventType.ACCEPTED).use { monitor ->
-                        val actor = node.createActor("single-player")
-                        val actorRef = actor.ref()
-                        val payloads = mutableListOf<String>()
-                        val replies = mutableListOf<RequestResult>()
+                node.createActor("single-player").use { actor ->
+                    ctx.createStreamSocket().use { stream ->
+                        ReadyBatch.create(16).use { ready ->
+                            ReceiveBatch.create(64, 256, 1 shl 16).use { recv ->
+                                val actorMessages = ArrayList<String>()
+                                val sessionRid = arrayOfNulls<RoutingId>(1)
+                                val sessionReady = CountDownLatch(1)
+                                stream.onPacket { routingId, header, body ->
+                                    SampleSupport.closeQuietly(header)
+                                    SampleSupport.closeQuietly(body)
+                                    if (sessionRid[0] == null) {
+                                        sessionRid[0] = routingId
+                                        sessionReady.countDown()
+                                    }
+                                }
+                                val endpoint = SampleSupport.tcpEndpoint()
+                                stream.bind(endpoint)
 
-                        spot.setDispatchHandler { info ->
-                            when (info.event()) {
-                                SpotDispatchEvent.ACTOR_JOIN_READABLE ->
-                                    spot.recvActorJoin(RecvFlags.DONT_WAIT)?.use { request ->
-                                        Message.from("accepted").use { reply ->
-                                            spot.replyActorJoin(request, 0).message(reply).submit()
+                                // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
+                                val sessionService = SampleSupport.startSessionService(node, stream)
+                                try {
+                                    SampleSupport.connectRawTcp(endpoint).use { client ->
+                                        SampleSupport.sendStreamPacket(client, "open".toByteArray(Charsets.UTF_8))
+                                        SampleSupport.await(sessionReady, "stream session")
+                                        val session = sessionRid[0]!!
+                                        SampleSupport.bindSessionActor(node, sessionService, session, actor.ref())
+
+                                        var epoch = SampleSupport.joinLocalSpot(node, actor, spot, "join-first", "accepted", null)
+                                        SampleSupport.relaySessionMessage(sessionService, session, actor.ref(), "before")
+                                        SampleSupport.waitUntil("first actor message") {
+                                            SampleSupport.collectActorMessages(node, ready, recv, actorMessages)
+                                            actorMessages.contains("before")
                                         }
+
+                                        SampleSupport.leaveLocalSpot(node, actor, epoch)
+                                        SampleSupport.relaySessionMessage(sessionService, session, actor.ref(), "between")
+                                        epoch = SampleSupport.joinLocalSpot(node, actor, spot, "join-second", "accepted", null)
+                                        SampleSupport.waitUntil("queued actor message") {
+                                            SampleSupport.collectActorMessages(node, ready, recv, actorMessages)
+                                            actorMessages.contains("between")
+                                        }
+
+                                        println("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"")
+                                        SampleSupport.leaveLocalSpot(node, actor, epoch)
+                                        SampleSupport.unbindSessionActor(node, sessionService, session, actor.ref())
                                     }
-                                SpotDispatchEvent.ACTOR_READABLE ->
-                                    for (part in info.actorMessages()) {
-                                        part.use { payloads.add(it.message().toUtf8String()) }
-                                    }
-                                else -> {}
+                                } finally {
+                                    SampleSupport.closeQuietly(sessionService)
+                                }
                             }
                         }
-
-                        stream.bind(endpoint)
-                        SampleSupport.connectRawTcp(endpoint).use { client ->
-                            SampleSupport.waitStreamConnected(monitor)
-                            SampleSupport.sendRawTcp(client, "seed".toByteArray())
-                            val sessionRid: RoutingId = Received().use { received ->
-                                stream.recv(received, RecvFlags.NONE)
-                                received.routingId.orElseThrow()
-                            }
-                            stream.bindActor(sessionRid, actorRef)
-                                .timeout(Duration.ofSeconds(2))
-                                .submit().toCompletableFuture().join().forEach(Message::close)
-
-                            Message.from("join-first").use { request ->
-                                actor.join(spot).message(request).timeout(Duration.ofSeconds(2))
-                                    .submit { result, messages ->
-                                        replies.add(result.result())
-                                        messages.forEach(Message::close)
-                                    }
-                            }
-                            SampleSupport.waitUntil("actor join") { replies.isNotEmpty() }
-
-                            Message.from("before").use { payload ->
-                                stream.sendBoundActor(sessionRid, "single-player")
-                                    .message(payload).submit()
-                            }
-                            actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close)
-                            Message.from("between").use { payload ->
-                                stream.sendBoundActor(sessionRid, "single-player")
-                                    .message(payload).submit()
-                            }
-
-                            Message.from("join-second").use { request ->
-                                actor.join(spot).message(request).timeout(Duration.ofSeconds(2))
-                                    .submit { result, messages ->
-                                        replies.add(result.result())
-                                        messages.forEach(Message::close)
-                                    }
-                            }
-                            SampleSupport.waitUntil("queued actor payload") { payloads.size >= 2 }
-                            check(payloads == listOf("before", "between")) {
-                                "queued payloads were not preserved"
-                            }
-                            actor.leave(spot).submit().toCompletableFuture().join().forEach(Message::close)
-                            actor.close()
-                        }
-                        println("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"")
                     }
                 }
             }

@@ -828,11 +828,6 @@ public final class Message implements AutoCloseable {
         }
     }
 
-    public String getProperty(String key) {
-        Objects.requireNonNull(key, "key");
-        return ContractAccess.nativeMessageGetProperty(msg, key);
-    }
-
     Object handle() {
         return msg;
     }

@@ -108,12 +108,6 @@ final class NativeMessageRuntime {
             }
 
             @Override
-            public String getProperty(Object msg, String property) {
-                return NativeMessageRuntime.getProperty((MemorySegment) msg,
-                    property);
-            }
-
-            @Override
             public void closeVector(Object parts, long count) {
                 NativeMessageRuntime.closeVector((MemorySegment) parts,
                     count);
@@ -213,17 +207,6 @@ final class NativeMessageRuntime {
 
     static int refCount(MemorySegment msg) {
         return NativeMessage.messageRefCount(msg);
-    }
-
-    static String getProperty(MemorySegment msg, String property) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nativeKey = arena.allocateFrom(property,
-                StandardCharsets.UTF_8);
-            MemorySegment nativeValue = NativeMessage.messageGetProperty(msg, nativeKey);
-            if (nativeValue == null || nativeValue.address() == 0)
-                return null;
-            return nativeValue.reinterpret(Long.MAX_VALUE).getString(0);
-        }
     }
 
     static void closeVector(MemorySegment parts, long count) {

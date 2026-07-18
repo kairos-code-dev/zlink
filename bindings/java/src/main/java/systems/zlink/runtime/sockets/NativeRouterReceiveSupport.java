@@ -515,15 +515,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         if (requestSequence == 0L) {
             return null;
         }
-        return (replyParts, sendFlags) -> {
-            if (spotRid != null) {
-                InternalAccess.routerReplyToSpot(socket, nodeRid, spotRid,
-                    requestSequence, replyParts);
-            } else {
-                InternalAccess.routerReply(socket, nodeRid, requestSequence,
-                    replyParts);
-            }
-        };
+        return (replyParts, sendFlags) ->
+            InternalAccess.routerReply(socket, nodeRid, requestSequence,
+                replyParts);
     }
 
     private int routerRecvPart(MemorySegment sourceNodeRidOut,

@@ -687,10 +687,13 @@ public sealed class ActorHandoffTests
         Assert.True(admissions.TryBeginCompletion(completion, targetSpot));
         admissions.RecordCompletion(completion, targetSpot);
         Assert.False(admissions.TryBeginCompletion(completion, targetSpot));
-        Assert.Throws<InvalidOperationException>(() =>
+        // A completion this target no longer honors is terminal for the
+        // source's reconciliation (RequestRejected), never retried.
+        var changedTarget = Assert.Throws<ZLinkFrameworkException>(() =>
             admissions.TryBeginCompletion(
                 completion with { TargetSpotRid = RoutingId.From("spot-other").ToBytes().ToArray() },
                 targetSpot));
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, changedTarget.Kind);
     }
 
     [Fact]
@@ -734,8 +737,11 @@ public sealed class ActorHandoffTests
             request.SourceNodeRid,
             targetSpot.ToBytes().ToArray(),
             []);
-        Assert.Throws<InvalidOperationException>(() =>
+        // A completion the target no longer honors is terminal for the
+        // source's reconciliation (RequestRejected), never retried.
+        var lateCompletion = Assert.Throws<ZLinkFrameworkException>(() =>
             admissions.TryBeginCompletion(completion, targetSpot));
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, lateCompletion.Kind);
     }
 
     [Fact]

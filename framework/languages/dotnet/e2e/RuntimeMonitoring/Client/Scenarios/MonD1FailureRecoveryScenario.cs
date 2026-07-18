@@ -32,7 +32,7 @@ internal static class MonD1FailureRecoveryScenario
                 var removed = (await observer.Post("/evidence/wait")
                     .Body(new EvidenceWaitReq(
                         ["kind=TopologyChanged", "removed=svc-b", "kind=ServiceSummaryChanged",
-                            "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                            "source=monitor.profile", options.ServiceBChannelEndpoint],
                         [["kind=Disconnected", "kind=Closed"]],
                         TimeoutMilliseconds: 30000,
                         AfterIndex: downBaseline))
@@ -53,7 +53,7 @@ internal static class MonD1FailureRecoveryScenario
                 var added = (await observer.Post("/evidence/wait")
                     .Body(new EvidenceWaitReq(
                         ["kind=TopologyChanged", "added=svc-b", "kind=ServiceSummaryChanged",
-                            "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                            "source=monitor.profile", options.ServiceBChannelEndpoint],
                         [["kind=Connected", "kind=ConnectionReady"]],
                         TimeoutMilliseconds: 30000,
                         AfterIndex: upBaseline))

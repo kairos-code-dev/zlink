@@ -35,6 +35,16 @@ public sealed class GameClient(IZlinkStreamConnector connector, string playerId)
             RequestTimeout = TimeSpan.FromSeconds(10),
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
+        if (Environment.GetEnvironmentVariable("ZONEWORLD_DEBUG_INBOUND") == "1")
+            connector.ObserveInbound((observation, _) =>
+            {
+                var preview = observation.Name == "ZoneStateNotify"
+                    ? " " + System.Text.Encoding.UTF8.GetString(observation.PayloadPreview.Span)
+                    : string.Empty;
+                Console.Error.WriteLine(
+                    $"[inbound] player={playerId} kind={observation.Kind} name={observation.Name} bytes={observation.PayloadLength}{preview}");
+                return ValueTask.CompletedTask;
+            });
         await connector.Connect.Async(cancellationToken);
         return new GameClient(connector, playerId);
     }

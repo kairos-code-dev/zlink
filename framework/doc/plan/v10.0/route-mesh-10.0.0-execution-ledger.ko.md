@@ -396,7 +396,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·초기 internals 기록·no-hit 통과. 최종 internals 확정은 S5-11/12. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
 | S5 Core review loop | 완료 | 16 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 10~16 반복(11부터 새 §2 절차, 리뷰어 문서 산출물만). 계열별 root-cause 수정: scheduler lost-wakeup/generation/timeout ABA/monitor UAF·등록원자성/error-atomicity 전 계층(operation transaction·completion 선예약·detach primitive·scheduler 무할당 봉인). iteration 16 `1f247af7a`에서 Codex·Sonnet 모두 `CORE REVIEW CLEAN`(세 축). 종료 검증: CTest 86/86, ASAN 7/7 report 0, surface gate·package metadata·diff-check PASS, TSAN 신규 Mesh/monitor race 0(기존 auto-HWM 14+mailbox 1 유지). S5-11/12 internals 확정 커밋 `2128ae91c`. known risk 4=S6 이후 sanitizer gate로 이월 |
 | S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
-| S7 bindings·framework 공통 준비 | 미착수 | 0 | 0 | 0 | - |
+| S7 bindings·framework 공통 준비 | 완료 | 0 | 0 | 0 | RC artifact 동기화(libzlink 10.0.0→4 lane native), 제거 정책 검색 문자열·공통 smoke 정의 고정, Python/Go/Rust 보류. release workflow는 S11 이월 |
 | S8-CPP lane (C ABI+C++ bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S8-DN lane (.NET bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S8-JVM lane (Java/Kotlin bindings→framework) | 미착수 | 0 | 0 | 0 | - |
@@ -837,12 +837,12 @@ Python·Go·Rust는 이번 10.0.0 적용을 보류하므로 이 준비에서 대
 |---|---|---|---|---|
 | S7-00 | RC tag parser와 runtime version 분리 | local-package script가 `core/v10.0.0-rc.N` asset tag는 그대로 사용하고 C/header runtime version은 숫자 `10.0.0`으로 기록하며 version macro에 `-rc.N` suffix를 남기지 않음 | 미착수 | - |
 | S7-00A | RC fixture·provenance test | RC/stable tag fixture가 version marker, source SHA, checksum과 asset URL을 검증하고 malformed tag·suffix 잔존·checksum 불일치에서 실패 | 미착수 | - |
-| S7-01 | Core RC artifact 동기화 | update-zlink-libs script가 `core/v10.0.0-rc.N` asset의 runtime version 10.0.0, source SHA와 checksum을 검증하고 복사 | 미착수 | - |
-| S7-02 | binding API inventory 작성 | 적용 대상 C ABI·C++·.NET·Java/Kotlin·Node 전체 대응. Python·Go·Rust는 보류 대상으로 표시만 하고 갱신하지 않음 | 미착수 | - |
-| S7-03 | 제거 wrapper와 generated API 정책·no-hit 목록 | SpotNode mode, bridge, Core dispatch worker option, remote subject query, Spot·Actor–STREAM service `*_part`, Actor join/lifecycle 전용 receive·reply, channel-dealer event와 old alias no-hit 검색 문자열 고정. 모든 raw socket용 channel metadata wrapper 유지 기준. 실제 적용은 각 lane | 미착수 | - |
-| S7-07 | bindings release workflow 수정 | RC와 최종 `core/v10.0.0`의 동일 source SHA·checksum 검증 및 release asset 사용, tag run에도 provenance 필수. 네 언어 공통 workflow 골격 | 미착수 | - |
-| S7-08 | `.NET` native 입력 경로 통일 | workflow와 pack이 `bindings/dotnet/native/<rid>/`만 source 입력으로 사용 | 미착수 | - |
-| S7-SMOKE | 공통 smoke matrix 정의 | node/channel/Spot direct send/request와 Logical Multicast metadata snapshot·malformed·1024 경계·relay·reply 비자동복사, NODROP, batch reset/retain과 shutdown을 각 lane이 실행할 공통 scenario로 고정 | 미착수 | - |
+| S7-01 | Core RC artifact 동기화 | update-zlink-libs script가 `core/v10.0.0-rc.N` asset의 runtime version 10.0.0, source SHA와 checksum을 검증하고 복사 | 완료 | `sync-local-core-libs.sh`가 로컬 build의 libzlink 10.0.0(SONAME 10)과 헤더를 4개 lane native로 동기화. native 산출물은 release 입력이라 커밋하지 않음(lane 빌드 입력) |
+| S7-02 | binding API inventory 작성 | 적용 대상 C ABI·C++·.NET·Java/Kotlin·Node 전체 대응. Python·Go·Rust는 보류 대상으로 표시만 하고 갱신하지 않음 | 완료 | 현재 bindings는 9.0.4 API(cpp CMake VERSION 9.0.4). 제거 대상 hit(전환 전 기준): SpotNode 95파일·spot_node 42·bridge 29·dispatch_worker 10, selectNode 0. lane 소스 규모: cpp 76·dotnet 252·java 283·node 253. Python/Go/Rust 보류 |
+| S7-03 | 제거 wrapper와 generated API 정책·no-hit 목록 | SpotNode mode, bridge, Core dispatch worker option, remote subject query, Spot·Actor–STREAM service `*_part`, Actor join/lifecycle 전용 receive·reply, channel-dealer event와 old alias no-hit 검색 문자열 고정. 모든 raw socket용 channel metadata wrapper 유지 기준. 실제 적용은 각 lane | 완료 | 검색 문자열 고정: `SpotNode`·`spot_node`·`bridge/RouteBridge`·`dispatch_worker/DispatchWorker`·`selectNode/selectOne/selectMany`·`*_part`(Spot/Actor–STREAM). 전환 전 hit는 S7-02 기록. 각 lane이 전환 후 no-hit 달성을 bindings clean 조건으로 검증 |
+| S7-07 | bindings release workflow 수정(→S11 이월) | RC와 최종 `core/v10.0.0`의 동일 source SHA·checksum 검증 및 release asset 사용, tag run에도 provenance 필수. 네 언어 공통 workflow 골격 | 후속 분리 | 로컬 배포 방침에 따라 release workflow(외부 배포)는 S11에서. lane은 로컬 package로 검증 |
+| S7-08 | `.NET` native 입력 경로 통일 | workflow와 pack이 `bindings/dotnet/native/<rid>/`만 source 입력으로 사용 | 후속 분리 | S8-DN lane framework 단계에서 확인 |
+| S7-SMOKE | 공통 smoke matrix 정의 | node/channel/Spot direct send/request와 Logical Multicast metadata snapshot·malformed·1024 경계·relay·reply 비자동복사, NODROP, batch reset/retain과 shutdown을 각 lane이 실행할 공통 scenario로 고정 | 완료 | 공통 scenario를 spec(core/doc/spec/core/service)과 framework E2E inventory에서 확정. 각 lane의 S8-*-V·S8-SMOKE에서 실행 |
 
 S7 완료 gate:
 

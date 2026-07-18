@@ -3,6 +3,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal interface IZLinkActorLocationLifecycle
 {
     ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
+        string meshName,
         string actorType,
         string actorId,
         RoutingId nodeRid,

@@ -31,11 +31,6 @@ public interface IZLinkMonitoringOptions
     /// runtime writes or removes an actor row and when an actor resolve
     /// misses. Requires location stores.</summary>
     void AddLocationActorEvents(string sourceName);
-
-    /// <summary>Publishes <see cref="ZLinkLocationRouteEvent"/>s when this
-    /// runtime writes or removes a route row and when a route resolve
-    /// misses. Requires location stores.</summary>
-    void AddLocationRouteEvents(string sourceName);
 }
 
 public interface IZLinkRuntimeEvent
@@ -168,13 +163,13 @@ public abstract record ZLinkLocationPeerEvent : IZLinkRuntimeEvent
     public sealed record RowUpdated(
         string SourceName,
         DateTimeOffset Timestamp,
-        ZLinkPeerLocationKey Key,
-        ZLinkPeerLocation Peer) : ZLinkLocationPeerEvent(SourceName, Timestamp);
+        ZLinkMeshNodeDescriptorKey Key,
+        ZLinkMeshNodeDescriptor Descriptor) : ZLinkLocationPeerEvent(SourceName, Timestamp);
 
     public sealed record RowRemoved(
         string SourceName,
         DateTimeOffset Timestamp,
-        ZLinkPeerLocationKey Key) : ZLinkLocationPeerEvent(SourceName, Timestamp);
+        ZLinkMeshNodeDescriptorKey Key) : ZLinkLocationPeerEvent(SourceName, Timestamp);
 
     public sealed record DesiredSetChanged(
         string SourceName,
@@ -244,38 +239,6 @@ public abstract record ZLinkLocationActorEvent : IZLinkRuntimeEvent
         string SourceName,
         DateTimeOffset Timestamp,
         ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
-}
-
-public abstract record ZLinkLocationRouteEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkLocationRouteEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-
-    public string SourceName { get; init; }
-
-    public DateTimeOffset Timestamp { get; init; }
-
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-
-    public sealed record RowUpdated(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkRouteLocationKey Key,
-        ZLinkRouteLocation Route) : ZLinkLocationRouteEvent(SourceName, Timestamp);
-
-    public sealed record RowRemoved(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkRouteLocationKey Key) : ZLinkLocationRouteEvent(SourceName, Timestamp);
-
-    public sealed record ResolveMiss(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkRouteLocationKey Key) : ZLinkLocationRouteEvent(SourceName, Timestamp);
 }
 
 public readonly record struct ZLinkSpotTimerDiagnostic(

@@ -492,7 +492,6 @@ internal sealed class ZLinkSpotNodeCatalog(
                 spotType.FullName,
                 node.RoutingId,
                 ZLinkSpotKind.User,
-                registration.Router?.BindEndpoint,
                 deactivate: async ct => _ = await CloseAsync(spotRid, ct).ConfigureAwait(false),
                 cancellationToken)
             .ConfigureAwait(false);

@@ -1,28 +1,14 @@
 namespace Zlink.Framework.Contracts.Locations;
 
-public sealed record ZLinkLocationWatchFilter(
-    ZLinkLocationKind Kind,
-    string? MeshName = null,
-    ZLinkRouteKind? RouteKind = null);
-
-public enum ZLinkLocationChangeType
+public enum ZLinkLocationChangeScopeKind
 {
-    Upserted = 1,
-    Removed = 2,
-    Expired = 3
+    MeshNode = 1,
+    Spot = 2,
+    Actor = 3,
+    OwnerLease = 4,
+    ActorTransfer = 5
 }
 
-/// <summary>
-/// Change events carry typed keys. Backends that transport encoded string
-/// keys decode them inside the store implementation.
-/// </summary>
-public sealed record ZLinkLocationChanged(
-    ZLinkLocationKind Kind,
-    ZLinkLocationKey Key,
-    ZLinkLocationChangeType ChangeType,
-    long Generation,
-    DateTimeOffset UpdatedAt);
-
 public readonly record struct ZLinkLocationChangeStampScope(
-    ZLinkLocationKind Kind,
+    ZLinkLocationChangeScopeKind Kind,
     string? MeshName);

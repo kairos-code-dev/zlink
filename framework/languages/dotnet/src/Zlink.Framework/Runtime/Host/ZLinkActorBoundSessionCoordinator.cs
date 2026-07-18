@@ -6,20 +6,17 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
     private readonly Func<string, ZLinkActorRuntimeState> _getState;
     private readonly Func<IZLinkBackendSpotNode?> _getNode;
-    private readonly Func<ZLinkLocationLifecycle?> _getLocationLifecycle;
     private readonly ZLinkFrameworkRegistration _registration;
     private readonly Func<CancellationToken> _getShutdownToken;
 
     public ZLinkActorBoundSessionCoordinator(
         Func<string, ZLinkActorRuntimeState> getState,
         Func<IZLinkBackendSpotNode?> getNode,
-        Func<ZLinkLocationLifecycle?> getLocationLifecycle,
         ZLinkFrameworkRegistration registration,
         Func<CancellationToken> getShutdownToken)
     {
         _getState = getState;
         _getNode = getNode;
-        _getLocationLifecycle = getLocationLifecycle;
         _registration = registration;
         _getShutdownToken = getShutdownToken;
         _boundSessions = new ZLinkActorBoundSessionRegistry(UnbindActorSession);
@@ -41,13 +38,10 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     {
         _getState(actorId).BindSession(sessionNodeRid, sessionRid, bindingToken);
         _boundSessions.Register(actorId, sessionRid, bindingToken);
-        _getLocationLifecycle()?.ActorSessionRoutes.OnActorSessionBound(
-            sessionRid, actorId, _getNode()?.RoutingId ?? default);
     }
 
     public void UnbindActorSession(string actorId, string bindingToken)
     {
-        NotifyRouteUnbound(actorId, bindingToken);
         _getState(actorId).UnbindSession(bindingToken);
         _boundSessions.Unregister(actorId, bindingToken);
     }
@@ -151,14 +145,6 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         RequireNode("Actor bound session close requires a router-capable SpotNode.")
             .CloseActorBoundSession(actorRef, _registration.DefaultRequestTimeout, cancellationToken);
         return ValueTask.CompletedTask;
-    }
-
-    private void NotifyRouteUnbound(string actorId, string bindingToken)
-    {
-        if (_getLocationLifecycle() is not { } lifecycle) return;
-        if (_getState(actorId).TryGetBoundSession(out var session)
-            && string.Equals(session.BindingToken, bindingToken, StringComparison.Ordinal))
-            lifecycle.ActorSessionRoutes.OnActorSessionUnbound(session.SessionRid);
     }
 
     private IZLinkBackendSpotNode RequireNode(string message,

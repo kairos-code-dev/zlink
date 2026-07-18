@@ -5,6 +5,10 @@ internal sealed class ZLinkActorDirectory(
     ZLinkFrameworkRegistration registration,
     ZLinkStoreLocationResolvers? locations = null) : IZLinkActorDirectory
 {
+    private readonly ZLinkSpotMeshLocationResolver? _meshRows = locations is null
+        ? null
+        : new ZLinkSpotMeshLocationResolver(registration, locations);
+
     public async ValueTask<ActorRef?> FindAsync(
         string actorId,
         CancellationToken cancellationToken = default)
@@ -22,9 +26,7 @@ internal sealed class ZLinkActorDirectory(
             return null;
         }
 
-        var row = await locations.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorId),
-                cancellationToken)
+        var row = await _meshRows!.ResolveActorAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
         return row?.ActorRef;
     }

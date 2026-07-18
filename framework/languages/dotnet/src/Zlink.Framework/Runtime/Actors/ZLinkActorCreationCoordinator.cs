@@ -137,6 +137,8 @@ internal sealed class ZLinkActorCreationCoordinator(
                 .ConfigureAwait(false);
 
         var outcome = await lifecycle.ExecuteActorClaimThenActivateAsync(
+                Host.ZLinkActorDrainCoordinator.ResolveMeshName(runtime.Registration, actorType)
+                    ?? string.Empty,
                 actorType,
                 actorId,
                 getActorSpotNode()?.RoutingId ?? default,
@@ -152,7 +154,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 ZLinkFrameworkErrorKind.ActorCreateFailed,
                 location is null
                     ? $"Actor '{actorId}' location claim was rejected and no live location row was found."
-                    : $"Actor '{actorId}' is already active on node '{location.NodeRid}' (location claim conflict).");
+                    : $"Actor '{actorId}' is already active on node '{location.OwnerNodeRid}' (location claim conflict).");
         }
 
         if (publishActorRef && state.NativeActorRef is { } nativeRef)
@@ -213,6 +215,8 @@ internal sealed class ZLinkActorCreationCoordinator(
         // the actor location claim must succeed before any instance exists.
         // A losing claimer backs off without activating.
         var outcome = await lifecycle.ExecuteActorClaimThenActivateAsync(
+                Host.ZLinkActorDrainCoordinator.ResolveMeshName(runtime.Registration, actorType)
+                    ?? string.Empty,
                 actorType,
                 actorId,
                 getActorSpotNode()?.RoutingId ?? default,
@@ -228,7 +232,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 ZLinkFrameworkErrorKind.ActorCreateFailed,
                 location is null
                     ? $"Actor '{actorId}' location claim was rejected and no live location row was found."
-                    : $"Actor '{actorId}' is already active on node '{location.NodeRid}' (location claim conflict).");
+                    : $"Actor '{actorId}' is already active on node '{location.OwnerNodeRid}' (location claim conflict).");
         }
 
         if (publishActorRef && state.NativeActorRef is { } nativeRef)

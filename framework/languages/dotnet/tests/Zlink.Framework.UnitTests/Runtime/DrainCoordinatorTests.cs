@@ -471,31 +471,6 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public void Actor_Drain_Capability_Matches_Only_The_Exact_Configured_Actor_Type()
-    {
-        var capabilities = ZLinkPeerCapabilities.ActorTypes(["enemy", "player", "player"]);
-        var peer = new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.SpotMesh,
-            "rooms",
-            RoutingId.From("2202"),
-            ZLinkLocationRole.Spot,
-            "tcp://127.0.0.1:9000",
-            100,
-            false,
-            0,
-            null,
-            capabilities,
-            "owner",
-            1,
-            DateTimeOffset.UtcNow);
-
-        Assert.Equal(new[] { "actor:enemy", "actor:player" }, capabilities);
-        Assert.True(ZLinkPeerCapabilities.SupportsActorType(peer, "player"));
-        Assert.False(ZLinkPeerCapabilities.SupportsActorType(peer, "play"));
-        Assert.False(ZLinkPeerCapabilities.SupportsActorType(peer, "unknown"));
-    }
-
-    [Fact]
     public async Task Drain_Health_Check_Projects_Readiness_Without_Starting_Drain()
     {
         var drain = new MutableDrainControl();

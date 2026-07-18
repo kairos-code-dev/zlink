@@ -3,15 +3,17 @@ using Zlink.Framework.Runtime.Locations;
 namespace Zlink.Framework.UnitTests;
 
 /// <summary>
-/// Draft 8.2: the runtime query surface reads the stores directly — no
+/// The runtime query surface reads the registered store directly — no
 /// cache, no freshness — and excludes rows of expired owners from every
-/// success result.
+/// success result. Spot and Actor rows are resolve-only store records, so
+/// topology and summaries project MeshNode descriptors only.
 /// </summary>
 public sealed class LocationRuntimeQueryTests
 {
     private const string LiveOwner = "live-owner";
     private const string DeadOwner = "dead-owner";
     private static readonly TimeSpan ShortLease = TimeSpan.FromSeconds(15);
+    private static readonly string[] RegisteredMeshes = ["play"];
 
     [Fact]
     public async Task Readiness_Returns_False_When_Query_Fails()
@@ -27,7 +29,7 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
-    public async Task Lists_Exclude_Rows_Of_Expired_Owners()
+    public async Task Descriptor_List_Excludes_Rows_Of_Expired_Owners()
     {
         var fixture = await FixtureAsync();
         await SeedRowsAsync(fixture.Store, LiveOwner, "1");
@@ -36,17 +38,9 @@ public sealed class LocationRuntimeQueryTests
         // The dead owner stops heartbeating and its short lease runs out.
         fixture.Time.Advance(ShortLease + TimeSpan.FromSeconds(1));
 
-        var peers = await fixture.Query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(MeshName: "play"));
-        Assert.Equal(LiveOwner, Assert.Single(peers).OwnerId);
+        var descriptors = await fixture.Query.ListMeshNodeDescriptorsAsync("play");
 
-        var spots = await fixture.Query.ListSpotLocationsAsync(new ZLinkSpotLocationFilter(MeshName: "play"));
-        Assert.Equal(LiveOwner, Assert.Single(spots.Items).OwnerId);
-
-        var actors = await fixture.Query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
-        Assert.Equal(LiveOwner, Assert.Single(actors.Items).OwnerId);
-
-        var routes = await fixture.Query.ListRouteLocationsAsync(new ZLinkRouteLocationFilter());
-        Assert.Equal(LiveOwner, Assert.Single(routes.Items).OwnerId);
+        Assert.Equal(LiveOwner, Assert.Single(descriptors).OwnerId);
     }
 
     [Fact]
@@ -54,37 +48,25 @@ public sealed class LocationRuntimeQueryTests
     {
         var fixture = await FixtureAsync();
         await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor(LiveOwner, 0), ZLinkLocationWriteIntent.NewClaim);
+            InMemoryLocationStoreTests.Actor(LiveOwner), ZLinkLocationWriteIntent.NewClaim);
 
-        var key = new ZLinkActorLocationKey("actor-1");
+        var key = new ZLinkActorLocationKey("play", "actor-1");
         Assert.Equal(LiveOwner, (await fixture.Resolvers.ResolveActorRowAsync(key))!.OwnerId);
 
         await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor(DeadOwner, 0) with { NodeRid = RoutingId.From("node-2") },
+            InMemoryLocationStoreTests.Actor(DeadOwner) with
+            {
+                OwnerNodeRid = RoutingId.From("node-2")
+            },
             ZLinkLocationWriteIntent.Takeover);
 
-        // Without a resolver cache the takeover is visible immediately on
-        // both surfaces; the runtime query reads the raw store rows.
+        // Without a resolver cache the takeover is visible immediately; the
+        // resolve surface reads the raw store rows.
         Assert.Equal(DeadOwner, (await fixture.Resolvers.ResolveActorRowAsync(key))!.OwnerId);
-        var queried = await fixture.Query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
-        Assert.Equal(DeadOwner, Assert.Single(queried.Items).OwnerId);
     }
 
     [Fact]
-    public async Task Actor_List_Hides_Rows_Before_ActorRef_Is_Published()
-    {
-        var fixture = await FixtureAsync();
-        await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor(LiveOwner, 0) with { ActorRef = null },
-            ZLinkLocationWriteIntent.NewClaim);
-
-        var actors = await fixture.Query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
-
-        Assert.Empty(actors.Items);
-    }
-
-    [Fact]
-    public async Task Lists_Drop_Rows_Older_Than_An_Observed_Generation()
+    public async Task Actor_Resolve_Drops_Views_Older_Than_An_Observed_Membership_Epoch()
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
@@ -92,43 +74,41 @@ public sealed class LocationRuntimeQueryTests
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
 
-        // A replica that first serves generation 2 and then lags back to 1.
-        var lagging = new ScriptedActorListStore(
-            [InMemoryLocationStoreTests.Actor(LiveOwner, 2)],
-            [InMemoryLocationStoreTests.Actor(LiveOwner, 1)]);
+        // A replica that first serves membership epoch 2 and then lags back
+        // to epoch 1.
+        var lagging = new ScriptedActorResolveStore(
+            InMemoryLocationStoreTests.Actor(LiveOwner) with { MembershipEpoch = 2 },
+            InMemoryLocationStoreTests.Actor(LiveOwner) with { MembershipEpoch = 1 });
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, lagging, store, tracker, observed: observed);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, lagging, store, store, time);
-        var query = new ZLinkLocationRuntimeQueryService(
-            options, store, store, lagging, store, tracker, runtime, observed);
+            store, store, lagging, tracker, observed);
 
-        var first = await query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
-        Assert.Equal(2, Assert.Single(first.Items).Generation);
+        var key = new ZLinkActorLocationKey("play", "actor-1");
+        var first = await resolvers.ResolveActorRowAsync(key);
+        Assert.Equal(2UL, first!.MembershipEpoch);
 
         // The lagging read must not roll the runtime's view backwards.
-        var second = await query.ListActorLocationsAsync(new ZLinkActorLocationFilter());
-        Assert.Empty(second.Items);
+        var second = await resolvers.ResolveActorRowAsync(key);
+        Assert.Null(second);
     }
 
     [Fact]
-    public async Task Topology_And_Service_Summaries_Drop_Older_Peer_Generations()
+    public async Task Topology_And_Service_Summaries_Drop_Older_Descriptor_Revisions()
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         await store.RenewOwnerLeaseAsync(LiveOwner, RoutingId.From("node-1"), TimeSpan.FromMinutes(5));
-        var current = InMemoryLocationStoreTests.Peer(LiveOwner) with { Generation = 2 };
-        var stale = current with { Generation = 1 };
-        var peers = new ScriptedPeerListStore([current], [stale]);
+        var current = InMemoryLocationStoreTests.MeshNode(LiveOwner) with { DescriptorRevision = 2 };
+        var stale = current with { DescriptorRevision = 1 };
+        var peers = new ScriptedMeshNodeListStore([current], [stale]);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
-            options, peers, store, store, store, tracker, runtime, observed);
+            options, peers, RegisteredMeshes, tracker, runtime, observed);
 
-        var topology = await query.ListTopologyAsync(
-            new ZLinkLocationTopologyFilter(Kind: ZLinkLocationKind.Peer));
+        var topology = await query.ListTopologyAsync(new ZLinkLocationTopologyFilter());
         var summaries = await query.ListServiceSummariesAsync(
             new ZLinkLocationServiceSummaryFilter());
 
@@ -137,46 +117,36 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
-    public async Task Topology_Applies_State_And_Actor_Mesh_Filters()
+    public async Task Topology_Applies_Mesh_And_State_Filters()
     {
         var fixture = await FixtureAsync();
-        await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor(LiveOwner, 0) with { SpotMeshName = "play" },
-            ZLinkLocationWriteIntent.NewClaim);
+        await SeedRowsAsync(fixture.Store, LiveOwner, "1");
 
         var ready = await fixture.Query.ListTopologyAsync(
             new ZLinkLocationTopologyFilter(
-                Kind: ZLinkLocationKind.Actor,
                 MeshName: "play",
                 State: ZLinkLocationTopologyState.Ready));
         var lost = await fixture.Query.ListTopologyAsync(
             new ZLinkLocationTopologyFilter(
-                Kind: ZLinkLocationKind.Actor,
                 MeshName: "play",
                 State: ZLinkLocationTopologyState.Lost));
         var otherMesh = await fixture.Query.ListTopologyAsync(
-            new ZLinkLocationTopologyFilter(
-                Kind: ZLinkLocationKind.Actor,
-                MeshName: "other"));
+            new ZLinkLocationTopologyFilter(MeshName: "other"));
 
         Assert.Single(ready.Items);
         Assert.Empty(lost.Items);
         Assert.Empty(otherMesh.Items);
     }
 
-    [Theory]
-    [InlineData(ZLinkLocationKind.Spot)]
-    [InlineData(ZLinkLocationKind.Actor)]
-    [InlineData(ZLinkLocationKind.Route)]
-    public async Task Topology_Projects_Lost_State_For_Expired_Owners(
-        ZLinkLocationKind kind)
+    [Fact]
+    public async Task Topology_Projects_Lost_State_For_Expired_Owners()
     {
         var fixture = await FixtureAsync();
-        await SeedRowsAsync(fixture.Store, DeadOwner, "lost");
+        await SeedRowsAsync(fixture.Store, DeadOwner, "9");
         fixture.Time.Advance(ShortLease + TimeSpan.FromSeconds(1));
 
         var topology = await fixture.Query.ListTopologyAsync(
-            new ZLinkLocationTopologyFilter(Kind: kind, State: ZLinkLocationTopologyState.Lost));
+            new ZLinkLocationTopologyFilter(State: ZLinkLocationTopologyState.Lost));
 
         Assert.Single(topology.Items);
         Assert.Equal(ZLinkLocationTopologyState.Lost, topology.Items[0].State);
@@ -189,20 +159,18 @@ public sealed class LocationRuntimeQueryTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         var health = new ZLinkLocationStoreHealth();
         var query = new ZLinkLocationRuntimeQueryService(
             options,
             store,
-            store,
-            store,
-            store,
+            RegisteredMeshes,
             tracker,
             runtime,
             new ZLinkObservedLocationGenerations(),
             watchEnabled: true,
             storeHealth: health);
-        health.ReportFailure("peer-query-read", new InvalidOperationException("read unavailable"));
+        health.ReportFailure("mesh-node-query-read", new InvalidOperationException("read unavailable"));
 
         var status = await query.GetStatusAsync();
 
@@ -236,44 +204,40 @@ public sealed class LocationRuntimeQueryTests
         Assert.False(internalHealth.GetSnapshot().Healthy);
     }
 
-    private sealed class ScriptedPeerListStore(params ZLinkPeerLocation[][] pages) : IZLinkPeerLocationStore
+    private sealed class ScriptedMeshNodeListStore(params ZLinkMeshNodeDescriptor[][] pages)
+        : IZLinkMeshNodeLocationStore
     {
-        private readonly Queue<ZLinkPeerLocation[]> _pages = new(pages);
+        private readonly Queue<ZLinkMeshNodeDescriptor[]> _pages = new(pages);
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-            ZLinkPeerLocationFilter filter,
+        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+            string meshName,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<IReadOnlyList<ZLinkPeerLocation>>(
+            ValueTask.FromResult<IReadOnlyList<ZLinkMeshNodeDescriptor>>(
                 _pages.Count > 0 ? _pages.Dequeue() : []);
 
-        public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
-            ZLinkPeerLocation peer,
+        public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+            ZLinkMeshNodeDescriptor descriptor,
             ZLinkLocationWriteIntent intent,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-            ZLinkPeerLocationKey key,
+        public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+            ZLinkMeshNodeDescriptorKey key,
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 
-    private sealed class ScriptedActorListStore(params ZLinkActorLocation[][] pages) : IZLinkActorLocationStore
+    private sealed class ScriptedActorResolveStore(params ZLinkActorLocation[] rows)
+        : IZLinkActorLocationStore
     {
-        private readonly Queue<ZLinkActorLocation[]> _pages = new(pages);
-
-        public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-            ZLinkActorLocationFilter filter,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkLocationPage<ZLinkActorLocation>(
-                _pages.Count > 0 ? _pages.Dequeue() : [], null));
+        private readonly Queue<ZLinkActorLocation> _rows = new(rows);
 
         public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
             ZLinkActorLocationKey key,
             CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            ValueTask.FromResult<ZLinkActorLocation?>(
+                _rows.Count > 0 ? _rows.Dequeue() : null);
 
         public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
             ZLinkActorLocation actor,
@@ -281,12 +245,11 @@ public sealed class LocationRuntimeQueryTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+        public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
             ZLinkActorLocationKey key,
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
-
     }
 
     private sealed class FailingRuntimeQuery : IZLinkLocationRuntimeQuery
@@ -295,26 +258,8 @@ public sealed class LocationRuntimeQueryTests
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("store unavailable");
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
-            ZLinkPeerLocationFilter filter,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("store unavailable");
-
-        public ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotLocationsAsync(
-            ZLinkSpotLocationFilter filter,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("store unavailable");
-
-        public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorLocationsAsync(
-            ZLinkActorLocationFilter filter,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("store unavailable");
-
-        public ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRouteLocationsAsync(
-            ZLinkRouteLocationFilter filter,
-            ZLinkPageRequest page = default,
+        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+            string meshName,
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("store unavailable");
 
@@ -332,17 +277,14 @@ public sealed class LocationRuntimeQueryTests
 
     private static async Task SeedRowsAsync(ZLinkInMemoryLocationStore store, string owner, string suffix)
     {
-        await store.UpdatePeerAsync(
-            InMemoryLocationStoreTests.Peer(owner, $"tcp://127.0.0.1:500{suffix}", $"node-{suffix}"),
+        await store.UpdateMeshNodeAsync(
+            InMemoryLocationStoreTests.MeshNode(owner, $"tcp://127.0.0.1:500{suffix}", $"node-{suffix}"),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateSpotAsync(
             InMemoryLocationStoreTests.Spot(owner, $"spot-{suffix}"),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor(owner, 0, $"actor-{suffix}"),
-            ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateRouteAsync(
-            InMemoryLocationStoreTests.Route(owner, $"route-{suffix}"),
+            InMemoryLocationStoreTests.Actor(owner, $"actor-{suffix}"),
             ZLinkLocationWriteIntent.NewClaim);
     }
 
@@ -353,19 +295,14 @@ public sealed class LocationRuntimeQueryTests
         await store.RenewOwnerLeaseAsync(LiveOwner, RoutingId.From("node-1"), TimeSpan.FromMinutes(5));
         await store.RenewOwnerLeaseAsync(DeadOwner, RoutingId.From("node-2"), ShortLease);
 
-        var options = new ZLinkLocationOptions
-        {
-            PollingInterval = TimeSpan.Zero,
-            // Keep resolver cache entries alive across the test so the
-            // bypass assertion contrasts cache hits with direct reads.
-        };
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, observed);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+            store, store, store, tracker, observed);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
-            options, store, store, store, store, tracker, runtime, observed);
+            options, store, RegisteredMeshes, tracker, runtime, observed);
         return new QueryFixture(store, resolvers, query, time);
     }
 

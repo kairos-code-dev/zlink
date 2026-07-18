@@ -12,9 +12,7 @@ internal sealed class ZLinkLocationReadiness(IZLinkLocationRuntimeQuery query) :
         {
             var page = await query.ListTopologyAsync(
                     new ZLinkLocationTopologyFilter(
-                        Kind: ZLinkLocationKind.Peer,
                         MeshName: meshName,
-                        Role: role,
                         NodeRid: nodeRid,
                         State: ZLinkLocationTopologyState.Ready),
                     cancellationToken: cancellationToken)

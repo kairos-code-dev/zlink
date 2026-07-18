@@ -1,101 +1,92 @@
-using Zlink.Framework.Internal.Locations;
-
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Highest generation this runtime has accepted per location key, shared by
-/// every read surface (resolvers and the runtime query). A read whose
-/// generation is strictly older than the recorded one is a lagging replica
-/// view and never counts as a success result. Entries remain for the runtime
+/// Highest logical version this runtime has accepted per location key, shared
+/// by every read surface (resolvers and the runtime query). A read whose
+/// version is strictly older than the recorded one is a lagging replica view
+/// and never counts as a success result. Entries remain for the runtime
 /// lifetime because forgetting one would allow a lagging replica value to
 /// become current again.
+///
+/// Per the location runtime contract the monotonic axes are the rows' own
+/// spec fields: descriptors order by (lifecycle generation, descriptor
+/// revision), spot rows by spot generation, and actor rows by
+/// (actor generation, membership epoch).
 /// </summary>
 internal sealed class ZLinkObservedLocationGenerations
 {
-    private readonly Observed<ZLinkPeerLocationKey> _peers = new();
+    private readonly Observed<ZLinkMeshNodeDescriptorKey> _meshNodes = new();
     private readonly Observed<ZLinkSpotLocationKey> _spots = new();
     private readonly Observed<ZLinkActorLocationKey> _actors = new();
-    private readonly Observed<ZLinkRouteLocationKey> _routes = new();
 
-    internal bool AcceptPeer(ZLinkPeerLocation row)
-    {
-        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(row.AutoConnectType)
-            || !ZLinkCanonicalLocationKeyFormatter.IsKnown(row.Role))
-        {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"peer row ignored: unknown auto-connect type '{row.AutoConnectType}' "
-                + $"or role '{row.Role}' (mesh '{row.MeshName}', endpoint '{row.Endpoint}')");
-            return false;
-        }
+    internal bool AcceptDescriptor(ZLinkMeshNodeDescriptor row) =>
+        _meshNodes.Accept(
+            new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid),
+            new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
 
-        return _peers.Accept(
-            new ZLinkPeerLocationKey(
-                row.AutoConnectType, row.MeshName, row.Role, row.NodeRid, row.Endpoint),
-            row.Generation);
-    }
-
-    internal void ObservePeer(ZLinkPeerLocation row) =>
-        _peers.Observe(
-            new ZLinkPeerLocationKey(
-                row.AutoConnectType, row.MeshName, row.Role, row.NodeRid, row.Endpoint),
-            row.Generation);
-
-    internal void ObservePeer(ZLinkPeerLocationKey key, long generation) =>
-        _peers.Observe(key, generation);
+    internal void ObserveDescriptor(ZLinkMeshNodeDescriptor row) =>
+        _meshNodes.Observe(
+            new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid),
+            new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
 
     internal bool AcceptSpot(ZLinkSpotLocation row) =>
-        _spots.Accept(new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), row.Generation);
+        _spots.Accept(
+            new ZLinkSpotLocationKey(row.MeshName, row.SpotRid),
+            new ObservedVersion(row.SpotGeneration, 0));
 
     internal void ObserveSpot(ZLinkSpotLocation row) =>
-        _spots.Observe(new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), row.Generation);
-
-    internal void ObserveSpot(ZLinkSpotLocationKey key, long generation) =>
-        _spots.Observe(key, generation);
+        _spots.Observe(
+            new ZLinkSpotLocationKey(row.MeshName, row.SpotRid),
+            new ObservedVersion(row.SpotGeneration, 0));
 
     internal bool AcceptActor(ZLinkActorLocation row) =>
-        _actors.Accept(new ZLinkActorLocationKey(row.ActorId), row.Generation);
+        _actors.Accept(
+            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            new ObservedVersion(row.ActorRef.Generation, row.MembershipEpoch));
 
     internal void ObserveActor(ZLinkActorLocation row) =>
-        _actors.Observe(new ZLinkActorLocationKey(row.ActorId), row.Generation);
+        _actors.Observe(
+            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            new ObservedVersion(row.ActorRef.Generation, row.MembershipEpoch));
 
-    internal void ObserveActor(ZLinkActorLocationKey key, long generation) =>
-        _actors.Observe(key, generation);
-
-    internal bool AcceptRoute(ZLinkRouteLocation row) =>
-        _routes.Accept(new ZLinkRouteLocationKey(row.RouteKind, row.RouteKey), row.Generation);
-
-    internal void ObserveRoute(ZLinkRouteLocation row) =>
-        _routes.Observe(new ZLinkRouteLocationKey(row.RouteKind, row.RouteKey), row.Generation);
-
-    internal void ObserveRoute(ZLinkRouteLocationKey key, long generation) =>
-        _routes.Observe(key, generation);
+    private readonly record struct ObservedVersion(ulong Major, ulong Minor)
+        : IComparable<ObservedVersion>
+    {
+        public int CompareTo(ObservedVersion other)
+        {
+            var major = Major.CompareTo(other.Major);
+            return major != 0 ? major : Minor.CompareTo(other.Minor);
+        }
+    }
 
     private sealed class Observed<TKey>
         where TKey : notnull
     {
         private readonly object _gate = new();
-        private readonly Dictionary<TKey, long> _generations = [];
+        private readonly Dictionary<TKey, ObservedVersion> _versions = [];
 
-        internal bool Accept(TKey key, long generation)
+        internal bool Accept(TKey key, ObservedVersion version)
         {
             lock (_gate)
             {
-                if (_generations.TryGetValue(key, out var observed) && generation < observed)
+                if (_versions.TryGetValue(key, out var observed)
+                    && version.CompareTo(observed) < 0)
                 {
                     return false;
                 }
 
-                _generations[key] = generation;
+                _versions[key] = version;
                 return true;
             }
         }
 
-        internal void Observe(TKey key, long generation)
+        internal void Observe(TKey key, ObservedVersion version)
         {
             lock (_gate)
             {
-                if (!_generations.TryGetValue(key, out var observed) || generation > observed)
-                    _generations[key] = generation;
+                if (!_versions.TryGetValue(key, out var observed)
+                    || version.CompareTo(observed) > 0)
+                    _versions[key] = version;
             }
         }
     }

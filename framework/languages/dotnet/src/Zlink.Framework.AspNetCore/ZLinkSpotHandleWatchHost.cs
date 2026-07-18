@@ -9,8 +9,7 @@ internal sealed class ZLinkSpotHandleWatchHost(
     IZLinkLocationWatchStore? watchStore,
     ZLinkStoreLocationResolvers rows,
     ZLinkSpotHandleRegistry handles,
-    ZLinkLocationOptions options,
-    ZLinkObservedLocationGenerations? observed = null) : IHostedService, IAsyncDisposable
+    ZLinkLocationOptions options) : IHostedService, IAsyncDisposable
 {
     private readonly object _lifecycleGate = new();
     private CancellationTokenSource? _stop;
@@ -28,10 +27,8 @@ internal sealed class ZLinkSpotHandleWatchHost(
             var watches = new List<Task> { PollAsync(_stop.Token) };
             if (watchStore is not null)
             {
-                watches.Add(WatchAsync(ZLinkLocationKind.Peer, _stop.Token));
                 watches.Add(WatchAsync(ZLinkLocationKind.Spot, _stop.Token));
                 watches.Add(WatchAsync(ZLinkLocationKind.Actor, _stop.Token));
-                watches.Add(WatchAsync(ZLinkLocationKind.Route, _stop.Token));
             }
             _watches = watches.ToArray();
         }
@@ -119,22 +116,13 @@ internal sealed class ZLinkSpotHandleWatchHost(
             try
             {
                 await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
-                var keys = handles.SnapshotLiveKeys();
-                foreach (var key in keys.Spots)
+                // Each handle refreshes through its own logical lookup key;
+                // a key with no current row invalidates at its current
+                // version so a strictly newer row can resurrect it.
+                foreach (var handle in handles.SnapshotLiveHandles())
                 {
-                    var row = await rows.ResolveSpotRowAsync(key.LocationKey, cancellationToken).ConfigureAwait(false);
-                    if (row is null)
-                        handles.RemoveSpotIfUnchanged(key.LocationKey, key.Generation);
-                    else
-                        handles.UpdateSpot(row);
-                }
-
-                foreach (var liveActor in keys.Actors)
-                {
-                    var key = new ZLinkActorLocationKey(liveActor.ActorId);
-                    var row = await rows.ResolveActorRowAsync(key, cancellationToken).ConfigureAwait(false);
-                    if (row is null) handles.RemoveActorIfUnchanged(liveActor.ActorId, liveActor.Generation);
-                    else handles.UpdateActor(row);
+                    if (!await handle.RefreshAsync(cancellationToken).ConfigureAwait(false))
+                        handle.InvalidateCurrent();
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -152,15 +140,11 @@ internal sealed class ZLinkSpotHandleWatchHost(
         ZLinkLocationChanged change,
         CancellationToken cancellationToken)
     {
-        if (change.Key is ZLinkLocationKey.Peer(var peerKey))
-        {
-            observed?.ObservePeer(peerKey, change.Generation);
-            return;
-        }
-
+        // Watch is an optimization only: a lost or lagging event is always
+        // corrected by the polling refresh, so an upsert whose row is not
+        // yet readable is simply left to the next poll.
         if (change.Key is ZLinkLocationKey.Spot(var spotKey))
         {
-            observed?.ObserveSpot(spotKey, change.Generation);
             if (change.ChangeType is ZLinkLocationChangeType.Removed or ZLinkLocationChangeType.Expired)
             {
                 handles.RemoveSpot(spotKey, change.Generation);
@@ -168,29 +152,18 @@ internal sealed class ZLinkSpotHandleWatchHost(
             }
 
             var row = await rows.ResolveSpotRowAsync(spotKey, cancellationToken).ConfigureAwait(false);
-            if (row is null || row.Generation < change.Generation)
-                handles.MarkSpotPending(spotKey, change.Generation);
-            else handles.UpdateSpot(row);
-            return;
-        }
-
-        if (change.Key is ZLinkLocationKey.Route(var routeKey))
-        {
-            observed?.ObserveRoute(routeKey, change.Generation);
+            if (row is not null) handles.UpdateSpot(row);
             return;
         }
 
         if (change.Key is not ZLinkLocationKey.Actor(var actorKey)) return;
-        observed?.ObserveActor(actorKey, change.Generation);
         if (change.ChangeType is ZLinkLocationChangeType.Removed or ZLinkLocationChangeType.Expired)
         {
-            handles.RemoveActor(actorKey, change.Generation);
+            handles.RemoveActor(actorKey);
             return;
         }
 
         var actor = await rows.ResolveActorRowAsync(actorKey, cancellationToken).ConfigureAwait(false);
-        if (actor is null || actor.Generation < change.Generation)
-            handles.MarkActorPending(actorKey, change.Generation);
-        else handles.UpdateActor(actor);
+        if (actor is not null) handles.UpdateActor(actor);
     }
 }

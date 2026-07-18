@@ -109,24 +109,16 @@ public sealed class LocationRuntimePollingDiffTests
                 OwnerLeaseRenewedAt: null),
             [
                 new ZLinkLocationTopologyEntry(
-                    ZLinkLocationKind.Peer,
                     "play",
-                    ZLinkLocationRole.Router,
                     RoutingId.From("node-1"),
-                    null,
-                    null,
                     endpoint,
+                    Draining: false,
                     ZLinkLocationTopologyState.Ready,
-                    1,
-                    1,
-                    0,
                     Timestamp)
             ],
             [
                 new ZLinkLocationServiceSummary(
                     "play",
-                    ZLinkLocationAutoConnectType.RouteMesh,
-                    ZLinkLocationRole.Router,
                     1,
                     1,
                     0,

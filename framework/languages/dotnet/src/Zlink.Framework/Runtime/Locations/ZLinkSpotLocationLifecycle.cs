@@ -13,19 +13,21 @@ internal sealed class ZLinkSpotLocationLifecycle(
         string? spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
-        string? routeEndpoint,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken = default)
     {
+        // The store issues the spot generation on claim; the row carries no
+        // endpoint because peers reach a spot through its owner MeshNode
+        // descriptor (40-location-runtime §2.2).
         var row = new ZLinkSpotLocation(
             meshName,
             spotRid,
-            spotType,
-            nodeRid,
+            SpotGeneration: 0,
+            OwnerNodeRid: nodeRid,
+            OwnerNodeGeneration: 0,
             spotKind,
-            routeEndpoint,
+            SpotType: spotType ?? string.Empty,
             OwnerId: string.Empty,
-            Generation: 0,
             UpdatedAt: default);
         var result = await runtime.WriteSpotAsync(row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
             .ConfigureAwait(false);
@@ -34,7 +36,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
             var existing = await resolver.ResolveSpotRowAsync(
                 new ZLinkSpotLocationKey(meshName, spotRid),
                 cancellationToken).ConfigureAwait(false);
-            if (existing?.NodeRid == nodeRid)
+            if (existing?.OwnerNodeRid == nodeRid)
             {
                 result = await runtime.WriteSpotAsync(row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
                     .ConfigureAwait(false);
@@ -43,15 +45,41 @@ internal sealed class ZLinkSpotLocationLifecycle(
 
         if (result.Status == ZLinkLocationWriteStatus.Stored)
         {
+            // The claim row is serialized before the store issues the spot
+            // generation, so one renew persists the issued value into the
+            // row (the store keeps row JSON exactly as written).
+            _ = await runtime.WriteSpotAsync(
+                    row with { SpotGeneration = result.Generation },
+                    ZLinkLocationWriteIntent.Renew,
+                    cancellationToken)
+                .ConfigureAwait(false);
             var canonical = ZLinkLocationKeyCodec.EncodeSpotKey(
                 new ZLinkSpotLocationKey(meshName, spotRid));
             lock (_gate)
             {
-                _spots[canonical] = new TrackedSpot(result.Generation, deactivate);
+                _spots[canonical] = new TrackedSpot(spotRid, result.Generation, deactivate);
             }
         }
 
         return result.Status;
+    }
+
+    /// <summary>Store-issued generation of a spot this runtime claimed;
+    /// actor membership rows carry it as their spot lifecycle fence.</summary>
+    internal bool TryGetTrackedGeneration(RoutingId spotRid, out ulong generation)
+    {
+        lock (_gate)
+        {
+            foreach (var tracked in _spots.Values)
+            {
+                if (!tracked.SpotRid.Equals(spotRid)) continue;
+                generation = tracked.Generation;
+                return true;
+            }
+        }
+
+        generation = 0;
+        return false;
     }
 
     internal async ValueTask ReleaseAsync(
@@ -97,6 +125,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
     }
 
     private sealed record TrackedSpot(
-        long Generation,
+        RoutingId SpotRid,
+        ulong Generation,
         Func<CancellationToken, ValueTask>? Deactivate);
 }

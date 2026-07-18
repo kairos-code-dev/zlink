@@ -1,5 +1,12 @@
 namespace Zlink.Framework.Runtime.Locations;
 
+/// <summary>
+/// Weakly tracks the resolved spot handles handed out to messaging callers
+/// so location events can update or invalidate their snapshots in place.
+/// Spot handles order updates by the row's spot generation; actor handles
+/// order by membership epoch, the axis that changes on every membership
+/// move within one actor generation.
+/// </summary>
 internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerChannels = null)
 {
     private readonly ZLinkSpotRouterChannelMap _routerChannels =
@@ -19,75 +26,56 @@ internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerC
         => Apply(_spots, new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), handle => handle.Update(
             new ZLinkSpotHandleSnapshot(
                 _routerChannels.Resolve(row.MeshName),
-                row.NodeRid,
+                row.OwnerNodeRid,
                 row.SpotRid,
-                row.Generation,
-                row.SpotKind)));
+                row.SpotGeneration,
+                row.SpotKind),
+            row.SpotGeneration));
 
-    internal void RemoveSpot(ZLinkSpotLocationKey key, long generation)
-        => Apply(_spots, key, handle => handle.Invalidate(generation));
-
-    internal void MarkSpotPending(ZLinkSpotLocationKey key, long generation)
-        => Apply(_spots, key, handle => handle.MarkPending(generation));
-
-    internal void RemoveSpotIfUnchanged(ZLinkSpotLocationKey key, long generation)
-        => Apply(_spots, key, handle => handle.InvalidateIfGeneration(generation));
+    internal void RemoveSpot(ZLinkSpotLocationKey key, ulong spotGeneration)
+        => Apply(_spots, key, handle => handle.Invalidate(spotGeneration));
 
     internal void UpdateActor(ZLinkActorLocation row)
-        => Apply(_actors, row.ActorId, handle => handle.Update(
-            ToSnapshot(row)));
+        => Apply(_actors, row.ActorId, handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
-        => row.LocationKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
+        => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
             ? new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.SpotMeshName),
-                row.NodeRid,
-                row.NodeRid,
-                row.Generation,
+                _routerChannels.Resolve(row.MeshName),
+                row.OwnerNodeRid,
+                row.OwnerNodeRid,
+                row.SpotGeneration,
                 ZLinkSpotKind.Entry)
             : new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.SpotMeshName),
-                row.NodeRid,
-                row.SpotRid.Value,
-                row.Generation,
+                _routerChannels.Resolve(row.MeshName),
+                row.OwnerNodeRid,
+                row.SpotRid,
+                row.SpotGeneration,
                 ZLinkSpotKind.User);
 
-    internal void RemoveActor(ZLinkActorLocationKey key, long generation)
-        => Apply(_actors, key.ActorId, handle => handle.Invalidate(generation));
+    internal void RemoveActor(ZLinkActorLocationKey key)
+        => Apply(_actors, key.ActorId, static handle => handle.InvalidateCurrent());
 
-    internal void MarkActorPending(ZLinkActorLocationKey key, long generation)
-        => Apply(_actors, key.ActorId, handle => handle.MarkPending(generation));
-
-    internal void RemoveActorIfUnchanged(string actorId, long generation)
-        => Apply(_actors, actorId, handle => handle.InvalidateIfGeneration(generation));
-
-    internal (ZLinkLiveSpotHandleKey[] Spots, ZLinkLiveActorHandleKey[] Actors) SnapshotLiveKeys()
+    internal IReadOnlyList<ZLinkResolvedSpotHandle> SnapshotLiveHandles()
     {
         lock (_gate)
         {
-            Prune(_spots);
-            Prune(_actors);
-            return (
-                _spots.SelectMany(static pair => LiveGenerations(pair.Value).Select(
-                    generation => new ZLinkLiveSpotHandleKey(
-                        pair.Key.MeshName,
-                        pair.Key.SpotRid,
-                        generation))).ToArray(),
-                _actors.SelectMany(static pair => LiveGenerations(pair.Value).Select(
-                    generation => new ZLinkLiveActorHandleKey(
-                        pair.Key,
-                        generation))).ToArray());
+            var live = new List<ZLinkResolvedSpotHandle>();
+            Collect(_spots, live);
+            Collect(_actors, live);
+            return live;
         }
     }
 
-    private static IEnumerable<long> LiveGenerations(
-        IEnumerable<WeakReference<ZLinkResolvedSpotHandle>> handles)
+    private static void Collect<TKey>(
+        Dictionary<TKey, List<WeakReference<ZLinkResolvedSpotHandle>>> handles,
+        List<ZLinkResolvedSpotHandle> live)
+        where TKey : notnull
     {
-        var generations = new HashSet<long>();
-        foreach (var reference in handles)
-            if (reference.TryGetTarget(out var handle))
-                generations.Add(handle.CurrentGeneration);
-        return generations;
+        foreach (var entries in handles.Values)
+            foreach (var entry in entries)
+                if (entry.TryGetTarget(out var handle))
+                    live.Add(handle);
     }
 
     private void Register<TKey>(
@@ -126,25 +114,4 @@ internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerC
             if (entries.Count == 0) handles.Remove(key);
         }
     }
-
-    private static void Prune<TKey>(
-        Dictionary<TKey, List<WeakReference<ZLinkResolvedSpotHandle>>> handles)
-        where TKey : notnull
-    {
-        foreach (var (key, entries) in handles.ToArray())
-        {
-            entries.RemoveAll(static entry => !entry.TryGetTarget(out _));
-            if (entries.Count == 0) handles.Remove(key);
-        }
-    }
 }
-
-internal readonly record struct ZLinkLiveSpotHandleKey(
-    string MeshName,
-    RoutingId SpotRid,
-    long Generation)
-{
-    internal ZLinkSpotLocationKey LocationKey => new(MeshName, SpotRid);
-}
-
-internal readonly record struct ZLinkLiveActorHandleKey(string ActorId, long Generation);

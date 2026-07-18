@@ -16,21 +16,14 @@ namespace Zlink.Framework.Internal.Locations;
 /// </summary>
 internal static class ZLinkCanonicalLocationKeyFormatter
 {
-    internal static string EncodePeerKey(ZLinkPeerLocationKey key) =>
-        Encode(
-            CanonicalName(key.AutoConnectType),
-            key.MeshName,
-            CanonicalName(key.Role),
-            NormalizePeerIdentity(key.NodeRid, key.Endpoint));
+    internal static string EncodeMeshNodeKey(ZLinkMeshNodeDescriptorKey key) =>
+        Encode(key.MeshName, key.Rid.ToHex());
 
     internal static string EncodeSpotKey(ZLinkSpotLocationKey key) =>
         Encode(key.MeshName, key.SpotRid.ToHex());
 
     internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
-        Encode(key.ActorId);
-
-    internal static string EncodeRouteKey(ZLinkRouteLocationKey key) =>
-        Encode(((int)key.RouteKind).ToString(CultureInfo.InvariantCulture), key.RouteKey);
+        Encode(key.MeshName, key.ActorId);
 
     internal static string CanonicalName(ZLinkLocationAutoConnectType type) => type switch
     {

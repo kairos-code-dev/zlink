@@ -6,67 +6,53 @@ public sealed class AutoConnectReconcilerTests
 {
     private static readonly TimeSpan LeaseTtl = TimeSpan.FromSeconds(15);
 
-    [Theory]
-    [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, true)]
-    [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Dealer, false)]
-    [InlineData(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, true)]
-    [InlineData(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Dealer, true)]
-    [InlineData(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Pub, false)]
-    [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, true)]
-    [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Router, false)]
-    [InlineData(ZLinkLocationAutoConnectType.Fanout, ZLinkLocationRole.Pub, true)]
-    [InlineData(ZLinkLocationAutoConnectType.Fanout, ZLinkLocationRole.Sub, true)]
-    [InlineData(ZLinkLocationAutoConnectType.Fanout, ZLinkLocationRole.Spot, false)]
-    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, true)]
-    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Router, true)]
-    [InlineData(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Sub, false)]
-    public void Role_Allow_Table_Matches_The_Contract(
-        ZLinkLocationAutoConnectType type,
-        ZLinkLocationRole role,
-        bool allowed)
-    {
-        Assert.Equal(allowed, ZLinkAutoConnectPlanner.IsRoleAllowed(type, role));
-    }
-
     [Fact]
-    public void Planner_Excludes_Self_And_Direction_Violations()
+    public void Planner_Excludes_Self_And_Foreign_Meshes()
     {
         var local = Local(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Dealer, "local", "tcp://l:1");
-        var peers = new[]
+        var descriptors = new[]
         {
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, "r1", "tcp://r:1"),
+            Descriptor("r1", "tcp://r:1"),
             // Same rid as local: excluded as self.
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, "local", "tcp://r:2"),
-            // A dealer never dials another dealer in client/server.
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Dealer, "d1", "tcp://d:1"),
+            Descriptor("local", "tcp://r:2"),
             // Different mesh: ignored.
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, "r2", "tcp://r:3", mesh: "other")
+            Descriptor("r2", "tcp://r:3", mesh: "other")
         };
 
-        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, peers);
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, descriptors);
 
         var target = Assert.Single(desired.Values);
         Assert.Equal("tcp://r:1", target.Endpoint);
-        Assert.Equal(2, ZLinkAutoConnectPlanner.CountDiscoveredPeers(local, peers));
+        Assert.Equal(1, ZLinkAutoConnectPlanner.CountDiscoveredPeers(local, descriptors));
     }
 
     [Fact]
-    public void Planner_Keeps_Draining_Peer_Connected()
+    public void Planner_Marks_Draining_Descriptors_Instead_Of_Dropping_Them()
     {
         var local = Local(
             ZLinkLocationAutoConnectType.ClientServer,
             ZLinkLocationRole.Dealer,
             "local",
             "tcp://l:1");
-        var draining = Peer(
-            ZLinkLocationAutoConnectType.ClientServer,
-            ZLinkLocationRole.Router,
-            "remote",
-            "tcp://r:1") with { Draining = true };
+        var draining = Descriptor("remote", "tcp://r:1") with { Draining = true };
 
         var target = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(local, [draining])).Value;
 
+        // A draining node stays in the desired set so an already-active
+        // connection is not cut; the reconciler skips it for new dials.
         Assert.Equal("tcp://r:1", target.Endpoint);
+        Assert.True(target.Draining);
+    }
+
+    [Fact]
+    public async Task Draining_Descriptor_Is_Not_Selected_For_A_New_Connection()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.PublishPeerAsync("r1", "tcp://r:1", draining: true);
+
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Empty(fixture.Executor.Connected);
     }
 
     [Fact]
@@ -78,12 +64,11 @@ public sealed class AutoConnectReconcilerTests
         Assert.True(await fixture.Reconciler.MarkDrainingAsync());
         await fixture.Reconciler.TickAsync();
 
-        var row = Assert.Single(await fixture.Store.ListPeersAsync(
-            new ZLinkPeerLocationFilter(
-                MeshName: "play",
-                Role: ZLinkLocationRole.Dealer,
-                Endpoint: "tcp://l:1")));
+        var row = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
         Assert.True(row.Draining);
+        Assert.True(row.DescriptorRevision > 1);
     }
 
     [Fact]
@@ -95,12 +80,10 @@ public sealed class AutoConnectReconcilerTests
         fixture.Reconciler.SetLocalWeight(0);
         await fixture.Reconciler.TickAsync();
 
-        var row = Assert.Single(await fixture.Store.ListPeersAsync(
-            new ZLinkPeerLocationFilter(
-                MeshName: "play",
-                Role: ZLinkLocationRole.Dealer,
-                Endpoint: "tcp://l:1")));
-        Assert.Equal(0u, row.Weight);
+        var row = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.Equal(0, row.ChannelWeights["play"]);
         Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
     }
 
@@ -113,8 +96,8 @@ public sealed class AutoConnectReconcilerTests
     {
         var smaller = Local(type, role, "aa", "tcp://a:1");
         var bigger = Local(type, role, "bb", "tcp://b:1");
-        var rowSmaller = Peer(type, role, "aa", "tcp://a:1");
-        var rowBigger = Peer(type, role, "bb", "tcp://b:1");
+        var rowSmaller = Descriptor("aa", "tcp://a:1");
+        var rowBigger = Descriptor("bb", "tcp://b:1");
 
         var fromSmaller = ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger]);
         var fromBigger = ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller]);
@@ -126,12 +109,12 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
-    public void SpotMesh_All_Members_Subscribe_While_Only_The_Smaller_Member_Dials_The_Router()
+    public void SpotMesh_All_Members_Dial_While_Only_The_Smaller_Member_Dials_The_Router()
     {
         var smaller = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
         var bigger = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "bb", "tcp://b:1");
-        var rowSmaller = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
-        var rowBigger = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "bb", "tcp://b:1");
+        var rowSmaller = Descriptor("aa", "tcp://a:1");
+        var rowBigger = Descriptor("bb", "tcp://b:1");
 
         var fromSmaller = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(smaller, [rowBigger])).Value;
         var fromBigger = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(bigger, [rowSmaller])).Value;
@@ -149,7 +132,7 @@ public sealed class AutoConnectReconcilerTests
         var dialOnly = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.RouteMesh, "play", ZLinkLocationRole.Router,
             RoutingId.From("zz"), string.Empty);
-        var server = Peer(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "aa", "tcp://a:1");
+        var server = Descriptor("aa", "tcp://a:1");
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(dialOnly, [server]);
 
@@ -166,11 +149,11 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Reconciler.TickAsync();
         Assert.Equal(2, fixture.Executor.Connected.Count);
 
-        await fixture.RemovePeerAsync("r2", "tcp://r:2");
+        await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
 
         var disconnected = Assert.Single(fixture.Executor.Disconnected);
-        Assert.Equal("tcp://r:2", disconnected.Endpoint);
+        Assert.Equal("tcp://r:1", disconnected.Endpoint);
         Assert.Single(fixture.Reconciler.ActiveTargets);
     }
 
@@ -249,7 +232,7 @@ public sealed class AutoConnectReconcilerTests
         // removed, the rid is an unknown request target rather than a known but
         // disconnected route.
         fixture.PeerResolver.Fail = false;
-        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
         Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
     }
@@ -260,7 +243,7 @@ public sealed class AutoConnectReconcilerTests
         var fixture = await FixtureAsync(retainRemovedMembers: true);
         await fixture.PublishPeerAsync("r1", "tcp://r:1");
         await fixture.Reconciler.TickAsync();
-        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
 
         Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
@@ -271,13 +254,13 @@ public sealed class AutoConnectReconcilerTests
     [Fact]
     public void Membership_Includes_Peers_The_Initiator_Rule_Excludes_From_Dialing()
     {
-        // "aa" dials "zz" never (zz initiates), yet zz is a reachable
+        // "zz" dials "aa" never (aa initiates), yet aa is a reachable
         // rid-addressed target once it dials us: membership, not the
         // desired dial set, is the fail-fast knowledge source.
         var local = Local(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "zz", "tcp://z:1");
-        var peer = Peer(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router, "aa", "tcp://a:1");
+        var descriptor = Descriptor("aa", "tcp://a:1");
 
-        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [peer]);
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [descriptor]);
 
         Assert.Empty(desired);
     }
@@ -286,9 +269,9 @@ public sealed class AutoConnectReconcilerTests
     public void SpotMesh_Target_Keeps_Peer_RoutingId_For_RidAware_Connect()
     {
         var local = Local(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "aa", "tcp://a:1");
-        var peer = Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "zz", "tcp://z:1");
+        var descriptor = Descriptor("zz", "tcp://z:1");
 
-        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [peer]);
+        var desired = ZLinkAutoConnectPlanner.ComputeDesired(local, [descriptor]);
 
         var target = Assert.Single(desired.Values);
         Assert.Equal(RoutingId.From("zz"), target.NodeRid);
@@ -308,12 +291,8 @@ public sealed class AutoConnectReconcilerTests
         // disconnect/connect pair.
         await fixture.Store.RenewOwnerLeaseAsync(
             "peer-owner-2", RoutingId.From("peer-node-2"), TimeSpan.FromMinutes(10));
-        var restarted = Peer(
-            ZLinkLocationAutoConnectType.ClientServer,
-            ZLinkLocationRole.Router,
-            "r1",
-            "tcp://r:1") with { OwnerId = "peer-owner-2" };
-        await fixture.Store.UpdatePeerAsync(restarted, ZLinkLocationWriteIntent.Takeover);
+        var restarted = Descriptor("r1", "tcp://r:1") with { OwnerId = "peer-owner-2" };
+        await fixture.Store.UpdateMeshNodeAsync(restarted, ZLinkLocationWriteIntent.Takeover);
         await fixture.Reconciler.TickAsync();
 
         Assert.Equal("tcp://r:1", Assert.Single(fixture.Executor.Connected).Endpoint);
@@ -329,32 +308,17 @@ public sealed class AutoConnectReconcilerTests
             "old-local-owner",
             RoutingId.From("old-local-node"),
             LeaseTtl);
-        await fixture.Store.UpdatePeerAsync(
-            new ZLinkPeerLocation(
-                ZLinkLocationAutoConnectType.ClientServer,
-                "play",
-                RoutingId.From("local"),
-                ZLinkLocationRole.Dealer,
-                "tcp://l:1",
-                100,
-                false,
-                0,
-                null,
-                null,
-                "old-local-owner",
-                0,
-                default),
+        await fixture.Store.UpdateMeshNodeAsync(
+            Descriptor("local", "tcp://l:1") with { OwnerId = "old-local-owner" },
             ZLinkLocationWriteIntent.NewClaim);
 
         await fixture.Reconciler.TickAsync();
 
-        var rows = await fixture.Store.ListPeersAsync(new ZLinkPeerLocationFilter(
-            MeshName: "play",
-            Role: ZLinkLocationRole.Dealer,
-            Endpoint: "tcp://l:1"));
-        var row = Assert.Single(rows);
+        var row = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
-        Assert.True(row.Generation > 1);
+        Assert.True(row.LifecycleGeneration > 1);
     }
 
     [Fact]
@@ -374,7 +338,7 @@ public sealed class AutoConnectReconcilerTests
         // Recovery with an empty store: r1 has not re-registered yet. The
         // first tick must not cut it — disconnect diffs wait one heartbeat
         // interval so the mesh does not sweep live peers.
-        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.RemovePeerAsync("r1");
         fixture.PeerResolver.Fail = false;
         await fixture.Reconciler.TickAsync();
         Assert.Empty(fixture.Executor.Disconnected);
@@ -407,7 +371,7 @@ public sealed class AutoConnectReconcilerTests
         Assert.Equal("tcp://r:1", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
 
         fixture.PeerResolver.Fail = true;
-        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.RemovePeerAsync("r1");
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Executor.Disconnected);
@@ -448,8 +412,7 @@ public sealed class AutoConnectReconcilerTests
     {
         var fixture = await FixtureAsync();
         await fixture.Reconciler.TickAsync();
-        var published = await fixture.Store.ListPeersAsync(
-            new ZLinkPeerLocationFilter(MeshName: "play", Role: ZLinkLocationRole.Dealer));
+        var published = await fixture.Store.ListMeshNodesAsync("play");
         Assert.Single(published);
 
         // Outage long enough for the local lease to expire and the row to
@@ -462,8 +425,7 @@ public sealed class AutoConnectReconcilerTests
         fixture.PeerResolver.Fail = false;
         await fixture.Reconciler.TickAsync();
 
-        published = await fixture.Store.ListPeersAsync(
-            new ZLinkPeerLocationFilter(MeshName: "play", Role: ZLinkLocationRole.Dealer));
+        published = await fixture.Store.ListMeshNodesAsync("play");
         Assert.Single(published);
         Assert.Equal(fixture.Runtime.OwnerId, published[0].OwnerId);
     }
@@ -474,16 +436,16 @@ public sealed class AutoConnectReconcilerTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
-        await store.UpdatePeerAsync(
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, "r1", "tcp://r:1"),
+        await store.UpdateMeshNodeAsync(
+            Descriptor("r1", "tcp://r:1"),
             ZLinkLocationWriteIntent.NewClaim);
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
 
         // An EnableClient() dealer has neither a routing id nor an endpoint:
@@ -497,9 +459,8 @@ public sealed class AutoConnectReconcilerTests
         await reconciler.TickAsync();
 
         Assert.Equal("tcp://r:1", Assert.Single(executor.Connected).Endpoint);
-        var dealers = await store.ListPeersAsync(
-            new ZLinkPeerLocationFilter(MeshName: "play", Role: ZLinkLocationRole.Dealer));
-        Assert.Empty(dealers);
+        var rows = await store.ListMeshNodesAsync("play");
+        Assert.Single(rows);
 
         // Shutdown has no row to remove and only tears down connections.
         await reconciler.ShutdownAsync();
@@ -513,13 +474,20 @@ public sealed class AutoConnectReconcilerTests
         string endpoint) =>
         new(type, "play", role, RoutingId.From(rid), endpoint);
 
-    private static ZLinkPeerLocation Peer(
-        ZLinkLocationAutoConnectType type,
-        ZLinkLocationRole role,
+    private static ZLinkMeshNodeDescriptor Descriptor(
         string rid,
         string endpoint,
-        string mesh = "play") =>
-        new(type, mesh, RoutingId.From(rid), role, endpoint, 100, false, 0, null, null, "peer-owner", 1, default);
+        string mesh = "play") => new(
+        mesh,
+        RoutingId.From(rid),
+        LifecycleGeneration: 0,
+        DescriptorRevision: 1,
+        endpoint,
+        new Dictionary<string, int>(StringComparer.Ordinal) { [mesh] = 100 },
+        Draining: false,
+        SecurityIdentity: string.Empty,
+        OwnerId: "peer-owner",
+        UpdatedAt: default);
 
     private static async Task<ReconcilerFixture> FixtureAsync(
         Action<ZLinkLocationOptions>? configure = null,
@@ -529,21 +497,19 @@ public sealed class AutoConnectReconcilerTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         configure?.Invoke(options);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var failable = new FailablePeerResolver(resolvers);
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
             RoutingId.From("local"), "tcp://l:1");
-        var localRow = new ZLinkPeerLocation(
-            local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, false, 0, null, null, "ignored", 0, default);
+        var localRow = Descriptor("local", "tcp://l:1") with { OwnerId = "ignored" };
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, failable, executor, options, time,
             retainRemovedMembers: retainRemovedMembers);
@@ -558,36 +524,40 @@ public sealed class AutoConnectReconcilerTests
         ZLinkAutoConnectReconciler Reconciler,
         ManualTimeProvider Time)
     {
-        public async Task PublishPeerAsync(string rid, string endpoint, bool takeover = false)
+        private readonly Dictionary<string, ulong> _generations = new(StringComparer.Ordinal);
+
+        public async Task PublishPeerAsync(
+            string rid,
+            string endpoint,
+            bool takeover = false,
+            bool draining = false)
         {
-            var row = Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Router, rid, endpoint);
-            await Store.UpdatePeerAsync(
+            var row = Descriptor(rid, endpoint) with { Draining = draining };
+            var result = await Store.UpdateMeshNodeAsync(
                 row,
                 takeover ? ZLinkLocationWriteIntent.Takeover : ZLinkLocationWriteIntent.NewClaim);
+            _generations[rid] = result.Generation;
         }
 
-        public async Task RemovePeerAsync(string rid, string endpoint)
+        public async Task RemovePeerAsync(string rid)
         {
-            var current = await Store.ListPeersAsync(new ZLinkPeerLocationFilter(Endpoint: endpoint));
-            foreach (var row in current)
-            {
-                await Store.RemovePeerAsync(
-                    new ZLinkPeerLocationKey(row.AutoConnectType, row.MeshName, row.Role, row.NodeRid, row.Endpoint),
-                    new ZLinkLocationOwnerToken(row.OwnerId, row.Generation));
-            }
+            await Store.RemoveMeshNodeAsync(
+                new ZLinkMeshNodeDescriptorKey("play", RoutingId.From(rid)),
+                new ZLinkLocationOwnerToken("peer-owner", _generations[rid]));
         }
     }
 
-    private sealed class FailablePeerResolver(IZLinkPeerLocationResolver inner) : IZLinkPeerLocationResolver
+    private sealed class FailablePeerResolver(IZLinkMeshNodeLocationResolver inner)
+        : IZLinkMeshNodeLocationResolver
     {
         public bool Fail { get; set; }
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
-            ZLinkPeerLocationFilter filter,
+        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+            string meshName,
             CancellationToken cancellationToken = default) =>
             Fail
                 ? throw new InvalidOperationException("store unreachable")
-                : inner.ListLivePeersAsync(filter, cancellationToken);
+                : inner.ListLiveMeshNodesAsync(meshName, cancellationToken);
     }
 
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor

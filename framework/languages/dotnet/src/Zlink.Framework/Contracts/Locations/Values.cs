@@ -39,8 +39,7 @@ public enum ZLinkRouteKind
 public enum ZLinkLocationKind
 {
     Invalid = 0,
-    Peer = 1,
+    MeshNode = 1,
     Spot = 2,
-    Actor = 3,
-    Route = 4
+    Actor = 3
 }

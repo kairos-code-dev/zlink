@@ -20,35 +20,27 @@ public enum ZLinkLocationTopologyState
 }
 
 public sealed record ZLinkLocationTopologyFilter(
-    ZLinkLocationKind? Kind = null,
     string? MeshName = null,
-    ZLinkLocationRole? Role = null,
     RoutingId? NodeRid = null,
     ZLinkLocationTopologyState? State = null);
 
+/// <summary>
+/// One MeshNode descriptor projected with liveness. Spot and Actor rows are
+/// resolve-only store records and never enumerate into topology.
+/// </summary>
 public sealed record ZLinkLocationTopologyEntry(
-    ZLinkLocationKind Kind,
-    string? MeshName,
-    ZLinkLocationRole? Role,
-    RoutingId? NodeRid,
-    RoutingId? SpotRid,
-    string? ActorId,
-    string? Endpoint,
+    string MeshName,
+    RoutingId NodeRid,
+    string Endpoint,
+    bool Draining,
     ZLinkLocationTopologyState State,
-    uint DesiredCount,
-    uint ReadyCount,
-    int ErrorCode,
     DateTimeOffset UpdatedAt);
 
 public sealed record ZLinkLocationServiceSummaryFilter(
-    string? MeshName = null,
-    ZLinkLocationAutoConnectType? AutoConnectType = null,
-    ZLinkLocationRole? Role = null);
+    string? MeshName = null);
 
 public sealed record ZLinkLocationServiceSummary(
     string MeshName,
-    ZLinkLocationAutoConnectType AutoConnectType,
-    ZLinkLocationRole Role,
     uint TotalCount,
     uint ReadyCount,
     uint ErrorCount,

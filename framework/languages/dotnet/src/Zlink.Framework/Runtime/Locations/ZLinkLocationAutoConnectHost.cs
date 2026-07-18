@@ -13,7 +13,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAutoConnectTopologyQuery
 {
     private readonly ZLinkLocationRuntime _runtime;
-    private readonly IZLinkPeerLocationResolver _peers;
+    private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkLocationChangeStampStore? _stampStore;
     private readonly IZLinkLocationWatchStore? _watchStore;
@@ -34,7 +34,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
     internal ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
-        IZLinkPeerLocationResolver peers,
+        IZLinkMeshNodeLocationResolver peers,
         ZLinkLocationOptions options,
         IZLinkLocationChangeStampStore? stampStore = null,
         IZLinkLocationWatchStore? watchStore = null,
@@ -156,12 +156,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
             var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
             var endpoint = spot.Router.BindEndpoint ?? node.Node.Status().LocalEndpoint;
-            // The row advertises the pub/sub plane endpoint so peers can
-            // wire both planes from one row (draft 6.1 metadata).
-            var metadata = spot.PubSub?.BindEndpoint is { Length: > 0 } pubEndpoint
-                ? new Dictionary<string, string> { [SpotPubEndpointMetadataKey] = pubEndpoint }
-                : null;
-            var capabilities = ZLinkPeerCapabilities.ActorTypes(spot.ActorFactories.Keys);
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
@@ -169,12 +163,37 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 RidOrNull(spot.RoutingId),
                 endpoint ?? string.Empty,
                 (uint)spot.Router.SocketConfig.Weight,
-                new SpotNodeExecutor(
+                new SpotRouterExecutor(
                     node,
-                    spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect,
-                    spot.PubSub?.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect),
-                metadata,
-                capabilities);
+                    spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect));
+            // Descriptors carry one ROUTER endpoint each, so the pub/sub
+            // plane lives in its own mesh namespace: the node advertises
+            // its pub endpoint there and dials every other publisher.
+            if (spot.PubSub is not { } pubSub) continue;
+            var pubMesh = meshName + SpotPubMeshSuffix;
+            if (pubSub.BindEndpoint is { Length: > 0 } pubEndpoint)
+            {
+                AddLoop(
+                    ZLinkLocationAutoConnectType.Fanout,
+                    pubMesh,
+                    ZLinkLocationRole.Pub,
+                    RidOrNull(spot.RoutingId),
+                    pubEndpoint,
+                    (uint)spot.Router.SocketConfig.Weight,
+                    NullExecutor.Instance);
+            }
+
+            if (pubSub.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect)
+            {
+                AddLoop(
+                    ZLinkLocationAutoConnectType.Fanout,
+                    pubMesh,
+                    ZLinkLocationRole.Sub,
+                    RidOrNull(spot.RoutingId),
+                    string.Empty,
+                    0,
+                    new SpotPubSubExecutor(node));
+            }
         }
 
             try
@@ -309,7 +328,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
-    internal const string SpotPubEndpointMetadataKey = "pub-endpoint";
+    internal const string SpotPubMeshSuffix = "#pub";
 
     private void AddLoop(
         ZLinkLocationAutoConnectType type,
@@ -319,24 +338,30 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         string endpoint,
         uint weight,
         IZLinkAutoConnectExecutor executor,
-        IReadOnlyDictionary<string, string>? metadata = null,
-        IReadOnlyList<string>? capabilities = null,
         bool retainRemovedMembers = false)
     {
-        // A capability with neither identity nor endpoint cannot be keyed
-        // or advertised. When it also never dials (advertise-only server
-        // roles) there is nothing to reconcile; a dialing capability (a
-        // client dealer or subscriber without a configured identity) still
-        // gets a dial-only loop that connects to remote rows.
-        var advertisable = nodeRid is not null || !string.IsNullOrEmpty(endpoint);
+        // A descriptor is keyed by (MeshName, Rid), so a capability without
+        // an identity cannot be advertised (an endpoint-less member still
+        // publishes for mesh-membership classification; planners skip its
+        // empty endpoint as a dial target). When it also never dials
+        // (advertise-only server roles) there is nothing to reconcile; a
+        // dialing capability (a client dealer or subscriber without a
+        // configured identity) still gets a dial-only loop that connects to
+        // remote descriptors.
+        var advertisable = nodeRid is { Size: > 0 };
         if (!advertisable && ReferenceEquals(executor, NullExecutor.Instance)) return;
 
         var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
         var row = advertisable
-            ? new ZLinkPeerLocation(
-                type, meshName, nodeRid, role, endpoint, weight, false, 0,
-                Metadata: metadata, Capabilities: capabilities,
-                OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
+            ? new ZLinkMeshNodeDescriptor(
+                meshName, nodeRid!.Value,
+                LifecycleGeneration: 0, DescriptorRevision: 1,
+                endpoint,
+                new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
+                Draining: false,
+                SecurityIdentity: string.Empty,
+                OwnerId: string.Empty,
+                UpdatedAt: default)
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events,
@@ -418,36 +443,30 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             => bundle.DisconnectAuto(socket, target.Endpoint);
     }
 
-    private sealed class SpotNodeExecutor(
+    private sealed class SpotRouterExecutor(
         ZLinkSpotNodeRuntime node,
-        bool connectRouter,
-        bool connectPubSub) : IZLinkAutoConnectExecutor
+        bool connectRouter) : IZLinkAutoConnectExecutor
     {
         public bool Connect(ZLinkAutoConnectTarget target)
         {
-            var connectsRouter = connectRouter && target.InitiatesSpotRouterLink;
-            if (connectsRouter && !node.ConnectRouterAuto(target.NodeRid, target.Endpoint)) return false;
-            if (!connectPubSub || PubEndpointOf(target) is not { } pubEndpoint) return true;
-            if (node.ConnectPubSubAuto(pubEndpoint)) return true;
-            if (connectsRouter) _ = node.DisconnectRouterAuto(target.Endpoint);
-            return false;
+            if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
+            return node.ConnectRouterAuto(target.NodeRid, target.Endpoint);
         }
 
         public bool Disconnect(ZLinkAutoConnectTarget target)
         {
-            var router = !connectRouter || !target.InitiatesSpotRouterLink
-                         || node.DisconnectRouterAuto(target.Endpoint);
-            var pubSub = !connectPubSub || PubEndpointOf(target) is not { } pubEndpoint
-                         || node.DisconnectPubSubAuto(pubEndpoint);
-            return router && pubSub;
+            if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
+            return node.DisconnectRouterAuto(target.Endpoint);
         }
+    }
 
-        private static string? PubEndpointOf(ZLinkAutoConnectTarget target) =>
-            target.Metadata is not null
-            && target.Metadata.TryGetValue(SpotPubEndpointMetadataKey, out var pubEndpoint)
-            && pubEndpoint.Length > 0
-                ? pubEndpoint
-                : null;
+    private sealed class SpotPubSubExecutor(ZLinkSpotNodeRuntime node) : IZLinkAutoConnectExecutor
+    {
+        public bool Connect(ZLinkAutoConnectTarget target)
+            => node.ConnectPubSubAuto(target.Endpoint);
+
+        public bool Disconnect(ZLinkAutoConnectTarget target)
+            => node.DisconnectPubSubAuto(target.Endpoint);
     }
 
 }

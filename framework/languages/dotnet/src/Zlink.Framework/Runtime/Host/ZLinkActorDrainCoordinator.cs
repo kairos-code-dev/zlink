@@ -137,37 +137,22 @@ internal sealed class ZLinkActorDrainCoordinator(
         string actorType,
         CancellationToken cancellationToken)
     {
-        if (services.GetService<ZLinkStoreLocationResolvers>() is not { } locations
-            || services.GetService<IZLinkPeerLocationResolver>() is not { } peers)
+        if (services.GetService<IZLinkMeshNodeLocationResolver>() is not { } peers)
             return [];
 
         var meshName = ResolveMeshName(registration, actorType);
         if (meshName is null) return [];
-        var meshPeers = await peers.ListLivePeersAsync(
-                new ZLinkPeerLocationFilter(
-                    ZLinkLocationAutoConnectType.SpotMesh,
-                    meshName,
-                    ZLinkLocationRole.Spot),
-                cancellationToken)
-            .ConfigureAwait(false);
-        var acceptingNodes = meshPeers
-            .Where(peer => !peer.Draining
-                           && peer.NodeRid is { Size: > 0 }
-                           && ZLinkPeerCapabilities.SupportsActorType(peer, actorType))
-            .Select(static peer => peer.NodeRid!.Value.ToHex())
-            .ToHashSet(StringComparer.Ordinal);
-        var entries = await locations.ListLiveSpotRowsAsync(
-                new ZLinkSpotLocationFilter(
-                    MeshName: meshName,
-                    SpotKind: ZLinkSpotKind.Entry),
-                cancellationToken)
+        // Descriptors carry no actor-type capability set: a non-draining
+        // mesh member is a candidate and the target's join admission
+        // rejects actor types it has no factory for.
+        var descriptors = await peers.ListLiveMeshNodesAsync(meshName, cancellationToken)
             .ConfigureAwait(false);
         var targets = new Dictionary<string, RoutingId>(StringComparer.Ordinal);
-        foreach (var entry in entries)
-            if (acceptingNodes.Contains(entry.NodeRid.ToHex()))
-                targets[entry.NodeRid.ToHex()] = entry.NodeRid;
+        foreach (var descriptor in descriptors)
+            if (!descriptor.Draining && descriptor.Rid is { Size: > 0 })
+                targets[descriptor.Rid.ToHex()] = descriptor.Rid;
         ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"drain targets actorType={actorType} mesh={meshName} peers={meshPeers.Count} entries={entries.Count} accepting={targets.Count}");
+            $"drain targets actorType={actorType} mesh={meshName} peers={descriptors.Count} accepting={targets.Count}");
         return targets.Values.ToArray();
     }
 }

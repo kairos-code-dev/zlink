@@ -23,13 +23,10 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
         _runtime = runtime;
         _runtime.OwnershipLost += OnOwnershipLost;
         ActorOwnership = new ZLinkActorOwnershipCoordinator(runtime, resolver);
-        ActorSessionRoutes = new ZLinkActorSessionRouteLifecycle(runtime, TryRunBackground);
         SpotLocations = new ZLinkSpotLocationLifecycle(runtime, resolver);
     }
 
     internal ZLinkActorOwnershipCoordinator ActorOwnership { get; }
-
-    internal ZLinkActorSessionRouteLifecycle ActorSessionRoutes { get; }
 
     internal ZLinkSpotLocationLifecycle SpotLocations { get; }
 
@@ -71,7 +68,6 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
 
     internal void ResetGeneration()
     {
-        ActorSessionRoutes.ResetGeneration();
         SpotLocations.ResetGeneration();
         ActorOwnership.ResetGeneration();
     }
@@ -86,10 +82,6 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
         else if (kind == ZLinkLocationKind.Spot)
         {
             deactivate = SpotLocations.TakeOwnershipLostDeactivation(canonicalKey);
-        }
-        else if (kind == ZLinkLocationKind.Route)
-        {
-            ActorSessionRoutes.OnOwnershipLost(canonicalKey);
         }
 
         if (deactivate is not null)

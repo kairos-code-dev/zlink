@@ -10,10 +10,10 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer,
             "dispose",
@@ -43,20 +43,18 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var countingResolver = new CountingPeerResolver(resolvers);
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
             RoutingId.From("local"), "tcp://l:1");
-        var localRow = new ZLinkPeerLocation(
-            local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, false, 0, null, null, "ignored", 0, default);
+        var localRow = InMemoryLocationStoreTests.MeshNode("ignored", "tcp://l:1", "local");
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, countingResolver, new NullExecutor(), options, time);
         var loop = new ZLinkAutoConnectLoop(reconciler, local, options, stampStore: store, timeProvider: time);
@@ -75,10 +73,8 @@ public sealed class AutoConnectLoopTests
         Assert.Equal(reads, countingResolver.ListCalls);
 
         // A peer write bumps the stamp and the next tick reads the list.
-        await store.UpdatePeerAsync(
-            new ZLinkPeerLocation(
-                ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "peer-owner", 0, default),
+        await store.UpdateMeshNodeAsync(
+            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
             ZLinkLocationWriteIntent.NewClaim);
         await loop.TickAsync();
         Assert.Equal(reads + 1, countingResolver.ListCalls);
@@ -90,12 +86,12 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -108,10 +104,8 @@ public sealed class AutoConnectLoopTests
         // A router row is written by an owner whose lease this node has not
         // seen yet: the tick lists the rows but the lease join drops them.
         // No further row write will ever bump the stamp.
-        await store.UpdatePeerAsync(
-            new ZLinkPeerLocation(
-                ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "late-owner", 0, default),
+        await store.UpdateMeshNodeAsync(
+            InMemoryLocationStoreTests.MeshNode("late-owner", "tcp://r:1", "r1"),
             ZLinkLocationWriteIntent.NewClaim);
         await loop.TickAsync();
         Assert.Empty(executor.Connected);
@@ -138,17 +132,15 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(1));
-        await store.UpdatePeerAsync(
-            new ZLinkPeerLocation(
-                ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null, "peer-owner", 0, default),
+        await store.UpdateMeshNodeAsync(
+            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RetryExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -176,16 +168,17 @@ public sealed class AutoConnectLoopTests
         public bool Disconnect(ZLinkAutoConnectTarget target) { Disconnected.Add(target); return true; }
     }
 
-    private sealed class CountingPeerResolver(IZLinkPeerLocationResolver inner) : IZLinkPeerLocationResolver
+    private sealed class CountingPeerResolver(IZLinkMeshNodeLocationResolver inner)
+        : IZLinkMeshNodeLocationResolver
     {
         public int ListCalls { get; private set; }
 
-        public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
-            ZLinkPeerLocationFilter filter,
+        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+            string meshName,
             CancellationToken cancellationToken = default)
         {
             ListCalls++;
-            return inner.ListLivePeersAsync(filter, cancellationToken);
+            return inner.ListLiveMeshNodesAsync(meshName, cancellationToken);
         }
     }
 

@@ -7,6 +7,12 @@ internal sealed class ZLinkActorClient(
     ZLinkFrameworkRuntime runtime,
     ZLinkStoreLocationResolvers? locations = null) : IZLinkActorClient
 {
+    private ZLinkSpotMeshLocationResolver? _meshRows;
+
+    private ZLinkSpotMeshLocationResolver? MeshRows => locations is null
+        ? null
+        : _meshRows ??= new ZLinkSpotMeshLocationResolver(runtime.Registration, locations);
+
     public IZLinkActorSendCall SendToActor<TMessage>(
         ActorRef actor,
         TMessage message)
@@ -95,9 +101,8 @@ internal sealed class ZLinkActorClient(
         ActorRef actor,
         CancellationToken cancellationToken)
     {
-        if (locations is null) return;
-        var row = await locations.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actor.ActorId), cancellationToken)
+        if (MeshRows is not { } meshRows) return;
+        var row = await meshRows.ResolveActorAsync(actor.ActorId, cancellationToken)
             .ConfigureAwait(false);
         if (row?.ActorRef is not { } current)
             throw new ZLinkFrameworkException(

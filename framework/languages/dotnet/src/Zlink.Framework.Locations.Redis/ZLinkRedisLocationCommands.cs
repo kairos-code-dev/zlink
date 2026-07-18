@@ -98,24 +98,20 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         var removed = await database.ScriptEvaluateAsync(
             ZLinkRedisLocationScripts.RemoveAllByOwner,
             [
-                (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Peer.Tag) + ownerId),
+                (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.MeshNode.Tag) + ownerId),
                 (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Spot.Tag) + ownerId),
                 (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Actor.Tag) + ownerId),
-                (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Route.Tag) + ownerId),
-                keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag),
+                keys.KindIndexKey(ZLinkRedisLocationKinds.MeshNode.Tag),
                 keys.KindIndexKey(ZLinkRedisLocationKinds.Spot.Tag),
-                keys.KindIndexKey(ZLinkRedisLocationKinds.Actor.Tag),
-                keys.KindIndexKey(ZLinkRedisLocationKinds.Route.Tag)
+                keys.KindIndexKey(ZLinkRedisLocationKinds.Actor.Tag)
             ],
             [
-                keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Peer.Tag),
+                keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.MeshNode.Tag),
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Spot.Tag),
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Actor.Tag),
-                keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Route.Tag),
-                keys.StampKey(ZLinkRedisLocationKinds.Peer.Tag, meshName: null),
+                keys.StampKey(ZLinkRedisLocationKinds.MeshNode.Tag, meshName: null),
                 keys.StampKey(ZLinkRedisLocationKinds.Spot.Tag, meshName: null),
-                keys.StampKey(ZLinkRedisLocationKinds.Actor.Tag, meshName: null),
-                keys.StampKey(ZLinkRedisLocationKinds.Route.Tag, meshName: null)
+                keys.StampKey(ZLinkRedisLocationKinds.Actor.Tag, meshName: null)
             ]).ConfigureAwait(false);
         return (long)removed;
     }
@@ -152,13 +148,13 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         return new ZLinkOwnerLeaseSnapshot(leases, storeNow);
     }
 
-    public async ValueTask<long> GetChangeStampAsync(
+    public async ValueTask<ulong> GetChangeStampAsync(
         IDatabase database,
         ZLinkLocationChangeStampScope scope)
     {
         var value = await database.StringGetAsync(
             keys.StampKey(ZLinkRedisLocationKeys.TagOf(scope.Kind), scope.MeshName)).ConfigureAwait(false);
-        return value.IsNull ? 0 : (long)value;
+        return value.IsNull ? 0 : (ulong)(long)value;
     }
 
     public async ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
@@ -204,7 +200,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
             throw new InvalidOperationException($"Unknown routing-id slot acquire result '{status}'.");
 
         var slot = (int)(long)result[1];
-        var generation = (long)result[2];
+        var generation = (ulong)(long)result[2];
         var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds((long)result[3]);
         var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[4]);
         return new ZLinkRoutingIdSlotAcquired(new ZLinkRoutingIdSlotAllocation(
@@ -249,7 +245,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         {
             allocations.Add(new ZLinkRoutingIdSlotAllocation(
                 (int)(long)entries[index],
-                new ZLinkLocationOwnerToken((string)entries[index + 1]!, (long)entries[index + 2]),
+                new ZLinkLocationOwnerToken((string)entries[index + 1]!, (ulong)(long)entries[index + 2]),
                 DateTimeOffset.FromUnixTimeMilliseconds((long)entries[index + 3]),
                 storeNow));
         }
@@ -274,7 +270,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         return status switch
         {
             "stored" => ZLinkLocationWriteResult.Stored(
-                (long)result[1],
+                (ulong)(long)result[1],
                 DateTimeOffset.FromUnixTimeMilliseconds((long)result[2])),
             "conflict" => ZLinkLocationWriteResult.RejectedConflict,
             _ => ZLinkLocationWriteResult.IgnoredStale

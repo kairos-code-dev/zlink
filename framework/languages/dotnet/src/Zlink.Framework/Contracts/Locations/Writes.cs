@@ -24,7 +24,7 @@ public enum ZLinkLocationWriteStatus
 /// </summary>
 public sealed record ZLinkLocationWriteResult(
     ZLinkLocationWriteStatus Status,
-    long Generation,
+    ulong Generation,
     DateTimeOffset UpdatedAt)
 {
     public static ZLinkLocationWriteResult IgnoredStale { get; } =
@@ -33,13 +33,13 @@ public sealed record ZLinkLocationWriteResult(
     public static ZLinkLocationWriteResult RejectedConflict { get; } =
         new(ZLinkLocationWriteStatus.RejectedConflict, 0, default);
 
-    public static ZLinkLocationWriteResult Stored(long generation, DateTimeOffset updatedAt) =>
+    public static ZLinkLocationWriteResult Stored(ulong generation, DateTimeOffset updatedAt) =>
         new(ZLinkLocationWriteStatus.Stored, generation, updatedAt);
 }
 
 public readonly record struct ZLinkLocationOwnerToken(
     string OwnerId,
-    long Generation);
+    ulong Generation);
 
 /// <summary>
 /// Owner lease renewal result. Leases do not have generations, so they do

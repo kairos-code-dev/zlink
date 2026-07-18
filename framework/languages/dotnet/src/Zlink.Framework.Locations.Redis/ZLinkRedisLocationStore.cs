@@ -63,41 +63,43 @@ public sealed partial class ZLinkRedisLocationStore :
         return options;
     }
 
-    // ----- peer store ------------------------------------------------------
+    // ----- mesh node store -------------------------------------------------
 
-    public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
-        ZLinkPeerLocation peer,
+    public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+        ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default) =>
-        WriteAsync(ZLinkRedisLocationKinds.Peer, peer, intent, cancellationToken);
+        WriteAsync(ZLinkRedisLocationKinds.MeshNode, descriptor, intent, cancellationToken);
 
-    public ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-        ZLinkPeerLocationKey key,
+    public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+        ZLinkMeshNodeDescriptorKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
         RemoveAsync(
-            ZLinkRedisLocationKinds.Peer.Tag,
-            ZLinkRedisLocationKeyCodec.EncodePeerKey(key),
+            ZLinkRedisLocationKinds.MeshNode.Tag,
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(key),
             key.MeshName,
             owner, cancellationToken);
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-        ZLinkPeerLocationFilter filter,
+    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
         return await ExecuteAsync(
                 async database =>
                 {
                     var members = await database.SetMembersAsync(
-                            _keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag))
+                            _keys.KindIndexKey(ZLinkRedisLocationKinds.MeshNode.Tag))
                         .ConfigureAwait(false);
                     var rows = await ZLinkRedisLocationRows.LoadAsync(
                             database,
                             _keys,
-                            ZLinkRedisLocationKinds.Peer,
+                            ZLinkRedisLocationKinds.MeshNode,
                             members)
                         .ConfigureAwait(false);
-                    return rows.Where(row => ZLinkLocationFilterMatcher.Matches(row, filter)).ToArray();
+                    return (IReadOnlyList<ZLinkMeshNodeDescriptor>)rows
+                        .Where(row => string.Equals(row.MeshName, meshName, StringComparison.Ordinal))
+                        .ToArray();
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -111,7 +113,7 @@ public sealed partial class ZLinkRedisLocationStore :
         CancellationToken cancellationToken = default) =>
         WriteAsync(ZLinkRedisLocationKinds.Spot, spot, intent, cancellationToken);
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
+    public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
@@ -126,16 +128,6 @@ public sealed partial class ZLinkRedisLocationStore :
         CancellationToken cancellationToken = default) =>
         ResolveAsync(ZLinkRedisLocationKinds.Spot, ZLinkRedisLocationKeyCodec.EncodeSpotKey(key), cancellationToken);
 
-    public ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default) =>
-        ListPageAsync(
-            ZLinkRedisLocationKinds.Spot,
-            row => ZLinkLocationFilterMatcher.Matches(row, filter),
-            page,
-            cancellationToken);
-
     // ----- actor store -----------------------------------------------------
 
     public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
@@ -144,63 +136,20 @@ public sealed partial class ZLinkRedisLocationStore :
         CancellationToken cancellationToken = default) =>
         WriteAsync(ZLinkRedisLocationKinds.Actor, actor, intent, cancellationToken);
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+    public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
         RemoveAsync(
             ZLinkRedisLocationKinds.Actor.Tag,
             ZLinkRedisLocationKeyCodec.EncodeActorKey(key),
-            meshName: null,
+            key.MeshName,
             owner, cancellationToken);
 
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default) =>
         ResolveAsync(ZLinkRedisLocationKinds.Actor, ZLinkRedisLocationKeyCodec.EncodeActorKey(key), cancellationToken);
-
-    public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default) =>
-        ListPageAsync(
-            ZLinkRedisLocationKinds.Actor,
-            row => ZLinkLocationFilterMatcher.Matches(row, filter),
-            page,
-            cancellationToken);
-
-    // ----- route store -----------------------------------------------------
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateRouteAsync(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        WriteAsync(ZLinkRedisLocationKinds.Route, route, intent, cancellationToken);
-
-    public ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
-        ZLinkRouteLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default) =>
-        RemoveAsync(
-            ZLinkRedisLocationKinds.Route.Tag,
-            ZLinkRedisLocationKeyCodec.EncodeRouteKey(key),
-            meshName: null,
-            owner, cancellationToken);
-
-    public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default) =>
-        ResolveAsync(ZLinkRedisLocationKinds.Route, ZLinkRedisLocationKeyCodec.EncodeRouteKey(key), cancellationToken);
-
-    public ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default) =>
-        ListPageAsync(
-            ZLinkRedisLocationKinds.Route,
-            row => ZLinkLocationFilterMatcher.Matches(row, filter),
-            page,
-            cancellationToken);
 
     // ----- owner lease store -----------------------------------------------
 
@@ -247,7 +196,7 @@ public sealed partial class ZLinkRedisLocationStore :
 
     // ----- change stamp store ----------------------------------------------
 
-    public async ValueTask<long> GetChangeStampAsync(
+    public async ValueTask<ulong> GetChangeStampAsync(
         ZLinkLocationChangeStampScope scope,
         CancellationToken cancellationToken = default)
     {
@@ -355,17 +304,18 @@ public sealed partial class ZLinkRedisLocationStore :
             .ConfigureAwait(false);
     }
 
-    private async ValueTask<ZLinkLocationWriteResult> RemoveAsync(
+    private async ValueTask<ZLinkLocationWriteStatus> RemoveAsync(
         string tag,
         string rowKey,
         string? meshName,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken)
     {
-        return await ExecuteAsync(
+        var result = await ExecuteAsync(
                 database => _commands.RemoveAsync(database, tag, rowKey, meshName, owner),
                 cancellationToken)
             .ConfigureAwait(false);
+        return result.Status;
     }
 
     private async ValueTask<TRow?> ResolveAsync<TRow>(
@@ -382,47 +332,6 @@ public sealed partial class ZLinkRedisLocationStore :
                             ZLinkRedisLocationRows.Fields)
                         .ConfigureAwait(false);
                     return ZLinkRedisLocationRows.Materialize(kind, fields);
-                },
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private async ValueTask<ZLinkLocationPage<TRow>> ListPageAsync<TRow>(
-        ZLinkRedisLocationKind<TRow> kind,
-        Func<TRow, bool> matches,
-        ZLinkPageRequest page,
-        CancellationToken cancellationToken)
-        where TRow : class
-    {
-        return await ExecuteAsync(
-                async database =>
-                {
-                    RedisValue[] members;
-                    string? continuation = null;
-                    if (page.PageSize <= 0)
-                    {
-                        // No page size means the framework layer chose "unbounded", the
-                        // same contract the in-memory store applies.
-                        members = await database.SetMembersAsync(_keys.KindIndexKey(kind.Tag))
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        // The continuation token is the opaque SSCAN cursor; COUNT is a
-                        // hint, so pages are approximately PageSize rows before the
-                        // client-side field filter is applied.
-                        var cursor = page.ContinuationToken ?? "0";
-                        var scan = (RedisResult[])(await database.ExecuteAsync(
-                                "SSCAN", _keys.KindIndexKey(kind.Tag), cursor, "COUNT", page.PageSize)
-                            .ConfigureAwait(false))!;
-                        var nextCursor = (string)scan[0]!;
-                        members = (RedisValue[])scan[1]!;
-                        continuation = nextCursor == "0" ? null : nextCursor;
-                    }
-
-                    var rows = await ZLinkRedisLocationRows.LoadAsync(database, _keys, kind, members)
-                        .ConfigureAwait(false);
-                    return new ZLinkLocationPage<TRow>(rows.Where(matches).ToArray(), continuation);
                 },
                 cancellationToken)
             .ConfigureAwait(false);

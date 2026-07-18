@@ -8,7 +8,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// script therefore reads Redis TIME itself and returns the timestamp it
 /// recorded.
 ///
-/// Key layout under the configured prefix P (kind is peer/spot/actor/route,
+/// Key layout under the configured prefix P (kind is mesh/spot/actor,
 /// rowKey is the canonical length-prefixed key string):
 ///   P:row:{kind}:{rowKey}   HASH  owner, gen, json, updatedAtMs[, mesh]
 ///   P:gen:{kind}:{rowKey}   STRING generation counter, never deleted
@@ -90,10 +90,13 @@ internal static class ZLinkRedisLocationScripts
         end
 
         -- renew: only the exact current owner token may update row fields,
-        -- and the generation never changes.
+        -- and the generation never changes. A caller generation of 0 means
+        -- the row kind does not carry the store token (actor rows), so the
+        -- guard is the owner id alone.
         if currentOwner and currentOwner == owner
-            and tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3]) then
-            local gen = tonumber(ARGV[3])
+            and (tonumber(ARGV[3]) == 0
+                or tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3])) then
+            local gen = tonumber(redis.call('HGET', KEYS[1], 'gen'))
             redis.call('HSET', KEYS[1], 'json', ARGV[4], 'updatedAtMs', nowMs)
             bumpStamps()
             return {'stored', gen, nowMs}
@@ -133,19 +136,19 @@ internal static class ZLinkRedisLocationScripts
     /// Bulk remove of one owner's rows across all location kinds in one
     /// atomic script. Generation counters survive.
     ///
-    /// KEYS[1..4] owner index sets for peer, spot, actor, route.
-    /// KEYS[5..8] kind index sets for peer, spot, actor, route.
-    /// ARGV[1..4] row hash key prefixes for peer, spot, actor, route.
-    /// ARGV[5..8] stamp key bases for peer, spot, actor, route.
+    /// KEYS[1..3] owner index sets for mesh, spot, actor.
+    /// KEYS[4..6] kind index sets for mesh, spot, actor.
+    /// ARGV[1..3] row hash key prefixes for mesh, spot, actor.
+    /// ARGV[4..6] stamp key bases for mesh, spot, actor.
     /// </summary>
     internal const string RemoveAllByOwner = """
         if redis.replicate_commands then redis.replicate_commands() end
         local removed = 0
-        for i = 1, 4 do
+        for i = 1, 3 do
             local ownerIndex = KEYS[i]
-            local kindIndex = KEYS[i + 4]
+            local kindIndex = KEYS[i + 3]
             local rowPrefix = ARGV[i]
-            local stampBase = ARGV[i + 4]
+            local stampBase = ARGV[i + 3]
             local rowKeys = redis.call('SMEMBERS', ownerIndex)
             for _, rowKey in ipairs(rowKeys) do
                 local rowHash = rowPrefix .. rowKey

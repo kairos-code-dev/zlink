@@ -22,10 +22,10 @@ public sealed class LocationContractTests
     {
         var updatedAt = new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);
 
-        var stored = ZLinkLocationWriteResult.Stored(5, updatedAt);
+        var stored = ZLinkLocationWriteResult.Stored(5UL, updatedAt);
 
         Assert.Equal(ZLinkLocationWriteStatus.Stored, stored.Status);
-        Assert.Equal(5, stored.Generation);
+        Assert.Equal(5UL, stored.Generation);
         Assert.Equal(updatedAt, stored.UpdatedAt);
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, ZLinkLocationWriteResult.IgnoredStale.Status);
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, ZLinkLocationWriteResult.RejectedConflict.Status);

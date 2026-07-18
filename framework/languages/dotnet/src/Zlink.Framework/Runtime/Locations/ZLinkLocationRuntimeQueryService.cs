@@ -1,19 +1,19 @@
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Operational read surface. Every query reads the registered stores
+/// Operational read surface. Every query reads the registered store
 /// directly — no cache is consulted or written, which is why this surface
 /// takes no freshness. Rows whose owner lease expired and rows older than a
-/// generation this runtime already observed are filtered out of success
-/// results everywhere (draft 8.1).
+/// version this runtime already observed are filtered out of success
+/// results everywhere. Spot and Actor rows are resolve-only store records
+/// (06-location-store §5), so topology and summaries project MeshNode
+/// descriptors only.
 /// </summary>
 internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQuery
 {
     private readonly ZLinkLocationOptions _options;
-    private readonly IZLinkPeerLocationStore _peerStore;
-    private readonly IZLinkSpotLocationStore _spotStore;
-    private readonly IZLinkActorLocationStore _actorStore;
-    private readonly IZLinkRouteLocationStore _routeStore;
+    private readonly IZLinkMeshNodeLocationStore _meshNodeStore;
+    private readonly IReadOnlyCollection<string> _registeredMeshNames;
     private readonly ZLinkOwnerLeaseTracker _leaseTracker;
     private readonly ZLinkLocationRuntime _runtime;
     private readonly ZLinkObservedLocationGenerations _observed;
@@ -23,10 +23,8 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
 
     internal ZLinkLocationRuntimeQueryService(
         ZLinkLocationOptions options,
-        IZLinkPeerLocationStore peerStore,
-        IZLinkSpotLocationStore spotStore,
-        IZLinkActorLocationStore actorStore,
-        IZLinkRouteLocationStore routeStore,
+        IZLinkMeshNodeLocationStore meshNodeStore,
+        IReadOnlyCollection<string> registeredMeshNames,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkLocationRuntime runtime,
         ZLinkObservedLocationGenerations observed,
@@ -34,10 +32,8 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         ZLinkLocationStoreHealth? storeHealth = null)
     {
         _options = options;
-        _peerStore = peerStore;
-        _spotStore = spotStore;
-        _actorStore = actorStore;
-        _routeStore = routeStore;
+        _meshNodeStore = meshNodeStore;
+        _registeredMeshNames = registeredMeshNames;
         _leaseTracker = leaseTracker;
         _runtime = runtime;
         _observed = observed;
@@ -61,11 +57,12 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             OwnerLeaseRenewedAt: health.RenewedAt));
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeerLocationsAsync(
-        ZLinkPeerLocationFilter filter,
+    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
-        var rows = await ListAcceptedPeersAsync(filter, cancellationToken).ConfigureAwait(false);
+        var rows = await ListAcceptedDescriptorsAsync(meshName, cancellationToken)
+            .ConfigureAwait(false);
         return await _liveRows.FilterAsync(
                 rows,
                 static row => row.OwnerId,
@@ -74,245 +71,101 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotLocationsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                _storeHealth,
-                "spot-query-read",
-                cancellationToken,
-                storeToken => _spotStore.ListSpotsAsync(filter, Normalize(page), storeToken))
-            .ConfigureAwait(false);
-        var live = await _liveRows.FilterAsync(
-                raw.Items, static row => row.OwnerId, row => _observed.AcceptSpot(row), cancellationToken)
-            .ConfigureAwait(false);
-        return new ZLinkLocationPage<ZLinkSpotLocation>(live, raw.ContinuationToken);
-    }
-
-    public async ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorLocationsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                _storeHealth,
-                "actor-query-read",
-                cancellationToken,
-                storeToken => _actorStore.ListActorsAsync(filter, Normalize(page), storeToken))
-            .ConfigureAwait(false);
-        var published = raw.Items.Where(static row => row.ActorRef is not null).ToArray();
-        var live = await _liveRows.FilterAsync(
-                published, static row => row.OwnerId, row => _observed.AcceptActor(row), cancellationToken)
-            .ConfigureAwait(false);
-        return new ZLinkLocationPage<ZLinkActorLocation>(live, raw.ContinuationToken);
-    }
-
-    public async ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRouteLocationsAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                _storeHealth,
-                "route-query-read",
-                cancellationToken,
-                storeToken => _routeStore.ListRoutesAsync(filter, Normalize(page), storeToken))
-            .ConfigureAwait(false);
-        var live = await _liveRows.FilterAsync(
-                raw.Items, static row => row.OwnerId, row => _observed.AcceptRoute(row), cancellationToken)
-            .ConfigureAwait(false);
-        return new ZLinkLocationPage<ZLinkRouteLocation>(live, raw.ContinuationToken);
-    }
-
     public async ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
     {
-        // The projection is built by the framework from location rows plus
-        // liveness; stores never decide topology meaning. Connection state
-        // integration arrives with the auto-connect runtime; until a row's
-        // owner lease expires it reports Ready, afterwards Lost.
-        var kind = filter.Kind ?? ZLinkLocationKind.Peer;
-        switch (kind)
+        // The projection is built by the framework from descriptors plus
+        // liveness; stores never decide topology meaning. Until a
+        // descriptor's owner lease expires it reports Ready, afterwards
+        // Lost.
+        var entries = new List<ZLinkLocationTopologyEntry>();
+        foreach (var meshName in MeshNamesOf(filter.MeshName))
         {
-            case ZLinkLocationKind.Peer:
+            var rows = await ListAcceptedDescriptorsAsync(meshName, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var row in rows)
             {
-                var rows = await ListAcceptedPeersAsync(
-                    new ZLinkPeerLocationFilter(MeshName: filter.MeshName, Role: filter.Role, NodeRid: filter.NodeRid),
-                    cancellationToken).ConfigureAwait(false);
-                var entries = new List<ZLinkLocationTopologyEntry>(rows.Count);
-                foreach (var row in rows)
-                {
-                    var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
-                        .ConfigureAwait(false);
-                    var state = live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost;
-                    if (filter.State is not null && state != filter.State)
-                    {
-                        continue;
-                    }
-
-                    entries.Add(new ZLinkLocationTopologyEntry(
-                        ZLinkLocationKind.Peer, row.MeshName, row.Role, row.NodeRid,
-                        null, null, row.Endpoint, state, 1, live ? 1u : 0u, 0, row.UpdatedAt));
-                }
-
-                return PageInMemory(
-                    entries.Where(entry => Matches(entry, filter)).ToList(),
-                    Normalize(page));
-            }
-
-            case ZLinkLocationKind.Spot:
-            {
-                var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                        _storeHealth,
-                        "spot-topology-read",
-                        cancellationToken,
-                        storeToken => _spotStore.ListSpotsAsync(
-                            new ZLinkSpotLocationFilter(MeshName: filter.MeshName, NodeRid: filter.NodeRid),
-                            Normalize(page),
-                            storeToken))
+                var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
                     .ConfigureAwait(false);
-                var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
-                foreach (var row in raw.Items.Where(_observed.AcceptSpot))
-                {
-                    var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
-                        .ConfigureAwait(false);
-                    var entry = new ZLinkLocationTopologyEntry(
-                        ZLinkLocationKind.Spot, row.MeshName, null, row.NodeRid,
-                        row.SpotRid, null, row.RouteEndpoint,
-                        live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
-                        1, live ? 1u : 0u, 0, row.UpdatedAt);
-                    if (Matches(entry, filter)) entries.Add(entry);
-                }
-                return new ZLinkLocationPage<ZLinkLocationTopologyEntry>(entries, raw.ContinuationToken);
-            }
-
-            case ZLinkLocationKind.Actor:
-            {
-                var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                        _storeHealth,
-                        "actor-topology-read",
-                        cancellationToken,
-                        storeToken => _actorStore.ListActorsAsync(
-                            new ZLinkActorLocationFilter(NodeRid: filter.NodeRid),
-                            Normalize(page),
-                            storeToken))
-                    .ConfigureAwait(false);
-                var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
-                foreach (var row in raw.Items.Where(static row => row.ActorRef is not null)
-                             .Where(_observed.AcceptActor))
-                {
-                    var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
-                        .ConfigureAwait(false);
-                    var entry = new ZLinkLocationTopologyEntry(
-                        ZLinkLocationKind.Actor, row.SpotMeshName, null, row.NodeRid,
-                        row.SpotRid, row.ActorId, null,
-                        live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
-                        1, live ? 1u : 0u, 0, row.UpdatedAt);
-                    if (Matches(entry, filter)) entries.Add(entry);
-                }
-                return new ZLinkLocationPage<ZLinkLocationTopologyEntry>(entries, raw.ContinuationToken);
-            }
-
-            default:
-            {
-                var raw = await ZLinkLocationStoreRead.ExecuteAsync(
-                        _storeHealth,
-                        "route-topology-read",
-                        cancellationToken,
-                        storeToken => _routeStore.ListRoutesAsync(
-                            new ZLinkRouteLocationFilter(OwnerNodeRid: filter.NodeRid),
-                            Normalize(page),
-                            storeToken))
-                    .ConfigureAwait(false);
-                var entries = new List<ZLinkLocationTopologyEntry>(raw.Items.Count);
-                foreach (var row in raw.Items.Where(_observed.AcceptRoute))
-                {
-                    var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
-                        .ConfigureAwait(false);
-                    var entry = new ZLinkLocationTopologyEntry(
-                        ZLinkLocationKind.Route, null, null, row.OwnerNodeRid,
-                        null, null, null,
-                        live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
-                        1, live ? 1u : 0u, 0, row.UpdatedAt);
-                    if (Matches(entry, filter)) entries.Add(entry);
-                }
-                return new ZLinkLocationPage<ZLinkLocationTopologyEntry>(entries, raw.ContinuationToken);
+                var entry = new ZLinkLocationTopologyEntry(
+                    row.MeshName, row.Rid, row.Endpoint, row.Draining,
+                    live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
+                    row.UpdatedAt);
+                if (Matches(entry, filter)) entries.Add(entry);
             }
         }
+
+        return PageInMemory(entries, Normalize(page));
     }
 
     public async ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
         ZLinkLocationServiceSummaryFilter filter,
         CancellationToken cancellationToken = default)
     {
-        var rows = await ListAcceptedPeersAsync(
-            new ZLinkPeerLocationFilter(
-                AutoConnectType: filter.AutoConnectType,
-                MeshName: filter.MeshName,
-                Role: filter.Role),
-            cancellationToken).ConfigureAwait(false);
-
-        var groups = new Dictionary<(string Mesh, ZLinkLocationAutoConnectType Type, ZLinkLocationRole Role), Accumulator>();
-        foreach (var row in rows)
+        var summaries = new List<ZLinkLocationServiceSummary>();
+        foreach (var meshName in MeshNamesOf(filter.MeshName))
         {
-            var key = (row.MeshName, row.AutoConnectType, row.Role);
-            if (!groups.TryGetValue(key, out var accumulator))
+            var rows = await ListAcceptedDescriptorsAsync(meshName, cancellationToken)
+                .ConfigureAwait(false);
+            if (rows.Count == 0) continue;
+
+            var accumulator = new Accumulator();
+            foreach (var row in rows)
             {
-                accumulator = new Accumulator();
-                groups[key] = accumulator;
+                accumulator.Total++;
+                if (await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    accumulator.Ready++;
+                }
+                else
+                {
+                    accumulator.Stopped++;
+                }
+
+                if (row.UpdatedAt > accumulator.LastUpdatedAt)
+                {
+                    accumulator.LastUpdatedAt = row.UpdatedAt;
+                }
             }
 
-            accumulator.Total++;
-            if (await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken).ConfigureAwait(false))
-            {
-                accumulator.Ready++;
-            }
-            else
-            {
-                accumulator.Stopped++;
-            }
-
-            if (row.UpdatedAt > accumulator.LastUpdatedAt)
-            {
-                accumulator.LastUpdatedAt = row.UpdatedAt;
-            }
+            summaries.Add(new ZLinkLocationServiceSummary(
+                meshName,
+                accumulator.Total, accumulator.Ready, 0, accumulator.Stopped,
+                accumulator.LastUpdatedAt));
         }
 
-        return groups
-            .Select(pair => new ZLinkLocationServiceSummary(
-                pair.Key.Mesh, pair.Key.Type, pair.Key.Role,
-                pair.Value.Total, pair.Value.Ready, 0, pair.Value.Stopped,
-                pair.Value.LastUpdatedAt))
-            .ToArray();
+        return summaries;
     }
+
+    private IEnumerable<string> MeshNamesOf(string? meshName) =>
+        meshName is not null
+            ? [meshName]
+            : _registeredMeshNames;
 
     private ZLinkPageRequest Normalize(ZLinkPageRequest page) =>
         page.PageSize > 0 ? page : page with { PageSize = _options.ListPageSize };
 
-    private async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListAcceptedPeersAsync(
-        ZLinkPeerLocationFilter filter,
+    private async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListAcceptedDescriptorsAsync(
+        string meshName,
         CancellationToken cancellationToken)
     {
         var rows = await ZLinkLocationStoreRead.ExecuteAsync(
             _storeHealth,
-            "peer-query-read",
+            "mesh-node-query-read",
             cancellationToken,
-            storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
-        return rows.Where(_observed.AcceptPeer).ToArray();
+            storeToken => _meshNodeStore.ListMeshNodesAsync(meshName, storeToken)).ConfigureAwait(false);
+        return rows.Where(_observed.AcceptDescriptor).ToArray();
     }
 
     private static bool Matches(
         ZLinkLocationTopologyEntry entry,
         ZLinkLocationTopologyFilter filter) =>
-        (filter.Kind is null || entry.Kind == filter.Kind)
-        && (filter.MeshName is null
+        (filter.MeshName is null
             || string.Equals(entry.MeshName, filter.MeshName, StringComparison.Ordinal))
-        && (filter.Role is null || entry.Role == filter.Role)
-        && (filter.NodeRid is null || entry.NodeRid == filter.NodeRid)
+        && (filter.NodeRid is null || entry.NodeRid.Equals(filter.NodeRid.Value))
         && (filter.State is null || entry.State == filter.State);
 
     private static ZLinkLocationPage<T> PageInMemory<T>(List<T> entries, ZLinkPageRequest page)

@@ -119,7 +119,6 @@ internal sealed class ZLinkSpotNodeInitializer(
                 spotType: null,
                 node.RoutingId,
                 ZLinkSpotKind.Entry,
-                spotNodeRegistration.Router.BindEndpoint,
                 deactivate: null)
             .ConfigureAwait(false);
         if (status != ZLinkLocationWriteStatus.Stored)

@@ -312,10 +312,9 @@ public sealed partial class EntrySpotActorDispatchTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var locationRuntime = new ZLinkLocationRuntime(
-            options, store, store, store, store, store, store, time);
+            options, store, store, store, store, store, time);
         Assert.True(await locationRuntime.RenewOwnerLeaseOnceAsync());
         var resolvers = new ZLinkStoreLocationResolvers(
-            store,
             store,
             store,
             store,
@@ -358,7 +357,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.False(sessions.TryGetCreatedActorState(state.ActorId, out _));
         Assert.Single(node.DestroyedActors);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
     }
 
     [Fact]
@@ -368,10 +367,9 @@ public sealed partial class EntrySpotActorDispatchTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var locationRuntime = new ZLinkLocationRuntime(
-            options, store, store, store, store, store, store, time);
+            options, store, store, store, store, store, time);
         Assert.True(await locationRuntime.RenewOwnerLeaseOnceAsync());
         var resolvers = new ZLinkStoreLocationResolvers(
-            store,
             store,
             store,
             store,
@@ -416,7 +414,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.Equal("native destroy failed", failure.Message);
         Assert.Equal(nativeActor, state.NativeActorRef);
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
         Assert.Null(await sessions.FindActorAsync(state.ActorId));
         await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await state.GetOrStartActorCreationAsync(
@@ -439,7 +437,7 @@ public sealed partial class EntrySpotActorDispatchTests
         await sessions.DestroyActorAsync(node.RoutingId, actor);
 
         Assert.Equal(2, node.DestroyedActors.Count);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
     }
 
     [Fact]
@@ -449,10 +447,9 @@ public sealed partial class EntrySpotActorDispatchTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var locationRuntime = new ZLinkLocationRuntime(
-            options, store, store, store, store, store, store, time);
+            options, store, store, store, store, store, time);
         Assert.True(await locationRuntime.RenewOwnerLeaseOnceAsync());
         var resolvers = new ZLinkStoreLocationResolvers(
-            store,
             store,
             store,
             store,
@@ -511,14 +508,14 @@ public sealed partial class EntrySpotActorDispatchTests
         Assert.Equal(nativeActor, state.NativeActorRef);
         Assert.True(state.IsTeardownPending);
         Assert.Null(await sessions.FindActorAsync(state.ActorId));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
 
         allowRetry.TrySetResult();
         await retry.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(state.IsTeardownPending);
         Assert.Null(state.NativeActorRef);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
         Assert.Equal(2, node.DestroyedActors.Count);
     }
 
@@ -530,10 +527,9 @@ public sealed partial class EntrySpotActorDispatchTests
         var actorStore = new FailOnceRemoveActorStore(store);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var locationRuntime = new ZLinkLocationRuntime(
-            options, store, store, store, actorStore, store, store, time);
+            options, store, store, store, actorStore, store, time);
         Assert.True(await locationRuntime.RenewOwnerLeaseOnceAsync());
         var resolvers = new ZLinkStoreLocationResolvers(
-            store,
             store,
             store,
             store,
@@ -581,7 +577,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.False(sessions.TryGetCreatedActorState(state.ActorId, out _));
         Assert.Single(node.DestroyedActors);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
     }
 
     [Fact]
@@ -2583,6 +2579,7 @@ public sealed partial class EntrySpotActorDispatchTests
         CancellationToken cancellationToken)
     {
         var activation = await ownership.ExecuteActorClaimThenActivateAsync(
+            "play",
             actorType,
             actorId,
             nodeRid,
@@ -2931,6 +2928,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public Action? BeforeRelease { get; set; }
 
         public async ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
+            string meshName,
             string actorType,
             string actorId,
             RoutingId nodeRid,
@@ -2940,6 +2938,7 @@ public sealed partial class EntrySpotActorDispatchTests
             ZLinkActorClaimMode claimMode = ZLinkActorClaimMode.NewOwner)
             where TActor : class
         {
+            _ = meshName;
             _ = actorType;
             _ = actorId;
             _ = nodeRid;
@@ -2977,13 +2976,13 @@ public sealed partial class EntrySpotActorDispatchTests
             CancellationToken cancellationToken = default)
             => inner.UpdateActorAsync(actor, intent, cancellationToken);
 
-        public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+        public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
             ZLinkActorLocationKey key,
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default)
         {
             if (Interlocked.Increment(ref _removeAttempts) == 1)
-                return ValueTask.FromException<ZLinkLocationWriteResult>(
+                return ValueTask.FromException<ZLinkLocationWriteStatus>(
                     new InvalidOperationException("release failed"));
             return inner.RemoveActorAsync(key, owner, cancellationToken);
         }
@@ -2992,12 +2991,6 @@ public sealed partial class EntrySpotActorDispatchTests
             ZLinkActorLocationKey key,
             CancellationToken cancellationToken = default)
             => inner.ResolveActorAsync(key, cancellationToken);
-
-        public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-            ZLinkActorLocationFilter filter,
-            ZLinkPageRequest page = default,
-            CancellationToken cancellationToken = default)
-            => inner.ListActorsAsync(filter, page, cancellationToken);
     }
 
     private sealed class ProbeEntrySpot(IZLinkEntrySpotContext context) : IZLinkEntrySpot

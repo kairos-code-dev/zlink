@@ -14,10 +14,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 {
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkLocationStore _locationStore;
-    private readonly IZLinkPeerLocationStore _peerStore;
+    private readonly IZLinkMeshNodeLocationStore _meshNodeStore;
     private readonly IZLinkSpotLocationStore _spotStore;
     private readonly IZLinkActorLocationStore _actorStore;
-    private readonly IZLinkRouteLocationStore _routeStore;
     private readonly IZLinkOwnerLeaseStore _ownerLeaseStore;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
@@ -36,20 +35,18 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     internal ZLinkLocationRuntime(
         ZLinkLocationOptions options,
         IZLinkLocationStore locationStore,
-        IZLinkPeerLocationStore peerStore,
+        IZLinkMeshNodeLocationStore meshNodeStore,
         IZLinkSpotLocationStore spotStore,
         IZLinkActorLocationStore actorStore,
-        IZLinkRouteLocationStore routeStore,
         IZLinkOwnerLeaseStore ownerLeaseStore,
         TimeProvider? timeProvider = null,
         ZLinkLocationEventEmitter? events = null)
     {
         _options = options;
         _locationStore = locationStore;
-        _peerStore = peerStore;
+        _meshNodeStore = meshNodeStore;
         _spotStore = spotStore;
         _actorStore = actorStore;
-        _routeStore = routeStore;
         _ownerLeaseStore = ownerLeaseStore;
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
@@ -257,37 +254,21 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposeState) != 0, this);
     }
 
-    internal async ValueTask<ZLinkLocationWriteResult> WritePeerAsync(
-        ZLinkPeerLocation peer,
+    internal async ValueTask<ZLinkLocationWriteResult> WriteDescriptorAsync(
+        ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default)
     {
-        // The registration path rejects values outside the closed sets as a
-        // validation error; readers additionally ignore such rows (draft 6.5).
-        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(peer.AutoConnectType))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(peer), peer.AutoConnectType, "Unknown auto-connect type.");
-        }
-
-        if (!ZLinkCanonicalLocationKeyFormatter.IsKnown(peer.Role))
-        {
-            throw new ArgumentOutOfRangeException(nameof(peer), peer.Role, "Unknown location role.");
-        }
-
-        var stamped = peer with { OwnerId = OwnerId };
+        var stamped = descriptor with { OwnerId = OwnerId };
         return await ExecuteLocationWriteAsync(
-                () => _peerStore.UpdatePeerAsync(stamped, intent, cancellationToken),
-                ZLinkLocationKind.Peer,
-                ZLinkLocationKeyCodec.EncodePeerKey(
-                    new ZLinkPeerLocationKey(
-                        peer.AutoConnectType,
-                        peer.MeshName,
-                        peer.Role,
-                        peer.NodeRid,
-                        peer.Endpoint)),
-                result => _events.PeerRowUpdatedAsync(
-                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                () => _meshNodeStore.UpdateMeshNodeAsync(stamped, intent, cancellationToken),
+                ZLinkLocationKind.MeshNode,
+                ZLinkLocationKeyCodec.EncodeMeshNodeKey(
+                    new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)),
+                // The store issues the lifecycle generation on claim, so the
+                // event carries the value the row now has in the store.
+                result => _events.DescriptorRowUpdatedAsync(
+                stamped with { LifecycleGeneration = result.Generation, UpdatedAt = result.UpdatedAt },
                 cancellationToken))
             .ConfigureAwait(false);
     }
@@ -303,7 +284,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 ZLinkLocationKind.Spot,
                 ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
                 result => _events.SpotRowUpdatedAsync(
-                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                stamped with { SpotGeneration = result.Generation, UpdatedAt = result.UpdatedAt },
                 cancellationToken))
             .ConfigureAwait(false);
     }
@@ -320,90 +301,59 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         return await ExecuteLocationWriteAsync(
                 () => _actorStore.UpdateActorAsync(stamped, intent, cancellationToken),
                 ZLinkLocationKind.Actor,
-                ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(stamped.ActorId)),
+                ZLinkLocationKeyCodec.EncodeActorKey(
+                    new ZLinkActorLocationKey(stamped.MeshName, stamped.ActorId)),
                 result => _events.ActorRowUpdatedAsync(
-                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
-                cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    internal async ValueTask<ZLinkLocationWriteResult> WriteRouteAsync(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default)
-    {
-        var stamped = route with { OwnerId = OwnerId };
-        return await ExecuteLocationWriteAsync(
-                () => _routeStore.UpdateRouteAsync(stamped, intent, cancellationToken),
-                ZLinkLocationKind.Route,
-                ZLinkLocationKeyCodec.EncodeRouteKey(new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey)),
-                result => _events.RouteRowUpdatedAsync(
-                stamped with { Generation = result.Generation, UpdatedAt = result.UpdatedAt },
+                stamped with { UpdatedAt = result.UpdatedAt },
                 cancellationToken))
             .ConfigureAwait(false);
     }
 
     internal async ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
-        long generation,
+        ulong generation,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteLocationWriteAsync(
+        return await ExecuteRemoveAsync(
                 () => _spotStore.RemoveSpotAsync(
                     key,
                     new ZLinkLocationOwnerToken(OwnerId, generation),
                     cancellationToken),
                 ZLinkLocationKind.Spot,
                 ZLinkLocationKeyCodec.EncodeSpotKey(key),
-                result => _events.SpotRowRemovedAsync(key, result.Generation, cancellationToken))
+                () => _events.SpotRowRemovedAsync(key, generation, cancellationToken))
             .ConfigureAwait(false);
     }
 
     internal async ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
         ZLinkActorLocationKey key,
-        long generation,
+        ulong generation,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteLocationWriteAsync(
+        return await ExecuteRemoveAsync(
                 () => _actorStore.RemoveActorAsync(
                     key,
                     new ZLinkLocationOwnerToken(OwnerId, generation),
                     cancellationToken),
                 ZLinkLocationKind.Actor,
                 ZLinkLocationKeyCodec.EncodeActorKey(key),
-                result => _events.ActorRowRemovedAsync(key, result.Generation, cancellationToken))
+                () => _events.ActorRowRemovedAsync(key, cancellationToken))
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-        ZLinkPeerLocationKey key,
-        long generation,
+    internal async ValueTask<ZLinkLocationWriteResult> RemoveDescriptorAsync(
+        ZLinkMeshNodeDescriptorKey key,
+        ulong generation,
         CancellationToken cancellationToken = default)
     {
-        return await ExecuteLocationWriteAsync(
-                () => _peerStore.RemovePeerAsync(
+        return await ExecuteRemoveAsync(
+                () => _meshNodeStore.RemoveMeshNodeAsync(
                     key,
                     new ZLinkLocationOwnerToken(OwnerId, generation),
                     cancellationToken),
-                ZLinkLocationKind.Peer,
-                ZLinkLocationKeyCodec.EncodePeerKey(key),
-                result => _events.PeerRowRemovedAsync(key, result.Generation, cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    internal async ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
-        ZLinkRouteLocationKey key,
-        long generation,
-        CancellationToken cancellationToken = default)
-    {
-        return await ExecuteLocationWriteAsync(
-                () => _routeStore.RemoveRouteAsync(
-                    key,
-                    new ZLinkLocationOwnerToken(OwnerId, generation),
-                    cancellationToken),
-                ZLinkLocationKind.Route,
-                ZLinkLocationKeyCodec.EncodeRouteKey(key),
-                result => _events.RouteRowRemovedAsync(key, result.Generation, cancellationToken))
+                ZLinkLocationKind.MeshNode,
+                ZLinkLocationKeyCodec.EncodeMeshNodeKey(key),
+                () => _events.DescriptorRowRemovedAsync(key, cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -489,6 +439,34 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             RecordStoreFailure(exception.Message);
             throw;
         }
+    }
+
+    private async ValueTask<ZLinkLocationWriteResult> ExecuteRemoveAsync(
+        Func<ValueTask<ZLinkLocationWriteStatus>> remove,
+        ZLinkLocationKind kind,
+        string canonicalKey,
+        Func<ValueTask> emitStored)
+    {
+        ZLinkLocationWriteStatus status;
+        try
+        {
+            status = await remove().ConfigureAwait(false);
+            UpdateHealth(static health => health with { StoreError = null });
+        }
+        catch (Exception exception)
+        {
+            RecordStoreFailure(exception.Message);
+            throw;
+        }
+
+        var result = new ZLinkLocationWriteResult(status, 0, default);
+        NotifyIfStale(result, kind, canonicalKey);
+        if (status == ZLinkLocationWriteStatus.Stored)
+        {
+            await emitStored().ConfigureAwait(false);
+        }
+
+        return result;
     }
 
     private async ValueTask<ZLinkLocationWriteResult> ExecuteLocationWriteAsync(

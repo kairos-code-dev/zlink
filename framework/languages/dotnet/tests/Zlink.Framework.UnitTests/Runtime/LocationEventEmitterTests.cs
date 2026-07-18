@@ -4,9 +4,9 @@ using Zlink.Framework.Runtime.Locations;
 namespace Zlink.Framework.UnitTests;
 
 /// <summary>
-/// Draft 20.5 push sources: location-peer/spot/actor/route row events,
-/// resolve misses, auto-connect desired set changes, and location-runtime
-/// cache invalidations flow only when the matching source is registered.
+/// Push sources: location-peer (MeshNode descriptor), spot and actor row
+/// events, resolve misses and auto-connect desired set changes flow only
+/// when the matching source is registered.
 /// </summary>
 public sealed class LocationEventEmitterTests
 {
@@ -17,14 +17,14 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
 
-        var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
+        var actor = InMemoryLocationStoreTests.Actor("ignored");
         var claimed = await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         await fixture.Runtime.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"), claimed.Generation);
+            new ZLinkActorLocationKey("play", "actor-1"), claimed.Generation);
 
         var updated = Assert.IsType<ZLinkLocationActorEvent.RowUpdated>(fixture.Publisher.Events[0]);
         Assert.Equal("actors", updated.SourceName);
-        Assert.Equal(claimed.Generation, updated.Actor.Generation);
+        Assert.Equal("actor-1", updated.Actor.ActorId);
 
         var removed = Assert.IsType<ZLinkLocationActorEvent.RowRemoved>(fixture.Publisher.Events[1]);
         Assert.Equal("actor-1", removed.Key.ActorId);
@@ -34,9 +34,9 @@ public sealed class LocationEventEmitterTests
     public async Task Failed_Writes_Publish_Nothing()
     {
         var fixture = await FixtureAsync();
-        var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
+        var actor = InMemoryLocationStoreTests.Actor("ignored");
         await fixture.Store.UpdateActorAsync(
-            InMemoryLocationStoreTests.Actor("other-owner", 0), ZLinkLocationWriteIntent.NewClaim);
+            InMemoryLocationStoreTests.Actor("other-owner"), ZLinkLocationWriteIntent.NewClaim);
 
         var rejected = await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
 
@@ -49,7 +49,7 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
 
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("play", "ghost")));
 
         var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent.ResolveMiss>());
         Assert.Equal("ghost", miss.Key.ActorId);
@@ -59,11 +59,8 @@ public sealed class LocationEventEmitterTests
     public async Task Reconcile_Diff_Publishes_DesiredSetChanged_On_The_Peer_Source()
     {
         var fixture = await FixtureAsync();
-        await fixture.Store.UpdatePeerAsync(
-            new ZLinkPeerLocation(
-                ZLinkLocationAutoConnectType.ClientServer, "play", RoutingId.From("r1"),
-                ZLinkLocationRole.Router, "tcp://r:1", 100, false, 0, null, null,
-                "peer-owner", 0, default),
+        await fixture.Store.UpdateMeshNodeAsync(
+            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
             ZLinkLocationWriteIntent.NewClaim);
 
         await fixture.Reconciler.TickAsync();
@@ -84,33 +81,30 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync(registerSources: false);
 
-        var actor = InMemoryLocationStoreTests.Actor("ignored", 0);
+        var actor = InMemoryLocationStoreTests.Actor("ignored");
         await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("play", "ghost")));
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Publisher.Events);
     }
 
     [Fact]
-    public async Task Mutation_Events_Advance_The_Shared_Generation_Guard()
+    public async Task Mutation_Events_Advance_The_Shared_Version_Guard()
     {
         var observed = new ZLinkObservedLocationGenerations();
         var emitter = new ZLinkLocationEventEmitter(null, null, null, observed);
-        var spot = InMemoryLocationStoreTests.Spot("owner", "spot-1") with { Generation = 2 };
-        var actor = InMemoryLocationStoreTests.Actor("owner", 2) with { Generation = 2 };
-        var peer = InMemoryLocationStoreTests.Peer("owner") with { Generation = 2 };
-        var route = InMemoryLocationStoreTests.Route("owner") with { Generation = 2 };
+        var spot = InMemoryLocationStoreTests.Spot("owner", "spot-1") with { SpotGeneration = 2 };
+        var actor = InMemoryLocationStoreTests.Actor("owner") with { MembershipEpoch = 2 };
+        var descriptor = InMemoryLocationStoreTests.MeshNode("owner") with { DescriptorRevision = 2 };
 
         await emitter.SpotRowUpdatedAsync(spot, CancellationToken.None);
         await emitter.ActorRowUpdatedAsync(actor, CancellationToken.None);
-        await emitter.PeerRowUpdatedAsync(peer, CancellationToken.None);
-        await emitter.RouteRowUpdatedAsync(route, CancellationToken.None);
+        await emitter.DescriptorRowUpdatedAsync(descriptor, CancellationToken.None);
 
-        Assert.False(observed.AcceptSpot(spot with { Generation = 1 }));
-        Assert.False(observed.AcceptActor(actor with { Generation = 1 }));
-        Assert.False(observed.AcceptPeer(peer with { Generation = 1 }));
-        Assert.False(observed.AcceptRoute(route with { Generation = 1 }));
+        Assert.False(observed.AcceptSpot(spot with { SpotGeneration = 1 }));
+        Assert.False(observed.AcceptActor(actor with { MembershipEpoch = 1 }));
+        Assert.False(observed.AcceptDescriptor(descriptor with { DescriptorRevision = 1 }));
     }
 
     private static async Task<EmitterFixture> FixtureAsync(bool registerSources = true)
@@ -132,13 +126,12 @@ public sealed class LocationEventEmitterTests
             model.AddLocationPeerEvents("peers");
             model.AddLocationSpotEvents("spots");
             model.AddLocationActorEvents("actors");
-            model.AddLocationRouteEvents("routes");
         }
 
         var publisher = new RecordingPublisher();
         var emitter = new ZLinkLocationEventEmitter(registration, publisher, new ZLinkSpotHandleRegistry());
 
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, store, time, emitter);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time, emitter);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("row-owner", RoutingId.From("node-9"), LeaseTtl);
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(10));
@@ -148,14 +141,12 @@ public sealed class LocationEventEmitterTests
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, store, tracker, observed, emitter);
+            store, store, store, tracker, observed, emitter);
 
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
             RoutingId.From("local"), "tcp://l:1");
-        var localRow = new ZLinkPeerLocation(
-            local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
-            100, false, 0, null, null, "ignored", 0, default);
+        var localRow = InMemoryLocationStoreTests.MeshNode("ignored", "tcp://l:1", "local");
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, resolvers, new NullExecutor(), options, time, emitter);
 

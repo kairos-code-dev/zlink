@@ -80,7 +80,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _actorBoundSessionCoordinator = new ZLinkActorBoundSessionCoordinator(
             _actorSessionManager.GetOrCreateState,
             GetActorSpotNode,
-            () => _locationLifecycle,
             registration,
             () => ShutdownToken);
         _actorDrainCoordinator = new ZLinkActorDrainCoordinator(

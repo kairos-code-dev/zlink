@@ -365,12 +365,17 @@ internal sealed partial class ZLinkFrameworkRuntime
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during location commit.");
         if (target.UserSpot is { } userSpot)
+        {
+            _ = locations.SpotLocations.TryGetTrackedGeneration(
+                userSpot.SpotRid, out var spotGeneration);
             await locations.ActorOwnership.CommitTransferredActorLocationAsync(
                     actorState.ActorId,
                     actorRef.ToNative(),
                     userSpot.SpotRid,
+                    spotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
         else
             await locations.ActorOwnership.CommitTransferredActorEntryLocationAsync(
                     actorState.ActorId,

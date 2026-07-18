@@ -6,7 +6,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// this node (the same names the auto-connect host advertises under); the
 /// actor lookup derives the address from the actor row's spot kind — the
 /// entry spot address is the node itself. The returned opaque handle keeps
-/// its logical lookup key and receives location-event/watch updates without
+/// its logical lookup key and receives location-event updates without
 /// exposing address refresh policy to callers.
 /// </summary>
 internal sealed class ZLinkLocationAddressResolvers :
@@ -39,6 +39,7 @@ internal sealed class ZLinkLocationAddressResolvers :
         var key = new ZLinkSpotLocationKey(row.MeshName, row.SpotRid);
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
+            row.SpotGeneration,
             ct => RefreshSpotAsync(key, ct));
         _handles.RegisterSpot(key, handle);
         return handle;
@@ -48,9 +49,7 @@ internal sealed class ZLinkLocationAddressResolvers :
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        var row = await _rows.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorId),
-                cancellationToken)
+        var row = await _spots.ResolveActorAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
         if (row is null)
         {
@@ -58,48 +57,55 @@ internal sealed class ZLinkLocationAddressResolvers :
         }
 
         // Entry actors use their node's Entry Spot snapshot; actors in a user
-        // Spot use that Spot's current snapshot.
+        // Spot use that Spot's current snapshot. Membership epoch orders the
+        // handle updates because the addressed spot generation resets when an
+        // actor moves back to the entry spot.
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
+            row.MembershipEpoch,
             ct => RefreshActorAsync(actorId, ct));
         _handles.RegisterActor(actorId, handle);
         return handle;
     }
 
-    private async ValueTask<ZLinkSpotHandleSnapshot?> RefreshSpotAsync(
+    private async ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?> RefreshSpotAsync(
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken)
     {
         var row = await _rows.ResolveSpotRowAsync(key, cancellationToken).ConfigureAwait(false);
-        return row is null ? null : ToSnapshot(row);
+        return row is null ? null : (ToSnapshot(row), row.SpotGeneration);
     }
 
-    private async ValueTask<ZLinkSpotHandleSnapshot?> RefreshActorAsync(
+    private async ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?> RefreshActorAsync(
         string actorId,
         CancellationToken cancellationToken)
     {
-        var row = await _rows.ResolveActorRowAsync(
-                new ZLinkActorLocationKey(actorId), cancellationToken)
+        var row = await _spots.ResolveActorAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
-        return row is null ? null : ToSnapshot(row);
+        return row is null ? null : (ToSnapshot(row), row.MembershipEpoch);
     }
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkSpotLocation row)
-        => new(_routerChannels.Resolve(row.MeshName), row.NodeRid, row.SpotRid, row.Generation, row.SpotKind);
+        => new(
+            _routerChannels.Resolve(row.MeshName),
+            row.OwnerNodeRid,
+            row.SpotRid,
+            row.SpotGeneration,
+            row.SpotKind);
 
     internal ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
-        => row.LocationKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
+        => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
             ? new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.SpotMeshName),
-                row.NodeRid,
-                row.NodeRid,
-                row.Generation,
+                _routerChannels.Resolve(row.MeshName),
+                row.OwnerNodeRid,
+                row.OwnerNodeRid,
+                row.SpotGeneration,
                 ZLinkSpotKind.Entry)
             : new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.SpotMeshName),
-                row.NodeRid,
-                row.SpotRid.Value,
-                row.Generation,
+                _routerChannels.Resolve(row.MeshName),
+                row.OwnerNodeRid,
+                row.SpotRid,
+                row.SpotGeneration,
                 ZLinkSpotKind.User);
 }
 
@@ -107,27 +113,26 @@ internal readonly record struct ZLinkSpotHandleSnapshot(
     string RouterChannelId,
     RoutingId NodeRid,
     RoutingId SpotRid,
-    long Generation,
+    ulong Generation,
     ZLinkSpotKind SpotKind = ZLinkSpotKind.User);
 
 internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 {
-    private readonly Func<CancellationToken, ValueTask<ZLinkSpotHandleSnapshot?>> _refresh;
+    private readonly Func<CancellationToken, ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>> _refresh;
     private readonly object _gate = new();
     private ZLinkHandleAvailability _availability = ZLinkHandleAvailability.Available;
-    private long _generation;
+    private ulong _version;
     private ZLinkSpotHandleSnapshot _snapshot;
 
     internal ZLinkResolvedSpotHandle(
         ZLinkSpotHandleSnapshot initialSnapshot,
-        Func<CancellationToken, ValueTask<ZLinkSpotHandleSnapshot?>> refresh)
+        ulong version,
+        Func<CancellationToken, ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>> refresh)
     {
         _refresh = refresh;
         _snapshot = initialSnapshot;
-        _generation = initialSnapshot.Generation;
+        _version = version;
     }
-
-    internal long CurrentGeneration { get { lock (_gate) return _generation; } }
 
     internal ZLinkSpotHandleSnapshot Snapshot
     {
@@ -146,56 +151,45 @@ internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 
     public override RoutingId SpotRid { get { lock (_gate) return _snapshot.SpotRid; } }
 
-    internal void Update(ZLinkSpotHandleSnapshot snapshot)
+    internal void Update(ZLinkSpotHandleSnapshot snapshot, ulong version)
     {
         lock (_gate)
         {
-            if (snapshot.Generation < _generation
-                || (snapshot.Generation == _generation
+            if (version < _version
+                || (version == _version
                     && _availability == ZLinkHandleAvailability.Removed)) return;
             _snapshot = snapshot;
-            _generation = snapshot.Generation;
+            _version = version;
             _availability = ZLinkHandleAvailability.Available;
         }
     }
 
-    internal void Invalidate(long generation)
+    internal void Invalidate(ulong version)
     {
         lock (_gate)
         {
-            if (generation < _generation) return;
-            _generation = generation;
+            if (version < _version) return;
+            _version = version;
             _availability = ZLinkHandleAvailability.Removed;
         }
     }
 
-    internal void MarkPending(long generation)
+    /// <summary>Invalidates at the current version: a later update with a
+    /// strictly newer version resurrects the handle, a stale replay of the
+    /// same version does not.</summary>
+    internal void InvalidateCurrent()
     {
         lock (_gate)
         {
-            if (generation < _generation
-                || (generation == _generation
-                    && _availability == ZLinkHandleAvailability.Removed)) return;
-            _generation = generation;
-            _availability = ZLinkHandleAvailability.PendingUpsert;
-        }
-    }
-
-    internal void InvalidateIfGeneration(long generation)
-    {
-        lock (_gate)
-        {
-            if (_generation == generation
-                && _availability != ZLinkHandleAvailability.Removed)
-                _availability = ZLinkHandleAvailability.PendingUpsert;
+            _availability = ZLinkHandleAvailability.Removed;
         }
     }
 
     internal async ValueTask<bool> RefreshAsync(CancellationToken cancellationToken)
     {
         var refreshed = await _refresh(cancellationToken).ConfigureAwait(false);
-        if (refreshed is not { } snapshot) return false;
-        Update(snapshot);
+        if (refreshed is not { } current) return false;
+        Update(current.Snapshot, current.Version);
         return true;
     }
 }
@@ -203,7 +197,6 @@ internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 internal enum ZLinkHandleAvailability
 {
     Available,
-    PendingUpsert,
     Removed
 }
 

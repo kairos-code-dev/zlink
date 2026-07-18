@@ -1,10 +1,11 @@
-using Zlink.Framework.Internal.Locations;
-
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
 /// A local capability that participates in auto connect: what this node
-/// advertises for one mesh and what it dials from.
+/// advertises for one mesh and what it dials from. The auto-connect type
+/// and role classify the local side only; remote MeshNode descriptors carry
+/// no role — publishing a descriptor in a mesh namespace is what makes a
+/// node a dial target of that mesh (40-location-runtime §5).
 /// </summary>
 internal sealed record ZLinkAutoConnectLocal(
     ZLinkLocationAutoConnectType AutoConnectType,
@@ -14,68 +15,47 @@ internal sealed record ZLinkAutoConnectLocal(
     string Endpoint);
 
 /// <summary>
-/// One connect target chosen by the planner. The key identifies the peer
-/// (node rid + role when the rid exists, endpoint + role otherwise) so an
-/// endpoint change under the same key is treated as a handover.
+/// One connect target chosen by the planner, keyed by the descriptor RID so
+/// an endpoint change under the same key is treated as a handover.
 /// </summary>
 internal sealed record ZLinkAutoConnectTarget(
     string TargetKey,
-    RoutingId? NodeRid,
-    ZLinkLocationRole Role,
+    RoutingId NodeRid,
     string Endpoint,
-    string? ConnectionFingerprint = null,
-    IReadOnlyDictionary<string, string>? Metadata = null,
+    bool Draining = false,
     string? OwnerId = null,
     bool InitiatesSpotRouterLink = true);
 
 /// <summary>
-/// Pure desired-target-set computation: the role allow table and target
-/// matching rules of the draft, with the pairwise initiator order for
-/// symmetric meshes. No I/O, so every rule is unit-testable in isolation.
+/// Pure desired-target-set computation over a mesh descriptor snapshot,
+/// with the pairwise initiator order for symmetric meshes. No I/O, so every
+/// rule is unit-testable in isolation.
 /// </summary>
 internal static class ZLinkAutoConnectPlanner
 {
-    internal static bool IsRoleAllowed(
-        ZLinkLocationAutoConnectType type,
-        ZLinkLocationRole role) => type switch
-    {
-        ZLinkLocationAutoConnectType.RouteMesh => role == ZLinkLocationRole.Router,
-        ZLinkLocationAutoConnectType.ClientServer =>
-            role is ZLinkLocationRole.Router or ZLinkLocationRole.Dealer,
-        ZLinkLocationAutoConnectType.DealerMesh => role == ZLinkLocationRole.Dealer,
-        ZLinkLocationAutoConnectType.Fanout =>
-            role is ZLinkLocationRole.Pub or ZLinkLocationRole.Sub,
-        ZLinkLocationAutoConnectType.SpotMesh =>
-            role is ZLinkLocationRole.Spot or ZLinkLocationRole.Router,
-        _ => false
-    };
-
     internal static IReadOnlyDictionary<string, ZLinkAutoConnectTarget> ComputeDesired(
         ZLinkAutoConnectLocal local,
-        IReadOnlyList<ZLinkPeerLocation> peers)
+        IReadOnlyList<ZLinkMeshNodeDescriptor> descriptors)
     {
         var desired = new Dictionary<string, ZLinkAutoConnectTarget>(StringComparer.Ordinal);
-        foreach (var peer in peers)
+        foreach (var descriptor in descriptors)
         {
-            if (peer.AutoConnectType != local.AutoConnectType
-                || !string.Equals(peer.MeshName, local.MeshName, StringComparison.Ordinal)
-                || !IsRoleAllowed(local.AutoConnectType, peer.Role)
-                || string.IsNullOrEmpty(peer.Endpoint))
-            {
-                continue;
-            }
-
-            if (IsSelf(local, peer) || !ShouldDial(local, peer))
+            if (!string.Equals(descriptor.MeshName, local.MeshName, StringComparison.Ordinal)
+                || string.IsNullOrEmpty(descriptor.Endpoint)
+                || IsSelf(local, descriptor)
+                || !ShouldDial(local, descriptor))
             {
                 continue;
             }
 
             var target = new ZLinkAutoConnectTarget(
-                TargetKeyOf(peer), peer.NodeRid, peer.Role, peer.Endpoint,
-                ConnectionFingerprintOf(peer), peer.Metadata,
-                peer.OwnerId,
+                descriptor.Rid.ToHex(),
+                descriptor.Rid,
+                descriptor.Endpoint,
+                descriptor.Draining,
+                descriptor.OwnerId,
                 local.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
-                || LocalIsInitiator(local, peer));
+                || LocalIsInitiator(local, descriptor));
             desired[target.TargetKey] = target;
         }
 
@@ -84,70 +64,42 @@ internal static class ZLinkAutoConnectPlanner
 
     internal static int CountDiscoveredPeers(
         ZLinkAutoConnectLocal local,
-        IReadOnlyList<ZLinkPeerLocation> peers)
+        IReadOnlyList<ZLinkMeshNodeDescriptor> descriptors)
     {
-        return peers.Count(peer =>
-            peer.AutoConnectType == local.AutoConnectType
-            && string.Equals(peer.MeshName, local.MeshName, StringComparison.Ordinal)
-            && IsRoleAllowed(local.AutoConnectType, peer.Role)
-            && !string.IsNullOrEmpty(peer.Endpoint)
-            && !IsSelf(local, peer));
+        return descriptors.Count(descriptor =>
+            string.Equals(descriptor.MeshName, local.MeshName, StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(descriptor.Endpoint)
+            && !IsSelf(local, descriptor));
     }
 
-    private static string? ConnectionFingerprintOf(ZLinkPeerLocation peer)
+    private static bool IsSelf(ZLinkAutoConnectLocal local, ZLinkMeshNodeDescriptor descriptor)
     {
-        if (peer.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
-            || peer.Metadata is null
-            || !peer.Metadata.TryGetValue(
-                ZLinkLocationAutoConnectHost.SpotPubEndpointMetadataKey,
-                out var endpoint)) return null;
-        return endpoint;
-    }
-
-    internal static string TargetKeyOf(ZLinkPeerLocation peer)
-    {
-        // Node rid + role identifies the peer when the rid exists; roles
-        // without a rid fall back to endpoint + role. An endpoint change
-        // under the same key is a peer handover, not a new peer.
-        var identity = peer.NodeRid is { Size: > 0 } rid ? rid.ToHex() : peer.Endpoint;
-        return $"{ZLinkCanonicalLocationKeyFormatter.CanonicalName(peer.Role)}|{identity}";
-    }
-
-    private static bool IsSelf(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer)
-    {
-        if (local.NodeRid is { Size: > 0 } localRid
-            && peer.NodeRid is { Size: > 0 } peerRid
-            && localRid.Equals(peerRid))
+        if (local.NodeRid is { Size: > 0 } localRid && localRid.Equals(descriptor.Rid))
         {
             return true;
         }
 
-        return string.Equals(peer.Endpoint, local.Endpoint, StringComparison.Ordinal);
+        return string.Equals(descriptor.Endpoint, local.Endpoint, StringComparison.Ordinal);
     }
 
-    private static bool ShouldDial(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer) =>
+    /// <summary>
+    /// Dial decisions come from the local role alone. Advertise-only roles
+    /// (server routers, publishers) never dial; dial-only roles (dealers,
+    /// subscribers) dial every descriptor of the mesh; symmetric meshes use
+    /// the pairwise initiator so a pair never double-connects — both sides
+    /// dialing creates two links for one routing id and breaks
+    /// rid-addressed requests.
+    /// </summary>
+    private static bool ShouldDial(ZLinkAutoConnectLocal local, ZLinkMeshNodeDescriptor descriptor) =>
         local.AutoConnectType switch
         {
-            // Symmetric meshes use the pairwise initiator so a pair never
-            // double-connects (draft 4/14.3): both sides dialing creates two
-            // links for one routing id and breaks rid-addressed requests.
             ZLinkLocationAutoConnectType.RouteMesh =>
-                local.Role == ZLinkLocationRole.Router
-                && peer.Role == ZLinkLocationRole.Router
-                && LocalIsInitiator(local, peer),
-            // A router never dials out to dealers; dealers dial routers.
-            ZLinkLocationAutoConnectType.ClientServer =>
-                local.Role == ZLinkLocationRole.Dealer && peer.Role == ZLinkLocationRole.Router,
+                local.Role == ZLinkLocationRole.Router && LocalIsInitiator(local, descriptor),
+            ZLinkLocationAutoConnectType.ClientServer => local.Role == ZLinkLocationRole.Dealer,
             ZLinkLocationAutoConnectType.DealerMesh =>
-                local.Role == ZLinkLocationRole.Dealer
-                && peer.Role == ZLinkLocationRole.Dealer
-                && LocalIsInitiator(local, peer),
-            // A publisher never dials out to subscribers.
-            ZLinkLocationAutoConnectType.Fanout =>
-                local.Role == ZLinkLocationRole.Sub && peer.Role == ZLinkLocationRole.Pub,
-            ZLinkLocationAutoConnectType.SpotMesh =>
-                local.Role == ZLinkLocationRole.Spot
-                && peer.Role == ZLinkLocationRole.Spot,
+                local.Role == ZLinkLocationRole.Dealer && LocalIsInitiator(local, descriptor),
+            ZLinkLocationAutoConnectType.Fanout => local.Role == ZLinkLocationRole.Sub,
+            ZLinkLocationAutoConnectType.SpotMesh => local.Role == ZLinkLocationRole.Spot,
             _ => false
         };
 
@@ -158,22 +110,22 @@ internal static class ZLinkAutoConnectPlanner
     /// with no endpoint cannot be dialed, so it always initiates toward
     /// dialable peers regardless of the order.
     /// </summary>
-    private static bool LocalIsInitiator(ZLinkAutoConnectLocal local, ZLinkPeerLocation peer)
+    private static bool LocalIsInitiator(ZLinkAutoConnectLocal local, ZLinkMeshNodeDescriptor descriptor)
     {
         if (string.IsNullOrEmpty(local.Endpoint))
         {
             return true;
         }
 
-        if (local.NodeRid is { Size: > 0 } localRid && peer.NodeRid is { Size: > 0 } peerRid)
+        if (local.NodeRid is { Size: > 0 } localRid)
         {
-            var byRid = string.CompareOrdinal(localRid.ToHex(), peerRid.ToHex());
+            var byRid = string.CompareOrdinal(localRid.ToHex(), descriptor.Rid.ToHex());
             if (byRid != 0)
             {
                 return byRid < 0;
             }
         }
 
-        return string.CompareOrdinal(local.Endpoint, peer.Endpoint) < 0;
+        return string.CompareOrdinal(local.Endpoint, descriptor.Endpoint) < 0;
     }
 }

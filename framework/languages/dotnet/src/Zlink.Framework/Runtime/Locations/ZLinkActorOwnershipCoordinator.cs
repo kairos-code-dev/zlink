@@ -32,6 +32,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     private Task? _disposeTask;
 
     public async ValueTask<ZLinkActorClaimActivation<TActor>> ExecuteActorClaimThenActivateAsync<TActor>(
+        string meshName,
         string actorType,
         string actorId,
         RoutingId nodeRid,
@@ -41,7 +42,8 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         ZLinkActorClaimMode claimMode = ZLinkActorClaimMode.NewOwner)
         where TActor : class
     {
-        var claim = await ClaimActorCoreAsync(actorType, actorId, nodeRid, deactivate, claimMode, cancellationToken)
+        var claim = await ClaimActorCoreAsync(
+                meshName, actorType, actorId, nodeRid, deactivate, claimMode, cancellationToken)
             .ConfigureAwait(false);
         switch (claim.Status)
         {
@@ -81,6 +83,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     private async ValueTask<ZLinkActorClaimResult> ClaimActorCoreAsync(
+        string meshName,
         string actorType,
         string actorId,
         RoutingId nodeRid,
@@ -88,8 +91,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         ZLinkActorClaimMode claimMode,
         CancellationToken cancellationToken)
     {
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(
-            new ZLinkActorLocationKey(actorId));
+        var canonical = actorId;
         while (true)
         {
             var retryFailedActivation = false;
@@ -114,16 +116,21 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             }
         }
 
+        // The claim precedes activation, so the reference generation is not
+        // issued yet: generation 0 marks a claimed-but-unpublished actor and
+        // readers never treat it as a resolvable reference.
         var row = new ZLinkActorLocation(
+            meshName,
             actorId,
-            ActorType: actorType,
-            ActorRef: null,
-            nodeRid,
-            LocationKind: ZLinkSpotKind.Entry,
-            SpotMeshName: string.Empty,
-            SpotRid: null,
+            actorType,
+            new ActorRef(nodeRid, actorId, 0),
+            OwnerNodeRid: nodeRid,
+            OwnerNodeGeneration: 0,
+            SpotRid: default,
+            SpotGeneration: 0,
+            SpotKind: ZLinkSpotKind.Entry,
+            MembershipEpoch: 0,
             OwnerId: string.Empty,
-            Generation: 0,
             UpdatedAt: default);
         ZLinkLocationWriteResult result;
         try
@@ -157,9 +164,10 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             case ZLinkLocationWriteStatus.Stored:
                 lock (_gate)
                 {
-                    var tracked = new TrackedActor(
-                        row with { Generation = result.Generation },
-                        deactivate);
+                    var tracked = new TrackedActor(row, deactivate)
+                    {
+                        StoreGeneration = result.Generation
+                    };
                     _actors[canonical] = tracked;
                     _trackedActors.Add(tracked);
                 }
@@ -168,7 +176,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
             case ZLinkLocationWriteStatus.RejectedConflict:
             {
-                var existing = await ResolveExistingActorAsync(actorId, cancellationToken)
+                var existing = await ResolveExistingActorAsync(meshName, actorId, cancellationToken)
                     .ConfigureAwait(false);
                 return new ZLinkActorClaimResult(ZLinkActorClaimStatus.Conflict, existing);
             }
@@ -193,14 +201,17 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     internal async ValueTask NotifyActorJoinedSpotAsync(
         string actorId,
         RoutingId spotRid,
+        ulong spotGeneration,
         CancellationToken cancellationToken = default)
     {
         await RenewOwnedActorAsync(
                 actorId,
                 row => row with
                 {
-                    LocationKind = ZLinkSpotKind.User,
-                    SpotRid = spotRid
+                    SpotKind = ZLinkSpotKind.User,
+                    SpotRid = spotRid,
+                    SpotGeneration = spotGeneration,
+                    MembershipEpoch = row.MembershipEpoch + 1
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -210,6 +221,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         string actorId,
         ActorRef actorRef,
         RoutingId spotRid,
+        ulong spotGeneration,
         CancellationToken cancellationToken = default)
     {
         await RenewOwnedActorAsync(
@@ -217,8 +229,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 row => row with
                 {
                     ActorRef = actorRef,
-                    LocationKind = ZLinkSpotKind.User,
-                    SpotRid = spotRid
+                    OwnerNodeRid = actorRef.NodeRid,
+                    SpotKind = ZLinkSpotKind.User,
+                    SpotRid = spotRid,
+                    SpotGeneration = spotGeneration,
+                    MembershipEpoch = row.MembershipEpoch + 1
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -235,9 +250,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 row => row with
                 {
                     ActorRef = actorRef,
-                    NodeRid = targetNodeRid,
-                    LocationKind = ZLinkSpotKind.Entry,
-                    SpotRid = null
+                    OwnerNodeRid = targetNodeRid,
+                    SpotKind = ZLinkSpotKind.Entry,
+                    SpotRid = default,
+                    SpotGeneration = 0,
+                    MembershipEpoch = row.MembershipEpoch + 1
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -252,9 +269,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 actorId,
                 row => row with
                 {
-                    NodeRid = targetNodeRid,
-                    LocationKind = ZLinkSpotKind.Entry,
-                    SpotRid = null
+                    OwnerNodeRid = targetNodeRid,
+                    SpotKind = ZLinkSpotKind.Entry,
+                    SpotRid = default,
+                    SpotGeneration = 0,
+                    MembershipEpoch = row.MembershipEpoch + 1
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -268,8 +287,10 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 actorId,
                 row => row with
                 {
-                    LocationKind = ZLinkSpotKind.Entry,
-                    SpotRid = null
+                    SpotKind = ZLinkSpotKind.Entry,
+                    SpotRid = default,
+                    SpotGeneration = 0,
+                    MembershipEpoch = row.MembershipEpoch + 1
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -280,8 +301,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var key = new ZLinkActorLocationKey(actorId);
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(key);
+        var canonical = actorId;
         TrackedActor tracked;
         TaskCompletionSource? releaseCompletion = null;
         Task releaseTask;
@@ -302,7 +322,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         {
             try
             {
-                await ReleaseTrackedActorAsync(key, canonical, tracked).ConfigureAwait(false);
+                await ReleaseTrackedActorAsync(canonical, tracked).ConfigureAwait(false);
                 releaseCompletion.TrySetResult();
             }
             catch (Exception exception)
@@ -324,11 +344,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
     internal bool OwnsActor(string actorId)
     {
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(
-            actorId));
         lock (_gate)
         {
-            return _actors.ContainsKey(canonical);
+            return _actors.ContainsKey(actorId);
         }
     }
 
@@ -339,7 +357,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
     private void MarkActivationFailed(string actorId)
     {
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actorId));
+        var canonical = actorId;
         lock (_gate)
         {
             if (_actors.TryGetValue(canonical, out var tracked))
@@ -349,7 +367,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
     private void StartActivationFailureReconciliation(string actorId)
     {
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actorId));
+        var canonical = actorId;
         TrackedActor? tracked;
         lock (_gate)
         {
@@ -494,20 +512,33 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
     internal Func<CancellationToken, ValueTask>? TakeOwnershipLostDeactivation(string canonicalKey)
     {
+        // The ownership-loss event carries the store's canonical key while
+        // local tracking is keyed by the framework-wide unique actor id, so
+        // match by re-encoding the tracked rows (rare path).
         lock (_gate)
         {
-            return _actors.Remove(canonicalKey, out var actor) ? actor.Deactivate : null;
+            foreach (var (actorId, actor) in _actors)
+            {
+                var encoded = ZLinkLocationKeyCodec.EncodeActorKey(
+                    new ZLinkActorLocationKey(actor.Row.MeshName, actorId));
+                if (!string.Equals(encoded, canonicalKey, StringComparison.Ordinal)) continue;
+                _actors.Remove(actorId);
+                return actor.Deactivate;
+            }
+
+            return null;
         }
     }
 
     private async ValueTask<ZLinkActorLocation?> ResolveExistingActorAsync(
+        string meshName,
         string actorId,
         CancellationToken cancellationToken)
     {
         try
         {
             return await resolver.ResolveActorRowAsync(
-                    new ZLinkActorLocationKey(actorId),
+                    new ZLinkActorLocationKey(meshName, actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -524,8 +555,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         Func<ZLinkActorLocation, ZLinkActorLocation> mutate,
         CancellationToken cancellationToken)
     {
-        var canonical = ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(
-            actorId));
+        var canonical = actorId;
         TrackedActor? tracked;
         lock (_gate)
         {
@@ -580,7 +610,10 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             {
                 if (_actors.TryGetValue(canonical, out var current)
                     && ReferenceEquals(current, tracked))
-                    tracked.Row = proposed with { Generation = result.Generation };
+                {
+                    tracked.Row = proposed;
+                    tracked.StoreGeneration = result.Generation;
+                }
             }
         }
         finally
@@ -590,7 +623,6 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     }
 
     private async Task ReleaseTrackedActorAsync(
-        ZLinkActorLocationKey key,
         string canonical,
         TrackedActor tracked)
     {
@@ -598,17 +630,20 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         try
         {
             ZLinkActorLocation row;
+            ulong storeGeneration;
             lock (_gate)
             {
                 if (!_actors.TryGetValue(canonical, out var current)
                     || !ReferenceEquals(current, tracked))
                     return;
                 row = tracked.Row;
+                storeGeneration = tracked.StoreGeneration;
             }
 
+            var key = new ZLinkActorLocationKey(row.MeshName, row.ActorId);
             var result = await runtime.RemoveActorAsync(
                     key,
-                    row.Generation,
+                    storeGeneration,
                     CancellationToken.None)
                 .ConfigureAwait(false);
             if (result.Status is not (ZLinkLocationWriteStatus.Stored or ZLinkLocationWriteStatus.IgnoredStale))
@@ -638,6 +673,8 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         public Func<CancellationToken, ValueTask>? Deactivate { get; } = deactivate;
 
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
+
+        public ulong StoreGeneration { get; set; }
 
         public Task? ReleaseTask { get; set; }
 

@@ -607,18 +607,14 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkFrameworkErrorKind.SpotRouteNotFound,
                 $"SPOT '{spotRid}' has no live location row.");
         var snapshot = handle.Snapshot;
-        if (services.GetService(typeof(IZLinkPeerLocationResolver))
-                is IZLinkPeerLocationResolver peerResolver)
+        if (services.GetService(typeof(IZLinkMeshNodeLocationResolver))
+                is IZLinkMeshNodeLocationResolver peerResolver)
         {
-            var peers = await peerResolver.ListLivePeersAsync(
-                    new ZLinkPeerLocationFilter(
-                        ZLinkLocationAutoConnectType.SpotMesh,
-                        snapshot.RouterChannelId,
-                        ZLinkLocationRole.Spot,
-                        snapshot.NodeRid),
-                    cancellationToken)
+            var peers = await peerResolver.ListLiveMeshNodesAsync(
+                    snapshot.RouterChannelId, cancellationToken)
                 .ConfigureAwait(false);
-            if (peers.Any(static peer => peer.Draining))
+            if (peers.Any(descriptor =>
+                    descriptor.Rid.Equals(snapshot.NodeRid) && descriptor.Draining))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestRejected,
                     $"SPOT '{spotRid}' is hosted by a draining node.",

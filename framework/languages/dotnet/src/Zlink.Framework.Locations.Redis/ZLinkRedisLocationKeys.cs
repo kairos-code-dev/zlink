@@ -39,12 +39,13 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
     public string StampKey(string tag, string? meshName) =>
         meshName is null ? $"{prefix}:stamp:{tag}" : $"{prefix}:stamp:{tag}:{meshName}";
 
-    public static string TagOf(ZLinkLocationKind kind) => kind switch
+    public static string TagOf(ZLinkLocationChangeScopeKind kind) => kind switch
     {
-        ZLinkLocationKind.Peer => ZLinkRedisLocationKinds.Peer.Tag,
-        ZLinkLocationKind.Spot => ZLinkRedisLocationKinds.Spot.Tag,
-        ZLinkLocationKind.Actor => ZLinkRedisLocationKinds.Actor.Tag,
-        ZLinkLocationKind.Route => ZLinkRedisLocationKinds.Route.Tag,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown location kind.")
+        ZLinkLocationChangeScopeKind.MeshNode => ZLinkRedisLocationKinds.MeshNode.Tag,
+        ZLinkLocationChangeScopeKind.Spot => ZLinkRedisLocationKinds.Spot.Tag,
+        ZLinkLocationChangeScopeKind.Actor => ZLinkRedisLocationKinds.Actor.Tag,
+        ZLinkLocationChangeScopeKind.OwnerLease => "lease",
+        ZLinkLocationChangeScopeKind.ActorTransfer => "transfer",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown change stamp scope kind.")
     };
 }

@@ -13,7 +13,12 @@ internal static class ZLinkRedisLocationRowJson
 {
     private static readonly JsonSerializerOptions Options = new()
     {
-        Converters = { new RoutingIdJsonConverter(), new ActorRefJsonConverter() }
+        Converters =
+        {
+            new RoutingIdJsonConverter(),
+            new ActorRefJsonConverter(),
+            new ChannelWeightsJsonConverter()
+        }
     };
 
     internal static string Serialize<TRow>(TRow row) =>
@@ -21,21 +26,55 @@ internal static class ZLinkRedisLocationRowJson
 
     internal static TRow Deserialize<TRow>(string json)
     {
-        if (typeof(TRow) == typeof(ZLinkPeerLocation))
-            RequirePeerDrainingField(json);
+        if (typeof(TRow) == typeof(ZLinkMeshNodeDescriptor))
+            RequireDescriptorDrainingField(json);
 
         return JsonSerializer.Deserialize<TRow>(json, Options)
                ?? throw new InvalidOperationException("Location row payload deserialized to null.");
     }
 
-    private static void RequirePeerDrainingField(string json)
+    private static void RequireDescriptorDrainingField(string json)
     {
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Object
             || !document.RootElement.EnumerateObject().Any(
                 property => property.Name.Equals("Draining", StringComparison.OrdinalIgnoreCase)))
         {
-            throw new JsonException("Peer location row must contain the typed Draining field.");
+            throw new JsonException("MeshNode descriptor row must contain the typed Draining field.");
+        }
+    }
+
+    /// <summary>Canonical descriptor JSON orders ChannelWeights properties
+    /// by ChannelName byte order and rejects duplicates (spec 41 §2).</summary>
+    private sealed class ChannelWeightsJsonConverter : JsonConverter<IReadOnlyDictionary<string, int>>
+    {
+        public override IReadOnlyDictionary<string, int> Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("ChannelWeights must be a JSON object.");
+            var weights = new Dictionary<string, int>(StringComparer.Ordinal);
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject) return weights;
+                var name = reader.GetString()
+                           ?? throw new JsonException("ChannelWeights property name expected.");
+                reader.Read();
+                if (!weights.TryAdd(name, reader.GetInt32()))
+                    throw new JsonException($"Duplicate ChannelWeights entry '{name}'.");
+            }
+
+            throw new JsonException("ChannelWeights object was not closed.");
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer, IReadOnlyDictionary<string, int> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            foreach (var (name, weight) in value.OrderBy(
+                         static pair => pair.Key, StringComparer.Ordinal))
+                writer.WriteNumber(name, weight);
+            writer.WriteEndObject();
         }
     }
 

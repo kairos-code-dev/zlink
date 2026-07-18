@@ -35,14 +35,11 @@ internal sealed record ZLinkLocationRuntimePollingSnapshot(
             status,
             topology
                 .OrderBy(static entry => entry.MeshName, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.Kind)
                 .ThenBy(static entry => entry.Endpoint, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.NodeRid?.ToString(), StringComparer.Ordinal)
+                .ThenBy(static entry => entry.NodeRid.ToString(), StringComparer.Ordinal)
                 .ToArray(),
             summary
                 .OrderBy(static entry => entry.MeshName, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.AutoConnectType)
-                .ThenBy(static entry => entry.Role)
                 .ToArray());
     }
 }

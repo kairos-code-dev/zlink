@@ -24,7 +24,7 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private Task? _watch;
-    private long? _lastStamp;
+    private ulong? _lastStamp;
     private long? _lastLiveOwnerSetVersion;
     private bool _lastTickFailed;
 
@@ -39,7 +39,7 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     {
         _reconciler = reconciler;
         _options = options;
-        _stampScope = new ZLinkLocationChangeStampScope(ZLinkLocationKind.Peer, local.MeshName);
+        _stampScope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, local.MeshName);
         _stampStore = stampStore;
         _watchStore = watchStore;
         _leaseTracker = leaseTracker;
@@ -224,7 +224,7 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
             try
             {
                 await foreach (var _ in _watchStore!.WatchAsync(
-                    new ZLinkLocationWatchFilter(ZLinkLocationKind.Peer, _stampScope.MeshName),
+                    new ZLinkLocationWatchFilter(ZLinkLocationKind.MeshNode, _stampScope.MeshName),
                     cancellationToken).ConfigureAwait(false))
                 {
                     // Wake the loop; the tick re-reads the store, so a lost

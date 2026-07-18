@@ -311,11 +311,15 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         if (_runtime.LocationLifecycle is { } locations)
+        {
+            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotRid, out var spotGeneration);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actor.ActorId,
                     SpotRid,
+                    spotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
     }
 
     public ValueTask NotifyActorDisconnectedAsync(
@@ -377,9 +381,11 @@ internal sealed partial class ZLinkSpotActivation
         if (_runtime.LocationLifecycle is { } locations)
         {
             var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotRid, out var spotGeneration);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actor.ActorId,
                     SpotRid,
+                    spotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
             ZLinkFrameworkDebugLog.SpotDiscovery(

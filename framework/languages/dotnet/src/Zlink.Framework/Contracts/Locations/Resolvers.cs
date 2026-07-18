@@ -1,14 +1,14 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Returns peers whose owners are currently live and that match the supplied
-/// filter. Each call reflects the current location state. Diagnostics use
+/// Returns the mesh's descriptors whose owners are currently live. Each call
+/// reflects the current location state. Diagnostics use
 /// <see cref="IZLinkLocationRuntimeQuery"/>.
 /// </summary>
-public interface IZLinkPeerLocationResolver
+public interface IZLinkMeshNodeLocationResolver
 {
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
-        ZLinkPeerLocationFilter filter,
+    ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default);
 }
 

@@ -14,10 +14,9 @@ namespace Zlink.Framework.Contracts.Locations;
 /// are reported as exceptions for both reads and writes.
 /// </summary>
 public interface IZLinkLocationStore :
-    IZLinkPeerLocationStore,
+    IZLinkMeshNodeLocationStore,
     IZLinkSpotLocationStore,
     IZLinkActorLocationStore,
-    IZLinkRouteLocationStore,
     IZLinkOwnerLeaseStore,
     IZLinkActorTransferStore
 {
@@ -31,25 +30,25 @@ public interface IZLinkLocationStore :
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkPeerLocationStore
+public interface IZLinkMeshNodeLocationStore
 {
-    ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
-        ZLinkPeerLocation peer,
+    ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+        ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-        ZLinkPeerLocationKey key,
+    ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+        ZLinkMeshNodeDescriptorKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Returns the peer rows matching the filter as a single snapshot.
-    /// Peer lists are bounded to thousands of rows per mesh by contract and
-    /// are never paginated; reconcile needs one point-in-time list.
+    /// Returns every descriptor of the mesh as one store snapshot; descriptor
+    /// lists are bounded per mesh by contract and never paginated. Returned
+    /// descriptors are not ready peers until transport admission completes.
     /// </summary>
-    ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-        ZLinkPeerLocationFilter filter,
+    ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default);
 }
 
@@ -60,18 +59,13 @@ public interface IZLinkSpotLocationStore
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
+    ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 }
 
@@ -82,40 +76,13 @@ public interface IZLinkActorLocationStore
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+    ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkRouteLocationStore
-{
-    ValueTask<ZLinkLocationWriteResult> UpdateRouteAsync(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
-        ZLinkRouteLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 }
 
@@ -155,25 +122,14 @@ public interface IZLinkOwnerLeaseStore
 }
 
 /// <summary>
-/// Optional change notification capability. Notifications can make location
-/// changes visible before the next polling interval. Event loss is tolerated:
-/// polling remains the correctness path.
-/// </summary>
-public interface IZLinkLocationWatchStore
-{
-    IAsyncEnumerable<ZLinkLocationChanged> WatchAsync(
-        ZLinkLocationWatchFilter filter,
-        CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// Optional. Returns a counter the store increments on every row change in
 /// the scope, so a polling tick whose stamp is unchanged can skip the full
-/// list query.
+/// list query. The stamp is an optimization, never a correctness authority
+/// (06-location-store §7).
 /// </summary>
 public interface IZLinkLocationChangeStampStore
 {
-    ValueTask<long> GetChangeStampAsync(
+    ValueTask<ulong> GetChangeStampAsync(
         ZLinkLocationChangeStampScope scope,
         CancellationToken cancellationToken = default);
 }

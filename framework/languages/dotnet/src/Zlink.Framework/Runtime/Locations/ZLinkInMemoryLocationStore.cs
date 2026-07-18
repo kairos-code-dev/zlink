@@ -17,11 +17,10 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     private readonly object _gate = new();
     private readonly TimeProvider _time;
     private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
-    private readonly RowTable<ZLinkPeerLocation> _peers = new();
+    private readonly RowTable<ZLinkMeshNodeDescriptor> _meshNodes = new();
     private readonly RowTable<ZLinkSpotLocation> _spots = new();
     private readonly RowTable<ZLinkActorLocation> _actors = new();
-    private readonly RowTable<ZLinkRouteLocation> _routes = new();
-    private readonly Dictionary<ZLinkLocationChangeStampScope, long> _stamps = [];
+    private readonly Dictionary<ZLinkLocationChangeStampScope, ulong> _stamps = [];
     private readonly Dictionary<string, RoutingIdAllocationGroup> _routingIdGroups =
         new(StringComparer.Ordinal);
 
@@ -30,45 +29,42 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         _time = timeProvider ?? TimeProvider.System;
     }
 
-    public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
-        ZLinkPeerLocation peer,
+    public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+        ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Write(
-            _peers,
-            ZLinkLocationKeyCodec.EncodePeerKey(new ZLinkPeerLocationKey(
-                peer.AutoConnectType, peer.MeshName, peer.Role, peer.NodeRid, peer.Endpoint)),
-            peer,
+            _meshNodes,
+            ZLinkLocationKeyCodec.EncodeMeshNodeKey(
+                new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)),
+            descriptor,
             intent,
-            peer.OwnerId,
-            peer.Generation,
+            descriptor.OwnerId,
             static row => row.OwnerId,
-            static row => row.Generation,
-            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
-            ZLinkLocationKind.Peer,
-            peer.MeshName));
+            static (row, now, generation) => row with { UpdatedAt = now },
+            ZLinkLocationChangeScopeKind.MeshNode,
+            descriptor.MeshName));
 
-    public ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-        ZLinkPeerLocationKey key,
+    public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+        ZLinkMeshNodeDescriptorKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Remove(
-            _peers,
-            ZLinkLocationKeyCodec.EncodePeerKey(key),
+            _meshNodes,
+            ZLinkLocationKeyCodec.EncodeMeshNodeKey(key),
             owner,
             static row => row.OwnerId,
-            static row => row.Generation,
-            ZLinkLocationKind.Peer,
+            ZLinkLocationChangeScopeKind.MeshNode,
             key.MeshName));
 
-    public ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-        ZLinkPeerLocationFilter filter,
+    public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
-            IReadOnlyList<ZLinkPeerLocation> items = _peers.Rows.Values
-                .Where(row => ZLinkLocationFilterMatcher.Matches(row, filter))
+            IReadOnlyList<ZLinkMeshNodeDescriptor> items = _meshNodes.Rows.Values
+                .Where(row => string.Equals(row.MeshName, meshName, StringComparison.Ordinal))
                 .ToArray();
             return ValueTask.FromResult(items);
         }
@@ -84,14 +80,12 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             spot,
             intent,
             spot.OwnerId,
-            spot.Generation,
             static row => row.OwnerId,
-            static row => row.Generation,
-            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
-            ZLinkLocationKind.Spot,
+            static (row, now, generation) => row with { UpdatedAt = now },
+            ZLinkLocationChangeScopeKind.Spot,
             spot.MeshName));
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
+    public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
@@ -100,8 +94,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             ZLinkLocationKeyCodec.EncodeSpotKey(key),
             owner,
             static row => row.OwnerId,
-            static row => row.Generation,
-            ZLinkLocationKind.Spot,
+            ZLinkLocationChangeScopeKind.Spot,
             key.MeshName));
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
@@ -115,35 +108,23 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         }
     }
 
-    public ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_gate)
-        {
-            return ValueTask.FromResult(Page(_spots, row => ZLinkLocationFilterMatcher.Matches(row, filter), page));
-        }
-    }
-
     public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(Write(
             _actors,
-            ZLinkLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actor.ActorId)),
+            ZLinkLocationKeyCodec.EncodeActorKey(
+                new ZLinkActorLocationKey(actor.MeshName, actor.ActorId)),
             actor,
             intent,
             actor.OwnerId,
-            actor.Generation,
             static row => row.OwnerId,
-            static row => row.Generation,
-            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
-            ZLinkLocationKind.Actor,
-            meshName: null));
+            static (row, now, generation) => row with { UpdatedAt = now },
+            ZLinkLocationChangeScopeKind.Actor,
+            actor.MeshName));
 
-    public ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+    public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
@@ -152,9 +133,8 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             ZLinkLocationKeyCodec.EncodeActorKey(key),
             owner,
             static row => row.OwnerId,
-            static row => row.Generation,
-            ZLinkLocationKind.Actor,
-            meshName: null));
+            ZLinkLocationChangeScopeKind.Actor,
+            key.MeshName));
 
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
         ZLinkActorLocationKey key,
@@ -164,69 +144,6 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             _actors.Rows.TryGetValue(ZLinkLocationKeyCodec.EncodeActorKey(key), out var row);
             return ValueTask.FromResult(row);
-        }
-    }
-
-    public ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_gate)
-        {
-            return ValueTask.FromResult(Page(_actors, row => ZLinkLocationFilterMatcher.Matches(row, filter), page));
-        }
-    }
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateRouteAsync(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(Write(
-            _routes,
-            ZLinkLocationKeyCodec.EncodeRouteKey(new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey)),
-            route,
-            intent,
-            route.OwnerId,
-            route.Generation,
-            static row => row.OwnerId,
-            static row => row.Generation,
-            static (row, generation, now) => row with { Generation = generation, UpdatedAt = now },
-            ZLinkLocationKind.Route,
-            meshName: null));
-
-    public ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
-        ZLinkRouteLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(Remove(
-            _routes,
-            ZLinkLocationKeyCodec.EncodeRouteKey(key),
-            owner,
-            static row => row.OwnerId,
-            static row => row.Generation,
-            ZLinkLocationKind.Route,
-            meshName: null));
-
-    public ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_gate)
-        {
-            _routes.Rows.TryGetValue(ZLinkLocationKeyCodec.EncodeRouteKey(key), out var row);
-            return ValueTask.FromResult(row);
-        }
-    }
-
-    public ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_gate)
-        {
-            return ValueTask.FromResult(Page(_routes, row => ZLinkLocationFilterMatcher.Matches(row, filter), page));
         }
     }
 
@@ -263,17 +180,14 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             var removed = 0L;
             removed += RemoveByOwnerNoLock(
-                _peers, ownerId, static row => row.OwnerId, ZLinkLocationKind.Peer,
+                _meshNodes, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.MeshNode,
                 static row => row.MeshName);
             removed += RemoveByOwnerNoLock(
-                _spots, ownerId, static row => row.OwnerId, ZLinkLocationKind.Spot,
+                _spots, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Spot,
                 static row => row.MeshName);
             removed += RemoveByOwnerNoLock(
-                _actors, ownerId, static row => row.OwnerId, ZLinkLocationKind.Actor,
-                static _ => null);
-            removed += RemoveByOwnerNoLock(
-                _routes, ownerId, static row => row.OwnerId, ZLinkLocationKind.Route,
-                static _ => null);
+                _actors, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Actor,
+                static row => row.MeshName);
             return ValueTask.FromResult(removed);
         }
     }
@@ -289,7 +203,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         }
     }
 
-    public ValueTask<long> GetChangeStampAsync(
+    public ValueTask<ulong> GetChangeStampAsync(
         ZLinkLocationChangeStampScope scope,
         CancellationToken cancellationToken = default)
     {
@@ -347,6 +261,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             group.Generations.TryGetValue(slot, out var generation);
             generation++;
             group.Generations[slot] = generation;
+
             var acquired = new ZLinkRoutingIdSlotAllocation(
                 slot,
                 new ZLinkLocationOwnerToken(request.OwnerId, generation),
@@ -430,11 +345,9 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         TRow row,
         ZLinkLocationWriteIntent intent,
         string ownerId,
-        long generation,
         Func<TRow, string> ownerOf,
-        Func<TRow, long> generationOf,
-        Func<TRow, long, DateTimeOffset, TRow> finalize,
-        ZLinkLocationKind kind,
+        Func<TRow, DateTimeOffset, ulong, TRow> finalize,
+        ZLinkLocationChangeScopeKind kind,
         string? meshName)
         where TRow : class
     {
@@ -442,6 +355,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             var now = _time.GetUtcNow();
             var exists = table.Rows.TryGetValue(key, out var current);
+            table.Generations.TryGetValue(key, out var last);
             switch (intent)
             {
                 case ZLinkLocationWriteIntent.NewClaim when exists && IsOwnerLive(ownerOf(current!), now):
@@ -453,19 +367,18 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                     // The store issues the fencing generation atomically per
                     // key; counters survive removal so a re-claim can never
                     // reuse an old generation.
-                    table.Generations.TryGetValue(key, out var last);
                     var next = last + 1;
                     table.Generations[key] = next;
-                    table.Rows[key] = finalize(row, next, now);
+                    table.Rows[key] = finalize(row, now, next);
                     Bump(kind, meshName);
                     return ZLinkLocationWriteResult.Stored(next, now);
                 }
 
                 case ZLinkLocationWriteIntent.Renew
-                    when exists && ownerOf(current!) == ownerId && generationOf(current!) == generation:
-                    table.Rows[key] = finalize(row, generation, now);
+                    when exists && ownerOf(current!) == ownerId:
+                    table.Rows[key] = finalize(row, now, last);
                     Bump(kind, meshName);
-                    return ZLinkLocationWriteResult.Stored(generation, now);
+                    return ZLinkLocationWriteResult.Stored(last, now);
 
                 default:
                     return ZLinkLocationWriteResult.IgnoredStale;
@@ -473,28 +386,28 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         }
     }
 
-    private ZLinkLocationWriteResult Remove<TRow>(
+    private ZLinkLocationWriteStatus Remove<TRow>(
         RowTable<TRow> table,
         string key,
         ZLinkLocationOwnerToken owner,
         Func<TRow, string> ownerOf,
-        Func<TRow, long> generationOf,
-        ZLinkLocationKind kind,
+        ZLinkLocationChangeScopeKind kind,
         string? meshName)
         where TRow : class
     {
         lock (_gate)
         {
-            if (!table.Rows.TryGetValue(key, out var current)
-                || ownerOf(current) != owner.OwnerId
-                || generationOf(current) != owner.Generation)
+            table.Generations.TryGetValue(key, out var current);
+            if (!table.Rows.TryGetValue(key, out var row)
+                || ownerOf(row) != owner.OwnerId
+                || current != owner.Generation)
             {
-                return ZLinkLocationWriteResult.IgnoredStale;
+                return ZLinkLocationWriteStatus.IgnoredStale;
             }
 
             table.Rows.Remove(key);
             Bump(kind, meshName);
-            return ZLinkLocationWriteResult.Stored(owner.Generation, _time.GetUtcNow());
+            return ZLinkLocationWriteStatus.Stored;
         }
     }
 
@@ -502,7 +415,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         RowTable<TRow> table,
         string ownerId,
         Func<TRow, string> ownerOf,
-        ZLinkLocationKind kind,
+        ZLinkLocationChangeScopeKind kind,
         Func<TRow, string?> meshOf)
         where TRow : class
     {
@@ -520,41 +433,10 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         return removedKeys.Length;
     }
 
-    private ZLinkLocationPage<TRow> Page<TRow>(
-        RowTable<TRow> table,
-        Func<TRow, bool> matches,
-        ZLinkPageRequest page)
-        where TRow : class
-    {
-        var ordered = table.Rows
-            .Where(pair => matches(pair.Value))
-            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-            .Select(pair => pair.Value)
-            .ToArray();
-
-        var offset = 0;
-        if (page.ContinuationToken is { } token
-            && int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
-        {
-            offset = parsed;
-        }
-
-        // A page size of zero or less means the caller did not pick one; the
-        // framework layer substitutes the configured default before calling
-        // the store, so the raw store treats it as unbounded.
-        var size = page.PageSize > 0 ? page.PageSize : int.MaxValue;
-        var items = ordered.Skip(offset).Take(size).ToArray();
-        var nextOffset = offset + items.Length;
-        var next = nextOffset < ordered.Length
-            ? nextOffset.ToString(CultureInfo.InvariantCulture)
-            : null;
-        return new ZLinkLocationPage<TRow>(items, next);
-    }
-
     private bool IsOwnerLive(string ownerId, DateTimeOffset now) =>
         _leases.TryGetValue(ownerId, out var lease) && lease.LeaseExpiresAt > now;
 
-    private void Bump(ZLinkLocationKind kind, string? meshName)
+    private void Bump(ZLinkLocationChangeScopeKind kind, string? meshName)
     {
         BumpScope(new ZLinkLocationChangeStampScope(kind, meshName));
         if (meshName is not null)
@@ -574,7 +456,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     {
         public Dictionary<string, TRow> Rows { get; } = [];
 
-        public Dictionary<string, long> Generations { get; } = [];
+        public Dictionary<string, ulong> Generations { get; } = [];
     }
 
     private sealed class RoutingIdAllocationGroup(
@@ -587,6 +469,6 @@ internal sealed partial class ZLinkInMemoryLocationStore :
 
         public Dictionary<int, ZLinkRoutingIdSlotAllocation> Allocations { get; } = [];
 
-        public Dictionary<int, long> Generations { get; } = [];
+        public Dictionary<int, ulong> Generations { get; } = [];
     }
 }

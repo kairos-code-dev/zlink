@@ -3,12 +3,13 @@ using StackExchange.Redis;
 namespace Zlink.Framework.Locations.Redis;
 
 /// <summary>
-/// Reads Redis row hashes and rebuilds public location rows. Store-issued
-/// generation and UpdatedAt fields always replace the serialized JSON fields.
+/// Reads Redis row hashes and rebuilds public location rows. The store-clock
+/// UpdatedAt hash field always replaces the serialized JSON field; every
+/// other row field is the writer's serialized value (spec 41 §2).
 /// </summary>
 internal static class ZLinkRedisLocationRows
 {
-    internal static readonly RedisValue[] Fields = ["json", "gen", "updatedAtMs"];
+    internal static readonly RedisValue[] Fields = ["json", "updatedAtMs"];
 
     internal static async Task<List<TRow>> LoadAsync<TRow>(
         IDatabase database,
@@ -59,7 +60,6 @@ internal static class ZLinkRedisLocationRows
         var row = ZLinkRedisLocationRowJson.Deserialize<TRow>((string)fields[0]!);
         return kind.Finalize(
             row,
-            (long)fields[1],
-            DateTimeOffset.FromUnixTimeMilliseconds((long)fields[2]));
+            DateTimeOffset.FromUnixTimeMilliseconds((long)fields[1]));
     }
 }

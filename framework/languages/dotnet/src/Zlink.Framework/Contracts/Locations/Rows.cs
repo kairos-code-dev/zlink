@@ -1,59 +1,59 @@
 namespace Zlink.Framework.Contracts.Locations;
 
-public sealed record ZLinkPeerLocation(
-    ZLinkLocationAutoConnectType AutoConnectType,
+/// <summary>
+///     One MeshNode's published physical identity: endpoint plus the whole
+///     immutable ChannelName membership with its mutable weights. One
+///     descriptor per (MeshName, Rid); never one row per channel
+///     (06-location-store §4).
+/// </summary>
+public sealed record ZLinkMeshNodeDescriptor(
     string MeshName,
-    RoutingId? NodeRid,
-    ZLinkLocationRole Role,
+    RoutingId Rid,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
     string Endpoint,
-    uint Weight,
+    IReadOnlyDictionary<string, int> ChannelWeights,
     bool Draining,
-    long Value,
-    IReadOnlyDictionary<string, string>? Metadata,
-    IReadOnlyList<string>? Capabilities,
+    string SecurityIdentity,
     string OwnerId,
-    long Generation,
     DateTimeOffset UpdatedAt);
 
+public readonly record struct ZLinkMeshNodeDescriptorKey(
+    string MeshName,
+    RoutingId Rid);
+
+/// <summary>
+///     Current location of one logical Spot. The owner MeshNode's RID and
+///     lifecycle generation ride along so resolvers only trust the row while
+///     the same-generation descriptor and owner lease are both live.
+/// </summary>
 public sealed record ZLinkSpotLocation(
     string MeshName,
     RoutingId SpotRid,
-    string? SpotType,
-    RoutingId NodeRid,
+    ulong SpotGeneration,
+    RoutingId OwnerNodeRid,
+    ulong OwnerNodeGeneration,
     ZLinkSpotKind SpotKind,
-    string? RouteEndpoint,
+    string SpotType,
     string OwnerId,
-    long Generation,
     DateTimeOffset UpdatedAt);
 
 /// <summary>
-/// Current location of one actor. <see cref="LocationKind"/> identifies the
-/// kind of Spot containing the actor. A null <see cref="ActorRef"/> means
-/// that no routable actor reference is available.
+///     Current location of one actor: the distributed owner and membership
+///     epoch authority (server/23-spot-actor §1).
 /// </summary>
 public sealed record ZLinkActorLocation(
+    string MeshName,
     string ActorId,
-    string? ActorType,
-    ActorRef? ActorRef,
-    RoutingId NodeRid,
-    ZLinkSpotKind LocationKind,
-    string SpotMeshName,
-    RoutingId? SpotRid,
-    string OwnerId,
-    long Generation,
-    DateTimeOffset UpdatedAt);
-
-/// <summary>
-/// Framework internal route item. <see cref="Value"/> is a framework route
-/// payload and is not an application key-value storage surface.
-/// </summary>
-public sealed record ZLinkRouteLocation(
-    ZLinkRouteKind RouteKind,
-    string RouteKey,
+    string ActorType,
+    ActorRef ActorRef,
     RoutingId OwnerNodeRid,
+    ulong OwnerNodeGeneration,
+    RoutingId SpotRid,
+    ulong SpotGeneration,
+    ZLinkSpotKind SpotKind,
+    ulong MembershipEpoch,
     string OwnerId,
-    long Generation,
-    ReadOnlyMemory<byte> Value,
     DateTimeOffset UpdatedAt);
 
 /// <summary>

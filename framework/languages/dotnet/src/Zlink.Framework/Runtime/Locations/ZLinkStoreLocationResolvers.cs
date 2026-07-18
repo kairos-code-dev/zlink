@@ -9,56 +9,52 @@ namespace Zlink.Framework.Runtime.Locations;
 /// live on <see cref="ZLinkLocationAddressResolvers"/>.
 /// </summary>
 internal sealed class ZLinkStoreLocationResolvers :
-    IZLinkPeerLocationResolver
+    IZLinkMeshNodeLocationResolver
 {
-    private readonly IZLinkPeerLocationStore _peerStore;
+    private readonly IZLinkMeshNodeLocationStore _meshNodeStore;
     private readonly IZLinkSpotLocationStore _spotStore;
     private readonly IZLinkActorLocationStore _actorStore;
-    private readonly IZLinkRouteLocationStore _routeStore;
     private readonly ZLinkLocationEventEmitter _events;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
     private readonly ZLinkLocationStoreHealth? _health;
-    private readonly int _listPageSize;
 
     internal ZLinkStoreLocationResolvers(
-        IZLinkPeerLocationStore peerStore,
+        IZLinkMeshNodeLocationStore meshNodeStore,
         IZLinkSpotLocationStore spotStore,
         IZLinkActorLocationStore actorStore,
-        IZLinkRouteLocationStore routeStore,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed,
         ZLinkLocationEventEmitter? events = null,
         ZLinkLocationStoreHealth? health = null,
         ZLinkLocationOptions? options = null)
     {
-        _peerStore = peerStore;
+        _meshNodeStore = meshNodeStore;
         _spotStore = spotStore;
         _actorStore = actorStore;
-        _routeStore = routeStore;
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _observed = observed;
         _health = health;
-        _listPageSize = (options ?? new ZLinkLocationOptions()).ListPageSize;
         _liveRows = new ZLinkLiveLocationRows(leaseTracker);
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListLivePeersAsync(
-        ZLinkPeerLocationFilter filter,
+    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
         var rows = await ZLinkLocationStoreRead.ExecuteAsync(
             _health,
-            "peer-resolver-read",
+            "mesh-node-resolver-read",
             cancellationToken,
-            storeToken => _peerStore.ListPeersAsync(filter, storeToken)).ConfigureAwait(false);
+            storeToken => _meshNodeStore.ListMeshNodesAsync(meshName, storeToken))
+            .ConfigureAwait(false);
 
-        // The shared acceptance policy rejects lagging generations and
-        // values outside the closed auto-connect and role sets.
+        // The shared acceptance policy rejects lagging lifecycle generation
+        // and descriptor revision views.
         return await _liveRows.FilterAsync(
                 rows,
                 static row => row.OwnerId,
-                _observed.AcceptPeer,
+                _observed.AcceptDescriptor,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -82,36 +78,6 @@ internal sealed class ZLinkStoreLocationResolvers :
         return row;
     }
 
-    internal async ValueTask<IReadOnlyList<ZLinkSpotLocation>> ListLiveSpotRowsAsync(
-        ZLinkSpotLocationFilter filter,
-        CancellationToken cancellationToken = default)
-    {
-        var accepted = new List<ZLinkSpotLocation>();
-        string? continuation = null;
-        do
-        {
-            var page = await ZLinkLocationStoreRead.ExecuteAsync(
-                    _health,
-                    "spot-resolver-list",
-                    cancellationToken,
-                    storeToken => _spotStore.ListSpotsAsync(
-                        filter,
-                        new ZLinkPageRequest(_listPageSize, continuation),
-                        storeToken))
-                .ConfigureAwait(false);
-            var live = await _liveRows.FilterAsync(
-                    page.Items,
-                    static row => row.OwnerId,
-                    row => _observed.AcceptSpot(row),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            accepted.AddRange(live);
-            continuation = page.ContinuationToken;
-        } while (continuation is not null);
-
-        return accepted;
-    }
-
     internal async ValueTask<ZLinkActorLocation?> ResolveActorRowAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default)
@@ -121,37 +87,14 @@ internal sealed class ZLinkStoreLocationResolvers :
             static (store, key, ct) => store.ResolveActorAsync(key, ct),
             _actorStore,
             static row => row.OwnerId,
-            row => _observed.AcceptActor(row),
+            // Reference generation 0 marks a claimed-but-unpublished actor:
+            // the claim precedes activation, so such a row is never a
+            // resolvable reference (40-location-runtime §6).
+            row => row.ActorRef.Generation > 0 && _observed.AcceptActor(row),
             cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
             await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
-            return null;
-        }
-
-        if (row.ActorRef is null)
-        {
-            await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
-            return null;
-        }
-
-        return row;
-    }
-
-    internal async ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default)
-    {
-        var row = await ResolveAsync(
-            key,
-            static (store, key, ct) => store.ResolveRouteAsync(key, ct),
-            _routeStore,
-            static row => row.OwnerId,
-            row => _observed.AcceptRoute(row),
-            cancellationToken).ConfigureAwait(false);
-        if (row is null)
-        {
-            await _events.RouteResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
         }
 
         return row;

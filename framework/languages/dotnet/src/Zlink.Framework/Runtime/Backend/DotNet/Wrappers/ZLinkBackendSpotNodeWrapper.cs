@@ -15,6 +15,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly ZLinkMeshDispatchPump _pump;
     private readonly ConcurrentDictionary<string, ulong> _peerIntents =
         new(StringComparer.Ordinal);
+    private readonly object _forwardGate = new();
+    private readonly Dictionary<ZLinkBackendActorRef, List<Message>> _forwardBuffers = new();
     private readonly object _lifecycleGate = new();
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
@@ -71,6 +73,28 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
             _bound = true;
             _node.SetBind(endpoint);
         }
+    }
+
+    // Startup channel sequencing (spec 21-mesh-node §3): AddChannel/SetChannelWeight
+    // are applied before Start. SetChannelWeight also backs the live weight path
+    // (spec 21 §4); a positive weight is a runtime descriptor-revision bump.
+    public void AddChannel(string channelName)
+    {
+        _node.AddChannel(channelName);
+    }
+
+    public void SetChannelWeight(string channelName, uint weight)
+    {
+        _node.SetChannelWeight(channelName, weight);
+    }
+
+    // Explicit host-startup Start (spec 21 §3): the runtime calls this after
+    // routing id, bind and channels are configured, so the node is not started
+    // lazily on first spot use. Idempotent; EnsureStarted stays as a defensive
+    // fallback for paths that reach a spot before explicit startup.
+    public void Start()
+    {
+        EnsureStarted();
     }
 
     public void ApplyRoleConfig(
@@ -319,9 +343,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
             return await completion.Task.ConfigureAwait(false);
     }
 
-    // Straggler bound-session relay primitives (ReplyActorNoBind / forward / bind
-    // remote) have no direct MeshNode surface; preserved as best-effort no-ops so
-    // the actor bound-session plane compiles. See S8 bound-session follow-up.
+    // Straggler bound-session reply with no active binding. Spec 31 §5: once a
+    // session closes, a late Actor reply is not delivered to a new session or
+    // binding, and the 10.0.0 bound-session surface (spec 31 §6) provides only a
+    // one-way push to the *current* binding plus close — there is no MeshNode
+    // primitive that replies to an arbitrary (sourceSessionRid, requestId). In
+    // 10.0.0 request replies flow through MeshOperationId completion correlation,
+    // not a no-bind reply channel, so a no-bind reply is intentionally dropped.
+    // Documented deviation, not a stub gap.
     public void ReplyActorNoBind(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
@@ -333,6 +362,16 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         ZLinkMessageParts.DisposeAll(parts);
     }
 
+    // Forwards a straggler bound-session frame to the actor's currently bound
+    // STREAM session via IMeshNode.SendBoundSession (spec 31 §6 one-way push). The
+    // 9.x fine-grained (sourceNodeRid, sourceSessionRid) SNDMORE targeting has no
+    // MeshNode equivalent — the target is the actor's current binding, resolved by
+    // Core, not an arbitrary source session. Parts marked hasMore are buffered per
+    // actor and flushed as one multipart SendBoundSession when the terminal part
+    // (hasMore == false) arrives, so header+body framing is preserved. On a failed
+    // flush the buffered prefix is retained so the caller's retry re-submits the
+    // same multipart message without duplicating parts. Forwarding for a given
+    // actor is serial (the straggler forwarder submits header then body in order).
     public bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
@@ -341,10 +380,52 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         bool hasMore,
         SendFlags flags)
     {
-        return _node.SendBoundSession(actor.ToNative(), new[] { message }, flags)
-            == SubmitResult.Ok;
+        if (hasMore)
+        {
+            lock (_forwardGate)
+            {
+                if (!_forwardBuffers.TryGetValue(actor, out var pending))
+                {
+                    pending = new List<Message>();
+                    _forwardBuffers[actor] = pending;
+                }
+
+                pending.Add(Message.From(message));
+            }
+
+            return true;
+        }
+
+        List<Message>? buffered;
+        lock (_forwardGate)
+            _forwardBuffers.Remove(actor, out buffered);
+
+        var terminal = Message.From(message);
+        var parts = new List<Message>((buffered?.Count ?? 0) + 1);
+        if (buffered is not null) parts.AddRange(buffered);
+        parts.Add(terminal);
+
+        // SendBoundSession clones the parts (the caller keeps ownership), so this
+        // wrapper disposes every clone it owns on success.
+        if (_node.SendBoundSession(actor.ToNative(), parts, flags) == SubmitResult.Ok)
+        {
+            foreach (var part in parts) part.Dispose();
+            return true;
+        }
+
+        terminal.Dispose();
+        if (buffered is not null)
+            lock (_forwardGate)
+                _forwardBuffers[actor] = buffered;
+        return false;
     }
 
+    // 10.0.0 binds a STREAM session to an actor through the owning STREAM node's
+    // IStreamSessionService.BindActor (see ZLinkBackendStreamSocketWrapper); the
+    // MeshNode/actor plane exposes no bind-remote-session primitive. The framework
+    // records the remote binding via ZLinkActorBoundSessionCoordinator.BindActorSession
+    // (the caller invokes it immediately after this), so this mesh-plane hook has
+    // no MeshNode action. Documented deviation, not a stub gap.
     public void BindRemoteActorBoundSession(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
@@ -361,12 +442,82 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         _ = _node.CloseBoundSession(actor.ToNative(), 0, timeout);
     }
 
+    // Native actor-transfer fence wiring: the framework-owned transfer records map
+    // onto the bindings IMeshNode ActorTransfer API. The fence token is opaque and
+    // round-trips through commit/activate/abort. The distributed authority that
+    // decides when to prepare/commit/activate/abort (participant-set CAS, lease,
+    // crash recovery) is S8-04A and lives outside this seam.
+    public ZLinkBackendActorTransferToken PrepareActorTransfer(
+        ZLinkBackendActorTransferPrepare prepare,
+        out ZLinkBackendActorTransferPrepareResult result,
+        TimeSpan timeout)
+    {
+        var nativePrepare = new ActorTransferPrepare(
+            (ActorTransferRole)prepare.Role,
+            new ActorTransferId(prepare.TransferId.High, prepare.TransferId.Low),
+            prepare.Actor.ToNative(),
+            prepare.ExpectedMembershipEpoch,
+            prepare.PeerNodeRid,
+            prepare.FinalSequence,
+            prepare.ReserveMessageCount,
+            prepare.ReserveByteCount);
+        var token = _node.PrepareActorTransfer(nativePrepare, out var nativeResult, timeout);
+        result = new ZLinkBackendActorTransferPrepareResult(
+            (ZLinkBackendActorTransferRole)nativeResult.Role,
+            new ZLinkBackendActorTransferId(
+                nativeResult.TransferId.High, nativeResult.TransferId.Low),
+            nativeResult.Actor.ToBackend(),
+            nativeResult.FinalSequence,
+            nativeResult.ReserveMessageCount,
+            nativeResult.ReserveByteCount);
+        return new ZLinkBackendActorTransferToken(token);
+    }
+
+    public void CommitActorTransfer(
+        ZLinkBackendActorTransferToken token, ulong newMembershipEpoch)
+    {
+        _node.CommitActorTransfer(token.Native, newMembershipEpoch);
+    }
+
+    public void ActivateActorTransfer(ZLinkBackendActorTransferToken token)
+    {
+        _node.ActivateActorTransfer(token.Native);
+    }
+
+    public void AbortActorTransfer(ZLinkBackendActorTransferToken token)
+    {
+        _node.AbortActorTransfer(token.Native);
+    }
+
+    public void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler)
+    {
+        _pump.SetTransferControlHandler(control => handler(
+            new ZLinkBackendActorTransferControl(
+                (ZLinkBackendActorTransferPhase)control.Phase,
+                (ZLinkBackendActorTransferRole)control.Role,
+                new ZLinkBackendActorTransferId(
+                    control.TransferId.High, control.TransferId.Low),
+                control.Actor.ToBackend(),
+                control.MembershipEpoch,
+                control.FinalSequence,
+                control.ResultCode,
+                control.FailureErrno)));
+    }
+
     public async ValueTask DisposeAsync()
     {
         lock (_lifecycleGate)
         {
             if (_disposed) return;
             _disposed = true;
+        }
+
+        lock (_forwardGate)
+        {
+            foreach (var pending in _forwardBuffers.Values)
+                foreach (var part in pending)
+                    part.Dispose();
+            _forwardBuffers.Clear();
         }
 
         await _pump.DisposeAsync().ConfigureAwait(false);

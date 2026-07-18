@@ -11,6 +11,16 @@ internal sealed class ZLinkStreamRuntimeManager(
 
         var streamAdapter = backendAdapterFactory.CreateStreamAdapter();
         var monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
+
+        // Actor dispatch binds STREAM sessions on the framework's single MeshNode
+        // (spec 31 §2). Until EnableActorDispatch(meshName) fixes the per-node
+        // MeshName selection (gap §12.28), the sole spot node is that MeshNode;
+        // when there is not exactly one, no shared node is threaded and the stream
+        // adapter mints a standalone node.
+        var actorDispatchNode = state.SpotNodes.Count == 1
+            ? state.SpotNodes.Values.Single().Node
+            : null;
+
         foreach (var streamNodeRegistration in registration.StreamNodes.Values)
         {
             IZLinkBackendStreamSocket? socket = null;
@@ -18,7 +28,7 @@ internal sealed class ZLinkStreamRuntimeManager(
             ZLinkStreamNodeRuntime? runtime = null;
             try
             {
-                socket = streamAdapter.CreateStreamSocket(state.Context);
+                socket = streamAdapter.CreateStreamSocket(state.Context, actorDispatchNode);
                 if (streamNodeRegistration.TlsServer is { } tlsServer)
                     socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
 

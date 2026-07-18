@@ -20,6 +20,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ConcurrentDictionary<RoutingId, SpotDispatchState> _spots = new();
+    private Action<ActorTransferControl>? _transferControlHandler;
     private readonly object _lifecycleGate = new();
     private readonly SemaphoreSlim _signal = new(0);
     private CancellationTokenSource? _stop;
@@ -57,6 +58,13 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         Action<ZLinkBackendSpotDispatchInfo> handler)
     {
         RegisterSpot(spotRid).DispatchHandler = handler;
+        EnsureStarted();
+    }
+
+    // Registers the node-level transfer-control sink (S8-04A authority consumer).
+    public void SetTransferControlHandler(Action<ActorTransferControl> handler)
+    {
+        _transferControlHandler = handler;
         EnsureStarted();
     }
 
@@ -177,8 +185,11 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
                 RaiseSendReady(record);
                 return;
             case MeshRecordKind.TransferControl:
-                // Transfer-control drives the actor-transfer state machine
-                // (S8-04A follow-up). No framework consumer yet at this seam.
+                // Deliver the transfer-control phase to the registered framework
+                // sink so it drives the transfer state machine. The orchestrating
+                // authority (S8-04A) registers the consumer.
+                if (record.TransferControl is { } control)
+                    _transferControlHandler?.Invoke(control);
                 return;
         }
     }

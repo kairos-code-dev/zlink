@@ -10,15 +10,27 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
 {
     private readonly IStreamSocket _socket;
     private readonly IMeshNode _node;
+    private readonly ZLinkMeshCompletionTable? _completions;
+    private readonly bool _ownsNode;
     private readonly object _sendGate = new();
     private readonly object _sessionGate = new();
     private IStreamSessionService? _session;
     private bool _sessionStarted;
 
-    public ZLinkBackendStreamSocketWrapper(IStreamSocket socket, IMeshNode node)
+    // completions is the shared MeshNode's completion table (non-null when the
+    // node is the framework's single MeshNode); the dispatch pump resolves the
+    // StreamBind/StreamUnbind completions this wrapper awaits. ownsNode is false
+    // for the shared node so it is not disposed here.
+    public ZLinkBackendStreamSocketWrapper(
+        IStreamSocket socket,
+        IMeshNode node,
+        ZLinkMeshCompletionTable? completions,
+        bool ownsNode)
     {
         _socket = socket;
         _node = node;
+        _completions = completions;
+        _ownsNode = ownsNode;
     }
 
     internal IStreamSocket NativeSocket => _socket;
@@ -83,8 +95,9 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Session().BindActor(sessionRid, actor.ToNative(), out _, timeout);
-        return ValueTask.CompletedTask;
+        var submit = Session().BindActor(
+            sessionRid, actor.ToNative(), out var operationId, timeout);
+        return AwaitOperationAsync(submit, operationId, cancellationToken);
     }
 
     public ValueTask UnbindActorAsync(
@@ -98,12 +111,45 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         foreach (var binding in session.Bindings(sessionRid))
             if (string.Equals(binding.Actor.ActorId, actorId, StringComparison.Ordinal))
             {
-                session.UnbindActor(
-                    sessionRid, binding.Actor, binding.BindingGeneration, out _, timeout);
-                break;
+                var submit = session.UnbindActor(
+                    sessionRid, binding.Actor, binding.BindingGeneration,
+                    out var operationId, timeout);
+                return AwaitOperationAsync(submit, operationId, cancellationToken);
             }
 
         return ValueTask.CompletedTask;
+    }
+
+    // Awaits a MeshNode operation (StreamBind/StreamUnbind) to terminal
+    // completion via the shared node's completion table so bind/unbind are
+    // observably complete (spec 31 §7 — binding update runs on the infrastructure
+    // claim). When no shared completion table is available (standalone minted
+    // node) the submit result is the only signal and the operation is not awaited.
+    private async ValueTask AwaitOperationAsync(
+        SubmitResult submit,
+        MeshOperationId operationId,
+        CancellationToken cancellationToken)
+    {
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException((ZlinkSubmitException.ErrorCode)(int)submit);
+        if (_completions is null || operationId == default) return;
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _completions.Register(operationId, (record, parts) =>
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            var result = ZLinkMeshCompletionTable.MapResult(
+                record.TerminalResult, record.FailureErrno);
+            if (result == RequestResult.Ok)
+                completion.TrySetResult();
+            else
+                completion.TrySetException(
+                    new ZlinkRequestException((ZlinkRequestException.ErrorCode)(int)result));
+        });
+        await using (cancellationToken.Register(() => completion.TrySetCanceled())
+                         .ConfigureAwait(false))
+            await completion.Task.ConfigureAwait(false);
     }
 
     public bool SendBoundActor(
@@ -134,6 +180,10 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         if (session is not null)
             await session.DisposeAsync().ConfigureAwait(false);
         await _socket.DisposeAsync().ConfigureAwait(false);
-        await _node.DisposeAsync().ConfigureAwait(false);
+
+        // The shared framework MeshNode is owned by its spot node runtime; only a
+        // standalone minted node is disposed here.
+        if (_ownsNode)
+            await _node.DisposeAsync().ConfigureAwait(false);
     }
 }

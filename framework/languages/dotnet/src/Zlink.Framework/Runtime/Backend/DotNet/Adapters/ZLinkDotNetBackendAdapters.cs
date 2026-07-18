@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
+
 namespace Zlink.Framework.Runtime.Backend.DotNet.Adapters;
 
 internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAdapter
@@ -62,15 +64,27 @@ internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
 
 internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapter
 {
-    public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
+    public IZLinkBackendStreamSocket CreateStreamSocket(
+        IZLinkBackendContext context,
+        IZLinkBackendSpotNode? actorDispatchNode = null)
     {
         var nativeContext = (context as ZLinkBackendContextWrapper)?.NativeContext
                             ?? throw new InvalidOperationException(
                                 "Expected the .NET backend context wrapper.");
         var socket = nativeContext.CreateStreamSocket();
         socket.Options.Linger = TimeSpan.Zero;
+
+        // Actor-dispatch STREAM nodes reuse the framework's single MeshNode
+        // (spec 31 §2), whose dispatch pump drains the bind/unbind completions the
+        // stream wrapper awaits. Only when no MeshNode exists is a standalone node
+        // minted (no completion table, so bind/unbind stays best-effort there).
+        if (actorDispatchNode is ZLinkBackendSpotNodeWrapper shared)
+            return new ZLinkBackendStreamSocketWrapper(
+                socket, shared.NativeNode, shared.Completions, ownsNode: false);
+
         var node = nativeContext.CreateMeshNode();
-        return new ZLinkBackendStreamSocketWrapper(socket, node);
+        return new ZLinkBackendStreamSocketWrapper(
+            socket, node, completions: null, ownsNode: true);
     }
 }
 

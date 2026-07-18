@@ -43,13 +43,29 @@ internal sealed class ZLinkSpotNodeInitializer(
                 spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
                 locationLifecycle);
 
-            nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
-            if (spotNodeRegistration.Router is not null
-                && spotNodeRegistration.Router.BindEndpoint is { Length: > 0 } routerEndpoint)
-                node.SetRouterBind(routerEndpoint);
+            // MeshNode startup ordering (spec 21-mesh-node §3): set routing id
+            // (above), bind the ROUTER endpoint, add the configured channel
+            // membership with its weight, then Start — before any spot/entry-spot
+            // use. IMeshNode.Start requires a bind endpoint and at least one
+            // channel, so a node with a ROUTER endpoint is started explicitly here
+            // instead of lazily on first spot use.
+            var routerEndpoint = spotNodeRegistration.Router?.BindEndpoint;
+            var hasRouterBind = routerEndpoint is { Length: > 0 };
+            if (hasRouterBind)
+                node.SetRouterBind(routerEndpoint!);
             if (spotNodeRegistration.PubSub is not null
                 && spotNodeRegistration.PubSub.BindEndpoint is { Length: > 0 } pubEndpoint)
                 node.SetPubBind(pubEndpoint);
+
+            if (hasRouterBind)
+            {
+                var channelName = spotNodeRegistration.SpotMeshChannelName
+                                  ?? spotNodeRegistration.SpotNodeName;
+                node.AddChannel(channelName);
+                node.Start();
+            }
+
+            nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
 
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
             try

@@ -14,6 +14,20 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void SetPubBind(string endpoint);
 
+    // Adds a logical channel membership. Per spec 21-mesh-node §3 and the
+    // IMeshNode contract, routing id + bind + at least one channel must be
+    // configured before Start; call this before Start.
+    void AddChannel(string channelName);
+
+    // Sets a channel's load-balancing weight. Startup wiring calls this before
+    // Start; the live runtime path (IZLinkRouteMeshRuntimeOptions, S8-02A) reuses
+    // it after start (descriptor-revision bump, spec 21 §4).
+    void SetChannelWeight(string channelName, uint weight);
+
+    // Starts the node explicitly at the host-startup point after routing id,
+    // bind and channels are applied (spec 21 §3). Idempotent.
+    void Start();
+
     void ApplyRoleConfig(
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber);
@@ -111,6 +125,29 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken);
+
+    // Native actor-transfer fence primitives (RouteMesh 10.0.0). Prepare fences
+    // the actor and returns an opaque token; commit advances the membership epoch;
+    // activate promotes the target; abort releases the fence. The distributed
+    // authority that sequences these (S8-04A) is not implemented here.
+    ZLinkBackendActorTransferToken PrepareActorTransfer(
+        ZLinkBackendActorTransferPrepare prepare,
+        out ZLinkBackendActorTransferPrepareResult result,
+        TimeSpan timeout);
+
+    void CommitActorTransfer(
+        ZLinkBackendActorTransferToken token,
+        ulong newMembershipEpoch);
+
+    void ActivateActorTransfer(ZLinkBackendActorTransferToken token);
+
+    void AbortActorTransfer(ZLinkBackendActorTransferToken token);
+
+    // Registers the handler the node dispatch pump invokes for TransferControl
+    // records so transfer phases drive the framework transfer state machine. The
+    // orchestrating authority (S8-04A) registers the consumer; unset, the records
+    // are delivered to no consumer instead of being silently dropped.
+    void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler);
 }
 
 internal interface IZLinkBackendSpot : IAsyncDisposable

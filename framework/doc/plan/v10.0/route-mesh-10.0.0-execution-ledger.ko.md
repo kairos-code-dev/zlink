@@ -400,7 +400,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S8-CPP lane (C ABI+C++ bindings→framework) | bindings 리뷰 iter-1 수정 | 0 | 0 | 0 | 라이브러리+15samples green. **bindings 리뷰 iter-1: 두 리뷰어 NOT CLEAN**(finding-ledger.ko.md — I1 11: ownership/claim수명/multi-record/kind_data/metadata/transfer/routing_id/handler/RAII누수/절단, I2 3, I3 구v9헤더). coordinator 격리 수정 진행→iter-2 재검토 |
 | **S8-DN lane (.NET bindings→framework) [참조 lane]** | bindings 리뷰 iter-1 수정 | 0 | 0 | 0 | 라이브러리+18samples green. **bindings 리뷰 iter-1: 두 리뷰어 NOT CLEAN**(finding-ledger — DF1 RequiredExportNames 제거심볼→라이브러리 로드불가·DF2 join-reply 파손·DF3 routing-id·DF4 caller-init size/version·transfer·kind_data·I3 잔재). coordinator 격리 수정 진행→iter-2. 참조 표면(join-reply·typed record·transfer·metadata) 확정 예정 |
 | S8-JVM lane (Java/Kotlin bindings→framework) | 설계 완료 | 0 | 0 | 0 | 전환 범위 조사·설계 완료(`log/s8-jvm-lane/bindings-transition-design.ko.md`): Java FFI/Panama(JNI 아님) 9,500+줄, Kotlin은 Service 없음(samples-only). route_bridge·router-direct 삭제, stream_session 신설. dotnet framework 미러; bindings 병렬 |
-| S8-NODE lane (Node.js bindings→framework) | 설계 완료 | 0 | 0 | 0 | 전환 범위 조사·설계 완료(`log/s8-node-lane/bindings-transition-design.ko.md`): N-API addon(`addon_spot.cc` 2,548 등)+TS contracts/runtime, SONAME·package.json·addon 재빌드. dotnet framework 미러; bindings 병렬 |
+| S8-NODE lane (Node.js bindings→framework) | bindings 라이브러리 green | 0 | 0 | 0 | N-API addon(addon_mesh_service.cc 72 entry)+TS 재작성 통합·main tsc green(0)·addon node-gyp green. raw router_recv_part·router_spot drift 수정. 잔여: SpotNode 1·RouterSocket sendToSpot 잔재(리뷰 대상), samples 변환→스냅샷→bindings 리뷰 |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
 
 ## 4. S0 — Core 정식 spec 범위와 결정 확정

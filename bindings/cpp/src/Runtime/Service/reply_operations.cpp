@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include <zlink/Contracts/Service/spot.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
@@ -17,25 +17,14 @@ void submit_raw_reply (detail::spot_operation_state_t &state_)
 {
     if (!state_.raw.socket || !state_.raw.target.first_rid)
         throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    if (state_.kind == detail::spot_operation_kind_t::raw_router_reply_spot
-        && !state_.raw.target.second_rid)
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 
     zlink::detail::throw_if_reply_flags_unsupported (state_.flags);
     const zlink_routing_id_t first_rid =
       zlink::detail::routing_id_native_value (*state_.raw.target.first_rid);
-    const zlink_routing_id_t second_rid =
-      state_.raw.target.second_rid
-        ? zlink::detail::routing_id_native_value (*state_.raw.target.second_rid)
-        : zlink_routing_id_t {};
     const int rc = detail::submit_message_parts (
       state_.message.parts, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-          if (state_.kind == detail::spot_operation_kind_t::raw_reply) {
-              return zlink_router_reply_part (state_.raw.socket, &first_rid,
-                                              state_.spot.request_seq, part_out_, part_flag_);
-          }
-          return zlink_router_reply_spot_part (state_.raw.socket, &first_rid, &second_rid,
-                                               state_.spot.request_seq, part_out_, part_flag_);
+          return zlink_router_reply_part (state_.raw.socket, &first_rid,
+                                          state_.spot.request_seq, part_out_, part_flag_);
       });
     if (rc != 0) {
         throw last_error ();
@@ -104,34 +93,12 @@ void reply_submit_operation_t::submit () &&
         return;
     }
 
-    if (state.kind == detail::spot_operation_kind_t::raw_reply
-        || state.kind == detail::spot_operation_kind_t::raw_router_reply_spot) {
+    if (state.kind == detail::spot_operation_kind_t::raw_reply) {
         submit_raw_reply (state);
         return;
     }
 
-    if (!state.spot.spot)
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-    switch (state.kind) {
-        case detail::spot_operation_kind_t::reply_to_spot:
-            if (!state.spot.target.first_rid || !state.spot.target.second_rid)
-                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            state.spot.spot->reply_to_spot (*state.spot.target.first_rid,
-                                            *state.spot.target.second_rid,
-                                            state.spot.request_seq, state.message.parts,
-                                            state.flags);
-            return;
-        case detail::spot_operation_kind_t::reply_to_router:
-            if (!state.spot.target.first_rid)
-                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            state.spot.spot->reply_to_router (*state.spot.target.first_rid,
-                                              state.spot.request_seq, state.message.parts,
-                                              state.flags);
-            return;
-        default:
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 }
 
 } // namespace service

@@ -36,14 +36,6 @@ class router_socket_t : public routed_message_socket_t
 
     void get_routing_id (routing_id_t &routing_id_) const;
 
-    service::send_operation_t send_to_spot (const routing_id_t &dest_node_rid_,
-                                            const routing_id_t &dest_spot_rid_);
-    service::request_operation_t request_to_spot (const routing_id_t &dest_node_rid_,
-                                                  const routing_id_t &dest_spot_rid_);
-    service::reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
-                                              const routing_id_t &dest_spot_rid_,
-                                              uint64_t request_seq_);
-
     router_socket_options_t options () { return router_socket_options_t (*this); }
 
   private:

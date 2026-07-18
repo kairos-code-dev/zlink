@@ -35,17 +35,6 @@ class stream_socket_t : public routed_message_socket_t
 
     stream_socket_options_t options () { return stream_socket_options_t (*this); }
 
-    service::actor_bind_operation_t bind_actor (const routing_id_t &session_rid_,
-                                                const actor_ref_t &actor_);
-
-    service::actor_unbind_operation_t unbind_actor (const routing_id_t &session_rid_,
-                                                    const std::string &actor_id_);
-
-    service::send_operation_t send_bound_actor (const routing_id_t &session_rid_,
-                                                const std::string &actor_id_);
-
-    std::vector<actor_ref_t> bound_actors (const routing_id_t &session_rid_);
-
   private:
     using routed_message_socket_t::recv;
     using socket_t::connect;

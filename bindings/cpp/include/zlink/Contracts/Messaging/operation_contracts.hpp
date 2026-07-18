@@ -206,7 +206,7 @@ class send_operation_t : private detail::operation_builder_base_t<
     friend class zlink::pub_socket_t;
     friend class zlink::xpub_socket_t;
     friend class spot_t;
-    friend class spot_node_t;
+    friend class mesh_node_t;
     friend class zlink::received_t;
 };
 
@@ -262,7 +262,7 @@ class request_operation_t : private detail::operation_builder_base_t<
     using base_t::state;
 
     friend class spot_t;
-    friend class spot_node_t;
+    friend class mesh_node_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
 };
@@ -341,7 +341,7 @@ class reply_operation_t : private detail::operation_builder_base_t<
     using base_t::state;
 
     friend class spot_t;
-    friend class spot_node_t;
+    friend class mesh_node_t;
     friend class zlink::received_t;
     friend class zlink::router_socket_t;
 };

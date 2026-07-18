@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include <zlink/Contracts/Service/spot.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <Runtime/Messaging/received_access.hpp>
 #include <Runtime/Service/detail.hpp>
 #include <Runtime/Service/spot_operation_submit.hpp>
@@ -66,7 +66,6 @@ bool send_submit_operation_t::submit () &&
         case detail::spot_operation_kind_t::raw_send:
         case detail::spot_operation_kind_t::raw_routed_send:
         case detail::spot_operation_kind_t::raw_publish:
-        case detail::spot_operation_kind_t::raw_router_send_spot:
             return detail::submit_raw_send_state (state);
         case detail::spot_operation_kind_t::received_send: {
             if (!state.received.received
@@ -101,50 +100,11 @@ bool send_submit_operation_t::submit () &&
                 detail::restore_single_send_part_to_source (state, parts);
             return sent;
         }
-        case detail::spot_operation_kind_t::bound_session_send:
-        case detail::spot_operation_kind_t::actor_send:
-            return detail::submit_bound_session_send_state (state);
-        case detail::spot_operation_kind_t::stream_bound_actor_send:
-            return detail::submit_stream_bound_actor_send_state (state);
         default:
             break;
     }
 
-    if (!state.spot.spot)
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-    switch (state.kind) {
-        case detail::spot_operation_kind_t::publish:
-            if (detail::send_part_count (state) == 1u && state.flags == send_flags_t::dontwait
-                && state.message.discard_single_part_on_backpressure
-                && state.message.single_part.has_value () && !state.message.single_part_source) {
-                return state.spot.spot->publish_discard_on_backpressure (
-                  state.spot.topic, *state.message.single_part);
-            }
-            return detail::send_part_count (state) == 1u
-                     ? state.spot.spot->publish (state.spot.topic,
-                                                 detail::send_single_part (state), state.flags)
-                     : state.spot.spot->publish (state.spot.topic, state.message.parts,
-                                                 state.flags);
-        case detail::spot_operation_kind_t::send_channel:
-            return detail::send_part_count (state) == 1u
-                     ? state.spot.spot->send_channel (state.spot.channel_name,
-                                                      detail::send_single_part (state), state.flags)
-                     : state.spot.spot->send_channel (state.spot.channel_name,
-                                                      state.message.parts, state.flags);
-        case detail::spot_operation_kind_t::send_to_spot:
-            if (!state.spot.target.first_rid || !state.spot.target.second_rid)
-                throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-            return detail::send_part_count (state) == 1u
-                     ? state.spot.spot->send_to_spot (
-                         *state.spot.target.first_rid, *state.spot.target.second_rid,
-                         std::move (detail::send_single_part (state)), state.flags)
-                     : state.spot.spot->send_to_spot (
-                         *state.spot.target.first_rid, *state.spot.target.second_rid,
-                         state.message.parts, state.flags);
-        default:
-            throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-    }
+    throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
 }
 
 } // namespace service

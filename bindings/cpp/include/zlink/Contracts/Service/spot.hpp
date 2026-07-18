@@ -1,312 +1,158 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
-#include "spot_node.hpp"
-#include "../Sockets/message_socket_contracts.hpp"
-#include "../Sockets/pubsub_socket_contracts.hpp"
-#include "../Sockets/routed_socket_contracts.hpp"
-#include "../Sockets/stream_socket.hpp"
-#include "../Messaging/received.hpp"
-#include "operation_contracts.hpp"
+#include "../Core/routing_id.hpp"
+#include "../Messaging/message.hpp"
+#include "../Sockets/results.hpp"
+#include "actor_models.hpp"
+#include "dispatch.hpp"
+
 #include <chrono>
-#include <functional>
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 namespace zlink
 {
+namespace detail
+{
+struct spot_access_t;
+} // namespace detail
+
 namespace service
 {
 
-/// @brief A multi-role messaging endpoint that can publish, subscribe, route, request, reply, and host actors.
+class mesh_node_t;
+
+/// @brief How a subscription topic filter is matched.
+enum class subscription_kind_t : int
+{
+    exact = 1,
+    prefix = 2
+};
+
+/// @brief A snapshot of a spot's identity and pending-work counters.
+class spot_status_t
+{
+  public:
+    spot_status_t () :
+        spot_rid_ (zlink::detail::unchecked_empty_routing_id ()),
+        kind_ (spot_kind::invalid),
+        lifecycle_generation_ (0),
+        pending_application_messages_ (0),
+        pending_infrastructure_messages_ (0),
+        pending_bytes_ (0),
+        active_actor_count_ (0),
+        draining_ (0),
+        last_error_ (0),
+        last_changed_ms_ (0)
+    {
+    }
+
+    const routing_id_t &spot_rid () const noexcept { return spot_rid_; }
+    spot_kind kind () const noexcept { return kind_; }
+    uint64_t lifecycle_generation () const noexcept { return lifecycle_generation_; }
+    uint64_t pending_application_messages () const noexcept
+    {
+        return pending_application_messages_;
+    }
+    uint64_t pending_infrastructure_messages () const noexcept
+    {
+        return pending_infrastructure_messages_;
+    }
+    uint64_t pending_bytes () const noexcept { return pending_bytes_; }
+    uint32_t active_actor_count () const noexcept { return active_actor_count_; }
+    bool draining () const noexcept { return draining_ != 0; }
+    int32_t last_error () const noexcept { return last_error_; }
+    std::chrono::milliseconds last_changed () const noexcept
+    {
+        return std::chrono::milliseconds (static_cast<int64_t> (last_changed_ms_));
+    }
+
+  private:
+    routing_id_t spot_rid_;
+    spot_kind kind_;
+    uint64_t lifecycle_generation_;
+    uint64_t pending_application_messages_;
+    uint64_t pending_infrastructure_messages_;
+    uint64_t pending_bytes_;
+    uint32_t active_actor_count_;
+    uint32_t draining_;
+    int32_t last_error_;
+    uint64_t last_changed_ms_;
+    friend struct zlink::detail::spot_access_t;
+};
+
+/// @brief A logical destination on a mesh node: direct messaging, logical
+///        multicast (publish) and channel request/reply.
 class spot_t
 {
   public:
-    // Lifecycle and identity.
     ~spot_t ();
 
-    spot_t (spot_t &&other) noexcept;
-
-    spot_t &operator= (spot_t &&other) noexcept;
+    spot_t (spot_t &&other_) noexcept;
+    spot_t &operator= (spot_t &&other_) noexcept;
 
     spot_t (const spot_t &) = delete;
     spot_t &operator= (const spot_t &) = delete;
 
     bool valid () const noexcept;
 
-    void request_timeout (std::chrono::milliseconds timeout_);
-
-    std::chrono::milliseconds request_timeout () const;
-
-    // Message builders.
-    send_operation_t publish (const std::string &topic_);
-
-    send_operation_t send_channel (const std::string &channel_name_);
-
-    request_operation_t request_channel (const std::string &channel_name_);
-
-  private:
-    bool publish (const std::string &topic_,
-                  std::vector<message_t> &parts_,
-                  send_flags_t flags_ = send_flags_t::none);
-
-    bool
-    publish (const std::string &topic_, message_t &part_, send_flags_t flags_ = send_flags_t::none);
-
-    bool publish_discard_on_backpressure (const std::string &topic_, message_t &part_);
-
-    bool send_channel (const std::string &channel_name_,
-                       message_t &part_,
-                       send_flags_t flags_ = send_flags_t::none);
-
-    bool send_channel (const std::string &channel_name_,
-                       std::vector<message_t> &parts_,
-                       send_flags_t flags_ = send_flags_t::none);
-
-    bool send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       message_t message_,
-                       send_flags_t flags_ = send_flags_t::none);
-
-    bool send_to_spot (const routing_id_t &dest_node_rid_,
-                       const routing_id_t &dest_spot_rid_,
-                       std::vector<message_t> &parts_,
-                       send_flags_t flags_ = send_flags_t::none);
-
-  public:
-    send_operation_t send_to_spot (const routing_id_t &dest_node_rid_,
-                                   const routing_id_t &dest_spot_rid_);
-
-    request_operation_t request_to_spot (const routing_id_t &dest_node_rid_,
-                                         const routing_id_t &dest_spot_rid_);
-
-  private:
-    async_result_t<std::vector<message_t>>
-    request_to_spot (const routing_id_t &dest_node_rid_,
-                     const routing_id_t &dest_spot_rid_,
-                     message_t message_,
-                     std::chrono::milliseconds timeout_ = {});
-
-    async_result_t<std::vector<message_t>>
-    request_to_spot (const routing_id_t &dest_node_rid_,
-                     const routing_id_t &dest_spot_rid_,
-                     std::vector<message_t> &parts_,
-                     std::chrono::milliseconds timeout_ = {});
-
-    bool request_to_spot (const routing_id_t &dest_node_rid_,
-                          const routing_id_t &dest_spot_rid_,
-                          message_t message_,
-                          std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                          send_flags_t flags_ = send_flags_t::none,
-                          std::chrono::milliseconds timeout_ = {});
-
-    bool request_to_spot (const routing_id_t &dest_node_rid_,
-                          const routing_id_t &dest_spot_rid_,
-                          std::vector<message_t> &parts_,
-                          std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                          send_flags_t flags_ = send_flags_t::none,
-                          std::chrono::milliseconds timeout_ = {});
-
-  public:
-    request_operation_t request_to_router (const routing_id_t &peer_rid_);
-
-  private:
-    async_result_t<std::vector<message_t>> request_to_router (
-      const routing_id_t &peer_rid_, message_t message_, std::chrono::milliseconds timeout_ = {});
-
-    async_result_t<std::vector<message_t>>
-    request_to_router (const routing_id_t &peer_rid_,
-                       std::vector<message_t> &parts_,
-                       std::chrono::milliseconds timeout_ = {});
-
-    bool
-    request_to_router (const routing_id_t &peer_rid_,
-                       message_t message_,
-                       std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                       send_flags_t flags_ = send_flags_t::none,
-                       std::chrono::milliseconds timeout_ = {});
-
-    bool
-    request_to_router (const routing_id_t &peer_rid_,
-                       std::vector<message_t> &parts_,
-                       std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                       send_flags_t flags_ = send_flags_t::none,
-                       std::chrono::milliseconds timeout_ = {});
-
-    async_result_t<std::vector<message_t>> request_channel (
-      const std::string &channel_name_, message_t &part_, std::chrono::milliseconds timeout_ = {});
-
-    async_result_t<std::vector<message_t>>
-    request_channel (const std::string &channel_name_,
-                     std::vector<message_t> &parts_,
-                     std::chrono::milliseconds timeout_ = {});
-
-    bool request_channel (const std::string &channel_name_,
-                          message_t &part_,
-                          std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                          send_flags_t flags_ = send_flags_t::none,
-                          std::chrono::milliseconds timeout_ = {});
-
-    bool request_channel (const std::string &channel_name_,
-                          std::vector<message_t> &parts_,
-                          std::function<void (request_result_t, std::vector<message_t>)> callback_,
-                          send_flags_t flags_ = send_flags_t::none,
-                          std::chrono::milliseconds timeout_ = {});
-
-  public:
-    // Pub/sub receive surface.
-    int subscribe (topic_message_t &out_, recv_flags_t flags_ = recv_flags_t::none);
-
-    int subscribe_part (std::optional<routing_id_t> &source_rid_out_,
-                        std::string &topic_out_,
-                        message_t &part_out_,
-                        bool &has_more_out_,
-                        recv_flags_t flags_ = recv_flags_t::none);
-
-    int subscribe_part (std::string &topic_out_,
-                        message_t &part_out_,
-                        bool &has_more_out_,
-                        recv_flags_t flags_ = recv_flags_t::none);
-
-    int receive_subscription_event (subscription_event_t &out_,
-                                    recv_flags_t flags_ = recv_flags_t::none);
-
-    void set_subscription (const std::string &filter_);
-
-    void unset_subscription (const std::string &filter_);
-
-    void subscription_at (size_t index_,
-                          std::string &filter_out_,
-                          bool *is_pattern_out_ = nullptr) const;
-
-    subscription_filter_t subscription_at (size_t index_) const;
-
-    void set_send_ready_handler (std::function<void ()> handler_);
-
-  private:
-    static void validate_channel_name (const std::string &channel_name_);
-
-    [[nodiscard]] int
-    publish_impl (const char *topic_, std::vector<message_t> &parts_, send_flags_t flags_);
-
-    [[nodiscard]] int publish_impl (const char *topic_, message_t &part_, send_flags_t flags_);
-
-    [[nodiscard]] int send_channel_impl (const char *channel_name_,
-                                         std::vector<message_t> &parts_,
-                                         send_flags_t flags_);
-
-    [[nodiscard]] int send_channel_no_wait_result_impl (send_result_t &result_out_,
-                                                        const char *channel_name_,
-                                                        message_t &part_);
-
-    [[nodiscard]] int subscribe_impl (topic_message_t &message_out_,
-                                      recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int subscribe_part_impl (std::optional<routing_id_t> &source_rid_out_,
-                                           std::string &topic_out_,
-                                           message_t &part_out_,
-                                           bool &has_more_out_,
-                                           recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int subscribe_part_impl (std::optional<routing_id_t> *source_rid_out_,
-                                           std::string &topic_out_,
-                                           message_t &part_out_,
-                                           bool &has_more_out_,
-                                           recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int subscription_event_impl (routing_id_t &source_rid_out_,
-                                               bool &subscribed_out_,
-                                               std::string &topic_,
-                                               recv_flags_t flags_ = recv_flags_t::none);
-
-    [[nodiscard]] int try_publish_result_impl (send_result_t &result_out_,
-                                                   const char *topic_,
-                                                   std::vector<message_t> &parts_);
-
-    [[nodiscard]] int
-    try_publish_result_impl (send_result_t &result_out_, const char *topic_, message_t &part_);
-
-  private:
-    explicit spot_t (spot_node_t &node_);
-
-    struct native_handle_ctor_tag_t;
-    explicit spot_t (native_handle_ctor_tag_t) noexcept;
-
-    friend class spot_node_t;
-    friend class send_submit_operation_t;
-    friend class request_submit_operation_t;
-    friend class request_callback_submit_operation_t;
-    friend class reply_submit_operation_t;
-    friend struct zlink::detail::spot_access_t;
-
-  public:
-    // Routing and actor surface.
-    void set_routing_id (const routing_id_t &routing_id_);
-
-    void get_routing_id (routing_id_t &out_) const;
-
+    spot_status_t status () const;
     routing_id_t routing_id () const;
 
-  private:
-    void reply_to_spot (const routing_id_t &dest_node_rid_,
-                        const routing_id_t &dest_spot_rid_,
-                        uint64_t request_seq_,
-                        message_t message_,
-                        send_flags_t flags_ = send_flags_t::none);
-    void reply_to_spot (const routing_id_t &dest_node_rid_,
-                        const routing_id_t &dest_spot_rid_,
-                        uint64_t request_seq_,
-                        std::vector<message_t> &parts_,
-                        send_flags_t flags_ = send_flags_t::none);
+    // Channel messaging.
+    submit_result_t send_to_channel (const std::string &channel_name_,
+                                     std::vector<message_t> &parts_,
+                                     send_flags_t flags_ = send_flags_t::none);
+    submit_result_t request_to_channel (const std::string &channel_name_,
+                                        std::vector<message_t> &parts_,
+                                        operation_id_t &operation_id_out_,
+                                        send_flags_t flags_ = send_flags_t::none,
+                                        std::chrono::milliseconds timeout_ = {});
 
-  public:
-    reply_operation_t reply_to_spot (const routing_id_t &dest_node_rid_,
-                                     const routing_id_t &dest_spot_rid_,
-                                     uint64_t request_seq_);
+    // Direct spot-to-spot messaging.
+    submit_result_t send_to_spot (const routing_id_t &target_node_rid_,
+                                  const routing_id_t &target_spot_rid_,
+                                  uint64_t target_spot_generation_,
+                                  std::vector<message_t> &parts_,
+                                  send_flags_t flags_ = send_flags_t::none);
+    submit_result_t request_to_spot (const routing_id_t &target_node_rid_,
+                                     const routing_id_t &target_spot_rid_,
+                                     uint64_t target_spot_generation_,
+                                     std::vector<message_t> &parts_,
+                                     operation_id_t &operation_id_out_,
+                                     send_flags_t flags_ = send_flags_t::none,
+                                     std::chrono::milliseconds timeout_ = {});
 
-  private:
-    void reply_to_router (const routing_id_t &peer_rid_,
-                          uint64_t request_seq_,
-                          message_t message_,
-                          send_flags_t flags_ = send_flags_t::none);
-    void reply_to_router (const routing_id_t &peer_rid_,
-                          uint64_t request_seq_,
-                          std::vector<message_t> &parts_,
-                          send_flags_t flags_ = send_flags_t::none);
+    // Logical multicast (publish).
+    submit_result_t publish (const std::string &channel_name_,
+                             const std::string &topic_,
+                             std::vector<message_t> &parts_,
+                             send_flags_t flags_ = send_flags_t::none);
+    void set_nodrop (bool nodrop_);
 
-  public:
-    reply_operation_t reply_to_router (const routing_id_t &peer_rid_, uint64_t request_seq_);
-
-  private:
-    std::optional<received_t> recv_routed_optional (recv_flags_t flags_ = recv_flags_t::none);
-
-  public:
-    int recv_routed (received_t &out_, recv_flags_t flags_ = recv_flags_t::none);
-
-    void
-    set_dispatch_handler (std::function<void (spot_t &, const spot_dispatch_info_t &)> handler_);
-
-    void set_dispatch_handler (std::function<void (const spot_dispatch_info_t &)> handler_);
-
-    std::optional<spot_actor_lifecycle_event_t>
-    recv_actor_lifecycle (recv_flags_t flags_ = recv_flags_t::none);
-
-    std::optional<actor_join_request_t> recv_actor_join (recv_flags_t flags_ = recv_flags_t::none);
-
-    actor_join_reply_operation_t reply_actor_join (const actor_join_request_t &request_,
-                                                   int32_t join_result_code_);
-
-    std::vector<actor_ref_t> actors () const;
+    // Subscriptions.
+    void set_subscription (const std::string &channel_name_,
+                           const std::string &topic_filter_,
+                           subscription_kind_t kind_ = subscription_kind_t::exact);
+    void unset_subscription (const std::string &channel_name_,
+                             const std::string &topic_filter_,
+                             subscription_kind_t kind_ = subscription_kind_t::exact);
 
     void close ();
 
   private:
+    struct native_handle_ctor_tag_t;
+    explicit spot_t (native_handle_ctor_tag_t) noexcept;
+
+    friend class mesh_node_t;
+    friend struct zlink::detail::spot_access_t;
+
     struct impl;
     std::unique_ptr<impl> _impl;
 };
 
 } // namespace service
-
 } // namespace zlink

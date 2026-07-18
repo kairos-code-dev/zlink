@@ -56,7 +56,6 @@ inline int recv_envelope (void *socket_,
 
     if (use_router_recv_) {
         const zlink_routing_id_t *source_rid = nullptr;
-        const zlink_routing_id_t *source_spot_rid = nullptr;
         uint64_t request_seq = 0;
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         message_t first_msg;
@@ -66,15 +65,13 @@ inline int recv_envelope (void *socket_,
         }
 
         const int first_rc = zlink_router_recv_part (
-          socket_, &source_rid, &source_spot_rid, &request_seq, detail::native_handle (first_msg),
+          socket_, &source_rid, &request_seq, detail::native_handle (first_msg),
           &has_more, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
         if (first_rc != ZLINK_RECV_OK)
             return -1;
 
         if (source_rid && source_rid->size > 0)
             envelope_.source_rid = zlink::detail::native_routing_id (*source_rid);
-        if (source_spot_rid && source_spot_rid->size > 0)
-            envelope_.source_spot_rid = zlink::detail::native_routing_id (*source_spot_rid);
         if (request_seq != 0) {
             envelope_.has_request_seq = true;
             envelope_.request_seq = request_seq;
@@ -96,7 +93,7 @@ inline int recv_envelope (void *socket_,
 
             has_more = ZLINK_PART_FINAL;
             const int rc =
-              zlink_router_recv_part (socket_, &source_rid, &source_spot_rid, &request_seq,
+              zlink_router_recv_part (socket_, &source_rid, &request_seq,
                                       detail::native_handle (next_msg), &has_more,
                                       static_cast<zlink_recv_flags_t> (static_cast<int> (flags_)));
             if (rc != ZLINK_RECV_OK)

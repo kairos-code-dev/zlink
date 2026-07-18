@@ -1,616 +1,229 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+#include <zlink/Contracts/Service/spot.hpp>
 
-#include <Runtime/Service/spot_impl.hpp>
-#include <Runtime/Core/duration_conversion.hpp>
-#include <Runtime/Service/actor_model_access.hpp>
-#include <Runtime/Service/actor_detail.hpp>
-#include <Runtime/Messaging/received_access.hpp>
-#include <Runtime/Service/native_array_fetch.hpp>
-#include <Runtime/Service/spot_operation_submit.hpp>
-#include <Runtime/Service/spot_access.hpp>
+#include "actor_model_access.hpp"
+#include "detail.hpp"
+#include "spot_access.hpp"
+#include "spot_impl.hpp"
+#include "../Core/duration_conversion.hpp"
+#include "../Core/routing_id_access.hpp"
+#include "../Native/native_message_parts.hpp"
 
-#include <condition_variable>
-#include <map>
-#include <mutex>
+#include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink.h>
+
+#include <cstring>
 
 namespace zlink
 {
-
-service::send_operation_t received_t::send ()
-{
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::received_send;
-    state_ptr->received.received = this;
-    return service::send_operation_t (std::move (state_ptr));
-}
-
-service::reply_operation_t received_t::reply ()
-{
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::received_reply;
-    state_ptr->received.received = this;
-    return service::reply_operation_t (std::move (state_ptr));
-}
-
-namespace detail
-{
-
-void *spot_access_t::native_handle (service::spot_t &spot_) noexcept
-{
-    return spot_._impl ? spot_._impl->handle : nullptr;
-}
-
-const void *spot_access_t::native_handle (const service::spot_t &spot_) noexcept
-{
-    return spot_._impl ? spot_._impl->handle : nullptr;
-}
-
-service::spot_t spot_access_t::adopt_native_handle (void *handle_) noexcept
-{
-    service::spot_t spot{service::spot_t::native_handle_ctor_tag_t ()};
-    spot._impl->handle = handle_;
-    spot._impl->last_error = handle_ ? 0 : (errno != 0 ? errno : EFAULT);
-    return spot;
-}
-
-} // namespace detail
-
 namespace service
 {
 
 namespace
 {
 
-std::mutex &dispatch_handler_states_mutex ()
+zlink_mesh_operation_id_t make_op_id () noexcept
 {
-    static std::mutex mutex;
-    return mutex;
-}
-
-std::map<void *, std::weak_ptr<spot_dispatch_handler_state_t>> &dispatch_handler_states ()
-{
-    static std::map<void *, std::weak_ptr<spot_dispatch_handler_state_t>> states;
-    return states;
-}
-
-void register_dispatch_handler_state (
-  const std::shared_ptr<spot_dispatch_handler_state_t> &state)
-{
-    if (!state)
-        return;
-    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
-    dispatch_handler_states ()[state.get ()] = state;
-}
-
-std::shared_ptr<spot_dispatch_handler_state_t>
-lock_dispatch_handler_state (void *state_)
-{
-    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
-    const auto found = dispatch_handler_states ().find (state_);
-    if (found == dispatch_handler_states ().end ())
-        return {};
-    return found->second.lock ();
-}
-
-void unregister_dispatch_handler_state (void *state_)
-{
-    std::lock_guard<std::mutex> lock (dispatch_handler_states_mutex ());
-    dispatch_handler_states ().erase (state_);
-}
-
-struct dispatch_callback_scope_t
-{
-    explicit dispatch_callback_scope_t (
-      std::shared_ptr<spot_dispatch_handler_state_t> state_) :
-        state (std::move (state_))
-    {
-        if (!state)
-            return;
-
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->closed || !state->owner || !state->handler) {
-            state.reset ();
-            return;
-        }
-        owner = state->owner;
-        handler = state->handler;
-        ++state->in_flight;
-    }
-
-    ~dispatch_callback_scope_t ()
-    {
-        if (!state)
-            return;
-        std::lock_guard<std::mutex> lock (state->mutex);
-        if (state->in_flight > 0)
-            --state->in_flight;
-        if (state->closed && state->in_flight == 0)
-            state->cv.notify_all ();
-    }
-
-    explicit operator bool () const noexcept
-    {
-        return state && owner && handler;
-    }
-
-    std::shared_ptr<spot_dispatch_handler_state_t> state;
-    spot_t *owner = nullptr;
-    std::function<void (spot_t &, const spot_dispatch_info_t &)> handler;
-};
-
-template <typename SubmitPart>
-void submit_single_reply_message (message_t &message_, SubmitPart submit_part_)
-{
-    if (!message_.valid ())
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-    zlink_msg_t native;
-    detail::move_to_native_or_reject (message_, &native);
-
-    const submit_result_t rc = static_cast<submit_result_t> (submit_part_ (&native));
-    if (rc != submit_result_t::ok) {
-        (void) zlink_msg_close (&native);
-        throw submit_error_t (rc, zlink_errno ());
-    }
-}
-
-template <typename SubmitPart>
-void submit_reply_messages (std::vector<message_t> &parts_, SubmitPart submit_part_)
-{
-    if (parts_.empty ())
-        throw submit_error_t (submit_result_t::invalid_argument, EINVAL);
-
-    const int raw_rc = detail::submit_message_parts_close_on_failure (
-      parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_, bool) {
-          return submit_part_ (part_out_, part_flag_);
-      });
-    if (raw_rc == -1)
-        throw submit_error_t (submit_result_t::invalid_argument, zlink_errno ());
-
-    const submit_result_t rc = static_cast<submit_result_t> (raw_rc);
-    if (rc != submit_result_t::ok) {
-        throw submit_error_t (rc, zlink_errno ());
-    }
+    zlink_mesh_operation_id_t id;
+    std::memset (&id, 0, sizeof (id));
+    return id;
 }
 
 } // namespace
 
+} // namespace service
+
+namespace detail
+{
+void *spot_access_t::native_handle (service::spot_t &spot_) noexcept
+{
+    return spot_._impl ? spot_._impl->handle : nullptr;
+}
+const void *spot_access_t::native_handle (const service::spot_t &spot_) noexcept
+{
+    return spot_._impl ? spot_._impl->handle : nullptr;
+}
+service::spot_t spot_access_t::adopt_native_handle (void *handle_) noexcept
+{
+    service::spot_t spot ((service::spot_t::native_handle_ctor_tag_t ()));
+    spot._impl->handle = handle_;
+    return spot;
+}
+service::spot_status_t spot_access_t::status_from_native (const zlink_spot_status_t &native_)
+{
+    service::spot_status_t out;
+    out.spot_rid_ = native_routing_id (native_.spot_rid);
+    out.kind_ = static_cast<spot_kind> (native_.spot_kind);
+    out.lifecycle_generation_ = native_.lifecycle_generation;
+    out.pending_application_messages_ = native_.pending_application_messages;
+    out.pending_infrastructure_messages_ = native_.pending_infrastructure_messages;
+    out.pending_bytes_ = native_.pending_bytes;
+    out.active_actor_count_ = native_.active_actor_count;
+    out.draining_ = native_.draining;
+    out.last_error_ = native_.last_error;
+    out.last_changed_ms_ = native_.last_changed_ms;
+    return out;
+}
+} // namespace detail
+
+namespace service
+{
+
+spot_t::spot_t (native_handle_ctor_tag_t) noexcept : _impl (std::make_unique<impl> ()) {}
+
 spot_t::~spot_t ()
 {
-    try {
-        close ();
-    }
-    catch (...) {
-    }
+    if (_impl && _impl->handle)
+        (void) zlink_spot_destroy (&_impl->handle);
 }
 
-spot_t::spot_t (spot_t &&other) noexcept : _impl (std::move (other._impl))
-{
-    if (_impl && _impl->dispatch_state) {
-        std::lock_guard<std::mutex> lock (_impl->dispatch_state->mutex);
-        _impl->dispatch_state->owner = this;
-    }
-}
+spot_t::spot_t (spot_t &&other_) noexcept : _impl (std::move (other_._impl)) {}
 
-spot_t &spot_t::operator= (spot_t &&other) noexcept
+spot_t &spot_t::operator= (spot_t &&other_) noexcept
 {
-    if (this == &other)
-        return *this;
-
-    try {
-        close ();
-    }
-    catch (...) {
-    }
-    _impl = std::move (other._impl);
-    if (_impl && _impl->dispatch_state) {
-        std::lock_guard<std::mutex> lock (_impl->dispatch_state->mutex);
-        _impl->dispatch_state->owner = this;
+    if (this != &other_) {
+        if (_impl && _impl->handle)
+            (void) zlink_spot_destroy (&_impl->handle);
+        _impl = std::move (other_._impl);
     }
     return *this;
 }
 
-bool spot_t::valid () const noexcept
-{
-    return _impl && _impl->handle != nullptr;
-}
+bool spot_t::valid () const noexcept { return _impl && _impl->handle != nullptr; }
 
-void spot_t::request_timeout (std::chrono::milliseconds timeout_)
+spot_status_t spot_t::status () const
 {
-    const int value = zlink::detail::native_option_ms (timeout_);
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (zlink_set_spot_option (
-      _impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS, &value, sizeof (value))));
-    _impl->default_request_timeout = timeout_;
-}
-
-std::chrono::milliseconds spot_t::request_timeout () const
-{
-    int value = 0;
-    size_t size = sizeof (value);
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_get_spot_option (_impl->handle, ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS, &value, &size)));
-    return std::chrono::milliseconds (value);
-}
-
-send_operation_t spot_t::publish (const std::string &topic_)
-{
-    zlink::detail::validate_no_embedded_null (topic_, "topic");
-    auto state_ptr = detail::acquire_state ();
-    state_ptr->spot.spot = this;
-    state_ptr->kind = detail::spot_operation_kind_t::publish;
-    state_ptr->spot.topic = topic_;
-    return send_operation_t (std::move (state_ptr));
-}
-
-send_operation_t spot_t::send_channel (const std::string &channel_name_)
-{
-    validate_channel_name (channel_name_);
-    auto state_ptr = detail::acquire_state ();
-    state_ptr->spot.spot = this;
-    state_ptr->kind = detail::spot_operation_kind_t::send_channel;
-    state_ptr->spot.channel_name = channel_name_;
-    return send_operation_t (std::move (state_ptr));
-}
-
-request_operation_t spot_t::request_channel (const std::string &channel_name_)
-{
-    validate_channel_name (channel_name_);
-    auto state_ptr = detail::acquire_state ();
-    state_ptr->spot.spot = this;
-    state_ptr->kind = detail::spot_operation_kind_t::request_channel;
-    state_ptr->spot.channel_name = channel_name_;
-    return request_operation_t (std::move (state_ptr));
-}
-
-spot_t::spot_t (spot_node_t &node_) : _impl (std::make_unique<impl> ())
-{
-    _impl->handle = zlink_spot_new (zlink::detail::native_handle (node_));
-    if (!_impl->handle)
-        _impl->last_error = errno != 0 ? errno : EFAULT;
-}
-
-spot_t::spot_t (native_handle_ctor_tag_t) noexcept : _impl (std::make_unique<impl> ())
-{
-}
-
-void spot_t::set_routing_id (const routing_id_t &routing_id_)
-{
-    detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_set_routing_id (_impl->handle, routing_id_.data (), routing_id_.size ())));
-}
-
-void spot_t::get_routing_id (routing_id_t &out_) const
-{
-    zlink_routing_id_t native;
+    zlink_spot_status_t native;
     std::memset (&native, 0, sizeof (native));
-    detail::throw_if_failed<config_error_t> (
-      static_cast<config_result_t> (zlink_get_routing_id (_impl->handle, &native)));
-    out_ = zlink::detail::native_routing_id (native);
+    native.struct_size = sizeof (native);
+    native.version = ZLINK_SPOT_ABI_VERSION;
+    zlink::detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_spot_status (_impl->handle, &native)));
+    return zlink::detail::spot_access_t::status_from_native (native);
 }
 
-routing_id_t spot_t::routing_id () const
+routing_id_t spot_t::routing_id () const { return status ().spot_rid (); }
+
+submit_result_t spot_t::send_to_channel (const std::string &channel_name_,
+                                         std::vector<message_t> &parts_,
+                                         send_flags_t flags_)
 {
-    routing_id_t value = zlink::detail::unchecked_empty_routing_id ();
-    get_routing_id (value);
-    return value;
-}
-
-void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
-                            const routing_id_t &dest_spot_rid_,
-                            uint64_t request_seq_,
-                            message_t message_,
-                            send_flags_t flags_)
-{
-    zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    const zlink_routing_id_t dest_node_rid =
-      zlink::detail::routing_id_native_value (dest_node_rid_);
-    const zlink_routing_id_t dest_spot_rid =
-      zlink::detail::routing_id_native_value (dest_spot_rid_);
-    submit_single_reply_message (message_, [&] (zlink_msg_t *part_out_) {
-        return zlink_spot_reply_spot_part (_impl->handle, &dest_node_rid, &dest_spot_rid,
-                                           request_seq_, part_out_, ZLINK_PART_FINAL);
-    });
-}
-
-void spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
-                            const routing_id_t &dest_spot_rid_,
-                            uint64_t request_seq_,
-                            std::vector<message_t> &parts_,
-                            send_flags_t flags_)
-{
-    zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    const zlink_routing_id_t dest_node_rid =
-      zlink::detail::routing_id_native_value (dest_node_rid_);
-    const zlink_routing_id_t dest_spot_rid =
-      zlink::detail::routing_id_native_value (dest_spot_rid_);
-    submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-        return zlink_spot_reply_spot_part (
-          _impl->handle, &dest_node_rid, &dest_spot_rid, request_seq_, part_out_, part_flag_);
-    });
-}
-
-reply_operation_t spot_t::reply_to_spot (const routing_id_t &dest_node_rid_,
-                                         const routing_id_t &dest_spot_rid_,
-                                         uint64_t request_seq_)
-{
-    auto state_ptr = detail::acquire_state ();
-    state_ptr->spot.spot = this;
-    state_ptr->kind = detail::spot_operation_kind_t::reply_to_spot;
-    state_ptr->spot.target.first_rid = dest_node_rid_;
-    state_ptr->spot.target.second_rid = dest_spot_rid_;
-    state_ptr->spot.request_seq = request_seq_;
-    return reply_operation_t (std::move (state_ptr));
-}
-
-void spot_t::reply_to_router (const routing_id_t &peer_rid_,
-                              uint64_t request_seq_,
-                              message_t message_,
-                              send_flags_t flags_)
-{
-    zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    submit_single_reply_message (message_, [&] (zlink_msg_t *part_out_) {
-        return zlink_spot_reply_router_part (_impl->handle,
-                                             zlink::detail::routing_id_native (peer_rid_),
-                                             request_seq_, part_out_, ZLINK_PART_FINAL);
-    });
-}
-
-void spot_t::reply_to_router (const routing_id_t &peer_rid_,
-                              uint64_t request_seq_,
-                              std::vector<message_t> &parts_,
-                              send_flags_t flags_)
-{
-    zlink::detail::throw_if_reply_flags_unsupported (flags_);
-    submit_reply_messages (parts_, [&] (zlink_msg_t *part_out_, zlink_part_flag_t part_flag_) {
-        return zlink_spot_reply_router_part (_impl->handle,
-                                             zlink::detail::routing_id_native (peer_rid_),
-                                             request_seq_, part_out_, part_flag_);
-    });
-}
-
-reply_operation_t spot_t::reply_to_router (const routing_id_t &peer_rid_, uint64_t request_seq_)
-{
-    auto state_ptr = detail::acquire_state ();
-    state_ptr->spot.spot = this;
-    state_ptr->kind = detail::spot_operation_kind_t::reply_to_router;
-    state_ptr->spot.target.first_rid = peer_rid_;
-    state_ptr->spot.request_seq = request_seq_;
-    return reply_operation_t (std::move (state_ptr));
-}
-
-std::optional<received_t> spot_t::recv_routed_optional (recv_flags_t flags_)
-{
-    const zlink_routing_id_t *source_node_rid = nullptr;
-    const zlink_routing_id_t *source_spot_rid = nullptr;
-    uint64_t request_seq = 0;
-    std::vector<zlink_msg_t> parts_native;
-    for (;;) {
-        parts_native.emplace_back ();
-        zlink_msg_t &native_part = parts_native.back ();
-        if (zlink_msg_init (&native_part) != 0) {
-            parts_native.pop_back ();
-            detail::close_native_parts (parts_native);
-            throw last_error ();
-        }
-
-        const zlink_routing_id_t *part_source_node_rid = nullptr;
-        const zlink_routing_id_t *part_source_spot_rid = nullptr;
-        uint64_t part_request_seq = 0;
-        zlink_part_flag_t has_more = ZLINK_PART_FINAL;
-        const recv_result_t rc = static_cast<recv_result_t> (zlink_spot_recv_part (
-          _impl->handle, &part_source_node_rid, &part_source_spot_rid, &part_request_seq,
-          &native_part, &has_more, static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
-        if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait
-            && parts_native.size () == 1u) {
-            (void) zlink_msg_close (&native_part);
-            parts_native.pop_back ();
-            return std::nullopt;
-        }
-        if (rc != recv_result_t::ok) {
-            (void) zlink_msg_close (&native_part);
-            parts_native.pop_back ();
-            detail::close_native_parts (parts_native);
-            throw recv_error_t (rc, zlink_errno ());
-        }
-
-        if (parts_native.size () == 1u) {
-            source_node_rid = part_source_node_rid;
-            source_spot_rid = part_source_spot_rid;
-            request_seq = part_request_seq;
-        }
-        if (!has_more)
-            break;
-    }
-
-    std::vector<message_t> parts;
-    if (detail::assign_parts_from_native (parts_native, parts) != 0)
-        throw last_error ();
-
-    const bool has_node_rid = source_node_rid && source_node_rid->size > 0;
-    const bool has_spot_rid = source_spot_rid && source_spot_rid->size > 0;
-
-    received_t received = zlink::detail::received_access_t::make (
-      has_node_rid
-        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_node_rid))
-        : std::nullopt,
-      has_spot_rid
-        ? std::optional<routing_id_t> (zlink::detail::native_routing_id (*source_spot_rid))
-        : std::nullopt,
-      request_seq != 0u ? std::optional<uint64_t> (request_seq) : std::nullopt, std::move (parts));
-
-    // send()/reply() reconstruct the spot-spot native call lazily from the
-    // stored routing ids and request sequence, so no per-receive closures are
-    // built here. The spot send/reply path requires both routing ids.
-    if (has_node_rid && has_spot_rid)
-        zlink::detail::received_access_t::set_spot_spot_send_context (received, _impl->handle);
-
-    return std::optional<received_t> (std::move (received));
-}
-
-int spot_t::recv_routed (received_t &out_, recv_flags_t flags_)
-{
-    try {
-        std::optional<received_t> received = recv_routed_optional (flags_);
-        if (!received.has_value ())
-            return static_cast<int> (recv_result_t::no_data);
-        out_ = std::move (*received);
-        return static_cast<int> (recv_result_t::ok);
-    }
-    catch (const recv_error_t &err) {
-        return static_cast<int> (err.result ());
-    }
-    catch (const binding_error_t &err) {
-        errno = err.internal_errno () != 0 ? err.internal_errno () : EFAULT;
-        return -1;
-    }
-    catch (...) {
-        errno = EFAULT;
-        return -1;
-    }
-}
-
-void spot_t::set_dispatch_handler (
-  std::function<void (spot_t &, const spot_dispatch_info_t &)> handler_)
-{
-    _impl->dispatch_state = std::make_shared<spot_dispatch_handler_state_t> ();
-    _impl->dispatch_state->owner = this;
-    _impl->dispatch_state->handler = std::move (handler_);
-    register_dispatch_handler_state (_impl->dispatch_state);
-
-    const handler_result_t rc = static_cast<handler_result_t> (zlink_spot_dispatch_event_handler (
-      _impl->handle,
-      [] (void *spot_, const zlink_spot_dispatch_info_t *info_, void *userdata_) {
-          (void) spot_;
-          auto state = lock_dispatch_handler_state (userdata_);
-          dispatch_callback_scope_t scope (std::move (state));
-          if (!scope || !info_)
-              return;
-          const spot_dispatch_info_t info =
-            zlink::detail::actor_model_access_t::from_native (*info_);
-          scope.handler (*scope.owner, info);
-      },
-      _impl->dispatch_state.get ()));
-    if (rc != handler_result_t::ok) {
-        unregister_dispatch_handler_state (_impl->dispatch_state.get ());
-        _impl->dispatch_state.reset ();
-        throw handler_error_t (rc, zlink_errno ());
-    }
-}
-
-void spot_t::set_dispatch_handler (std::function<void (const spot_dispatch_info_t &)> handler_)
-{
-    set_dispatch_handler (
-      [handler = std::move (handler_)] (spot_t &, const spot_dispatch_info_t &info_) mutable {
-          handler (info_);
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_spot_send_to_channel (
+            _impl->handle, channel_name_.c_str (), nullptr, native_, count_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
-std::optional<spot_actor_lifecycle_event_t> spot_t::recv_actor_lifecycle (recv_flags_t flags_)
+submit_result_t spot_t::request_to_channel (const std::string &channel_name_,
+                                            std::vector<message_t> &parts_,
+                                            operation_id_t &operation_id_out_,
+                                            send_flags_t flags_,
+                                            std::chrono::milliseconds timeout_)
 {
-    zlink_spot_actor_lifecycle_event_t native_event;
-    std::memset (&native_event, 0, sizeof (native_event));
-    zlink_msg_t *parts = nullptr;
-    size_t part_count = 0;
-    const recv_result_t rc =
-      static_cast<recv_result_t> (zlink_spot_recv_actor_lifecycle_with_request (
-        _impl->handle, &native_event, &parts, &part_count,
-        static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
-    if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-        return std::nullopt;
-    if (rc != recv_result_t::ok)
-        throw recv_error_t (rc, zlink_errno ());
-    spot_actor_lifecycle_event_t event =
-      zlink::detail::actor_model_access_t::from_native (native_event);
-    event.request_parts = zlink::detail::take_parts_from_native (parts, part_count);
-    return std::optional<spot_actor_lifecycle_event_t> (std::move (event));
-}
-
-std::optional<actor_join_request_t> spot_t::recv_actor_join (recv_flags_t flags_)
-{
-    zlink_actor_join_info_t native_info;
-    std::memset (&native_info, 0, sizeof (native_info));
-    zlink_msg_t *parts = nullptr;
-    size_t part_count = 0;
-    const recv_result_t rc = static_cast<recv_result_t> (
-      zlink_spot_actor_join_recv (_impl->handle, &native_info, &parts, &part_count,
-                                  static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
-    if (rc == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
-        return std::nullopt;
-    if (rc != recv_result_t::ok)
-        throw recv_error_t (rc, zlink_errno ());
-    message_t message;
-    if (part_count > 0) {
-        if (zlink_msg_move (zlink::detail::native_handle (message), &parts[0]) != 0) {
-            zlink_multipart_close (parts, part_count);
-            throw last_error ();
-        }
-    }
-    zlink_multipart_close (parts, part_count);
-    return std::optional<actor_join_request_t> (actor_join_request_t (
-      zlink::detail::actor_model_access_t::from_native (native_info), std::move (message)));
-}
-
-actor_join_reply_operation_t spot_t::reply_actor_join (const actor_join_request_t &request_,
-                                                       int32_t join_result_code_)
-{
-    detail::actor_join_reply_state_t state;
-    state.spot = _impl->handle;
-    state.info = request_.info ();
-    state.join_result_code = join_result_code_;
-    return actor_join_reply_operation_t (std::move (state));
-}
-
-std::vector<actor_ref_t> spot_t::actors () const
-{
-    auto native = detail::fetch_growable_native_array<zlink_actor_ref_t> (
-      [&] (size_t *count_) {
-          return zlink_spot_actors (_impl->handle, nullptr, count_);
-      },
-      [&] (zlink_actor_ref_t *entries_, size_t *count_) {
-          return zlink_spot_actors (_impl->handle, entries_, count_);
+    zlink_mesh_operation_id_t op_id = make_op_id ();
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_spot_request_to_channel (
+            _impl->handle, channel_name_.c_str (), nullptr, native_, count_, &op_id,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
+            zlink::detail::native_timeout_ms (timeout_));
       });
-    std::vector<actor_ref_t> entries;
-    entries.reserve (native.size ());
-    for (size_t i = 0; i < native.size (); ++i)
-        entries.push_back (zlink::detail::actor_model_access_t::from_native (native[i]));
-    return entries;
+    if (rc == ZLINK_SUBMIT_OK) {
+        operation_id_out_.high = op_id.high;
+        operation_id_out_.low = op_id.low;
+    }
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
+}
+
+submit_result_t spot_t::send_to_spot (const routing_id_t &target_node_rid_,
+                                      const routing_id_t &target_spot_rid_,
+                                      uint64_t target_spot_generation_,
+                                      std::vector<message_t> &parts_,
+                                      send_flags_t flags_)
+{
+    const zlink_routing_id_t node_rid = zlink::detail::routing_id_native_value (target_node_rid_);
+    const zlink_routing_id_t spot_rid = zlink::detail::routing_id_native_value (target_spot_rid_);
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_spot_send_to_spot (
+            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, nullptr, native_, count_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
+      });
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
+}
+
+submit_result_t spot_t::request_to_spot (const routing_id_t &target_node_rid_,
+                                         const routing_id_t &target_spot_rid_,
+                                         uint64_t target_spot_generation_,
+                                         std::vector<message_t> &parts_,
+                                         operation_id_t &operation_id_out_,
+                                         send_flags_t flags_,
+                                         std::chrono::milliseconds timeout_)
+{
+    const zlink_routing_id_t node_rid = zlink::detail::routing_id_native_value (target_node_rid_);
+    const zlink_routing_id_t spot_rid = zlink::detail::routing_id_native_value (target_spot_rid_);
+    zlink_mesh_operation_id_t op_id = make_op_id ();
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_spot_request_to_spot (
+            _impl->handle, &node_rid, &spot_rid, target_spot_generation_, nullptr, native_, count_,
+            &op_id, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
+            zlink::detail::native_timeout_ms (timeout_));
+      });
+    if (rc == ZLINK_SUBMIT_OK) {
+        operation_id_out_.high = op_id.high;
+        operation_id_out_.low = op_id.low;
+    }
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
+}
+
+submit_result_t spot_t::publish (const std::string &channel_name_,
+                                 const std::string &topic_,
+                                 std::vector<message_t> &parts_,
+                                 send_flags_t flags_)
+{
+    const int rc = zlink::detail::submit_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_spot_publish (
+            _impl->handle, channel_name_.c_str (), topic_.c_str (), nullptr, native_, count_,
+            nullptr, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
+      });
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
+}
+
+void spot_t::set_nodrop (bool nodrop_)
+{
+    const uint32_t value = nodrop_ ? 1u : 0u;
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_spot_set_publish_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
+                                     sizeof (value))));
+}
+
+void spot_t::set_subscription (const std::string &channel_name_,
+                               const std::string &topic_filter_,
+                               subscription_kind_t kind_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_spot_set_subscription (_impl->handle, channel_name_.c_str (), topic_filter_.c_str (),
+                                   static_cast<zlink_spot_subscription_kind_t> (kind_))));
+}
+
+void spot_t::unset_subscription (const std::string &channel_name_,
+                                 const std::string &topic_filter_,
+                                 subscription_kind_t kind_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_spot_unset_subscription (_impl->handle, channel_name_.c_str (), topic_filter_.c_str (),
+                                     static_cast<zlink_spot_subscription_kind_t> (kind_))));
 }
 
 void spot_t::close ()
 {
-    if (!_impl || !_impl->handle)
-        return;
-
-    std::shared_ptr<spot_dispatch_handler_state_t> dispatch_state = _impl->dispatch_state;
-    std::function<void (spot_t &, const spot_dispatch_info_t &)> previous_handler;
-    if (dispatch_state) {
-        std::lock_guard<std::mutex> lock (dispatch_state->mutex);
-        previous_handler = dispatch_state->handler;
-        dispatch_state->closed = true;
-        dispatch_state->owner = nullptr;
-        dispatch_state->handler = {};
-    }
-
-    void *tmp = _impl->handle;
-    const auto close_result = static_cast<close_result_t> (zlink_spot_destroy (&tmp));
-    if (close_result != close_result_t::ok) {
-        if (dispatch_state) {
-            std::lock_guard<std::mutex> lock (dispatch_state->mutex);
-            dispatch_state->closed = false;
-            dispatch_state->owner = this;
-            dispatch_state->handler = std::move (previous_handler);
-        }
-        detail::throw_if_failed<close_error_t> (close_result);
-    }
-    _impl->handle = nullptr;
-
-    if (dispatch_state) {
-        std::unique_lock<std::mutex> lock (dispatch_state->mutex);
-        dispatch_state->cv.wait (lock, [&] { return dispatch_state->in_flight == 0; });
-        lock.unlock ();
-        unregister_dispatch_handler_state (dispatch_state.get ());
-        _impl->dispatch_state.reset ();
-    }
+    if (_impl && _impl->handle)
+        (void) zlink_spot_destroy (&_impl->handle);
 }
 
 } // namespace service

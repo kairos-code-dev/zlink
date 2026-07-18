@@ -95,8 +95,6 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                         ct => activation.DispatchSubscriptionsAsync(ct));
                     return;
                 case ZLinkBackendSpotDispatchEvent.ActorJoinReadable:
-                    if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                        Console.Error.WriteLine("[entry-pump] actor-join readable");
                     taskRunner.RunDetached(
                         "entry-spot-actor-join-dispatch",
                         ct => activation.DispatchActorJoinDrainAsync(ct));

@@ -190,9 +190,6 @@ internal sealed class ZLinkSessionActorCoordinator(
                     .ConfigureAwait(false)
                 : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
                     .ConfigureAwait(false), false);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine(
-                    $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")} present={rowPresent}");
 
             if (current is null && !rowPresent)
                 throw new ZLinkFrameworkException(

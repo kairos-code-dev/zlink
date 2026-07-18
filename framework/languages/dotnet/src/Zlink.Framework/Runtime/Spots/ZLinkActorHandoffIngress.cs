@@ -13,9 +13,6 @@ internal static class ZLinkActorHandoffIngress
             var headerPart = parts[index++];
             if (!ZLinkSpotActorFrameReader.TryRead(parts, ref index, headerPart, out var frame))
             {
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine(
-                        $"[ingress] frame read failed actor={headerPart.Actor.ActorId} req={headerPart.RequestId} flags={headerPart.Flags}");
                 continue;
             }
             try
@@ -50,15 +47,9 @@ internal static class ZLinkActorHandoffIngress
                 // sequence (spec 23 §10.2).
                 if (state.Handoff.TryCapture(frame))
                 {
-                    if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                        Console.Error.WriteLine(
-                            $"[ingress] captured actor={frame.Actor.ActorId} name={frame.Header.Name}");
                     continue;
                 }
 
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine(
-                        $"[ingress] pass actor={frame.Actor.ActorId} name={frame.Header.Name}");
 
                 dispatchable.Add(frame);
             }

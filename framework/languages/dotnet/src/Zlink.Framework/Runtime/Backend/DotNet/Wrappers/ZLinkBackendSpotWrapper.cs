@@ -130,9 +130,6 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         ReadOnlyMemory<byte> metadata)
     {
         var detail = _spot.Publish(PublishChannel(topic), topic, parts, flags, metadata);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[publish] ch={PublishChannel(topic)} topic={topic} detail={detail}");
         return detail;
     }
 

@@ -152,8 +152,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor '{actorId}' does not have a native Actor ref.");
             var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine($"[join-commit] {actorId} bind-route node={boundRoute.NodeRid} session={boundRoute.SessionRid}");
             await BindRemoteBoundSessionRouteAsync(
                     actorId,
                     actorRef,
@@ -161,8 +159,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                     boundRoute.SessionRid,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine($"[join-commit] {actorId} prepare-target");
             await PrepareTransferredActorTargetAsync(
                     target,
                     creation.Actor,
@@ -179,8 +175,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine($"[join-commit] {actorId} prepared");
 
             var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(
                 true,
@@ -591,9 +585,6 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         if (TryGetSessionActorContext(actorId, out var context))
         {
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine(
-                    $"[remote-bind] local-context actor={actorId} session={context.RoutingId}");
             await context.ActorCoordinator.BindActorAsync(
                     context,
                     actorRef.ToNative(),
@@ -602,9 +593,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[remote-bind] register actor={actorId} node={sourceNodeRid} session={sourceSessionRid}");
 
         var node = GetActorSpotNode()
                    ?? throw new ZLinkFrameworkException(
@@ -807,9 +795,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 bindingToken,
                 StringComparison.Ordinal))
         {
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine(
-                    $"[notify-disconnect] skip actor={actor.ActorId} token={bindingToken}");
             return;
         }
 
@@ -980,9 +965,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             Registration.Codecs);
         var submit = nodeRuntime.Node.SendToNode(actor.NodeRid, parts, SendFlags.DontWait);
         ZLinkMessageParts.DisposeAll(parts);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[frame-relay] actor={actor.ActorId} -> node={actor.NodeRid} submit={submit}");
         return submit == SubmitResult.Ok;
     }
 
@@ -1039,8 +1021,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             Registration.Codecs);
         var submit = nodeRuntime.Node.SendToNode(sessionNodeRid, parts, SendFlags.DontWait);
         ZLinkMessageParts.DisposeAll(parts);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine($"[relay] node-send actor={actorId} submit={submit}");
         return submit == SubmitResult.Ok;
     }
 

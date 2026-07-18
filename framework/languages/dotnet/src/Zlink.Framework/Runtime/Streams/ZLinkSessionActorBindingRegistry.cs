@@ -116,9 +116,6 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         // relay resolves the actor's session route from them. A node-local
         // actor's disconnect callback rides the native stream binding instead.
         var localNodeRid = runtime.GetActorSpotNode()?.RoutingId;
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[session-cleanup] actors={actors.Length} localNode={localNodeRid}");
         foreach (var actor in actors)
         {
             if (localNodeRid is { } local && actor.Ref.NodeRid == local) continue;
@@ -130,13 +127,10 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
                         cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (Exception error)
+            catch (Exception)
             {
                 // Cleanup must release every binding even when one peer is
                 // unreachable; the actor node's own lifecycle recovers it.
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine(
-                        $"[session-cleanup] notify failed actor={actor.ActorId}: {error.Message}");
             }
         }
 

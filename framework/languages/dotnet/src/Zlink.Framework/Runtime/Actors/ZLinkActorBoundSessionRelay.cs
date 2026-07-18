@@ -103,9 +103,6 @@ internal static class ZLinkActorBoundSessionRelay
         }
 
         var frame = reply.ToFrame(requestHeader);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[reply] bound-session actor={actorId} session={sourceSessionRid} bytes={frame.Length}");
         await SendFrameWithRetryAsync(runtime, actorId, sourceSessionRid, frame, cancellationToken)
             .ConfigureAwait(false);
     }

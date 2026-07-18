@@ -59,8 +59,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         {
             if (_started || _disposed) return;
             _started = true;
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine("[pump] started");
             _stop = new CancellationTokenSource();
             _node.SetReadyHandler(OnReady);
             _loop = Task.Run(() => RunAsync(_stop.Token));
@@ -103,8 +101,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private MeshReadyDomains OnReady(MeshReadyDomains readyDomains)
     {
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine($"[pump] ready mask={readyDomains}");
         _signal.Release();
         return readyDomains;
     }
@@ -125,8 +121,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             }
 
             DrainResidue(readyBatch, receiveBatch);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine("[pump] idle");
         }
     }
 
@@ -150,16 +144,11 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             {
                 return;
             }
-            catch (ZlinkException ex)
+            catch (ZlinkException)
             {
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine($"[pump] drain error: {ex.Message}");
                 return;
             }
 
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine(
-                    $"[pump] drained ready={readyBatch.Count} residue={residue} tid={Environment.CurrentManagedThreadId}");
             for (var i = 0; i < readyBatch.Count; i++)
                 DrainClaim(readyBatch, i, receiveBatch);
 
@@ -169,7 +158,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void DrainClaim(MeshReadyBatch readyBatch, int index, MeshReceiveBatch receiveBatch)
     {
-        var debug = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
         // The claim owner identifies the local consumer the records belong to.
         // Spot owners carry the hosting spot's rid directly; actor owners carry
         // only the actor identity (core leaves their spot_rid empty), so the
@@ -195,9 +183,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         {
             claim = readyBatch.TakeClaim(index);
         }
-        catch (ZlinkException ex)
+        catch (ZlinkException)
         {
-            if (debug) Console.Error.WriteLine($"[pump] take-claim error: {ex.Message}");
             return;
         }
 
@@ -206,9 +193,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             while (true)
             {
                 receiveBatch.Reset();
-                if (debug) Console.Error.WriteLine("[pump] claim recv…");
                 var got = claim.Receive(receiveBatch, RecvFlags.DontWait);
-                if (debug) Console.Error.WriteLine($"[pump] claim recv={got} count={(got ? receiveBatch.Count : 0)}");
                 if (!got)
                     return;
 
@@ -217,13 +202,12 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
                     DispatchRecord(receiveBatch, record, ownerSpotRid, readyRecord.Actor);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // A failed pull or a poison record must not kill the pump loop: the
             // pump is the node's only dispatch thread, so surviving and moving to
             // the next claim keeps every other owner (and the completion table)
             // alive.
-            if (debug) Console.Error.WriteLine($"[pump] claim error: {ex}");
         }
         finally
         {
@@ -235,9 +219,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         MeshReceiveBatch batch, int index, RoutingId ownerSpotRid, ActorRef ownerActor)
     {
         var record = batch[index];
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[pump] record kind={record.Kind} op={record.OperationKind} tid={Environment.CurrentManagedThreadId}");
         switch (record.Kind)
         {
             case MeshRecordKind.Completion:
@@ -278,9 +259,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void ResolveCompletion(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
     {
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[pump] completion op={record.OperationId} kind={record.OperationKind} terminal={record.TerminalResult}");
         var parts = record.PartCount > 0
             ? batch.RetainMessage(index)
             : Array.Empty<Message>();
@@ -391,9 +369,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         var state = ResolveSpotState(
             ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
             targetOwner: true, record);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[pump] spot-control owner={ownerSpotRid} src={record.SourceSpotRid} op={record.OperationKind} handler={state.DispatchHandler is not null}");
         if (record.OperationKind == MeshOperationKind.ActorJoin)
         {
             // Actor-join admission record: build a framework join request.
@@ -435,9 +410,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
             targetOwner: true, record);
         var parts = ZLinkMeshRecordAdapters.ToActorParts(batch, index, record, ownerActor, requestId);
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[pump] actor owner={ownerSpotRid} src={record.SourceSpotRid} parts={parts.Count} handler={state.DispatchHandler is not null} keys={string.Join(",", _spots.Keys)}");
         if (parts.Count == 0) return;
         state.RaiseActor(parts);
     }

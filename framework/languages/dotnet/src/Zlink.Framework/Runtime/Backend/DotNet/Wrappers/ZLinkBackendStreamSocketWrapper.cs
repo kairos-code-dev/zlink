@@ -147,9 +147,6 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         MeshOperationId operationId,
         CancellationToken cancellationToken)
     {
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[stream] await op={operationId} submit={submit} hasTable={_completions is not null} tid={Environment.CurrentManagedThreadId}");
         if (submit != SubmitResult.Ok)
             throw new ZlinkSubmitException((ZlinkSubmitException.ErrorCode)(int)submit);
         if (_completions is null || operationId == default) return;

@@ -161,16 +161,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         try
         {
             _node.DisconnectPeer(peerRid, lifecycleGeneration);
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine($"[retire] rid={peerRid} gen={lifecycleGeneration} ok");
         }
-        catch (ZlinkException error)
+        catch (ZlinkException)
         {
             // The lifetime may already be gone (never admitted, or Core
             // retired it with the transport); retirement is idempotent.
-            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                Console.Error.WriteLine(
-                    $"[retire] rid={peerRid} gen={lifecycleGeneration} error={error.Message}");
         }
     }
 
@@ -438,9 +433,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         // gone or the record was evicted — the reply is dropped by contract.
         var found = _pump.TryTakeActorReply(requestId, out var reply);
         var submit = found ? reply(parts, SendFlags.DontWait) : default;
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine(
-                $"[nobind-reply] req={requestId} found={found} submit={submit}");
         ZLinkMessageParts.DisposeAll(parts);
     }
 

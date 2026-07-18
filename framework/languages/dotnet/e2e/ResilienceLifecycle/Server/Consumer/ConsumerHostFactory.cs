@@ -383,12 +383,8 @@ internal sealed class MeshConnectionObserverService(
     ConnectionEvidence evidence,
     string linePrefix) : BackgroundService
 {
-    private int _debugTick;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-            Console.Error.WriteLine("[mesh-observer] started");
         var meshRuntime = services.GetRequiredService<IZLinkRouteMeshRuntime>();
         var query = services.GetRequiredService<IZLinkLocationRuntimeQuery>();
         var ready = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -406,10 +402,6 @@ internal sealed class MeshConnectionObserverService(
                     static row => row.Rid.ToString(),
                     static row => row.Endpoint,
                     StringComparer.Ordinal);
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1"
-                    && Interlocked.Increment(ref _debugTick) % 20 == 1)
-                    Console.Error.WriteLine(
-                        $"[mesh-observer] state={snapshot.State} peers=[{string.Join(",", snapshot.Peers.Select(p => $"{p.Rid}:{p.AdmissionState}@{p.Endpoint}"))}]");
                 var current = snapshot.Peers
                     .Where(static peer => peer.Ready)
                     .ToDictionary(
@@ -422,23 +414,17 @@ internal sealed class MeshConnectionObserverService(
                     if (!ready.ContainsKey(rid))
                     {
                         evidence.Add($"{linePrefix}kind=ConnectionReady|remote={endpoint}|routing={rid}");
-                        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                            Console.Error.WriteLine($"[mesh-observer] ready rid={rid} ep={endpoint}");
                     }
                 foreach (var (rid, endpoint) in ready)
                     if (!current.ContainsKey(rid))
                     {
                         evidence.Add($"{linePrefix}kind=Disconnected|remote={endpoint}|routing={rid}");
-                        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                            Console.Error.WriteLine($"[mesh-observer] gone rid={rid} ep={endpoint}");
                     }
                 ready = current;
             }
-            catch (Exception error)
+            catch (Exception)
             {
                 // The mesh node may not be started yet; keep polling.
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine($"[mesh-observer] error {error.GetType().Name}: {error.Message}");
             }
 
             try

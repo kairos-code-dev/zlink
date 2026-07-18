@@ -16,6 +16,7 @@
 #include <zlink.h>
 
 #include <cstring>
+#include <stdexcept>
 
 namespace zlink
 {
@@ -68,8 +69,16 @@ zlink_mesh_ready_domain_mask_t ready_handler_trampoline (void * /*mesh_node*/,
     auto *handler = static_cast<mesh_node_t::ready_handler_t *> (userdata_);
     if (!handler || !*handler)
         return ready_;
-    return static_cast<zlink_mesh_ready_domain_mask_t> (
-      (*handler) (static_cast<ready_domain_t> (ready_)));
+    try {
+        return static_cast<zlink_mesh_ready_domain_mask_t> (
+          (*handler) (static_cast<ready_domain_t> (ready_)));
+    }
+    catch (...) {
+        // A user callback must never let a C++ exception propagate across the C
+        // callback boundary. Policy: swallow it and report the domains Core
+        // offered so the pull loop still drains whatever became ready.
+        return ready_;
+    }
 }
 } // namespace
 
@@ -111,10 +120,14 @@ mesh_node_t::mesh_node_t (mesh_node_t &&other_) noexcept :
 mesh_node_t &mesh_node_t::operator= (mesh_node_t &&other_) noexcept
 {
     if (this != &other_) {
-        if (_impl && _impl->handle)
-            (void) zlink_mesh_node_destroy (&_impl->handle);
-        _impl = std::move (other_._impl);
-        _last_error = other_._last_error;
+        // Tear down our own node first; Core clears the handle only on a
+        // successful close. If the close is rejected (busy) the handle stays
+        // set, so we swap rather than overwrite: the still-live resource moves
+        // into the source object, whose destructor will retry, instead of being
+        // silently discarded here.
+        (void) close ();
+        _impl.swap (other_._impl);
+        std::swap (_last_error, other_._last_error);
     }
     return *this;
 }
@@ -157,10 +170,13 @@ request_result_t mesh_node_t::shutdown (std::chrono::milliseconds timeout_)
       zlink_mesh_node_shutdown (_impl->handle, zlink::detail::native_timeout_ms (timeout_)));
 }
 
-void mesh_node_t::close ()
+close_result_t mesh_node_t::close ()
 {
-    if (_impl && _impl->handle)
-        (void) zlink_mesh_node_destroy (&_impl->handle);
+    if (!(_impl && _impl->handle))
+        return close_result_t::ok;
+    // zlink_mesh_node_destroy nulls the handle only on a successful close; on
+    // close_result_t::busy the pointer is left intact so we keep ownership.
+    return static_cast<close_result_t> (zlink_mesh_node_destroy (&_impl->handle));
 }
 
 // --- peers ---
@@ -212,32 +228,38 @@ void mesh_node_t::disconnect_peer (const routing_id_t &peer_rid_, uint64_t lifec
 // --- node / channel messaging ---
 
 submit_result_t mesh_node_t::send_to_node (const routing_id_t &target_rid_,
-                                           std::vector<message_t> &parts_,
-                                           send_flags_t flags_)
+                                           const std::vector<message_t> &parts_,
+                                           send_flags_t flags_,
+                                           mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t rid = zlink::detail::routing_id_native_value (target_rid_);
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_send_to_node (
-            _impl->handle, &rid, nullptr, native_, count_,
+            _impl->handle, &rid, meta_ptr, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
 submit_result_t mesh_node_t::request_to_node (const routing_id_t &target_rid_,
-                                              std::vector<message_t> &parts_,
+                                              const std::vector<message_t> &parts_,
                                               operation_id_t &operation_id_out_,
                                               send_flags_t flags_,
-                                              std::chrono::milliseconds timeout_)
+                                              std::chrono::milliseconds timeout_,
+                                              mesh_metadata_t metadata_)
 {
     const zlink_routing_id_t rid = zlink::detail::routing_id_native_value (target_rid_);
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id;
     std::memset (&op_id, 0, sizeof (op_id));
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_request_to_node (
-            _impl->handle, &rid, nullptr, native_, count_, &op_id,
+            _impl->handle, &rid, meta_ptr, native_, count_, &op_id,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });
@@ -247,30 +269,36 @@ submit_result_t mesh_node_t::request_to_node (const routing_id_t &target_rid_,
 }
 
 submit_result_t mesh_node_t::send_to_channel (const std::string &channel_name_,
-                                              std::vector<message_t> &parts_,
-                                              send_flags_t flags_)
+                                              const std::vector<message_t> &parts_,
+                                              send_flags_t flags_,
+                                              mesh_metadata_t metadata_)
 {
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_send_to_channel (
-            _impl->handle, channel_name_.c_str (), nullptr, native_, count_,
+            _impl->handle, channel_name_.c_str (), meta_ptr, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
 submit_result_t mesh_node_t::request_to_channel (const std::string &channel_name_,
-                                                 std::vector<message_t> &parts_,
+                                                 const std::vector<message_t> &parts_,
                                                  operation_id_t &operation_id_out_,
                                                  send_flags_t flags_,
-                                                 std::chrono::milliseconds timeout_)
+                                                 std::chrono::milliseconds timeout_,
+                                                 mesh_metadata_t metadata_)
 {
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id;
     std::memset (&op_id, 0, sizeof (op_id));
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_request_to_channel (
-            _impl->handle, channel_name_.c_str (), nullptr, native_, count_, &op_id,
+            _impl->handle, channel_name_.c_str (), meta_ptr, native_, count_, &op_id,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });
@@ -282,30 +310,36 @@ submit_result_t mesh_node_t::request_to_channel (const std::string &channel_name
 // --- actor messaging ---
 
 submit_result_t mesh_node_t::send_to_actor (const actor_ref_t &actor_,
-                                            std::vector<message_t> &parts_,
-                                            send_flags_t flags_)
+                                            const std::vector<message_t> &parts_,
+                                            send_flags_t flags_,
+                                            mesh_metadata_t metadata_)
 {
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_send_to_actor (
-            _impl->handle, zlink::detail::actor_ref_native (actor_), nullptr, native_, count_,
+            _impl->handle, zlink::detail::actor_ref_native (actor_), meta_ptr, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
 submit_result_t mesh_node_t::request_to_actor (const actor_ref_t &actor_,
-                                               std::vector<message_t> &parts_,
+                                               const std::vector<message_t> &parts_,
                                                operation_id_t &operation_id_out_,
                                                send_flags_t flags_,
-                                               std::chrono::milliseconds timeout_)
+                                               std::chrono::milliseconds timeout_,
+                                               mesh_metadata_t metadata_)
 {
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
     zlink_mesh_operation_id_t op_id;
     std::memset (&op_id, 0, sizeof (op_id));
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_request_to_actor (
-            _impl->handle, zlink::detail::actor_ref_native (actor_), nullptr, native_, count_,
+            _impl->handle, zlink::detail::actor_ref_native (actor_), meta_ptr, native_, count_,
             &op_id, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)),
             zlink::detail::native_timeout_ms (timeout_));
       });
@@ -347,6 +381,108 @@ std::vector<mesh_peer_entry_t> mesh_node_t::peers () const
     return out;
 }
 
+std::vector<mesh_node_t::peer_channel_t>
+mesh_node_t::peer_channels (const routing_id_t &peer_rid_, uint64_t lifecycle_generation_) const
+{
+    const zlink_routing_id_t rid = zlink::detail::routing_id_native_value (peer_rid_);
+    size_t count = 0;
+    const config_result_t probe = static_cast<config_result_t> (zlink_mesh_node_peer_channels (
+      _impl->handle, &rid, lifecycle_generation_, nullptr, nullptr, &count));
+    zlink::detail::throw_if_failed<config_error_t> (probe);
+    if (count == 0)
+        return {};
+
+    constexpr size_t stride = ZLINK_CHANNEL_NAME_MAX + 1;
+    std::vector<char> names (count * stride);
+    std::vector<uint32_t> weights (count);
+    size_t inout = count;
+    zlink::detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_mesh_node_peer_channels (
+        _impl->handle, &rid, lifecycle_generation_,
+        reinterpret_cast<char (*)[stride]> (names.data ()), weights.data (), &inout)));
+
+    std::vector<peer_channel_t> out;
+    out.reserve (inout);
+    for (size_t i = 0; i < inout; ++i) {
+        peer_channel_t pc;
+        pc.name.assign (names.data () + i * stride);
+        pc.weight = weights[i];
+        out.push_back (std::move (pc));
+    }
+    return out;
+}
+
+// --- node options ---
+
+void mesh_node_t::set_router_hwm_profile (int32_t profile_)
+{
+    const int value = profile_;
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_set_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_ROUTER_HWM_PROFILE, &value,
+                                  sizeof (value))));
+}
+
+int32_t mesh_node_t::router_hwm_profile () const
+{
+    int value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_get_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_ROUTER_HWM_PROFILE, &value,
+                                  &len)));
+    return value;
+}
+
+void mesh_node_t::set_router_hwm (int32_t hwm_)
+{
+    const int value = hwm_;
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_set_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_ROUTER_HWM, &value,
+                                  sizeof (value))));
+}
+
+int32_t mesh_node_t::router_hwm () const
+{
+    int value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_get_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_ROUTER_HWM, &value, &len)));
+    return value;
+}
+
+void mesh_node_t::set_mailbox_message_budget (uint64_t budget_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_set_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET,
+                                  &budget_, sizeof (budget_))));
+}
+
+uint64_t mesh_node_t::mailbox_message_budget () const
+{
+    uint64_t value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_get_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET, &value,
+                                  &len)));
+    return value;
+}
+
+void mesh_node_t::set_mailbox_byte_budget (uint64_t budget_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_set_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET, &budget_,
+                                  sizeof (budget_))));
+}
+
+uint64_t mesh_node_t::mailbox_byte_budget () const
+{
+    uint64_t value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_get_mesh_node_option (_impl->handle, ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET, &value,
+                                  &len)));
+    return value;
+}
+
 // --- actors ---
 
 actor_t mesh_node_t::create_actor (const std::string &actor_id_, std::chrono::milliseconds timeout_)
@@ -356,12 +492,12 @@ actor_t mesh_node_t::create_actor (const std::string &actor_id_, std::chrono::mi
 }
 
 actor_t mesh_node_t::create_actor (const std::string &actor_id_,
-                                   std::vector<message_t> &creation_parts_,
+                                   const std::vector<message_t> &creation_parts_,
                                    std::chrono::milliseconds timeout_)
 {
     zlink_actor_ref_t ref;
     std::memset (&ref, 0, sizeof (ref));
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       creation_parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_actor_new (
             _impl->handle, actor_id_.c_str (), native_, count_, &ref,
@@ -426,13 +562,14 @@ actor_ref_t mesh_node_t::remote_actor_ref (const routing_id_t &target_node_rid_,
                                            const std::string &actor_id_,
                                            uint64_t generation_)
 {
+    // Core actor IDs are 1..ZLINK_ACTOR_ID_MAX (255) bytes; an empty or
+    // over-long ID is a different value, not a truncation target.
+    if (actor_id_.empty () || actor_id_.size () > ZLINK_ACTOR_ID_MAX)
+        throw std::invalid_argument ("actor_id must be 1..255 bytes");
     zlink_actor_ref_t native;
     std::memset (&native, 0, sizeof (native));
     native.node_rid = zlink::detail::routing_id_native_value (target_node_rid_);
-    const size_t max = sizeof (native.actor_id) - 1u;
-    const size_t n = actor_id_.size () < max ? actor_id_.size () : max;
-    if (n > 0)
-        std::memcpy (native.actor_id, actor_id_.data (), n);
+    std::memcpy (native.actor_id, actor_id_.data (), actor_id_.size ());
     native.generation = generation_;
     return zlink::detail::actor_model_access_t::from_native (native);
 }
@@ -484,12 +621,23 @@ mesh_node_publisher_t mesh_node_t::create_publisher () { return mesh_node_publis
 
 void mesh_node_t::set_ready_handler (ready_handler_t handler_)
 {
+    // Unregister any existing Core handler first so that no in-flight invocation
+    // can observe the callback state while it is being swapped. The userdata we
+    // hand Core is the stable address of _impl->ready_handler, which never moves
+    // for the node's lifetime. Only after Core has released the old registration
+    // do we install the new callable and re-register.
+    (void) zlink_mesh_node_set_ready_handler (_impl->handle, nullptr, nullptr);
     _impl->ready_handler = std::move (handler_);
+    if (!_impl->ready_handler)
+        return;
+
     const handler_result_t hr = static_cast<handler_result_t> (zlink_mesh_node_set_ready_handler (
-      _impl->handle, _impl->ready_handler ? &ready_handler_trampoline : nullptr,
-      &_impl->ready_handler));
-    if (hr != handler_result_t::ok)
+      _impl->handle, &ready_handler_trampoline, &_impl->ready_handler));
+    if (hr != handler_result_t::ok) {
+        // Keep the C++ callable consistent with Core's state (no handler).
+        _impl->ready_handler = nullptr;
         throw zlink::detail::last_error ();
+    }
 }
 
 int mesh_node_t::drain_ready (ready_domain_t domains_,
@@ -537,10 +685,9 @@ mesh_node_publisher_t::mesh_node_publisher_t (mesh_node_publisher_t &&other_) no
 mesh_node_publisher_t &mesh_node_publisher_t::operator= (mesh_node_publisher_t &&other_) noexcept
 {
     if (this != &other_) {
-        if (_impl && _impl->handle)
-            (void) zlink_mesh_node_publisher_destroy (&_impl->handle);
-        _impl = std::move (other_._impl);
-        _last_error = other_._last_error;
+        (void) close ();
+        _impl.swap (other_._impl);
+        std::swap (_last_error, other_._last_error);
     }
     return *this;
 }
@@ -549,22 +696,51 @@ bool mesh_node_publisher_t::valid () const noexcept { return _impl && _impl->han
 
 submit_result_t mesh_node_publisher_t::publish (const std::string &channel_name_,
                                                 const std::string &topic_,
-                                                std::vector<message_t> &parts_,
-                                                send_flags_t flags_)
+                                                const std::vector<message_t> &parts_,
+                                                send_flags_t flags_,
+                                                mesh_metadata_t metadata_,
+                                                publish_detail_t *detail_out_)
 {
-    const int rc = zlink::detail::submit_message_array (
+    zlink_mesh_metadata_view_t meta;
+    const zlink_mesh_metadata_view_t *meta_ptr = detail::make_metadata_view (meta, metadata_);
+    zlink_mesh_publish_detail_t native_detail;
+    std::memset (&native_detail, 0, sizeof (native_detail));
+    native_detail.struct_size = sizeof (native_detail);
+    native_detail.version = ZLINK_MESH_NODE_ABI_VERSION;
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_publisher_publish (
-            _impl->handle, channel_name_.c_str (), topic_.c_str (), nullptr, native_, count_,
-            nullptr, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
+            _impl->handle, channel_name_.c_str (), topic_.c_str (), meta_ptr, native_, count_,
+            &native_detail, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
+    if (rc == ZLINK_SUBMIT_OK)
+        detail::store_publish_detail (detail_out_, native_detail);
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
-void mesh_node_publisher_t::close ()
+void mesh_node_publisher_t::set_nodrop (bool nodrop_)
 {
-    if (_impl && _impl->handle)
-        (void) zlink_mesh_node_publisher_destroy (&_impl->handle);
+    const uint32_t value = nodrop_ ? 1u : 0u;
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_mesh_node_publisher_set_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
+                                            sizeof (value))));
+}
+
+bool mesh_node_publisher_t::nodrop () const
+{
+    uint32_t value = 0;
+    size_t len = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_mesh_node_publisher_get_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
+                                            &len)));
+    return value != 0;
+}
+
+close_result_t mesh_node_publisher_t::close ()
+{
+    if (!(_impl && _impl->handle))
+        return close_result_t::ok;
+    return static_cast<close_result_t> (zlink_mesh_node_publisher_destroy (&_impl->handle));
 }
 
 } // namespace service

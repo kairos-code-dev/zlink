@@ -2,10 +2,12 @@
 #pragma once
 
 #include "../Core/routing_id.hpp"
+#include "../Errors/results.hpp"
 #include "../Messaging/message.hpp"
 #include "../Sockets/results.hpp"
 #include "actor_models.hpp"
 #include "dispatch.hpp"
+#include "mesh_node_models.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -102,36 +104,45 @@ class spot_t
     spot_status_t status () const;
     routing_id_t routing_id () const;
 
-    // Channel messaging.
+    // Channel messaging. Parts are borrowed read-only (caller keeps ownership
+    // on success and failure); @p metadata_ is an immutable outbound-metadata
+    // byte view (empty for none).
     submit_result_t send_to_channel (const std::string &channel_name_,
-                                     std::vector<message_t> &parts_,
-                                     send_flags_t flags_ = send_flags_t::none);
+                                     const std::vector<message_t> &parts_,
+                                     send_flags_t flags_ = send_flags_t::none,
+                                     mesh_metadata_t metadata_ = {});
     submit_result_t request_to_channel (const std::string &channel_name_,
-                                        std::vector<message_t> &parts_,
+                                        const std::vector<message_t> &parts_,
                                         operation_id_t &operation_id_out_,
                                         send_flags_t flags_ = send_flags_t::none,
-                                        std::chrono::milliseconds timeout_ = {});
+                                        std::chrono::milliseconds timeout_ = {},
+                                        mesh_metadata_t metadata_ = {});
 
     // Direct spot-to-spot messaging.
     submit_result_t send_to_spot (const routing_id_t &target_node_rid_,
                                   const routing_id_t &target_spot_rid_,
                                   uint64_t target_spot_generation_,
-                                  std::vector<message_t> &parts_,
-                                  send_flags_t flags_ = send_flags_t::none);
+                                  const std::vector<message_t> &parts_,
+                                  send_flags_t flags_ = send_flags_t::none,
+                                  mesh_metadata_t metadata_ = {});
     submit_result_t request_to_spot (const routing_id_t &target_node_rid_,
                                      const routing_id_t &target_spot_rid_,
                                      uint64_t target_spot_generation_,
-                                     std::vector<message_t> &parts_,
+                                     const std::vector<message_t> &parts_,
                                      operation_id_t &operation_id_out_,
                                      send_flags_t flags_ = send_flags_t::none,
-                                     std::chrono::milliseconds timeout_ = {});
+                                     std::chrono::milliseconds timeout_ = {},
+                                     mesh_metadata_t metadata_ = {});
 
     // Logical multicast (publish).
     submit_result_t publish (const std::string &channel_name_,
                              const std::string &topic_,
-                             std::vector<message_t> &parts_,
-                             send_flags_t flags_ = send_flags_t::none);
+                             const std::vector<message_t> &parts_,
+                             send_flags_t flags_ = send_flags_t::none,
+                             mesh_metadata_t metadata_ = {},
+                             publish_detail_t *detail_out_ = nullptr);
     void set_nodrop (bool nodrop_);
+    bool nodrop () const;
 
     // Subscriptions.
     void set_subscription (const std::string &channel_name_,
@@ -141,7 +152,7 @@ class spot_t
                              const std::string &topic_filter_,
                              subscription_kind_t kind_ = subscription_kind_t::exact);
 
-    void close ();
+    close_result_t close ();
 
   private:
     struct native_handle_ctor_tag_t;

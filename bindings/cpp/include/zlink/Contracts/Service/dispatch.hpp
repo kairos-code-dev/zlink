@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -139,6 +140,131 @@ struct ready_record_t
     }
 };
 
+/// @brief The destination class a SEND_READY record points at.
+enum class destination_kind_t : int
+{
+    node          = 1,
+    channel       = 2,
+    spot          = 3,
+    actor         = 4,
+    bound_session = 5
+};
+
+/// @brief The actor lifecycle transition an actor-control record reports.
+enum class lifecycle_kind_t : int
+{
+    created      = 1,
+    joined       = 2,
+    left         = 3,
+    disconnected = 4,
+    destroyed    = 5
+};
+
+/// @brief The admission outcome carried by an actor join-completion record.
+enum class join_admission_t : int
+{
+    accepted = 0,
+    rejected = 1
+};
+
+/// @brief The role/phase a transfer-control record reports.
+enum class transfer_control_role_t : int
+{
+    source = 1,
+    target = 2
+};
+enum class transfer_control_phase_t : int
+{
+    preparing = 1,
+    fenced    = 2,
+    committed = 3,
+    activated = 4,
+    aborted   = 5
+};
+
+/// @brief Decoded SEND_READY kind_data: where an outbound-ready owner may send.
+struct send_ready_data_t
+{
+    send_ready_data_t () noexcept :
+        destination_kind (destination_kind_t::node),
+        target_node_rid (zlink::detail::unchecked_empty_routing_id ()),
+        target_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
+        target_actor (),
+        channel_name ()
+    {
+    }
+
+    destination_kind_t destination_kind;
+    routing_id_t target_node_rid;
+    routing_id_t target_spot_rid;
+    actor_ref_t target_actor;
+    std::string channel_name;
+};
+
+/// @brief Decoded actor join-completion kind_data.
+struct join_completion_t
+{
+    join_admission_t join_result = join_admission_t::accepted;
+    actor_ref_t actor;
+    actor_location_t location;
+};
+
+/// @brief Decoded actor lifecycle/control kind_data.
+struct actor_control_t
+{
+    actor_control_t () noexcept :
+        kind (lifecycle_kind_t::created),
+        previous_actor (),
+        current_actor (),
+        previous_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
+        current_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
+        previous_spot_generation (0),
+        current_spot_generation (0),
+        previous_membership_epoch (0),
+        current_membership_epoch (0),
+        result_code (0)
+    {
+    }
+
+    lifecycle_kind_t kind;
+    actor_ref_t previous_actor;
+    actor_ref_t current_actor;
+    routing_id_t previous_spot_rid;
+    routing_id_t current_spot_rid;
+    uint64_t previous_spot_generation;
+    uint64_t current_spot_generation;
+    uint64_t previous_membership_epoch;
+    uint64_t current_membership_epoch;
+    int32_t result_code;
+};
+
+/// @brief Decoded transfer-control kind_data.
+struct transfer_control_t
+{
+    transfer_control_t () noexcept :
+        phase (transfer_control_phase_t::preparing),
+        role (transfer_control_role_t::source),
+        transfer_id_high (0),
+        transfer_id_low (0),
+        actor (),
+        membership_epoch (0),
+        final_sequence (0),
+        result_code (0),
+        failure_errno (0)
+    {
+    }
+
+    transfer_control_phase_t phase;
+    transfer_control_role_t role;
+    uint64_t transfer_id_high;
+    uint64_t transfer_id_low;
+    actor_ref_t actor;
+    uint64_t membership_epoch;
+    uint64_t final_sequence;
+    int32_t result_code;
+    int32_t failure_errno;
+};
+
 /// @brief One received record decoded from a claim's receive batch.
 struct receive_record_t
 {
@@ -176,6 +302,17 @@ struct receive_record_t
     int32_t failure_errno;
     size_t part_offset;
     size_t part_count;
+
+    /// @brief Raw kind_data bytes carried by this record, copied so they remain
+    ///        valid independently of the receive batch's lifetime. Empty when
+    ///        the record carries no kind_data.
+    std::vector<uint8_t> kind_data;
+    /// @brief Typed decode of kind_data, populated for the record kinds that
+    ///        carry a known control payload (empty otherwise).
+    std::optional<send_ready_data_t> send_ready;
+    std::optional<join_completion_t> join_completion;
+    std::optional<actor_control_t> actor_control;
+    std::optional<transfer_control_t> transfer_control;
 };
 
 class receive_batch_t;
@@ -268,7 +405,7 @@ class receive_batch_t
 
 /// @brief Replies to a request received via dispatch, using its reply token.
 submit_result_t reply (const reply_token_t &token_,
-                       std::vector<message_t> &parts_,
+                       const std::vector<message_t> &parts_,
                        send_flags_t flags_ = send_flags_t::none);
 
 } // namespace service

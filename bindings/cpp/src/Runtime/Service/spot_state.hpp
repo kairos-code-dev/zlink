@@ -19,44 +19,30 @@ namespace service
 {
 
 class spot_t;
-class spot_node_t;
 
 namespace detail
 {
 enum class spot_operation_kind_t
 {
+    // Neutral sentinel used by the pooled-state reset; always overwritten
+    // by the operation factory before the state is submitted.
+    none,
+    // Raw-socket transport operations (PAIR/DEALER/ROUTER/PUB/STREAM).
     raw_send,
     raw_routed_send,
     raw_publish,
-    raw_router_send_spot,
     raw_request,
     raw_routed_request,
-    raw_router_request_spot,
     raw_reply,
-    raw_router_reply_spot,
-    publish,
-    send_channel,
-    send_to_spot,
-    request_channel,
-    request_to_spot,
-    request_to_router,
-    request_to_actor,
-    reply_to_spot,
-    reply_to_router,
-    // Operation kinds for built-in received_t.send()/reply() builders. The state uses
-    // a borrowed reference to the originating received_t.
+    // Built-in received_t.send()/reply() builders. The state borrows a
+    // reference to the originating received_t.
     received_send,
-    received_reply,
-    // Operation kind for spot_node_t::send_bound_session_msg(actor).
-    bound_session_send,
-    actor_send,
-    // Operation kind for stream_socket_t::send_bound_actor(session, actor_id).
-    stream_bound_actor_send
+    received_reply
 };
 
 struct spot_operation_state_t
 {
-    spot_operation_kind_t kind = spot_operation_kind_t::publish;
+    spot_operation_kind_t kind = spot_operation_kind_t::none;
 
     struct routing_target_t
     {
@@ -133,38 +119,10 @@ struct spot_operation_state_t
         void reset () noexcept { received = nullptr; }
     };
 
-    struct actor_command_t
-    {
-        spot_node_t *node = nullptr;
-        std::optional<actor_ref_t> actor;
-
-        void reset () noexcept
-        {
-            node = nullptr;
-            actor.reset ();
-        }
-    };
-
-    struct stream_actor_command_t
-    {
-        void *stream = nullptr;
-        routing_target_t target;
-        std::string actor_id;
-
-        void reset () noexcept
-        {
-            stream = nullptr;
-            target.reset ();
-            actor_id.clear ();
-        }
-    };
-
     message_parts_t message;
     raw_command_t raw;
     spot_command_t spot;
     received_command_t received;
-    actor_command_t actor;
-    stream_actor_command_t stream_actor;
     send_flags_t flags = send_flags_t::none;
     std::chrono::milliseconds timeout{};
 };
@@ -246,8 +204,6 @@ inline bool can_borrow_single_send_part (spot_operation_kind_t kind_) noexcept
         case spot_operation_kind_t::raw_send:
         case spot_operation_kind_t::raw_routed_send:
         case spot_operation_kind_t::raw_publish:
-        case spot_operation_kind_t::raw_router_send_spot:
-        case spot_operation_kind_t::publish:
             return true;
         default:
             return false;
@@ -298,20 +254,18 @@ inline void reset_for_reuse (spot_operation_state_t &state_) noexcept
     // this per-message reset; every other operation still takes the complete
     // reset below before the pooled state becomes reusable.
     if (state_.kind == spot_operation_kind_t::raw_send) {
-        state_.kind = spot_operation_kind_t::publish;
+        state_.kind = spot_operation_kind_t::none;
         state_.message.reset ();
         state_.raw.socket = nullptr;
         state_.flags = send_flags_t::none;
         return;
     }
 
-    state_.kind = spot_operation_kind_t::publish;
+    state_.kind = spot_operation_kind_t::none;
     state_.message.reset ();
     state_.raw.reset ();
     state_.spot.reset ();
     state_.received.reset ();
-    state_.actor.reset ();
-    state_.stream_actor.reset ();
     state_.flags = send_flags_t::none;
     state_.timeout = std::chrono::milliseconds{};
 }

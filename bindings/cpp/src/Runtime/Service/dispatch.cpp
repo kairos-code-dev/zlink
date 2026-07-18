@@ -41,8 +41,13 @@ void claim_t::release () noexcept
     if (!_valid)
         return;
     zlink_mesh_claim_t native = detail::dispatch_access_t::native_claim (*this);
-    (void) zlink_mesh_claim_release (&native);
-    _valid = false;
+    const zlink_close_result_t rc = zlink_mesh_claim_release (&native);
+    detail::dispatch_access_t::store_claim (*this, native);
+    // The claim (and any reply tokens drained under it) stays valid until the
+    // release actually succeeds; releasing rearms the owner's remaining mailbox
+    // work. On failure the claim is kept so it can be released again.
+    if (rc == ZLINK_CLOSE_OK)
+        _valid = false;
 }
 
 int claim_t::recv_batch (receive_batch_t &batch_,
@@ -67,8 +72,9 @@ int claim_t::recv_batch (receive_batch_t &batch_,
     required_out_.part_count = required.part_count;
     required_out_.byte_count = required.byte_count;
 
-    if (rc == ZLINK_RECV_OK)
-        detail::dispatch_access_t::invalidate_claim (*this);
+    // A successful recv does NOT consume the claim: reply tokens drained here
+    // remain valid, and the owner's mailbox is rearmed only by an actual
+    // release(). The claim stays valid until release() succeeds.
     return static_cast<int> (rc);
 }
 
@@ -202,12 +208,12 @@ std::vector<message_t> receive_batch_t::retain_message (size_t index_) const
 // --- reply ---
 
 submit_result_t reply (const reply_token_t &token_,
-                       std::vector<message_t> &parts_,
+                       const std::vector<message_t> &parts_,
                        send_flags_t flags_)
 {
     const zlink_mesh_reply_token_t native_token =
       detail::dispatch_access_t::native_token (token_);
-    const int rc = zlink::detail::submit_message_array (
+    const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t part_count_) {
           return zlink_mesh_reply (&native_token, native_, part_count_,
                                    static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));

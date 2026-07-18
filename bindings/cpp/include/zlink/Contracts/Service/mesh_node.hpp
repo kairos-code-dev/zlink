@@ -3,6 +3,7 @@
 
 #include "../Core/context.hpp"
 #include "../Core/routing_id.hpp"
+#include "../Errors/results.hpp"
 #include "../Messaging/message.hpp"
 #include "../Sockets/results.hpp"
 #include "actor_models.hpp"
@@ -67,7 +68,11 @@ class mesh_node_t
     void set_channel_weight (const std::string &channel_name_, uint32_t weight_);
     void start ();
     request_result_t shutdown (std::chrono::milliseconds timeout_ = {});
-    void close ();
+    /// @brief Destroys the underlying node. Core rejects the close with
+    ///        close_result_t::busy while child publishers/spots/sessions or
+    ///        in-flight callbacks remain; on busy the node is retained so the
+    ///        caller can close the children and retry.
+    close_result_t close ();
 
     // Peers.
     uint64_t connect_peer (const std::string &endpoint_);
@@ -75,43 +80,71 @@ class mesh_node_t
     void remove_peer_connection (uint64_t connection_intent_id_);
     void disconnect_peer (const routing_id_t &peer_rid_, uint64_t lifecycle_generation_);
 
-    // Node / channel messaging.
+    // Node / channel messaging. Parts are borrowed read-only: the caller keeps
+    // ownership on both success and failure. @p metadata_ is an immutable byte
+    // view of outbound application metadata (empty for none).
     submit_result_t send_to_node (const routing_id_t &target_rid_,
-                                  std::vector<message_t> &parts_,
-                                  send_flags_t flags_ = send_flags_t::none);
+                                  const std::vector<message_t> &parts_,
+                                  send_flags_t flags_ = send_flags_t::none,
+                                  mesh_metadata_t metadata_ = {});
     submit_result_t request_to_node (const routing_id_t &target_rid_,
-                                     std::vector<message_t> &parts_,
+                                     const std::vector<message_t> &parts_,
                                      operation_id_t &operation_id_out_,
                                      send_flags_t flags_ = send_flags_t::none,
-                                     std::chrono::milliseconds timeout_ = {});
+                                     std::chrono::milliseconds timeout_ = {},
+                                     mesh_metadata_t metadata_ = {});
     submit_result_t send_to_channel (const std::string &channel_name_,
-                                     std::vector<message_t> &parts_,
-                                     send_flags_t flags_ = send_flags_t::none);
+                                     const std::vector<message_t> &parts_,
+                                     send_flags_t flags_ = send_flags_t::none,
+                                     mesh_metadata_t metadata_ = {});
     submit_result_t request_to_channel (const std::string &channel_name_,
-                                        std::vector<message_t> &parts_,
+                                        const std::vector<message_t> &parts_,
                                         operation_id_t &operation_id_out_,
                                         send_flags_t flags_ = send_flags_t::none,
-                                        std::chrono::milliseconds timeout_ = {});
+                                        std::chrono::milliseconds timeout_ = {},
+                                        mesh_metadata_t metadata_ = {});
 
     // Actor messaging.
     submit_result_t send_to_actor (const actor_ref_t &actor_,
-                                   std::vector<message_t> &parts_,
-                                   send_flags_t flags_ = send_flags_t::none);
+                                   const std::vector<message_t> &parts_,
+                                   send_flags_t flags_ = send_flags_t::none,
+                                   mesh_metadata_t metadata_ = {});
     submit_result_t request_to_actor (const actor_ref_t &actor_,
-                                      std::vector<message_t> &parts_,
+                                      const std::vector<message_t> &parts_,
                                       operation_id_t &operation_id_out_,
                                       send_flags_t flags_ = send_flags_t::none,
-                                      std::chrono::milliseconds timeout_ = {});
+                                      std::chrono::milliseconds timeout_ = {},
+                                      mesh_metadata_t metadata_ = {});
+
+    // Node options (must be set while the node is still in the created state).
+    void set_router_hwm_profile (int32_t profile_);
+    int32_t router_hwm_profile () const;
+    void set_router_hwm (int32_t hwm_);
+    int32_t router_hwm () const;
+    void set_mailbox_message_budget (uint64_t budget_);
+    uint64_t mailbox_message_budget () const;
+    void set_mailbox_byte_budget (uint64_t budget_);
+    uint64_t mailbox_byte_budget () const;
 
     // Introspection.
     mesh_node_status_t status () const;
     std::vector<mesh_peer_entry_t> peers () const;
 
+    /// @brief One channel a peer participates in, with its advertised weight.
+    struct peer_channel_t
+    {
+        std::string name;
+        uint32_t weight = 0;
+    };
+    /// @brief Snapshots the channel names and weights advertised by @p peer_rid_.
+    std::vector<peer_channel_t> peer_channels (const routing_id_t &peer_rid_,
+                                               uint64_t lifecycle_generation_) const;
+
     // Actors.
     actor_t create_actor (const std::string &actor_id_,
                           std::chrono::milliseconds timeout_ = {});
     actor_t create_actor (const std::string &actor_id_,
-                          std::vector<message_t> &creation_parts_,
+                          const std::vector<message_t> &creation_parts_,
                           std::chrono::milliseconds timeout_ = {});
     std::optional<actor_location_t> actor_lookup (const std::string &actor_id_) const;
     submit_result_t actor_lookup_remote (const routing_id_t &target_node_rid_,
@@ -171,10 +204,16 @@ class mesh_node_publisher_t
 
     submit_result_t publish (const std::string &channel_name_,
                              const std::string &topic_,
-                             std::vector<message_t> &parts_,
-                             send_flags_t flags_ = send_flags_t::none);
+                             const std::vector<message_t> &parts_,
+                             send_flags_t flags_ = send_flags_t::none,
+                             mesh_metadata_t metadata_ = {},
+                             publish_detail_t *detail_out_ = nullptr);
 
-    void close ();
+    // Publisher-scoped NODROP option (symmetric with spot_t::set_nodrop).
+    void set_nodrop (bool nodrop_);
+    bool nodrop () const;
+
+    close_result_t close ();
 
   private:
     struct impl;

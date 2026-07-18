@@ -94,17 +94,6 @@ internal static class SocketInterop
         return concrete;
     }
 
-    internal static SpotNode RequireSpotNode(ISpotNode node, string paramName)
-    {
-        if (node == null)
-            throw new ArgumentNullException(paramName);
-        if (node is not SpotNode concrete)
-            throw new ArgumentException(
-                "node must be a concrete zlink spot node instance",
-                paramName);
-        return concrete;
-    }
-
     internal static Timer RequireTimer(IZlinkTimer timer, string paramName)
     {
         if (timer == null)

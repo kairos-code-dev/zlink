@@ -57,14 +57,14 @@ public interface IContext : IDisposable, IAsyncDisposable
     IStreamSocket CreateStreamSocket();
 
     /// <summary>
-    ///     Creates a spot node in the default mode.
+    ///     Creates a RouteMesh node hosted by this context.
     /// </summary>
-    ISpotNode CreateSpotNode();
+    IMeshNode CreateMeshNode();
 
     /// <summary>
-    ///     Creates a spot node in the given <paramref name="mode" />.
+    ///     Creates a RouteMesh node with the given <paramref name="options" />.
     /// </summary>
-    ISpotNode CreateSpotNode(SpotNodeMode mode);
+    IMeshNode CreateMeshNode(MeshNodeOptions options);
 
     /// <summary>
     ///     Terminates the context, interrupting blocking operations on its sockets

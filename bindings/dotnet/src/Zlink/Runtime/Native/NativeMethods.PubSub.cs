@@ -49,4 +49,9 @@ internal static partial class NativeMethods
     internal static extern int zlink_spot_recv_subscription_event(IntPtr spot,
         out IntPtr sourceRoutingId, out int subscribed, byte[] topicIdBuffer,
         nuint topicIdCapacity, out nuint topicIdLenOut, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_subscription_at(IntPtr handle,
+        nuint index, IntPtr filterOut, ref nuint filterLength,
+        out int isPattern);
 }

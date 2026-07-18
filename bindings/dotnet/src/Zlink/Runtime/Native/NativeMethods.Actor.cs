@@ -1,170 +1,76 @@
+// SPDX-License-Identifier: MPL-2.0
+
 using System.Runtime.InteropServices;
 
 namespace Systems.Zlink.Runtime.Native;
 
+// P/Invoke surface for core/include/zlink/service/actor.h (RouteMesh 10.0.0).
 internal static partial class NativeMethods
 {
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_new(IntPtr node,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
-        out ZlinkActorRef actorRef);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_node_actor_new_with_request(
-        IntPtr node,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
-        ZlinkMsg* parts,
-        nuint partCount,
-        out ZlinkActorRef actorRef);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_destroy(IntPtr node,
-        ref ZlinkActorRef actor,
-        IntPtr handler,
-        IntPtr userData,
+    internal static extern int zlink_mesh_node_actor_new(IntPtr meshNode,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId, IntPtr creationParts,
+        nuint creationPartCount, out ZlinkActorRef actor, int flags,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_lookup(IntPtr node,
+    internal static extern int zlink_mesh_node_actor_lookup(IntPtr meshNode,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
-        out ZlinkActorRef actorRef);
+        out ZlinkActorLocation location);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_remote_actor_get_ref(
-        IntPtr node,
+    internal static extern int zlink_mesh_node_actor_lookup_remote(IntPtr meshNode,
         ref ZlinkRoutingId targetNodeRid,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
-        IntPtr handler,
-        IntPtr userData,
+        out ZlinkMeshOperationId operationId, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_destroy(IntPtr meshNode,
+        ref ZlinkActorRef actor, out ZlinkMeshOperationId operationId,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_join_spot(IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkRoutingId destNodeRid,
-        ref ZlinkRoutingId destSpotRid,
-        ref ZlinkMsg message,
-        nuint partCount,
-        IntPtr handler,
-        IntPtr userData,
-        int flags,
+    internal static extern int zlink_mesh_node_actor_join_spot(IntPtr meshNode,
+        ref ZlinkActorRef actor, ref ZlinkRoutingId targetNodeRid,
+        ref ZlinkRoutingId targetSpotRid, ulong targetSpotGeneration,
+        IntPtr creationParts, nuint creationPartCount,
+        out ZlinkMeshOperationId operationId, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_join_entry_spot(
+        IntPtr meshNode, ref ZlinkActorRef actor,
+        ref ZlinkRoutingId targetNodeRid, IntPtr creationParts,
+        nuint creationPartCount, out ZlinkMeshOperationId operationId,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_join_entry_spot(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkRoutingId destNodeRid,
-        ref ZlinkMsg parts,
-        nuint partCount,
-        IntPtr handler,
-        IntPtr userData,
-        int flags,
+    internal static extern int zlink_mesh_node_actor_leave_spot(IntPtr meshNode,
+        ref ZlinkActorRef actor, ulong expectedMembershipEpoch,
+        out ZlinkMeshOperationId operationId, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_actor_join_reply(ref ZlinkMeshReplyToken token,
+        int joinResult, IntPtr parts, nuint partCount, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_send_to_actor(IntPtr meshNode,
+        ref ZlinkActorRef actor, IntPtr actorMetadata, IntPtr parts,
+        nuint partCount, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_request_to_actor(IntPtr meshNode,
+        ref ZlinkActorRef actor, IntPtr actorMetadata, IntPtr parts,
+        nuint partCount, out ZlinkMeshOperationId operationId, int flags,
         uint timeoutMs);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_actor_join_recv(IntPtr spot,
-        out ZlinkActorJoinInfo info,
-        out IntPtr parts,
-        out nuint partCount,
-        int flags);
+    internal static extern int zlink_actor_send_to_actor(IntPtr meshNode,
+        ref ZlinkActorRef sourceActor, ref ZlinkActorRef targetActor,
+        IntPtr actorMetadata, IntPtr parts, nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_actor_join_reply(IntPtr spot,
-        ref ZlinkActorJoinInfo info,
-        int joinResultCode,
-        ref ZlinkMsg message,
-        nuint partCount);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
-        EntryPoint = "zlink_spot_actor_join_reply")]
-    internal static extern int zlink_spot_actor_join_reply_empty(IntPtr spot,
-        ref ZlinkActorJoinInfo info,
-        int joinResultCode,
-        IntPtr parts,
-        nuint partCount);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_leave_spot(IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkRoutingId destSpotRid,
-        IntPtr handler,
-        IntPtr userData,
-        uint timeoutMs);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_recv_part(IntPtr node,
-        ref ZlinkActorRef actor,
-        out ZlinkActorRecvInfo info,
-        ref ZlinkMsg part,
-        out ZlinkPartFlag hasMore,
-        int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_recv_actor_lifecycle_with_request(
-        IntPtr spot,
-        out ZlinkSpotActorLifecycleEvent lifecycleEvent,
-        out IntPtr parts,
-        out nuint partCount,
-        int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_send_bound_session_msg(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkMsg message,
-        int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_node_send_to_actor(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ZlinkMsg* parts,
-        nuint partCount,
-        IntPtr completion,
-        IntPtr userData,
-        int flags,
-        uint timeoutMs);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_node_request_to_actor(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ZlinkMsg* parts,
-        nuint partCount,
-        IntPtr callback,
-        IntPtr userData,
-        int flags,
-        uint timeoutMs);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern unsafe int zlink_spot_node_actor_reply_no_bind(
-        IntPtr node,
-        ref ZlinkActorRecvInfo info,
-        ZlinkMsg* parts,
-        nuint partCount,
-        int result);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_forward_bound_session_part(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkRoutingId sourceNodeRid,
-        ref ZlinkRoutingId sourceSessionRid,
-        ref ZlinkMsg message,
-        int flags,
-        ZlinkPartFlag partFlag);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_bind_remote_session(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        ref ZlinkRoutingId sourceNodeRid,
-        ref ZlinkRoutingId sourceSessionRid);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_node_actor_close_bound_session(
-        IntPtr node,
-        ref ZlinkActorRef actor,
-        uint timeoutMs);
+    internal static extern int zlink_actor_request_to_actor(IntPtr meshNode,
+        ref ZlinkActorRef sourceActor, ref ZlinkActorRef targetActor,
+        IntPtr actorMetadata, IntPtr parts, nuint partCount,
+        out ZlinkMeshOperationId operationId, int flags, uint timeoutMs);
 }

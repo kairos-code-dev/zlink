@@ -98,21 +98,25 @@ start_role() {
 }
 
 start_topology() {
+  # OBS-B3 pauses Redis for 11s to measure renew lateness; the topology's
+  # lease must survive that window (a shorter TTL turns the intended
+  # lateness measurement into owner fencing and kills the hosts B4 needs).
+  local lease_args=(--location-heartbeat-ms 1000 --location-lease-ttl-ms 30000)
   start_role play-a "$PLAY_PROJECT" --rid play-a --http-url "$PLAY_A_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "$PLAY_A_ROUTER" --pub-endpoint "$PLAY_A_PUB" --log-dir "$LOG_DIR"
+    --router-endpoint "$PLAY_A_ROUTER" --pub-endpoint "$PLAY_A_PUB" --log-dir "$LOG_DIR" "${lease_args[@]}"
   wait_health "$PLAY_A_URL" play-a
   start_role play-b "$PLAY_PROJECT" --rid play-b --http-url "$PLAY_B_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "$PLAY_B_ROUTER" --pub-endpoint "$PLAY_B_PUB" --log-dir "$LOG_DIR" --metrics-enabled false
+    --router-endpoint "$PLAY_B_ROUTER" --pub-endpoint "$PLAY_B_PUB" --log-dir "$LOG_DIR" --metrics-enabled false "${lease_args[@]}"
   wait_health "$PLAY_B_URL" play-b
   start_role workflow-a "$WORKFLOW_PROJECT" --rid workflow-a --http-url "$WORKFLOW_A_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "$WORKFLOW_A_ROUTER" --pub-endpoint "$WORKFLOW_A_PUB" --log-dir "$LOG_DIR"
+    --router-endpoint "$WORKFLOW_A_ROUTER" --pub-endpoint "$WORKFLOW_A_PUB" --log-dir "$LOG_DIR" "${lease_args[@]}"
   wait_health "$WORKFLOW_A_URL" workflow-a
   start_role workflow-b "$WORKFLOW_PROJECT" --rid workflow-b --http-url "$WORKFLOW_B_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "$WORKFLOW_B_ROUTER" --pub-endpoint "$WORKFLOW_B_PUB" --log-dir "$LOG_DIR"
+    --router-endpoint "$WORKFLOW_B_ROUTER" --pub-endpoint "$WORKFLOW_B_PUB" --log-dir "$LOG_DIR" "${lease_args[@]}"
   wait_health "$WORKFLOW_B_URL" workflow-b
   start_role session-a "$SESSION_PROJECT" --rid session-a --http-url "$SESSION_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \

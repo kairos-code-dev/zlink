@@ -14,7 +14,22 @@ internal static class ObsB4DisabledMetricsScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-b4-{suffix}";
         var roomRid = $"room-b4-{suffix}";
-        await context.PlayB.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
+        // B4 follows B3's 11s store pause on the same topology: the first
+        // store write can still sit behind the multiplexer's recovery, so the
+        // room creation polls within a bounded window instead of racing it.
+        var roomDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(20);
+        while (true)
+        {
+            try
+            {
+                await context.PlayB.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
+                break;
+            }
+            catch (Exception) when (DateTimeOffset.UtcNow < roomDeadline)
+            {
+                await Task.Delay(500);
+            }
+        }
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         var joined = await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();

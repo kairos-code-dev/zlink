@@ -2,7 +2,10 @@
 
 #include <zlink/Contracts/Messaging/received.hpp>
 #include <zlink/Contracts/Messaging/topic_message.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
+
+#include <Runtime/Service/spot_state.hpp>
 
 namespace zlink
 {
@@ -140,6 +143,26 @@ message_t topic_message_t::single_part_or_throw ()
 message_t &topic_message_t::first_part ()
 {
     return _parts.first_part ();
+}
+
+// Send/reply bound to this received message's encapsulated routing context.
+// The supporting builder machinery (received_send/received_reply operation
+// kinds, submit_received_*_parts) survives the 10.0.0 transition for the raw
+// socket layer; only these two entry points were dropped and are restored here.
+service::send_operation_t received_t::send ()
+{
+    auto state_ptr = service::detail::acquire_state ();
+    state_ptr->kind = service::detail::spot_operation_kind_t::received_send;
+    state_ptr->received.received = this;
+    return service::send_operation_t (std::move (state_ptr));
+}
+
+service::reply_operation_t received_t::reply ()
+{
+    auto state_ptr = service::detail::acquire_state ();
+    state_ptr->kind = service::detail::spot_operation_kind_t::received_reply;
+    state_ptr->received.received = this;
+    return service::reply_operation_t (std::move (state_ptr));
 }
 
 } // namespace zlink

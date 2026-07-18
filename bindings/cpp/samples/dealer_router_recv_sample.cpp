@@ -29,7 +29,8 @@ int main ()
 
     const std::string reply_payload = detail::k_dealer_router_reply;
     zlink::message_t reply = detail::make_message (reply_payload);
-    inbound.send ().message (reply).submit ();
+    // Reply on the ROUTER socket, addressed by the received envelope's routing id.
+    router.send (*inbound.routing_id ()).message (reply).submit ();
     inbound.close ();
 
     zlink::received_t echoed;

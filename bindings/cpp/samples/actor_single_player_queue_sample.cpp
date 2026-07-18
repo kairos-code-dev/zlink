@@ -1,86 +1,55 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+/*
+ * 자립형 가이드 예제: SPOT Actor의 재접속 이전성(single-player queue).
+ * actor가 한 Spot을 떠나 다른 Spot으로 옮기는 사이에 도착한 메시지는
+ * session binding에 큐잉되어, 재조인 후 순서대로 배달된다.
+ */
 
 #include "actor_sample_common.hpp"
-
-static void join_only_dispatch (actor_sample_dispatch_state_t &state_,
-                                const zlink::spot_dispatch_info_t &info_)
-{
-    if (info_.event != zlink::spot_dispatch_event_t::actor_join_readable)
-        return;
-
-    auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
-    assert (request.has_value ());
-    zlink::message_t reply = zlink::message_t::from ("accepted");
-    state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
-}
 
 int main ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
+    zlink::service::mesh_node_t node (ctx, {"single-player-mesh", ""});
+    const zlink::routing_id_t node_rid = detail::mesh_start_single_node (node, "rooms");
+
     zlink::service::spot_t first_spot = node.create_spot ();
     zlink::service::spot_t second_spot = node.create_spot ();
     zlink::service::actor_t actor = node.create_actor ("single-player");
-    zlink::actor_ref_t ref = actor.ref ();
-    actor_sample_stream_session_t stream_session (ctx);
-    (void) stream_session.stream.bind_actor (stream_session.session, ref)
-      .timeout (std::chrono::milliseconds (1000))
-      .async ()
-      .get ();
 
-    actor_sample_capture_t first_capture;
-    actor_sample_dispatch_state_t first_state{&first_spot, &node, &actor, &first_capture};
-    first_spot.set_dispatch_handler (
-      [&first_state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
-          join_only_dispatch (first_state, info);
-      });
-    zlink::message_t join_first = zlink::message_t::from ("join-first");
-    assert (actor.join (first_spot)
-              .message (join_first)
-              .flags (zlink::recv_flags_t::dontwait)
-              .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result,
-                            std::vector<zlink::message_t> parts) {
-                  actor_sample_join_reply (first_capture, result, std::move (parts));
-              }));
-    assert (wait_until_flag (first_capture, &actor_sample_capture_t::joined));
-    assert (first_capture.join_result == zlink::request_result_t::ok);
+    // STREAM session에 actor를 bind한다 (조인/이탈과 무관하게 유지된다).
+    actor_stream_session_t session (ctx, node);
+    assert (session.bind (actor.ref ()));
 
-    zlink::message_t before = zlink::message_t::from ("before");
-    assert (stream_session.stream.send_bound_actor (stream_session.session, "single-player")
-              .message (before)
-              .flags (zlink::recv_flags_t::dontwait)
-              .submit ());
-    (void) actor.leave (first_spot).async ().get ();
+    // 첫 Spot에 조인 → "before"가 조인 상태에서 도착한다.
+    std::vector<zlink::message_t> hello_first = detail::make_parts ("join-first");
+    zlink::service::operation_id_t op_first;
+    assert (actor.join_spot (node_rid, first_spot.routing_id (),
+                             first_spot.status ().lifecycle_generation (), hello_first, op_first,
+                             std::chrono::seconds (1))
+            == zlink::submit_result_t::ok);
+    assert (actor_admit_join (node));
+    assert (session.relay (actor.ref (), "before"));
+    std::string first_payload;
+    assert (actor_recv_text (node, first_payload));
 
-    zlink::message_t between = zlink::message_t::from ("between");
-    assert (stream_session.stream.send_bound_actor (stream_session.session, "single-player")
-              .message (between)
-              .flags (zlink::recv_flags_t::dontwait)
-              .submit ());
+    // 첫 Spot을 떠난다 (session 바인딩은 유지). 그 사이 "between"이 도착해 큐잉.
+    zlink::service::operation_id_t leave_op;
+    (void) actor.leave_spot (0, leave_op, std::chrono::seconds (1));
+    assert (session.relay (actor.ref (), "between"));
 
-    actor_sample_capture_t second_capture;
-    actor_sample_dispatch_state_t second_state{&second_spot, &node, &actor, &second_capture};
-    second_spot.set_dispatch_handler (
-      [&second_state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
-          actor_sample_dispatch (second_state, info);
-      });
-    zlink::message_t join_second = zlink::message_t::from ("join-second");
-    assert (node.join_actor (ref, node.routing_id (), second_spot.routing_id ())
-              .message (join_second)
-              .flags (zlink::recv_flags_t::dontwait)
-              .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result,
-                            std::vector<zlink::message_t> parts) {
-                  actor_sample_join_reply (second_capture, result, std::move (parts));
-              }));
-    assert (wait_until_flag (second_capture, &actor_sample_capture_t::joined));
-    assert (second_capture.join_result == zlink::request_result_t::ok);
-    assert (wait_until_payload (second_capture, "beforebetween"));
+    // 둘째 Spot으로 재조인 → 큐된 "between"이 배달된다.
+    std::vector<zlink::message_t> hello_second = detail::make_parts ("join-second");
+    zlink::service::operation_id_t op_second;
+    assert (actor.join_spot (node_rid, second_spot.routing_id (),
+                             second_spot.status ().lifecycle_generation (), hello_second, op_second,
+                             std::chrono::seconds (1))
+            == zlink::submit_result_t::ok);
+    assert (actor_admit_join (node));
+    std::string second_payload;
+    assert (actor_recv_text (node, second_payload));
 
-    (void) actor.leave (second_spot).async ().get ();
-    actor.close ();
-    std::printf (
-      "[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"\n");
+    std::printf ("[actor/single-player] queued payload: \"before/between\" -> actor: \"%s/%s\"\n",
+                 first_payload.c_str (), second_payload.c_str ());
     return 0;
 }

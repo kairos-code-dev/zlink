@@ -1,50 +1,40 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+/*
+ * 자립형 가이드 예제: STREAM 게이트웨이가 relay한 패킷을 room의 Actor가 받는다.
+ *
+ * RouteMesh 10.0.0: actor를 STREAM session에 bind하면, 그 session으로 들어온
+ * 패킷이 actor로 relay된다. actor는 pull 루프의 application claim에서 받는다.
+ */
 
 #include "actor_sample_common.hpp"
 
 int main ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
-    zlink::service::spot_t spot = node.create_spot ();
+    zlink::service::mesh_node_t node (ctx, {"session-mesh", ""});
+    const zlink::routing_id_t node_rid = detail::mesh_start_single_node (node, "sessions");
+
+    zlink::service::spot_t room = node.create_spot ();
+    const zlink::routing_id_t room_rid = room.routing_id ();
+    const uint64_t room_gen = room.status ().lifecycle_generation ();
     zlink::service::actor_t actor = node.create_actor ("room-player-1");
 
-    actor_sample_capture_t capture;
-    actor_sample_dispatch_state_t state{&spot, &node, &actor, &capture};
-    spot.set_dispatch_handler (
-      [&state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
-          actor_sample_dispatch (state, info);
-      });
+    // actor가 room에 조인하고, room이 수락한다.
+    std::vector<zlink::message_t> hello = detail::make_parts ("enter-room");
+    zlink::service::operation_id_t join_op;
+    assert (actor.join_spot (node_rid, room_rid, room_gen, hello, join_op,
+                             std::chrono::seconds (1))
+            == zlink::submit_result_t::ok);
+    assert (actor_admit_join (node));
 
-    actor_sample_stream_session_t stream_session (ctx);
-    (void) stream_session.stream.bind_actor (stream_session.session, actor.ref ())
-      .timeout (std::chrono::milliseconds (1000))
-      .async ()
-      .get ();
+    // STREAM session에 actor를 bind하고, 클라이언트 패킷을 relay한다.
+    actor_stream_session_t session (ctx, node);
+    assert (session.bind (actor.ref ()));
+    assert (session.relay (actor.ref (), "move:north"));
 
-    zlink::message_t join = zlink::message_t::from ("enter-room");
-    assert (actor.join (spot)
-              .message (join)
-              .flags (zlink::recv_flags_t::dontwait)
-              .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result,
-                            std::vector<zlink::message_t> parts) {
-                  actor_sample_join_reply (capture, result, std::move (parts));
-              }));
-    assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
-    assert (capture.join_result == zlink::request_result_t::ok);
-
-    zlink::message_t event = zlink::message_t::from ("move:north");
-    assert (stream_session.stream.send_bound_actor (stream_session.session, "room-player-1")
-              .message (event)
-              .flags (zlink::recv_flags_t::dontwait)
-              .submit ());
-    assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
-    assert (capture.payload == "move:north");
-
-    (void) actor.leave (spot).async ().get ();
-    actor.close ();
+    std::string payload;
+    assert (actor_recv_text (node, payload));
     std::printf ("[actor/room] stream payload: \"move:north\" -> actor: \"%s\"\n",
-                 capture.payload.c_str ());
+                 payload.c_str ());
     return 0;
 }

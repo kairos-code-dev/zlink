@@ -127,6 +127,12 @@ void mesh_node_t::set_bind (const std::string &endpoint_)
       zlink_mesh_node_set_bind (_impl->handle, endpoint_.c_str ())));
 }
 
+void mesh_node_t::set_routing_id (const routing_id_t &routing_id_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
+      zlink_set_routing_id (_impl->handle, routing_id_.data (), routing_id_.size ())));
+}
+
 void mesh_node_t::add_channel_name (const std::string &channel_name_)
 {
     zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (

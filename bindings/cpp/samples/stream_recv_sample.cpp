@@ -28,7 +28,8 @@ int main ()
     assert (inbound.parts ()[0].to_string () == detail::k_stream_payload);
 
     zlink::message_t reply = detail::make_message (detail::k_stream_payload);
-    inbound.send ().message (reply).submit ();
+    // Reply on the STREAM socket, addressed by the received envelope's routing id.
+    server.send (*inbound.routing_id ()).message (reply).submit ();
     inbound.close ();
 
     char response[64];

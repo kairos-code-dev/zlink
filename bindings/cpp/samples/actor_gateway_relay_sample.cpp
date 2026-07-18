@@ -1,63 +1,50 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+/*
+ * 자립형 가이드 예제: STREAM 게이트웨이 → play-session Actor relay.
+ * 게이트웨이 노드가 play-session actor를 호스트하고, 클라이언트 입력을 STREAM
+ * session으로 받아 actor에게 relay한다.
+ *
+ * RouteMesh 10.0.0: gateway 노드가 actor를 만들고 play Spot에 조인시킨 뒤, STREAM
+ * session에 bind한다. 클라이언트가 보낸 프레임이 actor로 relay된다.
+ */
 
 #include "actor_sample_common.hpp"
 
 int main ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t gateway_node (ctx);
-    zlink::service::spot_node_t play_node (ctx);
-    zlink::service::spot_t play_spot = play_node.create_spot ();
+    zlink::service::mesh_node_t node (ctx, {"gateway-mesh", ""});
+    const zlink::routing_id_t node_rid = detail::mesh_start_single_node (node, "sessions");
 
-    actor_sample_capture_t capture;
-    zlink::routing_id_t play_node_rid = play_node.routing_id ();
-    zlink::service::actor_t play_actor = gateway_node.create_actor ("play-session-actor");
+    zlink::service::spot_t play_spot = node.create_spot ();
+    const zlink::routing_id_t play_rid = play_spot.routing_id ();
+    const uint64_t play_gen = play_spot.status ().lifecycle_generation ();
+    zlink::service::actor_t play_actor = node.create_actor ("play-session-actor");
     assert (play_actor.valid ());
-    zlink::actor_ref_t concrete = play_actor.ref ();
 
-    actor_sample_dispatch_state_t state{&play_spot, &play_node, &play_actor, &capture};
-    play_spot.set_dispatch_handler (
-      [&state] (zlink::service::spot_t &, const zlink::spot_dispatch_info_t &info) {
-          actor_sample_dispatch (state, info);
-      });
+    // play-session actor를 play Spot에 조인시키고 수락한다.
+    std::vector<zlink::message_t> hello = detail::make_parts ("join-play");
+    zlink::service::operation_id_t join_op;
+    assert (play_actor.join_spot (node_rid, play_rid, play_gen, hello, join_op,
+                                  std::chrono::seconds (1))
+            == zlink::submit_result_t::ok);
+    assert (actor_admit_join (node));
 
-    actor_sample_stream_session_t stream_session (ctx);
-    (void) stream_session.stream.bind_actor (stream_session.session, concrete)
-      .timeout (std::chrono::milliseconds (1000))
-      .async ()
-      .get ();
+    // 게이트웨이 STREAM session이 클라이언트 입력을 actor로 relay한다.
+    actor_stream_session_t session (ctx, node);
+    assert (session.bind (play_actor.ref ()));
+    assert (session.relay (play_actor.ref (), "client-input"));
 
-    zlink::routing_id_t play_spot_rid = play_spot.routing_id ();
-    zlink::message_t join = zlink::message_t::from ("join-play");
-    assert (gateway_node.join_actor (concrete, play_node_rid, play_spot_rid)
-              .message (join)
-              .flags (zlink::recv_flags_t::dontwait)
-              .timeout (std::chrono::milliseconds (1000))
-              .submit ([&] (const zlink::actor_join_result_t &result,
-                            std::vector<zlink::message_t> parts) {
-                  actor_sample_join_reply (capture, result, std::move (parts));
-              }));
-    assert (wait_until_flag (capture, &actor_sample_capture_t::joined));
-    assert (capture.join_result == zlink::request_result_t::ok);
-    concrete = capture.joined_actor;
+    std::string payload;
+    assert (actor_recv_text (node, payload));
 
-    zlink::message_t frame = zlink::message_t::from ("client-input");
-    assert (stream_session.stream.send_bound_actor (stream_session.session, "play-session-actor")
-              .message (frame)
-              .flags (zlink::recv_flags_t::dontwait)
-              .submit ());
-    assert (wait_until_flag (capture, &actor_sample_capture_t::actor_read));
-    assert (capture.payload == "client-input");
+    // actor 정리.
+    zlink::service::operation_id_t leave_op;
+    (void) play_actor.leave_spot (0, leave_op, std::chrono::seconds (1));
+    zlink::service::operation_id_t destroy_op;
+    (void) play_actor.destroy (destroy_op, std::chrono::seconds (1));
 
-    (void) gateway_node.leave_actor (concrete, play_spot_rid)
-      .timeout (std::chrono::milliseconds (1000))
-      .async ()
-      .get ();
-    (void) gateway_node.destroy_actor (concrete)
-      .timeout (std::chrono::milliseconds (1000))
-      .async ()
-      .get ();
     std::printf ("[actor/gateway] stream payload: \"client-input\" -> actor: \"%s\"\n",
-                 capture.payload.c_str ());
+                 payload.c_str ());
     return 0;
 }

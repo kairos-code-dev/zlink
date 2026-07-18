@@ -59,6 +59,10 @@ class mesh_node_t
 
     // Lifecycle.
     void set_bind (const std::string &endpoint_);
+    /// @brief Sets this node's routing id. Required before start(): the node
+    ///        must have a non-empty routing id, a bind endpoint and at least
+    ///        one channel. Configuration is immutable once started.
+    void set_routing_id (const routing_id_t &routing_id_);
     void add_channel_name (const std::string &channel_name_);
     void set_channel_weight (const std::string &channel_name_, uint32_t weight_);
     void start ();

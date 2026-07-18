@@ -5,46 +5,18 @@
 #include "sample_common.hpp"
 
 #include <cassert>
-#include <chrono>
-#include <condition_variable>
-#include <cstdio>
 #include <cstring>
 #include <memory>
-#include <mutex>
+#include <optional>
 #include <string>
+#include <vector>
 
-struct actor_sample_capture_t
-{
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool joined = false;
-    bool actor_read = false;
-    zlink::request_result_t join_result = zlink::request_result_t::internal_error;
-    zlink::actor_ref_t joined_actor;
-    std::string payload;
-};
-
-struct actor_sample_dispatch_state_t
-{
-    zlink::service::spot_t *spot;
-    zlink::service::spot_node_t *node;
-    zlink::service::actor_t *actor;
-    actor_sample_capture_t *capture;
-};
-
-inline bool wait_until_flag (actor_sample_capture_t &capture_, bool actor_sample_capture_t::*flag_)
-{
-    std::unique_lock<std::mutex> lock (capture_.mutex);
-    return capture_.cv.wait_for (lock, std::chrono::seconds (2),
-                                 [&] () { return capture_.*flag_; });
-}
-
-inline bool wait_until_payload (actor_sample_capture_t &capture_, const std::string &payload_)
-{
-    std::unique_lock<std::mutex> lock (capture_.mutex);
-    return capture_.cv.wait_for (lock, std::chrono::seconds (2),
-                                 [&] () { return capture_.payload == payload_; });
-}
+//  Shared helpers for the RouteMesh 10.0.0 Actor guide samples.
+//
+//  Actors live on a mesh node's Spots. A join is admitted by the target Spot
+//  through the sealed reply token it receives on its application claim; inbound
+//  actor traffic arrives on the actor's own application claim. Both are drained
+//  through the pull loop in sample_common.hpp.
 
 inline zlink::routing_id_t sample_rid (const char *text_)
 {
@@ -52,68 +24,77 @@ inline zlink::routing_id_t sample_rid (const char *text_)
                                       std::strlen (text_));
 }
 
-struct actor_sample_stream_session_t
+//  Admits the next pending actor-join arriving on any local Spot and replies
+//  "accepted". Returns false if none arrives before the timeout.
+inline bool actor_admit_join (zlink::service::mesh_node_t &node_, int timeout_ms_ = 3000)
+{
+    detail::mesh_record_t joined;
+    if (!detail::mesh_pull_one (node_, zlink::service::owner_kind_t::spot,
+                                zlink::service::ready_domain_t::application, joined, timeout_ms_))
+        return false;
+    std::vector<zlink::message_t> reply = detail::make_parts ("accepted");
+    return zlink::service::actor_join_reply (joined.record.reply_token,
+                                             zlink::service::actor_join_result_t::accepted, reply)
+           == zlink::submit_result_t::ok;
+}
+
+//  Waits for the next message delivered to a local actor and returns its text.
+inline bool actor_recv_text (zlink::service::mesh_node_t &node_, std::string &out_,
+                             int timeout_ms_ = 3000)
+{
+    detail::mesh_record_t message;
+    if (!detail::mesh_pull_one (node_, zlink::service::owner_kind_t::actor,
+                                zlink::service::ready_domain_t::application, message, timeout_ms_))
+        return false;
+    out_ = message.first_text ();
+    return true;
+}
+
+//  A STREAM gateway session bound to an actor: a raw TCP client connects to the
+//  node's STREAM socket, the session service binds it to an actor, and packets
+//  the client sends are relayed to the bound actor.
+struct actor_stream_session_t
 {
     zlink::stream_socket_t stream;
+    zlink::service::stream_session_service_t service;
     std::unique_ptr<detail::raw_tcp_client_t> client;
     zlink::routing_id_t session;
 
-    explicit actor_sample_stream_session_t (zlink::context_t &ctx_) :
-        stream (ctx_), client (), session (sample_rid ("placeholder"))
+    actor_stream_session_t (zlink::context_t &ctx_, zlink::service::mesh_node_t &node_) :
+        stream (ctx_), service (node_, stream), client (), session (sample_rid ("placeholder"))
     {
         zlink::socket_monitor_t monitor = stream.monitor_open ();
         stream.options ().notify (false);
         stream.bind ("tcp://127.0.0.1:0");
         const std::string endpoint = stream.options ().last_endpoint ();
         assert (!endpoint.empty ());
+        service.start ();
+
         client = std::make_unique<detail::raw_tcp_client_t> (endpoint);
         assert (detail::wait_stream_connected (monitor));
         client->send_all ("session", 7);
 
+        //  The first inbound frame carries the session's routing id.
         zlink::received_t inbound;
         assert (stream.recv (inbound) == 0);
         assert (inbound.routing_id ().has_value ());
         session = *inbound.routing_id ();
     }
+
+    //  Binds @p actor to this session so relayed packets reach it.
+    bool bind (const zlink::actor_ref_t &actor_)
+    {
+        zlink::service::operation_id_t op_id;
+        return service.bind_actor (session, actor_, op_id, std::chrono::seconds (1))
+               == zlink::submit_result_t::ok;
+    }
+
+    //  Relays a payload to the actor bound on this session.
+    bool relay (const zlink::actor_ref_t &actor_, const std::string &text_)
+    {
+        std::vector<zlink::message_t> parts = detail::make_parts (text_);
+        return service.send_to_actor (session, actor_, parts) == zlink::submit_result_t::ok;
+    }
 };
-
-inline void actor_sample_dispatch (actor_sample_dispatch_state_t &state_,
-                                   const zlink::spot_dispatch_info_t &info_)
-{
-    if (info_.event == zlink::spot_dispatch_event_t::actor_join_readable) {
-        auto request = state_.spot->recv_actor_join (zlink::recv_flags_t::dontwait);
-        assert (request.has_value ());
-        zlink::message_t reply = zlink::message_t::from ("accepted");
-        state_.spot->reply_actor_join (*request, 0).message (reply).submit ();
-        return;
-    }
-
-    if (info_.event == zlink::spot_dispatch_event_t::actor_readable) {
-        assert (info_.actor.has_value ());
-        assert (state_.actor != nullptr);
-        for (;;) {
-            std::optional<zlink::actor_part_t> received =
-              state_.node->recv_actor_part (*info_.actor, zlink::recv_flags_t::dontwait);
-            if (!received.has_value ())
-                break;
-            std::lock_guard<std::mutex> lock (state_.capture->mutex);
-            state_.capture->payload += received->part.to_string ();
-            state_.capture->actor_read = true;
-            state_.capture->cv.notify_all ();
-        }
-    }
-}
-
-inline void actor_sample_join_reply (actor_sample_capture_t &capture_,
-                                     const zlink::actor_join_result_t &result_,
-                                     std::vector<zlink::message_t>)
-{
-    std::lock_guard<std::mutex> lock (capture_.mutex);
-    capture_.join_result = result_.result;
-    if (result_.result == zlink::request_result_t::ok)
-        capture_.joined_actor = result_.actor;
-    capture_.joined = true;
-    capture_.cv.notify_all ();
-}
 
 #endif

@@ -121,6 +121,16 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return outbound.PublishCurrentAsync(topic, parts, cancellationToken, metadata);
     }
 
+    public bool TryPublishCurrentOnce(
+        string topic,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata,
+        out MeshPublishDetail? detail)
+    {
+        using var operation = runtime.EnterOperation();
+        return outbound.TryPublishCurrentOnce(topic, parts, metadata, out detail);
+    }
+
     public ValueTask SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,

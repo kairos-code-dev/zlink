@@ -212,7 +212,6 @@ start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --conf
 wait_port api "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}"
 
 start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj" --config "${SESSION_CONFIG_FILE}"
-wait_port session-route "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 

@@ -127,13 +127,32 @@ internal sealed class ZLinkSessionActorCoordinator(
             throw new InvalidOperationException("Actor session binding requires a stream routing id.");
         var sessionNodeRid = runtime.GetActorClientSpotNode().RoutingId;
         if (actor.NodeRid == sessionNodeRid) return;
-        var response = await new ZLinkActorClient(runtime)
-            .RequestToActor(actor, new ZLinkRemoteSessionBindRequest(
-                sessionNodeRid.ToBytes().ToArray(),
-                sessionRid.ToBytes().ToArray()))
-            .Timeout(runtime.Registration.DefaultRequestTimeout)
-            .Async<ZLinkRemoteSessionBindResponse>(cancellationToken)
-            .ConfigureAwait(false);
+        // The bind confirm can race auto-discovery admission of the actor's
+        // node at startup; retriable route failures retry within the request
+        // timeout instead of failing the session's first authenticate.
+        var deadline = DateTime.UtcNow + runtime.Registration.DefaultRequestTimeout;
+        ZLinkRemoteSessionBindResponse response;
+        while (true)
+        {
+            try
+            {
+                response = await new ZLinkActorClient(runtime)
+                    .RequestToActor(actor, new ZLinkRemoteSessionBindRequest(
+                        sessionNodeRid.ToBytes().ToArray(),
+                        sessionRid.ToBytes().ToArray()))
+                    .Timeout(runtime.Registration.DefaultRequestTimeout)
+                    .Async<ZLinkRemoteSessionBindResponse>(cancellationToken)
+                    .ConfigureAwait(false);
+                break;
+            }
+            catch (ZLinkFrameworkException failure)
+                when (failure.IsRetriable && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
         if (!response.Acknowledged)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorSessionNotBound,

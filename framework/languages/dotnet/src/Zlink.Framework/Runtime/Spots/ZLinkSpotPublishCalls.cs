@@ -22,9 +22,54 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
         return this;
     }
 
+    // One-shot non-blocking submit: a single DontWait attempt whose routine
+    // failures map to statuses instead of exceptions. Blocking admission
+    // (send-ready wait) stays on SubmitAsync.
     public ZLinkPublishResult TrySubmit()
     {
-        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            activation.Flow.CaptureEnabled);
+        var parts = ZLinkSpotPublishEnvelope.EncodeParts(
+            activation.ChannelName,
+            _messageName,
+            topic,
+            message,
+            activation.Codecs);
+        try
+        {
+            if (activation.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+                activation.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowOutcome.Sent,
+                    ZLinkDispatchErrorSurface.SpotSubscription,
+                    ZLinkDispatchMessageKind.Publish,
+                    _messageName,
+                    activation.ChannelName,
+                    topic,
+                    SpotRid: activation.SpotRid.ToString()));
+            MeshPublishDetail? detail;
+            bool accepted;
+            try
+            {
+                accepted = activation.OutboundEndpoint.TryPublishCurrentOnce(
+                    topic, parts, _metadata.Encode(), out detail);
+            }
+            catch (ZlinkSubmitException submitFailure)
+                when (ZLinkPublishResultMapper.TryMapSubmitFailure(
+                    submitFailure.Result, out var failed))
+            {
+                return failed;
+            }
+
+            if (!accepted || detail is not { } fanout)
+                return new ZLinkPublishResult(ZLinkSubmitStatus.Backpressured, default);
+            ZLinkRuntimeMetrics.RecordFanoutPublished(null);
+            return fanout.ToPublishResult();
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
     }
 
     public async ValueTask<ZLinkPublishResult> SubmitAsync(
@@ -96,9 +141,53 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         return this;
     }
 
+    // One-shot non-blocking submit; see the current-spot call above.
     public ZLinkPublishResult TrySubmit()
     {
-        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+        using var operation = runtime.EnterOperation();
+        using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
+            ZLinkFlowOrigin.Application,
+            runtime.Flow.CaptureEnabled);
+        var bundle = runtime.GetSpotPublisherBundle(channelName);
+        var parts = ZLinkSpotPublishEnvelope.EncodeParts(
+            channelName,
+            _messageName,
+            topic,
+            message,
+            runtime.Registration.Codecs);
+        try
+        {
+            if (runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
+                runtime.Flow.Trace(new ZLinkMessageFlowEvent(
+                    ZLinkMessageFlowOutcome.Sent,
+                    ZLinkDispatchErrorSurface.SpotSubscription,
+                    ZLinkDispatchMessageKind.Publish,
+                    _messageName,
+                    channelName,
+                    topic,
+                    SpotRid: bundle.Spot.RoutingId.ToString()));
+            MeshPublishDetail? detail;
+            try
+            {
+                if (!TryPublish(bundle.Spot, parts, _metadata.Encode(), out detail))
+                    return new ZLinkPublishResult(ZLinkSubmitStatus.Backpressured, default);
+            }
+            catch (ZlinkSubmitException submitFailure)
+                when (ZLinkPublishResultMapper.TryMapSubmitFailure(
+                    submitFailure.Result, out var failed))
+            {
+                return failed;
+            }
+
+            if (detail is not { } fanout)
+                return new ZLinkPublishResult(ZLinkSubmitStatus.Backpressured, default);
+            ZLinkRuntimeMetrics.RecordFanoutPublished(null);
+            return fanout.ToPublishResult();
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
     }
 
     public async ValueTask<ZLinkPublishResult> SubmitAsync(
@@ -174,6 +263,25 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
 }
 internal static class ZLinkPublishResultMapper
 {
+    /// <summary>Maps a one-shot submit failure onto the TrySubmit status
+    /// surface; unknown codes stay exceptions.</summary>
+    public static bool TryMapSubmitFailure(
+        ZlinkSubmitException.ErrorCode code, out ZLinkPublishResult result)
+    {
+        ZLinkSubmitStatus? status = code switch
+        {
+            ZlinkSubmitException.ErrorCode.Backpressured => ZLinkSubmitStatus.Backpressured,
+            ZlinkSubmitException.ErrorCode.NotFound => ZLinkSubmitStatus.TargetNotFound,
+            ZlinkSubmitException.ErrorCode.NotConnected => ZLinkSubmitStatus.RouteNotConnected,
+            ZlinkSubmitException.ErrorCode.Terminated => ZLinkSubmitStatus.Shutdown,
+            _ => null
+        };
+        result = status is { } mapped
+            ? new ZLinkPublishResult(mapped, default)
+            : default;
+        return status is not null;
+    }
+
     public static ZLinkPublishResult ToPublishResult(this MeshPublishDetail detail)
     {
         return new ZLinkPublishResult(

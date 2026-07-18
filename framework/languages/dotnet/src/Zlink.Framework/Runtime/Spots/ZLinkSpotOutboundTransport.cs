@@ -15,6 +15,17 @@ internal sealed class ZLinkSpotOutboundTransport(
         return _submitter.DisposeAsync();
     }
 
+    /// <summary>One-shot non-blocking publish (TrySubmit surface): a single
+    /// DontWait attempt with no send-ready wait. False = backpressured.</summary>
+    public bool TryPublishCurrentOnce(
+        string topic,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata,
+        out MeshPublishDetail? detail)
+    {
+        return TryPublish(topic, parts, metadata, out detail);
+    }
+
     public async ValueTask<MeshPublishDetail> PublishCurrentAsync(
         string topic,
         IReadOnlyList<Message> parts,

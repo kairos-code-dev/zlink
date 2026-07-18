@@ -1,3 +1,4 @@
+using Systems.Zlink;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -47,6 +48,9 @@ public static class SupportServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             options.AddClientServerChannel(SampleNames.SupportChannel)
                 .EnableServer(topology.SupportChannelEndpoint)
+                // Discovery clients dial this server through its descriptor
+                // row, which needs a concrete routing id to be advertised.
+                .SetRoutingId(RoutingId.From("2101"))
                 .AddHandlerGroup("support");
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();

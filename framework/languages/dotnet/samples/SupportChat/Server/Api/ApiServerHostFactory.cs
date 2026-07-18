@@ -1,3 +1,4 @@
+using Systems.Zlink;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.Extensions.Hosting;
@@ -32,6 +33,9 @@ public static class ApiServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableServer(topology.ApiChannelEndpoint)
+                // Discovery clients dial this server through its descriptor
+                // row, which needs a concrete routing id to be advertised.
+                .SetRoutingId(RoutingId.From("1101"))
                 .AddHandlerGroup("api");
             options.AddClientServerChannel(SampleNames.SupportChannel)
                 .EnableClient();

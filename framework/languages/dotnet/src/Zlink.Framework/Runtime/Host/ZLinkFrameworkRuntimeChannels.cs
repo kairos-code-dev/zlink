@@ -144,6 +144,27 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spotRouteRouter.ResolveAcceptedSpotRouteNodeRid(targetSpotNodeChannelName);
     }
 
+    /// <summary>One-shot non-blocking spot send (TrySubmit surface): a single
+    /// DontWait attempt after the route-mesh peer check.</summary>
+    internal bool TrySendToSpotViaRouterChannelOnce(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        using var operation = EnterOperation();
+        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
+        return _spotRouteRouter.TrySendOnce(
+            routerChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            parts,
+            metadata);
+    }
+
     internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,

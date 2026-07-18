@@ -219,7 +219,6 @@ dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj" --config "${CONFIG_DIR}/tracking.json"
 wait_port tracking-channel "${TRACKING_CHANNEL}"
 wait_port tracking-spot-router "${TRACKING_SPOT_ROUTER}"
-wait_port tracking-spot "${TRACKING_SPOT}"
 
 start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj" --config "${CONFIG_DIR}/customer-gateway.json"
 wait_port customer-stream "${CUSTOMER_STREAM}"

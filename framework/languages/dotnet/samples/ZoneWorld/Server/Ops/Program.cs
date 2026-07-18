@@ -73,6 +73,9 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
         .EnableServer(ops.ReportEndpoint)
+        // Discovery clients dial this server through its descriptor row,
+        // which needs a concrete routing id to be advertised.
+        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-report"))
         .AddHandlerGroup(HandlerGroups.Ops);
 
     // A node is addressed by the channel named after it, so the call lands on that node and no

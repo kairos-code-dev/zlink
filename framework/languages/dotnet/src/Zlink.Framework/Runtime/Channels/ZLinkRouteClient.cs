@@ -158,9 +158,37 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
         return this;
     }
 
+    // One-shot non-blocking submit: a single DontWait attempt whose routine
+    // failures map to statuses. Blocking admission stays on SubmitAsync.
     public ZLinkSubmitResult TrySubmit()
     {
-        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+        var snapshot = target.Snapshot;
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            snapshot.RouterChannelId,
+            ZLinkMessageNameResolver.ResolveFromMessage(message));
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
+        try
+        {
+            var accepted = runtime.TrySendToSpotViaRouterChannelOnce(
+                snapshot.RouterChannelId,
+                snapshot.NodeRid,
+                snapshot.SpotRid,
+                (ulong)snapshot.Generation,
+                parts,
+                _metadata.Encode());
+            return new ZLinkSubmitResult(
+                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
+        }
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
+        {
+            return failed;
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
     }
 
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(

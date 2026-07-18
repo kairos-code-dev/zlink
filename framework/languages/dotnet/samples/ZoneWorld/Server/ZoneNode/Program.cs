@@ -104,6 +104,11 @@ builder.Services.AddZLinkFramework(options =>
     // reaches this node and no other (§8.4).
     options.AddClientServerChannel(ZoneWorldNames.OpsChannel(nodeId))
         .EnableServer(node.OpsChannelEndpoint)
+        // Discovery clients dial this server through its descriptor row, which
+        // needs a concrete routing id to be advertised; the id comes from the
+        // per-node allocation group, never from configuration (ZW-G5, §11.2).
+        .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "ops")
+        .SetRoutingIdAllocationGroup(ZoneWorldNames.OpsChannel(nodeId))
         .AddHandlerGroup(HandlerGroups.ZoneOps);
 
     // Only the node hosting the spawn zone serves this: it is the authority for the
@@ -111,6 +116,11 @@ builder.Services.AddZLinkFramework(options =>
     if (ZoneTopology.SpawnNode == nodeId)
         options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)
             .EnableServer(node.ActorsChannelEndpoint)
+            // Discovery clients dial this server through its descriptor row, which
+            // needs a concrete routing id to be advertised; the id comes from an
+            // allocation group, never from configuration (ZW-G5, §11.2).
+            .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "actors")
+            .SetRoutingIdAllocationGroup(ZoneWorldNames.ActorsChannel)
             .AddHandlerGroup(HandlerGroups.ZoneActors);
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)

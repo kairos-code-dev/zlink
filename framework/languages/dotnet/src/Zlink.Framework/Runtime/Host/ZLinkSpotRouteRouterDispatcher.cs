@@ -1,3 +1,6 @@
+using Zlink.Framework.Runtime.Messaging;
+using Zlink.Framework.Runtime.Spots;
+
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkSpotRouteRouterDispatcher(
@@ -19,6 +22,44 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             parts,
             cancellationToken,
             metadata);
+    }
+
+    /// <summary>One-shot non-blocking spot send (TrySubmit surface). Only a
+    /// local router-capable node supports it; the route-channel fallback still
+    /// requires SubmitAsync (gap 90 §12.36 synchronous admission).</summary>
+    public bool TrySendOnce(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        var state = getState();
+        ZLinkSpotOutboundTransport? outbound = null;
+        if (state.TryGetSpotNodeByRoutingId(targetNodeRid, out var localSpotNode)
+            && localSpotNode.Registration.Router is not null)
+            outbound = localSpotNode.EntryOutbound;
+        else if (state.SpotNodes.TryGetValue(routerChannelId, out var spotNodeRuntime)
+                 && spotNodeRuntime.Registration.Router is not null)
+            outbound = spotNodeRuntime.EntryOutbound;
+        else
+        {
+            foreach (var candidate in state.SpotNodes.Values)
+            {
+                if (candidate.Registration.Router is null) continue;
+                var meshName = candidate.Registration.SpotMeshChannelName
+                               ?? candidate.Registration.SpotNodeName;
+                if (!string.Equals(meshName, routerChannelId, StringComparison.Ordinal)) continue;
+                outbound = candidate.EntryOutbound;
+                break;
+            }
+        }
+
+        if (outbound is null)
+            throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+        return outbound.TrySendToSpotOnce(
+            targetNodeRid, targetSpotRid, targetSpotGeneration, parts, metadata);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestAsync(

@@ -11,11 +11,13 @@ internal sealed class ZLinkLiveLocationRows(ZLinkOwnerLeaseTracker leaseTracker)
     {
         if (row is null) return null;
 
-        if (!acceptObserved(row)) return null;
+        // Liveness gates the observation: a dead-owner row must never record a
+        // generation floor, or the successor incarnation's fresh row (whose
+        // axes legitimately restart) would be rejected as a lagging replica.
+        if (!await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken).ConfigureAwait(false))
+            return null;
 
-        return await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken).ConfigureAwait(false)
-            ? row
-            : null;
+        return acceptObserved(row) ? row : null;
     }
 
     public async ValueTask<IReadOnlyList<TRow>> FilterAsync<TRow>(
@@ -27,13 +29,11 @@ internal sealed class ZLinkLiveLocationRows(ZLinkOwnerLeaseTracker leaseTracker)
         var live = new List<TRow>(rows.Count);
         foreach (var row in rows)
         {
-            if (!acceptObserved(row)) continue;
-
-            if (await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken)
+            if (!await leaseTracker.IsOwnerLiveAsync(ownerOf(row), cancellationToken)
                     .ConfigureAwait(false))
-            {
-                live.Add(row);
-            }
+                continue;
+
+            if (acceptObserved(row)) live.Add(row);
         }
 
         return live;

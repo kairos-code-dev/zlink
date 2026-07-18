@@ -82,10 +82,19 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default)
     {
-        var row = await ResolveAsync(
-            key,
-            static (store, key, ct) => store.ResolveActorAsync(key, ct),
-            _actorStore,
+        var raw = await ZLinkLocationStoreRead.ExecuteAsync(
+            _health,
+            "ZLinkActorLocation-resolver-read",
+            cancellationToken,
+            storeToken => _actorStore.ResolveActorAsync(key, storeToken)).ConfigureAwait(false);
+        // A confirmed store miss ends the identity's observed lifecycle: a
+        // re-created actor restarts its generation axes and must resolve.
+        if (raw is null) _observed.ForgetActor(key);
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1" && raw is not null)
+            Console.Error.WriteLine(
+                $"[resolve-actor] key={key.MeshName}/{key.ActorId} gen={raw.ActorRef.Generation} epoch={raw.MembershipEpoch} owner={raw.OwnerId}");
+        var row = await _liveRows.ResolveAsync(
+            raw,
             static row => row.OwnerId,
             // Reference generation 0 marks a claimed-but-unpublished actor:
             // the claim precedes activation, so such a row is never a
@@ -94,6 +103,9 @@ internal sealed class ZLinkStoreLocationResolvers :
             cancellationToken).ConfigureAwait(false);
         if (row is null)
         {
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[resolve-actor] miss key={key.MeshName}/{key.ActorId} raw={(raw is null ? "none" : "hidden")}");
             await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
         }
 

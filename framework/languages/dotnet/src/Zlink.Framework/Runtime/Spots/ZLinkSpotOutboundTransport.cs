@@ -62,6 +62,27 @@ internal sealed class ZLinkSpotOutboundTransport(
         }
     }
 
+    /// <summary>One-shot non-blocking spot send (TrySubmit surface): a single
+    /// DontWait attempt with no send-ready wait. False = backpressured;
+    /// routing failures surface as framework exceptions.</summary>
+    public bool TrySendToSpotOnce(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return ZLinkSubmitFailureMapper.AcceptOrThrow(
+            nativeSpot.SendToSpot(
+                targetNodeRid,
+                targetSpotRid,
+                targetSpotGeneration,
+                parts,
+                SendFlags.DontWait,
+                metadata),
+            $"SPOT '{targetSpotRid}' on node '{targetNodeRid}'");
+    }
+
     public ValueTask SendToSpotAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,

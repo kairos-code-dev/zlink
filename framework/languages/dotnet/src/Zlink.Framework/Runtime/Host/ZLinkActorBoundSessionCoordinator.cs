@@ -277,7 +277,9 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         }
         if (_getNode() is not { } localNode || sessionNodeRid.Equals(localNode.RoutingId))
         {
-            if (debug) Console.Error.WriteLine($"[relay] local actor={actorId}");
+            if (debug)
+                Console.Error.WriteLine(
+                    $"[relay] local actor={actorId} sessionNode={sessionNodeRid} localNode={_getNode()?.RoutingId.ToString() ?? "<none>"}");
             return false;
         }
         if (debug)

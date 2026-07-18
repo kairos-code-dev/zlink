@@ -49,6 +49,15 @@ internal sealed class ZLinkObservedLocationGenerations
             new ZLinkActorLocationKey(row.MeshName, row.ActorId),
             new ObservedVersion(row.ActorRef.Generation, row.MembershipEpoch));
 
+    /// <summary>A confirmed store miss ends the identity's observed lifecycle:
+    /// the row was removed, so a re-created incarnation legitimately restarts
+    /// its generation axes and must not be rejected as a lagging replica.</summary>
+    internal void ForgetActor(ZLinkActorLocationKey key) => _actors.Forget(key);
+
+    /// <summary>See <see cref="ForgetActor"/>; the same lifecycle-restart rule
+    /// applies to re-created spots.</summary>
+    internal void ForgetSpot(ZLinkSpotLocationKey key) => _spots.Forget(key);
+
     private readonly record struct ObservedVersion(ulong Major, ulong Minor)
         : IComparable<ObservedVersion>
     {
@@ -64,6 +73,14 @@ internal sealed class ZLinkObservedLocationGenerations
     {
         private readonly object _gate = new();
         private readonly Dictionary<TKey, ObservedVersion> _versions = [];
+
+        internal void Forget(TKey key)
+        {
+            lock (_gate)
+            {
+                _versions.Remove(key);
+            }
+        }
 
         internal bool Accept(TKey key, ObservedVersion version)
         {

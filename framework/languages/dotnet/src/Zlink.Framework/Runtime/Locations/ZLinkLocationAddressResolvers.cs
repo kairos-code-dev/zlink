@@ -16,18 +16,15 @@ internal sealed class ZLinkLocationAddressResolvers :
     private readonly ZLinkStoreLocationResolvers _rows;
     private readonly ZLinkSpotMeshLocationResolver _spots;
     private readonly ZLinkSpotHandleRegistry _handles;
-    private readonly ZLinkSpotRouterChannelMap _routerChannels;
 
     internal ZLinkLocationAddressResolvers(
         ZLinkStoreLocationResolvers rows,
         ZLinkSpotMeshLocationResolver spots,
-        ZLinkSpotHandleRegistry handles,
-        ZLinkSpotRouterChannelMap? routerChannels = null)
+        ZLinkSpotHandleRegistry handles)
     {
         _rows = rows;
         _spots = spots;
         _handles = handles;
-        _routerChannels = routerChannels ?? new ZLinkSpotRouterChannelMap(new ZLinkLocationOptions());
     }
 
     public async ValueTask<SpotHandle?> ResolveSpotHandleAsync(
@@ -87,7 +84,7 @@ internal sealed class ZLinkLocationAddressResolvers :
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkSpotLocation row)
         => new(
-            _routerChannels.Resolve(row.MeshName),
+            row.MeshName,
             row.OwnerNodeRid,
             row.SpotRid,
             row.SpotGeneration,
@@ -96,13 +93,13 @@ internal sealed class ZLinkLocationAddressResolvers :
     internal ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
         => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
             ? new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.MeshName),
+                row.MeshName,
                 row.OwnerNodeRid,
                 row.OwnerNodeRid,
                 row.SpotGeneration,
                 ZLinkSpotKind.Entry)
             : new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.MeshName),
+                row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,

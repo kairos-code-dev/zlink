@@ -7,10 +7,8 @@ namespace Zlink.Framework.Runtime.Locations;
 /// order by membership epoch, the axis that changes on every membership
 /// move within one actor generation.
 /// </summary>
-internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerChannels = null)
+internal sealed class ZLinkSpotHandleRegistry
 {
-    private readonly ZLinkSpotRouterChannelMap _routerChannels =
-        routerChannels ?? new ZLinkSpotRouterChannelMap(new ZLinkLocationOptions());
     private readonly object _gate = new();
     private readonly Dictionary<string, List<WeakReference<ZLinkResolvedSpotHandle>>> _actors =
         new(StringComparer.Ordinal);
@@ -25,7 +23,7 @@ internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerC
     internal void UpdateSpot(ZLinkSpotLocation row)
         => Apply(_spots, new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), handle => handle.Update(
             new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.MeshName),
+                row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,
@@ -41,13 +39,13 @@ internal sealed class ZLinkSpotHandleRegistry(ZLinkSpotRouterChannelMap? routerC
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
         => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
             ? new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.MeshName),
+                row.MeshName,
                 row.OwnerNodeRid,
                 row.OwnerNodeRid,
                 row.SpotGeneration,
                 ZLinkSpotKind.Entry)
             : new ZLinkSpotHandleSnapshot(
-                _routerChannels.Resolve(row.MeshName),
+                row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,

@@ -1589,7 +1589,6 @@ assembly Zlink.Framework
     property System.TimeSpan PollingInterval { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan RoutingIdFencingMargin { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan StoreFailureGrace { get; set; } [nullability=read:not-null,write:not-null]
-    method System.Void MapSpotMeshToRouteChannel(System.String spotMeshName [nullability=read:not-null,write:not-null], System.String routeChannelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken>
     ctor ZLinkLocationOwnerToken(System.String OwnerId [nullability=read:not-null,write:not-null], System.UInt64 Generation [nullability=read:not-null,write:not-null])
     property System.UInt64 Generation { get; init; } [nullability=read:not-null,write:not-null]

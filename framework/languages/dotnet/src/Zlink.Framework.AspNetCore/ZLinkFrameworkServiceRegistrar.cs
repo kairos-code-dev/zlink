@@ -316,7 +316,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         // The emitter is enabled only when AddZLinkMonitoring registered
         // location sources and the dispatcher; otherwise every emit is a
         // no-op and location flows pay nothing.
-        services.AddSingleton(new ZLinkSpotRouterChannelMap(registration.Locations.Options));
         services.AddSingleton<ZLinkSpotHandleRegistry>();
         services.AddSingleton(static provider => new ZLinkLocationEventEmitter(
             provider.GetService<ZLinkMonitoringRegistration>(),
@@ -343,8 +342,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
             provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
             provider.GetRequiredService<ZLinkSpotMeshLocationResolver>(),
-            provider.GetRequiredService<ZLinkSpotHandleRegistry>(),
-            provider.GetRequiredService<ZLinkSpotRouterChannelMap>()));
+            provider.GetRequiredService<ZLinkSpotHandleRegistry>()));
         services.AddSingleton<IZLinkSpotHandleResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
         services.AddSingleton<IZLinkActorSpotHandleResolver>(

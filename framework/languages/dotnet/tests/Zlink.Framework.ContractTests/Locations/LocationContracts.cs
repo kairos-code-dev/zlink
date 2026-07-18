@@ -25,25 +25,11 @@ public sealed class LocationContracts
     }
 
     [Fact]
-    public void Location_options_expose_one_explicit_spot_mesh_to_route_channel_mapping_method()
+    public void Location_options_do_not_expose_a_spot_mesh_route_mapping()
     {
-        var method = Assert.Single(
+        Assert.DoesNotContain(
             typeof(ZLinkLocationOptions).GetMethods(),
-            static candidate => candidate.Name == nameof(ZLinkLocationOptions.MapSpotMeshToRouteChannel));
-        Assert.Equal(typeof(void), method.ReturnType);
-        Assert.Equal(
-            new[] { typeof(string), typeof(string) },
-            method.GetParameters().Select(static parameter => parameter.ParameterType).ToArray());
-
-        var options = new ZLinkLocationOptions();
-        options.MapSpotMeshToRouteChannel("game.stage", "game.route");
-        options.MapSpotMeshToRouteChannel("game.stage", "game.route"); // 같은 선언은 멱등이다.
-        Assert.Throws<InvalidOperationException>(() =>
-            options.MapSpotMeshToRouteChannel("game.stage", "other.route"));
-        Assert.Throws<ArgumentException>(() =>
-            options.MapSpotMeshToRouteChannel(" ", "game.route"));
-        Assert.Throws<ArgumentException>(() =>
-            options.MapSpotMeshToRouteChannel("game.stage", " "));
+            static candidate => candidate.Name == "MapSpotMesh" + "ToRouteChannel");
     }
 
     [Fact]

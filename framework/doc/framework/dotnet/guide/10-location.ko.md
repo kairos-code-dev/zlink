@@ -140,12 +140,13 @@ flowchart LR
 
 ## 3. 옵션
 
-타이밍과 매핑은 `ConfigureLocations()`로 조정한다.
+타이밍과 운영 조회 범위는 `ConfigureLocations()`로 조정한다. Spot·Actor 위치 row의 `MeshName`이
+전송에 사용할 RouteMesh를 직접 가리키므로 별도 route channel 매핑은 설정하지 않는다.
 
 ```csharp
 var locations = framework.ConfigureLocations();
 locations.HeartbeatInterval = TimeSpan.FromSeconds(5);
-locations.MapSpotMeshToRouteChannel("game-mesh", "game.route");
+locations.ObservedMeshNames.Add("game-mesh"); // 직접 참여하지 않는 mesh도 운영 조회에 포함한다.
 ```
 
 | 옵션 | 기본값 | 무엇을 정하나 |
@@ -158,7 +159,6 @@ locations.MapSpotMeshToRouteChannel("game-mesh", "game.route");
 | `ObservedMeshNames` | 빈 목록 | 이 호스트가 직접 참여하지 않는 mesh를 운영 조회로 관찰할 때 열거 |
 | `RoutingIdFencingMargin` | 5s | 할당 routing id 사용 시 lease 만료 전 소켓 정지에 확보하는 여유 |
 | `OwnerLeaseRenewTimeout` | 3s | 할당 routing id의 fencing 판정에 허용하는 1회 갱신 시도 시간 |
-| `MapSpotMeshToRouteChannel(mesh, channel)` | — | spot mesh 이름과 route channel 이름이 다를 때 잇는 매핑 |
 
 ## 4. 운영 조회
 

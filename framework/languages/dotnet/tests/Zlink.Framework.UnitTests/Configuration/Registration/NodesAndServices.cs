@@ -975,36 +975,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Validates_SpotMesh_To_RouteChannel_Mapping()
-    {
-        var valid = new ServiceCollection();
-        valid.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.AddRouteMesh("game.stage").Listen("inproc://mapped-spot").ChannelName("game.stage");
-            options.AddRouteMeshChannel("game.route").EnableClient("inproc://mapped-route");
-            options.ConfigureLocations().MapSpotMeshToRouteChannel("game.stage", "game.route");
-        });
-
-        var unknownSpot = Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.AddRouteMeshChannel("game.route").EnableClient("inproc://mapped-route");
-                options.ConfigureLocations().MapSpotMeshToRouteChannel("missing", "game.route");
-            }));
-        Assert.Contains("unknown Spot mesh 'missing'", unknownSpot.Message, StringComparison.Ordinal);
-
-        var unknownRoute = Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                options.AddRouteMesh("game.stage").Listen("inproc://mapped-spot").ChannelName("game.stage");
-                options.ConfigureLocations().MapSpotMeshToRouteChannel("game.stage", "missing");
-            }));
-        Assert.Contains("unknown route channel 'missing'", unknownRoute.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task AddLocationStore_Instance_Is_Disposed_Exactly_Once_By_The_Host_Provider()
     {
         var store = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();

@@ -7,8 +7,6 @@ namespace Zlink.Framework.Contracts.Locations;
 /// </summary>
 public sealed class ZLinkLocationOptions
 {
-    private readonly Dictionary<string, string> _spotRouterChannels = new(StringComparer.Ordinal);
-
     /// <summary>Owner lease renewal period. One write per runtime instance
     /// per interval; location rows are never written by heartbeat.</summary>
     public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(10);
@@ -47,29 +45,6 @@ public sealed class ZLinkLocationOptions
     /// require a bounded fencing decision.
     /// </summary>
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
-
-    /// <summary>Maps a Spot mesh name from location rows to the route channel
-    /// used to reach that mesh. If no mapping is registered, the Spot mesh
-    /// name is used as the route channel name.</summary>
-    public void MapSpotMeshToRouteChannel(string spotMeshName, string routeChannelName)
-    {
-        if (string.IsNullOrWhiteSpace(spotMeshName))
-            throw new ArgumentException("Spot mesh name must not be empty.", nameof(spotMeshName));
-        if (string.IsNullOrWhiteSpace(routeChannelName))
-            throw new ArgumentException("Route channel name must not be empty.", nameof(routeChannelName));
-
-        if (_spotRouterChannels.TryGetValue(spotMeshName, out var existing))
-        {
-            if (!string.Equals(existing, routeChannelName, StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    $"Spot mesh '{spotMeshName}' is already mapped to route channel '{existing}'.");
-            return;
-        }
-
-        _spotRouterChannels.Add(spotMeshName, routeChannelName);
-    }
-
-    internal IReadOnlyDictionary<string, string> SpotRouterChannels => _spotRouterChannels;
 
     internal bool AllocatedRoutingIdsEnabled { get; set; }
 }

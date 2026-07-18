@@ -138,14 +138,10 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.Actor(OwnerA, "actor-entry"),
             ZLinkLocationWriteIntent.NewClaim);
         var registration = PlayRegistration();
-        var locationOptions = new ZLinkLocationOptions();
-        locationOptions.MapSpotMeshToRouteChannel("play", "play.route");
-        var routeChannels = new ZLinkSpotRouterChannelMap(locationOptions);
         var addresses = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers),
-            new ZLinkSpotHandleRegistry(routeChannels),
-            routeChannels);
+            new ZLinkSpotHandleRegistry());
 
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveActorSpotHandleAsync("actor-entry"));
@@ -159,7 +155,7 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
-    public async Task Spot_And_Actor_Handles_Use_Configured_Route_Channel_And_Refresh_Uses_The_Same_Map()
+    public async Task Spot_And_Actor_Handles_Preserve_The_Row_MeshName_Across_Refresh()
     {
         var fixture = await FixtureAsync();
         await fixture.Store.UpdateSpotAsync(
@@ -173,23 +169,19 @@ public sealed class LocationResolverTests
             },
             ZLinkLocationWriteIntent.NewClaim);
 
-        var options = new ZLinkLocationOptions();
-        options.MapSpotMeshToRouteChannel("play", "play.route");
-        var map = new ZLinkSpotRouterChannelMap(options);
         var registration = PlayRegistration();
-        var handles = new ZLinkSpotHandleRegistry(map);
+        var handles = new ZLinkSpotHandleRegistry();
         var addresses = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers),
-            handles,
-            map);
+            handles);
 
         var spot = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveSpotHandleAsync(RoutingId.From("spot-mapped")));
         var actor = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveActorSpotHandleAsync("actor-mapped"));
-        Assert.Equal("play.route", spot.Snapshot.RouterChannelId);
-        Assert.Equal("play.route", actor.Snapshot.RouterChannelId);
+        Assert.Equal("play", spot.Snapshot.RouterChannelId);
+        Assert.Equal("play", actor.Snapshot.RouterChannelId);
 
         handles.UpdateSpot(InMemoryLocationStoreTests.Spot(OwnerA, "spot-mapped") with
         {
@@ -201,8 +193,8 @@ public sealed class LocationResolverTests
             SpotRid = RoutingId.From("spot-mapped"),
             MembershipEpoch = 2
         });
-        Assert.Equal("play.route", spot.Snapshot.RouterChannelId);
-        Assert.Equal("play.route", actor.Snapshot.RouterChannelId);
+        Assert.Equal("play", spot.Snapshot.RouterChannelId);
+        Assert.Equal("play", actor.Snapshot.RouterChannelId);
     }
 
     [Fact]
@@ -212,14 +204,10 @@ public sealed class LocationResolverTests
         var initial = InMemoryLocationStoreTests.Spot(OwnerA, "spot-refresh");
         await fixture.Store.UpdateSpotAsync(initial, ZLinkLocationWriteIntent.NewClaim);
         var registration = PlayRegistration();
-        var locationOptions = new ZLinkLocationOptions();
-        locationOptions.MapSpotMeshToRouteChannel("play", "play.route");
-        var routeChannels = new ZLinkSpotRouterChannelMap(locationOptions);
         var addresses = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers),
-            new ZLinkSpotHandleRegistry(routeChannels),
-            routeChannels);
+            new ZLinkSpotHandleRegistry());
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveSpotHandleAsync(initial.SpotRid));
 
@@ -241,7 +229,7 @@ public sealed class LocationResolverTests
             CancellationToken.None);
 
         Assert.Equal(
-            [("play.route", RoutingId.From("node-1")), ("play.route", RoutingId.From("node-2"))],
+            [("play", RoutingId.From("node-1")), ("play", RoutingId.From("node-2"))],
             attempts);
         Assert.Equal(RoutingId.From("node-2"), resolvedNode);
     }
@@ -294,21 +282,18 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
-    public async Task Watch_Upsert_Applies_The_Current_Row_And_Preserves_The_Route_Channel_Mapping()
+    public async Task Watch_Upsert_Applies_The_Current_Row_And_Preserves_The_MeshName()
     {
         var fixture = await FixtureAsync();
         var initial = InMemoryLocationStoreTests.Spot(OwnerA, "spot-watch-map");
         await fixture.Store.UpdateSpotAsync(initial, ZLinkLocationWriteIntent.NewClaim);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.FromMinutes(1) };
-        options.MapSpotMeshToRouteChannel("play", "play.route");
-        var routeChannels = new ZLinkSpotRouterChannelMap(options);
-        var handles = new ZLinkSpotHandleRegistry(routeChannels);
+        var handles = new ZLinkSpotHandleRegistry();
         var registration = PlayRegistration();
         var resolver = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             new ZLinkSpotMeshLocationResolver(registration, fixture.Resolvers),
-            handles,
-            routeChannels);
+            handles);
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
             await resolver.ResolveSpotHandleAsync(initial.SpotRid));
         var takeover = await fixture.Store.UpdateSpotAsync(
@@ -330,7 +315,7 @@ public sealed class LocationResolverTests
             CancellationToken.None);
 
         Assert.Equal(RoutingId.From("node-2"), handle.Snapshot.NodeRid);
-        Assert.Equal("play.route", handle.Snapshot.RouterChannelId);
+        Assert.Equal("play", handle.Snapshot.RouterChannelId);
     }
 
     [Fact]
@@ -567,15 +552,12 @@ public sealed class LocationResolverTests
         {
             PollingInterval = TimeSpan.FromMilliseconds(10)
         };
-        locationOptions.MapSpotMeshToRouteChannel("play", "play.route");
-        var routeChannels = new ZLinkSpotRouterChannelMap(locationOptions);
-        var handles = new ZLinkSpotHandleRegistry(routeChannels);
+        var handles = new ZLinkSpotHandleRegistry();
         var spots = new ZLinkSpotMeshLocationResolver(PlayRegistration(), fixture.Resolvers);
         var addresses = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             spots,
-            handles,
-            routeChannels);
+            handles);
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveActorSpotHandleAsync(actor.ActorId));
         await using var host = new ZLinkSpotHandleWatchHost(
@@ -599,7 +581,7 @@ public sealed class LocationResolverTests
             () => handle.SpotRid == RoutingId.From("spot-new"),
             TimeSpan.FromSeconds(2));
         Assert.Equal(RoutingId.From("node-2"), handle.Snapshot.NodeRid);
-        Assert.Equal("play.route", handle.Snapshot.RouterChannelId);
+        Assert.Equal("play", handle.Snapshot.RouterChannelId);
     }
 
     [Fact]

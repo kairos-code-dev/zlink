@@ -2,10 +2,13 @@ namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
 /// One physical location store providing every required store role. The
-/// five roles are all-or-nothing on one backend; optional contracts (change
+/// roles are all-or-nothing on one backend; optional contracts (change
 /// stamp, watch) are recognized when the same instance implements them.
 /// Register an instance with AddLocationStore — the framework never names a
-/// concrete backend on its own surface.
+/// concrete backend on its own surface. The Actor transfer authority
+/// (<see cref="IZLinkActorTransferStore"/>) shares the same physical store so
+/// that a transfer's participant CAS and the actor location row are fenced by
+/// one clock (spec server/languages/dotnet/06-location-store §5).
 ///
 /// Expected races are represented by write status values. Store failures
 /// are reported as exceptions for both reads and writes.
@@ -15,7 +18,8 @@ public interface IZLinkLocationStore :
     IZLinkSpotLocationStore,
     IZLinkActorLocationStore,
     IZLinkRouteLocationStore,
-    IZLinkOwnerLeaseStore
+    IZLinkOwnerLeaseStore,
+    IZLinkActorTransferStore
 {
     /// <summary>
     /// Removes every location row left by an owner, regardless of kind.

@@ -9,7 +9,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// rows and owner leases share one physical store. Never use it for
 /// production topologies where processes must share location data.
 /// </summary>
-internal sealed class ZLinkInMemoryLocationStore :
+internal sealed partial class ZLinkInMemoryLocationStore :
     IZLinkLocationStore,
     IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore

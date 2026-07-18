@@ -27,6 +27,15 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
     public RedisKey RoutingIdAllocationGroupKey(string groupName) =>
         $"{prefix}:ridalloc:{groupName}";
 
+    // Actor transfer authority keys (spec 41 §2/§3.1). actorRowKey is the
+    // length-prefixed MeshName + Actor ID; the transfer HASH is per transfer id
+    // and P:transfer-by-actor holds the single active transfer id per actor.
+    public RedisKey TransferHashKey(string actorRowKey, string transferId) =>
+        $"{prefix}:transfer:{actorRowKey}:{transferId}";
+
+    public RedisKey TransferByActorKey(string actorRowKey) =>
+        $"{prefix}:transfer-by-actor:{actorRowKey}";
+
     public string StampKey(string tag, string? meshName) =>
         meshName is null ? $"{prefix}:stamp:{tag}" : $"{prefix}:stamp:{tag}:{meshName}";
 

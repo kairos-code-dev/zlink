@@ -9,7 +9,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// owner-guarded mutations, uses store timestamps, and reports store failures
 /// through the operation that encountered them.
 /// </summary>
-public sealed class ZLinkRedisLocationStore :
+public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
     IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore,

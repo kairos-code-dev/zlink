@@ -19,7 +19,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await serviceB.Post("/admin/weight/exclude").AsyncRaw();
         var drainedB = await WaitForEvidenceAsync(
             serviceA,
-            ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint, "value=0"]);
+            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint, "value=0"]);
         ZlinkStreamAssert.Ensure(
             HasAdmission(drainedB, options.ServiceBChannelEndpoint, 0),
             "MON-A4 did not observe svc-b drain admission.");
@@ -32,7 +32,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await serviceA.Post("/admin/weight/exclude").AsyncRaw();
         var failedOverEvidence = await WaitForEvidenceAsync(
             serviceA,
-            ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint,
+            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint,
                 "value=100", options.ServiceChannelEndpoint, "value=0"],
             failoverBaseline);
         ZlinkStreamAssert.Ensure(
@@ -49,7 +49,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await serviceA.Post("/admin/weight/include").AsyncRaw();
         var restored = await WaitForEvidenceAsync(
             serviceA,
-            ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceChannelEndpoint, "value=100"],
+            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceChannelEndpoint, "value=100"],
             restoreBaseline);
         ZlinkStreamAssert.Ensure(HasAdmission(restored, options.ServiceChannelEndpoint, 100),
             "MON-A4 restore admission transition was not observed.");
@@ -66,7 +66,7 @@ internal static class MonA4AvailabilityTransitionScenario
         var firstAdded = await WaitForEvidenceAsync(
             observer,
             ["kind=TopologyChanged", $"added={failoverRid}", "kind=ServiceSummaryChanged",
-                "source=monitor.profile.client", first.ChannelEndpoint],
+                "source=monitor.profile", first.ChannelEndpoint],
             addBaseline);
         ZlinkStreamAssert.Ensure(
             HasSocketTransition(firstAdded, first.ChannelEndpoint, "Connected", "ConnectionReady"),
@@ -84,7 +84,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await first.DisposeAsync();
         var disconnected = await WaitForEvidenceAsync(
             observer,
-            ["source=monitor.profile.client", "kind=Disconnected", first.ChannelEndpoint],
+            ["source=monitor.profile", "kind=Disconnected", first.ChannelEndpoint],
             removeBaseline);
         ZlinkStreamAssert.Ensure(
             HasSocketTransition(disconnected, first.ChannelEndpoint, "Disconnected", "Closed"),
@@ -97,7 +97,7 @@ internal static class MonA4AvailabilityTransitionScenario
         var replaced = await WaitForEvidenceAsync(
             observer,
             ["kind=TopologyChanged", $"added={failoverRid}", "kind=ServiceSummaryChanged",
-                "source=monitor.profile.client", replacement.ChannelEndpoint],
+                "source=monitor.profile", replacement.ChannelEndpoint],
             replaceBaseline);
         ZlinkStreamAssert.Ensure(
             HasSocketTransition(replaced, replacement.ChannelEndpoint, "Connected", "ConnectionReady"),
@@ -117,7 +117,7 @@ internal static class MonA4AvailabilityTransitionScenario
 
     private static bool HasAdmission(IEnumerable<string> evidence, string endpoint, uint value)
         => evidence.Any(line =>
-            line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+            line.Contains("source=monitor.profile", StringComparison.Ordinal)
             && line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)
             && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
             && line.Contains($"value={value}", StringComparison.Ordinal));
@@ -127,7 +127,7 @@ internal static class MonA4AvailabilityTransitionScenario
         string endpoint,
         params string[] kinds)
         => evidence.Any(line =>
-            line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+            line.Contains("source=monitor.profile", StringComparison.Ordinal)
             && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
             && kinds.Any(kind => line.Contains($"kind={kind}", StringComparison.Ordinal)));
 }

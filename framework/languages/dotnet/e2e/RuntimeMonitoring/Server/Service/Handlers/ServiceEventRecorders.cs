@@ -23,13 +23,17 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
 // disconnect line still names the endpoint of a gone peer.
 internal sealed class MeshEventRecorder(
     EvidenceStore evidence,
-    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime)
+    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime,
+    Zlink.Framework.Contracts.Locations.IZLinkLocationRuntimeQuery locations)
     : IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
         LastKnownEndpoints = new(StringComparer.Ordinal);
 
-    public ValueTask HandleAsync(
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int>
+        LastKnownWeights = new(StringComparer.Ordinal);
+
+    public async ValueTask HandleAsync(
         Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent @event,
         CancellationToken cancellationToken)
     {
@@ -38,14 +42,32 @@ internal sealed class MeshEventRecorder(
         var endpoint = string.Empty;
         if (peer.Length > 0)
         {
+            // Core reuses the peer entry (and its dialed-endpoint label)
+            // across same-RID lifetime replacements; the descriptor row names
+            // the endpoint the peer currently advertises, so it wins.
             try
             {
-                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
-                    .FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint ?? string.Empty;
+                var rows = await locations.ListMeshNodeDescriptorsAsync(
+                    @event.MeshName, cancellationToken);
+                endpoint = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint
+                           ?? string.Empty;
             }
             catch (Exception)
             {
-                // The mesh may be stopping; the cached endpoint still names it.
+                // Store reads may fail during shutdown; fall through.
+            }
+
+            if (endpoint.Length == 0)
+            {
+                try
+                {
+                    endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
+                        .FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint ?? string.Empty;
+                }
+                catch (Exception)
+                {
+                    // The mesh may be stopping; the cached endpoint still names it.
+                }
             }
 
             if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
@@ -63,7 +85,32 @@ internal sealed class MeshEventRecorder(
         evidence.Add(
             $"monitor-mesh|source={@event.MeshName}|kind={kind}"
             + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}");
-        return ValueTask.CompletedTask;
+
+        // The peer's channel weight lives in its descriptor row (a weight
+        // change bumps the descriptor revision, which raised this event);
+        // surface transitions as the admission-weight evidence line.
+        if (peer.Length > 0 && @event.Reason is "ready")
+        {
+            try
+            {
+                var rows = await locations.ListMeshNodeDescriptorsAsync(
+                    @event.MeshName, cancellationToken);
+                var row = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer);
+                if (row is not null
+                    && row.ChannelWeights.TryGetValue(@event.MeshName, out var weight)
+                    && (!LastKnownWeights.TryGetValue(peer, out var known) || known != weight))
+                {
+                    LastKnownWeights[peer] = weight;
+                    evidence.Add(
+                        $"monitor-mesh|source={@event.MeshName}|kind=PeerAdmissionChanged"
+                        + $"|remote={row.Endpoint}|routing={peer}|value={weight}");
+                }
+            }
+            catch (Exception)
+            {
+                // Store reads may fail during shutdown; the next event retries.
+            }
+        }
     }
 }
 

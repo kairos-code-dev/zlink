@@ -161,13 +161,18 @@ bool service_control_runtime_t::is_current_thread () const
 void service_control_runtime_t::run (void *arg_)
 {
     service_control_runtime_t *self = static_cast<service_control_runtime_t *> (arg_);
-    //  The loop is allocation-free in steady state; this is a last-resort
-    //  seal so an escaped allocation failure ends this worker instead of
-    //  calling std::terminate for the whole process.
+    //  The loop is allocation-free in steady state and callbacks are sealed
+    //  individually; this last-resort seal commits the worker's terminal
+    //  lifecycle so no waiter (remove_task, context teardown) blocks on a
+    //  stale active ID and no new task is accepted by a dead worker.
     try {
         self->loop ();
     }
     catch (const std::bad_alloc &) {
+        scoped_lock_t lock (self->_sync);
+        self->_stopping = true;
+        self->_active_task_id = 0;
+        self->_cv.broadcast ();
     }
 }
 
@@ -178,14 +183,12 @@ void service_control_runtime_t::schedule_task_locked (task_entry_t *task_)
 
     deschedule_task_locked (task_);
     //  Reuses the node allocated at add time: rekey and move it back in.
-    //  This path therefore never allocates and never throws.
-    if (!task_->cached_node.empty ()) {
-        task_->cached_node.key () = task_->next_run_ms;
-        task_->schedule_it = _schedule.insert (std::move (task_->cached_node));
-    } else {
-        task_->schedule_it =
-          _schedule.insert (std::make_pair (task_->next_run_ms, task_->id));
-    }
+    //  Every caller deschedules an existing slot first (add inserts its
+    //  initial node directly), so the cached node always exists and this
+    //  path never allocates and never throws.
+    zlink_assert (!task_->cached_node.empty ());
+    task_->cached_node.key () = task_->next_run_ms;
+    task_->schedule_it = _schedule.insert (std::move (task_->cached_node));
     task_->scheduled = true;
 }
 
@@ -264,7 +267,16 @@ void service_control_runtime_t::loop ()
             _active_task_id = call.task_id;
         }
 
-        call.fn (call.arg);
+        try {
+            call.fn (call.arg);
+        }
+        catch (const std::bad_alloc &) {
+            //  Policy: the failed tick is dropped, never the worker or the
+            //  task — the task was rescheduled before the call, so it simply
+            //  retries at its next interval. The epilogue below must still
+            //  run or a concurrent remove_task()/ctx teardown waits forever
+            //  on the stale active ID.
+        }
 
         {
             scoped_lock_t lock (_sync);

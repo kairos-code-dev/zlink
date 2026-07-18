@@ -17,7 +17,8 @@ set(unittests
     unittest_typed_option
     unittest_public_contract_headers
     unittest_request_timeout_scheduler
-    unittest_result_enum_mapping)
+    unittest_result_enum_mapping
+    unittest_service_control_runtime)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)

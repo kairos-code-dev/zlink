@@ -52,8 +52,7 @@ public sealed class ConnectionAndConfigContracts
         {
             SendHighWaterMark = 32,
             SendTimeout = TimeSpan.FromMilliseconds(20),
-            Linger = TimeSpan.Zero,
-            NoDrop = true
+            Linger = TimeSpan.Zero
         };
 
         IZLinkSpotSubscriberConfig subscriber = new SpotSubscriberConfig
@@ -76,7 +75,6 @@ public sealed class ConnectionAndConfigContracts
         Assert.Equal(32, publisher.SendHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(20), publisher.SendTimeout);
         Assert.Equal(TimeSpan.Zero, publisher.Linger);
-        Assert.True(publisher.NoDrop);
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(30), subscriber.ReceiveTimeout);
         Assert.Equal(TimeSpan.Zero, subscriber.Linger);
@@ -138,8 +136,6 @@ public sealed class ConnectionAndConfigContracts
         public TimeSpan? SendTimeout { get; set; }
 
         public TimeSpan? Linger { get; set; }
-
-        public bool NoDrop { get; set; }
     }
 
     internal sealed class SpotSubscriberConfig : IZLinkSpotSubscriberConfig

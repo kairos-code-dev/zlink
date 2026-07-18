@@ -62,8 +62,6 @@ public interface IZLinkSpotPublisherConfig
     TimeSpan? SendTimeout { get; set; }
 
     TimeSpan? Linger { get; set; }
-
-    bool NoDrop { get; set; }
 }
 
 public interface IZLinkSpotSubscriberConfig

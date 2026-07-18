@@ -22,7 +22,8 @@ internal static class ZLinkMonitoringServiceRegistrar
                 provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
                 provider.GetService<ZLinkFrameworkRuntime>(),
                 provider.GetService<IZLinkLocationRuntimeQuery>(),
-                provider.GetService<ZLinkAutoConnectLifecycleCoordinator>()));
+                provider.GetService<ZLinkAutoConnectLifecycleCoordinator>(),
+                provider.GetService<IZLinkRouteMeshRuntime>()));
 
         return services;
     }

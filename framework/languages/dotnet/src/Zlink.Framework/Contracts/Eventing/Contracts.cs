@@ -6,6 +6,11 @@ public interface IZLinkMonitoringOptions
         string sourceName,
         params ZLinkSocketEventKind[] events);
 
+    /// <summary>Observes the registered RouteMesh's runtime events (spec 50:
+    /// state/peer transitions) and publishes them as
+    /// <see cref="ZLinkMeshRuntimeEvent"/> runtime events.</summary>
+    void AddMeshNodeEvents(string meshName);
+
     void AddSpotEvents(
         string sourceName,
         TimeSpan interval);

@@ -86,8 +86,7 @@ public sealed partial class EntrySpotActorDispatchTests
             {
                 SendHighWaterMark = 17,
                 SendTimeout = TimeSpan.FromMilliseconds(21),
-                Linger = TimeSpan.FromMilliseconds(34),
-                NoDrop = true
+                Linger = TimeSpan.FromMilliseconds(34)
             },
             PubSub = new ZLinkSpotPubSubCapabilityRegistration
             {
@@ -113,7 +112,6 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             Assert.Equal(17, node.PublisherConfig?.SendHighWaterMark);
             Assert.Equal(TimeSpan.FromMilliseconds(34), node.PublisherConfig?.Linger);
-            Assert.True(node.PublisherConfig?.NoDrop);
             Assert.Equal(55, node.SubscriberConfig?.ReceiveHighWaterMark);
             Assert.Equal(TimeSpan.FromMilliseconds(89), node.SubscriberConfig?.ReceiveTimeout);
             Assert.Equal(TimeSpan.FromMilliseconds(144), node.SubscriberConfig?.Linger);

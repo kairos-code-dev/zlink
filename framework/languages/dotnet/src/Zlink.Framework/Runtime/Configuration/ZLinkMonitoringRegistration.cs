@@ -9,6 +9,10 @@ internal sealed class ZLinkMonitoringRegistration
     public Dictionary<string, ZLinkPollingMonitoringRegistration> LocationRuntimeSources { get; } =
         new(StringComparer.Ordinal);
 
+    // MeshNode runtime event sources (spec 50): keyed by mesh name, bridged
+    // from IZLinkRouteMeshRuntime.ObserveAsync into the runtime event bus.
+    public HashSet<string> MeshNodeSources { get; } = new(StringComparer.Ordinal);
+
     public HashSet<string> LocationPeerSources { get; } = new(StringComparer.Ordinal);
 
     public HashSet<string> LocationSpotSources { get; } = new(StringComparer.Ordinal);
@@ -50,6 +54,15 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
         if (!registration.SocketSources.TryAdd(entry.SourceName, entry))
             throw new ZLinkConfigurationException(
                 $"Duplicate monitoring socket source '{entry.SourceName}'.");
+    }
+
+    public void AddMeshNodeEvents(string meshName)
+    {
+        if (string.IsNullOrWhiteSpace(meshName))
+            throw new ZLinkConfigurationException("Mesh monitoring requires a mesh name.");
+        if (!registration.MeshNodeSources.Add(meshName))
+            throw new ZLinkConfigurationException(
+                $"Duplicate monitoring mesh source '{meshName}'.");
     }
 
     public void AddSpotEvents(string sourceName, TimeSpan interval)

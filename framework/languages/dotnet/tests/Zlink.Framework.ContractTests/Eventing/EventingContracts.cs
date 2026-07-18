@@ -225,6 +225,11 @@ public sealed class EventingContracts
             _sources.Add($"{sourceName}:spot");
         }
 
+        public void AddMeshNodeEvents(string meshName)
+        {
+            _sources.Add($"{meshName}:mesh");
+        }
+
         public void AddLocationRuntimeEvents(
             string sourceName,
             TimeSpan interval)

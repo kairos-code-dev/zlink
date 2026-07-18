@@ -31,7 +31,6 @@ public sealed record ZLinkMeshChannelSnapshot(
     bool Selectable);
 
 public sealed record ZLinkLogicalMulticastSnapshot(
-    bool NoDrop,
     ulong Submitted,
     ulong Backpressured,
     ulong Dropped,
@@ -40,8 +39,7 @@ public sealed record ZLinkLogicalMulticastSnapshot(
     ulong RemoteDroppedCount,
     ulong LocalSnapshotCount,
     ulong LocalAdmittedCount,
-    ulong LocalDroppedCount,
-    ulong PendingAdmissionCount);
+    ulong LocalDroppedCount);
 
 public sealed record ZLinkMeshClaimSnapshot(
     bool ApplicationActive,
@@ -98,7 +96,11 @@ public sealed record ZLinkMeshRuntimeEvent(
     ulong? LocalAdmittedCount,
     ulong? LocalDroppedCount,
     string? Reason,
-    ZLinkMeshNodeState? State);
+    ZLinkMeshNodeState? State) : Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
+{
+    /// <summary>The runtime event source is the observed mesh.</summary>
+    public string SourceName => MeshName;
+}
 
 public abstract record ZLinkMeshDrainResult
 {

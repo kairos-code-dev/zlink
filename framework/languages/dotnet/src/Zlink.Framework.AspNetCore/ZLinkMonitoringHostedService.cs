@@ -8,7 +8,8 @@ internal sealed class ZLinkMonitoringHostedService(
     IZLinkRuntimeEventPublisher publisher,
     ZLinkFrameworkRuntime? frameworkRuntime,
     IZLinkLocationRuntimeQuery? locationQuery,
-    ZLinkAutoConnectLifecycleCoordinator? autoConnectLifecycle) : IHostedService, IAsyncDisposable
+    ZLinkAutoConnectLifecycleCoordinator? autoConnectLifecycle,
+    IZLinkRouteMeshRuntime? meshRuntime = null) : IHostedService, IAsyncDisposable
 {
     private readonly IZLinkMonitoringBackendAdapter
         _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
@@ -83,6 +84,7 @@ internal sealed class ZLinkMonitoringHostedService(
                     new ZLinkRuntimeErrorSink(),
                     _stopTokenSource.Token);
                 AttachSocketMonitors(frameworkRuntime);
+                AttachMeshObservers();
                 if (registration.SocketSources.Count > 0 && autoConnectLifecycle is not null)
                     await autoConnectLifecycle.SocketMonitoringReadyAsync(cancellationToken)
                         .ConfigureAwait(false);
@@ -131,6 +133,33 @@ internal sealed class ZLinkMonitoringHostedService(
     {
         _ = cancellationToken;
         await StopCoreAsync().ConfigureAwait(false);
+    }
+
+    // Bridges each registered mesh's runtime event stream (spec 50) onto the
+    // runtime event bus; observation is poll-derived inside the mesh runtime,
+    // so handlers never sit on the dispatch path.
+    private void AttachMeshObservers()
+    {
+        if (registration.MeshNodeSources.Count == 0) return;
+        var observedMeshRuntime = meshRuntime
+                                  ?? throw new ZLinkConfigurationException(
+                                      "Mesh monitoring requires the RouteMesh runtime service.");
+        var stopToken = _stopTokenSource?.Token ?? CancellationToken.None;
+        foreach (var meshName in registration.MeshNodeSources)
+        {
+            var observedMesh = meshName;
+            _taskRunner?.RunDetached(
+                $"monitoring-mesh-events:{observedMesh}",
+                async ct =>
+                {
+                    await foreach (var meshEvent in observedMeshRuntime
+                                       .ObserveAsync(observedMesh, cancellationToken: ct)
+                                       .ConfigureAwait(false))
+                        QueueDispatch(meshEvent);
+                });
+        }
+
+        _ = stopToken;
     }
 
     private void AttachSocketMonitors(ZLinkFrameworkRuntime? frameworkRuntime)

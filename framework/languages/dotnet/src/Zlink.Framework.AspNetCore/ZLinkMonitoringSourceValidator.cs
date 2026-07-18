@@ -56,6 +56,11 @@ internal sealed class ZLinkMonitoringSourceValidator(
             if (!frameworkRuntime.Registration.SpotNodes.ContainsKey(source.SourceName))
                 throw new ZLinkConfigurationException(
                     $"SPOT node '{source.SourceName}' is not registered.");
+
+        foreach (var meshName in registration.MeshNodeSources)
+            if (!frameworkRuntime.Registration.SpotNodes.ContainsKey(meshName))
+                throw new ZLinkConfigurationException(
+                    $"Mesh monitoring source '{meshName}' is not a registered RouteMesh.");
     }
 
     private static bool HasCapability(

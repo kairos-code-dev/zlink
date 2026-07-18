@@ -16,7 +16,7 @@ source marker는 관련 행의 부분 증거로만 기록하며, operation resul
 | MON-A3 | 10.0.0 전환 대상 | Drain·restore 중 `PeerAdmissionChanged`가 기록된다. | Weight 0·100 전파 전후 channel event, ready member 수, selectable과 실제 ChannelName request 선택 결과를 함께 단언한다. |
 | MON-A4 | 10.0.0 전환 대상 | `svc-b` stop·restart 뒤 request 성공과 topology remove·re-add marker를 관측한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 generation·endpoint·ready member가 최신 snapshot으로 수렴하는지 검증한다. |
 | MON-A5 | 10.0.0 전환 대상 | Location runtime과 Spot 상태 marker 경로가 있다. | Redis 정지·복구 전후 `zlink.runtime.location.store_changed`, location state·last success·last failure와 owner token 재검증을 단언한다. |
-| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true` target queue를 막아 backpressure·timeout result, backpressured event와 dropped=0인 후속 snapshot count를 비교한다. |
-| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`에서 수락 target과 drop target을 만들고 operation result, dropped event, remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | remote ROUTER target을 막아 backpressure·timeout result, backpressured event와 후속 snapshot count를 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | local 수락 target과 drop target을 만들고 operation result, dropped event, remote·local snapshot/admitted/dropped 수를 비교한다. |
 | MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외가 task failure로 보고된 뒤 messaging이 계속되는 marker가 있다. | Application gate와 느린 observer를 함께 만들어 application·infrastructure claim, request completion, 정상 observer, coalescing·sequence gap 후 snapshot 재조회를 검증한다. |
 | MON-D1 | 10.0.0 전환 대상 | 중복 source, 비양수 interval, 없는 Spot·socket source 구성 오류와 한 번의 stop·restart 경로가 있다. | 등록하지 않은 MeshName, 0 이하 observer capacity를 public error로 단언하고 비정상 종료·lease 만료·재시작을 3회 반복해 sequence와 최신 snapshot을 확인한다. |

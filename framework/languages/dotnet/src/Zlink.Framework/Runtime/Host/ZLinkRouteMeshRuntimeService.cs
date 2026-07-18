@@ -42,7 +42,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             peers.Select(MapPeer).ToArray(),
             MapChannels(nodeRuntime, peers),
             new ZLinkLogicalMulticastSnapshot(
-                nodeRuntime.Registration.SpotPublisherConfig.NoDrop,
                 status.MulticastSubmitted,
                 Backpressured: 0,
                 status.MulticastDroppedTargets,
@@ -51,8 +50,7 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 RemoteDroppedCount: 0,
                 LocalSnapshotCount: 0,
                 LocalAdmittedCount: 0,
-                LocalDroppedCount: 0,
-                PendingAdmissionCount: 0),
+                LocalDroppedCount: 0),
             new ZLinkMeshClaimSnapshot(
                 ApplicationActive: state == ZLinkMeshNodeState.Serving,
                 status.PendingApplicationMessages,

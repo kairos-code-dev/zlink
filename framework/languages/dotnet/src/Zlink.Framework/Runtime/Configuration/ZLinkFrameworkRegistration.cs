@@ -354,10 +354,9 @@ internal sealed class ZLinkSpotNodeRegistration
     // falls back to the framework-wide DefaultRequestTimeout.
     public TimeSpan? DefaultRequestTimeout { get; set; }
 
-    // Logical Multicast publish admission policy for this MeshNode
-    // (spec §5 IZLinkSpotPublisherConfig, ConfigureSpotPublisher). Rides the
-    // node's single ROUTER; NoDrop defaults to true and needs no separate bind.
-    public ZLinkSpotPublisherConfig SpotPublisherConfig { get; } = new() { NoDrop = true };
+    // Logical Multicast publisher transport settings for this MeshNode
+    // (spec §5 IZLinkSpotPublisherConfig, ConfigureSpotPublisher).
+    public ZLinkSpotPublisherConfig SpotPublisherConfig { get; } = new();
 
     // Immutable logical channel memberships added via ChannelName(...) (spec §4).
     // Each carries its build-time weight and channel-scoped handler namespace.

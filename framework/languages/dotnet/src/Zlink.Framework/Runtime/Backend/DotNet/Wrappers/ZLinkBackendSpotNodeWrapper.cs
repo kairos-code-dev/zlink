@@ -21,9 +21,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
     private Action? _sendReadyHandler;
-    // Captured Spot publisher NoDrop policy (default true); applied to each
-    // spot this node creates via ApplySpotPublisherPolicy.
-    private bool _spotPublisherNoDrop = true;
     // First registered mesh channel; spot wrappers publish/subscribe on it
     // (spot pub/sub is logical multicast on the router plane).
     private string? _primaryChannelName;
@@ -108,12 +105,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber)
     {
-        // Captures the Spot publisher policy (Logical Multicast NoDrop). Core
-        // defaults every spot publish plane to NoDrop = true, so only an
-        // explicit false is pushed through ISpot.SetNoDrop when this node
-        // creates a spot (ApplySpotPublisherPolicy).
-        _spotPublisherNoDrop = publisher?.NoDrop ?? true;
-
         // MeshNode carries no per-role HWM/linger/timeout knobs; follow-up.
     }
 
@@ -186,7 +177,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, ApplySpotPublisherPolicy(_node.CreateSpot()), _pump, _completions,
+            _node, _node.CreateSpot(), _pump, _completions,
             () => _primaryChannelName);
     }
 
@@ -194,17 +185,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, ApplySpotPublisherPolicy(_node.GetOrCreateSpot(spotRid, out created)),
+            _node, _node.GetOrCreateSpot(spotRid, out created),
             _pump, _completions, () => _primaryChannelName);
-    }
-
-    // Core defaults every spot publish plane to NoDrop = true, so only an
-    // explicit false has to reach the native setter (S8-07).
-    private ISpot ApplySpotPublisherPolicy(ISpot spot)
-    {
-        if (!_spotPublisherNoDrop)
-            spot.SetNoDrop(false);
-        return spot;
     }
 
     public ZLinkSpotNodeStatus Status()
@@ -240,7 +222,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         {
             EnsureStarted();
             return _entrySpot ??= new ZLinkBackendSpotWrapper(
-                _node, ApplySpotPublisherPolicy(_node.EntrySpot()), _pump, _completions,
+                _node, _node.EntrySpot(), _pump, _completions,
                 () => _primaryChannelName);
         }
     }

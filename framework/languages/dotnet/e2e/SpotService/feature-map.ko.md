@@ -26,7 +26,7 @@
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
 | SM-C5 | 전환 필요 | play-a Spot의 Logical Multicast가 play-b 구독 Spot에 도달하는 evidence를 확인한다. 현재 성공 기록은 이전 topology의 증거이며 10.0.0 MeshNode 구현 뒤 다시 실행한다. |
-| SM-C6 | 전환 필요 | 기본 `ConfigureSpotPublisher().NoDrop=true`에서 remote peer backpressure를 만들고, blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure 결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 하며 현재 runner에는 이 증거가 없다. |
+| SM-C6 | 전환 필요 | remote ROUTER backpressure를 만들고 blocking publish의 timeout, non-blocking submit의 즉시 backpressure 결과와 앞에서 수락된 target의 전달 유지를 검증해야 한다. 현재 runner에는 이 증거가 없다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |

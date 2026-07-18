@@ -104,10 +104,6 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
     }
 
     public TimeSpan? Linger { get; set; }
-
-    //  The exact interface fixes the default to true (05-route-mesh §5):
-    //  publishes use all-or-none admission unless the application opts out.
-    public bool NoDrop { get; set; } = true;
 }
 
 internal sealed class ZLinkSpotSubscriberConfig : IZLinkSpotSubscriberConfig

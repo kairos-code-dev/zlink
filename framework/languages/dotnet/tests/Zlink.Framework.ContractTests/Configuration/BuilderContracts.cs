@@ -173,7 +173,7 @@ public sealed class BuilderContracts
         mesh.PeerConnections.Connect(
             RoutingId.From("spot-peer"), "tcp://127.0.0.1:5501");
         mesh.ConfigureRouterSocket().SendHighWaterMark = 1024;
-        mesh.ConfigureSpotPublisher().NoDrop = true;
+        mesh.ConfigureSpotPublisher().SendHighWaterMark = 1024;
 
         mesh.ChannelName("rooms")
             .SetWeight(100)

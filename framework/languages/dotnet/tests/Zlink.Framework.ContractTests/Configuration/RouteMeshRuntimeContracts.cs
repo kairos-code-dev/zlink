@@ -67,7 +67,7 @@ public sealed class RouteMeshRuntimeContracts
                 ],
                 [new ZLinkMeshChannelSnapshot("orders", LocalWeight: 100, ReadyMemberCount: 2, Selectable: true)],
                 new ZLinkLogicalMulticastSnapshot(
-                    NoDrop: true, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+                    0, 0, 0, 0, 0, 0, 0, 0, 0),
                 new ZLinkMeshClaimSnapshot(
                     ApplicationActive: true, 0, InfrastructureActive: true, 0),
                 new ZLinkLocationRuntimeSnapshot("ready", DateTimeOffset.UtcNow, null),

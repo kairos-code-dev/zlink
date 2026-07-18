@@ -9,6 +9,5 @@
         <ProjectReference Include="../../Shared/PubSub.Shared.csproj"/>
         <ProjectReference Include="../../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
         <ProjectReference Include="../../../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
-        <ProjectReference Include="../../../../src/Zlink.Framework.Locations.Redis/Zlink.Framework.Locations.Redis.csproj"/>
     </ItemGroup>
 </Project>

@@ -4,18 +4,18 @@
 
 10.0.0 목표에서는 classic fanout이 location store를 사용하지 않는다. publisher는
 `EnablePublisher(endpoint)`, subscriber는 `ConnectSubscriber(endpoint)`로 PUB/SUB 연결을 구성한다.
-현재 source와 runner는 Redis discovery를 사용하므로 아래 행의 10.0.0 완료 증거가 아니다. Redis
-discovery를 제거하고 manual endpoint로 같은 시나리오를 다시 실행해야 한다.
+`.NET` E2E는 Redis location store를 등록하지 않고 manual endpoint로 연결한다.
+`run_e2e.sh` 전체 실행에서 아래 일곱 시나리오가 모두 통과했다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| PS-A1 | 10.0.0 전환 대상 | manual endpoint에서 fanout basic delivery marker를 실제 subscriber 역할 server의 `/evidence/wait`로 확인해야 한다. |
-| PS-A2 | 10.0.0 전환 대상 | manual endpoint에서 topic filter marker를 실제 subscriber 역할 server의 `/evidence/wait`로 확인해야 한다. |
-| PS-A3 | 10.0.0 전환 대상 | manual endpoint에서 late subscriber marker와 pre-join non-replay를 실제 subscriber 역할 server evidence로 확인해야 한다. |
-| PS-A4 | 10.0.0 전환 대상 | 같은 subscriber process를 유지한 채 외부 TCP fault proxy로 transport만 단절·복구하고, 기존 subscription 재적용과 disconnect-gap non-replay를 확인해야 한다. 현재 scenario의 fault 방식은 적합하지만 Redis discovery를 제거한 뒤 다시 실행해야 한다. |
-| PS-B1 | 10.0.0 전환 대상 | manual endpoint에서 한 subscriber handler에 지연을 넣어도 다른 subscriber가 계속 받는 marker를 확인해야 한다. |
-| PS-B2 | 10.0.0 전환 대상 | 같은 manual endpoint로 publisher를 재기동한 뒤 기존 subscriber의 복구 발행분 marker를 확인해야 한다. |
-| PS-C1 | 10.0.0 전환 대상 | manual endpoint에서 publish missing message name drop marker와 정상 publish 복구 marker를 확인해야 한다. |
+| PS-A1 | 구현 | 세 subscriber의 `ConnectionReady` 뒤 공통 연속 sequence 수신 marker를 확인한다. |
+| PS-A2 | 구현 | 서로 다른 packet name의 typed handler가 각 event를 한 번씩 처리하고 다른 handler가 처리하지 않은 marker를 확인한다. |
+| PS-A3 | 구현 | 늦게 시작한 subscriber의 `ConnectionReady` 뒤 발행분 수신과 연결 전 발행분 non-replay를 확인한다. |
+| PS-A4 | 구현 | 같은 subscriber process에서 외부 TCP fault proxy로 `Disconnected`·`ConnectionReady`를 만들고, 복구 뒤 수신과 disconnect 구간 non-replay를 확인한다. |
+| PS-B1 | 구현 | 한 subscriber handler의 처리 지연 중에도 다른 subscriber가 계속 수신하는 marker를 확인한다. |
+| PS-B2 | 구현 | 정상 종료한 publisher를 같은 manual endpoint로 재시작하고, 기존 subscriber의 `Disconnected`·`ConnectionReady`와 복구 뒤 수신 marker를 확인한다. |
+| PS-C1 | 구현 | 미등록 packet name의 `no_handler`·`drop` marker와 이후 정상 event 수신을 확인한다. |
 
 ## 검증 경로 판정
 

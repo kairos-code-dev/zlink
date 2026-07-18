@@ -2,7 +2,6 @@ using PubSub.Server.Subscriber.Configuration;
 using PubSub.Server.Subscriber.Handlers;
 using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 
@@ -20,16 +19,11 @@ internal static class SubscriberHostFactory
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
-            // The subscriber dials the publisher rows it discovers in the
-            // location store; no endpoint is configured here.
-            var fanout = framework.AddFanoutChannel(PubSubNames.Channel);
-            var subscriber = string.IsNullOrWhiteSpace(options.PublisherEndpoint)
-                ? fanout.EnableSubscriber()
-                : fanout.EnableSubscriber(options.PublisherEndpoint);
+            // Classic fanout uses no location store (config-3): the
+            // subscriber names the publisher endpoint explicitly.
+            var subscriber = framework.AddFanoutChannel(PubSubNames.Channel)
+                .EnableSubscriber(options.PublisherEndpoint);
             subscriber.AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
         builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(

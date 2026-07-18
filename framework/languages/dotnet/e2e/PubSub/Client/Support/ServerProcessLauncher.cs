@@ -15,9 +15,8 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
     {
         var startInfo = CreateServerStartInfo(options.SubscriberProject, name,
             new DynamicSubscriberOptions(
-                name, httpUrl, options.LogDir, options.RedisEndpoint,
-                options.RedisKeyPrefix, 0, Path.Combine(options.LogDir, evidenceFile),
-                publisherEndpoint));
+                name, httpUrl, options.LogDir, publisherEndpoint ?? options.PublisherEndpoint,
+                0, Path.Combine(options.LogDir, evidenceFile)));
 
         return Start(name, startInfo);
     }
@@ -26,8 +25,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
     {
         var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-restart",
             new DynamicPublisherOptions(
-                "pub-a", options.PublisherUrl, options.LogDir, options.RedisEndpoint,
-                options.RedisKeyPrefix, options.PublisherEndpoint,
+                "pub-a", options.PublisherUrl, options.LogDir, options.PublisherEndpoint,
                 Path.Combine(options.LogDir, "pub-restart.evidence.log")));
 
         return Start("pub-restart", startInfo);
@@ -67,10 +65,9 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
 }
 
 internal sealed record DynamicSubscriberOptions(
-    string Rid, string HttpUrl, string LogDir, string RedisEndpoint,
-    string RedisKeyPrefix, int HandlerDelayMs, string EvidenceFile,
-    string? PublisherEndpoint = null);
+    string Rid, string HttpUrl, string LogDir, string PublisherEndpoint,
+    int HandlerDelayMs, string EvidenceFile);
 
 internal sealed record DynamicPublisherOptions(
-    string Rid, string HttpUrl, string LogDir, string RedisEndpoint,
-    string RedisKeyPrefix, string PublisherEndpoint, string EvidenceFile);
+    string Rid, string HttpUrl, string LogDir, string PublisherEndpoint,
+    string EvidenceFile);

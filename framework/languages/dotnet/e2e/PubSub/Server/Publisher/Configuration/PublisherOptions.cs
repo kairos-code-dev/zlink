@@ -6,8 +6,6 @@ internal sealed record PublisherOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string RedisEndpoint,
-    string RedisKeyPrefix,
     string PublisherEndpoint,
     string? EvidenceFile = null)
 {

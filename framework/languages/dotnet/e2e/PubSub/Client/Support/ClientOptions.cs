@@ -4,8 +4,6 @@ namespace PubSub.Client.Support;
 internal sealed record ClientOptions(
     string PublisherUrl,
     string LateSubscriberUrl,
-    string RedisEndpoint,
-    string RedisKeyPrefix,
     string PublisherEndpoint,
     string PublisherProject,
     string SubscriberProject,

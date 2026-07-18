@@ -3,7 +3,6 @@ using PubSub.Server.Publisher.Endpoints;
 using PubSub.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 
@@ -20,9 +19,6 @@ internal static class PublisherHostFactory
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnablePublisher(options.PublisherEndpoint)

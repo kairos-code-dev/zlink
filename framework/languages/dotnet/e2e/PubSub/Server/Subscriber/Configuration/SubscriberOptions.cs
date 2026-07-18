@@ -6,11 +6,9 @@ internal sealed record SubscriberOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string RedisEndpoint,
-    string RedisKeyPrefix,
+    string PublisherEndpoint,
     int HandlerDelayMs = 0,
-    string? EvidenceFile = null,
-    string? PublisherEndpoint = null)
+    string? EvidenceFile = null)
 {
     public static SubscriberOptions Parse(string[] args)
         => E2eConfiguration.Load<SubscriberOptions>(args);

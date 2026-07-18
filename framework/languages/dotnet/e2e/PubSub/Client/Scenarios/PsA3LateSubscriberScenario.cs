@@ -26,11 +26,18 @@ internal static class PsA3LateSubscriberScenario
                 .Query("value", $"before-late-{i}")
                 .AsyncRaw();
 
-        // Start the late subscriber through the same server executable used by the harness.
+        // Keep the publisher transport blocked until the late subscriber's
+        // monitor is active, then allow the first ConnectionReady transition.
+        await using var connectionGate = new NetworkFaultProxy(
+            new Uri(processes.PublisherEndpoint),
+            initiallyBlocked: true);
         using var lateSubscriber = processes.StartSubscriber(
             "sub-late",
             lateSubscriberUrl,
-            "sub-late.evidence.log");
+            "sub-late.evidence.log",
+            connectionGate.Endpoint.GetComponents(
+                UriComponents.SchemeAndServer,
+                UriFormat.Unescaped));
         try
         {
             await StateObservation.WaitUntilAsync(
@@ -46,6 +53,8 @@ internal static class PsA3LateSubscriberScenario
                     }
                 },
                 "PS-A3 expected late subscriber to become healthy.");
+            connectionGate.Unblock();
+            await connectionGate.WaitForUpstreamConnectionAsync();
             await SubscriberObservation.WaitForConnectionAsync(lateSubscriberClient);
 
             var afterLateRun = Guid.NewGuid().ToString("N");

@@ -31,10 +31,6 @@ public final class Native {
         return NativeSymbols.downcallCritical(name, fd);
     }
 
-    private static MethodHandle optionalDowncall(String name,
-                                                 FunctionDescriptor fd) {
-        return NativeSymbols.optionalDowncall(name, fd);
-    }
 
     private static final MethodHandle MH_VERSION = downcall("zlink_version",
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));

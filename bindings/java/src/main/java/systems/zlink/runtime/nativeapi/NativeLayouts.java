@@ -157,51 +157,6 @@ public final class NativeLayouts {
     public static final long MONITOR_REMOTE_OFFSET = MONITOR_EVENT_LAYOUT.byteOffset(
             PathElement.groupElement("remote_addr"));
 
-    public static final MemoryLayout SERVICE_EVENT_LAYOUT = MemoryLayout.structLayout(
-            ValueLayout.JAVA_INT.withName("service_kind"),
-            ValueLayout.JAVA_INT.withName("event_type"),
-            ValueLayout.JAVA_INT.withName("status"),
-            ValueLayout.JAVA_INT.withName("error_code"),
-            ValueLayout.JAVA_INT.withName("value"),
-            ValueLayout.JAVA_INT.withName("detail_flags"),
-            MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("channel_name"),
-            MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("endpoint"),
-            ROUTING_ID_LAYOUT.withName("routing_id"),
-            MemoryLayout.sequenceLayout(256, ValueLayout.JAVA_BYTE).withName("subject"),
-            ValueLayout.JAVA_INT.withName("subject_kind"));
-    public static final long SERVICE_EVENT_SERVICE_KIND_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("service_kind"));
-    public static final long SERVICE_EVENT_EVENT_TYPE_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("event_type"));
-    public static final long SERVICE_EVENT_STATUS_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("status"));
-    public static final long SERVICE_EVENT_ERROR_CODE_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("error_code"));
-    public static final long SERVICE_EVENT_VALUE_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("value"));
-    public static final long SERVICE_EVENT_DETAIL_FLAGS_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("detail_flags"));
-    public static final long SERVICE_EVENT_CHANNEL_NAME_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("channel_name"));
-    public static final long SERVICE_EVENT_ENDPOINT_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("endpoint"));
-    public static final long SERVICE_EVENT_ROUTING_ID_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("routing_id"));
-    public static final long SERVICE_EVENT_SUBJECT_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("subject"));
-    public static final long SERVICE_EVENT_SUBJECT_KIND_OFFSET =
-            SERVICE_EVENT_LAYOUT.byteOffset(
-                    PathElement.groupElement("subject_kind"));
 
     public static final int ACTOR_ID_MAX = 256;
 

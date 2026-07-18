@@ -20,10 +20,10 @@
 | ST-E2 | 구현 | 실패한 transfer가 기존 bound session route를 바꾸지 않음을 검증한다. |
 | ST-F1 | 구현 | handoff 중 도착한 packet의 순서와 target replay를 검증한다. |
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
-| ST-F3 | 구현 | actor 이동 전후 bound session push 순서를 검증한다. |
-| ST-F4 | 구현 | forwarding window 안의 straggler 전달과 window 뒤 fail-fast를 검증한다. |
-| ST-F5 | 구현 | forwarding mapping이 정해진 window 뒤 제거됨을 검증한다. |
-| ST-F6 | 구현 | handoff 중 request reply correlation과 late reply timeout 정리를 검증한다. |
+| ST-F3 | core 대기 | bound session frame이 core의 `SendBoundActor`에서 actor record로 나타나는 구간에서 순서가 간헐적으로 뒤집힌다. core 수정 뒤 다시 실행한다. |
+| ST-F4 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
+| ST-F5 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
+| ST-F6 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
 
 `run_e2e.sh all`은 모든 행을 실행한다. process 종료가 필요한 `ST-B2`, `ST-C1`, `ST-C2`는
 각각 별도 server generation을 시작하며, 나머지 행도 client selector와 evidence marker를 통해

@@ -10,7 +10,7 @@
 | TA-A4 | 구현 | session-a connector bind와 push를 확인한 뒤 connector를 종료한다. actor가 유지되는 동안 no-bind send/request가 성공하고, 명시적 actor destroy 뒤 caller가 보관한 동일 ref request가 `ActorRouteNotFound`로 끝나는지 검증한다. |
 | TA-B1 | 구현 | live actor와 일치하지 않는 public `ActorRef`로 request를 보내 caller의 `ActorRouteNotFound`를 검증한다. one-way send는 로컬 submit 뒤 handler·lifecycle evidence와 location row가 생기지 않아 auto-create나 메시지 보관이 없음을 검증한다. |
 | TA-B2 | 구현 | caller 서버는 framework `ActorLocationStale` kind를 그대로 JSON으로 반환한다. supervisor는 stale descriptor 조작 뒤 같은 endpoint로 검증한다. |
-| TA-B3 | 구현 | caller 서버는 framework `RouteNotConnected` kind를 그대로 JSON으로 반환한다. supervisor는 actor row는 남기고 route plane을 끊은 뒤 같은 endpoint로 검증한다. |
+| TA-B3 | core 대기 | route plane 단절의 `RouteNotConnected`는 확인했지만 같은 lifetime reconnect가 재승인되지 않아 recovery request가 `ActorRouteNotFound`로 끝난다. core 수정 뒤 다시 실행한다. |
 
 `run_e2e.sh`는 실행마다 전용 Docker Redis container, actor-a/actor-b 서버, session-a/session-b gateway,
 caller 서버와 client runner를

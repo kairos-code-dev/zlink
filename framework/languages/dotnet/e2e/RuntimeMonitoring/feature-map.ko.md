@@ -11,12 +11,12 @@ source marker는 관련 행의 부분 증거로만 기록하며, operation resul
 
 | 시나리오 | 상태 | 현재 증거 | 남은 gap |
 |---|---|---|---|
-| MON-A1 | 10.0.0 전환 대상 | `location-runtime` source가 topology·service summary payload를 기록한다. | 하나의 MeshNode snapshot에 topology·multicast·claim·location·drain이 함께 있는지, sequence와 불변 snapshot을 검증한다. |
-| MON-A2 | 10.0.0 전환 대상 | Socket 연결·해제 marker와 topology 변경 marker가 있다. | Typed peer event와 snapshot의 RID·generation·descriptor revision·admission·ready·last failure를 재시작 전후로 대조한다. |
-| MON-A3 | 10.0.0 전환 대상 | Drain·restore 중 `PeerAdmissionChanged`가 기록된다. | Weight 0·100 전파 전후 channel event, ready member 수, selectable과 실제 ChannelName request 선택 결과를 함께 단언한다. |
-| MON-A4 | 10.0.0 전환 대상 | `svc-b` stop·restart 뒤 request 성공과 topology remove·re-add marker를 관측한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 generation·endpoint·ready member가 최신 snapshot으로 수렴하는지 검증한다. |
-| MON-A5 | 10.0.0 전환 대상 | Location runtime과 Spot 상태 marker 경로가 있다. | Redis 정지·복구 전후 `zlink.runtime.location.store_changed`, location state·last success·last failure와 owner token 재검증을 단언한다. |
-| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | remote ROUTER target을 막아 backpressure·timeout result, backpressured event와 후속 snapshot count를 비교한다. |
-| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | local 수락 target과 drop target을 만들고 operation result, dropped event, remote·local snapshot/admitted/dropped 수를 비교한다. |
-| MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외가 task failure로 보고된 뒤 messaging이 계속되는 marker가 있다. | Application gate와 느린 observer를 함께 만들어 application·infrastructure claim, request completion, 정상 observer, coalescing·sequence gap 후 snapshot 재조회를 검증한다. |
-| MON-D1 | 10.0.0 전환 대상 | 중복 source, 비양수 interval, 없는 Spot·socket source 구성 오류와 한 번의 stop·restart 경로가 있다. | 등록하지 않은 MeshName, 0 이하 observer capacity를 public error로 단언하고 비정상 종료·lease 만료·재시작을 3회 반복해 sequence와 최신 snapshot을 확인한다. |
+| MON-A1 | 구현 | Mesh event와 snapshot evidence를 10.0.0 runtime 표면으로 확인했다. | 최신 전체 실행 통과. |
+| MON-A2 | 구현 | Typed peer event와 snapshot의 연결 상태를 확인했다. | 최신 전체 실행 통과. |
+| MON-A3 | 구현 | Spot subject 추적과 관련 event evidence를 확인했다. | 최신 전체 실행 통과. |
+| MON-A4 | core 대기 | Weight 전파와 drain·restore 구간은 통과했지만 같은 RID replacement의 최종 재승인이 실패한다. | core 재승인 결함 수정 뒤 다시 실행한다. |
+| MON-A5 | core 대기 | 무자격 TCP의 handshake 실패는 peer 항목이 없어 현재 binding 표면으로 관찰할 수 없다. | core mesh monitor event의 binding 공개가 필요하다. |
+| MON-B1 | 구현 | 구성한 kind filter가 필요한 event만 전달하는지 확인했다. | 최신 전체 실행 통과. |
+| MON-B2 | 구현 | 잘못된 monitoring 등록이 startup validation에서 거부되는지 확인했다. | 최신 전체 실행 통과. |
+| MON-C1 | 구현 | Monitoring handler 실패 뒤에도 messaging과 정상 observer가 계속되는지 확인했다. | 최신 전체 실행 통과. |
+| MON-D1 | core 대기 | 비정상 종료 뒤 같은 endpoint replacement의 재승인이 이뤄지지 않아 반복 복구가 중단된다. | core 재승인 결함 수정 뒤 다시 실행한다. |

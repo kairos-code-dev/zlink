@@ -296,30 +296,36 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 ---
 
-## Service / SPOT 예외
+## Service / Spot 예외
 
-`SPOT`은 raw socket과 완전히 같은 atomicity surface가 아니다.
+Spot은 raw socket과 완전히 같은 atomicity surface가 아니다.
 
 핵심 구현:
 
-- [spot_sub_recv.cpp](../../src/runtime/services/spot/pubsub/spot_sub_recv.cpp)
+- [mesh_runtime.cpp](../../src/runtime/services/mesh/mesh_runtime.cpp)
+- [mesh_dispatch_api.cpp](../../src/api/mesh/mesh_dispatch_api.cpp)
 
-`spot_sub_t::recv()`는 다음 성격을 띤다.
+Spot direct 메시지와 Logical Multicast record는 raw part receive가 아니라
+Spot claim의 receive batch(`zlink_mesh_claim_recv_batch()`)로 수신한다.
+이 경로는 다음 성격을 띤다.
 
-- topic frame + payload frame sequence를 service-level semantics로 처리
-- follow-up에서 자체 wait loop 사용
-- ready probe 같은 service control message를 내부에서 소비
+- ingress가 complete multipart를 mailbox admission 단위로 취급하므로
+  batch에는 완성된 record만 나타난다
+- 첫 message가 capacity에 들어가지 않으면 batch를 비운 채
+  `BUFFER_TOO_SMALL`과 필요한 크기를 반환한다
+- record·part view의 수명은 batch reset/destroy에 묶인다
 
-즉 `SPOT`은:
+즉 Spot은:
 
 - raw socket fq invariant와 1:1로 동일한 surface가 아니라
-- service runtime이 얹힌 higher-level handle
+- MeshNode dispatch runtime이 얹힌 higher-level claim consumer
 
 이다.
 
-따라서 raw socket atomicity 문장을 그대로 `SPOT`에 복사하면 안 된다.
-`SPOT`은 service semantics를 보장하고, raw socket처럼
-"첫 part 후 follow-up 즉시 EPROTO 승격"으로만 설명되지 않는다.
+따라서 raw socket atomicity 문장을 그대로 Spot에 복사하면 안 된다.
+Spot 경로의 정식 계약은 dispatch spec
+(`doc/spec/core/service/02-dispatch.ko.md`)이 소유하며, raw socket처럼
+"첫 part 후 follow-up 즉시 EPROTO 승격"으로 설명되지 않는다.
 
 ---
 
@@ -1479,7 +1485,8 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
   - [core/src/runtime/sockets/internal/fq.cpp](../../src/runtime/sockets/internal/fq.cpp)
   - [core/src/runtime/core/recv_tls_view.hpp](../../src/runtime/core/recv_tls_view.hpp)
 - service / spot
-  - [core/src/runtime/services/spot/pubsub/spot_sub_recv.cpp](../../src/runtime/services/spot/pubsub/spot_sub_recv.cpp)
+  - [core/src/runtime/services/mesh/mesh_runtime.cpp](../../src/runtime/services/mesh/mesh_runtime.cpp)
+  - [core/src/api/mesh/mesh_dispatch_api.cpp](../../src/api/mesh/mesh_dispatch_api.cpp)
 - public contract
   - [core/include/zlink.h](../../include/zlink.h)
 - libzmq 참조

@@ -137,15 +137,16 @@ send queue에 발행합니다 — 단일 스레드 send에 쓰는 것과 같은
   hot-path 입장 허용 게이트와 상태나 캐시 라인을 공유하지 않는
   별도 직렬화 경로를 거친다.
 
-### 3.2 SPOT / SPOT Node
+### 3.2 Spot / MeshNode
 
 - **공개 계약:** `zlink_spot_publish`는 hot-path 계층을 따릅니다. `MeshNode`는
   membership과 설정을 소유하며, 구독 변경과 peer mutation은 control path를
   따릅니다.
-- **Internal child:** `spot_pub` / `spot_sub`는 내부 구현 단위입니다.
-  공개 thread-safety 계약의 직접 대상이 아닙니다 — parent/facade
-  계약이 이들을 포함합니다. Child ordering과 open/destroy
-  선형화는 내부 구현 관심사입니다.
+- **Internal delivery:** Spot direct·Logical Multicast 전달은 별도 child
+  socket이 아니라 MeshNode dispatch runtime(owner mailbox, ready index,
+  claim)이 수행합니다. 이 내부 단위는 공개 thread-safety 계약의 직접
+  대상이 아닙니다 — Spot facade와 claim 계약이 이들을 포함하며, mailbox
+  admission과 claim 선형화는 내부 구현 관심사입니다.
 
 ### 3.3 Monitor
 

@@ -154,6 +154,24 @@ shutdown outlives its deadline it completes every remaining operation
 only through the `shutdown_active` flag; a sequential call after TIMED_OUT is
 legal.
 
+A committed operation owns its timeout task in
+`pending_operation_t::timeout_task`. `operation_timeout_guard_t::commit()`
+hands the task to that field before opening the scheduler gate, so a committed
+timer can never outlive its operation and fire against a recycled node address
+or serial; the timeout callback checks both `operation_id.high` (the node
+lifecycle generation) and `low` to bar the ABA. Every terminal path (normal,
+owner-missing, and the two-phase STREAM commit) and node destroy/shutdown erase
+the operation through the single `detach_pending_operation_locked()` primitive,
+which owns the task handoff and erase and returns the task for the caller to
+cancel *outside* the node lock (a firing timeout handler takes that lock, and
+the scheduler recognises a self-cancel) — so no new terminal path can drop the
+handoff. `lifecycle_generation` is issued at node creation by
+`allocate_lifecycle_generation()`, anchored on epoch wall-clock microseconds
+(not boot-relative `now_ms()`) and strictly monotonic in-process via a CAS.
+Core owns no durable state, so a same-microsecond restart or a rolled-back
+clock surfaces as the §5 duplicate/stale generation admission conflict, never
+as silent replacement.
+
 ## 5. Wire: ROUTER, the ingress thread and the envelope
 
 - The node's raw ROUTER is thread-safe, so sends happen directly on
@@ -251,6 +269,22 @@ event consumption and the status query is an atomic snapshot. Handler and recv
 are the single consumer of the same queue; re-entrant deregistration inside
 the handler is `EDEADLK`. `CLAIM_REVOKED` is emitted by the shutdown revoke
 loop after it drops the node lock.
+
+The raw socket monitor (`api/monitoring/`) is a separate layer from the
+MeshNode monitor, owned by one global handler registry. Every reader that
+dereferences registry state (status, receive-model, handler registration and
+close checks) holds a `monitor_state_pin_t`, and close/unregister wait for the
+pins to drain before deleting the storage (no UAF). A handler update passes its
+pinned state as the expected value, checks entry identity and `unregistered`
+under the registry lock, and fails with `ESHUTDOWN` rather than resurrecting a
+registration on a closing socket. Registration completes its identity (handler,
+provider, subject, dispatch task id) under `dispatch_sync`, so an immediate
+dispatch tick's first callback — and that callback's self-close finalizer —
+observes only the fully committed task id. The service-control scheduler that
+runs the dispatch task allocates the task's schedule node once at add time and
+keeps wakeup and every periodic tick allocation-free (and non-throwing) by
+reusing that node handle; task callbacks and the worker seal `bad_alloc` so a
+failed tick is dropped while the active-task epilogue always runs.
 
 ## 9. Locking rules and thread inventory
 

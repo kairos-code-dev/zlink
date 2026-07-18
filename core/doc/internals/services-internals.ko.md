@@ -143,6 +143,25 @@ request transaction이 commit 또는 취소 결정을 내릴 때까지 기다리
 `shutdown_active` 플래그로만 `EDEADLK`이고, TIMED_OUT 뒤의 순차 재호출은
 합법이다.
 
+commit한 operation은 자신의 timeout task를 `pending_operation_t::timeout_task`로
+소유한다. `operation_timeout_guard_t::commit()`이 scheduler gate를 열기 전에
+task를 이 필드에 인계하므로, commit된 timer가 operation보다 오래 살아 재활용된
+node 주소나 serial을 조기 timeout시킬 수 없다. timeout callback은
+`operation_id.high`(node lifecycle generation)와 `low`를 모두 확인해 ABA를
+막는다. 모든 terminal 경로(정상·owner 부재·2단계 STREAM commit)와 node
+destroy·shutdown은 operation을 지울 때 `detach_pending_operation_locked()`
+하나를 거친다. 이 primitive가 task 인계와 erase를 소유하고 반환한 task를
+호출자가 node lock **밖에서** 취소하므로(firing 중인 timeout handler가 그 lock을
+잡고, scheduler는 self-cancel을 인식한다), 새 terminal 경로가 task 인계를
+빠뜨릴 구조가 아니다.
+
+`lifecycle_generation`은 node 생성 시 `allocate_lifecycle_generation()`이
+발급한다. clock 소스는 boot-relative `now_ms()`가 아니라 epoch wall-clock
+microsecond이고, 프로세스 안에서는 CAS로 강단조다. Core는 durable 상태를
+소유하지 않으므로(location authority는 framework 소관) 같은 RID의 동일-µs
+재시작이나 clock 역행은 §5의 duplicate/stale generation admission 충돌로
+표면화되며 무단 교체가 아니다.
+
 ## 5. Wire: ROUTER, ingress 스레드와 envelope
 
 - node의 raw ROUTER는 thread-safe이므로 송신은 앱 스레드에서 직접 수행하고,
@@ -231,6 +250,21 @@ counter는 event 소비와 무관하게 누적되고 status 조회는 원자 sna
 handler와 recv는 같은 queue의 single consumer이며 handler 등록 중 재진입
 해제는 `EDEADLK`다. `CLAIM_REVOKED`는 shutdown deadline 초과 시 revoke 루프가
 락을 놓은 뒤 방출한다.
+
+raw socket monitor(`api/monitoring/`)는 MeshNode monitor와 별도 계층이며 전역
+handler registry 하나가 소유한다. status·recv-model·handler 등록·close 검사
+경로 등 registry state를 역참조하는 모든 reader는 `monitor_state_pin_t`로 pin을
+잡고, close/unregister는 pin이 0으로 drain될 때까지 기다린 뒤에만 storage를
+삭제한다(UAF 방지). handler 등록(update)은 pin한 state를 expected로 넘겨
+registry lock 아래에서 entry 동일성과 `unregistered`를 확인하고, 불일치 시
+`ESHUTDOWN`으로 실패하며 닫히는 socket에 새 registration을 되살리지 않는다.
+등록은 registration identity(handler·provider·subject·dispatch task id)를
+`dispatch_sync` 아래에서 완결하므로 즉시 dispatch tick의 첫 callback(및 그
+callback의 self-close finalizer)이 완성된 task id만 관찰한다. dispatch task를
+돌리는 service-control scheduler는 task의 schedule node를 add 시 1회만 할당하고
+이후 wakeup·주기 tick을 node handle 재사용으로 무할당·no-throw로 유지하며, task
+callback과 worker는 bad_alloc을 봉인해 실패한 tick만 버리고 active-task
+epilogue를 항상 실행한다.
 
 ## 9. 잠금 규칙과 스레드 목록
 

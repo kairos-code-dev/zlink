@@ -146,16 +146,17 @@ concurrent entry.
   through a separate serialization path that does not share state or
   cache lines with the hot-path admission gate.
 
-### 3.2 SPOT / MeshNode
+### 3.2 Spot / MeshNode
 
 - **Public contract:** `zlink_spot_publish` follows the hot-path tier. The
   `MeshNode` owns membership and configuration; subscription changes and peer
   mutations follow the control path.
-- **Internal children:** `spot_pub` / `spot_sub` are internal
-  implementation units. They are not direct subjects of the public
-  thread-safety contract — the parent/facade contract covers them.
-  Child ordering and open/destroy linearization are internal
-  implementation concerns.
+- **Internal delivery:** Spot direct and Logical Multicast delivery is
+  performed by the MeshNode dispatch runtime (owner mailboxes, the ready
+  index and claims), not by dedicated child sockets. These internal units
+  are not direct subjects of the public thread-safety contract — the Spot
+  facade and claim contracts cover them; mailbox admission and claim
+  linearization are internal implementation concerns.
 
 ### 3.3 Monitor
 

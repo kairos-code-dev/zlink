@@ -4,7 +4,6 @@
 
 #include "../Native/native_message_parts.hpp"
 #include "../Native/native_options.hpp"
-#include "../Native/native_send_result.hpp"
 #include "../Native/request_progress.hpp"
 #include "../Core/operation_detail.hpp"
 #include <zlink/Contracts/Core/routing_id.hpp>
@@ -34,15 +33,12 @@ namespace detail
 {
 
 using zlink::detail::assign_parts_from_native;
-using zlink::detail::classify_nonblocking_send_errno;
 using zlink::detail::close_message_array;
 using zlink::detail::close_native_parts;
-using zlink::detail::get_string_option;
 using zlink::detail::last_error;
 using zlink::detail::move_parts_to_native;
 using zlink::detail::restore_parts_from_native;
 using zlink::detail::submit_borrowed_message_array;
-using zlink::detail::submit_message_array;
 using zlink::detail::submit_message_parts;
 using zlink::detail::submit_message_parts_close_on_failure;
 using zlink::detail::submit_native_parts;

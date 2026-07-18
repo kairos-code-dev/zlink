@@ -27,22 +27,18 @@ void close_parts (std::vector<message_t> &parts_)
 } // namespace
 
 received_t::received_t (std::optional<routing_id_t> routing_id_,
-                        std::optional<routing_id_t> spot_rid_,
                         std::optional<uint64_t> request_seq_,
                         std::vector<message_t> parts_) :
     _routing_id (std::move (routing_id_)),
-    _spot_rid (std::move (spot_rid_)),
     _request_seq (std::move (request_seq_)),
     _parts (std::move (parts_))
 {
 }
 
 received_t::received_t (std::optional<routing_id_t> routing_id_,
-                        std::optional<routing_id_t> spot_rid_,
                         std::optional<uint64_t> request_seq_,
                         message_t part_) :
     _routing_id (std::move (routing_id_)),
-    _spot_rid (std::move (spot_rid_)),
     _request_seq (std::move (request_seq_)),
     _parts (std::move (part_))
 {

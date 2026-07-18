@@ -16,31 +16,22 @@ namespace detail
 struct received_access_t
 {
     static received_t make (std::optional<routing_id_t> routing_id_,
-                            std::optional<routing_id_t> spot_rid_,
                             std::optional<uint64_t> request_seq_,
                             std::vector<message_t> parts_)
     {
-        return received_t (std::move (routing_id_), std::move (spot_rid_), std::move (request_seq_),
-                           std::move (parts_));
+        return received_t (std::move (routing_id_), std::move (request_seq_), std::move (parts_));
     }
 
     static received_t make (std::optional<routing_id_t> routing_id_,
-                            std::optional<routing_id_t> spot_rid_,
                             std::optional<uint64_t> request_seq_,
                             message_t part_)
     {
-        return received_t (std::move (routing_id_), std::move (spot_rid_), std::move (request_seq_),
-                           std::move (part_));
+        return received_t (std::move (routing_id_), std::move (request_seq_), std::move (part_));
     }
 
     static void set_socket_rid_send_context (received_t &received_, void *handle_)
     {
         set_send_context (received_, handle_, received_t::send_context_kind_t::socket_rid);
-    }
-
-    static void set_router_spot_send_context (received_t &received_, void *handle_)
-    {
-        set_send_context (received_, handle_, received_t::send_context_kind_t::router_spot);
     }
 
     static bool has_send_context (const received_t &received_) noexcept

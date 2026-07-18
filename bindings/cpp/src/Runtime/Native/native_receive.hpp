@@ -20,7 +20,6 @@ namespace detail
 struct recv_envelope_t
 {
     routing_id_t source_rid;
-    routing_id_t source_spot_rid;
     bool has_request_seq;
     uint64_t request_seq;
     std::optional<message_t> single_part;
@@ -29,7 +28,6 @@ struct recv_envelope_t
     void reset () noexcept
     {
         source_rid = zlink::detail::unchecked_empty_routing_id ();
-        source_spot_rid = zlink::detail::unchecked_empty_routing_id ();
         has_request_seq = false;
         request_seq = 0;
         single_part.reset ();
@@ -38,7 +36,6 @@ struct recv_envelope_t
 
     recv_envelope_t () :
         source_rid (zlink::detail::unchecked_empty_routing_id ()),
-        source_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
         has_request_seq (false),
         request_seq (0),
         single_part (),

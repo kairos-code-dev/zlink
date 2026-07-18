@@ -398,7 +398,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
 | S7 bindings·framework 공통 준비 | 완료 | 0 | 0 | 0 | RC artifact 동기화(libzlink 10.0.0→4 lane native), 제거 정책 검색 문자열·공통 smoke 정의 고정, Python/Go/Rust 보류. release workflow는 S11 이월 |
 | S8-CPP lane (C ABI+C++ bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3 결함(ownership/claim수명/metadata/transfer/dead-code 연쇄) 전량 해소, no-hit ZERO, 라이브러리+15samples green. low 4건 follow-up(`iteration-4/low-followups.ko.md`). 다음=cpp framework 미러 |
-| **S8-DN lane (.NET bindings→framework) [참조 lane]** | framework 진행(S8-02/02A) | 0 | 0 | 0 | bindings CLEAN. framework compile-green + core-correct + **S8-02A DI·S8-16 MeshName·S8-02 AddRouteMesh 빌더**(구 AddSpotMesh 제거, UseInMemoryLocationStores test-only+fail-fast). 잔여=node/channel handler 인바운드 dispatch(S8-03+)·S8-04A Redis transfer authority·samples/E2E·`DOTNET REVIEW CLEAN` |
+| **S8-DN lane (.NET bindings→framework) [참조 lane]** | framework 진행(구현 축 대부분 완료) | 0 | 0 | 0 | bindings CLEAN. framework compile-green + core-correct(lifecycle·stream·relay·transfer) + **S8-02/02A/03/05/06/16 완료**(AddRouteMesh 빌더·RouteMesh DI·node/channel handler dispatch·전송 배선·ready/claim pump·MeshName uniqueness, 구 AddSpotMesh/bridge 제거, build 0/0). 잔여=S8-04/04A/04B(location·Redis authority)·S8-06A/06B/07(metadata·timer·NoDrop)·UnitTests 이관 drift·samples/E2E(S8-09/10)·`DOTNET REVIEW CLEAN`(S8-13~15) |
 | S8-JVM lane (Java/Kotlin bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-5 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~4(raw-layer ABI·router_recv_part arity·recv_handler 재매핑·C bridge dead 함수) 전량 해소. Java FFI/Panama, C bridge 실빌드 검증, 제거심볼 게이트 EMPTY. low 2 follow-up. 다음=jvm framework 미러 |
 | S8-NODE lane (Node.js bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3(enum 값·RouterSocket·kind_data·transfer·ready-handler·option 테이블) 전량 해소, no-hit 0, addon+tsc green. low 4건 follow-up. 다음=node framework 미러 |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
@@ -980,18 +980,18 @@ API를 다른 언어의 구현 기준으로 사용하지 않는다.
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S8-01 | 검증된 bindings local package pin을 10.0.0으로 갱신 | 중앙 version과 lock·restore 결과 일치 | 미착수 | - |
-| S8-02 | AddRouteMesh·ChannelName 구현 | 복수 logical membership과 정식 `.NET` interface가 source snapshot과 일치 | 미착수 | - |
-| S8-02A | RouteMesh runtime-options DI 구현 | 기존 `IZLinkChannelRuntimeOptions` 제거, `IZLinkRouteMeshRuntimeOptions` singleton 등록, MeshNode socket setter의 startup-only 오류와 runtime channel Weight 반영 통과 | 미착수 | - |
-| S8-03 | MeshNode-owned handler·Spot·Actor 등록 구현 | channel·route handler context와 모든 Spot·Actor builder 멤버 보존 | 미착수 | - |
+| S8-02 | AddRouteMesh·ChannelName 구현 | 복수 logical membership과 정식 `.NET` interface가 source snapshot과 일치 | 완료 | AddRouteMesh(meshName):IZLinkMeshNodeBuilder + ChannelName:IZLinkMeshChannelBuilder (spec 05 exact-interface), 구 AddSpotMesh/SpotNodeBuilder 제거 no-hit 0, build 0/0 |
+| S8-02A | RouteMesh runtime-options DI 구현 | 기존 `IZLinkChannelRuntimeOptions` 제거, `IZLinkRouteMeshRuntimeOptions` singleton 등록, MeshNode socket setter의 startup-only 오류와 runtime channel Weight 반영 통과 | 완료 | IZLinkRouteMeshRuntimeOptions singleton DI, 구 IZLinkChannelRuntimeOptions 제거, MeshNode socket setter startup-only + runtime Channel Weight 반영 |
+| S8-03 | MeshNode-owned handler·Spot·Actor 등록 구현 | channel·route handler context와 모든 Spot·Actor builder 멤버 보존 | 완료 | NodeSend/NodeRequest→route handler(ZLinkRouteHandlerInvoker), ChannelSend/ChannelRequest→channel-membership handler(ChannelName keyed), reply token 경유. Spot/Actor builder 멤버 보존, DI 스캔 |
 | S8-04 | location descriptor와 connection planner 구현 | Redis 자동 discovery와 manual `IZLinkMeshPeerConnections`가 같은 admission을 사용하고 MeshName 범위, expected RID pin, lifecycle generation, descriptor revision, source 병합과 ready index 검증 | 미착수 | - |
 | S8-04A | Redis Actor transfer authority 구현 | participant-set CAS, transfer token, lease, prepared/commit/abort crash recovery, unsupported store startup failure와 distributed transfer E2E 통과 | 미착수 | - |
 | S8-04B | Redis production 기본 정책 구현 | Redis extension 명시 등록, 자동 discovery·분산 Spot/Actor 주소 조회를 사용하면서 location store를 등록하지 않은 구성의 startup failure, 사용자 store capability와 test-only in-memory 경계 검증 | 미착수 | - |
-| S8-05 | channel/direct/Spot/Actor 전송 연결 | bindings MeshNode public API만 사용 | 미착수 | - |
-| S8-06 | ready/claim pump 구현 | infrastructure 우선 drain, Node·Spot·Actor keyed scheduling과 claim leak 0건 | 미착수 | - |
+| S8-05 | channel/direct/Spot/Actor 전송 연결 | bindings MeshNode public API만 사용 | 완료 | compile-green 전환(Option B): 프레임워크-소유 dispatch record가 MeshNode public API만 사용해 channel/direct/Spot/Actor 전송 배선 |
+| S8-06 | ready/claim pump 구현 | infrastructure 우선 drain, Node·Spot·Actor keyed scheduling과 claim leak 0건 | 완료 | DrainReady pump seam이 record를 per-owner serial-executor 큐로 fan, claim은 finally 해제(leak 0). MeshOperationId↔Completion 콜백 테이블 |
 | S8-06A | S/S metadata 연결 | Node·Channel·Spot direct send/request와 Logical Multicast의 mutation snapshot, immutable handler view, malformed ingress, 1024 경계, relay allowlist, reply 비자동복사와 일반 reply metadata 미지원 통과 | 미착수 | - |
 | S8-06B | Spot timer 연결 | `Task.Delay` 기반 tick이 lifecycle generation과 cancel 규칙을 거쳐 keyed scheduler에 제출되고 Core timer FFI를 사용하지 않음 | 미착수 | - |
 | S8-07 | Logical Multicast와 NoDrop 연결 | 기본 true와 명시적 false 회귀 통과 | 미착수 | - |
-| S8-08 | 기존 topology API와 runtime 제거 | v10 plan·review record만 제외하고 builder, registration, production `UseInMemoryLocationStores()`, bridge, Spot·Actor–STREAM service part와 Actor join/lifecycle 전용 wrapper, test와 현재 docs no-hit | 미착수 | - |
+| S8-08 | 기존 topology API와 runtime 제거 | v10 plan·review record만 제외하고 builder, registration, production `UseInMemoryLocationStores()`, bridge, Spot·Actor–STREAM service part와 Actor join/lifecycle 전용 wrapper, test와 현재 docs no-hit | 진행 | 구 spot-node builder·SpotRouteBridge wrapper 제거, production UseInMemoryLocationStores test-only화 + 미등록 store startup fail-fast(S8-04B). 전수 no-hit는 리뷰 단계 확정 |
 | S8-09 | `.NET` sample 전환 | 분산 sample은 공식 Redis extension을 등록하고 지정된 manual sample은 `IZLinkMeshPeerConnections`를 사용하며 S2 inventory 반영 후 `samples/run_samples.sh` 전체 통과 | 미착수 | - |
 | S8-10 | `.NET` framework E2E 전환 | `e2e/run_e2e_all.sh`의 전체 config 통과 | 미착수 | - |
 | S8-11 | 리뷰 종료 뒤 source/package contract 검증 | 두 `DOTNET REVIEW CLEAN` 뒤 `scripts/verify_packaged_contract.sh`, NuGet consumer와 native payload 일치 | 미착수 | - |
@@ -1000,7 +1000,7 @@ API를 다른 언어의 구현 기준으로 사용하지 않는다.
 | S8-13 | Codex agent `.NET` 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
 | S8-14 | Claude Sonnet `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
 | S8-15 | finding 수정·일반 검증·전체 재리뷰 반복 | finding을 일괄 수정하고 일반 build·전체 테스트 통과 뒤 두 리뷰어가 `.NET` 전체와 세 축을 재검토해 둘 다 `DOTNET REVIEW CLEAN` | 미착수 | - |
-| S8-16 | process-local MeshName uniqueness 검증 | 중복 AddRouteMesh 실패와 multi-mesh 독립 동작 통과 | 미착수 | - |
+| S8-16 | process-local MeshName uniqueness 검증 | 중복 AddRouteMesh 실패와 multi-mesh 독립 동작 통과 | 완료 | process-local MeshName uniqueness: 중복 AddRouteMesh AddUnique 실패 + per-node stream-dispatch keying(multi-mesh 독립) |
 | S8-17 | 확정 `.NET` internals 갱신 | 두 `DOTNET REVIEW CLEAN`과 S8-11 종료 검증 뒤 최종 pump·scheduler·location·timer 구조를 internals에 반영 | 미착수 | - |
 | S8-18 | `.NET` internals 확정 검사 | S8-17 문서와 최종 source·구조 test·diagram·link의 차이 0개. 문서 검사만으로 구현 전체 재리뷰를 열지 않음 | 미착수 | - |
 

@@ -13,8 +13,7 @@ internal static class Program
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "actor-sequential");
         using var room = node.CreateSpot();
         // 생성 직후 actor는 Entry Spot(로비)에 위치한다.
         ActorRef player = node.CreateActor("player");
@@ -23,10 +22,11 @@ internal static class Program
         using var recv = new MeshReceiveBatch();
         List<string> processed = new();
 
-        RoutingId session = RoutingId.From("player-session");
         // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-        Zlink.MultipartClose(await stream.BindActor(session, player)
-            .Timeout(TimeSpan.FromSeconds(2)).Async());
+        // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
+        RoutingId session = RoutingId.From("player-session");
+        using var sessionService = SampleSupport.StartSessionService(node, stream);
+        SampleSupport.BindSessionActor(node, sessionService, session, player);
 
         // join으로 Entry Spot에서 room(user Spot)으로 이동한다 (호스트가 admit).
         ulong epoch = SampleSupport.JoinLocalSpot(node, player, room, "enter-room");
@@ -35,8 +35,8 @@ internal static class Program
         string[] commands = { "move", "attack", "loot" };
         foreach (string command in commands)
         {
-            using Message m = Message.From(command);
-            stream.SendBoundActor(session, "player").Message(m).Submit();
+            SampleSupport.RelaySessionMessage(sessionService, session, player,
+                command);
         }
 
         SampleSupport.WaitOrThrow(() =>

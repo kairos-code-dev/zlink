@@ -71,6 +71,18 @@ public sealed class MeshReadyBatch : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        DisposeCore();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Releases the batch if <see cref="Dispose" /> was missed.</summary>
+    ~MeshReadyBatch()
+    {
+        DisposeCore();
+    }
+
+    private void DisposeCore()
+    {
         if (_handle == IntPtr.Zero)
             return;
         var handle = _handle;
@@ -107,8 +119,13 @@ public sealed class MeshClaim : IDisposable
     {
         if (batch == null)
             throw new ArgumentNullException(nameof(batch));
+        var required = new ZlinkMeshReceiveRequirements
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkMeshReceiveRequirements>(),
+            Version = 1
+        };
         var rc = NativeMethods.zlink_mesh_claim_recv_batch(ref _claim,
-            batch.Handle, out _, (int)flags);
+            batch.Handle, ref required, (int)flags);
         if (rc == (int)RecvResult.NoData)
             return false;
         if (rc != 0)
@@ -118,6 +135,21 @@ public sealed class MeshClaim : IDisposable
 
     /// <inheritdoc />
     public void Dispose()
+    {
+        DisposeCore();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Releases the claim if <see cref="Dispose" /> was missed, so a dropped
+    ///     claim cannot pin an owner and stall its dispatch.
+    /// </summary>
+    ~MeshClaim()
+    {
+        DisposeCore();
+    }
+
+    private void DisposeCore()
     {
         if (_released)
             return;
@@ -208,6 +240,18 @@ public sealed class MeshReceiveBatch : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        DisposeCore();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Releases the batch if <see cref="Dispose" /> was missed.</summary>
+    ~MeshReceiveBatch()
+    {
+        DisposeCore();
+    }
+
+    private void DisposeCore()
+    {
         if (_handle == IntPtr.Zero)
             return;
         var handle = _handle;
@@ -235,6 +279,10 @@ public sealed class MeshReceiveBatch : IDisposable
                 metadata.Length);
         }
 
+        var kindData = DecodeKindData((MeshRecordKind)native.Kind,
+            (MeshOperationKind)native.OperationKind, native.KindData,
+            native.KindDataSize);
+
         return new MeshReceiveRecord(
             (MeshRecordKind)native.Kind,
             (MeshReadyDomains)native.Domain,
@@ -250,7 +298,92 @@ public sealed class MeshReceiveBatch : IDisposable
             (int)native.PartCount,
             native.TerminalResult,
             native.FailureErrno,
-            native.ReplyToken);
+            native.ReplyToken,
+            kindData);
+    }
+
+    // Decodes the Core-owned kind_data view eagerly into a managed typed record
+    // so the payload outlives the batch (which the wrapper resets/disposes).
+    private static MeshRecordPayload? DecodeKindData(MeshRecordKind kind,
+        MeshOperationKind operationKind, IntPtr kindData, nuint kindDataSize)
+    {
+        if (kindData == IntPtr.Zero || kindDataSize == 0)
+            return null;
+
+        switch (kind)
+        {
+            case MeshRecordKind.SpotControl:
+                if (kindDataSize <
+                    (nuint)Marshal.SizeOf<ZlinkActorControlRecord>())
+                    return null;
+                var control =
+                    Marshal.PtrToStructure<ZlinkActorControlRecord>(kindData);
+                return new ActorControlRecord(
+                    (ActorLifecycleKind)control.Kind,
+                    ActorInterop.FromNative(ref control.PreviousActor),
+                    ActorInterop.FromNative(ref control.CurrentActor),
+                    RoutingId.FromNative(ref control.PreviousSpotRid) ?? default,
+                    RoutingId.FromNative(ref control.CurrentSpotRid) ?? default,
+                    control.PreviousSpotGeneration,
+                    control.CurrentSpotGeneration,
+                    control.PreviousMembershipEpoch,
+                    control.CurrentMembershipEpoch,
+                    control.ResultCode);
+
+            case MeshRecordKind.Completion
+                when operationKind == MeshOperationKind.ActorJoin:
+                if (kindDataSize <
+                    (nuint)Marshal.SizeOf<ZlinkActorJoinCompletion>())
+                    return null;
+                var completion =
+                    Marshal.PtrToStructure<ZlinkActorJoinCompletion>(kindData);
+                var loc = completion.Location;
+                return new ActorJoinCompletion(
+                    (ActorJoinResult)completion.JoinResult,
+                    ActorInterop.FromNative(ref completion.Actor),
+                    new ActorLocation(
+                        ActorInterop.FromNative(ref loc.Actor),
+                        RoutingId.FromNative(ref loc.SpotRid) ?? default,
+                        loc.SpotGeneration,
+                        loc.MembershipEpoch));
+
+            case MeshRecordKind.SendReady:
+                if (kindDataSize <
+                    (nuint)Marshal.SizeOf<ZlinkMeshSendReadyData>())
+                    return null;
+                var ready =
+                    Marshal.PtrToStructure<ZlinkMeshSendReadyData>(kindData);
+                string? readyChannel = null;
+                if (ready.ChannelName != IntPtr.Zero && ready.ChannelNameSize > 0)
+                    readyChannel = Marshal.PtrToStringUTF8(ready.ChannelName,
+                        (int)ready.ChannelNameSize);
+                return new MeshSendReadyData(
+                    (MeshDestinationKind)ready.DestinationKind,
+                    RoutingId.FromNative(ref ready.TargetNodeRid) ?? default,
+                    RoutingId.FromNative(ref ready.TargetSpotRid) ?? default,
+                    ActorInterop.FromNative(ref ready.TargetActor),
+                    readyChannel);
+
+            case MeshRecordKind.TransferControl:
+                if (kindDataSize <
+                    (nuint)Marshal.SizeOf<ZlinkActorTransferControl>())
+                    return null;
+                var transfer =
+                    Marshal.PtrToStructure<ZlinkActorTransferControl>(kindData);
+                return new ActorTransferControlRecord(new ActorTransferControl(
+                    (ActorTransferPhase)transfer.Phase,
+                    (ActorTransferRole)transfer.Role,
+                    new ActorTransferId(transfer.TransferId.High,
+                        transfer.TransferId.Low),
+                    ActorInterop.FromNative(ref transfer.Actor),
+                    transfer.MembershipEpoch,
+                    transfer.FinalSequence,
+                    transfer.ResultCode,
+                    transfer.FailureErrno));
+
+            default:
+                return null;
+        }
     }
 
     private void EnsureNotDisposed()

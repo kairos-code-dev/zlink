@@ -195,6 +195,89 @@ internal struct ZlinkActorLocation
     public ulong MembershipEpoch;
 }
 
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorControlRecord
+{
+    public uint StructSize;
+    public uint Version;
+    public int Kind;
+    public ZlinkActorRef PreviousActor;
+    public ZlinkActorRef CurrentActor;
+    public ZlinkRoutingId PreviousSpotRid;
+    public ZlinkRoutingId CurrentSpotRid;
+    public ulong PreviousSpotGeneration;
+    public ulong CurrentSpotGeneration;
+    public ulong PreviousMembershipEpoch;
+    public ulong CurrentMembershipEpoch;
+    public int ResultCode;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorJoinCompletion
+{
+    public uint StructSize;
+    public uint Version;
+    public int JoinResult;
+    public ZlinkActorRef Actor;
+    public ZlinkActorLocation Location;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorTransferId
+{
+    public ulong High;
+    public ulong Low;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkActorTransferToken
+{
+    public fixed ulong Opaque[8];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorTransferPrepare
+{
+    public uint StructSize;
+    public uint Version;
+    public int Role;
+    public ZlinkActorTransferId TransferId;
+    public ZlinkActorRef Actor;
+    public ulong ExpectedMembershipEpoch;
+    public ZlinkRoutingId PeerNodeRid;
+    public ulong FinalSequence;
+    public ulong ReserveMessageCount;
+    public ulong ReserveByteCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorTransferPrepareResult
+{
+    public uint StructSize;
+    public uint Version;
+    public int Role;
+    public ZlinkActorTransferId TransferId;
+    public ZlinkActorRef Actor;
+    public ulong FinalSequence;
+    public ulong ReserveMessageCount;
+    public ulong ReserveByteCount;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkActorTransferControl
+{
+    public uint StructSize;
+    public uint Version;
+    public int Phase;
+    public int Role;
+    public ZlinkActorTransferId TransferId;
+    public ZlinkActorRef Actor;
+    public ulong MembershipEpoch;
+    public ulong FinalSequence;
+    public int ResultCode;
+    public int FailureErrno;
+}
+
 // --- spot.h ---
 
 [StructLayout(LayoutKind.Sequential)]

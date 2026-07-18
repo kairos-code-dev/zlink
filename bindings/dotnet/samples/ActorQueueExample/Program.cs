@@ -11,8 +11,7 @@ internal static class Program
     {
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "actor-queue-node");
         using ISpot spot = node.CreateSpot();
         ActorRef actor = node.CreateActor("single-player");
         using var stream = ctx.CreateStreamSocket();
@@ -22,14 +21,15 @@ internal static class Program
 
         // 스트림 게이트웨이에 actor를 세션으로 바인딩한다. 실제 서버에서 session은
         // 게이트웨이로 접속한 클라이언트의 라우팅 ID다 — 여기선 고정값으로 만든다.
+        // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
         RoutingId session = RoutingId.From("single-player-session");
-        Zlink.MultipartClose(await stream.BindActor(session, actor)
-            .Timeout(TimeSpan.FromSeconds(2)).Async());
+        using var sessionService = SampleSupport.StartSessionService(node, stream);
+        SampleSupport.BindSessionActor(node, sessionService, session, actor);
 
         void Send(string payload)
         {
-            using Message m = Message.From(payload);
-            stream.SendBoundActor(session, actor.ActorId).Message(m).Submit();
+            SampleSupport.RelaySessionMessage(sessionService, session, actor,
+                payload);
         }
 
         ulong epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "join-first"); // 합류

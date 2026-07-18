@@ -32,6 +32,17 @@ internal static class NativeSnapshotReader
             checked((int)(count * (nuint)entrySize)));
         try
         {
+            // Common service contract (core/doc/spec/core/service/README.md):
+            // every caller-init output element must carry struct_size and
+            // version before the native fill. These snapshot structs place
+            // struct_size (uint32) then version (uint32) at offsets 0 and 4.
+            for (var i = 0; i < (int)count; i++)
+            {
+                var slot = IntPtr.Add(entries, i * entrySize);
+                Marshal.WriteInt32(slot, 0, entrySize);
+                Marshal.WriteInt32(slot, 4, 1);
+            }
+
             var actual = count;
             rc = fill(entries, ref actual);
             ZlinkException.ThrowConfigIfError(rc);

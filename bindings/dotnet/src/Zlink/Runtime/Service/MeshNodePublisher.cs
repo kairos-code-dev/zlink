@@ -21,7 +21,8 @@ internal sealed class MeshNodePublisher : IMeshNodePublisher
     }
 
     public MeshPublishDetail Publish(string channelName, string? topic,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
@@ -35,10 +36,11 @@ internal sealed class MeshNodePublisher : IMeshNodePublisher
                 Version = 1
             };
             Marshal.StructureToPtr(seed, detailPtr, false);
-            var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-                NativeMethods.zlink_mesh_node_publisher_publish(_handle,
-                    channelName, topic, IntPtr.Zero, np, count, detailPtr,
-                    (int)flags));
+            var result = MeshSend.SubmitWithMetadata(parts, nameof(parts),
+                metadata, (np, count, meta) =>
+                    NativeMethods.zlink_mesh_node_publisher_publish(_handle,
+                        channelName, topic, meta, np, count, detailPtr,
+                        (int)flags));
             ZlinkException.ThrowSubmitIfError((int)result);
             var detail =
                 Marshal.PtrToStructure<ZlinkMeshPublishDetail>(detailPtr);

@@ -66,21 +66,4 @@ public interface IRouterSocket : IConnectableRoutedMessageSocket
     ///     Start a reply operation addressed to a peer request.
     /// </summary>
     ReplyOperation Reply(RoutingId rid, ulong requestSeq);
-
-    /// <summary>
-    ///     Start a send operation addressed to a spot route.
-    /// </summary>
-    SendOperation SendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
-
-    /// <summary>
-    ///     Start a request operation addressed to a spot route.
-    /// </summary>
-    RequestOperation RequestToSpot(RoutingId destNodeRid,
-        RoutingId destSpotRid);
-
-    /// <summary>
-    ///     Start a reply operation addressed to a spot request.
-    /// </summary>
-    ReplyOperation ReplyToSpot(RoutingId destNodeRid,
-        RoutingId destSpotRid, ulong requestSeq);
 }

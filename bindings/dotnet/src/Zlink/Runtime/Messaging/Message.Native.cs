@@ -138,15 +138,6 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
         return true;
     }
 
-    private string? GetPropertyCore(string property)
-    {
-        EnsureValid();
-        var ptr = NativeMethods.zlink_msg_gets(ref _msg, property);
-        if (ptr == IntPtr.Zero)
-            return null;
-        return Marshal.PtrToStringUTF8(ptr);
-    }
-
     private void DisposeCore()
     {
         if (!IsValid)

@@ -22,6 +22,8 @@ internal static class Program
         responderNode.AddChannel(channelName);
         requesterNode.SetBind(requesterEndpoint);
         responderNode.SetBind(responderEndpoint);
+        requesterNode.SetRoutingId(RoutingId.From("spot-request-requester"));
+        responderNode.SetRoutingId(RoutingId.From("spot-request-responder"));
         requesterNode.Start();
         responderNode.Start();
         requesterNode.ConnectPeer(responderEndpoint);

@@ -12,6 +12,13 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
     /// <summary>Gets the node routing id (available after start).</summary>
     RoutingId RoutingId { get; }
 
+    /// <summary>
+    ///     Sets the node routing id. Required before <see cref="Start" /> along
+    ///     with a bind endpoint and at least one channel. Maps to
+    ///     <c>zlink_set_routing_id</c>.
+    /// </summary>
+    void SetRoutingId(RoutingId routingId);
+
     /// <summary>Sets the node bind endpoint. Apply before start.</summary>
     void SetBind(string endpoint);
 
@@ -39,23 +46,30 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
     /// <summary>Disconnects an admitted peer.</summary>
     void DisconnectPeer(RoutingId peerRid, ulong lifecycleGeneration = 0);
 
-    /// <summary>Sends parts to a node. Parts are consumed on success.</summary>
+    /// <summary>
+    ///     Sends parts to a node, optionally attaching immutable outbound
+    ///     application metadata. Parts are consumed on success.
+    /// </summary>
     SubmitResult SendToNode(RoutingId targetRid, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to a node. Parts are consumed on success.</summary>
     SubmitResult RequestToNode(RoutingId targetRid, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Sends parts to a channel.</summary>
     SubmitResult SendToChannel(string channelName, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to a channel.</summary>
     SubmitResult RequestToChannel(string channelName,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None);
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Creates a channel-topic publisher.</summary>
     IMeshNodePublisher CreatePublisher();
@@ -121,14 +135,16 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
     MeshOperationId LeaveSpot(ActorRef actor, ulong expectedMembershipEpoch,
         TimeSpan timeout = default);
 
-    /// <summary>Sends parts to an actor.</summary>
+    /// <summary>Sends parts to an actor, optionally attaching actor metadata.</summary>
     SubmitResult SendToActor(ActorRef actor, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to an actor.</summary>
     SubmitResult RequestToActor(ActorRef actor, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Sends parts to an actor's bound STREAM session.</summary>
     SubmitResult SendBoundSession(ActorRef actor, IReadOnlyList<Message> parts,
@@ -137,6 +153,32 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
     /// <summary>Closes an actor's bound STREAM session; returns the operation id.</summary>
     MeshOperationId CloseBoundSession(ActorRef actor,
         ulong expectedBindingGeneration, TimeSpan timeout = default);
+
+    /// <summary>
+    ///     Prepares an actor transfer fence, returning the framework-owned token
+    ///     and the fenced reservation result. Maps to
+    ///     <c>zlink_mesh_node_actor_transfer_prepare</c>.
+    /// </summary>
+    ActorTransferToken PrepareActorTransfer(ActorTransferPrepare prepare,
+        out ActorTransferPrepareResult result, TimeSpan timeout = default);
+
+    /// <summary>
+    ///     Commits a prepared actor transfer to <paramref name="newMembershipEpoch" />.
+    ///     Maps to <c>zlink_mesh_node_actor_transfer_commit</c>.
+    /// </summary>
+    void CommitActorTransfer(ActorTransferToken token, ulong newMembershipEpoch);
+
+    /// <summary>
+    ///     Activates a committed actor transfer. Maps to
+    ///     <c>zlink_mesh_node_actor_transfer_activate</c>.
+    /// </summary>
+    void ActivateActorTransfer(ActorTransferToken token);
+
+    /// <summary>
+    ///     Aborts a prepared or committed actor transfer, releasing the fence.
+    ///     Maps to <c>zlink_mesh_node_actor_transfer_abort</c>.
+    /// </summary>
+    void AbortActorTransfer(ActorTransferToken token);
 
     /// <summary>Creates a STREAM session service bound to a STREAM socket.</summary>
     IStreamSessionService CreateStreamSessionService(IStreamSocket stream);

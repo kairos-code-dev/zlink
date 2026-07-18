@@ -22,8 +22,13 @@ internal sealed class Spot : ISpot
     public SpotStatus Status()
     {
         EnsureNotDisposed();
+        var native = new ZlinkSpotStatus
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkSpotStatus>(),
+            Version = 1
+        };
         ZlinkException.ThrowConfigIfError(
-            NativeMethods.zlink_spot_status(Handle, out var native));
+            NativeMethods.zlink_spot_status(Handle, ref native));
         return new SpotStatus(
             RoutingId.FromNative(ref native.SpotRid) ?? default,
             (SpotKind)native.SpotKind,
@@ -38,63 +43,72 @@ internal sealed class Spot : ISpot
     }
 
     public SubmitResult SendToChannel(string channelName,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_spot_send_to_channel(Handle, channelName,
-                IntPtr.Zero, np, count, (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_spot_send_to_channel(Handle, channelName,
+                    meta, np, count, (int)flags));
     }
 
     public SubmitResult RequestToChannel(string channelName,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_spot_request_to_channel(Handle, channelName,
-                IntPtr.Zero, np, count, out op, (int)flags, timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_spot_request_to_channel(Handle, channelName,
+                    meta, np, count, out op, (int)flags, timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }
 
     public SubmitResult SendToSpot(RoutingId targetNodeRid,
         RoutingId targetSpotRid, ulong targetSpotGeneration,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeNode = targetNodeRid.ToNative();
         var nativeSpot = targetSpotRid.ToNative();
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_spot_send_to_spot(Handle, ref nativeNode,
-                ref nativeSpot, targetSpotGeneration, IntPtr.Zero, np, count,
-                (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_spot_send_to_spot(Handle, ref nativeNode,
+                    ref nativeSpot, targetSpotGeneration, meta, np, count,
+                    (int)flags));
     }
 
     public SubmitResult RequestToSpot(RoutingId targetNodeRid,
         RoutingId targetSpotRid, ulong targetSpotGeneration,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeNode = targetNodeRid.ToNative();
         var nativeSpot = targetSpotRid.ToNative();
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_spot_request_to_spot(Handle, ref nativeNode,
-                ref nativeSpot, targetSpotGeneration, IntPtr.Zero, np, count,
-                out op, (int)flags, timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_spot_request_to_spot(Handle, ref nativeNode,
+                    ref nativeSpot, targetSpotGeneration, meta, np, count,
+                    out op, (int)flags, timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }
 
     public MeshPublishDetail Publish(string channelName, string? topic,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
@@ -108,9 +122,10 @@ internal sealed class Spot : ISpot
                 Version = 1
             };
             Marshal.StructureToPtr(seed, detailPtr, false);
-            var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-                NativeMethods.zlink_spot_publish(Handle, channelName, topic,
-                    IntPtr.Zero, np, count, detailPtr, (int)flags));
+            var result = MeshSend.SubmitWithMetadata(parts, nameof(parts),
+                metadata, (np, count, meta) =>
+                    NativeMethods.zlink_spot_publish(Handle, channelName, topic,
+                        meta, np, count, detailPtr, (int)flags));
             ZlinkException.ThrowSubmitIfError((int)result);
             var detail =
                 Marshal.PtrToStructure<ZlinkMeshPublishDetail>(detailPtr);

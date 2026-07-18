@@ -10,8 +10,7 @@ internal static class Program
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "actor-single-player-queue");
         using var spot = node.CreateSpot();
         ActorRef actor = node.CreateActor("single-player");
         List<string> actorMessages = new();
@@ -33,36 +32,35 @@ internal static class Program
             sessionReady.Set();
         });
 
+        // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
+        using var sessionService = SampleSupport.StartSessionService(node, stream);
+
         using var client = SampleSupport.ConnectRawClient(port);
         SampleSupport.SendStreamPacket(client.GetStream(), "open"u8);
         if (!sessionReady.Wait(5000) || sessionRid == null)
             throw new TimeoutException("stream session");
-        Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
+        SampleSupport.BindSessionActor(node, sessionService, sessionRid.Value,
+            actor);
 
         void Collect() => SampleSupport.CollectActorMessages(node, ready, recv, actorMessages);
 
         ulong epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "join-first");
 
-        using (Message before = Message.From("before"))
-            stream.SendBoundActor(sessionRid.Value, actor.ActorId).Message(before).Submit();
+        SampleSupport.RelaySessionMessage(sessionService, sessionRid.Value, actor,
+            "before");
         SampleSupport.WaitOrThrow(() => { Collect(); return actorMessages.Contains("before"); },
             5000, "first actor message");
 
         SampleSupport.LeaveLocalSpot(node, actor, epoch);
-        using (Message between = Message.From("between"))
-            stream.SendBoundActor(sessionRid.Value, actor.ActorId).Message(between).Submit();
+        SampleSupport.RelaySessionMessage(sessionService, sessionRid.Value, actor,
+            "between");
         epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "join-second");
         SampleSupport.WaitOrThrow(() => { Collect(); return actorMessages.Contains("between"); },
             5000, "queued actor message");
 
         Console.WriteLine("[actor/single-player] queued payload: \"before/between\" -> actor: \"before/between\"");
         SampleSupport.LeaveLocalSpot(node, actor, epoch);
-        Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.ActorId)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
+        SampleSupport.UnbindSessionActor(node, sessionService, sessionRid.Value,
+            actor);
     }
 }

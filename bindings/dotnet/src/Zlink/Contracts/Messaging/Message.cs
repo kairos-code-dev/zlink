@@ -290,16 +290,4 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(encoding));
         return encoding.GetString(AsReadOnlySpan());
     }
-
-    /// <summary>
-    ///     Gets a native message property when the message is native-backed.
-    /// </summary>
-    /// <returns>
-    ///     The property value, or null when the property is absent or the message
-    ///     is managed-backed.
-    /// </returns>
-    public string? GetProperty(string property)
-    {
-        return GetPropertyCore(property);
-    }
 }

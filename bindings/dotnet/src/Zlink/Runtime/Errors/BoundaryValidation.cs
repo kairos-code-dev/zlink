@@ -8,6 +8,25 @@ internal static class BoundaryValidation
 {
     private const int FixedUtf8MaxBytes = 255;
 
+    // ZLINK_MESH_ENDPOINT_MAX (core/include/zlink/service/mesh_node.h): mesh bind
+    // and peer endpoints admit up to 511 UTF-8 bytes.
+    private const int MeshEndpointMaxBytes = 511;
+
+    public static void ValidateMeshEndpoint(string value, string paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.IndexOf('\0') >= 0)
+            throw new ArgumentException("Value must not contain NUL.",
+                paramName);
+
+        var byteCount = Encoding.UTF8.GetByteCount(value);
+        if (byteCount == 0 || byteCount > MeshEndpointMaxBytes)
+            throw new ArgumentOutOfRangeException(paramName,
+                $"UTF-8 length must be between 1 and {MeshEndpointMaxBytes} " +
+                "bytes.");
+    }
+
     public static void ValidateFixedUtf8(string value, string paramName)
     {
         if (value == null)

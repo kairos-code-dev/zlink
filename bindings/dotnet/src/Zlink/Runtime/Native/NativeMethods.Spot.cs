@@ -27,7 +27,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_status(IntPtr spot,
-        out ZlinkSpotStatus status);
+        ref ZlinkSpotStatus status);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_send_to_channel(IntPtr spot,

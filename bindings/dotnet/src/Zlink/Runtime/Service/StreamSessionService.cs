@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -36,9 +37,14 @@ internal sealed class StreamSessionService : IStreamSessionService
     public StreamSessionStatus Status()
     {
         EnsureNotDisposed();
+        var native = new ZlinkStreamSessionStatus
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkStreamSessionStatus>(),
+            Version = 1
+        };
         ZlinkException.ThrowConfigIfError(
             NativeMethods.zlink_stream_session_service_status(_handle,
-                out var native));
+                ref native));
         return new StreamSessionStatus(
             (StreamSessionState)native.State,
             native.LifecycleGeneration,
@@ -93,30 +99,34 @@ internal sealed class StreamSessionService : IStreamSessionService
     }
 
     public SubmitResult SendToActor(RoutingId sessionRid, ActorRef actor,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeSession = sessionRid.ToNative();
         var nativeActor = ActorInterop.ToNative(actor);
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_stream_session_send_to_actor(_handle,
-                ref nativeSession, ref nativeActor, IntPtr.Zero, np, count,
-                (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_stream_session_send_to_actor(_handle,
+                    ref nativeSession, ref nativeActor, meta, np, count,
+                    (int)flags));
     }
 
     public SubmitResult RequestToActor(RoutingId sessionRid, ActorRef actor,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeSession = sessionRid.ToNative();
         var nativeActor = ActorInterop.ToNative(actor);
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_stream_session_request_to_actor(_handle,
-                ref nativeSession, ref nativeActor, IntPtr.Zero, np, count,
-                out op, (int)flags, timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_stream_session_request_to_actor(_handle,
+                    ref nativeSession, ref nativeActor, meta, np, count,
+                    out op, (int)flags, timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }

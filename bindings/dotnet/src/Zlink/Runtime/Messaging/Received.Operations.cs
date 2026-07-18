@@ -27,7 +27,7 @@ public sealed partial class Received : IDisposable
             throw new ArgumentNullException(nameof(part));
         if (_sendKernel != null)
             return _sendKernel.SendReceivedSingle(_sendRoutingIdSnapshot,
-                _sendSpotRidSnapshot, part, flags);
+                part, flags);
         if (_sendSingleHandler != null)
             return _sendSingleHandler(part, flags);
         return SendCore(new SingleMessageReadOnlyList(part), flags);
@@ -42,7 +42,7 @@ public sealed partial class Received : IDisposable
             return SendCore(parts[0], flags);
         if (_sendKernel != null)
             return _sendKernel.SendReceivedParts(_sendRoutingIdSnapshot,
-                _sendSpotRidSnapshot, parts, flags);
+                parts, flags);
         if (_sendHandler == null)
             throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                 (int)ErrorCode.EInval);

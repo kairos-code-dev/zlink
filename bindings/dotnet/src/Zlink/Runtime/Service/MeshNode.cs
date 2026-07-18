@@ -27,9 +27,24 @@ internal sealed partial class MeshNode : IMeshNode
 
     public RoutingId RoutingId => Status().RoutingId;
 
+    public unsafe void SetRoutingId(RoutingId routingId)
+    {
+        EnsureNotDisposed();
+        var bytes = routingId.ToBytes();
+        if (bytes.Length is 0 or > 255)
+            throw new ArgumentOutOfRangeException(nameof(routingId),
+                "Routing id must be between 1 and 255 bytes.");
+        fixed (byte* data = bytes)
+        {
+            ZlinkException.ThrowConfigIfError(
+                NativeMethods.zlink_set_routing_id(Handle, (IntPtr)data,
+                    (nuint)bytes.Length));
+        }
+    }
+
     public void SetBind(string endpoint)
     {
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        BoundaryValidation.ValidateMeshEndpoint(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         ZlinkException.ThrowConfigIfError(
             NativeMethods.zlink_mesh_node_set_bind(Handle, endpoint));
@@ -70,7 +85,7 @@ internal sealed partial class MeshNode : IMeshNode
 
     public ulong ConnectPeer(string endpoint, RoutingId? expectedRid = null)
     {
-        BoundaryValidation.ValidateFixedUtf8(endpoint, nameof(endpoint));
+        BoundaryValidation.ValidateMeshEndpoint(endpoint, nameof(endpoint));
         EnsureNotDisposed();
         var endpointBytes = Encoding.UTF8.GetBytes(endpoint);
         var endpointHandle = GCHandle.Alloc(endpointBytes, GCHandleType.Pinned);
@@ -115,51 +130,59 @@ internal sealed partial class MeshNode : IMeshNode
     }
 
     public SubmitResult SendToNode(RoutingId targetRid,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeRid = targetRid.ToNative();
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_send_to_node(Handle, ref nativeRid,
-                IntPtr.Zero, np, count, (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_send_to_node(Handle, ref nativeRid,
+                    meta, np, count, (int)flags));
     }
 
     public SubmitResult RequestToNode(RoutingId targetRid,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeRid = targetRid.ToNative();
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_request_to_node(Handle, ref nativeRid,
-                IntPtr.Zero, np, count, out op, (int)flags, timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_request_to_node(Handle, ref nativeRid,
+                    meta, np, count, out op, (int)flags, timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }
 
     public SubmitResult SendToChannel(string channelName,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_send_to_channel(Handle, channelName,
-                IntPtr.Zero, np, count, (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_send_to_channel(Handle, channelName,
+                    meta, np, count, (int)flags));
     }
 
     public SubmitResult RequestToChannel(string channelName,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
         EnsureNotDisposed();
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_request_to_channel(Handle, channelName,
-                IntPtr.Zero, np, count, out op, (int)flags, timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_request_to_channel(Handle, channelName,
+                    meta, np, count, out op, (int)flags, timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }
@@ -173,8 +196,13 @@ internal sealed partial class MeshNode : IMeshNode
     public MeshNodeStatus Status()
     {
         EnsureNotDisposed();
+        var native = new ZlinkMeshNodeStatus
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkMeshNodeStatus>(),
+            Version = 1
+        };
         ZlinkException.ThrowConfigIfError(
-            NativeMethods.zlink_mesh_node_status(Handle, out var native));
+            NativeMethods.zlink_mesh_node_status(Handle, ref native));
         return ConvertStatus(ref native);
     }
 

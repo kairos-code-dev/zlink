@@ -10,8 +10,7 @@ internal static class Program
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "actor-room-server");
         using var spot = node.CreateSpot();
         ActorRef actor = node.CreateActor("room-player-1");
 
@@ -21,10 +20,9 @@ internal static class Program
 
         using var stream = ctx.CreateStreamSocket();
         RoutingId sessionRid = SampleSupport.RoutingIdUtf8("room-session");
-        Zlink.MultipartClose(await stream.BindActor(sessionRid, actor)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
+        // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
+        using var sessionService = SampleSupport.StartSessionService(node, stream);
+        SampleSupport.BindSessionActor(node, sessionService, sessionRid, actor);
 
         // actor가 spot에 합류한다 — 호스트가 join 요청을 받아 admit한다.
         ulong epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "enter-room",
@@ -32,8 +30,8 @@ internal static class Program
                 SampleSupport.EnsureEqual("enter-room", msg, "join message"));
 
         // 바인딩된 STREAM 세션으로 actor에게 메시지를 relay한다.
-        using Message inbound = Message.From("move:north");
-        stream.SendBoundActor(sessionRid, actor.ActorId).Message(inbound).Submit();
+        SampleSupport.RelaySessionMessage(sessionService, sessionRid, actor,
+            "move:north");
         SampleSupport.WaitOrThrow(() =>
         {
             SampleSupport.CollectActorMessages(node, ready, recv, payloads);

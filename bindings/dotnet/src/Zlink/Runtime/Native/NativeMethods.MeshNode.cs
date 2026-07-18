@@ -103,7 +103,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_node_status(IntPtr meshNode,
-        out ZlinkMeshNodeStatus status);
+        ref ZlinkMeshNodeStatus status);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_node_peers(IntPtr meshNode,

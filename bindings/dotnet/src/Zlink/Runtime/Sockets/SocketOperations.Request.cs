@@ -233,39 +233,3 @@ internal sealed class RouterPeerRequestOperation : RouterRequestOperation
             timeout);
     }
 }
-
-internal sealed class RouterSpotRequestOperation : RouterRequestOperation
-{
-    private readonly RoutingId _destNodeRid;
-    private readonly RoutingId _destSpotRid;
-    private readonly RouterSocket _socket;
-
-    internal RouterSpotRequestOperation(
-        RouterSocket socket,
-        RoutingId destNodeRid,
-        RoutingId destSpotRid)
-    {
-        _socket = socket;
-        _destNodeRid = destNodeRid;
-        _destSpotRid = destSpotRid;
-    }
-
-    protected override Task<IReadOnlyList<Message>> AsyncCore(
-        IReadOnlyList<Message> parts,
-        TimeSpan timeout,
-        CancellationToken ct)
-    {
-        return _socket.RequestToSpotCore(_destNodeRid, _destSpotRid, parts,
-            timeout, ct);
-    }
-
-    protected override bool SubmitCore(
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags,
-        TimeSpan timeout)
-    {
-        return _socket.RequestToSpotCallbackCore(_destNodeRid, _destSpotRid,
-            parts, callback, flags, timeout);
-    }
-}

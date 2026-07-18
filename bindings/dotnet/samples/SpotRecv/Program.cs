@@ -24,6 +24,8 @@ internal static class Program
         subscriberNode.AddChannel(channel);
         publisherNode.SetBind(publisherEndpoint);
         subscriberNode.SetBind(subscriberEndpoint);
+        publisherNode.SetRoutingId(RoutingId.From("spot-recv-publisher"));
+        subscriberNode.SetRoutingId(RoutingId.From("spot-recv-subscriber"));
         publisherNode.Start();
         subscriberNode.Start();
         publisherNode.ConnectPeer(subscriberEndpoint);

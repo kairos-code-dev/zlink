@@ -47,31 +47,4 @@ public interface IStreamSocket : IRoutedMessageSocket
     ///     Disconnects the peer identified by <paramref name="peerRid" />.
     /// </summary>
     void DisconnectRid(RoutingId peerRid);
-
-    /// <summary>
-    ///     Binds <paramref name="actor" /> to the session
-    ///     <paramref name="sessionRid" />; submit the returned operation to apply
-    ///     the binding.
-    /// </summary>
-    ActorBindOperation BindActor(RoutingId sessionRid, ActorRef actor);
-
-    /// <summary>
-    ///     Removes the binding of <paramref name="actorId" /> from the session
-    ///     <paramref name="sessionRid" />; submit the returned operation to apply it.
-    /// </summary>
-    ActorUnbindOperation UnbindActor(RoutingId sessionRid, string actorId);
-
-    /// <summary>
-    ///     Begins a send addressed to the bound actor <paramref name="actorId" /> on
-    ///     session <paramref name="sessionRid" />. The parts are consumed on a
-    ///     successful submit (see <see cref="SendOperation" /> for the ownership
-    ///     contract).
-    /// </summary>
-    SendOperation SendBoundActor(RoutingId sessionRid, string actorId);
-
-    /// <summary>
-    ///     Lists the actors currently bound to the session
-    ///     <paramref name="sessionRid" />.
-    /// </summary>
-    IReadOnlyList<ActorRef> BoundActors(RoutingId sessionRid);
 }

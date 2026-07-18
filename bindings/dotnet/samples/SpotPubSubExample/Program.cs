@@ -22,6 +22,8 @@ internal static class Program
         subscriberNode.AddChannel(channel);
         publisherNode.SetBind(pubEndpoint);
         subscriberNode.SetBind(subEndpoint);
+        publisherNode.SetRoutingId(RoutingId.From("spot-pubsub-publisher"));
+        subscriberNode.SetRoutingId(RoutingId.From("spot-pubsub-subscriber"));
         publisherNode.Start();
         subscriberNode.Start();
         publisherNode.ConnectPeer(subEndpoint);

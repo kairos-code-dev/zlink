@@ -162,7 +162,7 @@ public readonly struct MeshReceiveRecord
         MeshOperationId operationId, MeshOperationKind operationKind,
         string? channelName, string? topic, byte[]? applicationMetadata,
         int partOffset, int partCount, int terminalResult, int failureErrno,
-        ZlinkMeshReplyToken replyToken)
+        ZlinkMeshReplyToken replyToken, MeshRecordPayload? kindData)
     {
         Kind = kind;
         Domain = domain;
@@ -179,6 +179,7 @@ public readonly struct MeshReceiveRecord
         TerminalResult = terminalResult;
         FailureErrno = failureErrno;
         _replyToken = replyToken;
+        KindData = kindData;
     }
 
     /// <summary>Gets the record kind.</summary>
@@ -224,8 +225,35 @@ public readonly struct MeshReceiveRecord
     public int FailureErrno { get; }
 
     /// <summary>
+    ///     Gets the record's typed <c>kind_data</c> payload, decoded from the
+    ///     Core-owned batch view at receive time, or null when the record kind
+    ///     carries none. The concrete type depends on <see cref="Kind" />: an
+    ///     <see cref="ActorControlRecord" /> for spot-control lifecycle records,
+    ///     an <see cref="ActorJoinCompletion" /> for actor-join completions, a
+    ///     <see cref="MeshSendReadyData" /> for send-ready records, or an
+    ///     <see cref="ActorTransferControlRecord" /> for transfer-control records.
+    /// </summary>
+    public MeshRecordPayload? KindData { get; }
+
+    /// <summary>Gets the actor lifecycle payload, when this is a spot-control record.</summary>
+    public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
+
+    /// <summary>Gets the join completion payload, when this is an actor-join completion.</summary>
+    public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;
+
+    /// <summary>Gets the send-ready payload, when this is a send-ready record.</summary>
+    public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
+
+    /// <summary>Gets the transfer-control payload, when this is a transfer-control record.</summary>
+    public ActorTransferControl? TransferControl =>
+        (KindData as ActorTransferControlRecord)?.Control;
+
+    /// <summary>
     ///     Replies to a request record. The reply parts are consumed on a
-    ///     successful submit.
+    ///     successful submit. Use <see cref="ReplyJoin" /> (or
+    ///     <see cref="Accept" /> / <see cref="Reject" />) for actor-join
+    ///     admission records — Core rejects those routes here with
+    ///     <c>EINVAL</c>.
     /// </summary>
     public SubmitResult Reply(IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None)
@@ -242,6 +270,64 @@ public readonly struct MeshReceiveRecord
             }, null);
         return (SubmitResult)captured;
     }
+
+    /// <summary>
+    ///     Admits or rejects an actor-join request record (a
+    ///     <see cref="MeshRecordKind.SpotControl" /> record with operation kind
+    ///     <see cref="MeshOperationKind.ActorJoin" />). Routes through Core's
+    ///     dedicated <c>zlink_actor_join_reply</c> path; the reply parts are
+    ///     consumed on a successful submit. Only
+    ///     <see cref="ActorJoinResult.Accepted" /> commits membership.
+    /// </summary>
+    public SubmitResult ReplyJoin(ActorJoinResult result,
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+    {
+        if (Kind != MeshRecordKind.SpotControl
+            || OperationKind != MeshOperationKind.ActorJoin)
+            throw new InvalidOperationException(
+                "ReplyJoin is only valid for actor-join admission records " +
+                "(SpotControl / ActorJoin).");
+
+        var token = _replyToken;
+        var captured = 0;
+        NativeMessageParts.SubmitClonedVector(parts, nameof(parts),
+            (nativeParts, partCount) =>
+            {
+                var rc = NativeMethods.zlink_actor_join_reply(ref token,
+                    (int)result, nativeParts, partCount, (int)flags);
+                captured = rc;
+                return rc;
+            }, null);
+        return (SubmitResult)captured;
+    }
+
+    /// <summary>Admits an actor-join request. See <see cref="ReplyJoin" />.</summary>
+    public SubmitResult Accept(IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        return ReplyJoin(ActorJoinResult.Accepted, parts, flags);
+    }
+
+    /// <summary>Rejects an actor-join request. See <see cref="ReplyJoin" />.</summary>
+    public SubmitResult Reject(IReadOnlyList<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        return ReplyJoin(ActorJoinResult.Rejected, parts, flags);
+    }
+}
+
+/// <summary>
+///     The admission outcome for an actor-join request. Maps to
+///     <c>zlink_actor_join_result_t</c>. Only <see cref="Accepted" /> commits
+///     spot membership.
+/// </summary>
+public enum ActorJoinResult
+{
+    /// <summary>Admit the actor into the spot.</summary>
+    Accepted = 0,
+
+    /// <summary>Reject the actor's join request.</summary>
+    Rejected = 1
 }
 
 /// <summary>

@@ -39,3 +39,17 @@
 5. 마지막 줄: 세 축 모두 CLEAN이면 정확히 `BINDINGS REVIEW CLEAN`, 아니면 정확히 `BINDINGS REVIEW NOT CLEAN`
 
 문체 교정·취향 차이는 finding으로 등록하지 마라. finding은 공개 계약, 관찰 가능한 동작, concurrency·resource, build·artifact, 검증 누락, 폐기 잔재에 구체적 영향을 주는 것만 등록한다.
+
+## 리뷰어 도구 변경 로그 (2026-07-18)
+
+**변경**: 이 헤드리스 백그라운드 세션에서 R1=Codex(codex-rescue)가 신뢰 불가.
+codex-rescue는 Codex 작업을 별도 직렬·read-only sandbox에 dispatch하고 즉시
+반환하며, 작업이 review 파일을 저장하지 못하거나 20분+ 지연되고, 병렬 dispatch
+시 agent가 자기 task-id를 추적하지 못해 다른 lane의 task를 조회하는 교차가
+발생했다. 이는 리뷰 campaign을 심각하게 직렬화·지연시킨다.
+
+따라서 **R1을 독립 Claude(opus, 적대적 프레이밍) 리뷰어**로 전환한다(R2=Sonnet
+유지). "두 독립 리뷰어가 각자 3축 보고서만 작성, 서로 결과 참조 금지, coordinator가
+수정 실행"이라는 본질은 그대로다. R1과 R2는 모델·프레이밍이 다른 독립 관점이며
+byte-identical prompt를 받는다. 사용자의 Codex·Sonnet 표준화 결정의 취지(서로 다른
+목소리의 엄격한 이중 검토)를 환경 제약 하에서 유지하는 최적 대체다.

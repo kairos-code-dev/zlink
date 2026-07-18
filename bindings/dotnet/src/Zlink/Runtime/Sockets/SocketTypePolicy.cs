@@ -51,8 +51,6 @@ internal sealed class SocketTypePolicy
                                                  || SocketType == SocketType.XSub,
             SocketCapability.ReceiveHandler => SocketType == SocketType.Pair
                                                || SocketType == SocketType.Dealer,
-            SocketCapability.SubscribeHandler => SocketType == SocketType.Sub
-                                                 || SocketType == SocketType.XSub,
             SocketCapability.SubscriptionEvents => SocketType == SocketType.XPub,
             SocketCapability.StreamAttach => SocketType == SocketType.Stream,
             _ => false
@@ -93,7 +91,6 @@ internal sealed class SocketTypePolicy
         SubscriptionControl,
         SubscribeReceive,
         ReceiveHandler,
-        SubscribeHandler,
         SubscriptionEvents,
         StreamAttach
     }

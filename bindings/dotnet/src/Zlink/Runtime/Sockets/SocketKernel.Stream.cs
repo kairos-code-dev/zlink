@@ -6,62 +6,6 @@ namespace Systems.Zlink.Runtime.Sockets.Internal;
 
 internal sealed partial class SocketKernel : IDisposable
 {
-    public void AttachStreamRaw(StreamRawPacketHandler handler)
-    {
-        EnsureSupports(nameof(AttachStreamRaw),
-            SocketTypePolicy.SocketCapability.StreamAttach);
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        if (_streamAttached)
-            throw new ZlinkHandlerException(HandlerResult.Busy,
-                (int)ErrorCode.EBusy);
-
-        var context = SynchronizationContext.Current;
-        _callbacks.StreamPacketHandler = handler;
-        _callbacks.StreamRawContext = context;
-        _callbacks.StreamRawNative = OnStreamRaw;
-        var rc = NativeMethods.zlink_stream_attach_raw(Handle,
-            _callbacks.StreamRawNative, IntPtr.Zero);
-        if (rc != 0)
-        {
-            _callbacks.StreamPacketHandler = null;
-            _callbacks.StreamRawContext = null;
-            _callbacks.StreamRawNative = null;
-            throw ZlinkException.CreateHandlerException(
-                NativeMethods.zlink_errno());
-        }
-
-        _streamAttached = true;
-    }
-
-    public void AttachStreamRaw(StreamUInt32PacketHandler handler)
-    {
-        EnsureSupports(nameof(AttachStreamRaw),
-            SocketTypePolicy.SocketCapability.StreamAttach);
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-        if (_streamAttached)
-            throw new ZlinkHandlerException(HandlerResult.Busy,
-                (int)ErrorCode.EBusy);
-
-        var context = SynchronizationContext.Current;
-        _callbacks.StreamUInt32PacketHandler = handler;
-        _callbacks.StreamRawContext = context;
-        _callbacks.StreamRawNative = OnStreamRawUInt32;
-        var rc = NativeMethods.zlink_stream_attach_raw(Handle,
-            _callbacks.StreamRawNative, IntPtr.Zero);
-        if (rc != 0)
-        {
-            _callbacks.StreamUInt32PacketHandler = null;
-            _callbacks.StreamRawContext = null;
-            _callbacks.StreamRawNative = null;
-            throw ZlinkException.CreateHandlerException(
-                NativeMethods.zlink_errno());
-        }
-
-        _streamAttached = true;
-    }
-
     public void AttachStreamPacket(StreamFramedPacketHandler handler)
     {
         EnsureSupports(nameof(AttachStreamPacket),
@@ -126,19 +70,6 @@ internal sealed partial class SocketKernel : IDisposable
         _streamAttached = true;
     }
 
-    public void DetachStream()
-    {
-        EnsureSupports(nameof(DetachStream),
-            SocketTypePolicy.SocketCapability.StreamAttach);
-        if (!_streamAttached)
-            return;
-
-        var rc = NativeMethods.zlink_stream_detach(Handle);
-        _streamAttached = false;
-        _callbacks.ClearStream();
-        ZlinkException.ThrowCloseIfError(rc);
-    }
-
     private static void CloseStreamPacket(IntPtr msg)
     {
         if (msg == IntPtr.Zero)
@@ -149,106 +80,6 @@ internal sealed partial class SocketKernel : IDisposable
         }
         catch
         {
-        }
-    }
-
-    private unsafe int OnStreamRaw(IntPtr routingId, IntPtr message, IntPtr userdata)
-    {
-        if (message == IntPtr.Zero)
-            return 0;
-
-        var packetHandler = _callbacks.StreamPacketHandler;
-        var context = _callbacks.StreamRawContext;
-        if (packetHandler == null || routingId == IntPtr.Zero)
-        {
-            CloseStreamPacket(message);
-            return 0;
-        }
-
-        var rid = (ZlinkRoutingId*)routingId;
-        Message? payloadMsg = null;
-        var delivered = false;
-        try
-        {
-            payloadMsg = Message.MoveFromNativeSingle(message);
-            var routingIdText = RoutingIdCodec.ToPublicString(
-                NativeHelpers.ReadRoutingId(ref *rid));
-            delivered = true;
-            if (context == null)
-                return packetHandler(routingIdText, payloadMsg);
-            return CallbackDelivery.Invoke(context,
-                () => packetHandler(routingIdText, payloadMsg));
-        }
-        catch (Exception ex)
-        {
-            CallbackExceptionHub.Report(ex);
-            if (!delivered && payloadMsg != null)
-                try
-                {
-                    payloadMsg.Dispose();
-                }
-                catch
-                {
-                }
-
-            return 1;
-        }
-        finally
-        {
-            CloseStreamPacket(message);
-        }
-    }
-
-    private unsafe int OnStreamRawUInt32(IntPtr routingId, IntPtr message,
-        IntPtr userdata)
-    {
-        if (message == IntPtr.Zero)
-            return 0;
-
-        var packetHandler = _callbacks.StreamUInt32PacketHandler;
-        var context = _callbacks.StreamRawContext;
-        if (packetHandler == null || routingId == IntPtr.Zero)
-        {
-            CloseStreamPacket(message);
-            return 0;
-        }
-
-        var ridBytes = NativeHelpers.ReadRoutingId(
-            ref *(ZlinkRoutingId*)routingId);
-        if (!RoutingIdCodec.TryToUInt32(ridBytes, out var routingIdValue))
-        {
-            CloseStreamPacket(message);
-            return 0;
-        }
-
-        Message? payloadMsg = null;
-        var delivered = false;
-        try
-        {
-            payloadMsg = Message.MoveFromNativeSingle(message);
-            delivered = true;
-            if (context == null)
-                return packetHandler(routingIdValue, payloadMsg);
-            return CallbackDelivery.Invoke(context,
-                () => packetHandler(routingIdValue, payloadMsg));
-        }
-        catch (Exception ex)
-        {
-            CallbackExceptionHub.Report(ex);
-            if (!delivered && payloadMsg != null)
-                try
-                {
-                    payloadMsg.Dispose();
-                }
-                catch
-                {
-                }
-
-            return 1;
-        }
-        finally
-        {
-            CloseStreamPacket(message);
         }
     }
 

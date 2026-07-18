@@ -34,9 +34,4 @@ internal sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
     {
         Kernel.DisconnectRid(peerRid);
     }
-
-    public void DetachStream()
-    {
-        Kernel.DetachStream();
-    }
 }

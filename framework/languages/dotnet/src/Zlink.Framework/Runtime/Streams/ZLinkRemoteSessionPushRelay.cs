@@ -60,17 +60,19 @@ internal sealed record ZLinkRemoteSessionPushRelay(
 internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime runtime)
     : IZLinkRouteSendHandler<ZLinkRemoteSessionPushRelay>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         ZLinkRemoteSessionPushRelay message,
         ZLinkRouteSendContext context,
         CancellationToken cancellationToken)
     {
         // A miss is a stale push racing a rebind or disconnect; spec 31 §6
         // forbids applying late pushes to a new binding, so it is dropped.
-        runtime.DeliverRemoteSessionPush(
-            message.ActorId,
-            RoutingId.FromHex(message.SessionRid),
-            message.Frame);
-        return ValueTask.CompletedTask;
+        // Backpressured writes retry within the request timeout.
+        await runtime.DeliverRemoteSessionPushAsync(
+                message.ActorId,
+                RoutingId.FromHex(message.SessionRid),
+                message.Frame,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }

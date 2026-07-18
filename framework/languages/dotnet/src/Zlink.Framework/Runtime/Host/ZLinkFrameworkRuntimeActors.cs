@@ -924,10 +924,26 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     /// <summary>Session-node entry for a relayed remote push: delivers the
-    /// encoded frame to the still-bound local session (drop on stale).</summary>
-    internal bool DeliverRemoteSessionPush(string actorId, RoutingId sessionRid, byte[] frame)
+    /// encoded frame to the still-bound local session, retrying backpressured
+    /// writes within the request timeout (a stale binding drops the push per
+    /// spec 31 §6).</summary>
+    internal async ValueTask DeliverRemoteSessionPushAsync(
+        string actorId,
+        RoutingId sessionRid,
+        byte[] frame,
+        CancellationToken cancellationToken)
     {
-        return _actorBoundSessionCoordinator.DeliverLocalSessionFrame(actorId, sessionRid, frame);
+        var deadline = DateTime.UtcNow + Registration.DefaultRequestTimeout;
+        while (true)
+        {
+            var delivery = _actorBoundSessionCoordinator.DeliverLocalSessionFrame(
+                actorId, sessionRid, frame);
+            if (delivery != ZLinkActorBoundSessionCoordinator.RemotePushDelivery.Backpressured
+                || DateTime.UtcNow >= deadline)
+                return;
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <summary>Actor-node relay for a push whose bound session lives on

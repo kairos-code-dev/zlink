@@ -36,28 +36,37 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     /// sessionNodeRid, sessionRid, headerBytes, bodyBytes).</summary>
     public Func<ZLinkBackendActorRef, RoutingId, RoutingId, byte[], byte[], bool>? RemoteFrameRelay { get; set; }
 
+    public enum RemotePushDelivery
+    {
+        Delivered,
+        Backpressured,
+        Stale
+    }
+
     /// <summary>Session-node delivery for a relayed remote push: writes the
     /// frame to the still-bound local session. A binding or session-rid miss
-    /// is a stale push racing rebind/disconnect and is dropped (spec 31 §6).</summary>
-    public bool DeliverLocalSessionFrame(string actorId, RoutingId sessionRid, byte[] frame)
+    /// is a stale push racing rebind/disconnect and is dropped (spec 31 §6);
+    /// a failed write is backpressure the caller may retry.</summary>
+    public RemotePushDelivery DeliverLocalSessionFrame(
+        string actorId, RoutingId sessionRid, byte[] frame)
     {
         var debug = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
         if (!_sessionBindings.TryGetByActorId(actorId, out var context))
         {
             if (debug) Console.Error.WriteLine($"[deliver] no-context actor={actorId}");
-            return false;
+            return RemotePushDelivery.Stale;
         }
         if (context.RoutingId is not { } boundRid || !boundRid.Equals(sessionRid))
         {
             if (debug)
                 Console.Error.WriteLine(
                     $"[deliver] session-mismatch actor={actorId} bound={context.RoutingId} expected={sessionRid}");
-            return false;
+            return RemotePushDelivery.Stale;
         }
         using var message = Message.From(frame);
         var written = context.Write(message);
         if (debug) Console.Error.WriteLine($"[deliver] write actor={actorId} ok={written}");
-        return written;
+        return written ? RemotePushDelivery.Delivered : RemotePushDelivery.Backpressured;
     }
 
     public void BindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken, ZLinkSessionActor actorRef) =>

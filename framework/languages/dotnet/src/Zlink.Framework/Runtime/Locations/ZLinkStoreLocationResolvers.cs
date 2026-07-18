@@ -48,6 +48,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             cancellationToken,
             storeToken => _meshNodeStore.ListMeshNodesAsync(meshName, storeToken))
             .ConfigureAwait(false);
+        _observed.ReconcileDescriptors(meshName, rows);
 
         // The shared acceptance policy rejects lagging lifecycle generation
         // and descriptor revision views.

@@ -157,6 +157,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             "mesh-node-query-read",
             cancellationToken,
             storeToken => _meshNodeStore.ListMeshNodesAsync(meshName, storeToken)).ConfigureAwait(false);
+        _observed.ReconcileDescriptors(meshName, rows);
         return rows.Where(_observed.AcceptDescriptor).ToArray();
     }
 

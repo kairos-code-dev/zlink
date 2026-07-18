@@ -4,9 +4,9 @@ namespace Zlink.Framework.Runtime.Locations;
 /// Highest logical version this runtime has accepted per location key, shared
 /// by every read surface (resolvers and the runtime query). A read whose
 /// version is strictly older than the recorded one is a lagging replica view
-/// and never counts as a success result. Entries remain for the runtime
-/// lifetime because forgetting one would allow a lagging replica value to
-/// become current again.
+/// and never counts as a success result. Entries persist until the store
+/// confirms the row is gone — only a confirmed miss may forget a floor,
+/// because a re-created incarnation legitimately restarts its version axes.
 ///
 /// Per the location runtime contract the monotonic axes are the rows' own
 /// spec fields: descriptors order by (lifecycle generation, descriptor
@@ -54,6 +54,21 @@ internal sealed class ZLinkObservedLocationGenerations
             new ZLinkActorLocationKey(row.MeshName, row.ActorId),
             new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
 
+    /// <summary>A completed store listing is a confirmed view of the mesh:
+    /// a floor held for a key the store no longer returns belongs to a
+    /// removed row, and keeping it would hide the successor row a restarted
+    /// node publishes with a fresh (restarted) lifecycle generation.</summary>
+    internal void ReconcileDescriptors(
+        string meshName, IReadOnlyList<ZLinkMeshNodeDescriptor> rows)
+    {
+        var present = new HashSet<ZLinkMeshNodeDescriptorKey>(rows.Count);
+        foreach (var row in rows)
+            present.Add(new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid));
+        _meshNodes.ForgetWhere(key =>
+            string.Equals(key.MeshName, meshName, StringComparison.Ordinal)
+            && !present.Contains(key));
+    }
+
     /// <summary>A confirmed store miss ends the identity's observed lifecycle:
     /// the row was removed, so a re-created incarnation legitimately restarts
     /// its generation axes and must not be rejected as a lagging replica.</summary>
@@ -84,6 +99,20 @@ internal sealed class ZLinkObservedLocationGenerations
             lock (_gate)
             {
                 _versions.Remove(key);
+            }
+        }
+
+        internal void ForgetWhere(Func<TKey, bool> predicate)
+        {
+            lock (_gate)
+            {
+                List<TKey>? stale = null;
+                foreach (var key in _versions.Keys)
+                    if (predicate(key))
+                        (stale ??= []).Add(key);
+                if (stale is null) return;
+                foreach (var key in stale)
+                    _versions.Remove(key);
             }
         }
 

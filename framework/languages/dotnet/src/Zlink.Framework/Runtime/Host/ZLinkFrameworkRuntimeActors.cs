@@ -938,9 +938,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             var delivery = _actorBoundSessionCoordinator.DeliverLocalSessionFrame(
                 actorId, sessionRid, frame);
-            if (delivery != ZLinkActorBoundSessionCoordinator.RemotePushDelivery.Backpressured
-                || DateTime.UtcNow >= deadline)
-                return;
+            // Backpressure and the transient release→bind gap of a rebind
+            // both retry; a definite different-session binding drops the
+            // push (spec 31 §6).
+            var retryable = delivery
+                is ZLinkActorBoundSessionCoordinator.RemotePushDelivery.Backpressured
+                or ZLinkActorBoundSessionCoordinator.RemotePushDelivery.NoBinding;
+            if (!retryable || DateTime.UtcNow >= deadline) return;
             await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
                 .ConfigureAwait(false);
         }

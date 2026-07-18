@@ -290,7 +290,11 @@ internal sealed class ZLinkAutoConnectReconciler
             {
                 // A draining descriptor is not selected for new connections.
                 if (target.Draining) continue;
-                if (_executor.Connect(target))
+                var accepted = _executor.Connect(target);
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[autoconnect] mesh={_local.MeshName} role={_local.Role} dial={target.Endpoint} rid={target.NodeRid} accepted={accepted}");
+                if (accepted)
                 {
                     _active[key] = target;
                     connected.Add(target.Endpoint);

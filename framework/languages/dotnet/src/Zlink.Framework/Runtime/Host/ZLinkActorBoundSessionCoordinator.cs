@@ -40,7 +40,12 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     {
         Delivered,
         Backpressured,
-        Stale
+        // No session-actor binding right now — transient during a rebind
+        // (release→bind gap), so callers may retry briefly.
+        NoBinding,
+        // Bound to a different session: a definite new binding; late pushes
+        // must not apply to it (spec 31 §6) — dropped.
+        WrongSession
     }
 
     /// <summary>Session-node delivery for a relayed remote push: writes the
@@ -54,14 +59,14 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         if (!_sessionBindings.TryGetByActorId(actorId, out var context))
         {
             if (debug) Console.Error.WriteLine($"[deliver] no-context actor={actorId}");
-            return RemotePushDelivery.Stale;
+            return RemotePushDelivery.NoBinding;
         }
         if (context.RoutingId is not { } boundRid || !boundRid.Equals(sessionRid))
         {
             if (debug)
                 Console.Error.WriteLine(
                     $"[deliver] session-mismatch actor={actorId} bound={context.RoutingId} expected={sessionRid}");
-            return RemotePushDelivery.Stale;
+            return RemotePushDelivery.WrongSession;
         }
         using var message = Message.From(frame);
         var written = context.Write(message);

@@ -23,12 +23,6 @@ inline std::function<void ()> make_socket_request_progress (void *socket_)
     return zlink::detail::make_request_progress_callback (socket_);
 }
 
-inline std::chrono::milliseconds resolve_timeout (std::chrono::milliseconds requested_,
-                                                  std::chrono::milliseconds fallback_) noexcept
-{
-    return requested_ == std::chrono::milliseconds () ? fallback_ : requested_;
-}
-
 } // namespace detail
 } // namespace zlink
 

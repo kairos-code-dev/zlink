@@ -31,8 +31,6 @@ class received_t
 
     const std::optional<routing_id_t> &routing_id () const noexcept { return _routing_id; }
 
-    const std::optional<routing_id_t> &spot_rid () const noexcept { return _spot_rid; }
-
     const std::optional<uint64_t> &request_seq () const noexcept { return _request_seq; }
 
     const std::vector<message_t> &parts () const;
@@ -44,10 +42,10 @@ class received_t
     }
     message_t &first_part ();
     message_t single_part_or_throw ();
-    /// Send context (routing_id / spot_rid) is encapsulated. Returns an
+    /// Send context (routing_id) is encapsulated. Returns an
     /// operation builder; accumulate payload via `.message(...)`.
     service::send_operation_t send ();
-    /// Reply context (routing_id, spot_rid, request_seq) is encapsulated.
+    /// Reply context (routing_id, request_seq) is encapsulated.
     /// Returns an operation builder; accumulate reply payload via
     /// `.message(...)`. Submit throws if there is no valid reply context.
     service::reply_operation_t reply ();
@@ -65,23 +63,18 @@ class received_t
     enum class send_context_kind_t
     {
         none,
-        socket_rid,
-        router_spot,
-        spot_spot
+        socket_rid
     };
 
     received_t (std::optional<routing_id_t> routing_id_,
-                std::optional<routing_id_t> spot_rid_,
                 std::optional<uint64_t> request_seq_,
                 std::vector<message_t> parts_);
 
     received_t (std::optional<routing_id_t> routing_id_,
-                std::optional<routing_id_t> spot_rid_,
                 std::optional<uint64_t> request_seq_,
                 message_t part_);
 
     std::optional<routing_id_t> _routing_id;
-    std::optional<routing_id_t> _spot_rid;
     std::optional<uint64_t> _request_seq;
     detail::lazy_message_parts_t _parts;
     // Send/reply context, reconstructed lazily at submit time from the stored

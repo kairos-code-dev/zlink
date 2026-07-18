@@ -7,7 +7,6 @@
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Sockets/results.hpp>
-#include "native_send_result.hpp"
 
 #include <array>
 #include <cerrno>
@@ -293,18 +292,6 @@ inline int submit_message_parts_close_on_failure (std::vector<message_t> &parts_
       });
 }
 
-template <typename SubmitFn>
-inline int submit_message_array (std::vector<message_t> &parts_, SubmitFn submit_)
-{
-    return detail::with_moved_native_parts (
-      parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
-          const int rc = submit_ (native_parts_, part_count_);
-          if (rc != 0)
-              detail::restore_parts_from_native (parts_, native_parts_, part_count_);
-          return rc;
-      });
-}
-
 //  Builds a borrowed, zero-copy native view over @p parts_ and runs @p body_.
 //
 //  Service send/request/reply/create carry parts as borrowed/read-only: Core
@@ -367,35 +354,6 @@ inline int submit_borrowed_message_array (const std::vector<message_t> &parts_, 
     return detail::with_borrowed_native_parts (
       parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
           return submit_ (native_parts_, part_count_);
-      });
-}
-
-template <typename SubmitFn>
-inline int submit_message_parts_no_wait (send_result_t &result_,
-                                         std::vector<message_t> &parts_,
-                                         SubmitFn submit_)
-{
-    return detail::with_moved_native_parts (
-      parts_, [&] (zlink_msg_t *native_parts_, size_t part_count_) {
-          size_t failed_index = 0;
-          const int rc = detail::submit_native_parts (native_parts_, part_count_, failed_index,
-                                                      std::move (submit_));
-          if (rc == 0) {
-              result_ = send_result_t::sent;
-              return 0;
-          }
-
-          const int err = errno;
-          if (detail::classify_nonblocking_send_errno (err, result_)) {
-              if (result_ != send_result_t::sent)
-                  detail::restore_parts_from_native (parts_, native_parts_, part_count_,
-                                                     failed_index);
-              return 0;
-          }
-
-          detail::restore_parts_from_native (parts_, native_parts_, part_count_, failed_index);
-          errno = err;
-          return -1;
       });
 }
 

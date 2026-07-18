@@ -42,17 +42,6 @@ inline int read_growing_string (Reader reader_, size_t initial_capacity_, std::s
     return -1;
 }
 
-template <typename Getter, typename Option>
-inline int get_string_option (
-  Getter getter_, void *handle_, Option option_, size_t initial_capacity_, std::string &value_)
-{
-    return read_growing_string (
-      [&] (char *buffer_, size_t capacity_, size_t *size_out_) {
-          return getter_ (handle_, option_, buffer_, size_out_);
-      },
-      initial_capacity_, value_);
-}
-
 } // namespace detail
 } // namespace zlink
 

@@ -194,21 +194,17 @@ int socket_t::receive (received_t &received_, recv_flags_t flags_, bool attach_r
       zlink::detail::routing_id_empty (envelope.source_rid)
         ? std::nullopt
         : std::optional<routing_id_t> (envelope.source_rid);
-    const std::optional<routing_id_t> source_spot_rid =
-      zlink::detail::routing_id_empty (envelope.source_spot_rid)
-        ? std::nullopt
-        : std::optional<routing_id_t> (envelope.source_spot_rid);
     const std::optional<uint64_t> request_seq =
       envelope.has_request_seq ? std::optional<uint64_t> (envelope.request_seq) : std::nullopt;
 
     if (envelope.single_part.has_value ()) {
-        received_ = detail::received_access_t::make (source_rid, source_spot_rid, request_seq,
+        received_ = detail::received_access_t::make (source_rid, request_seq,
                                                      std::move (*envelope.single_part));
     } else if (envelope.parts.size () == 1u) {
-        received_ = detail::received_access_t::make (source_rid, source_spot_rid, request_seq,
+        received_ = detail::received_access_t::make (source_rid, request_seq,
                                                      std::move (envelope.parts[0]));
     } else {
-        received_ = detail::received_access_t::make (source_rid, source_spot_rid, request_seq,
+        received_ = detail::received_access_t::make (source_rid, request_seq,
                                                      std::move (envelope.parts));
     }
     if (attach_routed_send_context_ && source_rid.has_value ())

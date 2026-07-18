@@ -36,11 +36,7 @@ int router_socket_t::recv (received_t &out_, recv_flags_t flags_)
     // call lazily at submit time, so no per-receive closures are built here.
     if (out_.routing_id ().has_value ()) {
         void *router_handle_ = detail::native_handle (*this);
-        if (out_.spot_rid ().has_value ()) {
-            detail::received_access_t::set_router_spot_send_context (out_, router_handle_);
-        } else {
-            detail::received_access_t::set_socket_rid_send_context (out_, router_handle_);
-        }
+        detail::received_access_t::set_socket_rid_send_context (out_, router_handle_);
     }
     return 0;
 }

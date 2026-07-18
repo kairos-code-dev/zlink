@@ -98,9 +98,24 @@ internal static class WorkflowHostFactory
         app.MapGet("/evidence", async (IZLinkDrainControl drain, IZLinkLocationRuntimeQuery locations,
             WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics) =>
         {
-            var peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.WorkflowMesh);
             // Spot rows are resolve-only store records in 10.0.0: the
-            // operational surface enumerates MeshNode descriptors only.
+            // operational surface enumerates MeshNode descriptors only. The
+            // evidence endpoint must stay observable through a store outage
+            // (OBS-B3 pauses Redis and reads the lease-lateness metrics), so
+            // a failing row read degrades to an empty peer list.
+            IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor> peers;
+            try
+            {
+                // Evidence must answer fast even while the store is paused
+                // (OBS-B3 polls the lease metrics through the outage); the
+                // row listing is auxiliary, so it gets a short bound.
+                peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.WorkflowMesh)
+                    .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+            }
+            catch (Exception)
+            {
+                peers = [];
+            }
             return Results.Ok(new EvidenceSnapshot(options.Rid, drain.IsReady, evidence.Snapshot(),
                 metrics.Snapshot(), peers.Select(row => new PeerRow(row.Rid.ToString(),
                     row.Draining, (long)row.LifecycleGeneration)).ToArray(), [],

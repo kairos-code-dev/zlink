@@ -59,7 +59,11 @@ internal static class ZLinkLocationStoreRead
         timeout.CancelAfter(Timeout);
         try
         {
-            var result = await read(timeout.Token).ConfigureAwait(false);
+            // WaitAsync bounds stores whose in-flight commands cannot observe
+            // the token (a paused Redis holds replies indefinitely): the read
+            // boundary must degrade within its timeout either way.
+            var result = await read(timeout.Token).AsTask().WaitAsync(timeout.Token)
+                .ConfigureAwait(false);
             health?.ReportSuccess(source);
             return result;
         }

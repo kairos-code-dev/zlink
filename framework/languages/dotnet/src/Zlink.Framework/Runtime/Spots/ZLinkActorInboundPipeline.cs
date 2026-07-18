@@ -1,5 +1,16 @@
 namespace Zlink.Framework.Runtime.Spots;
 
+internal static class ZLinkActorCaptureDebug
+{
+    public static bool PipelineCapture(ZLinkSpotActorFrame frame)
+    {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[pipeline] captured actor={frame.Actor.ActorId} name={frame.Header.Name}");
+        return true;
+    }
+}
+
 internal interface IZLinkActorInboundEndpoint
 {
     IZLinkActor? ResolveActor(ZLinkActorRuntimeState state);
@@ -98,7 +109,7 @@ internal sealed class ZLinkActorInboundPipeline(
             ZLinkFlowOrigin.Inbound);
         var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
         var debugPump = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
-        if (allowCapture && state.Handoff.TryCapture(frame))
+        if (allowCapture && state.Handoff.TryCapture(frame) && ZLinkActorCaptureDebug.PipelineCapture(frame))
         {
             if (debugPump)
                 Console.Error.WriteLine($"[dispatch] captured actor={frame.Actor.ActorId} name={frame.Header.Name}");
@@ -164,7 +175,7 @@ internal sealed class ZLinkActorInboundPipeline(
         catch (ZLinkFrameworkException exception)
             when (allowCapture
                   && exception.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound
-                  && state.Handoff.TryCapture(frame))
+                  && state.Handoff.TryCapture(frame) && ZLinkActorCaptureDebug.PipelineCapture(frame))
         {
             // Capture may begin after frame decoding but before the actor
             // mailbox admits the handler. The handoff transition shares that

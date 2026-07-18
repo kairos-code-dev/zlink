@@ -49,7 +49,16 @@ internal static class ZLinkActorHandoffIngress
                 // would race sibling frames and break the backlog's arrival
                 // sequence (spec 23 §10.2).
                 if (state.Handoff.TryCapture(frame))
+                {
+                    if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                        Console.Error.WriteLine(
+                            $"[ingress] captured actor={frame.Actor.ActorId} name={frame.Header.Name}");
                     continue;
+                }
+
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[ingress] pass actor={frame.Actor.ActorId} name={frame.Header.Name}");
 
                 dispatchable.Add(frame);
             }

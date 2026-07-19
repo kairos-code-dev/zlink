@@ -1,5 +1,5 @@
 [versions]
-zlinkBindings = "10.5.0"
+zlinkBindings = "10.6.0"
 
 [libraries]
 zlink-bindings = { module = "systems.zlink:zlink", version.ref = "zlinkBindings" }

@@ -43,44 +43,44 @@
 ### 1.1 outbound client와 종결 호출
 
 ```csharp
-// IZLinkChannelClient를 주입받아 channel 이름으로 send/request 한다.
+// IZLinkRouteClient를 주입받아 MeshName과 ChannelName으로 send/request 한다.
 client
-    .SendToChannel("api", new AuthenticateRequest("player-1"))   // IZLinkSendCall
-    .Submit();
+    .SendToChannel("game", "api", new AuthenticateRequest("player-1")) // IZLinkSendCall
+    .TrySubmit();
 
 var reply = await client
-    .RequestToChannel("api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
-    .Timeout(TimeSpan.FromSeconds(3))     // request만 가진 종결자 — reply 대기 상한(send 엔 없다)
-    .Async<AuthenticateReply>();          // reply 타입은 호출이 아니라 종결자에서 지정
+    .RequestToChannel("game", "api", new AuthenticateRequest("player-1")) // IZLinkRequestCall
+    .Timeout(TimeSpan.FromSeconds(3))     // request만 가진 종결자 — reply 대기 상한이다.
+    .Async<AuthenticateReply>();          // reply 타입은 종결자에서 지정한다.
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkChannelClient` | `SendToChannel(channelName, msg)` / `RequestToChannel(channelName, req)`의 기본 표면. client-server channel 호출의 뿌리 |
-| `IZLinkSendCall` | send 종결자 — `Submit(ct)` 하나. 응답을 기다리지 않으므로 `Timeout` 없음 |
+| `IZLinkRouteClient` | `SendToChannel(meshName, channelName, msg)` / `RequestToChannel(meshName, channelName, req)`의 select-one 표면. 같은 MeshName 안에서 준비 상태이고 weight가 양수인 ChannelName member 하나를 선택한다 |
+| `IZLinkSendCall` | send 종결자 — 즉시 시도하는 `TrySubmit()`과 비동기로 용량을 기다리는 `SubmitAsync(ct)`. 응답을 기다리지 않으므로 `Timeout`은 없다 |
 | `IZLinkRequestCall` | request 종결자. 선택 `Timeout(...)` 후 `Async<TReply>(ct)`. reply 타입은 종결자에서 지정 |
 
-검증: `ChannelContracts.Channel_client_sends_and_requests_by_channel_name`.
+검증: `ChannelContracts`의 ChannelName send/request 계약.
 
-### 1.2 route client — router channel 너머 target node 호출
+### 1.2 route client — MeshName 안의 target node 호출
 
 ```csharp
-var target = RoutingId.From("play-node-1");   // router channel 너머 최종 대상 노드(§1.1의 channel-name 호출과 다른 점)
+var target = RoutingId.From("play-node-1");   // MeshName 안에서 직접 지정할 최종 대상 RID다.
 
 client
-    .SendToNode("play-router", target, new RoomEvent("opened")) // 인자 = (router channel, target node, payload)
-    .Submit();
+    .SendToNode("play", target, new RoomEvent("opened")) // 인자 = (MeshName, target RID, payload)
+    .TrySubmit();
 
 var room = await client
-    .RequestToNode("play-router", target, new AllocateRoom("alice")) // IZLinkRequestCall
+    .RequestToNode("play", target, new AllocateRoom("alice")) // IZLinkRequestCall
     .Timeout(TimeSpan.FromSeconds(2))
     .Async<RoomAllocated>();
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkRouteClient` | router channel 이름과 target node로 보내거나, 논리적 `SpotHandle` 대상으로 보내는 client. 노드는 `SendToNode(channel, nodeRid, …)`/`RequestToNode(channel, nodeRid, …)`, spot은 `SendToSpot(handle, …)`/`RequestToSpot(handle, …)`을 쓴다(§3.2). |
-| `IZLinkSendCall` | route send 종결자(`Submit(ct)`) |
+| `IZLinkRouteClient` | MeshName과 target RID로 보내거나, 논리적 `SpotHandle` 대상으로 보내는 client. 노드는 `SendToNode(meshName, nodeRid, …)`/`RequestToNode(meshName, nodeRid, …)`, spot은 `SendToSpot(handle, …)`/`RequestToSpot(handle, …)`을 쓴다(§3.2). |
+| `IZLinkSendCall` | route send 종결자(`TrySubmit` · `SubmitAsync`) |
 | `IZLinkRequestCall` | route request 종결자(`Timeout` · `Async<TReply>`) |
 | `IZLinkRouteSendHandler<TMessage>` | route mesh channel의 단방향 수신 handler. `HandleAsync(msg, ZLinkRouteSendContext, ct)` |
 | `IZLinkRouteRequestHandler<TRequest, TReply>` | route mesh channel의 요청 수신 handler. `HandleAsync(req, ZLinkRouteRequestContext, ct) → ValueTask<TReply>` |
@@ -92,13 +92,13 @@ var room = await client
 ```csharp
 publisher
     .Publish("events", "room.opened", new RoomEvent("opened")) // 인자 = (channel, topic, message). topic이 fan-out 라우팅 키.
-    .Submit();
+    .TrySubmit();
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFanoutClient` | pub/sub publish 표면. `Publish(channelName, topic, message)` (인자 3개) |
-| `IZLinkPublishCall` | publish 종결자 — `Submit(ct)` 하나 |
+| `IZLinkPublishCall` | publish 종결자 — 즉시 시도하는 `TrySubmit()`과 비동기로 용량을 기다리는 `SubmitAsync(ct)` |
 
 검증: `ChannelContracts.Fanout_client_publishes_events_to_a_topic`.
 
@@ -163,25 +163,25 @@ codecs.Use(ZLinkProtobufCodec.Default);
 ```csharp
 // gRPC unary RPC -> request/response
 var placed = await orders
-    .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .RequestToChannel("commerce", "orders", new PlaceOrder("order-1042", "acct-77", 18742))
     .Timeout(TimeSpan.FromSeconds(2))
     .Async<OrderPlaced>();
 
 // gRPC unary returning Empty -> one-way send (응답 안 기다림)
 orders
-    .SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
-    .Submit();
+    .SendToChannel("commerce", "inventory", new ReserveStock("order-1042", "sku-9", 3))
+    .TrySubmit();
 
 // gRPC server-streaming / 상태 피드 -> pub/sub fan-out
 events
     .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
-    .Submit();
+    .TrySubmit();
 ```
 
 | gRPC 패턴 | ZLink 대체 | 표면 / 챕터 |
 |-----------|------------|-------------|
-| Unary RPC | request/response | `IZLinkChannelClient.RequestToChannel(...).Async<TReply>` ([4](05-channel-messaging.ko.md)) |
-| Unary `Empty` / fire-and-forget | one-way send | `IZLinkChannelClient.SendToChannel(...).Submit` ([4](05-channel-messaging.ko.md)) |
+| Unary RPC | request/response | `IZLinkRouteClient.RequestToChannel(...).Async<TReply>` ([4](05-channel-messaging.ko.md)) |
+| Unary `Empty` / fire-and-forget | one-way send | `IZLinkRouteClient.SendToChannel(...).TrySubmit` ([4](05-channel-messaging.ko.md)) |
 | Server streaming / 이벤트 피드 | pub/sub fan-out | `IZLinkFanoutClient.Publish` + `IZLinkPublishHandler<T>` ([4](05-channel-messaging.ko.md)) |
 | Client/Bidi streaming | STREAM session | `IZLinkSession`/`IZLinkSessionContext` ([9](09-stream.ko.md), §5) |
 | Interceptor | handler filter | `IZLinkHandlerFilter` ([4](05-channel-messaging.ko.md) §5, §1.4) |
@@ -226,14 +226,18 @@ options.ConfigureDispatch()
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
 
-### 2.2 channel builder와 역할
+### 2.2 MeshNode·channel membership·fanout builder
 
 ```csharp
 {
-    var channel = options.AddClientServerChannel("api")
-        .EnableServer("tcp://127.0.0.1:5000")     // 같은 endpoint 라도 server/client 역할은 별개로 활성화한다
-        .EnableClient("tcp://127.0.0.1:5000");
-    channel.AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
+    var mesh = options.AddRouteMesh("game")
+        .Listen("tcp://127.0.0.1:5000")           // 이 MeshNode의 수신 endpoint를 연다.
+        .SetRoutingId(RoutingId.From("api-a"));
+    mesh.PeerConnections.Connect(
+        "tcp://127.0.0.1:5001");                  // 다른 MeshNode를 수동 peer로 지정한다.
+    mesh.ChannelName("api")
+        .AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
+    mesh.AddRouteRequestHandler<RouteRequestHandler, ApiRequest, ApiReply>();
 }
 
 {
@@ -241,22 +245,17 @@ options.ConfigureDispatch()
         .EnablePublisher("tcp://127.0.0.1:5100")
         .EnableSubscriber("tcp://127.0.0.1:5100");
 }
-{
-    var channel = options.AddRouteMeshChannel("play-router")
-        .EnableServer("tcp://127.0.0.1:5300")
-        .EnableClient("tcp://127.0.0.1:5301");
-}
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkClientServerChannelBuilder` | client-server channel(`EnableServer`/`EnableClient`, request/send handler, `SetRoutingId`) |
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
-| `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, route handler, `SetRoutingId`) |
-| `IZLinkClientServerChannelOptions` / `IZLinkRouteMeshChannelOptions` | 각 channel의 build-time 옵션 묶음(socket/routing 설정 접근) |
+| `IZLinkMeshNodeBuilder` | MeshName 하나의 endpoint·routing id·manual peer·node direct handler와 ChannelName membership을 소유 |
+| `IZLinkMeshChannelBuilder` | ChannelName membership의 weight와 send/request handler namespace를 소유 |
+| `IZLinkMeshPeerConnections` | manual peer intent의 연결·해제·목록 조회를 제공 |
 | `IZLinkRouteMeshRuntimeOptions` | **런타임** mesh 옵션(DI singleton). `MeshNode(mesh).MaxMessageSize`와 `Channel(mesh, channel).Weight`만 serving 중 변경 가능([12-operations §5](12-operations.ko.md)) |
 
-검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
+검증: `BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
 
 ### 2.3 spot node · stream node · spot mesh builder
 
@@ -297,34 +296,23 @@ options.ConfigureDispatch()
 
 검증: `BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
 
-### 2.4 연결 집합 — role 별 endpoint 소유
+### 2.4 연결 집합 — 기능별 endpoint 소유
 
-수동 연결은 역할(role) 단위로 별개 집합을 소유한다. 같은 endpoint 목록이라도
-client·subscriber·spot router가 서로 다른 연결 집합이다.
+수동 연결은 MeshNode peer와 fanout subscriber가 각각 소유한다. 두 기능에 같은 endpoint가
+필요하더라도 한쪽의 연결 설정을 다른 쪽이 공유하지 않는다.
 
 ```csharp
-// 각 호출은 role(client / subscriber / mesh peer …)별 독립 연결 집합을 소유한다 — endpoint가 겹쳐도 공유하지 않는다.
-channel.EnableClient("tcp://127.0.0.1:5001");
+// 각 호출은 fanout subscriber와 MeshNode peer의 독립 연결 의도를 기록한다.
 subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
 mesh.PeerConnections.Connect("tcp://127.0.0.1:5003");
 ```
 
-검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`,
-`BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
+검증: `BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
 
 ### 2.5 socket · routing · spot · dispatch 설정
 
 ```csharp
-// config 객체는 직접 만들지 않는다 — builder의 Configure*() 접근자가 돌려준다.
-var routed = options.AddRouteMeshChannel("game.route");
-IZLinkSocketConfig socket = routed.ConfigureServerSocket();
-socket.TcpNoDelay = true;
-socket.MaxMessageSize = 1024;
-IZLinkRouteConfig route = routed.ConfigureServerRouting();
-route.RequireKnownPeer = true;                       // 미지의 peer 거부(inbound 보안 계약)
-IZLinkOutboundRouteConfig outbound = routed.ConfigureClientRouting();
-outbound.ProbeRouterOnConnect = true;
-
+// config 객체는 직접 만들지 않는다. MeshNode builder의 접근자가 돌려준다.
 var node = options.AddRouteMesh("game.stage");
 IZLinkMeshNodeSocketConfig router = node.ConfigureRouterSocket();  // HWM·timeout은 startup-only
 router.ReceiveHighWaterMark = 64;
@@ -339,11 +327,8 @@ dispatch.MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly);             // 오류 
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkSocketConfig` | socket 옵션(HWM, 버퍼, timeout, `TcpNoDelay`, `Immediate`, `IPv6`, `MaxMessageSize` 등) |
-| `IZLinkRouteConfig` | inbound router routing 옵션(`RequireKnownPeer`, `AllowPeerHandover`, `EnablePeerProbe`, `ConnectRoutingId`) |
-| `IZLinkOutboundRouteConfig` | client 측 routing 옵션(`ProbeRouterOnConnect`) |
+| `IZLinkMeshNodeSocketConfig` | MeshNode의 시작 전 socket 옵션(`MaxMessageSize`, HWM, receive/send timeout) |
 | `IZLinkSpotPublisherConfig` | spot publisher 옵션(`SendHighWaterMark`, `SendTimeout`, `Linger`) |
-| `IZLinkSpotSubscriberConfig` | spot subscriber 옵션(`ReceiveHighWaterMark`, `ReceiveTimeout`, `Linger`) |
 | `IZLinkEntrySpotOptions` | Entry Spot의 routing id 지정 |
 | `IZLinkDispatchOptions` | 처리할 handler가 없을 때의 정책과 message-flow 진단 설정 |
 | `IZLinkUnhandledDispatchOptions` | 미등록 handler 처리 정책(`Request`/`Send`/`Publish`, log level) |
@@ -441,7 +426,7 @@ SpotHandle room1 = await spots.ResolveSpotHandleAsync(RoutingId.From("room-1"))
                          ?? throw new InvalidOperationException("room-1이 아직 없다");
 
 // ② current Spot callback 안에서 — 보관한 SpotHandle로 send/request (IZLinkSpotOutbound)
-spot.Context.Outbound.SendToSpot(room1, new RoomEvent("opened")).Submit();
+spot.Context.Outbound.SendToSpot(room1, new RoomEvent("opened")).TrySubmit();
 var reply = await spot.Context.Outbound
     .RequestToSpot(room1, new JoinRoom("room-1"))
     .Async<JoinedRoom>();
@@ -450,7 +435,7 @@ var reply = await spot.Context.Outbound
 await routes.RequestToSpot(room1, new JoinRoom("room-1")).Async<JoinedRoom>();
 
 // local spot 없는 프로세스에서 publish (topic은 SpotHandle가 필요 없다)
-publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit(); // IZLinkSpotPublisherClient
+publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).TrySubmit(); // IZLinkSpotPublisherClient
 ```
 
 framework는 위치 event와 주기적 조회로 `SpotHandle`의 내부 주소를 갱신한다. request 도중

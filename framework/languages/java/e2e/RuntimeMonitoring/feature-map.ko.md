@@ -16,8 +16,8 @@ Java E2E는 각 host의 public `ZLinkRouteMeshRuntime` snapshot과 typed event�
 | MON-A3 | 10.0.0 전환 대상 | Public runtime socket weight를 0·100으로 변경하고 admission marker를 관측한다. | Channel event, local weight, ready member 수·selectable과 실제 ChannelName request의 선택 결과를 각 전이 뒤 비교한다. |
 | MON-A4 | 10.0.0 전환 대상 | Service admin 종료 뒤 같은 binary·endpoint로 재시작하고 후속 request와 topology down/up을 확인한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 generation·endpoint·ready member가 최신 snapshot으로 수렴하는지 검증한다. |
 | MON-A5 | 10.0.0 전환 대상 | Location runtime `STATUS_CHANGED`와 Redis-backed topology 경로가 있다. | Redis 정지·failure grace·복구에서 `location.store_changed`, location state·last success·last failure와 current owner token 재검증을 단언한다. |
-| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true` target queue backpressure를 만들어 terminal result, backpressured event와 dropped=0인 snapshot count를 비교한다. |
-| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`의 수락·drop target 처리 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | remote ROUTER backpressure를 만들어 terminal result, backpressured event와 snapshot count를 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | local target의 수락·drop 처리 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
 | MON-C1 | 10.0.0 전환 대상 | Monitoring event handler 예외를 dispatcher가 격리한 뒤 channel messaging이 계속된다. | Application gate, 느린 observer와 정상 observer를 함께 열어 claim progress·request completion·coalescing·sequence gap 후 snapshot resync를 단언한다. |
 | MON-D1 | 10.0.0 전환 대상 | 비양수 polling interval과 없는 socket·Spot source가 구성·startup에서 실패하고, 한 번의 service down/up 경로가 있다. | 등록하지 않은 MeshName·0 이하 observer capacity 오류와 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 검증한다. |
 

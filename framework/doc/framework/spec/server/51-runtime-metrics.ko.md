@@ -47,14 +47,14 @@ object 수에 비례해 증가하지 않게 하려면 어떤 계기를 제공해
 
 | 계기 | 종류 | 단위 | Label | 의미 |
 |---|---|---|---|---|
-| `zlink.mesh_node.multicast.submits` | counter | `{operation}` | `mesh_name`, `channel_name`, `outcome`, `nodrop` | publish operation 결과 누계 |
+| `zlink.mesh_node.multicast.submits` | counter | `{operation}` | `mesh_name`, `channel_name`, `outcome` | publish operation 결과 누계 |
 | `zlink.mesh_node.multicast.targets` | histogram | `{target}` | `mesh_name`, `channel_name` | operation마다 선택한 remote MeshNode 수 |
 | `zlink.mesh_node.multicast.pending` | updown | `{operation}` | `mesh_name`, `channel_name` | admission을 기다리는 operation 수 |
-| `zlink.mesh_node.multicast.backpressures` | counter | `{operation}` | `mesh_name`, `channel_name`, `reason` | `NoDrop = true` admission 실패 또는 대기 초과 누계 |
-| `zlink.mesh_node.multicast.drops` | counter | `{target}` | `mesh_name`, `channel_name`, `reason` | `NoDrop = false` target별 drop 누계 |
+| `zlink.mesh_node.multicast.backpressures` | counter | `{operation}` | `mesh_name`, `channel_name`, `reason` | remote ROUTER의 용량 부족 또는 send timeout 누계 |
+| `zlink.mesh_node.multicast.drops` | counter | `{target}` | `mesh_name`, `channel_name`, `reason` | local 또는 remote target별 drop 누계 |
 | `zlink.mesh_node.messages.dropped` | counter | `{message}` | `mesh_name`, `surface`, `message_kind`, `reason` | Framework가 원인을 확인한 one-way drop 누계 |
 
-`nodrop`은 `true|false`다. multicast `outcome`은 `accepted|backpressured|timed_out|shutdown`, `reason`은
+multicast `outcome`은 `accepted|backpressured|timed_out|shutdown`, `reason`은
 `backpressure|send_timeout|target_closed|shutdown`의 닫힌 값이다. message drop `reason`은
 `no_handler|decode_error|backpressure|stale_target|shutdown`의 닫힌 값이다.
 
@@ -116,7 +116,7 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 
 | 허용 | 금지 |
 |---|---|
-| `mesh_name`, `channel_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `spot_kind`, `record_kind`, `transport`, `close_reason`, `nodrop` | topic, Actor ID, Spot RID, RID, endpoint, session ID, user ID, correlation ID, flow ID, application metadata value |
+| `mesh_name`, `channel_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `spot_kind`, `record_kind`, `transport`, `close_reason` | topic, Actor ID, Spot RID, RID, endpoint, session ID, user ID, correlation ID, flow ID, application metadata value |
 
 MeshName과 ChannelName도 host 등록값으로 닫힌 집합일 때만 label로 사용한다. 실행 중 payload나 metadata에서
 새 label value를 만들지 않는다. packet name별 metric이 필요하면 startup에 등록된 bounded handler key만
@@ -140,7 +140,7 @@ metric은 언어 표준 meter 또는 registry에 연결하며 특정 exporter를
 ## 8. 검증 요구
 
 - 계기 이름, 종류, 단위와 닫힌 label value가 모든 언어에서 같다.
-- `NoDrop = true` backpressure와 `NoDrop = false` target drop이 별도 counter에 기록된다.
+- publish operation의 backpressure와 target별 drop이 별도 counter에 기록된다.
 - application·infrastructure claim backlog를 domain별로 관찰할 수 있다.
 - topic, Actor ID, Spot RID, RID, endpoint, correlation ID와 flow ID가 어떤 metric label에도 나타나지 않는다.
 - observer overflow와 metric reader failure가 message dispatch와 drain 결과를 바꾸지 않는다.

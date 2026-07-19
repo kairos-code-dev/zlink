@@ -24,7 +24,7 @@ Stream connector client는 별도 package이며
 - metadata는 handler에 변경할 수 없는 `ZLinkMessageMetadata` snapshot으로 전달한다.
 - 자동 discovery와 분산 location 기능을 사용하는 host는 Redis location store instance를 명시적으로
   등록한다.
-- Logical Multicast의 `NoDrop` 기본값과 manual peer의 expected RID 의미는
+- Logical Multicast의 target별 ROUTER 제출과 manual peer의 expected RID 의미는
   [05 RouteMesh·MeshNode](05-route-mesh.ko.md)가 소유한다.
 
 ## 취소

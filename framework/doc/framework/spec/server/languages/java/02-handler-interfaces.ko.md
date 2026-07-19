@@ -570,8 +570,12 @@ public interface ZLinkMeshNodeSocketConfig {
 }
 
 public interface ZLinkSpotPublisherConfig {
-    boolean noDrop();
-    void noDrop(boolean value);
+    int sendHighWaterMark();
+    void setSendHighWaterMark(int value);
+    Optional<Duration> sendTimeout();
+    void setSendTimeout(@Nullable Duration value);
+    Optional<Duration> linger();
+    void setLinger(@Nullable Duration value);
 }
 
 public interface ZLinkEntrySpotOptions {
@@ -1270,7 +1274,6 @@ public record ZLinkMeshChannelSnapshot(
     boolean selectable) {}
 
 public record ZLinkLogicalMulticastSnapshot(
-    boolean noDrop,
     long submitted,
     long backpressured,
     long dropped,
@@ -1279,8 +1282,7 @@ public record ZLinkLogicalMulticastSnapshot(
     long remoteDroppedCount,
     long localSnapshotCount,
     long localAdmittedCount,
-    long localDroppedCount,
-    long pendingAdmissionCount) {}
+    long localDroppedCount) {}
 
 public record ZLinkMeshClaimSnapshot(
     boolean applicationActive,

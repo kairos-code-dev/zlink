@@ -178,6 +178,6 @@ red gate는 `logs/20260716-091218-3232864/`에서 기존 구현의 선기동 의
 
 ## E2E/harness 대기
 
-- `SM-C6`: 기본 `configureSpotPublisher().noDrop(true)`에서 remote peer backpressure를 만들고,
+- `SM-C6`: remote ROUTER backpressure를 만들고,
   blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure
   결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 하며 현재 runner에는 이 증거가 없다.

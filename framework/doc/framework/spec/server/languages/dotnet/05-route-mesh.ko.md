@@ -196,7 +196,9 @@ weight는 0부터 100까지다. 0은 해당 channel의 새 select-one과 Logical
 ```csharp
 public interface IZLinkSpotPublisherConfig
 {
-    bool NoDrop { get; set; }
+    int SendHighWaterMark { get; set; }
+    TimeSpan? SendTimeout { get; set; }
+    TimeSpan? Linger { get; set; }
 }
 
 public interface IZLinkRouteMeshRuntimeOptions
@@ -227,9 +229,10 @@ public interface IZLinkMeshNodeSocketConfig
 }
 ```
 
-`ConfigureSpotPublisher().NoDrop`의 기본값은 `true`다. `true`이면 local queue와 모든 remote pipe에 대한
-원자적 admission이 성공해야 publish한다. blocking 호출은 MeshNode send timeout까지 기다리고,
-non-blocking 호출은 즉시 backpressure 결과를 반환한다. `false`이면 막힌 대상만 drop할 수 있다.
+`ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. Logical Multicast의
+각 remote target은 MeshNode ROUTER의 HWM과 send timeout을 따르고, non-blocking 호출은 용량이 없으면
+즉시 backpressure 결과에 반영한다. 앞에서 수락된 target은 뒤 target의 실패 때문에 취소되지 않으며,
+local Spot queue는 독립적으로 수락하거나 drop한다.
 
 `IZLinkRouteMeshRuntimeOptions`는 public DI singleton이다. 등록되지 않은 mesh 또는 membership을 조회하면
 `ZLinkConfigurationException`이다. 실행 중에는 `MeshNode(meshName).MaxMessageSize`와
@@ -298,7 +301,6 @@ public sealed record ZLinkMeshChannelSnapshot(
     bool Selectable);
 
 public sealed record ZLinkLogicalMulticastSnapshot(
-    bool NoDrop,
     ulong Submitted,
     ulong Backpressured,
     ulong Dropped,
@@ -307,8 +309,7 @@ public sealed record ZLinkLogicalMulticastSnapshot(
     ulong RemoteDroppedCount,
     ulong LocalSnapshotCount,
     ulong LocalAdmittedCount,
-    ulong LocalDroppedCount,
-    ulong PendingAdmissionCount);
+    ulong LocalDroppedCount);
 
 public sealed record ZLinkMeshClaimSnapshot(
     bool ApplicationActive,
@@ -505,7 +506,7 @@ services.AddZLinkFramework(options =>
         .AddSendHandler<GameCommandHandler, GameCommand>(); // logical channel handler를 등록한다.
     mesh.ChannelName("actors"); // 같은 MeshNode의 두 번째 immutable membership이다.
 
-    mesh.ConfigureSpotPublisher().NoDrop = true; // 기본 publish admission 정책이다.
+    mesh.ConfigureSpotPublisher().SendHighWaterMark = 1024; // ROUTER 송신 HWM을 설정한다.
 
     options.AddFanoutChannel("events")
         .EnablePublisher("tcp://0.0.0.0:7400"); // classic PUB/SUB는 독립 fanout 기능이다.

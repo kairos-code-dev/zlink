@@ -68,7 +68,7 @@ overview나 framework API 문서에 이 두 계약을 복제하지 않고 직접
 | S2-05 | MeshNode가 어느 물리 mesh와 논리 channel에 참여하는가 | `framework/doc/framework/spec/server/10-channel-topology.ko.md` | MeshName 하나, RID 하나, ROUTER endpoint 하나, 하나 이상의 immutable ChannelName, lifecycle generation과 descriptor revision, 실행 중 weight snapshot 전파, process의 MeshName별 MeshNode 하나, full mesh와 수동·자동 peer admission | duplicate name, 빈 membership, RID pin, stale revision, descriptor mismatch startup test ID 연결 | 검증 완료 |
 | S2-06 | RID direct와 ChannelName select-one 호출이 어떤 결과를 만드는가 | `framework/doc/framework/spec/server/11-channel-messaging.ko.md` | selection과 submit 원자성, weighted round-robin, no-member, timeout, cancellation, late reply, one-shot reply와 metadata snapshot | Config 1 scenario와 함수별 error 표 대응 | `clean` |
 | S2-07 | MeshNode가 topology와 service runtime을 어떻게 소유하는가 | `framework/doc/framework/spec/server/21-mesh-node.ko.md` | MeshNode 등록, start validation, peer connection, channel membership, Spot·Actor owner, readiness와 shutdown 경계 | spec index, gap, 언어별 interface와 guide link no-hit 검사 | 검증 완료 |
-| S2-08 | Spot publish와 subscription은 어느 node와 Spot을 선택하는가 | `framework/doc/framework/spec/server/20-spot-messaging.ko.md` | target ChannelName 필수, node-local `(ChannelName, topic, Spot)` match, Logical Multicast metadata, NoDrop, remote·local 6개 count, source ChannelName, no-relay와 complete message 의미 | Config 2 multicast/local match/metadata/NoDrop scenario 대응 | 검증 완료 |
+| S2-08 | Spot publish와 subscription은 어느 node와 Spot을 선택하는가 | `framework/doc/framework/spec/server/20-spot-messaging.ko.md` | target ChannelName 필수, node-local `(ChannelName, topic, Spot)` match, Logical Multicast metadata, 대상별 ROUTER backpressure, remote·local count, source ChannelName, no-relay와 complete message 의미 | Config 2 multicast/local match/metadata/backpressure scenario 대응 | 검증 완료 |
 
 `21-mesh-node.ko.md`가 MeshNode lifecycle과 물리 topology를 소유한다. `20-spot-messaging.ko.md`는
 Spot handler, publish, subscription과 Spot 실행 turn만 소유한다. 두 문서가 peer handshake나 local
@@ -120,7 +120,7 @@ capability를 빠뜨리거나 구현 stage로 계약 결정을 미룰 수 없다
 - optional expected RID를 받는 manual peer connection
 - node direct와 channel handler family
 - node/channel/Spot direct send·request client와 immutable metadata snapshot
-- target ChannelName을 받는 Spot Logical Multicast, immutable metadata snapshot, `NoDrop`과 remote·local 6개 count
+- target ChannelName을 받는 Spot Logical Multicast, immutable metadata snapshot과 remote·local 대상별 count
 - Spot·Actor·STREAM session lifecycle와 명시적 MeshName 선택
 - Redis location extension 등록과 startup capability validation
 - MeshNode runtime option의 startup-only validation
@@ -130,11 +130,11 @@ capability를 빠뜨리거나 구현 stage로 계약 결정을 미룰 수 없다
 
 | S2 ID | 언어 | exact interface owner | 함께 수정할 owner | 필요한 10.0.0 변경 | 검증 | 상태·위험 |
 |---|---|---|---|---|---|---|
-| S2-13 | .NET | `server/languages/dotnet/02-handler-interfaces.ko.md`, `05-route-mesh.ko.md`, `06-location-store.ko.md` | `01-system-structure.ko.md`, `04-routing-id-allocation.ko.md`, `README.ko.md` | `IZLinkFrameworkOptions`, MeshNode·channel·fanout·STREAM builder, `IZLinkMeshPeerConnections`, 두 handler family, Spot·Actor client, metadata, NoDrop, runtime 관측, location store와 Redis exact C# signature | C# code block SHA-256, public declaration 양방향 inventory, 구현 단계 compile fixture와 package snapshot | S2 문서 계약 검증 `clean`; 구현·package green은 S8 gate |
+| S2-13 | .NET | `server/languages/dotnet/02-handler-interfaces.ko.md`, `05-route-mesh.ko.md`, `06-location-store.ko.md` | `01-system-structure.ko.md`, `04-routing-id-allocation.ko.md`, `README.ko.md` | `IZLinkFrameworkOptions`, MeshNode·channel·fanout·STREAM builder, `IZLinkMeshPeerConnections`, 두 handler family, Spot·Actor client, metadata, runtime 관측, location store와 Redis exact C# signature | C# code block SHA-256, public declaration 양방향 inventory, 구현 단계 compile fixture와 package snapshot | S2 문서 계약 검증 `clean`; 구현·package green은 S8 gate |
 | S2-14 | C++ | `server/languages/cpp/02-framework-interfaces.ko.md`, `03-location-store.ko.md` | `01-system-structure.ko.md`, `README.ko.md` | C++ builder, handler, client, value/result, lifecycle, location과 Redis exact signature 작성 | 문서 선언 inventory와 header compile fixture 설계; package consumer green은 S9 | S2 문서 계약 검증 완료; 구현·package green은 S9 gate |
 | S2-15 | Java | `server/languages/java/02-handler-interfaces.ko.md`, `03-location-store.ko.md` | `01-system-structure.ko.md`, `README.ko.md` | Java builder, handler, client, CompletionStage, Spring 등록과 Redis extension exact signature 작성 | 문서 API inventory와 Java compile fixture 설계; package consumer green은 S9 | S2 문서 계약 검증 완료; 구현·package green은 S9 gate |
 | S2-15 | Kotlin | `server/languages/kotlin/02-handler-interfaces.ko.md`, `03-location-store.ko.md` | `README.ko.md` | Kotlin DSL·extension, suspend/async 표현과 Java runtime 경계 exact signature 작성 | 문서 extension inventory와 Kotlin compile fixture 설계; package consumer green은 S9 | S2 문서 계약 검증 완료; 구현·package green은 S9 gate |
-| S2-16 | Node.js | `server/languages/node/02-handler-interfaces.ko.md`, `04-location-store.ko.md` | `01-system-structure.ko.md`, `03-routing-id-allocation.ko.md`, `README.ko.md` | TypeScript declaration, Promise, NestJS 등록, peer connection, metadata, NoDrop, runtime option, location과 Redis exact signature 작성 | 문서 declaration inventory와 compile fixture 설계; package consumer green은 S9 | S2 문서 계약 검증 완료; 구현·package green은 S9 gate |
+| S2-16 | Node.js | `server/languages/node/02-handler-interfaces.ko.md`, `04-location-store.ko.md` | `01-system-structure.ko.md`, `03-routing-id-allocation.ko.md`, `README.ko.md` | TypeScript declaration, Promise, NestJS 등록, peer connection, metadata, runtime option, location과 Redis exact signature 작성 | 문서 declaration inventory와 compile fixture 설계; package consumer green은 S9 | S2 문서 계약 검증 완료; 구현·package green은 S9 gate |
 
 `server/languages/README.ko.md`는 다섯 언어 owner와 parity 검증 경로를 연결한다. S2 리뷰 범위에는
 다섯 언어의 exact signature를 모두 포함한다. 각 exact signature는 해당 언어 문서만 소유하며 공통

@@ -313,18 +313,18 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - 검증: 성공 기준은 **수신 측 evidence**다 — `play-b` 구독 spot이 이벤트를 받았다는 기록. 발행 측의 publish 성공 로그는 보조 증거일 뿐 단독으로는 통과가 아니다. 연결 미성립이면 발행이 성공으로 보여도 시나리오는 실패해야 한다.
 - 세부 동작: origin node가 target channel의 remote node마다 routed message를 한 번 제출하고, 수신 node가 topic과 일치하는 local Spot에 message ref를 공유한다.
 
-#### SM-C6 Logical Multicast NoDrop 기본 정책
+#### SM-C6 Logical Multicast ROUTER backpressure
 
 우선순위: `P0`
 
-- 절차: Spot publisher의 `NoDrop`을 따로 설정하지 않은 기본 구성에서 remote peer 하나에
-  backpressure를 만들고 blocking publish와 non-blocking submit을 각각 실행한다.
-- 검증: 기본값은 `true`다. blocking publish는 local subscription과 모든 remote pipe의 원자적 admission이
-  성공할 때까지 MeshNode send timeout 범위에서 기다리며, 기한을 넘으면 timeout으로 실패한다.
-  non-blocking submit은 즉시 backpressure 결과를 반환한다. 일부 peer에만 전달하고 성공으로 끝나면
-  실패다.
-- 별도 회귀: `NoDrop=false`를 명시한 구성에서 막힌 대상만 drop할 수 있으며 drop counter와 정상 peer의
-  수신 evidence를 함께 확인한다.
+- 절차: 수락 가능한 remote peer와 ROUTER 송신 HWM에 도달한 remote peer를 함께 둔 상태에서 blocking
+  publish와 non-blocking submit을 각각 실행한다.
+- 검증: blocking publish는 막힌 remote target에 대해 MeshNode send timeout 범위에서 기다리고,
+  non-blocking submit은 즉시 backpressure 결과를 반환한다. 앞에서 수락된 peer의 전달은 뒤 target의
+  실패 때문에 취소되지 않으며, publish detail의 remote snapshot·admitted·dropped 수가 실제 수신
+  evidence와 일치해야 한다.
+- 별도 회귀: local matching Spot queue 하나를 가득 채우고 다른 local target은 수락 가능하게 두어,
+  가득 찬 target만 drop 수에 기록되고 다른 target은 수신하는지 확인한다.
 
 ### Track D — session bind·relay·push와 stream
 

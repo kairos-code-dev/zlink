@@ -24,7 +24,7 @@ channel, multicast와 claim 상태를 서로 다른 service에서 조합하도�
 | MeshNode | MeshName, RID, lifecycle generation, descriptor revision, endpoint, lifecycle state, drain state, descriptor source set |
 | Peer | RID, lifecycle generation, descriptor revision, endpoint, admission state, ready, drain state, ChannelName set, last failure |
 | Channel | ChannelName, local weight, ready member 수, 선택 가능 여부 |
-| Logical Multicast | NoDrop, submit·backpressure·drop 누계, remote·local snapshot/admitted/dropped 수, pending admission 수 |
+| Logical Multicast | submit·backpressure·drop 누계, remote·local snapshot/admitted/dropped 수 |
 | Claim | application·infrastructure domain별 active 여부와 pending work 수 |
 | Location | store configured 여부, ready·degraded state, 마지막 성공·실패 시각 |
 | Drain | state, deadline, sealed work, pending request·transfer·STREAM barrier 수 |
@@ -46,7 +46,7 @@ snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 Mes
 | `zlink.runtime.mesh_node.peer_changed` | peer admission, ready, generation 또는 drain state 변경 |
 | `zlink.runtime.mesh_node.channel_changed` | channel weight, ready member 수 또는 선택 가능 상태 변경 |
 | `zlink.runtime.mesh_node.multicast_backpressured` | Logical Multicast admission이 backpressure를 반환 |
-| `zlink.runtime.mesh_node.multicast_dropped` | `NoDrop = false`에서 target별 drop 발생 |
+| `zlink.runtime.mesh_node.multicast_dropped` | local 또는 remote target별 drop 발생 |
 | `zlink.runtime.mesh_node.claim_changed` | application 또는 infrastructure claim 상태 변경 |
 | `zlink.runtime.mesh_node.drain_changed` | drain state 또는 sealed-work snapshot 변경 |
 | `zlink.runtime.location.store_changed` | Redis location store의 ready·degraded state 변경 |
@@ -104,7 +104,7 @@ lock을 재진입하게 하지 않는다. Observer 소비 코드의 예외는 ap
 
 - snapshot 하나로 MeshNode, peer, channel, multicast, claim과 drain state를 함께 읽을 수 있다.
 - peer lifecycle generation, descriptor revision과 실제 ready state를 별도 필드로 관찰할 수 있다.
-- `NoDrop = true` backpressure와 `NoDrop = false` target drop이 다른 event identifier로 발행된다.
+- publish operation의 backpressure 결과와 target별 drop 수가 각각 관찰된다. 같은 operation에서 둘 다 발생할 수 있다.
 - application callback이 대기 중이어도 infrastructure claim change와 request completion이 관찰된다.
 - observer failure나 느린 소비가 dispatch, reply와 drain terminal result를 바꾸지 않는다.
 - sequence gap 뒤 snapshot 재조회로 최신 상태를 복원할 수 있다.

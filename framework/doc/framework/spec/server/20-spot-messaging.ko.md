@@ -54,24 +54,20 @@ application API에 노출하지 않는다.
 remote node의 Spot 목록이나 peer별 queue를 호출자에게 반환하지 않는다. 호출자가 공개 Node direct
 send를 반복해서 Logical Multicast를 구성하는 방식은 공통 계약이 아니다.
 
-### 4.1 NoDrop
+### 4.1 Target별 수락
 
-Logical Multicast의 `NoDrop` 기본값은 `true`다.
+Logical Multicast는 publish 전용 전달 정책 option을 제공하지 않는다. 각 remote target에는 내부
+ROUTER 송신을 한 번 제출하고 HWM, send timeout과 blocking/non-blocking 규칙을 그대로 적용한다.
+뒤 target에서 backpressure가 발생해도 앞에서 성공한 제출을 취소하지 않는다. local Spot queue도
+target별로 독립적으로 수락하며, 용량이 없으면 해당 target을 drop 수에 기록하고 기다리지 않는다.
 
-| 설정 | publish 수락 계약 |
-|---|---|
-| `NoDrop = true` | local 대상과 모든 remote target의 admission이 하나의 operation으로 성공해야 수락한다. backpressure가 있으면 send timeout까지 기다리고, 제한 시간 안에 수락할 수 없으면 실패한다. |
-| `NoDrop = false` | 수락 가능한 대상에는 제출하고 막힌 대상은 drop할 수 있다. drop은 runtime 관측 경로에 기록한다. |
-
-publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. 기본 정책은
-전달 대상마다 queue 수락까지 보장하며, durable 저장·재생·exactly-once 전달을 뜻하지 않는다.
+publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. 특히 remote
+ROUTER의 송신 수락은 수신 MeshNode의 local Spot queue 수락을 보장하지 않으며, durable 저장·재생·
+exactly-once 전달을 뜻하지 않는다.
 
 publish 결과는 remote target과 local Spot match 각각의 snapshot, admitted와 dropped 수를 제공한다.
-`NoDrop = true` 성공에서는 두 dropped 수가 모두 0이다. `NoDrop = false` 성공에서는 local과 remote의
-부분 수락을 각각 구분할 수 있어야 한다.
-
-설정의 정확한 이름과 표현은 언어별 공개 인터페이스 문서가 정한다. `.NET`의 정확한 표면은
-[RouteMesh·MeshNode 인터페이스](languages/dotnet/05-route-mesh.ko.md)를 따른다.
+remote target 하나 이상이 용량 때문에 수락되지 않으면 backpressure 결과를 반환하되 이미 수락된
+target은 유지한다.
 
 ## 5. Subscription과 dispatch
 
@@ -130,7 +126,7 @@ drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric
 - Spot direct와 Logical Multicast가 MeshNode ROUTER 하나만 사용한다.
 - Logical Multicast가 remote MeshNode마다 한 번만 전송되고 수신 node가 local subscription만 검사한다.
 - 같은 node의 여러 target Spot이 immutable message storage를 공유한다.
-- `NoDrop = true`가 local과 모든 remote admission을 하나의 수락 결과로 제공한다.
+- local과 remote target의 독립 수락 결과가 snapshot·admitted·dropped 수로 집계된다.
 - Actor payload가 Spot application queue와 Spot callback을 거치지 않는다.
 - join·leave와 lifecycle control만 Spot control claim으로 전달된다.
 - classic fanout PUB/SUB과 Logical Multicast의 연결 및 구독 상태가 섞이지 않는다.

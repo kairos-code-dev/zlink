@@ -179,7 +179,7 @@ surface별 terminal event가 하나만 있어야 한다.
 
 - event identifier, phase, surface, message kind, outcome, dispatch reason·action과 field key가 모든
   언어에서 같다.
-- `NoDrop = true` publish는 backpressured event, `NoDrop = false` target loss는 dropped event로 구분된다.
+- publish operation의 backpressure와 target별 loss는 서로 다른 event로 구분되며 같은 operation에 함께 나타날 수 있다.
 - Actor payload trace가 Spot dispatch phase로 기록되지 않는다.
 - observer·logger failure가 message dispatch와 reply를 바꾸지 않는다.
 - observer failure는 `observer_failed`/`message_flow_observer` runtime error event 하나로 보고되고

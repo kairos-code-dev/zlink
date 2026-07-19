@@ -15,8 +15,8 @@ trigger-only marker나 message-flow trace로 빈 runtime field를 대신하지 �
 | MON-A3 | 10.0.0 전환 대상 | Drain·restore에서 admission 변경 marker를 수집한다. | Weight 0·100 전파, channel event, ready member 수·selectable과 실제 ChannelName request 선택 결과를 같이 단언한다. |
 | MON-A4 | 10.0.0 전환 대상 | 같은 RID의 다른 endpoint 재시작과 두 번의 강제 종료·재시작에서 endpoint 교체, route down/up, 후속 request를 확인한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 각 event 뒤 generation·ready peer·ready member를 최신 snapshot과 대조한다. |
 | MON-A5 | 10.0.0 전환 대상 | Location runtime `StatusChanged`와 Redis-backed topology 경로가 있다. | Redis 정지·failure grace·복구에서 `location.store_changed`, location state·last success·last failure와 current owner token 재검증을 단언한다. |
-| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true`의 막힌 target에 대해 backpressure·timeout result, backpressured event, dropped=0인 target count snapshot을 비교한다. |
-| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`의 수락·drop target 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | 막힌 remote ROUTER target에 대해 backpressure·timeout result, backpressured event와 target count snapshot을 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | local target의 수락·drop 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
 | MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외를 error sink에 남긴 뒤 후속 request가 성공한다. | Application gate·느린 observer·정상 observer를 함께 실행해 claim progress, request completion, coalescing·sequence gap과 snapshot resync를 단언한다. |
 | MON-D1 | 10.0.0 전환 대상 | 중복 socket source, 비양수 location interval, 없는 Spot·socket source 구성 검증과 두 번의 비정상 재시작 증거가 있다. | 등록하지 않은 MeshName·0 이하 capacity 오류를 검증하고 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 확인한다. |
 

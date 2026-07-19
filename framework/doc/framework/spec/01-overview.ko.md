@@ -43,9 +43,9 @@ Spot Logical Multicast는 room, stage, zone처럼 위치가 바뀔 수 있는 lo
 자기 node의 subscription을 검사한다. 같은 node에서 여러 Spot이 일치하면 immutable message storage의
 reference를 공유해 각 Spot queue에 넣는다.
 
-Logical Multicast의 기본 publish 정책은 `NoDrop = true`다. 모든 remote pipe와 local Spot queue가 message를
-받을 수 있을 때 한 번에 commit한다. 한 대상이라도 backpressure 상태이면 send timeout까지 기다리고,
-시간 안에 admission할 수 없으면 어느 대상에도 commit하지 않는다.
+Logical Multicast는 각 remote MeshNode에 내부 ROUTER 송신을 한 번씩 제출하고, local Spot queue에도
+독립적으로 제출한다. remote 송신의 HWM, send timeout과 backpressure는 ROUTER 규칙을 그대로 따르며,
+뒤 target의 실패가 앞에서 수락된 target의 제출을 취소하지 않는다.
 
 classic fanout은 연결되어 있고 subscription 준비가 끝난 subscriber에게 event를 보내는 독립 PUB/SUB
 기능이다. MeshNode나 Spot이 필요하지 않은 host도 사용할 수 있으며 저장과 replay를 보장하지 않는다.

@@ -122,12 +122,12 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   각 client가 자기 actor의 `ActorPushNotify`만 수신하는지 검증한다.
 ## 남은 시나리오
 
-- `SM-C6`: `configure_spot_publisher().no_drop`을 설정하지 않은 기본값이 `true`인지 확인하고, remote peer
-  backpressure에서 blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의
-  즉시 backpressure 결과를 각각 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 하며
-  현재 runner에는 이 증거가 없다.
+- `SM-C6`: remote peer backpressure에서 blocking publish의 ROUTER send timeout과 non-blocking
+  submit의 즉시 backpressure 결과를 각각 검증해야 한다. 대상별 submit이므로 먼저 수용된 대상과
+  막힌 대상의 수치가 publish detail에 함께 기록되는지도 확인해야 한다. 현재 runner에는 이 증거가
+  없다.
 
 ## 남은 구현 후보
 
-- 위 NoDrop 시나리오를 실행할 기본 정책 표면과 제어 가능한 backpressure harness의 구현 증거를
+- 위 target별 ROUTER backpressure 시나리오를 실행할 제어 가능한 harness의 구현 증거를
   Framework 10.0.0 적용 단계에서 확정해야 한다.

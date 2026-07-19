@@ -112,7 +112,7 @@ Operation별 call object는 해당 기능에 유효한 설정만 제공한다.
 
 - send는 metadata와 submit 실행 방식을 제공한다.
 - request는 metadata, reply timeout, 취소와 typed reply를 제공한다.
-- Logical Multicast publish는 metadata, ChannelName, topic과 `NoDrop` 정책을 사용한다.
+- Logical Multicast publish는 metadata, ChannelName, topic과 submit 실행 방식을 사용한다.
 - Spot과 Actor 호출은 resolved address의 generation을 보존한다.
 - STREAM 호출은 session identity와 packet correlation을 보존한다.
 
@@ -123,19 +123,13 @@ Metadata는 Framework가 검증한 immutable snapshot으로 handler에 전달한
 마지막 값이 사용된다. metadata 전체의 UTF-8 encoded 크기는 1024 bytes를 넘을 수 없다. reply는 request
 metadata를 자동 복사하지 않는다.
 
-## 7. Logical Multicast option
+## 7. Logical Multicast 결과
 
-MeshNode와 Spot publish API는 `NoDrop`을 설정할 수 있으며 기본값은 `true`다. 이 boolean은 Core
-`ZLINK_MESH_PUBLISH_OPT_NODROP`의 0 또는 1을 그대로 투영한다.
-
-| 값 | admission 계약 |
-|---|---|
-| `true` | 모든 snapshot remote pipe와 local Spot queue를 reserve한 뒤 한 번에 commit한다 |
-| `false` | 막힌 target만 제외하고 admission 가능한 target에 commit할 수 있다 |
-
-Blocking publish는 MeshNode send timeout까지 기다린다. Non-blocking publish는 즉시 backpressure 결과를
-반환한다. Publish 결과는 remote와 local 각각에 대해 snapshot, admitted와 dropped 수를 제공한다. 여섯
-count는 Core `zlink_mesh_publish_detail_t`의 같은 이름 필드와 일대일로 대응한다.
+MeshNode와 Spot publish API는 publish 전용 전달 정책 option을 제공하지 않는다. 각 remote target은
+내부 ROUTER의 HWM, send timeout과 blocking/non-blocking 송신 규칙을 따르며, local Spot queue는
+독립적으로 수락하거나 drop한다. Publish 결과는 remote와 local 각각에 대해 snapshot, admitted와
+dropped 수를 제공한다. 여섯 count는 Core `zlink_mesh_publish_detail_t`의 같은 이름 필드와 일대일로
+대응한다.
 
 ## 8. Handler 등록과 dispatch
 

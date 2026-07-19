@@ -570,7 +570,6 @@ fun ZLinkMeshPeerConnections.connect(
     endpoint: String,
 )
 
-fun ZLinkSpotPublisherConfig.noDrop(enabled: Boolean): ZLinkSpotPublisherConfig
 ```
 
 ```kotlin
@@ -582,7 +581,7 @@ options.routeMesh("game") {
         RoutingId.from("game-2"),
         "tcp://10.0.0.2:7300",
     )
-    configureSpotPublisher().noDrop(true) // Logical Multicast의 기본 정책을 명시한다.
+    configureSpotPublisher().sendHighWaterMark = 1024 // ROUTER 송신 HWM을 설정한다.
 }
 ```
 

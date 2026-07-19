@@ -125,30 +125,31 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 ### Track B — Logical Multicast backpressure와 drop
 
-#### MON-B1 `NoDrop = true` backpressure
+#### MON-B1 remote ROUTER backpressure
 
 우선순위: `P0`
 
-**검증 질문:** 모든 target admission을 완료할 수 없을 때 backpressure가 drop과 다른 결과와 event로
-관찰되는가.
+**검증 질문:** remote ROUTER target이 송신을 수락할 수 없을 때 backpressure 결과와 target 집계가
+함께 관찰되는가.
 
-- 절차: `svc-b`의 matching Spot application queue를 bounded gate로 막고 `NoDrop = true`인 Logical
-  Multicast를 짧은 send timeout으로 제출한다.
+- 절차: `svc-b` 방향 ROUTER 송신 HWM에 도달하도록 수신을 막고 Logical Multicast를 짧은 send
+  timeout으로 제출한다. 다른 remote target은 수락 가능한 상태로 둔다.
 - 검증: operation은 성공으로 가장하지 않고 backpressure 또는 timeout terminal result를 반환한다.
   `zlink.runtime.mesh_node.multicast_backpressured` event가 발생하며 후속 snapshot에서 submitted,
-  backpressured, pending admission과 remote·local snapshot/admitted/dropped 수가 실제 target 결과와
-  일치한다. Dropped 수는 0이다.
-- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-nodrop)과
-  [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의 NoDrop 계약.
+  backpressured와 remote·local snapshot/admitted/dropped 수가 실제 target 결과와 일치한다. 앞에서
+  수락된 target의 payload는 취소되지 않는다.
+- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-target별-수락)과
+  [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의
+  target별 제출 계약.
 
-#### MON-B2 `NoDrop = false` target drop
+#### MON-B2 local target drop
 
 우선순위: `P0`
 
-**검증 질문:** 막힌 target만 drop할 수 있는 정책에서 admitted와 dropped target이 분리되어 관찰되는가.
+**검증 질문:** 용량이 없는 local target과 수락된 target이 분리되어 관찰되는가.
 
 - 절차: 하나의 matching target은 수락 가능하게 두고 다른 target은 bounded queue가 가득 찬 상태로 만든
-  뒤 `NoDrop = false`로 publish한다.
+  뒤 publish한다.
 - 검증: 수락 가능한 target은 payload를 한 번 처리하고 막힌 target은 처리하지 않는다.
   `zlink.runtime.mesh_node.multicast_dropped` event와 후속 snapshot의 remote·local snapshot, admitted,
   dropped 수가 실제 target evidence와 일치한다. Backpressure event로 바꾸어 기록하지 않는다.
@@ -199,7 +200,7 @@ completion과 다른 observer가 진행되는가.
 - `P0`인 MON-A1·A2·A3·B1·B2를 모두 통과한다.
 - 각 판정은 public operation result, typed event와 후속 snapshot을 함께 사용한다.
 - Event identifier와 닫힌 state 값은 Runtime Monitoring 정식 계약과 byte 단위로 일치한다.
-- `NoDrop = true` backpressure와 `NoDrop = false` drop을 같은 결과·event로 합치지 않는다.
+- publish operation의 backpressure와 target별 drop을 같은 결과·event로 합치지 않는다.
 - 한 observer의 지연·예외가 다른 observer, message dispatch와 reply를 바꾸지 않는다.
 - 언어별 exact interface에 없는 monitoring source, server-side proxy API, raw frame 또는 private helper를
   추가하지 않는다.

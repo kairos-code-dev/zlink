@@ -565,10 +565,10 @@ public interface IZLinkSpotPublisherClient
 }
 ```
 
-`IZLinkSpotPublisherClient.Publish(...)`와 `IZLinkSpotOutbound.Publish(...)`는 Logical Multicast다. Publisher
-설정의 `NoDrop` 기본값은 `true`이며 정확한 option은
-[05 RouteMesh·MeshNode §5](05-route-mesh.ko.md#5-publisher와-runtime-option)가 소유한다. 같은 node의
-일치하는 Spot queue는 immutable message storage를 공유한다.
+`IZLinkSpotPublisherClient.Publish(...)`와 `IZLinkSpotOutbound.Publish(...)`는 Logical Multicast다.
+각 remote target은 MeshNode ROUTER의 송신 규칙을 따르며, 같은 node의 일치하는 Spot queue는 immutable
+message storage를 공유한다. 정확한 설정 표면은
+[05 RouteMesh·MeshNode §5](05-route-mesh.ko.md#5-publisher와-runtime-option)가 소유한다.
 
 ## 5. Actor
 

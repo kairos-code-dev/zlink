@@ -62,13 +62,12 @@ MeshNode와 local Spot match를 snapshot한다.
 - 같은 node의 일치하는 Spot queue는 immutable payload storage의 reference를 공유한다.
 - 다른 MeshNode로 relay하거나 과거 event를 replay하지 않는다.
 
-기본 `NoDrop = true`는 모든 snapshot target을 하나의 admission 단위로 처리한다. blocking publish는
-send timeout까지 기다리며, timeout이면 어느 target에도 commit하지 않는다. non-blocking publish는 하나라도
-막혀 있으면 즉시 backpressure 결과를 반환한다. `NoDrop = false`에서는 막힌 target만 제외하고 나머지
-target에 commit할 수 있다.
+각 snapshot target은 독립적으로 admission된다. remote target의 blocking publish는 내부 ROUTER의
+send timeout까지 기다리고, non-blocking publish는 용량이 없으면 즉시 backpressure 결과에 반영한다.
+앞에서 수락된 remote target과 local Spot queue는 뒤 target의 실패 때문에 취소되지 않는다.
 
-publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. 모든 target queue와 pipe에 admission이
-commit되었다는 뜻이다.
+publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. snapshot target에 대한 제출 결과가 집계되었다는
+뜻이며, remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue에서 발생한 drop까지 보장하지 않는다.
 
 ## 6. Classic fanout
 

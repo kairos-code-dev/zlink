@@ -468,7 +468,7 @@ corpus를 사용해 Core result와 언어별 투영을 함께 검증한다.
 | responder reply | one-shot opaque reply token과 complete multipart를 받는 `zlink_mesh_node_reply` 후보 | source route 비노출, token generation·shutdown 오류, borrowed input ownership. 10.0.0 S/S reply application metadata는 지원하지 않음 |
 | service receive | Node·Spot·Actor `*_recv_batch` 후보 | claim kind, versioned routing metadata, 별도 application metadata view, complete multipart와 batch lifetime |
 | ready dispatch | domain-masked ready handler, ready batch와 independent claim acquire/release 후보 | wakeup-only callback, infrastructure/application 독립 진행, fairness, single consumer와 close 규칙 |
-| Logical Multicast | target `ChannelName`을 받는 `zlink_mesh_node_publisher_*` | 조건부 local dispatch, target snapshot, NODROP와 no-relay |
+| Logical Multicast | target `ChannelName`을 받는 `zlink_mesh_node_publisher_*` | 조건부 local dispatch, target snapshot, 대상별 ROUTER backpressure와 no-relay |
 | Spot Logical Multicast | target `ChannelName`, 선택적 application metadata frame과 complete multipart를 받는 `zlink_spot_publish`, source `ChannelName`을 반환하는 Spot subscription batch | local match, target snapshot, complete message ownership과 batch metadata |
 | Spot subscription registry | `zlink_spot_set_subscription`, `zlink_spot_unset_subscription` 후보 | `(ChannelName, topic filter)` 등록·해제, 중복·start/close·동시 publish 가시성. public inventory query는 제공하지 않음 |
 | Actor send·request·reply | complete multipart를 받는 `zlink_mesh_node_*_to_actor`와 one-shot reply token 후보 | ActorRef generation, operation ID·completion, 기존 actor application metadata와 reply option의 wire 의미 |
@@ -496,14 +496,13 @@ MeshNode가 내부 ROUTER를 숨기므로 option 지원을 구현 관성으로 �
 | `zlink_set_tls_server/client` | 지원 | 미지원 | 미지원 | 보안 설정은 owner MeshNode ROUTER에만 적용 |
 | `zlink_set/get_router_option` | 미지원 | 미지원 | 미지원 | raw ROUTER 전용 표면은 숨기고 공통 option과 MeshNode 전용 option만 허용 |
 | `zlink_set/get_spot_option` | 미지원 | 지원 | 미지원 | Spot request policy 유지 |
-| `zlink_set/get_pub_option` | 미지원 | 미지원 | `NODROP`만 지원 | XPUB 전용 option을 Logical Multicast에 적용하지 않음 |
+| `zlink_set/get_pub_option` | 미지원 | 미지원 | 미지원 | XPUB 전용 option을 Logical Multicast에 적용하지 않음 |
 | `zlink_set/get_sub_option` | 미지원 | 미지원 | 미지원 | remote SUB socket 의미를 MeshNode·Spot에 적용하지 않음 |
 | `zlink_set/get_mesh_node_option` 후보 | 지원 | 미지원 | 미지원 | ROUTER HWM profile·HWM과 service mailbox budget만 포함하고 Core worker 수는 포함하지 않음 |
 | subscription 등록·해제 | 미지원 | 지원 | 미지원 | subscription은 Spot-local registry에만 두며 public inventory query는 제공하지 않음 |
 
 `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_RCVHWM`, `ZLINK_OPT_SNDTIMEO`, `ZLINK_OPT_RCVTIMEO`처럼 ROUTER에
-적용되는 공통 option은 MeshNode에서 유지한다. publisher의 `NODROP`은 손실 정책이고 HWM·timeout은
-공유 ROUTER의 queue 정책이므로 서로 다른 설정으로 유지한다.
+적용되는 공통 option은 MeshNode에서 유지한다. publisher 전용 손실 정책은 추가하지 않는다.
 
 ## 8. ready, claim과 poller 모드표
 
@@ -536,12 +535,11 @@ contract test에 대조하고 implementation gap을 닫는다.
 - request record는 handler 계약에 필요한 source RID와 application metadata view를 제공하고, reply correlation은
   raw request sequence 대신 opaque reply token으로 제공한다.
 - send와 request는 selection과 첫 submit 사이의 peer 상태 변경을 Core 내부에서 처리한다.
-- `NODROP=1` multicast는 target snapshot과 local match를 먼저 고정하고 모든 local queue와 remote pipe가
-  수용 가능한 경우에만 부분 전달 없이 submit한다.
-- 수용 가능성 확인과 commit은 MeshNode outbound owner에서 다른 submit 및 peer-state 전이와
-  직렬화한다. admission 뒤 target을 축소하거나 local queue에 먼저 제출하지 않는다.
-- `NODROP=0`은 HWM에 도달한 개별 local queue 또는 remote pipe만 조용히 drop하고 writable 대상에는
-  제출한다.
+- multicast는 target snapshot과 local match를 먼저 고정한 뒤 각 local mailbox와 remote ROUTER
+  target에 독립적으로 submit한다.
+- outbound owner는 multipart frame이 섞이지 않도록 wire submit을 직렬화하지만 target 전체의
+  capacity를 미리 검사하거나 먼저 수용된 target을 rollback하지 않는다.
+- local mailbox가 수용할 수 없으면 해당 local 대상만 drop으로 집계한다.
 - blocking publish는 `SNDTIMEO`, non-blocking publish는 `DONTWAIT` 의미를 사용한다.
 - callback 안의 destroy, 동일 handle 재진입, 다른 thread의 close와 in-flight API 규칙을 명시한다.
 - claim release는 MeshNode 포인터를 요구하지 않는 thread-safe API이며 native control block은 마지막
@@ -563,7 +561,8 @@ API 전환은 다음 내부 책임을 함께 바꿔야 한다.
 5. actor registry, ActorRef route, Spot registry와 bound session table의 owner type을 MeshNode로 바꾼다.
 6. local subscription match를 PUB/XSUB transport와 분리하고 Spot queue에 message reference를 전달한다.
 7. shared immutable multipart의 reference count가 target channel에 포함되는 local Spot queue 수와 remote
-   target submit 수에 맞는지 검증한다. `NODROP=1` admission/commit은 outbound owner에서 직렬화한다.
+   target submit 수에 맞는지 검증한다. outbound multipart submit은 frame 단위로 섞이지 않도록
+   직렬화한다.
 8. route bridge와 raw ROUTER–Spot adapter의 type, registry, source, build entry와 test를 삭제한다.
 9. snapshot, monitor source, peer state와 internal socket inventory에서 PUB/XSUB 전용 항목을 제거한다.
 10. channel·node·Spot request completion을 owner-independent infrastructure completion mailbox와 Core
@@ -759,7 +758,7 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 - 두 process가 같은 RouteMesh에서 RID direct send/request를 왕복한다.
 - 같은 `ChannelName`의 여러 node에 대한 round-robin 결과가 분산된다.
 - Logical Multicast가 remote node마다 한 번 전달되고 node-local subscription만 검사한다.
-- `NODROP=1` backpressure와 `NODROP=0` drop을 bindings 공개 결과로 구분한다.
+- ROUTER backpressure와 local mailbox drop을 bindings 공개 detail로 구분한다.
 - Node·Spot·Actor batch가 같은 message를 중복 반환하지 않고 callback은 payload를 전달하지 않는다.
 - reconnect, drain과 shutdown 뒤 native handle과 process가 정상 종료된다.
 - S11에서 언어별 실제 배포 채널의 package를 새 workspace에 설치한 뒤 같은 smoke를 다시 통과한다.
@@ -780,7 +779,7 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 | **MN-D10** | 확정 | 전체 실행 순서 | Core와 framework 정식 spec 및 문서 review loop 뒤 Core 구현·implementation gap 해소·internals 갱신·review loop를 끝낸다. S6는 `core/v10.0.0-rc.N`을 배포하고 bindings·framework를 검증한 뒤 S11에서 같은 commit을 `core/v10.0.0` stable과 bindings로 공개 |
 | **MN-D11** | 확정 | 독립 구현 리뷰 | Codex agent와 Claude Sonnet 모델이 같은 revision에서 I1 계약 구현 일치, I2 POSD·DDD 리팩터링, I3 정리 완결성을 각각 finding·evidence·clean으로 판정한다. 어느 축 수정 뒤에도 두 리뷰어가 세 축 전체를 재검토하고 모두 `CORE REVIEW CLEAN`일 때까지 반복 |
 | **MN-D12** | 확정 | multicast target channel | publisher가 target `ChannelName`을 받고 호출 MeshNode가 Core channel index에서 직접 select-many 수행 |
-| **MN-D13** | 확정 | multicast atomicity | `NODROP=1`은 조건부 local queue와 모든 remote pipe를 하나의 직렬화된 admission/commit으로 처리 |
+| **MN-D13** | 확정 | multicast 대상별 제출 | 조건부 local queue와 각 remote ROUTER target을 독립적으로 처리하고 먼저 수용된 대상은 rollback하지 않음 |
 | **MN-D14** | 확정 | Spot channel reply completion | channel request reply를 owner-independent infrastructure completion claim과 Core operation ID로 통합 |
 | **MN-D15** | 확정 | raw socket channel metadata | 모든 raw socket에 적용되는 set/get symbol과 bindings wrapper를 유지하고 MeshNode membership과 분리 |
 | **MN-D16** | 확정 | S/S application metadata | Node direct·ChannelName·Spot direct send/request와 Logical Multicast가 선택적 metadata frame을 받고 Core canonical decoder가 frame 전체의 형식·상한·수명을 검증한다 |
@@ -790,7 +789,7 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 | **MN-D20** | 확정 | claim 중심 receive와 reply | claim이 owner kind·generation을 소유하므로 `zlink_mesh_claim_recv_batch(...)` 하나로 수신한다. reply는 node 인자 없이 `zlink_mesh_reply(...)`가 one-shot token만 사용한다 |
 | **MN-D21** | 확정 | Actor transfer C 경계 | 분산 권한 결정과 durable 상태는 framework location store가 소유한다. Core의 prepare가 64-byte sealed token을 발급하고 commit은 이 token과 정확히 다음 membership epoch를 검증하며 activate와 abort도 같은 transfer를 식별한다. Core는 application이 만든 임의의 authority bytes나 외부 검증 callback을 받지 않는다 |
 | **MN-D22** | 확정 | MeshNode monitoring | 기존 socket monitor와 구분되는 `zlink_mesh_node_monitor_open(...)`을 제공하고 versioned event에 peer generation, channel, owner kind, backpressure·drop과 failure reason을 담는다 |
-| **MN-D23** | 확정 | multicast submit detail | publish는 versioned detail output으로 remote와 node-local Spot 각각의 snapshot, admitted, dropped 수를 반환한다. `NODROP=1`은 성공 시 모든 dropped 수가 0이고 `NODROP=0`은 admission에 실패한 대상을 결과로 관측할 수 있다 |
+| **MN-D23** | 확정 | multicast submit detail | publish는 versioned detail output으로 remote와 node-local Spot 각각의 snapshot, admitted, dropped 수와 remote unreachable 수를 반환한다 |
 | **MN-D24** | 확정 | 정식 spec과 public header owner | service 계약을 `mesh_node`, `dispatch`, `spot`, `actor`, `stream_session` owner로 나눈다. raw `socket/stream`은 범용 STREAM만 소유하고 Actor session 결합 계약을 포함하지 않는다 |
 
 MN-D01~MN-D24의 방향은 확정했다. §13.1의 inventory gate와 정식 Core/framework spec의 두 독립 리뷰가

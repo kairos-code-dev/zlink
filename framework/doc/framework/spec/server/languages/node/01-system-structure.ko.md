@@ -202,7 +202,7 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 |---|---|
 | `addRouteMesh(meshName).listen(endpoint)` | owner MeshNode와 ROUTER endpoint |
 | `channelName(name)` | Logical Multicast 범위와 handler namespace |
-| `configureSpotPublisher()` | 기본값이 `true`인 `noDrop` 정책 |
+| `configureSpotPublisher()` | Logical Multicast의 ROUTER 송신 설정 |
 | `configureEntrySpot({ routingId })` | Entry Spot facade 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |

@@ -15,8 +15,8 @@ Node.js E2E는 public `ZLinkRouteMeshRuntime` snapshot과 typed event를 Config 
 | MON-A3 | 10.0.0 전환 대상 | Socket weight를 0·100으로 변경하고 admission 변경 marker를 drain과 분리해 관측한다. | Channel event, local weight, ready member 수·selectable과 실제 ChannelName request 선택 결과를 각 전이 뒤 비교한다. |
 | MON-A4 | 10.0.0 전환 대상 | 우아한 종료 뒤 같은 RID·다른 endpoint replacement와 `SIGKILL`·owner lease 만료 뒤 후속 request를 검증한 로그가 있다. | 두 경로를 fresh topology로 나누고 각 peer·channel event 뒤 generation·endpoint·ready member를 최신 snapshot과 대조한다. |
 | MON-A5 | 10.0.0 전환 대상 | Location runtime과 Spot status marker, Redis-backed topology 경로가 있다. | Redis 정지·failure grace·복구에서 store event, location state·last success·last failure와 current owner token 재검증을 단언한다. |
-| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true` target queue backpressure, terminal result, backpressured event와 dropped=0인 snapshot count를 비교한다. |
-| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`의 수락·drop target 처리 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | remote ROUTER backpressure, terminal result, backpressured event와 snapshot count를 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | local target의 수락·drop 처리 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
 | MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외가 error marker로 보고된 뒤 같은 Trigger request가 성공한다. | Application gate, 느린 observer와 정상 observer를 함께 열어 claim progress·request completion·coalescing·sequence gap 후 snapshot resync를 단언한다. |
 | MON-D1 | 10.0.0 전환 대상 | 중복 source, 비양수 interval, 없는 Spot·socket source startup 검증과 service 종료·재시작 경로가 있다. | 등록하지 않은 MeshName·0 이하 observer capacity 오류와 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 검증한다. |
 

@@ -195,7 +195,7 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   거부 경계를 증명하지 않는다.
 - `SM-C5`: `play-a` Spot이 제출한 Logical Multicast를 `play-b`의 구독 Spot이 실제 수신했다는
   evidence로 검증해야 한다. 현재 `SM-C4`의 발행 측 성공은 수신 완료 근거가 아니다.
-- `SM-C6`: 기본 `configureSpotPublisher().noDrop(true)`에서 remote peer backpressure를 만들고,
+- `SM-C6`: remote ROUTER backpressure를 만들고,
   blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure
   결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 한다.
 - `SM-D15`: 별도 role의 channel request에서 actor send, bound session push와 client stream 수신까지

@@ -158,10 +158,10 @@ ROUTER full mesh만 사용한다.
 SPOT publish의 원격 대상이 개별 subscriber node가 아니라 같은 multicast domain의 모든 준비된
 node라면 원격 subscription 색인은 필요하지 않다. 호출 MeshNode가 target channel의 준비된 peer마다
 한 번씩 routed message를 보내고, 수신 node가 node-local subscription만 검사하면 된다. 이 전송을 공개
-`sendToNode()` 반복 호출로 구현하면 메시지 인코딩, target RID snapshot과 `NODROP` 적용이 호출자
-쪽으로 노출된다. 따라서 core MeshNode가 multi-target routed send를 한 번의 publish로 처리하고,
-기존 pipe HWM과 `NODROP` 의미를 조건부 local queue와 target pipe 전체에 적용해야 한다. 별도의 peer별
-pending queue는 추가하지 않는다.
+`sendToNode()` 반복 호출로 구현하면 메시지 인코딩과 target RID snapshot이 호출자 쪽으로 노출된다.
+따라서 core MeshNode가 multi-target routed send를 한 번의 publish로 처리한다. 각 remote target은
+기존 ROUTER pipe의 HWM·timeout·`DONTWAIT` 동작을 그대로 사용하고, 별도의 peer별 pending queue는
+추가하지 않는다.
 
 ### 2.3 일반 fanout의 별도 요구
 
@@ -361,15 +361,15 @@ node-local dispatch에만 사용한다. Classic Fanout Channel은 native PUB/SUB
 
 단점:
 
-- 조건부 local queue와 여러 target pipe에 기존 `NODROP` 의미를 일관되게 적용해야 한다.
+- 조건부 local queue와 여러 target pipe의 대상별 수용 결과를 일관되게 집계해야 한다.
 - request/reply와 대량 publish가 같은 queue와 connection을 공유한다.
 - 메시지 공유, multipart 원자성과 local queue·target pipe 전체의 send readiness 확인을 MeshNode 내부에서
   해결해야 한다.
 - 현재 PUB/XSUB 경로가 전달하는 bootstrap과 제어 메시지를 ROUTER 경로로 옮겨야 한다.
 
 판정: **선택한 목표 구조다.** 구현은 public routed-send 반복이 아니라 core MeshNode 내부의
-multi-target send로 제공한다. 배압과 손실 허용은 별도 queue나 새 정책을 만들지 않고 기존
-`ZLINK_PUB_OPT_NODROP` 계약을 따른다.
+multi-target send로 제공한다. 배압은 별도 queue나 새 정책을 만들지 않고 기존 ROUTER의
+HWM·timeout·`DONTWAIT` 계약을 따른다.
 
 ### 6.3 대안 C — Classic Fanout까지 ROUTER로 통합
 
@@ -498,12 +498,11 @@ subscription match 결과를 대상에 포함하고, 각 remote target member에
 - local subscriber와 remote subscriber의 공개 처리 의미를 같게 유지한다.
 - remote node는 수신한 multicast를 다른 node로 다시 전달하지 않는다.
 - 한 번 인코딩한 immutable message를 peer 전송과 local dispatch가 안전하게 공유한다.
-- `NODROP=1`을 기본값으로 사용한다. target snapshot과 local match를 먼저 계산하고 local queue와 모든
-  remote pipe가 수용 가능한지 확인한 뒤 하나의 원자적 commit으로 제출한다.
-- multicast admission과 commit은 MeshNode outbound owner에서 다른 submit 및 peer-state 전이와
-  직렬화한다. admission 뒤 commit 전에 target 집합을 축소하거나 일부 대상부터 제출하지 않는다.
-- `NODROP=0`이면 HWM에 도달한 개별 local queue 또는 remote pipe에는 조용히 drop하고 나머지 writable
-  대상에는 전달한다.
+- target snapshot과 local match를 먼저 계산한 뒤 각 local mailbox와 remote ROUTER target에
+  독립적으로 제출한다.
+- remote target은 caller의 blocking 또는 `DONTWAIT` flags를 그대로 사용한다. 먼저 수용된 대상은
+  이후 대상이 backpressure 또는 연결 종료를 반환해도 rollback하지 않는다.
+- local mailbox가 용량을 수용할 수 없으면 해당 local 대상만 drop으로 집계하며 기다리지 않는다.
 - node별 local subscription 상태와 관계없이 target `ChannelName`의 ready member 전체에 전달한다.
 
 ### 8.5 SPOT과 actor 선택
@@ -646,21 +645,20 @@ Spot Logical Multicast는 별도 연결 방향을 만들지 않는다. routed co
 - origin은 target `ChannelName`의 준비된 peer RID를 snapshot해 내부 multi-target routed send에
   제출한다.
 - 별도의 peer별 pending queue를 만들지 않고 ROUTER가 이미 소유한 RID별 pipe와 HWM을 사용한다.
-- `NODROP=1`에서는 target snapshot과 local match를 먼저 고정한다. 대상 local queue와 remote pipe 중
-  하나라도 HWM에 도달하면 어느 대상에도 제출하지 않고 backpressure를 반환한다. blocking publish는
-  `SNDTIMEO`까지 기다리고 `DONTWAIT` publish는 즉시 `BACKPRESSURED`를 반환한다.
-- 수용 가능성 확인과 전체 제출은 MeshNode outbound owner 안에서 다른 submit 및 peer-state 전이와
-  직렬화한 하나의 admission/commit으로 처리한다. commit 뒤 실제 연결이 끊어져도 이미 성공한
-  publish가 remote 수신을 보장하는 것으로 의미를 확대하지 않는다.
-- `NODROP=0`에서는 HWM에 도달한 개별 local queue 또는 remote pipe의 메시지를 조용히 버리고 writable
-  대상에는 제출한다.
-- publish 성공은 선택한 정책에 따라 local dispatch와 target pipe가 메시지를 받아들였다는 뜻이다.
-  remote node의 수신 또는 SPOT handler 처리를 보장하지 않는다.
+- target snapshot과 local match를 먼저 고정한 뒤 대상별로 제출한다. blocking remote publish는
+  ROUTER `SNDTIMEO`까지 기다릴 수 있고 `DONTWAIT` publish는 capacity가 없으면 즉시
+  `BACKPRESSURED`를 반환한다.
+- outbound coordinator는 multipart frame이 섞이지 않도록 wire submit을 직렬화한다. 이 직렬화는
+  여러 target의 capacity를 미리 검사하거나 all-or-none commit을 제공하지 않는다.
+- local mailbox가 수용할 수 없는 메시지는 해당 local 대상의 drop으로 집계한다.
+- publish 결과의 detail은 local dispatch와 target pipe의 대상별 제출 결과를 나타낸다. 먼저 수용된
+  target은 이후 target 실패로 rollback하지 않으며 remote node의 수신 또는 SPOT handler 처리를
+  보장하지 않는다.
 - remote receiver는 local dispatch만 수행하며 같은 multicast를 다시 전송하지 않는다.
 - remote subscription readiness를 기다리지 않으며 단절 중 메시지를 replay하지 않는다.
 - 같은 origin MeshNode에서 같은 destination mailbox 또는 remote RID로 성공한 publish는 outbound commit
   순서대로 관찰된다. multicast의 각 destination은 이 FIFO를 독립적으로 보존한다. 서로 다른 origin이나
-  destination 사이의 global ordering은 제공하지 않으며, `NODROP=0`으로 버린 메시지는 순서에 빈 구간을
+  destination 사이의 global ordering은 제공하지 않으며, 수용되지 않은 메시지는 순서에 빈 구간을
   만들 수 있다.
 
 ### 11.3 classic fanout PUB/SUB
@@ -730,7 +728,7 @@ framework 계획을 이해하는 데 필요한 요약만 유지한다.
 | `zlink_spot_route_bridge_*` | 없음 | MeshNode가 channel, node와 Spot ingress를 직접 처리하므로 10.0.0에서 선언과 구현을 제거한다 |
 | SpotNode node-target callback 없음 | MeshNode ready callback, claim과 batch API | Node·Spot·Actor mailbox를 분리하고 callback은 공통 wakeup만 담당한다 |
 | `zlink_spot_node_publisher_publish(...)` | target `ChannelName`을 받는 `zlink_mesh_node_publisher_publish(...)` 후보 | Core가 target channel의 ready member를 직접 선택해 Logical Multicast한다 |
-| publisher의 `ZLINK_PUB_OPT_NODROP` | 같은 `ZLINK_PUB_OPT_NODROP` | Logical Multicast에도 같은 의미로 적용하며 기본값은 `1`이다 |
+| publisher의 `ZLINK_PUB_OPT_NODROP` | 없음 | XPUB 전용 option을 Logical Multicast에 적용하지 않는다 |
 | PUB socket의 `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_SNDTIMEO` | MeshNode ROUTER의 같은 공통 socket option | 별도 multicast queue option을 추가하지 않고 RID별 pipe HWM과 send timeout을 사용한다 |
 | PUB/SUB 중심 상태 필드 | routed endpoint, ready peer, multicast submit·drop 중심의 versioned status/query | 기존 ABI를 재사용하지 않고 size와 version field가 있는 MeshNode 구조로 새로 정의해 구현 뒤 정식 spec으로 승격한다 |
 
@@ -739,9 +737,9 @@ MeshNode options에는 `MeshName`을 기록하고 startup 전 membership API로 
 select-one/select-many index에 사용한다. start 뒤 membership 변경 API는 제공하지 않는다.
 
 publish API는 호출자에게 peer RID 배열을 받지 않는다. core MeshNode가 target channel의 ready peer
-snapshot, local dispatch와 `NODROP` 적용을 소유해야 한다. `zlink_send_to_rid(...)` 같은 단일 대상
-API를 framework가 반복 호출하는 구현은 10.0.0 계약가 아니다. `NODROP=1`이 기본이며, 호출자가 명시적으로
-`0`을 설정한 경우에만 HWM에 도달한 대상의 메시지를 조용히 버릴 수 있다.
+snapshot과 local dispatch를 소유해야 한다. `zlink_send_to_rid(...)` 같은 단일 대상 API를 framework가
+반복 호출하는 구현은 10.0.0 계약가 아니다. 각 remote target은 내부 ROUTER의 HWM·timeout·
+`DONTWAIT` 의미를 사용한다.
 
 core 사용 흐름은 다음처럼 바뀐다. 이 코드는 interface 차이를 보여 주기 위한 예시다. `zlink_mesh_node_*`
 이름과 versioned ABI 방향은 D-17에서 확정했으며 exact parameter와 result signature는 Core 정식 spec이 소유한다.
@@ -766,18 +764,13 @@ zlink_mesh_node_connect_peer(node, &peer_descriptor);
 /* Publish selects the target channel directly and performs one-hop multicast. */
 void *publisher = zlink_mesh_node_publisher_new(node);
 
-/* NODROP defaults to 1. Set 0 only when silent HWM loss is acceptable. */
-int nodrop = 0;
-zlink_set_pub_option(
-    publisher, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof(nodrop));
-
+/* Each remote target uses the MeshNode ROUTER send contract. */
 zlink_mesh_node_publisher_publish(
     publisher, "game", topic, parts, count, flags); /* target ChannelName을 명시한다. */
 ```
 
-`zlink_set_pub_option(...)`은 물리 PUB socket을 다시 만드는 API가 아니다. MeshNode publisher가
-수행하는 Logical Multicast의 손실 정책을 설정한다. target `ChannelName`은 publish 호출마다 명시하고,
-Core가 다른 origin을 경유하지 않고 자신의 channel index에서 대상 집합을 선택한다.
+target `ChannelName`은 publish 호출마다 명시하고, Core가 다른 origin을 경유하지 않고 자신의 channel
+index에서 대상 집합을 선택한다. Logical Multicast만을 위한 별도 publish option은 두지 않는다.
 `ZLINK_OPT_SNDHWM`과 `ZLINK_OPT_SNDTIMEO`는 MeshNode의 공유 ROUTER에 적용되는 공통 socket option으로
 유지한다.
 
@@ -925,11 +918,6 @@ public interface IZLinkMeshChannelBuilder
         where THandler : class;
 }
 
-public interface IZLinkSpotPublisherConfig
-{
-    bool NoDrop { get; set; }
-}
-
 public interface IZLinkRouteMeshRuntimeOptions
 {
     // 유효 설정은 조회할 수 있지만 socket option setter는 startup 뒤 예외를 발생시킨다.
@@ -984,14 +972,9 @@ channel-target envelope는 `(ChannelName, message kind, packet name)`으로, RID
 `(route, message kind, packet name)`으로 dispatch한다. 같은 packet을 서로 다른 channel 또는 route family에
 등록할 수 있고 같은 key 안의 중복만 startup validation에서 실패한다.
 
-`ConfigureSpotPublisher().NoDrop`은 기본값이 `true`다. `true`이면 대상 local queue 또는 remote pipe
-중 하나라도 HWM에 도달했을 때 부분 전달하지 않고 publish에 backpressure를 적용한다. blocking publish는 MeshNode
-ROUTER의 send timeout까지 기다린 뒤 실패하고, non-blocking publish는 즉시 backpressure 결과를
-반환한다. `false`는 HWM에 도달한 대상의 메시지를 조용히 버려도 되는 경우에만 설정한다.
-
 `SendHighWaterMark`와 `SendTimeout`은 Logical Multicast만의 queue 설정이 아니다. ROUTER가 request,
 direct send와 multicast를 함께 처리하므로 `ConfigureRouterSocket()`에서 공유 socket 설정으로
-관리한다. `ConfigureSpotPublisher()`는 publish에만 적용되는 `NoDrop` 의미만 노출한다.
+관리한다. Logical Multicast만을 위한 별도 손실 정책 option은 노출하지 않는다.
 기존 ClientServer의 server/client socket 설정이 서로 달랐다면 한 ROUTER에서 동시에 보존할 수 없으므로
 10.0.0 계약에서 공유 `ConfigureRouterSocket()` 값 하나를 명시적으로 선택해야 한다. server routing 설정은
 `ConfigureRouterRouting()`으로, client의 `ProbeRouterOnConnect`는 `ConfigurePeerRouting()`으로 이동한다.
@@ -1015,8 +998,6 @@ services.AddZLinkFramework(options =>
     mesh.ChannelName("game") // 별도 socket 없이 logical membership과 handler scope를 추가한다.
         .AddSendHandler<GameCommandHandler, GameCommand>();
     mesh.ChannelName("actors"); // 같은 MeshNode가 두 logical channel에 참여할 수 있다.
-
-    mesh.ConfigureSpotPublisher().NoDrop = true; // 기본값이며 HWM에서 backpressure를 반환한다.
 
     options.AddFanoutChannel("events")
         .EnablePublisher("tcp://0.0.0.0:7400"); // native PUB/SUB fanout endpoint는 유지한다.
@@ -1122,10 +1103,10 @@ var reply = await world.RequestToNode<LookupRequest>(targetRid, request)
 world.PublishSpot("game", topic, gameEvent).Submit();
 ```
 
-`PublishSpot(...).Submit()`의 정상 반환은 호출 MeshNode가 `NoDrop` 설정에 따라 조건부 local dispatch와
-target pipe 제출을 완료했다는 뜻이다. `NoDrop=true`에서 blocking submit이 ROUTER `SendTimeout`에 도달하면
-기존 publish timeout 또는 backpressure 예외를 발생시킨다. remote node의 실제 수신이나 handler 완료까지
-기다리지는 않는다.
+`PublishSpot(...).Submit()`의 반환은 호출 MeshNode가 조건부 local dispatch와 target별 ROUTER 제출을
+시도했다는 뜻이다. blocking submit이 ROUTER `SendTimeout`에 도달하면 기존 publish timeout 또는
+backpressure 예외를 발생시킨다. 먼저 수용된 target은 rollback하지 않으며 remote node의 실제 수신이나
+handler 완료까지 기다리지는 않는다.
 
 외부 mesh-scoped client는 해당 process의 MeshNode에 target `ChannelName`을 전달한다. Core가 그
 MeshNode의 channel index에서 target set을 직접 선택하므로 다른 target-channel origin을 경유하는
@@ -1185,7 +1166,7 @@ target channel 인자를 생략하는 overload는 10.0.0에서 제거하며 defa
 | `EnableRouter(...)`, `ConnectRouter(...)` | `Listen(...)`, `IZLinkMeshPeerConnections` | MeshNode builder로 이동 |
 | `EnablePubSub(...)`, `ConnectPeerPub(...)` | 없음 | SpotNode PUB/SUB mesh와 함께 제거 |
 | `PubSubConnections`, `PublisherConnections` | 없음 | remote subscription connection을 제거 |
-| `ConfigurePubSubPublisher()` | `ConfigureSpotPublisher()` | `NoDrop`을 유지하며 기본값은 `true`다 |
+| `ConfigurePubSubPublisher()` | 없음 | XPUB 전용 손실 정책을 Logical Multicast에 옮기지 않는다 |
 | `ConfigurePubSubSubscriber()` | 없음 | remote subscription socket과 함께 제거한다 |
 | publisher의 `SendHighWaterMark`, `SendTimeout` | `ConfigureRouterSocket()`의 공통 설정 | ROUTER를 공유하는 모든 routed traffic에 적용한다 |
 | `ConfigureRouterSocket/Routing()` on Spot builder | 같은 설정을 MeshNode builder로 이동 | ROUTER의 소유권과 설정 위치를 일치시킴 |
@@ -1226,9 +1207,9 @@ queue와 Spot·actor의 node-local dispatch를 소유한다. framework의 locati
 | service 수신 | 별도 ROUTER channel, route bridge, Spot callback과 part recv 사용 | 객체별 mailbox, MeshNode ready index, opaque claim과 versioned batch 사용 |
 | dispatch 분리 | Spot callback이 Spot·actor service readiness를 함께 통지하고 C/C++ timer는 별도 handle도 제공 | Node, Spot, Actor application claim과 completion·send-ready infrastructure claim을 분리하고 timer는 framework keyed scheduler에 제출 |
 | 메시지 소유권 | PUB/SUB multipart 복제 경로 | 한 immutable message를 local dispatch와 peer submit이 참조 횟수로 공유 |
-| 배압 | mesh PUB HWM과 PUB/SUB pending queue | ROUTER의 RID별 pipe HWM과 기존 `NODROP`, `SNDTIMEO`, `DONTWAIT` 의미 사용 |
+| 배압 | mesh PUB HWM과 PUB/SUB pending queue | ROUTER의 RID별 pipe HWM, `SNDTIMEO`, `DONTWAIT` 의미 사용 |
 | bootstrap | PUB topic으로 descriptor 주기 전송 | location descriptor 또는 ROUTER control envelope 사용 |
-| 관측 | PUB/SUB subject, socket과 peer readiness | multicast domain, ready routed peer, backpressure와 `NODROP=0` drop 상태 |
+| 관측 | PUB/SUB subject, socket과 peer readiness | multicast domain, ready routed peer, 대상별 backpressure와 drop 상태 |
 
 core 구현 작업은 다음 순서로 진행한다.
 
@@ -1291,8 +1272,8 @@ RID/channel index, selection cursor, socket 복제, multicast peer queue와 wire
    전달하게 한다.
 8. publish call은 process-local MeshNode에 target channel을 넘기고 기존 typed JSON 및 packet 계약을
    유지한 채 Core Logical Multicast를 사용한다. target channel의 다른 origin을 경유하지 않는다.
-9. `ConfigureSpotPublisher().NoDrop`을 MeshNode registration에 저장하고 기본값 `true`를 bindings의
-   `ZLINK_PUB_OPT_NODROP=1`로 적용한다. HWM와 send timeout은 공유 ROUTER 설정을 사용한다.
+9. Logical Multicast는 publish 전용 손실 정책을 저장하지 않는다. HWM와 send timeout은 공유 ROUTER
+   설정을 사용하고 caller의 blocking 또는 `DONTWAIT` 선택을 각 target submit에 그대로 전달한다.
 10. MeshNode ready callback은 scheduler wakeup만 수행하고 Node·Spot·Actor claim과 batch를 bounded
     scheduler에 전달한다. completion과 send-ready는 application turn과 독립적으로 drain한다.
 11. startup validator가 `ChannelName` 누락, 중복 membership, 같은 process의 중복 `MeshName`과
@@ -1306,8 +1287,8 @@ RID/channel index, selection cursor, socket 복제, multicast peer queue와 wire
 framework는 bindings public API만 사용한다. `.NET bindings`에서는 `ISpotNode`를 `IMeshNode`로
 전환하되 Spot, actor와 subscription interface의 이름은 유지한다. `SpotNodeMode.PubSub/All`,
 `SetPubBind`, publisher/subscriber routing ID와 물리 PUB/SUB 전용 상태 모델을 10.0.0에서 제거한다.
-이전 이름을 전달하는 wrapper는 두지 않는다. publisher interface는 MeshNode가 제공하는 Spot Logical Multicast로
-바꾸되 `ZLINK_PUB_OPT_NODROP`과 기본값 `1`은 같은 의미로 유지한다. core public API가 확정되기
+이전 이름을 전달하는 wrapper는 두지 않는다. publisher interface는 MeshNode가 제공하는 Spot Logical
+Multicast로 바꾸되 XPUB 전용 option을 옮기지 않는다. core public API가 확정되기
 전에는 리플렉션, internal symbol, raw frame 또는 test-only adapter로 우회하지 않는다. `IMeshNode`는
 Core의 MeshNode ready callback, opaque claim과 versioned batch를 공개 bindings API로 제공해야 한다.
 기존 bindings의 `ISpot.SetDispatchHandler(...)`, `SpotDispatchHandler`와 framework
@@ -1526,7 +1507,7 @@ stage exact clean 문구가 모두 clean이어야 다음 stage로 진행한다.
   중복 없이 올바른 mailbox만 drain하는지 검증한다.
 - multicast envelope, local dispatch, ready-peer multi-target submit과 no-relay guard를 구현한다.
 - immutable message의 참조 횟수로 local Spot queue와 remote node submit이 payload를 공유하게 한다.
-- `ZLINK_PUB_OPT_NODROP` 기본값 `1`, 부분 전달 없는 backpressure, `NODROP=0` drop을 구현한다.
+- 각 remote target에 기존 ROUTER HWM·timeout·`DONTWAIT` 동작을 적용하고 대상별 결과를 집계한다.
 - exact/prefix local subscription match를 remote subscription state에서 분리한다.
 - bootstrap descriptor를 location 또는 ROUTER control 경로로 옮긴다.
 - `mesh_pub`, `mesh_xsub`, PUB/SUB endpoint, remote subscription protocol과 전용 상태를 제거한다.
@@ -1563,7 +1544,7 @@ Red gate:
 - Node, Spot과 Actor message는 각각의 claim과 batch에서만 나타나고 completion은 infrastructure claim으로
   application turn과 독립적으로 완료된다.
 - public header와 Core 정식 spec의 signature, ownership, error와 version이 일치한다.
-- `NODROP=1`은 부분 전달 없이 backpressure를 반환하고 `NODROP=0` drop은 관측할 수 있다.
+- 먼저 수용된 target을 rollback하지 않으며 backpressure·drop·unreachable 수치를 관측할 수 있다.
 - classic PUB/SUB socket 구현에는 변경이 없다.
 - v10 plan·review record의 삭제 추적을 제외한 symbol, source, target, test와 현재
   계약·guide·internals에 대해 범위를 정한 no-hit 검사가 통과한다.
@@ -1631,7 +1612,8 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 - source API snapshot, generated binding, package API snapshot과 native payload를 갱신한다.
 - 각 언어에서 contract test와 실제 package consumer test를 실행한다.
 - 각 언어의 실제 package를 설치한 두 개 이상의 process로 RouteMesh를 만들고 direct RID,
-  channel round-robin, Spot Logical Multicast, `NODROP`, callback 분리와 shutdown을 E2E smoke로 검증한다.
+  channel round-robin, Spot Logical Multicast, ROUTER backpressure, callback 분리와 shutdown을 E2E
+  smoke로 검증한다.
 - smoke는 source project reference가 아니라 local package와 Core 10.0.0 native artifact를 사용한다.
 - 제거된 API compile-fail 또는 source no-hit를 각 bindings의 red/cleanup gate로 둔다.
 - `scripts/local-package/publish-all-wsl.sh core/v10.0.0-rc.N --expect-version 10.0.0`으로 framework 적용 전
@@ -1673,7 +1655,7 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 - MeshNode ready callback을 bounded pump에 연결하고 Node·Spot·Actor claim 및 completion infrastructure
   claim을 각각의 framework scheduler 경계에 연결한다.
 - Spot publish와 local subscription을 Core Logical Multicast에 연결한다.
-- `ConfigureSpotPublisher().NoDrop` 기본값 `true`와 명시적 `false`를 검증한다.
+- Logical Multicast가 공유 ROUTER HWM·timeout·`DONTWAIT` 동작을 사용하는지 검증한다.
 - classic fanout과 STREAM runtime의 독립성을 유지한다.
 - startup, readiness, drain, monitoring과 mesh-scoped DI client를 갱신한다.
 - store 장애, transfer participant crash recovery, unsupported-store startup failure, scale-out/in,
@@ -1776,7 +1758,7 @@ thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 | RM-C08 | 10.0.0 계약에는 ClientServerChannel, RouteMeshChannel과 SpotMesh 하위 topology builder가 없다 |
 | RM-C09 | Spot publish·subscription 등록은 target ChannelName을 요구하고 subscription handler의 invocation signature는 유지된다 |
 | RM-C10 | RouteMesh가 둘 이상이면 unscoped external channel call을 거부한다 |
-| RM-C11 | `ConfigureSpotPublisher().NoDrop`의 기본값이 `true`이며 명시적으로 변경할 수 있다 |
+| RM-C11 | Logical Multicast를 위한 별도 손실 정책 option을 공개하지 않는다 |
 | RM-C12 | publisher별 HWM와 send timeout을 만들지 않고 `ConfigureRouterSocket()`의 공유 설정을 사용한다 |
 | RM-C13 | Core 공개 헤더의 MeshNode 참여 함수, type과 enum이 전수 처리표에 정확히 한 번 나타난다 |
 | RM-C14 | `.NET bindings`의 `IMeshNode`가 internal symbol과 raw frame 없이 node dispatch를 제공한다 |
@@ -1795,12 +1777,12 @@ thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 | RM-I05 | 서로 다른 RouteMesh가 같은 RID와 channel 이름을 가져도 상태가 섞이지 않음 |
 | RM-I06 | target pipe HWM이 다른 target의 request를 손상시키지 않음 |
 | RM-I07 | multicast가 target channel의 ready member에 한 번 전달되고 local exact·prefix match만 실행됨 |
-| RM-I08 | `NODROP=1`에서 local queue 또는 remote pipe 하나가 HWM이면 어느 대상에도 부분 전달하지 않고 `BACKPRESSURED` 반환 |
-| RM-I08A | admission과 commit 사이의 peer disconnect 및 동시 submit에서도 target 축소, local 선행 전달과 부분 enqueue가 없음 |
+| RM-I08 | remote pipe가 HWM이면 해당 target의 ROUTER send가 `BACKPRESSURED`를 반환하고 앞서 수용된 target은 유지됨 |
+| RM-I08A | peer disconnect 및 동시 submit에서도 target별 admitted·dropped·unreachable 수치가 snapshot 합계와 일치함 |
 | RM-I09 | shutdown 중 accepted reply와 multicast submit이 ROUTER 종료보다 먼저 완료 |
 | RM-I10 | MeshNode internal network socket이 ROUTER 하나이며 PUB/XSUB가 없음 |
 | RM-I11 | remote subscription, PUB endpoint와 subscription readiness 없이 multicast가 동작 |
-| RM-I12 | `NODROP=0`에서 HWM에 도달한 개별 local queue 또는 remote pipe는 조용히 drop하고 writable 대상에는 전달 |
+| RM-I12 | HWM에 도달한 local mailbox는 해당 대상만 drop되고 remote target 결과와 별도로 집계됨 |
 | RM-I13 | blocking publish가 `SNDTIMEO`까지 기다린 뒤 실패하고 `DONTWAIT`은 즉시 `BACKPRESSURED` 반환 |
 | RM-I14 | 외부 mesh-scoped publish가 target channel을 process-local MeshNode에 전달하고 direct multicast submit 결과를 반환 |
 | RM-I15 | node RID 직접 send와 channel send가 ready mask callback을 깨우고 Node claim에서만 한 번 수신됨 |
@@ -1860,7 +1842,7 @@ thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 | RM-B02 | 두 process가 같은 RouteMesh에 참여하고 RID direct send/request를 왕복함 |
 | RM-B03 | 같은 `ChannelName`의 세 node에 대한 round-robin 선택이 분산됨 |
 | RM-B04 | Spot Logical Multicast가 remote node마다 한 번 전달되고 node-local exact/prefix match를 수행함 |
-| RM-B05 | `NODROP=1` backpressure와 `NODROP=0` drop 결과가 bindings 공개 API에서 구분됨 |
+| RM-B05 | ROUTER backpressure와 local drop 결과가 bindings publish detail에서 구분됨 |
 | RM-B06 | Node·Spot·Actor batch가 같은 message를 중복 반환하지 않고 ready callback은 payload를 전달하지 않음 |
 | RM-B07 | peer reconnect, drain과 shutdown 뒤 process와 native handle이 정상 종료됨 |
 | RM-B08 | 제거된 폐기 대상 API를 사용하는 compile fixture가 실패하고 package symbol no-hit가 통과함 |
@@ -1922,7 +1904,7 @@ runtime query는 최소한 다음 상태를 제공해야 한다.
 
 - `MeshName`별 member 수와 ready routed peer 수
 - `(MeshName, ChannelName)`별 member 수, ready peer 수와 local subscription 수
-- multicast backpressure, `NODROP=0` drop과 마지막 오류
+- multicast 대상별 backpressure·drop과 마지막 오류
 - channel별 eligible MeshNode 수와 drain 제외 수
 - classic fanout channel별 publisher/subscriber readiness
 - descriptor generation과 마지막 변경 시각
@@ -1952,7 +1934,7 @@ runtime query는 최소한 다음 상태를 제공해야 한다.
 | full mesh 규모를 전체 connection 수만으로 판단 | 실제 per-socket pipe, FD와 reconnect 비용을 놓침 | node당 resource와 socket별 pipe를 함께 측정 |
 | ROUTER connection에 request와 multicast가 집중됨 | request tail latency 증가 | 공유 HWM 조정과 혼합 traffic p99 gate |
 | 모든 member 대상 multicast 증폭 | domain 크기에 비례한 bandwidth와 CPU 증가 | domain 범위 명시, shared encoding, 1천·1만 node benchmark |
-| local queue 또는 remote pipe HWM 도달 | `NODROP=1` publish backpressure 또는 `NODROP=0` 대상별 drop | PUB/SUB와 같은 `NODROP`, `SNDTIMEO`, `DONTWAIT` 계약과 상태 관측 |
+| local queue 또는 remote pipe HWM 도달 | local 대상별 drop 또는 remote ROUTER backpressure | ROUTER의 `SNDTIMEO`, `DONTWAIT` 계약과 상태 관측 |
 | remote multicast relay | 중복 전달과 traffic 폭증 | one-hop envelope와 no-relay contract test |
 | PUB bootstrap 제거 순서 오류 | peer가 ROUTER endpoint를 알 수 없음 | location/ROUTER control 경로를 먼저 구현하고 red test로 차단 |
 | MeshNode descriptor와 socket readiness 불일치 | 존재하지만 호출할 수 없는 RID 선택 | directory와 live readiness를 함께 확인 |
@@ -2031,8 +2013,8 @@ envelope, local dispatch queue와 pairwise initiator의 상세 알고리즘은 �
 | **D-05** | 확정 | `.NET` 등록 표면 | `AddRouteMesh(meshName)`과 반복 가능한 `ChannelName(channelName)`을 사용하고 ClientServer·DirectRoute topology 등록은 두지 않는다. channel handler는 logical child scope에, RID-aware route handler는 MeshNode builder에 유지한다 | S2·S8 |
 | **D-06** | 확정 | 선택 모델 | 같은 mesh의 node/channel send·request와 target-channel publish가 각각 `selectNode(RID)`, `selectOne(ChannelName)`, `selectMany(ChannelName, topic)` 의미를 내부에서 수행한다. RID 또는 RID 배열만 반환하는 공개 select API는 제공하지 않는다 | S1·S4 |
 | **D-07** | 확정 | channel membership 저장 | MeshNode descriptor의 immutable `ChannelName` set을 index로 쓰고 별도 endpoint·socket·membership row를 두지 않는다 | S1·S2·S8 |
-| **D-08** | 확정 | multicast target snapshot | 호출 MeshNode가 target channel의 ready member와 조건부 local match를 직접 snapshot한다. `NODROP=1` admission/commit 동안 target과 peer-state 전이를 고정한다 | S1·S4 |
-| **D-09** | 확정 | multicast 배압과 ordering | `NODROP=1`은 local queue와 모든 remote pipe의 원자적 admission이며 기본값은 `1`이다. `NODROP=0`은 막힌 개별 local/remote 대상만 drop한다. 별도 peer queue는 두지 않는다. 같은 origin의 성공한 publish는 destination별 commit FIFO를 보장하고 서로 다른 origin·destination 사이의 global ordering은 제공하지 않는다 | S0·S1 |
+| **D-08** | 확정 | multicast target snapshot | 호출 MeshNode가 target channel의 ready member와 조건부 local match를 직접 snapshot하고 대상별 제출 결과를 detail에 기록한다 | S1·S4 |
+| **D-09** | 확정 | multicast 배압과 ordering | 각 remote target은 기존 ROUTER HWM·timeout·`DONTWAIT` 의미를 사용하며 먼저 수용된 target을 rollback하지 않는다. local mailbox가 수용할 수 없으면 해당 local 대상만 drop한다. 별도 peer queue는 두지 않는다. 같은 origin의 성공한 publish는 destination별 commit FIFO를 보장하고 서로 다른 origin·destination 사이의 global ordering은 제공하지 않는다 | S0·S1 |
 | **D-10** | 확정 | location store 없는 manual mode | application이 endpoint 또는 예상 RID와 endpoint를 `IZLinkMeshPeerConnections`에 명시한다. remote descriptor는 admission handshake로 교환하고 admission 뒤 messaging 의미는 자동 모드와 같다. framework는 설정에서 빠진 peer를 발견하지 않으므로 운영자가 모든 peer 연결을 배포 설정에 포함해야 한다 | S0·S2 |
 | **D-11** | 확정 | 기존 endpoint API 수명 | 10.0.0에서 제거하며 alias, deprecated forwarding과 별도 mode를 두지 않는다 | S1·S2·S4·S8~S10 |
 | **D-12** | 확정 | RouteMesh 보안 identity | mesh별 trust profile과 MeshNode certificate identity를 사용하고 admission에서 `MeshName`, 인증 identity와 trust profile 불일치를 거부한다 | S0·S1 |

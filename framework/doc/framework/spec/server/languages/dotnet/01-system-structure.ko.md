@@ -123,5 +123,5 @@ RouteMesh socket과 channel weight의 public runtime option은
 MeshNode의 `MaxMessageSize`와 ChannelName의 `Weight`를 설정할 수 있다. 다른 transport option은 startup
 뒤 setter를 호출하면 `ZLinkConfigurationException`이 발생한다.
 
-Logical Multicast publisher의 `NoDrop` 기본값은 `true`다. 이 설정은 모든 remote pipe와 local Spot queue의
-admission을 하나의 publish 결과로 다루게 한다.
+Logical Multicast publisher는 publish 전용 전달 정책 option을 제공하지 않는다. 각 remote target은
+MeshNode ROUTER의 HWM과 send timeout을 따르고, local Spot queue는 독립적으로 수락하거나 drop한다.

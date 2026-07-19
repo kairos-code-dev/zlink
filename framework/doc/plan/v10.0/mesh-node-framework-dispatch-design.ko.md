@@ -760,26 +760,19 @@ mailbox는 서로 다른 queue이므로 MeshNode 총 ingress budget과 owner mai
 ready index token 수와 outstanding receive batch가 보유할 수 있는 native byte 수도 MeshNode 총 budget에
 포함한다. batch를 오래 유지해 queue HWM을 우회하는 경로를 만들지 않는다.
 
-`NODROP=1` Logical Multicast는 origin의 service outbound coordinator가 조건부 local mailbox와 선택한
-모든 remote pipe에 complete multipart를 넣을 공간을 먼저 예약한 뒤 하나의 commit으로 제출한다. 예약
-중 어느 대상이 HWM, disconnect 또는 shutdown 상태이면 확보한 reservation을 모두 해제하고 아무 대상에도
-제출하지 않는다. commit 뒤에는 같은 shared block reference를 local mailbox와 각 pipe staging에
-전달한다. raw ROUTER 공개 API를 여러 번 호출해서 이 원자성을 흉내 내지 않으며, pipe reservation은
-MeshNode service runtime 내부 계약으로 숨긴다. `NODROP=0`은 막힌 개별 대상만 drop할 수 있다.
+Logical Multicast는 origin의 service outbound coordinator가 target snapshot과 local match를 만든 뒤
+각 local mailbox와 remote ROUTER target에 complete multipart를 독립적으로 제출한다. remote target은
+caller의 `DONTWAIT` 또는 blocking flag를 그대로 사용하고 blocking이면 MeshNode ROUTER의 send timeout
+경계까지 기다릴 수 있다. 먼저 수용된 target은 이후 target의 backpressure나 연결 종료 때문에
+rollback하지 않는다. raw ROUTER 공개 API 반복은 호출자에게 target snapshot을 노출하므로 Core 내부에
+둔다.
 
-publish 성공은 origin의 local mailbox와 remote pipe가 message를 수용했다는 뜻이다. remote framework
-handler 완료를 보장하지 않는다. remote MeshNode가 network frame을 받은 뒤 local mailbox가 가득 찬
-경우 matched local mailbox 전체의 atomic admission을 다시 수행한다. capacity가 부족하면 origin peer와
-destination class별 bounded ingress staging에 유지한다. classifier는 reply, completion과 control frame을
-먼저 식별하고 data lane보다 우선 처리한다. 특정 subscription staging이 가득 찼다는 이유로 공유 ROUTER
-ingress 전체의 read를 중단하지 않는다. reserved completion/control budget과 lane별 fairness quantum을
-두어, 가득 찬 multicast mailbox가 같은 peer의 request reply나 다른 owner의 message를 막지 않게 한다.
-
-staging까지 가득 차면 해당 origin과 lane에만 backpressure를 전달하고, protocol이 이를 표현하지 못하면
-정식 spec에서 정한 peer disconnect 또는 publish failure 정책을 적용한다. mailbox lock을 보유한 상태로
-pipe capacity를 기다리지 않는다. origin에 remote local admission acknowledgement를 반환하지 않으므로
-origin의 publish 성공 의미는 확대하지 않는다. 어느 안에서도 무제한 queue 또는 통지되지 않는 silent
-drop은 허용하지 않는다.
+publish detail은 origin의 local mailbox와 remote pipe가 호출 시점에 수용한 결과를 나타내며 remote
+framework handler 완료를 보장하지 않는다. remote MeshNode가 network frame을 받은 뒤 local mailbox가
+가득 차면 해당 local 대상은 drop된다. publish 전용 ingress staging·재시도·peer 종료 정책은 두지 않고,
+mailbox lock을 보유한 상태로 capacity를 기다리지 않는다. origin에 remote local admission
+acknowledgement를 반환하지 않으므로 origin의 remote pipe 수용을 최종 Spot delivery 보장으로 확대하지
+않는다.
 
 request와 direct send도 mailbox HWM을 우회하지 않는다. request completion queue가 가득 차면 이미 받은
 reply를 버리지 않도록 request admission에서 terminal completion record 한 개를 예약한다. reply payload
@@ -998,7 +991,7 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 | FD-17 | opaque batch owner와 contiguous versioned record view를 제공한다. |
 | FD-18 | Core claim lifetime과 framework async turn lifetime을 분리한다. |
 | FD-19 | ActorRef generation과 Spot membership epoch를 분리한다. |
-| FD-20 | NODROP multi-target reservation은 service runtime이 처리한다(`D-08`, `D-09`). |
+| FD-20 | multi-target snapshot과 대상별 ROUTER submit은 service runtime이 처리한다(`D-08`, `D-09`). |
 | FD-21 | reply·completion·control staging을 application data staging보다 먼저 처리한다. |
 | FD-22 | operation ID는 성공한 request admission에서 Core가 발급한다. |
 | FD-23 | Actor transfer는 suspended target과 membership epoch CAS로 commit한다(`D-25`, `D-26`). |
@@ -1012,7 +1005,7 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 | ID | 결정 |
 |---|---|
 | FD-28 | owner mailbox는 message 수와 byte 수를 함께 제한하고 Core의 `Balanced` auto-HWM profile을 기본으로 사용한다. profile과 명시적 budget은 start 전 설정만 허용하며 실행 중에는 바꾸지 않는다. exact 계산값과 상한은 Core 정식 spec에 기록한다. |
-| FD-29 | peer·lane ingress staging은 bounded budget을 사용하고 infrastructure lane의 예약분을 application data와 분리한다. `NODROP=1` data가 staging 상한을 넘고 origin에 failure를 전달할 protocol이 없으면 해당 peer를 protocol failure로 disconnect하고 monitor event를 남긴다. silent drop과 전체 ROUTER read 중단은 허용하지 않는다. `NODROP=0`은 계약대로 막힌 개별 data 대상만 drop할 수 있다. |
+| FD-29 | Logical Multicast 수신을 위한 별도 staging·재시도·peer 종료 정책을 두지 않는다. 일반 ROUTER ingress가 local mailbox에 대상별로 수용을 시도하며 full mailbox는 해당 local 대상의 drop으로 집계한다. |
 | FD-30 | Actor join과 lifecycle은 하나의 Spot control batch에서 versioned record kind로 구분한다. lane별 공개 receive API를 만들지 않는다. |
 | FD-31 | Core는 숨은 shutdown·transfer deadline 기본값을 만들지 않는다. framework가 정식 option의 graceful shutdown 및 Actor transfer deadline을 operation에 전달하고 option은 host start 전까지만 변경한다. deadline이 끝나면 claim storage 안전성을 유지한 채 정해진 abort 또는 revoke 결과를 만든다. |
 | FD-32 | C와 C++ bindings는 claim 수명에 묶인 borrowed view와 명시적 retain을 제공한다. .NET, Java/Kotlin과 Node.js는 borrowed native view를 application에 공개하지 않고 framework pump에서 즉시 typed decode한다. |
@@ -1080,8 +1073,8 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 
 ### 17.4 backpressure와 completion
 
-- `NODROP=1`에서 local target 또는 remote pipe 하나가 막히면 부분 제출이 없다.
-- `NODROP=0`에서는 막힌 대상만 drop되고 drop counter가 증가한다.
+- remote pipe 하나가 막히면 해당 target의 ROUTER backpressure를 반환하고 먼저 수용된 target은 유지된다.
+- local mailbox가 막히면 해당 대상만 drop되고 drop counter가 증가한다.
 - mailbox message HWM과 byte HWM을 각각 검증한다.
 - request reply, timeout, cancellation과 shutdown completion이 operation ID당 정확히 한 번 발생한다.
 - completion mailbox가 가득 찬 조건에서 reply를 조용히 버리지 않는다.
@@ -1089,11 +1082,8 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 - Node, Spot routed/control과 Actor handler context로 복사한 reply token은 batch reset 뒤에도 각 owner claim
   반환 전까지 사용할 수 있고 claim 반환 뒤에는 고정 오류를 반환한다.
 - requester timeout completion 뒤 늦게 도착한 reply를 폐기하고 두 번째 completion을 만들지 않는다.
-- full subscription mailbox와 staged NODROP publish가 같은 ingress의 reply·control 처리를 막지 않는다.
+- full subscription mailbox가 같은 ingress의 reply·control 처리를 막지 않는다.
 - handler가 기다리는 reply와 full subscription mailbox가 같은 peer에 있어도 교착이 발생하지 않는다.
-- 한 peer의 multicast staging 포화가 다른 peer와 destination class의 처리량을 고갈시키지 않는다.
-- DRAINING 시작 시 mailbox가 가득 차 있고 sealed staging이 남아도 application drain과 staging flush가
-  반복·병행되어 deadline 전 모두 처리되며 선행 flush 교착이 없다.
 - DRAINING snapshot이 기존 periodic timer를 freeze하고 이미 admission된 tick만 처리해 application drain이
   끝난다.
 - shutdown completion을 만든 뒤 infrastructure pump를 다시 drain해 pending operation과 residue가 모두 0이

@@ -84,7 +84,7 @@ runtime event로 같은 state를 전달하며 Redis를 요구하지 않는다.
 | Surface | `draining` 이후 계약 |
 |---|---|
 | ChannelName select-one | 새 selection 대상에서 제외한다. 이미 선택되어 submit된 operation은 terminal completion까지 진행한다. |
-| Logical Multicast | 새 remote target snapshot에서 제외한다. 이미 수락한 local·remote target admission은 NoDrop 계약대로 끝낸다. |
+| Logical Multicast | 새 remote target snapshot에서 제외한다. 이미 수락한 local·remote target 제출은 유지한다. |
 | Node direct application request | 신규 admission seal 뒤 `request_rejected`로 끝낸다. 이미 수락한 request는 reply·error·timeout으로 끝낸다. |
 | Node direct infrastructure control | completion, transfer, binding과 shutdown barrier에 필요한 control은 deadline까지 수락한다. |
 | Spot direct | 신규 application payload를 거부하고 이미 Spot queue에 수락한 turn을 마친다. |

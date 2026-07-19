@@ -41,13 +41,11 @@ Send와 publish는 Framework가 소유한 bounded queue의 수락 결과를 반�
 또는 shutdown을 구분해 반환한다. 잘못된 handle·argument·state는 submit 결과가 아니라 언어별 local call
 오류로 처리한다.
 
-`NoDrop`은 언어별 Framework API가 Core `ZLINK_MESH_PUBLISH_OPT_NODROP`의 0 또는 1을 boolean으로
-표현한 이름이다. 두 표기는 같은 정책이며 별도 전달 모드를 뜻하지 않는다.
-
-Logical Multicast의 기본 `NoDrop = true`는 local matching queue와 모든 remote target에 대한 수락을 하나의
-operation으로 처리한다. blocking submit은 MeshNode send timeout까지 backpressure 해소를 기다린다.
-non-blocking submit은 기다리지 않고 backpressure 결과를 반환한다. `NoDrop = false`는 수락할 수 없는
-대상을 제외하고 나머지 대상에 전달할 수 있다.
+Logical Multicast는 local matching queue와 각 remote target에 독립적으로 제출한다. remote target의
+blocking submit은 내부 ROUTER의 send timeout까지 backpressure 해소를 기다리고, non-blocking submit은
+기다리지 않는다. 하나 이상의 remote target이 용량 때문에 수락하지 못하면 publish 결과는
+backpressure를 나타내지만, 앞에서 수락된 target의 제출은 취소되지 않는다. local queue가 가득 차면
+해당 target을 dropped 수에 기록하고 다른 target 처리를 계속한다.
 
 ## 2. Request completion
 

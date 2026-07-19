@@ -85,7 +85,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | channel handler에서 `IZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller thread를 block하지 않고, ready 이후에 완료된다 |
-| publish async submit backpressure | `integration-single-process` | `NoDrop` 또는 HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책에 따라 완료 또는 실패 |
+| publish async submit backpressure | `integration-single-process` | ROUTER HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책에 따라 완료 또는 실패 |
 | request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 `SendTimeout`으로, reply 대기는 `Timeout(...)`으로 판정 |
 | pending request 정리 | `unit` | submit 실패, timeout, cancellation, runtime stop이 일어날 때 request sequence가 pending map에서 제거된다 |
 | ready callback batch drain | `integration-single-process` | socket이 ready된 뒤 pending send/publish를 batch로 처리하고, 같은 frame을 중복 전송하지 않는다 |

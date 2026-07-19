@@ -641,7 +641,7 @@ publish는 metadata를 canonical frame으로 Core까지 전달한다. 다음 두
 **.NET 부분 충족.** [.NET RouteMesh §8](server/languages/dotnet/05-route-mesh.ko.md#8-runtime-snapshot-event와-drain)과
 [Runtime monitoring](server/50-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
 set, channel별 ready member 수, Logical Multicast admission 누계(backpressure·remote/local
-snapshot·admitted·dropped·pending admission), drain seal 상태와 pending transfer·STREAM barrier
+snapshot·admitted·dropped), drain seal 상태와 pending transfer·STREAM barrier
 수를 요구한다.
 
 현재 .NET `IZLinkRouteMeshRuntime` 구현은 exact interface와 event stream(polling 파생)을

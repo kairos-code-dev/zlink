@@ -30,7 +30,7 @@ checkout에서 무엇을 추가·교체·정리하고 어떤 증거로 닫아야
 |---|---|---|---|
 | CI-01 | `core/service/mesh-node` | 공개 header와 runtime이 MeshNode lifecycle, membership, peer admission, node·channel messaging을 제공하지 않음 | header API snapshot, peer/admission contract test, export 검사 |
 | CI-02 | `core/service/dispatch` | ready index, domain별 claim, ready·receive batch와 one-shot reply token이 없음 | lost-wakeup, single-consumer, batch capacity, shutdown contract test |
-| CI-03 | `core/service/spot` | complete multipart direct messaging, channel-scoped Logical Multicast와 publish option 계약이 없음 | local ref-count fanout, remote node당 단일 submit, NODROP atomicity test |
+| CI-03 | `core/service/spot` | complete multipart direct messaging과 channel-scoped Logical Multicast 계약이 없음 | local ref-count fanout, remote node당 단일 submit, 대상별 ROUTER backpressure test |
 | CI-04 | `core/service/actor` | Actor mailbox claim, Node-origin·Actor-origin completion owner와 transfer fence 계약이 없음 | Actor ordering, claim 독립성, prepare/commit/activate/abort test |
 | CI-05 | `core/service/stream-session` | 명시적 service handle, complete multipart 양방향 전송과 transfer barrier가 없음 | lifecycle, binding CAS, FIFO barrier와 disconnect test |
 | CI-06 | `core/socket/router` | `zlink_router_recv_part` 공개 header와 runtime에 raw ROUTER가 소유하지 않는 `source_spot_rid_out_`가 남아 있고 service envelope과 bridge 분기를 제거해야 함 | 10.0.0 signature에서 Spot output 제거, raw `*_part` request/reply/recv contract test, service envelope no-leak와 제거 branch no-hit |
@@ -39,7 +39,7 @@ checkout에서 무엇을 추가·교체·정리하고 어떤 증거로 닫아야
 | CI-09 | `core/polling` | MeshNode poll source와 ready handler 상호 배제, 독립 `POLLOUT` 의미가 없음 | poller/handler conflict와 domain progress test |
 | CI-10 | `core/monitoring`·`events` | MeshNode event, status snapshot과 source kind가 없음 | event ordering, snapshot consistency와 bounded label test |
 | CI-11 | `core/errors`·`errno-map` | 10.0.0 result 값, portable errno와 모든 service 함수 mapping이 header/runtime에 없음 | enum ABI static assert, result/errno matrix test |
-| CI-12 | `core/service/mesh-node` §9·`spot` §10 | option/handle 조합과 기본 `NODROP=1`이 runtime에 없음 | set/get, lifecycle, unsupported-combination test |
+| CI-12 | `core/service/mesh-node` §9·`spot` §10 | option/handle 조합의 runtime 검증이 없음 | lifecycle과 unsupported-combination test |
 | CI-13 | `core/errors` §7 | public version macro, runtime version, SOVERSION과 package 이름이 10.0.0으로 일치하지 않음 | header/runtime/CMake/package version 검사 |
 | CI-14 | 전체 service 계약 | 폐기 대상 SpotNode, route bridge, service PUB/SUB plane, part recv/send와 callback runtime이 남아 있음 | inventory의 제거 목록 전체 source/export/package no-hit |
 | CI-15 | 전체 Core 계약 | 설치 header, generated export 목록, bindings native payload와 API snapshot이 정식 spec을 반영하지 않음 | clean build artifact와 package content 검사 |

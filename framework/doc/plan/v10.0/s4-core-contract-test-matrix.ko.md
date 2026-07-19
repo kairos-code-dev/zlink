@@ -67,7 +67,7 @@
 | §5 | peer intent·admission(MeshName/RID/generation/trust), MIXED 병합, drain 교체 | V2·V5 | admission matrix test(충돌 `EEXIST`/`ESTALE`/`EACCES`), 중복 endpoint 병합 | red 예정 |
 | §6 | node/channel send·request, 선택+submit 원자, local membership 선택, FIFO | V2·V3·V5 | not-connected/`ENOENT`, round-robin 분포, local single-node, FIFO 검증 | red 예정 |
 | §6.1 | Node claim record kind 4종, completion/SEND_READY는 infra claim | V2·V4 | record kind·domain 분리 test | red 예정 |
-| §7 | publisher NODROP 기본 1, snapshot 원자, detail count | V2·V3 | NODROP all-or-nothing, detail 수치, `ENOENT` no-target | red 예정 |
+| §7 | publisher target snapshot, 대상별 ROUTER backpressure와 detail count | V2·V3 | 부분 전달 수치, `DONTWAIT`·timeout, `ENOENT` no-target | red 예정 |
 | §8 | metadata frame 형식·1024 상한·검증, wire envelope 비노출 | V2·V3 | malformed matrix(빈 key/dup key/trailing/UTF-8/상한), local=remote 동일 계약 | red 예정 |
 | §9 | option 지원표, HWM profile, mailbox budget, `EMSGSIZE`/`EINVAL`/`ENOBUFS` | V2 | option matrix test(handle별 `ENOTSUP` 포함) | red 예정 |
 | §10 | status/peers/peer_channels snapshot, `ENOBUFS` 규약 | V2 | count-only 조회, capacity 부족 재시도 | red 예정 |
@@ -91,7 +91,7 @@
 | §2·§3 | facade 수명, entry Spot, lookup/get_or_new, generation 증가 | V2 | facade/logical 분리, `ENOENT`, created flag, `ESHUTDOWN` | red 예정 |
 | §4 | channel send/request(소스 Spot envelope) | V2·V3 | MeshNode channel 계약과 동일 matrix | red 예정 |
 | §5 | direct send/request, generation 0 `EINVAL`, address 인코딩, `ESTALE`/`ENOENT` completion | V2·V5 | generation matrix, remote 부재 completion | red 예정 |
-| §6 | Spot publish=publisher 계약+source 기록 | V2·V3 | NODROP·topic 검증 공유 test | red 예정 |
+| §6 | Spot publish=publisher 계약+source 기록 | V2·V3 | ROUTER backpressure·topic 검증 공유 test | red 예정 |
 | §7 | local subscription exact/prefix, idempotent, 원자적 전환 | V2·V4 | match matrix, 동시 set/publish 원자성 | red 예정 |
 | §8 | Spot record kind·control lane, 단일 application claim | V2·V4 | domain 분리, 순차 turn | red 예정 |
 | §9 | Spot timer generation 격리, handler 상호 배제 | V2·V4 | 종료 뒤 tick 미전달, timer/claim 비동시 | red 예정 |

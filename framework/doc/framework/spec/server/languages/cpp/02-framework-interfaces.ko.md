@@ -390,10 +390,6 @@ struct mesh_node_socket_config_t {
     std::optional<std::chrono::milliseconds> send_timeout;
 };
 
-struct spot_publisher_config_t {
-    bool no_drop = true;
-};
-
 struct entry_spot_options_t {
     std::optional<zlink::routing_id_t> routing_id;
 };
@@ -413,7 +409,6 @@ public:
       std::string routing_id_prefix = {});
     mesh_node_builder_t &set_routing_id_allocation_group(std::string group_name);
     mesh_node_socket_config_t &configure_router_socket();
-    spot_publisher_config_t &configure_spot_publisher();
     entry_spot_options_t &configure_entry_spot();
     mesh_node_builder_t &use_drain_policy(mesh_node_drain_policy_t policy);
     mesh_peer_connections_t &peer_connections();
@@ -468,7 +463,6 @@ struct mesh_channel_snapshot_t {
 };
 
 struct logical_multicast_snapshot_t {
-    bool no_drop;
     std::uint64_t submitted;
     std::uint64_t backpressured;
     std::uint64_t dropped;
@@ -478,7 +472,6 @@ struct logical_multicast_snapshot_t {
     std::uint64_t local_snapshot_count;
     std::uint64_t local_admitted_count;
     std::uint64_t local_dropped_count;
-    std::uint64_t pending_admission_count;
 };
 
 struct mesh_claim_snapshot_t {
@@ -1452,8 +1445,9 @@ public:
 
 `spot_context_t::publish(...)`는 target ChannelName과 topic을 함께 받는다. publish는
 MeshNode ROUTER를 통해 remote MeshNode마다 한 번 제출하고, 수신 node는 node-local
-subscription만 검사한다. 기본 `no_drop=true`이며 모든 remote admission과 local queue
-reserve가 성공해야 수락한다. Spot·Actor 등록은 owner `mesh_node_builder_t`에 속한다.
+subscription만 검사한다. 각 remote ROUTER와 local mailbox는 대상별로 수락하며, 한 대상의
+실패가 앞에서 수락된 전송을 취소하지 않는다. Spot·Actor 등록은 owner
+`mesh_node_builder_t`에 속한다.
 
 `mesh_node_socket_config_t::max_message_size`의 `0`은 framework 상한 없음이다. Adapter는 이를
 Core의 `ZLINK_OPT_MAXMSGSIZE=-1`로 변환하고 음수 입력은 startup 설정 오류로 거부한다.

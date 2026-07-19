@@ -23,7 +23,7 @@ host 단위 정책이며 업무 handler나 개별 send/request 호출에 반복�
 |---|---|---|
 | Send | 대상 handler에 한 번 전달하는 one-way 메시지 | submit 결과만 반환하며 원격 handler 완료를 기다리지 않는다 |
 | Request | 대상 handler가 reply 또는 오류를 반환하는 메시지 | reply, 오류, timeout 또는 cancellation로 한 번 완료된다 |
-| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | `NoDrop` 정책에 따른 submit 결과를 반환한다 |
+| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | target별 ROUTER·local queue 제출을 집계한 submit 결과를 반환한다 |
 | Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | fanout socket의 전달 정책을 따른다 |
 | STREAM send/request | 연결된 session에 보내는 one-way 메시지 또는 reply를 요구하는 메시지 | session sequence와 lifecycle 계약을 따른다 |
 
@@ -72,5 +72,5 @@ submit 호출이 반환되기 전까지 outbound builder와 payload는 호출자
 transport buffer, native message pointer 또는 multipart part의 lifetime을 관리하게 하지 않는다.
 
 payload 최대 크기는 대상 transport의 `MaxMessageSize`를 따른다. 전체 message가 제한을 넘으면 일부 part를
-전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 `NoDrop` 원자성은
+전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 target별 제출과 결과 집계는
 [Spot 메시징](server/20-spot-messaging.ko.md)이 정의한다.

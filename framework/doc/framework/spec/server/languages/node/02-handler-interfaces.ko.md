@@ -226,7 +226,9 @@ export interface ZLinkMeshNodeSocketConfig {
 }
 
 export interface ZLinkSpotPublisherConfig {
-    noDrop: boolean;
+    sendHighWaterMark: number;
+    sendTimeoutMs?: number;
+    lingerMs?: number;
 }
 
 export interface ZLinkMeshNodeBuilder {
@@ -1547,7 +1549,6 @@ export interface ZLinkMeshChannelSnapshot {
 }
 
 export interface ZLinkLogicalMulticastSnapshot {
-    readonly noDrop: boolean;
     readonly submitted: bigint;
     readonly backpressured: bigint;
     readonly dropped: bigint;
@@ -1557,7 +1558,6 @@ export interface ZLinkLogicalMulticastSnapshot {
     readonly localSnapshotCount: bigint;
     readonly localAdmittedCount: bigint;
     readonly localDroppedCount: bigint;
-    readonly pendingAdmissionCount: bigint;
 }
 
 export interface ZLinkMeshClaimSnapshot {

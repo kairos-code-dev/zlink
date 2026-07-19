@@ -19,6 +19,12 @@
 - framework는 bindings 소스를 직접 참조하지 않고, 명시한 버전의 local package만 참조한다.
   bindings 새 버전을 local package 위치에 배포해도 framework의 참조 버전을 바꾸기 전까지는
   기존 버전을 계속 사용해야 한다.
+- Core 버전과 binding package 버전은 서로 다른 값이다. Core가 `10.2.0`인 상태에서 .NET binding만
+  수정했다면 .NET package는 `10.2.1`로 만들 수 있고, package 안의 native library는 계속
+  `libzlink.so.10.2.0`을 사용한다. 다른 binding package는 `10.2.0`을 유지한다.
+- Core가 수정되면 Core의 minor를 올리고 patch는 0으로 둔다. 모든 binding은 새 Core의
+  `major.minor`를 따르는 `10.x.0`에서 다시 시작한다. 그 뒤 binding에만 수정이 생겼을 때 해당
+  binding의 patch만 올린다.
 
 역할은 다음처럼 나눈다.
 
@@ -53,9 +59,11 @@ scripts/local-package/
 
 ## WSL 사용법
 
-core release를 bindings 버전에 반영하고 모든 local package를 한 번에 만든다.
+Core release를 binding이 포함하는 native library와 Core 계약 표시에 반영하고 모든 local package를
+한 번에 만든다.
 첫 번째 인자로 release tag 또는 release URL을 넘긴다. 스크립트는 native library와
-bindings version marker를 먼저 맞춘 뒤 .NET, Java/Kotlin, Node.js, C++ package를 차례로 만든다.
+Core version marker를 먼저 맞춘 뒤 .NET, Java/Kotlin, Node.js, C++ package를 차례로 만든다.
+각 binding의 package version은 바꾸지 않는다.
 
 ```bash
 ./scripts/local-package/publish-all-wsl.sh core/v9.0.0
@@ -69,8 +77,22 @@ release repository를 명시하거나 기대 버전을 검증하려면 다음처
   --expect-version 9.0.0
 ```
 
-이 명령은 bindings source와 version marker를 변경한다. framework의 bindings 참조 버전은
-변경하지 않으므로, package를 검증한 뒤에는 아래의 중앙 버전 위치를 별도로 갱신해야 한다.
+이 명령은 binding workspace의 native 파일과 Core version marker를 변경한다. framework의 bindings
+참조 버전은 변경하지 않으므로, package를 검증한 뒤에는 아래의 중앙 버전 위치를 별도로 갱신해야 한다.
+
+binding만 patch release할 때는 해당 binding의 package version만 먼저 올리고 필요한 package만 만든다.
+예를 들어 Core `10.2.0`을 그대로 사용하는 .NET binding `10.2.1`은 다음 순서로 준비한다.
+
+```bash
+./scripts/local-package/native/update-zlink-libs.sh core/v10.2.0 \
+  --repo kairos-code-dev/zlink \
+  --expect-version 10.2.0
+./scripts/local-package/build-wsl.sh dotnet
+```
+
+첫 번째 명령은 GitHub Core release의 `checksums.txt`로 다운로드한 파일을 검증하고, native runtime의
+`zlink_version`이 `10.2.0`과 정확히 같은지도 확인한다. .NET package version `10.2.1`은
+`bindings/dotnet/src/Zlink/Zlink.csproj`가 소유하며 Core 파일명으로 사용하지 않는다.
 
 현재 bindings 버전으로 전체 package만 다시 만들 때는 기존 wrapper를 사용한다.
 
@@ -185,6 +207,7 @@ local framework 개발에서는 root `package.json`의 versioned tarball 경로�
 | `CONFIGURATION` | `.NET`과 C++ 빌드 configuration. 기본값은 `Release` |
 | `ZLINK_SKIP_NPM_CI` | `true`이면 Node package 생성 전에 `npm ci`를 건너뛴다 |
 | `ZLINK_NODE_PACKAGE_MODE` | Node package 정책. `source`는 source-build tarball, `prebuild`는 pack 전에 prebuild를 검증한다 |
+| `ZLINK_CORE_VERSION` | Node prebuild 검증에 사용할 Core version. 저장소에서는 `VERSION`과 정확히 같아야 한다 |
 | `ZLINK_CPP_LOCAL_BUILD_DIR` | C++ bindings build directory. 기본값은 버전별 디렉터리다 |
 | `ZLINK_CPP_INSTALL_PREFIX` | C++ bindings install prefix. 기본값은 `install/zlink-cpp/<version>`이다 |
 
@@ -201,6 +224,10 @@ core release 산출물이나 로컬 core 빌드 결과를 bindings workspace에 
 
 기존에 `bindings/` 또는 `core/tools/` 아래에 있던 동기화 스크립트는 유지하지 않는다. 자동화와
 문서는 이 표의 경로를 직접 호출해야 한다.
+
+`native/update-zlink-libs.sh`의 `--expect-version`은 binding package version이 아니라 Core version이다.
+release tag, checksum으로 검증한 asset, native `zlink_version`이 이 값과 정확히 일치해야 한다.
+package version은 각 binding의 정식 metadata에서 따로 관리한다.
 
 `.NET` 바인딩의 native library 기준 위치는 `bindings/dotnet/native/<rid>/`이다. NuGet package를
 만들 때는 이 파일들이 `runtimes/<rid>/native/`로 들어간다. `bindings/dotnet/runtimes/`는 더 이상

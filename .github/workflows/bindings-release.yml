@@ -22,7 +22,7 @@ on:
         required: false
         type: string
       core_version:
-        description: 'Optional core release version to validate (e.g. 0.9.0 -> core/v0.9.0)'
+        description: 'Core native version (e.g. 10.2.0). Defaults to the checked-out VERSION and must match it exactly.'
         required: false
         type: string
       create_release:
@@ -52,8 +52,11 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       create_release: ${{ steps.resolve.outputs.create_release }}
       publish_registry: ${{ steps.resolve.outputs.publish_registry }}
+      core_version: ${{ steps.resolve.outputs.core_version }}
       core_tag: ${{ steps.resolve.outputs.core_tag }}
     steps:
+      - uses: actions/checkout@v4
+
       - id: resolve
         shell: bash
         run: |
@@ -96,19 +99,28 @@ jobs:
             PUBLISH_REGISTRY="false"
           fi
 
-          CORE_TAG=""
-          if [ -n "${{ github.event.inputs.core_version }}" ]; then
-            CORE_TAG="core/v${{ github.event.inputs.core_version }}"
+          REPOSITORY_CORE_VERSION=$(sed -n 's/^LIBZLINK_VERSION=//p' VERSION)
+          if ! [[ "${REPOSITORY_CORE_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid or missing LIBZLINK_VERSION in VERSION: ${REPOSITORY_CORE_VERSION}" >&2
+            exit 1
           fi
+          CORE_VERSION="${{ github.event.inputs.core_version }}"
+          if [ -z "${CORE_VERSION}" ]; then
+            CORE_VERSION="${REPOSITORY_CORE_VERSION}"
+          elif [ "${CORE_VERSION}" != "${REPOSITORY_CORE_VERSION}" ]; then
+            echo "Core version mismatch: input=${CORE_VERSION}, VERSION=${REPOSITORY_CORE_VERSION}" >&2
+            exit 1
+          fi
+          CORE_TAG="core/v${CORE_VERSION}"
 
           echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "create_release=${CREATE_RELEASE}" >> "$GITHUB_OUTPUT"
           echo "publish_registry=${PUBLISH_REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "core_version=${CORE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "core_tag=${CORE_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate Core Release Tag (optional)
-        if: steps.resolve.outputs.core_tag != ''
+      - name: Validate exact Core release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -119,6 +131,14 @@ jobs:
             "${api_url}")
           if [ "${status}" != "200" ]; then
             echo "Core release tag not found: ${{ steps.resolve.outputs.core_tag }}" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "refs/tags/${{ steps.resolve.outputs.core_tag }}:refs/tags/${{ steps.resolve.outputs.core_tag }}"
+          if ! git diff --quiet "${{ steps.resolve.outputs.core_tag }}" -- VERSION core; then
+            echo "Checked-out VERSION/core differs from ${{ steps.resolve.outputs.core_tag }}" >&2
+            echo "Binding releases must build the exact tagged Core source." >&2
+            git diff --stat "${{ steps.resolve.outputs.core_tag }}" -- VERSION core >&2
             exit 1
           fi
 
@@ -146,11 +166,11 @@ jobs:
             -DZLINK_CXX_STANDARD=17
           cmake --build core/build_bindings_release --parallel 2
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/node/prebuilds/linux-x64/libzlink.so.${{ needs.resolve.outputs.version }}
-          major="${{ needs.resolve.outputs.version }}"
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/node/prebuilds/linux-x64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/node/prebuilds/linux-x64/libzlink.so.${major}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} "bindings/node/prebuilds/linux-x64/libzlink.so.${major}"
           ln -sfn "libzlink.so.${major}" bindings/node/prebuilds/linux-x64/libzlink.so
 
       - uses: actions/setup-node@v4
@@ -169,15 +189,17 @@ jobs:
       - name: Build and test
         env:
           ZLINK_LIB_PATH: ${{ github.workspace }}/bindings/node/prebuilds/linux-x64/libzlink.so
+          ZLINK_CORE_VERSION: ${{ needs.resolve.outputs.core_version }}
         run: |
           cd bindings/node
           npm ci
           cp prebuilds/linux-x64/libzlink.so build/Release/libzlink.so
-          major="${{ needs.resolve.outputs.version }}"
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
           cp "prebuilds/linux-x64/libzlink.so.${major}" "build/Release/libzlink.so.${major}"
           npm test
           cp build/Release/zlink.node prebuilds/linux-x64/zlink.node
+          npm run verify:prebuilds
 
       - name: Package
         run: |
@@ -235,11 +257,11 @@ jobs:
             -DZLINK_CXX_STANDARD=17
           cmake --build core/build_bindings_release --parallel 2
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/go/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          major="${{ needs.resolve.outputs.version }}"
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/go/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/go/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} "bindings/go/native/linux-x86_64/libzlink.so.${major}"
           ln -sfn "libzlink.so.${major}" bindings/go/native/linux-x86_64/libzlink.so
 
       - uses: actions/setup-go@v5
@@ -356,14 +378,14 @@ jobs:
             -DZLINK_CXX_STANDARD=17
           cmake --build core/build_bindings_release --parallel 2
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/java/src/main/resources/native/linux-x86_64/libzlink.so
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/java/src/main/resources/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} bindings/java/src/main/resources/native/linux-x86_64/libzlink.so
           mkdir -p bindings/java/native/linux-x86_64
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/java/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/java/native/linux-x86_64/libzlink.so
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/java/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} bindings/java/native/linux-x86_64/libzlink.so
 
       - uses: actions/setup-java@v4
         with:
@@ -432,13 +454,14 @@ jobs:
             -DENABLE_LTO=OFF \
             -DZLINK_CXX_STANDARD=17
           cmake --build core/build_bindings_release --parallel 2
+          mkdir -p bindings/dotnet/native/linux-x64
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
-          major="${{ needs.resolve.outputs.version }}"
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/dotnet/native/linux-x64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${major}
-          ln -sfn libzlink.so.${major} bindings/dotnet/runtimes/linux-x64/native/libzlink.so
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} bindings/dotnet/native/linux-x64/libzlink.so.${major}
+          ln -sfn libzlink.so.${major} bindings/dotnet/native/linux-x64/libzlink.so
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -455,8 +478,8 @@ jobs:
 
       - name: Build, test, and pack
         env:
-          ZLINK_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/runtimes/linux-x64/native/libzlink.so.${{ needs.resolve.outputs.version }}
-          LD_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/runtimes/linux-x64/native
+          ZLINK_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/native/linux-x64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          LD_LIBRARY_PATH: ${{ github.workspace }}/bindings/dotnet/native/linux-x64
         run: |
           dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release
           dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj -c Release
@@ -516,11 +539,11 @@ jobs:
           cmake --build core/build_bindings_release --parallel 2
           mkdir -p bindings/cpp/native/linux-x86_64
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/cpp/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          major="${{ needs.resolve.outputs.version }}"
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/cpp/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/cpp/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} "bindings/cpp/native/linux-x86_64/libzlink.so.${major}"
           ln -sfn "libzlink.so.${major}" bindings/cpp/native/linux-x86_64/libzlink.so
 
       - name: Build and test
@@ -574,11 +597,11 @@ jobs:
             -DZLINK_CXX_STANDARD=17
           cmake --build core/build_bindings_release --parallel 2
           install -m755 \
-            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.version }} \
-            bindings/rust/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.version }}
-          major="${{ needs.resolve.outputs.version }}"
+            core/build_bindings_release/lib/libzlink.so.${{ needs.resolve.outputs.core_version }} \
+            bindings/rust/native/linux-x86_64/libzlink.so.${{ needs.resolve.outputs.core_version }}
+          major="${{ needs.resolve.outputs.core_version }}"
           major="${major%%.*}"
-          ln -sfn libzlink.so.${{ needs.resolve.outputs.version }} "bindings/rust/native/linux-x86_64/libzlink.so.${major}"
+          ln -sfn libzlink.so.${{ needs.resolve.outputs.core_version }} "bindings/rust/native/linux-x86_64/libzlink.so.${major}"
           ln -sfn "libzlink.so.${major}" bindings/rust/native/linux-x86_64/libzlink.so
 
       - uses: dtolnay/rust-toolchain@stable

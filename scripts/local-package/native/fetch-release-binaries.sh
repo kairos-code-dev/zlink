@@ -38,6 +38,10 @@ tag="$input"
 if [[ "$input" == *"/releases/tag/"* ]]; then
   tag="${input##*/}"
 fi
+if [[ ! "$tag" =~ ^core/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "release tag must use core/vX.Y.Z exactly: $tag" >&2
+  exit 1
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh CLI required" >&2
@@ -65,6 +69,15 @@ done
 for pkg in zlink-node-*.tar.gz; do
   tar -xzf "$pkg" -C extracted
 done
+
+if [ ! -f checksums.txt ]; then
+  echo "core release is missing checksums.txt: $tag" >&2
+  exit 1
+fi
+(
+  cd extracted
+  sha256sum --check ../checksums.txt
+)
 
 copy() { src="$1" dst="$2"; if [ -f "$src" ]; then install -D -m 0755 "$src" "$dst"; fi }
 copy_windows_dll() {
@@ -252,8 +265,8 @@ copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/rust/include/
 
 release_version="${tag#core/v}"
 IFS='.' read -r release_major release_minor release_patch <<< "$release_version"
-if [ -z "$release_major" ] || [ -z "$release_minor" ] || [ -z "$release_patch" ]; then
-  echo "release tag must use core/vX.Y.Z: $tag" >&2
+if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "release tag must use core/vX.Y.Z exactly: $tag" >&2
   exit 1
 fi
 

@@ -11,15 +11,16 @@ Usage:
   scripts/local-package/native/update-zlink-libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z]
 
 Examples:
-  scripts/local-package/native/update-zlink-libs.sh core/v1.3.0-hotfix1
-  scripts/local-package/native/update-zlink-libs.sh https://github.com/kairos-code-dev/zlink/releases/tag/core/v1.3.0-hotfix1
+  scripts/local-package/native/update-zlink-libs.sh core/v10.2.0
+  scripts/local-package/native/update-zlink-libs.sh https://github.com/kairos-code-dev/zlink/releases/tag/core/v10.2.0
   scripts/local-package/native/update-zlink-libs.sh core/v1.3.0 --repo kairos-code-dev/zlink --expect-version 1.3.0
 
 Description:
   - Downloads zlink release assets.
   - Replaces internal native libraries in all bindings (cpp/dotnet/java/go/rust/node/python).
-  - Updates binding package/test version markers to expected version.
-  - Verifies linux-x64 native libraries are major-version compatible with expected version.
+  - Updates copied Core headers and Core-version contract tests to expected version.
+  - Does not change binding package versions. Each binding owns its package version.
+  - Verifies linux-x64 native libraries exactly match expected Core version.
   - Does not run binding tests. Validate bindings separately after update.
 
 Notes:
@@ -28,7 +29,7 @@ Notes:
   - Expected version is mandatory for safety:
       - Use --expect-version X.Y.Z, or
       - let the script infer X.Y.Z from release tag/url.
-  - Native verification is major-compatibility based (e.g. 1.5.x with expected 1.6.x is allowed).
+  - Binding package versions may have a newer patch than the Core version.
 USAGE
 }
 
@@ -125,23 +126,27 @@ resolve_repo() {
 }
 
 tag_name="$(extract_tag "${release_ref}")"
+if [[ ! "${tag_name}" =~ ^core/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Error: release tag must use core/vX.Y.Z exactly: ${tag_name}" >&2
+  exit 1
+fi
 repo_name="$(resolve_repo)"
 if [[ -z "${repo_name}" ]]; then
   echo "Error: unable to resolve repository. Use --repo owner/repo." >&2
   exit 1
 fi
 
+tag_version="${tag_name#core/v}"
 if [[ -z "${expect_version}" ]]; then
-  if [[ "${tag_name}" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-    expect_version="${BASH_REMATCH[1]}"
-  else
-    echo "Error: cannot infer expected version from '${tag_name}'. Use --expect-version X.Y.Z." >&2
-    exit 1
-  fi
+  expect_version="${tag_version}"
 fi
 
 if [[ ! "${expect_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Error: invalid --expect-version '${expect_version}', expected X.Y.Z." >&2
+  exit 1
+fi
+if [[ "${expect_version}" != "${tag_version}" ]]; then
+  echo "Error: expected Core version ${expect_version} does not match release ${tag_version}." >&2
   exit 1
 fi
 
@@ -201,9 +206,8 @@ fi
 echo "[1/3] Syncing bindings native libraries from release: ${release_ref}"
 bash "${SYNC_SCRIPT}" "${release_ref}"
 
-echo "[2/3] Updating binding package/test versions to ${expect_version}"
+echo "[2/3] Updating copied Core headers and Core-version tests to ${expect_version}"
 REPO_ROOT="${REPO_ROOT}" EXPECT_VERSION="${expect_version}" "${py_bin}" - <<'PY'
-import json
 import os
 import re
 import sys
@@ -247,35 +251,15 @@ def replace_regex_optional(path: Path, pattern: str, repl: str,
         updated.append(str(path.relative_to(repo_root)))
     return True
 
-def update_json_version(path: Path) -> dict:
-    if not path.exists():
-        errors.append(f"{path}: file not found")
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    old = data.get("version")
-    data["version"] = expect
-    path.write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n",
-                    encoding="utf-8")
-    if old != expect:
-        updated.append(str(path.relative_to(repo_root)))
-    return data
-
-dotnet_csproj = repo_root / "bindings/dotnet/src/Zlink/Zlink.csproj"
 dotnet_version_test_candidates = [
     repo_root / "bindings/dotnet/tests/Zlink.Tests/VersionTests.cs",
     repo_root / "bindings/dotnet/tests/Zlink.Tests/test_system.cs",
 ]
-java_gradle = repo_root / "bindings/java/build.gradle"
 java_version_test_candidates = [
     repo_root / "bindings/java/src/test/java/dev/kairoscode/zlink/VersionTest.java",
     repo_root / "bindings/java/src/test/java/dev/kairoscode/zlink/CoreVersionPortedTest.java",
 ]
-node_pkg = repo_root / "bindings/node/package.json"
-node_lock = repo_root / "bindings/node/package-lock.json"
 node_version_test = repo_root / "bindings/node/tests/version.test.js"
-cpp_cmake = repo_root / "bindings/cpp/CMakeLists.txt"
-python_pyproject = repo_root / "bindings/python/pyproject.toml"
-python_pkg_info = repo_root / "bindings/python/src/zlink.egg-info/PKG-INFO"
 python_version_test = repo_root / "bindings/python/tests/test_version.py"
 native_manifest = repo_root / "bindings/native-artifacts.txt"
 
@@ -288,8 +272,6 @@ def pick_existing(paths):
 dotnet_version_test = pick_existing(dotnet_version_test_candidates)
 java_version_test = pick_existing(java_version_test_candidates)
 
-replace_regex(dotnet_csproj, r"<Version>[^<]+</Version>",
-              f"<Version>{expect}</Version>")
 dotnet_minor_updated = False
 dotnet_patch_updated = False
 dotnet_major_updated = False
@@ -315,8 +297,6 @@ if len({dotnet_major_updated, dotnet_minor_updated, dotnet_patch_updated}) > 1:
         "(major/minor/patch pattern mismatch)"
     )
 
-replace_regex(java_gradle, r"^version\s*=\s*'[^']+'$",
-              f"version = '{expect}'")
 java_major_updated = False
 java_minor_updated = False
 java_patch_updated = False
@@ -345,21 +325,6 @@ elif not java_major_updated and not java_minor_updated and not java_patch_update
     # Newer java tests may read expected version directly from core/include/zlink.h.
     pass
 
-update_json_version(node_pkg)
-node_lock_data = json.loads(node_lock.read_text(encoding="utf-8"))
-old_lock_ver = node_lock_data.get("version")
-node_lock_data["version"] = expect
-pkgs = node_lock_data.get("packages")
-if isinstance(pkgs, dict):
-    root_pkg = pkgs.get("")
-    if isinstance(root_pkg, dict):
-        root_pkg["version"] = expect
-node_lock.write_text(
-    json.dumps(node_lock_data, ensure_ascii=True, indent=2) + "\n",
-    encoding="utf-8",
-)
-if old_lock_ver != expect:
-    updated.append(str(node_lock.relative_to(repo_root)))
 replace_regex_optional(node_version_test, r"assert\.equal\(v\[0\],\s*\d+\);",
               f"assert.equal(v[0], {major});")
 replace_regex_optional(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
@@ -367,14 +332,6 @@ replace_regex_optional(node_version_test, r"assert\.equal\(v\[1\],\s*\d+\);",
 replace_regex_optional(node_version_test, r"assert\.equal\(v\[2\],\s*\d+\);",
               f"assert.equal(v[2], {patch});")
 
-replace_regex(cpp_cmake,
-              r"^project\(zlink_cpp VERSION [0-9]+\.[0-9]+\.[0-9]+ LANGUAGES CXX\)$",
-              f"project(zlink_cpp VERSION {expect} LANGUAGES CXX)")
-
-replace_regex(python_pyproject, r'^version\s*=\s*"[^"]+"$',
-              f'version = "{expect}"')
-replace_regex_optional(python_pkg_info, r"^Version:\s*.*$",
-                       f"Version: {expect}")
 python_major_updated = replace_regex_optional(
     python_version_test,
     r"self\.assertEqual\(major,\s*\d+\)",
@@ -416,8 +373,6 @@ go_common = repo_root / "bindings/go/include/zlink/common.h"
 go_contract_test = repo_root / "bindings/go/contract_test.go"
 rust_top_header = repo_root / "bindings/rust/include/zlink.h"
 rust_common = repo_root / "bindings/rust/include/zlink/common.h"
-rust_cargo_toml = repo_root / "bindings/rust/Cargo.toml"
-rust_cargo_lock = repo_root / "bindings/rust/Cargo.lock"
 
 update_version_header(c_top_header)
 update_version_header(c_common)
@@ -442,12 +397,6 @@ replace_regex(go_contract_test,
 
 update_version_header(rust_top_header)
 update_version_header(rust_common)
-replace_regex(rust_cargo_toml, r'^version\s*=\s*"[^"]+"$',
-              f'version = "{expect}"')
-replace_regex(rust_cargo_lock,
-              r'(?m)(\[\[package\]\]\nname = "zlink"\nversion = ")[^"]+(")',
-              rf'\g<1>{expect}\2')
-
 go_native = repo_root / "bindings/go/native"
 if go_native.exists():
     native_artifacts = sorted(
@@ -489,7 +438,7 @@ if [[ -f "${CPP_VER_TEST}" ]]; then
   sed -i -E "s/ZLINK_MAKE_VERSION\([0-9]+, [0-9]+, [0-9]+\)/ZLINK_MAKE_VERSION(${EV_MAJOR}, ${EV_MINOR}, ${EV_PATCH})/; s/ZLINK_VERSION_MAJOR == [0-9]+/ZLINK_VERSION_MAJOR == ${EV_MAJOR}/; s/ZLINK_VERSION_MINOR == [0-9]+/ZLINK_VERSION_MINOR == ${EV_MINOR}/; s/ZLINK_VERSION_PATCH == [0-9]+/ZLINK_VERSION_PATCH == ${EV_PATCH}/" "${CPP_VER_TEST}"
 fi
 
-echo "[3/3] Verifying linux-x64 zlink_version major compatibility with ${expect_version}"
+echo "[3/3] Verifying linux-x64 zlink_version exactly matches ${expect_version}"
 
 REPO_ROOT="${REPO_ROOT}" EXPECT_VERSION="${expect_version}" "${py_bin}" - <<'PY'
 import ctypes
@@ -502,8 +451,6 @@ expect_parts = expect.split(".")
 if len(expect_parts) != 3 or not all(p.isdigit() for p in expect_parts):
     print(f"Error: invalid EXPECT_VERSION '{expect}', expected X.Y.Z.")
     sys.exit(1)
-expect_major = int(expect_parts[0])
-
 libs = {
     "python": os.path.join(repo_root, "bindings/python/src/zlink/native/linux-x86_64/libzlink.so"),
     "node": os.path.join(repo_root, "bindings/node/prebuilds/linux-x64/libzlink.so"),
@@ -538,20 +485,14 @@ for name, path in libs.items():
     major, minor, patch = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
     fn(ctypes.byref(major), ctypes.byref(minor), ctypes.byref(patch))
     actual = f"{major.value}.{minor.value}.{patch.value}"
-    if major.value != expect_major:
-        print(
-            f"{name}: MAJOR_MISMATCH (actual={actual}, expected_major={expect_major})"
-        )
-        failed = True
-    elif actual != expect:
-        print(
-            f"{name}: MAJOR_OK (actual={actual}, expected={expect})"
-        )
-    else:
+    if actual == expect:
         print(f"{name}: {actual}")
+    else:
+        print(f"{name}: VERSION_MISMATCH (actual={actual}, expected={expect})")
+        failed = True
 
 if failed:
     sys.exit(1)
 PY
 
-echo "Done: bindings native libraries/version markers updated (target=${expect_version})."
+echo "Done: binding native libraries and Core-version markers updated (core=${expect_version})."

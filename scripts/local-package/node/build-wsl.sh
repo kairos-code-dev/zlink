@@ -8,7 +8,12 @@ out_dir="$artifact_root/npm"
 bindings_dir="$repo_root/bindings/node"
 package_mode="${ZLINK_NODE_PACKAGE_MODE:-source}"
 package_version="$(node -p "require('$bindings_dir/package.json').version")"
-package_major="${package_version%%.*}"
+core_version="$(sed -n 's/^LIBZLINK_VERSION=//p' "$repo_root/VERSION")"
+if ! [[ "$core_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Unable to resolve Core version from VERSION" >&2
+  exit 2
+fi
+core_major="${core_version%%.*}"
 
 mkdir -p "$out_dir"
 
@@ -35,18 +40,18 @@ esac
   npm run rebuild-native
   mkdir -p "prebuilds/linux-$node_arch"
   cp "build/Release/zlink.node" "prebuilds/linux-$node_arch/zlink.node"
-  if [ -f "prebuilds/linux-$node_arch/libzlink.so.$package_version" ]; then
-    rm -f "prebuilds/linux-$node_arch/libzlink.so.$package_major"
-    cp "prebuilds/linux-$node_arch/libzlink.so.$package_version" "prebuilds/linux-$node_arch/libzlink.so.$package_major"
-  elif [ -f "native/linux-$node_arch/libzlink.so.$package_version" ]; then
-    rm -f "prebuilds/linux-$node_arch/libzlink.so.$package_major"
-    cp "native/linux-$node_arch/libzlink.so.$package_version" "prebuilds/linux-$node_arch/libzlink.so.$package_major"
+  if [ -f "prebuilds/linux-$node_arch/libzlink.so.$core_version" ]; then
+    rm -f "prebuilds/linux-$node_arch/libzlink.so.$core_major"
+    cp "prebuilds/linux-$node_arch/libzlink.so.$core_version" "prebuilds/linux-$node_arch/libzlink.so.$core_major"
+  elif [ -f "native/linux-$node_arch/libzlink.so.$core_version" ]; then
+    rm -f "prebuilds/linux-$node_arch/libzlink.so.$core_major"
+    cp "native/linux-$node_arch/libzlink.so.$core_version" "prebuilds/linux-$node_arch/libzlink.so.$core_major"
   fi
   case "$package_mode" in
     source)
       ;;
     prebuild)
-      npm run verify:prebuilds
+      ZLINK_CORE_VERSION="$core_version" npm run verify:prebuilds
       ;;
     *)
       echo "Unknown ZLINK_NODE_PACKAGE_MODE: $package_mode" >&2
@@ -70,3 +75,5 @@ esac
 )
 
 echo "-- Node local npm tarball output: $out_dir"
+echo "-- Node binding package version: $package_version"
+echo "-- Bundled Core native version: $core_version"

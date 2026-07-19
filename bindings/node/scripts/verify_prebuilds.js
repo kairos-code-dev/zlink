@@ -12,7 +12,21 @@ const prebuildRoot = path.join(packageRoot, 'prebuilds');
 const packageVersion = JSON.parse(
   fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
 ).version;
-const packageMajor = packageVersion.split('.')[0];
+const repositoryVersionFile = path.resolve(packageRoot, '..', '..', 'VERSION');
+const repositoryCoreVersion = fs.existsSync(repositoryVersionFile)
+  ? fs.readFileSync(repositoryVersionFile, 'utf8').match(/^LIBZLINK_VERSION=(\d+\.\d+\.\d+)$/m)?.[1]
+  : undefined;
+const coreVersion = process.env.ZLINK_CORE_VERSION || repositoryCoreVersion;
+if (!coreVersion || !/^\d+\.\d+\.\d+$/.test(coreVersion)) {
+  throw new Error('ZLINK_CORE_VERSION must be X.Y.Z when the repository VERSION file is unavailable');
+}
+if (process.env.ZLINK_CORE_VERSION && repositoryCoreVersion &&
+    process.env.ZLINK_CORE_VERSION !== repositoryCoreVersion) {
+  throw new Error(
+    `ZLINK_CORE_VERSION=${process.env.ZLINK_CORE_VERSION} does not match VERSION=${repositoryCoreVersion}`
+  );
+}
+const coreMajor = coreVersion.split('.')[0];
 
 function fail(message) {
   throw new Error(message);
@@ -60,7 +74,7 @@ function isWindowsSystemDll(name) {
 function validateLinux(dir, arch) {
   const addon = path.join(dir, 'zlink.node');
   const dynamic = readElfDynamic(addon);
-  const expectedSoname = `libzlink.so.${packageMajor}`;
+  const expectedSoname = `libzlink.so.${coreMajor}`;
   if (!dynamic.includes(`Shared library: [${expectedSoname}]`)) {
     fail(`${addon} must depend on ${expectedSoname}`);
   }
@@ -76,8 +90,12 @@ function validateLinux(dir, arch) {
   if (!fs.existsSync(path.join(dir, linuxCoreLib))) {
     fail(`${dir} is missing ${linuxCoreLib}`);
   }
+  const exactCoreLibrary = `libzlink.so.${coreVersion}`;
+  if (!fs.existsSync(path.join(dir, exactCoreLibrary))) {
+    fail(`${dir} is missing exact Core runtime ${exactCoreLibrary}`);
+  }
   for (const stale of fs.readdirSync(dir)) {
-    if (/^libzlink\.so\.\d+\.\d+\.\d+$/.test(stale) && stale !== `libzlink.so.${packageVersion}`) {
+    if (/^libzlink\.so\.\d+\.\d+\.\d+$/.test(stale) && stale !== exactCoreLibrary) {
       fail(`${dir} contains stale ${stale}`);
     }
   }
@@ -167,4 +185,6 @@ for (const entry of entries) {
   validateDir(entry);
 }
 
-console.log(`[prebuilds] verified ${entries.join(', ')}`);
+console.log(
+  `[prebuilds] verified package ${packageVersion} with Core ${coreVersion}: ${entries.join(', ')}`
+);

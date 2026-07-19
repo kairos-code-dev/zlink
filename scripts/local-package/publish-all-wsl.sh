@@ -15,9 +15,10 @@ Examples:
   scripts/local-package/publish-all-wsl.sh core/v9.0.0 --repo kairos-code-dev/zlink --expect-version 9.0.0
 
 This command performs one local release preparation flow:
-  1. downloads the core release binaries and aligns bindings version markers;
+  1. downloads verified Core release binaries and aligns Core version markers;
   2. creates .NET, Java/Kotlin, Node.js, and C++ local packages.
 
+Binding package versions remain owned by each binding's package metadata.
 The existing environment variables are passed through unchanged, including
 ZLINK_LOCAL_PACKAGE_ROOT, CONFIGURATION, ZLINK_SKIP_NPM_CI,
 ZLINK_NODE_PACKAGE_MODE, ZLINK_CPP_LOCAL_BUILD_DIR, and ZLINK_CPP_INSTALL_PREFIX.

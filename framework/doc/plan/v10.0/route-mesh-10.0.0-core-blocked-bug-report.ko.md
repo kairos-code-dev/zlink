@@ -338,6 +338,24 @@ monitor open/recv와 Framework mapping은 실제 admission event로 검증됐으
 원인이 아니다. Core가 admitted transport 종료를 `PEER_CLOSED`로 push하는지, 지연된 pipe 종료가
 현재 peer row와 매칭되지 않아 event가 누락되는지 확인해야 한다.
 
+### BUG-9 (P0) — 10.1.0 NuGet native payload와 현재 Core build 불일치
+
+Framework package verifier는 8개 package의 API snapshot과 빈 NuGet consumer를 통과했다. 그러나
+`Systems.Zlink.10.1.0.nupkg`의 Linux x64 native payload와 현재 Core runtime의 SHA-256이 다르다.
+
+```
+NuGet runtimes/linux-x64/native/libzlink.so
+7aa845d48977dcf3eba8217db3a3c4c6af55707104f69e3f8c2968e4d62804a5
+
+core/build/lib/libzlink.so
+d0365a2c511e751fd45e199e91959d1b6e476ea2b2c80c2702bdc6193111f42e
+```
+
+또한 같은 10.1.0 NuGet의 Linux arm64 payload 이름은 `libzlink.so.9`로 남아 있다. 현재 E2E가
+검증한 native runtime과 source/build 결과를 하나의 release candidate로 귀속할 수 없으므로
+S8-11 package/native 일치 gate를 완료할 수 없다. Core stable source에서 모든 RID payload를 다시
+만들고 package version·SONAME·파일명·checksum manifest를 함께 검증해야 한다.
+
 ## 요약표
 
 | ID | 우선순위 | 시나리오 | 파일:라인 | 근본원인 | 상태 |
@@ -350,6 +368,7 @@ monitor open/recv와 Framework mapping은 실제 admission event로 검증됐으
 | BUG-6 | P0 | SM-G1 | `mesh_runtime.cpp`, `mesh_actor_api.cpp` | process restart 때 Actor generation counter 재사용 | 재현, Core 수정 필요 |
 | BUG-7 | P0 | SF-A2→SF-B1 | peer disconnect·channel admission | peer 제거 뒤 기존 channel target set 손상 | 재현, Core 수정 필요 |
 | BUG-8 | P1 | MON-A4 | mesh monitor peer-close 경로 | admitted transport 종료 event 누락 | 재현, Core 수정 필요 |
+| BUG-9 | P0 | S8-11 package gate | 10.1.0 NuGet native payload | x64 Core build hash 불일치, arm64 9.x 파일명 잔존 | 재배포 필요 |
 
 ## 재검 절차(Core 수렴 후)
 1. `10.1.0` local package와 `core/build/lib/libzlink.so`가 같은 Core source에서 만들어졌는지 확인.
@@ -359,3 +378,5 @@ monitor open/recv와 Framework mapping은 실제 admission event로 검증됐으
 5. BUG-5·8: `.NET` framework의 native monitor bridge로 `e2e/RuntimeMonitoring` 전체 재실행.
 6. BUG-6: `e2e/SpotService`의 SM-G1에서 same-RID 재시작 뒤 새 ActorRef generation과 old ref
    `ActorLocationStale`을 함께 확인.
+7. BUG-9: 같은 stable Core source에서 10.1.0 NuGet을 다시 만들고 모든 native RID의
+   filename·SONAME·SHA-256과 clean consumer runtime을 확인.

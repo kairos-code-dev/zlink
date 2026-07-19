@@ -6,7 +6,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.Framework.Locations.Redis.dll
 entry lib/net8.0/Zlink.Framework.Locations.Redis.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.Framework.Locations.Redis.xml=2761806ac441dda1ac7df8ba7dea92f602c37dba2e1edde6207978bd8dcab471
+content-sha256 lib/net8.0/Zlink.Framework.Locations.Redis.xml=121e050b45f393ba7e4db7530969c3c93b70a552cea1bcea1aa631baa5ae2c10
 metadata authors=Zlink.Framework.Locations.Redis
 metadata description=Official Redis location store extension for the ZLink .NET framework.
 metadata id=Zlink.Framework.Locations.Redis

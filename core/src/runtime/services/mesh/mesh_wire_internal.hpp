@@ -152,6 +152,7 @@ zlink_submit_result_t send_data_message_unlocked (mesh_node_t *node_,
 
 peer_state_t *find_peer_by_rid_locked (mesh_node_t *node_, const rid_bytes_t &rid_);
 peer_state_t *find_intent_by_endpoint_locked (mesh_node_t *node_, const std::string &endpoint_);
+bool apply_transport_ready_locked (peer_state_t *peer_, uint64_t connection_id_);
 void emit_peer_event (mesh_node_t *node_,
                       zlink_mesh_monitor_event_kind_t kind_,
                       const rid_bytes_t &rid_,

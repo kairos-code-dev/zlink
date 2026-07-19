@@ -34,6 +34,8 @@ extern "C" uint64_t zlink_test_mesh_select_admission_transport (
 extern "C" int zlink_test_mesh_duplicate_admitted_lifetime (
   int is_hello_, uint64_t existing_generation_,
   uint64_t incoming_generation_);
+extern "C" int zlink_test_mesh_transport_ready_transition (
+  uint64_t previous_connection_id_, uint64_t ready_connection_id_);
 
 #if !defined _WIN32
 namespace
@@ -57,6 +59,22 @@ void test_hello_before_ready_does_not_copy_predecessor_transport ()
       42, zlink_test_mesh_select_admission_transport (1, 41, 42));
     TEST_ASSERT_EQUAL_UINT64 (
       41, zlink_test_mesh_select_admission_transport (0, 41, 41));
+}
+
+void test_ready_handover_reconnects_before_delayed_disconnect ()
+{
+    //  A READY edge for the current pipe is only an idempotent observation.
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_test_mesh_transport_ready_transition (41, 41));
+    //  HELLO-before-READY fills the missing physical identity without
+    //  restarting admission.
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_test_mesh_transport_ready_transition (0, 42));
+    //  A different READY identity means ROUTER has already handed the RID to
+    //  the replacement pipe. Its same-generation HELLO must be eligible
+    //  before the predecessor's delayed disconnect arrives.
+    TEST_ASSERT_EQUAL_INT (
+      1, zlink_test_mesh_transport_ready_transition (41, 42));
 }
 
 int connect_raw_stream_client (const char *endpoint_)
@@ -2905,6 +2923,7 @@ int main (int argc, char **argv)
             RUN_TEST (test_);                                                 \
     } while (false)
     RUN_SELECTED (test_hello_before_ready_does_not_copy_predecessor_transport);
+    RUN_SELECTED (test_ready_handover_reconnects_before_delayed_disconnect);
     RUN_SELECTED (test_peer_admission_readiness_and_weight_update);
     RUN_SELECTED (test_stale_transport_disconnect_preserves_admitted_successor);
     RUN_SELECTED (test_outbound_disconnect_then_reconnect_same_endpoint);

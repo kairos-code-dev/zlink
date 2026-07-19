@@ -52,6 +52,30 @@ peer_state_t *find_intent_by_endpoint_locked (mesh_node_t *node_, const std::str
     return NULL;
 }
 
+bool apply_transport_ready_locked (peer_state_t *peer_, uint64_t connection_id_)
+{
+    const bool handover =
+      peer_->state == ZLINK_MESH_PEER_ADMITTED
+      && !peer_->transport.empty ()
+      && !peer_->transport.matches (connection_id_);
+
+    //  ROUTER emits a READY edge only after its duplicate-RID policy has
+    //  selected this physical pipe. Move the logical lifetime back through
+    //  CONNECTING before its HELLO arrives, so a delayed disconnect from the
+    //  replaced pipe cannot make the replacement look like a duplicate
+    //  lifetime. A READY edge for the current pipe only fills a transport id
+    //  that was missing because HELLO arrived first.
+    if (handover || peer_->state == ZLINK_MESH_PEER_ERROR) {
+        peer_->state = ZLINK_MESH_PEER_CONNECTING;
+        peer_->last_error = 0;
+        peer_->last_changed_ms = now_ms ();
+    }
+    if (peer_->state != ZLINK_MESH_PEER_ADMITTED
+        || peer_->transport.empty ())
+        peer_->transport = peer_transport_t (connection_id_);
+    return handover;
+}
+
 void emit_peer_event (mesh_node_t *node_,
                       zlink_mesh_monitor_event_kind_t kind_,
                       const rid_bytes_t &rid_,
@@ -429,5 +453,26 @@ extern "C" int zlink_test_mesh_duplicate_admitted_lifetime (
              is_hello_ != 0, &existing, incoming_generation_)
              ? 1
              : 0;
+}
+
+extern "C" int zlink_test_mesh_transport_ready_transition (
+  uint64_t previous_connection_id_, uint64_t ready_connection_id_)
+{
+    zlink::mesh::peer_state_t peer;
+    peer.state = ZLINK_MESH_PEER_ADMITTED;
+    peer.transport =
+      zlink::mesh::peer_transport_t (previous_connection_id_);
+    const bool handover =
+      zlink::mesh::apply_transport_ready_locked (
+        &peer, ready_connection_id_);
+    if (handover)
+        return peer.state == ZLINK_MESH_PEER_CONNECTING
+                   && peer.transport.matches (ready_connection_id_)
+                 ? 1
+                 : -1;
+    return peer.state == ZLINK_MESH_PEER_ADMITTED
+               && peer.transport.matches (ready_connection_id_)
+             ? 0
+             : -1;
 }
 #endif

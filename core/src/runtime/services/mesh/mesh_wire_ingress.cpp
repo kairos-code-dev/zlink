@@ -1068,37 +1068,50 @@ void drain_monitor (mesh_node_t *node_)
             //  Outbound connects match a connecting intent by endpoint; the
             //  handshake starts with our HELLO to the revealed peer rid.
             bool ours = false;
+            bool transport_handover = false;
+            bool readiness_changed = false;
+            rid_bytes_t ready_rid;
             {
                 std::lock_guard<std::mutex> connection_lock (
                   node_->peer_connection_mutex);
                 std::lock_guard<std::mutex> lock (node_->mutex);
-                const rid_bytes_t ready_rid = rid_bytes (event.routing_id);
+                ready_rid = rid_bytes (event.routing_id);
                 if (!ready_rid.empty ()) {
                     node_->current_peer_transports[ready_rid] =
                       peer_transport_t (connection_id);
                     peer_state_t *ready_peer =
                       find_peer_by_rid_locked (node_, ready_rid);
-                    if (ready_peer && ready_peer->transport.empty ())
-                        ready_peer->transport =
-                          peer_transport_t (connection_id);
+                    if (ready_peer) {
+                        const bool replaced =
+                          apply_transport_ready_locked (
+                            ready_peer, connection_id);
+                        transport_handover =
+                          replaced || transport_handover;
+                        readiness_changed =
+                          replaced || readiness_changed;
+                    }
                 }
                 peer_state_t *intent =
                   find_intent_by_endpoint_locked (node_, event.remote_addr);
                 if (intent && event.routing_id.size > 0) {
                     intent->rid = rid_bytes (event.routing_id);
-                    if (intent->state != ZLINK_MESH_PEER_ADMITTED
-                        || intent->transport.empty ())
-                        intent->transport =
-                          peer_transport_t (connection_id);
-                    if (intent->state == ZLINK_MESH_PEER_ERROR) {
-                        intent->state = ZLINK_MESH_PEER_CONNECTING;
-                        intent->last_error = 0;
-                        intent->last_changed_ms = now_ms ();
-                        recompute_readiness_locked (node_);
-                    }
+                    const zlink_mesh_peer_state_t previous_state =
+                      intent->state;
+                    transport_handover =
+                      apply_transport_ready_locked (
+                        intent, connection_id)
+                      || transport_handover;
+                    if (intent->state != previous_state)
+                        readiness_changed = true;
                     ours = true;
                 }
+                if (readiness_changed)
+                    recompute_readiness_locked (node_);
             }
+            if (transport_handover)
+                emit_peer_event (
+                  node_, ZLINK_MESH_MONITOR_PEER_CLOSED,
+                  ready_rid, ENOTCONN);
             if (ours) {
                 std::vector<unsigned char> frame = make_envelope (wire_hello, 0);
                 {

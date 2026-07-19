@@ -113,6 +113,11 @@ int zlink::router_t::xsend (msg_t *msg_)
         const bool ok =
           _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
+            // The first multipart frame can pass the readiness check and a
+            // later frame can encounter HWM. Preserve that as capacity
+            // pressure; only an inactive pipe is unreachable.
+            const pipe_write_status_t write_status = _current_out->check_write_status ();
+            const bool pipe_full = write_status == pipe_write_hwm_full;
             const blob_t &routing_id = _current_out->get_routing_id ();
             out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
             mark_out_pipe_inactive (current_out_pipe);
@@ -123,7 +128,7 @@ int zlink::router_t::xsend (msg_t *msg_)
             _current_out = NULL;
             if (_mandatory) {
                 _more_out = false;
-                errno = EHOSTUNREACH;
+                errno = pipe_full ? EAGAIN : EHOSTUNREACH;
                 return -1;
             }
             const int rc = msg_->close ();
@@ -198,6 +203,11 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
         const bool ok =
           _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
+            // A routed multipart send can reach HWM after its first frame.
+            // Keep the admitted route and report backpressure until write
+            // activation returns credit.
+            const pipe_write_status_t write_status = _current_out->check_write_status ();
+            const bool pipe_full = write_status == pipe_write_hwm_full;
             const blob_t &routing_id = _current_out->get_routing_id ();
             out_pipe_t *current_out_pipe = lookup_out_pipe (routing_id);
             mark_out_pipe_inactive (current_out_pipe);
@@ -209,7 +219,7 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
             _current_out = NULL;
             if (_mandatory) {
                 _more_out = false;
-                errno = EHOSTUNREACH;
+                errno = pipe_full ? EAGAIN : EHOSTUNREACH;
                 return -1;
             }
             const int rc = msg_->close ();

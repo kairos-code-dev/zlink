@@ -33,6 +33,29 @@ int send_routed_payload_expect_maybe_eagain (
     }
     return 0;
 }
+
+int send_routed_multipart_expect_maybe_eagain (
+  void *router_, const zlink_routing_id_t *rid_, const void *buf_, size_t size_)
+{
+    zlink_msg_t envelope;
+    if (zlink_msg_init_size (&envelope, 32) != 0)
+        return -1;
+    memset (zlink_msg_data (&envelope), 0xA5, zlink_msg_size (&envelope));
+    zlink_submit_result_t rc =
+      zlink_send_part_rid (router_, rid_, &envelope, ZLINK_SEND_FLAGS_DONTWAIT,
+                           ZLINK_PART_MORE);
+    if (rc != ZLINK_SUBMIT_OK)
+        return -1;
+
+    zlink_msg_t payload;
+    if (zlink_msg_init_size (&payload, size_) != 0)
+        return -1;
+    if (size_ > 0 && buf_)
+        memcpy (zlink_msg_data (&payload), buf_, size_);
+    rc = zlink_send_part_rid (router_, rid_, &payload, ZLINK_SEND_FLAGS_DONTWAIT,
+                              ZLINK_PART_FINAL);
+    return rc == ZLINK_SUBMIT_OK ? 0 : -1;
+}
 }
 
 void test_router_mandatory_hwm ()
@@ -165,6 +188,52 @@ void test_router_send_rid_mandatory_hwm ()
     test_context_socket_close (dealer);
 }
 
+void test_router_send_rid_multipart_hwm_is_backpressure ()
+{
+    char endpoint[MAX_SOCKET_STRING];
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+
+    int mandatory = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_router_option (router, ZLINK_ROUTER_OPT_MANDATORY, &mandatory,
+                               sizeof (mandatory)));
+    int sndhwm = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (router, ZLINK_OPT_SNDHWM, &sndhwm, sizeof (sndhwm)));
+    bind_loopback_ipv4 (router, endpoint, sizeof endpoint);
+
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "X", 1));
+    int rcvhwm = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    send_string_expect_success (dealer, "Hello", 0);
+    recv_string_expect_success (router, "X", 0);
+
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    rid.size = 1;
+    rid.data[0] = 'X';
+
+    const uint8_t payload[65536] = {0};
+    bool backpressured = false;
+    for (int i = 0; i < 1000; ++i) {
+        const int rc = send_routed_multipart_expect_maybe_eagain (
+          router, &rid, payload, sizeof (payload));
+        if (rc == 0)
+            continue;
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        backpressured = true;
+        break;
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      backpressured, "multipart routed send did not reach HWM");
+
+    test_context_socket_close (router);
+    test_context_socket_close (dealer);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -172,5 +241,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_router_mandatory_hwm);
     RUN_TEST (test_router_send_rid_mandatory_hwm);
+    RUN_TEST (test_router_send_rid_multipart_hwm_is_backpressure);
     return UNITY_END ();
 }

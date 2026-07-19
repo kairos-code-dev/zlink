@@ -1137,9 +1137,9 @@ coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S9-J01 | bindings local package 10.3.1 pin | version catalog와 dependency resolve 확인 | 진행 중 | Core 10.3.0 base 초기화 뒤 Java binding의 MeshNode routing ID lifecycle API 수정으로 package patch를 10.3.1로 올렸다. local Maven publish와 실제 native lifecycle test가 통과했으며 framework dependency resolve 최종 확인을 진행 중이다 |
-| S9-J02 | Java RouteMesh/MeshNode 구현 | Java 정식 interface와 source 일치 | 미착수 | - |
-| S9-J03 | Kotlin interface와 DSL 구현 | Kotlin 정식 interface와 source 일치 | 미착수 | - |
+| S9-J01 | bindings local package 10.3.1 pin | version catalog와 dependency resolve 확인 | 완료 | Core 10.3.0 base 초기화 뒤 Java binding의 MeshNode routing ID lifecycle API 수정으로 package patch를 10.3.1로 올렸다(`ba25b8d04`). local Maven JAR SHA-256 `a87f9b9a…8d1`, 실제 native lifecycle test와 framework dependency resolve를 확인했다 |
+| S9-J02 | Java RouteMesh/MeshNode 구현 | Java 정식 interface와 source 일치 | 진행 중 | `ffa53a936`: 정식 `addRouteMesh` 구성, MeshNode lifecycle·peer·channel runtime, callback wakeup과 단일 pull-dispatch pump, claim·reusable batch·207 재할당·retained Message 수명, monitoring snapshot을 구현했다. 제거된 Java SpotNode binding adapter 5개를 삭제했다. 13-module `classes`와 core test compile, focused lifecycle·pump·monitoring test는 통과했다. STREAM session 연결과 legacy runtime 소비자 전환이 남았다 |
+| S9-J03 | Kotlin interface와 DSL 구현 | Kotlin 정식 interface와 source 일치 | 진행 중 | `ffa53a936`에서 Kotlin `addRouteMesh` DSL 첫 slice와 전체 Kotlin compile을 통과했다. Java runtime 전환과 함께 contract snapshot·E2E 검증이 남았다 |
 | S9-J03A | JVM metadata·timer 연결 | Java/Kotlin S/S metadata 전체 공통 matrix와 `ScheduledExecutorService` timer가 immutable context·keyed scheduler 계약 통과 | 미착수 | - |
 | S9-J03B | JVM Actor transfer authority 연결 | Java/Kotlin store interface의 CAS·lease·복구·startup capability와 distributed transfer E2E 통과 | 미착수 | - |
 | S9-J03C | JVM location 기본 정책 연결 | Java/Kotlin 공식 Redis extension, manual peer, location store 미등록 시 분산 location startup failure와 test-only in-memory 경계가 정식 interface와 일치 | 미착수 | - |

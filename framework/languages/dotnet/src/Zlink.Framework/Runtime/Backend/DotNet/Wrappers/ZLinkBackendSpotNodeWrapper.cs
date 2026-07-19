@@ -205,6 +205,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         return _node.Peers();
     }
 
+    public IMeshNodeMonitor OpenMeshMonitor(
+        MeshMonitorEventMask events = MeshMonitorEventMask.All)
+    {
+        return _node.OpenMonitor(events);
+    }
+
     public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects()
     {
         // MeshNode surfaces no subject table; the framework owns the spots it

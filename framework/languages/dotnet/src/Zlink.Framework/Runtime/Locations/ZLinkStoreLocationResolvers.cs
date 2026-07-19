@@ -94,10 +94,10 @@ internal sealed class ZLinkStoreLocationResolvers :
         return row;
     }
 
-    /// <summary>Resolve plus the raw-row presence: callers that retry a
-    /// transient resolve window (a claimed-but-unpublished generation-0 row,
-    /// a lagging replica view) need to distinguish it from a confirmed store
-    /// miss, which is terminal — the identity was removed.</summary>
+    /// <summary>Resolve plus live-row presence: callers that retry a transient
+    /// resolve window (a claimed-but-unpublished generation-0 row, a lagging
+    /// replica view) need to distinguish it from a confirmed miss. A row owned
+    /// by an expired process is a miss even while stale storage remains.</summary>
     internal async ValueTask<(ZLinkActorLocation? Row, bool RowPresent)>
         ResolveActorRowWithPresenceAsync(
             ZLinkActorLocationKey key,
@@ -111,7 +111,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         // A confirmed store miss ends the identity's observed lifecycle: a
         // re-created actor restarts its generation axes and must resolve.
         if (raw is null) _observed.ForgetActor(key);
-        var row = await _liveRows.ResolveAsync(
+        var (row, liveRowPresent) = await _liveRows.ResolveWithPresenceAsync(
             raw,
             static row => row.OwnerId,
             // Reference generation 0 marks a claimed-but-unpublished actor:
@@ -124,7 +124,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
         }
 
-        return (row, raw is not null);
+        return (row, liveRowPresent);
     }
 
     private async ValueTask<TRow?> ResolveAsync<TStore, TKey, TRow>(

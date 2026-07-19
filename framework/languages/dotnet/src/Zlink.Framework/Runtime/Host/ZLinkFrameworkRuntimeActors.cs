@@ -863,9 +863,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         byte[] body,
         CancellationToken cancellationToken)
     {
-        var state = GetOrCreateActorState(actorId);
-        var actorRef = state.NativeActorRef
-                       ?? new ZLinkBackendActorRef(default, actorId, actorGeneration);
+        // The relay target is this node. Preserve the generation carried by
+        // the incoming stale route instead of reading NativeActorRef: during
+        // a chained transfer that state already points at the next owner, and
+        // replacing the incoming identity would bypass this node's forwarding
+        // mapping and attempt blocked local dispatch.
+        var actorRef = new ZLinkBackendActorRef(
+            GetActorClientSpotNode().RoutingId,
+            actorId,
+            actorGeneration);
         var parts = new[]
         {
             new ZLinkBackendActorPart(

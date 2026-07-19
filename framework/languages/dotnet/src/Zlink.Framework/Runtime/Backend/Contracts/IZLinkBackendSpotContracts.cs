@@ -59,6 +59,9 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     IReadOnlyList<MeshNodePeer> MeshPeers();
 
+    IMeshNodeMonitor OpenMeshMonitor(
+        MeshMonitorEventMask events = MeshMonitorEventMask.All);
+
     IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects();
 
     IZLinkBackendSpot EntrySpot();

@@ -44,6 +44,23 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
+    public async Task Actor_Resolve_Presence_Excludes_Rows_Of_Expired_Owners()
+    {
+        var fixture = await FixtureAsync();
+        await SeedRowsAsync(fixture.Store, DeadOwner, "2");
+
+        // Storage cleanup may lag behind lease expiry. The stale row must be a
+        // confirmed miss, not a transient live-owner publication window.
+        fixture.Time.Advance(ShortLease + TimeSpan.FromSeconds(1));
+
+        var (row, rowPresent) = await fixture.Resolvers.ResolveActorRowWithPresenceAsync(
+            new ZLinkActorLocationKey("play", "actor-2"));
+
+        Assert.Null(row);
+        Assert.False(rowPresent);
+    }
+
+    [Fact]
     public async Task Queries_Read_The_Store_Directly()
     {
         var fixture = await FixtureAsync();

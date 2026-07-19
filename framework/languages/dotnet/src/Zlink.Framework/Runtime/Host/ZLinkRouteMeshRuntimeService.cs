@@ -6,9 +6,9 @@ namespace Zlink.Framework.Runtime.Host;
 
 /// <summary>
 /// IZLinkRouteMeshRuntime over the registered MeshNodes (spec 50). Snapshots
-/// read the Core status/peer tables directly; the event stream is derived by
-/// polling those tables and emitting the spec identifiers for observed
-/// transitions, so event handlers never sit on the dispatch path.
+/// read the Core status/peer tables directly; the event stream consumes the
+/// independent Core MeshNode monitor, so event handlers never sit on the
+/// dispatch path.
 /// Core does not expose per-peer ChannelName sets, per-channel ready-member
 /// counts, multicast admission counters or drain seal state yet; those
 /// snapshot fields carry their empty values (gap 90 §12.37).
@@ -18,7 +18,7 @@ internal sealed class ZLinkRouteMeshRuntimeService(
     ZLinkLocationStoreHealth? storeHealth,
     Func<IZLinkDrainControl?> drainControl) : IZLinkRouteMeshRuntime
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan MonitorIdleDelay = TimeSpan.FromMilliseconds(10);
 
     private readonly object _sequenceGate = new();
     private readonly Dictionary<string, ulong> _sequences = new(StringComparer.Ordinal);
@@ -72,64 +72,108 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
-        MeshNodeState? lastState = null;
-        var lastPeers = new Dictionary<RoutingId, MeshNodePeer>();
+        _ = capacity;
+        using var monitor = nodeRuntime.Node.OpenMeshMonitor();
+        var initialStatus = nodeRuntime.Node.MeshStatus();
+        yield return Event(
+            "zlink.runtime.mesh_node.state_changed",
+            meshName,
+            initialStatus.RoutingId,
+            state: MapNodeState(initialStatus.State));
         while (!cancellationToken.IsCancellationRequested)
         {
             var status = nodeRuntime.Node.MeshStatus();
-            var peers = nodeRuntime.Node.MeshPeers();
-
-            if (lastState != status.State)
+            var nativeEvent = monitor.Recv(RecvFlags.DontWait);
+            if (nativeEvent is not null)
             {
-                lastState = status.State;
-                yield return Event(
-                    "zlink.runtime.mesh_node.state_changed",
-                    meshName,
-                    status.RoutingId,
-                    state: MapNodeState(status.State));
-            }
-
-            var seen = new HashSet<RoutingId>();
-            foreach (var peer in peers)
-            {
-                seen.Add(peer.RoutingId);
-                if (lastPeers.TryGetValue(peer.RoutingId, out var previous)
-                    && previous.State == peer.State
-                    && previous.LifecycleGeneration == peer.LifecycleGeneration
-                    && previous.DescriptorRevision == peer.DescriptorRevision)
-                    continue;
-
-                lastPeers[peer.RoutingId] = peer;
-                yield return Event(
-                    "zlink.runtime.mesh_node.peer_changed",
-                    meshName,
-                    status.RoutingId,
-                    peerRid: peer.RoutingId,
-                    lifecycleGeneration: peer.LifecycleGeneration,
-                    descriptorRevision: peer.DescriptorRevision,
-                    reason: MapPeerState(peer).AdmissionState);
-            }
-
-            foreach (var gone in lastPeers.Keys.Where(rid => !seen.Contains(rid)).ToArray())
-            {
-                lastPeers.Remove(gone);
-                yield return Event(
-                    "zlink.runtime.mesh_node.peer_changed",
-                    meshName,
-                    status.RoutingId,
-                    peerRid: gone,
-                    reason: "disconnected");
+                var mapped = MapMonitorEvent(meshName, status.RoutingId, nativeEvent);
+                if (mapped is not null)
+                    yield return mapped;
+                continue;
             }
 
             try
             {
-                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(MonitorIdleDelay, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 yield break;
             }
         }
+    }
+
+    private ZLinkMeshRuntimeEvent? MapMonitorEvent(
+        string meshName,
+        RoutingId sourceRid,
+        MeshMonitorEvent nativeEvent)
+    {
+        RoutingId? peerRid = nativeEvent.PeerRid.IsEmpty
+            ? null
+            : nativeEvent.PeerRid;
+        var identifier = nativeEvent.Kind switch
+        {
+            MeshMonitorEventKind.StateChanged =>
+                "zlink.runtime.mesh_node.state_changed",
+            MeshMonitorEventKind.ChannelChanged =>
+                "zlink.runtime.mesh_node.channel_changed",
+            MeshMonitorEventKind.Backpressured =>
+                "zlink.runtime.mesh_node.multicast_backpressured",
+            MeshMonitorEventKind.MulticastDropped =>
+                "zlink.runtime.mesh_node.multicast_dropped",
+            MeshMonitorEventKind.ClaimRevoked =>
+                "zlink.runtime.mesh_node.claim_changed",
+            MeshMonitorEventKind.PeerConnecting
+                or MeshMonitorEventKind.PeerAdmitted
+                or MeshMonitorEventKind.PeerDraining
+                or MeshMonitorEventKind.PeerClosed
+                or MeshMonitorEventKind.PeerRejected
+                or MeshMonitorEventKind.ProtocolError =>
+                "zlink.runtime.mesh_node.peer_changed",
+            _ => null
+        };
+        if (identifier is null)
+            return null;
+
+        var reason = nativeEvent.Kind switch
+        {
+            MeshMonitorEventKind.PeerConnecting => "connecting",
+            MeshMonitorEventKind.PeerAdmitted => "ready",
+            MeshMonitorEventKind.PeerDraining => "draining",
+            MeshMonitorEventKind.PeerClosed => "disconnected",
+            MeshMonitorEventKind.PeerRejected => "HandshakeFailed",
+            MeshMonitorEventKind.ProtocolError => "rejected",
+            MeshMonitorEventKind.Backpressured => "backpressure",
+            _ => null
+        };
+        return new ZLinkMeshRuntimeEvent(
+            identifier,
+            NextSequence(meshName),
+            DateTimeOffset.UtcNow,
+            meshName,
+            sourceRid,
+            peerRid,
+            nativeEvent.PeerLifecycleGeneration == 0
+                ? null
+                : nativeEvent.PeerLifecycleGeneration,
+            nativeEvent.PeerDescriptorRevision == 0
+                ? null
+                : nativeEvent.PeerDescriptorRevision,
+            string.IsNullOrEmpty(nativeEvent.ChannelName)
+                ? null
+                : nativeEvent.ChannelName,
+            ClaimDomain: null,
+            MessageKind: null,
+            nativeEvent.SnapshotRemoteTargetCount,
+            nativeEvent.AdmittedRemoteTargetCount,
+            nativeEvent.DroppedRemoteTargetCount,
+            nativeEvent.SnapshotLocalSpotCount,
+            nativeEvent.AdmittedLocalSpotCount,
+            nativeEvent.DroppedLocalSpotCount,
+            reason,
+            nativeEvent.Kind == MeshMonitorEventKind.StateChanged
+                ? MapNodeState(nativeEvent.MeshState)
+                : null);
     }
 
     public bool IsReady(string meshName)

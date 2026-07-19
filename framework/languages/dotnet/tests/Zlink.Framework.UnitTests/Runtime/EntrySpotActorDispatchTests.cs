@@ -3786,6 +3786,10 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IReadOnlyList<MeshNodePeer> MeshPeers() => [];
 
+        public IMeshNodeMonitor OpenMeshMonitor(
+            MeshMonitorEventMask events = MeshMonitorEventMask.All) =>
+            new UnusedMeshNodeMonitor();
+
         public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects() => [];
 
         public List<string> AddedChannels { get; } = [];
@@ -3825,6 +3829,20 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler) =>
             NodeRouteHandler = handler;
+
+        private sealed class UnusedMeshNodeMonitor : IMeshNodeMonitor
+        {
+            public MeshMonitorEvent? Recv(RecvFlags flags = RecvFlags.None) =>
+                throw new NotSupportedException();
+
+            public MeshMonitorStatus Status() => throw new NotSupportedException();
+
+            public void Close() { }
+
+            public void Dispose() { }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
 
         public IZLinkBackendSpot EntrySpot()
         {

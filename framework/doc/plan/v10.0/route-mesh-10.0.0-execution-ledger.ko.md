@@ -131,6 +131,26 @@ queue, retry, peer admission과 lifecycle 복잡성은 책임을 소유한 깊�
 성능 측정과 개선은 RouteMesh 10.0.0 기능 구현·배포 gate에서 제외하고 별도 후속 작업으로 진행한다.
 현재 stage를 완료하기 위해 benchmark나 p99 측정을 새로 실행하지 않는다.
 
+### 0.4 결함 수정 version과 병렬 실행 정책
+
+2026-07-19 사용자 결정에 따라 공개 전 전환을 완료하는 동안 발견한 Core 결함 수정은 Core의 minor
+version을 올린다. same-RID handover 수정은 `10.2.0`, 이어서 발견한 multicast backpressure 뒤
+route-state 손상 수정은 `10.3.0` candidate다. 네 bindings도 최신 Core native 기준 version을 따라
+모두 `10.3.0`을 base package로 만든다. Core 변경 없이 특정 binding만 수정하면 해당 binding의 patch만
+`10.3.1`, `10.3.2`처럼 올린다. Core minor가 다시 올라가면 이전 binding patch 숫자는 승계하지 않고
+모든 binding을 새 Core version의 patch `0`으로 초기화한다. binding 전용 patch를 올릴 때는 다른
+bindings와 Core version을 바꾸지 않는다.
+
+Core version과 binding package version을 하나의 값으로 간주하던 release workflow·검증 스크립트는
+binding별 patch release를 지원하지 못했다. `e6812889a`에서 두 version을 별도 입력과 검증 대상으로
+분리하고 release checksum·exact Core version·source tag provenance gate를 추가했다. package가 참조하는
+Core native version과 binding package version은 S11에서 각각 증거로 남긴다.
+
+서로 다른 파일과 책임 범위는 가능한 한 병렬로 진행한다. C++, JVM과 Node.js framework lane도 정식
+spec과 guide를 기준으로 독립 실행한다. 실제 source나 package 선행 조건 때문에 기존 순서를 적용할 수
+없으면 공개 계약과 review gate는 유지하되 작업 순서를 조정할 수 있으며, 조정 이유와 남은 gate를 이
+ledger의 담당 행에 기록한다.
+
 ## 1. 고정 실행 순서
 
 | Stage | 작업 | 병렬 실행 | 완료 판정 |
@@ -766,7 +786,7 @@ S4 완료 gate:
 | S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 완료 | iteration 16에서 두 리뷰어가 최신 snapshot 전체 scope를 재검토하고 세 축 모두 CLEAN |
 | S5-11 | 확정 Core internals 갱신 | 두 review clean과 S5-09 종료 검증 뒤 최종 source의 ROUTER 배선, mailbox·ready·claim·batch, lock·thread, timeout과 Actor·STREAM lifecycle을 `core/doc/internals/`에 반영 | 완료 | 커밋 `2128ae91c`: services-internals §4·§8 신규 구조(timeout task 소유·detach primitive·µs generation·monitor pin·무할당 scheduler) 반영, stale SPOT 참조를 MeshNode dispatch로 교체 |
 | S5-12 | Core internals 확정 검사 | S5-11 문서와 최종 source·구조 test·diagram·link의 차이 0개. 문서 검사만으로 구현 전체 재리뷰를 열지 않음 | 완료 | stale 식별자(spot_sub_recv 등) no-hit, internals가 가리키는 소스 파일 전수 존재, `git diff --check` 통과. 코드 결함 미발견으로 재리뷰 미개방 |
-| S5-13 | framework core-blocked 결함 수정과 POSD 재검 | BUG-1~5를 결정적 회귀로 확인하고 실제 책임 계층을 수정한 뒤 Core 전체 I1·I2·I3 재리뷰와 종료 검증 | 진행 | BUG-1 transport `connection_id`, BUG-2 논리·물리 연결 전이 직렬화와 표준 ROUTER handover, BUG-4 session별 FIFO gate, BUG-5 exact `EPROTO` monitor 승격, BUG-8 DRAINING→CLOSED event를 수정했다. stale/disconnect/reconnect/drain 반복 30/30, 별도 reconnect 50/50, backpressure shutdown 10/10을 통과했다. HELLO-before-READY, bounded reliable monitor queue와 transfer fence ordering 회귀를 추가했다. 최종 Core 전체 CTest 86/86과 두 Codex 재리뷰 `NO ISSUES`를 확인했다. 10.1.0 네 binding local package는 같은 Core runtime SHA-256 `8361fe95...f198`로 재배포했다. framework E2E 재검은 담당 작업자가 결과를 버그 리포트의 2차 기록 표에 작성한다. |
+| S5-13 | framework core-blocked 결함 수정과 POSD 재검 | BUG-1~5를 결정적 회귀로 확인하고 실제 책임 계층을 수정한 뒤 Core 전체 I1·I2·I3 재리뷰와 종료 검증 | 진행 | BUG-1 transport `connection_id`, BUG-2 논리·물리 연결 전이 직렬화와 표준 ROUTER handover, BUG-4 session별 FIFO gate, BUG-5 exact `EPROTO` monitor 승격, BUG-8 DRAINING→CLOSED event를 수정했다. stale/disconnect/reconnect/drain 반복 30/30, 별도 reconnect 50/50, backpressure shutdown 10/10을 통과했다. HELLO-before-READY, bounded reliable monitor queue와 transfer fence ordering 회귀를 추가했다. 최종 Core 전체 CTest 86/86과 두 Codex 재리뷰 `NO ISSUES`를 확인했다. 10.1.0 네 binding local package는 같은 Core runtime SHA-256 `8361fe95...f198`로 재배포했다. 2026-07-19 추가 재검에서 same-RID replacement READY가 old disconnect보다 먼저 도착하면 새 pipe를 duplicate로 거부하는 경쟁을 확인해, READY handover가 현재 `connection_id`를 선택하도록 Core 10.2.0에서 수정했다(`b8c45e23f`, origin/main push 완료). 결정적 admission 17/17과 10회 반복, ancillaries 2/2, public surface 192 exports가 통과했다. 이어 multicast publish가 HWM에 도달하면 `_out_active`를 연결 종료로 잘못 해석해 route를 제거하는 결함을 Core 10.3.0에서 수정했다(`864ec7306`, origin/main push 완료). blocking publish와 nonblocking backpressure 결정적 회귀, mandatory HWM 회귀와 unreachable accounting 회귀가 통과했다. framework E2E와 BUG-3·7 재판정, 전체 Core 재리뷰가 남았다. |
 
 Core 구현 리뷰는 §2.1의 I1·I2·I3를 각각 판정한다. 다음 항목은 축별 최소 검토 범위다.
 
@@ -841,10 +861,10 @@ Python·Go·Rust는 이번 10.0.0 적용을 보류하므로 이 준비에서 대
 |---|---|---|---|---|
 | S7-00 | RC tag parser와 runtime version 분리 | local-package script가 `core/v10.0.0-rc.N` asset tag는 그대로 사용하고 C/header runtime version은 숫자 `10.0.0`으로 기록하며 version macro에 `-rc.N` suffix를 남기지 않음 | 미착수 | - |
 | S7-00A | RC fixture·provenance test | RC/stable tag fixture가 version marker, source SHA, checksum과 asset URL을 검증하고 malformed tag·suffix 잔존·checksum 불일치에서 실패 | 미착수 | - |
-| S7-01 | Core RC artifact 동기화 | update-zlink-libs script가 `core/v10.0.0-rc.N` asset의 runtime version 10.0.0, source SHA와 checksum을 검증하고 복사 | 완료 | `sync-local-core-libs.sh`가 로컬 build의 libzlink 10.0.0(SONAME 10)과 헤더를 4개 lane native로 동기화. native 산출물은 release 입력이라 커밋하지 않음(lane 빌드 입력) |
+| S7-01 | Core RC artifact 동기화 | update-zlink-libs script가 Core asset의 runtime version, source SHA와 checksum을 검증하고 복사 | 완료 | 기존 10.0.0 RC 동기화에 이어 Core minor를 선택해 네 binding에 동기화할 수 있도록 `sync-local-core-libs.sh`에 언어 선택 인자를 추가했다(`ca6be59d8`). 최신 Core 10.3.0 runtime SHA-256 `6b8b0bf2…07ed4`를 네 binding base 10.3.0에 동기화했다. C++ install의 `libzlink.so.10.3.0`, .NET 10.3.1 package와 Node 10.3.1 package의 native payload가 이 hash와 일치한다 |
 | S7-02 | binding API inventory 작성 | 적용 대상 C ABI·C++·.NET·Java/Kotlin·Node 전체 대응. Python·Go·Rust는 보류 대상으로 표시만 하고 갱신하지 않음 | 완료 | 현재 bindings는 9.0.4 API(cpp CMake VERSION 9.0.4). 제거 대상 hit(전환 전 기준): SpotNode 95파일·spot_node 42·bridge 29·dispatch_worker 10, selectNode 0. lane 소스 규모: cpp 76·dotnet 252·java 283·node 253. Python/Go/Rust 보류 |
 | S7-03 | 제거 wrapper와 generated API 정책·no-hit 목록 | SpotNode mode, bridge, Core dispatch worker option, remote subject query, Spot·Actor–STREAM service `*_part`, Actor join/lifecycle 전용 receive·reply, channel-dealer event와 old alias no-hit 검색 문자열 고정. 모든 raw socket용 channel metadata wrapper 유지 기준. 실제 적용은 각 lane | 완료 | 검색 문자열 고정: `SpotNode`·`spot_node`·`bridge/RouteBridge`·`dispatch_worker/DispatchWorker`·`selectNode/selectOne/selectMany`·`*_part`(Spot/Actor–STREAM). 전환 전 hit는 S7-02 기록. 각 lane이 전환 후 no-hit 달성을 bindings clean 조건으로 검증 |
-| S7-07 | bindings release workflow 수정(→S11 이월) | RC와 최종 `core/v10.0.0`의 동일 source SHA·checksum 검증 및 release asset 사용, tag run에도 provenance 필수. 네 언어 공통 workflow 골격 | 후속 분리 | 로컬 배포 방침에 따라 release workflow(외부 배포)는 S11에서. lane은 로컬 package로 검증 |
+| S7-07 | bindings release workflow 수정 | Core native version과 binding package version을 별도로 입력·검증하고 release asset의 source SHA·checksum provenance를 보존. 네 언어 공통 workflow 골격 | 완료 | `e6812889a`: 두 version 분리, exact Core version·tag source·checksums 검증, Node prebuild와 C++ Core-version contract, .NET 정식 native 입력 경로를 release gate에 연결. YAML policy·shell·Node syntax와 C++ contract 1/1 통과 |
 | S7-08 | `.NET` native 입력 경로 통일 | workflow와 pack이 `bindings/dotnet/native/<rid>/`만 source 입력으로 사용 | 후속 분리 | S8-DN lane framework 단계에서 확인 |
 | S7-SMOKE | 공통 smoke matrix 정의 | node/channel/Spot direct send/request와 Logical Multicast metadata snapshot·malformed·1024 경계·relay·reply 비자동복사, ROUTER backpressure·부분 전달, batch reset/retain과 shutdown을 각 lane이 실행할 공통 scenario로 고정 | 완료 | 공통 scenario를 spec(core/doc/spec/core/service)과 framework E2E inventory에서 확정. publish 전용 NODROP option은 matrix에서 제거. 각 lane의 S8-*-V·S8-SMOKE에서 실행 |
 
@@ -1063,6 +1083,21 @@ S8-04A/04B(Redis transfer authority·production 정책), S8-06B(timer 검증). F
 모두 해소. **전체 UnitTests 677/683 green**; 남은 6건은 Documentation.RegressionTests(E2E fixture 8/15
 미연결·contract-ledger/README/acceptance 미갱신)로 S8-09/10/12A/17/18 완료 시 green이 되는 추적 게이트.
 
+**현재 checkout 재검(2026-07-19 13:24 KST, `eab8b069d`)**: UnitTests는 623/625다. 실패는 G0 spec
+snapshot hash 1건과 공통 E2E fixture에서 `SM-C6`·`SM-G1`이 구현 상태가 아닌 1건이다.
+`03-message-model.ko.md`의 실제 SHA-256 `5bec94bb…65182`는 G0 ledger에 반영했다. `SM-G1` 단독
+실행은 두 번 모두 첫 원격 actor-session bind에서 timeout됐으며 두 번째 실행 log는
+`e2e/SpotService/logs/20260719-132359-22978/`이다. `session-a`는 internal bind를 반복 제출했지만
+`play-a` 수신 증거가 없으므로 `SM-G1`은 완료로 올리지 않는다.
+
+**mesh 선택 수정 후 재검(2026-07-19 13:39 KST)**: 정식 `.NET` interface의
+`IZLinkActorClient.SendToActor/RequestToActor(meshName, ...)`를 실제 공개 surface와 runtime에 반영하고,
+STREAM의 `EnableActorDispatch(meshName)`을 bind·frame relay·disconnect 경로까지 관통했다. 전체 solution
+build는 0 warning/0 error다. `SM-G1`은 첫 bind를 통과해 `crash-1-ready`와 `restart-1-ready`까지 진행했으며,
+재시작한 `play-a`의 ready 대기가 504로 끝났다. log는
+`e2e/SpotService/logs/20260719-133919-44907/`이다. 따라서 framework의 첫 control-mesh 오선택은
+수정됐고, 같은 RID 재승인 잔여는 Core 10.2.0 handover 회귀 수정 뒤 다시 검증한다.
+
 ## 13. S8-CPP·JVM·NODE lane 상세 — C++·Java/Kotlin·Node.js framework 단계
 
 ### 13.1 병렬 작업 격리
@@ -1088,7 +1123,7 @@ coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S9-C01 | bindings local package 10.0.0 pin | CMake central version과 package resolve 확인 | 미착수 | - |
+| S9-C01 | bindings local package 10.3.0 pin | CMake central version과 package resolve 확인 | 완료 | CMake central pin과 local install을 10.3.0으로 맞췄다(`3b442f88c`). `libzlink_cpp.a` SHA-256 `54816df1…c4694`, Core `libzlink.so.10.3.0` SHA-256 `6b8b0bf2…07ed4`를 확인했고 이전 version native file은 install에서 제거했다 |
 | S9-C02 | RouteMesh/MeshNode interface 구현 | C++ 정식 interface와 source 일치 | 미착수 | - |
 | S9-C02A | C++ metadata·timer 연결 | S/S metadata 전체 공통 matrix와 C API Spot timer adapter가 handler·generation·cancel 계약 통과 | 미착수 | - |
 | S9-C02B | C++ Actor transfer authority 연결 | 정식 store interface의 CAS·lease·복구·startup capability와 distributed transfer E2E 통과 | 미착수 | - |
@@ -1102,7 +1137,7 @@ coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S9-J01 | bindings local package 10.0.0 pin | version catalog와 dependency resolve 확인 | 미착수 | - |
+| S9-J01 | bindings local package 10.3.1 pin | version catalog와 dependency resolve 확인 | 진행 중 | Core 10.3.0 base 초기화 뒤 Java binding의 MeshNode routing ID lifecycle API 수정으로 package patch를 10.3.1로 올렸다. local Maven publish와 실제 native lifecycle test가 통과했으며 framework dependency resolve 최종 확인을 진행 중이다 |
 | S9-J02 | Java RouteMesh/MeshNode 구현 | Java 정식 interface와 source 일치 | 미착수 | - |
 | S9-J03 | Kotlin interface와 DSL 구현 | Kotlin 정식 interface와 source 일치 | 미착수 | - |
 | S9-J03A | JVM metadata·timer 연결 | Java/Kotlin S/S metadata 전체 공통 matrix와 `ScheduledExecutorService` timer가 immutable context·keyed scheduler 계약 통과 | 미착수 | - |
@@ -1117,8 +1152,8 @@ coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S9-N01 | bindings local package 10.0.0 pin | package와 lockfile이 같은 version을 resolve | 미착수 | - |
-| S9-N02 | RouteMesh/MeshNode interface 구현 | Node 정식 interface와 source snapshot 일치 | 미착수 | - |
+| S9-N01 | bindings local package 10.3.1 pin | package와 lockfile이 같은 version을 resolve | 완료 | Core 10.3.0 base 초기화 뒤 Node binding의 MeshNode routing ID lifecycle API와 ReadyDomain 수정으로 package patch를 10.3.1로 올렸다. tgz SHA-256 `28f464e8…6013`, bundled Core 10.3.0을 확인했고 root·framework·Redis workspace lock을 같은 package로 갱신했다 |
+| S9-N02 | RouteMesh/MeshNode interface 구현 | Node 정식 interface와 source snapshot 일치 | 진행 중 | clean build red gate에서 제거된 SpotNode 상태 type과 `createSpotNode` 잔여를 확인했다. MeshNode backend adapter와 pull dispatch pump 수직 전환, runtime manager lifecycle, actor·stream consumer 전환을 진행 중이다. 첫 수직 slice build와 focused test 3/3은 통과했다 |
 | S9-N02A | Node metadata·timer 연결 | S/S metadata 전체 공통 matrix와 `setTimeout` timer가 immutable context·generation·cancel·keyed scheduler 계약 통과 | 미착수 | - |
 | S9-N02B | Node Actor transfer authority 연결 | Node store interface의 CAS·lease·복구·startup capability와 distributed transfer E2E 통과 | 미착수 | - |
 | S9-N02C | Node location 기본 정책 연결 | 공식 Redis extension, manual peer, location store 미등록 시 분산 location startup failure와 test-only in-memory 경계가 정식 interface와 일치 | 미착수 | - |
@@ -1230,20 +1265,20 @@ S10 완료 gate:
 | S11-09 | Node.js 전체 종료 검증 | contract, package, sample와 E2E 통과 | 미착수 | - |
 | S11-10 | classic fanout과 generic STREAM 회귀 | Actor binding 확장점을 제외한 비변경 socket 기능의 public 동작과 baseline 유지 | 미착수 | - |
 | S11-11 | docs, link와 sample API 검증 | 깨진 link, stale 예제와 내부 구현 노출 0개 | 미착수 | - |
-| S11-12 | version과 artifact 대조 | Core·bindings 10.0.0과 framework pin 일치 | 미착수 | - |
+| S11-12 | version과 artifact 대조 | Core 10.3.0, C++ binding 10.3.0, .NET·Java·Node binding 10.3.1과 각 framework pin 일치. binding package의 Core native version과 package version을 별도 대조 | 미착수 | - |
 
 ### 15.4 최종 리뷰와 종료 검증 뒤 외부 배포
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S11-00B | Core stable tag와 외부 배포 | `FINAL REVIEW CLEAN` candidate와 같은 commit에 `core/v10.0.0` tag를 붙이고 native build와 Conan release workflow 성공 | 미착수 | - |
-| S11-00C | Core stable artifact 검증 | GitHub Release, checksums, headers, SONAME, symbols와 remote `zlink/10.0.0` consumer 통과 | 미착수 | - |
+| S11-00B | Core stable tag와 외부 배포 | `FINAL REVIEW CLEAN` candidate와 같은 commit에 `core/v10.3.0` tag를 붙이고 native build와 Conan release workflow 성공 | 미착수 | - |
+| S11-00C | Core stable artifact 검증 | GitHub Release, checksums, headers, SONAME, symbols와 remote `zlink/10.3.0` consumer 통과 | 미착수 | - |
 | S11-00D | stable Core 기반 bindings 재검증 | stable asset으로 native payload를 다시 동기화하고 S7 package·공통 E2E smoke 결과가 RC와 일치 | 미착수 | - |
 | S11-01A | bindings 외부 배포 revision 동결 | S7 clean source, Core stable release SHA와 package checksum이 manifest와 일치 | 미착수 | - |
-| S11-01B | 언어별 10.0.0 tag 배포 | cpp, dotnet, java, node, python, go, rust workflow 정상 종료 | 미착수 | - |
+| S11-01B | 언어별 bindings tag 배포 | C++ 10.3.0과 .NET·Java·Node 10.3.1 workflow 정상 종료. 이번 RouteMesh 범위 밖 Python·Go·Rust는 배포하지 않음 | 미착수 | - |
 | S11-01C | 실제 배포 채널 확인 | NuGet, Maven, npm, PyPI, crates.io, Go tag/module과 C++ GitHub Release 존재 | 미착수 | - |
 | S11-01D | 배포 package E2E smoke | 각 채널의 새 package를 빈 workspace에 설치해 공통 smoke 통과 | 미착수 | - |
-| S11-01E | framework 배포 package 재검증 | local package pin을 같은 10.0.0 배포 package로 바꾸어 package·sample·E2E 통과 | 미착수 | - |
+| S11-01E | framework 배포 package 재검증 | local package pin을 각 언어의 실제 배포 package version으로 바꾸어 package·sample·E2E 통과 | 미착수 | - |
 | S11-17 | post-push origin 재검증 | origin commit, tag, workflow와 artifact가 local 증거와 일치 | 미착수 | - |
 | S11-18 | 완료 보고서 작성 | 모든 stage 증거, 남은 issue 0과 최종 SHA 기록 | 미착수 | - |
 

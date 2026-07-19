@@ -69,7 +69,7 @@ framework는 `TMessage`를 decode 해서 넘긴다. 미등록 packet은 자동 �
 ```csharp
 public sealed class ClientHeaderSession(
     IZLinkSessionContext context,
-    IZLinkChannelClient channels) : IZLinkSession
+    IZLinkRouteClient routes) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
 
@@ -89,7 +89,11 @@ public sealed class ClientHeaderSession(
         {
             case "ClientInput":
                 var input = payload.Decode<ClientInput>();
-                channels.SendToChannel("play", new ForwardInputCommand(input)).Submit(ct);
+                routes.SendToChannel(
+                        "game", // 호출 대상이 참여한 MeshName이다.
+                        "play", // 그 mesh 안에서 선택할 ChannelName이다.
+                        new ForwardInputCommand(input))
+                    .TrySubmit();
                 break;
 
             case "Ping":
@@ -111,9 +115,9 @@ public sealed class ClientHeaderSession(
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
-`IZLinkChannelClient`를 함께 주입받아 `SendToChannel(channelName, ...)` 또는
-`RequestToChannel(channelName, ...)`를 호출한다. 이 호출은 현재 stream 연결을 사용하지 않고,
-등록된 channel의 client socket을 사용한다.
+`IZLinkRouteClient`를 함께 주입받아 `SendToChannel(meshName, channelName, ...)` 또는
+`RequestToChannel(meshName, channelName, ...)`를 호출한다. 이 호출은 현재 stream 연결을 사용하지 않고,
+등록된 MeshNode의 route를 사용한다.
 
 ### lifecycle과 실행 보장
 
@@ -280,7 +284,7 @@ var target = await spots.ResolveAsync("application", RoutingId.From(spotRid), ct
 
 // packet 이름은 command 타입 등록에서 확정된다 — 호출마다 지정하지 않는다.
 routes.SendToSpot(target, command)
-    .Submit(ct);
+    .TrySubmit();
 ```
 
 - **key는 애플리케이션 규약**이다. framework가 `"spot-rid"` 같은 이름을 강제하지

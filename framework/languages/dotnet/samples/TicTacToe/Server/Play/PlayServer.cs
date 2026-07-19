@@ -43,7 +43,7 @@ internal sealed class PlayServer(SampleSettings settings)
             var api = options.AddRouteMesh(SampleChannels.Api)
                 .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(RoutingId.From($"{settings.InstanceName}-api"));
-            api.ChannelName(SampleChannels.Api);
+            api.ChannelName(SampleChannels.Api).SetWeight(0);
             api.PeerConnections.Connect(settings.ApiChannelEndpoints[0]);
             api.PeerConnections.Connect(settings.ApiChannelEndpoints[1]);
 

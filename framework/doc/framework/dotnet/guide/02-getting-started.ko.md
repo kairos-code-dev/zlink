@@ -100,7 +100,8 @@ builder.Services.AddZLinkFramework(options =>
     var play = options.AddRouteMesh(SampleChannels.Play)
         .Listen("tcp://127.0.0.1:0") // 이 API 프로세스도 Play mesh에 참여할 로컬 endpoint를 연다.
         .SetRoutingId(RoutingId.From("api-play"));
-    play.ChannelName(SampleChannels.Play); // 호출할 논리 channel을 같은 MeshNode에 선언한다.
+    play.ChannelName(SampleChannels.Play)
+        .SetWeight(0); // 호출만 하는 노드이므로 Play channel의 선택 대상에서는 제외한다.
     play.PeerConnections.Connect(
         settings.PlayChannelEndpoint); // Play MeshNode endpoint를 수동 peer로 지정한다.
 });

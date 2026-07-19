@@ -10,10 +10,10 @@
 
 ## 0. 무엇을 해주는가
 
-지금까지 챕터는 연결할 endpoint를 코드에 직접 적었다(`EnableServer("tcp://...")`,
-`EnableClient("tcp://...")`). **location store**를 등록하면 client 쪽에서 이 값이
-사라진다. 서버는 자기 위치를 store에 자동 등록한다. client는 channel 이름만으로
-상대를 찾아 연결한다. 서버가 늘어나거나 줄어들면 connection도 자동으로 새로
+지금까지 챕터는 연결할 endpoint를 코드에 직접 적었다(`Listen("tcp://...")`,
+`PeerConnections.Connect("tcp://...")`). **location store**를 등록하면 호출하는 쪽에서 remote
+endpoint 값이 사라진다. 서버는 자기 위치를 store에 자동 등록한다. 호출자는 MeshName과
+ChannelName으로 상대를 찾아 연결한다. 서버가 늘어나거나 줄어들면 connection도 자동으로 새로
 연결되거나 정리된다.
 
 처음 나오는 용어는 다음과 같다.
@@ -58,22 +58,33 @@ builder.Services.AddZLinkFramework(framework =>
         .SetConnectionString("redis-host:6379")
         .SetKeyPrefix("myapp:prod")));
 
-    // 서버: endpoint는 bind에 필요하다. client는 이 값을 몰라도 된다.
-    framework.AddClientServerChannel("shop.profile")
-        .EnableServer("tcp://0.0.0.0:5555")
-        .SetRoutingId(RoutingId.From("profile-a"));
+    // 제공 노드: 호출자가 찾을 MeshName과 ChannelName을 descriptor에 함께 기록한다.
+    framework.AddRouteMesh("shop")
+        .Listen("tcp://0.0.0.0:5555")
+        .SetRoutingId(RoutingId.From("profile-a"))
+        .ChannelName("shop.profile");
 });
 ```
 
-client는 endpoint 없이 참여만 선언한다. 연결 대상은 store의 descriptor row에서 찾는다.
+호출자도 같은 MeshName의 MeshNode로 참여하지만 remote endpoint는 지정하지 않는다. 호출만 하는
+membership은 weight를 0으로 두어 select-one 대상에서 제외한다. 연결 대상은 store의 descriptor
+row에서 찾는다.
 
 ```csharp
-framework.AddClientServerChannel("shop.profile").EnableClient();
+framework.AddRouteMesh("shop")
+    .Listen("tcp://0.0.0.0:0")
+    .SetRoutingId(RoutingId.From("api-a"))
+    .ChannelName("shop.api")
+    .SetWeight(0);
+
+var reply = await routes
+    .RequestToChannel("shop", "shop.profile", new GetProfileReq("player-1"))
+    .Async<GetProfileRes>();
 ```
 
 - `SetKeyPrefix`는 배포 환경별 격리 접두사다. 같은 Redis를 여러 환경이 공유해도
   prefix가 다르면 서로 보이지 않는다.
-- 같은 역할에서 자동 연결과 수동 endpoint 연결을 섞지 않는다. 수동으로 등록한
+- 같은 MeshNode에서 자동 연결과 수동 peer endpoint 연결을 섞지 않는다. 수동으로 등록한
   연결은 자동 연결의 상태 맞추기 작업이 끊지 않는다.
 - 사용자 저장소가 필요하면 통합 계약 `IZLinkLocationStore` 구현체를 같은 지점에
   등록한다.

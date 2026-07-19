@@ -15,12 +15,13 @@
 
 외부(다른 프로세스·다른 channel)에서 특정 Spot에 메시지를 보내는 방법은 두 가지다.
 
-- **send/request** — `IZLinkRouteClient`로 spot 전송 대상(`SpotHandle`)에 보낸다. `SpotHandle`는
-  `IZLinkSpotHandleResolver`로 spot rid를 한 번 resolve 해서 보관하고, 보낼 때마다 그 값을
+- **send/request** — `IZLinkSpotClient`로 spot 전송 대상(`SpotHandle`)에 보낸다. `SpotHandle`은
+  `IZLinkSpotManager.ResolveAsync(meshName, spotRid)`로 한 번 조회해서 보관하고, 보낼 때마다 그 값을
   그대로 재사용한다. framework는 위치 event와 주기적 조회로 handle의 내부 주소를 갱신한다.
   request 도중 주소가 무효화되면 안전한 경우에 한해 주소를 다시 조회하고 한 번 재전송한다.
   send는 이미 전달되었을 가능성이 있으므로 자동으로 다시 전송하지 않는다. 예제는 §5에서 본다.
-- **publish** — `IZLinkSpotPublisherClient`를 주입해 `PublishSpot(...)`으로 topic을 보낸다. 같은
+- **publish** — `IZLinkSpotPublisherClient`를 주입해 `Publish(mesh, channel, topic, ...)`로
+  topic을 보낸다. 같은
   mesh의 member 이기만 하면 자동으로 연결되므로 `SpotHandle`가 따로 필요 없다.
 
 두 경우 모두 호출하는 프로세스가 **같은 mesh의 member**(`AddRouteMesh(mesh)` 등록)면 framework가
@@ -43,14 +44,13 @@
 SPOT은 pub/sub helper가 아니다. publish/subscribe는 spot **안에서** 쓰는 한
 기능일 뿐이다.
 
-규칙 세 가지를 그림으로 먼저 보자. 여기서는 **Spot ↔ MeshNode ↔ 같은 channel **
-까지, 즉 channel **안쪽** 관계만 본다. 다른 channel·외부와의 연결은 아래 §2 그림에서
-함수별로 다룬다.
+규칙 세 가지를 그림으로 먼저 보자. 여기서는 **Spot ↔ MeshNode ↔ 같은 MeshName**
+관계를 본다. 다른 channel·외부와의 연결은 §2에서 다룬다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  subgraph ch1["channel: game.stage · active SPOT channel view 1개"]
+  subgraph ch1["MeshName: game.stage"]
     direction LR
     subgraph nA["MeshNode A"]
       direction TB
@@ -62,7 +62,7 @@ flowchart LR
       sB1["Spot · room#3"]
       sB2["Spot · room#4"]
     end
-    nA <==>|"같은 channel → 자동 연결<br/>(router · pub/sub mesh)"| nB
+    nA <==>|"same MeshName · discovered peers"| nB
   end
   style ch1 stroke:#546e7a,stroke-width:2px
   style nA stroke:#1565c0,stroke-width:3px
@@ -71,9 +71,9 @@ flowchart LR
 
 - **Spot은 `MeshNode` 안에 존재한다.** 특정 service에 종속되는 게 아니라, 자신을
   호스팅하는 노드(컨테이너)에 속한다. 그림의 Spot 들이 노드 박스 안에 들어 있는 모습.
-- **같은 mesh 노드끼리는 자동으로 연결된다.** 같은 mesh의 MeshNode 끼리는
-  router mesh가 자동으로 이어진다(굵은 화살표). 다른 mesh로 나가는 연결은
-  별도 함수가 필요하고, 아래 §2 그림에서 본다.
+- **같은 mesh 노드끼리는 자동으로 연결된다.** 같은 mesh의 MeshNode는 location
+  store에 등록된 descriptor를 사용해 peer 연결을 관리한다. 고정 배포는 manual
+  peer 연결을 사용할 수 있다.
 - **한 `MeshNode`는 한 mesh만 본다.** 노드는 항상 하나의 mesh 박스 안에 속한다.
   단 **한 프로세스는 여러 `MeshNode`를 둘 수 있다**. `AddRouteMesh(...)`를 mesh
   이름별로 여러 번 호출하면 각각 자기 mesh 박스에 속한 별도 노드가 된다(§2).
@@ -81,252 +81,107 @@ flowchart LR
 
 ## 2. MeshNode 등록
 
-location store로 mesh를 묶는 형태가 표준이다([10-location](10-location.ko.md)).
+SPOT은 RouteMesh의 MeshNode가 소유한다. Production에서는 location store를 등록해
+같은 `MeshName`의 peer가 서로의 endpoint와 membership을 찾게 한다
+([10-location](10-location.ko.md)).
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // 같은 mesh("game.stage") 노드끼리 자동 연결되는 핵심: 각 노드가 자기
-    // router bind endpoint를 location store의 MeshNode descriptor row로
-    // 등록하고, 런타임이 store에서 읽은 peer 들과 router↔router mesh를 알아서
-    // 연결한다. 그래서 별도 "connect" 코드 없이 §1 그림의 굵은 화살표
-    // (MeshNode A <==> B)가 생긴다.
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString("redis-host:6379")
         .SetKeyPrefix("game:prod")));
 
-    var node = options.AddRouteMesh("game.stage");
-    node.Listen("tcp://0.0.0.0:9001");   // 이 MeshNode의 router 소켓을 이 endpoint에 bind (store의 descriptor row로 등록된다)
-    node.ChannelName("game.stage");      // logical membership — topic publish도 같은 router 소켓으로 흐른다
-    node.AddSpotFactory<StageSpot>();    // 이 노드가 만들 타입
-
-    // ↓ spot이 호출할 외부 channel — 노드 설정이 아니라 options에 따로 등록(spot은 이름으로 이용, §5)
-    options.AddClientServerChannel("orders").EnableClient();
+    var node = options.AddRouteMesh("services")             // SPOT과 호출 대상이 공유할 MeshName
+        .Listen("tcp://0.0.0.0:9001")                       // 이 MeshNode의 endpoint
+        .SetRoutingId(RoutingId.From("stage-a"));
+    node.ChannelName("game.stage");                         // 이 노드가 제공하는 membership
+    node.ChannelName("orders")
+        .SetWeight(0);                                      // 호출만 하므로 orders 선택 대상에서는 제외
+    node.AddSpotFactory<StageSpot>();                        // 이 노드가 생성할 SPOT 타입
 });
 ```
 
-> **여러 MeshNode를 한 프로세스에.** `AddRouteMesh(...)`는 호출마다 그 mesh의 노드 하나를
-> 만든다. 서로 다른 mesh 이름으로 여러 번 부르면 한 프로세스가 **여러 MeshNode** 를 호스팅한다
-> (예: room 노드 + session gateway 노드 동거). 같은 mesh 이름을 두 번 등록하면 시작 예외다.
+`IZLinkSpotOutbound.SendToChannel(...)`과 `RequestToChannel(...)`은 Spot context의
+`MeshName`을 사용한다. 따라서 Spot이 `orders` channel을 호출하려면 별도 client-server
+channel을 만들지 않고 같은 MeshNode에 `orders` membership을 등록한다. 이 노드가
+`orders` handler를 제공하지 않으면 weight를 `0`으로 두어 select-one 대상에서 제외한다.
+
+> **여러 MeshNode를 한 프로세스에.** `AddRouteMesh(...)`는 호출마다 다른 mesh의 노드
+> 하나를 만든다. 서로 다른 mesh 이름으로 여러 번 호출하면 한 프로세스가 여러 MeshNode를
+> 호스팅할 수 있다. 같은 mesh 이름을 두 번 등록하면 시작 예외다.
 >
 > ```csharp
-> var room = options.AddRouteMesh("game.room"); // room spot을 맡는 노드를 별도 mesh로 등록한다.
-> room.Listen("tcp://0.0.0.0:9001");
-> room.ChannelName("game.room");
+> var room = options.AddRouteMesh("game.room")
+>     .Listen("tcp://0.0.0.0:9001")
+>     .SetRoutingId(RoutingId.From("room-a"));
+> room.ChannelName("game.room");             // room mesh의 membership
 > room.AddSpotFactory<RoomSpot>();
-> var zone = options.AddRouteMesh("game.zone"); // zone spot은 다른 노드가 맡도록 mesh를 분리한다.
-> zone.Listen("tcp://0.0.0.0:9002");
-> zone.ChannelName("game.zone");
+>
+> var zone = options.AddRouteMesh("game.zone")
+>     .Listen("tcp://0.0.0.0:9002")
+>     .SetRoutingId(RoutingId.From("zone-a"));
+> zone.ChannelName("game.zone");             // zone mesh의 membership
 > zone.AddSpotFactory<ZoneSpot>();
 > ```
 
-node 역할은 서로 독립이다.
+MeshNode의 공개 설정은 다음과 같다.
 
 | node 함수 | 의미 |
 |-----------|------|
-| `Listen(endpoint)` | 이 MeshNode의 **유일한 router 소켓**을 bind — 같은 mesh의 다른 MeshNode와 spot↔spot routed send/request와 **topic publish/subscribe까지 전부** 이 소켓으로 오간다(별도 pub/sub 소켓 없음) |
-| `ChannelName(name)` | logical channel membership 추가(소켓 추가 없음). mesh는 최소 1개 membership이 필요하고, 같은 이름의 membership이 select-one·Logical Multicast의 대상 집합이 된다 |
-| `ConfigureSpotPublisher()` | publish 측 전송 옵션(HWM·send timeout·linger) 조정 |
+| `Listen(endpoint)` | 이 MeshNode가 peer 연결을 받을 endpoint 설정 |
+| `SetRoutingId(rid)` | 이 MeshNode를 식별할 고정 RID 설정 |
+| `UseAllocatedRoutingId(...)` | location store에서 충돌 없이 RID slot 할당 |
+| `ChannelName(name)` | logical channel membership 추가. mesh에는 하나 이상의 membership이 필요 |
+| `ChannelName(name).SetWeight(weight)` | select-one 대상 가중치 설정. 호출 전용 membership은 `0` |
+| `PeerConnections` | location store 없이 사용할 manual peer 연결 설정 |
+| `ConfigureSpotPublisher()` | Logical Multicast 전송 설정 |
 | `AddSpotFactory<TSpot>()` | 이 노드가 만들 spot 타입 등록. 타입 중복은 시작 예외 |
-| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 부착(actor 사용 시, [actor spec](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)) |
-| `UseDrainPolicy(정책)` | 노드가 graceful drain으로 내려갈 때 이 mesh의 spot을 정리하는 방식 선언. 기본 `DrainNatural`(자연 종료 대기), 외부 영속 상태에서 재구성 가능한 spot은 `ReleaseAndRecreate`([12-operations §3](12-operations.ko.md)) |
+| `AddEntrySpot<TEntrySpot>()` | Entry Spot handler registry 등록(actor 사용 시, [actor spec](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)) |
+| `UseDrainPolicy(정책)` | graceful drain 때 SPOT을 정리하는 방식 설정. 기본은 `DrainNatural`이고 재구성 가능한 SPOT은 `ReleaseAndRecreate`를 사용할 수 있다([12-operations §3](12-operations.ko.md)) |
 
-위 표는 **MeshNode 자체 설정**이다 — 자기 소켓(`Listen`)·membership(`ChannelName`)과 만들 spot
-타입(`AddSpotFactory`·`AddEntrySpot`)만 다룬다. 같은 mesh(예: `game.stage`) 안에서 MeshNode 끼리
-주고받는 건 위 router 소켓으로 이미 자동이다. 그 **바깥**과 주고받는 방향은
-둘인데, 그중 spot이 호출하는 **일반 channel**(예: `orders`)은 mesh와는 다른 개념이라 MeshNode
-설정에 포함되지 않고 따로 등록한다 — 위 소켓과 (따로 등록한) 일반 channel이 이렇게 받쳐 준다.
+### 자동 연결과 수동 연결
 
-- **spot → 외부 channel (보낼 때).** 쓰려는 channel은 노드와 **따로** 등록한다
-  (`options.AddClientServerChannel("orders").EnableClient()`). spot 안에서는
-  `Context.Outbound.SendToChannel("orders", …)` / `RequestToChannel("orders", …)`처럼 **channel 이름만**
-  부르면 framework가 그 채널 client로 내보낸다. 즉 spot은 채널을 *이름으로 빌려 쓸* 뿐이다(§5).
-- **외부 → spot (받을 때).** 외부 코드가 `SpotHandle`로 보낸 send/request도, 외부 publish도
-  **이 노드의 같은 router 소켓**으로 들어온다. 보내는 프로세스가 같은 mesh의 member면
-  (아래 "외부→spot inbound") 런타임이 연결을 잇는다 — 받는 쪽에 별도 bridge 등록이 없다.
+같은 MeshName의 peer를 찾는 방식은 두 가지다.
 
-각 소켓이 무엇을 활성화하고 메시지가 어디로 흐르는지 그림으로 보면 이렇다(점선 = 함수 호출로 활성화).
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph node["MeshNode · game.stage — router 소켓 + spot 들"]
-    rsock(["router 소켓"])
-    spot["Spot"]
-  end
-
-  %% 🟦 자기 mesh — 같은 mesh의 다른 MeshNode와
-  peer["같은 mesh 의<br/>다른 MeshNode"]
-  rsock <==>|"spot↔spot send/request · spot 간 topic"| peer
-
-  %% 외부 → spot : 같은 mesh member의 router 소켓으로 들어온다
-  ext["외부 코드 (같은 mesh member)<br/>routeClient / publisherClient"]
-  ext ==>|"route(SpotHandle) · publish(topic)"| rsock ==> spot
-
-  %% spot → 외부 channel : 노드 밖에 따로 등록한 channel을 이름으로 호출
-  spot ==>|"Outbound.SendToChannel(name, …)"| chan{{"노드 밖 별도 등록 channel<br/>AddClientServerChannel(name).EnableClient()"}} ==>|"send/request"| svc["일반 channel server"]
-
-  fListen["Listen(ep)"] -. bind .-> rsock
-  fChannel["ChannelName(name)"] -. membership .-> rsock
-
-  classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  classDef ext fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  class fListen,fChannel,rsock ownMesh;
-  class chan,ext ext;
-  style node stroke:#1565c0,stroke-width:3px
-```
-
-> 🟦 **파란** = 이 노드의 **router 소켓**(`Listen`) 하나. 같은 mesh에 참여하고, spot 간 topic도,
-> **외부→spot inbound**(route·publish)도 전부 이 소켓으로 들어온다.
-> 🟧 **주황** = **노드 밖에 따로 등록한 channel**. `AddClientServerChannel(name).EnableClient()`로
-> 별도 등록하고, spot은 `Outbound`에서 그 **이름을 불러 빌려 쓴다**(노드 설정이 아니다).
-
-### 함수 하나씩 — 같은 지도, 경로만 강조
-
-위 종합 그림이 이 절의 **기준 지도**다. 아래 항목들은 같은 지도를 다시 쓰되, 그
-함수가 여는 경로만 진하게 남기고 나머지는 회색으로 눕힌다. 그림마다 새로 읽을 필요
-없이 "이번엔 어느 경로가 켜지는가"만 보면 된다.
-
-**🟦 `Listen(ep)`** — 이 노드의 **router 소켓**을 bind 한다. 같은 mesh의 다른 MeshNode와
-spot↔spot으로 send/request를 주고받는 축이고, topic publish도 같은 소켓으로 흐른다. 같은 mesh
-노드끼리는 §1처럼 **location store 기준**으로 자동 연결되므로 이 소켓만 열면 추가로 연결할 게 없다.
-store 없이 peer를 직접 잇는 수동 연결도 있다(바로 아래 "자동 연결 vs 수동 연결").
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph node["MeshNode · game.stage"]
-    rsock(["router 소켓"])
-    spot["Spot"]
-  end
-  peer["같은 mesh의<br/>다른 MeshNode"]
-  ext["외부 코드"]
-  chan{{"노드 밖 별도 등록 channel"}}
-  fListen["Listen(ep)"] -. bind .-> rsock
-  rsock <==>|"spot↔spot send/request"| peer
-  ext -.- rsock
-  spot -.- chan
-  classDef on fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  classDef dim fill:#f5f5f5,stroke:#bbbbbb,color:#999999;
-  class fListen,rsock,peer on;
-  class spot,ext,chan dim;
-  style node stroke:#1565c0,stroke-width:3px
-```
-
-**🟦 `ChannelName(name)`** — logical channel **membership**을 더한다. 소켓이 새로 생기지 않는다.
-topic publish/subscribe(Logical Multicast)는 이 membership 집합을 대상으로 **위 router 소켓**을
-그대로 타고 흐르고, local spot 안의 `Outbound.Publish(...)`도 별도 소켓 없이 여기로 나간다.
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph node["MeshNode · game.stage"]
-    rsock(["router 소켓"])
-    spot["Spot"]
-  end
-  peer["같은 mesh의<br/>다른 MeshNode"]
-  ext["외부 코드"]
-  chan{{"노드 밖 별도 등록 channel"}}
-  fChannel["ChannelName(name)"] -. membership .-> rsock
-  spot <==>|"Outbound.Publish / 구독"| rsock
-  rsock <==>|"spot 간 topic (Logical Multicast)"| peer
-  ext -.- rsock
-  spot -.- chan
-  classDef on fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  classDef dim fill:#f5f5f5,stroke:#bbbbbb,color:#999999;
-  class fChannel,rsock,peer,spot on;
-  class ext,chan dim;
-  style node stroke:#1565c0,stroke-width:3px
-```
-
-**자동 연결 vs 수동 연결.** `Listen`은 *이 노드의 router 소켓을 여는 것*까지다. 그
-소켓이 **같은 mesh의 다른 노드와 어떻게 이어지는지**는 두 방식이 있다.
-
-- **자동(location store 기준, 기본).**
-  router bind endpoint를 location store에 MeshNode descriptor row로 등록하고, store에서 읽은
-  같은 mesh peer 들과 router↔router를 **런타임이 자동으로 연결한다.** connect 코드가 없다.
-- **수동(store 없이 직접 지정).** `PeerConnections`로 peer 주소를 코드에 직접 지정한다 —
-  `PeerConnections.Connect(endpoint)`, peer를 정확히 지정하려면
-  `PeerConnections.Connect(expectedRid, endpoint)`. `Disconnect(endpoint)`로 끊고
-  `ListConnections()`로 열거한다. peer가 늘면 그만큼 호출을 반복한다(노드 수가 고정된
-  토폴로지에 적합). topic publish도 같은 router 연결을 쓰므로 pub 구독을 따로 잇지 않는다.
+- **자동(location store 기준, 기본).** MeshNode descriptor를 location store에 등록하고,
+  같은 MeshName의 peer 정보를 읽어 runtime이 연결을 관리한다.
+- **수동(store 없이 직접 지정).** `PeerConnections`에 peer endpoint를 지정한다.
+  예상 RID를 함께 주면 연결 대상 identity도 확인한다. 노드 수가 고정된 토폴로지에 적합하다.
 
 ```csharp
-// (A) 자동 — location store가 peer를 알려줘 mesh를 잇는다 (connect 코드 없음)
-var node = options.AddRouteMesh("game.stage");
-node.Listen("tcp://0.0.0.0:9001");         // 내 router 소켓을 이 endpoint에 bind
-node.ChannelName("game.stage");
+// (A) 자동 — location store가 같은 MeshName의 peer 정보를 제공한다.
+var automatic = options.AddRouteMesh("game.stage")
+    .Listen("tcp://0.0.0.0:9001")
+    .SetRoutingId(RoutingId.From("stage-a"));
+automatic.ChannelName("game.stage");
 
-// (B) 수동 — store 없이 peer를 직접 지정 (TicTacToe Play 노드 방식, 2-노드 고정)
-var node = options.AddRouteMesh("game.stage");
-node.Listen("tcp://0.0.0.0:9001");                                 // 내 router 소켓을 연다
-node.ChannelName("game.stage");
-node.SetRoutingId(RoutingId.From("play-a"));                       // 내 노드 rid
-node.PeerConnections.Connect(
-    RoutingId.From("play-b"), "tcp://node-b:9001");                // 상대 router로 직접 연결
+// (B) 수동 — store 없이 고정 peer endpoint와 예상 RID를 지정한다.
+var manual = options.AddRouteMesh("game.stage.manual")
+    .Listen("tcp://0.0.0.0:9002")
+    .SetRoutingId(RoutingId.From("play-a"));
+manual.ChannelName("game.stage");
+manual.PeerConnections.Connect(
+    RoutingId.From("play-b"), "tcp://node-b:9001");
 ```
 
-**🟦 외부→spot inbound — 보내는 프로세스도 같은 mesh member가 된다.** 외부 코드가
-`IZLinkRouteClient`로 spot 주소(`SpotHandle`)에 send/request 하거나(route),
-`IZLinkSpotPublisherClient.PublishSpot(...)`로 topic을 보내려면(publish), 그 프로세스도
-`AddRouteMesh("game.stage")`로 **같은 mesh에 member로 등록**한다(`Listen`은 `tcp://0.0.0.0:0`
-ephemeral bind면 충분 — resolve 된 실제 endpoint가 descriptor row로 광고된다). 그러면 런타임이
-mesh 연결로 spot에 전달한다. route 면 reply가 같은 길로 돌아오고, publish는 단방향(reply 없음)이다.
-상세 host 설정은 §5에서 본다.
+### 외부 프로세스에서 Spot 호출
 
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph node["MeshNode · game.stage"]
-    rsock(["router 소켓"])
-    spot["Spot"]
-  end
-  peer["같은 mesh의<br/>다른 MeshNode"]
-  ext["외부 코드 (같은 mesh member)<br/>routes.RequestToSpot(spotHandle, …)<br/>publisherClient.PublishSpot(mesh, topic, …)"]
-  chan{{"노드 밖 별도 등록 channel"}}
-  ext ==>|"route(SpotHandle)"| rsock ==> spot
-  ext ==>|"publish(topic)"| rsock
-  spot -->|"route면 reply 돌아감"| ext
-  rsock -.- peer
-  spot -.- chan
-  classDef on fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  classDef onIn fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
-  classDef dim fill:#f5f5f5,stroke:#bbbbbb,color:#999999;
-  class ext on;
-  class rsock,spot onIn;
-  class peer,chan dim;
-  style node stroke:#1565c0,stroke-width:3px
+외부 코드가 `IZLinkSpotClient`로 `SpotHandle`에 send/request 하거나
+`IZLinkSpotPublisherClient`로 topic을 publish하려면, 그 프로세스도 같은
+`MeshName`에 참여한다. 호출만 하는 membership은 weight를 `0`으로 두고 local
+endpoint는 ephemeral port를 사용할 수 있다.
+
+```csharp
+var caller = options.AddRouteMesh("game.stage")
+    .Listen("tcp://0.0.0.0:0")
+    .SetRoutingId(RoutingId.From("stage-api"));
+caller.ChannelName("game.stage")
+    .SetWeight(0); // SPOT을 호스팅하지 않는 호출 전용 노드는 선택 대상에서 제외한다.
 ```
 
-**🟧 spot이 외부 channel 호출 (`AddClientServerChannel(name).EnableClient()`)** — 이건 **노드 설정이
-아니라 따로 등록하는 channel** 이다. spot이 바깥 서비스로 send(단방향)/request(요청→응답 왕복) 할 때,
-spot 안에서 `Context.Outbound.SendToChannel(name, …)` / `RequestToChannel(name, …)`로 그 **channel
-이름을 부르면** framework가 등록된 이 client로 내보낸다. request 면 server의 reply가 spot으로
-되돌아온다. (자세한 사용은 §5)
-
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-flowchart LR
-  subgraph node["MeshNode · game.stage"]
-    rsock(["router 소켓"])
-    spot["Spot"]
-  end
-  peer["같은 mesh의<br/>다른 MeshNode"]
-  ext["외부 코드"]
-  chan{{"노드 밖 별도 등록 channel<br/>AddClientServerChannel(name).EnableClient()"}}
-  svc["일반 channel server"]
-  spot ==>|"① Outbound.SendToChannel/RequestToChannel(name, …)"| chan ==> svc
-  svc -->|"② request면 reply 돌아옴"| spot
-  rsock -.- peer
-  ext -.- rsock
-  classDef on fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  classDef dim fill:#f5f5f5,stroke:#bbbbbb,color:#999999;
-  class chan,svc,spot on;
-  class rsock,peer,ext dim;
-  style node stroke:#1565c0,stroke-width:3px
-```
-
-spot↔spot·actor까지 포함한 전체 연결·handler 표는 **§5 「한눈에 보기」**에서 한 번에 본다. 여기 §2 그림은 "함수가 활성화하는 MeshNode 소켓 ↔ channel" 한 축만 떼어 본 것이다.
+그 뒤 `IZLinkSpotManager.ResolveAsync(...)`로 얻은 `SpotHandle`을 `IZLinkSpotClient`에 넘긴다.
+받는 MeshNode에 별도 bridge를 등록할 필요는 없다. 상세 호출 코드는 §5에서 본다.
 
 > **location store는 프로세스 공용 등록(`AddLocationStore(...)`) 하나를** 기본으로 사용한다.
 > mesh 단위로 다른 store endpoint를 따로 지정하지 않는다. 단일 노드만 실행하는 local
@@ -337,14 +192,9 @@ spot↔spot·actor까지 포함한 전체 연결·handler 표는 **§5 「한눈
 spot 클래스는 `IZLinkSpot`을 구현하고, 주입받은 `Context`에 handler·subscribe·
 timer를 `Configure()`에서 등록한다.
 
-> **SPOT handler 등록은 두 가지다.** 기본은 spot의 `Configure()`(와 lifecycle) 안에서
-> `Context.Handlers.Add*`/`Context.AddTimer`를 직접 호출하는 수동 등록이다. channel handler
-> 처럼([04 §3](05-channel-messaging.ko.md)) class에 attribute를 붙이고
-> `options.AddHandlersFromAssemblyOf<TMarker>()`로 assembly를 스캔하는 자동 등록도
-> packet·subscribe·actor packet·timer handler 전부에서 쓸 수 있다(timer 자동 등록 예시는 아래
-> "timer 사용법" §attribute 기반 자동 등록). spot node builder는 entry/spot factory만 등록하고,
-> handler 자체는 이 두 방식 중 하나로 등록한다. 어떤 API가 무엇을 등록하는지는 아래 코드 주석을
-> 참고한다.
+> **SPOT handler 등록은 Spot이 소유한다.** `Configure()`에서 packet과 subscription
+> handler를 등록하고, lifecycle에서 timer를 등록한다. MeshNode builder는 Spot factory와
+> Entry Spot을 등록하며 개별 Spot handler 노출 범위를 대신 결정하지 않는다.
 
 ```csharp
 public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -359,9 +209,6 @@ public sealed class StageSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         // AddPacket<T>: spot으로 오는 send/request packet handler 등록
         Context.Handlers.AddPacket<GetStageStateHandler>();
-
-        // AddActorPacket<T, TActor>: actor가 보낸 send/request를 처리하는 handler 등록 (actor 사용 시)
-        // Context.Handlers.AddActorPacket<MoveStageHandler, StageActor>();
 
         // AddSubscribe<T>(topic): 지정 topic을 구독해 publish를 받는 handler 등록
         Context.Handlers.AddSubscribe<StageStateUpdatedHandler>("stage.state.updated");
@@ -401,8 +248,8 @@ public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(ZLinkMessage request, Ca
     var create = request.Decode<DeliverySpotCreate>();   // GetOrCreateAsync에 넘긴 payload(§4)
     _deliveryId = create.DeliveryId;
 
-    // Accept(reply)의 reply는 생성 호출자에게 ZLinkSpotCreateResult.Reply로 돌아간다(선택).
-    return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept(new DeliverySpotCreated(_deliveryId)));
+    // 초기 상태 구성이 끝나면 생성을 수락한다.
+    return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     // 거부하려면 ZLinkSpotCreateResponse.Reject() — 호출자는 State == Rejected를 받는다.
 }
 ```
@@ -445,17 +292,16 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
 
 | 구분 | 주소 지정과 진입 경로 | 실행 순서 기준 |
 |------|------------------------|----------------|
-| user/domain Spot | `spotRid`로 특정 room/stage/zone을 가리키고, route mesh나 local call로 들어온다 | 해당 Spot 인스턴스의 **단일 실행 큐** — packet·request·subscription·timer·actor packet·channel reply 후속이 전부 여기서 직렬로 실행된다 |
-| Entry Spot | actor 생성 직후의 기본 위치이며, actor packet은 session/actor relay를 거쳐 들어온다 | **줄이 둘로 나뉜다** — lifecycle·route packet·subscription·timer는 Entry Spot 자신의 줄에서, actor packet은 **대상 actor mailbox**에서 각각 직렬화된다. 두 줄은 서로 동시에 실행될 수 있다 |
+| user/domain Spot | `spotRid`로 특정 room/stage/zone을 가리키고, Spot client나 local call로 들어온다 | 해당 Spot 인스턴스의 **단일 실행 큐** — packet·request·subscription·timer와 channel reply 후속이 전부 여기서 직렬로 실행된다 |
+| Entry Spot | actor 생성 직후의 기본 위치이며 actor join·leave lifecycle을 처리한다 | Entry Spot lifecycle·packet·subscription·timer는 Entry Spot 실행 문맥에서 처리되고, Actor direct packet은 Actor 자신의 mailbox에서 처리된다 |
 
 이 차이가 상태를 둘 곳을 정한다.
 
 - 여러 메시지가 함께 바꾸는 도메인 상태(room board, match queue, zone state)는
   **user/domain Spot**에 둔다. 단일 큐 덕분에 lock 없이 만질 수 있다.
-- actor 하나만 쓰는 값은 Entry Spot에서도 mailbox 직렬화만으로 안전하다.
-- 참가자 목록·admission 카운터처럼 **여러 actor·timer·route packet이 같이 만지는
-  Entry Spot 공유 상태**는 `lock`/`Interlocked` 같은 명시적 동기화를 직접 건다.
-  actor packet과 Entry Spot 자신의 실행 줄은 동시에 돌 수 있기 때문이다.
+- actor 하나만 쓰는 값은 Actor mailbox 직렬화만으로 안전하다.
+- 참가자 목록·admission 카운터처럼 여러 Actor lifecycle과 Entry Spot callback이 함께
+  변경하는 공유 상태는 각 callback이 제공하는 실행 문맥을 기준으로 동기화 책임을 확인한다.
 - 두 Spot 종류 모두, 외부에서 `SpotRid`로 직접 접근하는 코드는 이 보장 밖이다.
 
 actor dispatch 세부 규칙은 [07-actor-spot](07-actor-spot.ko.md)과
@@ -518,42 +364,15 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
         }
 
         await spot.Context.Outbound
-            .Publish("stage.heartbeat", new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
-            .Async(cancellationToken);
+            .Publish(
+                "game.stage",
+                "stage.heartbeat",
+                new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
+            .SubmitAsync(cancellationToken);
     }
 }
 ```
 
-#### attribute 기반 자동 등록
-
-위는 수동 등록이다. handler class에 `[ZLinkSpotTimerHandler(name, periodMilliseconds)]`를 붙이고
-`options.AddHandlersFromAssemblyOf<TMarker>()`로 assembly를 스캔하게 하면, `Context.AddTimer`/
-`CancelAsync` 호출 없이 framework가 spot 생성·종료에 맞춰 등록·해제까지 대신한다.
-`IZLinkSpotTimerHandler<TSpot>`의 제네릭 인자가 대상 spot 타입을 정하므로 별도 연결 코드가 없다
-(Bingo 샘플의 `BingoRoomDrawTimerHandler` 실제 코드).
-
-```csharp
-// period는 attribute 생성자 제약상 TimeSpan이 아니라 double(ms)로 받는다.
-[ZLinkSpotTimerHandler("bingo-draw", 200)]
-internal sealed class BingoRoomDrawTimerHandler : IZLinkSpotTimerHandler<BingoRoom>
-{
-    public async ValueTask HandleAsync(
-        BingoRoom spot, ZLinkTimerTick tick, CancellationToken cancellationToken)
-    {
-        if (!spot.IsReadyToDraw) return;
-        var change = spot.DrawNextNumber();
-        await spot.PublishAsync(change, cancellationToken);
-    }
-}
-
-// host 설정 — 이 한 줄이 assembly 안의 attribute 기반 handler(packet·subscribe·actor packet·timer)를
-// 전부 스캔해 등록한다. 별도로 MeshNode builder에 얹지 않는다.
-options.AddHandlersFromAssemblyOf<Program>();
-```
-
-자동 등록은 이름과 주기만 받고 `ZLinkTimerOptions`(overrun 정책·`StopOnUnhandledException`)는
-기본값을 쓴다. `CatchUpBounded` 같은 정책이 필요하면 수동 등록(`Context.AddTimer<THandler>(name,
-period, options, ct)`)을 쓴다.
 
 `ZLinkTimerTick`은 "이번 callback이 시간표에서 어떤 위치였고, 실제로 얼마나
 늦게 실행됐는지"를 설명하는 값이다. handler 안에서 보정, 로깅, 부하 완화,
@@ -746,126 +565,130 @@ public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
 user Spot timer는 같은 spot 실행 큐에서 처리된다. 그래서 같은 spot의 packet
 handler와 timer handler는 동시에 같은 spot 상태를 변경하지 않는다. Entry Spot actor
 packet은 대상 actor mailbox에서 처리하므로 Entry Spot timer 설명과 섞지 않는다.
-Entry Spot timer 실행 줄 정합성은 actor packet dispatch 계약과 분리해서 다룬다.
+Entry Spot timer 실행 문맥은 Actor direct packet의 mailbox와 분리해서 다룬다.
 
-짧은 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `RunWorker(...)`를 사용한다. worker
-함수 안에서는 Spot 상태를 직접 바꾸지 않고, 완료 뒤 Spot 실행 큐로 돌아온 callback에서
-상태를 갱신한다.
+짧은 CPU 계산을 Spot 실행 큐 밖에서 처리해야 하면 `RunCpuWorker(...)`를 사용한다. worker
+함수 안에서는 Spot 상태를 직접 바꾸지 않고, 완료 뒤 Spot 실행 문맥에서 상태를 갱신한다.
 
 ```csharp
-Context.RunWorker(_ => ScoreCalculator.Calculate(snapshot))
-    .Submit((result, ct) =>
-    {
-        CurrentScore = result;
-        return ValueTask.CompletedTask;
-    });
+var result = await Context.RunCpuWorker(_ => ScoreCalculator.Calculate(snapshot))
+    .Async(cancellationToken);
+CurrentScore = result; // 완료 뒤 Spot 실행 문맥에서 상태를 갱신한다.
 ```
 
 ## 4. spot 인스턴스 생성과 조회
 
-spot 인스턴스는 handler가 아니라 `IZLinkSpotManager`로 생성·조회한다.
+spot 인스턴스는 handler가 아니라 `IZLinkSpotManager`로 생성·조회·종료한다.
+manager의 생성·조회 함수는 이후 메시징에 재사용할 `SpotHandle`을 반환한다.
 
 ```csharp
-public sealed class StageAllocator(IZLinkSpotManager spots, IZLinkSpotPublisherClient publisher)
+public sealed class StageAllocator(
+    IZLinkSpotManager spots,
+    IZLinkSpotPublisherClient publisher)
 {
-    public async Task<string> OpenAsync(CancellationToken ct)
+    public async Task<string> OpenAsync(string stageId, CancellationToken ct)
     {
-        ZLinkSpotCreateResult stage = await spots.CreateAsync<StageSpot>(ct);
+        var stageRid = RoutingId.From(stageId);
+        SpotHandle stage = await spots.GetOrCreateAsync(
+            "game.stage",                                  // Spot이 속한 MeshName
+            "stage",                                       // 등록된 spot type
+            stageRid,
+            new StageCreate(stageId),                      // OnCreateAsync가 받을 생성 payload
+            ct);
 
-        publisher
-            .PublishSpot("game.stage", "stage.state.updated",
+        await publisher
+            .Publish(
+                "game.stage",                              // MeshName
+                "game.stage",                              // Logical Multicast ChannelName
+                "stage.state.updated",                     // topic
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
-            .Submit(ct);
+            .SubmitAsync(ct);
 
         return stage.SpotRid.ToString();
     }
 }
 ```
 
-- `CreateAsync<TSpot>()`는 빈 `ZLinkMessage`로 생성하고 `OnCreateAsync`가 허용하면
-  `OnInitializeAsync`가 한 번 실행된다.
-- `GetOrCreateAsync<TSpot>(spotRid, ...)`는 이미 있으면 `State == Existing`으로
-  재사용하고(새로 만들면 `Created`, `OnCreateAsync`가 거부하면 `Rejected`), 같은
-  `spotRid`가 다른 타입으로 있으면 `SpotTypeMismatch` 오류로 **예외를 던진다**
-  (`ZLinkSpotCreateState`가 아니라 `ZLinkFrameworkErrorKind`).
-- 반환된 `ZLinkSpotCreateResult`는 long-lived handle이 아니다. `SpotRid`/
-  `State`/`Reply`만 전달하고, 이후 메시징은 publish 나 spot packet(§5)으로 한다.
+- `CreateAsync(meshName, spotType, ...)`는 새 Spot을 만들고 `SpotHandle`을 반환한다.
+- `GetOrCreateAsync(meshName, spotType, spotRid, ...)`는 지정한 RID의 Spot을 보장하고
+  같은 논리 대상을 나타내는 `SpotHandle`을 반환한다.
+- `ResolveAsync(meshName, spotRid)`는 이미 존재하는 Spot의 handle을 조회한다.
+- `ListAsync(meshName)`는 해당 mesh에서 조회 가능한 Spot 정보를 반환한다.
+- `DestroyAsync(handle)`는 handle이 가리키는 Spot을 종료한다.
 
-#### 생성 시 payload 넘기기 — `GetOrCreateAsync(spotRid, createMessage, ct)`
+### 생성 payload와 초기 상태
 
-실무에서는 보통 **domain id로 `spotRid`를 만들고, 생성 메시지를 함께 넘긴다.** 그 메시지는
-spot의 `OnCreateAsync`로 그대로 전달돼, spot이 자기 초기 상태를 세팅한다(§3 참고).
+생성 payload는 Spot의 `OnCreateAsync`로 전달된다. Spot은 payload를 decode해 초기 상태를
+구성하고 `Accept` 또는 `Reject`로 생성 여부를 결정한다.
 
 ```csharp
-// 채널 handler 안 — deliveryId라는 domain id로 tracking spot을 보장(없으면 생성)
-await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
-    RoutingId.From(request.DeliveryId),               // spotRid = domain id를 RoutingId로
-    new DeliverySpotCreate(request.DeliveryId),       // 이 payload가 OnCreateAsync로 들어간다
+SpotHandle delivery = await spots.GetOrCreateAsync(
+    "delivery",                                           // MeshName
+    "delivery-tracking",                                  // spot type
+    RoutingId.From(request.DeliveryId),                   // domain id를 논리 주소로 사용
+    new DeliverySpotCreate(request.DeliveryId),           // OnCreateAsync로 전달
     cancellationToken);
 ```
 
 > **샘플에서 보기 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md).** `OrderId`를
-> spotRid로 쓰는 owner routing의 대표 예다. 같은 주문의 모든 이벤트가 그 주문의
-> workflow Spot 한 곳에서 직렬로 처리되고, spot이 event sourcing으로 재구성
-> 가능하므로 노드가 바뀌어도 다음 `GetOrCreateAsync`가 이어받는다.
+> spot RID로 쓰는 owner routing의 대표 예다. 같은 주문의 이벤트는 그 주문의 workflow
+> Spot에서 직렬로 처리된다.
 
-#### 생성한 spot에 이어서 상태 반영하기 — 항상 메시징으로
+### 생성한 spot에 이어서 상태 반영하기
 
-같은 프로세스의 채널 handler라도 spot 인스턴스를 직접 참조해 메서드를 호출해서는 안 된다.
-그러면 그 spot의 **직렬 실행 큐를 건너뛰어**(§3 "실행 직렬화") 다른 packet과 같은 상태를
-동시에 건드릴 수 있다 — ZLink는 spot 상태 변경을 그 spot의 메시지 처리 큐 안으로만 모아서
-lock 없이 안전하게 만드는 게 핵심 전제이므로, 참조를 얻어 직접 호출하는 지름길은 이 전제를
-깬다. 같은 프로세스에 있든 다른 노드에 있든 상태 변경은 항상 spot packet
-(`SendToSpot`/`RequestToSpot`, §5)으로 보낸다 — 같은 프로세스 대상도 예외가 아니다.
+같은 프로세스의 channel handler라도 Spot 인스턴스를 직접 참조해 메서드를 호출하지 않는다.
+상태 변경은 `IZLinkSpotClient` 또는 Spot context의 `Outbound`로 메시지를 보내
+Spot의 직렬 실행 큐 안에서 처리한다.
 
 ```csharp
-// 생성을 보장한 뒤, SpotHandle를 resolve 해서 spot packet으로 보낸다 — 인스턴스를 직접 참조하지 않는다.
-await spots.GetOrCreateAsync<DeliveryTrackingSpot>(
-    RoutingId.From(request.DeliveryId), new DeliverySpotCreate(request.DeliveryId), ct);
+SpotHandle delivery = await spots.GetOrCreateAsync(
+    "delivery",
+    "delivery-tracking",
+    RoutingId.From(request.DeliveryId),
+    new DeliverySpotCreate(request.DeliveryId),
+    ct);
 
-var spotHandle = await spotHandles.ResolveSpotHandleAsync(RoutingId.From(request.DeliveryId), ct)
-              ?? throw new InvalidOperationException("delivery tracking spot이 아직 없다");
-routes.SendToSpot(spotHandle, new RecordDeliveryEvent(request)).Submit(ct);
+// 같은 프로세스 대상도 public Spot 메시징 표면을 사용한다.
+await spotClient.SendToSpot(delivery, new RecordDeliveryEvent(request)).SubmitAsync(ct);
 ```
 
-spot 쪽은 이 packet을 `AddPacket<T>`로 등록한 handler(§5)로 받아, 자기 직렬 실행 큐 안에서
-상태를 바꾼다 — 그래서 lock이 필요 없다.
+받는 Spot은 `AddPacket<T>()`로 등록한 handler에서 메시지를 처리한다. 이 경로를
+사용해야 다른 packet·timer·actor callback과 같은 직렬 실행 보장을 유지할 수 있다.
 
 ## 5. SPOT 메시징
 
 spot이 주고받는 메시지는 **대상이 무엇이냐**로 나뉜다. 종류마다 보내는 함수와 받는
 handler가 짝이고, spot **안**(callback)에서 부르는 함수와 **밖**(HTTP·일반 channel·
-background)에서 부르는 함수가 다를 뿐 결국 같은 handler로 들어간다. 종류는 넷이다.
+background)에서 부르는 함수가 다를 뿐 결국 같은 handler로 들어간다. 종류는 세 가지다.
 
 - **topic** — channel topic으로 publish/subscribe
 - **spot packet** — spot 전송 대상(`SpotHandle`)으로 보내는 send/request
-- **actor packet** — session에 bind 된 actor로 들어가는 메시지
 - **일반 channel** — spot이 다른 (비-spot) channel service를 호출
+
+Actor direct packet은 Actor 자신의 handler registry와 mailbox가 처리한다. Spot은 Actor의
+join·leave lifecycle을 제공하며, 자세한 사용법은 [07-actor-spot](07-actor-spot.ko.md)이 다룬다.
 
 ### 한눈에 보기
 
-연결 그림부터 보자. spot은 `MeshNode`에 존재하고, **같은 mesh의 MeshNode 들은
-router↔router로 이미 연결**돼 있어(각 노드 `Listen` + location store 자동 연결)
-spot↔spot 메시징은 추가로 연결할 게 없다. 외부 프로세스도 **같은 mesh에 member로
-등록하면**(`AddRouteMesh(mesh)`) 같은 router 평면으로 잇는다(굵은 화살표 = mesh 자동,
-가는 화살표 = 같은 프로세스 자동 연결).
+Spot은 MeshNode에 존재한다. 같은 MeshName에 참여한 peer는 location store 또는
+manual peer 설정으로 연결한다. 외부 프로세스도 같은 MeshName에 참여하면
+`IZLinkSpotClient`와 `IZLinkSpotPublisherClient`로 Spot 메시징을 사용할 수 있다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  subgraph nodeA["MeshNode A · game.stage"]
-    spotA["Spot"] --- rA(["router"])
+  subgraph nodeA["MeshNode A · MeshName: game.stage"]
+    spotA["Spot A"]
   end
-  subgraph nodeB["MeshNode B · game.stage"]
-    spotB["Spot"] --- rB(["router"])
+  subgraph nodeB["MeshNode B · MeshName: game.stage"]
+    spotB["Spot B"]
   end
-  rA <==>|"이미 연결됨: 양쪽 Listen + location store 자동 연결<br/>spot packet: SendToSpot / RequestToSpot"| rB
-  api["외부 코드<br/>(같은 mesh member · routeClient / publisherClient)"] -->|"mesh 연결<br/>spot packet · topic"| rA
-  strm["StreamNode<br/>(client session)"] -->|"gateway 자동 연결(같은 프로세스 MeshNode)<br/>actor packet: actorRef.RelayAsync"| rA
+  spotA <==>|"SendToSpot / RequestToSpot"| spotB
+  api["same-mesh caller<br/>route client / publisher client"] -->|"spot packet / topic"| spotA
   classDef ownMesh fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1;
   classDef ext fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c;
-  class spotA,spotB,rA,rB ownMesh;
-  class api,strm ext;
+  class spotA,spotB ownMesh;
+  class api ext;
   style nodeA stroke:#1565c0,stroke-width:3px
   style nodeB stroke:#1565c0,stroke-width:3px
 ```
@@ -874,9 +697,9 @@ flowchart LR
 
 | 종류 | spot 안에서 (`Outbound`) | spot 밖에서 (주입 client) | 받는 handler (§3 등록) | 연결 |
 |------|---------------------------|----------------------------|------------------------|-----------|
-| topic | `Publish(topic, …)` | `IZLinkSpotPublisherClient.PublishSpot(mesh, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 mesh membership → **자동** (Logical Multicast, 별도 pub 소켓 없음) |
-| actor packet | — | session `actorRef.RelayAsync(…)` | `AddActorPacket<T, TActor>` → `IZLinkSpotActorSendHandler` · `IZLinkSpotActorRequestHandler` | STREAM gateway 자동(같은 프로세스 MeshNode) + `Listen` + `AddEntrySpot` + `AddActorFactory` |
-| 일반 channel | `SendToChannel / RequestToChannel(name, …)` | (그 channel의 handler, [04](05-channel-messaging.ko.md)) | 그 channel의 handler | `AddClientServerChannel(name).EnableClient()` ↔ 그 channel server |
+| topic | `Publish(channel, topic, …)` | `IZLinkSpotPublisherClient.Publish(mesh, channel, topic, …)` | `AddSubscribe<T>(topic)` → `IZLinkSpotSubscriptionHandler` | 같은 MeshName과 ChannelName의 Logical Multicast |
+| spot packet | `SendToSpot / RequestToSpot` | `IZLinkSpotClient.SendToSpot / RequestToSpot` | `AddPacket<T>()` → Spot send/request handler | 같은 MeshName + resolved `SpotHandle` |
+| 일반 channel | `SendToChannel / RequestToChannel(name, …)` | `IZLinkRouteClient`의 ChannelName 호출 | `AddSendHandler` / `AddRequestHandler` | Spot의 MeshName + 대상 ChannelName membership |
 
 spot **안**에서 내보내는 코드는 한 handler에서 세 종류를 이렇게 부른다.
 
@@ -889,17 +712,21 @@ public sealed class StageNoticeHandler
     {
         var outbound = spot.Context.Outbound;
 
-        // topic — 현재 channel의 topic으로 publish
-        outbound.Publish("stage.notice", new StageNoticeEvent(request.Text)).Submit(ct);
+        // topic — 현재 MeshName의 game.stage membership으로 Logical Multicast
+        await outbound.Publish(
+                "game.stage", "stage.notice", new StageNoticeEvent(request.Text))
+            .SubmitAsync(ct);
 
-        // 일반 channel — attach 된 비-spot channel로 send/request
-        outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text)).Submit(ct);
+        // 일반 channel — 현재 MeshName의 orders membership으로 send/request
+        await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text))
+            .SubmitAsync(ct);
         var state = await outbound
             .RequestToChannel("orders", new GetOrderStateRequest())
             .Async<GetOrderStateReply>(ct);
 
         // spot packet — 다른 Spot으로. SpotHandle는 미리 resolve 해서 보관한 값이다(§5 아래).
-        outbound.SendToSpot(peerHandle, new StageNoticeEvent(request.Text)).Submit(ct);
+        await outbound.SendToSpot(peerHandle, new StageNoticeEvent(request.Text))
+            .SubmitAsync(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -933,21 +760,20 @@ public sealed class StageStateUpdatedHandler
 spot **밖**(local spot 없는 프로세스)에서는 `IZLinkSpotPublisherClient`로 같은 topic에 쏜다.
 
 ```csharp
-app.MapPost("/stage/publish", (
+app.MapPost("/stage/publish", async (
     PublishStageStateHttpRequest request,
     IZLinkSpotPublisherClient spotPublisher,
     CancellationToken ct) =>
 {
-    spotPublisher
-        .PublishSpot("game.stage", "stage.state.updated",
+    await spotPublisher
+        .Publish("game.stage", "game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
-        .Submit(ct);
+        .SubmitAsync(ct);
     return Results.Accepted();
 });
 ```
 
-spot 안에서 자기 mesh topic으로 `Publish`만 할 거면 추가 소켓 설정이 없다 — mesh
-router 연결이 그대로 나른다.
+spot 안에서 자기 mesh topic으로 `Publish`할 때 별도 fanout channel을 추가하지 않는다.
 
 ### spot packet — send / request
 
@@ -969,15 +795,14 @@ public sealed class GetStageStateHandler
 
 spot **안**(spot↔spot)에서는 `RequestToSpot(spotHandle, …)`. 같은 mesh 라 연결이 자동이다.
 
-대상 spot의 **`SpotHandle`는 한 번 조회해서 보관한다.** `IZLinkSpotHandleResolver`로
-spot rid를 논리적 handle로 바꾸면 framework가 내부 주소를 갱신한다. request 중 주소가
+대상 spot의 **`SpotHandle`은 한 번 조회해서 보관한다.** `IZLinkSpotManager.ResolveAsync(...)`로
+spot RID를 논리적 handle로 바꾸면 framework가 내부 주소를 갱신한다. request 중 주소가
 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송하며, send는 중복 전달을 피하려고 재전송하지 않는다
 ([공통 스펙: spot 주소 메시징](../../spec/server/24-spot-address-messaging.ko.md)).
 
 ```csharp
-// ① 상호작용을 시작할 때 한 번 — spot rid로 SpotHandle 조회
-var peerHandle = await spotHandles.ResolveSpotHandleAsync(peerStageRid, ct)
-              ?? throw new InvalidOperationException("peer stage가 아직 없다");
+// ① 상호작용을 시작할 때 한 번 — MeshName과 spot RID로 SpotHandle 조회
+SpotHandle peerHandle = await spots.ResolveAsync("game.stage", peerStageRid, ct);
 
 // ② 이후에는 보관한 SpotHandle로 요청 — 내부 주소 갱신은 framework가 담당
 var peer = await spot.Context.Outbound
@@ -985,22 +810,21 @@ var peer = await spot.Context.Outbound
     .Async<GetStageStateReply>(ct);
 ```
 
-spot **밖**(외부 코드)에서는 `IZLinkRouteClient`로 **RouteMesh channel 이름 + `SpotHandle`**에
-보낸다. `SpotHandle`는 spot 안에서와 똑같이 resolve 한 번으로 얻어 보관한다.
+spot **밖**(외부 코드)에서는 `IZLinkSpotClient`로 `SpotHandle`에 보낸다.
+`SpotHandle`은 `IZLinkSpotManager.ResolveAsync(meshName, spotRid)`로 조회해 보관한다.
 
 ```csharp
-// 일반 코드(spot 아님) — route client로 SpotHandle에 request
+// 일반 코드(spot 아님) — Spot client로 SpotHandle에 request
 public sealed class StageQueryAdapter(
-    IZLinkRouteClient routes,
-    IZLinkSpotHandleResolver spotHandles)
+    IZLinkSpotClient spotClient,
+    IZLinkSpotManager spots)
 {
     private SpotHandle? _stageHandle;   // 논리적 대상을 나타내는 handle을 보관
 
     public async ValueTask<GetStageStateReply> GetAsync(RoutingId spotRid, CancellationToken ct)
     {
-        _stageHandle ??= await spotHandles.ResolveSpotHandleAsync(spotRid, ct)
-                      ?? throw new InvalidOperationException("stage가 아직 없다");
-        return await routes
+        _stageHandle ??= await spots.ResolveAsync("game.stage", spotRid, ct);
+        return await spotClient
             .RequestToSpot(_stageHandle, new GetStageStateRequest())
             .Async<GetStageStateReply>(ct);
     }
@@ -1017,7 +841,7 @@ request 면 spot의 reply가 같은 길로 돌아온다.
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
   subgraph ext["외부 프로세스 (local spot 없음)"]
-    h["route/HTTP handler<br/>routes.RequestToSpot(spotHandle, req)"]
+    h["route/HTTP handler<br/>spotClient.RequestToSpot(spotHandle, req)"]
     c(["AddRouteMesh(&quot;game.stage&quot;) member"])
     h --> c
   end
@@ -1037,59 +861,28 @@ flowchart LR
 ```csharp
 // ── 보내는 쪽 (API 서버) — 같은 mesh의 member로 참여 ──
 var member = options.AddRouteMesh("game.stage");
-member.Listen("tcp://0.0.0.0:0");   // ephemeral bind — resolve 된 endpoint가 descriptor row로 광고된다
-member.ChannelName("game.stage");
+member.Listen("tcp://0.0.0.0:0");
+member.SetRoutingId(RoutingId.From("stage-api"));
+member.ChannelName("game.stage").SetWeight(0); // 호출 전용 membership
 // store가 없으면 수동: member.PeerConnections.Connect(RoutingId.From("play-a"), "tcp://play-node-1:9101");
 
 // ── 받는 쪽 (spot을 호스팅하는 MeshNode) ──
 var node = options.AddRouteMesh("game.stage");
 node.Listen("tcp://0.0.0.0:9101");
+node.SetRoutingId(RoutingId.From("stage-a"));
 node.ChannelName("game.stage");
 node.AddSpotFactory<StageSpot>();
 ```
 
-### actor packet
-
-받는 쪽은 actor를 호스팅하는 spot(`IZLinkSpot<TActor>`)이 `AddActorPacket`으로
-actor packet handler를 등록한다. handler는 spot과 함께 dispatch 대상 actor를 받는다.
-
-```csharp
-// StageSpot.Configure() 안 (StageSpot : IZLinkSpot<StageActor>)
-Context.Handlers.AddActorPacket<MoveActorHandler, StageActor>();
-
-public sealed class MoveActorHandler
-    : IZLinkSpotActorRequestHandler<StageSpot, StageActor, MoveActorCommand, MoveActorReply>
-{
-    public ValueTask<MoveActorReply> HandleAsync(
-        StageSpot spot, StageActor actor,
-        ZLinkSpotActorRequestContext context,
-        MoveActorCommand message, CancellationToken ct)
-    {
-        actor.MoveTo(message.X, message.Y);
-        return ValueTask.FromResult(new MoveActorReply(message.X, message.Y));
-    }
-}
-```
-
-호출하는 쪽: client stream의 session이 들어온 packet을 bind 된 actor로 relay 하면,
-그 actor가 join 해 있는 spot의 위 handler로 dispatch 된다.
-
-```csharp
-// SampleSession.OnDispatchAsync — client packet을 bound actor로 relay
-var actorRef = Context.Actors.Find(actorId)
-    ?? throw new InvalidOperationException("actor not bound");
-await actorRef.RelayAsync(payload, ct);
-```
-
-자세한 actor bind/dispatch 흐름은 [07-actor-spot](07-actor-spot.ko.md)에서 다룬다.
 
 ### 일반 channel — spot이 다른 channel 호출
 
 spot이 비-spot channel service(예: `orders`)를 호출하는 경우다. spot **안**에서
-`SendToChannel/RequestToChannel`을 쓰고(위 "한눈에 보기" 의 handler 예시), 해당
-client/server channel에 `EnableClient()`가 있어야 한다. 받는 쪽은 그 channel의 일반 handler이고
-([05-channel-messaging](05-channel-messaging.ko.md) §3) spot handler가 아니다. 반대
-방향(channel → spot)은 위 "spot packet" 의 외부→spot 경로를 쓴다.
+`SendToChannel/RequestToChannel`을 쓴다. 이 호출은 Spot context의 MeshName을 사용하므로
+같은 MeshNode에 대상 `ChannelName` membership이 있어야 한다. 호출만 하는 membership은
+weight를 `0`으로 둔다. 받는 노드는 같은 MeshName에서 positive weight의 `orders`
+membership과 typed channel handler를 등록한다
+([05-channel-messaging](05-channel-messaging.ko.md) §3).
 
 ### host 연결 설정 한곳에 모아 보기
 
@@ -1101,12 +894,14 @@ client/server channel에 `EnableClient()`가 있어야 한다. 받는 쪽은 그
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    var node = options.AddRouteMesh("game.stage");
-    node.Listen("tcp://0.0.0.0:9001");                      // spot↔spot · actor packet · topic — 전부 이 소켓
-    node.ChannelName("game.stage");                         // logical membership (topic publish 대상 집합)
-    node.AddEntrySpot<StageEntrySpot>();                    // actor packet — entry spot
+    var node = options.AddRouteMesh("game.stage")
+        .Listen("tcp://0.0.0.0:9001")
+        .SetRoutingId(RoutingId.From("stage-a"));
+    node.ChannelName("game.stage");                         // SPOT과 topic용 membership
+    node.ChannelName("orders").SetWeight(0);                // orders 호출 전용 membership
+    node.AddEntrySpot<StageEntrySpot>();                    // Actor join·leave lifecycle을 처리할 Entry Spot
     node.AddSpotFactory<StageSpot>();
-    node.AddActorFactory<StageActorFactory>("player");      // actor packet — actor 생성 매핑
+    node.AddActorFactory<StageActorFactory>("player");      // actor type과 factory 매핑
 });
 ```
 
@@ -1115,27 +910,29 @@ builder.Services.AddZLinkFramework(options =>
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // spot packet(routes.RequestToSpot)·topic publish(PublishSpot) — 같은 mesh member로 참여
-    var mesh = options.AddRouteMesh("game.stage");
-    mesh.Listen("tcp://0.0.0.0:9001");
-    mesh.ChannelName("game.stage");
+    // Spot packet과 topic publish를 위해 같은 MeshName에 참여한다.
+    var mesh = options.AddRouteMesh("game.stage")
+        .Listen("tcp://0.0.0.0:0")
+        .SetRoutingId(RoutingId.From("stage-gateway"));
+    mesh.ChannelName("game.stage").SetWeight(0);            // 호출 전용 membership
 
-    // actor packet — stream의 gateway는 같은 프로세스 game.stage MeshNode로 자동 연결
+    // STREAM session의 actor dispatch가 사용할 MeshName을 명시한다.
     options.AddStreamNode("client-stream")
         .Bind("tcp://0.0.0.0:7101")
-        .RegisterSession<StageSession>();
+        .EnableActorDispatch("game.stage")
+        .AddSession<StageSession>();
 });
 ```
 
-STREAM의 actor-gateway 입구는 **같은 프로세스의 (router가 활성화된) local MeshNode**(여기선
-`game.stage`)로 자동 연결된다(별도 호출 없음). 자세한 actor/session 흐름은
+STREAM node는 `EnableActorDispatch("game.stage")`로 session이 사용할 MeshName context를
+고정한다. 자세한 actor/session 흐름은
 [07-actor-spot](07-actor-spot.ko.md)·[08-actor-session](08-actor-session.ko.md)에서 다룬다.
 
 ## 6. Stage wrapper (playhouse Stage 류)
 
-`playhouse` Stage 같은 상위 실행 모델을 SPOT 위에 올릴 수 있다. SPOT이 transport
-바닥(MeshNode lifecycle, spotRid 생성/종료, publish/subscribe, attach client
-send/request, timer, 같은 Spot 직렬 실행)을 제공하고, wrapper는 그 위에
+`playhouse` Stage 같은 상위 실행 모델을 SPOT 위에 올릴 수 있다. SPOT이 MeshNode
+lifecycle, spot RID 생성·종료, publish/subscribe, channel send/request, timer와
+같은 Spot 직렬 실행을 제공하고, wrapper는 그 위에
 membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회를 얹는다.
 
 자세한 추가 요건(실행 컨텍스트 계약, 생성 시 초기 메타데이터, directory)은

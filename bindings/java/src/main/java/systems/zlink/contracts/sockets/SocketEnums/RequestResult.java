@@ -17,7 +17,8 @@ public enum RequestResult {
     NOT_CONNECTED(109),
     INVALID_ARGUMENT(110),
     INVALID_STATE(111),
-    NOT_SUPPORTED(112);
+    NOT_SUPPORTED(112),
+    BACKPRESSURED(113);
 
     private final int value;
 

@@ -106,9 +106,9 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
   규칙[^reverse-dns]을 따른다. `.NET`의 NuGet[^nuget] package id 와 namespace는
   `Systems.Zlink.*`를 사용한다. 예를 들어 framework는
   `Systems.Zlink.Framework`, Stream Connector는 `Systems.Zlink.Stream.Connector`가 된다.
-- 수동 연결은 `channel + capability`[^capability] 또는 `spot node + capability`
-  단위로 설명한다. 같은 역할 안에서는 location store 기반 자동 연결과 manual
-  연결을 섞지 않는다.
+- 수동 연결은 MeshNode의 `PeerConnections`와 fanout subscriber 연결처럼 기능별
+  public 표면으로 설명한다. 같은 MeshNode에서는 location store 기반 자동 연결과
+  manual peer 연결을 섞지 않는다.
 - send 는 기본적으로 async submit 으로 설명한다. backpressure[^backpressure]는
   public no-wait 옵션을 따로 두지 않고, nonblocking send 와 pending queue,
   ready notification 을 활용해서 framework 내부에서 처리한다.
@@ -128,7 +128,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
   공용 계약과 샘플 문서에 함께 반영한다.
 - session actor dispatch[^session-actor-dispatch] 는 단일 gateway feature switch
   하나를 켜고 끄는 형태가 아니다. 대신
-  `AddStreamNode` 뒤의 `RegisterSession<TSession>()`, actor factory, actor
+  `AddStreamNode` 뒤의 `AddSession<TSession>()`, actor factory, actor
   logical actor binding, actor-session binding, `IZLinkBoundSession` 의
   조합으로 설명한다. session 위치 조회를 위한 별도의 public API 는 두지 않는다.
 
@@ -220,31 +220,26 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 
 - `ASP.NET Core` 의 DI 와 hosted service 모델을 따른다.
 - handler, client, filter 의 생성도 동일한 `.NET DI` 컨테이너를 기준으로 맞춘다.
-- 기본 호출 모델은 `channel name` 기준의 direct call 이다.
-- 별도의 gateway 나 전용 load balancer 를 두지 않고, channel 별 location store
-  자동 연결로 직접 호출한다.
-- channel messaging handler 는 attribute scan[^attribute-scan] 으로 찾는다.
-  다만 발견된 handler 를 모든 channel 에 전역으로 노출하지 않는다.
-  대신 `EnableServer(...)` 또는 `EnableSubscriber(...)` 같은 inbound 역할
-  등록 시점에 어느 channel 로 매핑할지 명시한다.
+- 기본 호출 모델은 `(MeshName, ChannelName)` 기준의 select-one과
+  `(MeshName, target RID)` 기준의 node direct 호출이다.
+- 별도의 gateway나 전용 load balancer를 두지 않고, MeshNode descriptor를 사용하는
+  location store 자동 연결로 직접 호출한다.
+- ChannelName messaging handler는 해당 membership의 builder에 typed handler로
+  등록한다. Node direct handler는 MeshNode builder에 등록하므로 두 namespace가 섞이지 않는다.
 - `[ZLinkRequest]`, `[ZLinkSend]`, `[ZLinkPublish]` 는 channel 이름을 인자로 받지
   않는다. channel 이름은 배포 환경과 topology 의 값이므로, handler attribute 가
   소유하지 않고 channel registration 이 소유한다.
 - `SPOT` 도 별도의 low-level runtime 으로 떼어 두지 않고, framework lifecycle
   안에서 다룰 수 있어야 한다.
-- 일반 channel messaging 은 target channel 을 뜻하는 `channelName` 기반 호출을 기본으로
-  한다. 반면 routed Spot 경로는 caller 가 사용할 local egress channel 을 별도로 명시하고,
-  source channel registration 에 target SpotNode ingress channel 이름을 둔다. target Spot
-  은 `RoutingId`로 넘긴다. local egress socket 은 channel type 에 따라 route mesh `ROUTER`
-  또는 client-server `DEALER`가 될 수 있다.
-- `SPOT` 의 high-level 표면은 다음 세 가지를 다룬다.
-  1. 현재 channel 의 publish / subscribe
-  2. attach 된 channel 의 send / request
-  3. local egress channel, target SpotNode ingress channel, Spot routing id 기반 routed
-     send / request
-- `IZLinkChannelClient` 와 `IZLinkSpotOutbound` 는 서로 다른 C API 를 감싸는 별개의
-  인터페이스다. 다만 하부 기능이 일부 겹치므로, 두 인터페이스가 비슷한 모양의
-  send / request 계열 함수를 함께 가질 수 있다.
+- 일반 channel messaging은 `IZLinkRouteClient`가 MeshName과 ChannelName을 함께 받아
+  준비 상태이고 weight가 양수인 member 하나를 선택한다. Node direct 호출은 같은
+  client가 MeshName과 target RID를 받는다.
+- `SPOT`의 high-level 표면은 Logical Multicast publish, `SpotHandle` 기반
+  send/request와 actor 메시징을 다룬다. 호출자가 별도 egress channel이나 target
+  ingress channel을 조합하지 않는다.
+- `IZLinkRouteClient`와 `IZLinkSpotOutbound`는 모두 typed payload를 받으며, 주소 해석과
+  wire 구성은 framework가 내부에서 처리한다. 호출자는 raw frame이나 transport 종류를
+  선택하지 않는다.
 
 ## 4. 회귀 테스트
 
@@ -265,7 +260,7 @@ guide가 맡고, sample 문서는 공통 정본 시나리오의 실제 등록·�
 [^channel-messaging]: channel messaging 은 채널 이름을 키로 삼아 메시지를 주고받는 방식이다. request / send 는 요청-응답과 단방향 전달, event messaging 은 publish / subscribe 형태의 이벤트 전달을 가리킨다.
 [^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
 [^topology]: topology 는 어떤 노드(channel, spot, location row 등)가 어디에 있는지, 그리고 서로 어떻게 연결되어 있는지를 나타내는 구성 정보다.
-[^location-store]: location store 는 서버가 자기 endpoint 와 routing id 를 row 로 적고, 다른 서버가 그 row 를 읽어 연결 대상을 찾는 공유 저장소다. 현재 Redis extension 과 단일 프로세스용 in-memory 구현을 제공한다.
+[^location-store]: location store 는 서버가 자기 endpoint, routing id와 ChannelName membership을 descriptor row로 적고, 다른 서버가 그 row를 읽어 연결 대상을 찾는 공유 저장소다. Production 구성은 공식 Redis extension이나 `IZLinkLocationStore` 구현체를 명시적으로 등록한다.
 [^hosted-service]: hosted service 는 `ASP.NET Core` 호스트가 시작·종료될 때 함께 시작·종료되는 백그라운드 컴포넌트를 뜻한다(`IHostedService`).
 [^ci]: CI(Continuous Integration) 는 코드 변경이 들어올 때마다 자동으로 빌드와 테스트를 실행해 회귀를 빠르게 잡아내는 파이프라인을 가리킨다.
 [^rid]: RID(Runtime Identifier) 는 `.NET` 이 OS·CPU 조합을 식별하는 문자열이다. 예: `win-x64`, `linux-arm64`.

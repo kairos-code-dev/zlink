@@ -8,7 +8,7 @@ namespace TicTacToe.Server.Play.Infrastructure.ZLink.Sessions.Handlers;
 
 internal sealed class AuthenticatePlaySessionHandler(
     IZLinkActorManager actors,
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<AuthenticatePlaySessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
@@ -27,6 +27,7 @@ internal sealed class AuthenticatePlaySessionHandler(
             throw new InvalidOperationException("Authentication token is empty.");
 
         var authenticated = await channels.RequestToChannel(
+                SampleChannels.Api,
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(accessToken))
             .Async<AuthenticatePlayerRes>(cancellationToken);

@@ -40,12 +40,18 @@ internal sealed class PlayServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            options.AddClientServerChannel(SampleChannels.Api)
-                .EnableClient(settings.ApiChannelEndpoints[0])
-                .EnableClient(settings.ApiChannelEndpoints[1]);
+            var api = options.AddRouteMesh(SampleChannels.Api)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-api"));
+            api.ChannelName(SampleChannels.Api);
+            api.PeerConnections.Connect(settings.ApiChannelEndpoints[0]);
+            api.PeerConnections.Connect(settings.ApiChannelEndpoints[1]);
 
-            options.AddClientServerChannel(SampleChannels.Play(settings.PlayIndex))
-                .EnableServer(settings.PlayChannelEndpoint)
+            var playChannel = SampleChannels.Play(settings.PlayIndex);
+            options.AddRouteMesh(playChannel)
+                .Listen(settings.PlayChannelEndpoint)
+                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-play"))
+                .ChannelName(playChannel)
                 .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
 
             options.AddStreamNode(SampleNodes.ClientStream)

@@ -10,7 +10,7 @@ internal static class CreateGameHttpHandler
 
     public static async Task<IResult> HandleAsync(
         CreateGameHttpReq request,
-        IZLinkChannelClient client,
+        IZLinkRouteClient client,
         SampleSettings settings,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -28,6 +28,7 @@ internal static class CreateGameHttpHandler
             ownerIndex);
 
         var reply = await client.RequestToChannel(
+                ownerChannel,
                 ownerChannel,
                 new CreateGameReq(gameName))
             .Async<CreateGameRes>(cancellationToken);

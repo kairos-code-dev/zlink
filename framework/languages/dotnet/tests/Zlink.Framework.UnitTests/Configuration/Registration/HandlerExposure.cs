@@ -326,6 +326,29 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void AddZLinkFramework_Registers_MeshChannel_Handler_With_Constructor_Dependency()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<MeshHandlerDependency>();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddRouteMesh("profile")
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From("profile-node"))
+                .ChannelName("profile")
+                .AddRequestHandler<MeshDependentRequestHandler, TestChannelRequest, TestChannelReply>();
+        });
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var handler = scope.ServiceProvider.GetRequiredService<MeshDependentRequestHandler>();
+
+        Assert.Same(
+            provider.GetRequiredService<MeshHandlerDependency>(),
+            handler.Dependency);
+    }
+
+    [Fact]
     public void AddZLinkFramework_RouteMeshEnableServer_BindsSharedRouter()
     {
         var services = new ServiceCollection();
@@ -493,6 +516,24 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 .Append(type)
                 .SelectMany(static interfaceType => interfaceType.GetMethods())
                 .ToArray();
+        }
+    }
+
+    private sealed class MeshHandlerDependency;
+
+    private sealed class MeshDependentRequestHandler(MeshHandlerDependency dependency)
+        : IZLinkRequestHandler<TestChannelRequest, TestChannelReply>
+    {
+        public MeshHandlerDependency Dependency { get; } = dependency;
+
+        public ValueTask<TestChannelReply> HandleAsync(
+            TestChannelRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken)
+        {
+            _ = context;
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new TestChannelReply(request.Value));
         }
     }
 }

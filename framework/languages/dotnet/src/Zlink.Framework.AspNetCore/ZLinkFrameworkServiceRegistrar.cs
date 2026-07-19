@@ -235,6 +235,16 @@ internal static class ZLinkFrameworkServiceRegistrar
                      .OfType<Type>())
             services.TryAddScoped(entrySpotType);
 
+        foreach (var membership in registration.SpotNodes.Values
+                     .SelectMany(static spotNode => spotNode.ChannelMemberships))
+        {
+            foreach (var handler in membership.SendHandlers)
+                services.TryAddScoped(handler.HandlerType);
+
+            foreach (var handler in membership.RequestHandlers)
+                services.TryAddScoped(handler.HandlerType);
+        }
+
         foreach (var routed in registration.RouteChannels.Values)
         {
             foreach (var handler in routed.SendHandlers) services.TryAddScoped(handler.HandlerType);

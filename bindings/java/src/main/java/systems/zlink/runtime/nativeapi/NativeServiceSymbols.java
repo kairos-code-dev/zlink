@@ -58,6 +58,14 @@ public final class NativeServiceSymbols {
         dc("zlink_mesh_node_status", FunctionDescriptor.of(I, A, A));
     private static final MethodHandle MESH_NODE_PEERS =
         dc("zlink_mesh_node_peers", FunctionDescriptor.of(I, A, A, A));
+    private static final MethodHandle MESH_NODE_MONITOR_OPEN =
+        dc("zlink_mesh_node_monitor_open", FunctionDescriptor.of(A, A, A));
+    private static final MethodHandle MESH_NODE_MONITOR_RECV =
+        dc("zlink_mesh_node_monitor_recv", FunctionDescriptor.of(I, A, A, I));
+    private static final MethodHandle MESH_NODE_MONITOR_STATUS =
+        dc("zlink_mesh_node_monitor_status", FunctionDescriptor.of(I, A, A));
+    private static final MethodHandle MESH_NODE_MONITOR_CLOSE =
+        dc("zlink_mesh_node_monitor_close", FunctionDescriptor.of(I, A));
 
     // --- node/channel messaging ---
     private static final MethodHandle MESH_NODE_SEND_TO_NODE =
@@ -74,8 +82,6 @@ public final class NativeServiceSymbols {
         dc("zlink_mesh_node_publisher_new", FunctionDescriptor.of(A, A));
     private static final MethodHandle MESH_NODE_PUBLISHER_PUBLISH =
         dc("zlink_mesh_node_publisher_publish", FunctionDescriptor.of(I, A, A, A, A, A, L, A, I));
-    private static final MethodHandle MESH_NODE_PUBLISHER_SET_OPTION =
-        dc("zlink_mesh_node_publisher_set_option", FunctionDescriptor.of(I, A, I, A, L));
     private static final MethodHandle MESH_NODE_PUBLISHER_DESTROY =
         dc("zlink_mesh_node_publisher_destroy", FunctionDescriptor.of(I, A));
 
@@ -128,8 +134,6 @@ public final class NativeServiceSymbols {
         dc("zlink_spot_request_to_spot", FunctionDescriptor.of(I, A, A, A, L, A, A, L, A, I, I));
     private static final MethodHandle SPOT_PUBLISH =
         dc("zlink_spot_publish", FunctionDescriptor.of(I, A, A, A, A, A, L, A, I));
-    private static final MethodHandle SPOT_SET_PUBLISH_OPTION =
-        dc("zlink_spot_set_publish_option", FunctionDescriptor.of(I, A, I, A, L));
     private static final MethodHandle SPOT_SET_SUBSCRIPTION =
         dc("zlink_spot_set_subscription", FunctionDescriptor.of(I, A, A, A, I));
     private static final MethodHandle SPOT_UNSET_SUBSCRIPTION =
@@ -298,6 +302,40 @@ public final class NativeServiceSymbols {
         }
     }
 
+    public static MemorySegment meshNodeMonitorOpen(MemorySegment node, MemorySegment options) {
+        try {
+            return (MemorySegment) MESH_NODE_MONITOR_OPEN.invokeExact(node, options);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_monitor_open", t);
+        }
+    }
+
+    public static int meshNodeMonitorRecv(MemorySegment monitor, MemorySegment event, int flags) {
+        try {
+            return (int) MESH_NODE_MONITOR_RECV.invokeExact(monitor, event, flags);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_monitor_recv", t);
+        }
+    }
+
+    public static int meshNodeMonitorStatus(MemorySegment monitor, MemorySegment status) {
+        try {
+            return (int) MESH_NODE_MONITOR_STATUS.invokeExact(monitor, status);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_monitor_status", t);
+        }
+    }
+
+    public static int meshNodeMonitorClose(MemorySegment monitor) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
+            holder.set(ValueLayout.ADDRESS, 0, monitor);
+            return (int) MESH_NODE_MONITOR_CLOSE.invokeExact(holder);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_monitor_close", t);
+        }
+    }
+
     public static int meshNodeSendToNode(MemorySegment node, MemorySegment rid, MemorySegment meta,
                                   MemorySegment parts, long count, int flags) {
         try {
@@ -354,14 +392,6 @@ public final class NativeServiceSymbols {
                 count, detailOut, flags);
         } catch (Throwable t) {
             throw fail("zlink_mesh_node_publisher_publish", t);
-        }
-    }
-
-    public static int publisherSetOption(MemorySegment pub, int option, MemorySegment optval, long len) {
-        try {
-            return (int) MESH_NODE_PUBLISHER_SET_OPTION.invokeExact(pub, option, optval, len);
-        } catch (Throwable t) {
-            throw fail("zlink_mesh_node_publisher_set_option", t);
         }
     }
 
@@ -591,14 +621,6 @@ public final class NativeServiceSymbols {
                 detailOut, flags);
         } catch (Throwable t) {
             throw fail("zlink_spot_publish", t);
-        }
-    }
-
-    public static int spotSetPublishOption(MemorySegment spot, int option, MemorySegment optval, long len) {
-        try {
-            return (int) SPOT_SET_PUBLISH_OPTION.invokeExact(spot, option, optval, len);
-        } catch (Throwable t) {
-            throw fail("zlink_spot_set_publish_option", t);
         }
     }
 

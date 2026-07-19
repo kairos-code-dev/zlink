@@ -144,11 +144,13 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("meshNodeStatus", mesh_node_status),
       ZLINK_METHOD ("meshNodePeers", mesh_node_peers),
       ZLINK_METHOD ("meshNodePeerChannels", mesh_node_peer_channels),
+      ZLINK_METHOD ("meshNodeMonitorOpen", mesh_node_monitor_open),
+      ZLINK_METHOD ("meshNodeMonitorRecv", mesh_node_monitor_recv),
+      ZLINK_METHOD ("meshNodeMonitorStatus", mesh_node_monitor_status),
+      ZLINK_METHOD ("meshNodeMonitorClose", mesh_node_monitor_close),
       // Publisher
       ZLINK_METHOD ("meshNodePublisherNew", mesh_node_publisher_new),
       ZLINK_METHOD ("meshNodePublisherPublish", mesh_node_publisher_publish),
-      ZLINK_METHOD ("meshNodePublisherSetOption", mesh_node_publisher_set_option),
-      ZLINK_METHOD ("meshNodePublisherGetOption", mesh_node_publisher_get_option),
       ZLINK_METHOD ("meshNodePublisherDestroy", mesh_node_publisher_destroy),
       // Pull dispatch
       ZLINK_METHOD ("meshNodeSetReadyHandler", mesh_node_set_ready_handler),
@@ -176,8 +178,6 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("spotSendToSpot", spot_send_to_spot),
       ZLINK_METHOD ("spotRequestToSpot", spot_request_to_spot),
       ZLINK_METHOD ("spotPublish", spot_publish),
-      ZLINK_METHOD ("spotSetPublishOption", spot_set_publish_option),
-      ZLINK_METHOD ("spotGetPublishOption", spot_get_publish_option),
       ZLINK_METHOD ("spotSetSubscription", spot_set_subscription),
       ZLINK_METHOD ("spotUnsetSubscription", spot_unset_subscription),
       // Actor
@@ -214,4 +214,3 @@ void define_spot_exports (napi_env env, napi_value exports)
     };
     define_exports (env, exports, descs, sizeof (descs) / sizeof (*descs));
 }
-

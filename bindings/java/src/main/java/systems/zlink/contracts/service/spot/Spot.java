@@ -35,9 +35,6 @@ public interface Spot extends AutoCloseable {
     /** Publishes a topic message on a channel from this spot. */
     void publish(String channel, String topic, List<Message> parts, SendFlags flags);
 
-    /** Sets whether publishes from this spot must not be dropped. */
-    void setNoDrop(boolean nodrop);
-
     /** Adds a topic subscription on a channel. */
     void setSubscription(String channel, String topicFilter, SubscriptionKind kind);
 

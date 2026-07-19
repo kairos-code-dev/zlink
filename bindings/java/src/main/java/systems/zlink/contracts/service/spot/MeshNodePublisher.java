@@ -15,9 +15,6 @@ public interface MeshNodePublisher extends AutoCloseable {
     PublishDetail publishDetailed(String channel, String topic, List<Message> parts,
                                   SendFlags flags);
 
-    /** Sets whether publishes must not be dropped. */
-    void setNoDrop(boolean nodrop);
-
     @Override
     void close();
 }

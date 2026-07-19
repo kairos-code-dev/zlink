@@ -14,6 +14,8 @@ import type {
   MeshOperationIdRaw,
   MeshPeerChannelsRaw,
   MeshPeerEntryRaw,
+  MeshMonitorEventRaw,
+  MeshMonitorStatusRaw,
   MeshPublishDetailRaw,
   NativeReadyHandler,
   SpotGetOrNewRaw,
@@ -94,6 +96,12 @@ export interface ServiceNativeBinding {
     peerRid: Buffer,
     lifecycleGeneration: bigint
   ) => MeshPeerChannelsRaw;
+  meshNodeMonitorOpen: (node: NativeHandle, events: bigint) => NativeHandle;
+  meshNodeMonitorRecv: (
+    monitor: NativeHandle, flags: number
+  ) => MeshMonitorEventRaw | null;
+  meshNodeMonitorStatus: (monitor: NativeHandle) => MeshMonitorStatusRaw;
+  meshNodeMonitorClose: (monitor: NativeHandle) => void;
 
   // --- Publisher ----------------------------------------------------------
   meshNodePublisherNew: (node: NativeHandle) => NativeHandle;
@@ -105,8 +113,6 @@ export interface ServiceNativeBinding {
     parts: NativeParts,
     flags: number
   ) => MeshPublishDetailRaw;
-  meshNodePublisherSetOption: (publisher: NativeHandle, option: number, value: Buffer) => void;
-  meshNodePublisherGetOption: (publisher: NativeHandle, option: number) => Buffer;
   meshNodePublisherDestroy: (publisher: NativeHandle) => void;
 
   // --- Pull dispatch ------------------------------------------------------
@@ -188,8 +194,6 @@ export interface ServiceNativeBinding {
     parts: NativeParts,
     flags: number
   ) => MeshPublishDetailRaw;
-  spotSetPublishOption: (spot: NativeHandle, option: number, value: Buffer) => void;
-  spotGetPublishOption: (spot: NativeHandle, option: number) => Buffer;
   spotSetSubscription: (
     spot: NativeHandle,
     channelName: string,

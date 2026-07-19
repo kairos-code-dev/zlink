@@ -215,6 +215,13 @@ internal sealed partial class MeshNode : IMeshNode
             (ref ZlinkMeshPeerEntry native) => ConvertPeer(ref native));
     }
 
+    public IMeshNodeMonitor OpenMonitor(
+        MeshMonitorEventMask events = MeshMonitorEventMask.All)
+    {
+        EnsureNotDisposed();
+        return new MeshNodeMonitor(this, events);
+    }
+
     public void SetReadyHandler(MeshReadyHandler handler)
     {
         ArgumentNullException.ThrowIfNull(handler);

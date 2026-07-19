@@ -82,14 +82,6 @@ internal static partial class NativeMethods
         IntPtr parts, nuint partCount, IntPtr detail, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_mesh_node_publisher_set_option(
-        IntPtr publisher, int option, IntPtr optval, nuint optvallen);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_mesh_node_publisher_get_option(
-        IntPtr publisher, int option, IntPtr optval, ref nuint optvallen);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_node_publisher_destroy(
         ref IntPtr publisher);
 
@@ -113,4 +105,19 @@ internal static partial class NativeMethods
     internal static extern int zlink_mesh_node_peer_channels(IntPtr meshNode,
         ref ZlinkRoutingId peerRid, ulong lifecycleGeneration,
         IntPtr channelNamesOut, IntPtr weightsOut, ref nuint count);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_mesh_node_monitor_open(IntPtr meshNode,
+        ref ZlinkMeshMonitorOpenOptions options);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_monitor_recv(IntPtr monitor,
+        ref ZlinkMeshMonitorEvent eventOut, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_monitor_status(IntPtr monitor,
+        ref ZlinkMeshMonitorStatus statusOut);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_monitor_close(ref IntPtr monitor);
 }

@@ -23,10 +23,6 @@ export interface Publisher {
     parts: MessageLike | readonly MessageLike[],
     options?: MessagingOptions
   ): MeshPublishDetail;
-  /** Apply a publisher option. */
-  setOption(option: number, value: Buffer): void;
-  /** Read a publisher option. */
-  getOption(option: number): Buffer;
   /** Release native resources held by the publisher. */
   close(): void;
 }

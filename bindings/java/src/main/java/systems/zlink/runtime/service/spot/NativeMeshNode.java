@@ -15,6 +15,7 @@ import systems.zlink.contracts.service.spot.DrainResult;
 import systems.zlink.contracts.service.spot.MeshNode;
 import systems.zlink.contracts.service.spot.MeshNodeOptions;
 import systems.zlink.contracts.service.spot.MeshNodePublisher;
+import systems.zlink.contracts.service.spot.MeshNodeMonitor;
 import systems.zlink.contracts.service.spot.MeshNodeStatus;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.MeshReadyHandler;
@@ -233,6 +234,11 @@ public final class NativeMeshNode implements MeshNode {
             }
             return out;
         }
+    }
+
+    @Override
+    public MeshNodeMonitor openMonitor(long events) {
+        return NativeMeshNodeMonitor.open(this, events);
     }
 
     @Override

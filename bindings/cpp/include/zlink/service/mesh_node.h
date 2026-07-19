@@ -53,10 +53,6 @@ typedef enum zlink_mesh_node_option_t {
   ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET      = 0x3623
 } zlink_mesh_node_option_t;
 
-typedef enum zlink_mesh_publish_option_t {
-  ZLINK_MESH_PUBLISH_OPT_NODROP = 0x3630
-} zlink_mesh_publish_option_t;
-
 typedef struct zlink_mesh_node_options_t {
   uint32_t struct_size;
   uint32_t version;
@@ -207,16 +203,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_publisher_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_set_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_get_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_publisher_destroy(
   void **publisher_p);
 

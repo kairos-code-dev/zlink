@@ -17,6 +17,7 @@ import type { MessagingOptions, RequestOptions } from './shared';
 import type { Spot } from './spot';
 import type { Publisher } from './publisher';
 import type { StreamSessionService } from './stream_session';
+import type { RecvFlags } from '../sockets';
 
 /**
  * The overall readiness state of a mesh node. Maps one-to-one to the Core wire
@@ -33,6 +34,71 @@ export const MeshNodeState = Object.freeze({
   Error: 7
 } as const);
 export type MeshNodeStateValue = typeof MeshNodeState[keyof typeof MeshNodeState];
+
+export const MeshMonitorEventKind = Object.freeze({
+  StateChanged: 1, PeerConnecting: 2, PeerAdmitted: 3, PeerDraining: 4,
+  PeerClosed: 5, PeerRejected: 6, ChannelChanged: 7,
+  MessageSubmitted: 8, MulticastCommitted: 9, MulticastDropped: 10,
+  Backpressured: 11, OperationCompleted: 12, ProtocolError: 13,
+  ClaimRevoked: 14
+} as const);
+
+export const MeshMonitorEventMask = Object.freeze({
+  StateChanged: 1n << 0n, PeerConnecting: 1n << 1n,
+  PeerAdmitted: 1n << 2n, PeerDraining: 1n << 3n,
+  PeerClosed: 1n << 4n, PeerRejected: 1n << 5n,
+  ChannelChanged: 1n << 6n, MessageSubmitted: 1n << 7n,
+  MulticastCommitted: 1n << 8n, MulticastDropped: 1n << 9n,
+  Backpressured: 1n << 10n, OperationCompleted: 1n << 11n,
+  ProtocolError: 1n << 12n, ClaimRevoked: 1n << 13n,
+  All: (1n << 14n) - 1n
+} as const);
+
+export interface MeshMonitorEvent {
+  readonly kind: number;
+  readonly timestampMs: bigint;
+  readonly meshLifecycleGeneration: bigint;
+  readonly meshDescriptorRevision: bigint;
+  readonly meshState: number;
+  readonly peerRid: RoutingId;
+  readonly peerLifecycleGeneration: bigint;
+  readonly peerDescriptorRevision: bigint;
+  readonly ownerKind: number;
+  readonly spotRid: RoutingId;
+  readonly actor: ActorRef;
+  readonly channelName: string;
+  readonly operationId: MeshOperationId;
+  readonly snapshotRemoteTargetCount: number;
+  readonly admittedRemoteTargetCount: number;
+  readonly droppedRemoteTargetCount: number;
+  readonly unreachableRemoteTargetCount: number;
+  readonly snapshotLocalSpotCount: number;
+  readonly admittedLocalSpotCount: number;
+  readonly droppedLocalSpotCount: number;
+  readonly resultCode: number;
+  readonly failureErrno: number;
+}
+
+export interface MeshMonitorStatus {
+  readonly state: number;
+  readonly peerAdmitted: bigint;
+  readonly peerRejected: bigint;
+  readonly submittedMessages: bigint;
+  readonly completedOperations: bigint;
+  readonly backpressuredSubmits: bigint;
+  readonly multicastMessages: bigint;
+  readonly multicastDroppedTargets: bigint;
+  readonly activeClaims: bigint;
+  readonly pendingApplicationMessages: bigint;
+  readonly pendingInfrastructureMessages: bigint;
+  readonly pendingBytes: bigint;
+}
+
+export interface MeshNodeMonitor {
+  recv(flags?: RecvFlags): MeshMonitorEvent | null;
+  status(): MeshMonitorStatus;
+  close(): void;
+}
 
 /** A point-in-time snapshot of a mesh node's state. */
 export interface MeshNodeStatus {
@@ -139,6 +205,8 @@ export interface MeshNode {
   peers(): MeshPeerEntry[];
   /** Return the channel names and weights advertised by a peer. */
   peerChannels(peerRid: RoutingId, generation: bigint): PeerChannels;
+  /** Open the push monitor for this node. */
+  openMonitor(events?: bigint): MeshNodeMonitor;
 
   // --- Spots -------------------------------------------------------------
   /** Create a new user spot. */

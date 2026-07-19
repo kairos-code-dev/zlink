@@ -123,18 +123,6 @@ export class Spot extends NativeHandle implements SpotContract {
     ) as MeshPublishDetailRaw as MeshPublishDetail;
   }
 
-  setPublishOption(option: number, value: Buffer): void {
-    configCall('spot publish option set failed', () => {
-      requireNative().spotSetPublishOption(getNativeHandle(this), option | 0, value);
-    });
-  }
-
-  getPublishOption(option: number): Buffer {
-    return configCall('spot publish option get failed', () =>
-      requireNative().spotGetPublishOption(getNativeHandle(this), option | 0)
-    );
-  }
-
   setSubscription(channelName: string, topicFilter: string, kind: number = SubscriptionKind.Exact): void {
     configCall('spot subscription set failed', () => {
       requireNative().spotSetSubscription(getNativeHandle(this), channelName, topicFilter, kind | 0);

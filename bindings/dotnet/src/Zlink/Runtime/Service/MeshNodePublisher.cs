@@ -7,9 +7,6 @@ namespace Systems.Zlink;
 
 internal sealed class MeshNodePublisher : IMeshNodePublisher
 {
-    // ZLINK_MESH_PUBLISH_OPT_NODROP from mesh_node.h.
-    internal const int OptNoDrop = 0x3630;
-
     private IntPtr _handle;
 
     internal MeshNodePublisher(MeshNode owner)
@@ -57,15 +54,6 @@ internal sealed class MeshNodePublisher : IMeshNodePublisher
         {
             Marshal.FreeHGlobal(detailPtr);
         }
-    }
-
-    public unsafe void SetNoDrop(bool noDrop)
-    {
-        EnsureNotDisposed();
-        var value = noDrop ? 1 : 0;
-        ZlinkException.ThrowConfigIfError(
-            NativeMethods.zlink_mesh_node_publisher_set_option(_handle,
-                OptNoDrop, (IntPtr)(&value), sizeof(int)));
     }
 
     public void Close()

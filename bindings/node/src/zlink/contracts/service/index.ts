@@ -52,7 +52,7 @@ export type {
 } from './transfer';
 
 // Mesh node.
-export { MeshNodeState } from './mesh_node';
+export { MeshNodeState, MeshMonitorEventKind, MeshMonitorEventMask } from './mesh_node';
 export type {
   MeshNodeStateValue,
   MeshNode,
@@ -60,7 +60,10 @@ export type {
   MeshPeerEntry,
   PeerChannels,
   ConnectPeerOptions,
-  GetOrCreateSpotResult
+  GetOrCreateSpotResult,
+  MeshMonitorEvent,
+  MeshMonitorStatus,
+  MeshNodeMonitor
 } from './mesh_node';
 
 // Spot.

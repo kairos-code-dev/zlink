@@ -33,12 +33,14 @@ napi_value mesh_node_get_option (napi_env env, napi_callback_info info);
 napi_value mesh_node_status (napi_env env, napi_callback_info info);
 napi_value mesh_node_peers (napi_env env, napi_callback_info info);
 napi_value mesh_node_peer_channels (napi_env env, napi_callback_info info);
+napi_value mesh_node_monitor_open (napi_env env, napi_callback_info info);
+napi_value mesh_node_monitor_recv (napi_env env, napi_callback_info info);
+napi_value mesh_node_monitor_status (napi_env env, napi_callback_info info);
+napi_value mesh_node_monitor_close (napi_env env, napi_callback_info info);
 
 // --- Publisher ---
 napi_value mesh_node_publisher_new (napi_env env, napi_callback_info info);
 napi_value mesh_node_publisher_publish (napi_env env, napi_callback_info info);
-napi_value mesh_node_publisher_set_option (napi_env env, napi_callback_info info);
-napi_value mesh_node_publisher_get_option (napi_env env, napi_callback_info info);
 napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info);
 
 // --- Pull dispatch ---
@@ -68,8 +70,6 @@ napi_value spot_request_to_channel (napi_env env, napi_callback_info info);
 napi_value spot_send_to_spot (napi_env env, napi_callback_info info);
 napi_value spot_request_to_spot (napi_env env, napi_callback_info info);
 napi_value spot_publish (napi_env env, napi_callback_info info);
-napi_value spot_set_publish_option (napi_env env, napi_callback_info info);
-napi_value spot_get_publish_option (napi_env env, napi_callback_info info);
 napi_value spot_set_subscription (napi_env env, napi_callback_info info);
 napi_value spot_unset_subscription (napi_env env, napi_callback_info info);
 

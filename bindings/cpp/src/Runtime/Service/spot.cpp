@@ -219,23 +219,6 @@ submit_result_t spot_t::publish (const std::string &channel_name_,
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
-void spot_t::set_nodrop (bool nodrop_)
-{
-    const uint32_t value = nodrop_ ? 1u : 0u;
-    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_set_publish_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
-                                     sizeof (value))));
-}
-
-bool spot_t::nodrop () const
-{
-    uint32_t value = 0;
-    size_t len = sizeof (value);
-    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_spot_get_publish_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value, &len)));
-    return value != 0;
-}
-
 void spot_t::set_subscription (const std::string &channel_name_,
                                const std::string &topic_filter_,
                                subscription_kind_t kind_)

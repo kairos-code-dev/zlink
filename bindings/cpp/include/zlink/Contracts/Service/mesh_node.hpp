@@ -31,6 +31,7 @@ namespace service
 class actor_t;
 class spot_t;
 class mesh_node_publisher_t;
+class mesh_node_monitor_t;
 
 /// @brief Options for a mesh node's identity within a RouteMesh.
 struct mesh_node_options_t
@@ -136,6 +137,8 @@ class mesh_node_t
     // Introspection.
     mesh_node_status_t status () const;
     std::vector<mesh_peer_entry_t> peers () const;
+    mesh_node_monitor_t open_monitor (
+      mesh_monitor_event_mask_t events_ = mesh_monitor_event_mask_t::all);
 
     /// @brief One channel a peer participates in, with its advertised weight.
     struct peer_channel_t
@@ -194,6 +197,29 @@ class mesh_node_t
     int _last_error;
 };
 
+/// @brief Pull receiver for one MeshNode's monitor event stream.
+class mesh_node_monitor_t
+{
+  public:
+    mesh_node_monitor_t ();
+    ~mesh_node_monitor_t ();
+    mesh_node_monitor_t (mesh_node_monitor_t &&other_) noexcept;
+    mesh_node_monitor_t &operator= (mesh_node_monitor_t &&other_) noexcept;
+    mesh_node_monitor_t (const mesh_node_monitor_t &) = delete;
+    mesh_node_monitor_t &operator= (const mesh_node_monitor_t &) = delete;
+
+    bool valid () const noexcept;
+    std::optional<mesh_monitor_event_t> recv (
+      recv_flags_t flags_ = recv_flags_t::none);
+    mesh_monitor_status_t status () const;
+    void close ();
+
+  private:
+    friend class mesh_node_t;
+    struct impl;
+    std::unique_ptr<impl> _impl;
+};
+
 /// @brief Publishes into a mesh node's topic plane without attaching a raw PUB socket.
 class mesh_node_publisher_t
 {
@@ -217,10 +243,6 @@ class mesh_node_publisher_t
                              send_flags_t flags_ = send_flags_t::none,
                              mesh_metadata_t metadata_ = {},
                              publish_detail_t *detail_out_ = nullptr);
-
-    // Publisher-scoped NODROP option (symmetric with spot_t::set_nodrop).
-    void set_nodrop (bool nodrop_);
-    bool nodrop () const;
 
     close_result_t close ();
 

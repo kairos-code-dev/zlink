@@ -16,14 +16,11 @@ import systems.zlink.runtime.nativeapi.ServiceInterop;
 import systems.zlink.runtime.nativeapi.ServiceLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
 public final class NativeSpot implements Spot {
-    private static final int PUBLISH_OPT_NODROP = 0x3630;
-
     private final NativeMeshNode owner;
     private final boolean owned;
     private MemorySegment handle;
@@ -141,16 +138,6 @@ public final class NativeSpot implements Spot {
             int rc = NativeServiceSymbols.spotPublish(handle, name, topicSeg, MemorySegment.NULL,
                 array, n, MemorySegment.NULL, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_spot_publish");
-        }
-    }
-
-    @Override
-    public void setNoDrop(boolean nodrop) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
-            value.set(ValueLayout.JAVA_INT, 0, nodrop ? 1 : 0);
-            MeshCalls.configOk(NativeServiceSymbols.spotSetPublishOption(handle,
-                PUBLISH_OPT_NODROP, value, 4));
         }
     }
 

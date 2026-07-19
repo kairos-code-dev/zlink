@@ -43,6 +43,17 @@ struct mesh_node_t::impl
     ready_handler_t ready_handler;
 };
 
+struct mesh_node_monitor_t::impl
+{
+    void *handle = nullptr;
+
+    ~impl ()
+    {
+        if (handle)
+            (void) zlink_mesh_node_monitor_close (&handle);
+    }
+};
+
 } // namespace service
 
 namespace detail
@@ -382,6 +393,118 @@ std::vector<mesh_peer_entry_t> mesh_node_t::peers () const
     return out;
 }
 
+mesh_node_monitor_t mesh_node_t::open_monitor (mesh_monitor_event_mask_t events_)
+{
+    zlink_mesh_monitor_open_options_t options;
+    std::memset (&options, 0, sizeof (options));
+    options.struct_size = sizeof (options);
+    options.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    options.events = static_cast<zlink_mesh_monitor_event_mask_t> (events_);
+    mesh_node_monitor_t monitor;
+    monitor._impl->handle = zlink_mesh_node_monitor_open (_impl->handle, &options);
+    if (!monitor._impl->handle) {
+        const int error = zlink_errno ();
+        const config_result_t result =
+          error == EBUSY   ? config_result_t::invalid_state
+          : error == ENOMEM ? config_result_t::internal_error
+                            : zlink::detail::config_result_from_errno (error);
+        throw config_error_t (result, error);
+    }
+    return monitor;
+}
+
+mesh_node_monitor_t::mesh_node_monitor_t () : _impl (std::make_unique<impl> ()) {}
+
+mesh_node_monitor_t::~mesh_node_monitor_t () = default;
+
+mesh_node_monitor_t::mesh_node_monitor_t (mesh_node_monitor_t &&other_) noexcept = default;
+mesh_node_monitor_t &
+mesh_node_monitor_t::operator= (mesh_node_monitor_t &&other_) noexcept = default;
+
+bool mesh_node_monitor_t::valid () const noexcept
+{
+    return _impl && _impl->handle;
+}
+
+std::optional<mesh_monitor_event_t> mesh_node_monitor_t::recv (recv_flags_t flags_)
+{
+    zlink_mesh_monitor_event_t native;
+    std::memset (&native, 0, sizeof (native));
+    native.struct_size = sizeof (native);
+    native.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    const recv_result_t result = static_cast<recv_result_t> (
+      zlink_mesh_node_monitor_recv (
+        _impl->handle, &native,
+        static_cast<zlink_recv_flags_t> (static_cast<int> (flags_))));
+    if (result == recv_result_t::no_data && flags_ == recv_flags_t::dontwait)
+        return std::nullopt;
+    if (result != recv_result_t::ok)
+        throw recv_error_t (result, zlink_errno ());
+
+    mesh_monitor_event_t event;
+    event.kind = static_cast<mesh_monitor_event_kind_t> (native.kind);
+    event.timestamp_ms = native.timestamp_ms;
+    event.mesh_lifecycle_generation = native.mesh_lifecycle_generation;
+    event.mesh_descriptor_revision = native.mesh_descriptor_revision;
+    event.mesh_state = static_cast<mesh_node_state_t> (native.mesh_state);
+    event.peer_rid = zlink::detail::native_routing_id (native.peer_rid);
+    event.peer_lifecycle_generation = native.peer_lifecycle_generation;
+    event.peer_descriptor_revision = native.peer_descriptor_revision;
+    event.owner_kind = static_cast<int> (native.owner_kind);
+    event.spot_rid = zlink::detail::native_routing_id (native.spot_rid);
+    event.actor = zlink::detail::actor_model_access_t::from_native (native.actor);
+    event.channel_name = native.channel_name;
+    event.operation_id_high = native.operation_id_high;
+    event.operation_id_low = native.operation_id_low;
+    event.snapshot_remote_target_count = native.snapshot_remote_target_count;
+    event.admitted_remote_target_count = native.admitted_remote_target_count;
+    event.dropped_remote_target_count = native.dropped_remote_target_count;
+    event.unreachable_remote_target_count = native.unreachable_remote_target_count;
+    event.snapshot_local_spot_count = native.snapshot_local_spot_count;
+    event.admitted_local_spot_count = native.admitted_local_spot_count;
+    event.dropped_local_spot_count = native.dropped_local_spot_count;
+    event.result_code = native.result_code;
+    event.failure_errno = native.failure_errno;
+    return event;
+}
+
+mesh_monitor_status_t mesh_node_monitor_t::status () const
+{
+    zlink_mesh_monitor_status_t native;
+    std::memset (&native, 0, sizeof (native));
+    native.struct_size = sizeof (native);
+    native.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (
+        zlink_mesh_node_monitor_status (_impl->handle, &native)));
+    mesh_monitor_status_t status;
+    status.state = static_cast<mesh_node_state_t> (native.state);
+    status.peer_admitted = native.peer_admitted;
+    status.peer_rejected = native.peer_rejected;
+    status.submitted_messages = native.submitted_messages;
+    status.completed_operations = native.completed_operations;
+    status.backpressured_submits = native.backpressured_submits;
+    status.multicast_messages = native.multicast_messages;
+    status.multicast_dropped_targets = native.multicast_dropped_targets;
+    status.active_claims = native.active_claims;
+    status.pending_application_messages = native.pending_application_messages;
+    status.pending_infrastructure_messages = native.pending_infrastructure_messages;
+    status.pending_bytes = native.pending_bytes;
+    return status;
+}
+
+void mesh_node_monitor_t::close ()
+{
+    if (!valid ())
+        return;
+    void *handle = _impl->handle;
+    const close_result_t result =
+      static_cast<close_result_t> (zlink_mesh_node_monitor_close (&handle));
+    if (result != close_result_t::ok)
+        throw close_error_t (result, zlink_errno ());
+    _impl->handle = nullptr;
+}
+
 std::vector<mesh_node_t::peer_channel_t>
 mesh_node_t::peer_channels (const routing_id_t &peer_rid_, uint64_t lifecycle_generation_) const
 {
@@ -719,24 +842,6 @@ submit_result_t mesh_node_publisher_t::publish (const std::string &channel_name_
     if (rc == ZLINK_SUBMIT_OK)
         detail::store_publish_detail (detail_out_, native_detail);
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
-}
-
-void mesh_node_publisher_t::set_nodrop (bool nodrop_)
-{
-    const uint32_t value = nodrop_ ? 1u : 0u;
-    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_mesh_node_publisher_set_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
-                                            sizeof (value))));
-}
-
-bool mesh_node_publisher_t::nodrop () const
-{
-    uint32_t value = 0;
-    size_t len = sizeof (value);
-    zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
-      zlink_mesh_node_publisher_get_option (_impl->handle, ZLINK_MESH_PUBLISH_OPT_NODROP, &value,
-                                            &len)));
-    return value != 0;
 }
 
 close_result_t mesh_node_publisher_t::close ()

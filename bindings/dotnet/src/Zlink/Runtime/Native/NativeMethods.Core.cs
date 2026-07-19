@@ -5,8 +5,8 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    // Generated to match the Core 10.0.0 public C ABI (core/src/libzlink.vers).
-    // Every entry is a symbol this binding P/Invokes AND that the 10.0.0 shared
+    // Generated to match the Core 10.1.0 public C ABI (core/src/libzlink.vers).
+    // Every entry is a symbol this binding P/Invokes AND that the 10.1.0 shared
     // library exports; NativeLibraryLoader.ValidateRequiredExports() fails fast
     // when any is missing.
     private static readonly string[] RequiredExportNames =
@@ -62,14 +62,16 @@ internal static partial class NativeMethods
         "zlink_mesh_node_disconnect_peer",
         "zlink_mesh_node_drain_ready",
         "zlink_mesh_node_entry_spot",
+        "zlink_mesh_node_monitor_close",
+        "zlink_mesh_node_monitor_open",
+        "zlink_mesh_node_monitor_recv",
+        "zlink_mesh_node_monitor_status",
         "zlink_mesh_node_new",
         "zlink_mesh_node_peer_channels",
         "zlink_mesh_node_peers",
         "zlink_mesh_node_publisher_destroy",
-        "zlink_mesh_node_publisher_get_option",
         "zlink_mesh_node_publisher_new",
         "zlink_mesh_node_publisher_publish",
-        "zlink_mesh_node_publisher_set_option",
         "zlink_mesh_node_remove_peer_connection",
         "zlink_mesh_node_request_to_actor",
         "zlink_mesh_node_request_to_channel",
@@ -154,14 +156,12 @@ internal static partial class NativeMethods
         "zlink_socket_monitor_recv",
         "zlink_socket_set_channel_name",
         "zlink_spot_destroy",
-        "zlink_spot_get_publish_option",
         "zlink_spot_new",
         "zlink_spot_publish",
         "zlink_spot_request_to_channel",
         "zlink_spot_request_to_spot",
         "zlink_spot_send_to_channel",
         "zlink_spot_send_to_spot",
-        "zlink_spot_set_publish_option",
         "zlink_spot_set_subscription",
         "zlink_spot_status",
         "zlink_spot_timer_new",

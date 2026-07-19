@@ -867,6 +867,135 @@ napi_value mesh_node_peer_channels (napi_env env, napi_callback_info info)
     return obj;
 }
 
+napi_value mesh_node_monitor_open (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_mesh_monitor_open_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.struct_size = sizeof (options);
+    options.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    options.events = svc_u64 (env, argv[1]);
+    void *monitor = zlink_mesh_node_monitor_open (
+      svc_external (env, argv[0]), &options);
+    if (!monitor)
+        return throw_last_error (env, "meshNodeMonitorOpen failed");
+    napi_value out;
+    napi_create_external (env, monitor, NULL, NULL, &out);
+    return out;
+}
+
+napi_value mesh_node_monitor_recv (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_mesh_monitor_event_t event;
+    memset (&event, 0, sizeof (event));
+    event.struct_size = sizeof (event);
+    event.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    const zlink_recv_result_t rc = zlink_mesh_node_monitor_recv (
+      svc_external (env, argv[0]), &event,
+      static_cast<zlink_recv_flags_t> (svc_int32 (env, argv[1])));
+    if (rc == ZLINK_RECV_NO_DATA) {
+        napi_value out;
+        napi_get_null (env, &out);
+        return out;
+    }
+    if (rc != ZLINK_RECV_OK)
+        return throw_last_error (env, "meshNodeMonitorRecv failed");
+
+    napi_value obj;
+    napi_create_object (env, &obj);
+    svc_set_int32 (env, obj, "kind", static_cast<int32_t> (event.kind));
+    svc_set_bigint (env, obj, "timestampMs", event.timestamp_ms);
+    svc_set_bigint (env, obj, "meshLifecycleGeneration",
+                    event.mesh_lifecycle_generation);
+    svc_set_bigint (env, obj, "meshDescriptorRevision",
+                    event.mesh_descriptor_revision);
+    svc_set_int32 (env, obj, "meshState", static_cast<int32_t> (event.mesh_state));
+    napi_set_named_property (env, obj, "peerRid",
+                             create_routing_id_value (env, event.peer_rid));
+    svc_set_bigint (env, obj, "peerLifecycleGeneration",
+                    event.peer_lifecycle_generation);
+    svc_set_bigint (env, obj, "peerDescriptorRevision",
+                    event.peer_descriptor_revision);
+    svc_set_int32 (env, obj, "ownerKind", static_cast<int32_t> (event.owner_kind));
+    napi_set_named_property (env, obj, "spotRid",
+                             create_routing_id_value (env, event.spot_rid));
+    napi_set_named_property (env, obj, "actor",
+                             svc_create_actor_ref (env, event.actor));
+    set_string_property (env, obj, "channelName", event.channel_name);
+    zlink_mesh_operation_id_t operation_id;
+    operation_id.high = event.operation_id_high;
+    operation_id.low = event.operation_id_low;
+    napi_set_named_property (env, obj, "operationId",
+                             svc_create_operation_id (env, operation_id));
+    set_uint32_property (env, obj, "snapshotRemoteTargetCount",
+                         event.snapshot_remote_target_count);
+    set_uint32_property (env, obj, "admittedRemoteTargetCount",
+                         event.admitted_remote_target_count);
+    set_uint32_property (env, obj, "droppedRemoteTargetCount",
+                         event.dropped_remote_target_count);
+    set_uint32_property (env, obj, "unreachableRemoteTargetCount",
+                         event.unreachable_remote_target_count);
+    set_uint32_property (env, obj, "snapshotLocalSpotCount",
+                         event.snapshot_local_spot_count);
+    set_uint32_property (env, obj, "admittedLocalSpotCount",
+                         event.admitted_local_spot_count);
+    set_uint32_property (env, obj, "droppedLocalSpotCount",
+                         event.dropped_local_spot_count);
+    svc_set_int32 (env, obj, "resultCode", event.result_code);
+    svc_set_int32 (env, obj, "failureErrno", event.failure_errno);
+    return obj;
+}
+
+napi_value mesh_node_monitor_status (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_mesh_monitor_status_t status;
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = ZLINK_MESH_MONITOR_ABI_VERSION;
+    if (zlink_mesh_node_monitor_status (svc_external (env, argv[0]), &status)
+        != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "meshNodeMonitorStatus failed");
+    napi_value obj;
+    napi_create_object (env, &obj);
+    svc_set_int32 (env, obj, "state", static_cast<int32_t> (status.state));
+    svc_set_bigint (env, obj, "peerAdmitted", status.peer_admitted);
+    svc_set_bigint (env, obj, "peerRejected", status.peer_rejected);
+    svc_set_bigint (env, obj, "submittedMessages", status.submitted_messages);
+    svc_set_bigint (env, obj, "completedOperations", status.completed_operations);
+    svc_set_bigint (env, obj, "backpressuredSubmits", status.backpressured_submits);
+    svc_set_bigint (env, obj, "multicastMessages", status.multicast_messages);
+    svc_set_bigint (env, obj, "multicastDroppedTargets",
+                    status.multicast_dropped_targets);
+    svc_set_bigint (env, obj, "activeClaims", status.active_claims);
+    svc_set_bigint (env, obj, "pendingApplicationMessages",
+                    status.pending_application_messages);
+    svc_set_bigint (env, obj, "pendingInfrastructureMessages",
+                    status.pending_infrastructure_messages);
+    svc_set_bigint (env, obj, "pendingBytes", status.pending_bytes);
+    return obj;
+}
+
+napi_value mesh_node_monitor_close (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *monitor = svc_external (env, argv[0]);
+    if (zlink_mesh_node_monitor_close (&monitor) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "meshNodeMonitorClose failed");
+    napi_value out;
+    napi_get_undefined (env, &out);
+    return out;
+}
+
 // ======================================================================
 //  Publisher
 // ======================================================================
@@ -910,44 +1039,6 @@ napi_value mesh_node_publisher_publish (napi_env env, napi_callback_info info)
     if (rc != ZLINK_SUBMIT_OK)
         return throw_last_error (env, "meshNodePublisherPublish failed");
     return svc_create_publish_detail (env, detail);
-}
-
-napi_value mesh_node_publisher_set_option (napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *publisher = svc_external (env, argv[0]);
-    int32_t option = svc_int32 (env, argv[1]);
-    void *data = NULL;
-    size_t len = 0;
-    napi_get_buffer_info (env, argv[2], &data, &len);
-    if (zlink_mesh_node_publisher_set_option (
-          publisher, static_cast<zlink_mesh_publish_option_t> (option), data, len)
-        != ZLINK_CONFIG_OK)
-        return throw_last_error (env, "meshNodePublisherSetOption failed");
-    napi_value undef;
-    napi_get_undefined (env, &undef);
-    return undef;
-}
-
-napi_value mesh_node_publisher_get_option (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *publisher = svc_external (env, argv[0]);
-    int32_t option = svc_int32 (env, argv[1]);
-    uint8_t buffer[256];
-    size_t len = sizeof (buffer);
-    if (zlink_mesh_node_publisher_get_option (
-          publisher, static_cast<zlink_mesh_publish_option_t> (option), buffer, &len)
-        != ZLINK_CONFIG_OK)
-        return throw_last_error (env, "meshNodePublisherGetOption failed");
-    napi_value out;
-    void *copy = NULL;
-    napi_create_buffer_copy (env, len, buffer, &copy, &out);
-    return out;
 }
 
 napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info)
@@ -1685,44 +1776,6 @@ napi_value spot_publish (napi_env env, napi_callback_info info)
     if (rc != ZLINK_SUBMIT_OK)
         return throw_last_error (env, "spotPublish failed");
     return svc_create_publish_detail (env, detail);
-}
-
-napi_value spot_set_publish_option (napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *spot = svc_external (env, argv[0]);
-    int32_t option = svc_int32 (env, argv[1]);
-    void *data = NULL;
-    size_t len = 0;
-    napi_get_buffer_info (env, argv[2], &data, &len);
-    if (zlink_spot_set_publish_option (spot, static_cast<zlink_mesh_publish_option_t> (option), data,
-                                       len)
-        != ZLINK_CONFIG_OK)
-        return throw_last_error (env, "spotSetPublishOption failed");
-    napi_value undef;
-    napi_get_undefined (env, &undef);
-    return undef;
-}
-
-napi_value spot_get_publish_option (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *spot = svc_external (env, argv[0]);
-    int32_t option = svc_int32 (env, argv[1]);
-    uint8_t buffer[256];
-    size_t len = sizeof (buffer);
-    if (zlink_spot_get_publish_option (spot, static_cast<zlink_mesh_publish_option_t> (option),
-                                       buffer, &len)
-        != ZLINK_CONFIG_OK)
-        return throw_last_error (env, "spotGetPublishOption failed");
-    napi_value out;
-    void *copy = NULL;
-    napi_create_buffer_copy (env, len, buffer, &copy, &out);
-    return out;
 }
 
 napi_value spot_set_subscription (napi_env env, napi_callback_info info)

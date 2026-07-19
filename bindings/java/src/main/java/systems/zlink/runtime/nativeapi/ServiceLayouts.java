@@ -103,6 +103,59 @@ public final class ServiceLayouts {
         I32.withName("last_error"),
         U64.withName("last_changed_ms"));
 
+    public static final MemoryLayout MESH_MONITOR_OPEN_OPTIONS = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        U64.withName("events"));
+
+    public static final MemoryLayout MESH_MONITOR_EVENT = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("kind"),
+        pad(4),
+        U64.withName("timestamp_ms"),
+        U64.withName("mesh_lifecycle_generation"),
+        U64.withName("mesh_descriptor_revision"),
+        I32.withName("mesh_state"),
+        ROUTING_ID.withName("peer_rid"),
+        pad(4),
+        U64.withName("peer_lifecycle_generation"),
+        U64.withName("peer_descriptor_revision"),
+        I32.withName("owner_kind"),
+        ROUTING_ID.withName("spot_rid"),
+        pad(4),
+        ACTOR_REF.withName("actor"),
+        seq(256).withName("channel_name"),
+        U64.withName("operation_id_high"),
+        U64.withName("operation_id_low"),
+        I32.withName("snapshot_remote_target_count"),
+        I32.withName("admitted_remote_target_count"),
+        I32.withName("dropped_remote_target_count"),
+        I32.withName("unreachable_remote_target_count"),
+        I32.withName("snapshot_local_spot_count"),
+        I32.withName("admitted_local_spot_count"),
+        I32.withName("dropped_local_spot_count"),
+        I32.withName("result_code"),
+        I32.withName("failure_errno"),
+        pad(4));
+
+    public static final MemoryLayout MESH_MONITOR_STATUS = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("state"),
+        pad(4),
+        U64.withName("peer_admitted"),
+        U64.withName("peer_rejected"),
+        U64.withName("submitted_messages"),
+        U64.withName("completed_operations"),
+        U64.withName("backpressured_submits"),
+        U64.withName("multicast_messages"),
+        U64.withName("multicast_dropped_targets"),
+        U64.withName("active_claims"),
+        U64.withName("pending_application_messages"),
+        U64.withName("pending_infrastructure_messages"),
+        U64.withName("pending_bytes"));
+
     public static final MemoryLayout ACTOR_LOCATION = MemoryLayout.structLayout(
         I32.withName("struct_size"),
         I32.withName("version"),

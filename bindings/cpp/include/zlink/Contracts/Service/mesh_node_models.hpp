@@ -2,6 +2,7 @@
 #pragma once
 
 #include "../Core/routing_id.hpp"
+#include "actor_models.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -62,6 +63,87 @@ enum class mesh_peer_state_t : int
     draining = 4,
     closed = 5,
     error = 6
+};
+
+enum class mesh_monitor_event_kind_t : int
+{
+    state_changed = 1,
+    peer_connecting = 2,
+    peer_admitted = 3,
+    peer_draining = 4,
+    peer_closed = 5,
+    peer_rejected = 6,
+    channel_changed = 7,
+    message_submitted = 8,
+    multicast_committed = 9,
+    multicast_dropped = 10,
+    backpressured = 11,
+    operation_completed = 12,
+    protocol_error = 13,
+    claim_revoked = 14
+};
+
+enum class mesh_monitor_event_mask_t : uint64_t
+{
+    none = 0,
+    state_changed = 1ull << 0,
+    peer_connecting = 1ull << 1,
+    peer_admitted = 1ull << 2,
+    peer_draining = 1ull << 3,
+    peer_closed = 1ull << 4,
+    peer_rejected = 1ull << 5,
+    channel_changed = 1ull << 6,
+    message_submitted = 1ull << 7,
+    multicast_committed = 1ull << 8,
+    multicast_dropped = 1ull << 9,
+    backpressured = 1ull << 10,
+    operation_completed = 1ull << 11,
+    protocol_error = 1ull << 12,
+    claim_revoked = 1ull << 13,
+    all = (1ull << 14) - 1
+};
+
+struct mesh_monitor_event_t
+{
+    mesh_monitor_event_kind_t kind = mesh_monitor_event_kind_t::state_changed;
+    uint64_t timestamp_ms = 0;
+    uint64_t mesh_lifecycle_generation = 0;
+    uint64_t mesh_descriptor_revision = 0;
+    mesh_node_state_t mesh_state = mesh_node_state_t::created;
+    routing_id_t peer_rid = detail::unchecked_empty_routing_id ();
+    uint64_t peer_lifecycle_generation = 0;
+    uint64_t peer_descriptor_revision = 0;
+    int owner_kind = 0;
+    routing_id_t spot_rid = detail::unchecked_empty_routing_id ();
+    actor_ref_t actor;
+    std::string channel_name;
+    uint64_t operation_id_high = 0;
+    uint64_t operation_id_low = 0;
+    uint32_t snapshot_remote_target_count = 0;
+    uint32_t admitted_remote_target_count = 0;
+    uint32_t dropped_remote_target_count = 0;
+    uint32_t unreachable_remote_target_count = 0;
+    uint32_t snapshot_local_spot_count = 0;
+    uint32_t admitted_local_spot_count = 0;
+    uint32_t dropped_local_spot_count = 0;
+    int32_t result_code = 0;
+    int32_t failure_errno = 0;
+};
+
+struct mesh_monitor_status_t
+{
+    mesh_node_state_t state = mesh_node_state_t::created;
+    uint64_t peer_admitted = 0;
+    uint64_t peer_rejected = 0;
+    uint64_t submitted_messages = 0;
+    uint64_t completed_operations = 0;
+    uint64_t backpressured_submits = 0;
+    uint64_t multicast_messages = 0;
+    uint64_t multicast_dropped_targets = 0;
+    uint64_t active_claims = 0;
+    uint64_t pending_application_messages = 0;
+    uint64_t pending_infrastructure_messages = 0;
+    uint64_t pending_bytes = 0;
 };
 
 /// @brief A snapshot of a mesh node's membership and pending-work counters.

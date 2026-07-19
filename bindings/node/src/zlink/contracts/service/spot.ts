@@ -68,11 +68,6 @@ export interface Spot {
     parts: MessageLike | readonly MessageLike[],
     options?: MessagingOptions
   ): MeshPublishDetail;
-  /** Apply a spot publish option. */
-  setPublishOption(option: number, value: Buffer): void;
-  /** Read a spot publish option. */
-  getPublishOption(option: number): Buffer;
-
   /** Subscribe to a channel topic filter. */
   setSubscription(channelName: string, topicFilter: string, kind?: number): void;
   /** Remove a channel topic subscription. */

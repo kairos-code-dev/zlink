@@ -102,6 +102,63 @@ internal struct ZlinkMeshOperationId
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkMeshMonitorOpenOptions
+{
+    public uint StructSize;
+    public uint Version;
+    public ulong Events;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkMeshMonitorEvent
+{
+    public uint StructSize;
+    public uint Version;
+    public int Kind;
+    public ulong TimestampMs;
+    public ulong MeshLifecycleGeneration;
+    public ulong MeshDescriptorRevision;
+    public int MeshState;
+    public ZlinkRoutingId PeerRid;
+    public ulong PeerLifecycleGeneration;
+    public ulong PeerDescriptorRevision;
+    public int OwnerKind;
+    public ZlinkRoutingId SpotRid;
+    public ZlinkActorRef Actor;
+    public fixed byte ChannelName[256];
+    public ulong OperationIdHigh;
+    public ulong OperationIdLow;
+    public uint SnapshotRemoteTargetCount;
+    public uint AdmittedRemoteTargetCount;
+    public uint DroppedRemoteTargetCount;
+    public uint UnreachableRemoteTargetCount;
+    public uint SnapshotLocalSpotCount;
+    public uint AdmittedLocalSpotCount;
+    public uint DroppedLocalSpotCount;
+    public int ResultCode;
+    public int FailureErrno;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct ZlinkMeshMonitorStatus
+{
+    public uint StructSize;
+    public uint Version;
+    public int State;
+    public ulong PeerAdmitted;
+    public ulong PeerRejected;
+    public ulong SubmittedMessages;
+    public ulong CompletedOperations;
+    public ulong BackpressuredSubmits;
+    public ulong MulticastMessages;
+    public ulong MulticastDroppedTargets;
+    public ulong ActiveClaims;
+    public ulong PendingApplicationMessages;
+    public ulong PendingInfrastructureMessages;
+    public ulong PendingBytes;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal unsafe struct ZlinkMeshReplyToken
 {
     public fixed ulong Opaque[4];

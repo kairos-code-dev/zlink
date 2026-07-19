@@ -132,13 +132,6 @@ func (s *Spot) RequestTimeout() (time.Duration, error) {
 	return time.Duration(raw) * time.Millisecond, nil
 }
 
-func (s *Spot) SetNoDrop(value bool) error {
-	if s == nil || s.core == nil {
-		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
-	}
-	return setNativePubBoolOption(s.raw(), s.core.closed, "spot is closed", C.ZLINK_PUB_OPT_NODROP, value)
-}
-
 func (s *Spot) Publish(topic string) SendOp {
 	return newSendBuilder(s, func(parts []sendBuilderPart, flags SendFlags) error {
 		return s.core.withCString(topic, func(topicC *C.char) error {

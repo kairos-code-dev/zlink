@@ -81,6 +81,12 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
     MeshNodePeer[] Peers();
 
     /// <summary>
+    ///     Opens the push monitor for RouteMesh lifecycle and messaging events.
+    /// </summary>
+    IMeshNodeMonitor OpenMonitor(
+        MeshMonitorEventMask events = MeshMonitorEventMask.All);
+
+    /// <summary>
     ///     Registers the ready handler invoked when readable traffic appears.
     /// </summary>
     void SetReadyHandler(MeshReadyHandler handler);

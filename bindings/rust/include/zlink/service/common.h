@@ -10,12 +10,16 @@
 extern "C" {
 #endif
 
-typedef enum zlink_spot_kind_t
-{
-    ZLINK_SPOT_KIND_INVALID = 0,
-    ZLINK_SPOT_KIND_ENTRY = 1,
-    ZLINK_SPOT_KIND_USER = 2
-} zlink_spot_kind_t;
+/* Shared service identity types. ZLink Core 10.1.0.
+   Contract: core/doc/spec/core/service/ */
+
+#define ZLINK_ACTOR_ID_MAX 255u
+
+typedef struct zlink_actor_ref_t {
+  zlink_routing_id_t node_rid;
+  char actor_id[ZLINK_ACTOR_ID_MAX + 1];
+  uint64_t generation;
+} zlink_actor_ref_t;
 
 #ifdef __cplusplus
 }

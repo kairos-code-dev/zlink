@@ -60,14 +60,6 @@ internal static partial class NativeMethods
         IntPtr parts, nuint partCount, IntPtr detail, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_set_publish_option(IntPtr spot,
-        int option, IntPtr optval, nuint optvallen);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_get_publish_option(IntPtr spot,
-        int option, IntPtr optval, ref nuint optvallen);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_set_subscription(IntPtr spot,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string channelName,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicFilter, int kind);

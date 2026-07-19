@@ -14,6 +14,9 @@ import type {
   MeshNodeStatus,
   MeshOperationId,
   MeshPeerEntry,
+  MeshMonitorEvent,
+  MeshMonitorStatus,
+  MeshNodeMonitor as MeshNodeMonitorContract,
   MessagingOptions,
   PeerChannels,
   Publisher as PublisherContract,
@@ -27,12 +30,16 @@ import type {
   ActorTransferToken,
   PrepareActorTransferResult
 } from '../../contracts/service';
+import { MeshMonitorEventMask } from '../../contracts/service';
+import { RecvFlags } from '../../contracts/sockets';
 import type {
   ActorTransferPrepareRaw,
   MeshConnectPeerOptions,
   MeshNodeNewOptions,
   MeshNodeStatusRaw,
   MeshPeerEntryRaw,
+  MeshMonitorEventRaw,
+  MeshMonitorStatusRaw,
   MeshReadyRecordRaw,
   NativeReadyHandler,
   NativeServiceHandle,
@@ -59,6 +66,32 @@ import { Spot } from './spot';
 import { Publisher } from './publisher';
 import { StreamSessionService } from './stream_session';
 import { RuntimeReadyBatch, RuntimeReceiveBatch } from './dispatch';
+
+class MeshNodeMonitor extends NativeHandle implements MeshNodeMonitorContract {
+  recv(flags: RecvFlags = RecvFlags.None): MeshMonitorEvent | null {
+    const raw = requireNative().meshNodeMonitorRecv(
+      getNativeHandle(this), flags | 0) as MeshMonitorEventRaw | null;
+    if (raw == null) return null;
+    return {
+      ...raw,
+      peerRid: RoutingId.from(raw.peerRid),
+      spotRid: RoutingId.from(raw.spotRid),
+      actor: actorRefFromRaw(raw.actor)
+    };
+  }
+
+  status(): MeshMonitorStatus {
+    return requireNative().meshNodeMonitorStatus(
+      getNativeHandle(this)) as MeshMonitorStatusRaw;
+  }
+
+  close(): void {
+    if (getNativeHandle(this) == null) return;
+    closeCall('mesh node monitor close failed', () =>
+      requireNative().meshNodeMonitorClose(getNativeHandle(this)));
+    this._native = null;
+  }
+}
 
 /** Options accepted when constructing a {@link MeshNode}. */
 export interface MeshNodeOptions {
@@ -267,6 +300,11 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
     return configCall('mesh node peer channels failed', () =>
       requireNative().meshNodePeerChannels(getNativeHandle(this), normalizeRoutingId(peerRid, 'peerRid'), generation)
     );
+  }
+
+  openMonitor(events: bigint = MeshMonitorEventMask.All): MeshNodeMonitorContract {
+    return new MeshNodeMonitor(configCall('mesh node monitor open failed', () =>
+      requireNative().meshNodeMonitorOpen(getNativeHandle(this), events)));
   }
 
   // --- Spots -------------------------------------------------------------

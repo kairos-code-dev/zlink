@@ -144,26 +144,6 @@ internal sealed class Spot : ISpot
         }
     }
 
-    public unsafe void SetNoDrop(bool noDrop)
-    {
-        EnsureNotDisposed();
-        var value = noDrop ? 1 : 0;
-        ZlinkException.ThrowConfigIfError(
-            NativeMethods.zlink_spot_set_publish_option(Handle,
-                MeshNodePublisher.OptNoDrop, (IntPtr)(&value), sizeof(int)));
-    }
-
-    public unsafe bool GetNoDrop()
-    {
-        EnsureNotDisposed();
-        var value = 0;
-        nuint length = sizeof(int);
-        ZlinkException.ThrowConfigIfError(
-            NativeMethods.zlink_spot_get_publish_option(Handle,
-                MeshNodePublisher.OptNoDrop, (IntPtr)(&value), ref length));
-        return value != 0;
-    }
-
     public void SetSubscription(string channelName, string topicFilter,
         SpotSubscriptionKind kind = SpotSubscriptionKind.Exact)
     {

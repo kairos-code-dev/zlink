@@ -1,6 +1,6 @@
 {
   "name": "@zlink-systems/zlink",
-  "version": "10.0.0",
+  "version": "10.1.0",
   "description": "zlink Node.js bindings \u2014 high-performance async messaging library",
   "license": "MPL-2.0",
   "author": "Zlink Systems",
@@ -23,7 +23,7 @@
   },
   "files": [
     "dist/**/*",
-    "prebuilds/**/*",
+    "prebuilds/linux-x64/**/*",
     "native/src/**/*",
     "scripts/verify_prebuilds.js",
     "scripts/install.js",

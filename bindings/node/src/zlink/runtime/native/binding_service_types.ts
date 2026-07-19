@@ -54,6 +54,46 @@ export interface MeshPeerEntryRaw {
   lastChangedMs: bigint;
 }
 
+export interface MeshMonitorEventRaw {
+  kind: number;
+  timestampMs: bigint;
+  meshLifecycleGeneration: bigint;
+  meshDescriptorRevision: bigint;
+  meshState: number;
+  peerRid: Buffer;
+  peerLifecycleGeneration: bigint;
+  peerDescriptorRevision: bigint;
+  ownerKind: number;
+  spotRid: Buffer;
+  actor: ActorRefRaw;
+  channelName: string;
+  operationId: MeshOperationIdRaw;
+  snapshotRemoteTargetCount: number;
+  admittedRemoteTargetCount: number;
+  droppedRemoteTargetCount: number;
+  unreachableRemoteTargetCount: number;
+  snapshotLocalSpotCount: number;
+  admittedLocalSpotCount: number;
+  droppedLocalSpotCount: number;
+  resultCode: number;
+  failureErrno: number;
+}
+
+export interface MeshMonitorStatusRaw {
+  state: number;
+  peerAdmitted: bigint;
+  peerRejected: bigint;
+  submittedMessages: bigint;
+  completedOperations: bigint;
+  backpressuredSubmits: bigint;
+  multicastMessages: bigint;
+  multicastDroppedTargets: bigint;
+  activeClaims: bigint;
+  pendingApplicationMessages: bigint;
+  pendingInfrastructureMessages: bigint;
+  pendingBytes: bigint;
+}
+
 /** Peer channel weights (zlink_mesh_node_peer_channels). */
 export interface MeshPeerChannelsRaw {
   names: string[];

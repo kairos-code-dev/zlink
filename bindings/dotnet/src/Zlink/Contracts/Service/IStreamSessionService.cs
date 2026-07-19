@@ -111,9 +111,6 @@ public interface IMeshNodePublisher : IDisposable, IAsyncDisposable
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
 
-    /// <summary>Sets whether publisher sends avoid dropping messages.</summary>
-    void SetNoDrop(bool noDrop);
-
     /// <summary>Closes the publisher.</summary>
     void Close();
 }

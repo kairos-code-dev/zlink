@@ -43,6 +43,14 @@ public interface MeshNode extends AutoCloseable {
     /** Returns the node's peer entries. */
     List<MeshPeerEntry> peers();
 
+    /** Opens the push monitor for this node. */
+    MeshNodeMonitor openMonitor(long events);
+
+    /** Opens a monitor for every MeshNode event. */
+    default MeshNodeMonitor openMonitor() {
+        return openMonitor(MeshMonitorEventMask.ALL);
+    }
+
     /** Connects to a peer endpoint; returns the connection intent id. */
     long connectPeer(String endpoint);
 

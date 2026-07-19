@@ -12,13 +12,10 @@ import systems.zlink.runtime.nativeapi.ServiceInterop;
 import systems.zlink.runtime.nativeapi.ServiceLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
 import java.util.List;
 import java.util.Objects;
 
 public final class NativeMeshNodePublisher implements MeshNodePublisher {
-    private static final int PUBLISH_OPT_NODROP = 0x3630;
-
     private MemorySegment handle;
 
     NativeMeshNodePublisher(MemorySegment handle) {
@@ -53,16 +50,6 @@ public final class NativeMeshNodePublisher implements MeshNodePublisher {
             int rc = NativeServiceSymbols.publisherPublish(handle, name, topicSeg,
                 MemorySegment.NULL, array, n, detail, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_publisher_publish");
-        }
-    }
-
-    @Override
-    public void setNoDrop(boolean nodrop) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
-            value.set(ValueLayout.JAVA_INT, 0, nodrop ? 1 : 0);
-            MeshCalls.configOk(NativeServiceSymbols.publisherSetOption(handle,
-                PUBLISH_OPT_NODROP, value, 4));
         }
     }
 

@@ -143,9 +143,6 @@ class spot_t
                              send_flags_t flags_ = send_flags_t::none,
                              mesh_metadata_t metadata_ = {},
                              publish_detail_t *detail_out_ = nullptr);
-    void set_nodrop (bool nodrop_);
-    bool nodrop () const;
-
     // Subscriptions.
     void set_subscription (const std::string &channel_name_,
                            const std::string &topic_filter_,

@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'systems.zlink'
-version = '10.0.0'
+version = '10.1.0'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
@@ -97,6 +97,13 @@ tasks.register('buildZlinkJavaBridge', Exec) {
 processResources {
     dependsOn tasks.named('buildZlinkJavaBridge')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // Bundle only a native runtime that was built and verified with this
+    // package. Other platform runtimes must not silently retain an older ABI.
+    exclude { details ->
+        !details.file.isDirectory()
+            && details.path.startsWith('native/')
+            && !details.path.startsWith('native/linux-x86_64/')
+    }
 }
 
 test {

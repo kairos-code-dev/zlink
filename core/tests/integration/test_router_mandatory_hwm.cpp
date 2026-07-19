@@ -230,6 +230,13 @@ void test_router_send_rid_multipart_hwm_is_backpressure ()
     TEST_ASSERT_TRUE_MESSAGE (
       backpressured, "multipart routed send did not reach HWM");
 
+    const int repeated_rc = send_routed_multipart_expect_maybe_eagain (
+      router, &rid, payload, sizeof (payload));
+    TEST_ASSERT_EQUAL_INT (-1, repeated_rc);
+    TEST_ASSERT_EQUAL_INT_MESSAGE (
+      EAGAIN, zlink_errno (),
+      "a route held inactive by HWM must remain backpressured");
+
     test_context_socket_close (router);
     test_context_socket_close (dealer);
 }

@@ -75,7 +75,12 @@ int zlink::router_t::xsend (msg_t *msg_)
 
                 const pipe_write_status_t write_status = _current_out->check_write_status ();
                 if (write_status != pipe_write_ready) {
-                    const bool pipe_full = write_status == pipe_write_hwm_full;
+                    // HWM removes the pipe from the writable set until an
+                    // activation command restores credit. During that window
+                    // the transport can also report a non-active pipe state;
+                    // the route still exists and remains backpressured.
+                    const bool pipe_full =
+                      write_status == pipe_write_hwm_full || !out_pipe->active;
                     mark_out_pipe_inactive (out_pipe);
                     _current_out = NULL;
 
@@ -172,7 +177,11 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
 
         const pipe_write_status_t write_status = _current_out->check_write_status ();
         if (write_status != pipe_write_ready) {
-            const bool pipe_full = write_status == pipe_write_hwm_full;
+            // Preserve the HWM classification while this route is awaiting
+            // write activation. Pipe termination removes the routing-table
+            // entry and is reported as unreachable on the next lookup.
+            const bool pipe_full =
+              write_status == pipe_write_hwm_full || !out_pipe->active;
             mark_out_pipe_inactive (out_pipe);
             _current_out = NULL;
 

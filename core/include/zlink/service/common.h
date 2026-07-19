@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-/* Shared service identity types. ZLink Core 10.4.0.
+/* Shared service identity types. ZLink Core 10.5.0.
    Contract: core/doc/spec/core/service/ */
 
 #define ZLINK_ACTOR_ID_MAX 255u

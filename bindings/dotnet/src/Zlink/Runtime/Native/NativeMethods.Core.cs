@@ -5,8 +5,8 @@ namespace Systems.Zlink.Runtime.Native;
 
 internal static partial class NativeMethods
 {
-    // Generated to match the Core 10.2.0 public C ABI (core/src/libzlink.vers).
-    // Every entry is a symbol this binding P/Invokes AND that the 10.2.0 shared
+    // Generated to match the Core 10.3.0 public C ABI (core/src/libzlink.vers).
+    // Every entry is a symbol this binding P/Invokes AND that the 10.3.0 shared
     // library exports; NativeLibraryLoader.ValidateRequiredExports() fails fast
     // when any is missing.
     private static readonly string[] RequiredExportNames =

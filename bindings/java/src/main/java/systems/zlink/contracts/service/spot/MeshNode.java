@@ -22,6 +22,12 @@ public interface MeshNode extends AutoCloseable {
     /** Sets the node's local bind endpoint. */
     void setBind(String endpoint);
 
+    /** Sets the node routing identity before the node starts. */
+    void setRoutingId(RoutingId routingId);
+
+    /** Returns the configured or assigned node routing identity. */
+    RoutingId getRoutingId();
+
     /** Adds a channel by name. */
     void addChannel(String channelName);
 

@@ -157,6 +157,27 @@ public final class NativeMeshNode implements MeshNode {
     }
 
     @Override
+    public void setRoutingId(RoutingId routingId) {
+        Objects.requireNonNull(routingId, "routingId");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = NativeRoutingIds.allocateRawBytes(arena, routingId);
+            MeshCalls.configOk(Native.setRoutingId(
+                handle,
+                value,
+                value.byteSize()));
+        }
+    }
+
+    @Override
+    public RoutingId getRoutingId() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(NativeLayouts.ROUTING_ID_LAYOUT);
+            MeshCalls.configOk(Native.getRoutingId(handle, value));
+            return NativeRoutingIds.readAllowEmptyValue(value);
+        }
+    }
+
+    @Override
     public void addChannel(String channelName) {
         Objects.requireNonNull(channelName, "channelName");
         try (Arena arena = Arena.ofConfined()) {

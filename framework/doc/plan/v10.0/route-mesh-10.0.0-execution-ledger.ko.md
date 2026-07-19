@@ -1137,7 +1137,7 @@ coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S9-J01 | bindings local package 10.3.1 pin | version catalog와 dependency resolve 확인 | 완료 | Core 10.3.0 base 초기화 뒤 Java binding의 MeshNode routing ID lifecycle API 수정으로 package patch를 10.3.1로 올렸다(`ba25b8d04`). local Maven JAR SHA-256 `a87f9b9a…8d1`, 실제 native lifecycle test와 framework dependency resolve를 확인했다 |
+| S9-J01 | bindings local package 10.3.2 pin | version catalog와 dependency resolve 확인 | 완료 | Core 10.3.0 base 초기화 뒤 Java binding의 MeshNode routing ID lifecycle API 수정으로 package patch를 10.3.1로 올렸다(`ba25b8d04`). 10.3.1 JAR의 native payload가 이전 Core 10.1.0으로 남은 것을 artifact 직접 검사로 발견해 Java package만 10.3.2로 다시 올렸다(`4770678e7`). 10.3.2 JAR SHA-256 `3796f36b…cdb4`, 내부 `libzlink.so.10.3.0` SHA-256 `6b8b0bf2…07ed4`가 Core build와 일치하며 framework pin도 10.3.2다 |
 | S9-J02 | Java RouteMesh/MeshNode 구현 | Java 정식 interface와 source 일치 | 진행 중 | `ffa53a936`: 정식 `addRouteMesh` 구성, MeshNode lifecycle·peer·channel runtime, callback wakeup과 단일 pull-dispatch pump, claim·reusable batch·207 재할당·retained Message 수명, monitoring snapshot을 구현했다. 제거된 Java SpotNode binding adapter 5개를 삭제했다. 13-module `classes`와 core test compile, focused lifecycle·pump·monitoring test는 통과했다. STREAM session 연결과 legacy runtime 소비자 전환이 남았다 |
 | S9-J03 | Kotlin interface와 DSL 구현 | Kotlin 정식 interface와 source 일치 | 진행 중 | `ffa53a936`에서 Kotlin `addRouteMesh` DSL 첫 slice와 전체 Kotlin compile을 통과했다. Java runtime 전환과 함께 contract snapshot·E2E 검증이 남았다 |
 | S9-J03A | JVM metadata·timer 연결 | Java/Kotlin S/S metadata 전체 공통 matrix와 `ScheduledExecutorService` timer가 immutable context·keyed scheduler 계약 통과 | 미착수 | - |
@@ -1265,7 +1265,7 @@ S10 완료 gate:
 | S11-09 | Node.js 전체 종료 검증 | contract, package, sample와 E2E 통과 | 미착수 | - |
 | S11-10 | classic fanout과 generic STREAM 회귀 | Actor binding 확장점을 제외한 비변경 socket 기능의 public 동작과 baseline 유지 | 미착수 | - |
 | S11-11 | docs, link와 sample API 검증 | 깨진 link, stale 예제와 내부 구현 노출 0개 | 미착수 | - |
-| S11-12 | version과 artifact 대조 | Core 10.3.0, C++ binding 10.3.0, .NET·Java·Node binding 10.3.1과 각 framework pin 일치. binding package의 Core native version과 package version을 별도 대조 | 미착수 | - |
+| S11-12 | version과 artifact 대조 | Core 10.3.0, C++ binding 10.3.0, .NET·Node binding 10.3.1, Java binding 10.3.2와 각 framework pin 일치. binding package의 Core native version과 package version을 별도 대조 | 미착수 | - |
 
 ### 15.4 최종 리뷰와 종료 검증 뒤 외부 배포
 
@@ -1275,7 +1275,7 @@ S10 완료 gate:
 | S11-00C | Core stable artifact 검증 | GitHub Release, checksums, headers, SONAME, symbols와 remote `zlink/10.3.0` consumer 통과 | 미착수 | - |
 | S11-00D | stable Core 기반 bindings 재검증 | stable asset으로 native payload를 다시 동기화하고 S7 package·공통 E2E smoke 결과가 RC와 일치 | 미착수 | - |
 | S11-01A | bindings 외부 배포 revision 동결 | S7 clean source, Core stable release SHA와 package checksum이 manifest와 일치 | 미착수 | - |
-| S11-01B | 언어별 bindings tag 배포 | C++ 10.3.0과 .NET·Java·Node 10.3.1 workflow 정상 종료. 이번 RouteMesh 범위 밖 Python·Go·Rust는 배포하지 않음 | 미착수 | - |
+| S11-01B | 언어별 bindings tag 배포 | C++ 10.3.0, .NET·Node 10.3.1과 Java 10.3.2 workflow 정상 종료. 이번 RouteMesh 범위 밖 Python·Go·Rust는 배포하지 않음 | 미착수 | - |
 | S11-01C | 실제 배포 채널 확인 | NuGet, Maven, npm, PyPI, crates.io, Go tag/module과 C++ GitHub Release 존재 | 미착수 | - |
 | S11-01D | 배포 package E2E smoke | 각 채널의 새 package를 빈 workspace에 설치해 공통 smoke 통과 | 미착수 | - |
 | S11-01E | framework 배포 package 재검증 | local package pin을 각 언어의 실제 배포 package version으로 바꾸어 package·sample·E2E 통과 | 미착수 | - |

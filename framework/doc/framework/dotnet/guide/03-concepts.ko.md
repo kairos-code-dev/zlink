@@ -21,14 +21,14 @@ ZLink framework는 **다섯 가지 핵심 개념**으로 선다:
 | 용어 | 한 줄 풀이 |
 |------|-----------|
 | **channel(채널)** | 서버 간 호출을 묶는 **논리 이름**. `host:port` 주소 대신 `"orders"` 같은 이름으로 부른다 |
-| **역할(capability)** | 한 channel에서 이 앱이 맡는 일 — 서버로 **받기**(EnableServer) / 클라이언트로 **보내기**(EnableClient) / **발행**(Publisher) / **구독**(Subscriber) |
+| **membership** | MeshNode가 특정 `ChannelName`의 요청 처리 대상임을 나타내는 등록 정보 |
 | **handler(핸들러)** | 들어온 메시지를 처리하는 메서드·클래스. `ASP.NET Core`의 컨트롤러 액션과 같은 위치 |
-| **client(클라이언트)** | 다른 서비스로 호출을 **보내는** 주입 객체(예: `IZLinkChannelClient`) |
+| **client(클라이언트)** | 다른 노드나 channel로 호출을 **보내는** 주입 객체(예: `IZLinkRouteClient`) |
 | **request / send / publish** | 각각 **응답 받는 호출** / **응답 없는 단방향 통지** / **여러 구독자에게 발행** |
 | **pub/sub · fan-out** | 한 번 발행한 이벤트가 **여러 구독자에게 동시에 퍼지는** 것 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 **어느 메시지 종류인지** 구분하는 키 |
 | **codec(코덱)** | payload(메시지 본문)를 바이트로 **직렬화/역직렬화**하는 방식(json·protobuf·messagepack) |
-| **SPOT(스팟)** | room/zone처럼 **동적으로 생겼다 사라지는 상태 단위**. 한 SPOT의 콜백은 **한 줄로 직렬** 실행돼 lock이 필요 없다 |
+| **SPOT(스팟)** | room/zone처럼 **동적으로 생성되고 제거되는 상태 단위**. 한 SPOT의 콜백은 **한 줄로 직렬** 실행돼 lock이 필요 없다 |
 | **actor(액터)** | **ID로 식별되는 상태 보유 객체**. 같은 ID로 온 메시지는 늘 같은 인스턴스가 처리 |
 | **Entry Spot** | actor가 생성 직후 머무는 **기본 실행 위치** |
 | **STREAM(스트림)** | 외부 client(모바일·게임)와의 **연결 지향 양방향 채널**. 연결 수명·재연결을 framework가 관리 |
@@ -42,78 +42,58 @@ ZLink framework는 **다섯 가지 핵심 개념**으로 선다:
 
 ## 1. channel — 서버 간 연결
 
-channel은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
-`"orders"` 같은 이름으로 부른다. 현재 공개 표면에서는 server/publisher 역할이 자기
-endpoint를 명시하고, client/subscriber 역할은 수동 연결을 쓰거나 별도 location runtime
-설계가 확정된 뒤 이름 기반 연결을 사용한다. 배포 값(주소·topology)은 handler가 아니라
-**channel 등록**이 소유하므로,
-`[ZLinkRequest]` 같은 attribute는 channel 이름을 인자로 받지 않는다.
+channel은 **서버 간 호출 대상을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
+`"orders"` 같은 `ChannelName`으로 호출 대상을 선택한다. `MeshName`은 서로 통신할
+MeshNode 집합을 구분하고, `ChannelName`은 그 mesh 안에서 같은 기능을 제공하는 membership을
+묶는다. 호출자는 `IZLinkRouteClient`에 두 이름을 함께 넘긴다.
 
 **channel 종류(kind)** — 서버 간 연결 방식이 다르다:
 
 | 종류 | 등록 | 연결 패턴 |
 |------|------|-----------|
-| client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 연결된다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
+| route mesh | `AddRouteMesh` + `ChannelName` | node direct 또는 `ChannelName` 대상 request/send |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| route mesh | `AddRouteMesh` | router ↔ router — routing id로 특정 주소에 라우팅 (`MeshNode`가 이 route mesh로 구성된다: [06-spot](06-spot.ko.md)) |
 
-**소켓 구조 한눈에** — 어떤 소켓이 어떻게 연결되는지가 네 종류의 차이다.
-
-- **client-server** — ROUTER 서버 **하나**에 DEALER 클라이언트 **여럿**이 연결되는 비대칭 구조.
+- **route mesh** — `MeshName`으로 mesh를 고른 뒤 RID로 노드 하나를 직접 지정하거나,
+  `ChannelName`의 처리 가능 membership 중 하나를 선택한다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
-    C1["client A<br/>DEALER"] --> S["server<br/>ROUTER"]
-    C2["client B<br/>DEALER"] --> S
-    C3["client C<br/>DEALER"] --> S
+    C["caller"] --> M["MeshName: services"]
+    M -->|"RID direct"| A["node A"]
+    M -->|"ChannelName: orders"| B["ready member"]
 ```
 
-- **fanout** — PUB 하나가 발행하면 같은 메시지가 SUB 여럿에 동시에 퍼진다.
+- **fanout** — publisher가 발행하면 같은 이벤트가 subscriber 여럿에 전달된다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 graph LR
-    P["publisher<br/>PUB"] --> S1["subscriber A<br/>SUB"]
-    P --> S2["subscriber B<br/>SUB"]
-    P --> S3["subscriber C<br/>SUB"]
+    P["publisher"] --> S1["subscriber A"]
+    P --> S2["subscriber B"]
+    P --> S3["subscriber C"]
 ```
 
-- **route mesh** — ROUTER끼리 연결되어, **routing id로 지정한 주소에만** 보낸다(분산 아님). `MeshNode`가 이 구조로 구성된다.
+MeshNode는 `Listen(endpoint)`로 자기 endpoint를 열고 `PeerConnections.Connect(endpoint)`로
+수동 peer를 지정할 수 있다. `ChannelName(...)`에는 해당 기능을 처리할 handler를 등록한다.
+호출만 하는 노드도 연결과 호출에 사용할 local MeshNode가 필요하지만, 그 membership의
+weight를 `0`으로 설정해 처리 대상에서는 제외한다. 자동 discovery를 사용할 때의 등록과
+연결은 [10-location](10-location.ko.md)이 다룬다. request/send/pub-sub 사용법과 handler
+노출은 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
 
-```mermaid
-%%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
-graph LR
-    R["router<br/>ROUTER"] -->|"routing id = A"| A["node A<br/>ROUTER"]
-    R -->|"routing id = B"| B["node B<br/>ROUTER"]
-```
-
-**역할(capability)** — 한 channel에서 이 앱이 맡는 일:
-
-| 역할 | 의미 | 비고 |
-|------|------|------|
-| `EnableServer(endpoint)` | 이 channel의 request/send를 local handler가 받는다 | endpoint 인자 필수 |
-| `EnableClient()` | 이 channel로 request/send를 내보낸다 | outbound 전용 앱 가능 |
-| `EnablePublisher(endpoint)` | 이 channel로 이벤트를 publish 한다 | endpoint 인자 필수 |
-| `EnableSubscriber()` | 이 channel의 이벤트를 구독한다 | |
-
-한 channel이 여러 역할을 가질 수 있다(예: 서버이면서 다른 노드의 이벤트를 구독).
-server/publisher는 외부가 접근할 endpoint가 필요하므로 `EnableServer(endpoint)`·
-`EnablePublisher(endpoint)`에 endpoint를 직접 넘기고, client/subscriber는 필요 없다. request/send/pub-sub 사용법과 handler 노출·연결
-제어 전체는 [05-channel-messaging](05-channel-messaging.ko.md)이 다룬다.
-
-> **주의:** channel 이름과 handler **group 이름**은 서로 다른 namespace 다. group은
-> 코드 안 논리 묶음(`"api"`)이고, channel은 배포 식별자(`"tictactoe.api"`)다.
+> **주의:** `MeshName`과 `ChannelName`은 서로 다른 이름이다. 하나의 mesh에 여러
+> `ChannelName`을 등록할 수 있고, 서로 다른 mesh에서 같은 `ChannelName`을 사용할 수도 있다.
 
 ## 2. spot — 상태 단위
 
-spot은 room/zone/stage처럼 **동적으로 생겼다 사라지는 상태 단위**다. 한 spot에
+spot은 room/zone/stage처럼 **동적으로 생성되고 제거되는 상태 단위**다. 한 spot에
 들어오는 packet · timer · actor 콜백은 **한 줄로 직렬 실행**되므로, spot이 소유한
 상태에 lock 없이 접근한다. "어디서 도는가"가 channel handler와 다르다(§6).
 
 | | channel handler | SPOT handler |
 |---|---|---|
-| 위치 | channel server/subscriber 역할 | `MeshNode` 안의 entry/user Spot |
+| 위치 | MeshNode의 `ChannelName` membership | `MeshNode` 안의 entry/user Spot |
 | 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 SPOT 안에서는 직렬 실행 |
 | 상태 | 공유 상태를 직접 멤버에 두지 않음 | SPOT이 상태를 직접 소유 |
 
@@ -184,10 +164,10 @@ store 없이 endpoint를 역할 등록에 직접 적는 수동 연결도 그대�
 >
 > | 개념 | TicTacToe에서 |
 > |---|---|
-> | channel | Api 서버와 Play 서버가 `AddClientServerChannel`로 방 생성·배정을 주고받는다 |
+> | channel | Api 서버가 `IZLinkRouteClient`로 Play mesh의 `ChannelName`에 방 생성 요청을 보낸다 |
 > | spot | 대국 한 판이 `TicTacToeGame` spot 하나 — 두 플레이어의 수가 이 안에서 직렬 처리된다 |
 > | actor | 플레이어가 actor이고, 재접속해도 같은 actor로 이어져 두던 판을 계속한다 |
-> | stream | client가 Play 서버의 STREAM endpoint에 직접 붙어 수를 두고 push를 받는다 |
+> | stream | client가 Play 서버의 STREAM endpoint에 직접 연결해 수를 두고 push를 받는다 |
 > | location | Redis location store가 Api↔Play 연결을 자동으로 잇는다 — 주소가 코드에 없다 |
 >
 > 다섯 개념이 각각 어떤 문제를 푸는지는 위에서 봤고, **함께 놓이면 어떤 모양인지**는
@@ -262,7 +242,7 @@ graph TB
 위 그림은 **처리 순서**를 보여준다. 채널/HTTP 핸들러는 요청마다 독립 실행되고, SPOT
 핸들러는 같은 SPOT 큐에 들어온 일을 하나씩 처리한다. 아래 그림은 같은 상황을
 **스레드 점유** 관점에서 다시 본 것이다. 각 event는 async task가 되고, task가
-`await`에 도달하면 스레드를 붙잡지 않은 채 응답을 기다린다.
+`await`에 도달하면 스레드를 점유하지 않은 채 응답을 기다린다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -298,24 +278,21 @@ Entry Spot의 actor packet은 대상 actor mailbox 기준으로 처리된다. �
 인프라(캐시·카운터)는 싱글톤 + 자체 동기화에 둔다. SPOT 핸들러 작성과 직렬 실행
 보장은 [06-spot](06-spot.ko.md), 채널 핸들러 노출은 [05-channel-messaging](05-channel-messaging.ko.md).
 
-**handler 노출은 명시적이다** — 두 방법 중 하나로 channel에 붙인다(방법별 코드는 아래 주석 참고).
+**handler 노출은 명시적이다.** Assembly scan은 handler type을 발견하고, typed registration은
+그 handler를 어느 `MeshName`과 `ChannelName`에 노출할지 고정한다.
 
 ```csharp
-// 방법 A — attribute로 묶고 group 이름으로 붙인다
-[ZLinkHandlerGroup("api")]                  // 이 class의 핸들러 메서드들을 "api" group으로 묶는다
-public sealed class ApiHandlers { /* [ZLinkRequest] / [ZLinkSend] 메서드들 */ }
-
-options.AddClientServerChannel("orders")
-    .AddHandlerGroup("api");                // 위 group을 이 channel에 노출
-
-// 방법 B — 핸들러 타입을 channel에 개별 등록
-options.AddClientServerChannel("orders")
-    .AddRequestHandler<GetOrderHandler>();  // 핸들러 하나씩 직접 등록
+options.AddHandlersFromAssemblyOf<Program>(); // 지정한 assembly에서 handler type을 발견한다.
+options.AddRouteMesh("services")
+    .Listen("tcp://0.0.0.0:7101")
+    .SetRoutingId(RoutingId.From("orders-1"))
+    .ChannelName("orders")
+    .AddRequestHandler<GetOrderHandler>();    // 이 handler를 services/orders에만 노출한다.
 ```
 
 다음 구성 오류는 lazy first-call로 미루지 않고 **host startup에서
-즉시** 예외로 막힌다: channel 이름 중복, 같은 channel 안 `kind + packet name` 중복,
-client 역할에 자동 연결(store)·수동 연결 둘 다 없음, 허용되지 않는 handler 반환형.
+즉시** 예외로 막힌다: `MeshName` 중복, 같은 channel 안 `kind + packet name` 중복,
+local endpoint 또는 peer 연결 정보 누락, 허용되지 않는 handler 반환형.
 
 ### 6.2 실행 모델 — `async`/`await`, `ValueTask`
 
@@ -333,7 +310,10 @@ public async ValueTask<CreateGameReply> HandleAsync (
 {
     // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
     var room = await _client
-        .RequestToChannel("tictactoe.play", new CreateRoomRequest(request.GameName))
+        .RequestToChannel(
+            "tictactoe.play",                         // 요청 대상을 찾을 MeshName
+            "tictactoe.play",                         // mesh 안에서 선택할 ChannelName
+            new CreateRoomRequest(request.GameName))
         .Async<CreateRoomReply>(ct);   // request → remote reply가 도착할 때까지 await로 대기, 그 reply를 받는다
     return new CreateGameReply (room.RoomId, room.GameName);
 }
@@ -413,7 +393,7 @@ stateDiagram-v2
   | 표면 | 역할 | 다루는 장 |
   |------|------|-----------|
   | `builder.Services.AddZLinkFramework(...)` | channel/SPOT/STREAM 선언 | 4~8장 |
-  | `options.AddClientServerChannel(...)` / `AddFanoutChannel` | channel 종류·역할 선언 | [4장](05-channel-messaging.ko.md) |
+  | `options.AddRouteMesh(...)` / `AddFanoutChannel(...)` | RouteMesh·fanout 선언 | [4장](05-channel-messaging.ko.md) |
   | runtime event handler | monitoring event 관찰 | [9장](11-monitoring.ko.md) |
 
 ## 7. 더 깊이

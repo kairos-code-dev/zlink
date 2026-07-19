@@ -2,6 +2,7 @@ using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 using Zlink.Framework.Contracts.Locations;
@@ -11,6 +12,7 @@ namespace AutomaticTurnDispatch.Server.Session.Support;
 internal sealed partial class AwaitSession(
     IZLinkSessionContext context,
     IZLinkRouteClient routes,
+    IZLinkSpotClient spotsClient,
     IZLinkSpotHandleResolver spots,
     EvidenceStore evidence) : IZLinkSession
 {
@@ -76,6 +78,7 @@ internal sealed partial class AwaitSession(
                     $"session-shutdown|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownThroughSpotRouteAsync(
                     routes,
+                    spotsClient,
                     spots,
                     request,
                     cancellationToken);
@@ -89,6 +92,7 @@ internal sealed partial class AwaitSession(
                     $"session-shutdown-recovery|rid={evidence.Rid}|session={Context.SessionId}|request={request.RequestId}|spot={request.SpotRid}");
                 var result = await RunShutdownRecoveryThroughSpotRouteAsync(
                     routes,
+                    spotsClient,
                     spots,
                     request,
                     cancellationToken);
@@ -273,7 +277,7 @@ internal sealed partial class AwaitSession(
         var request = payload.Decode<TReq>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         var result = await RequestSpotAsync<TRes>(
-            routes,
+            spotsClient,
             spots,
             spotRid,
             request,
@@ -293,7 +297,7 @@ internal sealed partial class AwaitSession(
         var command = payload.Decode<TMsg>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         await SendSpotAsync(
-            routes,
+            spotsClient,
             spots,
             spotRid,
             command,

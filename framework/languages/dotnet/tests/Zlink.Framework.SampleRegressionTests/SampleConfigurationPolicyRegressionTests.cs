@@ -348,7 +348,7 @@ public sealed partial class RegressionTests
         Assert.Contains("if [[ \"$G4_PROVEN\" == \"1\" ]]; then g_pass ZW-G4; fi", runner,
             StringComparison.Ordinal);
         Assert.Contains("ListRoutingIdSlotsAsync", reporter, StringComparison.Ordinal);
-        Assert.Contains("bridgeRid={BridgeRid} reportRid={ReportRid}", reporter, StringComparison.Ordinal);
+        Assert.Contains("zoneRid={ZoneRid} reportRid={ReportRid}", reporter, StringComparison.Ordinal);
     }
 
     [Fact]

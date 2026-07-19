@@ -62,12 +62,7 @@ internal sealed class ZLinkMeshChannelRuntimeOptions(
         set
         {
             ZLinkSocketConfig.ValidatePeerWeight(value);
-            runtime.ExecuteOperation(() =>
-            {
-                node.SetChannelWeight(membership.ChannelName, (uint)value);
-                membership.Weight = value;
-                return true;
-            });
+            runtime.SetMeshChannelWeight(node, membership, value);
         }
     }
 }

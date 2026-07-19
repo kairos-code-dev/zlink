@@ -12,7 +12,7 @@ namespace Bingo.Server.Api.Handlers;
 [ZLinkHandlerGroup("api")]
 internal sealed class MatchBingoHandler(
     IZLinkSpotHandleResolver spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     ILogger<MatchBingoHandler> logger)
     : IZLinkRequestHandler<MatchBingoApiReq, MatchBingoApiRes>
 {

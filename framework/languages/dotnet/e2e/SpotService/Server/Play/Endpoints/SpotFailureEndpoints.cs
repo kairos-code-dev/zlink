@@ -1,6 +1,7 @@
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Contracts.Locations;
 
@@ -13,7 +14,7 @@ internal static class SpotFailureEndpoints
     public static void MapSpotFailureEndpoints(WebApplication app)
     {
         app.MapPost("/spot/missing-handler/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             SpotMissingHandlerReq request) =>
@@ -32,7 +33,7 @@ internal static class SpotFailureEndpoints
             return Results.Ok(new SpotMissingHandlerRes(request.SpotRid, failed, evidence.Snapshot()));
         });
         app.MapPost("/spot/missing-handler/command", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             SpotMissingCommandReq request) =>
@@ -58,7 +59,7 @@ internal static class SpotFailureEndpoints
             return Results.Ok(new SpotMissingCommandRes(request.SpotRid, request.Marker, true, evidence.Snapshot()));
         });
         app.MapPost("/spot/missing-target/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             SpotMissingTargetReq request) =>
         {
@@ -76,7 +77,7 @@ internal static class SpotFailureEndpoints
             }
         });
         app.MapPost("/spot/slow/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             SpotSlowRouteReq request) =>
         {
@@ -88,7 +89,7 @@ internal static class SpotFailureEndpoints
             return Results.Ok(new SpotSlowRouteRes(request.SpotRid, request.Marker, timedOut));
         });
         app.MapPost("/spot/to-spot/timeout", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             SpotToSpotTimeoutRouteReq request) =>
         {
@@ -99,7 +100,7 @@ internal static class SpotFailureEndpoints
             return Results.Ok(result);
         });
         app.MapPost("/spot/to-spot/negative", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,

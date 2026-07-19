@@ -18,15 +18,15 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
         var targetMethod = ResolveInterfaceHandleMethod(
             declaringType,
             handlerInterface,
-            nameof(IZLinkPublishHandler<object>.HandleAsync),
+            nameof(IZLinkFanoutHandler<object>.HandleAsync),
             "Handler");
 
         var messageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType);
-        var contextType = kind switch
+        Type? contextType = kind switch
         {
             ZLinkMessageKind.Request => typeof(ZLinkRequestContext),
             ZLinkMessageKind.Command => typeof(ZLinkSendContext),
-            _ => typeof(ZLinkPublishContext)
+            _ => null
         };
 
         return new ZLinkHandlerEndpointDescriptor(
@@ -94,7 +94,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
                 continue;
             }
 
-            if (typeof(ZLinkHandlerContext).IsAssignableFrom(parameters[i].ParameterType))
+            if (typeof(IZLinkHandlerContext).IsAssignableFrom(parameters[i].ParameterType))
                 contextType = parameters[i].ParameterType;
         }
 

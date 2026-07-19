@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RegistrationCodec.Shared;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
@@ -40,20 +41,22 @@ internal static class CodecRequesterHostFactory
                 .TraceLabel(options.Rid);
             framework.Codecs.Use(ZLinkProtobufCodec.Default);
             framework.Codecs.Use(ZLinkMessagePackCodec.Default);
-            framework.AddClientServerChannel(RegistrationCodecNames.Channel)
-                .EnableClient(options.ChannelEndpoint);
+            var mesh = framework.AddRouteMesh(RegistrationCodecNames.Channel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From(options.Rid));
+            mesh.ChannelName(RegistrationCodecNames.Channel).SetWeight(0);
+            mesh.PeerConnections.Connect(options.ChannelEndpoint);
         });
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
         app.MapPost("/codec/protobuf/request", async (
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                var reply = await channel.RequestToChannel(
-                        RegistrationCodecNames.Channel,
+                var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
                         new StringValue { Value = "rc-b5" })
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StringValue>(cancellationToken);
@@ -65,11 +68,10 @@ internal static class CodecRequesterHostFactory
             }
         });
         app.MapPost("/codec/json/request", async (
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel(
-                    RegistrationCodecNames.Channel,
+            var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
                     new JsonEchoReq("rc-b5-json"))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<EchoRes>(cancellationToken);

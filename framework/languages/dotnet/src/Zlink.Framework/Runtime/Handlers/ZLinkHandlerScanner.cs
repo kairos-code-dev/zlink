@@ -43,7 +43,7 @@ internal static class ZLinkHandlerScanner
                         groups,
                         null,
                         null));
-                else if (def == typeof(IZLinkPublishHandler<>))
+                else if (def == typeof(IZLinkFanoutHandler<>))
                     endpoints.Add(CreateInterfaceDescriptor(
                         type,
                         iface,

@@ -28,9 +28,10 @@ internal static class DelayHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddHandlersFromAssemblyOf(typeof(Program));
-            framework.AddClientServerChannel(AutomaticTurnDispatchNames.DelayChannel)
-                .EnableServer(options.DelayEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid))
+            var mesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.DelayChannel)
+                .Listen(options.DelayEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
+            mesh.ChannelName(AutomaticTurnDispatchNames.DelayChannel)
                 .AddRequestHandler<DelayHandler, DelayReq, DelayRes>("DelayReq");
         });
 

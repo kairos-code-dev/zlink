@@ -66,17 +66,44 @@ internal sealed class ZLinkActorRemoteJoiner(
         var actorType = actorState.ActorType;
         var handoffId = Guid.NewGuid().ToString("N");
         ZLinkActorTransferRegistry.TryResolve(registration, actorType, out var transfer);
-        return await SubmitRoutedJoinActorCoreAsync(
-                actor,
-                actorRef,
-                actorState,
-                target,
-                request,
-                actorType,
-                handoffId,
-                transfer,
-                cancellationToken)
-            .ConfigureAwait(false);
+        if (transfer is null)
+            return await SubmitRoutedJoinActorCoreAsync(
+                    actor,
+                    actorRef,
+                    actorState,
+                    target,
+                    request,
+                    actorType,
+                    handoffId,
+                    null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        var timeout = registration.ActorTransferTimeout
+                      ?? throw new ZLinkConfigurationException(
+                          "ActorTransferTimeout is required for remote actor transfer.");
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(timeout);
+        try
+        {
+            return await SubmitRoutedJoinActorCoreAsync(
+                    actor,
+                    actorRef,
+                    actorState,
+                    target,
+                    request,
+                    actorType,
+                    handoffId,
+                    transfer,
+                    timeoutSource.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested
+            && timeoutSource.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Actor transfer timed out after {timeout}.");
+        }
     }
 
     private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorCoreAsync(
@@ -322,7 +349,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                 .ConfigureAwait(false);
         ZLinkRuntimeMetrics.CompleteActorTransfer(transferMetricStarted);
         setTargetAccepted(true);
-        actorState.Handoff.CommitForwardingCutover(registration.ActorTransferForwardWindow);
+        actorState.Handoff.CommitForwardingCutover(
+            registration.ActorTransferForwardWindow ?? TimeSpan.Zero);
         runtime.RunDetached(
             "actor-source-handoff-cleanup",
             ct => ReconcileCommittedSourceHandoffAsync(

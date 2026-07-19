@@ -10,8 +10,8 @@ using Zlink.Framework.Contracts.Streams;
 namespace Bingo.Server.Session.Sessions.Handlers;
 
 internal sealed class AuthenticateBingoSessionHandler(
-    IZLinkChannelClient channels,
-    IZLinkRouteClient routes,
+    IZLinkRouteClient channels,
+    IZLinkSpotClient spotsClient,
     IZLinkSpotHandleResolver spots,
     IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
     ILogger<AuthenticateBingoSessionHandler> logger)
@@ -23,8 +23,7 @@ internal sealed class AuthenticateBingoSessionHandler(
         AuthenticateReq request,
         CancellationToken cancellationToken)
     {
-        var authenticated = await channels.RequestToChannel(
-                SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel, SampleNames.ApiChannel,
                 new AuthenticatePlayerReq { AccessToken = request.AccessToken })
             .Async<AuthenticatePlayerRes>(cancellationToken);
 
@@ -42,7 +41,7 @@ internal sealed class AuthenticateBingoSessionHandler(
                                 cancellationToken)
                             ?? throw new InvalidOperationException(
                                 $"Play entry spot '{preferredPlayNodeRid}' was not found.");
-        var ensured = await routes.RequestToSpot(playEntrySpot,
+        var ensured = await spotsClient.RequestToSpot(playEntrySpot,
                 new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,

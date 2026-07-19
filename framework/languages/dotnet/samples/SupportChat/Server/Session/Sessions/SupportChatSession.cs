@@ -14,7 +14,7 @@ namespace SupportChat.Server.Session.Sessions;
 // agent session can hold many per-conversation actors at once.
 internal sealed class SupportChatSession(
     IZLinkSessionContext context,
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<SupportChatSession> logger) : IZLinkSession
 {
     private readonly Dictionary<string, IZLinkSessionActor> _conversationActors = new(StringComparer.Ordinal);
@@ -62,8 +62,7 @@ internal sealed class SupportChatSession(
     private async ValueTask AuthenticateAsync(ZLinkMessage payload, CancellationToken cancellationToken)
     {
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.RequestToChannel(
-                SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel, SampleNames.ApiChannel,
                 new AuthenticateUserReq(request.AccessToken))
             .Async<AuthenticateUserRes>(cancellationToken);
 
@@ -74,8 +73,7 @@ internal sealed class SupportChatSession(
             throw new InvalidOperationException(authenticated.Reason ?? "SupportChat authentication failed.");
 
         // The identity actor's ParticipantId is its own ActorId (customer id or roster id).
-        var ensured = await channels.RequestToChannel(
-                SampleNames.SupportChannel,
+        var ensured = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
                 new EnsureSupportUserActorReq(
                     authenticated.ActorId,
                     authenticated.DisplayName,
@@ -120,8 +118,7 @@ internal sealed class SupportChatSession(
         // An agent joins each conversation through its own per-conversation actor. Ask
         // the Support server to create it and join it into the ConversationSpot, then
         // bind it onto this session so the agent client receives that room's pushes.
-        var ensured = await channels.RequestToChannel(
-                SampleNames.SupportChannel,
+        var ensured = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
                 new EnsureAgentConversationReq(_identityActorId, _identityDisplayName, conversationId))
             .Async<EnsureAgentConversationRes>(cancellationToken);
 

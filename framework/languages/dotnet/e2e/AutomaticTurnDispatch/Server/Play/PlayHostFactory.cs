@@ -42,24 +42,27 @@ internal static class PlayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMeshChannel(AutomaticTurnDispatchNames.ControlChannel)
-                .EnableServer(options.ControlEndpoint)
-                .EnableClient()
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .AddRequestHandler<BindAwaitActorsControlHandler, BindAwaitActorsReq, BindAwaitActorsRes>(
+            var controlMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.ControlChannel)
+                .Listen(options.ControlEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
+            controlMesh.ChannelName(AutomaticTurnDispatchNames.ControlChannel);
+            controlMesh
+                .AddRouteRequestHandler<BindAwaitActorsControlHandler, BindAwaitActorsReq, BindAwaitActorsRes>(
                     "BindAwaitActorsReq")
-                .AddRequestHandler<EnsureSpotControlHandler, EnsureSpotReq, EnsureSpotRes>("EnsureSpotReq")
-                .AddRequestHandler<AwaitEvidenceControlHandler, AwaitEvidenceReq, AwaitEvidenceRes>(
+                .AddRouteRequestHandler<EnsureSpotControlHandler, EnsureSpotReq, EnsureSpotRes>("EnsureSpotReq")
+                .AddRouteRequestHandler<AwaitEvidenceControlHandler, AwaitEvidenceReq, AwaitEvidenceRes>(
                     "AwaitEvidenceReq")
-                .AddRequestHandler<AwaitEvidenceWaitControlHandler, AwaitEvidenceWaitReq, AwaitEvidenceRes>(
+                .AddRouteRequestHandler<AwaitEvidenceWaitControlHandler, AwaitEvidenceWaitReq, AwaitEvidenceRes>(
                     "AwaitEvidenceWaitReq");
-            framework.AddClientServerChannel(AutomaticTurnDispatchNames.DelayChannel)
-                .EnableClient(options.DelayEndpoint)
+            var delayMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.DelayChannel)
+                .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddRouteMeshChannel(AutomaticTurnDispatchNames.SpotRouteChannel)
-                .EnableServer(options.SpotRouteEndpoint)
-                .EnableClient()
+            delayMesh.ChannelName(AutomaticTurnDispatchNames.DelayChannel).SetWeight(0);
+            delayMesh.PeerConnections.Connect(options.DelayEndpoint);
+            var spotRouteMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotRouteChannel)
+                .Listen(options.SpotRouteEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
+            spotRouteMesh.ChannelName(AutomaticTurnDispatchNames.SpotRouteChannel);
             var mesh24 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
                                 .Listen(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))

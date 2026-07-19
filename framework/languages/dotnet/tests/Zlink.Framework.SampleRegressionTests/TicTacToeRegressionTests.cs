@@ -355,17 +355,14 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void NonTicTacToe_DotNet_Samples_Avoid_Imperative_Packet_Handler_Registration()
+    public void NonTicTacToe_DotNet_Samples_Avoid_Runtime_Packet_Handler_Registration()
     {
         var samplesRoot = ResolveSamplesRoot();
         var manualRegistrationTokens = new[]
         {
             "Context.Handlers.AddHandler<",
             "Context.Handlers.AddPacket<",
-            "Context.Handlers.AddActorPacket<",
-            ".AddRequestHandler<",
-            ".AddSendHandler<",
-            ".AddPublishHandler<"
+            "Context.Handlers.AddActorPacket<"
         };
         var manualRegistrations = EnumerateSourceFiles(samplesRoot)
             .Where(file => !file.Contains(

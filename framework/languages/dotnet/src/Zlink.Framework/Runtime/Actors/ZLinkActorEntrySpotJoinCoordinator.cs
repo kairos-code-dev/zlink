@@ -138,10 +138,14 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     cancellationToken)
                 .ConfigureAwait(false);
 
-        var routeChannel = state.RouteChannels.Values.FirstOrDefault()
-                           ?? throw new ZLinkFrameworkException(
-                               ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                               $"Actor entry SPOT join failed for '{actor.ActorId}' because target node '{spotNodeRid}' is not connected and no route channel is registered.");
+        var sourceNode = getActorSpotNode();
+        var nodeRuntime = state.SpotNodes.Values.FirstOrDefault(
+                              candidate => ReferenceEquals(candidate.Node, sourceNode))
+                          ?? state.SpotNodes.Values.FirstOrDefault(
+                              candidate => candidate.Registration.Router is not null)
+                          ?? throw new ZLinkFrameworkException(
+                              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                              $"Actor entry SPOT join failed for '{actor.ActorId}' because no router-capable MeshNode is registered.");
 
         var request = ZLinkActorEntrySpotRoutePackets.CreateJoinRequest(
             actor.ActorId,
@@ -151,14 +155,28 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             joinRequest,
             registration.Codecs);
 
-        var reply = await routeChannel
-            .RequestAsync<ZLinkActorEntrySpotRouteJoinRequest, ZLinkActorEntrySpotRouteJoinReply>(
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            nodeRuntime.Name,
+            ZLinkActorEntrySpotRoutePackets.JoinEntrySpotPacketName,
+            registration.DefaultRequestTimeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(
+            header,
+            request,
+            registration.Codecs);
+        var replyParts = await nodeRuntime
+            .RequestToNodeAsync(
                 spotNodeRid,
-                ZLinkActorEntrySpotRoutePackets.JoinEntrySpotPacketName,
-                request,
+                parts,
                 registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
+        var reply = ZLinkClientCallCodec
+            .DecodeEnvelopeReplyAndDispose<ZLinkActorEntrySpotRouteJoinReply>(
+                replyParts,
+                "Actor EntrySpot join reply is empty.",
+                $"Actor EntrySpot join failed for '{actor.ActorId}'.",
+                registration.Codecs);
 
         var replyMessage = ZLinkActorEntrySpotRoutePackets.DecodeJoinReplyPayload(
             reply,

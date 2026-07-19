@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Systems.Zlink;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,7 +41,10 @@ internal static class ConsumerHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
                 .TraceLabel(options.TraceLabel);
 
-            var profile = framework.AddClientServerChannel("profile");
+            var profileMesh = framework.AddRouteMesh("profile")
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From(options.TraceLabel));
+            profileMesh.ChannelName("profile").SetWeight(0);
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
                 // Endpoint-less client: valid only because the shared Redis
@@ -49,18 +53,15 @@ internal static class ConsumerHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix!)));
-                profile.EnableClient();
             }
             else
             {
                 foreach (var endpoint in options.ProviderEndpoints ?? [])
-                {
-                    profile.EnableClient(endpoint);
-                }
+                    profileMesh.PeerConnections.Connect(endpoint);
             }
 
             if (string.Equals(options.TraceLabel, "backpressure-consumer", StringComparison.Ordinal))
-                profile.ConfigureClientSocket().SendHighWaterMark = 4;
+                profileMesh.ConfigureRouterSocket().SendHighWaterMark = 4;
 
         });
         builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(

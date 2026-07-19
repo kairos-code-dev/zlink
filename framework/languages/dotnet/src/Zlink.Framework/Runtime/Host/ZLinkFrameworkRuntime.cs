@@ -23,6 +23,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkActorSessionManager _actorSessionManager;
     private readonly ZLinkActorHandoffAdmissions _actorHandoffAdmissions;
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
+    private readonly ZLinkLocationAutoConnectHost? _autoConnect;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly ZLinkDrainAdmissionGate _drainAdmission;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -57,6 +58,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _actorHandoffAdmissions = new ZLinkActorHandoffAdmissions(
             diagnostic: LogActorHandoff);
         _backendAdapterFactory = backendAdapterFactory;
+        _autoConnect = services.GetService<ZLinkLocationAutoConnectHost>();
         Registration = registration;
         _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
         _locationLifecycle = services.GetService<ZLinkLocationLifecycle>();

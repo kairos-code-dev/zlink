@@ -21,7 +21,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly object _lifecycleGate = new();
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
-    private Action? _sendReadyHandler;
     // First registered mesh channel; spot wrappers publish/subscribe on it
     // (spot pub/sub is logical multicast on the router plane).
     private string? _primaryChannelName;
@@ -111,7 +110,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
 
     public void OnSendReady(Action handler)
     {
-        _sendReadyHandler = handler;
+        _pump.SetNodeSendReadyHandler(handler);
     }
 
     public void ConnectPeer(string endpoint)
@@ -374,7 +373,39 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return _node.SendToNode(targetNodeRid, parts, flags);
+        return SendToNode(targetNodeRid, parts, flags, default);
+    }
+
+    public SubmitResult SendToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
+    {
+        return _node.SendToNode(targetNodeRid, parts, flags, metadata);
+    }
+
+    public bool RequestToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan timeout,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        var submit = _node.RequestToNode(
+            targetNodeRid,
+            parts,
+            out var operationId,
+            timeout,
+            flags,
+            metadata);
+        if (submit != SubmitResult.Ok)
+            return ZLinkSubmitFailureMapper.AcceptOrThrow(
+                submit,
+                $"node '{targetNodeRid}'");
+
+        return _completions.RegisterRequest(operationId, callback);
     }
 
     public bool SendToActor(

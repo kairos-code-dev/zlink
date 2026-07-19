@@ -26,7 +26,7 @@ public sealed class StreamFlowEndToEndTests
                 .TraceLogFile(logPath);
             options.AddStreamNode("flow.stream")
                 .Bind($"tcp://127.0.0.1:{port}")
-                .RegisterSession<FlowSession>();
+                .AddSession<FlowSession>();
         });
         using var host = builder.Build();
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkChannelCommandDispatchPipeline(
+    string meshName,
     ZLinkHandlerRegistry handlerRegistry,
     ZLinkHandlerDispatcher dispatcher,
     Func<string, IReadOnlySet<string>> resolveMappedGroups,
@@ -50,8 +51,9 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
             return;
 
         var context = new ZLinkSendContext(
+            meshName,
             scope.ChannelName,
-            scope.PacketName,
+            scope.PacketName!,
             scope.ContentType,
             cancellationToken,
             metadata);

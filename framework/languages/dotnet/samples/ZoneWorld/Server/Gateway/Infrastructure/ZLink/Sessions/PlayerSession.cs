@@ -77,7 +77,7 @@ public sealed class PlayerSession(
 /// mesh only so it can bind to one living on a zone node and relay to it.
 /// </summary>
 public sealed class PlayerSessionBinder(
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<PlayerSessionBinder> logger)
 {
     public async ValueTask BindAsync(
@@ -86,7 +86,7 @@ public sealed class PlayerSessionBinder(
         CancellationToken cancellationToken)
     {
         var ensured = await channels
-            .RequestToChannel(ZoneWorldNames.ActorsChannel, new EnsurePlayerActorReq(playerId))
+            .RequestToChannel(ZoneWorldNames.ActorsChannel, ZoneWorldNames.ActorsChannel, new EnsurePlayerActorReq(playerId))
             .Async<EnsurePlayerActorRes>(cancellationToken);
 
         var actorRef = new ActorRef(

@@ -55,8 +55,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 {
                     var stream = options.AddStreamNode("client.stream");
                     stream.Bind("tcp://127.0.0.1:9100");
-                    stream.RegisterSession<TestHeaderSession>();
-                    stream.RegisterSession<TestHeaderSession>();
+                    stream.AddSession<TestHeaderSession>();
+                    stream.AddSession<TestHeaderSession>();
                 }
             }));
 
@@ -342,6 +342,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddRouteMesh("actor-node")
                 .Listen("tcp://127.0.0.1:6201")
                 .AddActorFactory<TestActorFactory>("warrior").ChannelName("actor-node");
@@ -359,6 +361,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddRouteMesh("actor-node")
                 .Listen("tcp://127.0.0.1:6202")
                 .AddActorFactory<TestActorFactory>("warrior")
@@ -379,6 +383,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
+                options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+                options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
                 options.AddRouteMesh("actor-node-a")
                     .Listen("tcp://127.0.0.1:6201")
                     .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node-a");
@@ -398,6 +404,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddRouteMesh("actor-node-a")
                 .Listen("tcp://127.0.0.1:6203")
                 .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node-a");
@@ -429,7 +437,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.RegisterSession<TestHeaderSession>();
+                stream.AddSession<TestHeaderSession>();
             }
         });
 
@@ -452,7 +460,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             {
                 var stream = options.AddStreamNode("client.stream");
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.RegisterSession<TestSessionWithEnumerableHandlers>();
+                stream.AddSession<TestSessionWithEnumerableHandlers>();
             }
             {
                 var mesh = options.AddRouteMesh("stage-node");
@@ -587,7 +595,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             options.AddStreamNode("client.stream")
                 .Bind("tcp://127.0.0.1:9100")
-                .RegisterSession<TestHeaderSession>();
+                .AddSession<TestHeaderSession>();
             options.AddRouteMesh("stage-node")
                 .Listen("tcp://127.0.0.1:9000")
                 .AddSpotFactory<TestSpot>()
@@ -613,7 +621,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.AddStreamNode("client.stream")
                 .Bind("tcp://127.0.0.1:9100")
-                .RegisterSession<TestHeaderSession>();
+                .AddSession<TestHeaderSession>();
         });
         using var provider = services.BuildServiceProvider();
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
@@ -655,7 +663,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.DisableImplicitHandlerAutoRegistration();
             options.AddStreamNode("client.stream")
                 .Bind("tcp://127.0.0.1:9100")
-                .RegisterSession<TestHeaderSession>();
+                .AddSession<TestHeaderSession>();
             options.AddRouteMesh("stage-node")
                 .Listen("tcp://127.0.0.1:9000")
                 .AddSpotFactory<TestSpot>().ChannelName("stage-node");
@@ -738,10 +746,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            {
-                var routed = options.AddRouteMeshChannel("gateway");
-                routed.EnableServer("tcp://127.0.0.1:6202");
-            }
+            var mesh = options.AddRouteMesh("gateway")
+                .Listen("tcp://127.0.0.1:6202")
+                .SetRoutingId(RoutingId.From("gateway"));
+            mesh.ChannelName("gateway");
         });
 
         using var provider = services.BuildServiceProvider();
@@ -800,18 +808,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddClientServerChannel("api")
-                .EnableClient()
+            options.AddRouteMesh("events")
+                .Listen("inproc://allocated-events")
                 .UseAllocatedRoutingId(10)
-                .SetRoutingIdAllocationGroup("node");
-            options.AddFanoutChannel("events")
-                .EnablePublisher("inproc://allocated-events")
-                .UseAllocatedRoutingId(10)
-                .SetRoutingIdAllocationGroup("node");
-            options.AddRouteMeshChannel("route")
-                .EnableClient()
-                .UseAllocatedRoutingId(10)
-                .SetRoutingIdAllocationGroup("node");
+                .SetRoutingIdAllocationGroup("node")
+                .ChannelName("events");
             options.AddRouteMesh("spot")
                 .Listen("inproc://allocated-spot")
                 .UseAllocatedRoutingId(10)
@@ -843,9 +844,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     {
         var missingStore = Assert.Throws<ZLinkConfigurationException>(() =>
             new ServiceCollection().AddZLinkFramework(options =>
-                options.AddFanoutChannel("events")
-                    .EnablePublisher("inproc://allocated-no-store")
-                    .UseAllocatedRoutingId(10)));
+                options.AddRouteMesh("events")
+                    .Listen("inproc://allocated-no-store")
+                    .UseAllocatedRoutingId(10)
+                    .ChannelName("events")));
         Assert.Contains("require", missingStore.Message, StringComparison.OrdinalIgnoreCase);
 
         var storeWithoutCapability = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
@@ -853,9 +855,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 options.AddLocationStore(storeWithoutCapability);
-                options.AddFanoutChannel("events")
-                    .EnablePublisher("inproc://allocated-no-capability")
-                    .UseAllocatedRoutingId(10);
+                options.AddRouteMesh("events")
+                    .Listen("inproc://allocated-no-capability")
+                    .UseAllocatedRoutingId(10)
+                    .ChannelName("events");
             }));
         Assert.Contains("does not provide", missingCapability.Message, StringComparison.Ordinal);
 
@@ -863,20 +866,22 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddFanoutChannel("events")
-                    .EnablePublisher("inproc://allocated-fixed")
+                options.AddRouteMesh("events")
+                    .Listen("inproc://allocated-fixed")
                     .SetRoutingId(RoutingId.From("fixed"))
-                    .UseAllocatedRoutingId(10);
+                    .UseAllocatedRoutingId(10)
+                    .ChannelName("events");
             }));
 
         Assert.Throws<ZLinkConfigurationException>(() =>
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddFanoutChannel("events")
-                    .EnablePublisher("inproc://allocated-fixed-reversed")
+                options.AddRouteMesh("events")
+                    .Listen("inproc://allocated-fixed-reversed")
                     .UseAllocatedRoutingId(10)
-                    .SetRoutingId(RoutingId.From("fixed"));
+                    .SetRoutingId(RoutingId.From("fixed"))
+                    .ChannelName("events");
             }));
 
         Assert.Throws<ZLinkConfigurationException>(() =>
@@ -893,9 +898,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddFanoutChannel("events")
-                    .EnablePublisher("inproc://allocated-group-only")
-                    .SetRoutingIdAllocationGroup("group");
+                options.AddRouteMesh("events")
+                    .Listen("inproc://allocated-group-only")
+                    .SetRoutingIdAllocationGroup("group")
+                    .ChannelName("events");
             }));
     }
 
@@ -906,9 +912,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddFanoutChannel("events")
-                .EnablePublisher($"inproc://allocated-ready-{Guid.NewGuid():N}")
-                .UseAllocatedRoutingId(2);
+            options.AddRouteMesh("events")
+                .Listen($"inproc://allocated-ready-{Guid.NewGuid():N}")
+                .UseAllocatedRoutingId(2)
+                .ChannelName("events");
         });
         using var host = builder.Build();
 
@@ -930,9 +937,10 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.UseTestLocationStore();
             options.ConfigureLocations().PollingInterval = TimeSpan.FromMilliseconds(1);
-            options.AddFanoutChannel("events")
-                .EnablePublisher($"inproc://allocated-retry-{Guid.NewGuid():N}")
-                .UseAllocatedRoutingId(2);
+            options.AddRouteMesh("events")
+                .Listen($"inproc://allocated-retry-{Guid.NewGuid():N}")
+                .UseAllocatedRoutingId(2)
+                .ChannelName("events");
         });
         await using var provider = services.BuildServiceProvider();
         var locations = provider.GetRequiredService<ZLinkLocationRuntime>();

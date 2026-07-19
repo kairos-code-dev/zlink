@@ -13,7 +13,7 @@ namespace DeliveryDispatch.Server.Dispatch;
 /// </summary>
 internal sealed class CourierOfferPort(
     SampleTopology topology,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient spotsClient,
     IZLinkSpotHandleResolver spots)
 {
     public async ValueTask OfferAsync(
@@ -27,7 +27,7 @@ internal sealed class CourierOfferPort(
                         ?? throw new InvalidOperationException(
                             $"Courier entry spot has no live location row: {placement.NodeRid}");
 
-        routes
+        spotsClient
             .SendToSpot(
                 entrySpot,
                 new OfferDeliveryMsg(
@@ -40,7 +40,7 @@ internal sealed class CourierOfferPort(
     }
 }
 
-internal sealed class DeliveryStatusPublisher(IZLinkChannelClient channels)
+internal sealed class DeliveryStatusPublisher(IZLinkRouteClient channels)
 {
     public async ValueTask PublishAsync(
         AssignDeliveryMsg delivery,
@@ -64,13 +64,13 @@ internal sealed class DeliveryStatusPublisher(IZLinkChannelClient channels)
 internal static class DispatchChannelClient
 {
     public static async ValueTask<TRes> RequestAsync<TReq, TRes>(
-        IZLinkChannelClient channels,
+        IZLinkRouteClient channels,
         string channelName,
         TReq request,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = channels.RequestToChannel(channelName, request);
+        var call = channels.RequestToChannel(channelName, channelName, request);
         if (timeout is { } value)
         {
             call = call.Timeout(value);

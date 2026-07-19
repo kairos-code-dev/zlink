@@ -148,7 +148,9 @@ internal sealed class ZLinkSessionActorCoordinator(
                 break;
             }
             catch (ZLinkFrameworkException failure)
-                when (failure.IsRetriable && DateTime.UtcNow < deadline)
+                when ((failure.IsRetriable
+                       || failure.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound)
+                      && DateTime.UtcNow < deadline)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken)
                     .ConfigureAwait(false);

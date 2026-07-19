@@ -11,34 +11,58 @@ internal sealed class ZLinkHandlerDispatcher(
     public async ValueTask<object?> DispatchAsync(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        ZLinkHandlerContext context,
+        IZLinkHandlerContext context,
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var invocation = new ZLinkHandlerInvocation(
+            context.MeshName,
+            context.ChannelName is null ? "Node" : "Channel",
+            context.PacketName,
+            context.Metadata);
+        object? result = null;
+        var pipeline = BuildPipeline(
+            endpoint,
             message,
-            context);
-        var pipeline = BuildPipeline(endpoint, message, context, invocation, scope.ServiceProvider);
-        return await pipeline(cancellationToken).ConfigureAwait(false);
+            context,
+            invocation,
+            scope.ServiceProvider,
+            value => result = value,
+            cancellationToken);
+        await pipeline().ConfigureAwait(false);
+        return result;
     }
 
-    private ZLinkHandlerDelegate BuildPipeline(
+    private ZLinkHandlerFilterNext BuildPipeline(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        ZLinkHandlerContext context,
+        IZLinkHandlerContext context,
         ZLinkHandlerInvocation invocation,
-        IServiceProvider services)
+        IServiceProvider services,
+        Action<object?> setResult,
+        CancellationToken cancellationToken)
     {
-        ZLinkHandlerDelegate pipeline = ct => InvokeHandlerAsync(endpoint, message, context, _activator, services, ct);
+        ZLinkHandlerFilterNext pipeline = async () =>
+        {
+            var result = await InvokeHandlerAsync(
+                    endpoint,
+                    message,
+                    context,
+                    _activator,
+                    services,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            setResult(result);
+        };
 
         for (var index = registration.Filters.Count - 1; index >= 0; index--)
         {
             var next = pipeline;
             var filterType = registration.Filters[index];
-            pipeline = async ct =>
+            pipeline = async () =>
             {
                 var filter = (IZLinkHandlerFilter)services.GetRequiredService(filterType);
-                return await filter.InvokeAsync(invocation, next, ct).ConfigureAwait(false);
+                await filter.InvokeAsync(invocation, next, cancellationToken).ConfigureAwait(false);
             };
         }
 
@@ -48,7 +72,7 @@ internal sealed class ZLinkHandlerDispatcher(
     private static async ValueTask<object?> InvokeHandlerAsync(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        ZLinkHandlerContext context,
+        IZLinkHandlerContext context,
         ZLinkHandlerActivator activator,
         IServiceProvider services,
         CancellationToken cancellationToken)

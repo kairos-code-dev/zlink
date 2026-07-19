@@ -6,7 +6,7 @@ using Zlink.Framework.Contracts.Channels;
 namespace ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkOrderWorkflowRouter(
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     SampleTopology topology) : IOrderWorkflowRouter
 {
     public async ValueTask<OrderState> StartAsync(
@@ -50,8 +50,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
     private IZLinkRequestCall RequestToOwner<TMessage>(string orderId, TMessage command)
     {
         var owner = topology.ForOrderId(orderId);
-        return channels.RequestToChannel(
-            SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
+        return channels.RequestToChannel(SampleNames.OrderWorkflowChannelFor(owner.InstanceId), SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
             command);
     }
 }

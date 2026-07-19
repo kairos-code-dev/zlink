@@ -36,10 +36,11 @@ public static class TrackingServerHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
-            options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
-                .EnableServer(topology.TrackingChannelEndpoint)
-                .SetRoutingId(RoutingId.From("delivery-tracking-server"))
-                .AddHandlerGroup(SampleNames.TrackingRouteChannel);
+            var trackingMesh = options.AddRouteMesh(SampleNames.TrackingRouteChannel)
+                .Listen(topology.TrackingChannelEndpoint)
+                .SetRoutingId(RoutingId.From("delivery-tracking-server"));
+            trackingMesh.ChannelName(SampleNames.TrackingRouteChannel)
+                .AddRequestHandler<DeliveryStatusChangedHandler>();
             var mesh10 = options.AddRouteMesh(SampleNames.CustomerActorDiscovery)
                 .Listen(topology.TrackingSpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-spot-node"))

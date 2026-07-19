@@ -83,30 +83,30 @@ internal static class ProviderEndpoints
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel("profile", request)
+            var reply = await channel.RequestToChannel("profile", "profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/manual", async (
             ProfileReq request,
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel("profile.manual", request)
+            var reply = await channel.RequestToChannel("profile.manual", "profile.manual", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/command", (
             ProfileMsg command,
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            channel.SendToChannel("profile", command).TrySubmit();
+            channel.SendToChannel("profile", "profile", command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/route/request", async (

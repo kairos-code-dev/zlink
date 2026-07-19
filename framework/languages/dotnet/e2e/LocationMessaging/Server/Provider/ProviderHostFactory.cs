@@ -53,31 +53,36 @@ internal static class ProviderHostFactory
 
             if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
             {
-                var clientServer = framework.AddClientServerChannel("profile")
-                    .EnableServer(options.ChannelEndpoint)
-                    .EnableClient()
+                var profileMesh = framework.AddRouteMesh("profile")
+                    .Listen(options.ChannelEndpoint)
                     .SetRoutingId(RoutingId.From(options.Rid));
-                var serverSocket = clientServer.ConfigureServerSocket();
-                serverSocket.Weight = options.Weight;
+                var profile = profileMesh.ChannelName("profile").SetWeight(options.Weight);
+                var serverSocket = profileMesh.ConfigureRouterSocket();
                 serverSocket.ReceiveHighWaterMark = 4;
                 if (options.MaxMessageSize > 0) serverSocket.MaxMessageSize = options.MaxMessageSize;
-                clientServer.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
-                clientServer.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
-                clientServer.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
+                profile.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+                profile.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
+                profile.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
             }
 
             if (!string.IsNullOrWhiteSpace(options.ManualClientEndpoint))
-                framework.AddClientServerChannel("profile.manual")
-                    .EnableClient(options.ManualClientEndpoint);
+            {
+                var manualMesh = framework.AddRouteMesh("profile.manual")
+                    .Listen("tcp://127.0.0.1:0")
+                    .SetRoutingId(RoutingId.From($"{options.Rid}-manual"));
+                manualMesh.ChannelName("profile.manual").SetWeight(0);
+                manualMesh.PeerConnections.Connect(options.ManualClientEndpoint);
+            }
 
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
-                var route = framework.AddRouteMeshChannel("profile.route")
-                    .EnableServer(options.RouteEndpoint)
+                var route = framework.AddRouteMesh("profile.route")
+                    .Listen(options.RouteEndpoint)
                     .SetRoutingId(RoutingId.From(options.Rid));
-                foreach (var peer in options.RoutePeers ?? []) route.EnableClient(peer);
+                route.ChannelName("profile.route");
+                foreach (var peer in options.RoutePeers ?? []) route.PeerConnections.Connect(peer);
 
-                route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
+                route.AddRouteRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }
         });
         builder.Services.AddZLinkMonitoring(monitor =>

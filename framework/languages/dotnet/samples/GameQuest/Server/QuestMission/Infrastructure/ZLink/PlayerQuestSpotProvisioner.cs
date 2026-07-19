@@ -12,7 +12,7 @@ namespace GameQuest.QuestMission.Infrastructure.ZLink;
 
 internal sealed class PlayerQuestOwnerProvisioner(
     IZLinkSpotManager spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles)
 {
     public async ValueTask ApplyGameplayEventAsync(

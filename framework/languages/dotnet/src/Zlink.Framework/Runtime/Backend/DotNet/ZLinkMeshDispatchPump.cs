@@ -40,6 +40,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     }
     private Action<ActorTransferControl>? _transferControlHandler;
     private Action<ZLinkBackendRouteReceived>? _nodeRouteHandler;
+    private Action? _nodeSendReadyHandler;
     private readonly object _lifecycleGate = new();
     private readonly SemaphoreSlim _signal = new(0);
     private CancellationTokenSource? _stop;
@@ -89,6 +90,12 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     public void SetNodeRouteHandler(Action<ZLinkBackendRouteReceived> handler)
     {
         _nodeRouteHandler = handler;
+        EnsureStarted();
+    }
+
+    public void SetNodeSendReadyHandler(Action handler)
+    {
+        _nodeSendReadyHandler = handler;
         EnsureStarted();
     }
 
@@ -417,6 +424,11 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private void RaiseSendReady(MeshReceiveRecord record)
     {
         if (record.SendReady is not { } ready) return;
+        if (ready.TargetSpotRid.IsEmpty)
+        {
+            _nodeSendReadyHandler?.Invoke();
+            return;
+        }
         var state = _spots.GetValueOrDefault(ready.TargetSpotRid);
         state?.RaiseSendReady();
     }

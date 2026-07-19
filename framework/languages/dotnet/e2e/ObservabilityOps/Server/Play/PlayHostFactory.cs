@@ -35,6 +35,8 @@ internal static class PlayHostFactory
         if (options.MetricsEnabled) builder.Services.AddSingleton<MetricEvidenceCollector>();
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
             var locations = framework.ConfigureLocations();
@@ -96,7 +98,7 @@ internal static class PlayHostFactory
         app.MapBoundedOperationGate();
         app.MapPost("/operation/start", async (
             PlayBoundedOperationReq request,
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver spots,
             CancellationToken cancellationToken) =>
         {

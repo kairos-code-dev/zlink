@@ -14,6 +14,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ValidateDispatchOptions(registration.DispatchOptions);
 
         ValidateLocations(registration);
+        ValidateActorTransferOptions(registration);
 
         foreach (var channel in registration.Channels.Values)
             ValidateChannel(
@@ -61,6 +62,19 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             || options.Diagnostics.SampleRate > 1.0d)
             throw new ZLinkConfigurationException(
                 "Diagnostics SampleRate must be between 0.0 and 1.0.");
+    }
+
+    private static void ValidateActorTransferOptions(ZLinkFrameworkRegistration registration)
+    {
+        var hasTransferAdapter = registration.SpotNodes.Values
+            .Any(static node => node.ActorTransfers.Count > 0);
+        if (!hasTransferAdapter)
+            return;
+
+        if (registration.ActorTransferTimeout is null
+            || registration.ActorTransferForwardWindow is null)
+            throw new ZLinkConfigurationException(
+                "ActorTransferTimeout and ActorTransferForwardWindow must both be set when an actor transfer adapter is registered.");
     }
 
     private static void ValidateStreamNode(

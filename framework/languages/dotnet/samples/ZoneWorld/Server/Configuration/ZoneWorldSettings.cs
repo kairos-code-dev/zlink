@@ -4,7 +4,8 @@ namespace ZoneWorld.Server.Configuration;
 public sealed record ZoneWorldSettings(
     string RedisEndpoint,
     string RedisKeyPrefix,
-    string LogDirectory);
+    string LogDirectory,
+    string BroadcastEndpoint);
 
 public sealed record ZoneNodeSettings(
     string NodeId,
@@ -56,6 +57,7 @@ public sealed record ZoneWorldConfiguration(
         Required(Shared.RedisEndpoint, nameof(Shared.RedisEndpoint));
         Required(Shared.RedisKeyPrefix, nameof(Shared.RedisKeyPrefix));
         Required(Shared.LogDirectory, nameof(Shared.LogDirectory));
+        Required(Shared.BroadcastEndpoint, nameof(Shared.BroadcastEndpoint));
 
         var roles = new object?[] { ZoneNode, Gateway, Ops, Client }.Count(value => value is not null);
         if (roles != 1)

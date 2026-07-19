@@ -1,6 +1,7 @@
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Contracts.Locations;
 
@@ -13,7 +14,7 @@ internal static class SpotInteractionEndpoints
     public static void MapSpotInteractionEndpoints(WebApplication app)
     {
         app.MapPost("/spot/outbound", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -45,7 +46,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/outbound-negative", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -78,7 +79,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/stage/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             SpotStageProbeReq request) =>
         {
@@ -89,7 +90,7 @@ internal static class SpotInteractionEndpoints
             return Results.Ok(result);
         });
         app.MapPost("/spot/stage/timer", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -112,7 +113,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/timer/start", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -135,7 +136,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/idle-close/start", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -164,7 +165,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/overrun/start", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -188,7 +189,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/worker/start", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             SpotWorkerStartReq request) =>
         {
@@ -215,7 +216,7 @@ internal static class SpotInteractionEndpoints
                 evidence.Snapshot()));
         });
         app.MapPost("/spot/to-spot/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
@@ -244,7 +245,7 @@ internal static class SpotInteractionEndpoints
             return Results.Ok(result);
         });
         app.MapPost("/spot/to-spot/request-cross", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,

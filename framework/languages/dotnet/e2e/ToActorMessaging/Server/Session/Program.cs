@@ -29,7 +29,7 @@ builder.Services.AddZLinkFramework(framework =>
     mesh26.ChannelName("to-actor");
     framework.AddStreamNode("to-actor-session")
         .Bind(options.StreamEndpoint)
-        .RegisterSession<ToActorSession>();
+        .AddSession<ToActorSession>();
 });
 
 var app = builder.Build();

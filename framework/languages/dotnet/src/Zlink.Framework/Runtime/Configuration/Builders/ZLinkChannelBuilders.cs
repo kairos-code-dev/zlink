@@ -1,144 +1,9 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
-internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration registration)
-    : IZLinkClientServerChannelBuilder
-{
-    public IZLinkEndpointConnections ClientConnections
-        => (registration.Client ??= new ZLinkChannelClientCapabilityRegistration()).ManualConnections;
-
-    public IZLinkClientServerChannelBuilder EnableServer(string endpoint)
-    {
-        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        registration.Server.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
-            endpoint,
-            "Channel server bind endpoint must not be empty.");
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder EnableClient()
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder EnableClient(string endpoint)
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            registration.Client.ManualConnections,
-            endpoint,
-            "Channel client endpoint must not be empty.");
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId)
-    {
-        registration.RoutingId = routingId;
-        registration.HasExplicitRoutingId = true;
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount) =>
-        UseAllocatedRoutingId(slotCount, registration.ChannelName);
-
-    public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
-    {
-        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
-            slotCount,
-            routingIdPrefix,
-            registration.RoutingIdAllocation?.GroupName);
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder SetRoutingIdAllocationGroup(string groupName)
-    {
-        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
-            groupName,
-            registration.RoutingIdAllocation,
-            registration.ChannelName);
-        return this;
-    }
-
-    public IZLinkSocketConfig ConfigureServerSocket()
-    {
-        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        return registration.Server.SocketConfig;
-    }
-
-    public IZLinkRouteConfig ConfigureServerRouting()
-    {
-        registration.Server ??= new ZLinkChannelServerCapabilityRegistration();
-        return registration.Server.RoutingConfig;
-    }
-
-    public IZLinkSocketConfig ConfigureClientSocket()
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        return registration.Client.SocketConfig;
-    }
-
-    public IZLinkOutboundRouteConfig ConfigureClientRouting()
-    {
-        registration.Client ??= new ZLinkChannelClientCapabilityRegistration();
-        return registration.Client.RoutingConfig;
-    }
-
-    public IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
-    {
-        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
-        registration.DefaultRequestTimeout = timeout;
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName)
-    {
-        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkSendHandler<TMessage>
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder AddSendHandler<THandler>(string? packetName = null)
-        where THandler : class
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
-        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkClientServerChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
-        where THandler : class
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler>(
-            registration,
-            packetName);
-        return this;
-    }
-}
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkFanoutChannelBuilder
 {
-    public IZLinkEndpointConnections SubscriberConnections
-        => (registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration()).ManualConnections;
-
     public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
     {
         registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
@@ -148,13 +13,7 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         return this;
     }
 
-    public IZLinkFanoutChannelBuilder EnableSubscriber()
-    {
-        registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder EnableSubscriber(string endpoint)
+    public IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint)
     {
         registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
         ZLinkChannelEndpointBuilderSupport.AddManualConnection(
@@ -164,53 +23,10 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
         return this;
     }
 
-    public IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId)
+    public IZLinkFanoutChannelBuilder AddHandler<THandler, TEvent>(string? packetName = null)
+        where THandler : class, IZLinkFanoutHandler<TEvent>
     {
-        registration.RoutingId = routingId;
-        registration.HasExplicitRoutingId = true;
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount) =>
-        UseAllocatedRoutingId(slotCount, registration.ChannelName);
-
-    public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
-    {
-        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
-            slotCount,
-            routingIdPrefix,
-            registration.RoutingIdAllocation?.GroupName);
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder SetRoutingIdAllocationGroup(string groupName)
-    {
-        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
-            groupName,
-            registration.RoutingIdAllocation,
-            registration.ChannelName);
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName)
-    {
-        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
-        where THandler : class, IZLinkPublishHandler<TMessage>
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler, TMessage>(
-            registration,
-            packetName);
-        return this;
-    }
-
-    public IZLinkFanoutChannelBuilder AddPublishHandler<THandler>(string? packetName = null)
-        where THandler : class
-    {
-        ZLinkChannelHandlerRegistrationBuilder.AddPublishHandler<THandler>(
+        ZLinkChannelHandlerRegistrationBuilder.AddFanoutHandler<THandler, TEvent>(
             registration,
             packetName);
         return this;
@@ -333,31 +149,14 @@ internal static class ZLinkChannelHandlerRegistrationBuilder
             packetName));
     }
 
-    public static void AddPublishHandler<THandler, TMessage>(
+    public static void AddFanoutHandler<THandler, TEvent>(
         ZLinkChannelRegistration registration,
         string? packetName)
-        where THandler : class, IZLinkPublishHandler<TMessage>
+        where THandler : class, IZLinkFanoutHandler<TEvent>
     {
         registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
             typeof(THandler),
-            typeof(TMessage),
-            null,
-            packetName));
-    }
-
-    public static void AddPublishHandler<THandler>(
-        ZLinkChannelRegistration registration,
-        string? packetName)
-        where THandler : class
-    {
-        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
-                typeof(THandler),
-                typeof(IZLinkPublishHandler<>),
-                "publish")
-            .GetGenericArguments();
-        registration.PublishHandlers.Add(new ZLinkChannelHandlerRegistration(
-            typeof(THandler),
-            args[0],
+            typeof(TEvent),
             null,
             packetName));
     }

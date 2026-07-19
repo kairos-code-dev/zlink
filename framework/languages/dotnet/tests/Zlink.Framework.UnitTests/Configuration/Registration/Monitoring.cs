@@ -14,10 +14,10 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         var withoutEgress = new ServiceCollection();
         withoutEgress.AddZLinkFramework(options =>
         {
-            {
-                var channel = options.AddClientServerChannel("gateway.client");
-                channel.EnableClient("tcp://127.0.0.1:7101");
-            }
+            var mesh = options.AddRouteMesh("gateway")
+                .Listen("tcp://127.0.0.1:7101")
+                .SetRoutingId(RoutingId.From("gateway"));
+            mesh.ChannelName("gateway").SetWeight(0);
         });
 
         using (var provider = withoutEgress.BuildServiceProvider())
@@ -29,11 +29,11 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         var routeMeshEgress = new ServiceCollection();
         routeMeshEgress.AddZLinkFramework(options =>
         {
-            {
-                var channel = options.AddRouteMeshChannel("gateway.route");
-                channel.EnableServer("tcp://127.0.0.1:7301");
-                channel.EnableClient("tcp://127.0.0.1:7201");
-            }
+            var mesh = options.AddRouteMesh("gateway.route")
+                .Listen("tcp://127.0.0.1:7301")
+                .SetRoutingId(RoutingId.From("gateway-route"));
+            mesh.ChannelName("gateway.route");
+            mesh.PeerConnections.Connect("tcp://127.0.0.1:7201");
         });
 
         using (var provider = routeMeshEgress.BuildServiceProvider())
@@ -75,28 +75,22 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             options.UseFilter<TestFilter>();
             options.UseTestLocationStore();
 
-            {
-                var channel = options.AddClientServerChannel("profile");
-                channel.EnableServer("tcp://127.0.0.1:7101");
-                channel.EnableClient();
-                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-            }
+            var profile = options.AddRouteMesh("profile")
+                .Listen("tcp://127.0.0.1:7101")
+                .SetRoutingId(RoutingId.From("profile"));
+            profile.ChannelName("profile")
+                .AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
 
             {
                 var events = options.AddFanoutChannel("profile.events");
-                events.EnableSubscriber();
-                events.AddPublishHandler<TestPublishHandler, TestPublishedEvent>();
+                events.ConnectSubscriber("inproc://profile-events");
+                events.AddHandler<TestPublishHandler, TestPublishedEvent>();
             }
 
             {
                 var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
-                stream.RegisterSession<TestHeaderSession>();
-            }
-
-            {
-                var routed = options.AddRouteMeshChannel("gateway");
-                routed.EnableServer("tcp://127.0.0.1:7301");
+                stream.AddSession<TestHeaderSession>();
             }
 
             {
@@ -121,34 +115,32 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         Assert.Equal(TimeSpan.FromMilliseconds(1000), registration.DefaultSocketSendTimeout);
         Assert.Contains("application/x-protobuf", registration.Codecs.Serializers.Keys);
         Assert.True(registration.Locations.Enabled);
-        Assert.NotNull(registration.SpotDiscovery);
-        Assert.Contains("profile", registration.Channels.Keys);
+        Assert.Contains("profile", registration.SpotNodes.Keys);
         Assert.Contains("stream.node", registration.StreamNodes.Keys);
         Assert.Contains("game.stage", registration.SpotNodes.Keys);
     }
 
     [Fact]
-    public void ChannelDefaultRequestTimeoutOverridesGlobalDefault()
+    public void MeshDefaultRequestTimeoutOverridesGlobalDefault()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
             options.DefaultRequestTimeout = TimeSpan.FromSeconds(30);
-            options.AddClientServerChannel("api")
-                .EnableClient("tcp://127.0.0.1:7101")
-                .SetDefaultRequestTimeout(TimeSpan.FromSeconds(2));
-            options.AddRouteMeshChannel("route")
-                .EnableServer("tcp://127.0.0.1:7201")
-                .EnableClient("tcp://127.0.0.1:7202")
+            var mesh = options.AddRouteMesh("route")
+                .Listen("tcp://127.0.0.1:7201")
+                .SetRoutingId(RoutingId.From("route"))
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(3));
+            mesh.ChannelName("api");
         });
 
         using var provider = services.BuildServiceProvider();
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
 
-        Assert.Equal(TimeSpan.FromSeconds(2), registration.ResolveChannelRequestTimeout("api"));
-        Assert.Equal(TimeSpan.FromSeconds(3), registration.ResolveRouteRequestTimeout("route"));
+        Assert.Equal(
+            TimeSpan.FromSeconds(3),
+            registration.SpotNodes["route"].DefaultRequestTimeout);
         Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveChannelRequestTimeout("missing"));
         Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveRouteRequestTimeout("missing"));
     }
@@ -170,29 +162,29 @@ public sealed class MonitoringTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public async Task AddZLinkMonitoring_Throws_WhenSocketSourceDoesNotMatchRegisteredCapability()
+    public async Task AddZLinkMonitoring_Throws_WhenMeshSourceDoesNotMatchRegisteredMesh()
     {
         var endpoint = "tcp://127.0.0.1:7101";
         var builder = Host.CreateApplicationBuilder();
 
         builder.Services.AddZLinkFramework(options =>
         {
-            {
-                var channel = options.AddClientServerChannel("profile");
-                channel.EnableServer(endpoint);
-                channel.AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
-            }
+            var mesh = options.AddRouteMesh("profile")
+                .Listen(endpoint)
+                .SetRoutingId(RoutingId.From("profile"));
+            mesh.ChannelName("profile")
+                .AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
         });
 
         builder.Services.AddZLinkMonitoring(monitor =>
         {
-            monitor.AddSocketEvents("orders.server", ZLinkSocketEventKind.ConnectionReady);
+            monitor.AddMeshNodeEvents("orders");
         });
 
         using var host = builder.Build();
         var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
 
-        Assert.Contains("not registered", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("not a registered RouteMesh", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

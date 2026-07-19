@@ -2,8 +2,8 @@ using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
-
 using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 
 namespace AutomaticTurnDispatch.Server.Session.Support;
 
@@ -11,6 +11,7 @@ internal sealed partial class AwaitSession
 {
     private static async Task<AwaitShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotClient spotsClient,
         IZLinkSpotHandleResolver spots,
         AwaitShutdownScenarioReq request,
         CancellationToken cancellationToken)
@@ -23,7 +24,7 @@ internal sealed partial class AwaitSession
                           RoutingId.From(request.SpotRid), cancellationToken)
                       ?? throw new InvalidOperationException(
                           $"Spot '{request.SpotRid}' has no live location row.");
-        await routes.RequestToSpot(address,
+        await spotsClient.RequestToSpot(address,
                 new AwaitReq(request.RequestId, request.DelayMs, "shutdown"))
             // The session gateway owns a shorter downstream deadline than the
             // client request, so a stopped play runtime becomes a public
@@ -40,6 +41,7 @@ internal sealed partial class AwaitSession
 
     private static async Task<AwaitShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
+        IZLinkSpotClient spotsClient,
         IZLinkSpotHandleResolver spots,
         AwaitShutdownRecoveryReq request,
         CancellationToken cancellationToken)
@@ -49,7 +51,7 @@ internal sealed partial class AwaitSession
             new EnsureSpotReq(request.SpotRid),
             cancellationToken);
         await RequestSpotAsync<AutomaticTurnDispatchRes>(
-            routes,
+            spotsClient,
             spots,
             request.SpotRid,
             new ProbeReq(request.RequestId, "shutdown-recovery-probe"),

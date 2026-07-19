@@ -37,6 +37,7 @@ internal static class ActorNodeHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
+            framework.ActorTransferTimeout = TimeSpan.FromSeconds(15);
             framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             var redisStore = new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)

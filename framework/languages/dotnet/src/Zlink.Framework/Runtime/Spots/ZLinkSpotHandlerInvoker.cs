@@ -6,9 +6,19 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotHandlerInvoker(
     ZLinkScopedHandlerInstanceOwner handlerInstances,
     object spot,
+    string meshName,
     ZLinkCodecRegistryBuilder codecs,
     IZlinkStreamCompressionCodec? compressionCodec)
 {
+    internal ZLinkSpotHandlerInvoker(
+        ZLinkScopedHandlerInstanceOwner handlerInstances,
+        object spot,
+        ZLinkCodecRegistryBuilder codecs,
+        IZlinkStreamCompressionCodec? compressionCodec)
+        : this(handlerInstances, spot, "test-mesh", codecs, compressionCodec)
+    {
+    }
+
     public async ValueTask InvokePacketAsync(
         ZLinkSpotDescriptor descriptor,
         object? message,
@@ -157,7 +167,8 @@ internal sealed class ZLinkSpotHandlerInvoker(
         CancellationToken cancellationToken)
     {
         return new ZLinkSpotActorSendContext(
-            header.Name,
+            meshName,
+            header.Name!,
             ZLinkEnvelopeCodec.DefaultContentType,
             cancellationToken,
             CreateMessageMetadata(header));
@@ -168,7 +179,8 @@ internal sealed class ZLinkSpotHandlerInvoker(
         CancellationToken cancellationToken)
     {
         return new ZLinkSpotActorRequestContext(
-            header.Name,
+            meshName,
+            header.Name!,
             ZLinkEnvelopeCodec.DefaultContentType,
             cancellationToken,
             CreateMessageMetadata(header));

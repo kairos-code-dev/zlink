@@ -7,12 +7,12 @@ public abstract class RegistrationValidationSupport
 {
     protected sealed class TestFilter : IZLinkHandlerFilter
     {
-        public ValueTask<object?> InvokeAsync(
+        public ValueTask InvokeAsync(
             ZLinkHandlerInvocation invocation,
-            ZLinkHandlerDelegate next,
+            ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {
-            return next(cancellationToken);
+            return next();
         }
     }
 
@@ -68,15 +68,13 @@ public abstract class RegistrationValidationSupport
     protected sealed record TestPublishedEvent(string Value);
 
     [ZLinkHandlerGroup("validation-publish")]
-    protected sealed class TestPublishHandler : IZLinkPublishHandler<TestPublishedEvent>
+    protected sealed class TestPublishHandler : IZLinkFanoutHandler<TestPublishedEvent>
     {
         public ValueTask HandleAsync(
             TestPublishedEvent message,
-            ZLinkPublishContext context,
             CancellationToken cancellationToken)
         {
             _ = message;
-            _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.CompletedTask;
         }

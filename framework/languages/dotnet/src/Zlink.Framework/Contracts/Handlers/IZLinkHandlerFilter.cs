@@ -1,9 +1,11 @@
 namespace Zlink.Framework.Contracts.Handlers;
 
+public delegate ValueTask ZLinkHandlerFilterNext();
+
 public interface IZLinkHandlerFilter
 {
-    ValueTask<object?> InvokeAsync(
+    ValueTask InvokeAsync(
         ZLinkHandlerInvocation invocation,
-        ZLinkHandlerDelegate next,
+        ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken);
 }

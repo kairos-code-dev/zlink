@@ -74,7 +74,7 @@ internal static class ConsumerEndpoints
         });
         app.MapPost("/profile/batch-request", async (
             ProfileReq[] requests,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var replies = new List<ProfileRes>(requests.Length);
             foreach (var request in requests)
@@ -86,14 +86,14 @@ internal static class ConsumerEndpoints
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var reply = await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5));
             return Results.Ok(reply);
         });
         app.MapPost("/profile/request/outcome", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
@@ -111,14 +111,14 @@ internal static class ConsumerEndpoints
         });
         app.MapPost("/profile/slow-request", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var result = await RequestProfileFailureAsync(channel, request, TimeSpan.FromMilliseconds(100));
             return Results.Ok(result);
         });
         app.MapPost("/profile/missing-request", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var result = await RequestMissingProfileAsync(
                 channel,
@@ -127,23 +127,22 @@ internal static class ConsumerEndpoints
         });
         app.MapPost("/profile/missing-command", (
             ProfileMsg command,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
-            channel.SendToChannel(
-                "profile",
+            channel.SendToChannel("profile", "profile",
                 new MissingProfileMsg(command.CommandId)).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
             PayloadReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var reply = await RequestPayloadAsync(channel, request);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/payload-over-limit", async (
             PayloadReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var result = await RequestPayloadFailureAsync(channel, request);
             return Results.Ok(result);
@@ -151,7 +150,7 @@ internal static class ConsumerEndpoints
         app.MapPost("/profile/backpressure/reset", () => Results.Ok(new { status = "ready" }));
         app.MapPost("/profile/backpressure/send", (
             ProfileMsg command,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var outcome = SubmitProfileUnderPressure(channel, command);
             return Results.Ok(outcome);
@@ -164,29 +163,29 @@ internal static class ConsumerEndpoints
     }
 
     static Task<ProfileRes> RequestProfileAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         ProfileReq request,
         TimeSpan timeout)
-        => channel.RequestToChannel("profile", request)
+        => channel.RequestToChannel("profile", "profile", request)
             .Timeout(timeout)
             .Async<ProfileRes>()
             .AsTask();
 
     static Task<PayloadRes> RequestPayloadAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         PayloadReq request)
-        => channel.RequestToChannel("profile", request)
+        => channel.RequestToChannel("profile", "profile", request)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<PayloadRes>()
             .AsTask();
 
     static async Task<ExpectedFailureRes> RequestPayloadFailureAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         PayloadReq request)
     {
         try
         {
-            await channel.RequestToChannel("profile", request)
+            await channel.RequestToChannel("profile", "profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<PayloadRes>();
             throw new InvalidOperationException(
@@ -199,7 +198,7 @@ internal static class ConsumerEndpoints
     }
 
     static async Task<ExpectedFailureRes> RequestProfileFailureAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         ProfileReq request,
         TimeSpan timeout)
     {
@@ -216,12 +215,12 @@ internal static class ConsumerEndpoints
     }
 
     static async Task<ExpectedFailureRes> RequestMissingProfileAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         MissingProfileReq request)
     {
         try
         {
-            await channel.RequestToChannel("profile", request)
+            await channel.RequestToChannel("profile", "profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>();
             throw new InvalidOperationException(
@@ -235,10 +234,10 @@ internal static class ConsumerEndpoints
     }
 
     static string SubmitProfileUnderPressure(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         ProfileMsg command)
     {
-        channel.SendToChannel("profile", command).TrySubmit();
+        channel.SendToChannel("profile", "profile", command).TrySubmit();
         return "Submitted";
     }
 

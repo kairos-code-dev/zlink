@@ -128,7 +128,12 @@ redis = sys.argv[2]
 run_id = sys.argv[3]
 log_dir = sys.argv[4]
 ports = [int(port) for port in sys.argv[5:]]
-shared = {"redisEndpoint": redis, "redisKeyPrefix": f"zoneworld-{run_id}:", "logDirectory": log_dir}
+shared = {
+    "redisEndpoint": redis,
+    "redisKeyPrefix": f"zoneworld-{run_id}:",
+    "logDirectory": log_dir,
+    "broadcastEndpoint": f"tcp://127.0.0.1:{ports[16]}",
+}
 
 def write(name, role, value):
     (root / f"{name}.json").write_text(json.dumps({"shared": shared, role: value}), encoding="utf-8")

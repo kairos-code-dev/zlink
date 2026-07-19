@@ -3,6 +3,7 @@ using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace AutomaticTurnDispatch.Server.Session.Support;
@@ -34,7 +35,7 @@ internal sealed partial class AwaitSession
             .Async<TRes>(cancellationToken);
 
     private static async Task SendSpotAsync(
-        IZLinkRouteClient routes,
+        IZLinkSpotClient spotsClient,
         IZLinkSpotHandleResolver spots,
         string spotRid,
         object message,
@@ -45,11 +46,11 @@ internal sealed partial class AwaitSession
                      ?? throw new ZLinkFrameworkException(
                          ZLinkFrameworkErrorKind.SpotRouteNotFound,
                          $"Spot '{spotRid}' has no live location row.");
-        routes.SendToSpot(handle, message).TrySubmit();
+        spotsClient.SendToSpot(handle, message).TrySubmit();
     }
 
     private static async ValueTask<TRes> RequestSpotAsync<TRes>(
-        IZLinkRouteClient routes,
+        IZLinkSpotClient spotsClient,
         IZLinkSpotHandleResolver spots,
         string spotRid,
         object request,
@@ -60,7 +61,7 @@ internal sealed partial class AwaitSession
                      ?? throw new ZLinkFrameworkException(
                          ZLinkFrameworkErrorKind.SpotRouteNotFound,
                          $"Spot '{spotRid}' has no live location row.");
-        return await routes.RequestToSpot(handle, request)
+        return await spotsClient.RequestToSpot(handle, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<TRes>(cancellationToken);
     }

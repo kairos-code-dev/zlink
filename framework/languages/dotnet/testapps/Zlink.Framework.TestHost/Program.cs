@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 
 internal sealed class Program
@@ -241,15 +242,14 @@ internal sealed record TestHostPublishedEvent(string Value);
 
 [ZLinkHandlerGroup("testhost-channel-events")]
 internal sealed class ChannelSubscriptionEventHandler(TestHostEventSink sink)
+    : IZLinkFanoutHandler<TestHostPublishedEvent>
 {
-    [ZLinkPublish]
     public ValueTask HandleAsync(
         TestHostPublishedEvent @event,
-        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         _ = cancellationToken;
-        sink.Append($"{context.Topic}:{@event.Value}");
+        sink.Append(@event.Value);
         return ValueTask.CompletedTask;
     }
 }

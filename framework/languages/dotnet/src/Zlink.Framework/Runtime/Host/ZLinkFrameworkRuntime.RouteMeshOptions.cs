@@ -38,6 +38,24 @@ internal sealed partial class ZLinkFrameworkRuntime
         });
     }
 
+    internal void SetMeshChannelWeight(
+        IZLinkBackendSpotNode node,
+        ZLinkMeshChannelMembership membership,
+        int weight)
+    {
+        ExecuteOperation(() =>
+        {
+            node.SetChannelWeight(membership.ChannelName, (uint)weight);
+            membership.Weight = weight;
+            _autoConnect?.SetLocalWeight(
+                ZLinkLocationAutoConnectType.SpotMesh,
+                membership.ChannelName,
+                ZLinkLocationRole.Spot,
+                (uint)weight);
+            return true;
+        });
+    }
+
     private (ZLinkSpotNodeRuntime NodeRuntime, ZLinkSpotNodeRegistration Registration) ResolveMeshNode(
         string meshName)
     {

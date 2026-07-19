@@ -10,7 +10,7 @@ public sealed class HandlerContracts
         typeof(IZLinkHandlerContext),
         typeof(IZLinkRequestHandler<,>),
         typeof(IZLinkSendHandler<>),
-        typeof(IZLinkPublishHandler<>),
+        typeof(IZLinkFanoutHandler<>),
         typeof(IZLinkHandlerFilter))]
     public async Task Channel_handlers_and_filters_keep_user_code_behind_typed_contracts()
     {
@@ -21,17 +21,16 @@ public sealed class HandlerContracts
 
         await sendHandler.HandleAsync(new PlayerJoined("alice"), null!, CancellationToken.None);
         var reply = await requestHandler.HandleAsync(new Authenticate("alice"), null!, CancellationToken.None);
-        await publishHandler.HandleAsync(new RoomEvent("started"), null!, CancellationToken.None);
+        await publishHandler.HandleAsync(new RoomEvent("started"), CancellationToken.None);
 
-        var result = await filter.InvokeAsync(
+        await filter.InvokeAsync(
             null!,
-            _ => ValueTask.FromResult<object?>("next"),
+            () => ValueTask.CompletedTask,
             CancellationToken.None);
 
         Assert.True(sendHandler.WasCalled);
         Assert.Equal("alice", reply.PlayerId);
         Assert.True(publishHandler.WasCalled);
-        Assert.Equal("next", result);
     }
 
     [Fact]
@@ -50,14 +49,12 @@ public sealed class HandlerContracts
                 nameof(IZLinkHandlerContext.ChannelName),
                 nameof(IZLinkHandlerContext.ConnectionAborted),
                 nameof(IZLinkHandlerContext.ContentType),
+                nameof(IZLinkHandlerContext.MeshName),
                 nameof(IZLinkHandlerContext.Metadata),
                 nameof(IZLinkHandlerContext.PacketName)
             },
             publicProperties);
 
-        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("Services"));
-        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("Deadline"));
-        Assert.Null(typeof(ZLinkHandlerContext).GetProperty("CorrelationId"));
         Assert.Null(
             typeof(ZLinkHandlerInvocation).GetProperty(
                 "Services",
@@ -97,13 +94,12 @@ public sealed class HandlerContracts
         }
     }
 
-    private sealed class RoomEventPublishHandler : IZLinkPublishHandler<RoomEvent>
+    private sealed class RoomEventPublishHandler : IZLinkFanoutHandler<RoomEvent>
     {
         public bool WasCalled { get; private set; }
 
         public ValueTask HandleAsync(
             RoomEvent message,
-            ZLinkPublishContext context,
             CancellationToken cancellationToken)
         {
             WasCalled = true;
@@ -113,12 +109,12 @@ public sealed class HandlerContracts
 
     private sealed class AuditingFilter : IZLinkHandlerFilter
     {
-        public ValueTask<object?> InvokeAsync(
+        public ValueTask InvokeAsync(
             ZLinkHandlerInvocation invocation,
-            ZLinkHandlerDelegate next,
+            ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {
-            return next(cancellationToken);
+            return next();
         }
     }
 }

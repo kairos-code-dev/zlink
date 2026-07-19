@@ -25,19 +25,25 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         return this;
     }
 
-    public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false)
+    public IZLinkStreamNodeBuilder SetTlsServer(
+        string certificatePath,
+        string keyPath,
+        bool requireClientCertificate = false)
     {
-        if (string.IsNullOrWhiteSpace(certPath))
+        if (string.IsNullOrWhiteSpace(certificatePath))
             throw new ZLinkConfigurationException("STREAM TLS certificate path must not be empty.");
 
         if (string.IsNullOrWhiteSpace(keyPath))
             throw new ZLinkConfigurationException("STREAM TLS key path must not be empty.");
 
-        registration.TlsServer = new ZLinkStreamTlsServerRegistration(certPath, keyPath, requireClientCert);
+        registration.TlsServer = new ZLinkStreamTlsServerRegistration(
+            certificatePath,
+            keyPath,
+            requireClientCertificate);
         return this;
     }
 
-    public IZLinkStreamNodeBuilder RegisterSession<TSession>()
+    public IZLinkStreamNodeBuilder AddSession<TSession>()
         where TSession : class, IZLinkSession
     {
         if (registration.HeaderSessionType is not null)

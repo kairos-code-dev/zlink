@@ -2025,6 +2025,9 @@ public sealed partial class EntrySpotActorDispatchTests
             RoutingId.From("entry-spot"),
             0,
             0);
+        node.NodeRequestFailure = new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            "The remote entry Spot route is unavailable.");
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
         try
         {
@@ -3637,6 +3640,8 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IReadOnlyList<Message> EntrySpotJoinReplyParts { get; set; } = [];
 
+        public Exception? NodeRequestFailure { get; set; }
+
         public Func<IReadOnlyList<Message>, (ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>?
             ActorJoinHandler { get; set; }
 
@@ -3932,6 +3937,24 @@ public sealed partial class EntrySpotActorDispatchTests
             SendFlags flags)
         {
             return SubmitResult.Ok;
+        }
+
+        public bool RequestToNode(
+            RoutingId targetNodeRid,
+            IReadOnlyList<Message> parts,
+            RequestCallback callback,
+            SendFlags flags,
+            TimeSpan timeout,
+            ReadOnlyMemory<byte> metadata = default)
+        {
+            _ = targetNodeRid;
+            _ = parts;
+            _ = callback;
+            _ = flags;
+            _ = timeout;
+            _ = metadata;
+            throw NodeRequestFailure
+                  ?? new NotSupportedException("No node request result was configured for this test.");
         }
 
         public bool SendActorBoundSession(

@@ -51,11 +51,10 @@ internal static class WorkflowHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
 
-            var workflow = framework.AddClientServerChannel("workflow")
-                .EnableServer(options.WorkflowEndpoint)
-                .EnableClient()
+            var mesh = framework.AddRouteMesh("workflow")
+                .Listen(options.WorkflowEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
-            workflow.ConfigureServerSocket().Weight = options.Weight;
+            var workflow = mesh.ChannelName("workflow").SetWeight(options.Weight);
             workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowReq, WorkflowRes>("WorkflowReq");
         });
 

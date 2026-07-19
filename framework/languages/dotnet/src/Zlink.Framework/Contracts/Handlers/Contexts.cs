@@ -4,9 +4,11 @@ using Zlink.Framework.Contracts.Streams;
 
 public interface IZLinkHandlerContext
 {
+    string MeshName { get; }
+
     string? ChannelName { get; }
 
-    string? PacketName { get; }
+    string PacketName { get; }
 
     string? ContentType { get; }
 
@@ -19,68 +21,64 @@ public interface IZLinkHandlerContext
     CancellationToken ConnectionAborted { get; }
 }
 
-public abstract class ZLinkHandlerContext(
-    string? channelName,
-    string? packetName,
-    string? contentType,
-    CancellationToken connectionAborted,
-    ZLinkMessageMetadata? metadata = null)
-    : IZLinkHandlerContext
-{
-    public string? ChannelName { get; } = channelName;
-
-    public string? PacketName { get; } = packetName;
-
-    public string? ContentType { get; } = contentType;
-
-    public ZLinkMessageMetadata Metadata { get; } = metadata ?? ZLinkMessageMetadata.Empty;
-
-    public CancellationToken ConnectionAborted { get; } = connectionAborted;
-}
-
-public sealed class ZLinkRequestContext : ZLinkHandlerContext
+public sealed class ZLinkRequestContext : IZLinkHandlerContext
 {
     internal ZLinkRequestContext(
-        string? channelName,
-        string? packetName,
+        string meshName,
+        string channelName,
+        string packetName,
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(channelName, packetName, contentType, connectionAborted, metadata)
     {
+        MeshName = meshName;
+        ChannelName = channelName;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
+
+    public string MeshName { get; }
+
+    public string ChannelName { get; }
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 }
 
-public sealed class ZLinkSendContext : ZLinkHandlerContext
+public sealed class ZLinkSendContext : IZLinkHandlerContext
 {
     internal ZLinkSendContext(
-        string? channelName,
-        string? packetName,
+        string meshName,
+        string channelName,
+        string packetName,
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(channelName, packetName, contentType, connectionAborted, metadata)
     {
-    }
-}
-
-public sealed class ZLinkPublishContext : ZLinkHandlerContext
-{
-    internal ZLinkPublishContext(
-        string? channelName,
-        string? packetName,
-        string? contentType,
-        string topic,
-        string? source,
-        CancellationToken connectionAborted,
-        ZLinkMessageMetadata? metadata = null)
-        : base(channelName, packetName, contentType, connectionAborted, metadata)
-    {
-        Topic = topic;
-        Source = source;
+        MeshName = meshName;
+        ChannelName = channelName;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
 
-    public string Topic { get; }
+    public string MeshName { get; }
 
-    public string? Source { get; }
+    public string ChannelName { get; }
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 }

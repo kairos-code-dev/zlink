@@ -69,7 +69,32 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // Node-addressed one-way send on the router plane (NodeSend record on the
     // target). Carries framework-internal packets such as the remote-session
     // push relay; the target's node route dispatcher decodes the envelope.
-    SubmitResult SendToNode(RoutingId targetNodeRid, IReadOnlyList<Message> parts, SendFlags flags);
+    SubmitResult SendToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags);
+
+    SubmitResult SendToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
+    {
+        if (!metadata.IsEmpty)
+            throw new NotSupportedException("This MeshNode backend does not support node metadata.");
+        return SendToNode(targetNodeRid, parts, flags);
+    }
+
+    bool RequestToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan timeout,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        throw new NotSupportedException("This MeshNode backend does not support node requests.");
+    }
 
     ZLinkBackendActorRef CreateActor(string actorId, Message createRequest);
 

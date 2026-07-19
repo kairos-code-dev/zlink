@@ -42,13 +42,12 @@ internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
 
 /// <summary>Sends this node's reports to Ops over <c>zoneworld.report</c>.</summary>
 internal sealed class OpsReportAdapter(
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     NodeMaintenancePolicy maintenance) : IOpsReportPort
 {
     public void ReportSpotEvent(string kind, string detail, DateTimeOffset occurredAt) =>
         channels
-            .SendToChannel(
-                ZoneWorldNames.ReportChannel,
+            .SendToChannel(ZoneWorldNames.ReportChannel, ZoneWorldNames.ReportChannel,
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
             .TrySubmit();
 
@@ -58,8 +57,7 @@ internal sealed class OpsReportAdapter(
         int playerCount,
         bool maintenanceEnabled) =>
         channels
-            .SendToChannel(
-                ZoneWorldNames.ReportChannel,
+            .SendToChannel(ZoneWorldNames.ReportChannel, ZoneWorldNames.ReportChannel,
                 new ReportNodeStatusMsg(
                     maintenance.OwnNodeId,
                     nodeRid,
@@ -90,13 +88,12 @@ internal sealed class NodeStatusReporter(
         var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.ZoneMesh].ToString();
         logger.LogInformation(
             "zone node allocation ready. node={NodeId} group={Group} slot={Slot} generation={Generation} "
-            + "zoneRid={ZoneRid} bridgeRid={BridgeRid} reportRid={ReportRid}",
+            + "zoneRid={ZoneRid} reportRid={ReportRid}",
             maintenance.OwnNodeId,
             allocation.GroupName,
             allocation.Slot,
             lease.Owner.Generation,
             nodeRid,
-            allocation.MemberRoutingIds[ZoneWorldNames.BridgeMesh],
             allocation.MemberRoutingIds[ZoneWorldNames.ReportChannel]);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));

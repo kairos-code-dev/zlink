@@ -526,7 +526,7 @@ public sealed class DrainCoordinatorTests
         builder.Services.AddZLinkFramework(options =>
             options.AddStreamNode("drain-stream")
                 .Bind($"tcp://127.0.0.1:{port}")
-                .RegisterSession<DrainSession>());
+                .AddSession<DrainSession>());
         using var host = builder.Build();
         await host.StartAsync();
 
@@ -578,7 +578,7 @@ public sealed class DrainCoordinatorTests
         builder.Services.AddZLinkFramework(options =>
             options.AddStreamNode("drain-stream")
                 .Bind($"tcp://127.0.0.1:{port}")
-                .RegisterSession<DrainSession>());
+                .AddSession<DrainSession>());
         using var host = builder.Build();
         await host.StartAsync();
 

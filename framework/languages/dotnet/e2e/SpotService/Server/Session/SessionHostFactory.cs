@@ -55,11 +55,16 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
-                .EnableServer(Require(options.ControlEndpoint, "ControlEndpoint"))
-                .EnableClient()
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .AddHandlerGroup("play");
+            var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+                .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid));
+            controlMesh.ChannelName(SpotServiceNames.ControlChannel);
+            controlMesh
+                .AddRouteRequestHandler<EnsureActorHandler>()
+                .AddRouteRequestHandler<ControlPingHandler>()
+                .AddRouteRequestHandler<CreateSpotHandler>()
+                .AddRouteRequestHandler<CloseSpotHandler>()
+                .AddRouteRequestHandler<SpotTypeMismatchHandler>();
             var mesh22 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -68,14 +73,14 @@ internal static class SessionHostFactory
             mesh22.ChannelName(SpotServiceNames.SpotChannel);
             framework.AddStreamNode(SpotServiceNames.StreamNode)
                 .Bind(Require(options.StreamEndpoint, "StreamEndpoint"))
-                .RegisterSession<ScenarioSession>();
+                .AddSession<ScenarioSession>();
             if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
                 framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
                     .Bind(options.TlsStreamEndpoint)
                     .SetTlsServer(
                         Require(options.TlsCertPath, "TlsCertPath"),
                         Require(options.TlsKeyPath, "TlsKeyPath"))
-                    .RegisterSession<ScenarioSession>();
+                    .AddSession<ScenarioSession>();
         });
 
         var app = builder.Build();

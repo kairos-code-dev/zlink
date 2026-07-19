@@ -12,7 +12,7 @@ namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 /// attempt is still the current one (common sample spec §7.4).
 /// </summary>
 internal sealed class CourierDecisionActorHandler(
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<CourierDecisionActorHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecisionMsg>
 {
@@ -34,8 +34,7 @@ internal sealed class CourierDecisionActorHandler(
         }
 
         channels
-            .SendToChannel(
-                SampleNames.DispatchChannel,
+            .SendToChannel(SampleNames.DispatchChannel, SampleNames.DispatchChannel,
                 new OfferDeliveryResultMsg(
                     message.DeliveryId,
                     message.CourierId,

@@ -32,6 +32,8 @@ internal sealed class EchoAutoCommandHandler(EvidenceStore evidence)
 
 [ZLinkHandlerGroup("attr")]
 internal sealed class AttributeHandlers(EvidenceStore evidence)
+    : IZLinkRequestHandler<EchoAttrReq, EchoRes>,
+      IZLinkSendHandler<EchoAttrMsg>
 {
     [ZLinkRequest(PacketName = "EchoAttr")]
     public EchoRes Request(EchoAttrReq request, ZLinkRequestContext context, CancellationToken cancellationToken)
@@ -49,6 +51,18 @@ internal sealed class AttributeHandlers(EvidenceStore evidence)
             $"echo-command|variant=attr|id={message.CommandId}|value={message.Value}|content={context.ContentType}");
         return ValueTask.CompletedTask;
     }
+
+    ValueTask<EchoRes> IZLinkRequestHandler<EchoAttrReq, EchoRes>.HandleAsync(
+        EchoAttrReq request,
+        ZLinkRequestContext context,
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Request(request, context, cancellationToken));
+
+    ValueTask IZLinkSendHandler<EchoAttrMsg>.HandleAsync(
+        EchoAttrMsg message,
+        ZLinkSendContext context,
+        CancellationToken cancellationToken) =>
+        Send(message, context, cancellationToken);
 }
 
 internal sealed class EchoManualRequestHandler(EvidenceStore evidence)

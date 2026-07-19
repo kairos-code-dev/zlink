@@ -70,11 +70,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
             _invoker = new ZLinkSpotHandlerInvoker(
                 _handlerInstances,
                 EntrySpot,
+                SpotNodeName,
                 _runtime.Registration.Codecs,
                 _runtime.Registration.StreamCompressionCodec);
             _handlerExecutor = new ZLinkEntrySpotHandlerExecutor(
                 services,
                 EntrySpot,
+                SpotNodeName,
                 _runtime.Registration.Codecs,
                 _runtime.Registration.StreamCompressionCodec);
             _actorHandlers = new ZLinkSpotActorHandlerRegistry(

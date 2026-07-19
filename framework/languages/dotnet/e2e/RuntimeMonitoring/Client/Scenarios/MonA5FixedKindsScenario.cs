@@ -16,7 +16,7 @@ internal static class MonA5FixedKindsScenario
         var serviceEvidence = await WaitForFixedKindsAsync(service);
 
         ZlinkStreamAssert.Ensure(
-                serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
+                serviceEvidence.Any(line => line.Contains("monitor-mesh|", StringComparison.Ordinal)
                                         && line.Contains("kind=HandshakeFailed", StringComparison.Ordinal)),
             "MON-A5 handshake failure evidence missing.");
         ZlinkStreamAssert.Ensure(
@@ -58,7 +58,7 @@ internal static class MonA5FixedKindsScenario
 
     private static bool HasFixedKinds(string[] evidence)
     {
-        return evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
+        return evidence.Any(line => line.Contains("monitor-mesh|", StringComparison.Ordinal)
                                     && line.Contains("kind=HandshakeFailed", StringComparison.Ordinal))
                && evidence.Any(line => line.Contains(
                    "monitor-location-runtime|source=location-runtime|kind=StatusChanged",

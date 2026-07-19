@@ -112,6 +112,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             services.GetRequiredService<IServiceScopeFactory>(),
             registration);
         var commandPipeline = new ZLinkChannelCommandDispatchPipeline(
+            spotNode.SpotNodeName,
             handlerRegistry,
             handlerDispatcher,
             static _ => EmptyGroups,
@@ -120,6 +121,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             registration.Codecs,
             logger);
         var requestPipeline = new ZLinkChannelRequestDispatchPipeline(
+            spotNode.SpotNodeName,
             handlerRegistry,
             handlerDispatcher,
             static _ => EmptyGroups,

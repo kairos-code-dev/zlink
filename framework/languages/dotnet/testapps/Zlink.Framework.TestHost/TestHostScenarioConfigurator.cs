@@ -93,15 +93,14 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            framework.AddHandlersFromAssemblyOf<Program>();
             var channel = framework.AddFanoutChannel(options.ChannelName
                                                      ?? throw new InvalidOperationException(
                                                          "Channel subscriber mode requires --channel-name."));
-            if (!string.IsNullOrWhiteSpace(options.PublisherEndpoint))
-                channel.EnableSubscriber(options.PublisherEndpoint);
-            else
-                channel.EnableSubscriber();
-            channel.AddHandlerGroup("testhost-channel-events");
+            channel.ConnectSubscriber(
+                options.PublisherEndpoint
+                ?? throw new InvalidOperationException(
+                    "Channel subscriber mode requires --publisher-endpoint."));
+            channel.AddHandler<ChannelSubscriptionEventHandler, TestHostPublishedEvent>();
         });
     }
 
@@ -222,7 +221,7 @@ internal static class TestHostScenarioConfigurator
                 var stream = framework.AddStreamNode("stream.raw");
                 stream.Bind(options.StreamEndpoint
                             ?? throw new InvalidOperationException("STREAM raw mode requires --stream-endpoint."));
-                stream.RegisterSession<TestHostRawStreamSession>();
+                stream.AddSession<TestHostRawStreamSession>();
             }
         });
     }

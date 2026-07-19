@@ -1,14 +1,17 @@
 using Microsoft.Extensions.Configuration;
 
 using SpotService.Server.Play.Endpoints;
+using SpotService.Server.Play.Handlers;
 using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Locations.Redis;
 
@@ -57,25 +60,31 @@ internal static class PlayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
-                .EnableServer(Require(options.ControlEndpoint, "ControlEndpoint"))
-                .EnableClient()
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .AddHandlerGroup("play");
+            var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
+                .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid));
+            controlMesh.ChannelName(SpotServiceNames.ControlChannel);
+            AddPlayRouteHandlers(controlMesh);
             var externalSpotChannel = string.Equals(options.Rid, "play-b", StringComparison.Ordinal)
                 ? SpotServiceNames.ExternalSpotChannelB
                 : SpotServiceNames.ExternalSpotChannel;
             if (!string.IsNullOrWhiteSpace(options.ExternalSpotEndpoint))
-                framework.AddRouteMeshChannel(externalSpotChannel)
-                    .EnableServer(options.ExternalSpotEndpoint)
-                    .EnableClient()
-                    .SetRoutingId(RoutingId.From(options.Rid))
-                    .AddHandlerGroup("play");
+            {
+                var externalMesh = framework.AddRouteMesh(externalSpotChannel)
+                    .Listen(options.ExternalSpotEndpoint)
+                    .SetRoutingId(RoutingId.From(options.Rid));
+                externalMesh.ChannelName(externalSpotChannel);
+                AddPlayRouteHandlers(externalMesh);
+            }
             if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
-                framework.AddClientServerChannel(SpotServiceNames.ExternalClientChannel)
-                    .EnableServer(options.ExternalClientEndpoint)
-                    .EnableClient(options.ExternalClientEndpoint)
-                    .AddHandlerGroup("client");
+            {
+                var clientMesh = framework.AddRouteMesh(SpotServiceNames.ExternalClientChannel)
+                    .Listen(options.ExternalClientEndpoint)
+                    .SetRoutingId(RoutingId.From(options.Rid));
+                clientMesh.ChannelName(SpotServiceNames.ExternalClientChannel)
+                    .AddRequestHandler<ChannelEchoHandler>()
+                    .AddSendHandler<ChannelNotifyHandler>();
+            }
 
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
@@ -94,6 +103,15 @@ internal static class PlayHostFactory
         SpotFailureEndpoints.MapSpotFailureEndpoints(app);
         SpotInteractionEndpoints.MapSpotInteractionEndpoints(app);
         return app;
+    }
+
+    private static void AddPlayRouteHandlers(IZLinkMeshNodeBuilder mesh)
+    {
+        mesh.AddRouteRequestHandler<EnsureActorHandler>()
+            .AddRouteRequestHandler<ControlPingHandler>()
+            .AddRouteRequestHandler<CreateSpotHandler>()
+            .AddRouteRequestHandler<CloseSpotHandler>()
+            .AddRouteRequestHandler<SpotTypeMismatchHandler>();
     }
 
     internal static string Require(string? value, string optionName)
@@ -117,7 +135,7 @@ internal static class PlayHostFactory
     }
 
     internal static async Task<StateRes> RequestSpotStateAsync(
-        IZLinkRouteClient routes,
+        IZLinkSpotClient routes,
         IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         StateReq request)
@@ -126,14 +144,14 @@ internal static class PlayHostFactory
             .Async<StateRes>();
 
     internal static async Task SendSpotCommandAsync(
-        IZLinkRouteClient routes,
+        IZLinkSpotClient routes,
         IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         object command)
         => routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).TrySubmit();
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
-        IZLinkRouteClient routes,
+        IZLinkSpotClient routes,
         IZLinkSpotHandleResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request)

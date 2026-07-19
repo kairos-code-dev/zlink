@@ -12,7 +12,7 @@ namespace DeliveryDispatch.Server.CourierSession;
 
 internal sealed class CourierSessionBinder(
     SampleTopology topology,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spots,
     ILogger<CourierSessionBinder> logger)
 {

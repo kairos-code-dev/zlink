@@ -108,10 +108,10 @@ internal static class ServiceHostFactory
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            [FromServices] IZLinkChannelClient channel,
+            [FromServices] IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
+            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, RuntimeMonitoringNames.Channel, request)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(response);

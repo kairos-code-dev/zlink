@@ -7,7 +7,7 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink;
 
 internal sealed class WorldOperationsAdapter(
     IZLinkFanoutClient fanout,
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<WorldOperationsAdapter> logger) : IWorldOperationsPort
 {
     public void PublishAnnouncement(string announcementId, string text) =>
@@ -59,8 +59,7 @@ internal sealed class WorldOperationsAdapter(
         try
         {
             return await channels
-                .RequestToChannel(
-                    ZoneWorldNames.OpsChannel(nodeId),
+                .RequestToChannel(ZoneWorldNames.OpsChannel(nodeId), ZoneWorldNames.OpsChannel(nodeId),
                     request)
                 .Timeout(TimeSpan.FromSeconds(3))
                 .Async<TResponse>(cancellationToken);

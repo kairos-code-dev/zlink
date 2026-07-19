@@ -9,6 +9,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkSpotMonitoringSnapshotProvider _monitoringSnapshots;
     private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
     private readonly ZLinkSpotPeerConnector _peerConnector;
+    private readonly ZLinkAsyncSubmitter _nodeSubmitter;
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly IServiceProvider _services;
     private readonly ZLinkSpotNodeCatalog _spots;
@@ -47,6 +48,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             runtime.ExecutionOwner);
         _monitoringSnapshots = new ZLinkSpotMonitoringSnapshotProvider(node);
         _peerConnector = new ZLinkSpotPeerConnector(node, _peerConnections);
+        _nodeSubmitter = new ZLinkAsyncSubmitter(
+            node.OnSendReady,
+            frameworkRegistration.DefaultSocketSendTimeout,
+            _stopSource.Token);
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
             node,
@@ -94,6 +99,62 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     internal ZLinkSpotOutboundTransport EntryOutbound => _entryOutbound
         ?? throw new InvalidOperationException($"SPOT node '{Name}' entry outbound transport is not initialized.");
 
+    internal bool TrySendToNodeOnce(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return ZLinkSubmitFailureMapper.AcceptOrThrow(
+            Node.SendToNode(targetNodeRid, parts, SendFlags.DontWait, metadata),
+            $"node '{targetNodeRid}'");
+    }
+
+    internal ValueTask SendToNodeAsync(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return _nodeSubmitter.Async(
+            parts,
+            pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+                Node.SendToNode(targetNodeRid, pending, SendFlags.DontWait, metadata),
+                $"node '{targetNodeRid}'"),
+            cancellationToken);
+    }
+
+    internal ValueTask<IReadOnlyList<Message>> RequestToNodeAsync(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return _nodeSubmitter.SubmitRequestAsync<IReadOnlyList<Message>>(
+            parts,
+            (pending, complete, fail) => Node.RequestToNode(
+                targetNodeRid,
+                pending,
+                (result, reply) =>
+                {
+                    if (result == RequestResult.Ok)
+                    {
+                        complete(reply);
+                        return;
+                    }
+
+                    fail(ZLinkRequestFailureMapper.CreateCompletionException(
+                        result,
+                        $"Node request to '{targetNodeRid}' failed with result '{result}'."));
+                    ZLinkMessageParts.DisposeAll(reply);
+                },
+                SendFlags.DontWait,
+                timeout,
+                metadata),
+            cancellationToken,
+            ZLinkMessageParts.DisposeAll);
+    }
+
     internal void RequestStop()
     {
         lock (_disposeGate)
@@ -138,6 +199,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         await CaptureAsync(_spots.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(DisposeEntrySpotAsync).ConfigureAwait(false);
+        await CaptureAsync(_nodeSubmitter.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(Node.DisposeAsync).ConfigureAwait(false);
         Capture(() =>
         {

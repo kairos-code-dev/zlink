@@ -59,10 +59,15 @@ public static class OrderWorkflowServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
-            options.AddClientServerChannel(SampleNames.OrderWorkflowChannelFor(instance.InstanceId))
-                .EnableServer(instance.ChannelEndpoint)
-                .SetRoutingId(instance.RouteRid)
-                .AddHandlerGroup("order-workflow");
+            var channelName = SampleNames.OrderWorkflowChannelFor(instance.InstanceId);
+            var workflowMesh = options.AddRouteMesh(channelName)
+                .Listen(instance.ChannelEndpoint)
+                .SetRoutingId(instance.RouteRid);
+            workflowMesh.ChannelName(channelName)
+                .AddRequestHandler<StartOrderWorkflowRouteHandler>()
+                .AddRequestHandler<ContinueOrderWorkflowRouteHandler>()
+                .AddRequestHandler<RebuildOrderProjectionRouteHandler>()
+                .AddRequestHandler<PrepareInventoryReservedCheckpointRouteHandler>();
             var mesh1 = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
                 .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
                 .Listen(instance.SpotRouterEndpoint)
@@ -102,7 +107,7 @@ public static class OrderWorkflowServerHostFactory
         app.MapPost("/self-check/projection/{orderId}/rebuild", async (
             string orderId,
             IZLinkSpotManager spots,
-            IZLinkRouteClient routes,
+            IZLinkSpotClient routes,
             IZLinkSpotHandleResolver spotHandles,
             CancellationToken cancellationToken) =>
         {

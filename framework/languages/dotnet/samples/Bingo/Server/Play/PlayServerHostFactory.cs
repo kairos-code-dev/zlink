@@ -48,6 +48,8 @@ public static class PlayServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(configuration.RedisEndpoint)
                 .SetKeyPrefix(configuration.RedisKeyPrefix)));
@@ -57,8 +59,11 @@ public static class PlayServerHostFactory
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.AddClientServerChannel(SampleNames.ApiChannel)
-                .EnableClient();
+            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play-api")
+                .SetRoutingIdAllocationGroup("bingo.play.api")
+                .Listen("tcp://127.0.0.1:0");
+            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
 
             var mesh4 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
                 .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)

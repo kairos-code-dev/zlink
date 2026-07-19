@@ -28,12 +28,13 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
         _builder.Services.AddZLinkFramework(framework =>
         {
-            var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
-                .EnableServer(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
-                .EnableClient(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
-                .SetRoutingId(RoutingId.From(_options.Rid))
+            var mesh = framework.AddRouteMesh(RuntimeMonitoringNames.Channel)
+                .Listen(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
+                .SetRoutingId(RoutingId.From(_options.Rid));
+            mesh.ChannelName(RuntimeMonitoringNames.Channel)
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
-            _builder.Services.AddSingleton(channel.ClientConnections);
+            mesh.PeerConnections.Connect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
+            _builder.Services.AddSingleton(mesh.PeerConnections);
         });
     }
 
@@ -52,8 +53,7 @@ internal sealed class ChannelMonitoringRoleHost
     {
         _builder.Services.AddZLinkMonitoring(monitor =>
         {
-            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource, socketEvents);
-            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelClientSource, socketEvents);
+            monitor.AddMeshNodeEvents(RuntimeMonitoringNames.Channel);
         });
     }
 
@@ -84,20 +84,20 @@ internal sealed class ChannelMonitoringRoleHost
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            IZLinkChannelClient channel,
+            IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
+            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, RuntimeMonitoringNames.Channel, request)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(response);
         });
-        app.MapPost("/admin/connect", (IZLinkEndpointConnections connections) =>
+        app.MapPost("/admin/connect", (IZLinkMeshPeerConnections connections) =>
         {
             connections.Connect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
             return Results.Ok(new { status = "connected" });
         });
-        app.MapPost("/admin/disconnect", (IZLinkEndpointConnections connections) =>
+        app.MapPost("/admin/disconnect", (IZLinkMeshPeerConnections connections) =>
         {
             connections.Disconnect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
             return Results.Ok(new { status = "disconnected" });

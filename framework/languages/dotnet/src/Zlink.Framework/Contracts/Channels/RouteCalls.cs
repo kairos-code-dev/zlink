@@ -3,31 +3,13 @@ namespace Zlink.Framework.Contracts.Channels;
 public interface IZLinkRouteClient
 {
     IZLinkSendCall SendToNode<TMessage>(
-        string routerChannelId,
+        string meshName,
         RoutingId targetNodeRid,
         TMessage message);
 
     IZLinkRequestCall RequestToNode<TRequest>(
-        string routerChannelId,
+        string meshName,
         RoutingId targetNodeRid,
-        TRequest request);
-
-    /// <summary>
-    /// Sends through the current address held by the spot handle. The framework
-    /// refreshes the handle from location updates, but does not retry a one-way
-    /// send because delivery may already have occurred.
-    /// </summary>
-    IZLinkSendCall SendToSpot<TMessage>(
-        SpotHandle target,
-        TMessage message);
-
-    /// <summary>
-    /// Requests through the current address held by the spot handle. If the
-    /// address is invalidated during the request, the framework refreshes the
-    /// handle and retries once when doing so cannot duplicate a completed call.
-    /// </summary>
-    IZLinkRequestCall RequestToSpot<TRequest>(
-        SpotHandle target,
         TRequest request);
 
     /// <summary>
@@ -68,48 +50,72 @@ public interface IZLinkRouteRequestHandler<in TRequest, TReply>
         CancellationToken cancellationToken);
 }
 
-public sealed class ZLinkRouteSendContext : ZLinkHandlerContext
+public sealed class ZLinkRouteSendContext : IZLinkHandlerContext
 {
     internal ZLinkRouteSendContext(
-        string routerChannelId,
+        string meshName,
+        string? channelName,
         RoutingId sourceNodeRid,
-        string? packetName,
+        string packetName,
         string? contentType,
-        CancellationToken connectionAborted)
-        : base(routerChannelId, packetName, contentType, connectionAborted)
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
     {
-        RouterChannelId = routerChannelId;
+        MeshName = meshName;
+        ChannelName = channelName;
         SourceNodeRid = sourceNodeRid;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
 
-    /// <summary>
-    /// The route channel id that delivered the message. This is the same value
-    /// exposed through <see cref="IZLinkHandlerContext.ChannelName" />.
-    /// </summary>
-    public string RouterChannelId { get; }
+    public string MeshName { get; }
+
+    public string? ChannelName { get; }
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 
     public RoutingId SourceNodeRid { get; }
 }
 
-public sealed class ZLinkRouteRequestContext : ZLinkHandlerContext
+public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
 {
     internal ZLinkRouteRequestContext(
-        string routerChannelId,
+        string meshName,
+        string? channelName,
         RoutingId sourceNodeRid,
-        string? packetName,
+        string packetName,
         string? contentType,
-        CancellationToken connectionAborted)
-        : base(routerChannelId, packetName, contentType, connectionAborted)
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
     {
-        RouterChannelId = routerChannelId;
+        MeshName = meshName;
+        ChannelName = channelName;
         SourceNodeRid = sourceNodeRid;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
 
-    /// <summary>
-    /// The route channel id that delivered the request. This is the same value
-    /// exposed through <see cref="IZLinkHandlerContext.ChannelName" />.
-    /// </summary>
-    public string RouterChannelId { get; }
+    public string MeshName { get; }
+
+    public string? ChannelName { get; }
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 
     public RoutingId SourceNodeRid { get; }
 }

@@ -89,7 +89,9 @@ internal sealed class MeshEventRecorder(
         // The peer's channel weight lives in its descriptor row (a weight
         // change bumps the descriptor revision, which raised this event);
         // surface transitions as the admission-weight evidence line.
-        if (peer.Length > 0 && @event.Reason is "ready")
+        if (peer.Length > 0
+            && (@event.Reason is "ready"
+                || @event.Identifier == "zlink.runtime.mesh_node.channel_changed"))
         {
             try
             {

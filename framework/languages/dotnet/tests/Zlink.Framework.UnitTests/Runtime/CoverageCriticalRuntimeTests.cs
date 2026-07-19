@@ -101,10 +101,10 @@ public sealed class CoverageCriticalRuntimeTests
         {
             options.AddStreamNode("stream-a")
                 .Bind(firstEndpoint)
-                .RegisterSession<StartupFailureTestSession>();
+                .AddSession<StartupFailureTestSession>();
             options.AddStreamNode("stream-b")
                 .Bind("invalid://startup-failure")
-                .RegisterSession<StartupFailureTestSession>();
+                .AddSession<StartupFailureTestSession>();
         });
 
         using var host = builder.Build();

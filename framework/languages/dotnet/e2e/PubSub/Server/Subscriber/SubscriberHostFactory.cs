@@ -23,8 +23,8 @@ internal static class SubscriberHostFactory
             // Classic fanout uses no location store (config-3): the
             // subscriber names the publisher endpoint explicitly.
             var subscriber = framework.AddFanoutChannel(PubSubNames.Channel)
-                .EnableSubscriber(options.PublisherEndpoint);
-            subscriber.AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
+                .ConnectSubscriber(options.PublisherEndpoint);
+            subscriber.AddHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
         builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
             PubSubNames.SubscriberSocketSource,

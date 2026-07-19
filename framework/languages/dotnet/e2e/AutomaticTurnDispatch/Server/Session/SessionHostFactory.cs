@@ -40,13 +40,14 @@ internal static class SessionHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMeshChannel(AutomaticTurnDispatchNames.ControlChannel)
-                .EnableServer(options.ControlEndpoint)
-                .EnableClient()
+            var controlMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.ControlChannel)
+                .Listen(options.ControlEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddRouteMeshChannel(AutomaticTurnDispatchNames.SpotRouteChannel)
-                .EnableClient()
+            controlMesh.ChannelName(AutomaticTurnDispatchNames.ControlChannel);
+            var spotRouteMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotRouteChannel)
+                .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(RoutingId.From(options.Rid));
+            spotRouteMesh.ChannelName(AutomaticTurnDispatchNames.SpotRouteChannel).SetWeight(0);
             var mesh23 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
                                 .Listen(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -55,7 +56,7 @@ internal static class SessionHostFactory
             mesh23.ChannelName(AutomaticTurnDispatchNames.SpotChannel);
             framework.AddStreamNode(AutomaticTurnDispatchNames.StreamNode)
                 .Bind(options.StreamEndpoint)
-                .RegisterSession<AwaitStreamSession>();
+                .AddSession<AwaitStreamSession>();
         });
 
         var app = builder.Build();

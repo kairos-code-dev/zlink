@@ -42,7 +42,7 @@ public static class CourierSessionHostFactory
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
                 .EnableActorDispatch(SampleNames.CourierActorDiscovery)
-                .RegisterSession<CourierSession>();
+                .AddSession<CourierSession>();
         });
 
         return builder.Build();

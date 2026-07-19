@@ -21,8 +21,7 @@ internal static class PublisherHostFactory
         {
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             framework.AddFanoutChannel(PubSubNames.Channel)
-                .EnablePublisher(options.PublisherEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .EnablePublisher(options.PublisherEndpoint);
         });
         builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
             PubSubNames.PublisherSocketSource,

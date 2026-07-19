@@ -20,15 +20,14 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.ZoneBroadcast)]
 internal sealed class WorldAnnounceSubscriber(
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles,
     NodeMaintenancePolicy maintenance,
     ILogger<WorldAnnounceSubscriber> logger)
-    : IZLinkPublishHandler<WorldAnnounceEvent>
+    : IZLinkFanoutHandler<WorldAnnounceEvent>
 {
     public async ValueTask HandleAsync(
         WorldAnnounceEvent message,
-        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         var zones = ZoneTopology.ZonesOf(maintenance.OwnNodeId);
@@ -85,11 +84,10 @@ internal sealed class WorldAnnounceSubscriber(
 internal sealed class BroadcastProbeSubscriber(
     NodeMaintenancePolicy maintenance,
     ILogger<BroadcastProbeSubscriber> logger)
-    : IZLinkPublishHandler<WorldAnnounceEvent>
+    : IZLinkFanoutHandler<WorldAnnounceEvent>
 {
     public ValueTask HandleAsync(
         WorldAnnounceEvent message,
-        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -110,11 +108,10 @@ internal sealed class BroadcastProbeSubscriber(
 internal sealed class NodeMaintenanceChangedSubscriber(
     NodeMaintenancePolicy maintenance,
     ILogger<NodeMaintenanceChangedSubscriber> logger)
-    : IZLinkPublishHandler<NodeMaintenanceChangedEvent>
+    : IZLinkFanoutHandler<NodeMaintenanceChangedEvent>
 {
     public ValueTask HandleAsync(
         NodeMaintenanceChangedEvent message,
-        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
         maintenance.Apply(message.NodeId, message.Enabled);

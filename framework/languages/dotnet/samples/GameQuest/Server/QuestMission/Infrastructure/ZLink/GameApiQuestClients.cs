@@ -30,7 +30,7 @@ internal sealed class HttpGameApiSnapshotClient(GameQuestTopology topology) : IG
     private sealed record GameplaySnapshotResponse(string PlayerId, int KillCount, long SnapshotVersion);
 }
 
-internal sealed class ZLinkQuestProgressNotifier(IZLinkChannelClient channels) : IQuestProgressNotifier
+internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : IQuestProgressNotifier
 {
     public ValueTask<QuestProgressNotifyResult> NotifyAsync(
         string playerId,
@@ -42,16 +42,14 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkChannelClient channels) :
         {
             var contracts = projection.Select(QuestContractMapper.ToContract).ToArray();
             foreach (var progress in contracts)
-                channels.SendToChannel(
-                        SampleNames.GameApiChannel,
+                channels.SendToChannel(SampleNames.GameApiChannel, SampleNames.GameApiChannel,
                         new QuestProgressNotify(playerId, progress))
                     .TrySubmit();
 
             if (!string.IsNullOrWhiteSpace(completedQuestId))
             {
                 var completed = contracts.First(progress => progress.QuestId == completedQuestId);
-                channels.SendToChannel(
-                        SampleNames.GameApiChannel,
+                channels.SendToChannel(SampleNames.GameApiChannel, SampleNames.GameApiChannel,
                         new QuestCompletedNotify(playerId, completed, true))
                     .TrySubmit();
             }

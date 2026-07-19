@@ -69,7 +69,7 @@ internal static class WorkflowHostFactory
             return Results.Ok(new CreateWorkflowRes(created.SpotRid.ToString(), options.Rid, 0, "created"));
         });
         app.MapPost("/workflows/{workflowRid}/advance", async (string workflowRid,
-            AdvanceWorkflowReq request, IZLinkSpotHandleResolver resolver, IZLinkRouteClient routes,
+            AdvanceWorkflowReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)
@@ -78,7 +78,7 @@ internal static class WorkflowHostFactory
             return Results.Ok(response);
         });
         app.MapGet("/workflows/{workflowRid}/state", async (string workflowRid,
-            IZLinkSpotHandleResolver resolver, IZLinkRouteClient routes, CancellationToken cancellationToken) =>
+            IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes, CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)
                          ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
@@ -87,7 +87,7 @@ internal static class WorkflowHostFactory
             return Results.Ok(response);
         });
         app.MapPost("/workflows/{workflowRid}/publish", async (string workflowRid,
-            PublishProjectionReq request, IZLinkSpotHandleResolver resolver, IZLinkRouteClient routes,
+            PublishProjectionReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)

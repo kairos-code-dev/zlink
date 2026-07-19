@@ -21,21 +21,27 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
     }
 
-    public TimeSpan ActorTransferForwardWindow
+    public TimeSpan? ActorTransferTimeout
+    {
+        get => _registration.ActorTransferTimeout;
+        set
+        {
+            ValidateOptionalPositiveTimeout(value, nameof(ActorTransferTimeout));
+            _registration.ActorTransferTimeout = value;
+        }
+    }
+
+    public TimeSpan? ActorTransferForwardWindow
     {
         get => _registration.ActorTransferForwardWindow;
         set
         {
-            if (value < TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(
-                    nameof(value),
-                    value,
-                    "Actor transfer forward window must not be negative.");
+            ValidateOptionalPositiveTimeout(value, nameof(ActorTransferForwardWindow));
             _registration.ActorTransferForwardWindow = value;
         }
     }
 
-    public TimeSpan? DefaultSocketSendTimeout
+    public TimeSpan DefaultSocketSendTimeout
     {
         get => _registration.DefaultSocketSendTimeout;
         set
@@ -43,6 +49,15 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             ZLinkSocketConfig.ValidateSendTimeout(value);
             _registration.DefaultSocketSendTimeout = value;
         }
+    }
+
+    private static void ValidateOptionalPositiveTimeout(TimeSpan? value, string name)
+    {
+        if (value is { } timeout && timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                name,
+                value,
+                "Actor transfer timeout values must be greater than zero.");
     }
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
@@ -78,28 +93,10 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkMetadataPolicyBuilder(_registration.MetadataPolicy);
     }
 
-    public IZLinkClientServerChannelBuilder AddClientServerChannel(string channelName)
-    {
-        var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.ClientServer);
-        return new ZLinkClientServerChannelBuilder(channel);
-    }
-
     public IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName)
     {
         var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.Fanout);
         return new ZLinkFanoutChannelBuilder(channel);
-    }
-
-    public IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName)
-    {
-        var routeChannel = ZLinkRegistrationBuilderGuard.AddUnique(
-            _registration.RouteChannels,
-            channelName,
-            () => new ZLinkRouteChannelRegistration { RouterChannelId = channelName },
-            "Route mesh channel name must not be empty.",
-            $"Duplicate route mesh channel name '{channelName}'.");
-
-        return new ZLinkRouteChannelBuilder(routeChannel);
     }
 
     // Test-only in-memory location store registration (spec 05-route-mesh §7 /
@@ -237,10 +234,23 @@ internal static class ZLinkRegistrationBuilderGuard
 internal sealed class ZLinkMetadataPolicyBuilder(ZLinkMetadataPolicyRegistration registration)
     : IZLinkMetadataPolicyBuilder
 {
-    public void AddForwardedMetadataKey(string key)
+    public IZLinkMetadataPolicyBuilder AllowSessionToActor(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ZLinkConfigurationException("Metadata key must not be empty.");
+        AddKey(registration.SessionToActorKeys, key);
+        return this;
+    }
 
-        registration.ForwardedApplicationKeys.Add(key);
+    public IZLinkMetadataPolicyBuilder AllowActorToSession(string key)
+    {
+        AddKey(registration.ActorToSessionKeys, key);
+        return this;
+    }
+
+    private static void AddKey(HashSet<string> keys, string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ZLinkConfigurationException("Metadata key must not be empty.");
+
+        keys.Add(key);
     }
 }

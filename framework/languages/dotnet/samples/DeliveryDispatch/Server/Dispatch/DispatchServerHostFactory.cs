@@ -46,18 +46,20 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            options.AddClientServerChannel(SampleNames.DispatchChannel)
-                .EnableServer(topology.DispatchChannelEndpoint)
-                .EnableClient()
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
-                .AddHandlerGroup(SampleNames.DispatchChannel);
+            var dispatchMesh = options.AddRouteMesh(SampleNames.DispatchChannel)
+                .Listen(topology.DispatchChannelEndpoint)
+                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"));
+            dispatchMesh.ChannelName(SampleNames.DispatchChannel)
+                .AddSendHandler<AssignDeliveryHandler>()
+                .AddSendHandler<OfferDeliveryResultHandler>();
             var mesh9 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
                 .Listen(topology.DispatchSpotRouterEndpoint)
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
             mesh9.ChannelName(SampleNames.CourierActorDiscovery);
-            options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
-                .EnableClient()
+            var trackingMesh = options.AddRouteMesh(SampleNames.TrackingRouteChannel)
+                .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-tracking-client"));
+            trackingMesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
         });
 
         var app = builder.Build();
@@ -82,7 +84,7 @@ public static class DispatchServerHostFactory
         });
         app.MapPost("/deliveries", (
             CreateDeliveryReq request,
-            Zlink.Framework.Contracts.Channels.IZLinkChannelClient channels,
+            Zlink.Framework.Contracts.Channels.IZLinkRouteClient channels,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -91,7 +93,7 @@ public static class DispatchServerHostFactory
                 request.CustomerId,
                 request.PickupAddress,
                 request.DropoffAddress);
-            channels.SendToChannel(SampleNames.DispatchChannel, assign)
+            channels.SendToChannel(SampleNames.DispatchChannel, SampleNames.DispatchChannel, assign)
                 .TrySubmit();
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);

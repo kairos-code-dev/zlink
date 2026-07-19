@@ -150,10 +150,10 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("File.ReadAllText", questStore, StringComparison.Ordinal);
         Assert.DoesNotContain("File.WriteAllText", questStore, StringComparison.Ordinal);
         Assert.DoesNotContain("MapPost(\"/internal/apply\"", missionProgram, StringComparison.Ordinal);
-        Assert.Contains("AddClientServerChannel(SampleNames.QuestOwnerChannelFor(missionName))", missionProgram,
+        Assert.Contains("AddRouteMesh(ownerChannel)", missionProgram,
             StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
-        Assert.Contains("IZLinkChannelClient", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("IZLinkRouteClient", eventDispatcher, StringComparison.Ordinal);
         Assert.Contains("SendToChannel", eventDispatcher, StringComparison.Ordinal);
         Assert.Contains("new GameplayMsg", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("ZLinkHttpClient", eventDispatcher, StringComparison.Ordinal);

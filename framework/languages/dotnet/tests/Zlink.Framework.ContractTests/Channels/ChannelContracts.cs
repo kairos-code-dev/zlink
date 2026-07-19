@@ -6,24 +6,25 @@ public sealed class ChannelContracts
 {
     [Fact]
     [ContractExample(
-        typeof(IZLinkChannelClient),
+        typeof(IZLinkRouteClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
         typeof(IZLinkMetadataCall<>))]
-    public async Task Channel_client_sends_and_requests_by_channel_name()
+    public async Task Route_client_sends_and_requests_by_mesh_and_channel_name()
     {
-        var client = new ExampleClient();
+        var client = new ExampleRouteClient();
 
-        var sent = client.SendToChannel("api", new AuthenticateRequest("player-1"))
+        var sent = client.SendToChannel("game", "api", new AuthenticateRequest("player-1"))
             .TrySubmit();
         Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
 
         var reply = await client
-            .RequestToChannel("api", new AuthenticateRequest("player-1"))
+            .RequestToChannel("game", "api", new AuthenticateRequest("player-1"))
             .Timeout(TimeSpan.FromSeconds(3))
             .Async<AuthenticateReply>();
 
-        Assert.Equal("api", client.LastChannelName);
+        Assert.Equal("game", client.MeshName);
+        Assert.Equal("api", client.ChannelName);
         Assert.Equal("player-1", reply.PlayerId);
     }
 
@@ -80,7 +81,7 @@ public sealed class ChannelContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkChannelClient),
+        typeof(IZLinkRouteClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
         typeof(IZLinkFanoutClient),
@@ -89,17 +90,17 @@ public sealed class ChannelContracts
     {
         // The same channel-messaging surface a gRPC web backend would reach for:
         // unary RPC, fire-and-forget command, and a server-streamed status feed.
-        var orders = new ExampleClient();
+        var orders = new ExampleRouteClient();
         var events = new ExampleFanoutPublisher();
 
         // gRPC unary RPC -> request/response on a logical channel name.
         var placed = await orders
-            .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+            .RequestToChannel("commerce", "orders", new PlaceOrder("order-1042", "acct-77", 18742))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
-        _ = orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
+        _ = orders.SendToChannel("commerce", "inventory", new ReserveStock("order-1042", "sku-9", 3))
             .TrySubmit();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
@@ -108,7 +109,8 @@ public sealed class ChannelContracts
             .SubmitAsync();
 
         Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
-        Assert.Equal("inventory", orders.LastChannelName); // last one-way send routed by channel name
+        Assert.Equal("commerce", orders.MeshName);
+        Assert.Equal("inventory", orders.ChannelName);
         Assert.Equal(
             ("order.events", "order.status"),
             events.LastPublish);
@@ -132,34 +134,15 @@ public sealed class ChannelContracts
 
     private sealed record OrderStatusChanged(string OrderId, string Status);
 
-    private sealed class ExampleClient : IZLinkChannelClient
-    {
-        public string? LastChannelName { get; private set; }
-
-        public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
-        {
-            LastChannelName = channelName;
-            return new ExampleSendCall();
-        }
-
-        public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
-        {
-            LastChannelName = channelName;
-            object? reply = request switch
-            {
-                AuthenticateRequest authenticate => new AuthenticateReply(authenticate.PlayerId),
-                PlaceOrder order => new OrderPlaced(order.OrderId),
-                _ => null
-            };
-            return new ExampleRequestCall(reply);
-        }
-    }
-
     private sealed class ExampleRouteClient : IZLinkRouteClient
     {
         public string? RouterChannelId { get; private set; }
 
         public RoutingId TargetNodeRid { get; private set; }
+
+        public string? MeshName { get; private set; }
+
+        public string? ChannelName { get; private set; }
 
         public IZLinkSendCall SendToNode<TMessage>(
             string routerChannelId,
@@ -200,7 +183,8 @@ public sealed class ChannelContracts
             string channelName,
             TMessage message)
         {
-            RouterChannelId = channelName;
+            MeshName = meshName;
+            ChannelName = channelName;
             return new ExampleRouteSendCall();
         }
 
@@ -209,8 +193,15 @@ public sealed class ChannelContracts
             string channelName,
             TRequest request)
         {
-            RouterChannelId = channelName;
-            return new ExampleRouteRequestCall(new RoomAllocated("room-1"));
+            MeshName = meshName;
+            ChannelName = channelName;
+            object reply = request switch
+            {
+                AuthenticateRequest authenticate => new AuthenticateReply(authenticate.PlayerId),
+                PlaceOrder order => new OrderPlaced(order.OrderId),
+                _ => new RoomAllocated("room-1")
+            };
+            return new ExampleRouteRequestCall(reply);
         }
     }
 

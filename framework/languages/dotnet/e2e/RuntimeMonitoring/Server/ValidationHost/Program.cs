@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 
 using System.Net;
 using System.Net.Sockets;
+using Systems.Zlink;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using RuntimeMonitoring.Shared;
@@ -35,10 +36,14 @@ switch (validationCase)
             monitor.AddSpotEvents("missing.spot", TimeSpan.FromMilliseconds(100)));
         break;
     case "missing-socket":
-        builder.Services.AddZLinkFramework(framework => framework
-            .AddClientServerChannel("validation.profile")
-            .EnableServer(PickTcpEndpoint())
-            .AddRequestHandler<ValidationRequestHandler, ProfileReq, ProfileRes>("ProfileReq"));
+        builder.Services.AddZLinkFramework(framework =>
+        {
+            var mesh = framework.AddRouteMesh("validation.profile")
+                .Listen(PickTcpEndpoint())
+                .SetRoutingId(RoutingId.From("validation"));
+            mesh.ChannelName("validation.profile")
+                .AddRequestHandler<ValidationRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+        });
         builder.Services.AddZLinkMonitoring(monitor =>
             monitor.AddSocketEvents("missing.server", ZLinkSocketEventKind.ConnectionReady));
         break;

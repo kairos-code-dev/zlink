@@ -16,10 +16,9 @@ public interface IZLinkSendHandler<in TMessage>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkPublishHandler<in TMessage>
+public interface IZLinkFanoutHandler<in TEvent>
 {
     ValueTask HandleAsync(
-        TMessage message,
-        ZLinkPublishContext context,
+        TEvent message,
         CancellationToken cancellationToken);
 }

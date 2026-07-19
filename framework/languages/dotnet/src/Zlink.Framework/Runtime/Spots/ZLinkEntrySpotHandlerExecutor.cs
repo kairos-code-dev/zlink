@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkEntrySpotHandlerExecutor(
     IServiceProvider services,
     IZLinkEntrySpot entrySpot,
+    string meshName,
     ZLinkCodecRegistryBuilder codecs,
     IZlinkStreamCompressionCodec? compressionCodec)
 {
@@ -18,7 +19,12 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
     {
         await using var scope = services.CreateAsyncScope();
         await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
-        var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, entrySpot, codecs, compressionCodec);
+        var invoker = new ZLinkSpotHandlerInvoker(
+            handlerInstances,
+            entrySpot,
+            meshName,
+            codecs,
+            compressionCodec);
         await invoker.InvokeActorPacketAsync(
                 descriptor,
                 actor,
@@ -37,7 +43,12 @@ internal sealed class ZLinkEntrySpotHandlerExecutor(
     {
         await using var scope = services.CreateAsyncScope();
         await using var handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
-        var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, entrySpot, codecs, compressionCodec);
+        var invoker = new ZLinkSpotHandlerInvoker(
+            handlerInstances,
+            entrySpot,
+            meshName,
+            codecs,
+            compressionCodec);
         return await invoker.InvokeActorPacketForReplyAsync(
                 descriptor,
                 actor,

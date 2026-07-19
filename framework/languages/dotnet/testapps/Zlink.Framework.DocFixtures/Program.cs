@@ -41,7 +41,7 @@ internal static class FixtureSamples
             {
                 var channel = options.AddFanoutChannel("orders.events");
                 channel.EnablePublisher("tcp://127.0.0.1:7202");
-                channel.EnableSubscriber("tcp://127.0.0.1:7202");
+                channel.ConnectSubscriber("tcp://127.0.0.1:7202");
             }
         });
         return builder;
@@ -73,7 +73,7 @@ internal static class FixtureSamples
             {
                 var stream = options.AddStreamNode("stream.raw");
                 stream.Bind("tcp://127.0.0.1:7401");
-                stream.RegisterSession<FixtureRawStreamSession>();
+                stream.AddSession<FixtureRawStreamSession>();
             }
         });
         return builder;
@@ -121,7 +121,7 @@ internal static class FixtureSamples
             {
                 var stream = options.AddStreamNode("stream.actor");
                 stream.Bind("tcp://127.0.0.1:7701");
-                stream.RegisterSession<FixtureActorPacketSession>();
+                stream.AddSession<FixtureActorPacketSession>();
             }
 
             {

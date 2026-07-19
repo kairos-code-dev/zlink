@@ -7,6 +7,7 @@ using SupportChat.Server.Configuration;
 using SupportChat.Server.Support.Application.ConversationAssignment;
 using SupportChat.Server.Support.Infrastructure.ZLink;
 using SupportChat.Server.Support.Infrastructure.ZLink.Actors;
+using SupportChat.Server.Support.Infrastructure.ZLink.Handlers;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
@@ -38,6 +39,8 @@ public static class SupportServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
@@ -46,14 +49,19 @@ public static class SupportServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
-            options.AddClientServerChannel(SampleNames.SupportChannel)
-                .EnableServer(topology.SupportChannelEndpoint)
+            var supportMesh = options.AddRouteMesh(SampleNames.SupportChannel)
+                .Listen(topology.SupportChannelEndpoint)
                 // Discovery clients dial this server through its descriptor
                 // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(RoutingId.From("2101"))
-                .AddHandlerGroup("support");
-            options.AddClientServerChannel(SampleNames.ApiChannel)
-                .EnableClient();
+                .SetRoutingId(RoutingId.From("2101"));
+            supportMesh.ChannelName(SampleNames.SupportChannel)
+                .AddRequestHandler<AllocateConversationHandler>()
+                .AddRequestHandler<EnsureSupportUserActorHandler>()
+                .AddRequestHandler<EnsureAgentConversationHandler>();
+            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From("2102"));
+            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
             var mesh5 = options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
                 .Listen(topology.SupportEntrySpotRouterEndpoint)
                 .SetRoutingId(topology.SupportEntryRid)

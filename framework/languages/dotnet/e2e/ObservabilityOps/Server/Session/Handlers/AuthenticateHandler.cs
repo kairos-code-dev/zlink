@@ -11,7 +11,7 @@ using Zlink.Framework.Contracts.Streams;
 namespace ObservabilityOps.Server.Session.Handlers;
 
 internal sealed class AuthenticateHandler(
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spots,
     ObservabilityOps.Server.Session.Support.SessionOptions options)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>

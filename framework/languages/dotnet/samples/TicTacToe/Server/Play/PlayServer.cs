@@ -33,6 +33,8 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DisableImplicitHandlerAutoRegistration();
+            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(settings.RedisEndpoint)
                 .SetKeyPrefix(settings.RedisKeyPrefix)));
@@ -57,7 +59,7 @@ internal sealed class PlayServer(SampleSettings settings)
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)
                 .EnableActorDispatch(SampleNodes.PlaySpot)
-                .RegisterSession<PlaySession>();
+                .AddSession<PlaySession>();
 
             var mesh = options.AddRouteMesh(SampleNodes.PlaySpot)
                 .Listen(settings.SpotEndpoint)

@@ -39,7 +39,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddStreamNode(ZoneWorldNames.GatewayStreamNode)
         .Bind(gateway.StreamEndpoint)
         .EnableActorDispatch(ZoneWorldNames.ZoneMesh)
-        .RegisterSession<PlayerSession>();
+        .AddSession<PlayerSession>();
 
     // The Gateway joins the spot mesh but hosts nothing in it — no entry spot, no actor
     // factory. Membership is what lets it bind a session to an actor living on a zone
@@ -50,8 +50,11 @@ builder.Services.AddZLinkFramework(options =>
         .Listen(gateway.SpotRouterEndpoint);
     mesh12.ChannelName(ZoneWorldNames.ZoneMesh);
 
-    options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)
-        .EnableClient();
+    var actorsMesh = options.AddRouteMesh(ZoneWorldNames.ActorsChannel)
+        .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw-actors")
+        .SetRoutingIdAllocationGroup("zoneworld.gateway")
+        .Listen("tcp://127.0.0.1:0");
+    actorsMesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
 });
 
 await builder.Build().RunAsync();

@@ -13,7 +13,7 @@ namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 [ZLinkHandlerGroup("order-workflow")]
 internal sealed class StartOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles,
     ILogger<StartOrderWorkflowRouteHandler> logger)
     : IZLinkRequestHandler<StartOrderWorkflowReq, StartOrderWorkflowRes>
@@ -59,7 +59,7 @@ internal sealed class StartOrderWorkflowRouteHandler(
 [ZLinkHandlerGroup("order-workflow")]
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles)
     : IZLinkRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes>
 {
@@ -82,7 +82,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
 [ZLinkHandlerGroup("order-workflow")]
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles,
     ILogger<RebuildOrderProjectionRouteHandler> logger)
     : IZLinkRequestHandler<RebuildOrderProjectionReq, RebuildOrderProjectionRes>
@@ -111,7 +111,7 @@ internal sealed class RebuildOrderProjectionRouteHandler(
 [ZLinkHandlerGroup("order-workflow")]
 internal sealed class PrepareInventoryReservedCheckpointRouteHandler(
     IZLinkSpotManager spots,
-    IZLinkRouteClient routes,
+    IZLinkSpotClient routes,
     IZLinkSpotHandleResolver spotHandles)
     : IZLinkRequestHandler<PrepareInventoryReservedCheckpointReq, StartOrderWorkflowRes>
 {

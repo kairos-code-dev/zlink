@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Systems.Zlink;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -40,10 +41,14 @@ public static class SessionServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
-            options.AddClientServerChannel(SampleNames.ApiChannel)
-                .EnableClient();
-            options.AddClientServerChannel(SampleNames.SupportChannel)
-                .EnableClient();
+            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From("session-api"));
+            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
+            var supportMesh = options.AddRouteMesh(SampleNames.SupportChannel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From("session-support"));
+            supportMesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
             var mesh6 = options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
                 .Listen(session.RouterEndpoint)
                 .SetRoutingId(session.RoutingId);
@@ -51,7 +56,7 @@ public static class SessionServerHostFactory
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .EnableActorDispatch(SampleNames.SupportSpotDiscovery)
-                .RegisterSession<SupportChatSession>();
+                .AddSession<SupportChatSession>();
         });
 
         return builder.Build();

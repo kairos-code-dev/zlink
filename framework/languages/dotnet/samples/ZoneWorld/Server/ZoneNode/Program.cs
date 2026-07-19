@@ -54,6 +54,8 @@ builder.Services.AddSingleton<IOpsReportPort, OpsReportAdapter>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, LocalSpotEventHandler>();
 builder.Services.AddZLinkFramework(options =>
 {
+    options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
+    options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
@@ -72,8 +74,8 @@ builder.Services.AddZLinkFramework(options =>
     if (!hostsZones)
     {
         options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
-            .EnableSubscriber()
-            .AddHandlerGroup(HandlerGroups.BroadcastProbe);
+            .ConnectSubscriber(shared.BroadcastEndpoint)
+            .AddHandler<BroadcastProbeSubscriber, WorldAnnounceEvent>();
         return;
     }
 
@@ -91,48 +93,47 @@ builder.Services.AddZLinkFramework(options =>
         .AddSpotFactory<ZoneSpot>();
     mesh13.ChannelName(ZoneWorldNames.ZoneMesh);
 
-    // Registered only so the runtime can build the spot bridge that carries the announcement
-    // from a channel handler into this node's zone spots (§8.2). It is never used to address a
-    // node from the application (§1.1).
-    options.AddRouteMeshChannel(ZoneWorldNames.BridgeMesh)
-        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
-        .SetRoutingIdAllocationGroup(allocationGroup)
-        .EnableServer(node.BridgeEndpoint)
-        .EnableClient();
-
     // The node's own channel. Ops calls the channel named after the node, so a call
     // reaches this node and no other (§8.4).
-    options.AddClientServerChannel(ZoneWorldNames.OpsChannel(nodeId))
-        .EnableServer(node.OpsChannelEndpoint)
+    var opsChannelName = ZoneWorldNames.OpsChannel(nodeId);
+    var opsMesh = options.AddRouteMesh(opsChannelName)
+        .Listen(node.OpsChannelEndpoint)
         // Discovery clients dial this server through its descriptor row, which
         // needs a concrete routing id to be advertised; the id comes from the
         // per-node allocation group, never from configuration (ZW-G5, §11.2).
         .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "ops")
-        .SetRoutingIdAllocationGroup(ZoneWorldNames.OpsChannel(nodeId))
-        .AddHandlerGroup(HandlerGroups.ZoneOps);
+        .SetRoutingIdAllocationGroup(opsChannelName);
+    opsMesh.ChannelName(opsChannelName)
+        .AddRequestHandler<ApplyNodeMaintenanceHandler>()
+        .AddRequestHandler<GetNodeDiagnosticsHandler>();
 
     // Only the node hosting the spawn zone serves this: it is the authority for the
     // maintenance admission check on a new entry (§2.3).
     if (ZoneTopology.SpawnNode == nodeId)
-        options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)
-            .EnableServer(node.ActorsChannelEndpoint)
+    {
+        var actorsMesh = options.AddRouteMesh(ZoneWorldNames.ActorsChannel)
+            .Listen(node.ActorsChannelEndpoint)
             // Discovery clients dial this server through its descriptor row, which
             // needs a concrete routing id to be advertised; the id comes from an
             // allocation group, never from configuration (ZW-G5, §11.2).
             .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "actors")
-            .SetRoutingIdAllocationGroup(ZoneWorldNames.ActorsChannel)
-            .AddHandlerGroup(HandlerGroups.ZoneActors);
+            .SetRoutingIdAllocationGroup(ZoneWorldNames.ActorsChannel);
+        actorsMesh.ChannelName(ZoneWorldNames.ActorsChannel)
+            .AddRequestHandler<EnsurePlayerActorHandler>();
+    }
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
-        .EnableSubscriber()
-        .AddHandlerGroup(HandlerGroups.ZoneBroadcast);
+        .ConnectSubscriber(shared.BroadcastEndpoint)
+        .AddHandler<WorldAnnounceSubscriber, WorldAnnounceEvent>()
+        .AddHandler<NodeMaintenanceChangedSubscriber, NodeMaintenanceChangedEvent>();
 
     // The report channel carries this node's identity: Ops reads the socket events on its
     // server side and needs to know *which node* connected or went away (§8.1).
-    options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
+    var reportMesh = options.AddRouteMesh(ZoneWorldNames.ReportChannel)
         .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
         .SetRoutingIdAllocationGroup(allocationGroup)
-        .EnableClient();
+        .Listen("tcp://127.0.0.1:0");
+    reportMesh.ChannelName(ZoneWorldNames.ReportChannel).SetWeight(0);
 });
 
 if (hostsZones)

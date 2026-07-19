@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 
 using Google.Protobuf.WellKnownTypes;
+using Systems.Zlink;
 using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
 using RegistrationCodec.Shared;
@@ -57,11 +58,14 @@ public static class RegistrationCodecServerHostFactory
             framework.UseFilter<FirstFilter>();
             framework.UseFilter<SecondFilter>();
 
-            var channel = framework.AddClientServerChannel(RegistrationCodecNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
-                .EnableClient(Require(options.ChannelEndpoint, "ChannelEndpoint"));
-            channel.AddHandlerGroup("auto");
-            channel.AddHandlerGroup("attr");
+            var mesh = framework.AddRouteMesh(RegistrationCodecNames.Channel)
+                .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid));
+            var channel = mesh.ChannelName(RegistrationCodecNames.Channel);
+            channel.AddRequestHandler<EchoAutoRequestHandler, EchoAutoReq, EchoRes>();
+            channel.AddSendHandler<EchoAutoCommandHandler, EchoAutoMsg>();
+            channel.AddRequestHandler<AttributeHandlers, EchoAttrReq, EchoRes>("EchoAttr");
+            channel.AddSendHandler<AttributeHandlers, EchoAttrMsg>("EchoAttrMsg");
             channel.AddRequestHandler<EchoManualRequestHandler, EchoManualReq, EchoRes>("EchoManual");
             channel.AddSendHandler<EchoManualCommandHandler, EchoManualMsg>("EchoManualMsg");
             channel.AddRequestHandler<JsonEchoRequestHandler, JsonEchoReq, EchoRes>("EchoJson");

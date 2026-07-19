@@ -9,9 +9,11 @@ internal sealed class ZLinkFrameworkRegistration
 
     public TimeSpan DefaultRequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    public TimeSpan ActorTransferForwardWindow { get; set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan? ActorTransferTimeout { get; set; }
 
-    public TimeSpan? DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
+    public TimeSpan? ActorTransferForwardWindow { get; set; }
+
+    public TimeSpan DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
 
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();
 
@@ -168,7 +170,9 @@ internal sealed record ZLinkScannedHandlerCatalog(
 
 internal sealed class ZLinkMetadataPolicyRegistration
 {
-    public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
+    public HashSet<string> SessionToActorKeys { get; } = new(StringComparer.Ordinal);
+
+    public HashSet<string> ActorToSessionKeys { get; } = new(StringComparer.Ordinal);
 }
 
 // Mesh channel marker: AddRouteMesh(meshName) registers the mesh discovery

@@ -61,8 +61,12 @@ internal static class GatewayHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
-                .EnableClient(Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
+            var externalMesh = framework.AddRouteMesh(SpotServiceNames.ExternalSpotChannel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(RoutingId.From(options.Rid));
+            externalMesh.ChannelName(SpotServiceNames.ExternalSpotChannel).SetWeight(0);
+            externalMesh.PeerConnections.Connect(
+                Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
             var mesh19 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
@@ -116,13 +120,13 @@ internal static class GatewayHostFactory
             return Results.Ok(reply);
         });
         app.MapPost("/spot/route-state", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient spotsClient,
             IZLinkSpotHandleResolver handles,
             SpotStateRouteReq request,
             CancellationToken cancellationToken) =>
         {
             var target = await handles.ResolveRequiredAsync(request.SpotRid, cancellationToken);
-            var reply = await routes.RequestToSpot(target, new StateReq(request.Operation, request.Delta))
+            var reply = await spotsClient.RequestToSpot(target, new StateReq(request.Operation, request.Delta))
                 .Async<StateRes>(cancellationToken);
             return Results.Ok(reply);
         });
@@ -237,7 +241,7 @@ internal static class GatewayHostFactory
             NodeReadinessWaitReq request,
             IZLinkLocationRuntimeQuery locations,
             IZLinkSpotHandleResolver handles,
-            IZLinkRouteClient routes,
+            IZLinkSpotClient spotsClient,
             CancellationToken cancellationToken) =>
         {
             var deadline = DateTimeOffset.UtcNow
@@ -254,7 +258,7 @@ internal static class GatewayHostFactory
                     try
                     {
                         var marker = $"ready-{Guid.NewGuid():N}";
-                        var reply = await routes.RequestToSpot(entry, new EntryReadinessReq(marker))
+                        var reply = await spotsClient.RequestToSpot(entry, new EntryReadinessReq(marker))
                             .Timeout(TimeSpan.FromSeconds(1))
                             .Async<EntryReadinessRes>(cancellationToken);
                         if (reply.NodeRid == request.NodeRid && reply.Marker == marker)
@@ -272,7 +276,7 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/entry/join", async (
             EntryJoinRouteReq request,
-            IZLinkRouteClient routes,
+            IZLinkSpotClient spotsClient,
             IZLinkSpotHandleResolver handles,
             IZLinkActorDirectory actors,
             CancellationToken cancellationToken) =>
@@ -281,7 +285,7 @@ internal static class GatewayHostFactory
                             RoutingId.From(request.NodeRid), cancellationToken)
                         ?? throw new InvalidOperationException(
                             $"Entry Spot for node '{request.NodeRid}' is not ready.");
-            var joined = await routes.RequestToSpot(entry, request.Join)
+            var joined = await spotsClient.RequestToSpot(entry, request.Join)
                 .Async<JoinRes>(cancellationToken);
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
             while (DateTimeOffset.UtcNow < deadline)

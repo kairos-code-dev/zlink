@@ -8,6 +8,7 @@ using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Server.Ops.Infrastructure.Store;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink;
+using ZoneWorld.Server.Ops.Infrastructure.ZLink.Handlers;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Monitoring;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Server.Ops.Ports;
@@ -67,30 +68,34 @@ builder.Services.AddZLinkFramework(options =>
 
     options.AddStreamNode(ZoneWorldNames.OpsStreamNode)
         .Bind(ops.StreamEndpoint)
-        .RegisterSession<OpsConsoleSession>();
+        .AddSession<OpsConsoleSession>();
 
     // The announcement and the maintenance change both leave here without a node list.
     // Adding a node changes nothing on this side — that is the whole point (ZW-D2).
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
-        .EnablePublisher(ops.BroadcastEndpoint)
-        // Discovery subscribers dial this publisher through its descriptor
-        // row, which needs a concrete routing id to be advertised.
-        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-broadcast"));
+        .EnablePublisher(ops.BroadcastEndpoint);
 
-    options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
-        .EnableServer(ops.ReportEndpoint)
+    var reportMesh = options.AddRouteMesh(ZoneWorldNames.ReportChannel)
+        .Listen(ops.ReportEndpoint)
         // Discovery clients dial this server through its descriptor row,
         // which needs a concrete routing id to be advertised.
-        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-report"))
-        .AddHandlerGroup(HandlerGroups.Ops);
+        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-report"));
+    reportMesh.ChannelName(ZoneWorldNames.ReportChannel)
+        .AddSendHandler<ReportSpotEventHandler>()
+        .AddSendHandler<ReportNodeStatusHandler>();
 
     // A node is addressed by the channel named after it, so the call lands on that node and no
     // other (§8.4). What is enumerated here is the §2 zone placement — the nodes an operator can
     // select — not a list of who is out there. The announcement above leaves without consulting
     // it, and a node outside the placement (§11.1) is unknown here yet still receives it (ZW-D2).
     foreach (var nodeId in ZoneTopology.ZoneNodes)
-        options.AddClientServerChannel(ZoneWorldNames.OpsChannel(nodeId))
-            .EnableClient();
+    {
+        var channelName = ZoneWorldNames.OpsChannel(nodeId);
+        var nodeMesh = options.AddRouteMesh(channelName)
+            .Listen("tcp://127.0.0.1:0")
+            .SetRoutingId(Systems.Zlink.RoutingId.From($"ops-{nodeId}"));
+        nodeMesh.ChannelName(channelName).SetWeight(0);
+    }
 });
 
 builder.Services.AddZLinkMonitoring(monitor =>

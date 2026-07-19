@@ -62,7 +62,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 services,
                 channel.ChannelName,
                 handler,
-                typeof(IZLinkPublishHandler<>).MakeGenericType(handler.MessageType),
+                typeof(IZLinkFanoutHandler<>).MakeGenericType(handler.MessageType),
                 ZLinkMessageKind.Publish);
     }
 
@@ -161,9 +161,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         this IServiceCollection services,
         ZLinkFrameworkRegistration registration)
     {
-        services.AddSingleton<ZLinkChannelClient>();
-        services.AddSingleton<IZLinkChannelClient>(static provider =>
-            provider.GetRequiredService<ZLinkChannelClient>());
         services.AddSingleton<IZLinkRouteMeshRuntimeOptions>(static provider =>
             new ZLinkRouteMeshRuntimeOptionsService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>()));
@@ -171,9 +168,11 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkRouteMeshRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkLocationStoreHealth>(),
+                provider.GetService<IZLinkLocationRuntimeQuery>(),
                 () => provider.GetService<IZLinkDrainControl>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
+        services.AddSingleton<IZLinkSpotClient, ZLinkSpotClient>();
         services.AddSingleton<ZLinkFanoutClient>();
         services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
 

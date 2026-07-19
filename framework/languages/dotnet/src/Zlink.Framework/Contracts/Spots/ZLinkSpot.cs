@@ -73,29 +73,63 @@ public sealed class ZLinkSpotActorReplyOptions
     }
 }
 
-public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
+public sealed class ZLinkSpotActorSendContext : IZLinkHandlerContext
 {
     internal ZLinkSpotActorSendContext(
-        string? packetName,
+        string meshName,
+        string packetName,
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, connectionAborted, metadata)
     {
+        MeshName = meshName;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
+
+    public string MeshName { get; }
+
+    public string? ChannelName => null;
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 }
 
-public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
+public sealed class ZLinkSpotActorRequestContext : IZLinkHandlerContext
 {
     internal ZLinkSpotActorRequestContext(
-        string? packetName,
+        string meshName,
+        string packetName,
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, connectionAborted, metadata)
     {
+        MeshName = meshName;
+        PacketName = packetName;
+        ContentType = contentType;
+        ConnectionAborted = connectionAborted;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
         Reply = new ZLinkSpotActorReplyOptions();
     }
+
+    public string MeshName { get; }
+
+    public string? ChannelName => null;
+
+    public string PacketName { get; }
+
+    public string? ContentType { get; }
+
+    public ZLinkMessageMetadata Metadata { get; }
+
+    public CancellationToken ConnectionAborted { get; }
 
     public ZLinkSpotActorReplyOptions Reply { get; }
 }
@@ -210,6 +244,16 @@ public interface IZLinkSpotOutbound
     IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
+}
+
+/// <summary>
+/// Sends and requests through resolved Spot handles outside a Spot callback.
+/// </summary>
+public interface IZLinkSpotClient
+{
+    IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
+
+    IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
 }
 
 public interface IZLinkSpotCommonContext

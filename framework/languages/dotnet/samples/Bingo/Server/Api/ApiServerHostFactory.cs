@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 
 using Bingo.Server.Configuration;
+using Bingo.Server.Api.Handlers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
@@ -39,11 +40,15 @@ public static class ApiServerHostFactory
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            options.AddClientServerChannel(SampleNames.ApiChannel)
+            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
                 .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
-                .EnableServer(node.ChannelEndpoint)
-                .AddHandlerGroup("api");
+                .Listen(node.ChannelEndpoint);
+            apiMesh.ChannelName(SampleNames.ApiChannel)
+                .AddRequestHandler<AuthenticatePlayerHandler>()
+                .AddRequestHandler<GetPlayerRecordHandler>()
+                .AddRequestHandler<ReportBingoResultHandler>()
+                .AddRequestHandler<MatchBingoHandler>();
             var mesh2 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
                 .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)

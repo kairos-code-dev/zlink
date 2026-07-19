@@ -60,18 +60,24 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddClientServerChannel(SampleNames.GameApiChannel)
-                .EnableServer(topology.GameApiChannelEndpoint(apiName))
-                .SetRoutingId(topology.RouteRidForApi(apiName))
-                .AddHandlerGroup("game-api");
-            options.AddClientServerChannel(SampleNames.QuestOwnerChannelFor("mission-a"))
-                .EnableClient();
-            options.AddClientServerChannel(SampleNames.QuestOwnerChannelFor("mission-b"))
-                .EnableClient();
+            var apiMesh = options.AddRouteMesh(SampleNames.GameApiChannel)
+                .Listen(topology.GameApiChannelEndpoint(apiName))
+                .SetRoutingId(topology.RouteRidForApi(apiName));
+            apiMesh.ChannelName(SampleNames.GameApiChannel)
+                .AddSendHandler<QuestProgressNotifyHandler>()
+                .AddSendHandler<QuestCompletedNotifyHandler>();
+            foreach (var mission in new[] { "mission-a", "mission-b" })
+            {
+                var channelName = SampleNames.QuestOwnerChannelFor(mission);
+                var questOwnerMesh = options.AddRouteMesh(channelName)
+                    .Listen("tcp://127.0.0.1:0")
+                    .SetRoutingId(topology.RouteRidForApi(apiName));
+                questOwnerMesh.ChannelName(channelName).SetWeight(0);
+            }
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
                 .EnableActorDispatch(SampleNames.SessionSpotDiscovery)
-                .RegisterSession<GameQuestSession>();
+                .AddSession<GameQuestSession>();
             var mesh15 = options.AddRouteMesh(SampleNames.SessionSpotDiscovery)
                 .Listen(topology.GameApiSpotRouterEndpoint(apiName))
                 .SetRoutingId(topology.GameApiSpotRid(apiName))

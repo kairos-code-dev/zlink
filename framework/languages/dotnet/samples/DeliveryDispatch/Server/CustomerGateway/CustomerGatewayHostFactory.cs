@@ -48,7 +48,7 @@ public static class CustomerGatewayHostFactory
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .EnableActorDispatch(SampleNames.CustomerActorDiscovery)
-                .RegisterSession<CustomerSession>();
+                .AddSession<CustomerSession>();
         });
 
         return builder.Build();

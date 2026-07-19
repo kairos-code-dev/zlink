@@ -128,8 +128,8 @@ app.MapPost("/route/reconnect", () =>
 {
     var connections = actorConnections
                       ?? throw new InvalidOperationException("Actor router connections are unavailable.");
-    connections.Connect(options.ActorRouterEndpoint);
-    connections.Connect(options.ActorBRouterEndpoint);
+    connections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);
+    connections.Connect(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
     return Results.Ok(new { status = "connected" });
 });
 app.MapPost("/shutdown", async (IHostApplicationLifetime lifetime) =>

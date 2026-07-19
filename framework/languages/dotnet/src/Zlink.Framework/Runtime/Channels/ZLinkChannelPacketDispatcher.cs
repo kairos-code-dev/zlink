@@ -31,6 +31,7 @@ internal sealed class ZLinkChannelPacketDispatcher
                 : ZLinkMessageFlowTracer.CreateLogger(runtime.Services.GetService<ILoggerFactory>(), logger),
             runtime);
         _commandPipeline = new ZLinkChannelCommandDispatchPipeline(
+            "legacy",
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),
@@ -39,6 +40,7 @@ internal sealed class ZLinkChannelPacketDispatcher
             registration.Codecs,
             resolvedLogger);
         _publishPipeline = new ZLinkChannelPublishDispatchPipeline(
+            "legacy",
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),
@@ -47,6 +49,7 @@ internal sealed class ZLinkChannelPacketDispatcher
             registration.Codecs,
             resolvedLogger);
         _requestPipeline = new ZLinkChannelRequestDispatchPipeline(
+            "legacy",
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),

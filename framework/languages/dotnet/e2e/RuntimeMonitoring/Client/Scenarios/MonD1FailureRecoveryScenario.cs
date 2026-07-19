@@ -17,7 +17,7 @@ internal static class MonD1FailureRecoveryScenario
             .Build();
         var serviceBUri = new Uri(options.ServiceBUrl);
         var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
-        Process current = Process.GetProcessById(options.ServiceBProcessId);
+        Process? current = Process.GetProcessById(options.ServiceBProcessId);
         try
         {
             for (var cycle = 1; cycle <= 3; cycle++)
@@ -26,6 +26,7 @@ internal static class MonD1FailureRecoveryScenario
                 current.Kill(entireProcessTree: true);
                 await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 current.Dispose();
+                current = null;
                 await WaitForPortStateAsync(
                     serviceBUri.Host, serviceBUri.Port, false,
                     $"MON-D1 cycle {cycle} expected service-b HTTP port to close after SIGKILL.");
@@ -97,16 +98,19 @@ internal static class MonD1FailureRecoveryScenario
                 .Timeout(TimeSpan.FromSeconds(20))
                 .Build();
             await PostBestEffortAsync(activeServiceB, "/shutdown");
-            try
+            if (current is not null)
             {
-                await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (TimeoutException)
+                {
+                    if (!current.HasExited) current.Kill(true);
+                    await current.WaitForExitAsync();
+                }
+                current.Dispose();
             }
-            catch (TimeoutException)
-            {
-                if (!current.HasExited) current.Kill(true);
-                await current.WaitForExitAsync();
-            }
-            current.Dispose();
         }
 
         Console.WriteLine("scenario MON-D1 passed");

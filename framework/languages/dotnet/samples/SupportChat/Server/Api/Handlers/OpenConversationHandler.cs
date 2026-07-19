@@ -8,7 +8,7 @@ namespace SupportChat.Server.Api.Handlers;
 
 [ZLinkHandlerGroup("api")]
 internal sealed class OpenConversationHandler(
-    IZLinkChannelClient channels,
+    IZLinkRouteClient channels,
     ILogger<OpenConversationHandler> logger)
     : IZLinkRequestHandler<OpenConversationApiReq, OpenConversationApiRes>
 {
@@ -21,8 +21,7 @@ internal sealed class OpenConversationHandler(
             "support api open: allocate request customer={CustomerActorId} subject={Subject}",
             request.CustomerActorId,
             request.Subject);
-        var allocated = await channels.RequestToChannel(
-                SampleNames.SupportChannel,
+        var allocated = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
                 new AllocateConversationReq(
                     request.CustomerActorId,
                     request.CustomerDisplayName,

@@ -16,9 +16,9 @@ internal static class WorkflowEndpoints
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/workflow/request", async (
             WorkflowReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
-            var reply = await channel.RequestToChannel("workflow", request)
+            var reply = await channel.RequestToChannel("workflow", "workflow", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<WorkflowRes>();
             return Results.Ok(reply);

@@ -125,6 +125,7 @@ public sealed class SpotContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkSpotManager),
+        typeof(IZLinkSpotClient),
         typeof(IZLinkSpotOutbound),
         typeof(IZLinkSpotPublisherClient))]
     public async Task Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels()
@@ -133,7 +134,7 @@ public sealed class SpotContracts
         var created = await manager.GetOrCreateAsync<RoomSpot>(
             RoutingId.From("room-1"),
             ZLinkMessage.Empty);
-        var localClient = new SpotOutbound();
+        IZLinkSpotClient localClient = new SpotOutbound();
         localClient.SendToSpot(null!, new RoomEvent("opened")).TrySubmit();
         var reply = await localClient.RequestToSpot(null!, new JoinRoom("room-1")).Async<JoinedRoom>();
 
@@ -258,6 +259,7 @@ public sealed class SpotContracts
             nameof(IZLinkHandlerContext.ChannelName),
             nameof(IZLinkHandlerContext.ConnectionAborted),
             nameof(IZLinkHandlerContext.ContentType),
+            nameof(IZLinkHandlerContext.MeshName),
             nameof(ZLinkSpotActorSendContext.Metadata),
             nameof(IZLinkHandlerContext.PacketName));
 
@@ -265,6 +267,7 @@ public sealed class SpotContracts
             nameof(IZLinkHandlerContext.ChannelName),
             nameof(IZLinkHandlerContext.ConnectionAborted),
             nameof(IZLinkHandlerContext.ContentType),
+            nameof(IZLinkHandlerContext.MeshName),
             nameof(ZLinkSpotActorRequestContext.Metadata),
             nameof(IZLinkHandlerContext.PacketName),
             nameof(ZLinkSpotActorRequestContext.Reply));
@@ -741,7 +744,7 @@ public sealed class SpotContracts
         }
     }
 
-    private sealed class SpotOutbound : IZLinkSpotOutbound
+    private sealed class SpotOutbound : IZLinkSpotOutbound, IZLinkSpotClient
     {
         public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {

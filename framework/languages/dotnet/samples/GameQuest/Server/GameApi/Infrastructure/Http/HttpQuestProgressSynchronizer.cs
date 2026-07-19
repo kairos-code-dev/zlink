@@ -7,14 +7,13 @@ namespace GameQuest.GameApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkQuestProgressSynchronizer(
     GameQuestTopology topology,
-    IZLinkChannelClient channels) : IQuestProgressSynchronizer
+    IZLinkRouteClient channels) : IQuestProgressSynchronizer
 {
     public async ValueTask<SyncQuestProgressRes> SyncAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
-        return await channels.RequestToChannel(
-                topology.QuestOwnerChannel(playerId),
+        return await channels.RequestToChannel(topology.QuestOwnerChannel(playerId), topology.QuestOwnerChannel(playerId),
                 new SyncQuestProgressReq(playerId))
             .Async<SyncQuestProgressRes>(cancellationToken);
     }

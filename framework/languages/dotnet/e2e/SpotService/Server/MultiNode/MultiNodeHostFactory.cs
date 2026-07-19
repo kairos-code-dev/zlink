@@ -63,12 +63,14 @@ internal static class MultiNodeHostFactory
                 if (!string.IsNullOrWhiteSpace(options.MultiRouteAEndpoint))
                 {
                     var routeEndpoint = options.MultiRouteAEndpoint;
-                    framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelA)
-                        .EnableServer(routeEndpoint)
-                        .EnableClient(routeEndpoint)
-                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
-                        .AddRequestHandler<MultiNodeCreateSpotAHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
-                            "MultiNodeCreateSpotReq");
+                    var routeMesh = framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
+                        .Listen(routeEndpoint)
+                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA));
+                    routeMesh.ChannelName(SpotServiceNames.MultiRouteChannelA);
+                    routeMesh.AddRouteRequestHandler<
+                        MultiNodeCreateSpotAHandler,
+                        MultiNodeCreateSpotReq,
+                        MultiNodeCreateSpotRes>("MultiNodeCreateSpotReq");
                 }
 
                 var mesh20 = framework.AddRouteMesh(ResolveSpotMeshName(options))
@@ -87,12 +89,14 @@ internal static class MultiNodeHostFactory
                 if (!string.IsNullOrWhiteSpace(options.MultiRouteBEndpoint))
                 {
                     var routeEndpoint = options.MultiRouteBEndpoint;
-                    framework.AddRouteMeshChannel(SpotServiceNames.MultiRouteChannelB)
-                        .EnableServer(routeEndpoint)
-                        .EnableClient(routeEndpoint)
-                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
-                        .AddRequestHandler<MultiNodeCreateSpotBHandler, MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>(
-                            "MultiNodeCreateSpotReq");
+                    var routeMesh = framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
+                        .Listen(routeEndpoint)
+                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB));
+                    routeMesh.ChannelName(SpotServiceNames.MultiRouteChannelB);
+                    routeMesh.AddRouteRequestHandler<
+                        MultiNodeCreateSpotBHandler,
+                        MultiNodeCreateSpotReq,
+                        MultiNodeCreateSpotRes>("MultiNodeCreateSpotReq");
                 }
 
                 var mesh21 = framework.AddRouteMesh(ResolveSpotMeshName(options))
@@ -208,7 +212,7 @@ internal static class MultiNodeHostFactory
             return Results.Ok(result);
         });
         app.MapPost("/spot/state/request", async (
-            IZLinkRouteClient routes,
+            IZLinkSpotClient spotsClient,
             IZLinkSpotHandleResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
@@ -216,7 +220,7 @@ internal static class MultiNodeHostFactory
         {
             var isNodeA = string.Equals(node.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var result = await MultiNodeScenario.RequestStateAsync(
-                routes,
+                spotsClient,
                 locator,
                 request.SpotRid,
                 request.Delta,

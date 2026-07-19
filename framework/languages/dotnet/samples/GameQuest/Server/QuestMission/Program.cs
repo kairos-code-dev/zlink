@@ -52,12 +52,17 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            options.AddClientServerChannel(SampleNames.QuestOwnerChannelFor(missionName))
-                .EnableServer(topology.MissionChannelEndpoint(missionName))
-                .SetRoutingId(instance.SpotRid)
-                .AddHandlerGroup("quest-owner");
-            options.AddClientServerChannel(SampleNames.GameApiChannel)
-                .EnableClient();
+            var ownerChannel = SampleNames.QuestOwnerChannelFor(missionName);
+            var ownerMesh = options.AddRouteMesh(ownerChannel)
+                .Listen(topology.MissionChannelEndpoint(missionName))
+                .SetRoutingId(instance.SpotRid);
+            ownerMesh.ChannelName(ownerChannel)
+                .AddSendHandler<ApplyGameplayEventRouteHandler>()
+                .AddRequestHandler<SyncQuestProgressRouteHandler>();
+            var apiMesh = options.AddRouteMesh(SampleNames.GameApiChannel)
+                .Listen("tcp://127.0.0.1:0")
+                .SetRoutingId(instance.SpotRid);
+            apiMesh.ChannelName(SampleNames.GameApiChannel).SetWeight(0);
             var mesh14 = options.AddRouteMesh(SampleNames.QuestSpotDiscovery)
                 .Listen(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)

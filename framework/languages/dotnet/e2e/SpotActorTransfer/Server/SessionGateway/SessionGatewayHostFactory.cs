@@ -28,7 +28,7 @@ internal static class SessionGatewayHostFactory
             mesh27.ChannelName(SpotActorTransferNames.Mesh);
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)
-                .RegisterSession<TransferSession>();
+                .AddSession<TransferSession>();
         });
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ok", options.Rid }));

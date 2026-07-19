@@ -46,9 +46,10 @@ public static class NodeHostFactory
             mesh11.ChannelName(SampleNames.CourierActorDiscovery);
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec §7.4).
-            options.AddClientServerChannel(SampleNames.DispatchChannel)
-                .EnableClient()
+            var dispatchMesh = options.AddRouteMesh(SampleNames.DispatchChannel)
+                .Listen("tcp://127.0.0.1:0")
                 .SetRoutingId(Systems.Zlink.RoutingId.From($"{configuration.Role.Name}-dispatch"));
+            dispatchMesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
         });
 
         return builder.Build();

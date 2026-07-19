@@ -3,18 +3,22 @@ namespace Zlink.Framework.Contracts.Handlers;
 public sealed class ZLinkHandlerInvocation
 {
     internal ZLinkHandlerInvocation(
-        object? message,
-        IZLinkHandlerContext context)
+        string meshName,
+        string ownerKind,
+        string packetName,
+        ZLinkMessageMetadata metadata)
     {
-        Message = message;
-        Context = context;
+        MeshName = meshName;
+        OwnerKind = ownerKind;
+        PacketName = packetName;
+        Metadata = metadata;
     }
 
-    public object? Message { get; }
+    public string MeshName { get; }
 
-    public IZLinkHandlerContext Context { get; }
+    public string OwnerKind { get; }
 
-    public string? ChannelName => Context.ChannelName;
+    public string PacketName { get; }
 
-    public string? PacketName => Context.PacketName;
+    public ZLinkMessageMetadata Metadata { get; }
 }

@@ -4,7 +4,7 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <Version>10.3.0</Version>
+        <Version>10.4.0</Version>
         <ZLinkLinuxX64NativeRoot Condition="'$(ZLinkLinuxX64NativeRoot)' == ''">$(MSBuildThisFileDirectory)..\..\native\linux-x64</ZLinkLinuxX64NativeRoot>
         <AssemblyName>Systems.Zlink</AssemblyName>
         <PackageId>Systems.Zlink</PackageId>

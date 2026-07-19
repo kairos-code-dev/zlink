@@ -4,7 +4,7 @@
 
 # MeshNode
 
-이 문서는 ZLink Core 10.0.0의 정식 공개 계약을 정의한다. 대상 독자는 RouteMesh에 참여하는 Core
+이 문서는 ZLink Core 10.1.0의 정식 공개 계약을 정의한다. 대상 독자는 RouteMesh에 참여하는 Core
 C API와 bindings를 구현하는 개발자다. 이 문서는 “하나의 MeshNode가 물리 mesh, 논리 channel
 membership과 Node·Channel 메시징을 어떤 공개 계약으로 제공하는가?”에 답한다.
 
@@ -58,10 +58,6 @@ typedef enum zlink_mesh_node_option_t {
   ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET   = 0x3622,
   ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET      = 0x3623
 } zlink_mesh_node_option_t;
-
-typedef enum zlink_mesh_publish_option_t {
-  ZLINK_MESH_PUBLISH_OPT_NODROP = 0x3630
-} zlink_mesh_publish_option_t;
 
 typedef struct zlink_mesh_node_options_t {
   uint32_t struct_size;
@@ -351,25 +347,25 @@ ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_publisher_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_set_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_get_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_publisher_destroy(
   void **publisher_p);
 ```
 
-publisher의 `ZLINK_MESH_PUBLISH_OPT_NODROP`은 `int` 0 또는 1이며 기본값은 1이다. 다른 publish option은
-`ENOTSUP`이다. publish는
-target channel의 ready remote member와, local MeshNode가 그 channel에 참여할 때의 local Spot match를
-한 번 snapshot한다. 선택된 각 Spot lifecycle generation은 일치하는 publish를 정확히 한 번 수신하며
-relay와 replay는 하지 않는다.
+publish는 target channel의 ready remote member와, local MeshNode가 그 channel에 참여할 때의 local
+Spot match를 한 번 snapshot한다. 선택된 각 remote member에는 내부 ROUTER로 message를 한 번씩
+submit한다. remote target 전체를 미리 reserve하거나 여러 target의 commit을 전부-또는-전무로 묶지
+않는다. 한 target에 성공한 submit은 뒤 target의 실패로 취소하지 않는다.
+
+`flags`는 각 remote ROUTER submit에 그대로 적용한다. `DONTWAIT`에서 pipe capacity가 부족하면 해당
+target은 `EAGAIN`이다. blocking submit은 MeshNode의 `SNDTIMEO` 동안 기다리며, 시간이 끝나도 기존
+ROUTER와 같이 `EAGAIN`이다.
+하나 이상의 remote target이 capacity 때문에 실패하면 publish는
+`ZLINK_SUBMIT_BACKPRESSURED`를 반환하지만, 그 전에 성공한 target의 message는 유지한다.
+
+origin MeshNode의 local Spot mailbox와 remote MeshNode가 wire message를 받은 뒤 선택한 local Spot
+mailbox는 각각 현재 capacity가 있는 target만 수락한다. capacity가 없는 local target은 기다리지 않고
+drop count에 포함한다. remote ROUTER pipe submit 성공은 상대 MeshNode의 local Spot mailbox 수락을
+보장하지 않는다. relay와 replay는 하지 않는다.
 
 `metadata`는 Node·Channel 메시징과 같은 canonical application metadata frame이다. `NULL`은 metadata가
 없음을 뜻한다. Core는 publish snapshot을 만들기 전에 metadata 전체를 검증하고, remote multicast record와
@@ -378,19 +374,12 @@ reserve하지 않고 `ZLINK_SUBMIT_INVALID_ARGUMENT`, `errno == EINVAL`을 반�
 metadata 입력은 borrowed read-only이며 모든 결과에서 caller가 원본 storage를 소유한다. 성공하면 Core가
 함수 반환 전에 publish operation에 필요한 reference 또는 복사본을 확보한다.
 
-`NODROP=1`은 snapshot의 모든 target이 message를 수락하거나 어느 target에도 전달하지 않는다. 이
-all-or-none은 capacity admission에 대한 보장이다: capacity 때문에 하나라도 수락할 수 없으면
-`DONTWAIT`에서 `ZLINK_SUBMIT_BACKPRESSURED`, `errno == EAGAIN`, blocking 호출은 `SNDTIMEO` 뒤
-`ETIMEDOUT`이며 어느 target도 message를 받지 않는다. `NODROP=0`은 수락할 수 없는 target만 drop하고
-나머지 target에 전달한다.
+pipe가 종료된 admitted remote target은 backpressure가 아니라 §5의 peer 이탈이다. 그런 target은
+drop으로 세지 않고 detail의 unreachable count로 보고한다.
 
-reserve와 commit 사이에 pipe가 종료된 admitted remote target은 backpressure가 아니라 §5의 peer
-이탈이다. 그런 target은 drop으로 세지 않고 detail의 unreachable count로 보고하며, 이미 commit한
-message를 취소하지 않는다는 §5 규칙에 따라 나머지 snapshot target에는 그대로 전달한다.
-
-detail은 remote와 local 각각의 snapshot, admission과 drop 수, 그리고 remote unreachable 수를 모든
-성공 결과에서 제공한다. remote snapshot은 admitted, dropped, unreachable의 합과 같다. `NODROP=1`
-성공은 두 dropped count가 모두 0이다. remote와 local snapshot target이 모두 0이면
+detail은 remote와 local 각각의 snapshot, admission과 drop 수, 그리고 remote unreachable 수를
+`ZLINK_SUBMIT_OK`와 `ZLINK_SUBMIT_BACKPRESSURED` 결과에서 제공한다. remote snapshot은 admitted,
+dropped, unreachable의 합과 같다. remote와 local snapshot target이 모두 0이면
 `ZLINK_SUBMIT_NOT_FOUND`, `errno == ENOENT`다.
 
 topic은 NUL을 포함하지 않는 1..`ZLINK_MESH_TOPIC_MAX`-byte UTF-8 문자열이다. 빈 topic, 잘못된 UTF-8과
@@ -462,13 +451,10 @@ message budget과 byte budget은 동시에 적용하며 먼저 도달한 한도�
 | raw ROUTER·DEALER option | 해당 raw type만 | 지원하지 않음 | 지원하지 않음 | 지원하지 않음 |
 | raw PUB·XPUB option | 해당 raw type만 | 지원하지 않음 | 지원하지 않음 | 지원하지 않음 |
 | raw SUB·XSUB option | 해당 raw type만 | 지원하지 않음 | 지원하지 않음 | 지원하지 않음 |
-| `ZLINK_MESH_PUBLISH_OPT_NODROP` | 지원하지 않음 | 지원하지 않음 | 지원 | 지원 |
 
-Logical Multicast와 classic PUB은 모두 `NODROP=1`일 때 backpressure를 호출자에게 반환한다. Logical
-Multicast는 snapshot 전체의 원자적 reserve/commit까지 보장한다 — 이 원자성은 §7의 capacity admission
-보장이며, reserve와 commit 사이의 peer 이탈은 §7의 unreachable 규칙을 따른다. classic PUB의
-subscriber별 전달 범위는 raw PUB 계약을 따른다. 두 기능은 별도 option enum을 사용한다. Spot과 Mesh
-publisher의 기본값은 1이다.
+Spot과 Mesh publisher는 publish 전용 option을 제공하지 않는다. Logical Multicast의 remote submit은
+MeshNode의 물리 ROUTER에 설정된 HWM, `SNDTIMEO`와 호출별 `flags`를 사용한다. classic PUB의
+subscriber별 전달 범위와 option은 raw PUB 계약을 따르며 Logical Multicast에 적용하지 않는다.
 
 MeshNode 열의 공통 option은 `zlink_set_option()`과 `zlink_get_option()`을 사용한다. `SNDHWM`과 `RCVHWM`은
 물리 ROUTER pipe queue에, `SNDTIMEO`는 blocking submit에, `RCVTIMEO`는 blocking ready drain에 적용된다.

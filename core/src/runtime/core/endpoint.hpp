@@ -3,6 +3,7 @@
 #ifndef __ZLINK_ENDPOINT_HPP_INCLUDED__
 #define __ZLINK_ENDPOINT_HPP_INCLUDED__
 
+#include <stdint.h>
 #include <string>
 
 namespace zlink
@@ -16,13 +17,10 @@ enum endpoint_type_t
 
 struct endpoint_uri_pair_t
 {
-    endpoint_uri_pair_t () : local_type (endpoint_type_none) {}
+    endpoint_uri_pair_t ();
     endpoint_uri_pair_t (const std::string &local,
                          const std::string &remote,
-                         endpoint_type_t local_type) :
-        local (local), remote (remote), local_type (local_type)
-    {
-    }
+                         endpoint_type_t local_type);
 
     const std::string &identifier () const
     {
@@ -31,6 +29,9 @@ struct endpoint_uri_pair_t
 
     std::string local, remote;
     endpoint_type_t local_type;
+    //  Process-local identity of one physical transport attempt. Copies keep
+    //  the identity; each newly constructed endpoint pair receives a new one.
+    uint64_t connection_id;
 };
 
 endpoint_uri_pair_t make_unconnected_connect_endpoint_pair (const std::string &endpoint_);

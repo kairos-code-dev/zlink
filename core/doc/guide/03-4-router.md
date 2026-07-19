@@ -381,7 +381,11 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id Conflicts
 
-If two DEALERs with the same routing_id connect simultaneously, the second connection is rejected by default. Set `ZLINK_OPT_RID_DUPLICATE_POLICY` to `ZLINK_RID_DUPLICATE_HANDOVER` to replace the existing connection instead.
+If two DEALERs with the same routing_id connect simultaneously, the second
+connection is rejected by default. With `ZLINK_RID_DUPLICATE_HANDOVER`, a
+same-direction reconnect replaces the existing pipe. If opposite-direction
+pipes collide because both peers connected to each other, both peers compare
+their routing IDs and select the same single direction.
 
 > For a detailed explanation of routing_id concepts, see [08-routing-id.md](08-routing-id.md).
 
@@ -441,9 +445,7 @@ event shape.
 
 ## 8. The boundary between ROUTER and the service layer
 
-In 10.0.0 the raw ROUTER carries only the generic socket contract. The 9.x
-route bridge (registering an external router channel as ingress into the SPOT
-routed plane) was removed.
+The raw ROUTER carries only the generic socket contract.
 
 - A MeshNode talks to its mesh peers exclusively over its own ROUTER, and
   there is no public API that registers a raw ROUTER socket as a service-plane

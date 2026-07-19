@@ -4,7 +4,7 @@
 
 # Actor service
 
-이 문서는 ZLink Core 10.0.0의 정식 공개 계약을 정의한다. 대상 독자는 Actor address, mailbox,
+이 문서는 ZLink Core 10.1.0의 정식 공개 계약을 정의한다. 대상 독자는 Actor address, mailbox,
 Spot membership과 transfer fence를 사용하는 C API와 bindings 개발자다. 이 문서는 “Actor payload와
 lifecycle을 Spot dispatch에서 분리하면서 위치 이동 중 ordering을 어떻게 보존하는가?”에 답한다.
 

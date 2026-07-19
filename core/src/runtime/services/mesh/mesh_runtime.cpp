@@ -262,7 +262,6 @@ spot_state_t::spot_state_t () :
     timer_count (0),
     active_actor_count (0),
     draining (false),
-    publish_nodrop (1),
     last_error (0),
     last_changed_ms (0)
 {
@@ -316,7 +315,7 @@ monitor_state_t::monitor_state_t () :
     counters.version = 1;
 }
 
-publisher_t::publisher_t () : tag (0x4d505542), node (NULL), nodrop (1)
+publisher_t::publisher_t () : tag (0x4d505542), node (NULL)
 {
 }
 
@@ -755,8 +754,13 @@ int admit_backpressured (mesh_node_t *node_,
                          const owner_id_t &owner_,
                          const queued_record_t *record_,
                          std::unique_lock<std::mutex> &lock_,
-                         int errno_)
+                         int errno_,
+                         bool emit_event_)
 {
+    if (!emit_event_) {
+        errno = errno_;
+        return -1;
+    }
     zlink_mesh_monitor_event_t event;
     memset (&event, 0, sizeof (event));
     event.kind = ZLINK_MESH_MONITOR_BACKPRESSURED;
@@ -771,14 +775,24 @@ int admit_backpressured (mesh_node_t *node_,
     return -1;
 }
 
-int admit_record (mesh_node_t *node_,
-                  const owner_id_t &owner_,
-                  domain_t domain_,
-                  std::unique_ptr<queued_record_t> &record_,
-                  bool blocking_,
-                  uint32_t timeout_ms_)
+static int admit_record_impl (mesh_node_t *node_,
+                              const owner_id_t &owner_,
+                              domain_t domain_,
+                              std::unique_ptr<queued_record_t> &record_,
+                              bool blocking_,
+                              uint32_t timeout_ms_,
+                              bool emit_backpressure_event_)
 {
     std::unique_lock<std::mutex> lock (node_->mutex);
+    //  Application admission and the transition to DRAINING are ordered by
+    //  the same mutex. A submit that took its routing snapshot before
+    //  shutdown must not enqueue after shutdown has closed admission.
+    if (domain_ == domain_application
+        && (node_->state == ZLINK_MESH_NODE_DRAINING
+            || node_->state == ZLINK_MESH_NODE_STOPPED)) {
+        errno = ESHUTDOWN;
+        return -1;
+    }
     std::map<owner_id_t, owner_state_t>::iterator it = node_->owners.find (owner_);
     if (it == node_->owners.end ()) {
         errno = ENOENT;
@@ -789,7 +803,8 @@ int admit_record (mesh_node_t *node_,
     //  Transfer fence: the frozen application lane accepts no new records
     //  until commit or abort resolves the fence.
     if (domain_ == domain_application && it->second.fenced_transfer_serial != 0)
-        return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN);
+        return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN,
+                                    emit_backpressure_event_);
 
     const uint64_t message_budget = node_->effective_message_budget ();
     const uint64_t byte_budget = node_->effective_byte_budget ();
@@ -805,10 +820,12 @@ int admit_record (mesh_node_t *node_,
            && (mailbox.pending_messages + 1 > message_budget
                || mailbox.pending_bytes + record_->byte_size > byte_budget)) {
         if (!blocking_ || timeout_ms_ == 0)
-            return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN);
+            return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN,
+                                        emit_backpressure_event_);
         const uint64_t now = now_ms ();
         if (deadline != 0 && now >= deadline)
-            return admit_backpressured (node_, owner_, record_.get (), lock, ETIMEDOUT);
+            return admit_backpressured (node_, owner_, record_.get (), lock, ETIMEDOUT,
+                                        emit_backpressure_event_);
         node_->cv.wait_for (lock, std::chrono::milliseconds (
                                     deadline != 0 ? deadline - now : 50));
         if (node_->state == ZLINK_MESH_NODE_DRAINING || node_->state == ZLINK_MESH_NODE_STOPPED) {
@@ -843,6 +860,24 @@ int admit_record (mesh_node_t *node_,
     mailbox.pending_bytes += record_bytes;
     notify_consumer_locked (node_, lock);
     return 0;
+}
+
+int admit_record (mesh_node_t *node_,
+                  const owner_id_t &owner_,
+                  domain_t domain_,
+                  std::unique_ptr<queued_record_t> &record_,
+                  bool blocking_,
+                  uint32_t timeout_ms_)
+{
+    return admit_record_impl (node_, owner_, domain_, record_, blocking_, timeout_ms_, true);
+}
+
+int admit_multicast_record (mesh_node_t *node_,
+                            const owner_id_t &owner_,
+                            std::unique_ptr<queued_record_t> &record_)
+{
+    return admit_record_impl (
+      node_, owner_, domain_application, record_, false, 0, false);
 }
 
 void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_)

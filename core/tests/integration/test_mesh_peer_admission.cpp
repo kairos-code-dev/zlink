@@ -24,6 +24,16 @@ SETUP_TEARDOWN_TESTCONTEXT
 //  Test-only hook (socket_submit_retry_fault_injection.cpp): the next count_
 //  wire sends fail with err_.
 extern "C" void zlink_test_set_submit_retry_fault (int count_, int err_);
+extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
+extern "C" void zlink_test_mesh_inject_disconnect (void *mesh_node_,
+                                                    const zlink_routing_id_t *peer_rid_,
+                                                    uint64_t connection_id_);
+extern "C" uint64_t zlink_test_mesh_select_admission_transport (
+  int is_hello_, uint64_t previous_connection_id_,
+  uint64_t current_connection_id_);
+extern "C" int zlink_test_mesh_duplicate_admitted_lifetime (
+  int is_hello_, uint64_t existing_generation_,
+  uint64_t incoming_generation_);
 
 #if !defined _WIN32
 namespace
@@ -32,6 +42,22 @@ const char mesh_name[] = "mesh-admission";
 const char channel_name[] = "orders";
 const int poll_deadline_ms = 15000;
 const int poll_step_ms = 20;
+
+void test_hello_before_ready_does_not_copy_predecessor_transport ()
+{
+    TEST_ASSERT_EQUAL_INT (
+      1, zlink_test_mesh_duplicate_admitted_lifetime (1, 5, 5));
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_test_mesh_duplicate_admitted_lifetime (1, 5, 6));
+    TEST_ASSERT_EQUAL_INT (
+      0, zlink_test_mesh_duplicate_admitted_lifetime (0, 5, 5));
+    TEST_ASSERT_EQUAL_UINT64 (
+      0, zlink_test_mesh_select_admission_transport (1, 41, 41));
+    TEST_ASSERT_EQUAL_UINT64 (
+      42, zlink_test_mesh_select_admission_transport (1, 41, 42));
+    TEST_ASSERT_EQUAL_UINT64 (
+      41, zlink_test_mesh_select_admission_transport (0, 41, 41));
+}
 
 int connect_raw_stream_client (const char *endpoint_)
 {
@@ -64,7 +90,12 @@ int connect_raw_stream_client (const char *endpoint_)
     return fd;
 }
 
-void *new_started_node (void *ctx_, const char *mesh_name_, const char *rid_)
+void *new_started_node (void *ctx_,
+                        const char *mesh_name_,
+                        const char *rid_,
+                        uint64_t mailbox_message_budget_ = 0,
+                        int router_hwm_ = 0,
+                        bool infinite_send_timeout_ = false)
 {
     zlink_mesh_node_options_t options;
     memset (&options, 0, sizeof (options));
@@ -78,6 +109,26 @@ void *new_started_node (void *ctx_, const char *mesh_name_, const char *rid_)
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_set_routing_id (node, rid_, strlen (rid_)));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_set_bind (node, "tcp://127.0.0.1:0"));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_add_channel_name (node, channel_name));
+    if (mailbox_message_budget_ != 0) {
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_set_mesh_node_option (node, ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET,
+                                      &mailbox_message_budget_,
+                                      sizeof (mailbox_message_budget_)));
+    }
+    if (router_hwm_ > 0) {
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_set_mesh_node_option (node, ZLINK_MESH_NODE_OPT_ROUTER_HWM,
+                                      &router_hwm_, sizeof (router_hwm_)));
+    }
+    if (infinite_send_timeout_) {
+        const int send_timeout_ms = -1;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_set_option (node, ZLINK_OPT_SNDTIMEO, &send_timeout_ms,
+                            sizeof (send_timeout_ms)));
+    }
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
     return node;
 }
@@ -486,12 +537,15 @@ int wait_spot_completion (void *node_,
 }
 
 //  Runs child_fn_ in a forked process before any context exists in it and
-//  fails the test if the child does not exit 0 before the deadline.
+//  fails the test if the child does not exit 0 before the deadline. The local
+//  socket is bidirectional so lifecycle tests can add explicit phase barriers
+//  without relying on sleeps.
 template <typename ParentFn, typename ChildFn>
 void run_two_process_case (ParentFn parent_fn_, ChildFn child_fn_)
 {
     int endpoint_pipe[2];
-    TEST_ASSERT_EQUAL_INT (0, pipe (endpoint_pipe));
+    TEST_ASSERT_EQUAL_INT (
+      0, socketpair (AF_UNIX, SOCK_STREAM, 0, endpoint_pipe));
 
     fflush (NULL);
     const pid_t child = fork ();
@@ -507,7 +561,7 @@ void run_two_process_case (ParentFn parent_fn_, ChildFn child_fn_)
     }
 
     close (endpoint_pipe[0]);
-    parent_fn_ (endpoint_pipe[1]);
+    parent_fn_ (endpoint_pipe[1], child);
     close (endpoint_pipe[1]);
 
     int status = 0;
@@ -525,8 +579,14 @@ void run_two_process_case (ParentFn parent_fn_, ChildFn child_fn_)
         (void) waitpid (child, &status, 0);
         TEST_FAIL_MESSAGE ("peer child process did not exit in time");
     }
-    TEST_ASSERT_TRUE_MESSAGE (WIFEXITED (status) && WEXITSTATUS (status) == 0,
-                              "peer child process reported failure");
+    if (!WIFEXITED (status) || WEXITSTATUS (status) != 0) {
+        char failure[96];
+        snprintf (failure, sizeof (failure),
+                  "peer child process reported failure (exit=%d, signal=%d)",
+                  WIFEXITED (status) ? WEXITSTATUS (status) : -1,
+                  WIFSIGNALED (status) ? WTERMSIG (status) : 0);
+        TEST_FAIL_MESSAGE (failure);
+    }
 }
 } // namespace
 
@@ -537,7 +597,7 @@ void test_peer_admission_readiness_and_weight_update ()
 {
     run_two_process_case (
       //  parent: node A
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -626,12 +686,146 @@ void test_peer_admission_readiness_and_weight_update ()
       });
 }
 
+//  A delayed disconnect from an older physical transport may carry the same
+//  RID as the currently admitted peer. It must not close that newer lifetime.
+void test_stale_transport_disconnect_preserves_admitted_successor ()
+{
+    run_two_process_case (
+      [] (int endpoint_fd, pid_t) {
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          void *node = new_started_node (ctx, mesh_name, "node-a");
+          publish_endpoint (node, endpoint_fd);
+
+          zlink_mesh_peer_entry_t admitted;
+          TEST_ASSERT_TRUE_MESSAGE (
+            wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &admitted),
+            "node A did not admit the peer before stale disconnect injection");
+
+          zlink_test_mesh_inject_disconnect (
+            node, &admitted.routing_id, UINT64_MAX);
+
+          zlink_mesh_peer_entry_t after;
+          TEST_ASSERT_TRUE_MESSAGE (
+            wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &after),
+            "a stale physical transport disconnect closed the admitted successor");
+          TEST_ASSERT_EQUAL_UINT64 (admitted.lifecycle_generation,
+                                    after.lifecycle_generation);
+
+          //  Let the child close first so both contexts follow the normal
+          //  peer-drain order used by the other two-process lifecycle cases.
+          msleep (1500);
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                                 zlink_mesh_node_shutdown (node, 1000));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                                 zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
+      },
+      [] (int endpoint_fd) -> int {
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          if (endpoint[0] == '\0')
+              return 10;
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 11;
+          void *node = new_started_node (ctx, mesh_name, "node-b");
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 12;
+          zlink_mesh_peer_entry_t admitted;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &admitted))
+              return 13;
+          msleep (1000);
+          zlink_mesh_node_shutdown (node, 1000);
+          const int destroy_rc = zlink_mesh_node_destroy (&node);
+          const int term_rc = zlink_ctx_term (ctx);
+          return destroy_rc == ZLINK_CLOSE_OK && term_rc == 0 ? 0 : 14;
+      });
+}
+
+//  Disconnecting an admitted outbound peer retires its transport and
+//  connector. A new intent for the same endpoint must establish a fresh
+//  admission within the same MeshNode lifetime.
+void test_outbound_disconnect_then_reconnect_same_endpoint ()
+{
+    run_two_process_case (
+      [] (int endpoint_fd, pid_t) {
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          void *node = new_started_node (ctx, mesh_name, "node-a");
+          publish_endpoint (node, endpoint_fd);
+
+          TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1),
+                                    "node A did not observe the first admission");
+          const char first_observed = '1';
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (write (endpoint_fd, &first_observed, 1)));
+          char reconnect_complete = 0;
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (read (endpoint_fd, &reconnect_complete, 1)));
+          TEST_ASSERT_EQUAL_INT ('2', reconnect_complete);
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                                 zlink_mesh_node_shutdown (node, 1000));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                                 zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
+      },
+      [] (int endpoint_fd) -> int {
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          if (endpoint[0] == '\0')
+              return 10;
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 11;
+          void *node = new_started_node (ctx, mesh_name, "node-b");
+          const uint64_t first_intent_id = submit_peer_intent (node, endpoint);
+          if (first_intent_id == 0)
+              return 12;
+
+          zlink_mesh_peer_entry_t first;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &first))
+              return 13;
+          char first_observed = 0;
+          if (read (endpoint_fd, &first_observed, 1) != 1
+              || first_observed != '1')
+              return 20;
+          //  Intent removal is only for a connection that has not completed
+          //  admission. An admitted lifetime must be selected by RID and
+          //  generation so a reused intent id cannot close the wrong peer.
+          if (zlink_mesh_node_remove_peer_connection (node, first_intent_id)
+                != ZLINK_CONNECT_BUSY
+              || zlink_errno () != EBUSY)
+              return 19;
+          if (zlink_mesh_node_disconnect_peer (
+                node, &first.routing_id, first.lifecycle_generation)
+              != ZLINK_CONNECT_OK)
+              return 14;
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 15;
+
+          zlink_mesh_peer_entry_t second;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &second))
+              return 16;
+          if (second.connection_intent_id == first.connection_intent_id)
+              return 17;
+          const char reconnect_complete = '2';
+          if (write (endpoint_fd, &reconnect_complete, 1) != 1)
+              return 21;
+
+          zlink_mesh_node_shutdown (node, 1000);
+          const int destroy_rc = zlink_mesh_node_destroy (&node);
+          const int term_rc = zlink_ctx_term (ctx);
+          return destroy_rc == ZLINK_CLOSE_OK && term_rc == 0 ? 0 : 18;
+      });
+}
+
 //  A different MeshName must be rejected during admission: the intent ends in
 //  ERROR with a conflict errno and the connecting node stays PARTIAL_READY.
 void test_peer_mesh_name_mismatch_is_conflict ()
 {
     run_two_process_case (
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -721,7 +915,7 @@ void test_remote_node_request_reply_round_trip ()
 {
     run_two_process_case (
       //  parent: node A answers one request.
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -890,7 +1084,7 @@ void test_remote_spot_direct_request_reply ()
 {
     run_two_process_case (
       //  parent: node A answers one spot-direct request on its entry Spot.
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -991,13 +1185,16 @@ void test_remote_spot_direct_request_reply ()
       });
 }
 
-//  A publishes a NODROP multicast; the remote subscriber Spot on B and the
+//  A publishes a multicast; the remote subscriber Spot on B and the
 //  publish detail counts observe the remote target.
 void test_remote_multicast_publish ()
 {
+    int completion_pipe[2];
+    TEST_ASSERT_EQUAL_INT (0, pipe (completion_pipe));
     run_two_process_case (
       //  parent: node A publishes after B is admitted.
-      [] (int endpoint_fd) {
+      [&] (int endpoint_fd, pid_t) {
+          close (completion_pipe[1]);
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -1010,6 +1207,27 @@ void test_remote_multicast_publish ()
 
           void *publisher = zlink_mesh_node_publisher_new (node);
           TEST_ASSERT_NOT_NULL (publisher);
+          //  Force allocation failure after the ROUTER envelope MORE frame.
+          //  The following successful publish proves that the failed
+          //  multipart scope was rolled back instead of contaminating it.
+          zlink_msg_t failed_part;
+          make_payload (&failed_part, "discarded-market-tick");
+          zlink_mesh_publish_detail_t failed_detail;
+          memset (&failed_detail, 0, sizeof (failed_detail));
+          failed_detail.struct_size = sizeof (failed_detail);
+          failed_detail.version = 1;
+          zlink_test_set_mesh_alloc_fault (1);
+          TEST_ASSERT_EQUAL_INT (
+            ZLINK_SUBMIT_OUT_OF_MEMORY,
+            zlink_mesh_node_publisher_publish (publisher, channel_name, "ticks.krw", NULL,
+                                               &failed_part, 1, &failed_detail,
+                                               ZLINK_SEND_FLAGS_NONE));
+          zlink_test_set_mesh_alloc_fault (0);
+          zlink_msg_close (&failed_part);
+          TEST_ASSERT_EQUAL_UINT (1, failed_detail.snapshot_remote_target_count);
+          TEST_ASSERT_EQUAL_UINT (0, failed_detail.admitted_remote_target_count);
+          TEST_ASSERT_EQUAL_UINT (1, failed_detail.dropped_remote_target_count);
+
           zlink_msg_t part;
           make_payload (&part, "market-tick");
           zlink_mesh_publish_detail_t detail;
@@ -1025,16 +1243,34 @@ void test_remote_multicast_publish ()
           TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
           TEST_ASSERT_EQUAL_UINT (1, detail.admitted_remote_target_count);
           TEST_ASSERT_EQUAL_UINT (0, detail.dropped_remote_target_count);
+
+          make_payload (&part, "dropped-market-tick");
+          TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                                 zlink_mesh_node_publisher_publish (publisher, channel_name,
+                                                                    "ticks.krw", NULL, &part, 1,
+                                                                    &detail,
+                                                                    ZLINK_SEND_FLAGS_NONE));
+          zlink_msg_close (&part);
+          TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
+          TEST_ASSERT_EQUAL_UINT (1, detail.admitted_remote_target_count);
           TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
                                  zlink_mesh_node_publisher_destroy (&publisher));
 
-          msleep (500);
+          //  Keep A connected until B has checked both ingress records and
+          //  closed its node. The raw context contract permits infinite linger
+          //  for an internal ROUTER with an active reconnect pipe.
+          unsigned char completion = 0;
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (read (completion_pipe[0], &completion, 1)));
+          TEST_ASSERT_EQUAL_HEX8 (0xA5, completion);
+          close (completion_pipe[0]);
           TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 2000));
           TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
           TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
       },
       //  child: node B subscribes and drains the multicast record.
-      [] (int endpoint_fd) -> int {
+      [&] (int endpoint_fd) -> int {
+          close (completion_pipe[0]);
           char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
           read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
           if (endpoint[0] == '\0')
@@ -1043,28 +1279,39 @@ void test_remote_multicast_publish ()
           void *ctx = zlink_ctx_new ();
           if (!ctx)
               return 11;
-          void *node = new_started_node (ctx, mesh_name, "node-b");
+          void *node = new_started_node (ctx, mesh_name, "node-b", 1);
+
+          zlink_mesh_monitor_open_options_t monitor_options;
+          memset (&monitor_options, 0, sizeof (monitor_options));
+          monitor_options.struct_size = sizeof (monitor_options);
+          monitor_options.version = 1;
+          void *monitor = zlink_mesh_node_monitor_open (node, &monitor_options);
+          if (!monitor)
+              return 12;
 
           void *spot = NULL;
           if (zlink_mesh_node_entry_spot (node, &spot) != ZLINK_CONFIG_OK)
-              return 12;
+              return 13;
           if (zlink_spot_set_subscription (spot, channel_name, "ticks.",
                                            ZLINK_SPOT_SUBSCRIPTION_PREFIX)
               != ZLINK_CONFIG_OK)
-              return 13;
+              return 14;
 
           if (submit_peer_intent (node, endpoint) == 0)
-              return 14;
+              return 15;
           zlink_mesh_peer_entry_t entry;
           if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry))
-              return 15;
+              return 16;
+          //  Keep the one-record mailbox occupied until both successful
+          //  publishes have reached this node.
+          msleep (1000);
 
           //  Drain the multicast record from the entry Spot's application
           //  lane.
           void *ready = zlink_mesh_ready_batch_new (8);
           void *batch = zlink_mesh_receive_batch_new (8, 32, 64 * 1024);
           if (!ready || !batch)
-              return 16;
+              return 17;
           int result = 30;
           for (int waited = 0; waited < poll_deadline_ms; waited += poll_step_ms) {
               uint32_t residue = 0;
@@ -1144,27 +1391,290 @@ void test_remote_multicast_publish ()
               }
           }
 
+          //  The ingress-side aggregate event reports the complete local
+          //  target grid for the second publish, without a per-target event.
+          bool aggregate_drop_seen = false;
+          for (int waited = 0; result == 0 && waited < 2000; waited += poll_step_ms) {
+              zlink_mesh_monitor_event_t event;
+              memset (&event, 0, sizeof (event));
+              event.struct_size = sizeof (event);
+              event.version = 1;
+              const zlink_recv_result_t rc =
+                zlink_mesh_node_monitor_recv (monitor, &event,
+                                              ZLINK_RECV_FLAGS_DONTWAIT);
+              if (rc == ZLINK_RECV_NO_DATA) {
+                  msleep (poll_step_ms);
+                  continue;
+              }
+              if (rc != ZLINK_RECV_OK) {
+                  result = 29;
+                  break;
+              }
+              if (event.kind == ZLINK_MESH_MONITOR_BACKPRESSURED) {
+                  result = 31;
+                  break;
+              }
+              if (event.kind == ZLINK_MESH_MONITOR_MULTICAST_DROPPED) {
+                  if (event.snapshot_local_spot_count != 1
+                      || event.admitted_local_spot_count != 0
+                      || event.dropped_local_spot_count != 1)
+                      result = 32;
+                  aggregate_drop_seen = true;
+                  break;
+              }
+          }
+          if (result == 0 && !aggregate_drop_seen)
+              result = 33;
+
           zlink_mesh_ready_batch_destroy (&ready);
           zlink_mesh_receive_batch_destroy (&batch);
           zlink_spot_destroy (&spot);
+          zlink_mesh_node_monitor_close (&monitor);
           zlink_mesh_node_shutdown (node, 1000);
           if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK && result == 0)
               result = 26;
           if (zlink_ctx_term (ctx) != 0 && result == 0)
               result = 27;
+          const unsigned char completion = 0xA5;
+          if (write (completion_pipe[1], &completion, 1) != 1 && result == 0)
+              result = 34;
+          close (completion_pipe[1]);
           return result;
       });
 }
-//  A NODROP publish whose admitted remote target loses its pipe between the
-//  wire reserve and the commit is a peer departure, not a drop: the call
-//  succeeds, the detail keeps the true snapshot and reports the departure in
-//  the unreachable count while the local leg still delivers.
-void test_nodrop_unreachable_target_accounting ()
+
+//  Shutdown interrupts an infinite-timeout blocking ROUTER send. The child
+//  process is stopped after admission so its transport cannot drain; with a
+//  one-message ROUTER HWM, the publisher must eventually hold the wire send
+//  scope until wire_stop cancels it. A concurrent descriptor update must not
+//  retain the node mutex while waiting for that wire send scope.
+void test_shutdown_interrupts_infinite_blocking_mesh_send ()
+{
+    int ready_pipe[2];
+    int resume_pipe[2];
+    TEST_ASSERT_EQUAL_INT (0, pipe (ready_pipe));
+    TEST_ASSERT_EQUAL_INT (0, pipe (resume_pipe));
+
+    run_two_process_case (
+      [&] (int endpoint_fd, pid_t child_pid) {
+          close (ready_pipe[1]);
+          close (resume_pipe[0]);
+
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                                 zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0));
+          void *node =
+            new_started_node (ctx, mesh_name, "node-a", 0, 1, true);
+          publish_endpoint (node, endpoint_fd);
+          TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1),
+                                    "node A did not admit the stalled peer");
+
+          unsigned char child_ready = 0;
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (read (ready_pipe[0], &child_ready, 1)));
+          TEST_ASSERT_EQUAL_HEX8 (0xA5, child_ready);
+          close (ready_pipe[0]);
+
+          TEST_ASSERT_EQUAL_INT (0, kill (child_pid, SIGSTOP));
+          int stopped_status = 0;
+          TEST_ASSERT_EQUAL_INT (child_pid,
+                                 waitpid (child_pid, &stopped_status, WUNTRACED));
+          TEST_ASSERT_TRUE (WIFSTOPPED (stopped_status));
+
+          void *publisher = zlink_mesh_node_publisher_new (node);
+          TEST_ASSERT_NOT_NULL (publisher);
+          zlink_msg_t part;
+          const size_t payload_size = 4 * 1024 * 1024;
+          TEST_ASSERT_EQUAL_INT (0, zlink_msg_init_size (&part, payload_size));
+          memset (zlink_msg_data (&part), 0x5A, payload_size);
+
+          std::atomic<uint32_t> started (0);
+          std::atomic<uint32_t> completed (0);
+          std::atomic<bool> in_publish (false);
+          std::atomic<int> terminal_result (ZLINK_SUBMIT_OK);
+          std::thread sender ([&] {
+              for (;;) {
+                  zlink_mesh_publish_detail_t detail;
+                  memset (&detail, 0, sizeof (detail));
+                  detail.struct_size = sizeof (detail);
+                  detail.version = 1;
+                  started.fetch_add (1, std::memory_order_release);
+                  in_publish.store (true, std::memory_order_release);
+                  const zlink_submit_result_t rc =
+                    zlink_mesh_node_publisher_publish (
+                      publisher, channel_name, "blocked.remote", NULL, &part, 1,
+                      &detail, ZLINK_SEND_FLAGS_NONE);
+                  in_publish.store (false, std::memory_order_release);
+                  if (rc != ZLINK_SUBMIT_OK) {
+                      terminal_result.store (rc, std::memory_order_release);
+                      return;
+                  }
+                  completed.fetch_add (1, std::memory_order_release);
+              }
+          });
+
+          bool blocked = false;
+          uint32_t previous_completed = completed.load (std::memory_order_acquire);
+          int stable_turns = 0;
+          for (int waited = 0; waited < 5000; waited += poll_step_ms) {
+              const uint32_t current_completed =
+                completed.load (std::memory_order_acquire);
+              const bool call_in_progress =
+                in_publish.load (std::memory_order_acquire)
+                && started.load (std::memory_order_acquire) > current_completed;
+              if (current_completed > 0 && current_completed == previous_completed
+                  && call_in_progress)
+                  ++stable_turns;
+              else
+                  stable_turns = 0;
+              if (stable_turns >= 10) {
+                  blocked = true;
+                  break;
+              }
+              previous_completed = current_completed;
+              msleep (poll_step_ms);
+          }
+          TEST_ASSERT_TRUE_MESSAGE (blocked,
+                                    "blocking publish did not reach ROUTER backpressure");
+
+          std::atomic<bool> update_started (false);
+          std::atomic<int> update_result (-1);
+          std::thread updater ([&] {
+              update_started.store (true, std::memory_order_release);
+              update_result.store (
+                zlink_mesh_node_set_channel_weight (node, channel_name, 99),
+                std::memory_order_release);
+          });
+          while (!update_started.load (std::memory_order_acquire))
+              std::this_thread::yield ();
+          //  Give the updater time to reach the wire mutex. An implementation
+          //  that sends while retaining node->mutex now deadlocks shutdown.
+          msleep (200);
+
+          std::atomic<bool> shutdown_done (false);
+          std::atomic<bool> watchdog_resumed_child (false);
+          std::atomic<int> resume_write_result (-1);
+          std::atomic<int> resume_kill_result (-1);
+          std::thread shutdown_watchdog ([&] {
+              for (int waited = 0; waited < 1500; waited += poll_step_ms) {
+                  if (shutdown_done.load (std::memory_order_acquire))
+                      return;
+                  msleep (poll_step_ms);
+              }
+              const unsigned char resume = 0x5A;
+              resume_write_result.store (
+                static_cast<int> (write (resume_pipe[1], &resume, 1)),
+                std::memory_order_release);
+              close (resume_pipe[1]);
+              resume_kill_result.store (kill (child_pid, SIGCONT),
+                                        std::memory_order_release);
+              watchdog_resumed_child.store (true, std::memory_order_release);
+          });
+
+          const std::chrono::steady_clock::time_point shutdown_started =
+            std::chrono::steady_clock::now ();
+          const zlink_request_result_t shutdown_result =
+            zlink_mesh_node_shutdown (node, 2000);
+          const int64_t shutdown_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds> (
+              std::chrono::steady_clock::now () - shutdown_started)
+              .count ();
+          shutdown_done.store (true, std::memory_order_release);
+          shutdown_watchdog.join ();
+          sender.join ();
+          updater.join ();
+
+          if (!watchdog_resumed_child.load (std::memory_order_acquire)) {
+              const unsigned char resume = 0x5A;
+              resume_write_result.store (
+                static_cast<int> (write (resume_pipe[1], &resume, 1)),
+                std::memory_order_release);
+              close (resume_pipe[1]);
+              resume_kill_result.store (kill (child_pid, SIGCONT),
+                                        std::memory_order_release);
+          }
+
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, shutdown_result);
+          TEST_ASSERT_TRUE_MESSAGE (shutdown_ms < 1500,
+                                    "shutdown did not interrupt the blocking send");
+          TEST_ASSERT_FALSE_MESSAGE (
+            watchdog_resumed_child.load (std::memory_order_acquire),
+            "descriptor update retained the node mutex and blocked shutdown");
+          TEST_ASSERT_NOT_EQUAL (ZLINK_SUBMIT_OK,
+                                 terminal_result.load (std::memory_order_acquire));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                                 update_result.load (std::memory_order_acquire));
+          TEST_ASSERT_EQUAL_INT (1,
+                                 resume_write_result.load (std::memory_order_acquire));
+          TEST_ASSERT_EQUAL_INT (0,
+                                 resume_kill_result.load (std::memory_order_acquire));
+
+          zlink_msg_close (&part);
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                                 zlink_mesh_node_publisher_destroy (&publisher));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+      },
+      [&] (int endpoint_fd) -> int {
+          close (ready_pipe[0]);
+          close (resume_pipe[1]);
+
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          if (endpoint[0] == '\0')
+              return 10;
+
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 11;
+          if (zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0) != ZLINK_CONFIG_OK)
+              return 12;
+          void *node = new_started_node (ctx, mesh_name, "node-b", 0, 1);
+          void *spot = NULL;
+          if (zlink_mesh_node_entry_spot (node, &spot) != ZLINK_CONFIG_OK)
+              return 13;
+          if (zlink_spot_set_subscription (spot, channel_name, "blocked.",
+                                           ZLINK_SPOT_SUBSCRIPTION_PREFIX)
+              != ZLINK_CONFIG_OK)
+              return 14;
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 15;
+          zlink_mesh_peer_entry_t entry;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry))
+              return 16;
+
+          const unsigned char child_ready = 0xA5;
+          if (write (ready_pipe[1], &child_ready, 1) != 1)
+              return 17;
+          close (ready_pipe[1]);
+
+          unsigned char resume = 0;
+          if (read (resume_pipe[0], &resume, 1) != 1 || resume != 0x5A)
+              return 18;
+          close (resume_pipe[0]);
+
+          int result = 0;
+          if (zlink_spot_destroy (&spot) != ZLINK_CLOSE_OK)
+              result = 19;
+          if (zlink_mesh_node_shutdown (node, 1000) != ZLINK_REQUEST_OK
+              && result == 0)
+              result = 20;
+          if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK && result == 0)
+              result = 21;
+          if (zlink_ctx_term (ctx) != ZLINK_CLOSE_OK && result == 0)
+              result = 22;
+          return result;
+      });
+}
+//  An admitted remote target that loses its ROUTER pipe during publish is
+//  reported as unreachable while the independent local leg still delivers.
+void test_router_unreachable_target_accounting ()
 {
     run_two_process_case (
-      //  parent: node A injects one send fault so its admitted target fails
-      //  between reserve and commit, then checks the publish accounting.
-      [] (int endpoint_fd) {
+          //  parent: node A injects ROUTER send faults and checks that remote
+          //  accounting does not roll back the independent local delivery.
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -1193,10 +1703,8 @@ void test_nodrop_unreachable_target_accounting ()
               detail.version = 1;
               zlink_msg_t part;
               make_payload (&part, "market-tick");
-              //  One injected fault fails the next wire frame from this
-              //  node, so the admitted target departs between reserve and
-              //  commit. A concurrent control frame may consume the fault
-              //  instead; that round observes a clean publish and retries.
+              //  A concurrent control frame may consume the injected fault;
+              //  that round observes a clean publish and retries.
               zlink_test_set_submit_retry_fault (1, ENOTCONN);
               const zlink_submit_result_t rc = zlink_mesh_node_publisher_publish (
                 publisher, channel_name, "ticks.krw", NULL, &part, 1, &detail,
@@ -1218,6 +1726,37 @@ void test_nodrop_unreachable_target_accounting ()
           }
           TEST_ASSERT_TRUE_MESSAGE (observed,
                                     "injected departure never surfaced as unreachable");
+
+          observed = false;
+          for (int attempt = 0; attempt < 10 && !observed; ++attempt) {
+              zlink_mesh_publish_detail_t detail;
+              memset (&detail, 0, sizeof (detail));
+              detail.struct_size = sizeof (detail);
+              detail.version = 1;
+              zlink_msg_t part;
+              make_payload (&part, "market-tick");
+              zlink_test_set_submit_retry_fault (1, EAGAIN);
+              const zlink_submit_result_t rc = zlink_mesh_node_publisher_publish (
+                publisher, channel_name, "ticks.krw", NULL, &part, 1, &detail,
+                ZLINK_SEND_FLAGS_DONTWAIT);
+              zlink_test_set_submit_retry_fault (0, 0);
+              zlink_msg_close (&part);
+              if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+                  TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (0, detail.admitted_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (1, detail.dropped_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (0, detail.unreachable_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_local_spot_count);
+                  TEST_ASSERT_EQUAL_UINT (1, detail.admitted_local_spot_count);
+                  TEST_ASSERT_EQUAL_UINT (0, detail.dropped_local_spot_count);
+                  observed = true;
+              } else {
+                  TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, rc);
+              }
+          }
+          TEST_ASSERT_TRUE_MESSAGE (
+            observed, "injected ROUTER backpressure never reached publish result");
+
           TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
           TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
 
@@ -1271,7 +1810,7 @@ void test_remote_actor_lookup_messaging_destroy ()
 {
     run_two_process_case (
       //  parent: node A hosts actor "billing-1" and answers one request.
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -1404,7 +1943,7 @@ void test_remote_actor_join_entry_spot ()
 {
     run_two_process_case (
       //  parent: node A accepts one join on its entry Spot.
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -2108,7 +2647,7 @@ void test_inbound_peer_merges_manual_intent_to_mixed ()
     run_two_process_case (
       //  parent: node A only accepts the inbound connection, then adds a
       //  manual intent for the child's advertised endpoint.
-      [] (int endpoint_fd) {
+      [] (int endpoint_fd, pid_t) {
           void *ctx = zlink_ctx_new ();
           TEST_ASSERT_NOT_NULL (ctx);
           void *node = new_started_node (ctx, mesh_name, "node-a");
@@ -2184,11 +2723,11 @@ void test_peer_drain_and_reconnect ()
 {
     //  Both children fork before the parent's node exists (the per-process
     //  MeshName registry is inherited across fork); each waits for the
-    //  endpoint on its own pipe.
+    //  endpoint on its own local socket.
     int ep1[2];
     int ep2[2];
-    TEST_ASSERT_EQUAL_INT (0, pipe (ep1));
-    TEST_ASSERT_EQUAL_INT (0, pipe (ep2));
+    TEST_ASSERT_EQUAL_INT (0, socketpair (AF_UNIX, SOCK_STREAM, 0, ep1));
+    TEST_ASSERT_EQUAL_INT (0, socketpair (AF_UNIX, SOCK_STREAM, 0, ep2));
 
     fflush (NULL);
     const pid_t child1 = fork ();
@@ -2208,6 +2747,11 @@ void test_peer_drain_and_reconnect ()
         zlink_mesh_peer_entry_t entry;
         if (rc == 0 && !wait_peer_state (child_node, ZLINK_MESH_PEER_ADMITTED, &entry))
             rc = 11;
+        char parent_observed = 0;
+        if (rc == 0
+            && (read (ep1[0], &parent_observed, 1) != 1
+                || parent_observed != '1'))
+            rc = 12;
         if (child_node) {
             zlink_mesh_node_shutdown (child_node, 1000);
             zlink_mesh_node_destroy (&child_node);
@@ -2276,6 +2820,9 @@ void test_peer_drain_and_reconnect ()
     publish_endpoint (node, ep1[1]);
 
     TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1), "round-1 peer not admitted");
+    const char round1_observed = '1';
+    TEST_ASSERT_EQUAL_INT (
+      1, static_cast<int> (write (ep1[1], &round1_observed, 1)));
     //  Inbound peers never gate readiness: A stays READY throughout.
     TEST_ASSERT_TRUE (wait_node_state (node, ZLINK_MESH_NODE_READY));
 
@@ -2347,23 +2894,33 @@ void test_peer_drain_and_reconnect ()
 }
 #endif
 
-int main ()
+int main (int argc, char **argv)
 {
     setup_test_environment (180);
     UNITY_BEGIN ();
 #if !defined _WIN32
-    RUN_TEST (test_peer_admission_readiness_and_weight_update);
-    RUN_TEST (test_peer_mesh_name_mismatch_is_conflict);
-    RUN_TEST (test_remote_node_request_reply_round_trip);
-    RUN_TEST (test_remote_spot_direct_request_reply);
-    RUN_TEST (test_remote_multicast_publish);
-    RUN_TEST (test_nodrop_unreachable_target_accounting);
-    RUN_TEST (test_remote_actor_lookup_messaging_destroy);
-    RUN_TEST (test_remote_actor_join_entry_spot);
-    RUN_TEST (test_remote_actor_transfer_fence);
-    RUN_TEST (test_remote_channel_round_robin_and_zero_weight_exclusion);
-    RUN_TEST (test_inbound_peer_merges_manual_intent_to_mixed);
-    RUN_TEST (test_peer_drain_and_reconnect);
+#define RUN_SELECTED(test_)                                                   \
+    do {                                                                      \
+        if (argc == 1 || strcmp (argv[1], #test_) == 0)                       \
+            RUN_TEST (test_);                                                 \
+    } while (false)
+    RUN_SELECTED (test_hello_before_ready_does_not_copy_predecessor_transport);
+    RUN_SELECTED (test_peer_admission_readiness_and_weight_update);
+    RUN_SELECTED (test_stale_transport_disconnect_preserves_admitted_successor);
+    RUN_SELECTED (test_outbound_disconnect_then_reconnect_same_endpoint);
+    RUN_SELECTED (test_peer_mesh_name_mismatch_is_conflict);
+    RUN_SELECTED (test_remote_node_request_reply_round_trip);
+    RUN_SELECTED (test_remote_spot_direct_request_reply);
+    RUN_SELECTED (test_remote_multicast_publish);
+    RUN_SELECTED (test_shutdown_interrupts_infinite_blocking_mesh_send);
+    RUN_SELECTED (test_router_unreachable_target_accounting);
+    RUN_SELECTED (test_remote_actor_lookup_messaging_destroy);
+    RUN_SELECTED (test_remote_actor_join_entry_spot);
+    RUN_SELECTED (test_remote_actor_transfer_fence);
+    RUN_SELECTED (test_remote_channel_round_robin_and_zero_weight_exclusion);
+    RUN_SELECTED (test_inbound_peer_merges_manual_intent_to_mixed);
+    RUN_SELECTED (test_peer_drain_and_reconnect);
+#undef RUN_SELECTED
 #endif
     return UNITY_END ();
 }

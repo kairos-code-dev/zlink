@@ -4,7 +4,7 @@
 
 # Service API
 
-Core 10.0.0 service 계층은 MeshNode가 transport 위치, service mailbox와 request correlation을 소유하고,
+Core 10.1.0 service 계층은 MeshNode가 transport 위치, service mailbox와 request correlation을 소유하고,
 Spot·Actor·STREAM session이 각자의 논리적 상태와 수신 owner를 제공하는 구조다. raw socket은 service
 객체를 알지 않는다. service는 raw frame, raw pipe와 내부 peer 상태를 caller에게 노출하지 않는다.
 다만 MeshNode 문서에 정의된 public peer snapshot은 제공하며, snapshot에는 공개된 peer identity,

@@ -7,7 +7,7 @@
 # SPOT Guide
 
 This document explains how application developers use Spots on top of the
-10.0.0 MeshNode. The exact function contracts are owned by the
+10.1.0 MeshNode. The exact function contracts are owned by the
 [MeshNode spec](../spec/core/service/01-mesh-node.md),
 [Dispatch spec](../spec/core/service/02-dispatch.md) and
 [Spot spec](../spec/core/service/03-spot.md).
@@ -19,7 +19,7 @@ This document explains how application developers use Spots on top of the
 
 ## 1. Structure: one MeshNode, many Spots
 
-In 10.0.0 the single lifecycle and transport owner is the **MeshNode**.
+In 10.1.0 the single lifecycle and transport owner is the **MeshNode**.
 
 - `MeshNode` — one MeshName, one ROUTER bind, unique per process. Owns peer
   admission, channel routing, Logical Multicast, dispatch and the monitor.
@@ -168,10 +168,10 @@ zlink_spot_request_to_spot(spot, &target_node_rid, &target_spot_rid,
   completes with `ESTALE`/`ENOENT`).
 - Optional application metadata rides in a `zlink_mesh_metadata_view_t`
   (canonical frame, 1024-byte cap). Replies carry no metadata.
-- Publish NODROP defaults to 1: every local mailbox and remote pipe is
-  pre-checked and the commit is all-or-none. Counts are reported through
-  `zlink_mesh_publish_detail_t`. Per-publisher settings:
-  `zlink_mesh_node_publisher_set_option()` / `zlink_spot_set_publish_option()`.
+- Publish submits independently to each local mailbox and remote ROUTER target.
+  Remote HWM, timeout and backpressure follow the ROUTER send contract, and a
+  later target failure does not undo earlier successful submissions. Per-target
+  counts are reported through `zlink_mesh_publish_detail_t`.
 
 ## 5. Consuming messages: ready → claim → receive batch
 
@@ -279,8 +279,9 @@ once the Spot generation ends (destroy/move). See
   inside a turn (in-turn await) is safe.
 - **Design for backpressure.** When the mailbox budget is full, submits fail
   with `ZLINK_SUBMIT_BACKPRESSURED` (`EAGAIN`); blocking submits wait until
-  SNDTIMEO and fail with `ETIMEDOUT`. Observe through the monitor's
-  `BACKPRESSURED` event.
+  SNDTIMEO and fail with `ETIMEDOUT`. A Logical Multicast remote ROUTER submit
+  follows the existing ROUTER contract and still reports `EAGAIN` after its
+  timeout. Observe through the monitor's `BACKPRESSURED` event.
 - **Addresses come from the framework.** Core does not resolve Spot
   locations. Issuing and resolving distributed addresses (node rid, spot rid,
   generation) is the responsibility of the framework location layer.

@@ -12,6 +12,15 @@
 
 typedef int (*monitor_snapshot_provider_fn) (void *subject_, zlink_monitor_status_t *out_);
 
+//  Private version-4 raw monitor frame. Keep the producer and consumer on one
+//  layout definition; this payload is not part of the public monitor ABI.
+struct socket_monitor_internal_event_t
+{
+    zlink_monitor_event_t event;
+    uint64_t connection_id;
+    uint32_t internal_flags;
+};
+
 struct monitor_handler_state_t
 {
     monitor_handler_state_t (zlink::socket_base_t *socket_) :
@@ -114,10 +123,19 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
                                void *socket_handler_userdata_);
 
 int socket_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
+void *open_socket_monitor_internal (
+  void *socket_,
+  zlink_socket_monitor_event_mask_t events_,
+  int event_version_);
 
 int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                          zlink_monitor_event_t *event_,
                                          int flags_);
+int recv_socket_monitor_event_internal (void *monitor_socket_,
+                                        zlink_monitor_event_t *event_,
+                                        uint64_t *connection_id_out_,
+                                        uint32_t *internal_flags_out_,
+                                        int flags_);
 int require_monitor_recv_model (void *monitor_);
 
 #endif

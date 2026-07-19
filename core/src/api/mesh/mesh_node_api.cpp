@@ -342,11 +342,11 @@ zlink_mesh_node_set_channel_weight (void *mesh_node_, const char *channel_name_,
             it->second = weight_;
             node->descriptor_revision += 1;
             revision = node->descriptor_revision;
-            wire_broadcast_update_locked (node);
             changed = true;
         }
     }
     if (changed) {
+        wire_broadcast_update (node);
         zlink_mesh_monitor_event_t event;
         memset (&event, 0, sizeof (event));
         event.kind = ZLINK_MESH_MONITOR_CHANNEL_CHANGED;
@@ -655,6 +655,8 @@ zlink_connect_result_t zlink_mesh_node_connect_peer (
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
+    std::unique_lock<std::mutex> connection_lock (
+      node->peer_connection_mutex);
     if (check_versioned (options_) != 0)
         return ZLINK_CONNECT_INVALID_ARGUMENT;
     if (!options_->endpoint || options_->endpoint_size == 0
@@ -720,6 +722,9 @@ zlink_connect_result_t zlink_mesh_node_connect_peer (
         }
     }
 
+    //  A monitor handler may call a peer API. Publish the completed
+    //  transition only after releasing its serialization mutex.
+    connection_lock.unlock ();
     zlink_mesh_monitor_event_t event;
     memset (&event, 0, sizeof (event));
     event.kind = ZLINK_MESH_MONITOR_PEER_CONNECTING;
@@ -736,23 +741,47 @@ zlink_connect_result_t zlink_mesh_node_remove_peer_connection (void *mesh_node_,
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
-    std::lock_guard<std::mutex> lock (node->mutex);
-    for (size_t i = 0; i < node->peers.size (); ++i) {
-        peer_state_t &peer = node->peers[i];
-        if (peer.intent_id != connection_intent_id_ || peer.state == ZLINK_MESH_PEER_CLOSED)
-            continue;
-        if (peer.source == ZLINK_MESH_PEER_MIXED) {
-            //  Removing one source keeps the connection under the other.
-            peer.source = ZLINK_MESH_PEER_DISCOVERY;
-            return ZLINK_CONNECT_OK;
+    std::lock_guard<std::mutex> connection_lock (
+      node->peer_connection_mutex);
+    std::string endpoint;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        for (size_t i = 0; i < node->peers.size (); ++i) {
+            peer_state_t &peer = node->peers[i];
+            if (peer.intent_id != connection_intent_id_
+                || peer.state == ZLINK_MESH_PEER_CLOSED)
+                continue;
+            if ((peer.state == ZLINK_MESH_PEER_ADMITTED
+                 || peer.state == ZLINK_MESH_PEER_DRAINING)
+                && peer.source != ZLINK_MESH_PEER_MIXED) {
+                errno = EBUSY;
+                return ZLINK_CONNECT_BUSY;
+            }
+            endpoint = peer.endpoint;
+            if (peer.source == ZLINK_MESH_PEER_MIXED) {
+                //  Discovery still owns the same intent, so the physical
+                //  connector and admitted transport remain unchanged.
+                peer.source = ZLINK_MESH_PEER_DISCOVERY;
+                return ZLINK_CONNECT_OK;
+            } else {
+                peer.state = ZLINK_MESH_PEER_CLOSED;
+                peer.last_changed_ms = now_ms ();
+                recompute_readiness_locked (node);
+            }
+            break;
         }
-        peer.state = ZLINK_MESH_PEER_CLOSED;
-        peer.last_changed_ms = now_ms ();
-        recompute_readiness_locked (node);
-        return ZLINK_CONNECT_OK;
     }
-    errno = ENOENT;
-    return ZLINK_CONNECT_NOT_FOUND;
+    if (endpoint.empty ()) {
+        errno = ENOENT;
+        return ZLINK_CONNECT_NOT_FOUND;
+    }
+
+    //  Logical removal is idempotent with a transport that already ended.
+    //  The connector must still be retired so it cannot recreate the peer.
+    if (wire_disconnect_endpoint (node, endpoint) != 0
+        && errno != ENOENT && errno != ENOTCONN)
+        return ZLINK_CONNECT_INTERNAL_ERROR;
+    return ZLINK_CONNECT_OK;
 }
 
 zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
@@ -765,12 +794,16 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
     }
+    std::unique_lock<std::mutex> connection_lock (
+      node->peer_connection_mutex);
     if (!peer_rid_ || peer_rid_->size == 0) {
         errno = EINVAL;
         return ZLINK_CONNECT_INVALID_ARGUMENT;
     }
     const rid_bytes_t rid = rid_bytes (*peer_rid_);
     bool closed = false;
+    bool inbound = false;
+    std::string endpoint;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         for (size_t i = 0; i < node->peers.size () && !closed; ++i) {
@@ -785,11 +818,24 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
             }
             peer.state = ZLINK_MESH_PEER_CLOSED;
             peer.last_changed_ms = now_ms ();
+            inbound = peer.inbound;
+            endpoint = peer.endpoint;
             recompute_readiness_locked (node);
             closed = true;
         }
     }
     if (closed) {
+        int disconnect_rc = 0;
+        if (!inbound && !endpoint.empty ())
+            disconnect_rc = wire_disconnect_endpoint (node, endpoint);
+        else
+            disconnect_rc = wire_disconnect_peer (node, rid);
+        if (disconnect_rc != 0 && errno != ENOENT && errno != ENOTCONN)
+            return ZLINK_CONNECT_INTERNAL_ERROR;
+
+        //  Monitor callbacks are outside the peer transition critical section
+        //  so normal peer API re-entry cannot deadlock.
+        connection_lock.unlock ();
         zlink_mesh_monitor_event_t event;
         memset (&event, 0, sizeof (event));
         event.kind = ZLINK_MESH_MONITOR_PEER_CLOSED;
@@ -1298,113 +1344,4 @@ zlink_close_result_t zlink_mesh_node_publisher_destroy (void **publisher_p_)
     delete pub;
     *publisher_p_ = NULL;
     return ZLINK_CLOSE_OK;
-}
-
-static zlink_config_result_t
-publish_option_set (int *slot_, zlink_mesh_publish_option_t option_, const void *optval_, size_t len_)
-{
-    if (option_ != ZLINK_MESH_PUBLISH_OPT_NODROP) {
-        errno = ENOTSUP;
-        return ZLINK_CONFIG_NOT_SUPPORTED;
-    }
-    if (!optval_ || len_ != sizeof (int)) {
-        errno = EMSGSIZE;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    const int value = *static_cast<const int *> (optval_);
-    if (value != 0 && value != 1) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-    *slot_ = value;
-    return ZLINK_CONFIG_OK;
-}
-
-static zlink_config_result_t
-publish_option_get (int value_, zlink_mesh_publish_option_t option_, void *optval_, size_t *len_)
-{
-    if (option_ != ZLINK_MESH_PUBLISH_OPT_NODROP) {
-        errno = ENOTSUP;
-        return ZLINK_CONFIG_NOT_SUPPORTED;
-    }
-    if (!optval_ || !len_) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    if (*len_ < sizeof (int)) {
-        *len_ = sizeof (int);
-        errno = ENOBUFS;
-        return ZLINK_CONFIG_BUFFER_TOO_SMALL;
-    }
-    *static_cast<int *> (optval_) = value_;
-    *len_ = sizeof (int);
-    return ZLINK_CONFIG_OK;
-}
-
-zlink_config_result_t zlink_mesh_node_publisher_set_option (void *publisher_,
-                                                            zlink_mesh_publish_option_t option_,
-                                                            const void *optval_,
-                                                            size_t optvallen_)
-{
-    publisher_t *pub = as_publisher (publisher_);
-    if (!pub) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::lock_guard<std::mutex> lock (pub->node->mutex);
-    return publish_option_set (&pub->nodrop, option_, optval_, optvallen_);
-}
-
-zlink_config_result_t zlink_mesh_node_publisher_get_option (void *publisher_,
-                                                            zlink_mesh_publish_option_t option_,
-                                                            void *optval_,
-                                                            size_t *optvallen_)
-{
-    publisher_t *pub = as_publisher (publisher_);
-    if (!pub) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::lock_guard<std::mutex> lock (pub->node->mutex);
-    return publish_option_get (pub->nodrop, option_, optval_, optvallen_);
-}
-
-zlink_config_result_t zlink_spot_set_publish_option (void *spot_,
-                                                     zlink_mesh_publish_option_t option_,
-                                                     const void *optval_,
-                                                     size_t optvallen_)
-{
-    spot_facade_t *facade = as_spot_facade (spot_);
-    if (!facade) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::lock_guard<std::mutex> lock (facade->node->mutex);
-    const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
-    std::map<std::string, spot_state_t>::iterator it = facade->node->spots.find (key);
-    if (it == facade->node->spots.end () || it->second.generation != facade->generation) {
-        errno = ESTALE;
-        return ZLINK_CONFIG_INVALID_STATE;
-    }
-    return publish_option_set (&it->second.publish_nodrop, option_, optval_, optvallen_);
-}
-
-zlink_config_result_t zlink_spot_get_publish_option (void *spot_,
-                                                     zlink_mesh_publish_option_t option_,
-                                                     void *optval_,
-                                                     size_t *optvallen_)
-{
-    spot_facade_t *facade = as_spot_facade (spot_);
-    if (!facade) {
-        errno = EFAULT;
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    }
-    std::lock_guard<std::mutex> lock (facade->node->mutex);
-    const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
-    std::map<std::string, spot_state_t>::iterator it = facade->node->spots.find (key);
-    if (it == facade->node->spots.end () || it->second.generation != facade->generation) {
-        errno = ESTALE;
-        return ZLINK_CONFIG_INVALID_STATE;
-    }
-    return publish_option_get (it->second.publish_nodrop, option_, optval_, optvallen_);
 }

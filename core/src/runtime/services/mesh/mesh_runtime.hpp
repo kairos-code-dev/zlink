@@ -212,6 +212,23 @@ struct pending_operation_t
 
 //  --- peers ----------------------------------------------------------------
 
+struct peer_transport_t
+{
+    peer_transport_t () : connection_id (0) {}
+    explicit peer_transport_t (uint64_t connection_id_) :
+        connection_id (connection_id_)
+    {
+    }
+
+    bool empty () const { return connection_id == 0; }
+    bool matches (uint64_t connection_id_) const
+    {
+        return connection_id != 0 && connection_id == connection_id_;
+    }
+
+    uint64_t connection_id;
+};
+
 struct peer_state_t
 {
     peer_state_t ();
@@ -223,6 +240,7 @@ struct peer_state_t
     //  node's readiness (readiness is an intent property per the spec).
     bool inbound;
     rid_bytes_t rid;
+    peer_transport_t transport;
     uint64_t lifecycle_generation;
     uint64_t descriptor_revision;
     std::string endpoint;
@@ -231,6 +249,7 @@ struct peer_state_t
     std::map<std::string, uint32_t> channels; //  advertised name -> weight
     int32_t last_error;
     uint64_t last_changed_ms;
+
 };
 
 //  --- subscriptions ---------------------------------------------------------
@@ -265,7 +284,6 @@ struct spot_state_t
     uint32_t timer_count;
     uint32_t active_actor_count;
     bool draining;
-    int publish_nodrop; //  default 1
     std::set<subscription_key_t> subscriptions;
     int32_t last_error;
     uint64_t last_changed_ms;
@@ -416,7 +434,6 @@ struct publisher_t
 
     uint32_t tag;
     mesh_node_t *node;
-    int nodrop; //  default 1
 };
 
 //  --- batches -----------------------------------------------------------------
@@ -517,6 +534,10 @@ struct mesh_node_t
 
     mutable std::mutex mutex;
     std::condition_variable cv;
+    //  Makes logical peer transitions and their physical connector/pipe
+    //  changes one ordered operation without holding the node state mutex
+    //  across socket calls.
+    std::mutex peer_connection_mutex;
 
     //  identity / configuration (immutable after start)
     std::string mesh_name;
@@ -543,6 +564,7 @@ struct mesh_node_t
     //  peers
     uint64_t next_intent_id;
     std::vector<peer_state_t> peers;
+    std::map<rid_bytes_t, peer_transport_t> current_peer_transports;
     std::map<std::string, size_t> rr_cursor; //  channel -> cursor
 
     //  owners & dispatch
@@ -605,9 +627,8 @@ struct mesh_node_t
     void *router_monitor;
     std::thread io_thread;
     std::atomic<bool> io_stop;
-    //  Serializes all outbound wire traffic so a NODROP multicast can probe
-    //  every target pipe and then commit without interleaved sends. Locked
-    //  after the node mutex when both are needed.
+    //  Serializes outbound multipart frame groups so concurrent wire submits
+    //  cannot interleave. Locked after the node mutex when both are needed.
     std::mutex wire_send_mutex;
 
     //  Effective budgets resolved from options/profile at start.
@@ -718,6 +739,12 @@ int admit_record (mesh_node_t *node_,
                   std::unique_ptr<queued_record_t> &record_,
                   bool blocking_,
                   uint32_t timeout_ms_);
+
+//  Logical Multicast uses ordinary nonblocking application admission but
+//  reports pressure once through its aggregate multicast event.
+int admit_multicast_record (mesh_node_t *node_,
+                            const owner_id_t &owner_,
+                            std::unique_ptr<queued_record_t> &record_);
 
 //  Marks an owner/domain readable and wakes the registered consumer.
 void signal_ready (mesh_node_t *node_, const owner_id_t &owner_, domain_t domain_);

@@ -117,7 +117,7 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | Module | Role |
 |--------|------|
 | `mesh_runtime.cpp/hpp` | Object model: mesh_node_t, owner mailboxes, ready index, claims, budgets, monitor queue, handle registry |
-| `mesh_wire.cpp/hpp` | Node-owned ROUTER wire lifecycle and outbound submits (wire_submit_*, NODROP reserve/commit) |
+| `mesh_wire.cpp/hpp` | Node-owned ROUTER wire lifecycle and outbound submits (`wire_submit_*`) |
 | `mesh_wire_codec.cpp` | Wire envelope/record encode and decode (`mesh_wire_internal.hpp` contract) |
 | `mesh_wire_admission.cpp` | Peer admission handshake, generation replacement, descriptor exchange |
 | `mesh_wire_ingress.cpp` | Ingress thread: inbound dispatch, peer down, actor and transfer data plane |
@@ -131,8 +131,9 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 
 Deep-module boundary: the public API layer owns only signature validation and
 result mapping; every state transition delegates into `mesh_runtime` and the
-four `mesh_wire*` modules (their shared contract is `mesh_wire_internal.hpp`). The raw socket layer knows nothing about mesh (its only extension is
-`routed_target_writable()` for the NODROP atomic reserve).
+four `mesh_wire*` modules (their shared contract is `mesh_wire_internal.hpp`).
+The raw socket layer knows nothing about mesh, and Logical Multicast uses the
+ordinary ROUTER send path.
 
 
 ### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)

@@ -663,7 +663,11 @@ zlink_set_routing_id(dealer, "stable-id", 9);
 
 ### routing_id 충돌
 
-같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이 거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를 `ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 새 pipe가 기존 pipe를 대체한다.
+같은 routing_id를 가진 두 DEALER가 동시에 연결되면 기본적으로 두 번째 연결이
+거부된다. `ZLINK_OPT_RID_DUPLICATE_POLICY`를
+`ZLINK_RID_DUPLICATE_HANDOVER`로 설정하면 같은 방향의 재연결은 새 pipe가 기존
+pipe를 대체한다. 양쪽에서 서로 연결해 반대 방향 pipe가 충돌하면 두 피어의
+routing_id를 비교해 양쪽이 같은 방향 하나를 선택한다.
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
 
@@ -726,8 +730,7 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 
 ## 8. ROUTER와 서비스 계층의 경계
 
-10.0.0에서 raw ROUTER는 범용 소켓 계약만 가진다. 9.x의 route bridge(외부
-router channel을 SPOT routed plane의 ingress로 등록하는 기계)는 제거되었다.
+raw ROUTER는 범용 소켓 계약만 가진다.
 
 - MeshNode는 자기 소유 ROUTER 하나로 mesh peer와만 통신하며, raw ROUTER
   socket을 서비스 평면의 ingress로 등록하는 공개 API는 없다.

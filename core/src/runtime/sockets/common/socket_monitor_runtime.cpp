@@ -16,13 +16,21 @@ std::string make_monitor_ready_key (const zlink::endpoint_uri_pair_t &endpoint_u
     key.push_back ('\0');
     if (routing_id_ && routing_id_size_ > 0)
         key.append (reinterpret_cast<const char *> (routing_id_), routing_id_size_);
+    key.push_back ('\0');
+    key.append (reinterpret_cast<const char *> (
+                  &endpoint_uri_pair_.connection_id),
+                sizeof (endpoint_uri_pair_.connection_id));
     return key;
 }
 
 std::string
 make_monitor_ready_endpoint_prefix (const zlink::endpoint_uri_pair_t &endpoint_uri_pair_)
 {
-    return make_monitor_ready_key (endpoint_uri_pair_, NULL, 0);
+    std::string prefix = endpoint_uri_pair_.identifier ();
+    if (prefix.empty ())
+        prefix = endpoint_uri_pair_.remote;
+    prefix.push_back ('\0');
+    return prefix;
 }
 }
 
@@ -109,6 +117,7 @@ bool zlink::socket_monitor_runtime_t::dequeue_worker_event_nowait (
 
     *out_ = queue.front ();
     queue.pop_front ();
+    queue_cv.broadcast ();
     queue_sync.unlock ();
     return true;
 }
@@ -128,7 +137,9 @@ void zlink::socket_monitor_runtime_t::enqueue_worker_event (
   const socket_monitor_event_record_t &record_, size_t hwm_)
 {
     queue_sync.lock ();
-    if (!queue_stop && (queue.size () < hwm_ || !lossy)) {
+    while (!queue_stop && !lossy && queue.size () >= hwm_)
+        (void) queue_cv.wait (&queue_sync, -1);
+    if (!queue_stop && queue.size () < hwm_) {
         queue.push_back (record_);
         queue_cv.broadcast ();
     }

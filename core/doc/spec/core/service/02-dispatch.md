@@ -4,7 +4,7 @@
 
 # Service Dispatch
 
-This document defines the formal public contract for ZLink Core 10.0.0.
+This document defines the formal public contract for ZLink Core 10.1.0.
 It is for C API and binding developers that receive MeshNode service work. It
 answers: "How are Node, Spot, Actor, and infrastructure work received fairly and
 safely without passing payloads through callbacks?"

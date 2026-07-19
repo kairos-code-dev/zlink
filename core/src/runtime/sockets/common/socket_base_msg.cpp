@@ -89,24 +89,6 @@ int zlink::socket_base_t::send_routed_scoped (const zlink_routing_id_t *target_r
     return send_direct_with_retry (target_rid_, msg_, flags_, send_scope);
 }
 
-bool zlink::socket_base_t::routed_target_writable (const zlink_routing_id_t *target_rid_)
-{
-    socket_public_send_scope_t send_scope (lifecycle_coordinator (), true);
-    if (!send_scope.acquired ())
-        return false;
-    if (unlikely (_ctx_terminated))
-        return false;
-    //  Pick up pending pipe activations so the probe sees current capacity.
-    (void) process_commands (0, true);
-    return xrouted_target_writable (target_rid_);
-}
-
-bool zlink::socket_base_t::xrouted_target_writable (const zlink_routing_id_t *target_rid_)
-{
-    LIBZLINK_UNUSED (target_rid_);
-    return false;
-}
-
 std::unique_ptr<zlink::socket_public_send_scope_t>
 zlink::socket_base_t::begin_public_send_scope (bool force_sync_)
 {

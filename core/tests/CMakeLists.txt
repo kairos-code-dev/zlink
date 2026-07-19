@@ -376,6 +376,12 @@ foreach(test_source ${tests})
         PROPERTIES
           TIMEOUT 180)
     endif()
+    if(${test} STREQUAL "test_mesh_peer_admission")
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 30)
+    endif()
     if(${test} STREQUAL "test_helper_request_sequence_failure")
       set_tests_properties(
         ${test}

@@ -63,9 +63,7 @@ application payload 앞에 붙는 일반 multipart 데이터 frame(`MORE` 플래
 전송된다. ZMP `CONTROL` 비트는 HELLO/READY/heartbeat 같은 프로토콜 control
 frame에만 쓰이며, decoder는 `CONTROL` 과 `MORE` 를 함께 켠 frame을 거부한다.
 
-## 3. request-reply envelope
-
-### Handshake
+## 3. Handshake
 
 ```mermaid
 sequenceDiagram
@@ -76,6 +74,15 @@ sequenceDiagram
     S->>C: HELLO + READY (연결 시 한 outbound 버퍼로 송신)
     Note over C,S: 양쪽이 peer HELLO/READY 수신 후 데이터 교환 시작
 ```
+
+**HELLO frame**: control type(1바이트), socket type(1바이트),
+routing ID 길이(1바이트), routing ID(0~255바이트) 순서로 구성한다.
+
+**READY frame**: READY control byte는 항상 전송한다. `Socket-Type`과
+`Routing-Id` metadata property는 `ZLINK_OPT_ZMP_METADATA`를 활성화했을 때만
+추가한다. 이 option의 기본값은 비활성화다.
+
+## 4. request-reply envelope
 
 request-reply 는 payload 앞에 4개 control part 를 붙인다.
 
@@ -123,11 +130,10 @@ sequenceDiagram
     D->>D: pending[seq=N] 매칭 → reply_handler 호출
 ```
 
-## 4. 제거된 SPOT routed envelope
+## 5. ZMP와 Mesh wire의 경계
 
-9.x의 SPOT routed envelope(protocol id `0x02`, spot/router class 주소 8 part)은
-10.0.0에서 SPOT routed plane과 함께 제거되었다. MeshNode 사이의 service
-메시지는 ZMP가 아니라 mesh wire envelope(`'Z' 'M'` magic)을 사용하며, 그
+MeshNode 사이의 service 메시지는 ZMP가 아니라 mesh wire envelope
+(`'Z' 'M'` magic)을 사용하며, 그
 구조는 [서비스 계층 내부 설계 §5](services-internals.ko.md)가 설명한다.
 
 ## 6. encode / decode 흐름
@@ -183,3 +189,9 @@ decode 쪽은 최소한 아래를 검사한다.
 
 이 검사에 실패한 메시지는 request-reply 메시지로 취급하지
 않는다. pending completion 도 일으키지 않는다.
+
+## 10. WebSocket framing
+
+- RFC 6455 binary frame(opcode `0x02`)을 사용한다.
+- payload에는 ZMP frame이 들어간다.
+- 구현은 Beast library를 사용한다.

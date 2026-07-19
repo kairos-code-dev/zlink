@@ -4,7 +4,7 @@
 
 # Monitoring
 
-이 문서는 ZLink Core 10.0.0의 raw socket monitor와 MeshNode monitor 공개 계약을 정의한다. 대상 독자는
+이 문서는 ZLink Core 10.1.0의 raw socket monitor와 MeshNode monitor 공개 계약을 정의한다. 대상 독자는
 연결, peer admission, Logical Multicast, backpressure와 lifecycle을 관측하는 C API와 bindings 개발자다.
 monitor는 상태를 관측할 뿐 routing, admission과 queue 상태를 변경하지 않는다.
 
@@ -313,10 +313,14 @@ generation에서 0부터 시작한다. status를 읽어도 event를 소비하지
 
 peer event는 peer RID, lifecycle generation과 descriptor revision을 함께 제공한다. rejected event는 MeshName, expected RID,
 generation, trust profile 또는 authentication 실패를 `result_code`와 `failure_errno`로 구분한다.
+socket handshake가 peer RID를 만들기 전에 실패한 경우에도 `PEER_REJECTED`를 전달한다. 이때
+`peer_rid`는 zero value이고 `failure_errno`는 `EPROTO`다. 따라서 snapshot에 peer entry가 없는
+연결 시도도 event stream으로 관측할 수 있다.
 
-multicast committed event는 remote와 local 각각의 snapshot, admitted와 dropped count를 함께 제공한다.
-기본 NODROP에서 성공한 event의 두 dropped count는 0이다. drop 허용 mode에서는 target별 event를 만들지 않고 한 publish의
-aggregate count만 기록해 event queue를 제한한다.
+multicast committed와 dropped event는 remote와 local 각각의 snapshot, admitted와 dropped count를
+함께 제공한다. 모든 target이 수락되면 committed, local mailbox나 remote ROUTER pipe가 수락하지 못한
+target이 있으면 dropped event를 사용한다. target별 event를 만들지 않고 한 publish의 aggregate count만
+기록해 event queue를 제한한다.
 
 backpressured event는 owner kind와 가능한 경우 Spot·Actor·channel을 제공한다. raw topic, Actor ID,
 application metadata와 payload는 monitor에 복사하지 않는다. 따라서 label cardinality와 sensitive data가

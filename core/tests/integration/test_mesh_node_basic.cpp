@@ -7,6 +7,8 @@
 #include "../testutil_unity.hpp"
 
 #include <string.h>
+#include <atomic>
+#include <thread>
 
 #if !defined(ZLINK_HAVE_WINDOWS)
 #include <arpa/inet.h>
@@ -18,10 +20,21 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
+extern "C" void zlink_test_set_mesh_publish_pause_after_snapshot_ms (int pause_ms_);
+extern "C" int zlink_test_mesh_publish_snapshot_paused ();
+extern "C" void zlink_test_stream_session_pause_before_local_actor_admit (int pause_);
+extern "C" int zlink_test_stream_session_local_actor_admit_paused ();
+extern "C" void zlink_test_stream_session_fence_actor (
+  void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_);
+extern "C" void zlink_test_stream_session_abort_actor (
+  void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_);
 
 namespace
 {
-void *new_started_node (void *ctx_, const char *name_, const char *channel_)
+void *new_started_node (void *ctx_,
+                        const char *name_,
+                        const char *channel_,
+                        uint64_t mailbox_message_budget_ = 0)
 {
     zlink_mesh_node_options_t options;
     memset (&options, 0, sizeof (options));
@@ -36,6 +49,13 @@ void *new_started_node (void *ctx_, const char *name_, const char *channel_)
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
                            zlink_mesh_node_set_bind (node, "tcp://127.0.0.1:0"));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_add_channel_name (node, channel_));
+    if (mailbox_message_budget_ != 0) {
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_set_mesh_node_option (node, ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET,
+                                      &mailbox_message_budget_,
+                                      sizeof (mailbox_message_budget_)));
+    }
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
     return node;
 }
@@ -179,6 +199,48 @@ void test_mesh_node_lifecycle_gates ()
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
     TEST_ASSERT_NULL (node);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_mesh_node_common_timeout_validation ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_mesh_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.struct_size = sizeof (options);
+    options.version = 1;
+    options.mesh_name = "timeout-validation-mesh";
+    options.mesh_name_size = strlen (options.mesh_name);
+    void *node = zlink_mesh_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+
+    const int invalid_timeout = -2;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_option (node, ZLINK_OPT_SNDTIMEO, &invalid_timeout,
+                        sizeof (invalid_timeout)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_INVALID_ARGUMENT,
+      zlink_set_option (node, ZLINK_OPT_RCVTIMEO, &invalid_timeout,
+                        sizeof (invalid_timeout)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    int timeout = 0;
+    size_t timeout_size = sizeof (timeout);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_get_option (node, ZLINK_OPT_SNDTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (1000, timeout);
+    timeout_size = sizeof (timeout);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_get_option (node, ZLINK_OPT_RCVTIMEO, &timeout, &timeout_size));
+    TEST_ASSERT_EQUAL_INT (1000, timeout);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
@@ -421,7 +483,7 @@ void test_mesh_local_multicast_and_subscription ()
                                                         ZLINK_SPOT_SUBSCRIPTION_PREFIX));
 
     //  Publish through the node publisher; the local match must deliver
-    //  exactly once with NODROP accounting.
+    //  exactly once with aggregate target accounting.
     void *publisher = zlink_mesh_node_publisher_new (node);
     TEST_ASSERT_NOT_NULL (publisher);
     zlink_msg_t part;
@@ -469,6 +531,182 @@ void test_mesh_local_multicast_and_subscription ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  A full local mailbox drops only that target. Another subscribed Spot still
+//  receives the same multicast without an all-target reservation or retry.
+void test_mesh_local_multicast_target_specific_drop ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "local-drop-mesh", "events", 1);
+
+    const char *spot_names[2] = {"full-spot", "free-spot"};
+    void *spots[2] = {NULL, NULL};
+    zlink_routing_id_t spot_rids[2];
+    for (size_t i = 0; i < 2; ++i) {
+        memset (&spot_rids[i], 0, sizeof (spot_rids[i]));
+        spot_rids[i].size = static_cast<uint8_t> (strlen (spot_names[i]));
+        memcpy (spot_rids[i].data, spot_names[i], spot_rids[i].size);
+        uint32_t created = 0;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_mesh_node_spot_get_or_new (node, &spot_rids[i], &spots[i], &created));
+        TEST_ASSERT_EQUAL_UINT32 (1, created);
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_spot_set_subscription (spots[i], "events", "broadcast.",
+                                       ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+    }
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_spot_set_subscription (spots[0], "events", "fill.",
+                                   ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+
+    void *publisher = zlink_mesh_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
+    zlink_mesh_publish_detail_t detail;
+    memset (&detail, 0, sizeof (detail));
+    detail.struct_size = sizeof (detail);
+    detail.version = 1;
+
+    zlink_msg_t part;
+    make_payload (&part, "first");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_publisher_publish (publisher, "events", "fill.one", NULL, &part, 1,
+                                         &detail, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    TEST_ASSERT_EQUAL_UINT32 (1, detail.admitted_local_spot_count);
+
+    make_payload (&part, "second");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_publisher_publish (publisher, "events", "broadcast.one", NULL, &part,
+                                         1, &detail, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    TEST_ASSERT_EQUAL_UINT32 (2, detail.snapshot_local_spot_count);
+    TEST_ASSERT_EQUAL_UINT32 (1, detail.admitted_local_spot_count);
+    TEST_ASSERT_EQUAL_UINT32 (1, detail.dropped_local_spot_count);
+
+    void *ready = zlink_mesh_ready_batch_new (4);
+    TEST_ASSERT_NOT_NULL (ready);
+    uint32_t residue = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_node_drain_ready (node, ZLINK_MESH_READY_APPLICATION, ready, &residue,
+                                   ZLINK_RECV_FLAGS_NONE));
+    const zlink_mesh_ready_record_t *ready_records = zlink_mesh_ready_batch_data (ready);
+    const size_t ready_count = zlink_mesh_ready_batch_count (ready);
+    zlink_mesh_claim_t free_claim;
+    bool free_claim_taken = false;
+    for (size_t i = 0; i < ready_count; ++i) {
+        if (ready_records[i].owner_kind == ZLINK_MESH_OWNER_SPOT
+            && ready_records[i].spot_rid.size == spot_rids[1].size
+            && memcmp (ready_records[i].spot_rid.data, spot_rids[1].data,
+                       spot_rids[1].size)
+                 == 0) {
+            TEST_ASSERT_EQUAL_INT (
+              ZLINK_CONFIG_OK,
+              zlink_mesh_ready_batch_take_claim (ready, i, &free_claim));
+            free_claim_taken = true;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE (free_claim_taken, "free Spot was not made ready");
+
+    void *recv_batch = zlink_mesh_receive_batch_new (2, 4, 1024);
+    TEST_ASSERT_NOT_NULL (recv_batch);
+    zlink_mesh_receive_requirements_t required;
+    memset (&required, 0, sizeof (required));
+    required.struct_size = sizeof (required);
+    required.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (&free_claim, recv_batch, &required,
+                                   ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (recv_batch));
+    const zlink_mesh_receive_record_t *record = zlink_mesh_receive_batch_data (recv_batch);
+    TEST_ASSERT_EQUAL_STRING_LEN ("broadcast.one", record->topic, record->topic_size);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&free_claim));
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&recv_batch));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_ready_batch_destroy (&ready));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+    for (size_t i = 0; i < 2; ++i)
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spots[i]));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  A publish that selected its local targets before shutdown must not admit a
+//  record after the node has transitioned to DRAINING/STOPPED.
+void test_mesh_publish_snapshot_cannot_cross_shutdown ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "publish-shutdown-mesh", "events");
+
+    zlink_routing_id_t spot_rid;
+    memset (&spot_rid, 0, sizeof (spot_rid));
+    spot_rid.size = 9;
+    memcpy (spot_rid.data, "collector", 9);
+    void *spot = NULL;
+    uint32_t created = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_mesh_node_spot_get_or_new (node, &spot_rid, &spot, &created));
+    TEST_ASSERT_EQUAL_UINT32 (1, created);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_spot_set_subscription (spot, "events", "shutdown.",
+                                   ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+
+    void *publisher = zlink_mesh_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
+    zlink_msg_t part;
+    make_payload (&part, "must-not-be-admitted");
+    zlink_mesh_publish_detail_t detail;
+    memset (&detail, 0, sizeof (detail));
+    detail.struct_size = sizeof (detail);
+    detail.version = 1;
+    std::atomic<int> publish_rc (ZLINK_SUBMIT_INTERNAL_ERROR);
+    std::atomic<int> publish_errno (0);
+
+    zlink_test_set_mesh_publish_pause_after_snapshot_ms (500);
+    std::thread publisher_thread ([&] {
+        publish_rc.store (
+          zlink_mesh_node_publisher_publish (publisher, "events", "shutdown.now", NULL,
+                                             &part, 1, &detail,
+                                             ZLINK_SEND_FLAGS_DONTWAIT),
+          std::memory_order_release);
+        publish_errno.store (errno, std::memory_order_release);
+    });
+    bool snapshot_paused = false;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (zlink_test_mesh_publish_snapshot_paused ()) {
+            snapshot_paused = true;
+            break;
+        }
+        msleep (5);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (snapshot_paused, "publish did not reach the snapshot barrier");
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    publisher_thread.join ();
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_INVALID_STATE,
+                           publish_rc.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (ESHUTDOWN, publish_errno.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_UINT32 (1, detail.snapshot_local_spot_count);
+    TEST_ASSERT_EQUAL_UINT32 (0, detail.admitted_local_spot_count);
+    TEST_ASSERT_EQUAL_UINT32 (1, detail.dropped_local_spot_count);
+
+    zlink_msg_close (&part);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
@@ -700,6 +938,228 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
                            zlink_stream_session_bind_actor (service, &session_rid, &actor,
                                                             &operation_id, 1000));
 
+    //  The session binding check and local actor admission form one FIFO
+    //  operation. A later submit must not enter the actor mailbox while an
+    //  earlier submit is between those two steps.
+    zlink_msg_t first_to_actor;
+    zlink_msg_t second_to_actor;
+    make_payload (&first_to_actor, "S1");
+    make_payload (&second_to_actor, "S2");
+    std::atomic<zlink_submit_result_t> first_submit (ZLINK_SUBMIT_INTERNAL_ERROR);
+    std::atomic<zlink_submit_result_t> second_submit (ZLINK_SUBMIT_INTERNAL_ERROR);
+    zlink_test_stream_session_pause_before_local_actor_admit (1);
+    std::thread first_sender ([&] {
+        first_submit.store (
+          zlink_stream_session_send_to_actor (service, &session_rid, &actor, NULL,
+                                              &first_to_actor, 1, ZLINK_SEND_FLAGS_NONE),
+          std::memory_order_release);
+    });
+    bool first_paused = false;
+    for (int attempt = 0; attempt < 100 && !first_paused; ++attempt) {
+        first_paused = zlink_test_stream_session_local_actor_admit_paused () != 0;
+        if (!first_paused)
+            msleep (10);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (first_paused,
+                              "first session submit did not reach the admission barrier");
+    std::thread second_sender ([&] {
+        second_submit.store (
+          zlink_stream_session_send_to_actor (service, &session_rid, &actor, NULL,
+                                              &second_to_actor, 1, ZLINK_SEND_FLAGS_NONE),
+          std::memory_order_release);
+    });
+    msleep (50);
+    zlink_test_stream_session_pause_before_local_actor_admit (0);
+    first_sender.join ();
+    second_sender.join ();
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           first_submit.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           second_submit.load (std::memory_order_acquire));
+    zlink_msg_close (&first_to_actor);
+    zlink_msg_close (&second_to_actor);
+
+    zlink_mesh_claim_t actor_claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_ACTOR, ZLINK_MESH_READY_APPLICATION,
+                      &actor_claim);
+    void *actor_batch = zlink_mesh_receive_batch_new (2, 2, 16);
+    TEST_ASSERT_NOT_NULL (actor_batch);
+    zlink_mesh_receive_requirements_t actor_required;
+    memset (&actor_required, 0, sizeof (actor_required));
+    actor_required.struct_size = sizeof (actor_required);
+    actor_required.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (&actor_claim, actor_batch, &actor_required,
+                                   ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (2, zlink_mesh_receive_batch_count (actor_batch));
+    const zlink_msg_t *actor_parts = zlink_mesh_receive_batch_parts (actor_batch);
+    TEST_ASSERT_EQUAL_MEMORY (
+      "S1", zlink_msg_data (const_cast<zlink_msg_t *> (&actor_parts[0])), 2);
+    TEST_ASSERT_EQUAL_MEMORY (
+      "S2", zlink_msg_data (const_cast<zlink_msg_t *> (&actor_parts[1])), 2);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&actor_claim));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_receive_batch_destroy (&actor_batch));
+
+    //  Ordering is scoped to one session. While the first session is paused
+    //  before mailbox admission, an unrelated session must still submit.
+    const int second_client_fd = connect_raw_stream_client (endpoint);
+    TEST_ASSERT_TRUE (second_client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (1, send (second_client_fd, "?", 1, 0));
+    zlink_msg_t second_connect_part;
+    TEST_ASSERT_EQUAL_INT (0, zlink_msg_init (&second_connect_part));
+    const zlink_routing_id_t *second_source_rid = NULL;
+    has_more = ZLINK_PART_MORE;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_recv_part (stream, &second_source_rid, &second_connect_part, &has_more,
+                       ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_NOT_NULL (second_source_rid);
+    zlink_routing_id_t second_session_rid = *second_source_rid;
+    zlink_msg_close (&second_connect_part);
+
+    zlink_actor_ref_t second_actor;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK,
+      zlink_mesh_node_actor_new (node, "stream-writer-2", NULL, 0, &second_actor,
+                                 ZLINK_SEND_FLAGS_NONE, 1000));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_bind_actor (service, &second_session_rid,
+                                       &second_actor, &operation_id, 1000));
+
+    zlink_msg_t paused_part;
+    zlink_msg_t independent_part;
+    make_payload (&paused_part, "S3");
+    make_payload (&independent_part, "X1");
+    std::atomic<zlink_submit_result_t> paused_submit (
+      ZLINK_SUBMIT_INTERNAL_ERROR);
+    std::atomic<zlink_submit_result_t> independent_submit (
+      ZLINK_SUBMIT_INTERNAL_ERROR);
+    zlink_test_stream_session_pause_before_local_actor_admit (1);
+    std::thread paused_sender ([&] {
+        paused_submit.store (
+          zlink_stream_session_send_to_actor (
+            service, &session_rid, &actor, NULL, &paused_part, 1,
+            ZLINK_SEND_FLAGS_NONE),
+          std::memory_order_release);
+    });
+    first_paused = false;
+    for (int attempt = 0; attempt < 100 && !first_paused; ++attempt) {
+        first_paused =
+          zlink_test_stream_session_local_actor_admit_paused () != 0;
+        if (!first_paused)
+            msleep (10);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      first_paused, "first session did not reach the admission barrier");
+    std::thread independent_sender ([&] {
+        independent_submit.store (
+          zlink_stream_session_send_to_actor (
+            service, &second_session_rid, &second_actor, NULL,
+            &independent_part, 1, ZLINK_SEND_FLAGS_NONE),
+          std::memory_order_release);
+    });
+    bool independent_completed = false;
+    for (int attempt = 0; attempt < 100 && !independent_completed; ++attempt) {
+        independent_completed =
+          independent_submit.load (std::memory_order_acquire)
+          != ZLINK_SUBMIT_INTERNAL_ERROR;
+        if (!independent_completed)
+            msleep (10);
+    }
+    zlink_test_stream_session_pause_before_local_actor_admit (0);
+    paused_sender.join ();
+    independent_sender.join ();
+    TEST_ASSERT_TRUE_MESSAGE (
+      independent_completed,
+      "a paused session blocked an unrelated session submission");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK, paused_submit.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK, independent_submit.load (std::memory_order_acquire));
+    zlink_msg_close (&paused_part);
+    zlink_msg_close (&independent_part);
+
+    //  A transfer fence shares the session ordering gate. It must wait for a
+    //  submit that already passed binding validation, then make later submits
+    //  use the transfer backpressure path.
+    zlink_msg_t before_fence_part;
+    make_payload (&before_fence_part, "F1");
+    std::atomic<zlink_submit_result_t> before_fence_submit (
+      ZLINK_SUBMIT_INTERNAL_ERROR);
+    std::atomic<bool> fence_completed (false);
+    zlink_test_stream_session_pause_before_local_actor_admit (1);
+    std::thread before_fence_sender ([&] {
+        before_fence_submit.store (
+          zlink_stream_session_send_to_actor (
+            service, &session_rid, &actor, NULL, &before_fence_part, 1,
+            ZLINK_SEND_FLAGS_NONE),
+          std::memory_order_release);
+    });
+    first_paused = false;
+    for (int attempt = 0; attempt < 100 && !first_paused; ++attempt) {
+        first_paused =
+          zlink_test_stream_session_local_actor_admit_paused () != 0;
+        if (!first_paused)
+            msleep (10);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      first_paused, "pre-fence submit did not reach the admission barrier");
+    const uint64_t transfer_serial = 77;
+    std::thread fence_thread ([&] {
+        zlink_test_stream_session_fence_actor (
+          service, &actor, transfer_serial);
+        fence_completed.store (true, std::memory_order_release);
+    });
+    msleep (50);
+    TEST_ASSERT_FALSE_MESSAGE (
+      fence_completed.load (std::memory_order_acquire),
+      "transfer fence bypassed the per-session submit gate");
+    zlink_test_stream_session_pause_before_local_actor_admit (0);
+    before_fence_sender.join ();
+    fence_thread.join ();
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      before_fence_submit.load (std::memory_order_acquire));
+    TEST_ASSERT_TRUE (fence_completed.load (std::memory_order_acquire));
+
+    zlink_msg_t after_fence_part;
+    make_payload (&after_fence_part, "F2");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_stream_session_send_to_actor (
+        service, &session_rid, &actor, NULL, &after_fence_part, 1,
+        ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_test_stream_session_abort_actor (
+      service, &actor, transfer_serial);
+    zlink_msg_close (&before_fence_part);
+    zlink_msg_close (&after_fence_part);
+
+    //  Drain both records so node shutdown observes no pending application
+    //  work; the ordering assertions above do not depend on claim order.
+    for (int record = 0; record < 3; ++record) {
+        zlink_mesh_claim_t claim;
+        take_ready_claim (node, ZLINK_MESH_OWNER_ACTOR,
+                          ZLINK_MESH_READY_APPLICATION, &claim);
+        void *batch = zlink_mesh_receive_batch_new (1, 1, 8);
+        TEST_ASSERT_NOT_NULL (batch);
+        zlink_mesh_receive_requirements_t required;
+        memset (&required, 0, sizeof (required));
+        required.struct_size = sizeof (required);
+        required.version = 1;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_RECV_OK,
+          zlink_mesh_claim_recv_batch (&claim, batch, &required,
+                                       ZLINK_RECV_FLAGS_NONE));
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                               zlink_mesh_claim_release (&claim));
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch));
+    }
+
     zlink_msg_t parts[3];
     make_payload (&parts[0], "hello");
     make_payload (&parts[1], "-");
@@ -736,6 +1196,7 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
     char after_close = 0;
     TEST_ASSERT_EQUAL_INT (0, recv (client_fd, &after_close, sizeof (after_close), 0));
 
+    close (second_client_fd);
     close (client_fd);
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
                            zlink_stream_session_service_shutdown (service, 1000));
@@ -818,9 +1279,12 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_mesh_node_lifecycle_gates);
+    RUN_TEST (test_mesh_node_common_timeout_validation);
     RUN_TEST (test_mesh_local_channel_request_reply);
     RUN_TEST (test_mesh_metadata_ownership_and_timeout_contract);
     RUN_TEST (test_mesh_local_multicast_and_subscription);
+    RUN_TEST (test_mesh_local_multicast_target_specific_drop);
+    RUN_TEST (test_mesh_publish_snapshot_cannot_cross_shutdown);
     RUN_TEST (test_mesh_actor_lifecycle_and_messaging);
     RUN_TEST (test_stream_session_binding_reports_actor_membership_epoch);
     RUN_TEST (test_stream_session_actor_send_is_one_complete_byte_message);

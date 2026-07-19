@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## 10.1.0
+
+### Fixed
+
+- A delayed disconnect from an older physical peer transport no longer
+  demotes an admitted same-RID successor.
+- Explicit peer disconnect and intent removal retire the owned ROUTER
+  connector, allowing the same endpoint to be admitted again.
+- Session-to-Actor submissions preserve one-session FIFO across binding
+  validation and Actor-mailbox admission.
+- MeshNode monitors report handshake failures that occur before peer RID
+  creation as zero-RID `PEER_REJECTED` events.
+
 ## 10.0.0 (release candidate)
 
 RouteMesh 10.0.0 is a single breaking transition with no compatibility
@@ -22,10 +35,11 @@ aliases, wrappers or dual runtimes. The public contract is owned by
   `zlink_mesh_reply()` tokens and exactly-once operation completions.
 - Spot service: logical Spots owned by a MeshNode, direct Spot messaging
   addressed by (node RID, Spot RID, generation), channel-scoped local
-  subscriptions (exact/prefix) and Logical Multicast with NODROP=1 default
-  and per-publish admission detail. Publish detail and multicast monitor
-  events keep the true target snapshot and report peers departing between
-  reserve and commit separately (`unreachable_remote_target_count`;
+  subscriptions (exact/prefix), Logical Multicast and per-publish target
+  detail. Each remote target uses the MeshNode's ordinary ROUTER HWM,
+  timeout and `DONTWAIT` behavior. Publish detail and multicast monitor
+  events keep the true target snapshot and report unavailable peers
+  separately (`unreachable_remote_target_count`;
   remote snapshot = admitted + dropped + unreachable).
 - Actor service: ActorRef with generation and membership epoch, entry-Spot
   creation transaction, join/leave with epoch CAS, direct Actor mailboxes
@@ -67,8 +81,8 @@ aliases, wrappers or dual runtimes. The public contract is owned by
 - Full core suite green: 85/85 CTest targets, including the two-process
   remote matrix (`test_mesh_peer_admission`, 12 cases: admission/readiness,
   MeshName-mismatch rejection with monitor evidence, remote request/reply,
-  Spot direct, multicast with duplicate guard, NODROP unreachable-target
-  accounting via send-fault injection, Actor lookup/messaging/join,
+  Spot direct, multicast with duplicate guard, ROUTER target accounting via
+  send-fault injection, Actor lookup/messaging/join,
   transfer fence, channel round-robin with zero-weight exclusion,
   MIXED intent merge, drain/reconnect), the monitor event matrix
   (`test_mesh_monitor_matrix`, 6 cases), dispatch stress

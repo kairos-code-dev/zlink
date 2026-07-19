@@ -110,16 +110,6 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_set_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_get_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 
 ZLINK_EXPORT zlink_config_result_t zlink_spot_set_subscription(
   void *spot,

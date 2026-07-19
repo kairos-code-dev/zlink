@@ -53,8 +53,16 @@ void wire_stop (mesh_node_t *node_);
 //  Issues the transport connect for a peer intent endpoint.
 int wire_connect_endpoint (mesh_node_t *node_, const std::string &endpoint_);
 
-//  Sends the current descriptor to every admitted peer. Node mutex held.
-void wire_broadcast_update_locked (mesh_node_t *node_);
+//  Retires a configured outbound connector, including its reconnect state.
+//  ENOENT is returned when the connector already disappeared.
+int wire_disconnect_endpoint (mesh_node_t *node_, const std::string &endpoint_);
+
+//  Retires the currently routed transport for an inbound-observed peer.
+int wire_disconnect_peer (mesh_node_t *node_, const rid_bytes_t &peer_rid_);
+
+//  Snapshots the current descriptor and admitted peers under the node mutex,
+//  then sends the update after releasing it.
+void wire_broadcast_update (mesh_node_t *node_);
 
 //  Data submit to an admitted peer pipe. correlation_ is the requester-side
 //  operation serial for request types and unused otherwise. channel_ names
@@ -84,22 +92,21 @@ zlink_submit_result_t wire_submit_spot (mesh_node_t *node_,
                                         size_t part_count_,
                                         zlink_send_flags_t flags_);
 
-//  Remote leg of a Logical Multicast. Caller holds the node mutex; probes
-//  every target pipe first so NODROP commits to all snapshot targets or to
-//  none. Fills admitted/dropped counts and returns BACKPRESSURED (EAGAIN)
-//  when NODROP cannot reserve every target.
-zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
-                                                  const std::vector<rid_bytes_t> &targets_,
-                                                  const std::string &channel_,
-                                                  const std::string &topic_,
-                                                  const rid_bytes_t &source_spot_rid_,
-                                                  int nodrop_,
-                                                  const zlink_mesh_metadata_view_t *metadata_,
-                                                  const zlink_msg_t *parts_,
-                                                  size_t part_count_,
-                                                  uint32_t *admitted_out_,
-                                                  uint32_t *dropped_out_,
-                                                  uint32_t *unreachable_out_);
+//  Remote leg of a Logical Multicast. Each target is submitted independently
+//  through the node ROUTER with the caller's flags; successful earlier
+//  submissions remain committed if a later target is backpressured.
+zlink_submit_result_t wire_publish_remote (mesh_node_t *node_,
+                                           const std::vector<rid_bytes_t> &targets_,
+                                           const std::string &channel_,
+                                           const std::string &topic_,
+                                           const rid_bytes_t &source_spot_rid_,
+                                           const zlink_mesh_metadata_view_t *metadata_,
+                                           const zlink_msg_t *parts_,
+                                           size_t part_count_,
+                                           zlink_send_flags_t flags_,
+                                           uint32_t *admitted_out_,
+                                           uint32_t *dropped_out_,
+                                           uint32_t *unreachable_out_);
 
 //  Actor data submit to the ActorRef's node pipe. source_actor_ is NULL for
 //  node-originated calls.

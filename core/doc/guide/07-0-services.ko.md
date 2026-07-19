@@ -12,7 +12,7 @@
 메시지를 라우팅하며 서비스 수명주기까지 처리해야 한다. 서비스 계층은 현재 공개
 C API가 제공하는 범위에서 이런 작업을 흡수한다.
 
-10.0.0의 공개 core service 계약은 **MeshNode**와 그 위의 **Spot**, **Actor**,
+10.1.0의 공개 core service 계약은 **MeshNode**와 그 위의 **Spot**, **Actor**,
 **STREAM session**이다. Discovery(위치 저장소)와 Registry는 core 공개 C API나
 내부 런타임에 속하지 않는다 — 그 책임은 framework 계층이 가진다.
 

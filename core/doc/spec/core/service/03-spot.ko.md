@@ -4,7 +4,7 @@
 
 # Spot
 
-이 문서는 ZLink Core 10.0.0의 정식 공개 계약을 정의한다. 대상 독자는 MeshNode 안의 logical Spot을
+이 문서는 ZLink Core 10.1.0의 정식 공개 계약을 정의한다. 대상 독자는 MeshNode 안의 logical Spot을
 생성하고 메시지를 수신하는 C API와 bindings 개발자다. 이 문서는 “Spot direct 메시지와 Logical
 Multicast를 어떤 Spot claim으로 수신하는가?”에 답한다.
 
@@ -166,7 +166,7 @@ admission한 뒤 target Spot이 없으면 completion의 `terminal_result`는 `ZL
 `failure_errno`는 `ENOENT`다. envelope의 target generation이 같은 RID의 현재 lifecycle generation과 다르면
 각각 `ZLINK_REQUEST_CONFLICT`, `ESTALE`다.
 one-way send는 remote application acknowledgement를 추가하지 않으므로 submit 성공 뒤 remote Spot 부재를
-호출자에게 보고한다고 보장하지 않으며, 이를 위한 monitor event도 10.0.0 event ABI에서 보장하지 않는다.
+호출자에게 보고한다고 보장하지 않으며, 이를 위한 monitor event도 10.1.0 event ABI에서 보장하지 않는다.
 
 request record의 reply는 [dispatch 계약](02-dispatch.ko.md)의 `zlink_mesh_reply()`를 사용한다. source route나
 request sequence를 재구성하지 않는다.
@@ -187,23 +187,12 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_set_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_get_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 ```
 
-`ZLINK_MESH_PUBLISH_OPT_NODROP`은 `int` 0 또는 1이며 기본값은 1이다. publish는 owner MeshNode
-publisher와 같은 target snapshot, NODROP, timeout, ordering과 submit detail
+publish는 owner MeshNode publisher와 같은 target snapshot, ROUTER submit, ordering과 submit detail
 계약을 사용한다. canonical application metadata도 같은 방식으로 검증하고 모든 matching Spot record에
-같은 immutable view로 전달한다. source Spot RID와 generation을 추가로 기록한다. target ChannelName은 필수이며 owner
-MeshNode에 channel membership이 하나뿐이어도 생략할 수 없다.
+같은 immutable view로 전달한다. source Spot RID와 generation을 추가로 기록한다. target ChannelName은
+필수이며 owner MeshNode에 channel membership이 하나뿐이어도 생략할 수 없다.
 
 topic은 NUL을 포함하지 않는 1..255-byte UTF-8 문자열이다. 빈 topic, 잘못된 UTF-8과 상한 초과는
 `ZLINK_SUBMIT_INVALID_ARGUMENT`, `errno == EINVAL`이다.
@@ -275,8 +264,7 @@ ZLINK_EXPORT void *zlink_spot_timer_new(void *spot);
 
 ## 10. Option과 thread safety
 
-모든 request는 명시적인 `timeout_ms`를 받는다. Spot publish option은
-`ZLINK_MESH_PUBLISH_OPT_NODROP`만 지원하며 다른 값은 `ZLINK_CONFIG_NOT_SUPPORTED`다.
+모든 request는 명시적인 `timeout_ms`를 받는다. Spot은 publish 전용 option을 제공하지 않는다.
 
 send, request, publish, subscription과 status는 thread-safe다. 같은 Spot handle의 destroy와 다른 호출을
 동시에 실행할 수 없다. callback 또는 active claim 안에서 같은 Spot의 destructive close를 호출하면

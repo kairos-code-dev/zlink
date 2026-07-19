@@ -123,13 +123,30 @@ sequenceDiagram
     D->>D: match pending[seq=N] → invoke reply_handler
 ```
 
-## 5. Removed: the SPOT routed envelope
+## 5. Boundary Between ZMP and Mesh Wire
 
-The 9.x SPOT routed envelope (protocol id `0x02`, 8 address parts with
-spot/router classes) was removed in 10.0.0 together with the SPOT routed
-plane. Service messages between MeshNodes do not use ZMP; they use the mesh
-wire envelope (`'Z' 'M'` magic) described in
+Service messages between MeshNodes do not use ZMP; they use the mesh wire
+envelope (`'Z' 'M'` magic) described in
 [Service Layer Internal Design §5](services-internals.md).
+
+## 6. Encode and Decode Flow
+
+### 6.1 Socket Request-Reply
+
+Send:
+
+1. Determine whether the operation is a request or reply.
+2. Allocate `request_seq` from the local counter.
+3. Build the four control parts.
+4. Append and send the application payload parts.
+
+Receive:
+
+1. Validate that the first four parts form a request-reply envelope.
+2. Read `message_type` and `request_seq`.
+3. Dispatch a request to the request handler.
+4. For a reply, find the pending entry by `request_seq` or by
+   `source_node_rid + request_seq`.
 
 ## 7. Pending and Completion Rules
 
@@ -169,8 +186,8 @@ The decode path checks at minimum:
 - `request_seq != 0`
 - Known message_type value
 
-Messages failing validation are not treated as request-reply or
-request-reply messages. They do not trigger pending completion.
+Messages failing validation are not treated as request-reply messages.
+They do not trigger pending completion.
 
 ## 10. WebSocket Framing
 

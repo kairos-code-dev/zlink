@@ -2,9 +2,9 @@
 
 [스펙 목차](../README.ko.md)
 
-# ZLink Core 10.0.0 스펙
+# ZLink Core 10.1.0 스펙
 
-이 목차는 `zlink.h`가 제공하는 Core 10.0.0 공개 C ABI 계약을 연결한다. 정식 API 문서는 공개 계약만
+이 목차는 `zlink.h`가 제공하는 Core 10.1.0 공개 C ABI 계약을 연결한다. 정식 API 문서는 공개 계약만
 설명하며 source directory, socket 배선과 queue 구조는 설명하지 않는다.
 
 ## 1. 공통 계약

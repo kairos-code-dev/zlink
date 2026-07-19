@@ -6,7 +6,7 @@
 
 # SPOT 사용 가이드
 
-이 문서는 애플리케이션 개발자가 10.0.0 MeshNode 위에서 Spot을 어떻게 쓰는지
+이 문서는 애플리케이션 개발자가 10.1.0 MeshNode 위에서 Spot을 어떻게 쓰는지
 설명한다. 정확한 함수 계약은
 [MeshNode spec](../spec/core/service/01-mesh-node.ko.md),
 [Dispatch spec](../spec/core/service/02-dispatch.ko.md),
@@ -18,7 +18,7 @@
 
 ## 1. 구조: MeshNode 하나, Spot 여럿
 
-10.0.0의 수명·transport 소유자는 **MeshNode** 하나다.
+10.1.0의 수명·transport 소유자는 **MeshNode** 하나다.
 
 - `MeshNode` — MeshName 하나, ROUTER bind 하나, 프로세스당 유일. peer
   admission, channel 라우팅, Logical Multicast, dispatch와 monitor를 소유한다.
@@ -161,10 +161,10 @@ zlink_spot_request_to_spot(spot, &target_node_rid, &target_spot_rid,
   `ESTALE`/`ENOENT` completion).
 - application metadata는 선택적 `zlink_mesh_metadata_view_t`로 붙인다(canonical
   frame, 1024 byte 상한). reply에는 metadata를 붙이지 않는다.
-- publish의 NODROP은 기본 1이다: local mailbox와 remote pipe 전부를 선검사해
-  전부-또는-전무로 commit한다. 수치는 `zlink_mesh_publish_detail_t`로 확인한다.
-  publisher별 설정은 `zlink_mesh_node_publisher_set_option()` /
-  `zlink_spot_set_publish_option()`.
+- publish는 각 local mailbox와 remote ROUTER target에 독립적으로 제출한다.
+  remote target의 HWM·timeout·backpressure는 ROUTER 송신 규칙을 따르며, 앞에서
+  성공한 제출은 뒤 target의 실패 때문에 취소되지 않는다. 대상별 집계는
+  `zlink_mesh_publish_detail_t`로 확인한다.
 
 ## 5. 메시지 소비: ready → claim → receive batch
 
@@ -268,7 +268,8 @@ tick은 해당 Spot의 dispatch 흐름과 상호 배제되어 전달되고, Spot
   in-turn await는 안전하다.
 - **backpressure를 설계에 넣는다.** mailbox budget이 차면 submit이
   `ZLINK_SUBMIT_BACKPRESSURED`(`EAGAIN`)로 거부된다. 차단 submit은 SNDTIMEO까지
-  기다린 뒤 `ETIMEDOUT`이다. monitor의 `BACKPRESSURED` event로 관측한다.
+  기다린 뒤 `ETIMEDOUT`이다. Logical Multicast의 remote ROUTER 제출은 기존 ROUTER와 같이
+  timeout 뒤에도 `EAGAIN`이다. monitor의 `BACKPRESSURED` event로 관측한다.
 - **주소는 framework가 준다.** Core는 Spot 위치를 조회해 주지 않는다. 분산
   주소(`zlink_spot_address_t`)의 발급·조회는 framework location 계층의 책임이다.
 

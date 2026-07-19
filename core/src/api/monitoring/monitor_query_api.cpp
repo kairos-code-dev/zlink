@@ -47,9 +47,11 @@ int socket_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *ou
     return socket->monitor_snapshot (out_);
 }
 
-int recv_socket_monitor_event_unchecked (void *monitor_socket_,
-                                         zlink_monitor_event_t *event_,
-                                         int flags_)
+int recv_socket_monitor_event_internal (void *monitor_socket_,
+                                        zlink_monitor_event_t *event_,
+                                        uint64_t *connection_id_out_,
+                                        uint32_t *internal_flags_out_,
+                                        int flags_)
 {
     if (!monitor_socket_ || !event_) {
         errno = EINVAL;
@@ -62,8 +64,24 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
         return -1;
 
     memset (event_, 0, sizeof (*event_));
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
+    if (internal_flags_out_)
+        *internal_flags_out_ = 0;
 
-    if (zlink_msg_size (first_frame.get ()) == sizeof (*event_)) {
+    if (zlink_msg_size (first_frame.get ())
+        >= sizeof (socket_monitor_internal_event_t)) {
+        socket_monitor_internal_event_t internal_event;
+        memcpy (&internal_event, zlink_msg_data (first_frame.get ()),
+                sizeof (internal_event));
+        *event_ = internal_event.event;
+        if (connection_id_out_)
+            *connection_id_out_ = internal_event.connection_id;
+        if (internal_flags_out_)
+            *internal_flags_out_ = internal_event.internal_flags;
+        return 0;
+    }
+    if (zlink_msg_size (first_frame.get ()) >= sizeof (*event_)) {
         memcpy (event_, zlink_msg_data (first_frame.get ()), sizeof (*event_));
         return 0;
     }
@@ -121,6 +139,14 @@ int recv_socket_monitor_event_unchecked (void *monitor_socket_,
     }
 
     return 0;
+}
+
+int recv_socket_monitor_event_unchecked (void *monitor_socket_,
+                                         zlink_monitor_event_t *event_,
+                                         int flags_)
+{
+    return recv_socket_monitor_event_internal (
+      monitor_socket_, event_, NULL, NULL, flags_);
 }
 
 zlink_recv_result_t zlink_socket_monitor_recv (void *monitor_,

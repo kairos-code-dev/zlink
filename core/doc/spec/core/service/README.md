@@ -4,7 +4,7 @@
 
 # Service API
 
-In the Core 10.0.0 service layer, MeshNode owns transport location, service
+In the Core 10.1.0 service layer, MeshNode owns transport location, service
 mailboxes, and request correlation, while Spot, Actor, and STREAM session
 provide their logical state and receive owners. Raw sockets have no knowledge
 of service objects. Services do not expose raw frames, raw pipes, or internal

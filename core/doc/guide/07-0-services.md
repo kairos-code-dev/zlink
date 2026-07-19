@@ -12,7 +12,7 @@ Without the service layer, applications would need to manually manage socket
 connections, route messages to state owners, and handle service lifecycle. The
 service layer absorbs those tasks where the current public C API exposes them.
 
-The 10.0.0 public core service contract is the **MeshNode** and, on top of it,
+The 10.1.0 public core service contract is the **MeshNode** and, on top of it,
 **Spot**, **Actor** and the **STREAM session**. Discovery (the location store)
 and Registry are not part of the core public C API or the internal runtime —
 that responsibility belongs to the framework layer.

@@ -168,7 +168,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_subscription_at (void *handle_,
 Returns the subscription filter string at `index_` (0-based). On entry,
 `*filter_len_inout_` is the buffer size; on return it is set to the actual
 length. `*is_pattern_out_` reports whether the filter is a pattern
-subscription. All raw subscriptions in 10.0.0 are byte-prefix filters, so it
+subscription. All raw subscriptions in 10.1.0 are byte-prefix filters, so it
 always reports `0`.
 
 If the buffer is too small, the function writes the required length to

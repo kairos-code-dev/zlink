@@ -10,6 +10,12 @@
 
 #include <string.h>
 
+#if !defined(ZLINK_HAVE_WINDOWS)
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
@@ -58,6 +64,33 @@ void make_payload (zlink_msg_t *msg_, const char *text_)
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_msg_init_size (msg_, strlen (text_)));
     memcpy (zlink_msg_data (msg_), text_, strlen (text_));
 }
+
+#if !defined(ZLINK_HAVE_WINDOWS)
+int connect_raw_tcp (const char *endpoint_)
+{
+    char protocol[8] = {0};
+    char host[64] = {0};
+    int port = 0;
+    if (sscanf (endpoint_, "%7[^:]://%63[^:]:%d", protocol, host, &port) != 3
+        || strcmp (protocol, "tcp") != 0)
+        return -1;
+    const int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0)
+        return -1;
+    struct sockaddr_in address;
+    memset (&address, 0, sizeof (address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons (static_cast<uint16_t> (port));
+    if (inet_pton (AF_INET, host, &address.sin_addr) != 1
+        || connect (fd, reinterpret_cast<const struct sockaddr *> (&address),
+                    sizeof (address))
+             != 0) {
+        close (fd);
+        return -1;
+    }
+    return fd;
+}
+#endif
 
 //  Waits until an event of kind_ arrives, skipping earlier events. Fails the
 //  test when the deadline passes first.
@@ -136,6 +169,49 @@ const zlink_mesh_receive_record_t *recv_one_record (zlink_mesh_claim_t *claim_, 
 }
 }
 
+//  A TCP client that cannot complete the socket protocol has no peer RID, but
+//  its rejection still belongs to the MeshNode monitor stream. This is the
+//  only observable surface for pre-admission handshake failures.
+void test_raw_handshake_failure_emits_peer_rejected ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw TCP test helper is unavailable on Windows");
+#else
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_configured_node (ctx, "handshake-monitor", "audit", 0);
+    void *monitor =
+      open_monitor (node, 1ull << (ZLINK_MESH_MONITOR_PEER_REJECTED - 1));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+
+    zlink_mesh_node_status_t status;
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = 1;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_status (node, &status));
+    const int fd = connect_raw_tcp (status.local_endpoint);
+    TEST_ASSERT_TRUE (fd >= 0);
+    unsigned char invalid_greeting[64];
+    memset (invalid_greeting, 0, sizeof (invalid_greeting));
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (sizeof (invalid_greeting)),
+      send (fd, invalid_greeting, sizeof (invalid_greeting), 0));
+    shutdown (fd, SHUT_RDWR);
+    close (fd);
+
+    zlink_mesh_monitor_event_t event;
+    wait_monitor_event (monitor, ZLINK_MESH_MONITOR_PEER_REJECTED, &event);
+    TEST_ASSERT_EQUAL_UINT8 (0, event.peer_rid.size);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_INTERNAL_ERROR, event.result_code);
+    TEST_ASSERT_EQUAL_INT (EPROTO, event.failure_errno);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_monitor_close (&monitor));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+#endif
+}
+
 //  Event matrix: STATE_CHANGED, CHANNEL_CHANGED, MESSAGE_SUBMITTED,
 //  OPERATION_COMPLETED and MULTICAST_COMMITTED arrive with their contract
 //  payload, counters reflect them, and the monitor keeps a strong child
@@ -144,7 +220,7 @@ void test_monitor_event_matrix_and_child_reference ()
 {
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
-    void *node = new_configured_node (ctx, "monitor-mesh", "audit", 0);
+    void *node = new_configured_node (ctx, "monitor-mesh", "audit", 1);
     void *monitor = open_monitor (node, 0);
 
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
@@ -221,6 +297,37 @@ void test_monitor_event_matrix_and_child_reference ()
     TEST_ASSERT_EQUAL_UINT32 (1, event.admitted_local_spot_count);
     TEST_ASSERT_EQUAL_UINT32 (0, event.dropped_local_spot_count);
     TEST_ASSERT_EQUAL_UINT32 (0, event.dropped_remote_target_count);
+
+    //  The first multicast still occupies the one-record Spot mailbox.
+    //  A second publish reports one aggregate drop and must not emit the
+    //  ordinary target-level BACKPRESSURED event.
+    make_payload (&part, "fill:9912");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_publisher_publish (publisher, "audit", "trades.eu",
+                                                              NULL, &part, 1, NULL,
+                                                              ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    bool aggregate_drop_seen = false;
+    for (int attempt = 0; attempt < 500 && !aggregate_drop_seen; ++attempt) {
+        memset (&event, 0, sizeof (event));
+        event.struct_size = sizeof (event);
+        event.version = 1;
+        const zlink_recv_result_t rc =
+          zlink_mesh_node_monitor_recv (monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT);
+        if (rc == ZLINK_RECV_NO_DATA) {
+            msleep (10);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, rc);
+        TEST_ASSERT_NOT_EQUAL (ZLINK_MESH_MONITOR_BACKPRESSURED, event.kind);
+        if (event.kind == ZLINK_MESH_MONITOR_MULTICAST_DROPPED) {
+            TEST_ASSERT_EQUAL_UINT32 (1, event.snapshot_local_spot_count);
+            TEST_ASSERT_EQUAL_UINT32 (0, event.admitted_local_spot_count);
+            TEST_ASSERT_EQUAL_UINT32 (1, event.dropped_local_spot_count);
+            aggregate_drop_seen = true;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE (aggregate_drop_seen, "aggregate multicast drop event missing");
 
     //  The status snapshot reflects the counters without consuming events.
     zlink_mesh_monitor_status_t status;
@@ -546,6 +653,7 @@ int main ()
     setup_test_environment (120);
 
     UNITY_BEGIN ();
+    RUN_TEST (test_raw_handshake_failure_emits_peer_rejected);
     RUN_TEST (test_monitor_event_matrix_and_child_reference);
     RUN_TEST (test_monitor_event_mask_filters_kinds);
     RUN_TEST (test_backpressure_event_and_in_turn_infrastructure_progress);

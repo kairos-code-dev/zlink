@@ -51,7 +51,7 @@ class router_t : public routing_socket_base_t
 
   protected:
     //  Rollback any message parts that were sent but not yet flushed.
-    int rollback ();
+    int xrollback () ZLINK_OVERRIDE;
 
   private:
     //  Receive peer id and update lookup map

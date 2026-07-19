@@ -4,7 +4,7 @@
 
 # MeshNode
 
-This document defines the formal public contract for ZLink Core 10.0.0.
+This document defines the formal public contract for ZLink Core 10.1.0.
 It is for developers implementing the Core C API and bindings that participate
 in a RouteMesh. It answers: "How does one MeshNode expose a physical mesh,
 logical channel memberships, and Node/Channel messaging?"
@@ -60,10 +60,6 @@ typedef enum zlink_mesh_node_option_t {
   ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET   = 0x3622,
   ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET      = 0x3623
 } zlink_mesh_node_option_t;
-
-typedef enum zlink_mesh_publish_option_t {
-  ZLINK_MESH_PUBLISH_OPT_NODROP = 0x3630
-} zlink_mesh_publish_option_t;
 
 typedef struct zlink_mesh_node_options_t {
   uint32_t struct_size;
@@ -380,25 +376,30 @@ ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_publisher_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_set_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_publisher_get_option(
-  void *publisher,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_publisher_destroy(
   void **publisher_p);
 ```
 
-`ZLINK_MESH_PUBLISH_OPT_NODROP` is an `int` with value 0 or 1 and defaults to 1.
-Other publish options return `ENOTSUP`. Publish snapshots ready remote members of the target channel
-and local Spot matches when the local MeshNode belongs to that channel. It
-delivers a matching publish exactly once to every selected Spot lifecycle
-generation. There is no relay or replay.
+Publish snapshots ready remote members of the target channel and local Spot
+matches when the local MeshNode belongs to that channel. It submits the
+message once through the internal ROUTER for each selected remote member.
+Core does not reserve every remote target in advance or make commits across
+multiple targets all-or-none. A successful submit to one target is not
+recalled when a later target fails.
+
+`flags` applies directly to each remote ROUTER submit. Insufficient pipe
+capacity returns `EAGAIN` for `DONTWAIT`. A blocking submit uses the MeshNode
+`SNDTIMEO` and, like the existing ROUTER contract, still returns `EAGAIN` when
+the timeout expires. If capacity rejects one or more remote targets, publish
+returns `ZLINK_SUBMIT_BACKPRESSURED`, while messages already submitted
+successfully remain committed.
+
+The origin MeshNode's local Spot mailboxes, and the local Spot mailboxes
+selected after a remote MeshNode receives the wire message, accept only
+targets that currently have capacity. A local target without capacity is not
+waited for and is included in the drop count. Successful submission to a
+remote ROUTER pipe does not guarantee acceptance by a local Spot mailbox on
+the peer. There is no relay or replay.
 
 `metadata` is the same canonical application-metadata frame used by Node and
 Channel messaging. `NULL` means that metadata is absent. Core validates the
@@ -410,25 +411,15 @@ The metadata input is borrowed and read-only, and the caller retains its
 storage for every result. On success, Core acquires the reference or copy needed
 by the publish operation before the function returns.
 
-With `NODROP=1`, every target in the snapshot accepts the message or no target
-receives it. This all-or-none is a capacity-admission guarantee: if any target
-cannot accept for capacity reasons, the call returns
-`ZLINK_SUBMIT_BACKPRESSURED`/`EAGAIN` with `DONTWAIT`, or `ETIMEDOUT` after
-`SNDTIMEO` for a blocking call, and no target receives the message. With
-`NODROP=0`, only targets that cannot accept are dropped and the rest receive
-the message.
-
-An admitted remote target whose pipe terminates between the reserve and the
-commit is a §5 peer departure, not backpressure. Such a target is not counted
-as a drop; it is reported through the detail's unreachable count, and per the
-§5 rule that already-committed messages are not recalled, the remaining
-snapshot targets still receive the message.
+An admitted remote target whose pipe terminates is a §5 peer departure, not
+backpressure. Such a target is not counted as a drop and is reported through
+the detail's unreachable count.
 
 Detail reports separate remote and local snapshot, admission, and drop counts
-plus the remote unreachable count for every successful result. The remote
-snapshot equals the sum of admitted, dropped, and unreachable. A successful
-`NODROP=1` call has zero in both dropped counts. Zero remote and local
-snapshot targets returns `ZLINK_SUBMIT_NOT_FOUND` with `errno == ENOENT`.
+plus the remote unreachable count for `ZLINK_SUBMIT_OK` and
+`ZLINK_SUBMIT_BACKPRESSURED` results. The remote snapshot equals the sum of
+admitted, dropped, and unreachable. Zero remote and local snapshot targets
+returns `ZLINK_SUBMIT_NOT_FOUND` with `errno == ENOENT`.
 
 A topic is a 1-to-`ZLINK_MESH_TOPIC_MAX`-byte UTF-8 string with no NUL. An
 empty topic, invalid UTF-8, or an over-limit topic returns
@@ -507,15 +498,12 @@ supported returns `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`.
 | raw ROUTER/DEALER options | matching raw type only | unsupported | unsupported | unsupported |
 | raw PUB/XPUB options | matching raw type only | unsupported | unsupported | unsupported |
 | raw SUB/XSUB options | matching raw type only | unsupported | unsupported | unsupported |
-| `ZLINK_MESH_PUBLISH_OPT_NODROP` | unsupported | unsupported | supported | supported |
 
-Logical Multicast and classic PUB both report backpressure to the caller when
-`NODROP=1`. Logical Multicast additionally guarantees atomic reserve and commit
-for its entire snapshot — this atomicity is the §7 capacity-admission
-guarantee, and a peer departing between the reserve and the commit follows the
-§7 unreachable rule. The raw PUB contract defines subscriber-level
-delivery. They use separate option enums. Spot and Mesh-publisher handles
-default to 1.
+Spot and Mesh-publisher handles expose no publish-specific option. Remote
+Logical Multicast submits use the HWM and `SNDTIMEO` configured on the
+MeshNode's physical ROUTER together with the per-call `flags`. Subscriber
+delivery and options for classic PUB follow the raw PUB contract and do not
+apply to Logical Multicast.
 
 The common options in the MeshNode column use `zlink_set_option()` and
 `zlink_get_option()`. `SNDHWM` and `RCVHWM` apply to physical ROUTER pipe queues,

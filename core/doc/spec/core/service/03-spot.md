@@ -4,7 +4,7 @@
 
 # Spot
 
-This document defines the formal public contract for ZLink Core 10.0.0.
+This document defines the formal public contract for ZLink Core 10.1.0.
 It is for C API and binding developers that create logical Spots inside a
 MeshNode and receive their messages. It answers: "Through which Spot claim are
 direct Spot messages and Logical Multicast received?"
@@ -177,7 +177,7 @@ the completion's `terminal_result` to `ZLINK_REQUEST_NOT_FOUND` and
 the current lifecycle generation for the same RID, the completion fields are
 `ZLINK_REQUEST_CONFLICT` and `ESTALE`, respectively. A one-way send adds no
 remote application acknowledgment, so the caller is not guaranteed to observe
-a missing remote Spot after successful submission; the 10.0.0 event ABI also
+a missing remote Spot after successful submission; the 10.1.0 event ABI also
 does not guarantee a monitor event for that condition.
 
 A request record is answered with `zlink_mesh_reply()` from the
@@ -201,25 +201,13 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_publish(
   size_t part_count,
   zlink_mesh_publish_detail_t *detail_out,
   zlink_send_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_set_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  const void *optval,
-  size_t optvallen);
-ZLINK_EXPORT zlink_config_result_t zlink_spot_get_publish_option(
-  void *spot,
-  zlink_mesh_publish_option_t option,
-  void *optval,
-  size_t *optvallen);
 ```
 
-`ZLINK_MESH_PUBLISH_OPT_NODROP` is an `int` with value 0 or 1 and defaults to 1.
-Publish uses the same target snapshot, NODROP, timeout, ordering, and detail
+Publish uses the same target snapshot, ROUTER submission, ordering, and detail
 contract as the owner MeshNode publisher. It validates canonical application
 metadata in the same way and exposes the same immutable view on every matching
-Spot record. It additionally records source Spot
-RID and generation. Target ChannelName is required even when the owner MeshNode
-has only one membership.
+Spot record. It additionally records source Spot RID and generation. Target
+ChannelName is required even when the owner MeshNode has only one membership.
 
 A topic is a 1-to-255-byte UTF-8 string with no NUL. An empty topic, invalid
 UTF-8, or an over-limit topic returns `ZLINK_SUBMIT_INVALID_ARGUMENT` with
@@ -300,9 +288,8 @@ stop, receive, handler, and destroy use the generic timer contract.
 
 ## 10. Options and thread safety
 
-Every request receives an explicit `timeout_ms`. Spot publish options support
-only `ZLINK_MESH_PUBLISH_OPT_NODROP`; other values return
-`ZLINK_CONFIG_NOT_SUPPORTED`.
+Every request receives an explicit `timeout_ms`. Spot exposes no
+publish-specific option.
 
 Send, request, publish, subscription, and status operations are thread-safe.
 Destroy cannot run concurrently with another operation on the same facade.

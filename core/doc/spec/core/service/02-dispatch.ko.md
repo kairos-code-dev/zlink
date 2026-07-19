@@ -4,7 +4,7 @@
 
 # Service dispatch
 
-이 문서는 ZLink Core 10.0.0의 정식 공개 계약을 정의한다. 대상 독자는 C API와 bindings에서
+이 문서는 ZLink Core 10.1.0의 정식 공개 계약을 정의한다. 대상 독자는 C API와 bindings에서
 MeshNode service work를 수신하는 개발자다. 이 문서는 “Node·Spot·Actor와 infrastructure work를 callback
 payload 없이 어떻게 공정하고 안전하게 수신하는가?”에 답한다.
 

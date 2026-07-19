@@ -4,7 +4,7 @@
 
 # Actor Service
 
-This document defines the formal public contract for ZLink Core 10.0.0.
+This document defines the formal public contract for ZLink Core 10.1.0.
 It is for C API and binding developers that use Actor addresses, mailboxes, Spot
 membership, and transfer fences. It answers: "How are Actor payload and
 lifecycle separated from Spot dispatch while preserving ordering during a

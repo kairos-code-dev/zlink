@@ -3,7 +3,7 @@
 # Service Layer Internal Design
 
 This document helps core maintainers navigate the actual internal structure of
-the 10.0.0 service layer (MeshNode, Spot, Actor and STREAM session). The
+the 10.1.0 service layer (MeshNode, Spot, Actor and STREAM session). The
 public contract is owned by the formal specs under
 [`doc/spec/core/service/`](../spec/core/service/README.md); this document only
 describes the current source structure that implements that contract.
@@ -29,9 +29,9 @@ functions. The exception is the cross-cutting seam `mesh_api.cpp`: the Spot
 timer registry (including cancellation) and the turn-admission state
 (`timer_turn_active`, `timer_count`) are owned and mutated by that seam
 directly — the timer machinery only provides hooks, keeping the
-Spot-coupling knowledge in one place on the mesh side. The raw socket layer (`runtime/sockets/`) knows nothing about mesh.
-The only extension mesh asks of the raw ROUTER is the non-consuming write
-probe `routed_target_writable()` used by the NODROP atomic reserve.
+Spot-coupling knowledge in one place on the mesh side. The raw socket layer
+(`runtime/sockets/`) knows nothing about mesh. Logical Multicast uses the
+ordinary raw ROUTER send path without a mesh-specific extension.
 
 ## 2. Object model
 
@@ -176,10 +176,20 @@ as silent replacement.
 
 - The node's raw ROUTER is thread-safe, so sends happen directly on
   application threads while one dedicated ingress thread owns receive.
-- The ingress thread also drains the socket monitor. `CONNECTION_READY`
-  (carrying rid and remote_addr) matches outbound intents and triggers the
-  HELLO. Peer loss flows through `handle_peer_down` into a state transition
-  plus the `PEER_CLOSED` event.
+- The ingress thread also drains the socket monitor. `peer_transport_t` owns
+  the process-local connection ID issued for each physical transport and records it on both
+  the outbound intent and admitted lifetime. `DISCONNECTED` affects only the
+  lifetime whose RID and physical transport identity both match, so a delayed
+  predecessor termination cannot demote a same-RID successor. The socket
+  monitor's private frame distinguishes a physical ready edge from a
+  ready-count aggregate update. Ingress starts admission only for an edge; if
+  HELLO is processed first, the later edge fills the lifetime's empty
+  transport ID. A handshake failure before RID creation becomes a zero-RID
+  `PEER_REJECTED` event.
+- The MeshNode ROUTER uses the existing `ZLINK_RID_DUPLICATE_HANDOVER` policy.
+  A new pipe therefore replaces an asynchronously retiring pipe after an
+  explicit disconnect or when a higher generation reuses the RID. MeshNode
+  adds no separate delivery or drop policy.
 - Envelope v1: `'Z' 'M' | ver | type | flags`. Request/reply kinds append a
   correlation u64; replies append the terminal result and errno; channel kinds
   append the channel name. Application metadata travels in a separate frame
@@ -206,28 +216,22 @@ as silent replacement.
   correlation) so that `zlink_mesh_reply` answers over the wire with a REPLY,
   and the requester's ingress closes the pending operation with a completion.
 
-## 6. Logical Multicast and NODROP
+## 6. Logical Multicast
 
-Publish completes snapshot → check → commit within one call.
+Publish creates a snapshot and submits once to each target within one call.
 
 1. Under the node mutex, take the local subscription matches and the snapshot
    of admitted positive-weight channel-member peers.
-2. With NODROP (default 1), serialize the node's outbound wire under
-   `wire_send_mutex` and pre-check the local mailbox budgets plus
-   `routed_target_writable()` on every remote pipe. If any target cannot
-   accept, nothing commits (all-or-none). Non-blocking fails with `EAGAIN`;
-   blocking retries the reserve until SNDTIMEO and fails with `ETIMEDOUT`.
-3. Once the reserve passes, the local slots (mailbox list nodes and
-   ready-index keys) are pre-reserved before the remote commit, pulling the
-   last fallible step ahead of any commit. A failure rolls everything back
-   and returns `ENOMEM`; the reservations only exist while the node mutex is
-   held (every failure path rolls back before unlocking).
-4. Commit is the local fanout (shared `zlink_msg_copy` refcounts) plus exactly
-   one wire submit per peer. An admitted peer that loses its pipe between the
-   reserve and the commit is classified as a peer departure, not a drop, and
-   is counted as unreachable (spec §7). A receiving node fans out only to its
-   own local subscription matches and has no re-propagation path (structural
-   no-relay).
+2. A local mailbox accepts a shared `zlink_msg_copy` reference only when it
+   has capacity; every other local target is counted as dropped.
+3. Under the node `wire_send_mutex`, Core performs one ROUTER submit per remote
+   member. It does not preflight every pipe, and directly uses the caller's
+   `DONTWAIT` or blocking flag together with the ROUTER `SNDTIMEO`. A
+   successful earlier target is not rolled back when a later target
+   backpressures.
+4. The receiving node fans out only to its own local subscription matches.
+   Targets without mailbox capacity are counted as dropped. There is no
+   separate ingress staging, peer termination, or relay path.
 
 The publish detail and the `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` events
 report the snapshot/admitted/dropped/unreachable counts verbatim
@@ -277,7 +281,11 @@ close checks) holds a `monitor_state_pin_t`, and close/unregister wait for the
 pins to drain before deleting the storage (no UAF). A handler update passes its
 pinned state as the expected value, checks entry identity and `unregistered`
 under the registry lock, and fails with `ESHUTDOWN` rather than resurrecting a
-registration on a closing socket. Registration completes its identity (handler,
+registration on a closing socket. The public raw-monitor queue may lose events
+when it reaches its HWM. The private raw monitor consumed by Mesh ingress
+instead backpressures its producer at the HWM so physical connection edges are
+not lost, and dequeue wakes the producer. This private queue therefore cannot
+keep growing beyond its HWM. Registration completes its identity (handler,
 provider, subject, dispatch task id) under `dispatch_sync`, so an immediate
 dispatch tick's first callback — and that callback's self-close finalizer —
 observes only the fully committed task id. The service-control scheduler that
@@ -298,8 +306,8 @@ failed tick is dropped while the active-task epilogue always runs.
 - The primary lock is the single `node->mutex`. The monitor has its own mutex;
   `emit_monitor_event` must be called without the node mutex held (internally
   it briefly takes node mutex, then monitor mutex, in that order).
-- `wire_send_mutex` serializes all of a node's outbound wire during a NODROP
-  atomic reserve. When held together with the node mutex, the node mutex is
+- `wire_send_mutex` serializes a node's outbound wire so multipart frame groups
+  cannot interleave. When held together with the node mutex, the node mutex is
   always the outer lock.
 - `admit_record` takes the node mutex itself — callers must not hold it when
   calling (the unlock-before-emit in the transfer code is one example).

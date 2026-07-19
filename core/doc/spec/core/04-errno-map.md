@@ -4,7 +4,7 @@
 
 # Result and errno mapping
 
-This document defines result-enum and thread-local errno mappings for the ZLink Core 10.0.0 public API. Its audience is developers who need stable error classification in the C API and bindings. Results drive control flow; errno describes the same failure in more detail.
+This document defines result-enum and thread-local errno mappings for the ZLink Core 10.1.0 public API. Its audience is developers who need stable error classification in the C API and bindings. Results drive control flow; errno describes the same failure in more detail.
 
 ## 1. Common precedence
 
@@ -131,9 +131,9 @@ retries the same message with a sufficient topic buffer.
 
 | Family | Submit and request owner | Receive and configuration owner |
 |---|---|---|
-| MeshNode | `zlink_mesh_node_send_*`, `request_*`, `publisher_publish` | Lifecycle, peers, status, and publisher options |
+| MeshNode | `zlink_mesh_node_send_*`, `request_*`, `publisher_publish` | Lifecycle, peers, and status |
 | Dispatch | `zlink_mesh_reply` | Ready and receive batches, claims, and handlers |
-| Spot | `zlink_spot_send_*`, `request_*`, `publish` | Spot lifecycle, subscriptions, timer, and publish options |
+| Spot | `zlink_spot_send_*`, `request_*`, `publish` | Spot lifecycle, subscriptions, and timer |
 | Actor | Actor creation, join, leave, messaging, and transfer | Actor lookup, claims, and control records |
 | STREAM session | Bind, unbind, send, request, and close | Service lifecycle, binding queries, and status |
 

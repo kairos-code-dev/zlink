@@ -243,7 +243,7 @@ termination. Any rid that is not 4 bytes fails as an invalid argument.
 ## 9. Session Actor Relay (session relay)
 
 A STREAM socket can relay client session messages to and from mesh Actors.
-Each client connection's `source_rid` becomes a STREAM session. In 10.0.0 the
+Each client connection's `source_rid` becomes a STREAM session. In 10.1.0 the
 association between the socket and a MeshNode is owned explicitly by the
 STREAM session service: `zlink_stream_session_service_new(stream_socket,
 node)` attaches 1:1:1 to the socket and node, and a socket already attached to
@@ -260,3 +260,8 @@ cleanup rules are documented in
 the STREAM layer is only that the byte pipe per `source_rid` is the transport
 the relay rides on, and that a session disconnect removes that session's
 bindings without changing any bound Actor's joined Spot.
+
+For session-to-Actor delivery, the service mutex keeps binding validation and
+Actor-mailbox admission in one ordering unit. Releasing that mutex between
+the two steps would allow concurrent submits from one session to enter the
+mailbox in reverse order.

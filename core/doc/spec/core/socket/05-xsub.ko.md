@@ -164,7 +164,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_subscription_at (void *handle_,
 `index_` (0-기반)에 해당하는 구독 필터 문자열을 반환합니다. 진입 시
 `*filter_len_inout_`는 버퍼 크기이며, 반환 시 실제 길이로 설정됩니다.
 `*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 raw 구독이 byte-prefix
-필터이므로 10.0.0에서는 항상 `0`을 반환합니다.
+필터이므로 10.1.0에서는 항상 `0`을 반환합니다.
 
 버퍼가 작으면 필요한 길이를 `*filter_len_inout_`에 기록하고
 `ZLINK_CONFIG_BUFFER_TOO_SMALL`, `errno == ENOBUFS`를 반환합니다. 이 결과에서는

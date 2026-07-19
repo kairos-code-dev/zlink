@@ -29,12 +29,16 @@ class socket_base_t;
 
 enum
 {
-    socket_monitor_max_values = 4
+    socket_monitor_max_values = 4,
+    socket_monitor_internal_connection_ready_edge = 1
 };
 
 struct socket_monitor_event_record_t
 {
-    socket_monitor_event_record_t () : event (0), values_count (0)
+    socket_monitor_event_record_t () :
+        event (0),
+        values_count (0),
+        internal_flags (0)
     {
         memset (values, 0, sizeof (values));
         memset (&routing_id, 0, sizeof (routing_id));
@@ -45,6 +49,7 @@ struct socket_monitor_event_record_t
     uint64_t values_count;
     zlink_routing_id_t routing_id;
     endpoint_uri_pair_t endpoint_uri_pair;
+    uint32_t internal_flags;
 };
 
 typedef void (socket_monitor_worker_idle_fn) (void *);

@@ -55,6 +55,13 @@ int zlink::mesh::set_common_option (void *handle_,
                 return -1;
             }
             const int value = *static_cast<const int *> (optval_);
+            if (option_ == ZLINK_INTERNAL_OPT_SNDTIMEO
+                || option_ == ZLINK_INTERNAL_OPT_RCVTIMEO) {
+                if (value < -1) {
+                    errno = EINVAL;
+                    return -1;
+                }
+            }
             if (option_ == ZLINK_INTERNAL_OPT_SNDTIMEO)
                 node->sndtimeo_ms = value;
             else if (option_ == ZLINK_INTERNAL_OPT_RCVTIMEO)

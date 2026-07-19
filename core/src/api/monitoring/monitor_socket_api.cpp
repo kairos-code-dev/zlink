@@ -47,6 +47,7 @@ int attach_socket_monitor_handler_state (void *monitor_,
 
 void *open_socket_monitor_with_handler_internal (void *s_,
                                                  zlink_socket_monitor_event_mask_t events_,
+                                                 int event_version_,
                                                  zlink_monitor_handler_fn handler_,
                                                  void *userdata_)
 {
@@ -67,7 +68,9 @@ void *open_socket_monitor_with_handler_internal (void *s_,
     snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u", static_cast<void *> (s_),
               rand_id);
 
-    const int monitor_rc = handle.socket->monitor (endpoint, events_, 3, ZLINK_CORE_SOCKET_PAIR);
+    const int monitor_rc =
+      handle.socket->monitor (endpoint, events_, event_version_,
+                              ZLINK_CORE_SOCKET_PAIR);
     if (monitor_rc != 0)
         return NULL;
 
@@ -75,7 +78,8 @@ void *open_socket_monitor_with_handler_internal (void *s_,
       handle.socket->get_ctx ()->create_socket (ZLINK_CORE_SOCKET_PAIR);
     void *monitor_socket = static_cast<void *> (monitor_socket_base);
     if (!monitor_socket) {
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        handle.socket->monitor (NULL, 0, event_version_,
+                                ZLINK_CORE_SOCKET_PAIR);
         return NULL;
     }
     monitor_socket_base->set_auto_hwm_policy_enabled (false);
@@ -87,7 +91,8 @@ void *open_socket_monitor_with_handler_internal (void *s_,
 
     if (zlink_connect (monitor_socket, endpoint) != 0) {
         zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        handle.socket->monitor (NULL, 0, event_version_,
+                                ZLINK_CORE_SOCKET_PAIR);
         return NULL;
     }
 
@@ -97,7 +102,8 @@ void *open_socket_monitor_with_handler_internal (void *s_,
         != 0) {
         const int err = errno;
         zlink_close (monitor_socket);
-        handle.socket->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        handle.socket->monitor (NULL, 0, event_version_,
+                                ZLINK_CORE_SOCKET_PAIR);
         errno = err;
         return NULL;
     }
@@ -106,13 +112,22 @@ void *open_socket_monitor_with_handler_internal (void *s_,
 }
 }
 
+void *open_socket_monitor_internal (
+  void *socket_,
+  zlink_socket_monitor_event_mask_t events_,
+  int event_version_)
+{
+    return open_socket_monitor_with_handler_internal (
+      socket_, events_, event_version_, &zlink_monitor_ignore_handler, NULL);
+}
+
 void *zlink_socket_monitor_open (void *s_, const zlink_socket_monitor_open_options_t *options_)
 {
     if (!options_) {
         errno = EINVAL;
         return NULL;
     }
-    return open_socket_monitor_with_handler_internal (s_, options_->events,
+    return open_socket_monitor_with_handler_internal (s_, options_->events, 3,
                                                       &zlink_monitor_ignore_handler, NULL);
 }
 

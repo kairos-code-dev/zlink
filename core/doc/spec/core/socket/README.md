@@ -208,7 +208,7 @@ observes another peer with the same routing id. The option value is an
 | Value | Meaning |
 |---|---|
 | `ZLINK_RID_DUPLICATE_REJECT` | Keep the existing pipe and do not register the duplicate pipe |
-| `ZLINK_RID_DUPLICATE_HANDOVER` | Let the new pipe take over the existing pipe with the same routing id |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | A reconnect in the same direction takes over the existing pipe. If opposite-direction pipes collide, both peers compare their routing ids and select the same single direction. |
 
 This option is meaningful only for sockets that can observe a peer-advertised
 routing id. STREAM assigns its own 4-byte connection routing ids, so this

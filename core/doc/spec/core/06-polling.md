@@ -4,7 +4,7 @@
 
 # Poll and poller
 
-This document defines the ZLink Core 10.0.0 public readiness contract. Its audience is developers of the C API and bindings that wait for raw sockets, timers, and MeshNodes in one event loop. It answers: “What do `POLLIN`, `POLLOUT`, single-consumer receive mode, and lifetime mean for each source?”
+This document defines the ZLink Core 10.1.0 public readiness contract. Its audience is developers of the C API and bindings that wait for raw sockets, timers, and MeshNodes in one event loop. It answers: “What do `POLLIN`, `POLLOUT`, single-consumer receive mode, and lifetime mean for each source?”
 
 ## 1. Public types
 

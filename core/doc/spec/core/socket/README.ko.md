@@ -202,7 +202,7 @@ routing id가 들어왔을 때의 정책을 정합니다. 값은 `int`로 설정
 | 값 | 의미 |
 |---|---|
 | `ZLINK_RID_DUPLICATE_REJECT` | 기존 pipe를 유지하고 새 중복 pipe를 등록하지 않음 |
-| `ZLINK_RID_DUPLICATE_HANDOVER` | 새 pipe가 같은 routing id의 기존 pipe를 인수 |
+| `ZLINK_RID_DUPLICATE_HANDOVER` | 같은 방향에서 다시 연결한 pipe는 기존 pipe를 인수한다. 서로 반대 방향의 pipe가 충돌하면 두 피어의 routing id를 비교해 양쪽이 같은 방향 하나를 선택한다. |
 
 이 옵션은 peer가 광고한 routing id를 관찰할 수 있는 socket에서만 의미가
 있습니다. STREAM은 서버가 연결별 4바이트 routing id를 직접 만들기 때문에

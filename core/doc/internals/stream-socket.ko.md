@@ -229,7 +229,7 @@ pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된
 ## 9. Session Actor relay (session relay)
 
 STREAM socket은 client session 메시지를 mesh Actor로 relay할 수 있다. 각 client
-연결의 `source_rid`가 STREAM session이 된다. 10.0.0에서 socket과 MeshNode의
+연결의 `source_rid`가 STREAM session이 된다. 10.1.0에서 socket과 MeshNode의
 연결은 STREAM session service가 명시적으로 소유한다:
 `zlink_stream_session_service_new(stream_socket, node)`가 socket과 node에
 1:1:1로 붙고, 다른 node에 이미 붙은 socket은 `EEXIST`로 거부된다.
@@ -244,3 +244,8 @@ relay 경로는 모두 MeshNode의 STREAM session service에 있다. companion A
 중요한 것은 `source_rid`별 byte pipe가 relay가 타는 transport라는 점, 그리고 session
 disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그 session의 binding만 제거한다는
 점뿐이다.
+
+session에서 Actor로 보내는 경로는 service mutex 아래에서 binding 확인과 Actor mailbox
+admission을 하나의 순서 단위로 처리한다. 이 경계를 나누면 같은 session의 동시 submit이
+mailbox에 반대 순서로 들어갈 수 있으므로, mailbox admission이 끝나기 전에 mutex를
+해제하지 않는다.

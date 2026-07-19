@@ -4,9 +4,9 @@
 
 # 오류, 결과 enum과 버전
 
-이 문서는 ZLink Core 10.0.0의 오류 ABI와 version 계약을 정의한다. 대상 독자는 C API와
+이 문서는 ZLink Core 10.1.0의 오류 ABI와 version 계약을 정의한다. 대상 독자는 C API와
 bindings 개발자다. 이 문서는 “공개 함수의 typed result와 thread-local errno가 어떤 값으로 대응하며
-10.0.0을 어떻게 판별하는가?”에 답한다.
+10.1.0을 어떻게 판별하는가?”에 답한다.
 
 ## 1. 기본 규칙
 
@@ -199,6 +199,6 @@ ZLINK_EXPORT const char *zlink_strerror(int errnum);
 ZLINK_EXPORT void zlink_version(int *major, int *minor, int *patch);
 ```
 
-Core 10.0.0은 SOVERSION 10을 사용한다. `zlink_strerror()`가 반환한
+Core 10.1.0은 SOVERSION 10을 사용한다. `zlink_strerror()`가 반환한
 pointer는 library-owned static storage이며 해제하거나 수정하지 않는다. 세 함수는 thread-safe이고
 `zlink_errno()`는 호출 thread의 값만 반환한다.

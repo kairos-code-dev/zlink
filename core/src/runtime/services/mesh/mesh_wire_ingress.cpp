@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "services/mesh/mesh_wire_internal.hpp"
+#include "api/monitoring/monitor_api_internal.hpp"
 #include "api/mesh/mesh_c_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "utils/macros.hpp"
@@ -241,14 +242,12 @@ void handle_multicast (mesh_node_t *node_,
         payload_bytes += zlink_msg_size (&(*parts_)[i]);
 
     uint32_t dropped = 0;
-    std::vector<owner_id_t> delivered_to;
-    {
+    std::vector<owner_id_t> local_targets;
+    try {
         std::lock_guard<std::mutex> lock (node_->mutex);
         if (node_->channels.count (channel_) == 0) {
             //  Not a member: the sender snapshot was stale; drop silently.
         } else {
-            const uint64_t message_budget = node_->effective_message_budget ();
-            const uint64_t byte_budget = node_->effective_byte_budget ();
             for (std::map<std::string, spot_state_t>::iterator it = node_->spots.begin ();
                  it != node_->spots.end (); ++it) {
                 spot_state_t &spot = it->second;
@@ -267,63 +266,69 @@ void handle_multicast (mesh_node_t *node_,
                 }
                 if (!match)
                     continue;
-                const owner_id_t owner = spot_owner (spot.rid, spot.generation);
-                std::map<owner_id_t, owner_state_t>::iterator owner_it =
-                  node_->owners.find (owner);
-                if (owner_it == node_->owners.end ()) {
-                    ++dropped;
-                    continue;
-                }
-                mailbox_t &mailbox = owner_it->second.domains[domain_application];
-                if (mailbox.pending_messages + 1 > message_budget
-                    || mailbox.pending_bytes + payload_bytes > byte_budget) {
-                    ++dropped;
-                    continue;
-                }
-                std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
-                if (!record.get ()) {
-                    ++dropped;
-                    continue;
-                }
-                record->kind = ZLINK_MESH_RECORD_SPOT_MULTICAST;
-                record->source_node_rid = source_rid_;
-                record->source_spot_rid = source_spot_rid_;
-                record->channel_name = channel_;
-                record->topic = topic_;
-                if (metadata_ && !metadata_->empty ()) {
-                    record->has_metadata = true;
-                    record->application_metadata = *metadata_;
-                    record->byte_size += record->application_metadata.size ();
-                }
-                record->parts.resize (parts_->size ());
-                bool copy_failed = false;
-                for (size_t i = 0; i < parts_->size (); ++i) {
-                    zlink_msg_init (&record->parts[i]);
-                    if (zlink_msg_copy (&record->parts[i], &(*parts_)[i]) != 0)
-                        copy_failed = true;
-                }
-                if (copy_failed) {
-                    ++dropped;
-                    continue;
-                }
-                record->byte_size += payload_bytes;
-                mailbox.pending_messages += 1;
-                mailbox.pending_bytes += record->byte_size;
-                mailbox.records.push_back (std::move (record));
-                node_->ready.insert (
-                  std::make_pair (owner, static_cast<int> (domain_application)));
-                delivered_to.push_back (owner);
+                local_targets.push_back (spot_owner (spot.rid, spot.generation));
             }
-            node_->cv.notify_all ();
+        }
+    }
+    catch (const std::bad_alloc &) {
+        close_frames (parts_);
+        return;
+    }
+
+    //  Use the same mailbox admission owner as origin-side fan-out. It
+    //  applies the lifecycle/fence/budget policy but suppresses target-level
+    //  BACKPRESSURED events because multicast reports one aggregate event.
+    for (size_t target = 0; target < local_targets.size (); ++target) {
+        std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
+        if (!record.get ()) {
+            ++dropped;
+            continue;
+        }
+        bool copy_failed = false;
+        try {
+            record->kind = ZLINK_MESH_RECORD_SPOT_MULTICAST;
+            record->source_node_rid = source_rid_;
+            record->source_spot_rid = source_spot_rid_;
+            record->channel_name = channel_;
+            record->topic = topic_;
+            if (metadata_ && !metadata_->empty ()) {
+                record->has_metadata = true;
+                record->application_metadata = *metadata_;
+                record->byte_size += record->application_metadata.size ();
+            }
+            record->parts.reserve (parts_->size ());
+            for (size_t i = 0; i < parts_->size (); ++i) {
+                zlink_msg_t copy;
+                if (zlink_msg_init (&copy) != 0) {
+                    copy_failed = true;
+                    break;
+                }
+                if (zlink_msg_copy (&copy, &(*parts_)[i]) != 0) {
+                    zlink_msg_close (&copy);
+                    copy_failed = true;
+                    break;
+                }
+                record->parts.push_back (copy);
+            }
+            record->byte_size += payload_bytes;
+        }
+        catch (const std::bad_alloc &) {
+            copy_failed = true;
+        }
+        if (copy_failed
+            || admit_multicast_record (node_, local_targets[target], record) != 0) {
+            ++dropped;
         }
     }
     close_frames (parts_);
-    if (!delivered_to.empty ())
-        signal_ready (node_, delivered_to[0], domain_application);
     if (dropped > 0) {
         zlink_mesh_monitor_event_t event;
         memset (&event, 0, sizeof (event));
         event.kind = ZLINK_MESH_MONITOR_MULTICAST_DROPPED;
+        event.snapshot_local_spot_count =
+          static_cast<uint32_t> (local_targets.size ());
+        event.admitted_local_spot_count =
+          event.snapshot_local_spot_count - dropped;
         event.dropped_local_spot_count = dropped;
         snprintf (event.channel_name, sizeof (event.channel_name), "%s", channel_.c_str ());
         emit_monitor_event (node_, event);
@@ -1045,20 +1050,46 @@ void drain_monitor (mesh_node_t *node_)
         return;
     for (;;) {
         zlink_socket_monitor_event_t event;
+        uint64_t connection_id = 0;
+        uint32_t internal_flags = 0;
         memset (&event, 0, sizeof (event));
-        if (zlink_socket_monitor_recv (node_->router_monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT)
-            != ZLINK_RECV_OK)
+        if (recv_socket_monitor_event_internal (
+              node_->router_monitor, &event, &connection_id, &internal_flags,
+              ZLINK_RECV_FLAGS_DONTWAIT)
+            != 0)
             return;
         if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+            //  Aggregate ready-count updates are not new physical transports.
+            //  Only the private edge marker may start admission.
+            if ((internal_flags
+                 & socket_monitor_internal_connection_ready_edge)
+                == 0)
+                continue;
             //  Outbound connects match a connecting intent by endpoint; the
             //  handshake starts with our HELLO to the revealed peer rid.
             bool ours = false;
             {
+                std::lock_guard<std::mutex> connection_lock (
+                  node_->peer_connection_mutex);
                 std::lock_guard<std::mutex> lock (node_->mutex);
+                const rid_bytes_t ready_rid = rid_bytes (event.routing_id);
+                if (!ready_rid.empty ()) {
+                    node_->current_peer_transports[ready_rid] =
+                      peer_transport_t (connection_id);
+                    peer_state_t *ready_peer =
+                      find_peer_by_rid_locked (node_, ready_rid);
+                    if (ready_peer && ready_peer->transport.empty ())
+                        ready_peer->transport =
+                          peer_transport_t (connection_id);
+                }
                 peer_state_t *intent =
                   find_intent_by_endpoint_locked (node_, event.remote_addr);
                 if (intent && event.routing_id.size > 0) {
                     intent->rid = rid_bytes (event.routing_id);
+                    if (intent->state != ZLINK_MESH_PEER_ADMITTED
+                        || intent->transport.empty ())
+                        intent->transport =
+                          peer_transport_t (connection_id);
                     if (intent->state == ZLINK_MESH_PEER_ERROR) {
                         intent->state = ZLINK_MESH_PEER_CONNECTING;
                         intent->last_error = 0;
@@ -1078,7 +1109,15 @@ void drain_monitor (mesh_node_t *node_)
             }
         } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
             if (event.routing_id.size > 0)
-                handle_peer_down (node_, rid_bytes (event.routing_id));
+                handle_peer_down (node_, rid_bytes (event.routing_id),
+                                  connection_id);
+            else if (event.value == ZLINK_DISCONNECT_HANDSHAKE_FAILED)
+                //  A transport handshake can fail before a routing id
+                //  exists. The socket's terminal reason is the single
+                //  non-duplicating source for this pre-admission rejection.
+                //  Keep peer_rid zero-valued as required by the monitor ABI.
+                emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED,
+                                 rid_bytes_t (), EPROTO);
         }
     }
 }

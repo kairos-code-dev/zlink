@@ -22,6 +22,12 @@ using namespace zlink::mesh;
 
 namespace
 {
+#ifdef ZLINK_BUILD_TESTS
+std::atomic<int> g_pause_before_local_actor_admit (0);
+std::atomic<int> g_local_actor_admit_paused (0);
+std::atomic<int> g_local_actor_admit_pause_claimed (0);
+#endif
+
 struct binding_t
 {
     binding_t () {}
@@ -44,6 +50,16 @@ struct binding_t
     bool terminal_sealed;
     bool closing;
     std::deque<std::unique_ptr<queued_record_t>> pending;
+};
+
+struct submit_order_state_t
+{
+    submit_order_state_t () : epoch (1) {}
+
+    std::mutex mutex;
+    //  Protected by session_service_t::mutex. A physical disconnect or
+    //  reconnect invalidates submissions that captured an earlier epoch.
+    uint64_t epoch;
 };
 
 struct session_service_t
@@ -75,6 +91,10 @@ struct session_service_t
     std::set<std::string> active_sessions;
     //  session rid bytes -> bindings
     std::map<std::string, std::vector<binding_t>> bindings;
+    //  Orders submissions per connected session without coupling unrelated
+    //  sessions to one mailbox's backpressure wait. The session owns its gate
+    //  so the hot submit path neither allocates nor scans unrelated sessions.
+    std::map<std::string, std::shared_ptr<submit_order_state_t>> submit_order;
     int32_t last_error;
     bool destroying;
 };
@@ -108,6 +128,26 @@ bool live_session (session_service_t *service_, const std::string &session_key_)
     return service_->active_sessions.count (session_key_) != 0;
 }
 
+std::shared_ptr<submit_order_state_t>
+submit_order_locked (session_service_t *service_, const std::string &session_key_)
+{
+    std::map<std::string, std::shared_ptr<submit_order_state_t>>::iterator existing =
+      service_->submit_order.find (session_key_);
+    if (existing != service_->submit_order.end ())
+        return existing->second;
+
+    std::shared_ptr<submit_order_state_t> state;
+    try {
+        state = std::make_shared<submit_order_state_t> ();
+        service_->submit_order[session_key_] = state;
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return std::shared_ptr<submit_order_state_t> ();
+    }
+    return state;
+}
+
 void remove_disconnected_bindings_locked (session_service_t *service_)
 {
     for (std::map<std::string, std::vector<binding_t>>::iterator session =
@@ -137,7 +177,25 @@ void on_stream_session_event (void *userdata_,
     if (!service || !peer_rid_ || peer_rid_->size == 0)
         return;
     const std::string key (reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
-    std::lock_guard<std::mutex> lock (service->mutex);
+    std::unique_lock<std::mutex> lock (service->mutex);
+    std::shared_ptr<submit_order_state_t> order;
+    std::unique_lock<std::mutex> order_lock;
+    std::map<std::string, std::shared_ptr<submit_order_state_t>>::iterator found =
+      service->submit_order.find (key);
+    if (found != service->submit_order.end ())
+        order = found->second;
+    if (order) {
+        order->epoch += 1;
+        //  Join an in-flight submit before changing this session's physical
+        //  lifetime. New submits use the same gate until it is invalidated.
+        lock.unlock ();
+        order_lock = std::unique_lock<std::mutex> (order->mutex);
+        lock.lock ();
+        found = service->submit_order.find (key);
+        if (found != service->submit_order.end ()
+            && found->second == order)
+            service->submit_order.erase (found);
+    }
     if (connected_ && service->state == ZLINK_STREAM_SESSION_STARTED) {
         service->active_sessions.insert (key);
     } else if (!connected_) {
@@ -556,6 +614,7 @@ zlink_close_result_t zlink_stream_session_service_destroy (void **service_p_)
         }
         service->bindings.clear ();
         service->active_sessions.clear ();
+        service->submit_order.clear ();
         service->state = ZLINK_STREAM_SESSION_STOPPED;
     }
     if (node) {
@@ -839,10 +898,25 @@ try {
     }
     LIBZLINK_UNUSED (timeout_ms_);
 
-    std::unique_lock<std::mutex> lock (service->mutex);
-    remove_disconnected_bindings_locked (service);
     const std::string session_key (reinterpret_cast<const char *> (session_rid_->data),
                                    session_rid_->size);
+    std::shared_ptr<submit_order_state_t> submit_order;
+    {
+        std::lock_guard<std::mutex> lock (service->mutex);
+        remove_disconnected_bindings_locked (service);
+        if (service->bindings.find (session_key)
+            != service->bindings.end ()) {
+            submit_order = submit_order_locked (service, session_key);
+            if (!submit_order)
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        }
+    }
+    std::unique_lock<std::mutex> submit_lock;
+    if (submit_order)
+        submit_lock =
+          std::unique_lock<std::mutex> (submit_order->mutex);
+    std::unique_lock<std::mutex> lock (service->mutex);
+    remove_disconnected_bindings_locked (service);
     operation_submission_t submission (
       node, true, ZLINK_MESH_OPERATION_STREAM_UNBIND, node_owner (), 0);
     if (!submission.valid ())
@@ -949,6 +1023,25 @@ zlink_config_result_t zlink_stream_session_bindings (void *service_,
 
 namespace
 {
+bool has_actor_binding_locked (session_service_t *service_,
+                               const std::string &session_key_,
+                               const zlink_actor_ref_t *actor_)
+{
+    const std::map<std::string, std::vector<binding_t>>::const_iterator session =
+      service_->bindings.find (session_key_);
+    if (session == service_->bindings.end ())
+        return false;
+    for (size_t i = 0; i < session->second.size (); ++i) {
+        const binding_t &binding = session->second[i];
+        if (strncmp (binding.actor.actor_id, actor_->actor_id,
+                     sizeof (binding.actor.actor_id))
+              == 0
+            && binding.actor.generation == actor_->generation)
+            return true;
+    }
+    return false;
+}
+
 zlink_submit_result_t session_to_actor_submit (void *service_,
                                                const zlink_routing_id_t *session_rid_,
                                                const zlink_actor_ref_t *actor_,
@@ -981,15 +1074,39 @@ zlink_submit_result_t session_to_actor_submit (void *service_,
     if (operation_id_out_)
         memset (operation_id_out_, 0, sizeof (*operation_id_out_));
 
+    const std::string session_key (
+      reinterpret_cast<const char *> (session_rid_->data), session_rid_->size);
+    std::shared_ptr<submit_order_state_t> submit_order;
+    uint64_t submit_epoch = 0;
     {
-        std::unique_lock<std::mutex> lock (service->mutex);
+        std::lock_guard<std::mutex> lock (service->mutex);
         remove_disconnected_bindings_locked (service);
         if (service->state != ZLINK_STREAM_SESSION_STARTED) {
             errno = ESHUTDOWN;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
-        const std::string session_key (reinterpret_cast<const char *> (session_rid_->data),
-                                       session_rid_->size);
+        if (!has_actor_binding_locked (service, session_key, actor_)) {
+            errno = ENOENT;
+            return ZLINK_SUBMIT_NOT_FOUND;
+        }
+        submit_order = submit_order_locked (service, session_key);
+        if (!submit_order)
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        submit_epoch = submit_order->epoch;
+    }
+
+    std::lock_guard<std::mutex> submit_lock (submit_order->mutex);
+    {
+        std::unique_lock<std::mutex> lock (service->mutex);
+        remove_disconnected_bindings_locked (service);
+        if (submit_order->epoch != submit_epoch) {
+            errno = ENOTCONN;
+            return ZLINK_SUBMIT_NOT_CONNECTED;
+        }
+        if (service->state != ZLINK_STREAM_SESSION_STARTED) {
+            errno = ESHUTDOWN;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
         std::map<std::string, std::vector<binding_t>>::iterator it =
           service->bindings.find (session_key);
         bool bound = false;
@@ -1095,17 +1212,75 @@ zlink_submit_result_t session_to_actor_submit (void *service_,
             errno = ENOENT;
             return ZLINK_SUBMIT_NOT_FOUND;
         }
+
     }
 
-    //  Local actor route: enqueue into the actor mailbox as a request/send.
+    //  The binding decision and local mailbox admission are one per-session
+    //  ordered operation. Unrelated sessions retain independent backpressure
+    //  progress.
+#ifdef ZLINK_BUILD_TESTS
+    int expected = 0;
+    if (g_pause_before_local_actor_admit.load (std::memory_order_acquire) != 0
+        && g_local_actor_admit_pause_claimed.compare_exchange_strong (
+          expected, 1, std::memory_order_acq_rel)) {
+        g_local_actor_admit_paused.store (1, std::memory_order_release);
+        while (g_pause_before_local_actor_admit.load (std::memory_order_acquire) != 0)
+            std::this_thread::yield ();
+        g_local_actor_admit_paused.store (0, std::memory_order_release);
+    }
+#endif
+    {
+        std::lock_guard<std::mutex> lock (service->mutex);
+        remove_disconnected_bindings_locked (service);
+        if (submit_order->epoch != submit_epoch
+            || !has_actor_binding_locked (service, session_key, actor_)) {
+            errno = ENOTCONN;
+            return ZLINK_SUBMIT_NOT_CONNECTED;
+        }
+    }
     if (operation_id_out_)
         return zlink_mesh_node_request_to_actor (service->node, actor_, metadata_, parts_,
                                                  part_count_, operation_id_out_, flags_,
                                                  timeout_ms_);
-    return zlink_mesh_node_send_to_actor (service->node, actor_, metadata_, parts_, part_count_,
-                                          flags_);
+    return zlink_mesh_node_send_to_actor (service->node, actor_, metadata_, parts_,
+                                          part_count_, flags_);
 }
 }
+
+#ifdef ZLINK_BUILD_TESTS
+extern "C" void zlink_test_stream_session_pause_before_local_actor_admit (int pause_)
+{
+    if (pause_ != 0)
+        g_local_actor_admit_pause_claimed.store (0, std::memory_order_release);
+    g_pause_before_local_actor_admit.store (pause_ != 0 ? 1 : 0,
+                                            std::memory_order_release);
+}
+
+extern "C" int zlink_test_stream_session_local_actor_admit_paused ()
+{
+    return g_local_actor_admit_paused.load (std::memory_order_acquire);
+}
+
+extern "C" void zlink_test_stream_session_fence_actor (
+  void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_)
+{
+    const std::shared_ptr<session_service_t> service =
+      as_session_service (service_);
+    if (service && actor_)
+        stream_sessions_fence_actor (
+          service->node, *actor_, transfer_serial_);
+}
+
+extern "C" void zlink_test_stream_session_abort_actor (
+  void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_)
+{
+    const std::shared_ptr<session_service_t> service =
+      as_session_service (service_);
+    if (service && actor_)
+        stream_sessions_abort_actor (
+          service->node, *actor_, transfer_serial_);
+}
+#endif
 
 zlink_submit_result_t zlink_stream_session_send_to_actor (void *service_,
                                                           const zlink_routing_id_t *session_rid_,
@@ -1376,23 +1551,121 @@ void session_bindings_remove_actor (mesh_node_t *node_, const zlink_actor_ref_t 
     }
 }
 
+void set_stream_session_transfer_fence (binding_t *binding_,
+                                        uint64_t transfer_serial_)
+{
+    binding_->transfer_serial = transfer_serial_;
+    memset (&binding_->transfer_id, 0, sizeof (binding_->transfer_id));
+    binding_->target_node_rid.clear ();
+    binding_->participant_id = 0;
+    binding_->allowance_messages = 0;
+    binding_->allowance_bytes = 0;
+    binding_->pending_bytes = 0;
+    binding_->acked_high_water = 0;
+    binding_->terminal_sealed = false;
+    binding_->pending.clear ();
+}
+
 void stream_sessions_fence_actor (mesh_node_t *node_,
                                   const zlink_actor_ref_t &actor_,
                                   uint64_t transfer_serial_)
 {
-    for_each_actor_binding (node_, actor_, [transfer_serial_] (session_service_t *,
-                                                               binding_t &binding_) {
-        binding_.transfer_serial = transfer_serial_;
-        memset (&binding_.transfer_id, 0, sizeof (binding_.transfer_id));
-        binding_.target_node_rid.clear ();
-        binding_.participant_id = 0;
-        binding_.allowance_messages = 0;
-        binding_.allowance_bytes = 0;
-        binding_.pending_bytes = 0;
-        binding_.acked_high_water = 0;
-        binding_.terminal_sealed = false;
-        binding_.pending.clear ();
-    });
+    std::vector<std::shared_ptr<session_service_t>> services;
+    {
+        std::lock_guard<std::mutex> registry_lock (
+          g_session_registry_mutex);
+        for (std::set<void *>::const_iterator service_it =
+               g_live_sessions.begin ();
+             service_it != g_live_sessions.end (); ++service_it) {
+            std::map<void *, std::shared_ptr<session_service_t>>::const_iterator
+              owner = g_session_owners.find (*service_it);
+            if (owner != g_session_owners.end ()
+                && owner->second->node == node_)
+                services.push_back (owner->second);
+        }
+    }
+
+    //  Never wait on a session gate while holding the global registry. A
+    //  backpressured session must not block unrelated service lookup/destroy.
+    for (size_t service_index = 0; service_index < services.size ();
+         ++service_index) {
+        session_service_t *service = services[service_index].get ();
+        if (service->node != node_)
+            continue;
+
+        std::vector<std::string> session_keys;
+        {
+            std::lock_guard<std::mutex> service_lock (service->mutex);
+            remove_disconnected_bindings_locked (service);
+            for (std::map<std::string, std::vector<binding_t>>::const_iterator
+                   session = service->bindings.begin ();
+                 session != service->bindings.end (); ++session) {
+                for (size_t i = 0; i < session->second.size (); ++i) {
+                    const binding_t &binding = session->second[i];
+                    if (strncmp (binding.actor.actor_id, actor_.actor_id,
+                                 sizeof (binding.actor.actor_id))
+                          == 0
+                        && binding.actor.generation == actor_.generation) {
+                        session_keys.push_back (session->first);
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (size_t key_index = 0; key_index < session_keys.size ();
+             ++key_index) {
+            std::shared_ptr<submit_order_state_t> order;
+            {
+                std::lock_guard<std::mutex> service_lock (service->mutex);
+                order = submit_order_locked (
+                  service, session_keys[key_index]);
+            }
+            if (!order) {
+                //  No submit can create a gate while the service mutex is
+                //  held. Install the barrier directly so a later successful
+                //  allocation still observes the transfer.
+                std::lock_guard<std::mutex> service_lock (service->mutex);
+                std::map<std::string, std::vector<binding_t>>::iterator session =
+                  service->bindings.find (session_keys[key_index]);
+                if (session != service->bindings.end ()) {
+                    for (size_t i = 0; i < session->second.size (); ++i) {
+                        binding_t &binding = session->second[i];
+                        if (strncmp (
+                              binding.actor.actor_id, actor_.actor_id,
+                              sizeof (binding.actor.actor_id))
+                              == 0
+                            && binding.actor.generation
+                                 == actor_.generation)
+                            set_stream_session_transfer_fence (
+                              &binding, transfer_serial_);
+                    }
+                }
+                continue;
+            }
+
+            //  The transfer barrier and submits for this session use one
+            //  ordering gate. A submit admitted before the fence completes
+            //  first; later submits observe transfer_serial and enter the
+            //  bounded transfer path.
+            std::lock_guard<std::mutex> order_lock (order->mutex);
+            std::lock_guard<std::mutex> service_lock (service->mutex);
+            std::map<std::string, std::vector<binding_t>>::iterator session =
+              service->bindings.find (session_keys[key_index]);
+            if (session == service->bindings.end ())
+                continue;
+            for (size_t i = 0; i < session->second.size (); ++i) {
+                binding_t &binding = session->second[i];
+                if (strncmp (binding.actor.actor_id, actor_.actor_id,
+                             sizeof (binding.actor.actor_id))
+                      != 0
+                    || binding.actor.generation != actor_.generation)
+                    continue;
+                set_stream_session_transfer_fence (
+                  &binding, transfer_serial_);
+            }
+        }
+    }
 }
 
 void stream_sessions_negotiate_actor (

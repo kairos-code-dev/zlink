@@ -2,7 +2,7 @@
 
 # 서비스 계층 내부 설계
 
-이 문서는 core 유지보수자가 10.0.0 서비스 계층(MeshNode·Spot·Actor·STREAM
+이 문서는 core 유지보수자가 10.1.0 서비스 계층(MeshNode·Spot·Actor·STREAM
 session)의 실제 내부 구조를 빠르게 파악하도록 돕는 내부 문서다. 공개 계약은
 [`doc/spec/core/service/`](../spec/core/service/README.ko.md)의 정식 spec이
 소유하며, 이 문서는 그 계약을 구현한 현재 소스 구조만 설명한다.
@@ -27,10 +27,8 @@ session)의 실제 내부 구조를 빠르게 파악하도록 돕는 내부 문�
 seam인 `mesh_api.cpp`다: Spot timer registry(cancellation 포함)와 turn
 admission 상태(`timer_turn_active`·`timer_count`)는 이 seam이 직접
 소유·변경한다 — timer 기계는 hook만 제공하고 Spot 결합 지식은 mesh 쪽 한
-곳에 모은다. raw socket 계층
-(`runtime/sockets/`)은 mesh를 모른다. mesh가 raw ROUTER에 요구하는 유일한
-확장은 비소비 기록 조사인 `routed_target_writable()`(NODROP 원자 reserve용)
-하나다.
+곳에 모은다. raw socket 계층(`runtime/sockets/`)은 mesh를 모른다.
+Logical Multicast도 별도 확장 없이 raw ROUTER의 일반 송신 경로를 사용한다.
 
 ## 2. 객체 모델
 
@@ -166,9 +164,19 @@ microsecond이고, 프로세스 안에서는 CAS로 강단조다. Core는 durabl
 
 - node의 raw ROUTER는 thread-safe이므로 송신은 앱 스레드에서 직접 수행하고,
   수신은 전용 ingress 스레드 하나가 담당한다.
-- ingress 스레드는 socket monitor도 함께 drain한다. `CONNECTION_READY`(rid,
-  remote_addr 포함)로 outbound intent를 매칭해 HELLO를 보낸다. peer 단절은
-  `handle_peer_down`으로 상태 전이와 `PEER_CLOSED` event를 만든다.
+- ingress 스레드는 socket monitor도 함께 drain한다. socket 계층이 실제 연결마다
+  발급한 process-local connection ID를 `peer_transport_t`가 소유하며 outbound intent와
+  admitted lifetime에 함께 기록한다. `DISCONNECTED`는 RID와 이 물리 연결
+  식별이 모두 일치하는 lifetime에만 적용하므로 이전 pipe의 지연 종료가 같은
+  RID의 successor를 강등하지 않는다. socket monitor 내부 frame은 실제 연결이
+  준비된 edge와 ready-count 집계 갱신을 구분한다. ingress는 실제 edge만
+  admission 시작 신호로 사용하며, HELLO가 edge보다 먼저 처리된 경우에는 늦게
+  도착한 edge가 빈 transport ID를 채운다. RID 생성 전 handshake 실패는 zero-RID
+  `PEER_REJECTED` event로 변환한다.
+- MeshNode ROUTER는 기존 `ZLINK_RID_DUPLICATE_HANDOVER` 정책을 사용한다. 명시적
+  disconnect 뒤 이전 pipe 정리가 끝나지 않았거나 더 높은 generation이 같은
+  RID를 사용할 때 새 pipe가 이전 pipe를 교체한다. 별도 delivery나 drop 정책은
+  추가하지 않는다.
 - envelope v1: `'Z' 'M' | ver | type | flags`. request/reply 계열은 correlation
   u64, reply는 terminal result·errno, channel 계열은 channel 이름을 뒤에
   싣는다. application metadata는 별도 frame(flag 0x01)이고 수신 시
@@ -194,24 +202,20 @@ microsecond이고, 프로세스 안에서는 CAS로 강단조다. Core는 durabl
   `zlink_mesh_reply`가 wire REPLY로 회신한다. requester ingress가 pending
   operation을 completion으로 마감한다.
 
-## 6. Logical Multicast와 NODROP
+## 6. Logical Multicast
 
-publish는 한 호출 안에서 snapshot→검사→commit을 마친다.
+publish는 한 호출 안에서 snapshot을 만들고 각 target에 한 번씩 submit한다.
 
 1. node mutex 아래에서 local 구독 match와 admitted 양수-weight channel member
    peer snapshot을 뜬다.
-2. NODROP(기본 1)이면 node별 `wire_send_mutex`로 발신을 직렬화한 채 local
-   mailbox budget과 모든 remote pipe의 `routed_target_writable()`을 선검사한다.
-   하나라도 불가면 아무것도 commit하지 않는다(전부-또는-전무). 비차단은
-   `EAGAIN`, 차단은 SNDTIMEO까지 reserve를 재시도한 뒤 `ETIMEDOUT`이다.
-3. reserve가 통과하면 remote commit 전에 local 슬롯(mailbox list node와
-   ready-index 키)을 선예약해 마지막 fallible 지점을 commit 앞으로 당긴다.
-   실패 시 전량 롤백 후 `ENOMEM`이고, 예약물은 node mutex 보유 중에만
-   존재한다(모든 실패 경로가 unlock 전에 롤백).
-4. commit은 local fanout(`zlink_msg_copy` refcount 공유)과 peer당 정확히 1회의
-   wire submit이다. reserve와 commit 사이에 pipe를 잃은 admitted peer는
-   drop이 아닌 peer 이탈로 분류해 unreachable로 센다(spec §7). 수신 node는
-   자기 local 구독 match에만 fan-out하고 재전파 경로가 없다(구조적 no-relay).
+2. local mailbox는 현재 budget이 있는 target만 `zlink_msg_copy` reference로
+   수락하고 나머지는 drop으로 센다.
+3. remote member마다 node의 `wire_send_mutex` 아래에서 ROUTER submit을 한 번씩
+   수행한다. 모든 pipe를 미리 검사하지 않으며 caller의 `DONTWAIT` 또는 blocking
+   flag와 ROUTER `SNDTIMEO`를 그대로 사용한다. 앞선 target의 성공은 뒤 target의
+   backpressure로 롤백하지 않는다.
+4. 수신 node는 자기 local 구독 match에만 fan-out한다. mailbox capacity가 없는
+   target은 drop으로 세며 별도 ingress staging, peer 종료 또는 재전파 경로가 없다.
 
 publish detail과 `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` event가 snapshot·
 admitted·dropped·unreachable 수치를 그대로 보고한다
@@ -258,6 +262,10 @@ handler registry 하나가 소유한다. status·recv-model·handler 등록·clo
 삭제한다(UAF 방지). handler 등록(update)은 pin한 state를 expected로 넘겨
 registry lock 아래에서 entry 동일성과 `unregistered`를 확인하고, 불일치 시
 `ESHUTDOWN`으로 실패하며 닫히는 socket에 새 registration을 되살리지 않는다.
+공개 raw monitor queue는 HWM에 도달하면 event를 유실할 수 있다. Mesh ingress가
+사용하는 비공개 raw monitor는 실제 연결 edge를 잃지 않도록 HWM에서 producer에
+backpressure를 적용하며, consumer가 dequeue하면 producer를 깨운다. 따라서 이
+비공개 queue도 HWM을 넘어 계속 증가하지 않는다.
 등록은 registration identity(handler·provider·subject·dispatch task id)를
 `dispatch_sync` 아래에서 완결하므로 즉시 dispatch tick의 첫 callback(및 그
 callback의 self-close finalizer)이 완성된 task id만 관찰한다. dispatch task를
@@ -278,8 +286,9 @@ epilogue를 항상 실행한다.
 - 기본 잠금은 `node->mutex` 하나다. monitor는 자체 mutex를 가지며
   `emit_monitor_event`는 node mutex를 잡지 않은 상태에서 불러야 한다
   (내부에서 node mutex→monitor mutex 순서로 짧게 잡는다).
-- `wire_send_mutex`는 NODROP 원자 reserve 동안 node의 wire 발신 전체를
-  직렬화한다. node mutex와 함께 잡을 때는 언제나 node mutex가 바깥이다.
+- `wire_send_mutex`는 multipart frame 묶음이 다른 송신과 섞이지 않도록 node의
+  wire 발신을 직렬화한다. node mutex와 함께 잡을 때는 언제나 node mutex가
+  바깥이다.
 - `admit_record`는 스스로 node mutex를 잡는다 — 호출자는 node mutex를 잡은 채
   부르면 안 된다(transfer 코드의 emit 전 unlock이 그 예).
 

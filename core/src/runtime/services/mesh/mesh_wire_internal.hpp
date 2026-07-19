@@ -164,7 +164,9 @@ void handle_reject (mesh_node_t *node_, const rid_bytes_t &source_rid_, uint32_t
 void handle_update (mesh_node_t *node_,
                     const rid_bytes_t &source_rid_,
                     const wire_descriptor_t &descriptor_);
-void handle_peer_down (mesh_node_t *node_, const rid_bytes_t &rid_);
+void handle_peer_down (mesh_node_t *node_,
+                       const rid_bytes_t &rid_,
+                       uint64_t connection_id_);
 
 //  --- service ingress router (mesh_wire_ingress.cpp) ------------------------
 

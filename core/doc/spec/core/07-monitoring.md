@@ -4,7 +4,7 @@
 
 # Monitoring
 
-This document defines the public raw-socket and MeshNode monitor contracts for ZLink Core 10.0.0. Its audience is developers of the C API and bindings that observe connections, peer admission, Logical Multicast, backpressure, and lifecycle. A monitor observes state and never changes routing, admission, or queue state.
+This document defines the public raw-socket and MeshNode monitor contracts for ZLink Core 10.1.0. Its audience is developers of the C API and bindings that observe connections, peer admission, Logical Multicast, backpressure, and lifecycle. A monitor observes state and never changes routing, admission, or queue state.
 
 ## 1. Raw socket monitor
 
@@ -313,8 +313,16 @@ Status is an atomic snapshot at call time. Counters increase monotonically withi
 ## 4. Event meaning
 
 Peer events include peer RID, lifecycle generation, and descriptor revision. A rejected event distinguishes MeshName, expected-RID, generation, trust-profile, and authentication failures through `result_code` and `failure_errno`.
+Core also delivers `PEER_REJECTED` when the socket handshake fails before a
+peer RID exists. In that event `peer_rid` is zero-valued and `failure_errno`
+is `EPROTO`, so the event stream can observe connection attempts that never
+produce a peer snapshot entry.
 
-A multicast-committed event includes remote and local snapshot, admitted, and dropped counts. A successful default-NODROP event has zero in both dropped counts. Drop-enabled mode records one aggregate count per publish rather than one event per target, bounding event-queue growth.
+Multicast-committed and multicast-dropped events include remote and local
+snapshot, admitted, and dropped counts. Core uses committed when every target
+accepts and dropped when a local mailbox or remote ROUTER pipe cannot accept a
+target. It records one aggregate event per publish rather than one event per
+target, bounding event-queue growth.
 
 A backpressured event includes owner kind and, where applicable, Spot, Actor, and channel. It never copies raw topics, Actor IDs, application metadata, or payload into monitor events, preventing unbounded labels and sensitive-data exposure.
 

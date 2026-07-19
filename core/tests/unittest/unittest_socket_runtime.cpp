@@ -102,6 +102,42 @@ void test_socket_monitor_runtime_hwm_drops_lossy_events ()
     TEST_ASSERT_FALSE (runtime.dequeue_worker_event_nowait (&dequeued));
 }
 
+void test_socket_monitor_runtime_hwm_backpressures_reliable_events ()
+{
+    zlink::socket_monitor_runtime_t runtime;
+    runtime.lossy = false;
+    zlink::socket_monitor_event_record_t first;
+    zlink::socket_monitor_event_record_t second;
+    zlink::socket_monitor_event_record_t dequeued;
+    first.event = 61;
+    second.event = 62;
+    runtime.enqueue_worker_event (first, 1);
+
+    std::atomic<bool> producer_started (false);
+    std::atomic<bool> producer_completed (false);
+    std::thread producer ([&] {
+        producer_started.store (true, std::memory_order_release);
+        runtime.enqueue_worker_event (second, 1);
+        producer_completed.store (true, std::memory_order_release);
+    });
+    while (!producer_started.load (std::memory_order_acquire))
+        std::this_thread::yield ();
+    msleep (20);
+    const bool producer_was_blocked =
+      !producer_completed.load (std::memory_order_acquire);
+
+    const bool dequeued_first =
+      runtime.dequeue_worker_event_nowait (&dequeued);
+    const uint64_t first_event = dequeued.event;
+    producer.join ();
+    TEST_ASSERT_TRUE (producer_was_blocked);
+    TEST_ASSERT_TRUE (dequeued_first);
+    TEST_ASSERT_EQUAL_UINT64 (61u, first_event);
+    TEST_ASSERT_TRUE (producer_completed.load (std::memory_order_acquire));
+    TEST_ASSERT_TRUE (runtime.dequeue_worker_event_nowait (&dequeued));
+    TEST_ASSERT_EQUAL_UINT64 (62u, dequeued.event);
+}
+
 void test_socket_monitor_runtime_reset_clears_stop_state ()
 {
     zlink::socket_monitor_runtime_t runtime;
@@ -438,6 +474,7 @@ int main (int argc, char **argv)
     RUN_TEST (test_socket_monitor_runtime_erases_only_matching_ready_connection);
     RUN_TEST (test_socket_monitor_runtime_dequeues_enqueued_worker_event_nowait);
     RUN_TEST (test_socket_monitor_runtime_hwm_drops_lossy_events);
+    RUN_TEST (test_socket_monitor_runtime_hwm_backpressures_reliable_events);
     RUN_TEST (test_socket_monitor_runtime_reset_clears_stop_state);
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_recv_source_rid);
     RUN_TEST (test_socket_endpoint_runtime_tracks_last_endpoint);

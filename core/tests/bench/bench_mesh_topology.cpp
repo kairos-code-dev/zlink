@@ -4,7 +4,7 @@
 //
 //  One hub MeshNode admits PERF_MESH_PEERS forked peer processes (the
 //  per-process MeshName rule forbids in-process peers), then measures
-//  admission convergence, remote actor lookup latency and one NODROP
+//  admission convergence, remote actor lookup latency and one ROUTER-backed
 //  multicast fan-out over the admitted set. Results print as BENCH lines:
 //
 //    BENCH,mesh_topology,peers=<n>,admission_ms=..,lookup_avg_us=..,
@@ -345,7 +345,7 @@ int main ()
         }
     }
 
-    //  3) one NODROP multicast over the full admitted set.
+    //  3) one multicast over the full admitted set.
     void *publisher = zlink_mesh_node_publisher_new (node);
     zlink_msg_t part;
     zlink_msg_init_size (&part, 64);

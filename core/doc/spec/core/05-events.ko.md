@@ -4,7 +4,7 @@
 
 # Event와 readiness 카탈로그
 
-이 문서는 ZLink Core 10.0.0의 공개 event family와 readiness 의미를 정리한다. 대상 독자는 monitor,
+이 문서는 ZLink Core 10.1.0의 공개 event family와 readiness 의미를 정리한다. 대상 독자는 monitor,
 poller와 service dispatch를 bindings에 투영하는 개발자다. 각 event의 구조체와 API 계약은 연결된 owner
 문서가 소유하며 이 문서는 family 간 경계를 정의한다.
 
@@ -43,8 +43,8 @@ peer event는 RID와 lifecycle generation을 함께 사용한다. endpoint 문�
 ## 4. Logical Multicast와 backpressure
 
 Logical Multicast event는 publish 하나의 snapshot, admitted와 dropped target aggregate를 기록한다. local
-Spot match 수와 remote target 수를 구분하며 topic과 payload는 monitor에 포함하지 않는다. 기본 NODROP
-성공은 dropped target이 0이다.
+Spot match 수와 remote target 수를 구분하며 topic과 payload는 monitor에 포함하지 않는다. 모든 대상의
+송신이 수락된 publish는 dropped target이 0이다.
 
 backpressure event는 submit이 queue 또는 reservation capacity 때문에 진행되지 않았음을 뜻한다. send-ready와
 `POLLOUT`은 이후 retry할 가치가 생겼다는 뜻이며 다음 submit의 성공을 보장하지 않는다.

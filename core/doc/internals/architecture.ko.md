@@ -1221,7 +1221,7 @@ core/
 |   |   |   +-- monitor_decode.hpp       # Monitor event decoding
 |   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
-|   |   +-- mesh/                    # 10.0.0 mesh service runtime
+|   |   +-- mesh/                    # Mesh service runtime
 |   |       +-- mesh_runtime.cpp/hpp # Object model: mailboxes, ready index, claims, budgets, monitor
 |   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER lifecycle + outbound submits
 |   |       +-- mesh_wire_codec.cpp  # Wire envelope/record encode + decode

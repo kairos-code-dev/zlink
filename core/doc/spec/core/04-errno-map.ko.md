@@ -4,7 +4,7 @@
 
 # Result와 errno 대응
 
-이 문서는 ZLink Core 10.0.0 공개 API의 result enum과 thread-local errno 대응을 정의한다. 대상 독자는
+이 문서는 ZLink Core 10.1.0 공개 API의 result enum과 thread-local errno 대응을 정의한다. 대상 독자는
 C API와 bindings에서 오류를 안정적으로 분류하는 개발자다. result는 제어 흐름의 기준이고 errno는 같은
 실패를 더 세밀하게 설명한다.
 
@@ -136,9 +136,9 @@ message를 다시 수신한다.
 
 | Family | Submit·request owner | Receive·configuration owner |
 |---|---|---|
-| MeshNode | `zlink_mesh_node_send_*`, `request_*`, `publisher_publish` | lifecycle, peer, status와 publisher option |
+| MeshNode | `zlink_mesh_node_send_*`, `request_*`, `publisher_publish` | lifecycle, peer와 status |
 | Dispatch | `zlink_mesh_reply` | ready·receive batch, claim과 handler |
-| Spot | `zlink_spot_send_*`, `request_*`, `publish` | Spot lifecycle, subscription, timer와 publish option |
+| Spot | `zlink_spot_send_*`, `request_*`, `publish` | Spot lifecycle, subscription과 timer |
 | Actor | Actor create·join·leave·message·transfer | Actor lookup, claim과 control record |
 | STREAM session | bind·unbind·send·request·close | service lifecycle, binding query와 status |
 

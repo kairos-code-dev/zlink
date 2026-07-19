@@ -4,7 +4,7 @@
 
 # STREAM session service
 
-이 문서는 ZLink Core 10.0.0의 정식 공개 계약을 정의한다. 대상 독자는 raw STREAM session과
+이 문서는 ZLink Core 10.1.0의 정식 공개 계약을 정의한다. 대상 독자는 raw STREAM session과
 MeshNode Actor를 연결하는 C API와 bindings 개발자다. 이 문서는 “범용 STREAM 소켓 계약을 바꾸지 않고
 session별 Actor binding, 양방향 메시징과 Actor 이동 barrier를 어떻게 제공하는가?”에 답한다.
 

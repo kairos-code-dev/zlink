@@ -4,7 +4,7 @@
 
 # STREAM session service
 
-This document defines the formal public contract for ZLink Core 10.0.0. Its audience is developers of the C API and bindings that connect raw STREAM sessions to MeshNode Actors. It answers: “How are per-session Actor bindings, bidirectional messaging, and Actor-transfer barriers provided without changing the generic STREAM socket contract?”
+This document defines the formal public contract for ZLink Core 10.1.0. Its audience is developers of the C API and bindings that connect raw STREAM sessions to MeshNode Actors. It answers: “How are per-session Actor bindings, bidirectional messaging, and Actor-transfer barriers provided without changing the generic STREAM socket contract?”
 
 ## 1. Responsibility and handle
 

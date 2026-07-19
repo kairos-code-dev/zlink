@@ -2,6 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
+#include "api/monitoring/monitor_api_internal.hpp"
 #include "core/c_api_copy_internal.hpp"
 #include "core/ctx.hpp"
 #include "core/send_internal.hpp"
@@ -277,14 +278,17 @@ void zlink::socket_base_t::event_disconnected (const endpoint_uri_pair_t &endpoi
 
     uint32_t ready_count = 0;
     bool changed = false;
+    bool enqueue_disconnected = false;
+    bool enqueue_ready_count = false;
+    monitor_event_record_t disconnected_record;
+    monitor_event_record_t ready_count_record;
     {
         scoped_lock_t lock (monitor_runtime ().sync);
         if (monitor_runtime ().events & ZLINK_EVENT_DISCONNECTED) {
             uint64_t values[1] = {reason_};
-            monitor_event_record_t record;
-            if (build_monitor_event_record (&record, ZLINK_EVENT_DISCONNECTED, values, 1,
-                                            routing_id_, routing_id_size_, endpoint_uri_pair_))
-                enqueue_monitor_event (record);
+            enqueue_disconnected = build_monitor_event_record (
+              &disconnected_record, ZLINK_EVENT_DISCONNECTED, values, 1,
+              routing_id_, routing_id_size_, endpoint_uri_pair_);
         }
 
         changed = monitor_runtime ().erase_ready_connection (endpoint_uri_pair_, routing_id_,
@@ -296,12 +300,17 @@ void zlink::socket_base_t::event_disconnected (const endpoint_uri_pair_t &endpoi
         LIBZLINK_UNUSED (changed);
         if (monitor_runtime ().events & ZLINK_EVENT_CONNECTION_READY) {
             uint64_t ready_values[1] = {ready_count};
-            monitor_event_record_t record;
-            if (build_monitor_event_record (&record, ZLINK_EVENT_CONNECTION_READY, ready_values, 1,
-                                            routing_id_, routing_id_size_, endpoint_uri_pair_))
-                enqueue_monitor_event (record);
+            enqueue_ready_count = build_monitor_event_record (
+              &ready_count_record, ZLINK_EVENT_CONNECTION_READY, ready_values,
+              1, routing_id_, routing_id_size_, endpoint_uri_pair_);
         }
     }
+    //  Reliable internal monitors may apply queue backpressure. Never wait for
+    //  that capacity while holding monitor.sync, which shutdown also needs.
+    if (enqueue_disconnected)
+        enqueue_monitor_event (disconnected_record);
+    if (enqueue_ready_count)
+        enqueue_monitor_event (ready_count_record);
 }
 
 void zlink::socket_base_t::event_handshake_failed_no_detail (
@@ -340,9 +349,10 @@ void zlink::socket_base_t::event_connection_ready_changed (
     if (!changed)
         return;
 
-    uint64_t values[1] = {0};
+    uint64_t values[1] = {ready_count};
     event (endpoint_uri_pair_, routing_id_, routing_id_size_, values, 1,
-           ZLINK_EVENT_CONNECTION_READY);
+           ZLINK_EVENT_CONNECTION_READY,
+           socket_monitor_internal_connection_ready_edge);
 }
 
 void zlink::socket_base_t::emit_inproc_connection_ready (pipe_t *pipe_)
@@ -383,18 +393,28 @@ void zlink::socket_base_t::event (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                   size_t routing_id_size_,
                                   uint64_t values_[],
                                   uint64_t values_count_,
-                                  uint64_t type_)
+                                  uint64_t type_,
+                                  uint32_t internal_flags_)
 {
     if (monitor_runtime ().events_atomic.load (std::memory_order_acquire) == 0)
         return;
 
-    scoped_lock_t lock (monitor_runtime ().sync);
-    if (monitor_runtime ().events & type_) {
-        monitor_event_record_t record;
-        if (build_monitor_event_record (&record, type_, values_, values_count_, routing_id_,
-                                        routing_id_size_, endpoint_uri_pair_))
-            enqueue_monitor_event (record);
+    bool enqueue = false;
+    monitor_event_record_t record;
+    {
+        scoped_lock_t lock (monitor_runtime ().sync);
+        if (monitor_runtime ().events & type_) {
+            enqueue = build_monitor_event_record (
+              &record, type_, values_, values_count_, routing_id_,
+              routing_id_size_, endpoint_uri_pair_);
+            if (enqueue)
+                record.internal_flags = internal_flags_;
+        }
     }
+    //  A reliable internal monitor waits for its bounded queue. Keep the
+    //  monitor lifecycle lock out of that wait so stop_monitor can wake it.
+    if (enqueue)
+        enqueue_monitor_event (record);
 }
 
 void zlink::socket_base_t::monitor_task_main (void *arg_)
@@ -457,17 +477,21 @@ bool zlink::socket_base_t::dispatch_monitor_event (void *monitor_socket_,
     if (!monitor_socket_)
         return false;
 
-    zlink_monitor_event_t wire_event;
+    socket_monitor_internal_event_t wire_event;
     memset (&wire_event, 0, sizeof (wire_event));
-    wire_event.event = record_.event;
+    wire_event.event.event = record_.event;
     if (record_.values_count > 0)
-        wire_event.value = record_.values[0];
-    wire_event.routing_id = record_.routing_id;
+        wire_event.event.value = record_.values[0];
+    wire_event.event.routing_id = record_.routing_id;
+    wire_event.connection_id = record_.endpoint_uri_pair.connection_id;
+    wire_event.internal_flags = record_.internal_flags;
 
-    zlink::copy_fixed_c_string_from_bytes (wire_event.local_addr, sizeof (wire_event.local_addr),
+    zlink::copy_fixed_c_string_from_bytes (wire_event.event.local_addr,
+                                           sizeof (wire_event.event.local_addr),
                                            record_.endpoint_uri_pair.local.data (),
                                            record_.endpoint_uri_pair.local.size ());
-    zlink::copy_fixed_c_string_from_bytes (wire_event.remote_addr, sizeof (wire_event.remote_addr),
+    zlink::copy_fixed_c_string_from_bytes (wire_event.event.remote_addr,
+                                           sizeof (wire_event.event.remote_addr),
                                            record_.endpoint_uri_pair.remote.data (),
                                            record_.endpoint_uri_pair.remote.size ());
 

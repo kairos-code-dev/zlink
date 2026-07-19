@@ -66,7 +66,12 @@ void emit_peer_event (mesh_node_t *node_,
     }
     event.failure_errno = error_;
     if (kind_ == ZLINK_MESH_MONITOR_PEER_REJECTED)
-        event.result_code = error_ == EACCES ? ZLINK_CONNECT_AUTH_FAILED : ZLINK_CONNECT_CONFLICT;
+        event.result_code =
+          error_ == EACCES
+            ? ZLINK_CONNECT_AUTH_FAILED
+            : (error_ == EEXIST || error_ == ESTALE || error_ == EADDRINUSE
+                 ? ZLINK_CONNECT_CONFLICT
+                 : ZLINK_CONNECT_INTERNAL_ERROR);
     emit_monitor_event (node_, event);
 }
 
@@ -86,12 +91,38 @@ void apply_descriptor_locked (peer_state_t *peer_, const wire_descriptor_t &desc
     peer_->last_changed_ms = now_ms ();
 }
 
+peer_transport_t select_admission_transport (
+  bool is_hello_,
+  const peer_transport_t &previous_transport_,
+  const peer_transport_t *current_transport_)
+{
+    if (!current_transport_)
+        return peer_transport_t ();
+    //  A HELLO can arrive before the ROUTER READY edge for a replacement
+    //  pipe. In that ordering the RID map still names the predecessor.
+    if (is_hello_ && !previous_transport_.empty ()
+        && current_transport_->matches (
+          previous_transport_.connection_id))
+        return peer_transport_t ();
+    return *current_transport_;
+}
+
+bool is_duplicate_admitted_lifetime (bool is_hello_,
+                                     const peer_state_t *existing_,
+                                     uint64_t incoming_generation_)
+{
+    return is_hello_ && existing_
+           && existing_->state == ZLINK_MESH_PEER_ADMITTED
+           && existing_->lifecycle_generation == incoming_generation_;
+}
+
 //  Validates an inbound descriptor against local admission rules. Returns 0
 //  or -1 with errno describing the conflict class.
 int validate_admission_locked (mesh_node_t *node_,
                                const rid_bytes_t &source_rid_,
                                const wire_descriptor_t &descriptor_,
-                               const peer_state_t *intent_)
+                               const peer_state_t *intent_,
+                               bool is_hello_)
 {
     if (descriptor_.mesh_name != node_->mesh_name) {
         errno = EEXIST;
@@ -109,6 +140,14 @@ int validate_admission_locked (mesh_node_t *node_,
         }
     }
     const peer_state_t *existing = find_peer_by_rid_locked (node_, source_rid_);
+    if (is_duplicate_admitted_lifetime (
+          is_hello_, existing, descriptor_.lifecycle_generation)) {
+        //  A second physical connection cannot claim the same logical
+        //  lifetime. Same-direction reconnect is admitted only after the old
+        //  transport has left ADMITTED; a higher generation replaces it.
+        errno = EADDRINUSE;
+        return -1;
+    }
     if (existing && existing->state == ZLINK_MESH_PEER_ADMITTED
         && existing->lifecycle_generation > descriptor_.lifecycle_generation) {
         //  A stale generation cannot replace a newer admitted lifetime.
@@ -132,6 +171,8 @@ void handle_hello_or_admit (mesh_node_t *node_,
     int admit_reject_errno = 0;
     bool generation_drained = false;
     zlink_routing_id_t target = rid_value (source_rid_);
+    std::unique_lock<std::mutex> connection_lock (
+      node_->peer_connection_mutex);
 
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
@@ -162,7 +203,9 @@ void handle_hello_or_admit (mesh_node_t *node_,
                 return;
         }
 
-        if (validate_admission_locked (node_, source_rid_, descriptor_, intent) != 0) {
+        if (validate_admission_locked (
+              node_, source_rid_, descriptor_, intent, is_hello_)
+            != 0) {
             const int reason = errno;
             if (is_hello_) {
                 send_reject = true;
@@ -179,6 +222,8 @@ void handle_hello_or_admit (mesh_node_t *node_,
             peer_state_t *peer = intent;
             if (!peer)
                 peer = find_peer_by_rid_locked (node_, source_rid_);
+            const peer_transport_t previous_transport =
+              peer ? peer->transport : peer_transport_t ();
             //  A higher lifecycle generation starts a separate lifetime: the
             //  previous admitted entry stays observable as DRAINING (excluded
             //  from new snapshots, closed with the transport or an explicit
@@ -209,6 +254,13 @@ void handle_hello_or_admit (mesh_node_t *node_,
                 peer = &node_->peers.back ();
             }
             peer->rid = source_rid_;
+            const std::map<rid_bytes_t, peer_transport_t>::const_iterator
+              transport = node_->current_peer_transports.find (source_rid_);
+            peer->transport = select_admission_transport (
+              is_hello_, previous_transport,
+              transport == node_->current_peer_transports.end ()
+                ? NULL
+                : &transport->second);
             peer->state = ZLINK_MESH_PEER_ADMITTED;
             peer->last_error = 0;
             //  Record the endpoint the peer advertises so a manual intent for
@@ -222,8 +274,6 @@ void handle_hello_or_admit (mesh_node_t *node_,
         }
     }
 
-    if (generation_drained)
-        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_DRAINING, source_rid_, 0);
     if (send_admit) {
         std::vector<unsigned char> frame = make_envelope (wire_admit, 0);
         {
@@ -231,11 +281,25 @@ void handle_hello_or_admit (mesh_node_t *node_,
             encode_descriptor_locked (node_, frame);
         }
         send_control (node_, target, frame);
-        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_ADMITTED, source_rid_, 0);
     } else if (send_reject) {
         std::vector<unsigned char> frame = make_envelope (wire_reject, 0);
         put_u32 (frame, static_cast<uint32_t> (reject_errno));
         send_control (node_, target, frame);
+        //  REJECT is terminal for this physical handshake. Retire the
+        //  rejected pipe so an outbound connector can retry after the
+        //  conflicting admitted lifetime has actually disconnected.
+        (void) wire_disconnect_peer (node_, source_rid_);
+    }
+
+    //  Monitor handlers are user callbacks and may call peer APIs. The
+    //  logical/physical transition is complete at this point, so never invoke
+    //  a handler while holding the peer transition mutex.
+    connection_lock.unlock ();
+    if (generation_drained)
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_DRAINING, source_rid_, 0);
+    if (send_admit) {
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_ADMITTED, source_rid_, 0);
+    } else if (send_reject) {
         emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED, source_rid_, reject_errno);
     } else if (admit_rejected) {
         emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED, source_rid_, admit_reject_errno);
@@ -283,17 +347,28 @@ void handle_update (mesh_node_t *node_,
     apply_descriptor_locked (peer, descriptor_);
 }
 
-void handle_peer_down (mesh_node_t *node_, const rid_bytes_t &rid_)
+void handle_peer_down (mesh_node_t *node_,
+                       const rid_bytes_t &rid_,
+                       uint64_t connection_id_)
 {
     bool changed = false;
+    std::unique_lock<std::mutex> connection_lock (
+      node_->peer_connection_mutex);
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        //  Every lifetime sharing this RID rides the same transport: the
-        //  admitted successor errors out and a DRAINING predecessor closes
-        //  with the pipe.
+        const std::map<rid_bytes_t, peer_transport_t>::iterator current =
+          node_->current_peer_transports.find (rid_);
+        if (current != node_->current_peer_transports.end ()
+            && current->second.matches (connection_id_))
+            node_->current_peer_transports.erase (current);
+
+        //  A RID can be reused by a higher lifecycle generation while the
+        //  predecessor's disconnect is still queued. Attribute the event to
+        //  the process-local physical transport identity captured at admission.
         for (size_t i = 0; i < node_->peers.size (); ++i) {
             peer_state_t &peer = node_->peers[i];
-            if (peer.rid != rid_)
+            if (peer.rid != rid_
+                || !peer.transport.matches (connection_id_))
                 continue;
             if (peer.state == ZLINK_MESH_PEER_ADMITTED) {
                 peer.state = ZLINK_MESH_PEER_ERROR;
@@ -303,13 +378,56 @@ void handle_peer_down (mesh_node_t *node_, const rid_bytes_t &rid_)
             } else if (peer.state == ZLINK_MESH_PEER_DRAINING) {
                 peer.state = ZLINK_MESH_PEER_CLOSED;
                 peer.last_changed_ms = now_ms ();
+                changed = true;
             }
         }
         if (!changed)
             return;
         recompute_readiness_locked (node_);
     }
+    connection_lock.unlock ();
     emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_CLOSED, rid_, ENOTCONN);
 }
 }
 }
+
+#ifdef ZLINK_BUILD_TESTS
+extern "C" void
+zlink_test_mesh_inject_disconnect (void *mesh_node_,
+                                   const zlink_routing_id_t *peer_rid_,
+                                   uint64_t connection_id_)
+{
+    if (!mesh_node_ || !peer_rid_ || connection_id_ == 0)
+        return;
+    zlink::mesh::handle_peer_down (
+      static_cast<zlink::mesh::mesh_node_t *> (mesh_node_),
+      zlink::mesh::rid_bytes (*peer_rid_), connection_id_);
+}
+
+extern "C" uint64_t zlink_test_mesh_select_admission_transport (
+  int is_hello_, uint64_t previous_connection_id_,
+  uint64_t current_connection_id_)
+{
+    const zlink::mesh::peer_transport_t previous (
+      previous_connection_id_);
+    const zlink::mesh::peer_transport_t current (
+      current_connection_id_);
+    return zlink::mesh::select_admission_transport (
+             is_hello_ != 0, previous,
+             current_connection_id_ == 0 ? NULL : &current)
+      .connection_id;
+}
+
+extern "C" int zlink_test_mesh_duplicate_admitted_lifetime (
+  int is_hello_, uint64_t existing_generation_,
+  uint64_t incoming_generation_)
+{
+    zlink::mesh::peer_state_t existing;
+    existing.state = ZLINK_MESH_PEER_ADMITTED;
+    existing.lifecycle_generation = existing_generation_;
+    return zlink::mesh::is_duplicate_admitted_lifetime (
+             is_hello_ != 0, &existing, incoming_generation_)
+             ? 1
+             : 0;
+}
+#endif

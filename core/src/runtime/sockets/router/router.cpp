@@ -368,12 +368,12 @@ void zlink::router_t::xarm_socket_msg_dispatch ()
     _fq.arm_dispatch ();
 }
 
-int zlink::router_t::rollback ()
+int zlink::router_t::xrollback ()
 {
     if (_current_out) {
         _current_out->rollback ();
         _current_out = NULL;
-        _more_out = false;
     }
+    _more_out = false;
     return 0;
 }

@@ -4,7 +4,7 @@
 
 # Event and readiness catalog
 
-This document organizes the public event families and readiness meanings in ZLink Core 10.0.0. Its audience is developers who project monitors, pollers, and service dispatch into bindings. The linked owner document defines each event structure and API; this document defines boundaries among families.
+This document organizes the public event families and readiness meanings in ZLink Core 10.1.0. Its audience is developers who project monitors, pollers, and service dispatch into bindings. The linked owner document defines each event structure and API; this document defines boundaries among families.
 
 ## 1. Event families
 
@@ -36,7 +36,10 @@ Peer events use RID together with lifecycle generation. An endpoint string alone
 
 ## 4. Logical Multicast and backpressure
 
-A Logical Multicast event records aggregate snapshot, admitted, and dropped target counts for one publish. It distinguishes local Spot matches from remote targets and contains neither topics nor payload. A successful default-NODROP publish has zero dropped targets.
+A Logical Multicast event records aggregate snapshot, admitted, and dropped
+target counts for one publish. It distinguishes local Spot matches from remote
+targets and contains neither topics nor payload. A publish accepted by every
+target has zero dropped targets.
 
 A backpressure event means that queue or reservation capacity prevented submission. Send-ready and `POLLOUT` mean that retry is worthwhile; they do not guarantee success of the next submit.
 

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -36,31 +37,32 @@ struct bench_latency_stats_t
 class bench_latency_sampler_t
 {
   public:
-    bench_latency_sampler_t () : _count (0), _sum_ns (0.0) {}
+    bench_latency_sampler_t () :
+        _count (0),
+        _sum_ns (0.0),
+        _sample_cap (resolve_sample_cap ()),
+        _samples_seen (0),
+        _rng (0xA341316Cu)
+    {
+        if (_sample_cap > 0)
+            _samples.reserve (_sample_cap);
+    }
 
     void add (double latency_ns_)
     {
         const double sample = latency_ns_ >= 0.0 ? latency_ns_ : 0.0;
         ++_count;
         _sum_ns += sample;
-        _samples.push_back (sample);
+        add_sample (sample);
     }
 
     void reset ()
     {
         _count = 0;
         _sum_ns = 0.0;
+        _samples_seen = 0;
+        _rng = 0xA341316Cu;
         _samples.clear ();
-    }
-
-    void merge_from (const bench_latency_sampler_t &other_)
-    {
-        if (other_._count == 0)
-            return;
-
-        _count += other_._count;
-        _sum_ns += other_._sum_ns;
-        _samples.insert (_samples.end (), other_._samples.begin (), other_._samples.end ());
     }
 
     unsigned long long count () const { return _count; }
@@ -111,7 +113,44 @@ class bench_latency_sampler_t
 
     unsigned long long _count;
     double _sum_ns;
+    size_t _sample_cap;
+    unsigned long long _samples_seen;
+    uint32_t _rng;
     std::vector<double> _samples;
+
+    static size_t resolve_sample_cap ()
+    {
+        const char *value = std::getenv ("PERF_MULTI_LATENCY_SAMPLE_CAP");
+        if (!value || !*value)
+            return 65536;
+
+        char *end = NULL;
+        const unsigned long long parsed = std::strtoull (value, &end, 10);
+        if (!end || *end != '\0')
+            return 65536;
+        return static_cast<size_t> (parsed);
+    }
+
+    uint32_t next_random ()
+    {
+        _rng = (_rng * 1664525u) + 1013904223u;
+        return _rng;
+    }
+
+    void add_sample (double sample_)
+    {
+        ++_samples_seen;
+        if (_sample_cap == 0)
+            return;
+        if (_samples.size () < _sample_cap) {
+            _samples.push_back (sample_);
+            return;
+        }
+
+        const unsigned long long slot = next_random () % _samples_seen;
+        if (slot < _samples.size ())
+            _samples[static_cast<size_t> (slot)] = sample_;
+    }
 };
 
 inline void print_result (const std::string &lib_type,

@@ -41,7 +41,6 @@ func runMultiSpotServer(cfg multiConfig) {
 	perfcommon.Must(err)
 	defer dataSpot.Close()
 	perfcommon.Must(dataSpot.SetSendTimeout(perfcommon.MultiSendTimeout()))
-	perfcommon.Must(dataSpot.SetNoDrop(true))
 	controlPub, err := controlNode.Spot()
 	perfcommon.Must(err)
 	defer controlPub.Close()

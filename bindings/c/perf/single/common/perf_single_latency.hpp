@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 struct latency_stats_t
@@ -18,7 +19,7 @@ struct latency_stats_t
 class latency_stats_builder_t
 {
   public:
-    latency_stats_builder_t () : latency_stats_builder_t (0) {}
+    latency_stats_builder_t () : latency_stats_builder_t (default_sample_cap ()) {}
 
     explicit latency_stats_builder_t (size_t sample_cap_) :
         _count (0),
@@ -35,7 +36,9 @@ class latency_stats_builder_t
         const double sample = latency_ns_ >= 0.0 ? latency_ns_ : 0.0;
         ++_count;
         _sum_ns += sample;
-        if (_sample_cap == 0 || _samples.size () < _sample_cap) {
+        if (_sample_cap == 0)
+            return;
+        if (_samples.size () < _sample_cap) {
             _samples.push_back (sample);
             return;
         }
@@ -92,6 +95,19 @@ class latency_stats_builder_t
     {
         _rng = (_rng * 1664525u) + 1013904223u;
         return _rng;
+    }
+
+    static size_t default_sample_cap ()
+    {
+        const char *value = std::getenv ("PERF_SINGLE_LATENCY_SAMPLE_CAP");
+        if (!value || !*value)
+            return 1000000;
+
+        char *end = NULL;
+        const unsigned long long parsed = std::strtoull (value, &end, 10);
+        if (!end || *end != '\0')
+            return 1000000;
+        return static_cast<size_t> (parsed);
     }
 };
 

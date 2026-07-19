@@ -172,9 +172,9 @@ final class PerfMultiSpot {
 
     // C parity: perf_multi_spot_server.cpp try_publish_locked +
     // wait_for_spot_send_progress. The active publisher keeps the same
-    // one-message-at-a-time, no-drop meaning, but uses the binding public
-    // Poller on the Spot POLLOUT plane plus an active-deadline ZlinkTimer instead
-    // of timed sleep/backoff.
+    // one-message-at-a-time progress rule, but uses the binding public Poller
+    // on the Spot POLLOUT plane plus an active-deadline ZlinkTimer instead of
+    // timed sleep/backoff.
     private static boolean publishWhenWritableUntil(Spot publisher,
                                                     Message message,
                                                     Poller poller,

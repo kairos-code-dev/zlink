@@ -37,8 +37,6 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
-# Patterns coordinated over the runner control plane. Empty until the
-# MeshNode benchmark patterns land (S4-27/28).
 CONTROL_PLANE_PATTERNS = ()
 PATTERN_ALIASES = {
     "DEALER_ROUTER": ("DEALER_ROUTER_SENDSEND",),
@@ -57,6 +55,9 @@ PATTERN_SUFFIX = {
     "DEALER_ROUTER_REQREP": "dealer_router_reqrep",
     "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "PUBSUB": "pubsub",
+    "SPOT_PUBSUB": "spot_pubsub",
+    "SPOT_REQREP": "spot_reqrep",
+    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
@@ -64,6 +65,8 @@ ECHO_PATTERNS = {
     "ROUTER_ROUTER_SENDSEND",
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER_REQREP",
+    "SPOT_REQREP",
+    "SPOT_SENDSEND",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = set()
@@ -74,6 +77,7 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
+    ("perf_spot_pubsub", "SPOT_PUBSUB"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -82,9 +86,13 @@ MULTI_COMPARISONS = [
     ("comp_src_dealer_router_reqrep_client", "DEALER_ROUTER_REQREP"),
     ("comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("comp_src_pubsub_client", "PUBSUB"),
+    ("comp_src_spot_pubsub_client", "SPOT_PUBSUB"),
+    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
+    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
+MULTI_SPOT_PATTERNS = {"SPOT_PUBSUB", "SPOT_REQREP", "SPOT_SENDSEND"}
 SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_DEALER": ("recv",),
     "DEALER_ROUTER_SENDSEND": ("recv",),
@@ -92,6 +100,9 @@ SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_ROUTER_REQREP": ("recv",),
     "ROUTER_ROUTER_REQREP": ("recv",),
     "PUBSUB": ("recv",),
+    "SPOT_PUBSUB": ("recv",),
+    "SPOT_REQREP": ("recv",),
+    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -3817,6 +3828,21 @@ def build_effective_option_items(args, selected_patterns):
                 ),
             ]
         )
+        if selected_patterns and any(p in MULTI_SPOT_PATTERNS for p in selected_patterns):
+            items.append(
+                (
+                    "spot_peer_node_io_threads",
+                    str(
+                        max(
+                            1,
+                            parse_env_int(
+                                "PERF_MULTI_SPOT_NODE_IO_THREADS",
+                                1,
+                            ),
+                        )
+                    ),
+                )
+            )
     else:
         base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
         sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)

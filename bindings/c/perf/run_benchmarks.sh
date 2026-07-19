@@ -67,7 +67,7 @@ esac
 
 BUILD_DIR="${ROOT_DIR}/bindings/c/build"
 
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,SPOT_PUBSUB"
 PATTERN="ALL"
 OUTPUT_FILE=""
 RESULTS_DIR=""
@@ -466,6 +466,9 @@ resolve_single_build_targets() {
         ;;
       ROUTER_ROUTER_REQREP)
         targets+=("perf_router_router_reqrep")
+        ;;
+      SPOT_PUBSUB)
+        targets+=("perf_spot_pubsub")
         ;;
     esac
   done

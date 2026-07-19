@@ -33,6 +33,7 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
+    "SPOT_PUBSUB",
 ]
 
 PATTERN_TO_BINARY = {
@@ -43,6 +44,7 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER_REQREP": "perf_dealer_router_reqrep",
     "ROUTER_ROUTER": "perf_router_router",
     "ROUTER_ROUTER_REQREP": "perf_router_router_reqrep",
+    "SPOT_PUBSUB": "perf_spot_pubsub",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -53,7 +55,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-STREAM_TRANSPORT_PATTERNS = set()
+STREAM_TRANSPORT_PATTERNS = {"SPOT_PUBSUB"}
 STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")

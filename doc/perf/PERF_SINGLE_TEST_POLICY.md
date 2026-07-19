@@ -2,7 +2,7 @@
 
 > **적용 범위**: zlink 전체 (core + bindings) — single-client 벤치마크
 > **Policy Version**: 2.0
-> **Date**: 2026-04-07
+> **Date**: 2026-07-18
 > **Scope**: `perf/single` 성능 테스트 정책
 >
 > 본 정책은 `perf/single`의 C++ 벤치마크와 in-repo single perf 자산이 존재하는
@@ -15,7 +15,9 @@
 > **상위 문서**: [PERF_POLICY.md](PERF_POLICY.md) — 공통 원칙, 디렉터리 구조,
 > RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙
 >
-> **관련 문서**: [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md)
+> **관련 문서**:
+> [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md),
+> [PERF_SPOT_TEST_POLICY.md](PERF_SPOT_TEST_POLICY.md)
 >
 > 본 문서는 single suite **전용** 정책만 기술한다.
 > 양 suite에 공통으로 적용되는 규칙은 상위 문서에서 관리한다.
@@ -46,15 +48,15 @@
   비동기 `recv` drain) 을 기본으로 한다. callback으로 측정 data delivery를
   직접 집계하는 경로는 single 에서 사용하지 않는다.
 - `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`,
-  `ROUTER_ROUTER`, `SPOT` 은 이 recv 모델로 active payload를 집계한다.
+  `ROUTER_ROUTER`, `SPOT_PUBSUB` 은 이 recv 모델로 active payload를 집계한다.
 - `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_REQREP` 은 request-reply completion
   모델로 active 왕복 완료를 집계한다. single reqrep은 requester submit flow,
   requester reply recv/progress flow, replier recv/reply flow를 같은 process 안에서
   동시에 구동한다. requester는 응답을 하나 받을 때마다 다음 request를 보내는
   RTT 전용 루프가 아니라, public request API가 허용하는 만큼 request를 연속
   제출하고 reply completion을 계속 drain한다.
-- `SPOT` 은 direct message callback을 쓰지 않고, local probe 이후
-  `zlink_spot_subscribe()` recv drain 으로 active payload를 집계한다.
+- `SPOT_PUBSUB`은 direct message callback을 쓰지 않는다. MeshNode ready batch에서
+  Spot claim을 얻고 `zlink_mesh_claim_recv_batch()`로 active multicast record를 읽는다.
 
 #### 프로세스/스레드 모델
 
@@ -103,19 +105,20 @@ single 의 기본 패턴은 one-way 측정 surface를 사용한다. request-repl
 - throughput은 active 구간에서 reply까지 완료된 왕복 수로 계산한다.
 - latency는 request 제출 시각부터 해당 reply completion까지의 시간으로 계산한다.
 
-**SPOT one-way 패턴**:
+**SPOT_PUBSUB one-way 패턴**:
 ```text
 +--------------------------------------+
 | process                              |
 | sender flow       recv/progress flow |
-| publish loop ---> spot subscribe     |
-|                   recv drain         |
+| Spot publish ---> MeshNode ready      |
+|                   claim recv batch   |
 |                   metric collect     |
 +--------------------------------------+
 ```
-- sender flow는 ready barrier 통과 후 metric header가 포함된 payload를 연속 publish한다.
-- recv/progress flow는 local probe barrier를 닫은 뒤 `zlink_spot_subscribe()` recv
-  drain 으로 active payload만 집계한다.
+- 같은 MeshNode에 publisher Spot과 subscriber Spot을 하나씩 만든다.
+- sender flow는 subscription 설정 뒤 metric header가 포함된 payload를 연속 publish한다.
+- recv/progress flow는 application ready record의 Spot claim을 drain해 active
+  multicast record만 집계한다.
 
 **공통**:
 - raw one-way single에는 `EAGAIN` 기반 pending 관리, send-ready handler 등
@@ -181,16 +184,10 @@ drain 의 자연스러운 처리:
   먼저 도달하므로 receiver 가 차례대로 record 한 뒤 마지막으로 stop token
   을 만난다. 별도 deadline 기반 drain loop 없이 phase 종료가 처리된다.
 
-SPOT one-way 예외:
-- SPOT one-way benchmark 는 active phase 에서 데이터 경로를 의도적으로 포화시킨다.
-  이때 active publisher 와 같은 원격 데이터 경로에 stop token 을 넣으면, stop
-  token 이 큰 backlog 뒤에 밀려 phase 종료가 실제 데이터 drain 시간에 묶인다.
-- 따라서 SPOT one-way 는 subscriber 와 같은 `SpotNode` 에 benchmark 전용
-  stop publisher 를 하나 두고, 같은 topic 에 stop token 을 보낸다. receiver 는
-  기존과 같이 `is_stop_token(...)` 으로 종료한다.
-- 이 예외는 별도 fd / eventfd / pipe / cancellation token 이 아니다. 종료 신호는
-  여전히 zlink 의 SPOT topic 메시지이며, active 데이터 경로의 backlog 와 phase
-  종료 신호만 분리한다.
+SPOT_PUBSUB one-way 예외:
+- active 종료는 sender와 receiver가 공유하는 monotonic deadline으로 판정한다.
+- sender가 deadline에 도달하면 publish를 중단하고 receiver가 현재 ready batch 처리를
+  마친 뒤 종료한다. 별도 control Spot이나 stop publisher를 만들지 않는다.
 
 ---
 
@@ -199,13 +196,14 @@ SPOT one-way 예외:
 ```text
 [single phase]:
 raw pattern      = [ready] -> [active(duration)] -> [idle_drain] -> [done]
-PUBSUB / SPOT    = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle_drain] -> [done]
+PUBSUB            = [ready] -> [post_ready_settle] -> [active(duration)] -> [idle_drain] -> [done]
+SPOT_PUBSUB       = [ready] -> [active(duration)] -> [done]
 ```
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| ready | event-based | raw=`CONNECTION_READY`, SPOT=local pub/sub probe barrier | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
-| post-ready settle | bounded stabilization | PUBSUB/SPOT만 수행 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS`, `PERF_SINGLE_SPOT_READY_SETTLE_MS` |
+| ready | event/configuration-based | raw=`CONNECTION_READY`, SPOT_PUBSUB=MeshNode start와 subscription 설정 완료 | `PERF_CONNECT_READY_TIMEOUT_MS` 계열 timeout |
+| post-ready settle | bounded stabilization | PUBSUB만 수행 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS` |
 | active | time-based | 5s | `PERF_SINGLE_DURATION_SECONDS` |
 | idle drain | bounded recv drain | recv one-way 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
 | completion drain | bounded completion drain | request-reply 전체 수행 | `PERF_SINGLE_RCVTIMEO_MS` 계열 timeout bound |
@@ -225,15 +223,14 @@ active 시작 조건, 종료 신호를 사용해야 한다.
 | `DEALER_ROUTER_REQREP` | 단일 process 안 request submit thread + requester progress thread + replier thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | submit thread는 새 request 제출을 멈추고, progress thread는 bounded completion drain 후 종료 |
 | `ROUTER_ROUTER_REQREP` | 단일 process 안 request submit thread + requester progress thread + replier thread | raw socket `CONNECTION_READY`, routing self-check는 단발성 1회만 허용 | ready gate와 self-check 통과 직후 `phase=active` | submit thread는 새 request 제출을 멈추고, progress thread는 bounded completion drain 후 종료 |
 | `PUBSUB` | 단일 process 안 publisher thread + subscriber drain | raw socket `CONNECTION_READY` 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | publisher가 wire stop token 송신, subscriber는 idle drain 후 종료 |
-| `SPOT` | 단일 process 안 publisher + `zlink_spot_subscribe()` drain | local pub/sub probe payload 수신 후 bounded post-ready settle | post-ready settle 완료 직후 `phase=active` | benchmark 전용 stop publisher가 같은 topic으로 wire stop token 송신 |
+| `SPOT_PUBSUB` | 단일 process 안 MeshNode 하나 + publisher/subscriber Spot | MeshNode start와 subscription 설정 완료 | sender thread 시작 직후 `phase=active` | shared deadline 뒤 sender 중단, receiver가 현재 ready batch를 마친 뒤 종료 |
 
 - single suite에는 runner stdin/stdout `READY` / `CLIENT_READY` / `START`
   orchestration을 만들지 않는다. single handshake는 같은 process 내부의 ready
   gate와 wire stop token으로 닫힌다.
-- `PUBSUB`과 `SPOT`의 post-ready settle은 C 기준에 있는 bounded 절차다. 이를
-  다른 패턴으로 확장하거나, sleep 기반 별도 ready gate로 재해석하면 안 된다.
-- `SPOT` ready는 monitor event나 snapshot polling이 아니라 local probe payload
-  수신으로 판정한다.
+- `PUBSUB`의 post-ready settle은 C 기준에 있는 bounded 절차다. 이를 다른 패턴으로
+  확장하거나 sleep 기반 별도 ready gate로 재해석하면 안 된다.
+- `SPOT_PUBSUB` ready는 MeshNode와 두 Spot의 공개 configuration API 성공으로 판정한다.
 
 - `setup_connected_pair()`는 내부적으로 low-cost monitoring ready gate를
   캡슐화한 helper인 경우에만 허용된다. 별도/독자적인 start gate 규칙으로
@@ -245,24 +242,20 @@ active 시작 조건, 종료 신호를 사용해야 한다.
 - pattern별 low-cost ready event는 single 측정의 공식 start gate다. benchmark
   시작 전 준비 판정은 monitoring event로 해결하고, perf 파일 안의 커스텀
   handshake loop, sleep, monitor snapshot polling으로 대체하지 않는다.
-- 예외: `PUBSUB`, `SPOT` 은 ready gate 통과 후 bounded post-ready settle을
-  반드시 수행한다. `PUBSUB` settle의 의미는 subscription/data path 전달 준비
-  안정화이고, `SPOT` settle의 의미는 local probe/control path 전달 준비
-  안정화다. 이는 ready를 대체하는 추가 gate가 아니라 패턴 전용의 고정
-  post-ready 절차다.
+- 예외: `PUBSUB`은 ready gate 통과 후 bounded post-ready settle을 수행한다.
 - 패턴 파일에서는 공통 helper를 통해 `wait_*ready*()` 형태로 감싸도 된다.
   이 경우에도 ready source는 반드시 위 표의 pattern contract 와 일치해야 한다.
 - active에서만 throughput/latency를 계산한다.
 - `single`은 별도 settle/prime phase를 두지 않는다.
 - 단, 아래 절차는 본 문서에 정의된 의미로 반드시 수행한다.
-  - post-ready settle: `PUBSUB` / `SPOT` 공통으로 수행한다.
+  - post-ready settle: `PUBSUB`에서 수행한다.
   - idle drain: recv one-way 패턴 공통으로 수행한다.
   - completion drain: request-reply 패턴 공통으로 수행한다.
 - latency sample은 내부적으로 nanosecond 단위로 누적하고, RESULT line과
   사람이 읽는 report/table에는 millisecond 단위로 표시한다.
 - 다음 size는 별도 프로세스로 다시 시작한다.
 - monitor-ready 이후 필요한 protocol self-check는 단발성 검증 1회만
-  허용하며, `PUBSUB`/`SPOT` 예외를 제외한 sleep 기반 보정은 금지한다.
+  허용하며, `PUBSUB` 예외를 제외한 sleep 기반 보정은 금지한다.
 - C 기준 코드가 같은 위치에서 `perf_socket_poll(NULL, 0, N)`을 쓰는 idle wait는
   sleep 기반 보정이 아니다. binding perf는 public empty-poll API나 public
   timer/poller 기반 idle helper로 그 의미를 표현할 수 있으며, C 기준에 없는
@@ -353,9 +346,9 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 - `Effective Options`에는 `lang`과 `suite` 항목이 반드시 포함되어야 한다.
 - single 엔진은 최대 파일 수를 100으로 하드코딩한다 (`PERF_RESULTS_MAX_FILES` 미참조).
 - single runner는 payload size를 context
-  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 설정한다. SPOT node 또는 SPOT
-  handle에 raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 직접 설정하지
-  않는다. 이 raw socket 옵션을 SPOT 서비스 핸들에 적용하려는 코드는 정책
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`로 설정한다. MeshNode 또는 Spot handle에
+  raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 직접 설정하지 않는다.
+  이 raw socket 옵션을 서비스 핸들에 적용하려는 코드는 정책
   위반이다. C API에서는 해당 호출이 `EINVAL`로 실패한다.
 
 ---
@@ -412,7 +405,7 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 - ROUTER_ROUTER
 - DEALER_ROUTER_REQREP
 - ROUTER_ROUTER_REQREP
-- SPOT
+- SPOT_PUBSUB
 
 > STREAM 계열(STREAM)은 single suite에서 테스트하지 않는다.
 > SPOT_REQREP 같은 routed framework echo 측정은 multi suite 에서만 다룬다.
@@ -428,7 +421,7 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 | ROUTER_ROUTER | `recv` |
 | DEALER_ROUTER_REQREP | `request-reply` |
 | ROUTER_ROUTER_REQREP | `request-reply` |
-| SPOT | `recv` |
+| SPOT_PUBSUB | `recv` |
 
 정책:
 
@@ -440,7 +433,7 @@ status                = (expected_result_lines == actual_result_lines) ? "comple
 #### ready gate 기준
 
 single의 send/recv 시작 가능 여부는 raw 패턴에서는 공식 monitor event,
-SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 precondition
+SPOT_PUBSUB에서는 MeshNode start와 subscription 설정 성공으로 판정한다. perf는 추가 precondition
 (`FILTER_APPLIED`, quorum 완화)을 두지 않는다. 아래 contract 이후 메시징이
 불가능하면 perf 우회가 아니라 core 버그로 보고 수정한다.
 
@@ -453,31 +446,22 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 | ROUTER_ROUTER | `CONNECTION_READY` | `CONNECTION_READY` |
 | DEALER_ROUTER_REQREP | `CONNECTION_READY` | `CONNECTION_READY` |
 | ROUTER_ROUTER_REQREP | `CONNECTION_READY` | `CONNECTION_READY` |
-| SPOT | local probe publish 후 first valid recv | local probe payload first valid recv |
+| SPOT_PUBSUB | MeshNode start와 subscription 설정 완료 | MeshNode start와 subscription 설정 완료 |
 
 - single policy 는 `event.value` 와 `snapshot.ready_count` gate 를 금지한다.
 - single policy 는 delivery-ready event gate 도 사용하지 않는다.
 - `PUBSUB` 은 `CONNECTION_READY` 뒤에 subscription 전파 안정화를 위한 bounded
   post-ready settle 1회를 반드시 수행한다.
-- `SPOT` 은 local probe 기반 ready 판정 직후 bounded post-ready settle 1회를
-  반드시 수행한다.
-- 위 settle은 additional ready source가 아니며, transport/binding별 임의 조정
-  단계로 확장하면 안 된다.
-- single SPOT 은 별도 서비스 이벤트 스트림을 사용하지 않는다.
-- single SPOT 은 local pub/sub setup 완료 후 sender 가 metric header가 찍힌
-  probe payload 를 publish 하고, recv 측이 첫 유효 payload 를 확인하면
-  ready 를 닫는다.
-- single SPOT one-way perf 는 registry/discovery bootstrap 시간을 측정 대상에
-  넣지 않는다. 같은 process 안에서 publisher node 를 bind 하고 subscriber node 가
-  직접 peer connect 한 뒤, 위 local probe 로 data path 준비 여부만 판정한다.
-- single SPOT 은 direct message callback mode를 두지 않는다. single SPOT 은
-  `zlink_spot_subscribe()` recv drain 으로 payload를 확인한다.
+- single SPOT_PUBSUB은 별도 서비스 event stream이나 peer 연결을 사용하지 않는다.
+- 같은 MeshNode 안에 publisher Spot과 subscriber Spot을 만들고 Logical Multicast
+  local delivery 비용을 측정한다.
+- direct message callback 대신 MeshNode ready/claim batch로 payload를 확인한다.
 
 #### 패턴 방향 분류
 
 | 방향 | 패턴 | throughput 단위 |
 |------|------|----------------|
-| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT | `msg/s` |
+| one-way (단방향) | PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, SPOT_PUBSUB | `msg/s` |
 | request-reply (왕복) | DEALER_ROUTER_REQREP, ROUTER_ROUTER_REQREP | `ops/s` |
 
 > **구현 참고**: single one-way runner는 **Kmsg/s** 단위로 출력한다.
@@ -494,7 +478,7 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 | 패턴군 | transport |
 |--------|-----------|
 | PAIR / PUBSUB / DEALER / ROUTER | tcp, tls, ws, wss, inproc, ipc (Windows: ipc 제외) |
-| SPOT | tcp, tls, ws, wss |
+| SPOT_PUBSUB | tcp, tls, ws, wss |
 
 ---
 
@@ -506,7 +490,7 @@ SPOT 에서는 local pub/sub probe barrier 로 판정한다. perf는 추가 prec
 > [PERF_POLICY.md § 8](PERF_POLICY.md) 참조.
 
 single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 `1`이다.
-`SPOT`도 예외를 두지 않는다. `--io-threads` 또는 `PERF_IO_THREADS`를 명시한
+`SPOT_PUBSUB`도 예외를 두지 않는다. `--io-threads` 또는 `PERF_IO_THREADS`를 명시한
 실행은 기준 비교가 아니라 의도적인 진단 실행으로 기록해야 한다.
 
 ### 7.1 phase/timeout
@@ -531,17 +515,21 @@ single perf의 기본 `PERF_IO_THREADS`는 모든 언어와 모든 패턴에서 
 | `PERF_SINGLE_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |
 | `PERF_SINGLE_PUBSUB_READY_SETTLE_MS` | PUBSUB post-ready settle(ms) | 1000 |
-| `PERF_SINGLE_SPOT_READY_SETTLE_MS` | SPOT post-ready settle(ms) | 1000 |
+| `PERF_SINGLE_LATENCY_SAMPLE_CAP` | percentile 계산에 보관할 최대 sample 수. `0`이면 sample을 보관하지 않는다 | 1000000 |
 | `PERF_SINGLE_PUBSUB_XPUB_NODROP` | PUBSUB의 `ZLINK_XPUB_NODROP` 기본값 | (바이너리별) |
 
 - backpressure 검증은 `core/tests/integration`로 분리한다. one-way 통합 범위는
-  `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
+  `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT_PUBSUB` 이며,
   `STREAM`, echo, `PAIR` 은 제외한다.
 
 ---
 
 ## 8. 변경 이력
 
+- **v2.1 (2026-07-18)**
+  - Core 10.0.0 MeshNode ready/claim API로 `SPOT_PUBSUB`을 복구했다.
+  - 제거된 SpotNode와 구독 수신 API 설명을 삭제했다.
+  - latency sample 기본 상한을 명시했다.
 - **v2.0 (2026-04-07)**
   - 공통 정책을 [PERF_POLICY.md](PERF_POLICY.md)로 통합, 중복 제거
   - single 전용 내용만 유지

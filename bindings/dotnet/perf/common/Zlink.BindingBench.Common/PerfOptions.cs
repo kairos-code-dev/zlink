@@ -31,8 +31,7 @@ public sealed record PerfOptions(
     int MultiSndBuf,
     int MultiRcvBuf,
     int ServerBindPort,
-    int PubSubXpubNoDrop,
-    int SpotXpubNoDrop)
+    int PubSubXpubNoDrop)
 {
     public static bool TryParseSingleArgs(string[] args, out PerfOptions options)
     {
@@ -159,8 +158,7 @@ public sealed record PerfOptions(
             PerfEnv.ReadByteSize("PERF_MULTI_SNDBUF", 0),
             PerfEnv.ReadByteSize("PERF_MULTI_RCVBUF", 0),
             PerfEnv.ReadNonNegative("PERF_MULTI_SERVER_BIND_PORT", 0),
-            PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 0),
-            PerfEnv.ReadPositive("PERF_MULTI_SPOT_XPUB_NODROP", 1));
+            PerfEnv.ReadPositive("PERF_MULTI_PUBSUB_XPUB_NODROP", 0));
     }
 
     public int ResolveSingleHwm(string specificName)

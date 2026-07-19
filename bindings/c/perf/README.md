@@ -88,6 +88,34 @@ non-baseline diagnostic.
 The auto-HWM detail table is printed after the result rows. It uses the cached
 runtime snapshots and includes the applied HWM and socket buffers.
 
+OOM must not be avoided by lowering the official workload's send rate, payload
+size, client count, active duration, or concurrency. Each message-size phase
+updates the context auto-HWM message unit and recalculates auto-HWM. Normal
+burst control belongs to auto-HWM and public-API backpressure. If memory keeps
+growing without `EAGAIN`, or phase/process teardown does not release queued
+messages, treat that behavior as a Core bug and rerun the same workload after
+the fix.
+
+The bounded reservoirs used for p95 and p99 protect measurement metadata only.
+They do not change queue HWM, send timing, receive count, or mean-latency
+aggregation.
+
+## Core 10.0.0 Spot Patterns
+
+Single supports `SPOT_PUBSUB`. Multi supports `SPOT_PUBSUB`, `SPOT_REQREP`, and
+`SPOT_SENDSEND`.
+
+For multi Spot, `--clients N` means N peer processes. Each peer process owns one
+MeshNode and one entry Spot and connects only to the hub MeshNode. The hub owns
+one MeshNode and one entry Spot, so the measured topology is one hub MeshNode
+managing N peer connections. The peer processes do not connect to one another.
+
+Each peer context uses one I/O thread by default because it owns one MeshNode
+and one hub connection. This is the baseline topology, not an OOM throttle.
+Set `PERF_MULTI_SPOT_NODE_IO_THREADS` explicitly for an I/O-thread comparison.
+The hub and every peer recalculate context auto-HWM from the current message
+size before each active phase.
+
 ## Auto-HWM Profile Sweep
 
 Use `--auto-hwm-profile` or `PERF_CTX_AUTO_HWM_PROFILE` with benchmark message

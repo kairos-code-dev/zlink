@@ -146,8 +146,6 @@ internal static class PerfMultiSpotServer
             TrySetSpotOption(() => node.PubSubHighWaterMark =
                 Math.Max(1, Math.Max(sndHwm, rcvHwm)));
         }
-        if (options.SpotXpubNoDrop > 0)
-            TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
             node.PublisherSendTimeout =
                 TimeSpan.FromMilliseconds(config.ReadyTimeoutMs));
@@ -155,7 +153,6 @@ internal static class PerfMultiSpotServer
 
     private static void ConfigureSpotControlNode(ISpotNode node, int timeoutMs)
     {
-        TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
             node.PublisherSendTimeout =
                 TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));

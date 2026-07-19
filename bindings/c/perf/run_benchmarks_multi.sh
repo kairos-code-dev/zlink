@@ -8,7 +8,7 @@ DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT_PUBSUB,SPOT_REQREP,SPOT_SENDSEND,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
 MSG_SIZES="${PERF_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}"
@@ -341,7 +341,7 @@ Usage: bindings/c/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,STREAM
+  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT_PUBSUB,SPOT_REQREP,SPOT_SENDSEND,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -373,7 +373,8 @@ Options:
                          override it with PERF_MULTI_STREAM_MSG_SIZES.
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
-  --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
+  --clients N            Override client count (default: 100, stream=10000).
+                         For Spot patterns this is the peer MeshNode process count.
   --hwm N                Debug-only override PERF_MULTI_HWM.
                          Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
@@ -489,6 +490,15 @@ resolve_multi_build_targets() {
         ;;
       PUBSUB)
         targets+=("comp_src_pubsub_server" "comp_src_pubsub_client")
+        ;;
+      SPOT_PUBSUB)
+        targets+=("comp_src_spot_pubsub_server" "comp_src_spot_pubsub_client")
+        ;;
+      SPOT_REQREP)
+        targets+=("comp_src_spot_reqrep_server" "comp_src_spot_reqrep_client")
+        ;;
+      SPOT_SENDSEND)
+        targets+=("comp_src_spot_sendsend_server" "comp_src_spot_sendsend_client")
         ;;
       STREAM)
         targets+=("comp_src_stream_server" "perf_stream_client")
@@ -989,28 +999,6 @@ for (( idx=0; idx<${#SCRIPT_ARGS[@]}; ++idx )); do
     exit 1
   fi
 done
-
-if [[ -z "${CLIENTS}" ]]; then
-  memory_max_clients="$(resolve_memory_max_clients)"
-  if is_uint "${memory_max_clients}"; then
-    default_clients_before="${EFFECTIVE_DEFAULT_CLIENTS}"
-    default_stream_clients_before="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
-    if is_uint "${EFFECTIVE_DEFAULT_CLIENTS}" && (( EFFECTIVE_DEFAULT_CLIENTS > memory_max_clients )); then
-      EFFECTIVE_DEFAULT_CLIENTS="${memory_max_clients}"
-    fi
-    if is_uint "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" && (( EFFECTIVE_DEFAULT_STREAM_CLIENTS > memory_max_clients )); then
-      EFFECTIVE_DEFAULT_STREAM_CLIENTS="${memory_max_clients}"
-    fi
-    if [[ "${EFFECTIVE_DEFAULT_CLIENTS}" != "${default_clients_before}" || "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" != "${default_stream_clients_before}" ]]; then
-      mem_kb_now="$(memory_available_kb)"
-      mem_mb_now=""
-      if is_uint "${mem_kb_now}"; then
-        mem_mb_now="$(( mem_kb_now / 1024 ))"
-      fi
-      echo "Info: memory guard capped default clients (general ${default_clients_before}->${EFFECTIVE_DEFAULT_CLIENTS}, stream ${default_stream_clients_before}->${EFFECTIVE_DEFAULT_STREAM_CLIENTS}, mem_available_mb=${mem_mb_now:-unknown})."
-    fi
-  fi
-fi
 
 PATTERNS=("${PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then

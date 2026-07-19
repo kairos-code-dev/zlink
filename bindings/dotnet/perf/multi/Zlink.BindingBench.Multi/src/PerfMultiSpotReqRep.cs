@@ -394,7 +394,6 @@ internal static class PerfMultiSpotReqRep
 
     private static void ConfigureControlNodeOptions(ISpotNode node, int timeoutMs)
     {
-        TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
             node.PublisherSendTimeout =
                 TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));

@@ -2,7 +2,7 @@
 
 > **적용 범위**: zlink 전체 (core + bindings)
 > **Policy Version**: 2.0
-> **Date**: 2026-04-08
+> **Date**: 2026-07-18
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
 > 본 정책은 `bindings/c/perf`의 C benchmark runner와 in-repo perf 자산이 존재하는 바인딩
@@ -17,7 +17,7 @@
 >   런타임 메커니즘이 달라 일관된 비교 기준이 불가능하므로 기본 perf 비교 surface에서
 >   제외한다. callback 정합성 검증은 `core/tests/integration`에서 수행한다.
 > - 예외:
->   `SPOT`은 dispatch event callback 안에서 recv drain 하는 모델을 사용하고,
+>   `SPOT_PUBSUB`은 MeshNode ready/claim batch 수신 경로를 사용하고,
 >   `STREAM`은 raw callback이 아니라 packet handler surface를 기준으로 테스트한다.
 
 ---
@@ -29,6 +29,8 @@
 | **PERF_POLICY.md** (본 문서) | 공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리, 환경 변수(공통), 리팩토링 원칙 |
 | [PERF_SINGLE_TEST_POLICY.md](PERF_SINGLE_TEST_POLICY.md) | single suite 전용: recv/request-reply 모델, phase, 패턴/transport, single 전용 환경 변수 |
 | [PERF_MULTI_TEST_POLICY.md](PERF_MULTI_TEST_POLICY.md) | multi suite 전용: 프로세스 모델, backpressure, throughput/latency 측정, 패턴/transport, multi 전용 환경 변수 |
+| [PERF_SPOT_TEST_POLICY.md](PERF_SPOT_TEST_POLICY.md) | Core 10.0.0 Spot 패턴 이름, MeshNode peer 토폴로지, ready/claim 수신과 단계별 실행 |
+| [PERF_WSL_STABILITY.md](PERF_WSL_STABILITY.md) | WSL 비정상 종료 조사 결과와 메모리 안전 점검 절차 |
 
 - 양 suite에 공통으로 적용되는 모든 규칙은 본 문서에서 관리한다.
 - 개별 정책 문서는 해당 suite **전용** 규칙만 기술하며, 공통 규칙은 본 문서를 참조한다.
@@ -59,6 +61,21 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
 - single/multi 기본 경로는 모두 context auto-HWM 을 사용한다. `PERF_*_HWM`,
   `PERF_*_SNDHWM`, `PERF_*_RCVHWM`, `PERF_*_SNDBUF`, `PERF_*_RCVBUF`
   override 는 debug 예외 경로이며 allow flag 가 켜진 경우에만 허용한다.
+- OOM을 피하려고 공식 성능 시험의 전송률, 동시 요청 수, payload 크기, client 수,
+  active duration을 임의로 낮추거나 송신 간격을 추가하지 않는다. 메시지 burst는
+  현재 payload 크기를 반영한 context auto-HWM과 공개 API의 backpressure가 제한해야
+  한다. `EAGAIN`은 이 흐름 제어가 작동했다는 뜻이므로 송신자는 준비 상태가 회복되면
+  즉시 계속한다.
+- 예상 메모리가 현재 장비의 가용 메모리를 넘으면 runner는 workload를 줄여서 다른
+  시험으로 바꾸지 않는다. 해당 조건을 실행할 수 없는 이유를 `skip` 또는 `fail`로
+  남기고 충분한 메모리가 있는 장비에서 같은 조건을 다시 실행한다.
+- auto-HWM을 적용했는데도 queue 메모리가 제한 없이 증가하거나, 종료한 phase의
+  메시지가 회수되지 않거나, Core가 backpressure를 반환하지 않아 OOM이 발생하면
+  성능 시험 조건을 낮추지 않는다. 재현 test를 추가하고 Core 버그로 수정한 뒤 같은
+  조건을 다시 실행한다.
+- p95/p99 계산용 sample 저장 상한은 메시지 queue나 요청 동시성을 제한하지 않는
+  계측 메모리 보호다. 전체 완료 수와 지연 시간 합계는 계속 기록하며, 이 상한을
+  전송률 제한이나 송신 간격으로 사용하면 안 된다.
 - public API 동작에 문제가 있으면 perf 코드에서 우회하지 않고 버그로
   레포팅한다. 버그레포팅 문서는 doc/bug/perf 아래에 md 파일 형식으로 작성한다.
   버그는 회귀테스트를 작성해서 재현을 확인하고 수정한다. 버그를 우선 수정하고
@@ -121,7 +138,7 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
     임베디드/배포용 옵션은 별도이다.
 - backpressure 검증은 기본 perf surface가 아니라 `core/tests/integration`
   으로 분리한다. one-way backpressure 통합 범위는 `DEALER_DEALER`,
-  `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT` 이며,
+  `DEALER_ROUTER`, `ROUTER_ROUTER`, `PUBSUB`, `SPOT_PUBSUB` 이며,
   `STREAM`, echo, `PAIR` 은 제외한다.
 - 실제 오류는 즉시 `fail` 처리한다.
 - `EAGAIN`은 오류가 아니라 flow-control 상태로 취급한다.
@@ -166,16 +183,13 @@ suite별 정책 문서에 반영한 다음 다른 바인딩으로 옮긴다.
   경쟁해서 drain하면 안 된다. 이 경우 binding 내부 구현은 외부 poller 등록을
   감지해 자동 pump를 비활성화하고, completion drain은 perf의 단일 active
   poll loop에 맡겨야 한다.
-- 다만 아래 두 예외는 perf 정책 surface에 포함한다.
-  - `multi SPOT`의 dispatch event와 `single SPOT`의 `zlink_spot_subscribe()`
-    recv drain: direct message callback이 아니라 public recv activation/drain
-    경로로 동작한다.
-  - `STREAM`: raw callback은 제외하지만 `packet handler`는 `STREAM`의 canonical
-    packet receive surface로 본다.
-- 즉 perf는 "callback이면 전부 제외"가 아니라, data-plane direct callback을
-  제외하고 SPOT 의 public recv drain 경로와 `STREAM packet handler`만
-  예외적으로 허용한다. `MULTI_SPOT_REQREP` requester reply completion은
-  public poller 경로로 진행한다.
+- 다만 아래 두 예외는 perf 정책 범위에 포함한다.
+  - Spot 계열은 `zlink_mesh_node_drain_ready()`와 claim batch로 application 및
+    infrastructure record를 읽는다. direct message callback은 사용하지 않는다.
+  - `STREAM`은 raw callback을 제외하지만 packet handler를 정식 수신 경로로 본다.
+- `MULTI_SPOT_REQREP` completion도 Spot의 infrastructure claim batch에서 읽는다.
+  자세한 record 종류와 응답 API는
+  [Core 10.0.0 Spot 성능 시험 정책](./PERF_SPOT_TEST_POLICY.md)을 따른다.
 
 ### 1.1.1 Metric Header Wire Format
 
@@ -261,44 +275,24 @@ total: 29 bytes (고정)
   - raw socket client 연결 준비: low-cost monitor event `CONNECTION_READY`
   - runner-barrier raw start gate: `CONNECTION_READY` 확인 뒤 suite별 패턴 표의
     `CLIENT_READY` / `START` orchestration
-  - SPOT:
-    - single: local probe-based ready barrier
-    - multi: explicit control handshake barrier
-  - MULTI_SPOT_REQREP / MULTI_SPOT_SENDSEND (multi suite 전용, routed SpotNode mesh):
-    - SPOT 과 동일한 control handshake barrier
-      (`DATA_ENDPOINT` + `CONNECTED` progress payload + `READY_COUNT`/`START`)
-    - routed request/reply 경로는 barrier 통과 이후에만 시작한다.
+  - single `SPOT_PUBSUB`: MeshNode와 두 Spot을 만든 뒤 local subscription 설정 완료
+  - multi Spot 계열: 모든 peer MeshNode가 hub에 admitted되고 hub Spot generation을
+    받은 뒤 `CLIENT_READY` / `START`
 - raw socket client 연결 준비는 expected client 수만큼
   `CONNECTION_READY` 수신으로 판정한다.
-- SPOT 계열 multi perf ready gate는 monitor event 나 snapshot 이 아니라
-  benchmark control protocol 로 판정한다.
-- single SPOT 은 별도 서비스 이벤트 스트림 대신 local pub/sub probe 를 사용한다.
-  sender 가 metric header가 찍힌 probe payload 를 publish 하고, recv
-  쪽에서 첫 유효 수신을 확인하면 ready 로 판정한다.
-- single SPOT 수신은 direct message callback으로 처리하지 않는다.
-  `zlink_spot_subscribe()` recv drain 으로 유효 payload를 확인해야 한다.
-- multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND barrier 의 `READY` 는
-  `connect_peer()` 직후 즉시 보내지 않는다. local benchmark network 정책으로,
-  각 client spot 이
-  control link ready 와 local connect setup 을 끝낸 뒤 stabilization
-  window(기본 1초)를 거쳐 server control plane 으로 `READY_COUNT` 를
-  전송한다. server 는 expected client 수만큼 `READY` unit 을 모은 뒤
-  `START` 를 broadcast 한다.
-- multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND 의 짧은 control settle 은
-  control socket connect 직후 request/publish 순서를 정렬하기 위한 barrier 내부
-  절차다.
-  raw pattern 의 monitor ready gate 와 동일한 public 계약으로 취급하지
-  않는다.
+- multi Spot 계열은 `zlink_mesh_node_peers()`에서 각 hub peer가
+  `ZLINK_MESH_PEER_ADMITTED`인지 확인하고, setup용 node request/reply가 완료된 뒤
+  `CLIENT_READY`를 출력한다. 별도 control MeshNode나 고정 settle 시간을 사용하지 않는다.
+- single과 multi Spot 수신은 `zlink_mesh_node_drain_ready()`와
+  `zlink_mesh_claim_recv_batch()`로 처리한다.
 - `setup_connected_pair()` 같은 helper는 raw socket client 의 `CONNECTION_READY`
   counting 만 캡슐화한 경우에만 허용된다.
 - `wait_ready()` 같은 helper는 허용한다. 단:
   - raw socket client 연결 준비에서는 `CONNECTION_READY` counting 만 수행해야 한다.
   - runner-barrier raw start gate 에서는 `CONNECTION_READY` 확인 뒤 suite별 패턴
     표의 `CLIENT_READY` / `START` orchestration 을 수행해야 한다.
-  - single SPOT 에서는 local probe-based ready barrier 만 수행해야 한다.
-  - multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND 에서는 control handshake
-    (`DATA_ENDPOINT` for routed variants + `CONNECTED` progress payload +
-    `READY_COUNT`/`START`) barrier 만 수행해야 한다.
+  - single SPOT_PUBSUB에서는 MeshNode와 subscription 설정 완료만 확인한다.
+  - multi Spot 계열에서는 peer admission과 hub Spot generation setup만 확인한다.
   - delivery-ready event, 별도 서비스 이벤트 스트림, snapshot polling 을 helper 뒤에
     숨기면 안 된다.
 
@@ -311,10 +305,6 @@ total: 29 bytes (고정)
 | token | 방향 | 의미 |
 |-------|------|------|
 | `READY,<endpoint>` | server stdout → runner | server data endpoint bind 완료 |
-| `CONTROL_READY,<endpoint>` | server stdout → runner | SPOT 계열 server control endpoint bind 완료 |
-| `CLIENT_CONTROL_ENDPOINT,<endpoint>` | client stdout → runner | SPOT 계열 client control endpoint bind 완료 |
-| `CONNECT_CONTROL,<endpoint>` | runner stdin → server | server가 client control endpoint에 연결 |
-| `CONTROL_CONNECTED,<endpoint>` | server stdout → runner → client stdin | server control 연결 완료 통지 |
 | `CLIENT_READY,<msg_size>` | client stdout → runner | client가 해당 size 실행 준비 완료 |
 | `START,<msg_size>` | runner stdin → server/client | 해당 size active 실행 시작 |
 | `PHASE_ACTIVE,<msg_size>` | runner stdin → client | C runner 호환용 one-way 보조 token. active gate가 아니며 benchmark process가 필수 조건으로 요구하면 안 됨 |
@@ -343,17 +333,9 @@ total: 29 bytes (고정)
   금지한다.
 - `STOP`은 runner orchestration 정리 명령이다. data-plane phase 종료 신호가
   필요한 패턴은 suite 정책에 정의된 wire-level stop token을 사용한다.
-- SPOT 계열 control handshake는 data-plane `START` 전에 완료되어야 한다.
-  server는 `CONTROL_READY`를 출력하고, client는 `CLIENT_CONTROL_ENDPOINT`를
-  출력한다. runner는 `CONNECT_CONTROL`을 server에 전달하고, server의
-  `CONTROL_CONNECTED`를 client에 전달한다. 이후 client는 control plane으로
-  `READY_COUNT,<msg_size>,<count>`를 보내고, server는 expected count를 모은 뒤
-  control plane으로 `START,<msg_size>`를 broadcast한다. SPOT_REQREP /
-  SPOT_SENDSEND 는 `READY_COUNT` 전에 `DATA_ENDPOINT,<endpoint>` 로 data endpoint
-  도 전달한다.
-- SPOT 계열에서도 runner stdin의 `START,<msg_size>`는 process lifecycle을 여는
-  orchestration token이다. 실제 data-plane 시작은 위 control plane
-  `READY_COUNT`/`START` barrier가 닫힌 뒤에만 가능하다.
+- multi Spot 계열 client는 N개 peer의 admission과 setup request/reply가 끝난 뒤
+  `CLIENT_READY,<msg_size>`를 출력한다. runner가 server와 client에 같은
+  `START,<msg_size>`를 전달하면 active 구간을 시작한다.
 - C perf handshake에 없는 언어별 ready token, 별도 ack, 추가 quorum, 별도 warmup
   start 명령은 정책 위반이다. 특정 바인딩 public API 부족으로 C handshake를
   구현할 수 없으면 binding public API를 보강하거나 해당 perf 조합을
@@ -372,11 +354,7 @@ total: 29 bytes (고정)
   quorum 완화, 보정용 handshake 단계)을 두지 않는다.
 - perf start gate 구현에서 아래를 금지한다.
   - `sleep`/`msleep`/고정 지연
-    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` / `multi SPOT_SENDSEND`
-      barrier 내부의 stabilization/control-settle 절차는 본 문서와 suite 정책에
-      명시된 경우에 한해 허용한다. 이는 별도 public gate나 일반 ready phase로
-      승격하지 않는다.
-    - 예외 2: `single PUBSUB`, `single SPOT` 은 ready gate 통과 직후
+    - 예외: `single PUBSUB`은 ready gate 통과 직후
       bounded post-ready settle을 반드시 수행한다. 이는 추가 ready gate가
       아니라 패턴 전용의 고정 안정화 절차이며, C 기준과 bindings 전체에 동일
       의미로 적용해야 한다.
@@ -386,10 +364,7 @@ total: 29 bytes (고정)
   - `preflight`
   - `prime`
   - `settle`
-    - 예외 1: `multi SPOT` / `multi SPOT_REQREP` / `multi SPOT_SENDSEND`
-      barrier 내부 settle은 별도 lifecycle phase가 아니라 control handshake의
-      내부 절차로만 허용한다.
-    - 예외 2: `single PUBSUB` / `single SPOT` post-ready settle은 ready를
+    - 예외: `single PUBSUB` post-ready settle은 ready를
       대체하는 별도 phase가 아니라, 해당 패턴의 전달 준비를 정렬하기 위한
       bounded 안정화 절차로만 허용한다.
   - `stable`
@@ -414,7 +389,7 @@ total: 29 bytes (고정)
 - raw socket client 의 ready gate event 는
   [`doc/guide/06-monitoring.ko.md`](../../core/doc/guide/06-monitoring.ko.md)의
   raw socket monitoring 절을 단일 기준으로 따른다.
-- SPOT 계열은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
+- SPOT_PUBSUB 계열은 별도 서비스 이벤트 스트림을 사용하지 않으며, perf-ready 는
   suite별 benchmark barrier protocol 로만 정의한다.
 - monitor event rename:
   - raw socket ready event 는 `CONNECTION_READY` 이다.
@@ -462,21 +437,13 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
 - benchmark는 메시지 크기별로 context
   `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`를 현재 테스트 메시지 크기와 같은 값으로
   설정한다. raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 저수준 socket별
-  override로만 유지하며, SPOT node 또는 SPOT handle에는 설정하지 않는다. SPOT
+  override로만 유지하며, MeshNode 또는 Spot handle에는 설정하지 않는다. Spot
   서비스 핸들에 이 공통 옵션을 설정하려는 코드는 정책 위반이고, C API에서는
   `EINVAL` 실패로 처리된다. C perf runner는 일반 패턴의 결과 행 뒤에 runtime
   snapshot에서 실제 수집한 `Auto-HWM detail` 표를 붙이고,
   `Size(B)`, `MsgUnit(B)`, `Scope`, `ScopeCount`를 적용 HWM과 함께 보여야 한다.
-  SPOT 계열은
-  `zlink_spot_node_internal_sockets_snapshot()` 결과 중 `auto_hwm_visible == 1`인
-  row만 기본 출력에 사용한다. `Auto-HWM spotnode` 표는 node 소유 socket을,
-  `Auto-HWM spot handles` 표는 spot 소유 socket을 보여준다. 꺼진 SpotNode
-  mode의 socket은 생성되지 않으므로 perf 출력에도 나오지 않는다. C 외
-  바인딩은 RESULT 계약을 우선하고, Auto-HWM 세부 설정 출력은 필수 surface로
-  요구하지 않는다.
-- SPOT per-spot scope는 spot 수로 role budget을 나눈다. 큰 payload와 높은
-  client 수를 함께 쓰면 HWM이 목표 동시성보다 작아질 수 있으므로, 100-client
-  `MULTI_SPOT_SENDSEND` 64 KiB 검증에는 2048 MiB tier를 추가로 확인한다.
+  MeshNode와 Spot 계열은 RESULT 계약을 우선하며 내부 socket snapshot을 perf의
+  공개 계약으로 사용하지 않는다.
 - one-way pattern에서도 이 규칙을 유지한다. 실제 traffic 방향상 한쪽 값만 더
   중요하더라도 기본 bench surface는 auto 계산 결과를 그대로 본다.
 - perf는 throughput/bandwidth/latency 중심의 기본 surface만 유지한다. cpu/mem,
@@ -518,23 +485,15 @@ perf 구조는 다음 두 책임으로 분리한다. 이 분리는 `bindings/c/p
 - one-way recv
   - send 정책은 없다.
   - recv 정책만 적용한다.
-- `PUBSUB`, `SPOT`
+- `PUBSUB`, `SPOT_PUBSUB`
   - publisher/server는 one-way send다.
   - subscriber/client는 one-way recv다.
-- `MULTI_SPOT_REQREP`
-  - multi suite 전용 routed request-reply 패턴이다. 실제 흐름은
-    `spot(requester) -> spot_node -> spot_node -> spot(replier)` 를 따르며,
-    replier 가 생성한 reply 는 같은 경로를 역방향으로 되돌아와
-    requester 가 수신한다.
-  - client(requester) 와 server(replier) 는 echo 패턴과 동일하게
-    request/reply 의미를 유지하며, send 역할과 recv 역할 정책을 둘 다
-    적용한다.
-  - multi suite 에서 `clients` 는 SpotNode 수가 아니라 logical spot 수를 뜻한다.
-    별도 패턴 문서가 없는 한 기본 topology 는
-    `client process 당 SpotNode 1개 + spot N개` 이고,
-    bindings 가 이를 `SpotNode N개 + spot N개` 로 임의 해석하면 안 된다.
-  - 정식 표에 아직 없는 SPOT 계열 비교 패턴을 추가할 때도, 별도 예외 문서가
-    없으면 같은 topology 계약을 유지한다.
+- `MULTI_SPOT_PUBSUB`, `MULTI_SPOT_REQREP`, `MULTI_SPOT_SENDSEND`
+  - `clients`는 peer MeshNode 수다.
+  - client child process 하나가 MeshNode 하나와 entry Spot 하나를 만든다.
+  - 모든 peer는 hub MeshNode에만 연결한다.
+  - 정확한 메시지 흐름과 generation 교환은
+    [Core 10.0.0 Spot 성능 시험 정책](./PERF_SPOT_TEST_POLICY.md)을 따른다.
 - `MULTI_DEALER_ROUTER`
   - 기존 send/send echo 패턴의 호환 이름이다.
   - 새 문서와 새 구현에서는 같은 의미를 `MULTI_DEALER_ROUTER_SENDSEND` 로
@@ -883,7 +842,7 @@ bindings/java/perf/run_benchmarks_multi.sh --pattern ALL
 - lang: c
 - suite: single
 - runs: 1
-- patterns: PAIR, SPOT
+- patterns: PAIR, SPOT_PUBSUB
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 - pin_cpu: off
@@ -950,7 +909,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - lang: c
 - suite: single
 - runs: 1
-- patterns: PAIR, SPOT
+- patterns: PAIR, SPOT_PUBSUB
 - transports: tcp, tls, ws, wss
 - msg_sizes: 64, 256, 1024, 65536, 131072, 262144
 - pin_cpu: off
@@ -1157,7 +1116,7 @@ perf 구현의 공통화 기준은 **코드 중복 제거 자체가 아니라 be
 | TLS 설정 | `setup_tls_client`, `setup_tls_server` |
 | Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
 | 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
-| Monitor 유틸리티 | raw socket client `CONNECTION_READY` counting helper, multi SPOT / multi SPOT_REQREP / multi SPOT_SENDSEND=`READY/START` barrier helper |
+| Monitor 유틸리티 | raw socket client `CONNECTION_READY` counting helper, multi SPOT_PUBSUB / multi SPOT_REQREP / multi SPOT_SENDSEND=`READY/START` barrier helper |
 | transport 가용성 검사 | `transport_available()` |
 | 공통 cleanup | socket / monitor / context close helper |
 
@@ -1346,7 +1305,7 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_DEBUG` | 디버그 로그 | unset |
-| `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT 계열 예외를 두지 않는다. multi 기본값은 server/client 모두 4다. Python multi는 GIL 기반 callback 경합을 피하기 위해 기본값 1을 사용하되, 이 변수를 설정하면 명시값을 따른다. | suite별 기본값 |
+| `PERF_IO_THREADS` | context I/O threads. single 기본값은 모든 패턴에서 1이며, SPOT_PUBSUB 계열 예외를 두지 않는다. multi 기본값은 server/client 모두 4다. Python multi는 GIL 기반 callback 경합을 피하기 위해 기본값 1을 사용하되, 이 변수를 설정하면 명시값을 따른다. | suite별 기본값 |
 | `PERF_MSG_SIZES` | 테스트 size 목록이며 runner가 size별 case로 나누어 실행한다. single 기본값은 `64,256,1024,65536,131072,262144`, multi 기본값은 `64,256,1024,4096,65536,131072`, multi STREAM 기본값은 `64,256,1024,65536`이다. | suite/패턴별 기본값 |
 | `PERF_TRANSPORTS` | 테스트 transport 목록 | suite/패턴별 기본값 |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
@@ -1355,6 +1314,8 @@ perf 벤치마크 코드와 실행 인프라를 리팩토링할 때는 아래 �
 | `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
 | `PERF_STREAM_NON_TCP_CLIENTS_MAX` | STREAM 계열 non-tcp transport의 최대 client cap | 10000 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 (multi 전용) | 100 |
+| `PERF_MULTI_LATENCY_SAMPLE_CAP` | multi sampler 하나가 보관하는 percentile sample 상한 | 65536 |
+| `PERF_SINGLE_LATENCY_SAMPLE_CAP` | single sampler 하나가 보관하는 percentile sample 상한 | 1000000 |
 
 - 위 환경 변수는 C 기준과 모든 바인딩에서 동일하게 적용된다 (단, `PERF_RESULTS_MAX_FILES`는 multi 엔진만 참조하며, single 엔진은 100 하드코딩).
 - suite별 고유 환경 변수는 개별 정책 문서를 참조한다:

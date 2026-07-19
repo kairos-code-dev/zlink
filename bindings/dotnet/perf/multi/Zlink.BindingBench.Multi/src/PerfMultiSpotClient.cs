@@ -750,7 +750,6 @@ internal static class PerfMultiSpotClient
 
     private static void ConfigureSpotControlNode(ISpotNode node, int timeoutMs)
     {
-        TrySetSpotOption(() => node.PublisherNoDrop = true);
         TrySetSpotOption(() =>
             node.PublisherSendTimeout =
                 TimeSpan.FromMilliseconds(Math.Max(1000, timeoutMs)));

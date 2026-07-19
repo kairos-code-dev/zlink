@@ -113,7 +113,8 @@ void *new_started_node (void *ctx_,
                         const char *rid_,
                         uint64_t mailbox_message_budget_ = 0,
                         int router_hwm_ = 0,
-                        bool infinite_send_timeout_ = false)
+                        bool infinite_send_timeout_ = false,
+                        int send_timeout_ms_ = 0)
 {
     zlink_mesh_node_options_t options;
     memset (&options, 0, sizeof (options));
@@ -146,6 +147,11 @@ void *new_started_node (void *ctx_,
           ZLINK_CONFIG_OK,
           zlink_set_option (node, ZLINK_OPT_SNDTIMEO, &send_timeout_ms,
                             sizeof (send_timeout_ms)));
+    } else if (send_timeout_ms_ > 0) {
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_set_option (node, ZLINK_OPT_SNDTIMEO, &send_timeout_ms_,
+                            sizeof (send_timeout_ms_)));
     }
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
     return node;
@@ -1685,6 +1691,162 @@ void test_shutdown_interrupts_infinite_blocking_mesh_send ()
           return result;
       });
 }
+
+//  A DONTWAIT capacity rejection marks the ROUTER pipe temporarily inactive.
+//  A following blocking publish must keep treating that admitted route as
+//  connected: it may accept after write credit returns or time out with
+//  backpressure, but it must not report an unreachable peer.
+void test_blocking_publish_after_dontwait_backpressure_stays_connected ()
+{
+    int ready_pipe[2];
+    int resume_pipe[2];
+    TEST_ASSERT_EQUAL_INT (0, pipe (ready_pipe));
+    TEST_ASSERT_EQUAL_INT (0, pipe (resume_pipe));
+
+    run_two_process_case (
+      [&] (int endpoint_fd, pid_t child_pid) {
+          close (ready_pipe[1]);
+          close (resume_pipe[0]);
+
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                                 zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0));
+          void *node =
+            new_started_node (ctx, mesh_name, "node-a", 0, 1, false, 10);
+          publish_endpoint (node, endpoint_fd);
+          TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1),
+                                    "node A did not admit the stalled peer");
+
+          unsigned char child_ready = 0;
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (read (ready_pipe[0], &child_ready, 1)));
+          TEST_ASSERT_EQUAL_HEX8 (0xA5, child_ready);
+          close (ready_pipe[0]);
+          TEST_ASSERT_EQUAL_INT (0, kill (child_pid, SIGSTOP));
+          int stopped_status = 0;
+          TEST_ASSERT_EQUAL_INT (child_pid,
+                                 waitpid (child_pid, &stopped_status, WUNTRACED));
+          TEST_ASSERT_TRUE (WIFSTOPPED (stopped_status));
+
+          void *publisher = zlink_mesh_node_publisher_new (node);
+          TEST_ASSERT_NOT_NULL (publisher);
+          zlink_msg_t part;
+          TEST_ASSERT_EQUAL_INT (0, zlink_msg_init_size (&part, 4 * 1024 * 1024));
+          memset (zlink_msg_data (&part), 0x5A, zlink_msg_size (&part));
+
+          bool backpressured = false;
+          for (int attempt = 0; attempt < 1000 && !backpressured; ++attempt) {
+              zlink_mesh_publish_detail_t detail;
+              memset (&detail, 0, sizeof (detail));
+              detail.struct_size = sizeof (detail);
+              detail.version = 1;
+              const zlink_submit_result_t rc =
+                zlink_mesh_node_publisher_publish (
+                  publisher, channel_name, "blocked.remote", NULL, &part, 1,
+                  &detail, ZLINK_SEND_FLAGS_DONTWAIT);
+              if (rc == ZLINK_SUBMIT_BACKPRESSURED) {
+                  TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (0, detail.admitted_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (1, detail.dropped_remote_target_count);
+                  TEST_ASSERT_EQUAL_UINT (0, detail.unreachable_remote_target_count);
+                  backpressured = true;
+              } else {
+                  TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, rc);
+              }
+          }
+          TEST_ASSERT_TRUE_MESSAGE (backpressured,
+                                    "DONTWAIT publish did not reach ROUTER HWM");
+
+          zlink_mesh_publish_detail_t detail;
+          memset (&detail, 0, sizeof (detail));
+          detail.struct_size = sizeof (detail);
+          detail.version = 1;
+          const std::chrono::steady_clock::time_point started =
+            std::chrono::steady_clock::now ();
+          const zlink_submit_result_t rc =
+            zlink_mesh_node_publisher_publish (
+              publisher, channel_name, "blocked.remote", NULL, &part, 1,
+              &detail, ZLINK_SEND_FLAGS_NONE);
+          const int64_t elapsed_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds> (
+              std::chrono::steady_clock::now () - started)
+              .count ();
+          TEST_ASSERT_TRUE (rc == ZLINK_SUBMIT_OK
+                            || rc == ZLINK_SUBMIT_BACKPRESSURED);
+          TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
+          TEST_ASSERT_EQUAL_UINT (0, detail.unreachable_remote_target_count);
+          TEST_ASSERT_EQUAL_UINT (
+            detail.snapshot_remote_target_count,
+            detail.admitted_remote_target_count + detail.dropped_remote_target_count);
+          if (rc == ZLINK_SUBMIT_OK) {
+              TEST_ASSERT_EQUAL_UINT (1, detail.admitted_remote_target_count);
+              TEST_ASSERT_EQUAL_UINT (0, detail.dropped_remote_target_count);
+          } else {
+              TEST_ASSERT_TRUE_MESSAGE (elapsed_ms >= 5,
+                                        "blocking publish did not wait through SNDTIMEO");
+              TEST_ASSERT_EQUAL_UINT (0, detail.admitted_remote_target_count);
+              TEST_ASSERT_EQUAL_UINT (1, detail.dropped_remote_target_count);
+          }
+
+          const unsigned char resume = 0x5A;
+          TEST_ASSERT_EQUAL_INT (
+            1, static_cast<int> (write (resume_pipe[1], &resume, 1)));
+          close (resume_pipe[1]);
+          TEST_ASSERT_EQUAL_INT (0, kill (child_pid, SIGCONT));
+
+          zlink_msg_close (&part);
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                                 zlink_mesh_node_publisher_destroy (&publisher));
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                                 zlink_mesh_node_shutdown (node, 2000));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+      },
+      [&] (int endpoint_fd) -> int {
+          close (ready_pipe[0]);
+          close (resume_pipe[1]);
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 10;
+          if (zlink_ctx_set (ctx, ZLINK_CTX_OPT_BLOCKY, 0) != ZLINK_CONFIG_OK)
+              return 11;
+          void *node = new_started_node (ctx, mesh_name, "node-b", 0, 1);
+          void *spot = NULL;
+          if (zlink_mesh_node_entry_spot (node, &spot) != ZLINK_CONFIG_OK)
+              return 12;
+          if (zlink_spot_set_subscription (spot, channel_name, "blocked.",
+                                           ZLINK_SPOT_SUBSCRIPTION_PREFIX)
+              != ZLINK_CONFIG_OK)
+              return 13;
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 14;
+          zlink_mesh_peer_entry_t entry;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry))
+              return 15;
+          const unsigned char ready = 0xA5;
+          if (write (ready_pipe[1], &ready, 1) != 1)
+              return 16;
+          close (ready_pipe[1]);
+          unsigned char resume = 0;
+          if (read (resume_pipe[0], &resume, 1) != 1 || resume != 0x5A)
+              return 17;
+          close (resume_pipe[0]);
+          int result = 0;
+          if (zlink_spot_destroy (&spot) != ZLINK_CLOSE_OK)
+              result = 18;
+          if (zlink_mesh_node_shutdown (node, 1000) != ZLINK_REQUEST_OK
+              && result == 0)
+              result = 19;
+          if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK && result == 0)
+              result = 20;
+          if (zlink_ctx_term (ctx) != ZLINK_CLOSE_OK && result == 0)
+              result = 21;
+          return result;
+      });
+}
 //  An admitted remote target that loses its ROUTER pipe during publish is
 //  reported as unreachable while the independent local leg still delivers.
 void test_router_unreachable_target_accounting ()
@@ -2932,6 +3094,7 @@ int main (int argc, char **argv)
     RUN_SELECTED (test_remote_spot_direct_request_reply);
     RUN_SELECTED (test_remote_multicast_publish);
     RUN_SELECTED (test_shutdown_interrupts_infinite_blocking_mesh_send);
+    RUN_SELECTED (test_blocking_publish_after_dontwait_backpressure_stays_connected);
     RUN_SELECTED (test_router_unreachable_target_accounting);
     RUN_SELECTED (test_remote_actor_lookup_messaging_destroy);
     RUN_SELECTED (test_remote_actor_join_entry_spot);

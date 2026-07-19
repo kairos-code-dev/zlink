@@ -436,8 +436,13 @@ bool zlink::pipe_t::check_write ()
 zlink::pipe_write_status_t zlink::pipe_t::check_write_status ()
 {
     scoped_fast_lock_t lock (_out_sync);
-    if (unlikely (!_out_active || _state != active))
+    if (unlikely (_state != active))
         return pipe_write_inactive;
+    //  HWM admission sets _out_active=false until the peer returns write
+    //  credit. The route still exists during that interval, so callers must
+    //  keep reporting capacity pressure rather than an unreachable peer.
+    if (unlikely (!_out_active))
+        return pipe_write_hwm_full;
 
     const bool full = !check_hwm_unlocked ();
 

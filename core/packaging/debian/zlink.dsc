@@ -2,7 +2,7 @@ Format: 3.0 (quilt)
 Source: zlink
 Binary: libzlink10, libzlink10-dev, libzlink10-dbg
 Architecture: any
-Version: 10.2.0-0.1
+Version: 10.3.0-0.1
 Maintainer: zlink Developers <ulalax@kairoscode.dev>
 Homepage: https://github.com/kairos-code-dev/zlink
 Standards-Version: 3.9.8

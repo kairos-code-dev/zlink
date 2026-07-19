@@ -7,7 +7,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd">
     <metadata minClientVersion="2.5">
         <id>libzlink-vc142</id>
-        <version>10.2.0</version>
+        <version>10.3.0</version>
         <title>libzlink-vc142</title>
         <authors>zlink contributors</authors>
         <owners>zlink contributors</owners>

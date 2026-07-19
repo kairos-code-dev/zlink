@@ -12,7 +12,10 @@
 # unrelated changes for commit.
 #
 # Usage:
-#   scripts/local-package/native/sync-local-core-libs.sh
+#   scripts/local-package/native/sync-local-core-libs.sh [binding ...]
+#
+# With no arguments all bindings are synchronized. Pass binding names to
+# limit the update, for example: cpp dotnet java node.
 #
 # Optional environment overrides:
 #   CORE_LIB_DIR   — directory containing libzlink.so/libzlink.so.MAJOR/
@@ -41,6 +44,23 @@ esac
 
 VERSION="$(bash "${ROOT_DIR}/core/version.sh")"
 MAJOR="${VERSION%%.*}"
+
+declare -A selected=()
+if [[ "$#" -eq 0 ]]; then
+  set -- c cpp dotnet go java node python rust
+fi
+for binding in "$@"; do
+  case "${binding}" in
+    c|cpp|dotnet|go|java|node|python|rust)
+      selected["${binding}"]=1
+      ;;
+    *)
+      echo "unsupported binding: ${binding}" >&2
+      echo "expected one or more of: c cpp dotnet go java node python rust" >&2
+      exit 2
+      ;;
+  esac
+done
 
 base="${CORE_LIB_DIR}/libzlink.so"
 soname="${CORE_LIB_DIR}/libzlink.so.${MAJOR}"
@@ -78,31 +98,56 @@ copy_libs() {
   ln -sfn "libzlink.so.${MAJOR}" "${dir}/libzlink.so"
 }
 
-dirs=(
-  "${ROOT_DIR}/bindings/cpp/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/cpp/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/dotnet/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/go/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/go/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/java/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/java/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/java/src/main/resources/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/java/src/main/resources/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/node/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/node/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/node/prebuilds/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_dash}"
-  "${ROOT_DIR}/bindings/rust/native/linux-${arch_short}"
-  "${ROOT_DIR}/bindings/rust/native/linux-${arch_dash}"
-)
-
-header_dirs=(
-  "${ROOT_DIR}/bindings/c/include"
-  "${ROOT_DIR}/bindings/cpp/include"
-  "${ROOT_DIR}/bindings/go/include"
-  "${ROOT_DIR}/bindings/rust/include"
-)
+dirs=()
+header_dirs=()
+if [[ -n "${selected[c]:-}" ]]; then
+  header_dirs+=("${ROOT_DIR}/bindings/c/include")
+fi
+if [[ -n "${selected[cpp]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/cpp/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/cpp/native/linux-${arch_dash}"
+  )
+  header_dirs+=("${ROOT_DIR}/bindings/cpp/include")
+fi
+if [[ -n "${selected[dotnet]:-}" ]]; then
+  dirs+=("${ROOT_DIR}/bindings/dotnet/native/linux-${arch_short}")
+fi
+if [[ -n "${selected[go]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/go/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/go/native/linux-${arch_dash}"
+  )
+  header_dirs+=("${ROOT_DIR}/bindings/go/include")
+fi
+if [[ -n "${selected[java]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/java/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/java/native/linux-${arch_dash}"
+    "${ROOT_DIR}/bindings/java/src/main/resources/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/java/src/main/resources/native/linux-${arch_dash}"
+  )
+fi
+if [[ -n "${selected[node]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/node/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/node/native/linux-${arch_dash}"
+    "${ROOT_DIR}/bindings/node/prebuilds/linux-${arch_short}"
+  )
+fi
+if [[ -n "${selected[python]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/python/src/zlink/native/linux-${arch_dash}"
+  )
+fi
+if [[ -n "${selected[rust]:-}" ]]; then
+  dirs+=(
+    "${ROOT_DIR}/bindings/rust/native/linux-${arch_short}"
+    "${ROOT_DIR}/bindings/rust/native/linux-${arch_dash}"
+  )
+  header_dirs+=("${ROOT_DIR}/bindings/rust/include")
+fi
 
 for dir in "${header_dirs[@]}"; do
   copy_public_headers "${dir}"

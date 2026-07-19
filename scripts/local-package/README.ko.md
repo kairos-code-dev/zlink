@@ -14,11 +14,17 @@
   스크립트는 별도로 둔다.
 - source reference는 bindings 개발 중에만 명시적으로 켜는 예외 경로로 유지한다.
 - core native library를 bindings workspace에 동기화하는 스크립트도 이 디렉터리 아래에서만 관리한다.
+- 동기화 대상을 제한해야 하면 binding 이름을 인자로 넘긴다. 인자를 생략하면 기존과 같이 모든
+  binding workspace를 동기화한다.
 - framework는 bindings 소스를 직접 참조하지 않고, 명시한 버전의 local package만 참조한다.
   bindings 새 버전을 local package 위치에 배포해도 framework의 참조 버전을 바꾸기 전까지는
   기존 버전을 계속 사용해야 한다.
 
 역할은 다음처럼 나눈다.
+
+```bash
+./scripts/local-package/native/sync-local-core-libs.sh cpp dotnet java node
+```
 
 ```text
 bindings/<lang>/           package metadata and build rules

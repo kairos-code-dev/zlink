@@ -40,12 +40,20 @@ esac
   npm run rebuild-native
   mkdir -p "prebuilds/linux-$node_arch"
   cp "build/Release/zlink.node" "prebuilds/linux-$node_arch/zlink.node"
+  soname_path="prebuilds/linux-$node_arch/libzlink.so.$core_major"
+  soname_tmp="$soname_path.tmp"
   if [ -f "prebuilds/linux-$node_arch/libzlink.so.$core_version" ]; then
-    rm -f "prebuilds/linux-$node_arch/libzlink.so.$core_major"
-    cp "prebuilds/linux-$node_arch/libzlink.so.$core_version" "prebuilds/linux-$node_arch/libzlink.so.$core_major"
+    cp "prebuilds/linux-$node_arch/libzlink.so.$core_version" "$soname_tmp"
+    rm -f "$soname_path"
+    mv -f "$soname_tmp" "$soname_path"
   elif [ -f "native/linux-$node_arch/libzlink.so.$core_version" ]; then
-    rm -f "prebuilds/linux-$node_arch/libzlink.so.$core_major"
-    cp "native/linux-$node_arch/libzlink.so.$core_version" "prebuilds/linux-$node_arch/libzlink.so.$core_major"
+    cp "native/linux-$node_arch/libzlink.so.$core_version" "$soname_tmp"
+    rm -f "$soname_path"
+    mv -f "$soname_tmp" "$soname_path"
+  fi
+  if [ ! -f "$soname_path" ] || [ -L "$soname_path" ]; then
+    echo "Node package requires a regular SONAME runtime file: $soname_path" >&2
+    exit 2
   fi
   case "$package_mode" in
     source)

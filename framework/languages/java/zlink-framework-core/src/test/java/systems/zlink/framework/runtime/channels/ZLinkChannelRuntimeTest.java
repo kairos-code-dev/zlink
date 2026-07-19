@@ -25,9 +25,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
@@ -1179,9 +1176,6 @@ final class ZLinkChannelRuntimeTest {
         @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { return false; }
         @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { }
-        @Override public SpotNodeStatus status() { throw new UnsupportedOperationException(); }
-        @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
-        @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
         @Override public String name() { return "fake-node"; }
         @Override public void close() { }
     }

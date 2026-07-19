@@ -3,17 +3,16 @@ package systems.zlink.framework.monitoring;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
+import systems.zlink.contracts.service.spot.MeshNodeStatus;
+import systems.zlink.contracts.service.spot.MeshPeerEntry;
 
 public record ZLinkSpotEvent(
     String sourceName,
     Instant timestamp,
     ZLinkSpotEventKind event,
-    Optional<SpotNodeStatus> status,
-    List<SpotNodePeerEntry> peers,
-    List<SpotNodeSubjectEntry> subjects,
+    Optional<MeshNodeStatus> status,
+    List<MeshPeerEntry> peers,
+    List<String> subjects,
     Optional<String> timerDiagnostic) implements ZLinkRuntimeEvent {
     public ZLinkSpotEvent {
         status = status == null ? Optional.empty() : status;

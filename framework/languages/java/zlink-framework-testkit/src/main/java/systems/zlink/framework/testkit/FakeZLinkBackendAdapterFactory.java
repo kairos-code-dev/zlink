@@ -18,10 +18,6 @@ import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeState;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
@@ -846,24 +842,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) {
             record("closeActorBoundSession." + actor.actorId());
         }
-        @Override public SpotNodeStatus status() {
-            return new SpotNodeStatus(
-                "fake",
-                "inproc://fake-spot",
-                RoutingId.from("fake-node"),
-                SpotNodeState.READY,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0);
-        }
-        @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
-        @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
     }
 
     private static final class FakeSpotRouteBridge extends FakeBackendObject implements ZLinkBackendSpotRouteBridge {

@@ -245,7 +245,8 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().monitoringSocketSources();
     }
 
-    public Map<String, ZLinkInternalSpotNode> monitoringSpotSources() {
+    public Map<String, systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode>
+    monitoringSpotSources() {
         return requireRuntime().monitoringSpotSources();
     }
 

@@ -13,6 +13,7 @@ import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
@@ -24,6 +25,7 @@ import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
+import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.runtime.spots.SpotBuilders;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamBuilders;
@@ -35,6 +37,7 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     private final ZLinkFrameworkRegistration registration = new ZLinkFrameworkRegistration();
     private final Set<String> channelNames = new HashSet<>();
     private final Set<String> spotMeshNames = new HashSet<>();
+    private final Set<String> routeMeshNames = new HashSet<>();
     private final Set<Class<?>> spotFactoryTypes = new HashSet<>();
     private final Set<String> streamNodeNames = new HashSet<>();
     @Override
@@ -73,6 +76,15 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public ZLinkMetadataPolicyBuilder configureMetadata() {
         return registration.metadataPolicy();
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder addRouteMesh(String meshName) {
+        String name = requireName(meshName, "route mesh");
+        addUnique(routeMeshNames, name, "route mesh");
+        MeshNodeRegistration meshNode = new MeshNodeRegistration(name);
+        registration.meshNodes().add(meshNode);
+        return meshNode;
     }
 
     public ClientServerChannelBuilder addClientServerChannel(String channelName)

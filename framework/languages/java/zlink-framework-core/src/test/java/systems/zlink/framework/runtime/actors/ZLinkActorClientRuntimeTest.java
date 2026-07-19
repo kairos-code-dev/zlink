@@ -15,9 +15,6 @@ import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.RequestResult;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
@@ -337,9 +334,6 @@ final class ZLinkActorClientRuntimeTest {
         @Override public boolean forwardActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
         @Override public void bindRemoteActorBoundSession(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid) { }
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { }
-        @Override public SpotNodeStatus status() { throw new UnsupportedOperationException(); }
-        @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
-        @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
         @Override public String name() { return "recording"; }
         @Override public void close() { }
     }

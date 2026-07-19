@@ -16,6 +16,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRegistration;
+import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
@@ -31,6 +32,7 @@ public final class ZLinkFrameworkRegistration {
         new ZLinkWorkerOptionsRegistration();
     private final ZLinkLocationRegistration locations = new ZLinkLocationRegistration();
     private final List<ChannelRegistration> channels = new ArrayList<>();
+    private final List<MeshNodeRegistration> meshNodes = new ArrayList<>();
     private final List<SpotNodeRegistration> spotNodes = new ArrayList<>();
     private final List<StreamNodeRegistration> streamNodes = new ArrayList<>();
     private final Set<Class<?>> handlerPackageMarkers = new LinkedHashSet<>();
@@ -82,6 +84,10 @@ public final class ZLinkFrameworkRegistration {
         return channels;
     }
 
+    public List<MeshNodeRegistration> meshNodes() {
+        return meshNodes;
+    }
+
     public List<SpotNodeRegistration> spotNodes() {
         return spotNodes;
     }
@@ -123,6 +129,9 @@ public final class ZLinkFrameworkRegistration {
         types.addAll(filters);
         for (ChannelRegistration channel : channels) {
             types.addAll(channel.handlerTypes());
+        }
+        for (MeshNodeRegistration meshNode : meshNodes) {
+            types.addAll(meshNode.applicationTypes());
         }
         for (SpotNodeRegistration spotNode : spotNodes) {
             types.addAll(spotNode.spotFactories());
@@ -178,6 +187,9 @@ public final class ZLinkFrameworkRegistration {
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
         for (ChannelRegistration channel : channels) {
             channel.validate(locations.enabled(), handlerCatalog);
+        }
+        for (MeshNodeRegistration meshNode : meshNodes) {
+            meshNode.validate();
         }
         int actorCapableNodes = 0;
         for (SpotNodeRegistration spotNode : spotNodes) {

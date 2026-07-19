@@ -17,9 +17,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -477,9 +474,6 @@ final class EntrySpotActorDispatchTests {
         }
 
         @Override public void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout) { }
-        @Override public SpotNodeStatus status() { throw new UnsupportedOperationException(); }
-        @Override public List<SpotNodePeerEntry> peers() { return List.of(); }
-        @Override public List<SpotNodeSubjectEntry> subjects() { return List.of(); }
         @Override public String name() { return "test-node"; }
         @Override public void close() { }
     }

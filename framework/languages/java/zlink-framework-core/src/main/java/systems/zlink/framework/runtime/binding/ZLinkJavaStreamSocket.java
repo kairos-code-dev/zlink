@@ -4,13 +4,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ActorBindOperation;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ActorUnbindOperation;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
@@ -66,15 +64,14 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         return ZLinkJavaStreamFraming.submit(socket.send(routingId), header, parts, flags);
     }
     @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
-        ActorBindOperation operation = socket.bindActor(sessionRid, new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation()));
-        return timeout -> toVoid(operation.timeout(timeout).submit());
+        return timeout -> unsupportedStreamSession();
     }
     @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
-        ActorUnbindOperation operation = socket.unbindActor(sessionRid, actorId);
-        return timeout -> toVoid(operation.timeout(timeout).submit());
+        return timeout -> unsupportedStreamSession();
     }
     @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
-        return ZLinkJavaSocketSupport.submit(socket.sendBoundActor(sessionRid, actorId), parts, flags);
+        throw new UnsupportedOperationException(
+            "STREAM actor relay requires the RouteMesh StreamSessionService");
     }
     @Override public boolean relayBoundActor(
         RoutingId sessionRid,
@@ -84,10 +81,8 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         SendFlags flags) {
         Message header = Message.from(ZLinkStreamHeaderCodec.encode(streamHeader));
         try {
-            return ZLinkJavaSocketSupport.submit(
-                socket.sendBoundActor(sessionRid, actorId),
-                prepend(header, parts),
-                flags);
+            throw new UnsupportedOperationException(
+                "STREAM actor relay requires the RouteMesh StreamSessionService");
         } finally {
             header.close();
         }
@@ -113,5 +108,10 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
 
     private static CompletionStage<Void> toVoid(CompletionStage<List<Message>> stage) {
         return stage.thenAccept(parts -> parts.forEach(Message::close));
+    }
+
+    private static CompletionStage<Void> unsupportedStreamSession() {
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(
+            "STREAM actor binding requires the RouteMesh StreamSessionService"));
     }
 }

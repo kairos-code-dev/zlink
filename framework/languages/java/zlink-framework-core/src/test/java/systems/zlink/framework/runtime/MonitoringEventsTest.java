@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
 import systems.zlink.framework.runtime.backend.*;
 
@@ -13,15 +15,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SubjectKind;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeState;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
-import systems.zlink.contracts.service.spot.SpotRole;
+import systems.zlink.contracts.service.spot.MeshNodeState;
+import systems.zlink.contracts.service.spot.MeshNodeStatus;
+import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
@@ -109,10 +109,10 @@ final class MonitoringEventsTest {
     }
 
     @Test
-    void spotMonitoring_emitsSubjectsChanged_whenSpotIsCreated() {
+    void spotMonitoring_emitsStatusAndPeerSnapshotsFromMeshNode() {
         DefaultZLinkMonitoringOptions options = new DefaultZLinkMonitoringOptions();
         options.addSpotEvents("play", java.time.Duration.ofSeconds(1));
-        FakeSpotNode spotNode = new FakeSpotNode();
+        FakeMeshNode spotNode = new FakeMeshNode();
         ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
         List<ZLinkSpotEvent> events = new ArrayList<>();
         dispatcher.register(ZLinkSpotEvent.class, event -> {
@@ -128,22 +128,14 @@ final class MonitoringEventsTest {
                  dispatcher)) {
             runtime.pollSnapshots();
             runtime.pollSnapshots();
-            spotNode.subjects = List.of(new SpotNodeSubjectEntry(
-                SpotRole.PUB,
-                "room-1",
-                SubjectKind.TOPIC,
-                1,
-                1,
-                10));
+            spotNode.revision = 2L;
             runtime.pollSnapshots();
         }
 
         assertEquals(List.of(
                 ZLinkSpotEventKind.STATUS_CHANGED,
                 ZLinkSpotEventKind.PEERS_CHANGED,
-                ZLinkSpotEventKind.SUBJECTS_CHANGED,
-                ZLinkSpotEventKind.STATUS_CHANGED,
-                ZLinkSpotEventKind.SUBJECTS_CHANGED),
+                ZLinkSpotEventKind.STATUS_CHANGED),
             events.stream().map(ZLinkSpotEvent::event).toList());
     }
 
@@ -272,8 +264,86 @@ final class MonitoringEventsTest {
         }
     }
 
+    private static final class FakeMeshNode implements ZLinkInternalMeshNode {
+        long revision = 1L;
+
+        @Override
+        public void setBind(String endpoint) {
+        }
+
+        @Override
+        public void addChannel(String channelName) {
+        }
+
+        @Override
+        public void setChannelWeight(String channelName, int weight) {
+        }
+
+        @Override
+        public void setRoutingId(RoutingId routingId) {
+        }
+
+        @Override
+        public void start() {
+        }
+
+        @Override
+        public long connectPeer(String endpoint) {
+            return 1L;
+        }
+
+        @Override
+        public long connectPeer(String endpoint, RoutingId expectedRoutingId) {
+            return 1L;
+        }
+
+        @Override
+        public MeshNodeStatus status() {
+            return new MeshNodeStatus(
+                MeshNodeState.READY,
+                RoutingId.from("play"),
+                "play",
+                "inproc://play",
+                1L,
+                revision,
+                0,
+                0,
+                0,
+                0,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0,
+                10L);
+        }
+
+        @Override
+        public List<MeshPeerEntry> peers() {
+            return List.of();
+        }
+
+        @Override
+        public List<Long> connectionIntentIds() {
+            return List.of();
+        }
+
+        @Override
+        public void startDispatch(Consumer<ZLinkMeshDispatchRecord> receiver) {
+        }
+
+        @Override
+        public String name() {
+            return "play";
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
     private static final class FakeSpotNode implements ZLinkInternalSpotNode {
-        List<SpotNodeSubjectEntry> subjects = List.of();
 
         @Override
         public RoutingId routingId() {
@@ -440,34 +510,6 @@ final class MonitoringEventsTest {
         public void closeActorBoundSession(
             ZLinkBackendActorRef actor,
             java.time.Duration timeout) {
-        }
-
-        @Override
-        public SpotNodeStatus status() {
-            return new SpotNodeStatus(
-                "play",
-                "inproc://play",
-                RoutingId.from("play"),
-                SpotNodeState.READY,
-                0,
-                0,
-                0,
-                subjects.size(),
-                subjects.size(),
-                0,
-                0,
-                0,
-                10);
-        }
-
-        @Override
-        public List<SpotNodePeerEntry> peers() {
-            return List.of();
-        }
-
-        @Override
-        public List<SpotNodeSubjectEntry> subjects() {
-            return subjects;
         }
 
         @Override

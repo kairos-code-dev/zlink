@@ -4,6 +4,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 
@@ -15,7 +16,13 @@ public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapter
 
     @Override
     public ZLinkSpotBackendAdapter createSpotAdapter(ZLinkBackendAdapterOptions options) {
-        return new ZLinkJavaSpotBackendAdapter();
+        throw new UnsupportedOperationException(
+            "legacy SpotNode backend was removed; configure RouteMesh with addRouteMesh");
+    }
+
+    @Override
+    public ZLinkMeshBackendAdapter createMeshAdapter(ZLinkBackendAdapterOptions options) {
+        return new ZLinkJavaMeshBackendAdapter();
     }
 
     @Override

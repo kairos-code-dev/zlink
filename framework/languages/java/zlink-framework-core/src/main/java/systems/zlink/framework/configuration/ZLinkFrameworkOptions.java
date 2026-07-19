@@ -22,6 +22,8 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkMetadataPolicyBuilder configureMetadata();
 
+    ZLinkMeshNodeBuilder addRouteMesh(String meshName);
+
     ClientServerChannelBuilder addClientServerChannel(String channelName);
 
     FanoutChannelBuilder addFanoutChannel(String channelName);

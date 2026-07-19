@@ -12,9 +12,6 @@ import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SpotNodePeerEntry;
-import systems.zlink.contracts.service.spot.SpotNodeStatus;
-import systems.zlink.contracts.service.spot.SpotNodeSubjectEntry;
 import systems.zlink.contracts.sockets.SendFlags;
 
 public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
@@ -102,9 +99,4 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     void closeActorBoundSession(ZLinkBackendActorRef actor, Duration timeout);
 
-    SpotNodeStatus status();
-
-    List<SpotNodePeerEntry> peers();
-
-    List<SpotNodeSubjectEntry> subjects();
 }

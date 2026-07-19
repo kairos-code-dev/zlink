@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
 import systems.zlink.framework.runtime.backend.*;
 
@@ -29,6 +30,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationReadinessService;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
+import systems.zlink.framework.runtime.mesh.ZLinkMeshNodesRuntime;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.streams.ZLinkStreamRuntime;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
@@ -45,6 +47,7 @@ public final class ZLinkFrameworkRuntime
         systems.zlink.framework.configuration.ZLinkMessageFlowControl,
         systems.zlink.framework.monitoring.ZLinkDrainControl {
     private final ZLinkChannelRuntime channels;
+    private final ZLinkMeshNodesRuntime meshNodes;
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
     private final ZLinkActorDirectory actorDirectory;
@@ -140,6 +143,16 @@ public final class ZLinkFrameworkRuntime
             eventDispatcher);
         this.backendContext = channelSubsystem.backendContext();
         this.channels = channelSubsystem.channels();
+        if (this.registration.meshNodes().isEmpty()) {
+            this.meshNodes = ZLinkMeshNodesRuntime.empty();
+        } else {
+            systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter meshAdapter =
+                backendFactory.createMeshAdapter(adapterOptions);
+            this.meshNodes = ZLinkMeshNodesRuntime.start(
+                this.registration.meshNodes(),
+                meshAdapter,
+                this.backendContext);
+        }
 
         ZLinkFrameworkSpotSubsystem spotSubsystem = ZLinkFrameworkSpotSubsystem.create(
             options,
@@ -293,8 +306,8 @@ public final class ZLinkFrameworkRuntime
         return channels.monitoringSocketSources();
     }
 
-    public java.util.Map<String, ZLinkInternalSpotNode> monitoringSpotSources() {
-        return spots == null ? java.util.Map.of() : spots.nodesByName();
+    public java.util.Map<String, ZLinkInternalMeshNode> monitoringSpotSources() {
+        return meshNodes.nodesByName();
     }
 
     public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery() {
@@ -395,6 +408,7 @@ public final class ZLinkFrameworkRuntime
         ZLinkFrameworkShutdown shutdown = new ZLinkFrameworkShutdown();
         shutdown.defer(this::closeHandlerExecutor);
         shutdown.defer(backendContext::close);
+        shutdown.defer(meshNodes::close);
         if (locationRuntime != null) {
             shutdown.defer(locationRuntime::close);
             shutdown.defer(locationLifecycle::close);

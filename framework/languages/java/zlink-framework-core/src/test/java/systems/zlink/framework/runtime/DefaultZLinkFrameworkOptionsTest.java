@@ -57,6 +57,38 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class DefaultZLinkFrameworkOptionsTest {
     @Test
+    void routeMeshBuilderRegistersOneMeshNodeWithChannelsAndPeers() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        var mesh = options.addRouteMesh("game")
+            .listen("inproc://game");
+        mesh.channelName("orders").setWeight(2);
+        mesh.peerConnections().connect(
+            RoutingId.from("game-2"),
+            "inproc://game-2");
+
+        options.validate();
+
+        var registration = options.registration().meshNodes().getFirst();
+        assertEquals("game", registration.meshName());
+        assertEquals("inproc://game", registration.bindEndpoint());
+        assertEquals(List.of("orders"), registration.channelNames());
+        assertEquals(
+            RoutingId.from("game-2"),
+            registration.peers().getFirst().expectedRoutingId());
+    }
+
+    @Test
+    void routeMeshBuilderRejectsDuplicateMeshName() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addRouteMesh("game").listen("inproc://game");
+
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.addRouteMesh("game"));
+    }
+
+    @Test
     void addClientServerChannelRejectsDuplicateChannelName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+LANGUAGE=""
+MANIFEST=""
+OUTPUT_ROOT="${ZLINK_LOCAL_PACKAGE_ROOT:-$REPO_DIR/.artifacts/wsl}/bindings-candidate"
+PACKAGE_VERSION=""
+
+usage() {
+  cat <<'EOF'
+Usage: build-wsl.sh --language python|go|rust --manifest FILE --package-version X.Y.Z [--output DIR]
+
+Builds one non-release binding package and verifies it from a clean consumer.
+Run languages separately in Python, Go, Rust order.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --language) LANGUAGE="${2:-}"; shift 2 ;;
+    --manifest) MANIFEST="${2:-}"; shift 2 ;;
+    --package-version) PACKAGE_VERSION="${2:-}"; shift 2 ;;
+    --output) OUTPUT_ROOT="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+case "$LANGUAGE" in python|go|rust) ;; *) echo "--language must be python, go, or rust" >&2; exit 2 ;; esac
+[[ -f "$MANIFEST" ]] || { echo "Manifest not found: $MANIFEST" >&2; exit 1; }
+[[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "--package-version must be X.Y.Z" >&2; exit 2; }
+
+manifest_value() {
+  local key="$1"
+  sed -n "s/^${key}=//p" "$MANIFEST" | head -n1
+}
+
+dir_hash() {
+  local root="$1"
+  (
+    cd "$root"
+    find . -type f -print0 | sort -z | while IFS= read -r -d '' file; do
+      printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "${file#./}"
+    done
+  ) | sha256sum | awk '{print $1}'
+}
+
+repo_hash() {
+  (
+    cd "$REPO_DIR"
+    find "$@" -type f -print0 | sort -z | while IFS= read -r -d '' file; do
+      printf '%s  %s\n' "$(sha256sum "$file" | awk '{print $1}')" "$file"
+    done
+  ) | sha256sum | awk '{print $1}'
+}
+
+macro_value() {
+  local name="$1"
+  rg -N "^#define ${name} " "$REPO_DIR/core/include" |
+    awk '{print $3}' | sed 's/[uUlL]*$//' | sort -u | paste -sd, -
+}
+
+service_abi_value() {
+  printf 'mesh_node:%s,dispatch:%s,spot:%s,actor:%s,stream_session:%s,monitor:%s\n' \
+    "$(macro_value ZLINK_MESH_NODE_ABI_VERSION)" \
+    "$(macro_value ZLINK_MESH_DISPATCH_ABI_VERSION)" \
+    "$(macro_value ZLINK_SPOT_ABI_VERSION)" \
+    "$(macro_value ZLINK_ACTOR_ABI_VERSION)" \
+    "$(macro_value ZLINK_STREAM_SESSION_ABI_VERSION)" \
+    "$(macro_value ZLINK_MESH_MONITOR_ABI_VERSION)"
+}
+
+layout_value() {
+  local source binary values
+  source="$(mktemp --suffix=.c)"
+  binary="$(mktemp)"
+  cat >"$source" <<'EOF'
+#include <stddef.h>
+#include <stdio.h>
+#include <stdalign.h>
+#include <zlink.h>
+#define SHOW(T) printf(#T "=%zu/%zu\n", sizeof(T), alignof(T))
+int main(void) {
+  SHOW(zlink_mesh_node_options_t); SHOW(zlink_mesh_peer_connection_options_t);
+  SHOW(zlink_mesh_node_status_t); SHOW(zlink_mesh_peer_entry_t);
+  SHOW(zlink_mesh_ready_record_t); SHOW(zlink_mesh_claim_t);
+  SHOW(zlink_mesh_receive_record_t); SHOW(zlink_mesh_reply_token_t);
+  SHOW(zlink_spot_status_t); SHOW(zlink_actor_ref_t); SHOW(zlink_actor_location_t);
+  SHOW(zlink_actor_transfer_prepare_t); SHOW(zlink_actor_transfer_prepare_result_t);
+  SHOW(zlink_actor_transfer_token_t); SHOW(zlink_stream_session_binding_t);
+  SHOW(zlink_stream_session_status_t); return 0;
+}
+EOF
+  cc -std=c11 -I"$REPO_DIR/core/include" "$source" -o "$binary"
+  values="$($binary | sort | paste -sd';' -)"
+  rm -f "$source" "$binary"
+  printf '%s\n' "$values"
+}
+
+verify_packaged_payload() {
+  local packaged_payload="$1"
+  [[ -f "$packaged_payload" ]] || {
+    echo "Packaged native payload is missing: $packaged_payload" >&2
+    exit 1
+  }
+  [[ "$(sha256sum "$packaged_payload" | awk '{print $1}')" == "$runtime_sha" ]] || {
+    echo "Packaged native payload does not match candidate" >&2
+    exit 1
+  }
+  printf 'PACKAGED_NATIVE_PAYLOAD_SHA256=%s\n' "$runtime_sha" >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
+}
+
+verify_packaged_headers() {
+  local packaged_headers="$1"
+  local packaged_header_sha
+  packaged_header_sha="$(dir_hash "$packaged_headers")"
+  [[ "$packaged_header_sha" == "$header_sha" ]] || {
+    echo "Packaged public headers do not match candidate" >&2
+    exit 1
+  }
+  printf 'PACKAGED_HEADER_SHA256=%s\n' "$packaged_header_sha" >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
+}
+
+core_version="$(manifest_value CORE_VERSION)"
+core_revision="$(manifest_value CORE_REVISION)"
+runtime_rel="$(manifest_value CORE_RUNTIME_PATH)"
+runtime_sha="$(manifest_value CORE_RUNTIME_SHA256)"
+header_sha="$(manifest_value CORE_HEADER_SHA256)"
+spec_sha="$(manifest_value CORE_SPEC_SHA256)"
+source_sha="$(manifest_value CORE_SOURCE_SHA256)"
+symbol_sha="$(manifest_value CORE_SYMBOL_SHA256)"
+soname="$(manifest_value CORE_SONAME)"
+runtime_version="$(manifest_value CORE_RUNTIME_VERSION)"
+service_abi="$(manifest_value CORE_SERVICE_ABI)"
+layouts="$(manifest_value CORE_LAYOUTS)"
+[[ "$(manifest_value FORMAT)" == 1 && -n "$core_version" && -n "$runtime_rel" ]] || {
+  echo "Invalid candidate manifest: $MANIFEST" >&2
+  exit 1
+}
+
+current_revision="$(git -C "$REPO_DIR" rev-parse HEAD)"
+[[ "$current_revision" == "$core_revision" ]] || {
+  echo "Core revision drift: manifest=$core_revision checkout=$current_revision" >&2
+  exit 1
+}
+
+current_version="$(sed -n 's/^LIBZLINK_VERSION=//p' "$REPO_DIR/VERSION")"
+[[ "$current_version" == "$core_version" ]] || {
+  echo "Core version drift: manifest=$core_version checkout=$current_version" >&2
+  exit 1
+}
+runtime="$REPO_DIR/$runtime_rel"
+[[ -f "$runtime" ]] || { echo "Manifest runtime is missing: $runtime" >&2; exit 1; }
+[[ "$(sha256sum "$runtime" | awk '{print $1}')" == "$runtime_sha" ]] || {
+  echo "Core runtime hash drift" >&2
+  exit 1
+}
+current_header_sha="$(dir_hash "$REPO_DIR/core/include")"
+[[ "$current_header_sha" == "$header_sha" ]] || { echo "Core public header hash drift" >&2; exit 1; }
+current_spec_sha="$(dir_hash "$REPO_DIR/core/doc/spec/core")"
+[[ "$current_spec_sha" == "$spec_sha" ]] || { echo "Core spec hash drift" >&2; exit 1; }
+current_source_sha="$(repo_hash core/src core/include core/doc/spec/core)"
+[[ "$current_source_sha" == "$source_sha" ]] || { echo "Core source snapshot drift" >&2; exit 1; }
+[[ "$(nm -D --defined-only "$runtime" | awk '{print $3}' | sed -n '/^zlink_/p' | sort -u | sha256sum | awk '{print $1}')" == "$symbol_sha" ]] || { echo "Core symbol drift" >&2; exit 1; }
+[[ "$(readelf -d "$runtime" | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')" == "$soname" ]] || { echo "Core SONAME drift" >&2; exit 1; }
+[[ "$(service_abi_value)" == "$service_abi" ]] || { echo "Core service ABI drift" >&2; exit 1; }
+[[ "$(layout_value)" == "$layouts" ]] || { echo "Core public struct layout drift" >&2; exit 1; }
+[[ "$runtime_version" == "$core_version" ]] || { echo "Manifest runtime version mismatch" >&2; exit 1; }
+if find "$REPO_DIR/core/include" "$REPO_DIR/core/src" -type f -newer "$runtime" -print -quit | grep -q .; then
+  echo "Core runtime became stale after manifest creation" >&2
+  exit 1
+fi
+
+core_base="${core_version%.*}"
+package_base="${PACKAGE_VERSION%.*}"
+[[ "$core_base" == "$package_base" ]] || { echo "Binding package major.minor must match Core: $PACKAGE_VERSION vs $core_version" >&2; exit 1; }
+
+rm -rf "$OUTPUT_ROOT/$LANGUAGE"
+mkdir -p "$OUTPUT_ROOT/$LANGUAGE"
+consumer="$(mktemp -d)"
+trap 'rm -rf "$consumer"' EXIT
+
+"$REPO_DIR/scripts/local-package/native/sync-local-core-libs.sh" "$LANGUAGE"
+host_arch="$(uname -m)"
+case "$host_arch" in x86_64|amd64) native_arch=x86_64 ;; aarch64|arm64) native_arch=aarch64 ;; *) echo "Unsupported host architecture: $host_arch" >&2; exit 2 ;; esac
+case "$LANGUAGE" in
+  python) payload_dir="$REPO_DIR/bindings/python/src/zlink/native/linux-$native_arch"; header_dir="" ;;
+  go) payload_dir="$REPO_DIR/bindings/go/native/linux-$native_arch"; header_dir="$REPO_DIR/bindings/go/include" ;;
+  rust) payload_dir="$REPO_DIR/bindings/rust/native/linux-$native_arch"; header_dir="$REPO_DIR/bindings/rust/include" ;;
+esac
+payload="$payload_dir/libzlink.so.$core_version"
+[[ -f "$payload" && "$(sha256sum "$payload" | awk '{print $1}')" == "$runtime_sha" ]] || { echo "Binding native payload does not match candidate" >&2; exit 1; }
+if [[ -n "$header_dir" ]]; then
+  binding_header_sha="$(dir_hash "$header_dir")"
+  core_direct_header_sha="$(dir_hash "$REPO_DIR/core/include")"
+  [[ "$binding_header_sha" == "$core_direct_header_sha" ]] || { echo "Bundled header does not match Core" >&2; exit 1; }
+fi
+cat >"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env" <<EOF
+LANGUAGE=$LANGUAGE
+PACKAGE_VERSION=$PACKAGE_VERSION
+CORE_VERSION=$core_version
+CORE_REVISION=$core_revision
+CORE_SPEC_SHA256=$spec_sha
+CORE_HEADER_SHA256=$header_sha
+CORE_SOURCE_SHA256=$source_sha
+CORE_RUNTIME_PATH=$runtime_rel
+CORE_RUNTIME_SHA256=$runtime_sha
+CORE_RUNTIME_VERSION=$runtime_version
+CORE_SYMBOL_SHA256=$symbol_sha
+CORE_SONAME=$soname
+CORE_SERVICE_ABI=$service_abi
+CORE_LAYOUTS=$layouts
+CANDIDATE_MANIFEST_SHA256=$(sha256sum "$MANIFEST" | awk '{print $1}')
+BINDING_HEADER_SHA256=${binding_header_sha:-not_applicable}
+NATIVE_PAYLOAD=${payload#"$REPO_DIR/"}
+NATIVE_PAYLOAD_SHA256=$(sha256sum "$payload" | awk '{print $1}')
+EOF
+
+case "$LANGUAGE" in
+  python)
+    package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/python/pyproject.toml" | head -n1)"
+    [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Python package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
+    (cd "$REPO_DIR/bindings/python" && ./tests/run_tests.sh)
+    (cd "$REPO_DIR/bindings/python" && python3 -m build --outdir "$OUTPUT_ROOT/python")
+    wheel=("$OUTPUT_ROOT"/python/*.whl)
+    [[ ${#wheel[@]} -eq 1 && -f "${wheel[0]}" ]] || { echo "Expected exactly one Python wheel" >&2; exit 1; }
+    mkdir -p "$consumer/wheel"
+    python3 - "${wheel[0]}" "$consumer/wheel" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    wheel.extractall(pathlib.Path(sys.argv[2]))
+PY
+    verify_packaged_payload "$consumer/wheel/zlink/native/linux-$native_arch/libzlink.so.$core_version"
+    printf 'PACKAGED_HEADER_SHA256=not_applicable\n' >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
+    python3 -m venv "$consumer/venv"
+    "$consumer/venv/bin/pip" install --no-deps "${wheel[0]}"
+    (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" -c 'import pathlib, zlink; zlink.version(); maps=pathlib.Path("/proc/self/maps").read_text(); assert "/venv/" in maps and "libzlink" in maps')
+    ;;
+  go)
+    archive="$OUTPUT_ROOT/go/zlink-go-$PACKAGE_VERSION.tar.gz"
+    tar -C "$REPO_DIR/bindings" --exclude='go/.git' --exclude='go/perf/results' -czf "$archive" go
+    mkdir -p "$consumer/pkg"
+    tar -C "$consumer/pkg" -xzf "$archive"
+    verify_packaged_payload "$consumer/pkg/go/native/linux-$native_arch/libzlink.so.$core_version"
+    verify_packaged_headers "$consumer/pkg/go/include"
+    (cd "$consumer/pkg/go" && go test ./... && go vet ./...)
+    cat >"$consumer/go.mod" <<EOF
+module zlink-candidate-consumer
+
+go 1.22
+
+require zlink.systems/zlink v0.0.0
+replace zlink.systems/zlink => ./pkg/go
+EOF
+    cat >"$consumer/main.go" <<'EOF'
+package main
+import (
+  "fmt"
+  zlink "zlink.systems/zlink/contracts"
+)
+func main() { fmt.Println(zlink.RuntimeVersion()) }
+EOF
+    (cd "$consumer" && env -u LD_LIBRARY_PATH go build -o consumer . && ldd consumer | rg -F "$consumer/pkg/go/native/linux-$native_arch" && ./consumer)
+    ;;
+  rust)
+    package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/rust/Cargo.toml" | head -n1)"
+    [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Rust package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
+    (cd "$REPO_DIR/bindings/rust" && cargo test --workspace --all-targets && cargo package --allow-dirty --no-verify)
+    crate="$REPO_DIR/bindings/rust/target/package/zlink-$package_version.crate"
+    cp "$crate" "$OUTPUT_ROOT/rust/"
+    mkdir -p "$consumer/pkg"
+    tar -C "$consumer/pkg" -xzf "$crate"
+    verify_packaged_payload "$consumer/pkg/zlink-$package_version/native/linux-$native_arch/libzlink.so.$core_version"
+    verify_packaged_headers "$consumer/pkg/zlink-$package_version/include"
+    mkdir -p "$consumer/src"
+    cat >"$consumer/Cargo.toml" <<EOF
+[package]
+name = "zlink-candidate-consumer"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+zlink = { path = "$consumer/pkg/zlink-$package_version" }
+EOF
+    cat >"$consumer/src/main.rs" <<'EOF'
+fn main() { println!("{:?}", zlink::version()); }
+EOF
+    (cd "$consumer" && env -u LD_LIBRARY_PATH cargo build && ldd target/debug/zlink-candidate-consumer | rg -F "$consumer/pkg/zlink-$package_version/native/linux-$native_arch" && target/debug/zlink-candidate-consumer)
+    ;;
+esac
+
+find "$OUTPUT_ROOT/$LANGUAGE" -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum >"$OUTPUT_ROOT/$LANGUAGE/SHA256SUMS"
+echo "Candidate package and clean consumer passed: $LANGUAGE"

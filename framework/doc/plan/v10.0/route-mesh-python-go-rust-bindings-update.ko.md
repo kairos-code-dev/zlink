@@ -275,11 +275,18 @@ public contract, native bridge, runtime ownership 또는 package projection 가�
 | PGR-REV | 독립 review와 최종 재검증 | 세 lane과 통합 package가 계약·설계·정리 세 축에서 clean이며 최종 Core manifest와 일치함 |
 | PGR-PERF | 후속 full perf와 성능 개선 | PGR-REV manifest를 입력으로 full C 기준선과 세 bindings full single·multi를 실행하고 별도 성능 목표와 review gate를 닫음 |
 
-PGR-00~PGR-02가 끝난 뒤 세 언어 lane은 병렬로 진행할 수 있다. Core candidate가 바뀌면 공통 native
-입력을 먼저 다시 고정한 뒤 각 lane을 재검증한다. 어느 lane도 다른 언어 구현을 계약 근거로 사용하지
-않는다. PGR-PERF는 이 계획의 구현·완료 범위가 아니라 후속 단계가 인수할 작업 ID다. PGR-REV가 끝나면
-실행 진행표에는 최종 manifest, smoke 결과와 함께 `후속 대기`로 기록하고, 별도 인가를 받은 성능 계획이
-상태와 full perf 증거를 이어서 소유한다.
+PGR-00~PGR-02가 끝난 뒤 언어 lane은 **Python → Go → Rust 순서로 직렬 실행**한다. Python의 구현,
+전체 test·sample, package consumer, perf smoke와 고정 snapshot review를 완료하고 해당 범위를
+커밋·푸시한 뒤에만 Go를 시작한다. Go도 같은 종료 gate와 원격 push까지 완료한 뒤에만 Rust를 시작한다.
+한 언어의 수정·검증·review가 진행 중일 때 다른 언어 source, test, sample, package와 perf를 함께
+수정하거나 실행하지 않는다.
+
+Core candidate가 바뀌면 진행 중인 언어를 먼저 중단하고 공통 native 입력을 다시 고정한다. 이미 완료해
+푸시한 언어도 §4.1의 영향 범위에 따라 새 candidate에서 다시 검증하며, 재검증이 끝날 때까지 다음 언어를
+시작하지 않는다. 어느 lane도 다른 언어 구현을 계약 근거로 사용하지 않는다. PGR-PERF는 이 계획의
+구현·완료 범위가 아니라 후속 단계가 인수할 작업 ID다. PGR-REV가 끝나면 실행 진행표에는 최종 manifest,
+smoke 결과와 함께 `후속 대기`로 기록하고, 별도 인가를 받은 성능 계획이 상태와 full perf 증거를 이어서
+소유한다.
 
 ### 6.1 Python lane
 

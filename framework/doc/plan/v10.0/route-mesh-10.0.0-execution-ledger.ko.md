@@ -188,6 +188,32 @@ S8의 네 lane(cpp·dotnet·jvm·node)은 S7 공통 준비가 끝나면 동시�
 비동기 처리, 오류 전달, resource 수명과 package 작성 규칙을 따른다. 언어 특성을 이유로 공개 동작을
 줄이거나 내부 정책을 호출자에게 전달하지 않는다.
 
+### 1.1 Python·Go·Rust bindings 별도 직렬 실행
+
+2026-07-20 사용자 지시에 따라 기존 보류 범위 가운데 Python, Go와 Rust bindings는
+[`별도 최신화 계획`](./route-mesh-python-go-rust-bindings-update.ko.md)의 PGR ID로 진행한다. 사용자는
+현재 Codex `/root`에 PGR-00~PGR-REV의 구현·검증·문서 수정 권한을 인가했다. 다른 에이전트는 사용자가
+별도로 PGR ID와 고정 snapshot을 배정하기 전까지 이 범위의 source, test, package, plan과 review 기록을
+수정하지 않는다.
+
+언어 lane은 **Python → Go → Rust** 순서로만 실행한다. 앞 언어의 전체 test·sample, local package와
+clean consumer, perf smoke, 고정 snapshot review, commit과 `origin/main` push가 끝나기 전에 다음 언어를
+시작하지 않는다. 언어별 작업을 동시에 진행하지 않으며 Core candidate가 바뀌면 진행 중인 lane과 이미
+완료한 앞 lane을 새 candidate에서 다시 검증한 뒤 순서를 재개한다.
+
+| ID | 담당 | 선행 조건과 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| PGR-00 | Codex `/root` | Core candidate manifest, 최신 contract·제거 inventory와 C perf 대응표 고정 | 진행 중 | 개발 snapshot·제거 파일·C perf 대응표 고정. 중지 상태인 기존 C perf process를 유지하므로 final `core/build` 재생성과 manifest 실행 대기 |
+| PGR-01 | Codex `/root` | 세 언어 exact interface와 오류·ownership을 구현 전 draft에서 review | 검토 준비 완료 | draft와 공통 도구 review `019f7d7d…` finding 수정 뒤 `019f7d95…` 재검토 `CLEAN`; [기록](./log/python-go-rust-bindings/pgr-common-review-1.ko.md) |
+| PGR-02 | Codex `/root` | native 동기화, provenance, 비배포 package와 clean consumer 진입점 완성 | 검토 준비 완료 | manifest와 언어별 package/clean consumer 도구 정적 review `CLEAN`; stale 공식 runtime에서 fail-closed 확인, final candidate 실행 대기 |
+| PGR-PY | Codex `/root` | Python 구현·전체 검증·review·commit·push 완료 | 미착수 | PGR-00~02 뒤 첫 언어 lane |
+| PGR-GO | Codex `/root` | Go 구현·전체 검증·review·commit·push 완료 | 미착수 | PGR-PY 원격 push 뒤 시작 |
+| PGR-RS | Codex `/root` | Rust 구현·전체 검증·review·commit·push 완료 | 미착수 | PGR-GO 원격 push 뒤 시작 |
+| PGR-X | Codex `/root` | 세 package 공통 E2E와 지원 platform 검증 완료 | 미착수 | PGR-RS 원격 push 뒤 시작 |
+| PGR-DOC | Codex `/root` | 확정 구현을 정식 bindings spec·API reference·README에 반영 | 미착수 | PGR-X와 같은 final candidate에서 실행 |
+| PGR-REV | 사용자 배정 reviewer | 각 lane과 통합 snapshot의 I1·I2·I3 review와 최종 재검증 완료 | 미착수 | review 시작 때 reviewer ID와 snapshot hash를 추가 기록 |
+| PGR-PERF | 별도 사용자 인가 필요 | full C 기준선, 세 bindings full perf와 성능 개선 | 후속 분리 | PGR-REV manifest·대응표·smoke를 인수하며 현재 완료 범위에서 실행하지 않음 |
+
 ## 2. 독립 리뷰 운영 규칙
 
 ### 2.1 리뷰어

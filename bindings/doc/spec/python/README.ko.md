@@ -218,6 +218,43 @@ bindings/python/
 
 perf나 샘플의 편의를 위해 비공개 확장 객체를 노출하지 않는다.
 
+## 정적 타입 원칙
+
+Python 바인딩은 엄격한 정적 타입 검사를 적용하는 라이브러리로 유지한다. 이 원칙은
+Python의 동적 실행 모델을 없애기 위한 것이 아니다. 공개 계약을 사용하는 코드가 IDE와
+정적 타입 검사기에서 정확한 인자, 반환값, 콜백과 소유권 경계를 확인할 수 있게 하는
+것이 목적이다.
+
+- 공개 함수, 메서드, 속성, 생성자 역할의 팩토리, 콜백과 비동기 문맥 관리자는
+  모든 인자와 반환 타입을 빠짐없이 선언한다. 공개 타입에서 암시적인 `Any`가 발생하면
+  타입 계약이 완료된 것으로 보지 않는다.
+- 타입 정보는 가능한 한 구현 소스에 직접 선언한다. 배포 패키지에는 PEP 561의
+  `py.typed` 표시 파일을 포함하고, wheel과 sdist를 설치한 외부 프로젝트에서도 같은 타입
+  정보를 확인할 수 있어야 한다.
+- `Protocol`은 호출자가 구현을 대체할 수 있는 구조적 계약이나 비공개 구현을 숨겨야 하는
+  공개 역할에 사용한다. 실제로 `isinstance()` 또는 `issubclass()` 검사가 필요한 계약만
+  `runtime_checkable`로 선언한다. 이 검사는 메서드 존재 여부만 확인하므로 런타임 값 검증을
+  대신하지 않는다.
+- 입력 타입은 구현이 허용하는 범위 안에서 `Iterable`, `Sequence`, `Mapping`과 Python
+  buffer protocol처럼 넓은 계약을 사용한다. 구체 결과를 만들어 반환하는 API는 `list`,
+  `dict`, 구체 값 객체처럼 호출자가 바로 사용할 수 있는 반환 타입을 선언한다.
+- 설정, snapshot, result와 다른 순수 Python 값은 타입이 없는 `dict` 대신 dataclass,
+  `TypedDict`, enum 또는 명명된 값 타입을 사용한다. 어느 형태를 선택할지는 값의 변경
+  가능성, 런타임 객체 여부와 공개 계약 의미로 결정한다.
+- `Any`는 네이티브 콜백의 userdata, 아직 타입을 알 수 없는 외부 객체, 의도적인 raw
+  payload 경계처럼 타입 체계로 정확히 표현할 수 없는 곳에만 둔다. 모든 Python 값을 받을
+  뿐 반환 후 타입 정보를 사용하지 않는 인자는 `Any` 대신 `object`를 우선한다.
+- 타입 annotation은 네이티브 입력, 네트워크 payload와 고정 크기 값의 런타임 검증을
+  대신하지 않는다. 바인딩은 기존 에러와 검증 정책에 따라 실제 값을 별도로 검증한다.
+- 지원하는 최소 Python version에서 해석할 수 없는 타입 문법을 사용하지 않는다.
+  `pyproject.toml`의 `requires-python`, wheel metadata, CI 버전 조합과 타입 검사기의
+  대상 버전은 항상 일치해야 한다.
+
+엄격한 타입 정책이 다른 언어의 설계 관습을 그대로 가져오는 근거가 되어서는 안 된다.
+불필요한 인터페이스 계층, getter/setter 반복, 복잡한 제네릭 중첩과 단순 호출을 길게 만드는
+builder를 타입 검사만을 위해 추가하지 않는다. Python의 타입 추론과 기본 자료형으로 충분한
+구현은 간결하게 유지하고, 공개 API와 네이티브 호출 경계를 우선해서 명확하게 선언한다.
+
 ## 계약 / 런타임 배치 규칙
 
 - 공개 클래스, 타입 alias, 예외, enum, 빌더 계약은 대응하는 `zlink/contracts/`
@@ -521,6 +558,12 @@ Python은 `SpotNode.get_or_create_spot(spot_rid)`를 노출한다. 이 메서드
 - 테스트, 샘플, examples, perf는 언더스코어 모듈을 import하지 않는다.
 - 네이티브 기반 리소스는 패키지 루트 팩토리나 계약 메서드를 통해 생성되며
   계약 클래스/프로토콜로 타이핑된다.
+- 공개 함수, 메서드, 속성, 콜백과 비동기 문맥 관리자의 타입이 완전하며,
+  공개 계약에 암시적인 `Any`가 남아 있지 않다.
+- wheel과 sdist에 `py.typed`가 포함되고, 설치한 패키지를 사용하는 외부 프로젝트의
+  정적 타입 검사가 엄격한 설정으로 통과한다.
+- `requires-python`, 실제 annotation 문법, CI의 최소 버전과 타입 검사 대상 버전이
+  서로 일치한다.
 - 공식 perf 경로가 컴파일된 확장 모듈을 사용하며, 대체 경로가 조용히 성능
   결과에 섞이지 않는다.
 - 호환성만을 위한 옛 별칭, 중복된 operation-start 이름, deprecated 래퍼가
@@ -535,7 +578,8 @@ Python 리팩토링 이후 필수 검증. `bindings/python/`에서 다음 명령
 - hot path, receive, send, request, poller, timer, 서비스 동작이 변경된 경우
   smoke 게이트로 `./perf/run_benchmarks.sh`와
   `./perf/run_benchmarks_multi.sh`를 실행한다.
-- Python 바인딩에 패키지 타입체크나 lint 게이트가 있다면 실행한다.
+- 저장소가 선택한 정적 타입 검사기를 엄격한 설정으로 실행한다. 공개 타입 추론을
+  확인하는 외부 프로젝트 검사와 패키지 설치 후 타입 검사를 함께 실행한다.
 - `src/zlink/contracts`, `tests`, `samples`, `examples`, `perf`에서
   `zlink._runtime`, `zlink._native`, 비공개 확장 모듈, 생성된 비공개 파일로부터의
   import를 검색한다. `src/zlink/__init__.py`는 별도로 확인해, 비공개 import가

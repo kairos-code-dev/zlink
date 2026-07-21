@@ -533,15 +533,15 @@ int main (int argc, char **argv)
         /* 같은 spot route mesh를 양방향으로 쓴다: API는 owner spot으로 gameplay를 보내고, owner
          * spot은 같은 mesh로 이 노드의 entry spot에 notify를 보낸다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
-        quest_spot_route.enable_server (topology.selected_api_spot_route_endpoint ());
-        quest_spot_route.set_routing_id (topology.selected_api_rid ());
-        quest_spot_route.enable_client ();
+        quest_spot_route.listen (topology.selected_api_spot_route_endpoint ())
+          .set_routing_id (topology.selected_api_rid ())
+          .channel_name (sample_names_t::quest_spot_route);
         options.configure_locations ().spot_router_channels[sample_names_t::quest_spot_discovery] =
           sample_names_t::quest_spot_route;
-        options.add_spot_mesh (api_spot_mesh_for (topology.api_name))
-          .set_routing_id (topology.selected_api_rid ())
-          .enable_router (topology.selected_api_spot_router_endpoint ())
-          .accept_route_mesh (sample_names_t::quest_spot_route)
+        auto api_spot = options.add_route_mesh (api_spot_mesh_for (topology.api_name));
+        api_spot.channel_name (sample_names_t::quest_spot_route);
+        api_spot.set_routing_id (topology.selected_api_rid ())
+          .listen (topology.selected_api_spot_router_endpoint ())
           .add_entry_spot<player_entry_spot_t> ([store_ptr, spot_services] {
               return std::make_shared<player_entry_spot_t> (*store_ptr, spot_services);
           })

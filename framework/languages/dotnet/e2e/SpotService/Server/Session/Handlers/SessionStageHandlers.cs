@@ -6,7 +6,7 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace SpotService.Server.Session.Handlers;
 
-[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotMsgTopic)]
+[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotChannel, SpotServiceNames.SpotMsgTopic)]
 internal sealed class SpotMsgHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotMsg>
 {

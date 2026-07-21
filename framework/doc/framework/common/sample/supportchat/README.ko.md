@@ -43,6 +43,12 @@ wait interface를 직접 사용한다. notification 수집용 inbox나 로그 qu
 
 ## 2. 서버 구성
 
+SupportChat의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. Session·Api·Support는 `supportchat` RouteMesh 하나를 공유한다. Api와 Support의 양방향 업무
+request 및 Session·Support의 Actor/session route 때문에 ClientServer Channel을 추가하지 않는다.
+Session과 Support는 `supportchat.api` Client이고 Api는 그 Channel의 Server다. Session과 Api는
+`supportchat.support` Client이고 Support는 그 Channel의 Server다.
+
 ```mermaid
 graph LR
     C[Customer Client]
@@ -78,9 +84,9 @@ SupportChat은 공유 location store 기반 자동 연결을 사용한다.
 
 | 연결 | 연결 방식 | 이유 |
 |------|-----------|------|
-| Session -> API channel | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 보관하지 않게 한다. |
-| Support -> API channel | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
-| API -> Support channel | location store 기반 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
+| Session -> `supportchat.api` | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 보관하지 않게 한다. |
+| Support -> `supportchat.api` | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
+| API -> `supportchat.support` | location store 기반 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
 | Session -> Support session relay | location store 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Support -> Session bound push | location store 기반 session route | Support 서버가 현재 client session 위치를 framework route로 찾는다. |
 
@@ -102,15 +108,16 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `SupportChat.Api` | `Api` ChannelName handler | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
-| `SupportChat.Api` | `Support` ChannelName client | Support 서버에 conversation 생성(allocation)을 요청한다. |
+| `SupportChat.Api` | `supportchat.api` ChannelName handler | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
+| `SupportChat.Api` | `supportchat.support` ChannelName client | Support 서버에 conversation 생성(allocation)을 요청한다. |
 | `SupportChat.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
+| `SupportChat.Session` | `supportchat.api`·`supportchat.support` ChannelName client | token 검증과 상담원 actor 준비 요청을 각 ready server에 전달한다. |
 | `SupportChat.Session` | session gateway MeshNode | session relay와 bound session push 수신을 담당한다. |
 | `SupportChat.Support` | actor runtime | customer actor와 상담원 actor(roster·conversation)를 만들어 해당 Spot에 join시킨다. |
 | `SupportChat.Support` | session relay endpoint | Session 서버의 `EnsureSupportUserActorReq`를 받아 actor를 만들거나 기존 actor를 반환한다. |
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
-| `SupportChat.Support` | `Support` ChannelName handler | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
+| `SupportChat.Support` | `supportchat.support` ChannelName handler | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
 ## 6. Support 서버 디렉토리 구조

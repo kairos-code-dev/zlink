@@ -65,13 +65,14 @@ internal sealed class OrderWorkflowSpot(
             "shoppingmall order: inventory reserved. order={OrderId}, status={Status}",
             state.OrderId,
             state.Status);
-        Context.Outbound.Publish(
+        await Context.Outbound.Publish(
+                SampleNames.OrderProjectionChannel,
                 SampleNames.OrderProjectionTopic,
                 new OrderProjectionUpdatedEvent(
                     state.OrderId,
                     state.Status,
                     instance.InstanceId))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
         return new StartOrderWorkflowRes(state);
     }
 

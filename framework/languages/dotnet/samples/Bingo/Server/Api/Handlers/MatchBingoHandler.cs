@@ -24,7 +24,10 @@ internal sealed class MatchBingoHandler(
         logger.LogInformation("api match: request. actor={ActorId}, mode={Mode}, actorNode={ActorNodeRid}",
             request.ActorId, request.Mode, request.ActorNodeRid);
         var preferredOwner = RoutingId.From(request.ActorNodeRid);
-        var playEntrySpot = await spots.ResolveSpotHandleAsync(preferredOwner, cancellationToken)
+        var playEntrySpot = await spots.ResolveSpotHandleAsync(
+                                SampleNames.MeshName,
+                                preferredOwner,
+                                cancellationToken)
                             ?? throw new InvalidOperationException(
                                 $"Play entry spot '{preferredOwner}' was not found.");
         var allocated = await routes.RequestToSpot(

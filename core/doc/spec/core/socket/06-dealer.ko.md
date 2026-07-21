@@ -64,7 +64,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_dealer_option(
 | `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..100` | 연결된 peer에 알리는 이 DEALER의 가중치다. 기본값은 `100`이다 |
 
 `zlink_get_dealer_option()`을 호출할 때 `*optvallen_`은 `optval_`의 입력 용량이다. 성공하면 실제로
-쓴 byte 수로 갱신된다. DEALER 전용이 아닌 HWM, reconnect, heartbeat와 timeout option은
+쓴 byte 수로 갱신된다. DEALER 전용이 아닌 HWM, reconnect와 timeout option은
 `zlink_set_option()`과 `zlink_get_option()`을 사용한다.
 
 양수 가중치가 같은 outbound peer는 순환 방식으로 선택한다. 양수 가중치가 다르면 그 비율을

@@ -9,6 +9,7 @@
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/execution/serial_execution_queue.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -87,6 +88,26 @@ class stream_write_call_state_t
 
     void compress () { _compressed = true; }
 
+    void reply_submission (std::shared_ptr<submit_once_t> submission)
+    {
+        _reply_submission = std::move (submission);
+    }
+
+    result_t<void> claim_submit ()
+    {
+        if (!_submission.try_claim ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "STREAM write call has already been submitted");
+        }
+        if (_reply_submission && !_reply_submission->try_claim ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "STREAM reply token has already been consumed");
+        }
+        return result_t<void>::success ();
+    }
+
     result_t<void> submit_now ()
     {
         if (_immediate) {
@@ -134,6 +155,8 @@ class stream_write_call_state_t
     std::map<std::string, std::string> _metadata;
     std::string _packet_name;
     bool _compressed = false;
+    submit_once_t _submission;
+    std::shared_ptr<submit_once_t> _reply_submission;
 };
 
 class stream_session_dispatcher_t
@@ -185,6 +208,81 @@ class stream_session_dispatcher_t
                 framework_error_kind_t::request_failed, "stream dispatch executor rejected work"));
         }
         return task.result ();
+    }
+
+    result_t<void> dispatch_async (
+      std::string operation,
+      dispatch_callback_t callback,
+      stream_runtime_t::async_dispatch_completion_t completion) const
+    {
+        auto executor = stream_dispatch_executor ();
+        if (!executor) {
+            return detail::boundary_failure<void> (
+              detail::boundary_error_t::shutdown,
+              "stream dispatch executor is not running");
+        }
+        std::shared_ptr<runtime::serial_execution_queue_t> queue;
+        {
+            const std::lock_guard<std::mutex> dispatch_lock (_stream.dispatch_mutex);
+            if (!_stream.dispatch_queue) {
+                _stream.dispatch_queue =
+                  std::make_shared<runtime::serial_execution_queue_t> (*executor, 4096);
+            }
+            queue = _stream.dispatch_queue;
+        }
+        record_operation (operation);
+        const bool posted = queue->try_post_async (
+          std::move (operation),
+          [queue, callback = std::move (callback),
+           completion = std::move (completion)] (auto complete) mutable {
+              auto finish = [queue, complete = std::move (complete),
+                             completion = std::move (completion)] (
+                              const result_t<void> &result) mutable {
+                  complete ([queue, completion = std::move (completion), result] () mutable {
+                      if (completion) {
+                          completion (result);
+                      }
+                  });
+              };
+              try {
+                  auto callback_task = callback ();
+                  detail::observe_task_completion (
+                    callback_task,
+                    [finish = std::move (finish)] (const result_t<void> &result) mutable {
+                        finish (result);
+                    });
+              }
+              catch (const framework_exception_t &error) {
+                  finish (detail::result_access_t::failure<void> (error));
+              }
+              catch (const std::exception &error) {
+                  finish (result_t<void>::failure (
+                    framework_error_kind_t::request_failed, error.what ()));
+              }
+              catch (...) {
+                  finish (result_t<void>::failure (
+                    framework_error_kind_t::request_failed,
+                    "stream session callback threw an exception"));
+              }
+          });
+        if (!posted) {
+            return result_t<void>::failure (
+              framework_error_kind_t::worker_queue_full,
+              "stream serial dispatch queue is full or closed");
+        }
+        return result_t<void>::success ();
+    }
+
+    void drain_async () const
+    {
+        std::shared_ptr<runtime::serial_execution_queue_t> queue;
+        {
+            const std::lock_guard<std::mutex> dispatch_lock (_stream.dispatch_mutex);
+            queue = _stream.dispatch_queue;
+        }
+        if (queue) {
+            queue->drain ();
+        }
     }
 
   private:
@@ -271,9 +369,15 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-void stream_write_call_t::submit ()
+task_t<submit_result_t> stream_write_call_t::submit ()
 {
-    _state->submit_now ().value ();
+    auto state = _state;
+    auto claimed = state->claim_submit ();
+    if (!claimed) {
+        return task_t<submit_result_t> (
+          detail::result_access_t::failure<submit_result_t> (*claimed.error ()));
+    }
+    return detail::submit_one_way_task ([state] { return state->submit_now (); });
 }
 
 result_t<void> stream_write_call_t::submit_now ()
@@ -318,9 +422,15 @@ stream_send_call_t &stream_send_call_t::compress ()
     return *this;
 }
 
-void stream_send_call_t::submit ()
+task_t<submit_result_t> stream_send_call_t::submit ()
 {
-    _state->submit_now ().value ();
+    auto state = _state;
+    auto claimed = state->claim_submit ();
+    if (!claimed) {
+        return task_t<submit_result_t> (
+          detail::result_access_t::failure<submit_result_t> (*claimed.error ()));
+    }
+    return detail::submit_one_way_task ([state] { return state->submit_now (); });
 }
 
 stream_error_t::stream_error_t (stream_session_error_t error,
@@ -589,7 +699,9 @@ stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
     if (auto correlation = request_header->correlation_id ()) {
         reply_header.with_correlation_id (std::string (*correlation));
     }
-    return write_packet_with_header (std::move (reply_header), payload);
+    auto call = write_packet_with_header (std::move (reply_header), payload);
+    call._state->reply_submission (_reply_submission);
+    return call;
 }
 
 stream_builder_t::stream_builder_t () :
@@ -1099,7 +1211,7 @@ void stream_runtime_t::send_session_closing (stream_t &stream,
           .write_packet_with_header (
             std::move (closing),
             zlink::message_t::from (std::string (payload_bytes.begin (), payload_bytes.end ())))
-          .submit ();
+          .submit ().result ().value ();
     }
     catch (...) {
     }
@@ -1111,7 +1223,21 @@ void stream_runtime_t::send_heartbeat_ping (stream_t &stream) const noexcept
         stream_header_t ping (stream_message_kind_t::control, stream_codec_t::raw,
                               stream_header_flags_t::none, std::nullopt, "$zlink.heartbeat.ping",
                               {});
-        stream.write_packet_with_header (std::move (ping), zlink::message_t{}).submit ();
+        stream.write_packet_with_header (std::move (ping), zlink::message_t{})
+          .submit ().result ().value ();
+    }
+    catch (...) {
+    }
+}
+
+void stream_runtime_t::send_heartbeat_pong (stream_t &stream) const noexcept
+{
+    try {
+        stream_header_t pong (stream_message_kind_t::control, stream_codec_t::raw,
+                              stream_header_flags_t::none, std::nullopt,
+                              "$zlink.heartbeat.pong", {});
+        stream.write_packet_with_header (std::move (pong), zlink::message_t{})
+          .submit ().result ().value ();
     }
     catch (...) {
     }
@@ -1138,10 +1264,35 @@ result_t<void> stream_runtime_t::dispatch_serial (stream_t &stream,
       .dispatch (std::move (operation), std::move (callback));
 }
 
+result_t<void> stream_runtime_t::dispatch_serial_async (
+  stream_t &stream,
+  std::string operation,
+  std::function<task_t<void> ()> callback,
+  async_dispatch_completion_t completion) const
+{
+    return stream_session_dispatcher_t (*stream._state)
+      .dispatch_async (std::move (operation), std::move (callback),
+                       std::move (completion));
+}
+
 result_t<void> stream_runtime_t::dispatch_connected (packet_stream_session_t &session,
                                                      stream_t &stream) const
 {
     return dispatch_serial (stream, "connected", [&] { return session.on_connected (stream); });
+}
+
+result_t<void> stream_runtime_t::dispatch_connected_async (
+  packet_stream_session_t &session,
+  stream_t &stream,
+  async_dispatch_completion_t completion) const
+{
+    auto dispatch_stream = stream;
+    return dispatch_serial_async (
+      stream, "connected",
+      [session = &session, dispatch_stream = std::move (dispatch_stream)] () mutable {
+          return session->on_connected (dispatch_stream);
+      },
+      std::move (completion));
 }
 
 result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &session,
@@ -1200,6 +1351,7 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     auto current_flow = runtime::flow_context_t::current ();
     auto dispatch_stream = stream;
     dispatch_stream._reply_header = header;
+    dispatch_stream._reply_submission = std::make_shared<submit_once_t> ();
     auto dispatch_header = std::make_shared<stream_header_t> (header);
     auto dispatch_context = std::shared_ptr<stream_dispatch_context_t> (
       new stream_dispatch_context_t (header));
@@ -1218,12 +1370,113 @@ result_t<void> stream_runtime_t::dispatch_packet (packet_stream_session_t &sessi
     });
 }
 
+result_t<void> stream_runtime_t::dispatch_packet_async (
+  packet_stream_session_t &session,
+  stream_t &stream,
+  const stream_header_t &header,
+  const zlink::message_t &payload,
+  async_dispatch_completion_t completion) const
+{
+    if (auto valid = validate_header (header); !valid) {
+        return valid;
+    }
+    auto handler_payload = payload;
+    if (has_flag (header.flags (), stream_header_flags_t::payload_compressed)) {
+        if (!_state->compression_codec) {
+            return result_t<void>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM compression codec is not configured");
+        }
+        try {
+            handler_payload = _state->compression_codec->decompress (
+              payload, max_stream_decompressed_payload_size);
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (
+              framework_error_kind_t::payload_decode_failed, error.what ());
+        }
+        if (handler_payload.bytes ().size () > max_stream_decompressed_payload_size) {
+            return result_t<void>::failure (
+              framework_error_kind_t::payload_decode_failed,
+              "STREAM decompressed payload exceeds configured receive limit");
+        }
+    }
+    std::optional<std::string> inbound_flow_id;
+    if (auto id = header.flow_id ()) {
+        inbound_flow_id = std::string (*id);
+    }
+    auto flow_scope = runtime::flow_context_t::enter (
+      std::move (inbound_flow_id), header.flow_origin (),
+      detail::message_flow_tracer_t (_state->dispatch).capture_enabled (),
+      flow_origin_t::inbound);
+    detail::message_flow_tracer_t (_state->dispatch).trace (
+      message_flow_outcome_t::received, [&] {
+          std::optional<std::string> correlation;
+          if (auto id = header.correlation_id ()) {
+              correlation = std::string (*id);
+          }
+          return message_flow_event_t{message_flow_outcome_t::received,
+                                      dispatch_error_surface_t::stream_session,
+                                      dispatch_message_kind_t::request,
+                                      std::string (header.packet_name ()),
+                                      std::nullopt,
+                                      std::nullopt,
+                                      correlation,
+                                      std::nullopt,
+                                      std::nullopt,
+                                      std::nullopt,
+                                      std::nullopt};
+      });
+    auto current_flow = runtime::flow_context_t::current ();
+    auto dispatch_stream = stream;
+    dispatch_stream._reply_header = header;
+    dispatch_stream._reply_submission = std::make_shared<submit_once_t> ();
+    auto dispatch_header = std::make_shared<stream_header_t> (header);
+    auto dispatch_context = std::shared_ptr<stream_dispatch_context_t> (
+      new stream_dispatch_context_t (header));
+    auto dispatch_payload =
+      std::make_shared<zlink::message_t> (std::move (handler_payload));
+    return dispatch_serial_async (
+      stream, "packet:" + std::string (header.packet_name ()),
+      [session = &session, dispatch_stream = std::move (dispatch_stream),
+       dispatch_header = std::move (dispatch_header),
+       dispatch_context = std::move (dispatch_context),
+       dispatch_payload = std::move (dispatch_payload),
+       current_flow = std::move (current_flow)] () mutable {
+          runtime::flow_context_t::scope_t callback_flow (std::move (current_flow));
+          return dispatch_packet_session (
+            session, std::move (dispatch_stream), std::move (dispatch_header),
+            std::move (dispatch_context), std::move (dispatch_payload));
+      },
+      std::move (completion));
+}
+
 result_t<void> stream_runtime_t::dispatch_disconnected (packet_stream_session_t &session,
                                                         stream_t &stream) const
 {
     stream._state->closed.store (true, std::memory_order_release);
     return dispatch_serial (stream, "disconnected",
                             [&] { return session.on_disconnected (stream); });
+}
+
+result_t<void> stream_runtime_t::dispatch_disconnected_async (
+  packet_stream_session_t &session,
+  stream_t &stream,
+  async_dispatch_completion_t completion) const
+{
+    auto dispatch_stream = stream;
+    return dispatch_serial_async (
+      stream, "disconnected",
+      [session = &session, dispatch_stream = std::move (dispatch_stream)] () mutable {
+          dispatch_stream._state->closed.store (true, std::memory_order_release);
+          return session->on_disconnected (dispatch_stream);
+      },
+      std::move (completion));
+}
+
+void stream_runtime_t::drain_async_dispatch (stream_t &stream) const
+{
+    stream_session_dispatcher_t (*stream._state).drain_async ();
 }
 
 void stream_runtime_t::mark_disconnected (stream_t &stream) const

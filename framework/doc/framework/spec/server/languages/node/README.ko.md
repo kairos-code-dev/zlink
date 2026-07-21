@@ -5,10 +5,8 @@ package export, public declaration과 contract test는 이 계약을 따라야 �
 
 | 번호 | 문서 | 범위 |
 |---|------|------|
-| `01` | [시스템 구조](01-system-structure.ko.md) | 패키지 구조·배포, NestJS 모듈 등록, DI, lifecycle, startup validation |
-| `02` | [인터페이스](02-handler-interfaces.ko.md) | 전체 public interface·타입·시그니처 카탈로그 |
-| `03` | [routing id 자동 할당](03-routing-id-allocation.ko.md) | builder, store capability, 준비 완료 조회와 fencing option |
-| `04` | [Location Store·Redis](04-location-store.ko.md) | store-neutral descriptor·location·lease·transfer authority와 공식 Redis 구현 |
+| `01` | [시스템 구조](01-system-structure.ko.md) | 패키지 구조·배포, NestJS 모듈 등록, DI, Instance Spot을 포함한 lifecycle과 startup validation |
+| `interfaces` | [공개 인터페이스 목차](interfaces/README.ko.md) | 범주별 TypeScript declaration, Location Store, maintenance와 routing ID 자동 할당 |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유한다.** 이 디렉토리는 그 의미가
 이 언어에서 갖는 **정확한 public API**만 고정한다.

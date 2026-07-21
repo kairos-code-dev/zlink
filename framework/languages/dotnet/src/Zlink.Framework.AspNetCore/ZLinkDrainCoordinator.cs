@@ -38,6 +38,7 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
     private readonly IDisposable _metricRegistration;
     private string _state = "serving";
     private Task<ZLinkDrainResult>? _operation;
+    private Task<ZLinkDrainResult>? _forceStopOperation;
 
     public ZLinkDrainCoordinator(
         ZLinkDrainAdmissionGate admission,
@@ -126,7 +127,14 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
         if (result is Drained)
         {
             Volatile.Write(ref _state, "drained");
-            await PublishStateAsync(ZLinkDrainState.Drained).ConfigureAwait(false);
+            try
+            {
+                await PublishStateAsync(ZLinkDrainState.Drained).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                _logger?.LogError(error, "ZLink drained terminal event publication failed.");
+            }
             ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "drained");
         }
         else
@@ -138,10 +146,24 @@ internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
         return result;
     }
 
-    private async ValueTask<ZLinkDrainResult> ForceStopAsync(ZLinkDrainForceReason reason)
+    private ValueTask<ZLinkDrainResult> ForceStopAsync(ZLinkDrainForceReason reason)
+    {
+        lock (_gate)
+            _forceStopOperation ??= ExecuteForceStopAsync(reason);
+        return new ValueTask<ZLinkDrainResult>(_forceStopOperation);
+    }
+
+    private async Task<ZLinkDrainResult> ExecuteForceStopAsync(ZLinkDrainForceReason reason)
     {
         Volatile.Write(ref _state, "force_stopping");
-        await PublishStateAsync(ZLinkDrainState.ForceStopping).ConfigureAwait(false);
+        try
+        {
+            await PublishStateAsync(ZLinkDrainState.ForceStopping).ConfigureAwait(false);
+        }
+        catch (Exception error)
+        {
+            _logger?.LogError(error, "ZLink force-stopping terminal event publication failed.");
+        }
         try
         {
             await _executor.ForceStopAsync(reason, CancellationToken.None).ConfigureAwait(false);

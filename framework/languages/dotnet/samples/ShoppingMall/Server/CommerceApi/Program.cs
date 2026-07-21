@@ -56,14 +56,16 @@ internal static class Program
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
+            options.AddHandlersFromAssemblyOf(typeof(Program));
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(instance.MeshEndpoint)
+                .SetRoutingId(instance.MeshRid);
             foreach (var workflow in new[] { "workflow-a", "workflow-b" })
             {
                 var channelName = SampleNames.OrderWorkflowChannelFor(workflow);
-                var mesh = options.AddRouteMesh(channelName)
-                    .Listen("tcp://127.0.0.1:0")
-                    .SetRoutingId(RoutingId.From($"{instance.InstanceId}-{workflow}"));
                 mesh.ChannelName(channelName).SetWeight(0);
             }
+            mesh.ChannelName(SampleNames.OrderProjectionChannel).SetWeight(0);
         });
 
         var app = builder.Build();

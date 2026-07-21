@@ -54,17 +54,6 @@ inline void validate_framework_options (const framework_options_state_t &options
                                            + "' must enable server or client capability");
         }
     }
-    for (const auto &spot_node_name : options.spot_nodes) {
-        if (!options.spot_nodes_with_runtime_capability.contains (spot_node_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT node '" + spot_node_name
-                                           + "' must enable router or pub/sub capability");
-        }
-    }
-    if (options.spot_nodes.size () > 1) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "only one SPOT node can be configured per process");
-    }
     for (const auto &stream_node_name : options.stream_nodes) {
         if (!options.stream_nodes_with_bind.contains (stream_node_name)) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -77,42 +66,7 @@ inline void validate_framework_options (const framework_options_state_t &options
                                            + "' must register a packet session");
         }
     }
-    for (const auto &[spot_node_name, channel_names] :
-         options.accepted_spot_route_channels_by_node) {
-        if (!options.spot_nodes_with_router.contains (spot_node_name)) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT node '" + spot_node_name
-                                           + "' accepts routes but must enable router capability");
-        }
-        for (const auto &channel_name : channel_names) {
-            const auto regular_channel = options.client_server_channels.contains (channel_name);
-            const auto route_channel = options.route_mesh_channels.contains (channel_name);
-            const auto implicit_spot_route_channel =
-              options.implicit_spot_route_channels.contains (channel_name);
-            if (regular_channel && route_channel) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_protocol_error,
-                  "SPOT route channel '" + channel_name
-                    + "' is ambiguous because both a client/server channel and a route mesh "
-                      "channel use the same name");
-            }
-            if (options.fanout_channels.contains (channel_name)) {
-                throw framework_exception_t (
-                  framework_error_kind_t::request_protocol_error,
-                  "SPOT route channel '" + channel_name
-                    + "' must be a client/server channel or a route mesh channel");
-            }
-            if (!regular_channel && !route_channel && !implicit_spot_route_channel) {
-                throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                             "SPOT route channel '" + channel_name
-                                               + "' is not registered");
-            }
-        }
-    }
     for (const auto &channel_name : options.client_server_channels_with_server) {
-        if (options.accepted_spot_route_channels.contains (channel_name)) {
-            continue;
-        }
         if (!handler_groups.channel_exposes_any (
               channel_name, {handler_group_kind_t::request, handler_group_kind_t::send})) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,

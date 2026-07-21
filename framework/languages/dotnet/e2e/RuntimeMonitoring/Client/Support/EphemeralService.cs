@@ -10,6 +10,7 @@ namespace RuntimeMonitoring.Client.Support;
 
 internal sealed class EphemeralService : IAsyncDisposable
 {
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(3);
     private readonly Process _process;
 
     private EphemeralService(Process process, string url, string channelEndpoint)
@@ -83,8 +84,8 @@ internal sealed class EphemeralService : IAsyncDisposable
     private async Task WaitForHealthAsync()
     {
         using var http = ZLinkHttpClient.Create(Url).Timeout(TimeSpan.FromMilliseconds(500)).Build();
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
-        while (DateTimeOffset.UtcNow < deadline)
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < StartupTimeout)
         {
             try
             {

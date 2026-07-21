@@ -5,10 +5,10 @@ namespace ShoppingMall.Server.Configuration;
 
 public static class SampleNames
 {
-    public const string OrderSpotDiscovery = "shoppingmall.order.spot";
-    public const string OrderSpotNode = "shoppingmall.order.node";
-    public const string OrderWorkflowRouteChannel = "shoppingmall.order.workflow.route";
+    public const string MeshName = "shoppingmall";
+    public const string OrderWorkflowHandlerGroup = "order-workflow";
     public const string OrderProjectionTopic = "shoppingmall.order.projection";
+    public const string OrderProjectionChannel = "shoppingmall.order.projection.channel";
 
     public static string OrderWorkflowChannelFor(string instanceId)
         => $"shoppingmall.order.workflow.{instanceId}";
@@ -38,18 +38,14 @@ public sealed record SampleTopology(
     string ApiBHttpUrl,
     string WorkflowAHttpUrl,
     string WorkflowBHttpUrl,
-    string WorkflowAChannelEndpoint,
-    string WorkflowBChannelEndpoint,
-    string WorkflowASpotEndpoint,
-    string WorkflowASpotRouterEndpoint,
-    string WorkflowBSpotEndpoint,
-    string WorkflowBSpotRouterEndpoint,
-    RoutingId ApiARouteRid,
-    RoutingId ApiBRouteRid,
-    RoutingId WorkflowARouteRid,
-    RoutingId WorkflowBRouteRid,
-    RoutingId WorkflowASpotRid,
-    RoutingId WorkflowBSpotRid)
+    string ApiAMeshEndpoint,
+    string ApiBMeshEndpoint,
+    string WorkflowAMeshEndpoint,
+    string WorkflowBMeshEndpoint,
+    RoutingId ApiAMeshRid,
+    RoutingId ApiBMeshRid,
+    RoutingId WorkflowAMeshRid,
+    RoutingId WorkflowBMeshRid)
 {
     public static SampleRuntimeConfiguration LoadApi(string[] args) => Load(args, "api");
 
@@ -73,16 +69,12 @@ public sealed record SampleTopology(
             settings.ApiBHttpUrl,
             settings.WorkflowAHttpUrl,
             settings.WorkflowBHttpUrl,
-            settings.WorkflowAChannelEndpoint,
-            settings.WorkflowBChannelEndpoint,
-            settings.WorkflowASpotEndpoint,
-            settings.WorkflowASpotRouterEndpoint,
-            settings.WorkflowBSpotEndpoint,
-            settings.WorkflowBSpotRouterEndpoint,
+            settings.ApiAMeshEndpoint,
+            settings.ApiBMeshEndpoint,
+            settings.WorkflowAMeshEndpoint,
+            settings.WorkflowBMeshEndpoint,
             RoutingId.From("6001"),
             RoutingId.From("6002"),
-            RoutingId.From("6201"),
-            RoutingId.From("6202"),
             RoutingId.From("6101"),
             RoutingId.From("6102"));
         return new SampleRuntimeConfiguration(topology, settings.InstanceId, settings.LogDirectory);
@@ -91,8 +83,8 @@ public sealed record SampleTopology(
     public ApiInstanceTopology ForInstance(string instanceId)
     {
         return string.Equals(instanceId, "api-b", StringComparison.Ordinal)
-            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBRouteRid)
-            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiARouteRid);
+            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBMeshEndpoint, ApiBMeshRid)
+            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiAMeshEndpoint, ApiAMeshRid);
     }
 
     public WorkflowInstanceTopology ForWorkflowInstance(string instanceId)
@@ -101,20 +93,14 @@ public sealed record SampleTopology(
             ? new WorkflowInstanceTopology(
                 instanceId,
                 WorkflowBHttpUrl,
-                WorkflowBChannelEndpoint,
-                WorkflowBSpotEndpoint,
-                WorkflowBSpotRouterEndpoint,
-                WorkflowBRouteRid,
-                WorkflowBSpotRid,
+                WorkflowBMeshEndpoint,
+                WorkflowBMeshRid,
                 OwnerIndex: 1)
             : new WorkflowInstanceTopology(
                 "workflow-a",
                 WorkflowAHttpUrl,
-                WorkflowAChannelEndpoint,
-                WorkflowASpotEndpoint,
-                WorkflowASpotRouterEndpoint,
-                WorkflowARouteRid,
-                WorkflowASpotRid,
+                WorkflowAMeshEndpoint,
+                WorkflowAMeshRid,
                 OwnerIndex: 0);
     }
 
@@ -154,12 +140,10 @@ public sealed class SampleConfiguration
     public string ApiBHttpUrl { get; init; } = "";
     public string WorkflowAHttpUrl { get; init; } = "";
     public string WorkflowBHttpUrl { get; init; } = "";
-    public string WorkflowAChannelEndpoint { get; init; } = "";
-    public string WorkflowBChannelEndpoint { get; init; } = "";
-    public string WorkflowASpotEndpoint { get; init; } = "";
-    public string WorkflowASpotRouterEndpoint { get; init; } = "";
-    public string WorkflowBSpotEndpoint { get; init; } = "";
-    public string WorkflowBSpotRouterEndpoint { get; init; } = "";
+    public string ApiAMeshEndpoint { get; init; } = "";
+    public string ApiBMeshEndpoint { get; init; } = "";
+    public string WorkflowAMeshEndpoint { get; init; } = "";
+    public string WorkflowBMeshEndpoint { get; init; } = "";
 
     public void Validate(string role)
     {
@@ -172,6 +156,8 @@ public sealed class SampleConfiguration
         {
             Require(suffix == "b" ? ApiBHttpUrl : ApiAHttpUrl,
                 suffix == "b" ? nameof(ApiBHttpUrl) : nameof(ApiAHttpUrl));
+            Require(suffix == "b" ? ApiBMeshEndpoint : ApiAMeshEndpoint,
+                suffix == "b" ? nameof(ApiBMeshEndpoint) : nameof(ApiAMeshEndpoint));
             return;
         }
         if (role != "workflow")
@@ -179,16 +165,12 @@ public sealed class SampleConfiguration
         if (suffix == "b")
         {
             Require(WorkflowBHttpUrl, nameof(WorkflowBHttpUrl));
-            Require(WorkflowBChannelEndpoint, nameof(WorkflowBChannelEndpoint));
-            Require(WorkflowBSpotEndpoint, nameof(WorkflowBSpotEndpoint));
-            Require(WorkflowBSpotRouterEndpoint, nameof(WorkflowBSpotRouterEndpoint));
+            Require(WorkflowBMeshEndpoint, nameof(WorkflowBMeshEndpoint));
         }
         else
         {
             Require(WorkflowAHttpUrl, nameof(WorkflowAHttpUrl));
-            Require(WorkflowAChannelEndpoint, nameof(WorkflowAChannelEndpoint));
-            Require(WorkflowASpotEndpoint, nameof(WorkflowASpotEndpoint));
-            Require(WorkflowASpotRouterEndpoint, nameof(WorkflowASpotRouterEndpoint));
+            Require(WorkflowAMeshEndpoint, nameof(WorkflowAMeshEndpoint));
         }
     }
 
@@ -202,14 +184,12 @@ public sealed class SampleConfiguration
 public sealed record ApiInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    RoutingId RouteRid);
+    string MeshEndpoint,
+    RoutingId MeshRid);
 
 public sealed record WorkflowInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    string ChannelEndpoint,
-    string SpotEndpoint,
-    string SpotRouterEndpoint,
-    RoutingId RouteRid,
-    RoutingId SpotRid,
+    string MeshEndpoint,
+    RoutingId MeshRid,
     int OwnerIndex);

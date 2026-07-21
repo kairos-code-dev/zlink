@@ -69,6 +69,30 @@ public interface IZLinkSpotLocationStore
         CancellationToken cancellationToken = default);
 }
 
+public interface IZLinkInstanceSpotLocationStore
+{
+    ValueTask<InstanceSpotClaimResult> ClaimInstanceSpotAsync(
+        InstanceSpotClaimRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<InstanceSpotWriteResult> CommitInstanceSpotReadyAsync(
+        InstanceSpotFence fence,
+        ulong spotGeneration,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkLocationWriteResult> BeginInstanceSpotClosingAsync(
+        InstanceSpotFence fence,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkLocationWriteStatus> ReleaseInstanceSpotAsync(
+        InstanceSpotFence fence,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<InstanceSpotResolveResult> ResolveInstanceSpotAsync(
+        ZLinkSpotLocationKey key,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IZLinkActorLocationStore
 {
     ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(

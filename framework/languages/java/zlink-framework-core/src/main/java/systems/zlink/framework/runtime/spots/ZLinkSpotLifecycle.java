@@ -140,9 +140,9 @@ final class ZLinkSpotLifecycle {
         if (removed == null) {
             return CompletableFuture.completedFuture(false);
         }
+        removed.close();
         return locations.releaseUserSpotAsync(primaryNode.routingId(), spotRid)
             .whenComplete((ignored, error) -> {
-                removed.close();
                 ZLinkRuntimeMetrics.add("zlink.spot.count", -1, Map.of("kind", "user"));
                 ZLinkRuntimeMetrics.increment("zlink.spot.closed", Map.of("kind", "user"));
             })
@@ -156,6 +156,28 @@ final class ZLinkSpotLifecycle {
         for (SpotActivation activation : spots.values()) {
             activation.drainPolledDispatchQueues();
         }
+    }
+
+    void sealApplicationAdmission() {
+        for (EntrySpotActivation activation : entrySpots) {
+            activation.context.closeTimers();
+        }
+        for (SpotActivation activation : spots.values()) {
+            activation.context.closeTimers();
+        }
+    }
+
+    CompletionStage<Void> awaitApplicationTurns() {
+        List<CompletableFuture<Void>> barriers = new java.util.ArrayList<>();
+        for (EntrySpotActivation activation : entrySpots) {
+            barriers.add(activation.context.enqueueDispatch(
+                () -> CompletableFuture.completedFuture(null)).toCompletableFuture());
+        }
+        for (SpotActivation activation : spots.values()) {
+            barriers.add(activation.context.enqueueDispatch(
+                () -> CompletableFuture.completedFuture(null)).toCompletableFuture());
+        }
+        return CompletableFuture.allOf(barriers.toArray(CompletableFuture[]::new));
     }
 
     CompletionStage<Void> notifyEntrySpotActorCreated(
@@ -174,6 +196,15 @@ final class ZLinkSpotLifecycle {
     ZLinkSpot<?> spotFor(RoutingId spotRid) {
         SpotActivation activation = spots.get(spotRid);
         return activation == null ? null : activation.spot();
+    }
+
+    DefaultSpotContext contextFor(ZLinkSpot<?> spot) {
+        for (SpotActivation activation : spots.values()) {
+            if (activation.spot() == spot) {
+                return activation.context;
+            }
+        }
+        return null;
     }
 
     boolean hasUserSpot(RoutingId spotRid) {
@@ -209,15 +240,12 @@ final class ZLinkSpotLifecycle {
     CompletionStage<Void> closeAllAsync() {
         java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure =
             new java.util.concurrent.atomic.AtomicReference<>();
-        for (EntrySpotActivation entrySpot : entrySpots) {
-            locations.releaseEntrySpotAsync(entrySpot.context.nodeRid())
-                .exceptionally(error -> null);
+        List<EntrySpotActivation> closingEntrySpots = List.copyOf(entrySpots);
+        List<SpotActivation> closingSpots = List.copyOf(spots.values());
+        for (EntrySpotActivation entrySpot : closingEntrySpots) {
             recordCloseFailure(firstFailure, closeComponent(entrySpot::close, null));
         }
-        for (SpotActivation spot : spots.values()) {
-            locations.releaseUserSpotAsync(
-                    primaryNode.routingId(), spot.backendSpot.routingId())
-                .exceptionally(error -> null);
+        for (SpotActivation spot : closingSpots) {
             recordCloseFailure(firstFailure, closeComponent(spot::close, null));
         }
         if (!entrySpots.isEmpty()) {
@@ -228,9 +256,26 @@ final class ZLinkSpotLifecycle {
             ZLinkRuntimeMetrics.add("zlink.spot.count", -spots.size(), Map.of("kind", "user"));
         }
         spots.clear();
-        return firstFailure.get() == null
-            ? CompletableFuture.completedFuture(null)
-            : CompletableFuture.failedFuture(firstFailure.get());
+        List<CompletableFuture<Void>> cleanups = new java.util.ArrayList<>();
+        for (EntrySpotActivation entrySpot : closingEntrySpots) {
+            cleanups.add(locations.releaseEntrySpotAsync(entrySpot.context.nodeRid())
+                .handle((ignored, error) -> {
+                    recordCloseFailure(firstFailure, error);
+                    return (Void) null;
+                }).toCompletableFuture());
+        }
+        for (SpotActivation spot : closingSpots) {
+            cleanups.add(locations.releaseUserSpotAsync(
+                    primaryNode.routingId(), spot.backendSpot.routingId())
+                .handle((ignored, error) -> {
+                    recordCloseFailure(firstFailure, error);
+                    return (Void) null;
+                }).toCompletableFuture());
+        }
+        return CompletableFuture.allOf(cleanups.toArray(CompletableFuture[]::new))
+            .thenCompose(ignored -> firstFailure.get() == null
+                ? CompletableFuture.completedFuture(null)
+                : CompletableFuture.failedFuture(firstFailure.get()));
     }
 
     private static void recordCloseFailure(
@@ -254,15 +299,40 @@ final class ZLinkSpotLifecycle {
     }
 
     CompletionStage<Void> releaseRecreatableSpots() {
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (RoutingId spotRid : List.copyOf(spots.keySet())) {
-            chain = chain.thenCompose(ignored -> close(spotRid).thenCompose(closed ->
-                closed
-                    ? CompletableFuture.completedFuture(null)
-                    : CompletableFuture.failedFuture(new IllegalStateException(
-                        "recreatable spot still has actors: " + spotRid))));
+        List<RoutingId> spotRids = List.copyOf(spots.keySet());
+        for (RoutingId spotRid : spotRids) {
+            if (actorOccupancy.hasActorsInSpot(spotRid)) {
+                return CompletableFuture.failedFuture(new IllegalStateException(
+                    "recreatable spot still has actors: " + spotRid));
+            }
         }
-        return chain;
+        List<SpotActivation> released = new java.util.ArrayList<>(spotRids.size());
+        for (RoutingId spotRid : spotRids) {
+            SpotActivation activation = spots.remove(spotRid);
+            if (activation != null) {
+                released.add(activation);
+            }
+        }
+        java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure =
+            new java.util.concurrent.atomic.AtomicReference<>();
+        for (SpotActivation activation : released) {
+            recordCloseFailure(firstFailure, closeComponent(activation::close, null));
+        }
+        List<CompletableFuture<Void>> cleanups = new java.util.ArrayList<>(released.size());
+        for (SpotActivation activation : released) {
+            cleanups.add(locations.releaseUserSpotAsync(
+                    primaryNode.routingId(), activation.backendSpot.routingId())
+                .handle((ignored, error) -> {
+                    recordCloseFailure(firstFailure, error);
+                    ZLinkRuntimeMetrics.add("zlink.spot.count", -1, Map.of("kind", "user"));
+                    ZLinkRuntimeMetrics.increment("zlink.spot.closed", Map.of("kind", "user"));
+                    return (Void) null;
+                }).toCompletableFuture());
+        }
+        return CompletableFuture.allOf(cleanups.toArray(CompletableFuture[]::new))
+            .thenCompose(ignored -> firstFailure.get() == null
+                ? CompletableFuture.completedFuture(null)
+                : CompletableFuture.failedFuture(firstFailure.get()));
     }
 
     boolean userSpotsDrained() {
@@ -293,6 +363,7 @@ final class ZLinkSpotLifecycle {
                     .activate(spotType, backendSpot, request)
                     .thenCompose(created -> createResultAsync(
                         spotRid,
+                        backendSpot.lifecycleGeneration(),
                         spotType,
                         created)))
                 .whenComplete((created, error) -> {
@@ -316,11 +387,16 @@ final class ZLinkSpotLifecycle {
         ZLinkMessage request) {
         RoutingId spotRid = backendSpot.routingId();
         return activationFactory.activate(spotType, backendSpot, request)
-            .thenCompose(result -> createResultAsync(spotRid, spotType, result));
+            .thenCompose(result -> createResultAsync(
+                spotRid,
+                backendSpot.lifecycleGeneration(),
+                spotType,
+                result));
     }
 
     private CompletionStage<ZLinkSpotCreateResult> createResultAsync(
         RoutingId spotRid,
+        long spotGeneration,
         Class<? extends ZLinkSpot<?>> spotType,
         SpotActivationCreateResult result) {
         if (!result.response().accepted()) {
@@ -333,6 +409,7 @@ final class ZLinkSpotLifecycle {
         return locations.claimUserSpotAsync(
                 primaryNode.routingId(),
                 spotRid,
+                spotGeneration,
                 spotType,
                 () -> close(spotRid))
             .thenApply(status -> {
@@ -359,11 +436,9 @@ final class ZLinkSpotLifecycle {
     }
 
     private CompletionStage<ZLinkBackendSpot> createBackendSpotAsync(RoutingId spotRid) {
-        return CompletableFuture.supplyAsync(() -> {
-            ZLinkBackendSpot spot = primaryNode.createSpot();
-            spot.setRoutingId(spotRid);
-            return spot;
-        }, backendExecutor);
+        return CompletableFuture.supplyAsync(
+            () -> primaryNode.createSpot(spotRid),
+            backendExecutor);
     }
 
     private void requireRegistered(Class<? extends ZLinkSpot<?>> spotType) {

@@ -30,12 +30,14 @@ import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 final class ZLinkChannelCallRuntime {
     private static final Logger LOGGER = Logger.getLogger(ZLinkChannelCallRuntime.class.getName());
+    private static final long ROUTE_RETRY_DELAY_MILLIS = 10;
     @FunctionalInterface
     interface SpotSend {
         CompletionStage<Void> send(
             String channelName,
             RoutingId targetNode,
             RoutingId targetSpot,
+            long targetSpotGeneration,
             List<Message> parts);
     }
 
@@ -45,6 +47,7 @@ final class ZLinkChannelCallRuntime {
             String channelName,
             RoutingId targetNode,
             RoutingId targetSpot,
+            long targetSpotGeneration,
             List<Message> parts,
             Duration timeout);
     }
@@ -108,6 +111,13 @@ final class ZLinkChannelCallRuntime {
             timeoutTask.cancel(false);
             pendingRequests.remove(result);
         });
+    }
+
+    void retryRouteRequest(Runnable attempt) {
+        timeoutExecutor.schedule(
+            attempt,
+            ROUTE_RETRY_DELAY_MILLIS,
+            TimeUnit.MILLISECONDS);
     }
 
     void submitClient(
@@ -186,20 +196,24 @@ final class ZLinkChannelCallRuntime {
         String channelName,
         RoutingId targetNode,
         RoutingId targetSpot,
+        long targetSpotGeneration,
         List<Message> parts) {
-        return spotSend.send(channelName, targetNode, targetSpot, parts);
+        return spotSend.send(
+            channelName, targetNode, targetSpot, targetSpotGeneration, parts);
     }
 
     CompletionStage<List<Message>> requestToSpot(
         String channelName,
         RoutingId targetNode,
         RoutingId targetSpot,
+        long targetSpotGeneration,
         List<Message> parts,
         Duration timeout) {
         return spotRequest.request(
             channelName,
             targetNode,
             targetSpot,
+            targetSpotGeneration,
             parts,
             timeout);
     }

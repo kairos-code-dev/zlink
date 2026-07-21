@@ -8,9 +8,9 @@
 
 This document explains how application developers use Spots on top of the
 10.1.0 MeshNode. The exact function contracts are owned by the
-[MeshNode spec](../spec/core/service/01-mesh-node.md),
-[Dispatch spec](../spec/core/service/02-dispatch.md) and
-[Spot spec](../spec/core/service/03-spot.md).
+[MeshNode spec](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md),
+[Dispatch spec](../../../framework/doc/framework/spec/server/11-channel-messaging.ko.md) and
+[Spot spec](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md).
 
 > For **when and why** to use Spots (their relationship to raw sockets and
 > Actors, execution seriality), start with
@@ -265,7 +265,7 @@ zlink_timer_destroy(&timer);
 
 Ticks are delivered mutually exclusive with that Spot's dispatch flow and stop
 once the Spot generation ends (destroy/move). See
-[Spot spec §9](../spec/core/service/03-spot.md) and the
+[Spot spec §9](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md) and the
 [utilities spec](../spec/core/08-utilities.md).
 
 ## 8. Common mistakes

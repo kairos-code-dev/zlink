@@ -3,6 +3,7 @@ using SpotActorTransfer.Client.Support;
 
 var options = ClientOptions.Parse(args);
 using var context = new SpotActorTransferScenarioContext(options);
+await context.WaitMeshReadyAsync();
 
 var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreCase)
 {

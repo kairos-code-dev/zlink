@@ -100,17 +100,48 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     }
 }
 
-internal sealed class ProfileSocketEventObserver(EvidenceStore evidence)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+internal sealed class ProfileMeshEventObserver(
+    EvidenceStore evidence,
+    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime)
+    : IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
+        LastKnownEndpoints = new(StringComparer.Ordinal);
+
     public ValueTask HandleAsync(
-        ZLinkSocketEvent @event,
+        Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent @event,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var peer = @event.PeerRid?.ToString() ?? string.Empty;
+        var endpoint = string.Empty;
+        if (peer.Length > 0)
+        {
+            try
+            {
+                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
+                    .FirstOrDefault(candidate => candidate.Rid.ToString() == peer)?.Endpoint
+                    ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                // A final event can race mesh shutdown; keep the last endpoint
+                // observed while this peer was ready.
+            }
+
+            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
+            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
+        }
+
+        var kind = @event.Reason switch
+        {
+            "ready" => "ConnectionReady",
+            "disconnected" => "Disconnected",
+            _ => @event.Reason ?? @event.Identifier
+        };
         evidence.Add(
-            $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
+            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
+            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}");
         return ValueTask.CompletedTask;
     }
 }

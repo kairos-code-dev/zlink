@@ -114,24 +114,6 @@ public sealed class test_system
     }
 
     [Fact]
-    public void timer_from_spot_uses_spot_scheduler_backend()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var timer = Zlink.CreateTimer(spot);
-
-        timer.Start(TimeSpan.FromMilliseconds(5), 1);
-
-        ulong? fireCount = timer.Recv();
-
-        Assert.Equal(1UL, fireCount.GetValueOrDefault());
-    }
-
-    [Fact]
     public void timer_on_fire_invokes_callback()
     {
         if (!CoreTestSupport.IsNativeAvailable())

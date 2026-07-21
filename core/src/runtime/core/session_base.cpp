@@ -74,6 +74,7 @@ zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
     _active (active_),
     _pipe (NULL),
     _incomplete_in (false),
+    _dropping_stale_transport_message (false),
     _pending (false),
     _engine (NULL),
     _socket (socket_),
@@ -293,10 +294,15 @@ void zlink::session_base_t::engine_ready ()
         //  Ask socket to plug into the remote end of the pipe.
         send_bind (_socket, pipes[1]);
     }
+    if (_pipe)
+        _pipe->set_transport_connection_id (
+          _engine->get_endpoint ().connection_id);
 }
 
 void zlink::session_base_t::engine_error (bool handshaked_, zlink::i_engine::error_reason_t reason_)
 {
+    if (_pipe)
+        _pipe->set_transport_connection_id (0);
     //  Engine is dead. Let's forget about it.
     _engine = NULL;
 
@@ -370,7 +376,12 @@ void zlink::session_base_t::process_term (int linger_)
 
         //  Start pipe termination process. Delay the termination till all messages
         //  are processed in case the linger time is non-zero.
-        _pipe->terminate (linger_ != 0);
+        //  Once the transport engine is gone there is no consumer that can
+        //  deliver messages already queued on the socket-to-session pipe.
+        //  Waiting for its delimiter would therefore retain the session's
+        //  owner termination ack forever. Force the pipe handshake to drop
+        //  that undeliverable tail and complete instead.
+        _pipe->terminate (linger_ != 0 && _engine != NULL);
 
         //  In case there's no engine and there's only delimiter in the
         //  pipe it wouldn't be ever read. Thus we check for it explicitly.

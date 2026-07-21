@@ -22,6 +22,8 @@ namespace
 #ifdef ZLINK_BUILD_TESTS
 std::atomic<int> g_publish_pause_after_snapshot_ms (0);
 std::atomic<int> g_publish_snapshot_paused (0);
+std::atomic<int> g_remote_route_before_commit_pause (0);
+std::atomic<int> g_remote_route_before_commit_paused (0);
 #endif
 
 //  --- shared submit plumbing --------------------------------------------------
@@ -70,19 +72,11 @@ void on_operation_timeout (void *userdata_)
     mesh_node_t *node = node_pin.get ();
     if (!node)
         return;
-    pending_operation_t op;
-    {
-        std::lock_guard<std::mutex> lock (node->mutex);
-        std::unordered_map<uint64_t, pending_operation_t>::iterator it =
-          node->operations.find (ctx->operation_low);
-        if (it == node->operations.end ())
-            return;
-        if (it->second.id.high != ctx->operation_high)
-            return;
-        op = it->second;
-    }
-    (void) complete_pending_operation (node, op, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT, NULL,
-                                       NULL);
+    zlink_mesh_operation_id_t operation_id;
+    operation_id.high = ctx->operation_high;
+    operation_id.low = ctx->operation_low;
+    (void) complete_pending_operation_by_id (
+      node, operation_id, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
 }
 
 struct operation_timeout_guard_state_t
@@ -112,6 +106,17 @@ extern "C" void zlink_test_set_mesh_publish_pause_after_snapshot_ms (int pause_m
 extern "C" int zlink_test_mesh_publish_snapshot_paused ()
 {
     return g_publish_snapshot_paused.load (std::memory_order_acquire);
+}
+
+extern "C" void zlink_test_mesh_pause_remote_route_before_commit (int enabled_)
+{
+    g_remote_route_before_commit_pause.store (enabled_ != 0 ? 1 : 0,
+                                              std::memory_order_release);
+}
+
+extern "C" int zlink_test_mesh_remote_route_before_commit_paused ()
+{
+    return g_remote_route_before_commit_paused.load (std::memory_order_acquire);
 }
 #endif
 
@@ -276,6 +281,8 @@ struct channel_target_t
 {
     bool is_local;
     size_t peer_index;
+    uint32_t weight;
+    std::string key;
 };
 
 int select_channel_target_locked (mesh_node_t *node_,
@@ -293,23 +300,52 @@ int select_channel_target_locked (mesh_node_t *node_,
         channel_target_t candidate;
         candidate.is_local = false;
         candidate.peer_index = i;
+        candidate.weight = it->second;
+        candidate.key.assign (1, 'R');
+        candidate.key.append (reinterpret_cast<const char *> (peer.rid.data ()),
+                              peer.rid.size ());
         candidates.push_back (candidate);
     }
     std::map<std::string, uint32_t>::const_iterator local_it = node_->channels.find (channel_);
-    if (local_it != node_->channels.end () && local_it->second > 0
-        && node_->state == ZLINK_MESH_NODE_READY) {
+    if (local_it != node_->channels.end () && local_it->second > 0) {
         channel_target_t candidate;
         candidate.is_local = true;
         candidate.peer_index = 0;
+        candidate.weight = local_it->second;
+        candidate.key.assign (1, 'L');
         candidates.push_back (candidate);
     }
     if (candidates.empty ()) {
         errno = ENOENT;
         return -1;
     }
-    size_t &cursor = node_->rr_cursor[channel_];
-    *target_out_ = candidates[cursor % candidates.size ()];
-    cursor = (cursor + 1) % candidates.size ();
+    int64_t total_weight = 0;
+    std::set<std::string> candidate_keys;
+    for (size_t i = 0; i < candidates.size (); ++i)
+    {
+        total_weight += candidates[i].weight;
+        candidate_keys.insert (candidates[i].key);
+    }
+
+    std::map<std::string, int64_t> &current =
+      node_->weighted_rr_current[channel_];
+    for (std::map<std::string, int64_t>::iterator it = current.begin ();
+         it != current.end ();) {
+        if (candidate_keys.find (it->first) == candidate_keys.end ())
+            it = current.erase (it);
+        else
+            ++it;
+    }
+
+    size_t selected = 0;
+    for (size_t i = 0; i < candidates.size (); ++i) {
+        const int64_t updated =
+          (current[candidates[i].key] += candidates[i].weight);
+        if (i == 0 || updated > current[candidates[selected].key])
+            selected = i;
+    }
+    current[candidates[selected].key] -= total_weight;
+    *target_out_ = candidates[selected];
     return 0;
 }
 
@@ -352,6 +388,7 @@ void emit_submit_event (mesh_node_t *node_,
 zlink_submit_result_t submit_local_record (mesh_node_t *node_,
                                            const owner_id_t &destination_,
                                            const owner_id_t &requester_,
+                                           const send_ready_interest_t &interest_,
                                            zlink_mesh_record_kind_t kind_,
                                            const rid_bytes_t &source_spot_rid_,
                                            const std::string &channel_name_,
@@ -419,6 +456,9 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
     if (admit_record (node_, destination_, domain_application, record, blocking, admit_timeout)
         != 0) {
         const int reason = errno;
+        if (reason == EAGAIN)
+            register_local_send_ready_interest (
+              node_, interest_, destination_, record->byte_size);
         errno = reason;
         return submit_errno_result ();
     }
@@ -430,8 +470,7 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
 
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        if (node_->monitor)
-            node_->monitor->counters.submitted_messages += 1;
+        node_->monitor_counters.submitted_messages += 1;
     }
     emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED,
                        static_cast<zlink_mesh_owner_kind_t> (destination_.kind), channel_name_,
@@ -455,15 +494,18 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
                                      uint32_t timeout_ms_)
 {
     const bool is_request = operation_id_out_ != NULL;
+    const send_ready_interest_t interest = channel_kind_
+      ? make_channel_send_ready_interest (requester_, channel_)
+      : make_node_send_ready_interest (requester_, peer_rid_);
     if (!is_request) {
         const wire_type_t type = channel_kind_ ? wire_channel_send : wire_node_send;
         const zlink_submit_result_t rc = wire_submit_data (
-          node_, peer_rid_, type, 0, channel_, metadata_, parts_, part_count_, flags_);
+          node_, peer_rid_, type, 0, channel_, metadata_, parts_, part_count_,
+          flags_, &interest);
         if (rc == ZLINK_SUBMIT_OK) {
             {
                 std::lock_guard<std::mutex> lock (node_->mutex);
-                if (node_->monitor)
-                    node_->monitor->counters.submitted_messages += 1;
+                node_->monitor_counters.submitted_messages += 1;
             }
             emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED,
                                ZLINK_MESH_OWNER_NODE, channel_, 0);
@@ -483,7 +525,8 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
     const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     const wire_type_t type = channel_kind_ ? wire_channel_request : wire_node_request;
     const zlink_submit_result_t rc = wire_submit_data (
-      node_, peer_rid_, type, op_id.low, channel_, metadata_, parts_, part_count_, flags_);
+      node_, peer_rid_, type, op_id.low, channel_, metadata_, parts_, part_count_,
+      flags_, &interest);
     if (rc != ZLINK_SUBMIT_OK) {
         const int reason = errno;
         if (reason == EAGAIN || reason == ETIMEDOUT)
@@ -496,8 +539,7 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
     *operation_id_out_ = op_id;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        if (node_->monitor)
-            node_->monitor->counters.submitted_messages += 1;
+        node_->monitor_counters.submitted_messages += 1;
     }
     emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED, ZLINK_MESH_OWNER_NODE,
                        channel_, 0);
@@ -589,8 +631,11 @@ zlink_submit_result_t node_channel_submit (void *mesh_node_,
     const zlink_mesh_record_kind_t kind = operation_id_out_
                                             ? ZLINK_MESH_RECORD_CHANNEL_REQUEST
                                             : ZLINK_MESH_RECORD_CHANNEL_SEND;
-    return submit_local_record (node, node_owner (), requester, kind, source_spot, channel,
-                                metadata_, parts_, part_count_, operation_id_out_, operation_kind_,
+    const send_ready_interest_t interest =
+      make_channel_send_ready_interest (requester, channel);
+    return submit_local_record (node, node_owner (), requester, interest,
+                                kind, source_spot, channel, metadata_, parts_,
+                                part_count_, operation_id_out_, operation_kind_,
                                 flags_, timeout_ms_);
 }
 }
@@ -777,7 +822,9 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
     owner_id_t destination;
     bool local_target_found = false;
     bool generation_conflict = false;
+    bool instance_busy = false;
     bool remote_target = false;
+    uint64_t remote_target_generation = 0;
     {
         std::unique_lock<std::mutex> lock (node->mutex);
         if (check_submit_state_locked (node) != 0)
@@ -789,6 +836,8 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
                 if (node->peers[i].state == ZLINK_MESH_PEER_ADMITTED
                     && node->peers[i].rid == target_node) {
                     admitted = true;
+                    remote_target_generation =
+                      node->peers[i].lifecycle_generation;
                     break;
                 }
             }
@@ -803,8 +852,42 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
             std::map<std::string, spot_state_t>::iterator it = node->spots.find (key);
             if (it != node->spots.end ()) {
                 if (it->second.generation == target_spot_generation_) {
-                    local_target_found = true;
-                    destination = spot_owner (target_spot, it->second.generation);
+                    if (it->second.kind == ZLINK_SPOT_KIND_INSTANCE) {
+                        std::map<std::string, instance_activation_state_t>::iterator
+                          activation = node->instance_activations.find (key);
+                        const uint64_t now_ns =
+                          zlink::request_timeout::monotonic_now_ns ();
+                        if (activation == node->instance_activations.end ()
+                            || activation->second.spot_generation
+                                 != it->second.generation
+                            || activation->second.state
+                                 != ZLINK_SPOT_ACTIVATION_READY
+                            || activation->second.owner_deadline_ns == 0
+                            || now_ns
+                                 >= activation->second.owner_deadline_ns) {
+                            instance_busy = true;
+                            if (activation != node->instance_activations.end ()
+                                && activation->second.state
+                                     == ZLINK_SPOT_ACTIVATION_READY
+                                && activation->second.owner_deadline_ns != 0
+                                && now_ns
+                                     >= activation->second.owner_deadline_ns) {
+                                activation->second.state =
+                                  ZLINK_SPOT_ACTIVATION_CLOSING;
+                                it->second.activation_state =
+                                  ZLINK_SPOT_ACTIVATION_CLOSING;
+                                it->second.draining = true;
+                            }
+                        } else {
+                            local_target_found = true;
+                            destination = spot_owner (
+                              target_spot, it->second.generation);
+                        }
+                    } else {
+                        local_target_found = true;
+                        destination = spot_owner (
+                          target_spot, it->second.generation);
+                    }
                 } else {
                     generation_conflict = true;
                 }
@@ -814,10 +897,22 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
 
     const bool is_request = operation_id_out_ != NULL;
     if (remote_target) {
+        remote_route_flight_guard_t route_flight (node, is_request);
+        if (!route_flight.valid ())
+            return ZLINK_SUBMIT_INTERNAL_ERROR;
+        uint64_t expected_connection_id = 0;
+        if (!validate_remote_route_flight (
+              node, target_node, remote_target_generation,
+              &expected_connection_id))
+            return ZLINK_SUBMIT_NOT_CONNECTED;
         if (!is_request) {
+            const send_ready_interest_t interest =
+              make_spot_send_ready_interest (
+                requester, target_node, target_spot);
             const zlink_submit_result_t rc =
               wire_submit_spot (node, target_node, false, 0, facade->spot_rid, target_spot,
-                                target_spot_generation_, metadata_, parts_, part_count_, flags_);
+                                target_spot_generation_, metadata_, parts_, part_count_, flags_,
+                                &interest, expected_connection_id);
             return rc;
         }
         operation_submission_t submission (
@@ -825,11 +920,15 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
         if (!submission.valid ())
             return ZLINK_SUBMIT_OUT_OF_MEMORY;
         const zlink_mesh_operation_id_t op_id = submission.operation_id ();
+        const send_ready_interest_t interest =
+          make_spot_send_ready_interest (requester, target_node, target_spot);
         const zlink_submit_result_t rc =
           wire_submit_spot (node, target_node, true, op_id.low, facade->spot_rid, target_spot,
-                            target_spot_generation_, metadata_, parts_, part_count_, flags_);
-        if (rc != ZLINK_SUBMIT_OK)
+                            target_spot_generation_, metadata_, parts_, part_count_, flags_,
+                            &interest, expected_connection_id);
+        if (rc != ZLINK_SUBMIT_OK) {
             return rc;
+        }
         submission.commit ();
         *operation_id_out_ = op_id;
         return ZLINK_SUBMIT_OK;
@@ -855,7 +954,10 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
             op = op_it->second;
         }
         const int completion_rc =
-          generation_conflict
+          instance_busy
+            ? complete_pending_operation (
+                node, op, ZLINK_REQUEST_BUSY, EBUSY, NULL, NULL)
+          : generation_conflict
             ? complete_pending_operation (
                 node, op, ZLINK_REQUEST_CONFLICT, ESTALE, NULL, NULL)
             : complete_pending_operation (
@@ -867,7 +969,9 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
         return ZLINK_SUBMIT_OK;
     }
 
-    return submit_local_record (node, destination, requester,
+    const send_ready_interest_t interest = make_spot_send_ready_interest (
+      requester, node->routing_id, target_spot);
+    return submit_local_record (node, destination, requester, interest,
                                 is_request ? ZLINK_MESH_RECORD_SPOT_REQUEST
                                            : ZLINK_MESH_RECORD_SPOT_SEND,
                                 facade->spot_rid, std::string (), metadata_, parts_, part_count_,
@@ -913,6 +1017,1760 @@ try {
 }
 catch (const std::bad_alloc &) {
     return submit_out_of_memory_result ();
+}
+
+namespace
+{
+struct instance_watchdog_ctx_t
+{
+    mesh_node_t *node;
+    uint64_t node_generation;
+    uint64_t token_serial;
+};
+
+struct instance_deadline_ctx_t
+{
+    mesh_node_t *node;
+    uint64_t node_generation;
+    uint64_t activation_token_serial;
+    rid_bytes_t source_node_rid;
+    zlink_mesh_operation_id_t operation_id;
+};
+
+bool copy_instance_string (const char *data_,
+                           size_t size_,
+                           size_t max_,
+                           bool allow_empty_,
+                           std::string *out_)
+{
+    if ((!data_ && size_ != 0) || (!allow_empty_ && size_ == 0)
+        || size_ > max_ || (size_ > 0 && memchr (data_, 0, size_))) {
+        errno = EINVAL;
+        return false;
+    }
+    if (size_ > 0
+        && !valid_utf8 (reinterpret_cast<const unsigned char *> (data_), size_)) {
+        errno = EINVAL;
+        return false;
+    }
+    out_->assign (data_ ? data_ : "", size_);
+    return true;
+}
+
+bool copy_instance_placement (const zlink_instance_spot_placement_t *target_,
+                           instance_placement_value_t *out_)
+{
+    if (!target_ || target_->node_rid.size == 0 || target_->spot_rid.size == 0
+        || target_->node_generation == 0) {
+        errno = EINVAL;
+        return false;
+    }
+    instance_placement_value_t value;
+    value.node_rid = rid_bytes (target_->node_rid);
+    value.node_generation = target_->node_generation;
+    value.spot_rid = rid_bytes (target_->spot_rid);
+    if (!copy_instance_string (
+          target_->instance_spot_type, target_->instance_spot_type_size,
+          ZLINK_INSTANCE_SPOT_TYPE_MAX, false, &value.instance_spot_type)
+        || !copy_instance_string (
+          target_->message_contract_id, target_->message_contract_id_size,
+          ZLINK_INSTANCE_SPOT_CONTRACT_ID_MAX, false,
+          &value.message_contract_id))
+        return false;
+    *out_ = value;
+    return true;
+}
+
+void finish_instance_record (
+  std::unique_ptr<queued_record_t> record,
+  zlink_request_result_t terminal_result_,
+  int failure_errno_)
+{
+    if (!record.get ())
+        return;
+    if (record->instance_deadline_task) {
+        zlink::request_timeout::cancel (record->instance_deadline_task);
+        record->instance_deadline_task.reset ();
+    }
+    if (record->has_reply_token) {
+        mesh_node_t *route_node = NULL;
+        uint64_t route_serial = 0;
+        std::vector<zlink_msg_t> empty;
+        if (unseal_reply_token (&record->reply_token, &route_node,
+                                &route_serial)
+              == 0) {
+            try {
+                (void) deliver_reply_via_route (
+                  route_node, route_serial, terminal_result_, failure_errno_,
+                  &empty);
+            }
+            catch (const std::bad_alloc &) {
+                std::lock_guard<std::mutex> lock (route_node->mutex);
+                std::unordered_map<uint64_t, reply_route_t>::iterator route =
+                  route_node->reply_routes.find (route_serial);
+                if (route != route_node->reply_routes.end ()
+                    && !route->second.consumed) {
+                    route->second.in_flight = false;
+                    route->second.force_terminal_pending = true;
+                    route->second.force_terminal_result = terminal_result_;
+                    route->second.force_terminal_errno = failure_errno_;
+                }
+            }
+        }
+    }
+}
+
+void finish_instance_records (
+  std::list<std::unique_ptr<queued_record_t> > *records_,
+  zlink_request_result_t terminal_result_,
+  int failure_errno_)
+{
+    while (!records_->empty ()) {
+        std::unique_ptr<queued_record_t> record =
+          std::move (records_->front ());
+        records_->pop_front ();
+        finish_instance_record (
+          std::move (record), terminal_result_, failure_errno_);
+    }
+}
+
+bool same_instance_operation (const queued_record_t &record_,
+                              const rid_bytes_t &source_node_rid_,
+                              const zlink_mesh_operation_id_t &operation_id_)
+{
+    return record_.has_reply_token
+           && record_.source_node_rid == source_node_rid_
+           && record_.operation_id.high == operation_id_.high
+           && record_.operation_id.low == operation_id_.low;
+}
+
+void insert_instance_pending_ordered (
+  instance_activation_state_t *group_,
+  std::unique_ptr<queued_record_t> &record_)
+{
+    const uint64_t sequence = record_->instance_admission_sequence;
+    std::list<std::unique_ptr<queued_record_t> >::iterator position =
+      group_->pending.begin ();
+    while (position != group_->pending.end ()
+           && (*position)->instance_admission_sequence < sequence)
+        ++position;
+    group_->pending.insert (position, std::move (record_));
+}
+
+bool remove_instance_deadline_record_locked (
+  mesh_node_t *node_,
+  const rid_bytes_t &source_node_rid_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  std::list<std::unique_ptr<queued_record_t> > *expired_out_,
+  std::shared_ptr<zlink::request_timeout::task_t> *watchdog_out_)
+{
+    for (std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+           node_->instance_tokens.begin ();
+         it != node_->instance_tokens.end (); ++it) {
+        if (it->second.phase != instance_token_placement
+            || !it->second.pending_record
+            || !same_instance_operation (*it->second.pending_record,
+                                         source_node_rid_, operation_id_))
+            continue;
+        if (it->second.watchdog)
+            *watchdog_out_ = it->second.watchdog;
+        expired_out_->push_back (std::move (it->second.pending_record));
+        node_->instance_tokens.erase (it);
+        node_->cv.notify_all ();
+        return true;
+    }
+    for (std::map<std::string, instance_activation_state_t>::iterator group =
+           node_->instance_activations.begin ();
+         group != node_->instance_activations.end (); ++group) {
+        for (std::list<std::unique_ptr<queued_record_t> >::iterator it =
+               group->second.pending.begin ();
+             it != group->second.pending.end (); ++it) {
+            if (!same_instance_operation (**it, source_node_rid_, operation_id_))
+                continue;
+            group->second.pending_messages -= 1;
+            group->second.pending_bytes -= (*it)->byte_size;
+            expired_out_->splice (expired_out_->end (),
+                                  group->second.pending, it);
+            node_->cv.notify_all ();
+            return true;
+        }
+    }
+    return false;
+}
+
+void on_instance_record_deadline (void *userdata_)
+{
+    std::unique_ptr<instance_deadline_ctx_t> ctx (
+      static_cast<instance_deadline_ctx_t *> (userdata_));
+    if (!ctx.get ())
+        return;
+    mesh_node_pin_t node_pin (ctx->node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || node->lifecycle_generation != ctx->node_generation)
+        return;
+    std::list<std::unique_ptr<queued_record_t> > expired;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        if (ctx->activation_token_serial != 0) {
+            std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+              node->instance_tokens.find (ctx->activation_token_serial);
+            if (token != node->instance_tokens.end ()
+                && token->second.phase == instance_token_redirecting) {
+                token->second.request_deadline_expired = true;
+                node->cv.notify_all ();
+                return;
+            }
+        }
+        (void) remove_instance_deadline_record_locked (
+          node, ctx->source_node_rid, ctx->operation_id, &expired, &watchdog);
+    }
+    if (watchdog)
+        zlink::request_timeout::cancel (watchdog);
+    finish_instance_records (&expired, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+}
+
+void remove_instance_activation_locked (
+  mesh_node_t *node_,
+  const std::string &key_,
+  std::list<std::unique_ptr<queued_record_t> > *pending_out_)
+{
+    std::map<std::string, instance_activation_state_t>::iterator activation =
+      node_->instance_activations.find (key_);
+    if (activation == node_->instance_activations.end ())
+        return;
+    pending_out_->splice (pending_out_->end (), activation->second.pending);
+    activation->second.pending_messages = 0;
+    activation->second.pending_bytes = 0;
+    std::map<std::string, spot_state_t>::iterator spot =
+      node_->spots.find (key_);
+    if (spot != node_->spots.end ()) {
+        spot->second.activation_state = ZLINK_SPOT_ACTIVATION_CLOSING;
+        spot->second.draining = true;
+        maybe_end_spot_locked (node_, key_);
+    }
+    node_->cv.notify_all ();
+}
+
+void on_instance_watchdog (void *userdata_)
+{
+    std::unique_ptr<instance_watchdog_ctx_t> ctx (
+      static_cast<instance_watchdog_ctx_t *> (userdata_));
+    if (!ctx.get ())
+        return;
+    mesh_node_pin_t node_pin (ctx->node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || node->lifecycle_generation != ctx->node_generation)
+        return;
+    std::list<std::unique_ptr<queued_record_t> > pending;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (ctx->token_serial);
+        if (token == node->instance_tokens.end ())
+            return;
+        if (token->second.phase == instance_token_redirecting) {
+            token->second.watchdog_expired = true;
+            return;
+        } else if (token->second.phase == instance_token_placement) {
+            if (token->second.pending_record)
+                pending.push_back (std::move (token->second.pending_record));
+        } else {
+            const std::string key (token->second.target.spot_rid.begin (),
+                                   token->second.target.spot_rid.end ());
+            remove_instance_activation_locked (node, key, &pending);
+        }
+        node->instance_tokens.erase (token);
+        node->cv.notify_all ();
+    }
+    finish_instance_records (&pending, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+}
+
+std::shared_ptr<zlink::request_timeout::task_t>
+schedule_instance_watchdog (mesh_node_t *node_,
+                            uint64_t serial_,
+                            uint32_t timeout_ms_)
+{
+    std::unique_ptr<instance_watchdog_ctx_t> ctx (
+      new (std::nothrow) instance_watchdog_ctx_t ());
+    if (!ctx.get ()) {
+        errno = ENOMEM;
+        return std::shared_ptr<zlink::request_timeout::task_t> ();
+    }
+    ctx->node = node_;
+    ctx->node_generation = node_->lifecycle_generation;
+    ctx->token_serial = serial_;
+    std::shared_ptr<zlink::request_timeout::task_t> task =
+      zlink::request_timeout::schedule (
+        timeout_ms_,
+        &on_instance_watchdog, ctx.get (),
+        &zlink::request_reply_runtime::destroy_timeout_callback_ctx<
+          instance_watchdog_ctx_t>);
+    if (task)
+        ctx.release ();
+    else
+        errno = ENOMEM;
+    return task;
+}
+
+uint32_t remaining_instance_timeout_ms (uint64_t deadline_ns_)
+{
+    const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
+    if (deadline_ns_ == 0 || now_ns >= deadline_ns_)
+        return 0;
+    const uint64_t remaining_ns = deadline_ns_ - now_ns;
+    const uint64_t remaining_ms =
+      (remaining_ns + static_cast<uint64_t> (999999))
+      / static_cast<uint64_t> (1000000);
+    return static_cast<uint32_t> (
+      std::min<uint64_t> (remaining_ms, UINT32_MAX));
+}
+
+zlink_request_result_t instance_failure_result (int error_)
+{
+    switch (error_) {
+        case ETIMEDOUT:
+            return ZLINK_REQUEST_TIMED_OUT;
+        case EAGAIN:
+        case ENOBUFS:
+            return ZLINK_REQUEST_BACKPRESSURED;
+        case EEXIST:
+        case ESTALE:
+            return ZLINK_REQUEST_CONFLICT;
+        case EBUSY:
+        case ESHUTDOWN:
+            return ZLINK_REQUEST_BUSY;
+        case ENOENT:
+            return ZLINK_REQUEST_NOT_FOUND;
+        default:
+            return ZLINK_REQUEST_INTERNAL_ERROR;
+    }
+}
+
+bool valid_instance_abort_result (zlink_request_result_t result_)
+{
+    return result_ != ZLINK_REQUEST_OK
+           && result_ >= ZLINK_REQUEST_TIMED_OUT
+           && result_ <= ZLINK_REQUEST_BACKPRESSURED;
+}
+}
+
+namespace zlink
+{
+namespace mesh
+{
+int arm_instance_record_deadline (
+  mesh_node_t *node_,
+  const rid_bytes_t &source_node_rid_,
+  const zlink_mesh_operation_id_t &operation_id_)
+{
+    if (!node_ || operation_id_.high == 0 || operation_id_.low == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    std::list<std::unique_ptr<queued_record_t> > terminal;
+    std::shared_ptr<zlink::request_timeout::task_t> activation_watchdog;
+    int terminal_errno = 0;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        queued_record_t *record = NULL;
+        uint64_t activation_token_serial = 0;
+        for (std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+               node_->instance_tokens.begin ();
+             it != node_->instance_tokens.end () && !record; ++it) {
+            if (it->second.phase == instance_token_placement
+                && it->second.pending_record
+                && same_instance_operation (*it->second.pending_record,
+                                            source_node_rid_, operation_id_))
+            {
+                record = it->second.pending_record.get ();
+                activation_token_serial = it->first;
+            }
+        }
+        for (std::map<std::string, instance_activation_state_t>::iterator group =
+               node_->instance_activations.begin ();
+             group != node_->instance_activations.end () && !record; ++group) {
+            for (std::list<std::unique_ptr<queued_record_t> >::iterator it =
+                   group->second.pending.begin ();
+                 it != group->second.pending.end (); ++it) {
+                if (same_instance_operation (**it, source_node_rid_,
+                                             operation_id_)) {
+                    record = it->get ();
+                    break;
+                }
+            }
+        }
+        //  An owner in Ready state admits directly to its application
+        //  mailbox. The source request timer owns completion from that point.
+        if (!record || record->deadline_ns == 0
+            || record->instance_deadline_task)
+            return 0;
+
+        const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
+        if (now_ns >= record->deadline_ns) {
+            (void) remove_instance_deadline_record_locked (
+              node_, source_node_rid_, operation_id_, &terminal,
+              &activation_watchdog);
+            terminal_errno = ETIMEDOUT;
+        } else {
+            const uint64_t remaining_ns = record->deadline_ns - now_ns;
+            uint64_t remaining_ms =
+              (remaining_ns + static_cast<uint64_t> (999999))
+              / static_cast<uint64_t> (1000000);
+            if (remaining_ms > UINT32_MAX)
+                remaining_ms = UINT32_MAX;
+            std::unique_ptr<instance_deadline_ctx_t> ctx (
+              new (std::nothrow) instance_deadline_ctx_t ());
+            if (ctx.get ()) {
+                ctx->node = node_;
+                ctx->node_generation = node_->lifecycle_generation;
+                ctx->activation_token_serial = activation_token_serial;
+                ctx->source_node_rid = source_node_rid_;
+                ctx->operation_id = operation_id_;
+                std::shared_ptr<zlink::request_timeout::task_t> task =
+                  zlink::request_timeout::schedule (
+                    static_cast<uint32_t> (remaining_ms),
+                    &on_instance_record_deadline, ctx.get (),
+                    &zlink::request_reply_runtime::destroy_timeout_callback_ctx<
+                      instance_deadline_ctx_t>);
+                if (task) {
+                    ctx.release ();
+                    record->instance_deadline_task = task;
+                }
+            }
+            if (!record->instance_deadline_task) {
+                (void) remove_instance_deadline_record_locked (
+                  node_, source_node_rid_, operation_id_, &terminal,
+                  &activation_watchdog);
+                terminal_errno = ENOMEM;
+            }
+        }
+    }
+    if (activation_watchdog)
+        zlink::request_timeout::cancel (activation_watchdog);
+    if (terminal_errno != 0)
+        finish_instance_records (
+          &terminal,
+          terminal_errno == ETIMEDOUT ? ZLINK_REQUEST_TIMED_OUT
+                                      : ZLINK_REQUEST_INTERNAL_ERROR,
+          terminal_errno);
+    return 0;
+}
+
+int admit_instance_record (mesh_node_t *node_,
+                           const instance_placement_value_t &target_,
+                           std::unique_ptr<queued_record_t> &record_)
+{
+    if (!node_ || !record_.get ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    const std::string key (target_.spot_rid.begin (), target_.spot_rid.end ());
+    {
+        uint64_t serial = 0;
+        uint64_t activation_deadline_ns = 0;
+        std::unique_ptr<queued_record_t> activation_record (
+          new (std::nothrow) queued_record_t ());
+        if (!activation_record.get ()) {
+            errno = ENOMEM;
+            return -1;
+        }
+        instance_token_state_t token;
+        zlink_instance_spot_activation_data_t data;
+        memset (&data, 0, sizeof (data));
+        data.spot_rid = rid_value (target_.spot_rid);
+        data.operation_kind = record_->has_reply_token
+                                ? ZLINK_INSTANCE_SPOT_OPERATION_REQUEST
+                                : ZLINK_INSTANCE_SPOT_OPERATION_SEND;
+        snprintf (data.instance_spot_type, sizeof (data.instance_spot_type),
+                  "%s", target_.instance_spot_type.c_str ());
+        snprintf (data.message_contract_id,
+                  sizeof (data.message_contract_id), "%s",
+                  target_.message_contract_id.c_str ());
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            if (node_->state == ZLINK_MESH_NODE_DRAINING
+                || node_->state == ZLINK_MESH_NODE_STOPPED) {
+                errno = ESHUTDOWN;
+                return -1;
+            }
+            if (node_->state == ZLINK_MESH_NODE_CREATED
+                || target_.node_rid != node_->routing_id
+                || target_.node_generation != node_->lifecycle_generation) {
+                errno = target_.node_generation != node_->lifecycle_generation
+                          ? ESTALE
+                          : EINVAL;
+                return -1;
+            }
+            const uint64_t message_limit = std::min (
+              node_->effective_instance_activation_message_budget (),
+              node_->effective_message_budget ());
+            const uint64_t byte_limit = std::min (
+              node_->effective_instance_activation_byte_budget (),
+              node_->effective_byte_budget ());
+            uint64_t provisional_messages = 0;
+            uint64_t provisional_bytes = 0;
+            for (std::unordered_map<uint64_t, instance_token_state_t>::const_iterator it =
+                   node_->instance_tokens.begin ();
+                 it != node_->instance_tokens.end (); ++it) {
+                if (it->second.phase != instance_token_placement
+                    || it->second.target.spot_rid != target_.spot_rid
+                    || it->second.target.instance_spot_type
+                         != target_.instance_spot_type
+                    || !it->second.pending_record)
+                    continue;
+                provisional_messages += 1;
+                provisional_bytes += it->second.pending_record->byte_size;
+            }
+            std::map<std::string, instance_activation_state_t>::const_iterator
+              active = node_->instance_activations.find (key);
+            if (active != node_->instance_activations.end ()
+                && active->second.state == ZLINK_SPOT_ACTIVATION_ACTIVATING
+                && active->second.instance_spot_type
+                     == target_.instance_spot_type) {
+                provisional_messages += active->second.pending_messages;
+                provisional_bytes += active->second.pending_bytes;
+            }
+            if (provisional_messages >= message_limit
+                || record_->byte_size > byte_limit
+                || provisional_bytes > byte_limit - record_->byte_size) {
+                errno = EAGAIN;
+                return -1;
+            }
+            serial = node_->next_instance_token_serial++;
+            if (serial == 0) {
+                errno = EOVERFLOW;
+                return -1;
+            }
+            token.serial = serial;
+            token.target = target_;
+            const uint32_t activation_timeout_ms =
+              node_->effective_instance_activation_timeout_ms ();
+            token.activation_deadline_ns =
+              zlink::request_timeout::deadline_after_ms (
+                activation_timeout_ms);
+            activation_deadline_ns = token.activation_deadline_ns;
+            if (record_->instance_admission_sequence == 0) {
+                record_->instance_admission_sequence =
+                  node_->next_instance_admission_sequence++;
+                if (record_->instance_admission_sequence == 0) {
+                    errno = EOVERFLOW;
+                    return -1;
+                }
+            }
+            token.pending_record = std::move (record_);
+            seal_instance_token (node_, serial, &data.token);
+            activation_record->kind =
+              ZLINK_MESH_RECORD_INSTANCE_SPOT_ACTIVATION;
+            activation_record->source_node_rid =
+              token.pending_record->source_node_rid;
+            activation_record->source_spot_rid =
+              token.pending_record->source_spot_rid;
+            activation_record->has_metadata =
+              token.pending_record->has_metadata;
+            activation_record->application_metadata =
+              token.pending_record->application_metadata;
+            activation_record->kind_data.assign (
+              reinterpret_cast<unsigned char *> (&data),
+              reinterpret_cast<unsigned char *> (&data) + sizeof (data));
+            activation_record->byte_size =
+              sizeof (data) + activation_record->application_metadata.size ();
+            try {
+                node_->instance_tokens[serial] = std::move (token);
+            }
+            catch (const std::bad_alloc &) {
+                record_ = std::move (token.pending_record);
+                errno = ENOMEM;
+                return -1;
+            }
+        }
+        if (admit_record (node_, node_owner (), domain_infrastructure,
+                          activation_record, false, 0)
+            != 0) {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+              node_->instance_tokens.find (serial);
+            if (it != node_->instance_tokens.end ()) {
+                record_ = std::move (it->second.pending_record);
+                node_->instance_tokens.erase (it);
+                node_->cv.notify_all ();
+            }
+            return -1;
+        }
+        const uint32_t activation_timeout_ms =
+          remaining_instance_timeout_ms (activation_deadline_ns);
+        if (activation_timeout_ms == 0) {
+            std::list<std::unique_ptr<queued_record_t> > pending;
+            {
+                std::lock_guard<std::mutex> lock (node_->mutex);
+                std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+                  node_->instance_tokens.find (serial);
+                if (it != node_->instance_tokens.end ()) {
+                    if (it->second.phase == instance_token_placement
+                        && it->second.pending_record)
+                        pending.push_back (
+                          std::move (it->second.pending_record));
+                    else if (it->second.phase
+                             == instance_token_authorized_leader) {
+                        const std::string key (
+                          it->second.target.spot_rid.begin (),
+                          it->second.target.spot_rid.end ());
+                        remove_instance_activation_locked (
+                          node_, key, &pending);
+                    }
+                    node_->instance_tokens.erase (it);
+                    node_->cv.notify_all ();
+                }
+            }
+            finish_instance_records (
+              &pending, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+            return 0;
+        }
+        std::shared_ptr<zlink::request_timeout::task_t> watchdog =
+          schedule_instance_watchdog (
+            node_, serial, activation_timeout_ms);
+        if (!watchdog) {
+            std::list<std::unique_ptr<queued_record_t> > pending;
+            {
+                std::lock_guard<std::mutex> lock (node_->mutex);
+                std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+                  node_->instance_tokens.find (serial);
+                if (it != node_->instance_tokens.end ()) {
+                    if (it->second.phase == instance_token_placement
+                        && it->second.pending_record)
+                        pending.push_back (std::move (it->second.pending_record));
+                    else if (it->second.phase
+                             == instance_token_authorized_leader) {
+                        const std::string key (
+                          it->second.target.spot_rid.begin (),
+                          it->second.target.spot_rid.end ());
+                        remove_instance_activation_locked (
+                          node_, key, &pending);
+                    }
+                    node_->instance_tokens.erase (it);
+                    node_->cv.notify_all ();
+                }
+            }
+            finish_instance_records (&pending, ZLINK_REQUEST_INTERNAL_ERROR,
+                                     ENOMEM);
+            return 0;
+        }
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+              node_->instance_tokens.find (serial);
+            if (it != node_->instance_tokens.end ()
+                && it->second.phase == instance_token_placement) {
+                it->second.watchdog = watchdog;
+                watchdog.reset ();
+            } else if (it != node_->instance_tokens.end ()
+                       && it->second.phase
+                            == instance_token_authorized_leader) {
+                const std::string key (it->second.target.spot_rid.begin (),
+                                       it->second.target.spot_rid.end ());
+                std::map<std::string, instance_activation_state_t>::iterator group =
+                  node_->instance_activations.find (key);
+                if (group != node_->instance_activations.end ()
+                    && group->second.leader_token_serial == serial
+                    && group->second.state
+                         == ZLINK_SPOT_ACTIVATION_ACTIVATING) {
+                    it->second.watchdog = watchdog;
+                    group->second.watchdog = watchdog;
+                    watchdog.reset ();
+                }
+            }
+        }
+        //  Shutdown, a fast consumer or redirect may have consumed or moved
+        //  the token before this task can be stored. Cancel that orphan now
+        //  instead of retaining its callback context until the deadline.
+        if (watchdog)
+            zlink::request_timeout::cancel (watchdog);
+        return 0;
+    }
+
+}
+
+int admit_instance_direct_record (
+  mesh_node_t *node_,
+  const rid_bytes_t &target_spot_rid_,
+  uint64_t target_spot_generation_,
+  std::unique_ptr<queued_record_t> &record_)
+{
+    if (!node_ || !record_.get () || target_spot_rid_.empty ()
+        || target_spot_generation_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    owner_id_t destination;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        const std::string key (target_spot_rid_.begin (),
+                               target_spot_rid_.end ());
+        std::map<std::string, spot_state_t>::iterator spot =
+          node_->spots.find (key);
+        if (spot == node_->spots.end ()) {
+            errno = ENOENT;
+            return -1;
+        }
+        if (spot->second.generation != target_spot_generation_) {
+            errno = ESTALE;
+            return -1;
+        }
+        std::map<std::string, instance_activation_state_t>::iterator activation =
+          node_->instance_activations.find (key);
+        const uint64_t now_ns = zlink::request_timeout::monotonic_now_ns ();
+        if (spot->second.kind != ZLINK_SPOT_KIND_INSTANCE
+            || activation == node_->instance_activations.end ()
+            || activation->second.spot_generation != spot->second.generation) {
+            errno = EEXIST;
+            return -1;
+        }
+        if (activation->second.state != ZLINK_SPOT_ACTIVATION_READY
+            || activation->second.owner_deadline_ns == 0
+            || now_ns >= activation->second.owner_deadline_ns) {
+            if (activation->second.state == ZLINK_SPOT_ACTIVATION_READY
+                && activation->second.owner_deadline_ns != 0
+                && now_ns >= activation->second.owner_deadline_ns) {
+                activation->second.state = ZLINK_SPOT_ACTIVATION_CLOSING;
+                spot->second.activation_state = ZLINK_SPOT_ACTIVATION_CLOSING;
+                spot->second.draining = true;
+            }
+            errno = EBUSY;
+            return -1;
+        }
+        destination = spot_owner (target_spot_rid_, spot->second.generation);
+    }
+    return admit_record (
+      node_, destination, domain_application, record_, false, 0);
+}
+
+void terminate_instance_activations (
+  mesh_node_t *node_,
+  zlink_request_result_t terminal_result_,
+  int failure_errno_)
+{
+    std::list<std::unique_ptr<queued_record_t> > pending;
+    while (true) {
+        std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+        std::unique_ptr<queued_record_t> record;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            if (node_->instance_tokens.empty ())
+                break;
+            std::unordered_map<uint64_t, instance_token_state_t>::iterator it =
+              node_->instance_tokens.begin ();
+            watchdog = it->second.watchdog;
+            if (it->second.phase == instance_token_placement)
+                record = std::move (it->second.pending_record);
+            node_->instance_tokens.erase (it);
+            node_->cv.notify_all ();
+        }
+        if (watchdog)
+            zlink::request_timeout::cancel (watchdog);
+        finish_instance_record (
+          std::move (record), terminal_result_, failure_errno_);
+    }
+
+    while (true) {
+        std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            for (std::map<std::string, instance_activation_state_t>::iterator it =
+                   node_->instance_activations.begin ();
+                 it != node_->instance_activations.end (); ++it) {
+                if (it->second.watchdog) {
+                    watchdog = it->second.watchdog;
+                    it->second.watchdog.reset ();
+                    break;
+                }
+            }
+        }
+        if (!watchdog)
+            break;
+        zlink::request_timeout::cancel (watchdog);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        for (std::map<std::string, instance_activation_state_t>::iterator it =
+               node_->instance_activations.begin ();
+             it != node_->instance_activations.end (); ++it) {
+            pending.splice (pending.end (), it->second.pending);
+            it->second.pending_messages = 0;
+            it->second.pending_bytes = 0;
+            it->second.state = ZLINK_SPOT_ACTIVATION_CLOSING;
+            it->second.owner_deadline_ns = 0;
+            std::map<std::string, spot_state_t>::iterator spot =
+              node_->spots.find (it->first);
+            if (spot != node_->spots.end ()) {
+                spot->second.activation_state =
+                  ZLINK_SPOT_ACTIVATION_CLOSING;
+                spot->second.draining = true;
+            }
+            std::map<owner_id_t, owner_state_t>::iterator owner_it =
+              node_->owners.begin ();
+            for (; owner_it != node_->owners.end (); ++owner_it) {
+                if (owner_it->first.kind == owner_spot
+                    && owner_it->first.generation
+                         == it->second.spot_generation
+                    && owner_it->first.key.size ()
+                         == it->second.spot_rid.size ()
+                    && memcmp (owner_it->first.key.data (),
+                               it->second.spot_rid.data (),
+                               it->second.spot_rid.size ()) == 0)
+                    break;
+            }
+            if (owner_it != node_->owners.end ()) {
+                mailbox_t &mailbox =
+                  owner_it->second.domains[domain_application];
+                pending.splice (pending.end (), mailbox.records);
+                mailbox.pending_messages = 0;
+                mailbox.pending_bytes = 0;
+                for (std::set<std::pair<owner_id_t, int> >::iterator ready =
+                       node_->ready.begin ();
+                     ready != node_->ready.end ();) {
+                    if (ready->second == static_cast<int> (domain_application)
+                        && ready->first == owner_it->first)
+                        ready = node_->ready.erase (ready);
+                    else
+                        ++ready;
+                }
+            }
+        }
+        node_->cv.notify_all ();
+    }
+
+    while (true) {
+        uint64_t reply_serial = 0;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            for (std::unordered_map<uint64_t, reply_route_t>::iterator it =
+                   node_->reply_routes.begin ();
+                 it != node_->reply_routes.end (); ++it) {
+                if (it->second.instance_request && !it->second.consumed
+                    && !it->second.force_terminal_pending) {
+                    reply_serial = it->first;
+                    break;
+                }
+            }
+        }
+        if (reply_serial == 0)
+            break;
+        try {
+            (void) force_reply_via_route (
+              node_, reply_serial, terminal_result_, failure_errno_);
+        }
+        catch (const std::bad_alloc &) {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            std::unordered_map<uint64_t, reply_route_t>::iterator route =
+              node_->reply_routes.find (reply_serial);
+            if (route != node_->reply_routes.end ()
+                && !route->second.consumed) {
+                route->second.in_flight = false;
+                route->second.force_terminal_pending = true;
+                route->second.force_terminal_result = terminal_result_;
+                route->second.force_terminal_errno = failure_errno_;
+            }
+        }
+    }
+    finish_instance_records (&pending, terminal_result_, failure_errno_);
+    while (true) {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        if (node_->instance_activations.empty ())
+            break;
+        const size_t before = node_->instance_activations.size ();
+        maybe_end_spot_locked (
+          node_, node_->instance_activations.begin ()->first);
+        if (node_->instance_activations.size () == before)
+            break;
+    }
+}
+}
+}
+
+namespace
+{
+zlink_submit_result_t instance_submit (
+  void *spot_,
+  const zlink_instance_spot_placement_t *target_,
+  const zlink_mesh_metadata_view_t *metadata_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_mesh_operation_id_t *operation_id_out_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_)
+{
+    spot_facade_t *facade = as_spot_facade (spot_);
+    if (!facade) {
+        errno = EFAULT;
+        return ZLINK_SUBMIT_INVALID_HANDLE;
+    }
+    if (check_submit_input (metadata_, parts_, part_count_) != 0)
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    instance_placement_value_t target;
+    try {
+        if (!copy_instance_placement (target_, &target))
+            return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    catch (const std::bad_alloc &) {
+        return submit_out_of_memory_result ();
+    }
+    mesh_node_t *node = facade->node;
+    const bool is_request = operation_id_out_ != NULL;
+    owner_id_t requester;
+    bool local_target = false;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        const std::string source_key (facade->spot_rid.begin (),
+                                      facade->spot_rid.end ());
+        std::map<std::string, spot_state_t>::iterator source =
+          node->spots.find (source_key);
+        if (source == node->spots.end ()
+            || source->second.generation != facade->generation
+            || source->second.kind != ZLINK_SPOT_KIND_ENTRY) {
+            errno = source == node->spots.end () ? ESTALE : EINVAL;
+            return ZLINK_SUBMIT_INVALID_ARGUMENT;
+        }
+        if (check_submit_state_locked (node) != 0)
+            return submit_errno_result ();
+        requester = spot_owner (facade->spot_rid, facade->generation);
+        local_target = target.node_rid == node->routing_id;
+        if (!local_target) {
+            bool admitted = false;
+            for (size_t i = 0; i < node->peers.size (); ++i) {
+                if (node->peers[i].state == ZLINK_MESH_PEER_ADMITTED
+                    && node->peers[i].rid == target.node_rid
+                    && node->peers[i].lifecycle_generation
+                         == target.node_generation) {
+                    admitted = true;
+                    break;
+                }
+            }
+            if (!admitted) {
+                errno = ENOTCONN;
+                return ZLINK_SUBMIT_NOT_CONNECTED;
+            }
+        }
+    }
+
+    std::unique_ptr<queued_record_t> record (
+      new (std::nothrow) queued_record_t ());
+    if (!record.get ())
+        return submit_out_of_memory_result ();
+    record->kind = is_request ? ZLINK_MESH_RECORD_SPOT_REQUEST
+                              : ZLINK_MESH_RECORD_SPOT_SEND;
+    record->source_node_rid = node->routing_id;
+    record->source_spot_rid = facade->spot_rid;
+    if (is_request && timeout_ms_ > 0)
+        record->deadline_ns =
+          zlink::request_timeout::deadline_after_ms (timeout_ms_);
+    try {
+        if (metadata_) {
+            record->has_metadata = true;
+            record->application_metadata.assign (
+              metadata_->data, metadata_->data + metadata_->size);
+            record->byte_size += metadata_->size;
+        }
+        if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
+            return errno == ENOMEM ? ZLINK_SUBMIT_OUT_OF_MEMORY
+                                   : ZLINK_SUBMIT_INTERNAL_ERROR;
+    }
+    catch (const std::bad_alloc &) {
+        return submit_out_of_memory_result ();
+    }
+
+    operation_submission_t submission (
+      node, is_request, ZLINK_MESH_OPERATION_SPOT_REQUEST, requester,
+      is_request ? timeout_ms_ : 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t operation_id = submission.operation_id ();
+    if (is_request && local_target) {
+        reply_route_t route;
+        route.kind = reply_route_t::kind_generic;
+        route.instance_request = true;
+        route.requester = requester;
+        route.operation_kind = ZLINK_MESH_OPERATION_SPOT_REQUEST;
+        uint64_t reply_serial = 0;
+        if (!submission.add_reply_route (route, &reply_serial))
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        record->operation_id = operation_id;
+        record->operation_kind = ZLINK_MESH_OPERATION_SPOT_REQUEST;
+        record->has_reply_token = true;
+        seal_reply_token (node, reply_serial, &record->reply_token);
+    }
+
+    if (!local_target) {
+        if (is_request
+            && !submission.set_instance_remote_route (
+              target.node_rid))
+            return errno == ENOMEM ? ZLINK_SUBMIT_OUT_OF_MEMORY
+                                   : ZLINK_SUBMIT_INTERNAL_ERROR;
+        const send_ready_interest_t interest =
+          make_spot_send_ready_interest (
+            requester, target.node_rid, target.spot_rid);
+        remote_route_flight_guard_t route_flight (node, is_request);
+        if (!route_flight.valid ())
+            return ZLINK_SUBMIT_INTERNAL_ERROR;
+        uint64_t expected_connection_id = 0;
+        if (!validate_remote_route_flight (
+              node, target.node_rid, target.node_generation,
+              &expected_connection_id))
+            return ZLINK_SUBMIT_NOT_CONNECTED;
+        uint64_t connection_id = 0;
+        const zlink_submit_result_t result = wire_submit_instance (
+          node, target, is_request, operation_id.low, timeout_ms_, facade->spot_rid,
+          metadata_, parts_, part_count_, flags_, &interest,
+          is_request ? &connection_id : NULL, expected_connection_id);
+        if (result != ZLINK_SUBMIT_OK)
+            return result;
+        if (is_request) {
+#ifdef ZLINK_BUILD_TESTS
+            g_remote_route_before_commit_paused.store (1,
+                                                       std::memory_order_release);
+            while (g_remote_route_before_commit_pause.load (
+              std::memory_order_acquire))
+                std::this_thread::yield ();
+            g_remote_route_before_commit_paused.store (0,
+                                                       std::memory_order_release);
+#endif
+            submission.commit_instance_remote_route (connection_id);
+            route_flight.release ();
+            *operation_id_out_ = operation_id;
+        }
+        return ZLINK_SUBMIT_OK;
+    }
+
+    if (admit_instance_record (node, target, record) != 0) {
+        const int reason = errno;
+        if (!is_request)
+            return ZLINK_SUBMIT_OK;
+        submission.commit ();
+        *operation_id_out_ = operation_id;
+        if (record.get () && record->has_reply_token) {
+            mesh_node_t *route_node = NULL;
+            uint64_t route_serial = 0;
+            std::vector<zlink_msg_t> empty;
+            if (unseal_reply_token (&record->reply_token, &route_node,
+                                    &route_serial)
+                  == 0)
+                (void) deliver_reply_via_route (
+                  route_node, route_serial, instance_failure_result (reason),
+                  reason, &empty);
+        }
+        return ZLINK_SUBMIT_OK;
+    }
+    if (is_request)
+        (void) arm_instance_record_deadline (
+          node, node->routing_id, operation_id);
+    if (is_request) {
+        submission.commit ();
+        *operation_id_out_ = operation_id;
+    }
+    (void) flags_;
+    return ZLINK_SUBMIT_OK;
+}
+}
+
+zlink_submit_result_t zlink_spot_send_to_instance_placement (
+  void *spot_,
+  const zlink_instance_spot_placement_t *target_,
+  const zlink_mesh_metadata_view_t *metadata_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_)
+try {
+    return instance_submit (spot_, target_, metadata_, parts_, part_count_, NULL,
+                            flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    return submit_out_of_memory_result ();
+}
+
+zlink_submit_result_t zlink_spot_request_to_instance_placement (
+  void *spot_,
+  const zlink_instance_spot_placement_t *target_,
+  const zlink_mesh_metadata_view_t *metadata_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_mesh_operation_id_t *operation_id_out_,
+  zlink_send_flags_t flags_,
+  uint32_t timeout_ms_)
+try {
+    if (!operation_id_out_) {
+        errno = EINVAL;
+        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    return instance_submit (spot_, target_, metadata_, parts_, part_count_,
+                            operation_id_out_, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    return submit_out_of_memory_result ();
+}
+
+zlink_config_result_t zlink_instance_spot_activation_claim_owner (
+  zlink_instance_spot_activation_token_t *token_,
+  const char *location_owner_id_,
+  size_t location_owner_id_size_,
+  zlink_instance_spot_claim_result_t *result_out_)
+try {
+    if (!result_out_) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    std::string owner_id;
+    if (!copy_instance_string (
+          location_owner_id_, location_owner_id_size_,
+          ZLINK_INSTANCE_SPOT_OWNER_ID_MAX, false, &owner_id))
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    mesh_node_t *token_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_instance_token (token_, &token_node, &serial) != 0)
+        return errno == EINVAL ? ZLINK_CONFIG_INVALID_ARGUMENT
+                               : ZLINK_CONFIG_INVALID_STATE;
+    mesh_node_pin_t node_pin (token_node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || token_->opaque[1] != node->lifecycle_generation) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+
+    zlink_instance_spot_claim_role_t role =
+      ZLINK_INSTANCE_SPOT_CLAIM_INVALID;
+    spot_facade_t *borrowed = NULL;
+    uint64_t generation = 0;
+    std::shared_ptr<zlink::request_timeout::task_t> canceled_watchdog;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        if (node->state == ZLINK_MESH_NODE_STOPPED) {
+            errno = ESHUTDOWN;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()
+            || token->second.phase != instance_token_placement) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        const std::string key (token->second.target.spot_rid.begin (),
+                               token->second.target.spot_rid.end ());
+        std::map<std::string, spot_state_t>::iterator existing =
+          node->spots.find (key);
+        if (existing != node->spots.end ()) {
+            std::map<std::string, instance_activation_state_t>::iterator activation =
+              node->instance_activations.find (key);
+            if (existing->second.kind != ZLINK_SPOT_KIND_INSTANCE
+                || activation == node->instance_activations.end ()
+                || activation->second.instance_spot_type
+                     != token->second.target.instance_spot_type
+                || activation->second.owner_id != owner_id
+                || activation->second.state != ZLINK_SPOT_ACTIVATION_ACTIVATING) {
+                errno = EEXIST;
+                return ZLINK_CONFIG_CONFLICT;
+            }
+            instance_activation_state_t &group = activation->second;
+            const uint64_t message_limit = std::min (
+              node->effective_instance_activation_message_budget (),
+              node->effective_message_budget ());
+            const uint64_t byte_limit = std::min (
+              node->effective_instance_activation_byte_budget (),
+              node->effective_byte_budget ());
+            const size_t bytes = token->second.pending_record
+                                   ? token->second.pending_record->byte_size
+                                   : 0;
+            if (group.pending_messages >= message_limit || bytes > byte_limit
+                || group.pending_bytes > byte_limit - bytes) {
+                errno = EBUSY;
+                return ZLINK_CONFIG_BUSY;
+            }
+            if (token->second.pending_record) {
+                insert_instance_pending_ordered (
+                  &group, token->second.pending_record);
+                group.pending_messages += 1;
+                group.pending_bytes += bytes;
+            }
+            borrowed = group.borrowed_facade;
+            generation = group.spot_generation;
+            canceled_watchdog = token->second.watchdog;
+            node->instance_tokens.erase (token);
+            node->cv.notify_all ();
+            role = ZLINK_INSTANCE_SPOT_CLAIM_FOLLOWER;
+        } else {
+            if (node->instance_activations.count (key) != 0) {
+                errno = EEXIST;
+                return ZLINK_CONFIG_CONFLICT;
+            }
+            spot_facade_t *new_borrowed =
+              new (std::nothrow) spot_facade_t ();
+            if (!new_borrowed) {
+                errno = ENOMEM;
+                return ZLINK_CONFIG_INTERNAL_ERROR;
+            }
+            spot_state_t spot;
+            spot.rid = token->second.target.spot_rid;
+            spot.generation = node->next_spot_generation++;
+            spot.kind = ZLINK_SPOT_KIND_INSTANCE;
+            spot.facade_count = 1;
+            spot.activation_state = ZLINK_SPOT_ACTIVATION_ACTIVATING;
+            spot.last_changed_ms = now_ms ();
+
+            owner_state_t owner;
+            owner.id = spot_owner (spot.rid, spot.generation);
+            owner.spot_rid = rid_value (spot.rid);
+
+            instance_activation_state_t group;
+            group.instance_spot_type =
+              token->second.target.instance_spot_type;
+            group.spot_rid = spot.rid;
+            group.spot_generation = spot.generation;
+            group.owner_id = owner_id;
+            group.state = ZLINK_SPOT_ACTIVATION_ACTIVATING;
+            group.leader_token_serial = serial;
+            group.borrowed_facade = new_borrowed;
+            group.watchdog = token->second.watchdog;
+            if (token->second.pending_record) {
+                group.pending_bytes = token->second.pending_record->byte_size;
+                group.pending_messages = 1;
+                group.pending.push_back (
+                  std::move (token->second.pending_record));
+            }
+            new_borrowed->node = node;
+            new_borrowed->spot_rid = spot.rid;
+            new_borrowed->generation = spot.generation;
+            new_borrowed->caller_owned = false;
+            try {
+                track_facade (new_borrowed, true);
+                const std::pair<std::map<std::string, spot_state_t>::iterator,
+                                bool> spot_inserted =
+                  node->spots.insert (std::make_pair (key, spot));
+                if (!spot_inserted.second)
+                    throw std::bad_alloc ();
+                owner_state_t &inserted_owner = node->owners[owner.id];
+                inserted_owner.id = owner.id;
+                inserted_owner.spot_rid = owner.spot_rid;
+                const std::pair<
+                  std::map<std::string, instance_activation_state_t>::iterator,
+                  bool> activation_inserted =
+                  node->instance_activations.insert (
+                    std::make_pair (key, std::move (group)));
+                if (!activation_inserted.second)
+                    throw std::bad_alloc ();
+            }
+            catch (const std::bad_alloc &) {
+                node->spots.erase (key);
+                node->owners.erase (owner.id);
+                node->instance_activations.erase (key);
+                track_facade (new_borrowed, false);
+                delete new_borrowed;
+                node->next_spot_generation -= 1;
+                errno = ENOMEM;
+                return ZLINK_CONFIG_INTERNAL_ERROR;
+            }
+            token->second.phase = instance_token_authorized_leader;
+            borrowed = new_borrowed;
+            generation = spot.generation;
+            role = ZLINK_INSTANCE_SPOT_CLAIM_LEADER;
+        }
+    }
+    if (canceled_watchdog)
+        zlink::request_timeout::cancel (canceled_watchdog);
+    zlink_instance_spot_claim_result_t result;
+    result.role = role;
+    result.leader_spot = role == ZLINK_INSTANCE_SPOT_CLAIM_LEADER
+                           ? borrowed
+                           : NULL;
+    result.leader_spot_generation =
+      role == ZLINK_INSTANCE_SPOT_CLAIM_LEADER ? generation : 0;
+    *result_out_ = result;
+    return ZLINK_CONFIG_OK;
+}
+catch (const std::bad_alloc &) {
+    errno = ENOMEM;
+    return ZLINK_CONFIG_INTERNAL_ERROR;
+}
+
+zlink_config_result_t zlink_instance_spot_activation_mark_ready (
+  zlink_instance_spot_activation_token_t *token_,
+  uint32_t owner_lease_valid_for_ms_)
+try {
+    if (owner_lease_valid_for_ms_ == 0) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    mesh_node_t *token_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_instance_token (token_, &token_node, &serial) != 0)
+        return errno == EINVAL ? ZLINK_CONFIG_INVALID_ARGUMENT
+                               : ZLINK_CONFIG_INVALID_STATE;
+    mesh_node_pin_t node_pin (token_node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || token_->opaque[1] != node->lifecycle_generation) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    owner_id_t ready_owner;
+    bool application_ready = false;
+    std::list<std::unique_ptr<queued_record_t> > expired;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t> >
+      admitted_deadlines;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()
+            || token->second.phase != instance_token_authorized_leader) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        const std::string key (token->second.target.spot_rid.begin (),
+                               token->second.target.spot_rid.end ());
+        std::map<std::string, instance_activation_state_t>::iterator activation =
+          node->instance_activations.find (key);
+        if (activation == node->instance_activations.end ()
+            || activation->second.leader_token_serial != serial
+            || activation->second.state != ZLINK_SPOT_ACTIVATION_ACTIVATING) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        instance_activation_state_t &group = activation->second;
+        const uint64_t now_ns =
+          zlink::request_timeout::monotonic_now_ns ();
+        for (std::list<std::unique_ptr<queued_record_t> >::iterator it =
+               group.pending.begin ();
+             it != group.pending.end ();) {
+            if ((*it)->deadline_ns == 0 || now_ns < (*it)->deadline_ns) {
+                ++it;
+                continue;
+            }
+            group.pending_messages -= 1;
+            group.pending_bytes -= (*it)->byte_size;
+            std::list<std::unique_ptr<queued_record_t> >::iterator current =
+              it++;
+            expired.splice (expired.end (), group.pending, current);
+        }
+        ready_owner = spot_owner (group.spot_rid, group.spot_generation);
+        std::map<owner_id_t, owner_state_t>::iterator owner =
+          node->owners.find (ready_owner);
+        if (owner == node->owners.end ()) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        mailbox_t &mailbox = owner->second.domains[domain_application];
+        for (std::list<std::unique_ptr<queued_record_t> >::iterator it =
+               group.pending.begin ();
+             it != group.pending.end (); ++it) {
+            if ((*it)->instance_deadline_task) {
+                admitted_deadlines.push_back (
+                  (*it)->instance_deadline_task);
+                (*it)->instance_deadline_task.reset ();
+            }
+        }
+        if (!group.pending.empty ()) {
+            const std::pair<owner_id_t, int> ready_key =
+              std::make_pair (ready_owner,
+                              static_cast<int> (domain_application));
+            try {
+                node->ready.insert (ready_key);
+            }
+            catch (const std::bad_alloc &) {
+                errno = ENOMEM;
+                return ZLINK_CONFIG_INTERNAL_ERROR;
+            }
+            application_ready = true;
+        }
+        mailbox.records.splice (mailbox.records.end (), group.pending);
+        mailbox.pending_messages += group.pending_messages;
+        mailbox.pending_bytes += group.pending_bytes;
+        group.pending_messages = 0;
+        group.pending_bytes = 0;
+        group.owner_deadline_ns =
+          zlink::request_timeout::deadline_after_ms (
+            owner_lease_valid_for_ms_);
+        group.state = ZLINK_SPOT_ACTIVATION_READY;
+        std::map<std::string, spot_state_t>::iterator spot =
+          node->spots.find (key);
+        if (spot != node->spots.end ()) {
+            spot->second.activation_state = ZLINK_SPOT_ACTIVATION_READY;
+            spot->second.last_changed_ms = now_ms ();
+        }
+        watchdog = group.watchdog;
+        group.watchdog.reset ();
+        node->instance_tokens.erase (token);
+        node->cv.notify_all ();
+    }
+    if (watchdog)
+        zlink::request_timeout::cancel (watchdog);
+    for (size_t i = 0; i < admitted_deadlines.size (); ++i)
+        zlink::request_timeout::cancel (admitted_deadlines[i]);
+    finish_instance_records (
+      &expired, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+    if (application_ready)
+        signal_ready (node, ready_owner, domain_application);
+    return ZLINK_CONFIG_OK;
+}
+catch (const std::bad_alloc &) {
+    errno = ENOMEM;
+    return ZLINK_CONFIG_INTERNAL_ERROR;
+}
+
+zlink_config_result_t zlink_instance_spot_activation_abort (
+  zlink_instance_spot_activation_token_t *token_,
+  zlink_request_result_t terminal_result_,
+  int32_t failure_errno_)
+try {
+    if (!valid_instance_abort_result (terminal_result_)
+        || failure_errno_ == 0) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    mesh_node_t *token_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_instance_token (token_, &token_node, &serial) != 0)
+        return errno == EINVAL ? ZLINK_CONFIG_INVALID_ARGUMENT
+                               : ZLINK_CONFIG_INVALID_STATE;
+    mesh_node_pin_t node_pin (token_node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || token_->opaque[1] != node->lifecycle_generation) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    std::list<std::unique_ptr<queued_record_t> > pending;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        watchdog = token->second.watchdog;
+        if (token->second.phase == instance_token_placement) {
+            if (token->second.pending_record)
+                pending.push_back (std::move (token->second.pending_record));
+        } else if (token->second.phase
+                   == instance_token_authorized_leader) {
+            const std::string key (token->second.target.spot_rid.begin (),
+                                   token->second.target.spot_rid.end ());
+            remove_instance_activation_locked (node, key, &pending);
+        } else {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        node->instance_tokens.erase (token);
+        node->cv.notify_all ();
+    }
+    if (watchdog)
+        zlink::request_timeout::cancel (watchdog);
+    finish_instance_records (&pending, terminal_result_, failure_errno_);
+    return ZLINK_CONFIG_OK;
+}
+catch (const std::bad_alloc &) {
+    errno = ENOMEM;
+    return ZLINK_CONFIG_INTERNAL_ERROR;
+}
+
+zlink_config_result_t zlink_instance_spot_renew_owner_admission (
+  void *spot_,
+  uint32_t owner_lease_valid_for_ms_)
+{
+    if (owner_lease_valid_for_ms_ == 0) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    spot_facade_t *facade = as_spot_facade (spot_);
+    if (!facade) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    mesh_node_pin_t node_pin (facade->node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    std::lock_guard<std::mutex> lock (node->mutex);
+    const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
+    std::map<std::string, instance_activation_state_t>::iterator activation =
+      node->instance_activations.find (key);
+    if (activation == node->instance_activations.end ()
+        || activation->second.spot_generation != facade->generation) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    if (activation->second.state != ZLINK_SPOT_ACTIVATION_READY) {
+        errno = activation->second.state == ZLINK_SPOT_ACTIVATION_CLOSING
+                  ? ESTALE
+                  : EBUSY;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    activation->second.owner_deadline_ns =
+      zlink::request_timeout::deadline_after_ms (owner_lease_valid_for_ms_);
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_config_result_t zlink_instance_spot_begin_close (void *spot_)
+{
+    spot_facade_t *facade = as_spot_facade (spot_);
+    if (!facade) {
+        errno = EFAULT;
+        return ZLINK_CONFIG_INVALID_HANDLE;
+    }
+    mesh_node_pin_t node_pin (facade->node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        const std::string key (facade->spot_rid.begin (),
+                               facade->spot_rid.end ());
+        std::map<std::string, instance_activation_state_t>::iterator activation =
+          node->instance_activations.find (key);
+        if (activation == node->instance_activations.end ()
+            || activation->second.spot_generation != facade->generation) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        if (activation->second.state == ZLINK_SPOT_ACTIVATION_CLOSING)
+            return ZLINK_CONFIG_OK;
+        activation->second.state = ZLINK_SPOT_ACTIVATION_CLOSING;
+        activation->second.owner_deadline_ns = 0;
+        watchdog = activation->second.watchdog;
+        activation->second.watchdog.reset ();
+        std::map<std::string, spot_state_t>::iterator current =
+          node->spots.find (key);
+        if (current != node->spots.end ()) {
+            current->second.activation_state =
+              ZLINK_SPOT_ACTIVATION_CLOSING;
+            current->second.draining = true;
+            current->second.last_changed_ms = now_ms ();
+        }
+        maybe_end_spot_locked (node, key);
+        node->cv.notify_all ();
+    }
+    if (watchdog)
+        zlink::request_timeout::cancel (watchdog);
+    return ZLINK_CONFIG_OK;
+}
+
+zlink_config_result_t zlink_instance_spot_activation_redirect (
+  zlink_instance_spot_activation_token_t *token_,
+  const zlink_routing_id_t *target_node_rid_,
+  const zlink_routing_id_t *target_spot_rid_,
+  uint64_t target_spot_generation_)
+try {
+    if (!target_node_rid_ || target_node_rid_->size == 0
+        || !target_spot_rid_ || target_spot_rid_->size == 0
+        || target_spot_generation_ == 0) {
+        errno = EINVAL;
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    const rid_bytes_t target_node_rid = rid_bytes (*target_node_rid_);
+    const rid_bytes_t target_spot_rid = rid_bytes (*target_spot_rid_);
+    instance_placement_value_t target;
+    mesh_node_t *token_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_instance_token (token_, &token_node, &serial) != 0)
+        return errno == EINVAL ? ZLINK_CONFIG_INVALID_ARGUMENT
+                               : ZLINK_CONFIG_INVALID_STATE;
+    mesh_node_pin_t node_pin (token_node);
+    mesh_node_t *node = node_pin.get ();
+    if (!node || token_->opaque[1] != node->lifecycle_generation) {
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    std::unique_ptr<queued_record_t> record;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    std::list<std::unique_ptr<queued_record_t> > timed_out;
+    rid_bytes_t request_source_node_rid;
+    zlink_mesh_operation_id_t request_operation_id;
+    memset (&request_operation_id, 0, sizeof (request_operation_id));
+    bool has_request_deadline = false;
+    bool remote_connected = true;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()
+            || token->second.phase != instance_token_placement) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        target = token->second.target;
+        target.node_rid = target_node_rid;
+        target.spot_rid = target_spot_rid;
+        if (target_node_rid == node->routing_id) {
+            target.node_generation = node->lifecycle_generation;
+        } else {
+            remote_connected = false;
+            for (size_t i = 0; i < node->peers.size (); ++i) {
+                if (node->peers[i].state == ZLINK_MESH_PEER_ADMITTED
+                    && node->peers[i].rid == target_node_rid) {
+                    target.node_generation =
+                      node->peers[i].lifecycle_generation;
+                    remote_connected = true;
+                    break;
+                }
+            }
+        }
+        watchdog = token->second.watchdog;
+        record = std::move (token->second.pending_record);
+        if (record && record->deadline_ns != 0) {
+            request_source_node_rid = record->source_node_rid;
+            request_operation_id = record->operation_id;
+            has_request_deadline = true;
+        }
+        token->second.phase = instance_token_redirecting;
+    }
+    //  Redirect owns the placement token's deadline decision. Cancel waits
+    //  for a concurrently firing watchdog; a watchdog that won first records
+    //  watchdog_expired on the redirecting token.
+    if (watchdog)
+        zlink::request_timeout::cancel (watchdog);
+    bool activation_expired = false;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        token->second.watchdog.reset ();
+        activation_expired = token->second.watchdog_expired
+                             || remaining_instance_timeout_ms (
+                                  token->second.activation_deadline_ns)
+                                  == 0;
+        if (activation_expired) {
+            if (record)
+                timed_out.push_back (std::move (record));
+            node->instance_tokens.erase (token);
+            node->cv.notify_all ();
+        }
+    }
+    if (activation_expired) {
+        finish_instance_records (
+          &timed_out, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+
+    zlink_submit_result_t redirect_result = ZLINK_SUBMIT_INTERNAL_ERROR;
+    if (target.node_rid == node->routing_id) {
+        redirect_result = admit_instance_direct_record (
+                            node, target.spot_rid,
+                            target_spot_generation_, record)
+                              == 0
+                            ? ZLINK_SUBMIT_OK
+                            : submit_errno_result ();
+    } else if (!remote_connected) {
+        errno = ENOTCONN;
+        redirect_result = ZLINK_SUBMIT_NOT_CONNECTED;
+    } else {
+        redirect_result = wire_redirect_instance (
+          node, target, target_spot_generation_, record);
+    }
+    const int redirect_errno =
+      redirect_result == ZLINK_SUBMIT_OK ? 0 : errno;
+    bool expired = false;
+    uint32_t rearm_timeout_ms = 0;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+          node->instance_tokens.find (serial);
+        if (token == node->instance_tokens.end ()) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        if (redirect_result == ZLINK_SUBMIT_OK) {
+            node->instance_tokens.erase (token);
+            node->cv.notify_all ();
+        } else {
+            token->second.pending_record = std::move (record);
+            const uint64_t now_ns =
+              zlink::request_timeout::monotonic_now_ns ();
+            expired = token->second.request_deadline_expired
+                      || (token->second.pending_record
+                          && token->second.pending_record->deadline_ns != 0
+                          && now_ns
+                               >= token->second.pending_record->deadline_ns)
+                      || now_ns >= token->second.activation_deadline_ns;
+            if (expired) {
+                if (token->second.pending_record)
+                    timed_out.push_back (
+                      std::move (token->second.pending_record));
+                node->instance_tokens.erase (token);
+                node->cv.notify_all ();
+            } else {
+                token->second.phase = instance_token_placement;
+                rearm_timeout_ms = remaining_instance_timeout_ms (
+                  token->second.activation_deadline_ns);
+            }
+        }
+    }
+    if (redirect_result == ZLINK_SUBMIT_OK) {
+        return ZLINK_CONFIG_OK;
+    }
+    if (expired) {
+        finish_instance_records (
+          &timed_out, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
+        errno = ESTALE;
+        return ZLINK_CONFIG_INVALID_STATE;
+    }
+    if (rearm_timeout_ms != 0) {
+        std::shared_ptr<zlink::request_timeout::task_t> rearmed =
+          schedule_instance_watchdog (
+            node, serial, rearm_timeout_ms);
+        if (!rearmed) {
+            std::list<std::unique_ptr<queued_record_t> > failed;
+            {
+                std::lock_guard<std::mutex> lock (node->mutex);
+                std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+                  node->instance_tokens.find (serial);
+                if (token != node->instance_tokens.end ()) {
+                    if (token->second.pending_record)
+                        failed.push_back (
+                          std::move (token->second.pending_record));
+                    node->instance_tokens.erase (token);
+                    node->cv.notify_all ();
+                }
+            }
+            finish_instance_records (
+              &failed, ZLINK_REQUEST_INTERNAL_ERROR, ENOMEM);
+            errno = ENOMEM;
+            return ZLINK_CONFIG_INTERNAL_ERROR;
+        }
+        if (rearmed) {
+            std::lock_guard<std::mutex> lock (node->mutex);
+            std::unordered_map<uint64_t, instance_token_state_t>::iterator token =
+              node->instance_tokens.find (serial);
+            if (token != node->instance_tokens.end ()
+                && token->second.phase == instance_token_placement) {
+                token->second.watchdog = rearmed;
+                rearmed.reset ();
+            }
+        }
+        if (rearmed)
+            zlink::request_timeout::cancel (rearmed);
+    }
+    if (has_request_deadline)
+        (void) arm_instance_record_deadline (
+          node, request_source_node_rid, request_operation_id);
+    errno = redirect_errno;
+    if (redirect_errno == EEXIST)
+        return ZLINK_CONFIG_CONFLICT;
+    if (redirect_errno == EINVAL)
+        return ZLINK_CONFIG_INVALID_ARGUMENT;
+    return ZLINK_CONFIG_INVALID_STATE;
+}
+catch (const std::bad_alloc &) {
+    errno = ENOMEM;
+    return ZLINK_CONFIG_INTERNAL_ERROR;
 }
 
 //  --- Logical Multicast ------------------------------------------------------------
@@ -1098,13 +2956,11 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
     } else {
         dropped_remote = snapshot_remote;
     }
-
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        if (node_->monitor) {
-            node_->monitor->counters.multicast_messages += 1;
-            node_->monitor->counters.multicast_dropped_targets += dropped_local + dropped_remote;
-        }
+        node_->monitor_counters.multicast_messages += 1;
+        node_->monitor_counters.multicast_dropped_targets +=
+          dropped_local + dropped_remote;
     }
 
     if (detail_out_) {
@@ -1120,9 +2976,6 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
 
     zlink_mesh_monitor_event_t event;
     memset (&event, 0, sizeof (event));
-    event.kind = (dropped_local > 0 || dropped_remote > 0)
-                   ? ZLINK_MESH_MONITOR_MULTICAST_DROPPED
-                   : ZLINK_MESH_MONITOR_MULTICAST_COMMITTED;
     event.snapshot_remote_target_count = snapshot_remote;
     event.admitted_remote_target_count = admitted_remote;
     event.dropped_remote_target_count = dropped_remote;
@@ -1131,7 +2984,31 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
     event.admitted_local_spot_count = admitted_local;
     event.dropped_local_spot_count = dropped_local;
     snprintf (event.channel_name, sizeof (event.channel_name), "%s", channel.c_str ());
-    emit_monitor_event (node_, event);
+
+    const bool remote_backpressured =
+      aggregate_rc == ZLINK_SUBMIT_BACKPRESSURED && dropped_remote > 0;
+    if (remote_backpressured) {
+        event.kind = ZLINK_MESH_MONITOR_BACKPRESSURED;
+        event.owner_kind = source_spot_rid_ ? ZLINK_MESH_OWNER_SPOT
+                                            : ZLINK_MESH_OWNER_NODE;
+        if (source_spot_rid_)
+            event.spot_rid = rid_value (*source_spot_rid_);
+        event.result_code = ZLINK_SUBMIT_BACKPRESSURED;
+        event.failure_errno = aggregate_errno;
+        emit_monitor_event (node_, event);
+    }
+
+    if (dropped_local > 0
+        || (dropped_remote > 0 && !remote_backpressured)) {
+        event.kind = ZLINK_MESH_MONITOR_MULTICAST_DROPPED;
+        event.result_code = aggregate_rc;
+        event.failure_errno = aggregate_errno;
+        emit_monitor_event (node_, event);
+    } else if (!remote_backpressured) {
+        event.kind = ZLINK_MESH_MONITOR_MULTICAST_COMMITTED;
+        event.result_code = aggregate_rc;
+        emit_monitor_event (node_, event);
+    }
     if (aggregate_rc != ZLINK_SUBMIT_OK)
         errno = aggregate_errno;
     return aggregate_rc;

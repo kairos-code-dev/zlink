@@ -9,6 +9,9 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleLogging
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
+import systems.zlink.samples.kotlin.tictactoe.server.api.handlers.AuthenticatePlayerHandler
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerReq
+import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
 
 object ApiServer {
     fun configure(settings: SampleSettings): ZLinkFrameworkConfigurer =
@@ -21,10 +24,13 @@ object ApiServer {
                 traceLogFile(SampleLogging.flowLogPath(settings, "api-${settings.apiHttpPort}"))
                 traceLabel("api-${settings.apiHttpPort}")
             }
-            options.addHandlersFromPackageOf(ApiServer::class.java)
-            options.addClientServerChannel(SampleNames.ApiChannel)
+            val apiChannel = options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableServer(settings.apiChannelEndpoint)
-                .addHandlerGroup("api")
+            apiChannel.addRequestHandler(
+                AuthenticatePlayerHandler::class.java,
+                AuthenticatePlayerReq::class.java,
+                AuthenticatePlayerRes::class.java,
+            )
             settings.playChannelEndpoints.forEachIndexed { index, endpoint ->
                 options.addClientServerChannel(SampleNames.playChannel(index))
                     .enableClient(endpoint)

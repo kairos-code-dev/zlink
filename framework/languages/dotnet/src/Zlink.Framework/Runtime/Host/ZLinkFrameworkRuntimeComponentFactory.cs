@@ -25,16 +25,15 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         Func<IZLinkBackendSpotNode?> getActorSpotNode)
     {
         var channels = new ZLinkChannelRuntimeManager(
-            services,
             backendAdapterFactory,
             registration,
             new ZLinkChannelReceiveLoop(
-                new ZLinkChannelPacketDispatcher(
+                new ZLinkFanoutPacketDispatcher(
                     handlerRegistry,
                     dispatcher,
                     registration,
                     runtime,
-                    services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkChannelPacketDispatcher>())));
+                    services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkFanoutPacketDispatcher>())));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(
             services,

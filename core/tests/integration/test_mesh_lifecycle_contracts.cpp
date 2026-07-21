@@ -565,6 +565,8 @@ void test_timer_destroy_overlapping_fire_completes ()
 //  Test-only hooks (ZLINK_BUILD_TESTS builds): mesh submit allocation fault
 //  and the shutdown pin/lock pause for the reverse-order lifecycle race.
 extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
+extern "C" void
+zlink_test_set_mesh_register_operation_alloc_fault (int enabled_);
 extern "C" void zlink_test_set_shutdown_pause_after_pin (int ms_);
 extern "C" void zlink_test_mesh_request_bookkeeping (void *node_,
                                                      size_t *operations_out_,
@@ -729,6 +731,57 @@ void test_submit_alloc_failure_maps_to_out_of_memory ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+//  A failed or connecting peer intent makes the aggregate node state
+//  PARTIAL_READY, but it does not invalidate the local channel membership.
+//  Local work must remain selectable while that unrelated peer recovers.
+void test_partial_ready_node_keeps_local_channel_selectable ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "partial-local-mesh", "jobs");
+
+    zlink_mesh_peer_connection_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.struct_size = sizeof (options);
+    options.version = 1;
+    options.endpoint = "tcp://127.0.0.1:47629";
+    options.endpoint_size = strlen (options.endpoint);
+    uint64_t intent_id = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_OK,
+      zlink_mesh_node_connect_peer (node, &options, &intent_id));
+
+    zlink_mesh_node_status_t status;
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_mesh_node_status (node, &status));
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_NODE_PARTIAL_READY, status.state);
+
+    zlink_msg_t part;
+    make_payload (&part, "local-job");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_send_to_channel (
+        node, "jobs", NULL, &part, 1, ZLINK_SEND_FLAGS_NONE));
+    zlink_msg_close (&part);
+
+    zlink_mesh_claim_t claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION, &claim);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONNECT_OK,
+      zlink_mesh_node_remove_peer_connection (node, intent_id));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 //  Destroying the node while a shutdown is still draining is the same-handle
 //  lifecycle re-entry the contract ends with EDEADLK (§11): the node
 //  survives, the parked shutdown completes once the claim releases, and only
@@ -884,16 +937,18 @@ void test_stream_session_binding_atomicity_and_destroy_race ()
     const uint64_t atomic_generation =
       atomic_bindings[0].binding_generation;
 
-    //  Completion admission fails before unbind commits, so the binding
+    //  Operation registration fails before unbind commits, so the binding
     //  remains queryable and the same operation can be retried cleanly.
-    zlink_test_set_mesh_alloc_fault (2);
+    //  Terminal mailbox admission now uses the preallocated reservation and
+    //  has no later allocation point.
+    zlink_test_set_mesh_register_operation_alloc_fault (1);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OUT_OF_MEMORY,
       zlink_stream_session_unbind_actor (
         service, &session_rid, &atomic_actor, atomic_generation, &atomic_op,
         200));
     TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
-    zlink_test_set_mesh_alloc_fault (0);
+    zlink_test_set_mesh_register_operation_alloc_fault (0);
     atomic_count = 4;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_OK,
@@ -908,15 +963,15 @@ void test_stream_session_binding_atomicity_and_destroy_race ()
         service, &session_rid, &atomic_actor, atomic_generation, &atomic_op,
         200));
 
-    //  Bind rollback is also allocation-free after a completion-admission
-    //  failure: no binding is exposed until the retry succeeds.
-    zlink_test_set_mesh_alloc_fault (2);
+    //  Bind registration failure does not expose a binding before retry.
+    //  Completion admission itself uses the preallocated reservation.
+    zlink_test_set_mesh_register_operation_alloc_fault (1);
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OUT_OF_MEMORY,
       zlink_stream_session_bind_actor (
         service, &session_rid, &atomic_actor, &atomic_op, 200));
     TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
-    zlink_test_set_mesh_alloc_fault (0);
+    zlink_test_set_mesh_register_operation_alloc_fault (0);
     atomic_count = 4;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_OK,
@@ -1051,6 +1106,7 @@ int main ()
     RUN_TEST (test_destroy_waits_for_pinned_shutdown);
     RUN_TEST (test_destroy_waits_for_concurrent_submits);
     RUN_TEST (test_submit_alloc_failure_maps_to_out_of_memory);
+    RUN_TEST (test_partial_ready_node_keeps_local_channel_selectable);
     RUN_TEST (test_stream_session_binding_atomicity_and_destroy_race);
     const int rc = UNITY_END ();
     fflush (NULL);

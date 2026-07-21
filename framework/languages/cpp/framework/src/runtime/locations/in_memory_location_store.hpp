@@ -82,17 +82,18 @@ class in_memory_location_store_t final : public location_store_t,
     task_t<location_write_result_t> update_actor (actor_location_t actor,
                                                   location_write_intent_t intent) override
     {
+        const auto mesh_name = actor.mesh_name;
         const auto key = location_key_codec_t::encode_actor_key (
-          actor_location_key_t{actor.actor_id});
+          actor_location_key_t{actor.mesh_name, actor.actor_id});
         return completed (
-          write (_actors, key, std::move (actor), intent, location_kind_t::actor, std::nullopt));
+          write_actor (key, std::move (actor), intent, mesh_name));
     }
 
     task_t<location_write_result_t> remove_actor (actor_location_key_t key,
                                                   location_owner_token_t owner) override
     {
-        return completed (remove (_actors, location_key_codec_t::encode_actor_key (key),
-                                  std::move (owner), location_kind_t::actor, std::nullopt));
+        return completed (remove_actor_row (location_key_codec_t::encode_actor_key (key),
+                                            std::move (owner), key.mesh_name));
     }
 
     task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key) override
@@ -192,7 +193,9 @@ class in_memory_location_store_t final : public location_store_t,
           [] (const spot_location_t &row) { return std::optional<std::string> (row.mesh_name); });
         removed += remove_by_owner_locked (
           _actors, owner_id, location_kind_t::actor,
-          [] (const actor_location_t &) { return std::optional<std::string>{}; });
+          [] (const actor_location_t &row) {
+              return std::optional<std::string>{row.mesh_name};
+          });
         removed += remove_by_owner_locked (
           _routes, owner_id, location_kind_t::route,
           [] (const route_location_t &) { return std::optional<std::string>{}; });
@@ -247,6 +250,54 @@ class in_memory_location_store_t final : public location_store_t,
         table.rows[key] = std::move (row);
         bump (kind, std::move (mesh_name));
         return location_write_result_t::stored (next_generation, now);
+    }
+
+    location_write_result_t write_actor (const std::string &key,
+                                          actor_location_t row,
+                                          location_write_intent_t intent,
+                                          const std::string &mesh_name)
+    {
+        std::lock_guard lock (_gate);
+        const auto now = clock_t::now ();
+        const auto found = _actors.rows.find (key);
+        const auto exists = found != _actors.rows.end ();
+        if (intent == location_write_intent_t::new_claim && exists
+            && owner_is_live (found->second.owner_id, now)) {
+            return {location_write_status_t::rejected_conflict, 0, {}};
+        }
+        if (intent == location_write_intent_t::renew) {
+            if (!exists || found->second.owner_id != row.owner_id) {
+                return {location_write_status_t::ignored_stale, 0, {}};
+            }
+            row.updated_at = now;
+            _actors.rows[key] = std::move (row);
+            bump (location_kind_t::actor, mesh_name);
+            return location_write_result_t::stored (_actors.generations[key], now);
+        }
+
+        const auto next_generation = _actors.generations[key] + 1;
+        _actors.generations[key] = next_generation;
+        row.updated_at = now;
+        _actors.rows[key] = std::move (row);
+        bump (location_kind_t::actor, mesh_name);
+        return location_write_result_t::stored (next_generation, now);
+    }
+
+    location_write_result_t remove_actor_row (const std::string &key,
+                                               const location_owner_token_t &owner,
+                                               const std::string &mesh_name)
+    {
+        std::lock_guard lock (_gate);
+        const auto found = _actors.rows.find (key);
+        const auto generation = _actors.generations.find (key);
+        if (found == _actors.rows.end () || generation == _actors.generations.end ()
+            || found->second.owner_id != owner.owner_id
+            || generation->second != owner.generation) {
+            return {location_write_status_t::ignored_stale, 0, {}};
+        }
+        _actors.rows.erase (found);
+        bump (location_kind_t::actor, mesh_name);
+        return location_write_result_t::stored (owner.generation, clock_t::now ());
     }
 
     template <typename T>
@@ -362,10 +413,11 @@ class in_memory_location_store_t final : public location_store_t,
 
     static bool matches (const actor_location_t &row, const actor_location_filter_t &filter)
     {
-        return (!filter.actor_type || (row.actor_type && *row.actor_type == *filter.actor_type))
-               && (!filter.node_rid || row.node_rid == *filter.node_rid)
-               && (!filter.spot_rid || (row.spot_rid && *row.spot_rid == *filter.spot_rid))
-               && (!filter.location_kind || row.location_kind == *filter.location_kind);
+        return (!filter.mesh_name || row.mesh_name == *filter.mesh_name)
+               && (!filter.actor_type || row.actor_type == *filter.actor_type)
+               && (!filter.owner_node_rid || row.owner_node_rid == *filter.owner_node_rid)
+               && (!filter.spot_rid || row.spot_rid == *filter.spot_rid)
+               && (!filter.spot_kind || row.spot_kind == *filter.spot_kind);
     }
 
     static bool matches (const route_location_t &row, const route_location_filter_t &filter)

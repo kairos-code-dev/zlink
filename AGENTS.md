@@ -5,6 +5,24 @@
 
 ---
 
+## Chat Output Rules
+
+사용자에게 보내는 진행 상황, 질문, 판단 근거와 최종 보고는
+[`doc/principal/documentation/documentation-principles.ko.md`](./doc/principal/documentation/documentation-principles.ko.md)를
+따른다. 이 문서를 채팅에 쓰는 한국어 기술 설명의 단일 기준으로 사용한다.
+
+- 독자가 바로 판단하고 다음 행동을 정할 수 있도록 결과와 현재 조건을 먼저 설명한다.
+- 검증한 사실, 남은 조건과 다음 작업을 구분하고 관련 파일·test·수치를 근거로 제시한다.
+- 서버 개발자가 일상적으로 쓰는 영어 전문 용어와 코드 식별자는 그대로 쓴다. 처음 나오는 개념은
+  하는 일을 먼저 설명한 뒤 이름을 붙인다.
+- 명사를 이어 붙인 문장, 구어체, 의인화, 작성 태도에 대한 자평을 피한다. 동작과 원인이 드러나는
+  표준 서술체로 쓴다.
+- 진행 이력을 길게 나열하지 않는다. 현재 판단에 필요한 변화만 설명하고, 자세한 이력은 ledger나
+  작업 log의 정확한 위치를 제시한다.
+- 출력에 표나 목록을 사용하면 비교나 판단이 쉬워질 때만 사용한다. 짧은 사실은 산문으로 설명한다.
+
+---
+
 ## Documentation Directory Purpose
 
 `doc/` 아래 각 디렉토리는 독자와 목적이 다르다.
@@ -160,7 +178,17 @@ RouteMesh 10.0.0 실행 상태의 단일 기준은
 자료이지 별도 진행표가 아니다. 작업 지시는 ledger 경로와 담당 stage 또는 ID 범위만으로 구성할 수
 있어야 하며, 다른 plan의 checklist를 프롬프트에 다시 복사하지 않는다.
 
-이 framework 및 공개 전 RouteMesh 10.0.0 예외 밖의 core, bindings와 일반 `doc/spec/` 작업은 아래 draft 규칙을
+RouteMesh 11.0.0의 Core service runtime 이관은 major version의 책임 경계를 다시 정하므로 Core에도
+target-first 예외를 적용한다. `core/doc/spec/core/`의 정식 spec에 Core 11 raw-only 목표 계약을 먼저 기록하고,
+public header·구현과의 차이는
+`framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다. Core 정식 spec에는 이전
+service C ABI, 제거 이력, 진행 상태와 대안을 남기지 않는다. Service 의미는 Framework 공통 정식 spec과
+다섯 언어 exact interface가 소유하며, Framework 전용 public·private Core C ABI를 새로 만들지 않는다.
+실제 구현이 확정되기 전의 internals는 기존 구조를 목표 구조로 오인하게 설명하지 않으며, 구현 완료 뒤
+Core 11에 남는 raw runtime 구조만 기록한다.
+
+이 framework, 공개 전 RouteMesh 10.0.0과 RouteMesh 11.0.0 Core 이관 예외 밖의 core, bindings와 일반
+`doc/spec/` 작업은 아래 draft 규칙을
 계속 따른다.
 
 - 아직 구현되지 않은 API 계약이나 동작은 기존 정식 spec 문서에 바로 넣지 않는다.

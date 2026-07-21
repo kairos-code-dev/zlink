@@ -49,27 +49,19 @@ public static class SupportServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
-            var supportMesh = options.AddRouteMesh(SampleNames.SupportChannel)
-                .Listen(topology.SupportChannelEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.MeshEndpoint)
                 // Discovery clients dial this server through its descriptor
                 // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(RoutingId.From("2101"));
-            supportMesh.ChannelName(SampleNames.SupportChannel)
-                .AddRequestHandler<AllocateConversationHandler>()
-                .AddRequestHandler<EnsureSupportUserActorHandler>()
-                .AddRequestHandler<EnsureAgentConversationHandler>();
-            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From("2102"));
-            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            var mesh5 = options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
-                .Listen(topology.SupportEntrySpotRouterEndpoint)
-                .SetRoutingId(topology.SupportEntryRid)
+                .SetRoutingId(topology.MeshRoutingId)
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
                 .AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>(SampleNames.SupportActorType)
                 .AddSpotFactory<ConversationSpot>();
-            mesh5.ChannelName(SampleNames.SupportSpotDiscovery);
+            mesh.ChannelName(SampleNames.SupportChannel)
+                .AddHandlerGroup("support");
+            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.MeshName);
         });
 
         return builder.Build();

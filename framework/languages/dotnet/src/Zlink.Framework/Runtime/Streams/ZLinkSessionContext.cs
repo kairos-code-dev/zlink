@@ -7,6 +7,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     private readonly Func<ValueTask> _closeAsync;
     private readonly Func<CancellationToken, ValueTask> _closeByProxyAsync;
     private readonly IZLinkStream _stream;
+    private readonly ZLinkAsyncSubmitter? _sendSubmitter;
     private ZLinkSessionDispatchContext? _currentDispatch;
     private ZLinkSessionStreamTransport? _transport;
 
@@ -15,14 +16,17 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         IZLinkStream stream,
         IZLinkSessionHandlerRegistry handlers,
         Func<ValueTask> closeAsync,
-        Func<CancellationToken, ValueTask> closeByProxyAsync)
+        Func<CancellationToken, ValueTask> closeByProxyAsync,
+        string? actorDispatchMeshName = null,
+        ZLinkAsyncSubmitter? sendSubmitter = null)
     {
         Runtime = runtime;
         _stream = stream;
         Handlers = handlers;
         _closeAsync = closeAsync;
         _closeByProxyAsync = closeByProxyAsync;
-        ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream);
+        _sendSubmitter = sendSubmitter;
+        ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream, actorDispatchMeshName);
         _client = new ZLinkSessionClientContext(this);
         _actorSurface = new ZLinkSessionActorsContext(this, ActorCoordinator);
     }
@@ -38,6 +42,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal IZlinkStreamCompressionCodec? CompressionCodec => Runtime.Registration.StreamCompressionCodec;
 
     internal ZlinkStreamHeader? CurrentDispatchHeader => _currentDispatch?.Header;
+    internal ZLinkSessionDispatchContext? CurrentDispatchContext => _currentDispatch;
 
     public string SessionId => _stream.SessionId;
 
@@ -63,7 +68,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         return _closeByProxyAsync(cancellationToken);
     }
 
-    internal async ValueTask RelayActorRefAsync(
+    internal async ValueTask<ZLinkSubmitResult> RelayActorRefAsync(
         ZLinkSessionActor actor,
         Message payload,
         CancellationToken cancellationToken)
@@ -74,13 +79,30 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         var header = dispatch.Header
                      ?? throw new InvalidOperationException("Session actor relay requires runtime dispatch state.");
 
-        await ActorCoordinator.RelayToActorAsync(
-                actor,
-                header,
-                payload,
-                ReplyActorRawAsync,
-                cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await ActorCoordinator.RelayToActorAsync(
+                    actor,
+                    header,
+                    payload,
+                    ReplyActorRawAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
+        {
+            return failed;
+        }
+        finally
+        {
+            payload.Dispose();
+        }
     }
 
     internal async ValueTask NotifyActorRefDisconnectedAsync(
@@ -111,6 +133,29 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
     internal bool Write(Message payload)
     {
         return Transport.Write(payload);
+    }
+
+    internal ValueTask<ZLinkSubmitResult> SubmitAsync(
+        Message payload,
+        CancellationToken cancellationToken)
+    {
+        if (_sendSubmitter is null)
+        {
+            try
+            {
+                return ValueTask.FromResult(new ZLinkSubmitResult(
+                    Write(payload) ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured));
+            }
+            finally
+            {
+                payload.Dispose();
+            }
+        }
+
+        return _sendSubmitter.SubmitAsync(
+            new[] { payload },
+            pending => Write(pending[0]),
+            cancellationToken);
     }
 
     internal void TraceWritten(ZlinkStreamHeader header)

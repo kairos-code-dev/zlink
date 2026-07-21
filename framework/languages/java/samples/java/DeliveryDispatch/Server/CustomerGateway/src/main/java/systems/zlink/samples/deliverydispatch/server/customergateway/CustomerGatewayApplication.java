@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -37,16 +37,14 @@ public final class CustomerGatewayApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(topology.logDirectory() + "/flow-customer-gateway.log")
                 .traceLabel("customer-gateway");
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
-            node.enableRouter(topology.customerSpotRouterEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
+            node.listen(topology.customerSpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(topology.customerSpotNodeRid()));
-            node.configureEntrySpot()
-                .setRoutingId(RoutingId.from(topology.customerSpotNodeRid()));
-            node.enablePubSub(topology.customerSpotEndpoint());
             node.addEntrySpot(CustomerEntrySpot.class);
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(topology.customerStreamEndpoint())
+                .enableActorDispatch(SampleNames.CustomerSpotDiscovery)
                 .registerSession(CustomerSession.class);
         };
     }

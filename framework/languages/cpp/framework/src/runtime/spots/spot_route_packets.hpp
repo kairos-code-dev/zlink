@@ -60,6 +60,13 @@ struct spot_actor_commit_route_request_t
     std::string bound_session_rid;
     std::vector<std::uint8_t> transfer_state;
     std::vector<spot_actor_handoff_packet_t> handoff_backlog;
+    bool core_transfer = false;
+    std::uint64_t core_transfer_id_high = 0;
+    std::uint64_t core_transfer_id_low = 0;
+    std::uint64_t core_membership_epoch = 0;
+    std::uint64_t core_final_sequence = 0;
+    std::uint64_t core_reserve_message_count = 0;
+    std::uint64_t core_reserve_byte_count = 0;
     bool prepare = false;
     bool finalize = false;
 };

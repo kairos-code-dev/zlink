@@ -15,7 +15,7 @@ framework 프로세스가 남긴 증거만 읽으며, 런타임 증거를 임의
 | OBS-B4 | reader 미등록 traffic의 무보관과 messaging 정합 | PASS |
 | OBS-C1 | readiness, typed draining row, 기존 연결, lease 갱신 | PASS |
 | OBS-C2 | takeover, bound push, pending request, handed-off 계기 | PASS |
-| OBS-C3 | 두 Spot drain 정책과 replay 재구성 | PASS |
+| OBS-C3 | 정상 request 뒤 Spot 유지, drain admission seal, accepted turn·actor·STREAM barrier 뒤 local Spot close·row 제거, stale handle의 숨은 원격 생성 금지와 명시적 local `GetOrCreate` 뒤 새 generation | 10.0.0 전환 대상 — 현재 runner와 verifier는 제거 대상인 기존 분기 시나리오를 실행하므로 고정 drain 회귀를 검증하지 않음 |
 | OBS-C4 | force stopping, session-closing, server_drain, forced 계기 | PASS |
 | OBS-C5 | serving target 롤아웃과 zero-target deadline 결과 | PASS |
 

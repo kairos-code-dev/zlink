@@ -43,7 +43,7 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
         spotServicePacket(StateMsg, { marker: `sm-c3-send-${request.marker}` }))
       .submit();
     await spot.context.outbound
-      .publish(SpotServiceNames.spotEventTopic,
+      .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic,
         spotServicePacket(SpotMsg, { marker: `sm-c3-publish-${request.marker}` }))
       .submit();
     this.evidence.add(

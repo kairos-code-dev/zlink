@@ -56,31 +56,35 @@ inline void configure_play_host (zlink::framework::app_t &app,
         options.add_client_server_channel (yd::delay_channel)
           .enable_client (play_options.delay_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
-        options.add_route_mesh (yd::control_channel)
-          .enable_server (play_options.control_endpoint)
-          .enable_client ()
+        auto control = options.add_route_mesh (yd::control_channel);
+        control.listen (play_options.control_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
-          .add_request_handler<bind_await_actors_handler_t, yd::bind_await_actors_req_t,
-                               yd::bind_await_actors_res_t> (
-            yd::bind_await_actors_req_t::packet_name, &bind_await_actors_handler_t::handle)
-          .add_request_handler<ensure_spot_handler_t, yd::ensure_spot_req_t,
-                               yd::ensure_spot_res_t> (
-            yd::ensure_spot_req_t::packet_name, &ensure_spot_handler_t::handle)
-          .add_request_handler<evidence_handler_t, yd::await_evidence_req_t,
-                               yd::await_evidence_res_t> (
-            yd::await_evidence_req_t::packet_name, &evidence_handler_t::handle)
-          .add_request_handler<evidence_wait_handler_t, yd::await_evidence_wait_req_t,
-                               yd::await_evidence_res_t> (
-            yd::await_evidence_wait_req_t::packet_name, &evidence_wait_handler_t::handle);
-        options.add_route_mesh (yd::spot_route_channel)
-          .enable_server (play_options.spot_route_endpoint)
-          .enable_client ()
-          .set_routing_id (zlink::routing_id_t::from (play_options.node_rid));
-        options.add_spot_mesh (yd::spot_channel)
+          .channel_name (yd::control_channel);
+        control
+          .add_route_request_handler<bind_await_actors_handler_t,
+                                      yd::bind_await_actors_req_t,
+                                      yd::bind_await_actors_res_t> (
+            yd::bind_await_actors_req_t::packet_name)
+          .add_route_request_handler<ensure_spot_handler_t,
+                                      yd::ensure_spot_req_t,
+                                      yd::ensure_spot_res_t> (
+            yd::ensure_spot_req_t::packet_name)
+          .add_route_request_handler<evidence_handler_t,
+                                      yd::await_evidence_req_t,
+                                      yd::await_evidence_res_t> (
+            yd::await_evidence_req_t::packet_name)
+          .add_route_request_handler<evidence_wait_handler_t,
+                                      yd::await_evidence_wait_req_t,
+                                      yd::await_evidence_res_t> (
+            yd::await_evidence_wait_req_t::packet_name);
+        auto spot_route = options.add_route_mesh (yd::spot_route_channel);
+        spot_route.listen (play_options.spot_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
-          .enable_router (play_options.spot_router_endpoint)
-          .enable_pub_sub (play_options.spot_pub_endpoint)
-          .accept_route_mesh (yd::spot_route_channel)
+          .channel_name (yd::spot_route_channel);
+        auto spot = options.add_route_mesh (yd::spot_channel);
+        spot.channel_name (yd::spot_route_channel);
+        spot.set_routing_id (zlink::routing_id_t::from (play_options.node_rid))
+          .listen (play_options.spot_router_endpoint)
           .add_entry_spot<await_entry_spot_t> (
             [evidence_ptr] { return std::make_shared<await_entry_spot_t> (*evidence_ptr); })
           .add_spot<await_probe_spot_t> (

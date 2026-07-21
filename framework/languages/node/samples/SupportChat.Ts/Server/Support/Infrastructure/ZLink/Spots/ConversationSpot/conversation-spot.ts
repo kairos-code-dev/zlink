@@ -1,18 +1,21 @@
 import { Injectable, Scope } from '@nestjs/common';
 import { SampleTimings } from '../../../../../Configuration/sample-names';
-import {
-  SupportChatRoles
-} from '../../../../../../Shared/Contracts/messages';
+import { SupportChatRoles } from '../../../../../../Shared/Contracts/messages';
 import { Conversation } from '../../../../Domain/SupportChat/conversation';
 import { ConversationIdleTimerHandler } from './Handlers/conversation-idle-timer-handler';
+import {
+  CloseConversationAtSpotHandler,
+  JoinConversationAtSpotHandler,
+  SendChatMessageAtSpotHandler,
+  SetTypingAtSpotHandler
+} from './Handlers/conversation-operation-handlers';
 import { SupportNotificationPublisher } from './Notifications/support-notification-publisher';
 import { AgentAssignmentService } from '../../../../Application/ConversationAssignment/agent-assignment-service';
 import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import type {
-  ConversationState,
-} from '../../../../../../Shared/Contracts/messages';
-import type { ConversationCreateRequest } from './conversation-create-request';
-import type {
+  ActorRef,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
@@ -20,13 +23,30 @@ import type {
   ZLinkSpotCreateResponse,
   ZLinkTimer
 } from '@zlink-systems/framework';
+import type {
+  ChatMessage,
+  ConversationState,
+  JoinConversationReq,
+  SupportRole
+} from '../../../../../../Shared/Contracts/messages';
+import type { ConversationCreateRequest } from './conversation-create-request';
+import type { ConversationEvent } from '../../../../Domain/SupportChat/conversation-events';
 import type { SupportUserActor } from '../../Actors/support-user-actor';
+
+interface ConversationParticipant {
+  readonly actor: ActorRef;
+  readonly actorId: string;
+  readonly participantId: string;
+  readonly role: SupportRole;
+  readonly displayName: string;
+}
 
 @Injectable({ scope: Scope.TRANSIENT })
 class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   readonly context!: ZLinkSpotContext<SupportUserActor, ConversationSpot>;
   private conversation?: Conversation;
-  private readonly actors = new Map<string, SupportUserActor>();
+  private readonly actors = new Map<string, ConversationParticipant>();
+  private readonly pendingJoins = new Map<string, ConversationParticipant>();
   private timer?: ZLinkTimer;
 
   constructor(
@@ -34,6 +54,13 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     private readonly directory: SupportActorDirectory,
     private readonly notifications: SupportNotificationPublisher
   ) {}
+
+  configure(): void {
+    this.context.handlers.addPacket(JoinConversationAtSpotHandler);
+    this.context.handlers.addPacket(SendChatMessageAtSpotHandler);
+    this.context.handlers.addPacket(SetTypingAtSpotHandler);
+    this.context.handlers.addPacket(CloseConversationAtSpotHandler);
+  }
 
   async onCreate(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse> {
     const value = request.decode<ConversationCreateRequest>(Object as never);
@@ -54,16 +81,34 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     await this.timer?.cancel();
   }
 
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(
+    actor: ZLinkActorJoinRequest,
+    request: ZLinkMessage
+  ): Promise<ZLinkSpotActorJoinResponse> {
+    const join = request.decode<JoinConversationReq>(Object as never);
+    this.pendingJoins.set(actor.actor.actorId, {
+      actor: actor.actor,
+      actorId: actor.actor.actorId,
+      participantId: join.participantId,
+      role: join.role,
+      displayName: join.displayName
+    });
     return { accepted: true, reply: { state: this.snapshot() } };
   }
 
-  async onJoinedActor(actor: SupportUserActor): Promise<void> {
-    this.actors.set(actor.actorId, actor);
-    if (actor.role === SupportChatRoles.Agent) {
-      const joined = this.requireConversation().join(actor.participantId, SupportChatRoles.Agent, actor.displayName);
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+    const participant = this.pendingJoins.get(actor.actor.actorId);
+    if (participant === undefined) return;
+    this.pendingJoins.delete(actor.actor.actorId);
+    this.actors.set(actor.actor.actorId, participant);
+    if (participant.role === SupportChatRoles.Agent) {
+      const joined = this.requireConversation().join(
+        participant.participantId,
+        SupportChatRoles.Agent,
+        participant.displayName
+      );
       const customer = this.findParticipant(joined.state.customerActorId);
-      this.notifications.publish(joined.event, customer === undefined ? [] : [customer]);
+      await this.notifications.publish(joined.event, customer === undefined ? [] : [customer.actor]);
       return;
     }
     const agentActorId = this.assignments.assignNextAgent();
@@ -73,47 +118,48 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
       throw new Error(`Assigned roster actor '${agentActorId}' was not found.`);
     }
     const assigned = this.assignAgent(agentActorId, roster.displayName);
-    this.notifications.publish(assigned.event, [roster]);
+    await this.notifications.publish(assigned.event, [roster.actor]);
   }
 
-  async onLeaveActor(actor: SupportUserActor): Promise<void> {
-    this.actors.delete(actor.actorId);
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+    this.actors.delete(actor.actor.actorId);
   }
 
-  async onDisconnectActor(_actor: SupportUserActor): Promise<void> {}
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 
   snapshot(): ConversationState {
     return this.requireConversation().snapshot();
   }
 
-  assignAgent(agentActorId: string, displayName: string): { state: ConversationState; event: import('../../../../Domain/SupportChat/conversation-events').ConversationEvent } {
+  assignAgent(agentActorId: string, displayName: string): { state: ConversationState; event: ConversationEvent } {
     return this.requireConversation().assign(agentActorId, displayName);
   }
 
-  join(actor: SupportUserActor): ConversationState {
-    this.requireConversationId(actor);
+  join(actorId: string): ConversationState {
+    const actor = this.requireActor(actorId);
     return this.requireConversation().join(actor.participantId, actor.role, actor.displayName).state;
   }
 
-  sendChat(actor: SupportUserActor, text: string): { message: import('../../../../../../Shared/Contracts/messages').ChatMessage; state: ConversationState } {
-    this.requireConversationId(actor);
+  async sendChat(actorId: string, text: string): Promise<{ message: ChatMessage; state: ConversationState }> {
+    const actor = this.requireActor(actorId);
+    this.requireParticipant(actor);
     const result = this.requireConversation().appendMessage(actor.participantId, text);
-    this.notifications.publish(result.event, this.otherActors(actor));
+    await this.notifications.publish(result.event, this.otherActorRefs(actor.actorId));
     return result;
   }
 
-  setTyping(actor: SupportUserActor, isTyping: boolean): void {
+  async setTyping(actorId: string, isTyping: boolean): Promise<void> {
+    const actor = this.requireActor(actorId);
+    this.requireParticipant(actor);
     const event = this.requireConversation().changeTyping(actor.participantId, isTyping);
-    if (event !== undefined) this.notifications.publish(event, this.otherActors(actor));
+    if (event !== undefined) await this.notifications.publish(event, this.otherActorRefs(actor.actorId));
   }
 
-  close(actor: SupportUserActor): ConversationState {
-    this.requireConversationId(actor);
-    if (!this.requireConversation().canParticipate(actor.participantId)) {
-      throw new Error('Only a conversation participant can close the conversation.');
-    }
+  async close(actorId: string): Promise<ConversationState> {
+    const actor = this.requireActor(actorId);
+    this.requireParticipant(actor);
     const closed = this.requireConversation().close();
-    this.notifications.publish(closed.event, this.otherActors(actor));
+    await this.notifications.publish(closed.event, this.otherActorRefs(actor.actorId));
     return closed.state;
   }
 
@@ -121,34 +167,42 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
     const conversation = this.requireConversation();
     if (conversation.shouldBecomeIdle(now, SampleTimings.idleTimeout)) {
       const idle = conversation.markIdle(now + SampleTimings.closeGraceTimeout);
-      if (idle.event !== undefined) this.notifications.publish(idle.event, this.actors.values());
+      if (idle.event !== undefined) await this.notifications.publish(idle.event, this.actorRefs());
       return undefined;
     }
     if (conversation.shouldCloseAfterIdle(now)) {
       const closed = conversation.close();
-      this.notifications.publish(closed.event, this.actors.values());
+      await this.notifications.publish(closed.event, this.actorRefs());
       await this.context.close();
       return closed.state.agentActorId;
     }
     return undefined;
   }
 
-  private metadataActorCanParticipate(actor: SupportUserActor): boolean {
-    return this.requireConversation().canParticipate(actor.participantId);
-  }
-
-  private requireConversationId(actor: SupportUserActor): void {
-    if (!this.metadataActorCanParticipate(actor)) {
+  private requireParticipant(actor: ConversationParticipant): void {
+    if (!this.requireConversation().canParticipate(actor.participantId)) {
       throw new Error(`Actor '${actor.participantId}' is not a conversation participant.`);
     }
   }
 
-  private otherActors(source: SupportUserActor): SupportUserActor[] {
-    return [...this.actors.values()].filter((actor) => actor.actorId !== source.actorId);
+  private otherActorRefs(sourceActorId: string): ActorRef[] {
+    return [...this.actors.values()]
+      .filter((actor) => actor.actorId !== sourceActorId)
+      .map((actor) => actor.actor);
   }
 
-  private findParticipant(participantId: string): SupportUserActor | undefined {
+  private actorRefs(): ActorRef[] {
+    return [...this.actors.values()].map((actor) => actor.actor);
+  }
+
+  private findParticipant(participantId: string): ConversationParticipant | undefined {
     return [...this.actors.values()].find((actor) => actor.participantId === participantId);
+  }
+
+  private requireActor(actorId: string): ConversationParticipant {
+    const actor = this.actors.get(actorId);
+    if (actor === undefined) throw new Error(`Actor '${actorId}' is not joined to this conversation.`);
+    return actor;
   }
 
   private requireConversation(): Conversation {

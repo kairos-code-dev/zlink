@@ -59,21 +59,19 @@ public static class OrderWorkflowServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
-            var channelName = SampleNames.OrderWorkflowChannelFor(instance.InstanceId);
-            var workflowMesh = options.AddRouteMesh(channelName)
-                .Listen(instance.ChannelEndpoint)
-                .SetRoutingId(instance.RouteRid);
-            workflowMesh.ChannelName(channelName)
-                .AddRequestHandler<StartOrderWorkflowRouteHandler>()
-                .AddRequestHandler<ContinueOrderWorkflowRouteHandler>()
-                .AddRequestHandler<RebuildOrderProjectionRouteHandler>()
-                .AddRequestHandler<PrepareInventoryReservedCheckpointRouteHandler>();
-            var mesh1 = options.AddRouteMesh(SampleNames.OrderWorkflowRouteChannel)
-                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
-                .Listen(instance.SpotRouterEndpoint)
-                .SetRoutingId(instance.SpotRid)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(instance.MeshEndpoint)
+                .SetRoutingId(instance.MeshRid)
                 .AddSpotFactory<OrderWorkflowSpot>();
-            mesh1.ChannelName(SampleNames.OrderWorkflowRouteChannel);
+            foreach (var workflow in new[] { "workflow-a", "workflow-b" })
+            {
+                var channelName = SampleNames.OrderWorkflowChannelFor(workflow);
+                var channel = mesh.ChannelName(channelName)
+                    .SetWeight(string.Equals(workflow, instance.InstanceId, StringComparison.Ordinal) ? 100 : 0);
+                if (string.Equals(workflow, instance.InstanceId, StringComparison.Ordinal))
+                    channel.AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup);
+            }
+            mesh.ChannelName(SampleNames.OrderProjectionChannel);
         });
 
         var app = builder.Build();

@@ -102,8 +102,8 @@ aggregation.
 
 ## Core 10.0.0 Spot Patterns
 
-Single supports `SPOT_PUBSUB`. Multi supports `SPOT_PUBSUB`, `SPOT_REQREP`, and
-`SPOT_SENDSEND`.
+Single supports `SPOT_PUBSUB`. Multi supports `SPOT_PUBSUB`, `SPOT_REQREP`,
+and `SPOT_SENDSEND`.
 
 For multi Spot, `--clients N` means N peer processes. Each peer process owns one
 MeshNode and one entry Spot and connects only to the hub MeshNode. The hub owns
@@ -116,6 +116,34 @@ Set `PERF_MULTI_SPOT_NODE_IO_THREADS` explicitly for an I/O-thread comparison.
 The hub and every peer recalculate context auto-HWM from the current message
 size before each active phase.
 
+`MULTI_ROUTER_ROUTER_ONEWAY` is the direction-matched baseline for
+`MULTI_SPOT_PUBSUB`. Its hub owns one context and one ROUTER socket. Each of
+the N peer processes owns one context and one ROUTER socket with one I/O
+thread. The hub sends each active record once to every peer, and throughput is
+the sum of the active records received by all peers.
+
+Use `run_spot_paired_gate.py` for the formal Spot-to-ROUTER comparison. It
+alternates Spot-first and ROUTER-first order for each cell, fixes both roles to
+one I/O thread, computes five-run medians, and fails a cell when throughput is
+below 90% or mean, p95, or p99 latency exceeds 1.25 times the matched ROUTER
+result.
+
+```bash
+python3 bindings/c/perf/run_spot_paired_gate.py
+```
+
+The tool rejects a stale or changing `core/build` runtime and writes the
+runtime path, runtime SHA-256, source-tree SHA-256, raw runs, and cell verdicts
+under `bindings/c/perf/results/multi/paired/`. Before measuring, it always
+rebuilds the selected benchmark targets in the official `bindings/c/build`
+directory; this prevents `--reuse-build` from accepting stale harness binaries.
+Use `--dry-run` to inspect the exact matrix without building or measuring.
+`--perf-record` records descendant process stacks when the host provides Linux
+`perf`. Use `--time-verbose` to record low-overhead GNU `time -v` process-tree
+CPU time, maximum resident set size, faults, and context switches next to each
+raw run. Those aggregate measurements can identify CPU or memory pressure, but
+they do not replace a call-stack profile.
+
 ## Auto-HWM Profile Sweep
 
 Use `--auto-hwm-profile` or `PERF_CTX_AUTO_HWM_PROFILE` with benchmark message
@@ -126,7 +154,7 @@ The recommended sweep axes are:
 |------|--------|
 | profile | `low_latency`, `balanced`, `throughput` |
 | message sizes | `64`, `1024`, `4096`, `65536` bytes |
-| patterns | `DEALER_ROUTER_SENDSEND`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_SENDSEND`, `ROUTER_ROUTER_REQREP`, `PUBSUB`, `STREAM` |
+| patterns | `DEALER_ROUTER_SENDSEND`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_SENDSEND`, `ROUTER_ROUTER_REQREP`, `ROUTER_ROUTER_ONEWAY`, `PUBSUB`, `STREAM` |
 
 Profile guidance after the auto-HWM message-unit change:
 

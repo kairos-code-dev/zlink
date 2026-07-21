@@ -14,8 +14,8 @@ public sealed class ChannelContracts
     {
         var client = new ExampleRouteClient();
 
-        var sent = client.SendToChannel("game", "api", new AuthenticateRequest("player-1"))
-            .TrySubmit();
+        var sent = await client.SendToChannel("game", "api", new AuthenticateRequest("player-1"))
+            .SubmitAsync();
         Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
 
         var reply = await client
@@ -67,13 +67,13 @@ public sealed class ChannelContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFanoutClient),
-        typeof(IZLinkPublishCall))]
-    public void Fanout_client_publishes_events_to_a_topic()
+        typeof(IZLinkFanoutPublishCall))]
+    public async Task Fanout_client_publishes_events_to_a_topic()
     {
         var publisher = new ExampleFanoutPublisher();
 
-        var published = publisher.Publish("events", "room.opened", new RoomEvent("opened"))
-            .TrySubmit();
+        var published = await publisher.Publish("events", "room.opened", new RoomEvent("opened"))
+            .SubmitAsync();
         Assert.Equal(ZLinkSubmitStatus.Submitted, published.Status);
 
         Assert.Equal(("events", "room.opened"), publisher.LastPublish);
@@ -85,7 +85,7 @@ public sealed class ChannelContracts
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
         typeof(IZLinkFanoutClient),
-        typeof(IZLinkPublishCall))]
+        typeof(IZLinkFanoutPublishCall))]
     public async Task Channel_messaging_replaces_grpc_unary_command_and_streaming_for_web_services()
     {
         // The same channel-messaging surface a gRPC web backend would reach for:
@@ -100,8 +100,8 @@ public sealed class ChannelContracts
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
-        _ = orders.SendToChannel("commerce", "inventory", new ReserveStock("order-1042", "sku-9", 3))
-            .TrySubmit();
+        _ = await orders.SendToChannel("commerce", "inventory", new ReserveStock("order-1042", "sku-9", 3))
+            .SubmitAsync();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
         _ = await events
@@ -209,13 +209,13 @@ public sealed class ChannelContracts
     {
         public (string ChannelName, string Topic) LastPublish { get; private set; }
 
-        public IZLinkPublishCall Publish<TEvent>(
+        public IZLinkFanoutPublishCall Publish<TEvent>(
             string channelName,
             string topic,
             TEvent message)
         {
             LastPublish = (channelName, topic);
-            return new ExamplePublishCall();
+            return new ExampleFanoutPublishCall();
         }
     }
 
@@ -225,10 +225,8 @@ public sealed class ChannelContracts
 
         public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
 
-        public ZLinkSubmitResult TrySubmit() => new(ZLinkSubmitStatus.Submitted);
-
         public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(TrySubmit());
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private class ExampleRequestCall(object? reply) : IZLinkRequestCall
@@ -253,16 +251,10 @@ public sealed class ChannelContracts
         }
     }
 
-    private sealed class ExamplePublishCall : IZLinkPublishCall
+    private sealed class ExampleFanoutPublishCall : IZLinkFanoutPublishCall
     {
-        public IZLinkPublishCall Metadata(string key, string value) => this;
-
-        public IZLinkPublishCall Metadata(ZLinkMessageMetadata metadata) => this;
-
-        public ZLinkPublishResult TrySubmit() => new(ZLinkSubmitStatus.Submitted, default);
-
-        public ValueTask<ZLinkPublishResult> SubmitAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(TrySubmit());
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall

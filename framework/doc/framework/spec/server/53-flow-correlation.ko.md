@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 10.0.0에서 request correlation과 여러 hop에 걸친 causal flow를 식별하는 공통
+이 문서는 ZLink Framework 11.0.0에서 request correlation과 여러 hop에 걸친 causal flow를 식별하는 공통
 공개 계약을 정의한다. 이 문서는 “request·reply 한 쌍과 Logical Multicast·Actor·Spot·STREAM으로 이어지는
 전체 업무 흐름을 서로 다른 식별자로 어떻게 연결하는가?”라는 질문에 답한다.
 
@@ -32,7 +32,8 @@ request matching, deduplication, idempotency와 owner fencing에 사용하지 �
 `inbound|timer|application|lifecycle`의 닫힌 값이고 root에서 한 번 정한 뒤 hop에서 바꾸지 않는다.
 
 `correlation_id`는 Framework가 생성하는 opaque ASCII identifier다. 길이는 1~64 byte이며 request를 만든
-MeshNode 또는 STREAM runtime의 lifecycle 안에서 동시에 pending인 request 사이에 unique해야 한다.
+MeshNode, ClientServer client 또는 STREAM runtime의 lifecycle 안에서 동시에 pending인 request 사이에
+unique해야 한다.
 application은 형식을 해석하거나 새 값을 조립하지 않는다.
 
 허용하지 않는 `flow_id`, 빈 correlation ID, `flow_id`와 `flow_origin` 중 하나만 존재하는 message는
@@ -46,7 +47,7 @@ frame에서 발견하면 connector 종료 사유 `ProtocolError`로 연결을 �
 Framework-managed inbound에 valid flow ID가 있으면 새 값을 만들지 않고 그대로 사용한다. flow ID가 없는
 다음 causal root는 flow tracking이 활성일 때 새 값을 만든다.
 
-- STREAM, Node direct, ChannelName, Spot direct와 Actor inbound
+- STREAM, Node direct, ChannelName, Spot direct, Instance Spot direct와 Actor inbound
 - timer callback과 lifecycle callback
 - Framework callback 밖의 application code가 시작한 첫 outbound operation
 
@@ -63,8 +64,9 @@ Framework는 인과 관계가 있는 다음 operation에 flow ID와 root origin�
 
 | 경계 | 규칙 |
 |---|---|
-| Node direct·ChannelName | selected MeshNode의 handler context까지 보존 |
+| Node direct·ChannelName | 선택된 RouteMesh 또는 ClientServer target의 handler context까지 보존 |
 | Spot direct | target Spot application turn까지 보존 |
+| Instance Spot direct | resolve·claim·activation barrier를 지나 first Spot application turn까지 보존 |
 | Logical Multicast | 모든 remote MeshNode와 local matching Spot이 같은 flow ID 사용 |
 | Actor direct·STREAM Actor dispatch | target Actor queue와 request reply까지 보존 |
 | Actor transfer | transfer control과 target Actor의 관련 lifecycle 작업에 보존 |
@@ -76,6 +78,21 @@ Logical Multicast와 classic fanout은 tree를 만든다. 각 branch에 새 flow
 
 request를 다른 Framework surface로 그대로 relay하면 correlation ID도 reply까지 보존한다. handler가
 새로운 downstream request를 시작하면 새 correlation ID를 만들고 current flow ID만 이어받는다.
+
+Instance CAS loser가 application pre-admission 단계에서 winning `Ready` owner로 한 번 redirect해도 새 flow나
+correlation ID를 만들지 않는다. Activation 중 기다린 first message도 barrier 뒤 원래 ID를 유지한다. Target
+queue 수락 뒤 실패에는 다른 owner와 새 correlation ID로 자동 재제출하지 않는다.
+
+### 5.1 Handler의 다른 송신 경로 호출
+
+Spot, Actor, RouteMesh Channel 또는 ClientServer handler가 process의 다른 ChannelName 송신 경로로 request를
+시작하면 downstream request에는 새 correlation ID를 발급한다. Downstream terminal result는 원래 handler가
+속한 activation의 completion으로 전달하며, 원래 inbound request를 handler dispatch에 다시 넣지 않는다.
+
+원래 activation이 Spot 또는 Actor에 속하면 completion은 같은 Spot 또는 Actor generation에만 전달한다.
+Generation이 바뀌었거나 owner가 종료된 completion은 stale 결과로 끝내고 새 instance의 queue에 넣지 않는다.
+Downstream timeout, cancellation 또는 늦은 reply는 원래 request를 정확히 한 번만 완료하며 자동 retry나 다른
+ChannelName route 재선택을 일으키지 않는다.
 
 ## 6. Async context
 
@@ -111,8 +128,12 @@ Framework는 flow ID와 correlation ID에 user ID, Actor ID, Spot RID, endpoint 
 
 - request와 terminal reply가 같은 correlation ID를 사용하고 한 번만 완료된다.
 - 같은 causal flow의 Node·Channel·Spot·Actor·STREAM hop이 같은 flow ID를 사용한다.
+- Instance Spot의 resolve·claim·activation barrier와 first handler가 같은 flow·correlation을 유지하며 CAS
+  loser redirect가 새 ID를 만들지 않는다.
 - Logical Multicast와 classic fanout의 모든 branch가 root flow ID를 보존한다.
 - tracing off node도 inbound flow ID를 다음 관련 hop에 전달한다.
 - callback 종료 뒤 관련 없는 callback에 flow context가 남지 않는다.
 - stale session binding과 늦은 reply가 새 correlation에 연결되지 않는다.
+- handler가 다른 ChannelName route로 시작한 downstream request는 새 correlation ID를 사용하고, 원래
+  Spot·Actor activation에는 terminal completion이 한 번만 전달된다.
 - correlation ID와 flow ID가 metric label이나 application metadata value로 사용되지 않는다.

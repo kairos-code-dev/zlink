@@ -5,24 +5,32 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotSubscriptionRegistry
 {
-    private readonly Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>> _descriptorsByTopic =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<ZLinkSpotSubscriptionKey, List<ZLinkSpotSubscriptionDescriptor>>
+        _descriptorsByTarget = new();
 
     private readonly List<ZLinkSpotSubscriptionRegistration> _registrations = [];
 
-    public void Add(string topic, Type handlerType)
+    public void Add(string channelName, string topic, Type handlerType)
     {
+        if (string.IsNullOrWhiteSpace(channelName))
+            throw new ZLinkConfigurationException("SPOT subscription channel name must not be empty.");
         if (string.IsNullOrWhiteSpace(topic))
             throw new ZLinkConfigurationException("SPOT subscription topic must not be empty.");
 
-        _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, handlerType));
+        _registrations.Add(new ZLinkSpotSubscriptionRegistration(channelName, topic, handlerType));
     }
 
-    public void Add(string topic, Type spotType, System.Reflection.MethodInfo method)
+    public void Add(
+        string channelName,
+        string topic,
+        Type spotType,
+        System.Reflection.MethodInfo method)
     {
+        if (string.IsNullOrWhiteSpace(channelName))
+            throw new ZLinkConfigurationException("SPOT subscription channel name must not be empty.");
         if (string.IsNullOrWhiteSpace(topic))
             throw new ZLinkConfigurationException("SPOT subscription topic must not be empty.");
-        _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, spotType, method));
+        _registrations.Add(new ZLinkSpotSubscriptionRegistration(channelName, topic, spotType, method));
     }
 
     public async ValueTask BindAsync(
@@ -31,25 +39,27 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        foreach (var (topic, handlers) in BuildDescriptors(spot))
+        foreach (var (target, handlers) in BuildDescriptors(spot))
         {
-            _descriptorsByTopic.Add(topic, handlers);
-            await SetSubscriptionAsync(nativeSpot, topic, timeout, cancellationToken)
+            _descriptorsByTarget.Add(target, handlers);
+            await SetSubscriptionAsync(
+                    nativeSpot, target.ChannelName, target.Topic, timeout, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
 
     public void Bind(object spot, IZLinkBackendSpot nativeSpot)
     {
-        foreach (var (topic, handlers) in BuildDescriptors(spot))
+        foreach (var (target, handlers) in BuildDescriptors(spot))
         {
-            _descriptorsByTopic.Add(topic, handlers);
-            nativeSpot.SetSubscription(topic);
+            _descriptorsByTarget.Add(target, handlers);
+            nativeSpot.SetSubscription(target.ChannelName, target.Topic);
         }
     }
 
     private static async ValueTask SetSubscriptionAsync(
         IZLinkBackendSpot nativeSpot,
+        string channelName,
         string topic,
         TimeSpan timeout,
         CancellationToken cancellationToken)
@@ -60,7 +70,7 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                nativeSpot.SetSubscription(topic);
+                nativeSpot.SetSubscription(channelName, topic);
                 return;
             }
             catch (ZlinkConfigException error)
@@ -83,22 +93,27 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         _ = BuildDescriptors(spot);
     }
 
-    private Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>> BuildDescriptors(object spot)
+    private Dictionary<ZLinkSpotSubscriptionKey, List<ZLinkSpotSubscriptionDescriptor>> BuildDescriptors(
+        object spot)
     {
-        var descriptorsByTopic = new Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>>(
-            StringComparer.Ordinal);
+        var descriptorsByTarget =
+            new Dictionary<ZLinkSpotSubscriptionKey, List<ZLinkSpotSubscriptionDescriptor>>();
         foreach (var subscription in _registrations)
         {
             var descriptor = subscription.Method is { } method
                 ? ZLinkSpotDescriptorFactory.CreateAttributedSubscriptionDescriptor(
-                    subscription.Topic, subscription.HandlerType, method)
+                    subscription.ChannelName, subscription.Topic, subscription.HandlerType, method)
                 : ZLinkSpotDescriptorFactory.CreateSubscriptionDescriptor(
-                    subscription.Topic, subscription.HandlerType, spot.GetType());
+                    subscription.ChannelName, subscription.Topic, subscription.HandlerType, spot.GetType());
 
-            if (!descriptorsByTopic.TryGetValue(subscription.Topic, out var handlers))
+            var target = new ZLinkSpotSubscriptionKey(
+                subscription.ChannelName,
+                subscription.Topic);
+
+            if (!descriptorsByTarget.TryGetValue(target, out var handlers))
             {
                 handlers = [];
-                descriptorsByTopic.Add(subscription.Topic, handlers);
+                descriptorsByTarget.Add(target, handlers);
             }
 
             if (handlers.Any(existing => string.Equals(
@@ -106,11 +121,11 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                     descriptor.MessageName,
                     StringComparison.Ordinal)))
                 throw new ZLinkConfigurationException(
-                    $"SPOT subscription handler for topic '{subscription.Topic}' and packet '{descriptor.MessageName}' is already registered.");
+                    $"SPOT subscription handler for channel '{subscription.ChannelName}', topic '{subscription.Topic}' and packet '{descriptor.MessageName}' is already registered.");
             handlers.Add(descriptor);
         }
 
-        return descriptorsByTopic;
+        return descriptorsByTarget;
     }
 
     public async ValueTask DrainAsync(
@@ -203,7 +218,9 @@ internal sealed class ZLinkSpotSubscriptionRegistry
             dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
 
-        _descriptorsByTopic.TryGetValue(message.Topic, out var descriptors);
+        _descriptorsByTarget.TryGetValue(
+            new ZLinkSpotSubscriptionKey(message.ChannelName, message.Topic),
+            out var descriptors);
         ZLinkRuntimeMetrics.RecordFanoutReceived(descriptors is null ? null : message.Topic);
         var scope = CreateScope(
             header.MessageName,

@@ -16,11 +16,13 @@ int recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_);
 int recv_msg_routed_socket (socket_base_t *socket_,
                             zlink_msg_t *msg_,
                             zlink_routing_id_t *source_rid_out_,
-                            int flags_);
+                            int flags_,
+                            uint64_t *connection_id_out_ = NULL);
 int recv_msg_routed_internal (void *socket_,
                               zlink_msg_t *msg_,
                               zlink_routing_id_t *source_rid_out_,
-                              int flags_);
+                              int flags_,
+                              uint64_t *connection_id_out_ = NULL);
 int recv_followup_msg_socket (socket_base_t *socket_, zlink_msg_t *msg_);
 int recv_followup_msg_internal (void *socket_, zlink_msg_t *msg_);
 int recv_followup_msg_socket_wait (socket_base_t *socket_, zlink_msg_t *msg_, int flags_);

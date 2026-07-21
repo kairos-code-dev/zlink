@@ -15,18 +15,20 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkObservedLocationGenerations
 {
-    private readonly Observed<ZLinkMeshNodeDescriptorKey> _meshNodes = new();
+    private readonly ObservedDescriptors _meshNodes = new();
     private readonly Observed<ZLinkSpotLocationKey> _spots = new();
     private readonly Observed<ZLinkActorLocationKey> _actors = new();
 
     internal bool AcceptDescriptor(ZLinkMeshNodeDescriptor row) =>
         _meshNodes.Accept(
             new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid),
+            row.OwnerId,
             new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
 
     internal void ObserveDescriptor(ZLinkMeshNodeDescriptor row) =>
         _meshNodes.Observe(
             new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid),
+            row.OwnerId,
             new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
 
     internal bool AcceptSpot(ZLinkSpotLocation row) =>
@@ -86,6 +88,72 @@ internal sealed class ZLinkObservedLocationGenerations
             var major = Major.CompareTo(other.Major);
             return major != 0 ? major : Minor.CompareTo(other.Minor);
         }
+    }
+
+    /// <summary>
+    /// MeshNode generation is monotonic only inside one descriptor owner
+    /// incarnation. A successful store takeover replaces OwnerId atomically
+    /// and the successor process may have a lower wall-clock-derived Core
+    /// generation. Remember retired owners so a lagging view cannot restore
+    /// the predecessor after the successor has been observed.
+    /// </summary>
+    private sealed class ObservedDescriptors
+    {
+        private readonly object _gate = new();
+        private readonly Dictionary<ZLinkMeshNodeDescriptorKey, DescriptorObservation> _observed = [];
+
+        internal bool Accept(
+            ZLinkMeshNodeDescriptorKey key,
+            string ownerId,
+            ObservedVersion version)
+        {
+            lock (_gate)
+            {
+                if (!_observed.TryGetValue(key, out var observed))
+                {
+                    _observed[key] = new DescriptorObservation(ownerId, version, []);
+                    return true;
+                }
+
+                if (string.Equals(observed.OwnerId, ownerId, StringComparison.Ordinal))
+                {
+                    if (version.CompareTo(observed.Version) < 0) return false;
+                    _observed[key] = observed with { Version = version };
+                    return true;
+                }
+
+                if (observed.RetiredOwners.Contains(ownerId)) return false;
+
+                observed.RetiredOwners.Add(observed.OwnerId);
+                _observed[key] = new DescriptorObservation(
+                    ownerId, version, observed.RetiredOwners);
+                return true;
+            }
+        }
+
+        internal void Observe(
+            ZLinkMeshNodeDescriptorKey key,
+            string ownerId,
+            ObservedVersion version) => Accept(key, ownerId, version);
+
+        internal void ForgetWhere(Func<ZLinkMeshNodeDescriptorKey, bool> predicate)
+        {
+            lock (_gate)
+            {
+                List<ZLinkMeshNodeDescriptorKey>? stale = null;
+                foreach (var key in _observed.Keys)
+                    if (predicate(key))
+                        (stale ??= []).Add(key);
+                if (stale is null) return;
+                foreach (var key in stale)
+                    _observed.Remove(key);
+            }
+        }
+
+        private sealed record DescriptorObservation(
+            string OwnerId,
+            ObservedVersion Version,
+            HashSet<string> RetiredOwners);
     }
 
     private sealed class Observed<TKey>

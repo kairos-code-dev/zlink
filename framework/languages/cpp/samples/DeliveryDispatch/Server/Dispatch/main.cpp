@@ -482,10 +482,10 @@ int main (int argc, char **argv)
           .use_handler_group ("dispatch");
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
           .enable_client ();
-        options.add_spot_mesh (sample_names_t::courier_actor_discovery)
+        options.add_route_mesh (sample_names_t::courier_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::dispatch_spot_node))
-          .enable_router (topology.dispatch_spot_router_endpoint)
-          .enable_pub_sub (topology.dispatch_spot_endpoint);
+          .listen (topology.dispatch_spot_router_endpoint)
+          .channel_name (sample_names_t::courier_actor_discovery);
         options.handlers ()
           .group ("dispatch")
           .add_send<assign_delivery_handler_t> ()

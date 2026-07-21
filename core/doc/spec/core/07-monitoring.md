@@ -1,10 +1,13 @@
 [한국어](07-monitoring.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [Events](05-events.md) · [MeshNode](service/01-mesh-node.md) · [errno map](04-errno-map.md)
+[Specification index](../README.md) · [Core index](README.md) · [Events](05-events.md) · [errno map](04-errno-map.md)
 
 # Monitoring
 
-This document defines the public raw-socket and MeshNode monitor contracts for ZLink Core 10.1.0. Its audience is developers of the C API and bindings that observe connections, peer admission, Logical Multicast, backpressure, and lifecycle. A monitor observes state and never changes routing, admission, or queue state.
+This document defines the ZLink Core 11.0 raw-socket monitor contract. Its
+audience is C API and binding developers who observe connection, transport,
+protocol, and socket lifecycle. A monitor observes state and never changes
+routing or queue state.
 
 ## 1. Raw socket monitor
 
@@ -203,133 +206,14 @@ the event or `userdata`. `event` is a borrowed view valid only for the call.
 Registering it through the handler API makes it an ordinary callback consumer
 that drains each event without taking further action.
 
-## 2. MeshNode monitor types
+## 2. Ordering, overflow, and thread safety
 
-```c
-#define ZLINK_MESH_MONITOR_ABI_VERSION 1u
-#define ZLINK_MESH_MONITOR_CHANNEL_MAX 255u
+The monitor queue is bounded. When full, it aggregates identical high-frequency
+events and prioritizes connection-state, protocol-error, and lifecycle events.
+The next status snapshot reflects aggregated counts. A delayed monitor consumer
+does not block raw-socket submission.
 
-typedef uint64_t zlink_mesh_monitor_event_mask_t;
-
-typedef enum zlink_mesh_monitor_event_kind_t {
-  ZLINK_MESH_MONITOR_STATE_CHANGED       = 1,
-  ZLINK_MESH_MONITOR_PEER_CONNECTING     = 2,
-  ZLINK_MESH_MONITOR_PEER_ADMITTED       = 3,
-  ZLINK_MESH_MONITOR_PEER_DRAINING       = 4,
-  ZLINK_MESH_MONITOR_PEER_CLOSED         = 5,
-  ZLINK_MESH_MONITOR_PEER_REJECTED       = 6,
-  ZLINK_MESH_MONITOR_CHANNEL_CHANGED     = 7,
-  ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED   = 8,
-  ZLINK_MESH_MONITOR_MULTICAST_COMMITTED = 9,
-  ZLINK_MESH_MONITOR_MULTICAST_DROPPED   = 10,
-  ZLINK_MESH_MONITOR_BACKPRESSURED       = 11,
-  ZLINK_MESH_MONITOR_OPERATION_COMPLETED = 12,
-  ZLINK_MESH_MONITOR_PROTOCOL_ERROR      = 13,
-  ZLINK_MESH_MONITOR_CLAIM_REVOKED       = 14
-} zlink_mesh_monitor_event_kind_t;
-
-typedef struct zlink_mesh_monitor_open_options_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_mask_t events;
-} zlink_mesh_monitor_open_options_t;
-
-typedef struct zlink_mesh_monitor_event_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_kind_t kind;
-  uint64_t timestamp_ms;
-  uint64_t mesh_lifecycle_generation;
-  uint64_t mesh_descriptor_revision;
-  zlink_mesh_node_state_t mesh_state;
-  zlink_routing_id_t peer_rid;
-  uint64_t peer_lifecycle_generation;
-  uint64_t peer_descriptor_revision;
-  zlink_mesh_owner_kind_t owner_kind;
-  zlink_routing_id_t spot_rid;
-  zlink_actor_ref_t actor;
-  char channel_name[ZLINK_MESH_MONITOR_CHANNEL_MAX + 1];
-  uint64_t operation_id_high;
-  uint64_t operation_id_low;
-  uint32_t snapshot_remote_target_count;
-  uint32_t admitted_remote_target_count;
-  uint32_t dropped_remote_target_count;
-  uint32_t unreachable_remote_target_count;
-  uint32_t snapshot_local_spot_count;
-  uint32_t admitted_local_spot_count;
-  uint32_t dropped_local_spot_count;
-  int32_t result_code;
-  int32_t failure_errno;
-} zlink_mesh_monitor_event_t;
-
-typedef struct zlink_mesh_monitor_status_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_node_state_t state;
-  uint64_t peer_admitted;
-  uint64_t peer_rejected;
-  uint64_t submitted_messages;
-  uint64_t completed_operations;
-  uint64_t backpressured_submits;
-  uint64_t multicast_messages;
-  uint64_t multicast_dropped_targets;
-  uint64_t active_claims;
-  uint64_t pending_application_messages;
-  uint64_t pending_infrastructure_messages;
-  uint64_t pending_bytes;
-} zlink_mesh_monitor_status_t;
-
-typedef void (*zlink_mesh_monitor_handler_fn)(
-  const zlink_mesh_monitor_event_t *event,
-  void *userdata);
-```
-
-Bit `1ULL << (kind - 1)` in the event mask selects that event. `events == 0` selects every event. Inapplicable RID, ActorRef, channel, and operation fields are zero-valued. `result_code` is the numeric value of a public result enum, and `failure_errno` is the errno for the same failure.
-
-## 3. MeshNode monitor API
-
-```c
-ZLINK_EXPORT void *zlink_mesh_node_monitor_open(
-  void *mesh_node,
-  const zlink_mesh_monitor_open_options_t *options);
-ZLINK_EXPORT zlink_handler_result_t zlink_mesh_node_monitor_handler(
-  void *monitor,
-  zlink_mesh_monitor_handler_fn handler,
-  void *userdata);
-ZLINK_EXPORT zlink_recv_result_t zlink_mesh_node_monitor_recv(
-  void *monitor,
-  zlink_mesh_monitor_event_t *event_out,
-  zlink_recv_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_monitor_status(
-  void *monitor,
-  zlink_mesh_monitor_status_t *status_out);
-ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_monitor_close(void **monitor_p);
-```
-
-Open retains a strong child reference to the MeshNode, so the monitor closes before MeshNode destroy can succeed. Handler and receive are single consumers of the same event queue. A null handler unregisters it; unregistering inside the same callback returns `ZLINK_HANDLER_DEADLOCK`.
-
-Status is an atomic snapshot at call time. Counters increase monotonically within one lifecycle generation and restart from zero in a new generation. Reading status does not consume events.
-
-## 4. Event meaning
-
-Peer events include peer RID, lifecycle generation, and descriptor revision. A rejected event distinguishes MeshName, expected-RID, generation, trust-profile, and authentication failures through `result_code` and `failure_errno`.
-Core also delivers `PEER_REJECTED` when the socket handshake fails before a
-peer RID exists. In that event `peer_rid` is zero-valued and `failure_errno`
-is `EPROTO`, so the event stream can observe connection attempts that never
-produce a peer snapshot entry.
-
-Multicast-committed and multicast-dropped events include remote and local
-snapshot, admitted, and dropped counts. Core uses committed when every target
-accepts and dropped when a local mailbox or remote ROUTER pipe cannot accept a
-target. It records one aggregate event per publish rather than one event per
-target, bounding event-queue growth.
-
-A backpressured event includes owner kind and, where applicable, Spot, Actor, and channel. It never copies raw topics, Actor IDs, application metadata, or payload into monitor events, preventing unbounded labels and sensitive-data exposure.
-
-An operation-completed event contains operation ID and terminal result but no reply payload. A claim-revoked event records the claim owner and generation after a shutdown deadline.
-
-## 5. Overflow, ordering, and thread safety
-
-The monitor queue is bounded. When full, it aggregates identical high-frequency submit and backpressure events while prioritizing peer-state, protocol-error, and lifecycle events. The next status snapshot includes all aggregated counts. A slow monitor consumer never blocks application submission.
-
-Within one MeshNode lifecycle, events enter the queue in the order Core commits state transitions. No wall-clock order is guaranteed across peer I/O threads. The [errno map](04-errno-map.md) defines result and errno mappings for handler, receive, status, and close.
+Within one monitor, Core queues events in the order in which it commits state
+transitions. No wall-clock order is guaranteed across connection I/O threads.
+Handler and receive follow the single-consumer rule for one event queue. Results
+and errno follow the [errno map](04-errno-map.md).

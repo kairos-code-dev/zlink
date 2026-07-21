@@ -2,6 +2,8 @@ import { GameQuestPlayerActor } from './gamequest-player-actor';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse
 } from '@zlink-systems/framework';
@@ -9,16 +11,14 @@ import type {
 class GameQuestEntrySpot implements ZLinkEntrySpot<GameQuestPlayerActor> {
   readonly context!: ZLinkEntrySpotContext<GameQuestPlayerActor>;
 
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
-  async onCreateActor(_actor: GameQuestPlayerActor, _request: ZLinkMessage): Promise<void> {}
-  async onJoinedActor(_actor: GameQuestPlayerActor): Promise<void> {}
-  async onLeaveActor(_actor: GameQuestPlayerActor): Promise<void> {}
-  async onDisconnectActor(actor: GameQuestPlayerActor): Promise<void> {
-    await this.context.destroyActor(actor);
-  }
+  async onCreateActor(_actor: ZLinkActorMembership, _request: ZLinkMessage): Promise<void> {}
+  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 }
 
 export { GameQuestEntrySpot };

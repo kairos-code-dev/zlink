@@ -16,7 +16,7 @@ evidence verifier의 대응을 기록한다. verifier는 배포된 framework 프
 | OBS-B4 | reader 미등록 traffic의 무보관과 messaging 정합 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
 | OBS-C1 | readiness, typed draining row, 기존 연결, lease 갱신 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
 | OBS-C2 | takeover, bound push, pending request, handed-off 계기 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
-| OBS-C3 | 두 Spot drain 정책과 replay 재구성 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
+| OBS-C3 | 정상 request 뒤 Spot 유지, drain admission seal, accepted turn·actor·STREAM barrier 뒤 local Spot close·row 제거, stale handle의 숨은 원격 생성 금지와 명시적 local `GetOrCreate` 뒤 새 generation | 10.0.0 전환 대상 — Kotlin 역할 host가 없고(E2E-KT-06), 공유 Java runner도 제거 대상인 기존 분기 시나리오를 실행하므로 고정 drain 회귀를 검증하지 않음 |
 | OBS-C4 | force stopping, session-closing, server_drain, forced 계기 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
 | OBS-C5 | serving target 롤아웃과 zero-target deadline 결과 | 10.0.0 전환 대상 — Kotlin 역할 host가 없음(E2E-KT-06) |
 
@@ -26,5 +26,5 @@ evidence verifier의 대응을 기록한다. verifier는 배포된 framework 프
 OBS-A1~C5 전체를 다시 검증해야 한다.
 
 OBS-C2는 동일 routing id를 사용하는 Play 역할의 재기동, pending request 완료와
-handed-off 계기를 확인한다. OBS-C3는 두 Spot의 drain 정책과 replay 재구성을 확인한다.
-두 selector를 포함한 Config 11 전체 실행이 종료 코드 0으로 통과했다.
+handed-off 계기를 확인한다. 현재 OBS-C3 selector의 성공은 제거 대상인 기존 분기 시나리오의 결과이며,
+공통 Config 11의 고정 drain 회귀 완료 증거로 사용하지 않는다.

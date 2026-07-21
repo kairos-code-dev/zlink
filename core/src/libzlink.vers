@@ -160,6 +160,14 @@
     zlink_spot_request_to_spot;
     zlink_spot_send_to_channel;
     zlink_spot_send_to_spot;
+    zlink_spot_send_to_instance_placement;
+    zlink_spot_request_to_instance_placement;
+    zlink_instance_spot_activation_mark_ready;
+    zlink_instance_spot_activation_claim_owner;
+    zlink_instance_spot_activation_redirect;
+    zlink_instance_spot_activation_abort;
+    zlink_instance_spot_begin_close;
+    zlink_instance_spot_renew_owner_admission;
     zlink_spot_set_subscription;
     zlink_spot_status;
     zlink_spot_timer_new;

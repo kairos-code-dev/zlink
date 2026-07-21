@@ -188,12 +188,19 @@ server node 1/2`는 실제 actor와 entry spot을 가진 node다. 두 역할은 
 
 ## 5. 서버 구성
 
+DeliveryDispatch의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. Courier 상태 범위는 `deliverydispatch.courier`, Customer 상태 범위는
+`deliverydispatch.customer` RouteMesh로 나눈다. CourierActorNode는 `deliverydispatch.dispatch` Client,
+Dispatch는 그 Channel의 Server다. Dispatch만 시작하는 Tracking 요청은
+`deliverydispatch.tracking` ClientServer Channel을 사용하며 Tracking이 Server다. 같은 peer pair를
+RouteMesh와 ClientServer로 중복 연결하지 않는다.
+
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `DeliveryDispatch.Dispatch` | HTTP API, dispatch ChannelName handler/client, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
+| `DeliveryDispatch.Dispatch` | HTTP API, `deliverydispatch.dispatch` Server, `deliverydispatch.tracking` Client, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
 | `DeliveryDispatch.CourierSession` | stream server, courier session | 배송원 client stream 연결을 받고, 기존 courier actor를 찾은 뒤 현재 session route를 bind한다. 없을 때만 actor 생성을 요청한다. |
 | `DeliveryDispatch.CourierMeshNode1/2` | courier entry spot, courier actor | 선택된 node에서 배송원 actor를 만들고, actor가 courier id와 현재 session route를 기억한다. |
-| `DeliveryDispatch.Tracking` | tracking ChannelName handler, evidence store | 상태 event 기록과 고객 알림 생성을 맡는다. |
+| `DeliveryDispatch.Tracking` | `deliverydispatch.tracking` Server, evidence store | 상태 event 기록과 고객 알림 생성을 맡는다. |
 | `DeliveryDispatch.CustomerGateway` | stream server, customer entry spot, customer actor | 고객 연결을 받고, 기존 customer actor를 찾은 뒤 현재 session을 bind한다. 없을 때만 actor를 만들고 status push를 맡는다. |
 | `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | 서버 endpoint peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
@@ -220,11 +227,12 @@ actor 실행 위치가 섞이지 않게 나눈다.
 
 | 이름 | Framework 요소 | 연결 |
 |------|----------------|------|
+| `deliverydispatch.dispatch` | RouteMesh ChannelName | `CourierActorNode` → ready `Dispatch` member |
 | `deliverydispatch.tracking` | ChannelName | `DispatchWorker module -> Tracking` |
-| `delivery-customers` | MeshNode | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | MeshNode | `CourierSession/DispatchWorker module -> SpotHandle -> CourierEntrySpot -> CourierActor` |
+| `deliverydispatch.customer` | RouteMesh | `CustomerEntrySpot`에서 customer actor 관리 |
+| `deliverydispatch.courier` | RouteMesh | `CourierSession/DispatchWorker module -> SpotHandle -> CourierEntrySpot -> CourierActor` |
 
-`delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
+`deliverydispatch.courier`는 배송원마다 하나씩 늘어나는 Channel이 아니다. 모든 배송원 actor가
 같은 mesh 안에 있고, courier id가 어느 MeshNode의 actor에 들어갈지는 framework 배치가 정한다.
 courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가 기억한다.
 
@@ -687,7 +695,7 @@ push message 대기는 stream connector의 public wait interface를 사용한다
 언어별 runner는 아래 순서를 따른다.
 
 1. 공유 location store(예: Redis)가 준비됐는지 확인한다.
-2. Tracking 서버를 시작하고 tracking channel endpoint가 준비될 시간을 둔다.
+2. Tracking 서버를 시작하고 `deliverydispatch.tracking`의 public runtime readiness가 ready인지 확인한다.
 3. CustomerGateway 서버를 시작한다.
 4. CourierSession 서버를 시작한다.
 5. Courier spot server node 1과 node 2를 시작한다.

@@ -59,6 +59,10 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
                 return Optional.empty();
             }
 
+            @Override
+            public java.util.Map<String, String> metadata() {
+                return java.util.Map.of();
+            }
         };
     }
 

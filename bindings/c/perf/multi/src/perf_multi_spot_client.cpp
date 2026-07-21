@@ -4,6 +4,7 @@
 #include "../common/perf_multi_handshake.hpp"
 #include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_metrics.hpp"
+#include "../common/perf_multi_weighted_latency.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -72,6 +73,12 @@ struct child_result_t
     uint32_t sample_count;
     uint64_t received;
     double latency_sum_ns;
+    uint32_t status_snapshot_ok;
+    uint64_t pending_application_messages;
+    uint64_t pending_infrastructure_messages;
+    uint64_t pending_bytes;
+    uint64_t multicast_submitted;
+    uint64_t multicast_dropped_targets;
     double samples[k_child_sample_cap];
 };
 
@@ -249,7 +256,6 @@ bool discover_hub_generation (
         if (take_completion (node, ready, batch, ZLINK_MESH_OWNER_NODE,
                              ZLINK_MESH_RECORD_COMPLETION, operation, generation_out))
             return generation_out && *generation_out != 0;
-        std::this_thread::yield ();
     }
     return false;
 }
@@ -302,7 +308,8 @@ bool record_payload (const zlink_msg_t *part,
     const uint64_t now = perf_multi_metric::now_ns ();
     if (header.sent_ts_ns <= 0 || now < static_cast<uint64_t> (header.sent_ts_ns))
         return true;
-    const double latency = static_cast<double> (now - header.sent_ts_ns);
+    const double latency =
+      latency_sample_ns (k_pattern, now - static_cast<uint64_t> (header.sent_ts_ns));
     ++result->received;
     result->latency_sum_ns += latency;
     samples->add (latency);
@@ -324,8 +331,12 @@ bool drain_data (void *node,
     if (received_out)
         *received_out = false;
     uint32_t residue = 0;
+    // Each child has at most one outstanding echo operation.  Wait on the
+    // MeshNode readiness condition instead of continuously polling it; the
+    // nonblocking loop otherwise consumes one CPU per peer and starves the
+    // I/O threads that must deliver the corresponding completion.
     const zlink_recv_result_t ready_rc = zlink_mesh_node_drain_ready (
-      node, ZLINK_MESH_READY_ALL, ready, &residue, ZLINK_RECV_FLAGS_DONTWAIT);
+      node, ZLINK_MESH_READY_ALL, ready, &residue, ZLINK_RECV_FLAGS_NONE);
     if (ready_rc == ZLINK_RECV_NO_DATA)
         return true;
     if (ready_rc != ZLINK_RECV_OK)
@@ -440,13 +451,27 @@ bool run_child_case (void *ctx,
             waiting = false;
         if (cooldown && pattern_kind () == pattern_pubsub)
             break;
-        std::this_thread::yield ();
     }
 
     const std::vector<double> &kept = samples.samples ();
     result->sample_count = static_cast<uint32_t> (kept.size ());
     for (size_t i = 0; i < kept.size (); ++i)
         result->samples[i] = kept[i];
+    zlink_mesh_node_status_t node_status;
+    std::memset (&node_status, 0, sizeof (node_status));
+    node_status.struct_size = sizeof (node_status);
+    node_status.version = 1;
+    if (zlink_mesh_node_status (node, &node_status) == ZLINK_CONFIG_OK) {
+        result->status_snapshot_ok = 1;
+        result->pending_application_messages =
+          node_status.pending_application_messages;
+        result->pending_infrastructure_messages =
+          node_status.pending_infrastructure_messages;
+        result->pending_bytes = node_status.pending_bytes;
+        result->multicast_submitted = node_status.multicast_submitted;
+        result->multicast_dropped_targets =
+          node_status.multicast_dropped_targets;
+    }
     result->status = result->received > 0 ? 0 : 1;
     return result->status == 0;
 }
@@ -572,57 +597,6 @@ int child_main (int index,
     return 0;
 }
 
-struct weighted_latency_sample_t
-{
-    double value;
-    double weight;
-};
-
-double weighted_percentile (
-  const std::vector<weighted_latency_sample_t> &samples,
-  double quantile)
-{
-    double total_weight = 0.0;
-    for (size_t i = 0; i < samples.size (); ++i)
-        total_weight += samples[i].weight;
-    if (total_weight <= 0.0)
-        return 0.0;
-
-    const double target = total_weight * quantile;
-    double cumulative = 0.0;
-    for (size_t i = 0; i < samples.size (); ++i) {
-        cumulative += samples[i].weight;
-        if (cumulative >= target)
-            return samples[i].value;
-    }
-    return samples.back ().value;
-}
-
-bench_latency_stats_t aggregate_latency (
-  uint64_t total_count,
-  double total_sum,
-  std::vector<weighted_latency_sample_t> *samples)
-{
-    bench_latency_stats_t stats;
-    if (total_count == 0)
-        return stats;
-    stats.mean_ns = total_sum / static_cast<double> (total_count);
-    if (!samples || samples->empty ()) {
-        stats.p95_ns = stats.mean_ns;
-        stats.p99_ns = stats.mean_ns;
-        return stats;
-    }
-    std::sort (
-      samples->begin (), samples->end (),
-      [] (const weighted_latency_sample_t &lhs,
-          const weighted_latency_sample_t &rhs) {
-          return lhs.value < rhs.value;
-      });
-    stats.p95_ns = weighted_percentile (*samples, 0.95);
-    stats.p99_ns = weighted_percentile (*samples, 0.99);
-    return stats;
-}
-
 int run_client (const std::string &lib_name,
                 const std::string &transport,
                 const std::string &endpoint,
@@ -707,7 +681,13 @@ int run_client (const std::string &lib_name,
 
         uint64_t total_received = 0;
         double total_latency = 0.0;
-        std::vector<weighted_latency_sample_t> samples;
+        uint64_t status_snapshot_count = 0;
+        uint64_t pending_application_messages = 0;
+        uint64_t pending_infrastructure_messages = 0;
+        uint64_t pending_bytes = 0;
+        uint64_t multicast_submitted = 0;
+        uint64_t multicast_dropped_targets = 0;
+        std::vector<perf_multi_latency::weighted_sample_t> samples;
         samples.reserve (children.size () * k_child_sample_cap);
         for (size_t i = 0; i < children.size () && ok; ++i) {
             child_result_t result;
@@ -722,6 +702,17 @@ int run_client (const std::string &lib_name,
             }
             total_received += result.received;
             total_latency += result.latency_sum_ns;
+            if (result.status_snapshot_ok) {
+                ++status_snapshot_count;
+                pending_application_messages +=
+                  result.pending_application_messages;
+                pending_infrastructure_messages +=
+                  result.pending_infrastructure_messages;
+                pending_bytes += result.pending_bytes;
+                multicast_submitted += result.multicast_submitted;
+                multicast_dropped_targets +=
+                  result.multicast_dropped_targets;
+            }
             if (result.sample_count > 0) {
                 //  Each child reservoir is uniform over that child's complete
                 //  successful stream. Weight its representatives by the
@@ -732,7 +723,7 @@ int run_client (const std::string &lib_name,
                   / static_cast<double> (result.sample_count);
                 for (size_t sample = 0;
                      sample < result.sample_count; ++sample) {
-                    weighted_latency_sample_t weighted;
+                    perf_multi_latency::weighted_sample_t weighted;
                     weighted.value = result.samples[sample];
                     weighted.weight = sample_weight;
                     samples.push_back (weighted);
@@ -743,11 +734,25 @@ int run_client (const std::string &lib_name,
             break;
 
         const bench_latency_stats_t latency =
-          aggregate_latency (total_received, total_latency, &samples);
+          perf_multi_latency::aggregate (total_received, total_latency, &samples);
         print_result (lib_name, k_pattern, transport, msg_size,
-                      static_cast<double> (total_received)
-                        / static_cast<double> (std::max (1, settings.duration_seconds)),
+                      throughput_per_second (
+                        total_received,
+                        static_cast<double> (std::max (1, settings.duration_seconds))),
                       latency.mean_ns, latency.p95_ns, latency.p99_ns);
+        std::cout << "SPOT_DIAG," << lib_name << "," << k_pattern << ","
+                  << transport << "," << msg_size
+                  << ",role=peers"
+                  << ",snapshots=" << status_snapshot_count
+                  << ",received=" << total_received
+                  << ",pending_application_messages="
+                  << pending_application_messages
+                  << ",pending_infrastructure_messages="
+                  << pending_infrastructure_messages
+                  << ",pending_bytes=" << pending_bytes
+                  << ",multicast_submitted=" << multicast_submitted
+                  << ",multicast_dropped_targets="
+                  << multicast_dropped_targets << std::endl;
         std::cout << "CLIENT_DONE," << msg_size << std::endl;
     }
 

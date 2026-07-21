@@ -34,6 +34,24 @@ public interface MeshNode extends AutoCloseable {
     /** Sets the weight of a channel. */
     void setChannelWeight(String channelName, int weight);
 
+    /** Returns the maximum accepted message size, or {@code -1} when unlimited. */
+    long maxMessageSize();
+
+    /** Sets the maximum accepted message size, or {@code -1} for unlimited. */
+    void setMaxMessageSize(long value);
+
+    /** Returns the routed admission queue high-water mark override. */
+    int routerHighWaterMark();
+
+    /** Sets the routed admission queue high-water mark override. */
+    void setRouterHighWaterMark(int value);
+
+    /** Returns the per-owner mailbox message budget. */
+    long mailboxMessageBudget();
+
+    /** Sets the per-owner mailbox message budget. */
+    void setMailboxMessageBudget(long value);
+
     /** Starts the node. */
     void start();
 
@@ -48,6 +66,9 @@ public interface MeshNode extends AutoCloseable {
 
     /** Returns the node's peer entries. */
     List<MeshPeerEntry> peers();
+
+    /** Returns the channels advertised by one admitted peer generation. */
+    PeerChannels peerChannels(RoutingId peerRid, long lifecycleGeneration);
 
     /** Opens the push monitor for this node. */
     MeshNodeMonitor openMonitor(long events);
@@ -72,16 +93,30 @@ public interface MeshNode extends AutoCloseable {
     /** Sends a message to a node. */
     void sendToNode(RoutingId targetRid, List<Message> parts, SendFlags flags);
 
+    /** Sends a message with canonical application metadata to a node. */
+    void sendToNode(RoutingId targetRid, byte[] metadata, List<Message> parts, SendFlags flags);
+
     /** Sends a request to a node. */
     OperationId requestToNode(RoutingId targetRid, List<Message> parts, SendFlags flags,
                               Duration timeout);
 
+    /** Sends a request with canonical application metadata to a node. */
+    OperationId requestToNode(RoutingId targetRid, byte[] metadata, List<Message> parts,
+                              SendFlags flags, Duration timeout);
+
     /** Sends a message to a channel. */
     void sendToChannel(String channelName, List<Message> parts, SendFlags flags);
+
+    /** Sends a message with canonical application metadata to a channel. */
+    void sendToChannel(String channelName, byte[] metadata, List<Message> parts, SendFlags flags);
 
     /** Sends a request to a channel. */
     OperationId requestToChannel(String channelName, List<Message> parts, SendFlags flags,
                                  Duration timeout);
+
+    /** Sends a request with canonical application metadata to a channel. */
+    OperationId requestToChannel(String channelName, byte[] metadata, List<Message> parts,
+                                 SendFlags flags, Duration timeout);
 
     /** Sends a message to an actor. */
     void sendToActor(ActorRef actor, List<Message> parts, SendFlags flags);
@@ -89,6 +124,9 @@ public interface MeshNode extends AutoCloseable {
     /** Sends a request to an actor. */
     OperationId requestToActor(ActorRef actor, List<Message> parts, SendFlags flags,
                                Duration timeout);
+
+    /** Sends a message to an actor's bound STREAM session. */
+    void sendActorBoundSession(ActorRef actor, List<Message> parts, SendFlags flags);
 
     /** Creates an actor with no creation parts. */
     Actor createActor(String actorId);
@@ -104,6 +142,50 @@ public interface MeshNode extends AutoCloseable {
 
     /** Destroys an actor. */
     OperationId destroyActor(ActorRef actor, Duration timeout);
+
+    /** Joins an actor to a user spot. */
+    OperationId joinActorSpot(
+        ActorRef actor,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        List<Message> creationParts,
+        Duration timeout);
+
+    /** Joins an actor to a node's entry spot. */
+    OperationId joinActorEntrySpot(
+        ActorRef actor,
+        RoutingId targetNodeRid,
+        List<Message> creationParts,
+        Duration timeout);
+
+    /** Leaves the actor's current spot at the expected membership epoch. */
+    OperationId leaveActor(
+        ActorRef actor,
+        long expectedMembershipEpoch,
+        Duration timeout);
+
+    /** Closes the actor's bound STREAM session. */
+    OperationId closeActorBoundSession(
+        ActorRef actor,
+        long expectedBindingGeneration,
+        Duration timeout);
+
+    /**
+     * Fences one side of an actor transfer and returns its opaque token and
+     * negotiated reservation.
+     */
+    PrepareActorTransferResult prepareActorTransfer(
+        ActorTransferPrepare prepare, Duration timeout);
+
+    /** Commits a prepared actor transfer to the given membership epoch. */
+    void commitActorTransfer(ActorTransferToken token, long newMembershipEpoch);
+
+    /** Activates a committed target actor transfer. */
+    void activateActorTransfer(ActorTransferToken token);
+
+    /** Aborts a prepared or committed actor transfer. */
+    void abortActorTransfer(ActorTransferToken token);
 
     /** Creates a new user spot. */
     Spot createSpot();

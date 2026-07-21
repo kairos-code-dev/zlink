@@ -4,7 +4,7 @@ import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { CourierActorDirectory, CourierActorFactory } from './courier-actor';
 import { CourierEntrySpot } from './courier-entry-spot';
-import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler, OfferDeliveryEntrySpotHandler } from './offer-delivery-handler';
+import { CourierActorBindHandler, CourierActorDecisionHandler, CourierActorOfferHandler, CourierActorSessionBindHandler, EnsureCourierActorHandler } from './offer-delivery-handler';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -44,15 +44,15 @@ function createCourierActorNodeModule(options: CourierOptions) {
             .traceLogFile(`${config.logDir}/flow-${nodeRid}.log`)
             .traceLabel(nodeRid);
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.dispatchChannel)
-              .enableClient()
-            .addSpotMesh(SampleNames.courierActorSpotMesh)
-              .enableRouter(spotEndpoint, nodeRid)
+          deliveryDispatchLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+              .listen(spotEndpoint).routingId(nodeRid)
+              .configureEntrySpot({ routingId: nodeRid })
               .addEntrySpot(CourierEntrySpot)
-              .actorFactory(SampleNames.courierActorType, CourierActorFactory)
-            .build();
+              .actorFactory(SampleNames.courierActorType, CourierActorFactory);
+          mesh.channelName(SampleNames.dispatchChannel).setWeight(0);
+          mesh.channelName(SampleNames.routeMesh);
+          return builder.build();
         }
       })
     ],
@@ -60,7 +60,6 @@ function createCourierActorNodeModule(options: CourierOptions) {
       { provide: CourierActorDirectory, useValue: directory },
       CourierActorFactory,
       CourierEntrySpot,
-      OfferDeliveryEntrySpotHandler,
       EnsureCourierActorHandler,
       CourierActorBindHandler,
       CourierActorSessionBindHandler,

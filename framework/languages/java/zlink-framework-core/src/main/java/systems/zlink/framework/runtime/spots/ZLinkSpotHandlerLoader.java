@@ -13,6 +13,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
@@ -91,7 +94,7 @@ final class ZLinkSpotHandlerLoader {
                     handler.timerName(),
                     handler.timerPeriod(),
                     handler.handlerType(),
-                    new ZLinkTimerOptions());
+                    null);
             }
         }
     }
@@ -260,11 +263,12 @@ final class ZLinkSpotHandlerLoader {
                 continue;
             }
             Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
-            if (parameters.length != 2) {
-                throw new ZLinkConfigurationException(
-                    "SPOT request handler method must have spot and request parameters: "
-                        + handlerType.getName() + "." + method.getName());
-            }
+            requireSpotMessageShape(
+                handlerType,
+                method,
+                parameters,
+                ZLinkRequestContext.class,
+                "SPOT request handler method must have spot and request parameters: ");
             requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
             return new SpotPacketHandlerRegistration(
                 handlerType,
@@ -310,11 +314,12 @@ final class ZLinkSpotHandlerLoader {
                 continue;
             }
             Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
-            if (parameters.length != 2) {
-                throw new ZLinkConfigurationException(
-                    "SPOT subscription handler method must have spot and event parameters: "
-                        + handlerType.getName() + "." + method.getName());
-            }
+            requireSpotMessageShape(
+                handlerType,
+                method,
+                parameters,
+                ZLinkPublishContext.class,
+                "SPOT subscription handler method must have spot and event parameters: ");
             requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
             return new SpotSubscriptionHandlerRegistration(
                 topic,
@@ -328,6 +333,23 @@ final class ZLinkSpotHandlerLoader {
         throw new ZLinkConfigurationException(
             "SPOT subscription handler must implement ZLinkSpotSubscriptionHandler: "
                 + handlerType.getName());
+    }
+
+    private static void requireSpotMessageShape(
+        Class<?> handlerType,
+        Method method,
+        Class<?>[] parameters,
+        Class<? extends ZLinkHandlerContext> contextType,
+        String failurePrefix) {
+        if (parameters.length == 2) {
+            return;
+        }
+        if (parameters.length == 3
+            && parameters[2].isAssignableFrom(contextType)) {
+            return;
+        }
+        throw new ZLinkConfigurationException(
+            failurePrefix + handlerType.getName() + "." + method.getName());
     }
 
     private static void requireExactSpotType(

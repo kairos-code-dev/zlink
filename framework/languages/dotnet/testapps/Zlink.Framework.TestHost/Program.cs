@@ -62,8 +62,8 @@ internal sealed class ChannelStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            _ = publisher.Publish(channelName, topic, new TestHostPublishedEvent(value))
-                .TrySubmit();
+            await publisher.Publish(channelName, topic, new TestHostPublishedEvent(value))
+                .SubmitAsync(stoppingToken);
 
             try
             {
@@ -108,7 +108,12 @@ internal sealed class SpotStartupPublishHostedService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            _ = publisher.PublishSpot(channelName, topic, new StartupStageEvent(value)).TrySubmit();
+            await publisher.Publish(
+                    channelName,
+                    channelName,
+                    topic,
+                    new StartupStageEvent(value))
+                .SubmitAsync(stoppingToken);
 
             try
             {
@@ -146,7 +151,9 @@ internal sealed class StartupStageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.Handlers.AddSubscribe<StartupStageSubscriptionHandler>("stage.monitor");
+        Context.Handlers.AddSubscribe<StartupStageSubscriptionHandler>(
+            Context.MeshName,
+            "stage.monitor");
     }
 }
 
@@ -348,7 +355,7 @@ internal sealed class TestHostRawStreamSession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDispatchAsync(
+    public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
@@ -356,9 +363,8 @@ internal sealed class TestHostRawStreamSession(
         _ = cancellationToken;
         _ = dispatch;
         recorder.RecordPayload(payload.Decode<string>());
-        Context.Client.Reply("pong")
+        await Context.Client.Reply("pong")
             .Compress()
-            .Submit();
-        return ValueTask.CompletedTask;
+            .SubmitAsync(cancellationToken);
     }
 }

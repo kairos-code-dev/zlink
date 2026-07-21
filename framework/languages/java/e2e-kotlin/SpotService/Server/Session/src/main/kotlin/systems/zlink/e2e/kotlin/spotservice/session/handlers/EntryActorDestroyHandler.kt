@@ -21,7 +21,7 @@ class EntryActorDestroyHandler : ZLinkSuspendingEntrySpotActorRequestHandler<Sce
         }
 
         try {
-            spot.context().runWorker { true }.submit().await()
+            spot.context().runCpuWorker { true }.submit().await()
             spot.context().destroyActor(actor).await()
             spot.record("ActorDestroyed", actor.actorId())
         } catch (error: Throwable) {

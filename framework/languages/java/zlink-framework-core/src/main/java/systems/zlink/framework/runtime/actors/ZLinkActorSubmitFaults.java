@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.actors;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SubmitResult;
 
@@ -26,10 +27,14 @@ final class ZLinkActorSubmitFaults {
 
     static boolean retryableSessionActorBindFailure(Throwable error) {
         ZlinkRequestException request = findRequestException(error);
-        return request != null
+        if (request != null
             && (request.getResult() == RequestResult.NOT_CONNECTED
                 || request.getResult() == RequestResult.NOT_FOUND
-                || request.getResult() == RequestResult.TIMED_OUT);
+                || request.getResult() == RequestResult.TIMED_OUT)) {
+            return true;
+        }
+        ZlinkSubmitException submit = findSubmitException(error);
+        return submit != null && retryableSubmitResult(submit.getResult());
     }
 
     static boolean retryableBoundSessionBindFailure(Throwable error) {
@@ -40,6 +45,10 @@ final class ZLinkActorSubmitFaults {
                 || request.getResult() == RequestResult.BUSY
                 || request.getNativeErrno() == 11
                 || request.getNativeErrno() == 16)) {
+            return true;
+        }
+        ZlinkSubmitException submit = findSubmitException(error);
+        if (submit != null && retryableSubmitResult(submit.getResult())) {
             return true;
         }
         ZlinkConfigException config = findConfigException(error);
@@ -67,6 +76,17 @@ final class ZLinkActorSubmitFaults {
         while (current != null) {
             if (current instanceof ZlinkConfigException config) {
                 return config;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static ZlinkSubmitException findSubmitException(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ZlinkSubmitException submit) {
+                return submit;
             }
             current = current.getCause();
         }

@@ -54,6 +54,7 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER_SENDSEND": "router_router_sendsend",
     "DEALER_ROUTER_REQREP": "dealer_router_reqrep",
     "ROUTER_ROUTER_REQREP": "router_router_reqrep",
+    "ROUTER_ROUTER_ONEWAY": "router_router_oneway",
     "PUBSUB": "pubsub",
     "SPOT_PUBSUB": "spot_pubsub",
     "SPOT_REQREP": "spot_reqrep",
@@ -85,6 +86,7 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_sendsend_client", "ROUTER_ROUTER_SENDSEND"),
     ("comp_src_dealer_router_reqrep_client", "DEALER_ROUTER_REQREP"),
     ("comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
+    ("comp_src_router_router_oneway_client", "ROUTER_ROUTER_ONEWAY"),
     ("comp_src_pubsub_client", "PUBSUB"),
     ("comp_src_spot_pubsub_client", "SPOT_PUBSUB"),
     ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
@@ -99,6 +101,7 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER_SENDSEND": ("recv",),
     "DEALER_ROUTER_REQREP": ("recv",),
     "ROUTER_ROUTER_REQREP": ("recv",),
+    "ROUTER_ROUTER_ONEWAY": ("recv",),
     "PUBSUB": ("recv",),
     "SPOT_PUBSUB": ("recv",),
     "SPOT_REQREP": ("recv",),
@@ -823,6 +826,12 @@ _AUTO_HWM_DETAIL_ROWS = []
 _AUTO_HWM_DETAIL_TABLE_SEEN = set()
 
 
+def emit_spot_diag_line(line):
+    stripped = (line or "").strip()
+    if stripped.startswith(("SPOT_DIAG,", "MATCHED_DIAG,")):
+        print(stripped, flush=True)
+
+
 def emit_auto_hwm_detail_line(line):
     stripped = (line or "").strip()
     if not stripped.startswith("AUTO_HWM_DETAIL,"):
@@ -1178,6 +1187,8 @@ def pattern_default_hwm(pattern_name):
 
 
 def pattern_default_io_threads(pattern_name):
+    if pattern_name == "ROUTER_ROUTER_ONEWAY":
+        return 1
     if pattern_name in STREAM_VARIANT_PATTERNS:
         return 4
     return max(1, parse_env_int("PERF_DEFAULT_IO_THREADS", 4))
@@ -1197,9 +1208,18 @@ def resolve_binary_names(pattern_name):
     suffix = PATTERN_SUFFIX.get(pattern_name)
     if not suffix:
         return None
+    matched_client = (
+        os.environ.get("PERF_MULTI_MATCHED_BASELINE", "0") == "1"
+        and pattern_name
+        in {"ROUTER_ROUTER_REQREP", "ROUTER_ROUTER_SENDSEND"}
+    )
     return {
         "server": f"comp_src_{suffix}_server",
-        "client": f"comp_src_{suffix}_client",
+        "client": (
+            f"comp_src_{suffix}_matched_client"
+            if matched_client
+            else f"comp_src_{suffix}_client"
+        ),
     }
 
 
@@ -1553,6 +1573,7 @@ def run_sizes_test_stream_shared(
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
         emit_auto_hwm_detail_line(line)
+        emit_spot_diag_line(line)
         if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -1800,6 +1821,7 @@ def run_sizes_test_stream_shared(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
+            emit_spot_diag_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -2113,6 +2135,7 @@ def run_sizes_test_split(
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
         emit_auto_hwm_detail_line(line)
+        emit_spot_diag_line(line)
         if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -2408,6 +2431,7 @@ def run_sizes_test_split(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
+            emit_spot_diag_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:

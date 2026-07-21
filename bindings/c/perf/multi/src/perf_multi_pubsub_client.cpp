@@ -224,8 +224,9 @@ bool run_recv_duration (const std::vector<void *> &sockets,
         return false;
     }
 
-    *throughput_out = static_cast<double> (recv_count)
-                      / static_cast<double> (std::max (1, settings.duration_seconds));
+    *throughput_out = throughput_per_second (
+      static_cast<uint64_t> (recv_count),
+      static_cast<double> (std::max (1, settings.duration_seconds)));
     if (bench_debug_enabled ()) {
         std::cerr << "[multi-pubsub-client] active recv_count=" << recv_count
                   << " lat_count=" << lat_count << std::endl;

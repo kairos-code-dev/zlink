@@ -86,7 +86,7 @@ public sealed class PlayerSessionBinder(
         CancellationToken cancellationToken)
     {
         var ensured = await channels
-            .RequestToChannel(ZoneWorldNames.ActorsChannel, ZoneWorldNames.ActorsChannel, new EnsurePlayerActorReq(playerId))
+            .RequestToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ActorsChannel, new EnsurePlayerActorReq(playerId))
             .Async<EnsurePlayerActorRes>(cancellationToken);
 
         var actorRef = new ActorRef(

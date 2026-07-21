@@ -1,130 +1,166 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlayActorJoinGameHandler } from './Handlers/play-actor-join-game-handler';
-import { PlayActorObserveMilestoneHandler } from './Handlers/play-actor-observe-milestone-handler';
-import { PlayActor } from '../../Actors/play-actor';
-import { joinGameRes, observeMilestoneRes, winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
+import {
+  ZLINK_ACTOR_CLIENT,
+  zlinkEntrySpotActorSendHandler
+} from '@zlink-systems/nestjs';
+import { winMilestoneNotify } from '../../../../../../Shared/Contracts/messages';
 import { PlayerWinMilestoneEventHandler } from './Handlers/player-win-milestone-event-handler';
 import { SampleNames } from '../../../../../Configuration/sample-settings';
+import {
+  DeliverPlayNotification,
+  InitializePlayActor,
+  PlayActor
+} from '../../Actors/play-actor';
 import type {
-  ZLinkActor,
+  ActorRef,
+  ZLinkActorClient,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage
 } from '@zlink-systems/framework';
 import type {
-  JoinGameRes,
-  ObserveMilestoneRes,
-  PlayerInfo,
   PlayerWinMilestoneEvent,
-  TicTacToeGameJoinReq,
-  TicTacToeGameJoinRes,
   TicTacToeActor
 } from '../../../../../../Shared/Contracts/messages';
 
-type PlayEntrySpotActor = TicTacToeActor & ZLinkActor;
-
 @Injectable()
 class MilestoneObserverRegistry {
-  private readonly observers = new Map<string, PlayEntrySpotActor>();
+  private readonly actors = new Map<string, ActorRef>();
+  private readonly subscriptions = new Set<string>();
 
-  subscribe(actor: PlayEntrySpotActor): void {
-    this.observers.set(actor.actorId, actor);
+  constructor(@Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient) {}
+
+  track(actor: ZLinkActorMembership): void {
+    this.actors.set(actor.actor.actorId, actor.actor);
   }
 
-  remove(actor: PlayEntrySpotActor): void {
-    this.observers.delete(actor.actorId);
+  subscribe(actorId: string): void {
+    this.subscriptions.add(actorId);
+  }
+
+  remove(actorId: string): void {
+    this.actors.delete(actorId);
+    this.subscriptions.delete(actorId);
   }
 
   async notify(event: PlayerWinMilestoneEvent, receivingSpotNodeRid: string): Promise<void> {
     const payload = winMilestoneNotify(event, receivingSpotNodeRid);
-    for (const actor of [...this.observers.values()]) {
-      await actor.push(payload);
+    for (const actorId of this.subscriptions) {
+      const actor = this.actors.get(actorId);
+      if (actor !== undefined) {
+        await this.actorClient
+          .sendToActor(SampleNames.playSpotNode, actor, new DeliverPlayNotification(payload))
+          .submit();
+      }
     }
   }
 }
 
 @Injectable()
-class PlayEntrySpot implements ZLinkEntrySpot<PlayEntrySpotActor> {
-  readonly context!: ZLinkEntrySpotContext<PlayEntrySpotActor>;
+class PendingActorDestroyRegistry {
+  private readonly actors = new Set<string>();
+
+  mark(actorId: string): void {
+    this.actors.add(actorId);
+  }
+
+  consume(actorId: string): boolean {
+    return this.actors.delete(actorId);
+  }
+}
+
+class DestroyPlayActor {}
+
+@Injectable()
+class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
+  readonly context!: ZLinkEntrySpotContext<PlayActor>;
 
   constructor(
-    private readonly milestoneObservers: MilestoneObserverRegistry
+    private readonly milestoneObservers: MilestoneObserverRegistry,
+    private readonly pendingDestroys: PendingActorDestroyRegistry,
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient
   ) {}
 
   configure(): void {
-    this.context.handlers.addActorPacket(PlayActorJoinGameHandler, PlayActor);
-    this.context.handlers.addActorPacket(PlayActorObserveMilestoneHandler, PlayActor);
-    this.context.handlers.addSubscribe(PlayerWinMilestoneEventHandler, SampleNames.playerMilestoneTopic);
+    this.context.handlers.addSubscribe(
+      PlayerWinMilestoneEventHandler,
+      SampleNames.playerMilestoneChannel,
+      SampleNames.playerMilestoneTopic
+    );
   }
 
-  async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
-
-  async join(actor: PlayEntrySpotActor, player: PlayerInfo, roomId: string): Promise<JoinGameRes> {
-    const request: TicTacToeGameJoinReq = {
-      roomId,
-      player: {
-        actorId: player.actorId,
-        displayName: player.displayName,
-        level: player.level,
-        wins: player.wins
-      }
-    };
-    const joined = await actor.context.joinSpot(roomId, request).submit<Partial<TicTacToeGameJoinRes & { error: string }>>();
-    const reply = joined.reply;
-    if (joined.status === 'rejected') {
-      throw new Error(reply.error ?? `Room '${roomId}' rejected actor '${actor.actorId}'.`);
-    }
-    if (reply.state === undefined) {
-      throw new Error(`Room '${roomId}' accepted actor '${actor.actorId}' without game state.`);
-    }
-    return joinGameRes(reply.state);
-  }
-
-  async observeMilestone(actor: PlayEntrySpotActor): Promise<ObserveMilestoneRes> {
-    this.milestoneObservers.subscribe(actor);
-    return observeMilestoneRes(true);
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
+    return { accepted: true };
   }
 
   async notifyMilestone(event: PlayerWinMilestoneEvent): Promise<void> {
     await this.milestoneObservers.notify(event, String(this.context.nodeRid));
   }
 
-  async onDisconnectActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
-    void signal;
-    actor.markDisconnected();
-    this.milestoneObservers.remove(actor);
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
+    this.milestoneObservers.remove(actor.actor.actorId);
   }
 
-  async onCreateActor(actor: PlayEntrySpotActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
-    void signal;
+  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
     const player = createRequest.decode<Partial<TicTacToeActor>>(Object as never);
-    if (typeof player.displayName === 'string') {
-      actor.displayName = player.displayName;
-    }
-    if (typeof player.level === 'number') {
-      actor.level = player.level;
-    }
-    if (typeof player.wins === 'number') {
-      actor.wins = player.wins;
+    await this.actorClient.sendToActor(
+      SampleNames.playSpotNode,
+      actor.actor,
+      new InitializePlayActor(
+        typeof player.displayName === 'string' ? player.displayName : actor.actor.actorId,
+        typeof player.level === 'number' ? player.level : 0,
+        typeof player.wins === 'number' ? player.wins : 0
+      )
+    ).submit();
+    this.milestoneObservers.track(actor);
+  }
+
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+    this.milestoneObservers.track(actor);
+    if (this.pendingDestroys.consume(actor.actor.actorId)) {
+      const submitted = await this.actorClient
+        .sendToActor(SampleNames.playSpotNode, actor.actor, new DestroyPlayActor())
+        .submit();
+      if (submitted.status !== 'submitted') {
+        throw new Error(
+          `Actor '${actor.actor.actorId}' destroy command was not submitted: ${submitted.status}.`
+        );
+      }
     }
   }
 
-  async onJoinedActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
-    if (actor.destroyAfterEntrySpotJoin) {
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+    console.log(`entry spot: actor left. actor=${actor.actor.actorId}`);
+    this.milestoneObservers.remove(actor.actor.actorId);
+  }
+
+  scheduleDestroy(actor: PlayActor): void {
+    void this.context.runIoWorker(async () => true).async().then(async () => {
       console.log(`entry spot: actor destroy started. actor=${actor.actorId}`);
-      await this.context.destroyActor(actor, signal);
+      await this.context.destroyActor(actor);
       console.log(`entry spot: actor destroyed. actor=${actor.actorId}`);
-    }
+    });
   }
-
-  async onLeaveActor(actor: PlayEntrySpotActor, signal?: AbortSignal): Promise<void> {
-    void signal;
-    console.log(`entry spot: actor left. actor=${actor.actorId}`);
-    this.milestoneObservers.remove(actor);
-  }
-
 }
 
-Inject(MilestoneObserverRegistry)(PlayEntrySpot, undefined, 0);
+@zlinkEntrySpotActorSendHandler({
+  entrySpot: () => PlayEntrySpot,
+  actor: () => PlayActor,
+  packetName: 'DestroyPlayActor'
+})
+class DestroyPlayActorHandler {
+  constructor(private readonly entrySpot: PlayEntrySpot) {}
 
-export { MilestoneObserverRegistry, PlayEntrySpot };
+  async handle(actor: PlayActor): Promise<void> {
+    this.entrySpot.scheduleDestroy(actor);
+  }
+}
+
+export {
+  DestroyPlayActorHandler,
+  MilestoneObserverRegistry,
+  PendingActorDestroyRegistry,
+  PlayEntrySpot
+};

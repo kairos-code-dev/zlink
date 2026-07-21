@@ -64,7 +64,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 22:
+    while len(sockets) < 8:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -83,22 +83,14 @@ finally:
 PY
 )"
 
-BINGO_API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-BINGO_SESSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
-BINGO_SESSION_A_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
-BINGO_SESSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-BINGO_SESSION_B_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-BINGO_PLAY_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
-BINGO_SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
-BINGO_SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
-BINGO_PLAY_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
-BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
-BINGO_API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
-BINGO_API_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
-BINGO_API_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
-BINGO_API_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
-BINGO_API_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
+BINGO_API_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
+BINGO_API_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+BINGO_PLAY_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+BINGO_PLAY_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+BINGO_SESSION_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+BINGO_SESSION_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+BINGO_SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+BINGO_SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -166,18 +158,14 @@ common = {
     "RedisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}",
 }
 roles = [
-    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}",
-     "SpotEndpoint": "${BINGO_API_A_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_API_A_SPOT_ROUTER_ENDPOINT}"},
-    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}",
-     "SpotEndpoint": "${BINGO_API_B_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_API_B_SPOT_ROUTER_ENDPOINT}"},
-    {**common, "NodeName": "a",
-     "SpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"},
-    {**common, "NodeName": "b",
-     "SpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"},
-    {**common, "NodeName": "a", "SpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
-     "SpotRouterEndpoint": "${BINGO_SESSION_A_ROUTER_ENDPOINT}", "StreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}"},
-    {**common, "NodeName": "b", "SpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
-     "SpotRouterEndpoint": "${BINGO_SESSION_B_ROUTER_ENDPOINT}", "StreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}"},
+    {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_API_A_MESH_ENDPOINT}"},
+    {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_API_B_MESH_ENDPOINT}"},
+    {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_PLAY_A_MESH_ENDPOINT}"},
+    {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_PLAY_B_MESH_ENDPOINT}"},
+    {**common, "NodeName": "a", "MeshEndpoint": "${BINGO_SESSION_A_MESH_ENDPOINT}",
+     "StreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}"},
+    {**common, "NodeName": "b", "MeshEndpoint": "${BINGO_SESSION_B_MESH_ENDPOINT}",
+     "StreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}"},
 ]
 for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
@@ -207,22 +195,20 @@ start_server() {
 dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
 start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
-wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
+wait_port play-a-mesh "${BINGO_PLAY_A_MESH_ENDPOINT}"
 start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_B_CONFIG_FILE}"
-wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
+wait_port play-b-mesh "${BINGO_PLAY_B_MESH_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_A_CONFIG_FILE}"
-wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
-wait_port api-a-spot-router "${BINGO_API_A_SPOT_ROUTER_ENDPOINT}"
+wait_port api-a-mesh "${BINGO_API_A_MESH_ENDPOINT}"
 start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_B_CONFIG_FILE}"
-wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
-wait_port api-b-spot-router "${BINGO_API_B_SPOT_ROUTER_ENDPOINT}"
+wait_port api-b-mesh "${BINGO_API_B_MESH_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_A_CONFIG_FILE}"
-wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"
+wait_port session-a-mesh "${BINGO_SESSION_A_MESH_ENDPOINT}"
 wait_port session-a-stream "${BINGO_SESSION_A_STREAM_ENDPOINT}"
 start_server session-b "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_B_CONFIG_FILE}"
-wait_port session-b-router "${BINGO_SESSION_B_ROUTER_ENDPOINT}"
+wait_port session-b-mesh "${BINGO_SESSION_B_MESH_ENDPOINT}"
 wait_port session-b-stream "${BINGO_SESSION_B_STREAM_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/Bingo.Client.csproj" -- \

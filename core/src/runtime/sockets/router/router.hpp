@@ -33,9 +33,14 @@ class router_t : public routing_socket_base_t
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
     int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
     int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
-    int xsend_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xsend_routed (const zlink_routing_id_t *target_rid_,
+                      zlink::msg_t *msg_,
+                      uint64_t *connection_id_out_,
+                      uint64_t expected_connection_id_) ZLINK_OVERRIDE;
     int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
-    int xrecv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_) ZLINK_OVERRIDE;
+    int xrecv_routed (zlink::msg_t *msg_,
+                      zlink_routing_id_t *source_rid_out_,
+                      uint64_t *connection_id_out_) ZLINK_OVERRIDE;
     bool xhas_in () ZLINK_OVERRIDE;
     bool xhas_out () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
@@ -93,8 +98,15 @@ class router_t : public routing_socket_base_t
     //  asynchronous handshake completes.
     std::map<pipe_t *, bool> _anonymous_pipes;
 
+    //  Reciprocal connectors can establish two physical pipes for one stable
+    //  routing id. The deterministic loser stays attached under an internal
+    //  id instead of being terminated into a reconnect loop. If the selected
+    //  pipe closes, the existing standby is promoted immediately.
+    std::map<pipe_t *, blob_t> _standby_pipes;
+
     //  The pipe we are currently writing to.
     zlink::pipe_t *_current_out;
+    uint64_t _current_out_connection_id;
 
     //  If true, more outgoing message parts are expected.
     bool _more_out;
@@ -110,8 +122,7 @@ class router_t : public routing_socket_base_t
     bool _probe_router;
 
     // If true, the router will reassign an identity upon encountering a
-    // name collision. The new pipe will take the identity, the old pipe
-    // will be terminated.
+    // name collision. The selected pipe takes the identity.
     bool _handover;
     std::vector<zlink_msg_t> _dispatch_parts;
     std::map<pipe_t *, std::vector<zlink_msg_t>> _dispatch_parts_by_pipe;

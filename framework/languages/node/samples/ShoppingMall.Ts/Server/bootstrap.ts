@@ -71,9 +71,17 @@ function createHealthServer(roleName: string, baseEndpoint: string, dependencies
         const status = await dependencies.locations.getStatus();
         const probeId = 'shoppingmall-topology-readiness';
         if (roleName === SampleNames.workflowA) {
-          await dependencies.spots.getOrCreate(OrderWorkflowSpot, probeId, { orderId: probeId });
+          await dependencies.spots.getOrCreate(
+            SampleNames.orderWorkflowSpotMesh,
+            OrderWorkflowSpot,
+            probeId,
+            { orderId: probeId }
+          );
         }
-        const handle = await dependencies.spotRefs.resolveSpotHandle(probeId);
+        const handle = await dependencies.spotRefs.resolveSpotHandle(
+          SampleNames.orderWorkflowSpotMesh,
+          probeId
+        );
         if (handle === undefined) throw new Error('Topology readiness spot was not resolved.');
         const probe = await dependencies.outbound.requestToSpot(handle, new ShoppingMallTopologyReadyReq(probeId))
           .timeout(SampleNames.requestTimeout)

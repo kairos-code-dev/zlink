@@ -39,13 +39,13 @@ function createSessionModule() {
             .traceLogFile(`${config.logDir}/flow-customer-gateway.log`)
             .traceLabel('customer-gateway');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addSpotMesh(SampleNames.customerActorSpotMesh)
-              .enableRouter(config.sessionSpotRouterEndpoint, config.sessionSpotNodeRid)
+          deliveryDispatchLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+              .listen(config.sessionSpotRouterEndpoint).routingId(config.sessionSpotNodeRid)
               .addEntrySpot(CustomerEntrySpot)
-              .actorFactory(SampleNames.customerActorType, CustomerActorFactory)
-            .addStreamNode(SampleNames.customerStreamNode)
+              .actorFactory(SampleNames.customerActorType, CustomerActorFactory);
+          mesh.channelName(SampleNames.routeMesh);
+          return builder.addStreamNode(SampleNames.customerStreamNode)
               .bind(config.sessionStreamEndpoint)
               .registerSession(CustomerSessionFactory)
             .build();
@@ -54,11 +54,6 @@ function createSessionModule() {
     ],
     providers: [
       { provide: CustomerActorDirectory, useValue: directory },
-      {
-        provide: 'DELIVERYDISPATCH_CUSTOMER_SPOT_RID',
-        inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
-        useFactory: (config: DeliveryDispatchServerConfig) => config.sessionSpotNodeRid
-      },
       {
         provide: 'DELIVERYDISPATCH_LOCATION_STORE',
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],

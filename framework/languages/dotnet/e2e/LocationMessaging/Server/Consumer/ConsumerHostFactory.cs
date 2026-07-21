@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
@@ -33,7 +34,9 @@ internal static class ConsumerHostFactory
 
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<ConnectionEvidence>();
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ConnectionEventObserver>();
+        builder.Services.AddScoped<
+            IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
+            MeshConnectionEventObserver>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.ConfigureDispatch()
@@ -64,10 +67,7 @@ internal static class ConsumerHostFactory
                 profileMesh.ConfigureRouterSocket().SendHighWaterMark = 4;
 
         });
-        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
-            "profile.client",
-            ZLinkSocketEventKind.ConnectionReady,
-            ZLinkSocketEventKind.Disconnected));
+        builder.Services.AddZLinkMonitoring(monitor => monitor.AddMeshNodeEvents("profile"));
 
         var app = builder.Build();
         app.MapConsumerEndpoints();

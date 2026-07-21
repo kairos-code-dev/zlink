@@ -28,8 +28,11 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkPublishCall publish(String topic, Object message) {
-        return lifecycle.spotOutbound().publish(topic, message);
+    public ZLinkPublishCall publish(
+        String channelName,
+        String topic,
+        Object message) {
+        return lifecycle.spotOutbound().publish(channelName, topic, message);
     }
 
     @Override

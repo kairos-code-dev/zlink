@@ -23,8 +23,6 @@ internal sealed class WorkflowSpot(
         return ZLinkSpotCreateResponse.Accept();
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
-
     public async ValueTask<AdvanceWorkflowRes> AdvanceAsync(AdvanceWorkflowReq request,
         CancellationToken cancellationToken)
     {
@@ -35,12 +33,13 @@ internal sealed class WorkflowSpot(
         return new AdvanceWorkflowRes(Context.SpotRid.ToString(), Context.NodeRid.ToString(), Version, State);
     }
 
-    public ValueTask<PublishProjectionRes> PublishAsync(PublishProjectionReq request,
+    public async ValueTask<PublishProjectionRes> PublishAsync(PublishProjectionReq request,
         CancellationToken cancellationToken)
     {
-        Context.Outbound.Publish("observability.projection",
-            new ProjectionUpdatedEvent(Context.SpotRid.ToString(), Version, request.Marker)).TrySubmit();
+        await Context.Outbound.Publish(ObservabilityNames.WorkflowMesh, "observability.projection",
+                new ProjectionUpdatedEvent(Context.SpotRid.ToString(), Version, request.Marker))
+            .SubmitAsync(cancellationToken);
         evidence.Add($"projection-published|rid={Context.SpotRid}|version={Version}|marker={request.Marker}");
-        return ValueTask.FromResult(new PublishProjectionRes(Context.SpotRid.ToString(), Version));
+        return new PublishProjectionRes(Context.SpotRid.ToString(), Version);
     }
 }

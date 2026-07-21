@@ -10,7 +10,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
-import systems.zlink.framework.channels.ZLinkPublishCall;
+import systems.zlink.framework.channels.ZLinkFanoutPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
@@ -160,11 +160,10 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkPublishCall publish(
+    public ZLinkFanoutPublishCall publish(
         String channelName,
-        String topic,
         Object message) {
-        return requireRuntime().fanout().publish(channelName, topic, message);
+        return requireRuntime().fanout().publish(channelName, message);
     }
 
     @Override
@@ -177,13 +176,9 @@ public final class ZLinkFrameworkLifecycle
 
     @Override
     public ZLinkSendCall sendToSpot(
-        String channelName,
         SpotHandle spot,
         Object message) {
-        return requireRuntime().route().sendToSpot(
-            channelName,
-            spot,
-            message);
+        return requireRuntime().route().sendToSpot(spot, message);
     }
 
     @Override
@@ -196,13 +191,9 @@ public final class ZLinkFrameworkLifecycle
 
     @Override
     public ZLinkRequestCall requestToSpot(
-        String channelName,
         SpotHandle spot,
         Object message) {
-        return requireRuntime().route().requestToSpot(
-            channelName,
-            spot,
-            message);
+        return requireRuntime().route().requestToSpot(spot, message);
     }
 
     public ZLinkSpotManager spotManager() {
@@ -252,6 +243,10 @@ public final class ZLinkFrameworkLifecycle
 
     public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery() {
         return requireRuntime().monitoringLocationRuntimeQuery();
+    }
+
+    public systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider allocatedRoutingIds() {
+        return requireRuntime().allocatedRoutingIds();
     }
 
     public boolean stopSpotRuntime() {

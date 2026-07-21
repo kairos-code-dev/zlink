@@ -25,13 +25,12 @@ export async function runSample(ctx) {
   };
   const gateway = {
     streamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    spotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    spotPubSubEndpoint: `tcp://127.0.0.1:${await ctx.port()}`
+    spotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`
   };
 
   await ctx.start('zone-node-2', 'dist/Server/ZoneNode/main.js', ['--config', east.path]);
   await ctx.waitLog('zone-node-2', 'slot=1');
-  await ctx.waitLog('zone-node-2', 'members=zoneworld.zones=zn1,zoneworld.bridge=zn1,zoneworld.report=zn1');
+  await ctx.waitLog('zone-node-2', 'members=zoneworld.zones=zn1');
   console.log('ZW-G1 shared-allocation=passed');
   console.log('ZW-G2 reverse-start=passed node=zone-node-2 slot=1');
 
@@ -41,7 +40,7 @@ export async function runSample(ctx) {
     url: `redis://${ctx.redisEndpoint}`,
     keyPrefix: `${redisKeyPrefix}location`
   });
-  const before = await store.listRoutingIdSlots('zoneworld.zone-node');
+  const before = await waitForAllocationSlots(store, 'zoneworld.zone-node', [1, 2]);
   const oldGeneration = generationAt(before, 1);
   await ctx.start('zone-node-2-replacement', 'dist/Server/ZoneNode/main.js', ['--config', replacement.path]);
   await delay(500);
@@ -56,7 +55,19 @@ export async function runSample(ctx) {
   if (generation <= oldGeneration) throw new Error('ZW-G3 replacement generation did not increase.');
   console.log(`ZW-G3 handoff=passed slot=1 generation=${generation}`);
   ctx.signal('zone-node-2', 'SIGKILL');
-  const beforeCrash = await store.listRoutingIdSlots('zoneworld.zone-node');
+  const beforeCrash = await waitForAllocationSlots(store, 'zoneworld.zone-node', [1, 2]);
+  const liveSlots = beforeCrash.allocations.map((allocation) => allocation.slot).sort();
+  if (liveSlots.join(',') !== '1,2') {
+    const leases = await store.listOwnerLeases();
+    const allocationOwners = beforeCrash.allocations
+      .map((allocation) => `${allocation.slot}:${allocation.owner.ownerId}`)
+      .join(',');
+    const leaseOwners = leases.leases.map((lease) => lease.ownerId).sort().join(',');
+    throw new Error(
+      `ZW-G4 expected live allocation slots 1,2 before crash; observed ${liveSlots.join(',')}.`
+      + ` allocations=${allocationOwners} leases=${leaseOwners}`
+    );
+  }
   const crashGeneration = generationAt(beforeCrash, 1);
   ctx.signal('zone-node-2-replacement', 'SIGKILL');
   await ctx.start(
@@ -103,6 +114,7 @@ export async function runSample(ctx) {
   await ctx.waitTcp(gateway.streamEndpoint);
   await ctx.waitLog('zone-node-1-final', 'spot peers ready');
   await ctx.waitLog('zone-node-2-crash-replacement', 'spot peers ready');
+  await ctx.waitLog('gateway', 'gateway mesh peer ready mesh=zoneworld.zones');
 
   const clientPath = ctx.writeConfig('client', {
     shared,
@@ -185,11 +197,11 @@ export async function runSample(ctx) {
   await ctx.waitLog('zone-node-2-bots', 'spot peers ready');
   await ctx.waitLog(
     'gateway',
-    `gateway spot peer ready remote=${westBots.value.zoneNode.spotRouterEndpoint}`
+    `gateway mesh peer ready mesh=zoneworld.zones remote=${westBots.value.zoneNode.spotRouterEndpoint}`
   );
   await ctx.waitLog(
     'gateway',
-    `gateway spot peer ready remote=${eastBots.value.zoneNode.spotRouterEndpoint}`
+    `gateway mesh peer ready mesh=zoneworld.zones remote=${eastBots.value.zoneNode.spotRouterEndpoint}`
   );
 
   for (const name of ['zone-node-1-bots', 'zone-node-2-bots']) {
@@ -231,10 +243,6 @@ async function zoneNodeConfig(ctx, shared, nodeId, name, overrides = {}) {
     zoneNode: {
       nodeId,
       spotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-      spotPubSubEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-      opsChannelEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-      actorsChannelEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-      bridgeEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
       ...overrides
     }
   };
@@ -285,6 +293,21 @@ function generationAt(snapshot, slot) {
   return allocation.owner.generation;
 }
 
+async function waitForAllocationSlots(store, groupName, expectedSlots, timeoutMs = 2_000) {
+  const expected = [...expectedSlots].sort((left, right) => left - right).join(',');
+  const deadline = performance.now() + timeoutMs;
+  let snapshot;
+  do {
+    snapshot = await store.listRoutingIdSlots(groupName);
+    const actual = snapshot.allocations.map((allocation) => allocation.slot)
+      .sort((left, right) => left - right)
+      .join(',');
+    if (actual === expected) return snapshot;
+    await delay(25);
+  } while (performance.now() < deadline);
+  return snapshot;
+}
+
 function canConnect(endpoint) {
   const url = new URL(endpoint.replace(/^tcp:/, 'http:'));
   return new Promise((resolve) => {
@@ -304,7 +327,7 @@ async function stopAndWaitForLocationLease(ctx, name, node, shared) {
     keyPrefix: `${shared.redisKeyPrefix}location`
   });
   try {
-    const endpoints = new Set([node.spotRouterEndpoint, node.spotPubSubEndpoint]);
+    const endpoints = new Set([node.spotRouterEndpoint]);
     const peers = await store.listPeers({});
     const owners = new Set(peers.filter((peer) => endpoints.has(peer.endpoint)).map((peer) => peer.ownerId));
     await ctx.stop(name, 'SIGKILL');

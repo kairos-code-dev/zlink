@@ -42,11 +42,13 @@ internal sealed partial class AwaitSession
         CancellationToken cancellationToken)
     {
         var handle = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(spotRid), cancellationToken)
+                         AutomaticTurnDispatchNames.SpotChannel,
+                         RoutingId.From(spotRid),
+                         cancellationToken)
                      ?? throw new ZLinkFrameworkException(
                          ZLinkFrameworkErrorKind.SpotRouteNotFound,
                          $"Spot '{spotRid}' has no live location row.");
-        spotsClient.SendToSpot(handle, message).TrySubmit();
+        await spotsClient.SendToSpot(handle, message).SubmitAsync(cancellationToken);
     }
 
     private static async ValueTask<TRes> RequestSpotAsync<TRes>(
@@ -57,7 +59,9 @@ internal sealed partial class AwaitSession
         CancellationToken cancellationToken)
     {
         var handle = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(spotRid), cancellationToken)
+                         AutomaticTurnDispatchNames.SpotChannel,
+                         RoutingId.From(spotRid),
+                         cancellationToken)
                      ?? throw new ZLinkFrameworkException(
                          ZLinkFrameworkErrorKind.SpotRouteNotFound,
                          $"Spot '{spotRid}' has no live location row.");

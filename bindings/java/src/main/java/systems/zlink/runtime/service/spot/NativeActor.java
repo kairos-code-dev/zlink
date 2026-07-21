@@ -38,49 +38,24 @@ public final class NativeActor implements Actor {
     public OperationId joinSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
                                 long targetSpotGeneration, List<Message> creationParts,
                                 Duration timeout) {
-        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
-        Objects.requireNonNull(targetSpotRid, "targetSpotRid");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment refSeg = ServiceInterop.actorRefToNative(arena, ref);
-            MemorySegment nodeRid = ServiceInterop.routingIdToNative(arena, targetNodeRid);
-            MemorySegment spotRid = ServiceInterop.routingIdToNative(arena, targetSpotRid);
-            MemorySegment array = MeshCalls.parts(arena, creationParts);
-            long n = MeshCalls.count(creationParts);
-            MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.actorJoinSpot(nodeHandle(), refSeg, nodeRid, spotRid,
-                targetSpotGeneration, array, n, opid, MeshCalls.timeout(timeout));
-            MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_actor_join_spot");
-            return MeshCalls.operationId(opid);
-        }
+        return owner.joinActorSpot(
+            ref,
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            creationParts,
+            timeout);
     }
 
     @Override
     public OperationId joinEntrySpot(RoutingId targetNodeRid, List<Message> creationParts,
                                      Duration timeout) {
-        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment refSeg = ServiceInterop.actorRefToNative(arena, ref);
-            MemorySegment nodeRid = ServiceInterop.routingIdToNative(arena, targetNodeRid);
-            MemorySegment array = MeshCalls.parts(arena, creationParts);
-            long n = MeshCalls.count(creationParts);
-            MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.actorJoinEntrySpot(nodeHandle(), refSeg, nodeRid,
-                array, n, opid, MeshCalls.timeout(timeout));
-            MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_actor_join_entry_spot");
-            return MeshCalls.operationId(opid);
-        }
+        return owner.joinActorEntrySpot(ref, targetNodeRid, creationParts, timeout);
     }
 
     @Override
     public OperationId leaveSpot(long expectedMembershipEpoch, Duration timeout) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment refSeg = ServiceInterop.actorRefToNative(arena, ref);
-            MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.actorLeaveSpot(nodeHandle(), refSeg,
-                expectedMembershipEpoch, opid, MeshCalls.timeout(timeout));
-            MeshCalls.submitOk(rc, MemorySegment.NULL, 0, "zlink_mesh_node_actor_leave_spot");
-            return MeshCalls.operationId(opid);
-        }
+        return owner.leaveActor(ref, expectedMembershipEpoch, timeout);
     }
 
     @Override
@@ -128,27 +103,12 @@ public final class NativeActor implements Actor {
 
     @Override
     public OperationId closeBoundSession(long expectedBindingGeneration, Duration timeout) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment refSeg = ServiceInterop.actorRefToNative(arena, ref);
-            MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.actorCloseBoundSession(nodeHandle(), refSeg,
-                expectedBindingGeneration, opid, MeshCalls.timeout(timeout));
-            MeshCalls.submitOk(rc, MemorySegment.NULL, 0,
-                "zlink_mesh_node_actor_close_bound_session");
-            return MeshCalls.operationId(opid);
-        }
+        return owner.closeActorBoundSession(ref, expectedBindingGeneration, timeout);
     }
 
     @Override
     public OperationId destroy(Duration timeout) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment refSeg = ServiceInterop.actorRefToNative(arena, ref);
-            MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.actorDestroy(nodeHandle(), refSeg, opid,
-                MeshCalls.timeout(timeout));
-            MeshCalls.submitOk(rc, MemorySegment.NULL, 0, "zlink_mesh_node_actor_destroy");
-            return MeshCalls.operationId(opid);
-        }
+        return owner.destroyActor(ref, timeout);
     }
 
     @Override

@@ -89,6 +89,7 @@ final class ChannelRuntimeFakeBackendTest {
                 "dealer.connect.inproc://profile-server",
                 "create.router",
                 "router.setChannelName.route",
+                "router.setPeerWeight.100",
                 "router.connect.inproc://route-peer",
                 "router.bind.inproc://route",
                 "dealer.send.ProfileGreeting",

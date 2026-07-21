@@ -165,13 +165,12 @@ public final class EvidenceVerifier {
     }
 
     private static void verifyC3(JsonNode root) {
-        ensure(root.path("naturalRoomKeptUntilClose").asBoolean(),
-            "OBS-C3 drain-natural room ended before natural close");
+        ensure(root.path("fixedDrainCompleted").asBoolean(),
+            "OBS-C3 fixed drain did not complete");
         ensure(root.path("ownerReleasedAndRecreated").asBoolean(),
-            "OBS-C3 release-and-recreate did not rebuild on another node");
+            "OBS-C3 room was not rebuilt on another node");
         ensure(root.path("replayRestoredState").asBoolean(), "OBS-C3 replay did not restore state");
-        metricWithTag(metrics(root), "zlink.drain.rooms.drained", "policy", "drain-natural", 1);
-        metricWithTag(metrics(root), "zlink.drain.rooms.drained", "policy", "release-and-recreate", 1);
+        metric(metrics(root), "zlink.drain.rooms.drained", "counter", "{room}", 1);
     }
 
     private static void verifyC4(JsonNode root) {

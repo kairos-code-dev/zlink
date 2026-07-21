@@ -53,12 +53,14 @@ public sealed partial class RegressionTests
             ResolveDotnetRoot(),
             "src", "Zlink.Framework", "Runtime", "Host", "ZLinkFrameworkRuntimeChannels.cs"));
         var routeRequestStart = runtimeChannels.IndexOf(
-            "internal async ValueTask<TReply> SubmitRouteRequestAsync",
+            "internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync",
             StringComparison.Ordinal);
         var routeRequestEnd = runtimeChannels.IndexOf(
-            "internal ValueTask SendToSpotViaRouterChannelAsync",
+            "private static ZLinkFrameworkException CreateUnknownRouteTargetException",
             routeRequestStart,
             StringComparison.Ordinal);
+        Assert.True(routeRequestStart >= 0 && routeRequestEnd > routeRequestStart,
+            "The canonical Spot request implementation was not found.");
         var routeRequest = runtimeChannels[routeRequestStart..routeRequestEnd];
 
         Assert.DoesNotContain("catch (Exception", providerEndpoints, StringComparison.Ordinal);
@@ -77,8 +79,8 @@ public sealed partial class RegressionTests
 
         Assert.Contains("ZLinkFrameworkErrorKind.RequestTargetNotFound", rmC2, StringComparison.Ordinal);
         Assert.True(
-            routeRequest.IndexOf("if (known == false)", StringComparison.Ordinal)
-            < routeRequest.IndexOf("GetRouteChannel(routerChannelId).RequestAsync", StringComparison.Ordinal),
+            routeRequest.IndexOf("EnsureKnownRouteMeshPeer(", StringComparison.Ordinal)
+            < routeRequest.IndexOf("_spotRouteRouter.RequestAsync(", StringComparison.Ordinal),
             "RM-C2 must reject an unknown topology target before invoking the route backend.");
         Assert.DoesNotContain("catch (ZLinkFrameworkException", routeRequest, StringComparison.Ordinal);
         Assert.Contains("ZLinkFrameworkErrorKind.HandlerNotFound", rmC5, StringComparison.Ordinal);
@@ -119,7 +121,7 @@ public sealed partial class RegressionTests
             if (name is "RmB1ScaleOutScenario.cs" or "RmB2ScaleInScenario.cs"
                 or "RmC7WeightedProviderScenario.cs")
                 Assert.Contains(
-                    "monitor-socket|source=profile.client|kind=ConnectionReady|remote=",
+                    "monitor-mesh|source=profile|kind=ConnectionReady|remote=",
                     source,
                     StringComparison.Ordinal);
             if (name is "RmB1ScaleOutScenario.cs" or "RmB2ScaleInScenario.cs"
@@ -132,7 +134,7 @@ public sealed partial class RegressionTests
             if (name == "RmB2ScaleInScenario.cs")
             {
                 Assert.Contains(
-                    "monitor-socket|source=profile.client|kind=Disconnected",
+                    "monitor-mesh|source=profile|kind=Disconnected",
                     source,
                     StringComparison.Ordinal);
                 Assert.DoesNotContain("|value=1", source, StringComparison.Ordinal);
@@ -192,6 +194,28 @@ public sealed partial class RegressionTests
             Assert.DoesNotContain("RequestProfileWithRetryAsync", source, StringComparison.Ordinal);
             Assert.DoesNotContain("IsRetriableStartupFailure", source, StringComparison.Ordinal);
             Assert.Contains("RequestProfileAsync(channel, request)", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Failure_Runners_Start_Previously_Built_Applications_Directly()
+    {
+        var root = ResolveE2eRoot();
+        foreach (var configuration in new[] { "ResilienceLifecycle", "StoreFailure" })
+        {
+            var runner = File.ReadAllText(Path.Combine(root, configuration, "run_e2e.sh"));
+
+            Assert.Contains("setsid dotnet \"$application\" --config", runner, StringComparison.Ordinal);
+            Assert.Contains("dotnet \"$CLIENT_APPLICATION\" --config", runner, StringComparison.Ordinal);
+            Assert.DoesNotContain("dotnet run --no-build --project", runner, StringComparison.Ordinal);
+
+            var processManager = File.ReadAllText(Directory.GetFiles(
+                Path.Combine(root, configuration, "Client", "Support"),
+                "*ProcessManager.cs").Single());
+            Assert.Contains("startInfo.ArgumentList.Add(application);", processManager,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("startInfo.ArgumentList.Add(\"run\")", processManager,
+                StringComparison.Ordinal);
         }
     }
 
@@ -419,9 +443,28 @@ public sealed partial class RegressionTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(51, scenarioIds.Length);
+        Assert.Equal(52, scenarioIds.Length);
         foreach (var scenarioId in scenarioIds)
             Assert.Contains($"\"{scenarioId}\" =>", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SpotService_Spot_Outbound_Channel_Uses_The_Owner_MeshNode()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "SpotService");
+        var host = File.ReadAllText(Path.Combine(
+            root, "Server", "Play", "PlayHostFactory.cs"));
+        var runner = File.ReadAllText(Path.Combine(root, "run_e2e.sh"));
+
+        Assert.Contains(
+            "spot.ChannelName(SpotServiceNames.ExternalClientChannel)",
+            host,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "AddRouteMesh(SpotServiceNames.ExternalClientChannel)",
+            host,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("external-client-endpoint", runner, StringComparison.Ordinal);
     }
 
     [Fact]

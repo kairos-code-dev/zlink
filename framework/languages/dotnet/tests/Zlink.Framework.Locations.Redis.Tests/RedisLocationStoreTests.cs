@@ -466,10 +466,11 @@ public sealed class RedisLocationStoreTests
         await store.AcquireRoutingIdSlotAsync(
             new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerA, initialTtl));
 
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
         await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), TimeSpan.FromSeconds(2));
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        await Task.Delay(TimeSpan.FromMilliseconds(600));
 
+        Assert.Contains((await store.ListOwnerLeasesAsync()).Leases,
+            static lease => lease.OwnerId == OwnerA && lease.LeaseExpiresAt > lease.UpdatedAt);
         Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
             new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerB, LeaseTtl)));
         var snapshot = await store.ListRoutingIdSlotsAsync("zone");

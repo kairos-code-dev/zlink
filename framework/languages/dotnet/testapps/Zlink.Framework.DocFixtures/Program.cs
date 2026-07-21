@@ -142,7 +142,9 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
 
     public void Configure()
     {
-        Context.Handlers.AddSubscribe<FixtureSpotSubscriptionHandler>("stage.event");
+        Context.Handlers.AddSubscribe<FixtureSpotSubscriptionHandler>(
+            "game.stage",
+            "stage.event");
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
@@ -157,16 +159,15 @@ internal sealed class FixtureStageSpot(IZLinkSpotContext context) : IZLinkSpot
 internal sealed class FixtureSpotTimerHandler
     : IZLinkSpotTimerHandler<FixtureStageSpot>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         FixtureStageSpot spot,
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
         _ = tick;
-        _ = spot.Context.Outbound
-            .Publish("stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
-            .TrySubmit();
-        return ValueTask.CompletedTask;
+        await spot.Context.Outbound
+            .Publish("game.stage", "stage.event", new FixtureSpotEvent(spot.Context.SpotRid.ToHex()))
+            .SubmitAsync(cancellationToken);
     }
 }
 
@@ -353,13 +354,13 @@ internal sealed class FixtureActorPacketSession(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnDispatchAsync(
+    public async ValueTask OnDispatchAsync(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
         _ = dispatch;
         var actor = _actor ?? throw new InvalidOperationException("Actor is not bound.");
-        return actor.RelayAsync(payload, cancellationToken);
+        await actor.RelayAsync(payload, cancellationToken);
     }
 }

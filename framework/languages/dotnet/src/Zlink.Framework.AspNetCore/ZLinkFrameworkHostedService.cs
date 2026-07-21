@@ -6,6 +6,7 @@ namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkFrameworkHostedService(
     ZLinkFrameworkRuntime runtime,
+    ZLinkRouteMeshRuntimeService routeMeshRuntime,
     ZLinkMonitoringRegistration? monitoringRegistration,
     ZLinkLocationRuntime? locationRuntime,
     ZLinkAutoConnectLifecycleCoordinator autoConnectLifecycle,
@@ -39,6 +40,7 @@ internal sealed class ZLinkFrameworkHostedService(
             }
 
             await runtime.StartAsync(cancellationToken).ConfigureAwait(false);
+            routeMeshRuntime.Start();
             allocatedRoutingIds?.MarkReady();
             var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
             await autoConnectLifecycle.FrameworkReadyAsync(state, cancellationToken).ConfigureAwait(false);
@@ -81,6 +83,11 @@ internal sealed class ZLinkFrameworkHostedService(
         List<Exception>? failures = null;
         await TryStopAsync(
             () => autoConnectLifecycle.StopAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
+        await TryStopAsync(() =>
+        {
+            routeMeshRuntime.Stop();
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
         await TryStopAsync(
             () => runtime.StopAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
         await TryStopAsync(

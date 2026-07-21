@@ -92,10 +92,10 @@ def parse_c_surface(text):
     return out
 
 
-def header_closure(root):
+def header_closure(root, entry="zlink.h"):
     include_root = root / "core" / "include"
     seen = []
-    queue = [include_root / "zlink.h"]
+    queue = [include_root / entry]
     visited = set()
     while queue:
         path = queue.pop()
@@ -202,11 +202,43 @@ def main():
         for kind in KINDS:
             formal[kind].update(parsed[kind])
 
-    headers = {kind: set() for kind in KINDS}
-    for path in header_closure(root):
+    root_headers = {kind: set() for kind in KINDS}
+    root_closure = header_closure(root)
+    for path in root_closure:
+        parsed = parse_c_surface(path.read_text())
+        for kind in KINDS:
+            root_headers[kind].update(parsed[kind])
+
+    driver_entry = "zlink/service/instance_spot_driver.h"
+    driver_path = root / "core" / "include" / driver_entry
+    if not driver_path.exists():
+        failures.append(f"driver header missing: core/include/{driver_entry}")
+        driver_closure = []
+    else:
+        driver_closure = header_closure(root, driver_entry)
+    headers = {kind: set(root_headers[kind]) for kind in KINDS}
+    for path in driver_closure:
         parsed = parse_c_surface(path.read_text())
         for kind in KINDS:
             headers[kind].update(parsed[kind])
+
+    driver_identifiers = parse_c_surface(driver_path.read_text()) if driver_path.exists() else {
+        kind: set() for kind in KINDS
+    }
+    leaked_driver = {
+        kind: sorted(
+            identifier
+            for identifier in driver_identifiers[kind] & root_headers[kind]
+            if kind != "MACRO" or not INFRA_MACROS.match(identifier)
+        )
+        for kind in KINDS
+        if any(
+            kind != "MACRO" or not INFRA_MACROS.match(identifier)
+            for identifier in driver_identifiers[kind] & root_headers[kind]
+        )
+    }
+    if leaked_driver:
+        failures.append(f"root zlink.h closure exposes Instance driver SPI: {leaked_driver}")
     headers["MACRO"] = {
         m for m in headers["MACRO"] if not INFRA_MACROS.match(m)
     }

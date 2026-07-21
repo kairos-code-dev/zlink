@@ -16,7 +16,7 @@ internal sealed class ReportSpotEventHandler(
     ILogger<ReportSpotEventHandler> logger)
     : IZLinkSendHandler<ReportSpotEventMsg>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         ReportSpotEventMsg message,
         ZLinkSendContext context,
         CancellationToken cancellationToken)
@@ -34,8 +34,7 @@ internal sealed class ReportSpotEventHandler(
             message.OccurredAt);
 
         consoles.RecordAlert(alert);
-        consoles.Broadcast(alert);
-        return ValueTask.CompletedTask;
+        await consoles.BroadcastAsync(alert, cancellationToken);
     }
 }
 
@@ -45,12 +44,11 @@ internal sealed class ReportSpotEventHandler(
 internal sealed class ReportNodeStatusHandler(NodeRegistry nodes)
     : IZLinkSendHandler<ReportNodeStatusMsg>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         ReportNodeStatusMsg message,
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        nodes.ApplyReport(message);
-        return ValueTask.CompletedTask;
+        await nodes.ApplyReportAsync(message, cancellationToken);
     }
 }

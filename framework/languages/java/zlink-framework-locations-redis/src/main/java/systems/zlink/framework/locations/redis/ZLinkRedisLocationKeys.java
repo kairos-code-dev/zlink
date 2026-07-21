@@ -41,6 +41,10 @@ final class ZLinkRedisLocationKeys {
         return prefix + ":leases";
     }
 
+    String routingIdSlotGroupKey(String groupName) {
+        return prefix + ":routing-id-slots:" + groupName;
+    }
+
     String stampKey(String tag, String meshName) {
         return meshName == null ? prefix + ":stamp:" + tag : prefix + ":stamp:" + tag + ":" + meshName;
     }

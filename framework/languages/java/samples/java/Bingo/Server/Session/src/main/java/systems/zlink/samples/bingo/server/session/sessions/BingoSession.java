@@ -49,7 +49,7 @@ public final class BingoSession implements ZLinkSession {
         return handlers.tryHandle(context, dispatch, payload).thenCompose(handled ->
             handled
                 ? java.util.concurrent.CompletableFuture.completedFuture(null)
-                : requireSingleBoundActor(dispatch.packetName()).relay(payload));
+                : requireSingleBoundActor(dispatch.packetName()).relay(payload).thenApply(ignored -> null));
     }
 
     private ZLinkSessionActor requireSingleBoundActor(String packetName) {

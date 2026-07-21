@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.AspNetCore.Builder;
@@ -57,13 +58,23 @@ internal static class ConsumerHostFactory
             var locations = framework.ConfigureLocations();
             locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
+            // The E2E compresses the lease TTL to three seconds. Scale the
+            // renewal attempt bound with the heartbeat as well; retaining
+            // the production three-second default would consume the whole
+            // lease before the failure could become observable.
+            locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(
+                Math.Max(100, options.LocationHeartbeatMs / 2));
             locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
             locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
                 .TraceLabel(options.TraceLabel);
-            JoinConsumerMesh(framework, "consumer-1");
+            // SF-A2 starts a second consumer against the same RouteMesh. Its
+            // trace label is also its stable harness identity, so stopping
+            // that observer cannot hand over and then remove the primary
+            // consumer's descriptor under the same routing ID.
+            JoinConsumerMesh(framework, options.TraceLabel);
         });
 
         var app = builder.Build();
@@ -115,9 +126,9 @@ internal static class ConsumerHostFactory
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var deadline = DateTimeOffset.UtcNow
-                           + TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
-            while (DateTimeOffset.UtcNow < deadline)
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < timeout)
             {
                 try
                 {
@@ -141,6 +152,47 @@ internal static class ConsumerHostFactory
             }
 
             return Results.Problem("Peer rows did not reach the requested state.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
+        app.MapPost("/query/routes/wait", async (
+            RouteReadyWaitReq request,
+            IZLinkRouteMeshRuntime runtime,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken) =>
+        {
+            var logger = loggerFactory.CreateLogger("StoreFailure.RouteProbe");
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < timeout)
+            {
+                var current = runtime.Snapshot(StoreFailureNames.Channel);
+                var readyMembers = current.Channels
+                    .Where(channel => channel.ChannelName == StoreFailureNames.Channel)
+                    .Select(channel => channel.ReadyMemberCount)
+                    .DefaultIfEmpty()
+                    .Max();
+                var reached = readyMembers >= request.MinimumReadyMembers
+                              && request.ReadyRids.All(rid => current.Peers.Any(peer =>
+                                  peer.Rid.ToString() == rid && peer.Ready))
+                              && request.NotReadyRids.All(rid => current.Peers.All(peer =>
+                                  peer.Rid.ToString() != rid || !peer.Ready));
+                if (reached)
+                    return Results.Ok(new RouteReadyRes(readyMembers));
+
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+            }
+
+            var snapshot = runtime.Snapshot(StoreFailureNames.Channel);
+            logger.LogWarning(
+                "Route readiness wait expired mesh={MeshName} localRid={LocalRid} state={State} " +
+                "peers={Peers} channels={Channels}",
+                snapshot.MeshName,
+                snapshot.Rid,
+                snapshot.State,
+                DescribePeers(snapshot),
+                DescribeChannels(snapshot));
+
+            return Results.Problem("Route did not reach the requested ready-member count.",
                 statusCode: StatusCodes.Status504GatewayTimeout);
         });
         app.MapPost("/query/status/wait", async (
@@ -170,7 +222,9 @@ internal static class ConsumerHostFactory
         app.MapPost("/profile/request/timeout/{milliseconds:int}", async (
             int milliseconds,
             ProfileReq request,
-            IZLinkRouteClient channel) =>
+            IZLinkRouteClient channel,
+            IZLinkRouteMeshRuntime runtime,
+            ILoggerFactory loggerFactory) =>
         {
             try
             {
@@ -183,6 +237,17 @@ internal static class ConsumerHostFactory
             catch (TimeoutException)
             {
                 return Results.StatusCode(StatusCodes.Status408RequestTimeout);
+            }
+            catch (Exception error)
+            {
+                var snapshot = runtime.Snapshot(StoreFailureNames.Channel);
+                loggerFactory.CreateLogger("StoreFailure.RequestProbe").LogError(
+                    error,
+                    "Profile request failed marker={Marker} peers={Peers} channels={Channels}",
+                    request.Marker,
+                    DescribePeers(snapshot),
+                    DescribeChannels(snapshot));
+                throw;
             }
         });
         app.MapPost("/profile/request/missing", async (
@@ -202,12 +267,14 @@ internal static class ConsumerHostFactory
                 return Results.Problem(ex.Message);
             }
         });
-        app.MapPost("/profile/command", (
+        app.MapPost("/profile/command", async (
             ProfileMsg command,
-            IZLinkRouteClient channel) =>
+            IZLinkRouteClient channel,
+            CancellationToken cancellationToken) =>
         {
-            _ = channel.SendToChannel(
-                StoreFailureNames.Channel, StoreFailureNames.Channel, command).TrySubmit();
+            await channel.SendToChannel(
+                    StoreFailureNames.Channel, StoreFailureNames.Channel, command)
+                .SubmitAsync(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -287,6 +354,15 @@ internal static class ConsumerHostFactory
                     StoreFailureNames.Channel, StoreFailureNames.Channel, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ProfileRes>();
+
+    static string DescribePeers(ZLinkMeshNodeSnapshot snapshot) =>
+        string.Join(";", snapshot.Peers.Select(peer =>
+            $"{peer.Rid}|ready={peer.Ready}|admission={peer.AdmissionState}|" +
+            $"channels={string.Join(',', peer.ChannelNames)}|failure={peer.LastFailure}"));
+
+    static string DescribeChannels(ZLinkMeshNodeSnapshot snapshot) =>
+        string.Join(";", snapshot.Channels.Select(channel =>
+            $"{channel.ChannelName}|ready={channel.ReadyMemberCount}|selectable={channel.Selectable}"));
 }
 
 internal sealed record ConsumerOptions(

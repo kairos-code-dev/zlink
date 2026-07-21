@@ -23,7 +23,8 @@ address resolver 계약 뒤에 숨긴다.
 이 샘플에서 확인해야 하는 핵심은 아래와 같다.
 
 - 2개 API 서버가 같은 client-facing HTTP API를 제공한다.
-- 각 API 서버가 2개 Play 서버의 channel endpoint에 수동으로 연결한다.
+- 각 API 서버가 2개 Play MeshNode의 ROUTER peer endpoint에 수동으로 연결한다. ChannelName별 endpoint를
+  추가하지 않는다.
 - 2개 Play 서버가 각각 stream session, actor runtime, MeshNode, room Spot factory를
   호스팅한다.
 - Play 서버끼리는 MeshNode router endpoint를 수동으로 연결한다.
@@ -57,6 +58,12 @@ TicTacToe는 scale-out 연결 흐름을 보여 주는 샘플이지만 payload co
 
 ## 2. 서버 구성
 
+TicTacToe의 Channel 역할과 수동 peer 방향은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. Api와 Play는 `tictactoe` RouteMesh 하나를 공유하고 peer 쌍마다 pipe 하나만 사용한다. Play→Api
+request는 `tictactoe.api` Channel을 사용하며 별도 connect와 ClientServer Channel을 추가하지 않는다.
+두 Api는 `play-0`과 `play-1`의 Client다. PlayA는 `play-0`, PlayB는 `play-1`의 Server이므로 Api는
+room을 생성할 ChannelName을 선택하며 업무 호출에서 peer endpoint를 선택하지 않는다.
+
 ```mermaid
 graph LR
     C[Client]
@@ -68,15 +75,12 @@ graph LR
 
     C -->|HTTP CreateGameHttpReq| APIA
     C -.->|HTTP CreateGameHttpReq| APIB
-    APIA -->|Manual Play channel| PLAYA
-    APIA -->|Manual Play channel| PLAYB
-    APIB -->|Manual Play channel| PLAYA
-    APIB -->|Manual Play channel| PLAYB
-    PLAYA -->|Manual API channel| APIA
-    PLAYA -->|Manual API channel| APIB
-    PLAYB -->|Manual API channel| APIA
-    PLAYB -->|Manual API channel| APIB
-    PLAYA <-->|Manual Spot route| PLAYB
+    APIA -.->|Manual peer initiator| APIB
+    APIA -->|Manual peer initiator| PLAYA
+    APIA -->|Manual peer initiator| PLAYB
+    APIB -->|Manual peer initiator| PLAYA
+    APIB -->|Manual peer initiator| PLAYB
+    PLAYA -->|Manual peer initiator| PLAYB
     PLAYA -->|Room route write/read| REDIS
     PLAYB -->|Room route write/read| REDIS
     C -->|STREAM host packets| PLAYA
@@ -90,7 +94,8 @@ graph LR
 - 위 다이어그램은 room owner가 `Play A`인 경우의 예시다. 실제 실행에서는 API의 owner 선택
   결과에 맞춰 host는 owner Play에, guest와 observer는 owner가 아닌 Play에 연결해야 한다.
 - client는 `CreateGameHttpReq`를 API 서버 HTTP endpoint 중 하나로 보낸다.
-- API 서버는 수동 설정된 Play channel endpoint 목록으로 `CreateGameReq`를 보낸다.
+- API 서버는 `play-0` 또는 `play-1` ChannelName으로 `CreateGameReq`를 보낸다. 수동 endpoint 목록은
+  MeshNode peer 연결에만 사용하고 업무 요청 대상을 고르는 인자로 사용하지 않는다.
 - 요청을 받은 Play 서버는 room을 만들고 Redis에 room route를 기록한다.
 - API 응답은 room id, Play stream endpoint 목록, 각 Play endpoint에 대응하는 MeshNode rid를
   반환한다.
@@ -106,17 +111,19 @@ graph LR
 - 게임에서 host가 승리해 누적 승수가 100이 되면 owner room Spot이 milestone event를
   publish하고, observer actor가 존재하는 Play 서버의 `PlayEntrySpot` observer handler가 이
   event를 받아 observer client로 push한다.
-- Play 서버는 stream 인증 시 수동 설정된 API 서버 channel endpoint로 인증을 확인한다.
+- Play 서버는 stream 인증 시 API가 시작해 둔 MeshNode peer pipe를 반대 방향으로 사용해 API Channel에
+  인증을 요청한다. Play→API 전용 endpoint 연결은 추가하지 않는다.
 
 ## 3. 프로세스와 책임
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
 | `TicTacToe.ApiA` / `TicTacToe.ApiB` | HTTP endpoint | room 생성 요청을 받고 client에 접속 정보를 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `Api` ChannelName handler | Play 서버의 인증 요청을 처리하고 user 정보를 반환한다. |
-| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `Play` ChannelName client | 수동 endpoint로 2개 Play 서버에 room 생성을 요청할 수 있다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | `Play` ChannelName handler | room을 만들고 stream endpoint 목록과 MeshNode rid 목록을 반환한다. |
-| `TicTacToe.PlayA` / `TicTacToe.PlayB` | `Api` ChannelName client | 수동 endpoint로 2개 API 서버에 인증을 요청할 수 있다. |
+| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `tictactoe.api` ChannelName handler | Play 서버의 인증 요청을 처리하고 user 정보를 반환한다. |
+| `TicTacToe.ApiA` / `TicTacToe.ApiB` | `play-0`·`play-1` ChannelName client | 선택한 ChannelName의 ready Play 서버에 room 생성을 요청한다. |
+| `TicTacToe.PlayA` | `play-0` ChannelName handler | room을 만들고 stream endpoint 목록과 MeshNode rid 목록을 반환한다. |
+| `TicTacToe.PlayB` | `play-1` ChannelName handler | room을 만들고 stream endpoint 목록과 MeshNode rid 목록을 반환한다. |
+| `TicTacToe.PlayA` / `TicTacToe.PlayB` | `tictactoe.api` ChannelName client | API→Play로 이미 설정된 peer pipe의 반대 방향에서 ready API member에 인증을 요청한다. Client 역할은 송신 대상을 선언하며 별도 connect를 뜻하지 않는다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | stream server | client 연결과 session dispatch를 처리한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | actor runtime | 인증된 actor를 user 정보로 설정하고 room에 join한다. |
 | `TicTacToe.PlayA` / `TicTacToe.PlayB` | MeshNode | API·Play ChannelName membership, Spot·Actor와 Logical Multicast를 하나의 ROUTER endpoint로 제공한다. |
@@ -301,8 +308,9 @@ TicTacToe는 location store 기반 자동 연결을 사용하지 않는다. API 
 | 연결 | 설정 주체 | 예시 의미 |
 |------|-----------|-----------|
 | client -> API HTTP | client 설정 | room 생성 API endpoint |
-| API -> Play ChannelName | API MeshNode 설정 | 2개 Play MeshNode endpoint의 수동 peer 연결 |
-| Play -> API ChannelName | Play MeshNode 설정 | 2개 API MeshNode endpoint의 수동 peer 연결 |
+| API MeshNode -> API MeshNode | API-A 설정 | API-A가 API-B에 시작하는 canonical full-mesh peer 연결 |
+| API -> Play ChannelName | `play-0` 또는 `play-1` 선택 | API MeshNode에 설정된 수동 peer 연결 위에서 해당 Channel의 ready server를 선택한다. |
+| Play -> API ChannelName | 추가 연결 없음 | `tictactoe.api` Client 역할은 API→Play로 이미 설정된 양방향 peer pipe를 사용한다. |
 | Play MeshNode -> Play MeshNode | Play 서버 설정 | RID direct·Spot direct·Logical Multicast가 공유하는 ROUTER endpoint의 수동 연결 |
 | Play -> Redis | Play 서버 설정 | room id에서 owner MeshNode 위치를 저장하고 조회하는 Redis endpoint |
 | client -> Play stream | API 응답 | 생성된 room이 사용할 Play stream endpoint 목록 |
@@ -314,11 +322,15 @@ Redis는 location store 기반 자동 연결을 대신하는 장치가 아니다
 위치만 저장한다. endpoint 목록, process 실행 순서, channel 연결은 여전히 샘플 설정과
 runner가 명시적으로 제공한다.
 
+네 MeshNode의 수동 full mesh는 각 unordered peer 쌍마다 initiator를 하나만 둔다. API-A→API-B,
+API-A→Play-A/Play-B, API-B→Play-A/Play-B, Play-A→Play-B가 canonical initiator다. 반대 방향
+업무 호출은 이미 설정된 양방향 peer pipe를 사용하며 reciprocal connect를 추가하지 않는다.
+
 ### 6.1 Room owner 선택
 
-API 서버는 room 생성 요청을 받을 때 수동 설정된 Play endpoint 목록 중 하나를 선택해
-`CreateGameReq`를 보낸다. 선택된 Play 서버가 그 room의 owner가 되고, room Spot은 owner
-Play의 MeshNode에 생성된다.
+API 서버는 room 생성 요청을 받을 때 `play-0` 또는 `play-1` ChannelName을 선택해
+`CreateGameReq`를 보낸다. 선택된 Channel의 Play 서버가 그 room의 owner가 되고, room Spot은 owner
+Play의 MeshNode에 생성된다. 수동 설정된 endpoint는 peer 연결을 구성할 때만 사용한다.
 
 owner 선택은 테스트 실행마다 달라질 수 있다. 이 샘플은 특정 room이 항상 `play-a`나
 `play-b`에 만들어진다고 보장하지 않는다. 다만 sample self-check와 log 비교가 흔들리지
@@ -970,7 +982,8 @@ backend call, runtime event, 또는 framework 테스트 중 하나로 아래 사
 
 - API 역할 2개와 Play 역할 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - 별도 Session 서버 프로세스는 없다.
-- location store 기반 자동 연결을 사용하지 않고 수동 endpoint로 channel을 연결한다.
+- location store 기반 자동 연결을 사용하지 않는다. 수동 endpoint로 MeshNode peer pipe를 구성하며,
+  ChannelName 호출은 이 peer pipe를 사용한다.
 - Play 서버끼리는 하나의 MeshNode ROUTER endpoint를 수동으로 연결하고 remote room Spot request와
   Logical Multicast를 모두 이 peer 연결로 검증한다.
 - 공식 Redis location store를 `AddLocationStore(...)`로 등록한다. room Spot의 위치는 framework가

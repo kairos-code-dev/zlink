@@ -2,8 +2,6 @@ export interface ClientOptions {
   readonly publisherUrl: string;
   readonly lateSubscriberUrl: string;
   readonly publisherEndpoint: string;
-  readonly redisEndpoint: string;
-  readonly redisKeyPrefix: string;
   readonly publisherMain: string;
   readonly subscriberMain: string;
   readonly logDir: string;
@@ -18,8 +16,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     publisherUrl: required(values, 'publisherUrl'),
     lateSubscriberUrl: required(values, 'lateSubscriberUrl'),
     publisherEndpoint: required(values, 'publisherEndpoint'),
-    redisEndpoint: required(values, 'redisEndpoint'),
-    redisKeyPrefix: required(values, 'redisKeyPrefix'),
     publisherMain: required(values, 'publisherMain'),
     subscriberMain: required(values, 'subscriberMain'),
     logDir: required(values, 'logDir'),

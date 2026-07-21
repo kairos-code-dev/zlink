@@ -1,5 +1,6 @@
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -102,7 +103,9 @@ internal sealed class TimerStopCommandHandler
     }
 }
 
-internal sealed class AwaitTimerHandler(EvidenceStore evidence)
+internal sealed class AwaitTimerHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotTimerHandler<AwaitProbeSpot>
 {
     public async ValueTask HandleAsync(
@@ -133,7 +136,8 @@ internal sealed class AwaitTimerHandler(EvidenceStore evidence)
             evidence.Add(
                 $"timer-{terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
-            var call = spot.Context.Outbound.RequestToChannel(
+            var call = routeClient.RequestToChannel(
+                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(state.RequestId, state.DelayMs, state.TimerName))
                 .Timeout(TimeSpan.FromSeconds(5));

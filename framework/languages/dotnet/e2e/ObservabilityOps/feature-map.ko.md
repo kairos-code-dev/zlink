@@ -15,7 +15,7 @@
 | OBS-B4 | 구현 | metric reader가 설정되지 않은 node에 raw sample이 보관되지 않는지 검증한다. |
 | OBS-C1 | 구현 | drain 시작 시 readiness와 typed draining row가 바뀌고 기존 연결과 active room이 유지되는지 검증한다. |
 | OBS-C2 | 구현 | actor handoff 뒤 location owner가 바뀌고 bound session push가 계속 같은 client에 도달하는지 검증한다. |
-| OBS-C3 | 구현 | drain-natural과 release-and-recreate가 각각 room 제거와 checkpoint replay 계약을 지키는지 검증한다. |
+| OBS-C3 | 전환 대상 | 정상 request 뒤 Spot 유지, drain 뒤 신규 turn 거부, accepted turn 완료와 actor·STREAM barrier 이후 local Spot close·row 제거, stale handle의 숨은 원격 생성 금지와 명시적 local `GetOrCreate` 뒤 새 generation을 검증해야 한다. 현재 E2E는 제거 대상인 기존 분기 시나리오를 실행하므로 이 고정 drain 회귀의 완료 증거가 아니다. |
 | OBS-C4 | 구현 | server drain, idle timeout, heartbeat timeout과 protocol error close reason이 connector에 노출되는지 검증한다. |
 | OBS-C5 | 구현 | target이 없는 동시 drain에서 actor가 source에 deadline까지 유지되고 source readiness가 차단되는지 검증한다. |
 

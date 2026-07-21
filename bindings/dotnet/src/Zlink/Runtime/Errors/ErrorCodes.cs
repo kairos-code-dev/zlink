@@ -41,7 +41,10 @@ internal enum ConfigResult
     NotSupported = 703,
     InternalError = 704,
     InvalidState = 705,
-    NotFound = 706
+    NotFound = 706,
+    Conflict = 707,
+    BufferTooSmall = 708,
+    Busy = 709
 }
 
 internal enum ErrorCode

@@ -46,8 +46,9 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         get => _registration.DefaultSocketSendTimeout;
         set
         {
-            ZLinkSocketConfig.ValidateSendTimeout(value);
-            _registration.DefaultSocketSendTimeout = value;
+            _registration.DefaultSocketSendTimeout =
+                ZLinkSocketConfig.NormalizeSendTimeout(value)
+                ?? throw new ZLinkConfigurationException("DefaultSocketSendTimeout is required.");
         }
     }
 
@@ -95,7 +96,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
 
     public IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName)
     {
-        var channel = AddChannelRegistration(channelName, ZLinkAutoConnectType.Fanout);
+        var channel = AddChannelRegistration(channelName, ZLinkLocationAutoConnectType.Fanout);
         return new ZLinkFanoutChannelBuilder(channel);
     }
 
@@ -152,30 +153,21 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     {
         if (string.IsNullOrWhiteSpace(meshName))
             throw new ZLinkConfigurationException("RouteMesh name must not be empty.");
+        if (_registration.SpotNodes.ContainsKey(meshName))
+            throw new ZLinkConfigurationException(
+                $"Duplicate RouteMesh name '{meshName}'.");
 
-        // A MeshNode drives the same registration the runtime consumes: a mesh
-        // channel keyed by meshName (the discovery/location identity) plus the
-        // spot node keyed by the same meshName (spec 05-route-mesh §2).
-        var discovery = ZLinkRegistrationBuilderGuard.AddUnique(
-            _registration.SpotMeshChannels,
-            meshName,
-            () => new ZLinkSpotMeshChannelRegistration
-            {
-                ChannelName = meshName
-            },
-            "RouteMesh name must not be empty.",
-            $"Duplicate RouteMesh name '{meshName}'.");
         var meshNode = ZLinkRegistrationBuilderGuard.RegisterSpotNode(
             _registration.SpotNodes,
             meshName);
-        meshNode.SpotMeshChannelName = discovery.ChannelName;
+        meshNode.SpotMeshChannelName = meshName;
 
         return new ZLinkMeshNodeBuilder(meshNode);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(
         string channelName,
-        ZLinkAutoConnectType autoConnectType)
+        ZLinkLocationAutoConnectType autoConnectType)
     {
         return ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.Channels,

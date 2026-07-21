@@ -180,10 +180,8 @@ export function toSpotPublisherClientSet(
   spotNodes: ReadonlyMap<string, ZLinkSpotNodeOptions>
 ): Set<string> {
   const clients = new Set(explicitClients ?? []);
-  for (const [spotNodeName, spotNode] of spotNodes.entries()) {
-    if (spotNode.pubSub !== undefined) {
-      clients.add(spotNodeName);
-    }
+  for (const spotNodeName of spotNodes.keys()) {
+    clients.add(spotNodeName);
   }
   return clients;
 }

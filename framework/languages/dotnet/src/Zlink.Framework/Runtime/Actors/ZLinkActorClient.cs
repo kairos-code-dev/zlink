@@ -14,23 +14,29 @@ internal sealed class ZLinkActorClient(
         : _meshRows ??= new ZLinkSpotMeshLocationResolver(runtime.Registration, locations);
 
     public IZLinkActorSendCall SendToActor<TMessage>(
+        string meshName,
         ActorRef actor,
         TMessage message)
     {
-        return new ZLinkActorSendCall<TMessage>(this, actor, message);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        return new ZLinkActorSendCall<TMessage>(this, meshName, actor, message);
     }
 
     public IZLinkActorRequestCall RequestToActor<TRequest>(
+        string meshName,
         ActorRef actor,
         TRequest request)
     {
-        return new ZLinkActorRequestCall<TRequest>(this, actor, request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        return new ZLinkActorRequestCall<TRequest>(this, meshName, actor, request);
     }
 
-    private void SubmitSend<TMessage>(
+    private async ValueTask<ZLinkSubmitResult> SubmitSendAsync<TMessage>(
+        string meshName,
         ActorRef actor,
         string packetName,
         TMessage message,
+        ZLinkCallMetadata metadata,
         CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation();
@@ -38,40 +44,34 @@ internal sealed class ZLinkActorClient(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
         cancellationToken.ThrowIfCancellationRequested();
-        var nodeRuntime = runtime.GetActorClientSpotNodeRuntime();
+        var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
         EnsureRouteAvailable(nodeRuntime, actor);
-        var node = nodeRuntime.Node;
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
             null,
             packetName,
-            message);
+            message,
+            metadata);
         try
         {
             TraceSent(actor, packetName, parts, ZLinkDispatchMessageKind.ActorSend);
-            if (!node.SendToActor(actor.ToBackend(), parts, SendFlags.DontWait))
-            {
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RouteNotConnected,
-                    "Actor send failed because the target route is not connected.",
-                    true);
-            }
+            return await nodeRuntime.SendToActorAsync(actor.ToBackend(), parts, cancellationToken)
+                .ConfigureAwait(false);
         }
-        catch (ZlinkSubmitException error)
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
         {
-            throw MapSubmitException(error, "Actor send");
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
+            return failed;
         }
     }
 
     private async ValueTask<TReply> RequestAsync<TRequest, TReply>(
+        string meshName,
         ActorRef actor,
         string packetName,
         TRequest request,
         TimeSpan? timeout,
+        ZLinkCallMetadata metadata,
         CancellationToken cancellationToken)
     {
         using var operation = runtime.EnterOperation(countAsRequest: true);
@@ -79,14 +79,15 @@ internal sealed class ZLinkActorClient(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
         await ValidateActorLocationAsync(actor, cancellationToken).ConfigureAwait(false);
-        var nodeRuntime = await GetActorSpotNodeAsync(cancellationToken).ConfigureAwait(false);
+        var nodeRuntime = await GetActorSpotNodeAsync(meshName, cancellationToken).ConfigureAwait(false);
         EnsureRouteAvailable(nodeRuntime, actor);
         var node = nodeRuntime.Node;
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Request,
             new ZlinkStreamRequestSeq(1),
             packetName,
-            request);
+            request,
+            metadata);
         TraceSent(actor, packetName, parts, ZLinkDispatchMessageKind.ActorRequest);
         return await SubmitActorRequestAsync<TReply>(
                 node,
@@ -117,10 +118,14 @@ internal sealed class ZLinkActorClient(
                 $"Actor route '{actor.ActorId}' was not found.");
         }
         if (current.NodeRid != actor.NodeRid || current.Generation != actor.Generation)
+        {
+            runtime.LogActorHandoff(
+                $"stale_fail_fast actor={actor.ActorId} generation={actor.Generation}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
                 $"Actor ref for '{actor.ActorId}' does not match the current location generation.",
                 true);
+        }
     }
 
     private void TraceSent(
@@ -182,10 +187,11 @@ internal sealed class ZLinkActorClient(
     }
 
     private async ValueTask<ZLinkSpotNodeRuntime> GetActorSpotNodeAsync(
+        string meshName,
         CancellationToken cancellationToken)
     {
         await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
-        return runtime.GetActorClientSpotNodeRuntime();
+        return runtime.GetMeshNodeRuntime(meshName);
     }
 
     private static void EnsureRouteAvailable(
@@ -206,15 +212,21 @@ internal sealed class ZLinkActorClient(
         ZlinkStreamMessageKind kind,
         ZlinkStreamRequestSeq? requestSeq,
         string packetName,
-        TMessage message)
+        TMessage message,
+        ZLinkCallMetadata? callMetadata = null)
     {
+        var metadata = callMetadata?.ToStreamMetadata() ?? ZlinkStreamMetadata.Empty;
+        var flags = requestSeq is null
+            ? ZlinkStreamHeaderFlags.None
+            : ZlinkStreamHeaderFlags.HasRequestSeq;
+        if (metadata.Count != 0) flags |= ZlinkStreamHeaderFlags.HasMetadata;
         var header = new ZlinkStreamHeader(
             kind,
             ZlinkStreamCodec.Json,
-            requestSeq is null ? ZlinkStreamHeaderFlags.None : ZlinkStreamHeaderFlags.HasRequestSeq,
+            flags,
             requestSeq,
             packetName,
-            ZlinkStreamMetadata.Empty,
+            metadata,
             ZlinkStreamCorrelation.Next());
         var payload = ZLinkEnvelopeCodec.EncodeJsonBytes(message, message?.GetType() ?? typeof(TMessage));
         return
@@ -271,24 +283,44 @@ internal sealed class ZLinkActorClient(
 
     private sealed class ZLinkActorSendCall<TMessage>(
         ZLinkActorClient client,
+        string meshName,
         ActorRef actor,
         TMessage message) : IZLinkActorSendCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
+        private readonly ZLinkCallMetadata _metadata = new();
+
+        public IZLinkActorSendCall Metadata(string key, string value)
         {
-            client.SubmitSend(
+            _metadata.Set(key, value);
+            return this;
+        }
+
+        public IZLinkActorSendCall Metadata(ZLinkMessageMetadata metadata)
+        {
+            _metadata.Merge(metadata);
+            return this;
+        }
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return client.SubmitSendAsync(
+                meshName,
                 actor,
                 ZLinkMessageNameResolver.ResolveFromMessage(message),
                 message,
+                _metadata,
                 cancellationToken);
         }
     }
 
     private sealed class ZLinkActorRequestCall<TRequest>(
         ZLinkActorClient client,
+        string meshName,
         ActorRef actor,
         TRequest request) : IZLinkActorRequestCall
     {
+        private readonly ZLinkCallMetadata _metadata = new();
         private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
         private TimeSpan? _timeout;
 
@@ -296,6 +328,18 @@ internal sealed class ZLinkActorClient(
         {
             ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
             _timeout = timeout;
+            return this;
+        }
+
+        public IZLinkActorRequestCall Metadata(string key, string value)
+        {
+            _metadata.Set(key, value);
+            return this;
+        }
+
+        public IZLinkActorRequestCall Metadata(ZLinkMessageMetadata metadata)
+        {
+            _metadata.Merge(metadata);
             return this;
         }
 
@@ -314,10 +358,12 @@ internal sealed class ZLinkActorClient(
         private ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
         {
             return client.RequestAsync<TRequest, TReply>(
+                meshName,
                 actor,
                 ZLinkMessageNameResolver.ResolveFromMessage(request),
                 request,
                 _timeout,
+                _metadata,
                 cancellationToken);
         }
     }

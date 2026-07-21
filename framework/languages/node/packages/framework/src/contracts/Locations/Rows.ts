@@ -18,28 +18,50 @@ export interface ZLinkPeerLocation {
   readonly updatedAt: Date;
 }
 
+/** RouteMesh discovery descriptor fixed by the 10.0 location-store contract. */
+export interface ZLinkMeshNodeDescriptor {
+  readonly meshName: string;
+  readonly rid: RoutingId;
+  readonly lifecycleGeneration: bigint;
+  readonly descriptorRevision: bigint;
+  readonly endpoint: string;
+  readonly channelWeights: Readonly<Record<string, number>>;
+  readonly draining: boolean;
+  readonly securityIdentity: string;
+  readonly ownerId: string;
+  readonly updatedAt: Date;
+}
+
 export interface ZLinkSpotLocation {
   readonly meshName: string;
   readonly spotRid: RoutingId;
-  readonly spotType?: string;
-  readonly nodeRid: RoutingId;
+  /** Core lifecycle generation of the addressed Spot. */
+  readonly spotGeneration: bigint;
+  readonly spotType: string;
+  /** MeshNode that currently owns this Spot. */
+  readonly ownerNodeRid: RoutingId;
+  /** Core lifecycle generation of the owning MeshNode. */
+  readonly ownerNodeGeneration: bigint;
   readonly spotKind: ZLinkSpotKind;
-  readonly routeEndpoint?: string;
   readonly ownerId: string;
-  readonly generation: bigint;
   readonly updatedAt: Date;
 }
 
 export interface ZLinkActorLocation {
+  /** RouteMesh that owns this Actor location. */
+  readonly meshName: string;
   readonly actorId: string;
-  readonly actorType?: string;
-  readonly actorRef?: ActorRef;
-  readonly nodeRid: RoutingId;
-  readonly locationKind: ZLinkSpotKind;
-  readonly spotMeshName: string;
-  readonly spotRid?: RoutingId;
+  readonly actorType: string;
+  readonly actorRef: ActorRef;
+  /** MeshNode that currently owns this Actor. */
+  readonly ownerNodeRid: RoutingId;
+  readonly ownerNodeGeneration: bigint;
+  /** Kind of Spot that currently owns this Actor. */
+  readonly spotKind: ZLinkSpotKind;
+  readonly spotRid: RoutingId;
+  readonly spotGeneration: bigint;
+  readonly membershipEpoch: bigint;
   readonly ownerId: string;
-  readonly generation: bigint;
   readonly updatedAt: Date;
 }
 

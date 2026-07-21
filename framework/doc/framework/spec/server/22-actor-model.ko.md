@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 10.0.0에서 Actor의 identity, 위치, 메시지 queue, lifecycle과 session binding의
+이 문서는 ZLink Framework 11.0.0에서 Actor의 identity, 위치, 메시지 queue, lifecycle과 session binding의
 공통 공개 계약을 정의한다. 이 문서는 “Actor가 어느 Spot에 속하더라도 업무 payload와 membership 제어를
 각각 어느 실행 문맥에서 처리하는가?”라는 질문에 답한다.
 
@@ -17,10 +17,12 @@ MeshNode route와 admission은 [21 MeshNode](21-mesh-node.ko.md), Spot membershi
 
 ## 2. Identity와 상태 축
 
-Actor는 MeshName 안에서 논리 Actor ID와 Actor type으로 식별되는 stateful object다. `ActorRef`는 owner
-node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로 구성하는 immutable value다. endpoint,
-내부 route frame, location row와 Actor type은 `ActorRef`에 넣지 않는다. Framework가 wire DTO를 제공하는
-언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도 인자 없이 `ActorRef`로 복원한다.
+Actor는 MeshName과 논리 Actor ID로 식별되는 stateful object다. Actor type은 create가 사용할 factory를
+선택하고 해당 lifecycle에 고정되는 immutable attribute다. 같은 MeshName과 Actor ID에 서로 다른 active
+type을 둘 수 없다. `ActorRef`는 owner node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로
+구성하는 immutable value다. endpoint, 내부 route frame, location row와 Actor type은 `ActorRef`에 넣지
+않는다. Framework가 wire DTO를 제공하는 언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도
+인자 없이 `ActorRef`로 복원한다.
 
 Actor의 상태는 다음 두 축을 독립적으로 관리한다.
 
@@ -88,6 +90,13 @@ key를 중복 등록하면 startup 오류다. handler 등록의 정확한 타입
 Actor factory는 MeshNode에 Actor type별로 등록한다. 같은 MeshNode에서 같은 Actor type의 factory를 둘
 이상 등록하면 startup 오류다. Actor 생성은 identity와 generation을 확보하고 Entry Spot membership을
 설정한 뒤 신규 payload admission을 연다.
+
+Host-level Actor manager의 create와 GetOrCreate는 MeshName, Actor type과 Actor ID를 명시하고 호출한 local
+MeshNode에서만 factory를 실행한다. Caller가 target node나 endpoint를 지정하지 않으며 Framework가 다른
+MeshNode를 선택하거나 remote create를 전달하지 않는다. Actor directory는 existing-only 조회만 제공한다.
+Missing Actor 조회는 empty 결과로 끝나며 factory나 placement를 시작하지 않는다. 다른 MeshNode에서 Actor를
+만들어야 하면 application이 그 node의 public endpoint나 Entry Spot에 업무 request를 보내고, 그 node의
+handler가 local Actor manager를 호출한다.
 
 Actor를 user Spot으로 옮기는 join·leave·transfer는
 [23 Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다. 이동 중에 수락한 payload를 이전 Spot

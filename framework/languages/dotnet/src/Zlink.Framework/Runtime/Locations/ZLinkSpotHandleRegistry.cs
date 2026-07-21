@@ -10,15 +10,14 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkSpotHandleRegistry
 {
     private readonly object _gate = new();
-    private readonly Dictionary<string, List<WeakReference<ZLinkResolvedSpotHandle>>> _actors =
-        new(StringComparer.Ordinal);
+    private readonly Dictionary<ZLinkActorLocationKey, List<WeakReference<ZLinkResolvedSpotHandle>>> _actors = [];
     private readonly Dictionary<ZLinkSpotLocationKey, List<WeakReference<ZLinkResolvedSpotHandle>>> _spots = [];
 
     internal void RegisterSpot(ZLinkSpotLocationKey key, ZLinkResolvedSpotHandle handle)
         => Register(_spots, key, handle);
 
-    internal void RegisterActor(string actorId, ZLinkResolvedSpotHandle handle)
-        => Register(_actors, actorId, handle);
+    internal void RegisterActor(ZLinkActorLocationKey key, ZLinkResolvedSpotHandle handle)
+        => Register(_actors, key, handle);
 
     internal void UpdateSpot(ZLinkSpotLocation row)
         => Apply(_spots, new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), handle => handle.Update(
@@ -34,7 +33,10 @@ internal sealed class ZLinkSpotHandleRegistry
         => Apply(_spots, key, handle => handle.Invalidate(spotGeneration));
 
     internal void UpdateActor(ZLinkActorLocation row)
-        => Apply(_actors, row.ActorId, handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
+        => Apply(
+            _actors,
+            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
         => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
@@ -52,7 +54,7 @@ internal sealed class ZLinkSpotHandleRegistry
                 ZLinkSpotKind.User);
 
     internal void RemoveActor(ZLinkActorLocationKey key)
-        => Apply(_actors, key.ActorId, static handle => handle.InvalidateCurrent());
+        => Apply(_actors, key, static handle => handle.InvalidateCurrent());
 
     internal IReadOnlyList<ZLinkResolvedSpotHandle> SnapshotLiveHandles()
     {

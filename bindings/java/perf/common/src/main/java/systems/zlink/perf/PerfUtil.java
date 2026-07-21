@@ -15,8 +15,6 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.SubSocket;
 import systems.zlink.contracts.messaging.TopicMessage;
 import java.time.Duration;
@@ -210,14 +208,6 @@ public final class PerfUtil {
         PerfTransport.configureClientTls(socket, transport);
     }
 
-    public static void configureServerTls(SpotNode node, String transport) {
-        PerfTransport.configureServerTls(node, transport);
-    }
-
-    public static void configureClientTls(SpotNode node, String transport) {
-        PerfTransport.configureClientTls(node, transport);
-    }
-
     public static Context newContext(Config config) {
         return PerfTransport.newContext(config);
     }
@@ -237,11 +227,6 @@ public final class PerfUtil {
         PerfAutoHwm.printSingleMonitor(config, monitor, component, socketType);
     }
 
-    public static void printSingleSpotNodeAutoHwm(Config config, SpotNode node,
-                                                  String component) {
-        PerfAutoHwm.printSingleSpotNode(config, node, component);
-    }
-
     public static void printMultiSocketAutoHwm(Config config, Socket socket,
                                                String component, String label,
                                                SocketType socketType) {
@@ -255,11 +240,6 @@ public final class PerfUtil {
                                                 SocketType socketType) {
         PerfAutoHwm.printMultiMonitor(config, monitor, component, label,
             socketType);
-    }
-
-    public static void printMultiSpotNodeAutoHwm(Config config, SpotNode node,
-                                                 String component) {
-        PerfAutoHwm.printMultiSpotNode(config, node, component);
     }
 
     public static void await(CountDownLatch latch, String label, Duration timeout) {
@@ -316,13 +296,6 @@ public final class PerfUtil {
     public static Optional<TopicMessage> subscribeNoWait(SubSocket socket) {
         TopicMessage message = new TopicMessage();
         return socket.subscribe(message, RecvFlags.DONT_WAIT)
-            ? Optional.of(message)
-            : Optional.empty();
-    }
-
-    public static Optional<TopicMessage> subscribeNoWait(Spot spot) {
-        TopicMessage message = new TopicMessage();
-        return spot.subscribe(message, RecvFlags.DONT_WAIT)
             ? Optional.of(message)
             : Optional.empty();
     }

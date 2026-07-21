@@ -14,6 +14,11 @@ internal static class SfB2GraceExceededScenario
         ZLinkHttpClient consumer,
         StoreFailureProcessManager processes)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-B2: provider routes were not ready before the store outage.");
+
         await processes.PauseStoreAsync();
         try
         {
@@ -44,6 +49,13 @@ internal static class SfB2GraceExceededScenario
             SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
                 present: ["api-a", "api-b"]),
             "SF-B2: provider rows did not return to the live list after recovery.");
+        await SfProbe.WaitRouteReadyAsync(
+            consumer,
+            minimumReadyMembers: 2,
+            readyRids: ["api-a", "api-b"],
+            notReadyRids: null,
+            timeout: options.PollingInterval * 4,
+            failure: "SF-B2: provider routes did not become ready after store recovery.");
 
         Console.WriteLine("scenario SF-B2 passed");
     }

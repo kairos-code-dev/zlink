@@ -33,13 +33,13 @@ function createCourierSessionModule() {
             .traceLogFile(`${config.logDir}/flow-courier-session.log`)
             .traceLabel('courier-session');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addStreamNode(SampleNames.courierStreamNode)
+          deliveryDispatchLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+            .listen(config.courierSessionSpotEndpoint).routingId('courier-session');
+          mesh.channelName(SampleNames.routeMesh).setWeight(0);
+          return builder.addStreamNode(SampleNames.courierStreamNode)
               .bind(config.courierStreamEndpoint)
               .registerSession(CourierSessionFactory)
-            .addSpotMesh(SampleNames.courierActorSpotMesh)
-              .enableRouter(config.courierSessionSpotEndpoint, 'courier-session')
             .build();
         }
       })

@@ -27,7 +27,7 @@ inline void scenario_runner_t::run_st_f2_scenario ()
     wait_evidence (_nodes.b, {"message_flow|" + actor_id + "|backlog_enqueued|",
                               "message_flow|" + actor_id + "|location_committed|"});
     const auto target_ref =
-      e2e::actor_ref_snapshot_res_t{actor_id, "actor-b", old_ref.generation + 1};
+      e2e::actor_ref_snapshot_res_t{actor_id, "actor-b", old_ref.generation};
     send_ref (_nodes.b, actor_id, target_ref, {"ST-F2", "D1"});
     require (join_task.get ().accepted, "ST-F2 transfer was rejected.");
     assert_correlated_transfer_markers (

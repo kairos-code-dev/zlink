@@ -305,6 +305,7 @@ struct channel_control_ping_req_t
     static constexpr const char *packet_name = "MultiNodeRoutePing";
     std::string target_node_rid;
     std::string value;
+    std::string mesh_name;
 };
 
 struct channel_control_ping_res_t
@@ -1369,13 +1370,16 @@ inline void from_json (const nlohmann::json &json, channel_echo_res_t &value)
 
 inline void to_json (nlohmann::json &json, const channel_control_ping_req_t &value)
 {
-    json = nlohmann::json{{"target_node_rid", value.target_node_rid}, {"value", value.value}};
+    json = nlohmann::json{{"target_node_rid", value.target_node_rid},
+                          {"value", value.value},
+                          {"mesh_name", value.mesh_name}};
 }
 
 inline void from_json (const nlohmann::json &json, channel_control_ping_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
     json.at ("value").get_to (value.value);
+    value.mesh_name = json.value ("mesh_name", "");
 }
 
 inline void to_json (nlohmann::json &json, const channel_control_ping_res_t &value)

@@ -104,12 +104,12 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-COMMON-004 | `02-interaction-model.ko.md` | channel, Spot, actor와 session interaction owner | `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes`; `E2E:SM-D11` |
 | DN-COMMON-005 | `03-message-model.ko.md` | typed packet identity와 framework envelope codec | `EnvelopeCodecTests.Envelope_requires_marker_and_roundtrips_flow_fields`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts` |
 | DN-COMMON-006 | `04-async-execution-policy.ko.md` | one-way bounded/nonblocking 수락과 `Async(...)` turn 유지, `Yield(...)` turn 반납 | `ZLinkAsyncSubmitterTests.Async_ThrowsWhenQueueIsFull`; `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously`; `SessionActorCoordinatorTests.Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `EntrySpotActorDispatchTests.BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller`; `EntrySpotActorDispatchTests.Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `WorkerPoolTests.RunCpuWorker_Async_Holds_Serial_Turn_Until_Work_Completes`; `WorkerPoolTests.RunCpuWorker_Yield_Releases_And_Resumes_Through_Serial_Turn`; `E2E:ATD-A1`; `E2E:ATD-B3` |
-| DN-COMMON-007 | `10-channel-topology.ko.md` | `system-structure.ko.md`, manual/location 연결 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath`; `E2E:RM-A1`; `E2E:RM-A2`; `E2E:PS-A1` |
+| DN-COMMON-007 | `10-channel-topology.ko.md` | `system-structure.ko.md`, manual/location 연결 | `ChannelsTests.MeshPeerConnections_RecordManualPeers`; `E2E:RM-A1`; `E2E:RM-A2`; `E2E:PS-A1` |
 | DN-COMMON-008 | `22-actor-model.ko.md` | `handler-interfaces.ko.md`, actor context와 join 결과 | `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`; `EntrySpotActorDispatchTests.EntrySpotActorDispatch_BoundRequest_UsesBoundSession_AndBindsSession`; `E2E:SM-B7` |
 | DN-COMMON-009 | `23-spot-actor.ko.md` | `handler-interfaces.ko.md`, `system-structure.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering`; `E2E:SM-B1`; `E2E:SM-B2` |
 | DN-COMMON-010 | `31-session-actor-dispatch.ko.md` | `.NET/session-actor-dispatch.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_NoBindRequest_RepliesViaNoBind_AndDoesNotBindSession`; `E2E:SM-D1`; `E2E:SM-D2`; `E2E:SM-D8` |
 | DN-COMMON-011 | `24-spot-address-messaging.ko.md` | opaque `SpotHandle`, refresh와 route egress | `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `E2E:SM-C3`; `E2E:SM-G2` |
-| DN-COMMON-012 | `40-location-runtime.ko.md` | `system-structure.ko.md`, row/watch/reconcile/query와 MeshName·ChannelName 매핑 | `LocationResolverTests.Spot_And_Actor_Handles_Use_Configured_Route_Channel_And_Refresh_Uses_The_Same_Map`; `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `LocationResolverTests.Watch_Upsert_Applies_The_Current_Row_And_Preserves_The_Route_Channel_Mapping`; `LocationResolverTests.Handle_Polling_Updates_Actor_Snapshot_When_Watch_Is_Unavailable`; `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones`; `LocationRuntimeTests.Shutdown_Removes_Owner_Lease_Then_Bulk_Removes_Rows`; `E2E:RM-A1`; `E2E:SF-A1` |
+| DN-COMMON-012 | `40-location-runtime.ko.md` | `system-structure.ko.md`, row/watch/reconcile/query와 MeshName·ChannelName 매핑 | `LocationResolverTests.Spot_And_Actor_Handles_Preserve_The_Row_MeshName_Across_Refresh`; `LocationResolverTests.Spot_Handle_Request_Refreshes_Once_After_Target_Not_Found`; `LocationResolverTests.Watch_Upsert_Applies_The_Current_Row_And_Preserves_The_MeshName`; `LocationResolverTests.Handle_Polling_Updates_Actor_Snapshot_When_Watch_Is_Unavailable`; `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones`; `LocationRuntimeTests.Shutdown_Removes_Owner_Lease_Then_Bulk_Removes_Rows`; `E2E:RM-A1`; `E2E:SF-A1` |
 | DN-COMMON-013 | `41-location-store-redis.ko.md` | `Zlink.Framework.Locations.Redis`와 공통 store contract | `InMemoryLocationStoreTests.Mesh_List_Returns_Only_The_Requested_Mesh_Snapshot`; Redis test project 전체 store contract는 G3 실행 ledger에서 별도 증명 |
 | DN-COMMON-014 | `52-message-flow-tracing.ko.md` | `system-structure.ko.md`, observer와 error surface | `MessageFlowTracerTests.Off_SuppressesAllTransitions`; `UnhandledDispatchPolicyTests.DispatchErrorReporter_DeliversMessageFlowErrorSnapshot`; `E2E:OBS-A1` |
 | DN-COMMON-015 | `53-flow-correlation.ko.md` | channel/stream codec, async flow context와 connector | `FlowCorrelationTests.Connector_and_framework_share_one_monotonic_correlation_sequence`; `FlowCorrelationTests.Awaited_work_keeps_flow_but_detached_work_loses_the_expired_lease`; `E2E:OBS-A2` |
@@ -135,7 +135,7 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-DOC-004 | `03-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
 | DN-DOC-005 | `04-routing-id-allocation.ko.md` | 네 builder의 자동 할당, 같은 store capability, bind 전 lifecycle과 준비된 결과 조회 | `NodesAndServicesTests.AddZLinkFramework_RegistersOneAllocatedRoutingIdCapabilityForAllBuilders`; `NodesAndServicesTests.HostStartup_AllocatesRoutingIdBeforeBindingAndPublishesReadyResult`; `RedisLocationStoreTests.RoutingIdSlotAllocation_IsAtomicIdempotentAndFenced` |
 | DN-DOC-006 | `dotnet-http-client.ko.md` | standalone/server client 분리, callback·scheduler와 패키지 의존성 | `HttpClientContractTests.Standalone_and_server_request_surfaces_expose_only_valid_terminators`; `HttpClientContractTests.Callback_completion_enters_the_captured_execution_turn`; `HttpExecutionSchedulerTests.Captured_http_callback_is_posted_as_a_new_serial_turn` |
-| DN-DOC-007 | `05-route-mesh.ko.md` | RouteMesh와 MeshNode builder, ChannelName membership, manual peer와 runtime option의 정확한 공개 서명 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships` |
+| DN-DOC-007 | `05-route-mesh.ko.md` | RouteMesh와 MeshNode builder, ChannelName membership, manual peer와 runtime option의 정확한 공개 서명 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `NodesAndServicesTests.AddZLinkFramework_AddRouteMesh_AllowsMultipleProcessLocalNodes`; `ChannelsTests.MeshPeerConnections_RecordManualPeers` |
 | DN-DOC-008 | `06-location-store.ko.md` | location capability, descriptor·location record, transfer authority와 Redis extension의 정확한 공개 서명 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `ContractSurfaceCoverage.Redis_Extension_Remains_A_Separate_Package_Without_A_Backend_Specific_Registration_API` |
 
 `02-framework-interfaces.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
@@ -168,8 +168,8 @@ E2E class allowlist는 존재하지 않는다.
 | MFLOW-004 | PROVEN — `MessageFlowTracerTests.Verbose_size_and_structured_hook_fields_follow_the_frozen_gates` |
 | MFLOW-005 | PROVEN — `MessageFlowTracerTests.Sampling_Decision_Is_Stable_For_The_Whole_Flow`; `MessageFlowTracerTests.Dropped_And_Error_Bypass_Zero_Sample_Rate` |
 | MFLOW-006 | PROVEN — `MessageFlowTracerTests.Observer_is_offloaded_bounded_and_failure_does_not_break_later_delivery` |
-| MFLOW-007 | PROVEN — `UnhandledDispatchPolicyTests.Channel_Request_Dispatch_Emits_Received_Then_Replied_With_The_Wire_Identity`; `UnhandledDispatchPolicyTests.Route_Request_Dispatch_Emits_Received_Then_Replied_With_The_Wire_Identity`; `EntrySpotActorDispatchTests.Spot_Actor_Request_Ingress_Emits_Received_Then_Replied_With_The_Wire_Identity`; `StreamSessionForcedCleanupTests.Stream_Request_Emits_Received_Then_Replied_With_Wire_Correlation` |
-| MFLOW-008 | PROVEN — `UnhandledDispatchPolicyTests.Channel_Request_Handler_Failure_Logs_The_Inbound_Flow_And_Correlation` |
+| MFLOW-007 | PROVEN — `EntrySpotActorDispatchTests.MeshNode_Channel_Request_Emits_Received_Then_Replied_With_Wire_Identity`; `EntrySpotActorDispatchTests.MeshNode_Rid_Request_Emits_Received_Then_Replied_With_Wire_Identity`; `EntrySpotActorDispatchTests.Spot_Actor_Request_Ingress_Emits_Received_Then_Replied_With_The_Wire_Identity`; `StreamSessionForcedCleanupTests.Stream_Request_Emits_Received_Then_Replied_With_Wire_Correlation` |
+| MFLOW-008 | PROVEN — `EntrySpotActorDispatchTests.MeshNode_Channel_Request_Handler_Failure_Logs_Wire_Flow_And_Correlation` |
 | MFLOW-009 | PROVEN — `StreamFlowEndToEndTests.Connector_Request_Server_Log_Reply_And_Callback_Share_One_Flow`; `StreamWireInteropTests.Reply_header_echoes_request_correlation_and_root_flow` |
 | MFLOW-010 | PROVEN — `MessageFlowTracerTests.Dedicated_file_is_structured_creates_parent_and_takes_precedence_over_app_logger`; `MessageFlowTracerTests.Dispatch_failure_uses_only_the_dedicated_file_and_the_fixed_phase_schema` |
 | MFLOW-011 | PROVEN — `MessageFlowTracerTests.LiveMode_OverridesStaticAndTogglesAtRuntime`; `MessageFlowTracerTests.Off_gate_prevents_event_construction` |
@@ -232,7 +232,7 @@ E2E class allowlist는 존재하지 않는다.
 |----|-----------|-------------------------|------|
 | DN-G0-MFLOW-001 | `message-flow-tracing` §3~§7 | observer snapshot 수명, non-inline offload, bounded overflow와 overflow 계기 | PROVEN — `MessageFlowTracerTests.Observer_is_offloaded_bounded_and_failure_does_not_break_later_delivery`; `UnhandledDispatchPolicyTests.SpotActorSendMissingHandler_LogsAndReportsMessageFlowDroppedEvent` |
 | DN-G0-MFLOW-002 | `message-flow-tracing` §4~§5 | off hot path 이벤트 미생성, logger 구조화 필드, 파일 전용 출력과 부모 디렉터리 생성 | PROVEN — `MessageFlowTracerTests.Off_gate_prevents_event_construction`; `MessageFlowTracerTests.Production_flow_logger_uses_the_fixed_dispatch_category`; `MessageFlowTracerTests.Dedicated_file_is_structured_creates_parent_and_takes_precedence_over_app_logger`; `MessageFlowTracerTests.Dispatch_failure_uses_only_the_dedicated_file_and_the_fixed_phase_schema` |
-| DN-G0-MFLOW-003 | `message-flow-tracing` §6~§9 | backend 중립성, 전체 hook/phase/direction/source 의미, correlation 생성 형식 | PROVEN — 여섯 fixed API/package snapshot의 backend-specific export/dependency 부재; `UnhandledDispatchPolicyTests.Channel_Request_Dispatch_Emits_Received_Then_Replied_With_The_Wire_Identity`; `UnhandledDispatchPolicyTests.Route_Request_Dispatch_Emits_Received_Then_Replied_With_The_Wire_Identity`; `EntrySpotActorDispatchTests.Current_Spot_Publish_Emits_Sent_With_Spot_Rid_And_Current_Flow`; `RouteCodecTests.Route_Send_Uses_Monotonic_Correlation_And_Logs_Target_As_SourceRid`; `FlowCorrelationTests.Connector_and_framework_share_one_monotonic_correlation_sequence` |
+| DN-G0-MFLOW-003 | `message-flow-tracing` §6~§9 | backend 중립성, 전체 hook/phase/direction/source 의미, correlation 생성 형식 | PROVEN — 여섯 fixed API/package snapshot의 backend-specific export/dependency 부재; `EntrySpotActorDispatchTests.MeshNode_Channel_Request_Emits_Received_Then_Replied_With_Wire_Identity`; `EntrySpotActorDispatchTests.MeshNode_Rid_Request_Emits_Received_Then_Replied_With_Wire_Identity`; `EntrySpotActorDispatchTests.Current_Spot_Publish_Emits_Sent_With_Spot_Rid_And_Current_Flow`; `EntrySpotActorDispatchTests.ActorRemoteJoiner_Join_Records_Target_Node_As_SourceRid_Without_PeerRid`; `FlowCorrelationTests.Connector_and_framework_share_one_monotonic_correlation_sequence` |
 | DN-G0-FLOW-001 | `flow-correlation` §3~§9 | transfer/bound push, lifecycle origin, owner-skip, gateway 기본 sink 우선순위와 구조화 join | PROVEN — `ActorTransferTests.Transfer_admission_commit_and_target_continuation_keep_one_root_flow`; `FlowCorrelationTests.Lifecycle_entry_and_bound_push_preserve_the_root_flow`; `UnhandledDispatchPolicyTests.SpotSubscription_Fanout_Instances_Keep_One_Flow_And_Owner_Skip_Uses_The_Same_Identity`; `MessageFlowTracerTests.Actor_gateway_runtime_construction_uses_explicit_factory_fallback_and_Off_gate`; `E2E:OBS-A1`; `E2E:OBS-A4` |
 | DN-G0-FLOW-002 | `flow-correlation` §10 | legacy decoder·corr-only compatibility·별도 public flow builder/runtime control 부재 | PROVEN — `EnvelopeCodecTests.Envelope_requires_marker_and_roundtrips_flow_fields`; `StreamConnectorTests.HeaderProtocolRejectsMissingMarkerAndInvalidFlowFields`; `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
 | DN-G0-METRIC-001 | `runtime-metrics` §4~§5 | dropped 닫힌 label, 동적 topic label 생략, session bind 구간 | PROVEN — `RuntimeMetricsTests.Location_And_Dropped_Metrics_Use_Closed_Labels_And_Ignore_Listener_Failure`; `RuntimeMetricsTests.Fanout_Without_A_Declared_Topic_Omits_The_Topic_Label`; `RuntimeMetricsTests.Session_Bind_Duration_Records_One_Completed_Interval` |
@@ -269,17 +269,17 @@ E2E class allowlist는 존재하지 않는다.
 
 ```text
 3538efc2f99956660089ef35470501418c811bf79dbd12537f9d6053a6d6f194 00-public-contract-governance.ko.md
-3f22511ba4d4fdf2dabc4225265be1d4b71a6b15071b130af7b5c589c9d21dbb 01-overview.ko.md
-b3f25e1761b392cee06784e2a37ebf612545ebd51c6e66ef044b17060e797083 02-interaction-model.ko.md
-df4c982868b0d367465dd060a8bd83e811696a1d0bb8da3d9614de486566359a 03-message-model.ko.md
-39acd0f880523fff718c5bde27266aef6dbf2b338e37fa0d6274fee09785b88d 04-async-execution-policy.ko.md
-6258b0d81689a313af2e034ca182f4c697592663e6dc8d09576f046a20219f2a 05-framework-api.ko.md
-7db19ead495e6484672060d6593dc01495e16358eb56595e5ed9598979e44ca3 90-implementation-gap.ko.md
+01ec9efd421441dcb5e90d547a5d2841c071aa5c85c71b3c3b0723a465b083eb 01-overview.ko.md
+3b8a593352da512749f4bbf2a3be915fec0a9027955a25c20ecdf71f5909b74e 02-interaction-model.ko.md
+5bec94bb16aaed48e5346c29b9f41af8c85b6d6058d402aae7c13ca662965182 03-message-model.ko.md
+53f2daabe02d16576577c5c80cfc1b3a1a911bd4df7635d12a317c4f6849f750 04-async-execution-policy.ko.md
+145c42fdd5ed3fb0d07afc8923c1ea0b61857dbbad2c9efbcb7f56921cd57b16 05-framework-api.ko.md
+94d8f4dd5a1352648ed6a90039d1afffbd12869382a3ea0bcb94bea4372f804c 90-implementation-gap.ko.md
 40bbce9a6a54e06bc8592e97177923909c27187e0cf52bc1bc4cf120e2d9a9a3 README.ko.md
 2e8d5b168a7a1dce897c0372c16ff2a4f594d2972a24648abeffd211c3cef738 http-client/languages/dotnet/dotnet-http-client.ko.md
 fb9042b2da236685a8d333a5f6b5cc86555a4f1068a6b134fa3c32dadc288fdd server/10-channel-topology.ko.md
 39a003be40b2c513985cfbe357079dc935f44040ff9bb5b0d5e964703e22143c server/11-channel-messaging.ko.md
-b9ce9a018495bfeda445b3c8f8f2f15798a83b337955baa61875086e9bda59b4 server/20-spot-messaging.ko.md
+01a76b96ec7e4a77413e7ca4376d372e302b755e73fd7e1e408a8e4990622678 server/20-spot-messaging.ko.md
 2f48cb256c74e8c1de47d899237c472db615ddd177473f91c27aa4c28d2a7bc2 server/21-mesh-node.ko.md
 e85257bf576d4e59efa75807a2b8b4a730a9a119efa1216e38e1c08d9553c798 server/22-actor-model.ko.md
 9783fa31ddce92cc82c36cda6947a5e3702812a6b0bfe10f0c3e7b43b29c7c86 server/23-spot-actor.ko.md
@@ -289,17 +289,17 @@ c227e228b91f5887d94539be2c9954b33d1ee411d8d7e6f2bd5be9427f02dd53 server/25-stage
 90b10fbe258905a1e8483689aca6499e8eb2141ba434f02547df6d134a24321e server/31-session-actor-dispatch.ko.md
 e62cd34ad7fc3ba3ed48c604b086a9bda42433d61d2fcf8742ce49b584032c92 server/40-location-runtime.ko.md
 100f2ae2bb9cac87a0be80b9551a4c3934a42bec4ebdda260c345a57fe8b30a7 server/41-location-store-redis.ko.md
-d174572a644354576565ac1fbb4dca320afa4eb5e073a052c7013630b76e332d server/50-runtime-monitoring.ko.md
-3e12588cdf9aab655a39823e90ddcbd22b5867bcaead9fa093e554dc484656c0 server/51-runtime-metrics.ko.md
-2dab5abcdb783e2b16aace2020850958ac4bc4b64b919a494d39267306906ad2 server/52-message-flow-tracing.ko.md
+f0291df0c535ea1e334c0eba46bb78508dbefab0ad02565a13ba436673ab11ae server/50-runtime-monitoring.ko.md
+003489d9bc188efa7532a6e0e50c0154c31a6146eed86c7dcd2534121ccc2313 server/51-runtime-metrics.ko.md
+76b9547c7ca67c81e9577e135f783680b416263fafd2391c10b6472fbaf92177 server/52-message-flow-tracing.ko.md
 89b668fcd8ccc710323cd3a3548d8f19626f7b288b790fc4dc01987f66e4c0c4 server/53-flow-correlation.ko.md
-a34114446de62d9a0680d60d04e41f0c18e1e53b93a95e782bd399288e8516ff server/54-graceful-drain-handoff.ko.md
-4516ef5c5956431330c1dbfe0fdae69d7840395c7803c1b8cf3b14f9b262de22 server/languages/dotnet/01-system-structure.ko.md
-9679a2c6966a4b8aea19c497d6127ece4468d6cc255944f6d009f087e60f6ba9 server/languages/dotnet/02-handler-interfaces.ko.md
+bf1d47d7e9b80a675b8f8e21014116f335d38ea40cbe901b9cc236cbf094b426 server/54-graceful-drain-handoff.ko.md
+c5392db50a930eb9b2949d8bf240fb645860d15cb48bd166be4cab3d53cb3ff1 server/languages/dotnet/01-system-structure.ko.md
+71df13927e0f8775f0b5b26ff1f35cc8d2f6185bdf91002e6c127f7884ca5105 server/languages/dotnet/02-handler-interfaces.ko.md
 a32d6fe58906d3f2eab0db51be80e039554f39a9daaf0fd234f2d0087948fd5c server/languages/dotnet/04-routing-id-allocation.ko.md
-2b45cd8f7aa8e5bc6a0051fb4e3e609b86eaf6f299ce7be6eca186025956ceee server/languages/dotnet/05-route-mesh.ko.md
+e254fd636120a2d9350e1f0e6c41bdf8ef5e92cddcbccb61ba810833dbdb0222 server/languages/dotnet/05-route-mesh.ko.md
 9359fe0c29b6c8323e634b9923e44496f46b0b93e539b8f3d1e590cf49d893b9 server/languages/dotnet/06-location-store.ko.md
-9012c074d6b625ea7c83b07500cd6a4cba7e91f01b1569b1addd7f968a25d845 server/languages/dotnet/README.ko.md
+c710e98dd598c0e9820716aa2a0dbb98eea7ef9844b8374811d7fd8346599581 server/languages/dotnet/README.ko.md
 a33b6c5683b6af15025c9e74ee73719d8ddea68fbefd2c6455471482a7c523e9 stream-connector/32-stream-connector.ko.md
 c7aa4466622ff8b992a2e58315ea963c9071ea6a8db272d96057414e8bc6b5cf stream-connector/languages/dotnet/03-stream-connector.ko.md
 ```

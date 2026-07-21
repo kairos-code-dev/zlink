@@ -125,11 +125,18 @@ chmod 700 "${config_dir}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" "redis:7.2-alpine"
 redis_location_endpoint="127.0.0.1:${redis_port}"
+if [[ "${ZLINK_E2E_REDIS_MONITOR:-0}" == "1" ]]; then
+  docker exec "${REDIS_CONTAINER}" redis-cli --csv monitor \
+    >"${log_dir}/redis-monitor.log" 2>&1 &
+  pids+=("$!")
+fi
 location_key_prefix="zlink:e2e:spot-service:${run_id}"
+location_heartbeat_ms=500
+location_lease_ttl_ms=5000
+LOCATION_LEASE_POLL_MILLISECONDS=100
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 
 print_logs() {
@@ -195,9 +202,8 @@ trap 'exit 143' TERM
 
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
    || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS:-}" != 5 \
    || "${SCENARIO_SETTLE_SECONDS:-}" != 3 ]]; then
-  echo "SpotService must use 3s readiness, 5s route settle, and 3s scenario settle limits" >&2
+  echo "SpotService must use 3s readiness and 3s scenario limits" >&2
   exit 1
 fi
 
@@ -302,7 +308,10 @@ start_play() {
     echo "e2e.tls-certificate-path=${TLS_CERTIFICATE_PATH:-}"
     echo "e2e.tls-key-path=${TLS_KEY_PATH:-}"; echo "e2e.http-endpoint=${http}"
     echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
-    echo "e2e.location-key-prefix=${location_key_prefix}"; echo "e2e.log-dir=${log_dir}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"
+    echo "e2e.location-heartbeat-millis=${location_heartbeat_ms}"
+    echo "e2e.location-lease-ttl-millis=${location_lease_ttl_ms}"
+    echo "e2e.log-dir=${log_dir}"
   } >"${config_path}"
   chmod 600 "${config_path}"
   "$(play_bin)" --config "${config_path}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
@@ -373,8 +382,6 @@ wait_named_server() {
   case "$1" in
     play-a)
       wait_port play-a-route "${ROUTE_A}"
-      wait_port play-a-spot "${SPOT_A}"
-      wait_port play-a-spot-pub "${SPOT_PUB_A}"
       wait_port play-a-stream "${STREAM_A}"
       if [[ -n "${TLS_STREAM_A}" ]]; then
         wait_port play-a-tls-stream "${TLS_STREAM_A}"
@@ -383,34 +390,85 @@ wait_named_server() {
       ;;
     play-b)
       wait_port play-b-route "${ROUTE_B}"
-      wait_port play-b-spot "${SPOT_B}"
-      wait_port play-b-spot-pub "${SPOT_PUB_B}"
       wait_port play-b-stream "${STREAM_B}"
       wait_port play-b-http "${HTTP_B}"
       ;;
     gateway)
       if [[ "${SPOT_ONLY_MODE}" != "true" ]]; then
         wait_port gateway-route "${ROUTE_CLIENT}"
+      else
+        wait_port gateway-spot "${SPOT_CLIENT}"
       fi
-      wait_port gateway-spot "${SPOT_CLIENT}"
       wait_port gateway-http "${HTTP_GATEWAY}"
       ;;
     multi-node-a)
       if [[ "${SPOT_ONLY_MODE}" != "true" ]]; then
         wait_port multi-node-a-route "${ROUTE_A}"
+      else
+        wait_port multi-node-a-spot "${MULTI_SPOT_A}"
       fi
-      wait_port multi-node-a-spot "${MULTI_SPOT_A}"
       wait_port multi-node-a-http "${MULTI_HTTP_A}"
       ;;
     multi-node-b)
       if [[ "${SPOT_ONLY_MODE}" != "true" ]]; then
         wait_port multi-node-b-route "${ROUTE_B}"
+      else
+        wait_port multi-node-b-spot "${MULTI_SPOT_B}"
       fi
-      wait_port multi-node-b-spot "${MULTI_SPOT_B}"
       wait_port multi-node-b-http "${MULTI_HTTP_B}"
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
+}
+
+role_http_endpoint() {
+  case "$1" in
+    play-a) echo "${HTTP_A}" ;;
+    play-b) echo "${HTTP_B}" ;;
+    gateway) echo "${HTTP_GATEWAY}" ;;
+    multi-node-a) echo "${MULTI_HTTP_A}" ;;
+    multi-node-b) echo "${MULTI_HTTP_B}" ;;
+    *) echo "Unknown server role '$1'" >&2; return 1 ;;
+  esac
+}
+
+wait_topology_ready() {
+  local role="$1"
+  local expected="$2"
+  local endpoint
+  endpoint="$(role_http_endpoint "${role}")"
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl -fsS "${endpoint}/topology/ready?expected=${expected}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
+  done
+  echo "Timed out waiting for ${role} RouteMesh topology expected=${expected}" >&2
+  return 1
+}
+
+spot_owner() {
+  local endpoint="$1"
+  local spot_rid="$2"
+  curl -fsS "${endpoint}/location/spot-owner?spotRid=${spot_rid}" | tr -d '\r\n'
+}
+
+wait_owner_lease_expired() {
+  local owner_id="$1"
+  local wait_budget_ms=$((location_lease_ttl_ms + location_heartbeat_ms))
+  local attempts=$(((wait_budget_ms + LOCATION_LEASE_POLL_MILLISECONDS - 1) / LOCATION_LEASE_POLL_MILLISECONDS))
+  local lease_key="${location_key_prefix}:lease:${owner_id}"
+  local remaining_ms
+  for _ in $(seq 1 "${attempts}"); do
+    remaining_ms="$(docker exec "${REDIS_CONTAINER}" redis-cli --raw PTTL "${lease_key}")"
+    if (( remaining_ms < 0 )); then
+      echo "owner lease expired owner=${owner_id} evidence=redis-pttl"
+      return 0
+    fi
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
+  done
+  echo "Timed out waiting for owner lease expiry owner=${owner_id} budget_ms=${wait_budget_ms} remaining_ms=${remaining_ms}" >&2
+  return 1
 }
 
 run_publisher() {
@@ -538,7 +596,10 @@ for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_named_server "$role"
   wait_named_server "$role"
 done
-sleep "${ROUTE_SETTLE_SECONDS}"
+expected_peers=$((${#SERVER_ROLES[@]} - 1))
+for role in "${SERVER_ROLES[@]}"; do
+  wait_topology_ready "${role}" "${expected_peers}"
+done
 if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
   for role in gateway multi-node-a multi-node-b; do
     if ! grep -Fq "[topology] role=${role} route_mesh=disabled" "${log_dir}/${role}.stdout.log"; then
@@ -558,6 +619,8 @@ write_client_config() {
     echo "multiAHttpEndpoint=${MULTI_HTTP_A}"; echo "multiBHttpEndpoint=${MULTI_HTTP_B}"
     echo "readyFile=${log_dir}/sm-g1-ready"; echo "crashedFile=${log_dir}/sm-g1-crashed"
     echo "failedFile=${log_dir}/sm-g1-failed"; echo "restartedFile=${log_dir}/sm-g1-restarted"
+    echo "secondCrashReadyFile=${log_dir}/sm-g1-second-crash-ready"
+    echo "secondCrashedFile=${log_dir}/sm-g1-second-crashed"
   } >"${LAST_CLIENT_CONFIG}"
   chmod 600 "${LAST_CLIENT_CONFIG}"
 }
@@ -608,8 +671,12 @@ run_sm_g1() {
   local crashed_file="${log_dir}/sm-g1-crashed"
   local failed_file="${log_dir}/sm-g1-failed"
   local restarted_file="${log_dir}/sm-g1-restarted"
+  local second_crash_ready_file="${log_dir}/sm-g1-second-crash-ready"
+  local second_crashed_file="${log_dir}/sm-g1-second-crashed"
   local client_pid
+  local play_a_owner
 
+  play_a_owner="$(spot_owner "${HTTP_B}" room-a)"
   write_client_config play-crash-recovery
   timeout -k 5s 180s "$(client_bin)" --config "${LAST_CLIENT_CONFIG}" --scenario SM-G1 \
     >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
@@ -620,11 +687,14 @@ run_sm_g1() {
   crash_named_server play-a
   touch "${crashed_file}"
   wait_file "SM-G1 bounded failure signal" "${failed_file}"
-  sleep 20
+  wait_owner_lease_expired "${play_a_owner}"
   start_named_server play-a
   wait_named_server play-a
-  sleep "${ROUTE_SETTLE_SECONDS}"
+  wait_topology_ready play-a 2
   touch "${restarted_file}"
+  wait_file "SM-G1 second crash ready signal" "${second_crash_ready_file}"
+  crash_named_server play-a
+  touch "${second_crashed_file}"
 
   wait "${client_pid}"
   grep -q "spot-service e2e mode=SM-G1 result=passed" "${log_dir}/client-play-crash-recovery.stdout.log"
@@ -688,8 +758,8 @@ scenario_modes() {
 if [[ "${SCENARIO}" == "SM-G1" || "${SCENARIO}" == "sm-g1" ]]; then
   run_sm_g1
   cat "${log_dir}/client.stdout.log"
-  fetch_evidence play-a "${HTTP_A}"
   fetch_evidence play-b "${HTTP_B}"
+  grep -q "sm-g1-second-crash-survivor" "${log_dir}/play-b-evidence.json"
   exit 0
 fi
 client_modes="$(scenario_modes "${SCENARIO}")"

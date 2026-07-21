@@ -45,6 +45,7 @@ struct actor_record_t
     std::optional<actor_bound_session_route_t> bound_session_route;
     std::string binding_session_id;
     std::uint64_t binding_token = 0;
+    std::uint64_t source_binding_generation = 0;
 };
 
 class session_actor_binding_context_t
@@ -55,6 +56,7 @@ class session_actor_binding_context_t
     std::string session_id;
     stream_codec_t codec = stream_codec_t::message_pack;
     std::map<std::string, std::uint64_t> actor_tokens;
+    std::function<result_t<void> (const actor_ref_t &)> native_binder;
 };
 
 class session_actor_manager_access_t
@@ -62,6 +64,9 @@ class session_actor_manager_access_t
   public:
     static void attach (session_actor_manager_t &manager, stream_t stream);
     static void set_codec (session_actor_manager_t &manager, stream_codec_t codec);
+    static void bind_native (
+      session_actor_manager_t &manager,
+      std::function<result_t<void> (const actor_ref_t &)> binder);
     static void disconnect (session_actor_manager_t &manager) noexcept;
 };
 
@@ -76,6 +81,8 @@ class actor_gateway_state_t
 {
   public:
     mutable std::recursive_mutex mutex;
+    using create_dispatcher_t = std::function<result_t<actor_ref_t> (
+      std::string, std::string, const std::optional<zlink::message_t> &)>;
     using join_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
       const actor_ref_t &, spot_rid_t, const zlink::message_t &)>;
     using join_entry_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
@@ -84,6 +91,8 @@ class actor_gateway_state_t
       const actor_ref_t &, actor_context_t, const stream_header_t &, const zlink::message_t &)>;
     using disconnect_dispatcher_t = std::function<result_t<void> (const actor_ref_t &)>;
     using bound_session_registrar_t = std::function<result_t<void> (const actor_ref_t &)>;
+    using bound_session_sender_t = std::function<result_t<void> (
+      const actor_ref_t &, std::uint64_t, const stream_header_t &, const zlink::message_t &)>;
     using membership_query_t = std::function<std::optional<spot_rid_t> (const actor_ref_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
@@ -91,11 +100,13 @@ class actor_gateway_state_t
       bound_session_sinks;
     std::vector<relayed_frame_t> relayed_frames;
     std::vector<relayed_frame_t> bound_session_pushes;
+    create_dispatcher_t create_dispatcher;
     join_spot_dispatcher_t join_spot_dispatcher;
     join_entry_spot_dispatcher_t join_entry_spot_dispatcher;
     relay_dispatcher_t relay_dispatcher;
     disconnect_dispatcher_t disconnect_dispatcher;
     bound_session_registrar_t bound_session_registrar;
+    bound_session_sender_t bound_session_sender;
     membership_query_t membership_query;
     serializer_registry_t *serializers = nullptr;
     dispatch_options_t dispatch;
@@ -115,7 +126,8 @@ class actor_gateway_runtime_t
     bound_session_route (const actor_ref_t &actor_ref) const;
     bool actor_bound (std::string actor_id) const;
     bool actor_disconnected (std::string actor_id) const;
-    actor_context_t actor_context (const actor_ref_t &actor_ref) const;
+    actor_context_t actor_context (const actor_ref_t &actor_ref,
+                                   std::uint64_t source_binding_generation = 0) const;
     result_t<void> update_actor_ref (const actor_ref_t &actor_ref);
     result_t<void> destroy_actor (const actor_ref_t &actor_ref);
     void bind_session_stream (std::string actor_id,
@@ -144,11 +156,13 @@ class actor_gateway_runtime_t
                                                 std::string packet_name,
                                                 const zlink::message_t &payload) const;
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
+    void on_create (actor_gateway_state_t::create_dispatcher_t dispatcher);
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);
     void on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher);
     void on_membership (actor_gateway_state_t::membership_query_t query);
     void on_disconnect (actor_gateway_state_t::disconnect_dispatcher_t dispatcher);
     void on_bound_session (actor_gateway_state_t::bound_session_registrar_t registrar);
+    void on_bound_session_send (actor_gateway_state_t::bound_session_sender_t sender);
     void bind_serializers (serializer_registry_t &serializers);
     void set_dispatch (dispatch_options_t options);
 

@@ -19,7 +19,6 @@
 #include "runtime/channels/route_packet_dispatcher.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
-#include "runtime/backend/native_route_backend.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -312,14 +311,6 @@ class reentrant_api_route_handler_t
 
   private:
     zlink::framework::route_client_t _routes;
-};
-
-class dispatch_observer_spot_t final : public zlink::framework::spot_t
-{
-};
-
-class dispatch_observer_actor_t
-{
 };
 
 class recording_dispatch_observer_t : public zlink::framework::message_flow_observer_t
@@ -895,7 +886,7 @@ int main ()
     if (outbound_runtime.outbound_calls ().size () != 2) {
         return 32;
     }
-    send_call.submit ();
+    send_call.submit ().result ().value ();
     if (outbound_runtime.outbound_calls ().size () != 3
         || outbound_runtime.outbound_calls ()[2].kind != "send"
         || outbound_runtime.outbound_calls ()[2].packet_name != "profile.lookup"
@@ -905,18 +896,16 @@ int main ()
 
     zlink.publisher ()
       .publish ("events", "profile.changed", event_t{3})
-      .metadata ("trace-id", "publish-trace")
-      .submit ();
+      .submit ().result ().value ();
     if (outbound_runtime.outbound_calls ().size () != 4
         || outbound_runtime.outbound_calls ()[3].kind != "publish"
         || outbound_runtime.outbound_calls ()[3].topic != "profile.changed"
-        || outbound_runtime.outbound_calls ()[3].packet_name != "profile.changed.event"
-        || outbound_runtime.outbound_calls ()[3].metadata.at ("trace-id") != "publish-trace") {
+        || outbound_runtime.outbound_calls ()[3].packet_name != "profile.changed.event") {
         return 34;
     }
 
     try {
-        bus.send ("missing", request_t{4}).submit ();
+        bus.send ("missing", request_t{4}).submit ().result ().value ();
     }
     catch (const zlink::framework::framework_exception_t &) {
         // A send to an unknown channel is rejected synchronously by the one-way
@@ -2510,61 +2499,6 @@ int main ()
         return 98;
     }
 
-    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
-    zlink::framework::zlink_builder_t spot_builder;
-    auto spot_node = spot_builder.add_spot_node ("spot-node");
-    spot_node.add_spot<dispatch_observer_spot_t> ("room");
-    spot_node.add_actor_factory<dispatch_observer_actor_t> ("TestActor");
-    zlink::framework::detail::apply_dispatch_options (spot_builder, local_dispatch);
-    auto spot_runtime =
-      zlink::framework::detail::spot_node_runtime_t::from (spot_builder, "spot-node");
-    if (!spot_runtime) {
-        return 99;
-    }
-    auto created_spot = spot_runtime->create_spot ("room");
-    auto subscription_result = spot_runtime->dispatch_subscription (
-      created_spot.context, "missing-topic", zlink::message_t::from (std::string ("12")), provider,
-      serializers);
-    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
-    if (!subscription_result || observed_dispatch_errors.size () != 1
-        || observed_dispatch_errors[0].surface
-             != zlink::framework::dispatch_error_surface_t::spot_subscription
-        || observed_dispatch_errors[0].message_kind
-             != zlink::framework::dispatch_message_kind_t::publish
-        || observed_dispatch_errors[0].error_reason
-             != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].error_action != zlink::framework::dispatch_error_action_t::drop
-        || observed_dispatch_errors[0].topic.value_or ("") != "missing-topic"
-        || observed_dispatch_errors[0].spot_rid.value_or ("") != created_spot.spot_rid.value ()) {
-        return 100;
-    }
-
-    clear_dispatch_errors (dispatch_errors, dispatch_errors_mutex);
-    auto observer_actor_ref = zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string ("spot-node"), "TestActor", "actor-1", 1);
-    spot_runtime->record_actor_spot (observer_actor_ref, created_spot.spot_rid);
-    auto actor_dispatch_result = spot_runtime->relay_actor_packet (
-      observer_actor_ref, {}, "MissingActorPacket", zlink::message_t::from (std::string ("13")),
-      provider, serializers);
-    observed_dispatch_errors = wait_dispatch_errors (dispatch_errors, dispatch_errors_mutex, 1);
-    if (actor_dispatch_result
-        || actor_dispatch_result.error_kind ()
-             != zlink::framework::framework_error_kind_t::handler_not_found
-        || observed_dispatch_errors.size () != 1
-        || observed_dispatch_errors[0].surface
-             != zlink::framework::dispatch_error_surface_t::spot_actor
-        || observed_dispatch_errors[0].message_kind
-             != zlink::framework::dispatch_message_kind_t::actor_request
-        || observed_dispatch_errors[0].error_reason
-             != zlink::framework::dispatch_error_reason_t::handler_missing
-        || observed_dispatch_errors[0].error_action
-             != zlink::framework::dispatch_error_action_t::reply_error
-        || observed_dispatch_errors[0].packet_name.value_or ("") != "MissingActorPacket"
-        || observed_dispatch_errors[0].actor_id.value_or ("") != "actor-1"
-        || observed_dispatch_errors[0].spot_rid.value_or ("") != created_spot.spot_rid.value ()) {
-        return 101;
-    }
-
     zlink::framework::detail::route_handler_registry_t route_handlers;
     route_handlers.on_request<local_handler_t, request_t, reply_t> (
       "game.route", "request", &local_handler_t::handle_route_request);
@@ -2818,54 +2752,6 @@ int main ()
         return 57;
     }
     auto public_route_client = public_route_builder.route_client (serializers);
-    zlink::context_t native_route_context;
-    zlink::router_socket_t native_router (native_route_context);
-    zlink::framework::detail::backend::native_route_backend_t native_backend (native_router);
-    const auto native_empty_send = native_backend.submit_send (
-      zlink::routing_id_t::from (std::string ("target-node")), std::nullopt,
-      zlink::framework::runtime::messaging::message_parts_t{});
-    const auto native_empty_request = native_backend.submit_request (
-      zlink::routing_id_t::from (std::string ("target-node")), std::nullopt,
-      zlink::framework::runtime::messaging::message_parts_t{}, std::chrono::milliseconds (1));
-    if (native_empty_send
-        || native_empty_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error
-        || native_empty_request
-        || native_empty_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
-        return 73;
-    }
-    std::vector<zlink::message_t> unhandled_native_parts{
-      zlink::message_t::from (std::string ("ignored"))};
-    if (native_backend.handle_router_received (
-          zlink::routing_id_t::from (std::string ("source-node")), unhandled_native_parts,
-          std::nullopt)
-        || native_backend.drain_spot_route_bridge () != 0) {
-        return 74;
-    }
-    native_backend.close ();
-    const auto native_closed_send = native_backend.submit_send (
-      zlink::routing_id_t::from (std::string ("target-node")), std::nullopt,
-      zlink::framework::runtime::messaging::message_parts_t (
-        std::vector<zlink::message_t>{
-          zlink::message_t::from (std::string ("closed-send"))}));
-    const auto native_closed_request = native_backend.submit_request (
-      zlink::routing_id_t::from (std::string ("target-node")), std::nullopt,
-      zlink::framework::runtime::messaging::message_parts_t (
-        std::vector<zlink::message_t>{
-          zlink::message_t::from (std::string ("closed-request"))}),
-      std::chrono::milliseconds (1));
-    if (native_closed_send
-        || native_closed_send.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error
-        || native_closed_request
-        || native_closed_request.error_kind ()
-             != zlink::framework::framework_error_kind_t::request_protocol_error) {
-        return 75;
-    }
-    zlink::framework::detail::backend::native_route_backend_t native_attached_backend (
-      native_router);
-    public_route.attach_native_backend (native_attached_backend);
     std::atomic_int send_backend_seen = 0;
     public_route.set_send_backend (
       [&send_backend_seen, &envelope_codec] (
@@ -3448,6 +3334,32 @@ int main ()
     if (!bound_send || routed_send_headers.size () != 2
         || routed_send_headers[1].packet_name () != "BingoRewardAnnouncedNotify") {
         return 73;
+    }
+
+    std::atomic_int route_submit_attempts{0};
+    zlink::framework::route_send_call_t one_shot_route (
+      "one-shot",
+      [&] (const std::string &,
+           const zlink::framework::route_send_call_t::metadata_map_t &) {
+          ++route_submit_attempts;
+          return zlink::framework::result_t<void>::success ();
+      });
+    auto copied_route = one_shot_route;
+    if (one_shot_route.submit ().result ().value ().status
+        != zlink::framework::submit_status_t::submitted) {
+        return 148;
+    }
+    bool copied_route_rejected = false;
+    try {
+        (void) copied_route.submit ().result ().value ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        copied_route_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
+    if (!copied_route_rejected || route_submit_attempts.load () != 1) {
+        return 149;
     }
 
     return 0;

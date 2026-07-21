@@ -126,7 +126,8 @@ export interface MeshPeerEntry {
   readonly connectionIntentId: bigint;
   readonly source: number;
   readonly state: number;
-  readonly routingId: RoutingId;
+  /** The admitted peer identity, or null while the connection is not admitted. */
+  readonly routingId: RoutingId | null;
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
@@ -159,6 +160,8 @@ export interface GetOrCreateSpotResult {
  */
 export interface MeshNode {
   // --- Lifecycle ---------------------------------------------------------
+  /** Set the node routing id before it starts. */
+  setRoutingId(routingId: RoutingId): void;
   /** Set the endpoint the node binds when it starts. */
   setBind(endpoint: string): void;
   /** Start the node. */
@@ -268,8 +271,13 @@ export interface MeshNode {
     parts: MessageLike | readonly MessageLike[],
     options?: RequestOptions
   ): MeshOperationId;
-  /** Send parts over an actor's bound session; returns the submit outcome. */
-  sendActorBoundSession(actor: ActorRef, parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
+  /** Send parts only over the actor's expected bound-session generation. */
+  sendActorBoundSession(
+    actor: ActorRef,
+    expectedBindingGeneration: bigint,
+    parts: MessageLike | readonly MessageLike[],
+    flags?: number
+  ): SubmitResult;
   /** Close an actor's bound session; completion arrives through pull dispatch. */
   closeActorBoundSession(actor: ActorRef, expectedBindingGeneration: bigint, timeoutMs?: number): MeshOperationId;
 

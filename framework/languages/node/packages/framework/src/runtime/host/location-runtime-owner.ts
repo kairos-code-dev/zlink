@@ -1,9 +1,18 @@
 import type {
   RoutingId,
+  ZLinkActorTransferStore,
+  ZLinkLocationStore,
   ZLinkRoutingIdSlotAllocationStore,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
-import type { ZLinkFrameworkRegistration } from '../configuration';
+import type {
+  ZLinkPeerLocationStore,
+  ZLinkRouteLocationStore
+} from '../../contracts/Locations/Stores';
+import {
+  ZLinkConfigurationException,
+  type ZLinkFrameworkRegistration
+} from '../configuration';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import { ZLinkLocationMonitoringEventEmitter } from '../diagnostics';
 import {
@@ -24,7 +33,6 @@ export interface ZLinkLocationRuntimeOwnerOptions {
   readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   readonly fallbackNodeRid: RoutingId;
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
-  readonly allocatedRoutingIdsEnabled: boolean;
 }
 
 export interface ZLinkLocationRuntimeStopSnapshot {
@@ -65,7 +73,12 @@ export class ZLinkLocationRuntimeOwner {
     return isRoutingIdAllocationStore(store) ? store : undefined;
   }
 
-  ensureRuntime(primarySpotMeshName: string | undefined): ZLinkLocationRuntime | undefined {
+  actorTransferStore(): ZLinkActorTransferStore | undefined {
+    const store = this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
+    return isActorTransferStore(store) ? store : undefined;
+  }
+
+  ensureRuntime(primaryMeshName: string | undefined): ZLinkLocationRuntime | undefined {
     if (this.runtime !== undefined) {
       return this.runtime;
     }
@@ -79,11 +92,10 @@ export class ZLinkLocationRuntimeOwner {
       options: this.options.registration.locations.options,
       events: this.ensureEvents(),
       leaseTracker: this.leaseTracker(stores),
-      metrics: this.options.metrics,
-      allocatedRoutingIdsEnabled: this.options.allocatedRoutingIdsEnabled
+      metrics: this.options.metrics
     });
     this.runtime = runtime;
-    this.lifecycle = new ZLinkLocationLifecycle(runtime, stores.actorStore, primarySpotMeshName ?? '');
+    this.lifecycle = new ZLinkLocationLifecycle(runtime, stores.actorStore, primaryMeshName ?? '');
     return runtime;
   }
 
@@ -103,7 +115,8 @@ export class ZLinkLocationRuntimeOwner {
 
   createSpotRouteResolver(
     spotMeshNames: readonly string[],
-    spotRouterChannelIdByMesh: (meshName: string) => string
+    spotRouterChannelIdByMesh: (meshName: string) => string,
+    resolveLocalSpot?: (spotRid: RoutingId) => import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined
   ): ZLinkSpotRouteResolver | undefined {
     const stores = this.stores;
     if (stores === undefined || spotMeshNames.length === 0) {
@@ -116,11 +129,12 @@ export class ZLinkLocationRuntimeOwner {
         events: this.events
       }),
       spotMeshNames,
-      spotRouterChannelIdByMesh
+      spotRouterChannelIdByMesh,
+      resolveLocalSpot
     );
   }
 
-  createActorLocationResolver(): ZLinkStoreLocationResolvers | undefined {
+  createActorLocationResolver(spotMeshNames: readonly string[]): ZLinkStoreLocationResolvers | undefined {
     const stores = this.stores;
     if (stores === undefined) {
       return undefined;
@@ -128,12 +142,16 @@ export class ZLinkLocationRuntimeOwner {
     return new ZLinkStoreLocationResolvers({
       stores,
       leaseTracker: this.leaseTracker(stores),
-      events: this.events
+      events: this.events,
+      spotMeshNames
     });
   }
 
   ownerNodeRid(spotNodeRuntime?: ZLinkSpotNodeRuntimeManager): RoutingId {
-    const spotNodeRid = spotNodeRuntime?.primaryNode?.routingId;
+    const primaryMeshNode = spotNodeRuntime?.primaryMeshNode;
+    const spotNodeRid = primaryMeshNode === undefined
+      ? undefined
+      : String(primaryMeshNode.status().routingId);
     if (spotNodeRid !== undefined) {
       return spotNodeRid;
     }
@@ -158,11 +176,11 @@ export class ZLinkLocationRuntimeOwner {
   }
 
   async startForRuntime(
-    primarySpotMeshName: string | undefined,
+    primaryMeshName: string | undefined,
     spotNodeRuntime: ZLinkSpotNodeRuntimeManager,
     channelRuntime: ZLinkChannelRuntimeManager
   ): Promise<ZLinkLocationRuntime | undefined> {
-    const runtime = this.ensureRuntime(primarySpotMeshName);
+    const runtime = this.ensureRuntime(primaryMeshName);
     if (runtime === undefined) {
       return undefined;
     }
@@ -216,12 +234,13 @@ export class ZLinkLocationRuntimeOwner {
     }
     const store = locations.storeInstance;
     if (store !== undefined) {
+      const runtimeStore = requireOperationalLocationStore(store);
       return {
         locationStore: store,
-        peerStore: store,
+        peerStore: runtimeStore,
         spotStore: store,
         actorStore: store,
-        routeStore: store,
+        routeStore: runtimeStore,
         ownerLeaseStore: store
       };
     }
@@ -265,9 +284,51 @@ export class ZLinkLocationRuntimeOwner {
   }
 }
 
+type ZLinkOperationalLocationStore = ZLinkLocationStore
+  & ZLinkPeerLocationStore
+  & ZLinkRouteLocationStore;
+
+function requireOperationalLocationStore(store: ZLinkLocationStore): ZLinkOperationalLocationStore {
+  const candidate = store as ZLinkLocationStore
+    & Partial<ZLinkPeerLocationStore>
+    & Partial<ZLinkRouteLocationStore>;
+  if (
+    candidate.updatePeer === undefined
+    || candidate.removePeer === undefined
+    || candidate.listPeers === undefined
+    || candidate.updateRoute === undefined
+    || candidate.removeRoute === undefined
+    || candidate.resolveRoute === undefined
+    || candidate.listRoutes === undefined
+  ) {
+    throw new ZLinkConfigurationException(
+      'The configured location store does not provide the operational peer and route capabilities required by this runtime.'
+    );
+  }
+  return candidate as ZLinkOperationalLocationStore;
+}
+
 function isRoutingIdAllocationStore(value: unknown): value is ZLinkRoutingIdSlotAllocationStore {
   const store = value as Partial<ZLinkRoutingIdSlotAllocationStore> | undefined;
   return typeof store?.acquireRoutingIdSlot === 'function'
     && typeof store.releaseRoutingIdSlot === 'function'
     && typeof store.listRoutingIdSlots === 'function';
+}
+
+function isActorTransferStore(value: unknown): value is ZLinkActorTransferStore {
+  const store = value as Partial<Record<
+    | 'prepareActorTransfer'
+    | 'commitActorTransfer'
+    | 'activateActorTransfer'
+    | 'abortActorTransfer'
+    | 'takeOverActorTransfer'
+    | 'resolveActorTransfer',
+    unknown
+  >>;
+  return typeof store.prepareActorTransfer === 'function'
+    && typeof store.commitActorTransfer === 'function'
+    && typeof store.activateActorTransfer === 'function'
+    && typeof store.abortActorTransfer === 'function'
+    && typeof store.takeOverActorTransfer === 'function'
+    && typeof store.resolveActorTransfer === 'function';
 }

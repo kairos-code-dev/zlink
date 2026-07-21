@@ -24,9 +24,16 @@ class channel_control_ping_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::channel_control_ping_req_t> ();
+        const auto mesh_name =
+          request.mesh_name.empty () ? std::string (e2e::route_channel) : request.mesh_name;
+        if (mesh_name != e2e::route_channel && mesh_name != e2e::spot_mesh) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::request_protocol_error,
+              "control ping mesh is not configured");
+        }
         auto reply =
           _routes
-            .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
+            .request_to_node (mesh_name, zlink::routing_id_t::from (request.target_node_rid),
                       e2e::channel_echo_req_t{request.value})
             .timeout (std::chrono::milliseconds (3000))
             .async<e2e::channel_echo_res_t> ()

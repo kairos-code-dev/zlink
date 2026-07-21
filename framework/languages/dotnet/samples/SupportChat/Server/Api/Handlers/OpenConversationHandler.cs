@@ -21,7 +21,7 @@ internal sealed class OpenConversationHandler(
             "support api open: allocate request customer={CustomerActorId} subject={Subject}",
             request.CustomerActorId,
             request.Subject);
-        var allocated = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
+        var allocated = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.SupportChannel,
                 new AllocateConversationReq(
                     request.CustomerActorId,
                     request.CustomerDisplayName,

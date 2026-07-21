@@ -4,9 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.function.Function;
+import java.util.function.Consumer;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
 
 public final class ZLinkMeshNodesRuntime implements AutoCloseable {
     private final List<ZLinkMeshNodeRuntime> nodes;
@@ -23,13 +27,30 @@ public final class ZLinkMeshNodesRuntime implements AutoCloseable {
         List<MeshNodeRegistration> registrations,
         ZLinkMeshBackendAdapter adapter,
         ZLinkBackendContext context) {
+        return start(registrations, adapter, context, ignored -> null);
+    }
+
+    public static ZLinkMeshNodesRuntime start(
+        List<MeshNodeRegistration> registrations,
+        ZLinkMeshBackendAdapter adapter,
+        ZLinkBackendContext context,
+        Function<MeshNodeRegistration, Consumer<ZLinkMeshDispatchRecord>> receiverFactory) {
         List<ZLinkMeshNodeRuntime> started = new ArrayList<>();
         try {
             for (MeshNodeRegistration registration : registrations) {
-                started.add(ZLinkMeshNodeRuntime.start(
+                ZLinkMeshNodeRuntime runtime = ZLinkMeshNodeRuntime.start(
                     registration,
                     adapter,
-                    context));
+                    context);
+                started.add(runtime);
+                Consumer<ZLinkMeshDispatchRecord> receiver =
+                    receiverFactory.apply(registration);
+                if (receiver != null) {
+                    if (receiver instanceof ZLinkMeshApplicationReceiver applicationReceiver) {
+                        runtime.node().setApplicationReceiver(applicationReceiver);
+                    }
+                    runtime.node().startDispatch(receiver);
+                }
             }
             return new ZLinkMeshNodesRuntime(started);
         } catch (RuntimeException failure) {

@@ -796,7 +796,7 @@ It is designed to handle small messages without `malloc` calls.
 | Flag         | Value | Description                            |
 |-------------|-------|----------------------------------------|
 | `more`       | 0x01 | Intermediate frame of multipart message |
-| `command`    | 0x02 | Control frame (handshake, heartbeat)   |
+| `command`    | 0x02 | Protocol control frame                 |
 | `routing_id` | 0x40 | Contains Routing ID                    |
 | `shared`     | 0x80 | Shared buffer (reference counted)      |
 
@@ -1246,20 +1246,6 @@ core/
 |   |       +-- ssl_context_helper.cpp/hpp
 |   |       +-- wss_address.cpp/hpp
 |   |
-|   +-- services/                    # High-level services
-|   |   +-- common/                  # Common service utilities
-|   |   |   +-- advertise_endpoint.hpp   # Endpoint resolution for service registration
-|   |   |   +-- monitor_decode.hpp       # Monitor event decoding
-|   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
-|   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
-|   |   +-- mesh/                    # Mesh service runtime
-|   |       +-- mesh_runtime.cpp/hpp # Object model: mailboxes, ready index, claims, budgets, monitor
-|   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER lifecycle + outbound submits
-|   |       +-- mesh_wire_codec.cpp  # Wire envelope/record encode + decode
-|   |       +-- mesh_wire_admission.cpp # Peer admission handshake + generation replace
-|   |       +-- mesh_wire_ingress.cpp   # Ingress thread: inbound dispatch, peer down
-|   |       +-- mesh_wire_internal.hpp  # Shared wire-module contract
-|   |
 |   +-- utils/                       # Utilities
 |       +-- ypipe.hpp                # Lock-free pipe
 |       +-- yqueue.hpp               # Lock-free queue
@@ -1304,7 +1290,7 @@ In zlink this principle manifests at several levels:
   dispatch bridge, and lifecycle quiesce — exposing only `send`/`recv` capability,
   `bind`/`connect`/`term` semantics, and readiness hooks.
 - **Engine pipeline** absorbs speculative I/O, gather write, buffer growth strategy,
-  handshake state machine, and heartbeat — exposing only ingress frame delivery,
+  and the handshake state machine — exposing only ingress frame delivery,
   egress frame submission, and connection state transitions.
 - **Transport adapter** absorbs URI parsing, connect/listen strategy, and
   TLS/WS/WSS handshake details — exposing only `client_endpoint`,
@@ -1414,14 +1400,13 @@ structural clarity.
 The architecture must defend against these growth patterns:
 
 - **New transport added** → no new branches in engine or socket code.
-- **New service added** → no special-case paths in the service runtime base.
 - **New socket family added** → no modifications to `socket_base_t`.
 
 The design goal is: *adding another instance of the same kind of feature does
 not touch the hub type.*
 
 When this property holds, the structure's complexity stays bounded regardless
-of how many transports, services, or socket families exist. When it does not,
+of how many transports or socket families exist. When it does not,
 each addition makes the hub type harder to understand and more fragile to
 modify.
 

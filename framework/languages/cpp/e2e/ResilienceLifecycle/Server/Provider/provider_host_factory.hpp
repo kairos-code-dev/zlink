@@ -33,13 +33,15 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
       .trace_label ("cpp-rl-" + options.rid);
     server::add_redis_location_store (framework, options.redis_endpoint, options.redis_key_prefix);
     auto evidence =
-      std::make_unique<evidence_store_t> (options.rid, options.instance_id, options.evidence_file);
-    auto *evidence_ptr = evidence.get ();
-    auto fault_state = std::make_unique<fault_state_t> ();
-    auto *fault_state_ptr = fault_state.get ();
-    configure_evidence_dispatch_error_observer (framework, evidence_ptr, fault_state_ptr);
-    framework.services ().add_singleton<evidence_store_t> (std::move (evidence));
-    framework.services ().add_singleton<fault_state_t> (std::move (fault_state));
+      std::make_shared<evidence_store_t> (options.rid, options.instance_id, options.evidence_file);
+    auto fault_state = std::make_shared<fault_state_t> ();
+    configure_evidence_dispatch_error_observer (framework, evidence, fault_state);
+    framework.services ().add_factory<evidence_store_t> (
+      [evidence] (zlink::framework::service_provider_t &) { return evidence; },
+      zlink::framework::service_lifetime_t::singleton);
+    framework.services ().add_factory<fault_state_t> (
+      [fault_state] (zlink::framework::service_provider_t &) { return fault_state; },
+      zlink::framework::service_lifetime_t::singleton);
     framework.services ().add_singleton<server_weight_state_t> (
       std::make_unique<server_weight_state_t> ());
     framework.services ().add_transient<route_ping_handler_t, evidence_store_t> ();
@@ -63,13 +65,14 @@ inline void configure_provider_host (zlink::framework::zlink_framework_options_t
         channel.use_handler_group (handler_group);
     }
     if (!options.route_endpoint.empty ()) {
-        framework.add_route_mesh (route_channel)
-          .enable_server (options.route_endpoint)
+        auto route = framework.add_route_mesh (route_channel);
+        route.listen (options.route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (options.rid))
+          .channel_name (route_channel);
+        route.channel_name (route_channel)
           .add_request_handler<route_ping_handler_t,
                                scenario_route_req_t,
-                               scenario_route_res_t> ("ScenarioRouteReq",
-                                                       &route_ping_handler_t::handle);
+                               scenario_route_res_t> ();
     }
     if (!options.http_endpoint.empty ()) {
         framework.http ()

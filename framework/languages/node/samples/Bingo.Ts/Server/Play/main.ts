@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ZLINK_DRAIN_CONTROL } from '@zlink-systems/nestjs';
-import type { ZLinkDrainControl } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoPlayModule } from './bingo-play-module';
 import { SampleNames } from '../Configuration/sample-names';
@@ -16,15 +16,14 @@ async function bootstrap(): Promise<void> {
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
   await reportBingoRoutingId(app, 'play', 'bingo.play', [
-    SampleNames.playChannel,
     SampleNames.roomSpotNode
   ]);
 
-  const drain = app.get<ZLinkDrainControl>(ZLINK_DRAIN_CONTROL);
+  const routeMeshRuntime = app.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME);
   const shutdown = new AbortController();
   const beginDrain = () => {
     console.log('bingo-drain requested');
-    void drain.drain().then((result) => {
+    void routeMeshRuntime.drain(SampleNames.roomSpotNode).then((result) => {
       console.log(`bingo-drain result=${result.kind}`);
       process.removeListener('SIGUSR2', beginDrain);
       process.removeListener('SIGBREAK', beginDrain);
@@ -39,7 +38,7 @@ async function bootstrap(): Promise<void> {
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: config.playEndpoint,
+    endpoint: config.playSpotEndpoint,
     channelName: SampleNames.playChannel
   })}\n`);
 

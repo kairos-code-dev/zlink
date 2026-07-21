@@ -82,6 +82,30 @@ public sealed record SpotStageTimerRes(string SpotRid, string Name, bool Started
 
 public sealed record SpotMsg(string Marker);
 
+public sealed record SpotBackpressureMsg(string Marker, int Sequence, string Payload);
+
+public sealed record SpotBackpressurePublishReq(
+    string Marker,
+    int PayloadBytes = 65536,
+    int MaxAttempts = 20000,
+    bool Blocking = false,
+    int StartSequence = 1);
+
+public sealed record SpotBackpressureAttemptRes(
+    int Sequence,
+    string Status,
+    long ElapsedMilliseconds,
+    ulong SnapshotRemoteNodeCount,
+    ulong AdmittedRemoteNodeCount,
+    ulong DroppedRemoteNodeCount,
+    ulong SnapshotLocalSpotCount,
+    ulong AdmittedLocalSpotCount,
+    ulong DroppedLocalSpotCount);
+
+public sealed record SpotBackpressurePublishRes(
+    SpotBackpressureAttemptRes NonBlocking,
+    SpotBackpressureAttemptRes Blocking);
+
 public sealed record SpotOutboundMsg(string Marker);
 
 public sealed record SpotOutboundNegativeMsg(string Marker);

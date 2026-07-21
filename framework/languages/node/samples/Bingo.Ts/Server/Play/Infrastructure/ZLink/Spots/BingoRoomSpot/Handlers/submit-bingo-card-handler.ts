@@ -1,17 +1,21 @@
-import { zlinkSpotActorRequestHandler } from '@zlink-systems/nestjs';
+import { Inject } from '@nestjs/common';
+import {
+  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_OUTBOUND,
+  zlinkSpotActorRequestHandler
+} from '@zlink-systems/nestjs';
 import { BingoRoomSpot } from '../bingo-room-spot';
 import { PlayerActor } from '../../../Actors/player-actor';
 import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
+import { SampleNames } from '../../../../../../Configuration/sample-names';
 import type {
   ZLinkSpotActorRequestContext,
-  ZLinkSpotActorRequestHandler
+  ZLinkSpotActorRequestHandler,
+  ZLinkSpotHandleResolver,
+  ZLinkSpotOutbound
 } from '@zlink-systems/framework';
-import type { BingoRoomSpot as BingoRoomSpotType } from '../bingo-room-spot';
-import type { PlayerActor as PlayerActorType } from '../../../Actors/player-actor';
-import type {
-  SubmitBingoCardReq,
-  SubmitBingoCardRes
-} from '../../../../../../../Shared/Contracts/messages';
+import type { SubmitBingoCardReq, SubmitBingoCardRes } from '../../../../../../../Shared/Contracts/messages';
+import { SubmitBingoCardAtSpotReq } from './bingo-room-operation-handlers';
 
 @zlinkSpotActorRequestHandler({
   actor: () => PlayerActor,
@@ -19,16 +23,24 @@ import type {
   spot: () => BingoRoomSpot
 })
 class SubmitBingoCardHandler
-  implements ZLinkSpotActorRequestHandler<BingoRoomSpotType, PlayerActorType, SubmitBingoCardReq, SubmitBingoCardRes> {
+  implements ZLinkSpotActorRequestHandler<PlayerActor, SubmitBingoCardReq, SubmitBingoCardRes> {
+  constructor(
+    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
+  ) {}
+
   async handle(
-    room: BingoRoomSpotType,
-    actor: PlayerActorType,
-    context: ZLinkSpotActorRequestContext,
+    actor: PlayerActor,
+    _context: ZLinkSpotActorRequestContext,
     request: SubmitBingoCardReq
   ): Promise<SubmitBingoCardRes> {
-    void context;
-    const response = await room.submitCard(actor, request);
-    return response;
+    const spotRid = actor.context.spotRid;
+    if (spotRid === undefined) throw new Error(`Bingo actor '${actor.actorId}' has no joined room.`);
+    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.roomSpotNode, spotRid);
+    if (spot === undefined) throw new Error(`Bingo room '${String(spotRid)}' could not be resolved.`);
+    return this.spotOutbound
+      .requestToSpot(spot, new SubmitBingoCardAtSpotReq(actor.actorId, request))
+      .yield<SubmitBingoCardRes>();
   }
 }
 

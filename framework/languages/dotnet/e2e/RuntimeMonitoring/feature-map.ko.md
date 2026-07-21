@@ -11,12 +11,15 @@ source marker는 관련 행의 부분 증거로만 기록하며, operation resul
 
 | 시나리오 | 상태 | 현재 증거 | 남은 gap |
 |---|---|---|---|
-| MON-A1 | 구현 | Mesh event와 snapshot evidence를 10.0.0 runtime 표면으로 확인했다. | 최신 전체 실행 통과. |
-| MON-A2 | 구현 | Typed peer event와 snapshot의 연결 상태를 확인했다. | 최신 전체 실행 통과. |
-| MON-A3 | 구현 | Spot subject 추적과 관련 event evidence를 확인했다. | 최신 전체 실행 통과. |
-| MON-A4 | core 대기 | Weight 전파와 drain·restore 구간은 통과했지만 같은 RID replacement의 최종 재승인이 실패한다. | core 재승인 결함 수정 뒤 다시 실행한다. |
-| MON-A5 | core 대기 | 무자격 TCP의 handshake 실패는 peer 항목이 없어 현재 binding 표면으로 관찰할 수 없다. | core mesh monitor event의 binding 공개가 필요하다. |
-| MON-B1 | 구현 | 구성한 kind filter가 필요한 event만 전달하는지 확인했다. | 최신 전체 실행 통과. |
-| MON-B2 | 구현 | 잘못된 monitoring 등록이 startup validation에서 거부되는지 확인했다. | 최신 전체 실행 통과. |
-| MON-C1 | 구현 | Monitoring handler 실패 뒤에도 messaging과 정상 observer가 계속되는지 확인했다. | 최신 전체 실행 통과. |
-| MON-D1 | core 대기 | 비정상 종료 뒤 같은 endpoint replacement의 재승인이 이뤄지지 않아 반복 복구가 중단된다. | core 재승인 결함 수정 뒤 다시 실행한다. |
+| MON-A1 | 구현 | MeshNode의 peer lifecycle event와 후속 snapshot이 같은 RID·generation·endpoint를 나타내는지 확인했다. | 없음 |
+| MON-A2 | 구현 | 같은 RID의 정상 교체 전후 typed peer event와 snapshot에서 이전 generation이 ready로 남지 않는지 확인했다. | 없음 |
+| MON-A3 | 구현 | Spot subject 상태와 ChannelName 변경을 typed event와 snapshot으로 함께 확인했다. | 없음 |
+| MON-A4 | 구현 | 정상 교체와 비정상 종료 뒤 같은 RID 재시작에서 이전 generation 제거, 새 generation 준비와 별도 request 완료를 확인했다. | 없음 |
+| MON-A5 | 구현 | location store 중단·복구 중 peer·channel messaging이 유지되고 location health event와 snapshot이 일치하는지 확인했다. | 없음 |
+| MON-B1 | 구현 | remote target backpressure 결과와 typed event, 후속 multicast 누계가 일치하는지 확인했다. | 없음 |
+| MON-B2 | 구현 | local target별 부분 수락·drop 결과와 typed event, 후속 multicast 누계가 일치하는지 확인했다. | 없음 |
+| MON-C1 | 구현 | application gate 중 별도 request와 정상 observer가 진행되고, 작은 observer queue의 coalescing·consumer 예외 뒤 snapshot resync와 messaging이 유지되는지 확인했다. | 없음 |
+| MON-D1 | 구현 | 잘못된 public 호출 거부와 세 차례 비정상 종료·재시작에서 peer·channel event sequence, 최신 ready snapshot과 event field 제한을 확인했다. | 없음 |
+
+2026-07-20 전체 실행에서 MON-A1부터 MON-D1까지 순서대로 모두 통과했다. 실행 기록은
+`logs/20260720-004148-1606817`부터 `logs/20260720-004424-1615752`까지 보존한다.

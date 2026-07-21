@@ -55,7 +55,6 @@ public sealed class RuntimeMetricsTests
             ["zlink.drain.state"] = (typeof(ObservableGauge<>), null),
             ["zlink.drain.duration"] = (typeof(Histogram<>), "s"),
             ["zlink.drain.actors.handed_off"] = (typeof(Counter<>), "{actor}"),
-            ["zlink.drain.rooms.drained"] = (typeof(Counter<>), "{spot}"),
             ["zlink.drain.forced"] = (typeof(Counter<>), "{item}")
         };
 

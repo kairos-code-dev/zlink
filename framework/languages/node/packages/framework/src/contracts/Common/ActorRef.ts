@@ -14,7 +14,7 @@ export interface ZLinkActorRefSnapshot {
 
 export function zlinkActorRefSnapshotFrom(actorRef: ActorRef): ZLinkActorRefSnapshot {
   return {
-    nodeRid: actorRef.nodeRid,
+    nodeRid: String(actorRef.nodeRid),
     actorId: actorRef.actorId,
     generation: actorRef.generation
   };
@@ -22,7 +22,7 @@ export function zlinkActorRefSnapshotFrom(actorRef: ActorRef): ZLinkActorRefSnap
 
 export function zlinkActorRefSnapshotToActorRef(snapshot: ZLinkActorRefSnapshot): ActorRef {
   return {
-    nodeRid: snapshot.nodeRid,
+    nodeRid: String(snapshot.nodeRid),
     actorId: snapshot.actorId,
     // JSON transports carry uint64 values as decimal strings. Normalize the
     // wire value at the public conversion boundary so callers keep bigint.

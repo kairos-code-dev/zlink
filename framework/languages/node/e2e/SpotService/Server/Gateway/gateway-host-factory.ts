@@ -56,7 +56,7 @@ export async function startGatewayHost(): Promise<void> {
         return;
       }
       this.connected = event.peers.some((peer) =>
-        peer.kind === ZLinkSpotPeerKind.SpotMesh && peer.state === ZLinkSpotPeerState.Connected);
+        peer.kind === ZLinkSpotPeerKind.RouteMesh && peer.state === ZLinkSpotPeerState.Connected);
     }
 
     requireConnected(): void {
@@ -81,10 +81,10 @@ export async function startGatewayHost(): Promise<void> {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addSpotMesh(SpotServiceNames.spotChannel)
+          builder.addRouteMesh(SpotServiceNames.spotChannel)
             .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
-            .enablePubSub(options.spotPubEndpoint, undefined, options.spotPubPeers);
+            .listen(options.spotRouterEndpoint)
+            .channelName(SpotServiceNames.spotChannel);
           return {
             ...builder.build(),
             monitoring: {

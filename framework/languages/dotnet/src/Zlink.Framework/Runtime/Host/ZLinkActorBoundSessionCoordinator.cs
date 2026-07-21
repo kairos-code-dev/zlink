@@ -34,7 +34,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     /// <summary>Set by the runtime after construction: relays a session frame
     /// to a bound actor that migrated to another node as (actorRef,
     /// sessionNodeRid, sessionRid, headerBytes, bodyBytes).</summary>
-    public Func<ZLinkBackendActorRef, RoutingId, RoutingId, byte[], byte[], bool>? RemoteFrameRelay { get; set; }
+    public Func<string?, ZLinkBackendActorRef, RoutingId, RoutingId, byte[], byte[], bool>? RemoteFrameRelay { get; set; }
 
     public enum RemotePushDelivery
     {
@@ -155,14 +155,16 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         return new ZLinkAsyncSubmitter(node.OnSendReady, _registration.DefaultSocketSendTimeout, _getShutdownToken());
     }
 
-    public void ReplyNoBind(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid,
+    public bool ReplyNoBind(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid,
         ulong requestId, uint flags, IReadOnlyList<Message> parts) =>
         RequireNode("Actor no-bind reply requires a router-capable SpotNode.")
             .ReplyActorNoBind(actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
 
     public bool ForwardPart(ZLinkBackendActorRef actorRef, RoutingId sourceNodeRid, RoutingId sourceSessionRid,
-        Message message, bool hasMore, SendFlags flags)
+        Message message, bool hasMore, SendFlags flags, string? meshName = null,
+        IZLinkBackendSpotNode? selectedNode = null)
     {
+        var routeNode = selectedNode ?? _getNode();
 
         // A bound actor that migrated to another node cannot be reached
         // through the local bound-session send; buffer the parts and relay
@@ -170,7 +172,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         // its actor pipeline (replies come back on the push relay).
         if (RemoteFrameRelay is { } frameRelay
             && !actorRef.NodeRid.IsEmpty
-            && _getNode() is { } frameLocalNode
+            && routeNode is { } frameLocalNode
             && !actorRef.NodeRid.Equals(frameLocalNode.RoutingId))
         {
             // Locally relayed frames carry no session identity; the actor's
@@ -215,7 +217,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                     bodyOffset += framePending[i].Length;
                 }
 
-                if (!frameRelay(actorRef, sourceNodeRid, sourceSessionRid, header, frameBody))
+                if (!frameRelay(meshName, actorRef, sourceNodeRid, sourceSessionRid, header, frameBody))
                 {
                     // Retries resubmit only the terminal part; keep the
                     // buffered prefix so the frame stays whole.
@@ -233,7 +235,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         // to the session's node instead.
         if (RemotePushRelay is { } relay
             && !sourceNodeRid.IsEmpty
-            && _getNode() is { } localNode
+            && routeNode is { } localNode
             && !sourceNodeRid.Equals(localNode.RoutingId))
         {
             lock (_remoteForwardGate)
@@ -261,7 +263,11 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             }
         }
 
-        return RequireNode("Actor session forward requires a router-capable SpotNode.", ZLinkFrameworkErrorKind.ActorRouteNotFound)
+        return (routeNode
+                ?? throw Error(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    "Actor session forward requires a router-capable SpotNode.",
+                    false))
             .ForwardActorBoundSessionPart(actorRef, sourceNodeRid, sourceSessionRid, message, hasMore, flags);
     }
 
@@ -320,9 +326,13 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         // The disconnect frame takes the same route as any session frame to
         // this actor: ForwardPart relays it to the actor's owner node when the
         // actor is remote and writes the native bound session when it is local.
-        if (!ForwardPart(actorRef, sourceNodeRid, session.SessionRid, headerPart, true, SendFlags.DontWait))
+        if (!ForwardPart(
+                actorRef, sourceNodeRid, session.SessionRid, headerPart, true,
+                SendFlags.DontWait, selectedNode: node))
             throw new InvalidOperationException("Actor session disconnect header forward failed.");
-        if (!ForwardPart(actorRef, sourceNodeRid, session.SessionRid, bodyPart, false, SendFlags.DontWait))
+        if (!ForwardPart(
+                actorRef, sourceNodeRid, session.SessionRid, bodyPart, false,
+                SendFlags.DontWait, selectedNode: node))
             throw new InvalidOperationException("Actor session disconnect body forward failed.");
         return ValueTask.CompletedTask;
     }

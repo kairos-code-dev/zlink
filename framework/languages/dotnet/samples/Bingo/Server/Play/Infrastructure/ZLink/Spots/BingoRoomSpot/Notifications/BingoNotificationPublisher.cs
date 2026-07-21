@@ -5,22 +5,22 @@ namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notificatio
 
 internal sealed class BingoNotificationPublisher
 {
-    public ValueTask PublishAsync(
+    public async ValueTask PublishAsync(
         IReadOnlyList<BingoRoomEvent> events,
         CancellationToken cancellationToken)
     {
-        foreach (var roomEvent in events) Publish(roomEvent, cancellationToken);
-        return ValueTask.CompletedTask;
+        foreach (var roomEvent in events)
+            await PublishAsync(roomEvent, cancellationToken);
     }
 
-    private static void Publish(
+    private static async ValueTask PublishAsync(
         BingoRoomEvent roomEvent,
         CancellationToken cancellationToken)
     {
         switch (roomEvent.Kind)
         {
             case BingoRoomEventKind.PlayerJoined:
-                roomEvent.Recipient.Context.BoundSession
+                await roomEvent.Recipient.Context.BoundSession
                 .Send(
                     new PlayerJoinedNotify
                     {
@@ -33,15 +33,15 @@ internal sealed class BingoNotificationPublisher
                         IsHost = roomEvent.IsHost,
                         State = roomEvent.State
                     })
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
                 break;
             case BingoRoomEventKind.GameStarted:
-                roomEvent.Recipient.Context.BoundSession
+                await roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = roomEvent.State })
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
                 break;
             case BingoRoomEventKind.NumberDrawn:
-                roomEvent.Recipient.Context.BoundSession
+                await roomEvent.Recipient.Context.BoundSession
                 .Send(
                     new BingoNumberDrawnNotify
                     {
@@ -50,12 +50,12 @@ internal sealed class BingoNotificationPublisher
                         Number = roomEvent.DrawnNumber,
                         State = roomEvent.State
                     })
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
                 break;
             case BingoRoomEventKind.GameEnded:
-                roomEvent.Recipient.Context.BoundSession
+                await roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameEndedNotify { State = roomEvent.State })
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported event kind {roomEvent.Kind}.");

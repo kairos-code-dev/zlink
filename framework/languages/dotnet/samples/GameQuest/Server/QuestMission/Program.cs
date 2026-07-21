@@ -53,21 +53,20 @@ internal static class Program
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var ownerChannel = SampleNames.QuestOwnerChannelFor(missionName);
-            var ownerMesh = options.AddRouteMesh(ownerChannel)
-                .Listen(topology.MissionChannelEndpoint(missionName))
-                .SetRoutingId(instance.SpotRid);
-            ownerMesh.ChannelName(ownerChannel)
-                .AddSendHandler<ApplyGameplayEventRouteHandler>()
-                .AddRequestHandler<SyncQuestProgressRouteHandler>();
-            var apiMesh = options.AddRouteMesh(SampleNames.GameApiChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(instance.SpotRid);
-            apiMesh.ChannelName(SampleNames.GameApiChannel).SetWeight(0);
-            var mesh14 = options.AddRouteMesh(SampleNames.QuestSpotDiscovery)
-                .Listen(instance.SpotRouterEndpoint)
-                .SetRoutingId(instance.SpotRid)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(instance.MeshEndpoint)
+                .SetRoutingId(instance.MeshRid)
                 .AddSpotFactory<PlayerQuestSpot>();
-            mesh14.ChannelName(SampleNames.QuestSpotDiscovery);
+            mesh.ChannelName(SampleNames.GameApiChannel).SetWeight(0);
+            foreach (var mission in new[] { "mission-a", "mission-b" })
+            {
+                var channelName = SampleNames.QuestOwnerChannelFor(mission);
+                var channel = mesh.ChannelName(channelName)
+                    .SetWeight(string.Equals(channelName, ownerChannel, StringComparison.Ordinal) ? 100 : 0);
+                if (string.Equals(channelName, ownerChannel, StringComparison.Ordinal))
+                    channel.AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup);
+            }
+            mesh.ChannelName(SampleNames.MeshName);
         });
 
         var app = builder.Build();

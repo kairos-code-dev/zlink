@@ -1,4 +1,4 @@
-// SM-F4: spot route negative — route 없음 시나리오를 검증한다.
+// SM-F4: target Spot 없음과 stale handle 시나리오를 검증한다.
 import type {
   SpotMissingTargetRes,
   SpotMissingTargetReq

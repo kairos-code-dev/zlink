@@ -5,7 +5,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("e2e")
 public record PlayOptions(
     String nodeRid,
-    String drainPolicy,
     String routeEndpoint,
     String routePeerEndpoint,
     String spotEndpoint,
@@ -17,10 +16,6 @@ public record PlayOptions(
     String logDir) {
     public PlayOptions {
         required(nodeRid, "node-rid");
-        drainPolicy = optional(drainPolicy, "natural");
-        if (!"natural".equals(drainPolicy) && !"release".equals(drainPolicy)) {
-            throw new IllegalArgumentException("e2e.drain-policy must be natural or release");
-        }
         required(routeEndpoint, "route-endpoint");
         routePeerEndpoint = optional(routePeerEndpoint, "");
         required(spotEndpoint, "spot-endpoint");

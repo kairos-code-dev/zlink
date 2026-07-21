@@ -260,7 +260,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
 
     private static IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> NormalizeMembers(
         IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> members) =>
-        members.OrderBy(static member => member.ChannelName, StringComparer.Ordinal)
+        members.OrderBy(static member => member.MeshName, StringComparer.Ordinal)
             .ThenBy(static member => member.RoutingIdPrefix, StringComparer.Ordinal)
             .ToArray();
 

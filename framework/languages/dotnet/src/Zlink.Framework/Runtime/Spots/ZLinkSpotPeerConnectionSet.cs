@@ -3,12 +3,12 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotPeerConnectionSet
 {
     private readonly object _gate = new();
-    private readonly HashSet<string> _pubSubAuto = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _pubSubManual = new(StringComparer.Ordinal);
     private readonly HashSet<string> _routerAuto = new(StringComparer.Ordinal);
     private readonly HashSet<string> _routerManual = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RoutingId> _retainedManualPeerRids =
+        new(StringComparer.Ordinal);
 
-    public bool TryAddRouterManual(string endpoint)
+    public bool TryAddPeerManual(string endpoint)
     {
         lock (_gate)
         {
@@ -16,48 +16,33 @@ internal sealed class ZLinkSpotPeerConnectionSet
         }
     }
 
-    public bool TryAddPubSubManual(string endpoint)
-    {
-        lock (_gate)
-        {
-            return Acquire(_pubSubManual, endpoint);
-        }
-    }
-
-    public bool TryAddRouterAuto(string endpoint)
+    public bool TryAddPeerAuto(string endpoint)
     {
         lock (_gate) return Acquire(_routerAuto, endpoint);
     }
 
-    public bool TryAddPubSubAuto(string endpoint)
-    {
-        lock (_gate) return Acquire(_pubSubAuto, endpoint);
-    }
-
-    public bool RemoveRouterManual(string endpoint)
+    public bool RemovePeerManual(string endpoint)
     {
         lock (_gate) return Release(_routerManual, endpoint);
     }
 
-    public bool RemovePubSubManual(string endpoint)
-    {
-        lock (_gate) return Release(_pubSubManual, endpoint);
-    }
-
-    public bool RemoveRouterAuto(string endpoint)
+    public bool RemovePeerAuto(string endpoint)
     {
         lock (_gate) return Release(_routerAuto, endpoint);
     }
 
-    public bool RemovePubSubAuto(string endpoint)
+    public void RollbackPeerManual(string endpoint) { lock (_gate) _routerManual.Remove(endpoint); }
+    public void RollbackPeerAuto(string endpoint) { lock (_gate) _routerAuto.Remove(endpoint); }
+
+    public void RetainManualPeerRid(string endpoint, RoutingId peerRid)
     {
-        lock (_gate) return Release(_pubSubAuto, endpoint);
+        lock (_gate) _retainedManualPeerRids[endpoint] = peerRid;
     }
 
-    public void RollbackRouterManual(string endpoint) { lock (_gate) _routerManual.Remove(endpoint); }
-    public void RollbackPubSubManual(string endpoint) { lock (_gate) _pubSubManual.Remove(endpoint); }
-    public void RollbackRouterAuto(string endpoint) { lock (_gate) _routerAuto.Remove(endpoint); }
-    public void RollbackPubSubAuto(string endpoint) { lock (_gate) _pubSubAuto.Remove(endpoint); }
+    public bool HasRetainedManualPeer(RoutingId peerRid)
+    {
+        lock (_gate) return _retainedManualPeerRids.Values.Contains(peerRid);
+    }
 
     private bool Acquire(HashSet<string> source, string endpoint)
     {
@@ -73,8 +58,6 @@ internal sealed class ZLinkSpotPeerConnectionSet
 
     private bool IsOwned(string endpoint)
         => _routerManual.Contains(endpoint)
-           || _routerAuto.Contains(endpoint)
-           || _pubSubManual.Contains(endpoint)
-           || _pubSubAuto.Contains(endpoint);
+           || _routerAuto.Contains(endpoint);
 
 }

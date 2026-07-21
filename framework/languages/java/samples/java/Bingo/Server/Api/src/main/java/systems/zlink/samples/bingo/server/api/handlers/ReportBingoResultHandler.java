@@ -6,10 +6,11 @@ import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.bingo.server.api.BingoPlayerRecordStore;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
-@ZLinkHandlerGroup("api")
+@ZLinkHandlerGroup(SampleNames.ApiChannel)
 public final class ReportBingoResultHandler
     implements ZLinkRequestHandler<Messages.ReportBingoResultReq, Messages.ReportBingoResultRes> {
     private final BingoPlayerRecordStore records;

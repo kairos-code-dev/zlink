@@ -134,10 +134,6 @@ void reset_socket_monitor_handler_slot_unsafe (socket_monitor_handler_js_state_t
     state->monitor = NULL;
 }
 
-extern "C" {
-int zlink_stream_detach (void *s_);
-}
-
 zlink_socket_type_t translate_socket_type (int32_t type)
 {
     switch (type) {
@@ -743,7 +739,13 @@ void stream_on_packet_slot (void *stream_,
 
     close_messages ();
 
-    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_blocking) == napi_ok) {
+    // This callback runs on the Core socket I/O thread. Waiting for the JS
+    // queue here can prevent the same I/O thread from delivering MeshNode
+    // request completions needed by the session dispatch that consumes this
+    // packet. The TSFN queue is unbounded and preserves FIFO order, while the
+    // framework serializes dispatch per session, so enqueue without blocking
+    // and return ownership to Core immediately.
+    if (napi_call_threadsafe_function (tsfn, payload.get (), napi_tsfn_nonblocking) == napi_ok) {
         payload.release ();
     }
 }
@@ -772,12 +774,6 @@ void stream_release_slot (void *socket)
     }
     if (tsfn)
         (void) napi_release_threadsafe_function (tsfn, napi_tsfn_abort);
-}
-
-bool stream_slot_attached (void *socket)
-{
-    std::lock_guard<std::mutex> lock (g_stream_slots_mu);
-    return find_stream_slot_by_socket_unsafe (socket) != NULL;
 }
 
 #define SEND_READY_HANDLER_SLOT_CALLBACK(N) &send_ready_handler_slot_callback<N>
@@ -1360,13 +1356,11 @@ napi_value socket_close (napi_env env, napi_callback_info info)
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external (env, argv[0], &sock);
-    if (stream_slot_attached (sock))
-        (void) zlink_stream_detach (sock);
-    stream_release_slot (sock);
-    release_socket_send_ready_handler_slot (sock);
     int rc = zlink_close (sock);
     if (rc != 0)
         return throw_last_error (env, "close failed");
+    stream_release_slot (sock);
+    release_socket_send_ready_handler_slot (sock);
     napi_value ok;
     napi_get_undefined (env, &ok);
     return ok;

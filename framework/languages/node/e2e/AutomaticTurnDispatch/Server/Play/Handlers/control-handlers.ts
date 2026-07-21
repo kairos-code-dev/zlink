@@ -26,7 +26,11 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
 
   async handle(request: EnsureSpotReq, context: ZLinkHandlerContext): Promise<EnsureSpotRes> {
     void context;
-    const created = await this.spots.getOrCreate(AwaitProbeSpot, request.spotRid);
+    const created = await this.spots.getOrCreate(
+      AutomaticTurnDispatchNames.spotChannel,
+      AwaitProbeSpot,
+      request.spotRid
+    );
     return {
       spotRid: String(created.spotRid),
       nodeRid: this.nodeRid
@@ -42,6 +46,7 @@ export class BindAwaitActorsControlHandler implements ZLinkRequestHandler<BindAw
     void context;
     const actors = await Promise.all(request.actorIds.map(async (actorId) => {
       const actor = await this.actors.getOrCreate(
+        AutomaticTurnDispatchNames.spotChannel,
         actorId,
         AutomaticTurnDispatchNames.actorType,
         ZLinkMessage.from({ spotRid: request.spotRid })

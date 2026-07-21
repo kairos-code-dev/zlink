@@ -58,7 +58,7 @@ internal sealed class ZLinkBoundSessionService(
         }
     }
 
-    internal void SubmitBoundSession<TMessage>(
+    internal async ValueTask<ZLinkSubmitResult> SubmitBoundSessionAsync<TMessage>(
         string actorId,
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
@@ -76,16 +76,40 @@ internal sealed class ZLinkBoundSessionService(
             metadata,
             message,
             runtime.Registration.Codecs);
-        TraceSent(actorId, packetName, frame);
-        if (ZLinkBoundSessionDispatchScope.TryDefer(
-                actorId,
-                ct => SubmitFrameAsync(actorId, frame, ct)))
-            return;
+        try
+        {
+            if (ZLinkBoundSessionDispatchScope.TryDefer(
+                    actorId,
+                    ct => SubmitDeferredFrameAsync(actorId, frame, ct)))
+            {
+                TraceSent(actorId, packetName, frame);
+                return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+            }
+        }
+        catch (InvalidOperationException error)
+            when (error.Message == "Bound-session deferred submit queue is full.")
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.Backpressured);
+        }
 
-        ZLinkUnawaitedSubmit.Observe(
-            SubmitFrameAsync(actorId, frame, cancellationToken),
-            "actor bound-session submit",
-            runtime.ErrorSink);
+        var result = await SubmitFrameAsync(actorId, frame, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Status == ZLinkSubmitStatus.Submitted)
+            TraceSent(actorId, packetName, frame);
+        return result;
+    }
+
+    private async ValueTask SubmitDeferredFrameAsync(
+        string actorId,
+        byte[] frame,
+        CancellationToken cancellationToken)
+    {
+        var result = await SubmitFrameAsync(actorId, frame, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Status != ZLinkSubmitStatus.Submitted)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestFailed,
+                $"Deferred bound-session submit completed with '{result.Status}'.");
     }
 
     private void TraceSent(string actorId, string? packetName, byte[] frame)
@@ -104,17 +128,17 @@ internal sealed class ZLinkBoundSessionService(
             ActorId: actorId));
     }
 
-    private ValueTask SubmitFrameAsync(
+    private ValueTask<ZLinkSubmitResult> SubmitFrameAsync(
         string actorId,
         byte[] frame,
         CancellationToken cancellationToken)
     {
         var message = Message.From(frame);
-        return GetSubmitter().Async(
-            message,
+        return GetSubmitter().SubmitAsync(
+            new[] { message },
             pending => runtime.SendActorBoundSession(
                 actorId,
-                new[] { pending },
+                pending,
                 SendFlags.DontWait),
             cancellationToken);
     }
@@ -211,9 +235,17 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
         return this;
     }
 
-    public void Submit(CancellationToken cancellationToken = default)
+    public IZLinkBoundSessionSendCall Metadata(ZLinkMessageMetadata metadata)
     {
-        service.SubmitBoundSession(
+        ArgumentNullException.ThrowIfNull(metadata);
+        foreach (var (key, value) in metadata.Values) _metadata[key] = value;
+        return this;
+    }
+
+    public ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return service.SubmitBoundSessionAsync(
             actorId,
             ZLinkMessageNameResolver.ResolveFromMessage(message),
             _metadata,

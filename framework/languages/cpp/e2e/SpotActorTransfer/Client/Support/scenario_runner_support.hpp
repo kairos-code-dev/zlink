@@ -195,8 +195,8 @@ inline void scenario_runner_t::local_location_commit_timing ()
     const auto join = join_task.get ();
     require (join.accepted, "ST-D1 local join was rejected.");
     const auto after = get_actor_ref (_nodes.a, actor_id);
-    require (after.generation > before.generation,
-             "ST-D1 local actor generation did not advance after commit.");
+    require (after.generation == before.generation,
+             "ST-D1 local actor generation changed across membership commit.");
     const auto probe = blocked_probe.get ();
     require (probe.spot_rid == spot_rid,
              "ST-D1 delayed actor packet did not resume on the committed target spot.");

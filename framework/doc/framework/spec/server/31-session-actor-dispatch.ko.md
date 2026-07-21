@@ -1,166 +1,129 @@
 # Session Actor Dispatch — 공통 스펙
 
 [스펙 목차](../README.ko.md) · [STREAM 서버 세션](30-stream-session.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) · [Actor 모델](22-actor-model.ko.md)
+[Actor 모델](22-actor-model.ko.md) · [Spot과 Actor membership](23-spot-actor.ko.md)
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 10.0.0에서 STREAM session과 MeshNode Actor runtime을 연결하는 공통 공개
-계약을 정의한다. 이 문서는 “STREAM session이 어느 MeshName의 Actor와 통신하는지 명확히 고정하면서
-typed payload와 reply를 transport 세부 정보 없이 어떻게 전달하는가?”라는 질문에 답한다.
+이 문서는 ZLink Framework 11.0.0에서 STREAM session과 Actor runtime을 연결하는 typed dispatch, binding,
+owner handoff와 ordering을 정의한다. Core raw transport는 Actor identity, binding token, AuthorityOwnerGeneration,
+sequence barrier와 route를 해석하지 않는다.
 
-STREAM 연결, packet session과 session lifecycle은
-[30 STREAM 서버 세션](30-stream-session.ko.md), Actor identity와 queue는
-[22 Actor 모델](22-actor-model.ko.md), MeshName과 route는 [21 MeshNode](21-mesh-node.ko.md)가 소유한다.
-payload·metadata와 request correlation은 [03 메시지 모델](../03-message-model.ko.md), callback 실행과
-completion은 [04 비동기 실행 정책](../04-async-execution-policy.ko.md)이 소유한다.
+Actor dispatch STREAM node는 startup에서 target MeshName 하나와 같은 process의 local MeshNode 하나를 선택한다.
+STREAM-only node는 MeshNode를 요구하지 않는다. Endpoint나 첫 MeshNode에서 MeshName을 추론하거나 다른
+MeshName으로 relay·fallback하지 않는다.
 
-## 2. 명시적인 MeshName 경계
+Location Store가 없는 Actor는 distributed session binding을 사용할 수 없다. Same-process session dispatch만
+runtime-local authority로 처리하고 remote bind·resolve는 configuration 또는 `TransferDisabled`로 거부한다.
 
-Actor dispatch를 사용하는 STREAM node는 등록할 때 target MeshName 하나를 명시하고, 같은 process에서
-그 이름으로 등록된 MeshNode 하나에 연결한다. endpoint, 첫 번째 MeshNode 또는 ActorRef에서 이 값을
-암묵적으로 추론하지 않는다.
+## 2. Public flow
 
-| 구성 | 계약 |
-|---|---|
-| Actor dispatch를 사용하는 STREAM node | 정확히 하나의 MeshName과 local MeshNode를 선택한다. |
-| Actor dispatch를 사용하지 않는 STREAM node | MeshNode를 요구하지 않는다. |
-| 한 process의 여러 STREAM node | 각각 MeshName을 명시하며 같은 MeshNode 또는 서로 다른 MeshNode를 선택할 수 있다. |
-| 한 process의 여러 MeshNode | MeshName으로 구분하며 session registration 사이에 공유 상태를 만들지 않는다. |
-
-session이 resolve, create 또는 bind하는 ActorRef는 STREAM node에 설정한 MeshName context에서만 사용한다.
-ActorRef의 owner route가 다른 mesh에 속하면 bind 또는 dispatch 전에 target 오류로 실패한다. 서로 다른 MeshName 사이에
-자동 relay, fallback 또는 route 변환을 제공하지 않는다.
-
-## 3. 공개 흐름
-
-Session Actor Dispatch는 다음 순서의 typed operation을 제공한다.
-
-1. STREAM session callback이 client를 인증하고 domain Actor identity와 type을 결정한다.
-2. 같은 MeshName에서 ActorRef를 resolve하거나 정책에 따라 Actor를 생성한다.
-3. session과 Actor를 binding token으로 bind한다.
-4. session handler가 선택한 typed payload를 Actor dispatch에 제출한다.
-5. Actor handler는 request reply를 반환하거나 현재 bound session으로 one-way push를 보낸다.
-
-application은 session object, ActorRef, typed payload, typed reply와 bound-session 표면만 사용한다.
-MeshNode RID, STREAM transport handle, raw relay envelope, original request sequence와 endpoint를 조립하거나
-보관하지 않는다.
-
-Actor 생성 여부, Actor type 선택, 재사용과 인증은 application 정책이다. route 선택, request correlation,
-binding token 검증과 typed dispatch는 Framework가 맡는다.
-
-## 4. Inbound Actor dispatch
-
-STREAM packet은 먼저 session의 typed handler registry로 dispatch된다. session handler가 Actor dispatch를
-선택하면 Framework는 원래 session request correlation을 내부에 보존하고 ActorRef가 가리키는 owner
-MeshNode로 payload를 제출한다.
-
-수신 payload는 local 또는 remote 여부와 관계없이 target Actor application queue에 직접 들어간다.
-Actor의 현재 Spot은 location과 membership 검증에 사용할 수 있지만 dispatch callback을 고르는 실행
-문맥이 아니다.
-
-- Actor payload를 Spot callback이나 Spot application queue에 넣지 않는다.
-- session callback thread에서 Actor handler를 직접 실행하지 않는다.
-- 같은 Actor에 수락된 session payload는 다른 Actor ingress와 함께 Actor queue 순서를 따른다.
-- 서로 다른 Actor는 하나의 session 또는 Spot queue 때문에 서로 기다리지 않는다.
-
-Actor join·leave와 lifecycle 작업이 필요하면 별도 control operation으로 제출한다. 해당 작업만 target
-Spot control claim을 사용하며 업무 payload의 reply path와 합치지 않는다.
-
-## 5. Request reply
-
-session request를 Actor request로 dispatch하면 Framework는 client request correlation과 Actor request
-completion을 연결한다. Actor handler의 typed reply 또는 typed error는 원래 STREAM session request의
-terminal result 하나로 반환한다.
-
-- Actor handler는 원본 STREAM header나 request sequence를 읽거나 수정하지 않는다.
-- timeout, cancellation 또는 실행 여부가 불명확한 route 실패 뒤 다른 Actor나 MeshNode로 자동
-  재전송하지 않는다.
-- session이 닫히면 늦게 도착한 Actor reply를 새 session이나 새 binding으로 보내지 않는다.
-- one-way session payload는 client reply를 만들지 않으며 수락 의미는
-  [04 비동기 실행 정책](../04-async-execution-policy.ko.md)을 따른다.
-
-## 6. Binding과 bound session
-
-binding은 `(MeshName context, Actor identity, STREAM session, binding token)`의 runtime 관계다. 한 Actor는 동시에
-하나의 유효한 session binding을 가지며 한 session은 여러 Actor를 bind할 수 있다.
-
-rebind는 새 token을 발급하고 이전 token을 무효화한다. 이전 session에서 늦게 도착한 dispatch, reply,
-push와 close operation은 현재 binding에 적용하지 않는다. binding token과 session route는 Framework
-내부 상태이며 application이 별도 location store로 관리하지 않는다.
-
-Actor handler의 bound-session 표면은 현재 유효한 client session으로 one-way push를 보내고 연결 종료를
-요청하는 기능만 제공한다. 임의 session RID를 받는 전역 proxy나 Actor에서 client로 보내는 별도
-request/reply 채널을 제공하지 않는다.
-
-STREAM disconnect는 해당 session의 binding을 해제한다. disconnect만으로 Actor를 종료하거나 Actor의
-Spot membership을 바꾸지 않는다. application에 disconnect notification이 필요하면 session lifecycle 또는
-명시적인 Actor control message를 사용한다.
-
-## 7. 실행 순서와 progress
-
-같은 STREAM session의 callback 순서는 [30 STREAM 서버 세션](30-stream-session.ko.md)이 정한다. Actor에
-제출된 뒤에는 Actor queue가 해당 Actor의 순서를 소유한다. session turn과 Actor turn을 하나의 공유 lock
-또는 callback stack으로 합치지 않는다.
-
-request completion, send-ready, binding update, disconnect cleanup과 transfer barrier는 infrastructure
-claim에서 진행한다. session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 이러한
-작업이 막히지 않아야 한다.
-
-Actor transfer 중 session dispatch의 admission, barrier와 owner 변경은
-[23 Spot Actor](23-spot-actor.ko.md)가 정한다. transfer 전후의 payload를 Spot callback으로 우회해서
-순서를 맞추지 않는다.
-
-## 8. Metadata
-
-Session Actor Dispatch는 [03 메시지 모델](../03-message-model.ko.md)의 immutable metadata snapshot과
-forwarding policy를 사용한다. session-local transport 정보와 request correlation은 Framework 내부에
-두고, 허용된 application metadata만 Actor handler context에 전달한다.
-
-Actor reply는 request metadata를 자동 복사하지 않는다. metadata key, 크기, ownership과 allowlist 규칙은
-[03 메시지 모델](../03-message-model.ko.md)이 소유하며 이 문서에서 다시 정의하지 않는다.
-
-## 9. 등록과 startup 검증
-
-Actor dispatch registration은 STREAM node, MeshName과 local MeshNode의 관계를 host 시작 전에 검증한다.
-
-| 조건 | 결과 |
-|---|---|
-| MeshName이 비어 있음 | 설정 오류 |
-| 같은 MeshName의 local MeshNode가 없음 | 설정 오류 |
-| STREAM node의 Actor dispatch MeshName을 둘 이상 지정 | 설정 오류 |
-| ActorRef owner route가 STREAM node의 MeshName에 속하지 않음 | bind 또는 dispatch 오류 |
-| 같은 session packet key에 handler를 중복 등록 | 설정 오류 |
-| Actor type에 factory가 없음 | create 요청 오류 |
-| current binding 없이 bound-session push 또는 close 요청 | session-not-bound 오류 |
-
-언어별 정확한 등록·handler·binding 시그니처와 오류 타입은 언어별 공개 인터페이스 문서가 정한다.
-
-## 10. Drain과 실패
-
-- drain 중인 STREAM node는 신규 session을 받지 않고 기존 session callback과 pending reply를 deadline까지
-  처리한다.
-- drain 중인 MeshNode는 신규 Actor 생성과 신규 binding 배정을 거부하고 이미 수락한 Actor dispatch와
-  binding cleanup을 진행한다.
-- route target, Actor generation 또는 binding token 검증에 실패하면 typed 오류로 끝내고 다른 mesh나
-  session으로 우회하지 않는다.
-- one-way dispatch 뒤 발생한 handler 오류는 session request로 바꾸지 않고 runtime 관측 경로에 기록한다.
-
-전체 종료 순서는 [54 Graceful Drain](54-graceful-drain-handoff.ko.md)이 소유한다.
-
-## 11. 관측과 검증
-
-관측 정보는 STREAM node, MeshName, MeshNode RID, session state, Actor dispatch admission, binding generation,
-reply correlation 결과와 drain state를 구분해야 한다. session ID와 Actor ID는 metric label로 사용하지
+Application은 session object, ActorRef, typed payload·reply와 bound-session API만 사용한다. Node RID, STREAM
+transport handle, raw relay envelope, request sequence, AuthorityOwnerGeneration과 endpoint를 조립하거나 보관하지
 않는다.
 
-다음 조건을 검증한다.
+1. Session callback이 client를 인증하고 domain Actor identity와 type을 정한다.
+2. 같은 MeshName에서 Ready ActorRef를 resolve하거나 application 정책에 따라 Actor를 명시적으로 생성한다.
+3. Session과 Actor를 binding token으로 bind한다.
+4. Session handler가 typed payload를 current Actor route로 제출한다.
+5. Actor handler는 typed reply를 반환하거나 current bound session으로 one-way push를 보낸다.
 
-- Actor dispatch STREAM node가 MeshName과 local MeshNode를 명시적으로 선택한다.
-- 서로 다른 MeshName의 ActorRef를 bind하거나 dispatch할 수 없다.
-- STREAM-only 구성은 Actor dispatch를 사용하지 않으면 MeshNode를 요구하지 않는다.
-- local·remote session payload가 모두 Actor queue로 직접 전달된다.
-- Actor payload가 Spot callback과 Spot application queue를 거치지 않는다.
-- join·leave와 lifecycle control만 Spot control claim을 사용한다.
-- rebind 뒤 이전 binding token의 reply, push와 close가 새 session에 적용되지 않는다.
-- request reply가 원래 STREAM correlation으로 한 번만 완료된다.
+## 3. Inbound dispatch와 reply
+
+STREAM packet은 session typed handler registry로 먼저 dispatch된다. Actor dispatch를 선택하면 Framework는 original
+request correlation, binding token, Actor ObjectGeneration, AuthorityOwnerGeneration, OwnerLeaseGeneration과 session
+sequence를 internal envelope에 보존한다.
+
+Payload는 local·remote 여부와 관계없이 target Actor application queue에 직접 추가한다. Current Spot은 authority
+검증에 사용하지만 callback 실행 문맥이 아니다. Session callback thread에서 Actor handler를 실행하지 않으며 서로
+다른 Actor를 session 또는 Spot global queue로 직렬화하지 않는다.
+
+Request reply·error는 original STREAM correlation을 terminal-once로 완료한다. Timeout, cancellation과 실행 여부가
+불명확한 route failure 뒤 다른 Actor·owner·MeshNode로 자동 재제출하지 않는다. Session close 뒤 late reply를 새
+session이나 binding에 전달하지 않는다.
+
+## 4. Binding authority
+
+Binding은 MeshName, ActorRef, current AuthorityOwnerGeneration·OwnerLeaseGeneration, STREAM session identity,
+binding generation과 token의 runtime 관계다. 한 Actor는 동시에 session binding 하나만 가지며 session 하나는 여러
+Actor를 bind할 수 있다.
+
+Bind는 current Ready Actor authority를 exact 검증한 뒤 새 token을 발급한다. Rebind는 새 token을 발급하고 이전
+token을 무효화한다. Unbind와 close는 expected token 또는 binding generation을 비교해 current binding만 바꾼다.
+이전 token, ObjectGeneration, AuthorityOwnerGeneration 또는 owner lease의 dispatch, reply, push와 close는 current
+binding에 적용하지 않는다.
+
+Binding route는 Framework가 관리한다. Application이 별도 Location row, proxy, session RID와 endpoint를 만들지
+않는다. Bound-session API는 current binding으로 one-way push를 보내거나 connection close를 요청하며 임의 session을
+지정하는 global proxy를 제공하지 않는다. Disconnect는 binding을 해제하지만 Actor를 destroy하거나 membership을
+바꾸지 않는다.
+
+## 5. Actor transfer route barrier
+
+Actor가 다른 MeshNode로 이동해도 physical STREAM connection과 session scope는 session owner process에 유지된다.
+Socket, transport handle과 session callback state를 target Actor process로 이동하거나 복제하지 않는다.
+
+1. Source Actor seal과 함께 current AuthorityOwnerGeneration, binding generation과 마지막 accepted session sequence를
+   barrier에 기록한다.
+2. Session owner는 ingress를 reversible하게 seal하고 exact high-water를 ACK한다.
+3. Bound-session request는 Captured CAS 전에 terminal drain하며 durable journal에 넣지 않는다.
+4. Lease-backed one-way packet만 negotiated boundary 안에서 checkpoint에 포함할 수 있다.
+5. Target은 checkpoint restore와 replay를 끝내고 새 route를 stage하지만 switch·unseal하지 않는다.
+6. Durable source cleanup과 Completed authority CAS 뒤 target이 session route commit을 보낸다.
+7. Session owner는 exact Actor ObjectGeneration, 이전·target AuthorityOwnerGeneration, binding generation,
+   session owner lease와 high-water를 검증해 route를 atomic switch하고 routed ACK를 보낸다.
+8. Maintenance authority를 steady target으로 normalize한 뒤에만 target Actor packet·push admission을 연다.
+
+Activated, Cleaning과 Completed만으로 route나 admission을 열 수 없다. 이전 owner, stale authority owner generation,
+binding token과 sequence의 packet·reply·push·close는 current connection에 적용하지 않는다.
+
+## 6. Failure와 recovery
+
+Commit 전 failure는 durable Aborted CAS 뒤 session abort route와 ACK, cleanup, steady source normalization 순서로
+source route를 복원한다. Aborted CAS 전 route를 바꾸거나 ingress를 다시 열지 않는다.
+
+Commit 뒤에는 source route로 rollback하지 않는다. Current target 또는 recovery coordinator가 activation,
+Completed, route switch ACK와 steady normalization을 이어간다. Session owner process가 종료되면 connection을 다른
+process로 복구하지 않고 닫으며 client reconnect가 새 session을 만든다.
+
+Physical disconnect는 accepted participant high-water, request terminal completion 또는 transfer cleanup의 증거가
+아니다. Connection-bound work와 bound-session request가 pre-Captured deadline 안에 terminal drain되지 않으면
+transfer를 abort하고 `Blocked/TransferDisabled`로 admission을 복원한다.
+
+## 7. Execution과 lifecycle
+
+같은 session의 handler turn, binding mutation, close와 transfer barrier는 session owner가 직렬화한다. Actor에
+제출한 뒤에는 Actor queue가 순서를 소유한다. Session turn과 Actor turn을 shared lock이나 callback stack으로 합치지
+않는다.
+
+Request completion, send-ready, binding update, transfer barrier와 disconnect cleanup은 infrastructure task에서
+진행한다. Session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 진행해야 한다.
+
+Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의 Retire와 Shutdown은 신규 session·binding을
+거부하고 accepted callback·reply·cleanup을 deadline까지 처리한 뒤 connection을 닫는다. Physical connection을
+다른 process로 이동하지 않는다.
+
+## 8. Startup과 operation errors
+
+| Condition | Result |
+|---|---|
+| MeshName 없음 또는 local MeshNode 없음 | Configuration error |
+| Actor dispatch MeshName 둘 이상 | Configuration error |
+| 다른 MeshName ActorRef | Bind 또는 dispatch error |
+| Store 없는 remote Actor binding | Configuration error 또는 `TransferDisabled` |
+| 같은 packet key handler 중복 | Configuration error |
+| Actor factory 없음 | Explicit create error |
+| Current binding 없이 push·close | Session-not-bound |
+| Stale Actor·owner·binding fence | Typed stale error; no fallback |
+
+## 9. 검증 요구
+
+- Actor dispatch STREAM node가 MeshName과 local MeshNode를 명시한다.
+- Store-less Actor는 same-process dispatch만 사용한다.
+- Local·remote payload가 Actor queue로 직접 전달되고 Spot callback을 거치지 않는다.
+- Rebind 뒤 이전 token과 authority fence가 current binding을 바꾸지 않는다.
+- Request reply가 original STREAM correlation으로 한 번 완료된다.
+- Physical STREAM connection과 session object를 Actor target process로 이동하지 않는다.
+- Bound-session request가 Captured 전에 terminal drain되고 durable journal에 들어가지 않는다.
+- Completed route switch ACK와 steady normalization 전 target admission이 닫혀 있다.
+- Commit 전 failure는 source route, commit 뒤 failure는 target recovery로 수렴한다.

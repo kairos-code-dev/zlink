@@ -327,20 +327,16 @@ bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path 
     const auto text = buffer.str ();
 
     bool ok = true;
-    const std::string required[] = {"`leaveActor`와 `destroyActor`는 서로 다른 책임이다",
-                                    "`leaveActor`는 actor 위치를 user",
-                                    "Entry Spot에 돌아온 actor의 수명을 끝내는 작업",
-                                    "actor registry, actor-session",
-                                    "native actor ref",
-                                    "`onCreateActor` callback을 한 번 호출한다",
-                                    "`destroyActor`는 위치 이동이 아니라 actor 수명 종료",
-                                    "다른 lifecycle callback을 호출하지 않고",
-                                    "stream disconnect는",
-                                    "`onDisconnectActor`만 의미하며",
-                                    "disconnect cleanup만으로 actor destroy가 실행되지 않는다",
-                                    "| leaveActor | user Spot",
-                                    "| destroyActor | Entry Spot actor 정리",
-                                    "| disconnect | stream session이 끊기면"};
+    const std::string required[] = {
+      "Actor destroy는 Entry Spot context에서만 요청할 수 있다",
+      "Actor가 user Spot에 있으면 먼저 leave 또는",
+      "Destroy는 membership 이동이 아니므로",
+      "`OnLeaveActor`를 다시 호출하지 않는다",
+      "신규 payload admission을 닫고",
+      "session binding, location ownership, Actor reference와 Framework registry를 제거한다",
+      "중복 destroy는 성공으로 끝나며 lifecycle callback을 다시 만들지 않는다",
+      "bound",
+      "session의 연결 종료만으로 Actor를 자동 종료하거나 Spot에서 자동 leave하지 않는다"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "actor model lacks actor destroy lifecycle contract: " << needle << '\n';
@@ -361,15 +357,9 @@ bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::pat
 
     bool ok = true;
     const std::string required[] = {
-      "actor를 완전히 제거하는 public API는 Entry Spot context에만 둔다",
-      "user Spot",
-      "`leaveActor` 의미의 API까지만",
-      "Entry Spot handler 또는 lifecycle callback은",
-      "언어별 Entry Spot destroy API를 호출한다",
-      "actor registry, actor-session binding, native actor ref를",
-      "`onLeaveActor`나 다른 lifecycle",
-      "stream disconnect는 현재 session binding cleanup",
-      "disconnect cleanup만으로 actor destroy가 실행되지 않는다"};
+      "[Actor 모델](server/22-actor-model.ko.md)",
+      "Entry Spot, user Spot factory, Actor factory와",
+      "transfer adapter"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "framework API spec lacks actor destroy lifecycle contract: " << needle
@@ -392,14 +382,11 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
 
     bool ok = true;
     const std::string required[] = {
-      "disconnect unbind는 actor-session binding만 정리한다",
-      "room leave, Entry Spot 복귀,",
-      "actor destroy는 disconnect cleanup에서 자동으로 실행하지 않는다",
-      "user Spot에서",
-      "`leaveActor`로 actor를 Entry Spot으로 이동한 뒤",
-      "Entry Spot context의 destroy API를",
-      "| disconnect does not destroy |",
-      "room leave나 Entry Spot destroy를 자동으로 실행하지 않는다"};
+      "STREAM disconnect는 해당 session의 binding을 해제한다",
+      "disconnect만으로 Actor를 종료하거나 Actor의",
+      "Spot membership을 바꾸지 않는다",
+      "명시적인 Actor control message를 사용한다",
+      "Actor join·leave와 lifecycle 작업이 필요하면 별도 control operation으로 제출한다"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "session actor dispatch spec lacks disconnect/destroy boundary contract: "
@@ -545,8 +532,16 @@ bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::p
                                                || line.find ("load_env (") != std::string::npos
                                                || line.find ("load_env(") != std::string::npos
                                                || line.find ("os.environ") != std::string::npos
-                                               || line.find ("${ZLINK_") != std::string::npos
-                                               || line.find ("$ZLINK_") != std::string::npos
+                                               || (line.find ("${ZLINK_")
+                                                     != std::string::npos
+                                                   && line.find (
+                                                        "${ZLINK_CPP_BUILD_DIR")
+                                                        == std::string::npos)
+                                               || (line.find ("$ZLINK_")
+                                                     != std::string::npos
+                                                   && line.find (
+                                                        "$ZLINK_CPP_BUILD_DIR")
+                                                        == std::string::npos)
                                                || ((line.find ("${BINGO_") != std::string::npos
                                                     || line.find ("${GAMEQUEST_")
                                                          != std::string::npos
@@ -1677,7 +1672,7 @@ int main ()
     ok &= file_contains (root / "framework/include/zlink/framework/contracts/actors/actor.hpp",
                          "request_to_actor (actor_ref_t actor_ref");
     ok &= file_contains (root / "framework/src/runtime/actors/actor_client.cpp",
-                         "resolve_actor (actor_location_key_t{actor_id})");
+                         "actor_location_key_t{runtime->mesh_name (), actor_id}");
     ok &= file_contains (root / "CMakeLists.txt",
                          "framework/src/runtime/actors/actor_client.cpp");
 

@@ -55,10 +55,11 @@ function createWorkflowModule(): Function {
             }));
             Object.assign(builder.configureLocations(), locationMessagingOptions());
           }
-          builder.addClientServerChannel('workflow')
-            .enableServer(options.workflowEndpoint)
-            .routingId(options.rid)
-            .enableClient()
+          const workflow = builder.addRouteMesh('workflow')
+            .listen(options.workflowEndpoint)
+            .routingId(options.rid);
+          workflow.peerConnections();
+          workflow.channelName('workflow')
             .addRequestHandler(PacketNames.workflowReq, WorkflowRequestHandler);
           return builder.build();
         }

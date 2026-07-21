@@ -5,27 +5,28 @@ const internal = require('../../packages/framework/dist/internal');
 const nest = require('../../packages/nestjs/dist');
 
 test('all routing-id builders expose fixed and allocated identity policies', () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
   const options = internal.createFrameworkOptions((builder) => {
-    builder.useInMemoryLocationStores();
-    builder.addClientServerChannel('api')
-      .enableClient()
+    builder.addLocationStore(store);
+    builder.addRouteMesh('api')
+      .listen('tcp://127.0.0.1:9100')
       .routingId('api-fixed');
     builder.addFanoutChannel('events')
       .enablePublisher('tcp://127.0.0.1:9101')
       .routingId('events-fixed');
-    builder.addRouteMeshChannel('play')
-      .enableServer('tcp://127.0.0.1:9102')
+    builder.addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9102')
       .useAllocatedRoutingId(8, 'play-')
       .setRoutingIdAllocationGroup('game');
-    builder.addSpotMesh('rooms')
-      .enableRouter('tcp://127.0.0.1:9103')
+    builder.addRouteMesh('rooms')
+      .listen('tcp://127.0.0.1:9103')
       .useAllocatedRoutingId(8, 'rooms-')
       .setRoutingIdAllocationGroup('game');
   });
 
-  assert.equal(options.channels.api.server.routingId, 'api-fixed');
+  assert.equal(options.spotNodes.api.router.routingId, 'api-fixed');
   assert.equal(options.channels.events.routingId, 'events-fixed');
-  assert.deepEqual(options.channels.play.routeMesh.routingIdAllocation, {
+  assert.deepEqual(options.spotNodes.play.routingIdAllocation, {
     slotCount: 8,
     routingIdPrefix: 'play-',
     groupName: 'game'
@@ -38,14 +39,15 @@ test('all routing-id builders expose fixed and allocated identity policies', () 
 });
 
 test('Nest builders and injection token preserve the allocated routing-id contract', () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
   const options = nest.zlinkFramework()
-    .useInMemoryLocationStores()
+    .addLocationStore(store)
     .addFanoutChannel('events')
       .enablePublisher('tcp://127.0.0.1:9111')
       .useAllocatedRoutingId(3, 'event-')
       .setRoutingIdAllocationGroup('workers')
-    .addRouteMeshChannel('play')
-      .enableClient()
+    .addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9112')
       .useAllocatedRoutingId(3)
       .setRoutingIdAllocationGroup('workers')
     .build();
@@ -54,7 +56,7 @@ test('Nest builders and injection token preserve the allocated routing-id contra
     routingIdPrefix: 'event-',
     groupName: 'workers'
   });
-  assert.deepEqual(options.routerMeshes.play.routingIdAllocation, {
+  assert.deepEqual(options.spotNodes.play.routingIdAllocation, {
     slotCount: 3,
     routingIdPrefix: 'play',
     groupName: 'workers'
@@ -68,8 +70,8 @@ test('Nest builders and injection token preserve the allocated routing-id contra
 test('allocated routing-id builder rejects invalid declarations and fixed identity conflicts', () => {
   assert.throws(
     () => internal.createFrameworkOptions((builder) => {
-      builder.useInMemoryLocationStores();
-      builder.addRouteMeshChannel('play')
+      builder.addLocationStore(new internal.ZLinkInMemoryLocationStore());
+      builder.addRouteMesh('play')
         .routingId('play-fixed')
         .useAllocatedRoutingId(2);
     }),
@@ -83,7 +85,7 @@ test('allocated routing-id builder rejects invalid declarations and fixed identi
   );
   assert.throws(
     () => internal.createFrameworkOptions((builder) => {
-      builder.addSpotMesh('rooms').setRoutingIdAllocationGroup('   ');
+      builder.addRouteMesh('rooms').setRoutingIdAllocationGroup('   ');
     }),
     /group name/i
   );
@@ -93,8 +95,8 @@ test('in-memory routing-id slots assign the lowest slot, retry idempotently, and
   let now = new Date('2026-07-15T00:00:00.000Z');
   const store = new internal.ZLinkInMemoryLocationStore(() => now);
   const members = [
-    { channelName: 'play', routingIdPrefix: 'play-' },
-    { channelName: 'rooms', routingIdPrefix: 'rooms-' }
+    { meshName: 'play', routingIdPrefix: 'play-' },
+    { meshName: 'rooms', routingIdPrefix: 'rooms-' }
   ];
   const request = (ownerId) => ({
     groupName: 'game',
@@ -139,7 +141,7 @@ test('in-memory routing-id slots preserve group configuration and identity mode'
   const store = new internal.ZLinkInMemoryLocationStore();
   const base = {
     groupName: 'game',
-    members: [{ channelName: 'play', routingIdPrefix: 'play-' }],
+    members: [{ meshName: 'play', routingIdPrefix: 'play-' }],
     slotCount: 2,
     ownerId: 'owner-a',
     leaseTtlMs: 30_000
@@ -169,15 +171,11 @@ test('runtime allocates before socket identity and connect, publishes readiness,
   const store = new RecordingAllocationStore(calls);
   const options = internal.createFrameworkOptions((builder) => {
     builder.addLocationStore(store);
-    builder.addRouteMeshChannel('play')
-      .enableServer('tcp://127.0.0.1:9201')
+    builder.addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9201')
       .useAllocatedRoutingId(4, 'play-')
       .setRoutingIdAllocationGroup('game');
   });
-  options.channels.play.routeMesh.sendHandlers = [{
-    packetName: 'Ping',
-    handler: { async handle() {} }
-  }];
   const registration = internal.createFrameworkRegistration(options);
   const host = new internal.ZLinkFrameworkRuntimeHost(
     { registration },
@@ -208,13 +206,10 @@ test('runtime bind failure disposes sockets before rolling back the allocated sl
   const store = new RecordingAllocationStore(calls);
   const options = internal.createFrameworkOptions((builder) => {
     builder.addLocationStore(store);
-    builder.addRouteMeshChannel('play')
-      .enableServer('tcp://127.0.0.1:9202')
+    builder.addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9202')
       .useAllocatedRoutingId(2);
   });
-  options.channels.play.routeMesh.sendHandlers = [{
-    packetName: 'Ping', handler: { async handle() {} }
-  }];
   const host = new internal.ZLinkFrameworkRuntimeHost(
     { registration: internal.createFrameworkRegistration(options) },
     { backendAdapterFactory: allocationBackend(calls, true) }
@@ -233,20 +228,16 @@ test('runtime fences and closes allocated sockets before an unrenewed lease can 
   const store = new FailingRenewAllocationStore(calls);
   const options = internal.createFrameworkOptions((builder) => {
     builder.addLocationStore(store);
-    Object.assign(builder.configureLocations(), {
-      heartbeatIntervalMs: 20,
-      ownerLeaseTtlMs: 200,
-      routingIdFencingMarginMs: 50,
-      ownerLeaseRenewTimeoutMs: 10,
-      pollingIntervalMs: 5
-    });
-    builder.addRouteMeshChannel('play')
-      .enableServer('tcp://127.0.0.1:9203')
+    builder.configureLocations()
+      .heartbeatIntervalMs(20)
+      .ownerLeaseTtlMs(200)
+      .routingIdFencingMarginMs(50)
+      .ownerLeaseRenewTimeoutMs(10)
+      .pollingIntervalMs(5);
+    builder.addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9203')
       .useAllocatedRoutingId(2);
   });
-  options.channels.play.routeMesh.sendHandlers = [{
-    packetName: 'Ping', handler: { async handle() {} }
-  }];
   const host = new internal.ZLinkFrameworkRuntimeHost(
     { registration: internal.createFrameworkRegistration(options) },
     { backendAdapterFactory: allocationBackend(calls) }
@@ -257,6 +248,35 @@ test('runtime fences and closes allocated sockets before an unrenewed lease can 
   assert.equal(host.isStarted, false);
   assert.ok(calls.includes('router:dispose'), calls.join(','));
   assert.ok(calls.includes('store:release'), calls.join(','));
+});
+
+test('runtime fences an allocated identity when the event loop resumes after its lease deadline', async () => {
+  const calls = [];
+  const store = new RecordingAllocationStore(calls);
+  const options = internal.createFrameworkOptions((builder) => {
+    builder.addLocationStore(store);
+    builder.configureLocations()
+      .heartbeatIntervalMs(20)
+      .ownerLeaseTtlMs(200)
+      .routingIdFencingMarginMs(50)
+      .ownerLeaseRenewTimeoutMs(10)
+      .pollingIntervalMs(5);
+    builder.addRouteMesh('play')
+      .listen('tcp://127.0.0.1:9204')
+      .useAllocatedRoutingId(2);
+  });
+  const host = new internal.ZLinkFrameworkRuntimeHost(
+    { registration: internal.createFrameworkRegistration(options) },
+    { backendAdapterFactory: allocationBackend(calls) }
+  );
+
+  await host.start();
+  const blockedUntil = performance.now() + 220;
+  while (performance.now() < blockedUntil) {
+    // Model a synchronous native stall that delays both heartbeat and fence timers.
+  }
+  await waitUntil(() => calls.includes('router:dispose') && calls.includes('store:release'), 1_000);
+  assert.equal(host.isStarted, false);
 });
 
 class RecordingAllocationStore extends internal.ZLinkInMemoryLocationStore {
@@ -287,36 +307,17 @@ class FailingRenewAllocationStore extends RecordingAllocationStore {
 }
 
 function allocationBackend(calls, failBind = false) {
-  const socket = {
-    nativeInstance: {},
-    options: {},
-    peerWeight: 100,
-    sendHighWaterMark: 0,
-    receiveHighWaterMark: 0,
-    sendTimeoutMs: 0,
-    maxMessageSize: 0,
-    setChannelName() {},
-    setRoutingId(value) { calls.push(`router:routing-id:${value}`); },
-    bind() {
-      calls.push('router:bind');
-      if (failBind) throw new Error('bind failed');
-    },
-    connect() { calls.push('router:connect'); },
-    disconnect() {},
-    onSendReady() {},
-    recv() { return undefined; },
-    send() { return true; },
-    request() { return true; },
-    reply() { return { message() { return this; }, submit() {} }; },
-    async dispose() { calls.push('router:dispose'); }
-  };
   return {
     createChannelAdapter() {
       return {
         createContext() {
-          return { nativeInstance: {}, async dispose() { calls.push('context:dispose'); } };
+          return {
+            nativeInstance: {},
+            shutdown() {},
+            async dispose() { calls.push('context:dispose'); }
+          };
         },
-        createRouterSocket() { return socket; },
+        createRouterSocket() { throw new Error('not used'); },
         createDealerSocket() { throw new Error('not used'); },
         createPublisherSocket() { throw new Error('not used'); },
         createSubscriberSocket() { throw new Error('not used'); },
@@ -324,8 +325,46 @@ function allocationBackend(calls, failBind = false) {
         createTopicMessage() { return { parts: [] }; }
       };
     },
-    createSpotAdapter() {
-      return { createSpotNode() { throw new Error('not used'); } };
+    createMeshAdapter() {
+      return {
+        createMeshNode(_context, options) {
+          let routingId = options.routingId;
+          if (routingId !== undefined) {
+            calls.push(`router:routing-id:${routingId}`);
+          }
+          return {
+            nativeInstance: {},
+            setRoutingId(value) {
+              routingId = value;
+              calls.push(`router:routing-id:${value}`);
+            },
+            setBind() {
+              calls.push('router:bind');
+              if (failBind) throw new Error('bind failed');
+            },
+            addChannelName() {},
+            setChannelWeight() {},
+            start() {},
+            createPublisher() {
+              return {
+                publish() { return true; },
+                close() {}
+              };
+            },
+            setReadyHandler() {},
+            createReadyBatch() { return emptyReadyBatch(); },
+            createReceiveBatch() { return emptyReceiveBatch(); },
+            drainReady() { return { ok: false, hasResidue: false, records: [] }; },
+            connectPeer() { return 1n; },
+            removePeerConnection() {},
+            disconnectPeer() {},
+            status() { return { routingId, lifecycleGeneration: 1n }; },
+            peers() { return []; },
+            shutdown() {},
+            close() { calls.push('router:dispose'); }
+          };
+        }
+      };
     },
     createStreamAdapter() {
       return { createStreamSocket() { throw new Error('not used'); } };
@@ -342,6 +381,21 @@ function allocationBackend(calls, failBind = false) {
         }
       };
     }
+  };
+}
+
+function emptyReadyBatch() {
+  return {
+    reset() {},
+    takeClaim() { throw new Error('no ready records'); },
+    close() {}
+  };
+}
+
+function emptyReceiveBatch() {
+  return {
+    reset() {},
+    close() {}
   };
 }
 

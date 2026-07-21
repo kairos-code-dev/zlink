@@ -92,17 +92,17 @@ class ProviderApplication {
             }
 
             if (!options.routeEndpoint.isNullOrBlank()) {
-                val route = framework.addRouteMeshChannel(Contracts.PROFILE_ROUTE_CHANNEL)
-                    .enableServer(options.routeEndpoint)
+                val route = framework.addRouteMesh(Contracts.PROFILE_ROUTE_CHANNEL)
+                    .listen(options.routeEndpoint)
                     .setRoutingId(RoutingId.from(options.rid))
+                route.channelName(Contracts.PROFILE_ROUTE_CHANNEL)
                 for (peer in options.routePeers) {
-                    route.enableClient(peer)
+                    route.peerConnections().connect(peer)
                 }
-                route.addRequestHandler(
+                route.addRouteRequestHandler(
                     RoutePingHandler::class.java,
                     ScenarioRoutePingReq::class.java,
                     ScenarioRoutePingRes::class.java,
-                    Contracts.ROUTE_PACKET,
                 )
             }
         }

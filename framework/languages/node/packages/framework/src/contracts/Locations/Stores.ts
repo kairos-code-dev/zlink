@@ -10,6 +10,9 @@ import type {
   ZLinkLocationWatchFilter,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteResult,
+  ZLinkLocationWriteStatus,
+  ZLinkMeshNodeDescriptor,
+  ZLinkMeshNodeDescriptorKey,
   ZLinkOwnerLeaseRenewal,
   ZLinkOwnerLeaseSnapshot,
   ZLinkPageRequest,
@@ -23,14 +26,29 @@ import type {
   ZLinkSpotLocationFilter,
   ZLinkSpotLocationKey
 } from './Models';
+import type { ZLinkActorTransferStore } from './ActorTransfer';
 
 export interface ZLinkLocationStore extends
-  ZLinkPeerLocationStore,
+  ZLinkMeshNodeLocationStore,
   ZLinkSpotLocationStore,
   ZLinkActorLocationStore,
-  ZLinkRouteLocationStore,
-  ZLinkOwnerLeaseStore {
-  removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
+  ZLinkOwnerLeaseStore,
+  ZLinkActorTransferStore {
+  removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<bigint>;
+}
+
+export interface ZLinkMeshNodeLocationStore {
+  updateMeshNode(
+    descriptor: ZLinkMeshNodeDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  removeMeshNode(
+    key: ZLinkMeshNodeDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus>;
+  listMeshNodes(meshName: string, signal?: AbortSignal): Promise<readonly ZLinkMeshNodeDescriptor[]>;
 }
 
 export interface ZLinkPeerLocationStore {
@@ -49,7 +67,7 @@ export interface ZLinkPeerLocationStore {
 
 export interface ZLinkSpotLocationStore {
   updateSpot(
-    spot: ZLinkSpotLocation,
+    location: ZLinkSpotLocation,
     intent: ZLinkLocationWriteIntent,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
@@ -57,8 +75,13 @@ export interface ZLinkSpotLocationStore {
     key: ZLinkSpotLocationKey,
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
+  ): Promise<ZLinkLocationWriteStatus>;
   resolveSpot(key: ZLinkSpotLocationKey, signal?: AbortSignal): Promise<ZLinkSpotLocation | undefined>;
+}
+
+// Operational pagination is an internal runtime capability rather than an
+// application-facing store requirement.
+export interface ZLinkSpotLocationQueryStore {
   listSpots(
     filter: ZLinkSpotLocationFilter,
     page?: ZLinkPageRequest,
@@ -68,7 +91,7 @@ export interface ZLinkSpotLocationStore {
 
 export interface ZLinkActorLocationStore {
   updateActor(
-    actor: ZLinkActorLocation,
+    location: ZLinkActorLocation,
     intent: ZLinkLocationWriteIntent,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult>;
@@ -76,8 +99,13 @@ export interface ZLinkActorLocationStore {
     key: ZLinkActorLocationKey,
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
+  ): Promise<ZLinkLocationWriteStatus>;
   resolveActor(key: ZLinkActorLocationKey, signal?: AbortSignal): Promise<ZLinkActorLocation | undefined>;
+}
+
+// Operational pagination is consumed by the framework runtime, but is not
+// part of the application-facing location-store contract.
+export interface ZLinkActorLocationQueryStore {
   listActors(
     filter: ZLinkActorLocationFilter,
     page?: ZLinkPageRequest,

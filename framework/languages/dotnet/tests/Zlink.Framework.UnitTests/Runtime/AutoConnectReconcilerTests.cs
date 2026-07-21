@@ -354,6 +354,48 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task Unhealthy_Owner_Lease_Blocks_A_Successful_Empty_List_From_Disconnecting()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+        Assert.Single(fixture.Reconciler.ActiveTargets);
+
+        // A store command that began before an outage can complete after the
+        // store resumes. The owner heartbeat remains the recovery authority,
+        // so an empty list observed while that lease is unhealthy cannot cut
+        // an already admitted transport.
+        await fixture.Runtime.StartAsync(RoutingId.From("runtime-node"));
+        await fixture.Runtime.StopAsync();
+        await fixture.RemovePeerAsync("r1");
+        await fixture.Reconciler.TickAsync();
+
+        Assert.True(fixture.Reconciler.StoreFailed);
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Single(fixture.Reconciler.ActiveTargets);
+    }
+
+    [Fact]
+    public async Task Hung_AutoConnect_Read_Enters_FailStatic_At_The_Lease_Renew_Bound()
+    {
+        var fixture = await FixtureAsync(options =>
+            options.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(25));
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+        Assert.Single(fixture.Reconciler.ActiveTargets);
+
+        fixture.PeerResolver.HangUntilCancelled = true;
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        await fixture.Reconciler.TickAsync();
+        elapsed.Stop();
+
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1));
+        Assert.True(fixture.Reconciler.StoreFailed);
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Single(fixture.Reconciler.ActiveTargets);
+    }
+
+    [Fact]
     public async Task Requested_Cancellation_Is_Not_Classified_As_A_Store_Outage()
     {
         var fixture = await FixtureAsync();
@@ -556,12 +598,17 @@ public sealed class AutoConnectReconcilerTests
     {
         public bool Fail { get; set; }
 
-        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+        public bool HangUntilCancelled { get; set; }
+
+        public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
             string meshName,
-            CancellationToken cancellationToken = default) =>
-            Fail
-                ? throw new InvalidOperationException("store unreachable")
-                : inner.ListLiveMeshNodesAsync(meshName, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            if (Fail) throw new InvalidOperationException("store unreachable");
+            if (HangUntilCancelled)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return await inner.ListLiveMeshNodesAsync(meshName, cancellationToken);
+        }
     }
 
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor

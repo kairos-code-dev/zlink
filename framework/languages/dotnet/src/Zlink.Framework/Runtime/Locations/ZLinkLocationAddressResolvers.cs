@@ -1,10 +1,9 @@
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Public messaging lookup surfaces: spot rid / actor id to a full spot
-/// address. A spot rid is searched across every spot mesh registered on
-/// this node (the same names the auto-connect host advertises under); the
-/// actor lookup derives the address from the actor row's spot kind — the
+/// Public messaging lookup surfaces: mesh-scoped spot rid / actor id to a
+/// full spot address. The actor lookup derives the address from the actor
+/// row's spot kind — the
 /// entry spot address is the node itself. The returned opaque handle keeps
 /// its logical lookup key and receives location-event updates without
 /// exposing address refresh policy to callers.
@@ -14,26 +13,25 @@ internal sealed class ZLinkLocationAddressResolvers :
     IZLinkActorSpotHandleResolver
 {
     private readonly ZLinkStoreLocationResolvers _rows;
-    private readonly ZLinkSpotMeshLocationResolver _spots;
     private readonly ZLinkSpotHandleRegistry _handles;
 
     internal ZLinkLocationAddressResolvers(
         ZLinkStoreLocationResolvers rows,
-        ZLinkSpotMeshLocationResolver spots,
         ZLinkSpotHandleRegistry handles)
     {
         _rows = rows;
-        _spots = spots;
         _handles = handles;
     }
 
     public async ValueTask<SpotHandle?> ResolveSpotHandleAsync(
+        string meshName,
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
-        var row = await _spots.ResolveAsync(spotRid, cancellationToken).ConfigureAwait(false);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        var key = new ZLinkSpotLocationKey(meshName, spotRid);
+        var row = await _rows.ResolveSpotRowAsync(key, cancellationToken).ConfigureAwait(false);
         if (row is null) return null;
-        var key = new ZLinkSpotLocationKey(row.MeshName, row.SpotRid);
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
             row.SpotGeneration,
@@ -43,10 +41,14 @@ internal sealed class ZLinkLocationAddressResolvers :
     }
 
     public async ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
+        string meshName,
         string actorId,
         CancellationToken cancellationToken = default)
     {
-        var row = await _spots.ResolveActorAsync(actorId, cancellationToken)
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
+        var key = new ZLinkActorLocationKey(meshName, actorId);
+        var row = await _rows.ResolveActorRowAsync(key, cancellationToken)
             .ConfigureAwait(false);
         if (row is null)
         {
@@ -60,8 +62,8 @@ internal sealed class ZLinkLocationAddressResolvers :
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
             row.MembershipEpoch,
-            ct => RefreshActorAsync(actorId, ct));
-        _handles.RegisterActor(actorId, handle);
+            ct => RefreshActorAsync(key, ct));
+        _handles.RegisterActor(key, handle);
         return handle;
     }
 
@@ -74,10 +76,10 @@ internal sealed class ZLinkLocationAddressResolvers :
     }
 
     private async ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?> RefreshActorAsync(
-        string actorId,
+        ZLinkActorLocationKey key,
         CancellationToken cancellationToken)
     {
-        var row = await _spots.ResolveActorAsync(actorId, cancellationToken)
+        var row = await _rows.ResolveActorRowAsync(key, cancellationToken)
             .ConfigureAwait(false);
         return row is null ? null : (ToSnapshot(row), row.MembershipEpoch);
     }
@@ -145,6 +147,8 @@ internal sealed class ZLinkResolvedSpotHandle : SpotHandle
             }
         }
     }
+
+    public override string MeshName { get { lock (_gate) return _snapshot.RouterChannelId; } }
 
     public override RoutingId SpotRid { get { lock (_gate) return _snapshot.SpotRid; } }
 

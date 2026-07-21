@@ -13,7 +13,6 @@ import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy;
 
 public final class SpotNodeRegistration {
     private final String meshName;
@@ -32,7 +31,6 @@ public final class SpotNodeRegistration {
     private String pubBind;
     private RoutingId routingId;
     private RoutingId entrySpotRoutingId;
-    private ZLinkSpotDrainPolicy drainPolicy = ZLinkSpotDrainPolicy.DRAIN_NATURAL;
 
     public SpotNodeRegistration(String meshName, String nodeName) {
         this.meshName = meshName;
@@ -85,14 +83,6 @@ public final class SpotNodeRegistration {
 
     public boolean pubSubEnabled() {
         return pubSubEnabled;
-    }
-
-    public ZLinkSpotDrainPolicy drainPolicy() {
-        return drainPolicy;
-    }
-
-    void setDrainPolicy(ZLinkSpotDrainPolicy drainPolicy) {
-        this.drainPolicy = java.util.Objects.requireNonNull(drainPolicy, "drainPolicy");
     }
 
     public List<RouterManualConnection> routerManualConnections() {

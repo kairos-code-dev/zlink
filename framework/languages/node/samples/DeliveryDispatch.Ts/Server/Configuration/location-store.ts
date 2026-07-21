@@ -1,4 +1,5 @@
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import type { ZLinkLocationOptions } from '@zlink-systems/framework';
 import type { DeliveryDispatchServerConfig } from './sample-config';
 
 function createDeliveryDispatchLocationStore(
@@ -10,16 +11,11 @@ function createDeliveryDispatchLocationStore(
   });
 }
 
-function deliveryDispatchLocationOptions(): {
-  pollingIntervalMs: number;
-  heartbeatIntervalMs: number;
-  ownerLeaseTtlMs: number;
-} {
-  return {
-    pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1000,
-    ownerLeaseTtlMs: 5000
-  };
+function deliveryDispatchLocationOptions(options: ZLinkLocationOptions): void {
+  options
+    .pollingIntervalMs(100)
+    .heartbeatIntervalMs(1000)
+    .ownerLeaseTtlMs(5000);
 }
 
 export { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions };

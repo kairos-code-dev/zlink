@@ -65,11 +65,20 @@ int zlink::pipepair (object_t *parents_[2],
         upipe2 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe2);
 
+    //  Every pipepair represents one process-local physical route. Inproc
+    //  routes do not have an engine to assign a transport connection id, so
+    //  allocate one here. Session-backed routes replace it with the engine's
+    //  actual connection id when the engine becomes ready.
+    const std::shared_ptr<transport_lifetime_t> transport_lifetime =
+      std::make_shared<transport_lifetime_t> (allocate_connection_id ());
+
     pipes_[0] = new (std::nothrow)
-      pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0], session_pipe_);
+      pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0],
+              session_pipe_, transport_lifetime);
     alloc_assert (pipes_[0]);
     pipes_[1] = new (std::nothrow)
-      pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1], session_pipe_);
+      pipe_t (parents_[1], upipe2, upipe1, hwms_[0], hwms_[1], conflate_[1],
+              session_pipe_, transport_lifetime);
     alloc_assert (pipes_[1]);
 
     pipes_[0]->set_peer (pipes_[1]);
@@ -154,7 +163,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
                        int inhwm_,
                        int outhwm_,
                        bool conflate_,
-                       bool session_pipe_) :
+                       bool session_pipe_,
+                       const std::shared_ptr<transport_lifetime_t> &transport_lifetime_) :
     object_t (parent_),
     _in_pipe (inpipe_),
     _out_pipe (outpipe_),
@@ -180,7 +190,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _command_refs (0),
     _release_after_command_refs (false),
     _conflate (conflate_),
-    _session_pipe (session_pipe_)
+    _session_pipe (session_pipe_),
+    _transport_lifetime (transport_lifetime_)
 {
     _disconnect_msg.init ();
 }
@@ -727,12 +738,16 @@ void zlink::pipe_t::process_pipe_term_ack ()
 
     detach_peer_backref ();
 
+    //  A locally initiated close that receives the peer's acknowledgement
+    //  owes one reciprocal acknowledgement. Queue it before reporting local
+    //  completion so cascading socket/context teardown cannot discard the
+    //  peer's final close notification.
+    if (ack_peer)
+        send_pipe_term_ack (_peer);
+
     //  Notify the user that all the references to the pipe should be dropped.
     zlink_assert (_sink);
     _sink->pipe_terminated (this);
-
-    if (ack_peer)
-        send_pipe_term_ack (_peer);
 
     //  We'll deallocate the inbound pipe, the peer will deallocate the outbound
     //  pipe (which is an inbound pipe from its point of view).
@@ -990,12 +1005,28 @@ void zlink::pipe_t::send_hwms_to_peer (int inhwm_, int outhwm_)
 
 void zlink::pipe_t::set_endpoint_pair (zlink::endpoint_uri_pair_t endpoint_pair_)
 {
+    set_transport_connection_id (endpoint_pair_.connection_id);
     _endpoint_pair = ZLINK_MOVE (endpoint_pair_);
 }
 
 const zlink::endpoint_uri_pair_t &zlink::pipe_t::get_endpoint_pair () const
 {
     return _endpoint_pair;
+}
+
+void zlink::pipe_t::set_transport_connection_id (uint64_t connection_id_)
+{
+    if (_transport_lifetime)
+        _transport_lifetime->connection_id.store (
+          connection_id_, std::memory_order_release);
+}
+
+uint64_t zlink::pipe_t::get_transport_connection_id () const
+{
+    return _transport_lifetime
+             ? _transport_lifetime->connection_id.load (
+                 std::memory_order_acquire)
+             : _endpoint_pair.connection_id;
 }
 
 void zlink::pipe_t::send_disconnect_msg ()

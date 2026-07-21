@@ -23,7 +23,7 @@ bingo_entry_spot_t::ensure_player_actor (const ensure_player_actor_req_t &reques
                    .value ();
     auto joined = co_await actor.context ()
                     .join_entry_spot (node_rid_t::from_string (node_rid), request)
-                    .async ();
+                    .yield ();
     const auto *joined_accepted =
       std::get_if<framework::actor_join_accepted_t<framework::message_t>> (&joined);
     if (joined_accepted == nullptr) {

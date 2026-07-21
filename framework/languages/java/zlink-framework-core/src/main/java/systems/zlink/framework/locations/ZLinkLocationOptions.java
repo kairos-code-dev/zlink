@@ -6,11 +6,13 @@ import java.util.Map;
 import java.util.Objects;
 
 public final class ZLinkLocationOptions {
-    private Duration heartbeatInterval = Duration.ofSeconds(5);
-    private Duration ownerLeaseTtl = Duration.ofSeconds(15);
+    private Duration heartbeatInterval = Duration.ofSeconds(10);
+    private Duration ownerLeaseTtl = Duration.ofSeconds(30);
     private Duration pollingInterval = Duration.ofSeconds(1);
     private int listPageSize = 1000;
     private Duration storeFailureGrace = Duration.ofSeconds(30);
+    private Duration routingIdFencingMargin = Duration.ofSeconds(5);
+    private Duration ownerLeaseRenewTimeout = Duration.ofSeconds(3);
     private final Map<String, String> spotRouterChannels = new LinkedHashMap<>();
 
     public Duration heartbeatInterval() {
@@ -54,6 +56,26 @@ public final class ZLinkLocationOptions {
 
     public void setStoreFailureGrace(Duration storeFailureGrace) {
         this.storeFailureGrace = requirePositive(storeFailureGrace, "storeFailureGrace");
+    }
+
+    public Duration routingIdFencingMargin() {
+        return routingIdFencingMargin;
+    }
+
+    public void setRoutingIdFencingMargin(Duration routingIdFencingMargin) {
+        this.routingIdFencingMargin = requirePositive(
+            routingIdFencingMargin,
+            "routingIdFencingMargin");
+    }
+
+    public Duration ownerLeaseRenewTimeout() {
+        return ownerLeaseRenewTimeout;
+    }
+
+    public void setOwnerLeaseRenewTimeout(Duration ownerLeaseRenewTimeout) {
+        this.ownerLeaseRenewTimeout = requirePositive(
+            ownerLeaseRenewTimeout,
+            "ownerLeaseRenewTimeout");
     }
 
     public Map<String, String> spotRouterChannels() {

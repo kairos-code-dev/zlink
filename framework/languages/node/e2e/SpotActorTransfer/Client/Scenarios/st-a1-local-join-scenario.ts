@@ -18,5 +18,5 @@ export async function runStA1(): Promise<void> {
     `ST-A1|${actorId}|success_reply|${spotRid}`,
     `ST-A1|${actorId}|packet_handler|after-joined`
   ]);
-  assertOrder(entries, actorId, ['admission', 'leave', 'joined', 'location_committed', 'success_reply', 'packet_handler']);
+  assertOrder(entries, actorId, ['admission', 'leave', 'joined', 'success_reply', 'location_committed', 'packet_handler']);
 }

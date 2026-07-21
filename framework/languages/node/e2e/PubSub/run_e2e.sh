@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
 CONFIG_DIR=""
@@ -39,7 +38,6 @@ wait_health() {
 }
 
 pids=()
-REDIS_CONTAINER_ID=""
 cleanup() {
   local code=$?
   for pid in "${pids[@]:-}"; do
@@ -48,9 +46,6 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
-  if [[ -n "$REDIS_CONTAINER_ID" ]]; then
-    docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
-  fi
   [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
@@ -89,15 +84,6 @@ build_package "$ROOT_DIR/Server/Publisher"
 build_package "$ROOT_DIR/Server/Subscriber"
 build_package "$ROOT_DIR/Client"
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required to run PubSub because it provisions a dedicated Redis location store." >&2
-  exit 1
-fi
-
-start_redis_container "zlink-redis-node-pubsub-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
-REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
-REDIS_KEY_PREFIX="pubsub:node:$RUN_ID"
-
 PUB_HTTP_PORT="$(pick_port)"
 SUB_1_HTTP_PORT="$(pick_port)"
 SUB_2_HTTP_PORT="$(pick_port)"
@@ -120,8 +106,6 @@ start_configured_server pub-a "$PUBLISHER_MAIN" \
   --rid pub-a \
   --http-url "$PUB_URL" \
   --publisher-endpoint "$PUB_ENDPOINT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/pub-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "$PUB_URL" pub-a
@@ -135,8 +119,7 @@ for sub in 1 2 3; do
   start_configured_server "sub-$sub" "$SUBSCRIBER_MAIN" \
     --rid "sub-$sub" \
     --http-url "${!url_var}" \
-    --redis-endpoint "$REDIS_ENDPOINT" \
-    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --publisher-endpoint "$PUB_ENDPOINT" \
     --evidence-file "$LOG_DIR/sub-$sub.evidence.log" \
     --log-dir "$LOG_DIR" \
     "${extra_args[@]}"
@@ -151,8 +134,6 @@ node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --subscriber-url "$SUB_3_URL" \
   --late-subscriber-url "$SUB_LATE_URL" \
   --publisher-endpoint "$PUB_ENDPOINT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --publisher-main "$PUBLISHER_MAIN" \
   --subscriber-main "$SUBSCRIBER_MAIN" \
   --log-dir "$LOG_DIR" \

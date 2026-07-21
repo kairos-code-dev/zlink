@@ -72,6 +72,14 @@ int zlink::router_t::xsend (msg_t *msg_)
                     return -1;
                 }
                 _current_out = out_pipe->pipe;
+                _current_out_connection_id =
+                  _current_out->get_transport_connection_id ();
+                if (_current_out_connection_id == 0) {
+                    _current_out = NULL;
+                    _more_out = false;
+                    errno = EHOSTUNREACH;
+                    return -1;
+                }
 
                 const pipe_write_status_t write_status = _current_out->check_write_status ();
                 if (write_status != pipe_write_ready) {
@@ -83,6 +91,7 @@ int zlink::router_t::xsend (msg_t *msg_)
                       write_status == pipe_write_hwm_full || !out_pipe->active;
                     mark_out_pipe_inactive (out_pipe);
                     _current_out = NULL;
+                    _current_out_connection_id = 0;
 
                     if (_mandatory) {
                         _more_out = false;
@@ -115,6 +124,8 @@ int zlink::router_t::xsend (msg_t *msg_)
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
     if (_current_out) {
+        msg_->set_transport_connection_id (
+          _current_out_connection_id);
         const bool ok =
           _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
@@ -131,6 +142,7 @@ int zlink::router_t::xsend (msg_t *msg_)
             }
             _current_out->rollback ();
             _current_out = NULL;
+            _current_out_connection_id = 0;
             if (_mandatory) {
                 _more_out = false;
                 errno = pipe_full ? EAGAIN : EHOSTUNREACH;
@@ -140,6 +152,7 @@ int zlink::router_t::xsend (msg_t *msg_)
             errno_assert (rc == 0);
         } else if (!_more_out) {
             _current_out = NULL;
+            _current_out_connection_id = 0;
         }
     } else {
         if (router_debug_enabled ()) {
@@ -154,10 +167,15 @@ int zlink::router_t::xsend (msg_t *msg_)
     return 0;
 }
 
-int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
+int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
+                                  msg_t *msg_,
+                                  uint64_t *connection_id_out_,
+                                  uint64_t expected_connection_id_)
 {
     zlink_assert (!_more_out);
     zlink_assert (!_current_out);
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
 
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
@@ -174,6 +192,24 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
             return -1;
         }
         _current_out = out_pipe->pipe;
+        _current_out_connection_id =
+          _current_out->get_transport_connection_id ();
+        if (_current_out_connection_id == 0) {
+            _current_out = NULL;
+            _more_out = false;
+            errno = EHOSTUNREACH;
+            return -1;
+        }
+        if (expected_connection_id_ != 0
+            && _current_out_connection_id != expected_connection_id_) {
+            _current_out = NULL;
+            _current_out_connection_id = 0;
+            _more_out = false;
+            errno = EHOSTUNREACH;
+            return -1;
+        }
+        if (connection_id_out_)
+            *connection_id_out_ = _current_out_connection_id;
 
         const pipe_write_status_t write_status = _current_out->check_write_status ();
         if (write_status != pipe_write_ready) {
@@ -184,6 +220,9 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
               write_status == pipe_write_hwm_full || !out_pipe->active;
             mark_out_pipe_inactive (out_pipe);
             _current_out = NULL;
+            _current_out_connection_id = 0;
+            if (connection_id_out_)
+                *connection_id_out_ = 0;
 
             if (_mandatory) {
                 _more_out = false;
@@ -209,6 +248,8 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
     }
 
     if (_current_out) {
+        msg_->set_transport_connection_id (
+          _current_out_connection_id);
         const bool ok =
           _more_out ? _current_out->write (msg_) : _current_out->write_and_flush (msg_);
         if (unlikely (!ok)) {
@@ -226,6 +267,9 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
             }
             _current_out->rollback ();
             _current_out = NULL;
+            _current_out_connection_id = 0;
+            if (connection_id_out_)
+                *connection_id_out_ = 0;
             if (_mandatory) {
                 _more_out = false;
                 errno = pipe_full ? EAGAIN : EHOSTUNREACH;
@@ -235,6 +279,7 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t 
             errno_assert (rc == 0);
         } else if (!_more_out) {
             _current_out = NULL;
+            _current_out_connection_id = 0;
         }
     } else {
         const int rc = msg_->close ();

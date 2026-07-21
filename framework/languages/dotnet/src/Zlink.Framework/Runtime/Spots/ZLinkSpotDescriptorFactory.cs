@@ -67,6 +67,7 @@ internal static class ZLinkSpotDescriptorFactory
     }
 
     public static ZLinkSpotSubscriptionDescriptor CreateSubscriptionDescriptor(
+        string channelName,
         string topic,
         Type handlerType,
         Type expectedSpotType)
@@ -78,6 +79,7 @@ internal static class ZLinkSpotDescriptorFactory
             ValidateSpotType(handlerType, expectedSpotType, arguments[0]);
             return new ZLinkSpotSubscriptionDescriptor
             {
+                ChannelName = channelName,
                 Topic = topic,
                 HandlerType = handlerType,
                 SpotType = arguments[0],
@@ -92,6 +94,7 @@ internal static class ZLinkSpotDescriptorFactory
     }
 
     public static ZLinkSpotSubscriptionDescriptor CreateAttributedSubscriptionDescriptor(
+        string channelName,
         string topic,
         Type spotType,
         MethodInfo method)
@@ -101,6 +104,7 @@ internal static class ZLinkSpotDescriptorFactory
         _ = ResolveAsyncResult(method, "SPOT subscription", requireResult: false);
         return new ZLinkSpotSubscriptionDescriptor
         {
+            ChannelName = channelName,
             Topic = topic,
             HandlerType = spotType,
             SpotType = spotType,

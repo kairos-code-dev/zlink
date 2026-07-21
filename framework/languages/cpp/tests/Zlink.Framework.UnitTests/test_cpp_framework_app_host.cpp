@@ -1301,7 +1301,12 @@ int main ()
         int value = 7;
     };
     app.advanced ().services ().add_singleton<singleton_service_t> ();
+    if (!app.advanced ().services ().contains (
+          std::type_index (typeid (zlink::framework::actor_client_t)))) {
+        return 52;
+    }
     auto provider = app.advanced ().services ().build_provider ();
+    (void) provider.get_required<zlink::framework::actor_client_t> ();
     if (provider.get_required<singleton_service_t> ().value != 7) {
         return 8;
     }

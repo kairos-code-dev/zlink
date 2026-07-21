@@ -1,8 +1,10 @@
 import {
-  zlinkDefaultLocationOptions,
+  zlinkRuntimeDefaultLocationOptions,
+  type ZLinkLocationOptionOverrides
+} from '../../contracts/Locations/Options';
+import {
   type ZLinkAllocatedRoutingId,
   type ZLinkAllocatedRoutingIdProvider,
-  type ZLinkLocationOptions,
   type ZLinkRoutingIdSlotAllocation,
   type ZLinkRoutingIdSlotAllocationMember,
   type ZLinkRoutingIdSlotAllocationStore
@@ -16,13 +18,12 @@ import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkLocationRuntime } from './runtime';
 
 export class ZLinkAllocatedRoutingIdRuntime implements ZLinkAllocatedRoutingIdProvider {
-  private readonly options: Required<ZLinkLocationOptions>;
+  private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly groups: readonly AllocationGroup[];
   private readonly ready = new Map<string, Deferred<ZLinkAllocatedRoutingId>>();
   private acquired: AcquiredGroup[] = [];
   private monitor?: ReturnType<typeof setInterval>;
   private fenceDeadlineMs = Number.POSITIVE_INFINITY;
-  private leaseAtRisk = false;
   private started = false;
   private fenced = false;
   private readyPublished = false;
@@ -33,7 +34,7 @@ export class ZLinkAllocatedRoutingIdRuntime implements ZLinkAllocatedRoutingIdPr
     private readonly locations: ZLinkLocationRuntime,
     private readonly fencingRequired: (error: Error) => void
   ) {
-    this.options = { ...zlinkDefaultLocationOptions, ...registration.locations.options };
+    this.options = { ...zlinkRuntimeDefaultLocationOptions, ...registration.locations.options };
     this.groups = buildGroups(registration);
     for (const group of this.groups) this.ready.set(group.name, deferred());
   }
@@ -149,7 +150,6 @@ export class ZLinkAllocatedRoutingIdRuntime implements ZLinkAllocatedRoutingIdPr
 
   private startFenceMonitor(): void {
     this.locations.addOwnerLeaseRenewedHandler(this.ownerLeaseRenewed);
-    this.locations.addOwnerLeaseRenewalFailedHandler(this.ownerLeaseRenewalFailed);
     const intervalMs = Math.max(10, Math.min(250, Math.floor(this.options.routingIdFencingMarginMs / 4)));
     this.monitor = setInterval(() => this.checkFenceDeadline(), intervalMs);
     this.monitor.unref();
@@ -157,18 +157,14 @@ export class ZLinkAllocatedRoutingIdRuntime implements ZLinkAllocatedRoutingIdPr
 
   private stopFenceMonitor(): void {
     this.locations.removeOwnerLeaseRenewedHandler(this.ownerLeaseRenewed);
-    this.locations.removeOwnerLeaseRenewalFailedHandler(this.ownerLeaseRenewalFailed);
     if (this.monitor !== undefined) clearInterval(this.monitor);
     this.monitor = undefined;
   }
 
   private readonly ownerLeaseRenewed = (renewal: { readonly leaseExpiresAt: Date; readonly storeNow: Date }): void => {
+    this.checkFenceDeadline();
+    if (this.fenced) return;
     this.confirmLease(renewal);
-    this.leaseAtRisk = false;
-  };
-
-  private readonly ownerLeaseRenewalFailed = (): void => {
-    this.leaseAtRisk = true;
   };
 
   private confirmLease(lease: { readonly leaseExpiresAt: Date; readonly storeNow: Date }): void {
@@ -181,11 +177,10 @@ export class ZLinkAllocatedRoutingIdRuntime implements ZLinkAllocatedRoutingIdPr
       );
     }
     this.fenceDeadlineMs = monotonicMs() + safeForMs;
-    this.leaseAtRisk = false;
   }
 
   private checkFenceDeadline(): void {
-    if (!this.leaseAtRisk || this.fenced || monotonicMs() < this.fenceDeadlineMs) return;
+    if (this.fenced || monotonicMs() < this.fenceDeadlineMs) return;
     this.fenced = true;
     const error = new Error(
       'The allocated routing-id owner lease could not be renewed before its fencing deadline.'
@@ -223,7 +218,7 @@ function buildGroups(registration: ZLinkFrameworkRegistration): readonly Allocat
         slotCount: members[0]?.slotCount ?? 0,
         members,
         storeMembers: members.map((member) => ({
-          channelName: member.memberName,
+          meshName: member.memberName,
           routingIdPrefix: member.routingIdPrefix
         }))
       };

@@ -1,8 +1,7 @@
-import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory, ZLinkMessage } from '@zlink-systems/framework';
+import type { ZLinkActor, ZLinkActorContext, ZLinkActorFactory } from '@zlink-systems/framework';
 
 class CustomerActor implements ZLinkActor {
   private readonly deliveries = new Set<string>();
-  private joined = false;
 
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
 
@@ -14,14 +13,6 @@ class CustomerActor implements ZLinkActor {
     return this.deliveries.has(deliveryId);
   }
 
-  async ensureJoined(spotRid: string, request: ZLinkMessage): Promise<void> {
-    if (this.joined) return;
-    const joined = await this.context.joinEntrySpot(spotRid, request).submit();
-    if (joined.status !== 'accepted') {
-      throw new Error(`Customer actor '${this.actorId}' could not join its entry spot.`);
-    }
-    this.joined = true;
-  }
 }
 
 class CustomerActorFactory implements ZLinkActorFactory {

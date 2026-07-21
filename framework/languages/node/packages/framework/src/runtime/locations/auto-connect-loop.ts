@@ -1,10 +1,12 @@
 import {
+  zlinkRuntimeDefaultLocationOptions,
+  type ZLinkLocationOptionOverrides
+} from '../../contracts/Locations/Options';
+import {
   ZLinkLocationKind,
-  zlinkDefaultLocationOptions,
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationWatchStore,
-  type ZLinkLocationChangeStampScope,
-  type ZLinkLocationOptions
+  type ZLinkLocationChangeStampScope
 } from '../../contracts/Locations';
 import type { ZLinkOwnerLeaseTracker } from './lease-tracker';
 import type { ZLinkAutoConnectLocal } from './auto-connect-types';
@@ -13,7 +15,7 @@ import type { ZLinkAutoConnectReconciler } from './auto-connect-reconciler';
 export interface ZLinkAutoConnectLoopOptions {
   readonly reconciler: ZLinkAutoConnectReconciler;
   readonly local: ZLinkAutoConnectLocal;
-  readonly options?: ZLinkLocationOptions;
+  readonly options?: ZLinkLocationOptionOverrides;
   readonly changeStampStore?: ZLinkLocationChangeStampStore;
   readonly watchStore?: ZLinkLocationWatchStore;
   readonly leaseTracker?: ZLinkOwnerLeaseTracker;
@@ -23,7 +25,7 @@ export interface ZLinkAutoConnectLoopOptions {
 
 export class ZLinkAutoConnectLoop {
   private readonly reconciler: ZLinkAutoConnectReconciler;
-  private readonly options: Required<ZLinkLocationOptions>;
+  private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly changeStampScope: ZLinkLocationChangeStampScope;
   private readonly changeStampStore?: ZLinkLocationChangeStampStore;
   private readonly watchStore?: ZLinkLocationWatchStore;
@@ -39,7 +41,7 @@ export class ZLinkAutoConnectLoop {
 
   constructor(options: ZLinkAutoConnectLoopOptions) {
     this.reconciler = options.reconciler;
-    this.options = { ...zlinkDefaultLocationOptions, ...options.options };
+    this.options = { ...zlinkRuntimeDefaultLocationOptions, ...options.options };
     this.changeStampScope = { kind: ZLinkLocationKind.Peer, meshName: options.local.meshName };
     this.changeStampStore = options.changeStampStore;
     this.watchStore = options.watchStore;

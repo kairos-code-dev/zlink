@@ -11,7 +11,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
@@ -128,7 +127,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                 "bingo-draw",
                 Duration.ofMillis(settings.drawPeriodMillis()),
                 BingoRoomTimerHandler.class,
-                new ZLinkTimerOptions())
+                null)
             .thenAccept(created -> timer = created);
     }
 
@@ -272,6 +271,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         String winner = change.state().getWinnersList().getFirst();
         context.outbound()
             .publish(
+                SampleNames.RoomSpotDiscovery,
                 SampleNames.WinnerTopic,
                 BingoMessages.bingoRewardAcquiredEvent(
                     change.state().getRoomId(),

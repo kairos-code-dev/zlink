@@ -40,7 +40,7 @@ should_run_sample() {
   return 1
 }
 
-./gradlew --no-daemon \
+./gradlew --no-daemon --no-parallel \
   :zlink-framework-testkit:contractTest \
   --tests '*SampleReleaseGateContractTest*'
 

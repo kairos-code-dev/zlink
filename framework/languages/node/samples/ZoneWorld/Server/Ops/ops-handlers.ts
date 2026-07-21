@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_CHANNEL_CLIENT, ZLINK_FANOUT_CLIENT } from '@zlink-systems/nestjs';
+import { zlinkSendHandler } from '@zlink-systems/nestjs';
 import { ZLinkPacket } from '@zlink-systems/framework';
 import {
   AnnounceWorldRes,
@@ -37,6 +38,7 @@ import type {
 } from '@zlink-systems/framework';
 
 @Injectable()
+@zlinkSendHandler('ops', PacketNames.reportNodeStatusMsg)
 class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
   constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
@@ -47,6 +49,7 @@ class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
 }
 
 @Injectable()
+@zlinkSendHandler('ops', PacketNames.reportSpotEventMsg)
 class ReportSpotEventHandler implements ZLinkSendHandler<ReportSpotEventMsg> {
   constructor(private readonly consoles: OpsConsoleRegistry) {}
 
@@ -109,6 +112,7 @@ class SetMaintenanceHandler {
     try {
       const applied = await this.channels
         .requestToChannel(
+          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.opsChannel(request.nodeId),
           new ApplyNodeMaintenanceReq(request.nodeId, request.enabled)
         )
@@ -116,7 +120,6 @@ class SetMaintenanceHandler {
         .submit<ApplyNodeMaintenanceRes>();
       await this.fanout.publish(
         ZoneWorldNames.broadcastChannel,
-        ZoneWorldNames.maintenanceTopic,
         new NodeMaintenanceChangedEvent(request.nodeId, request.enabled)
       ).submit();
       context.client.reply(new SetMaintenanceRes(applied.nodeId, applied.enabled, applied.zones)).submit();
@@ -140,6 +143,7 @@ class NodeDiagnosticsHandler {
     try {
       const result = await this.channels
         .requestToChannel(
+          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.opsChannel(request.nodeId),
           new GetNodeDiagnosticsReq(request.nodeId)
         )

@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.spots;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -17,7 +18,10 @@ import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 
 final class ZLinkSpotDirectOutbound {
     private final ZLinkSpotRouteMessages messages;
@@ -37,16 +41,18 @@ final class ZLinkSpotDirectOutbound {
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName) {
         return new ZLinkSpotDirectSendCall(
-            this, spot, targetNodeRid, spotRid, payload, packetName);
+            this, spot, targetNodeRid, spotRid, spotGeneration, payload, packetName);
     }
 
     ZLinkRequestCall request(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
@@ -55,6 +61,7 @@ final class ZLinkSpotDirectOutbound {
             spot,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
             timeout);
@@ -62,18 +69,22 @@ final class ZLinkSpotDirectOutbound {
 
     ZLinkPublishCall publish(
         ZLinkBackendSpot spot,
+        String channelName,
         String topic,
         Message payload,
         Optional<String> packetName) {
-        return new ZLinkSpotDirectPublishCall(this, spot, topic, payload, packetName);
+        return new ZLinkSpotDirectPublishCall(
+            this, spot, channelName, topic, payload, packetName);
     }
 
-    void submitSend(
+    CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submitSend(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
-        Optional<String> packetName) {
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
             ZLinkDispatchMessageKind.SEND,
@@ -81,22 +92,28 @@ final class ZLinkSpotDirectOutbound {
             null,
             targetNodeRid,
             spotRid);
-        settle(CompletableFuture.runAsync(() -> {
-            List<Message> parts = messages.encode(packetName, payload);
-            try {
-                spot.sendToSpot(targetNodeRid, spotRid, parts, SendFlags.NONE);
-            } finally {
-                parts.forEach(Message::close);
-            }
-        }, handlerExecutor));
+        List<Message> parts = messages.encode(packetName, payload);
+        return ZLinkSubmitResults.submitAsync(
+            spot,
+            ZLinkBackendAdmissionKey.spot(targetNodeRid, spotRid),
+            () -> spot.sendToSpot(
+                targetNodeRid,
+                spotRid,
+                spotGeneration,
+                metadata.encode(),
+                parts,
+                SendFlags.DONT_WAIT),
+            () -> parts.forEach(Message::close));
     }
 
     <TReply> CompletionStage<TReply> submitRequest(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        ZLinkApplicationMetadata metadata,
         Duration timeout,
         Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
@@ -109,7 +126,13 @@ final class ZLinkSpotDirectOutbound {
             targetNodeRid,
             spotRid);
         try {
-            spot.requestToSpot(targetNodeRid, spotRid, requestParts, reply -> {
+            spot.requestToSpot(
+                targetNodeRid,
+                spotRid,
+                spotGeneration,
+                metadata.encode(),
+                requestParts,
+                reply -> {
                 trace(
                     ZLinkMessageFlowOutcome.REPLY_RECEIVED,
                     ZLinkDispatchMessageKind.RESPONSE,
@@ -131,11 +154,13 @@ final class ZLinkSpotDirectOutbound {
         return result.thenApplyAsync(reply -> reply, handlerExecutor);
     }
 
-    void submitPublish(
+    CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> submitPublish(
         ZLinkBackendSpot spot,
+        String channelName,
         String topic,
         Message payload,
-        Optional<String> packetName) {
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
             ZLinkDispatchMessageKind.PUBLISH,
@@ -143,22 +168,21 @@ final class ZLinkSpotDirectOutbound {
             topic,
             null,
             null);
-        settle(CompletableFuture.runAsync(() -> {
-            List<Message> parts = messages.encode(packetName, payload);
-            try {
-                spot.publish(topic, parts, SendFlags.NONE);
-            } finally {
-                parts.forEach(Message::close);
-            }
-        }, handlerExecutor));
-    }
-
-    private void settle(CompletionStage<Void> submission) {
-        submission.exceptionally(error -> {
-            java.util.logging.Logger.getLogger(ZLinkSpotDirectOutbound.class.getName())
-                .log(java.util.logging.Level.SEVERE, "one-way SPOT submission failed", error);
-            return null;
-        });
+        List<Message> parts = messages.encode(packetName, payload);
+        return ZLinkSubmitResults.submitAsync(
+                spot,
+                ZLinkBackendAdmissionKey.channel(channelName),
+                () -> spot.publish(
+                    channelName,
+                    topic,
+                    metadata.encode(),
+                    parts,
+                    SendFlags.DONT_WAIT),
+                () -> parts.forEach(Message::close))
+            .thenApply(result -> new systems.zlink.framework.channels.ZLinkPublishResult(
+                result.status(),
+                new systems.zlink.framework.channels.ZLinkLogicalMulticastDetail(
+                    0, 0, 0, 0, 0, 0, 0)));
     }
 
     private void trace(
@@ -189,26 +213,53 @@ final class ZLinkSpotDirectOutbound {
 }
 
 final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkSpotDirectOutbound outbound;
     private final ZLinkBackendSpot spot;
     private final RoutingId targetNodeRid;
     private final RoutingId spotRid;
+    private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
+    private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotDirectSendCall(
         ZLinkSpotDirectOutbound outbound,
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName) {
+        this(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    private ZLinkSpotDirectSendCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.spot = spot;
         this.targetNodeRid = targetNodeRid;
         this.spotRid = spotRid;
+        this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
+        this.metadata = metadata;
     }
 
     public ZLinkSendCall packetName(String packetName) {
@@ -217,14 +268,53 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
             spot,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
-            Optional.of(packetName));
+            Optional.of(packetName),
+            metadata);
     }
 
     @Override
-    public void submit() {
-        outbound.submitSend(
-            spot, targetNodeRid, spotRid, payload, packetName);
+    public ZLinkSendCall metadata(String key, String value) {
+        return new ZLinkSpotDirectSendCall(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            metadata.with(key, value));
+    }
+
+    @Override
+    public ZLinkSendCall metadata(Map<String, String> values) {
+        return new ZLinkSpotDirectSendCall(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            metadata.withAll(values));
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
+        return outbound.submitSend(
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            metadata);
     }
 }
 
@@ -233,25 +323,52 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
     private final ZLinkBackendSpot spot;
     private final RoutingId targetNodeRid;
     private final RoutingId spotRid;
+    private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotDirectRequestCall(
         ZLinkSpotDirectOutbound outbound,
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
+        this(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    private ZLinkSpotDirectRequestCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        Duration timeout,
+        ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.spot = spot;
         this.targetNodeRid = targetNodeRid;
         this.spotRid = spotRid;
+        this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.metadata = metadata;
     }
 
     public ZLinkRequestCall packetName(String packetName) {
@@ -260,9 +377,39 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spot,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             Optional.of(packetName),
-            timeout);
+            timeout,
+            metadata);
+    }
+
+    @Override
+    public ZLinkRequestCall metadata(String key, String value) {
+        return new ZLinkSpotDirectRequestCall(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            metadata.with(key, value));
+    }
+
+    @Override
+    public ZLinkRequestCall metadata(Map<String, String> values) {
+        return new ZLinkSpotDirectRequestCall(
+            outbound,
+            spot,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            metadata.withAll(values));
     }
 
     @Override
@@ -272,9 +419,11 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spot,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
-            timeout);
+            timeout,
+            metadata);
     }
 
     @Override
@@ -284,8 +433,10 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             spot,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
+            metadata,
             timeout,
             replyType));
     }
@@ -293,32 +444,75 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
 }
 
 final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkSpotDirectOutbound outbound;
     private final ZLinkBackendSpot spot;
+    private final String channelName;
     private final String topic;
     private final Message payload;
     private final Optional<String> packetName;
+    private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotDirectPublishCall(
         ZLinkSpotDirectOutbound outbound,
         ZLinkBackendSpot spot,
+        String channelName,
         String topic,
         Message payload,
         Optional<String> packetName) {
+        this(
+            outbound,
+            spot,
+            channelName,
+            topic,
+            payload,
+            packetName,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    private ZLinkSpotDirectPublishCall(
+        ZLinkSpotDirectOutbound outbound,
+        ZLinkBackendSpot spot,
+        String channelName,
+        String topic,
+        Message payload,
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.spot = spot;
+        this.channelName = channelName;
         this.topic = topic;
         this.payload = payload;
         this.packetName = packetName;
+        this.metadata = metadata;
     }
 
     public ZLinkPublishCall packetName(String packetName) {
         return new ZLinkSpotDirectPublishCall(
-            outbound, spot, topic, payload, Optional.of(packetName));
+            outbound, spot, channelName, topic, payload, Optional.of(packetName), metadata);
     }
 
     @Override
-    public void submit() {
-        outbound.submitPublish(spot, topic, payload, packetName);
+    public ZLinkPublishCall metadata(String key, String value) {
+        return new ZLinkSpotDirectPublishCall(
+            outbound, spot, channelName, topic, payload, packetName, metadata.with(key, value));
+    }
+
+    @Override
+    public ZLinkPublishCall metadata(Map<String, String> values) {
+        return new ZLinkSpotDirectPublishCall(
+            outbound, spot, channelName, topic, payload, packetName, metadata.withAll(values));
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
+        return outbound.submitPublish(
+            spot, channelName, topic, payload, packetName, metadata);
     }
 }

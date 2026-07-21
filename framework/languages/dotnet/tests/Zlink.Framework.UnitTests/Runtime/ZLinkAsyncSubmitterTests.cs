@@ -1,7 +1,61 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+
 namespace Zlink.Framework.UnitTests;
 
 public sealed class ZLinkAsyncSubmitterTests
 {
+    [Fact]
+    public void Explicit_SendHwm_Defines_Pending_Admission_Capacity()
+    {
+        Assert.Equal(1, ZLinkAsyncSubmitter.ResolvePendingCapacity(1));
+        Assert.True(ZLinkAsyncSubmitter.ResolvePendingCapacity(0) > 1);
+    }
+
+    [Fact]
+    public async Task Admission_Trace_Records_One_Signal_And_One_Retry_With_Cleanup()
+    {
+        var events = new ConcurrentQueue<(string Name, int Pending)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = static (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (!string.Equals(activity.OperationName, "zlink.submit.admission", StringComparison.Ordinal))
+                    return;
+                events.Enqueue((
+                    Assert.IsType<string>(activity.GetTagItem("zlink.submit.event")),
+                    Assert.IsType<int>(activity.GetTagItem("zlink.submit.pending_waiters"))));
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        Action? ready = null;
+        var writable = false;
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None,
+            capacity: 1);
+
+        var pending = submitter.Async(Message.From("payload"), _ => writable);
+        Assert.False(pending.IsCompleted);
+        writable = true;
+        ready?.Invoke();
+        await pending;
+
+        var snapshot = events.ToArray();
+        Assert.Equal(2, snapshot.Count(item => item.Name == "transport-attempt"));
+        Assert.Single(snapshot, item => item.Name == "pending");
+        Assert.Single(snapshot, item => item.Name == "send-ready");
+        Assert.Single(snapshot, item => item.Name == "retry-attempt");
+        Assert.Single(snapshot, item => item.Name == "commit");
+        var cleanup = Assert.Single(snapshot, item => item.Name == "cleanup");
+        Assert.Equal(0, cleanup.Pending);
+    }
+
     [Fact]
     public async Task Async_DrainsPendingItemFromReadyCallback()
     {
@@ -23,20 +77,21 @@ public sealed class ZLinkAsyncSubmitterTests
             });
 
         Assert.False(task.IsCompleted);
-        Assert.Equal(2, submitted);
+        Assert.Equal(1, submitted);
 
         writable = true;
         ready?.Invoke();
         await task;
 
-        Assert.Equal(3, submitted);
+        Assert.Equal(2, submitted);
     }
 
     [Fact]
-    public async Task Async_RetriesAfterQueueingToCloseReadyRace()
+    public async Task Async_RetriesAfterQueueingToCloseInlineReadyRace()
     {
+        Action? ready = null;
         await using var submitter = new ZLinkAsyncSubmitter(
-            _ => { },
+            handler => ready = handler,
             TimeSpan.FromSeconds(1),
             CancellationToken.None);
         var submitted = 0;
@@ -46,6 +101,7 @@ public sealed class ZLinkAsyncSubmitterTests
             _ =>
             {
                 submitted++;
+                if (submitted == 1) ready?.Invoke();
                 return submitted == 2;
             });
 
@@ -69,16 +125,16 @@ public sealed class ZLinkAsyncSubmitterTests
             {
                 submitted++;
                 Assert.Equal("payload", message.GetString());
-                return submitted == 3;
+                return submitted == 2;
             });
 
         Assert.False(task.IsCompleted);
-        Assert.Equal(2, submitted);
+        Assert.Equal(1, submitted);
 
         ready?.Invoke();
         await task;
 
-        Assert.Equal(3, submitted);
+        Assert.Equal(2, submitted);
     }
 
     [Fact]
@@ -98,7 +154,7 @@ public sealed class ZLinkAsyncSubmitterTests
             {
                 submitted++;
                 Assert.Equal("payload", message.GetString());
-                if (submitted < 3)
+                if (submitted < 2)
                 {
                     message.Dispose();
                     return false;
@@ -108,12 +164,117 @@ public sealed class ZLinkAsyncSubmitterTests
             });
 
         Assert.False(task.IsCompleted);
-        Assert.Equal(2, submitted);
+        Assert.Equal(1, submitted);
 
         ready?.Invoke();
         await task;
 
-        Assert.Equal(3, submitted);
+        Assert.Equal(2, submitted);
+    }
+
+    [Fact]
+    public async Task Async_UsesAtMostOneRetryPerReadySignal()
+    {
+        Action? ready = null;
+        var firstWritable = false;
+        var secondWritable = false;
+        var firstAttempts = 0;
+        var secondAttempts = 0;
+
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        var first = submitter.Async(
+            Message.From("first"),
+            _ =>
+            {
+                firstAttempts++;
+                return firstWritable;
+            });
+        var second = submitter.Async(
+            Message.From("second"),
+            _ =>
+            {
+                secondAttempts++;
+                return secondWritable;
+            });
+
+        Assert.Equal(1, firstAttempts);
+        Assert.Equal(1, secondAttempts);
+
+        firstWritable = true;
+        ready?.Invoke();
+        await first;
+
+        Assert.Equal(2, firstAttempts);
+        Assert.Equal(1, secondAttempts);
+        Assert.False(second.IsCompleted);
+
+        secondWritable = true;
+        ready?.Invoke();
+        await second;
+        Assert.Equal(2, secondAttempts);
+    }
+
+    [Fact]
+    public async Task Async_CancellationRemovesANonHeadPendingReservation()
+    {
+        await using var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None,
+            capacity: 2);
+        using var cancellation = new CancellationTokenSource();
+
+        var first = submitter.Async(Message.From("first"), _ => false);
+        var cancelled = submitter.Async(
+            Message.From("cancelled"),
+            _ => false,
+            cancellation.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled.AsTask());
+
+        var replacement = submitter.Async(Message.From("replacement"), _ => false);
+        Assert.False(replacement.IsCompleted);
+
+        await submitter.DisposeAsync();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.AsTask());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => replacement.AsTask());
+    }
+
+    [Fact]
+    public async Task Async_CancellationPreventsLateAdmissionAfterReadySignal()
+    {
+        Action? ready = null;
+        var attempts = 0;
+        var writable = false;
+        using var cancellation = new CancellationTokenSource();
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None,
+            capacity: 1);
+
+        var pending = submitter.Async(
+            Message.From("payload"),
+            _ =>
+            {
+                attempts++;
+                return writable;
+            },
+            cancellation.Token);
+
+        Assert.Equal(1, attempts);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.AsTask());
+
+        writable = true;
+        Assert.NotNull(ready);
+        ready();
+
+        Assert.Equal(1, attempts);
     }
 
     [Fact]
@@ -132,6 +293,34 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
+    public async Task Async_TimeoutPreventsLateAdmissionAfterReadySignal()
+    {
+        Action? ready = null;
+        var attempts = 0;
+        var writable = false;
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromMilliseconds(20),
+            CancellationToken.None,
+            capacity: 1);
+
+        var pending = submitter.Async(
+            Message.From("payload"),
+            _ =>
+            {
+                attempts++;
+                return writable;
+            });
+
+        await Assert.ThrowsAsync<TimeoutException>(() => pending.AsTask());
+        writable = true;
+        Assert.NotNull(ready);
+        ready();
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
     public async Task Async_ThrowsWhenQueueIsFull()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
@@ -146,7 +335,7 @@ public sealed class ZLinkAsyncSubmitterTests
 
         Assert.False(first.IsCompleted);
 
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<ZLinkPendingAdmissionFullException>(() =>
             submitter.Async(
                 Message.From("second"),
                 _ => false));
@@ -184,6 +373,62 @@ public sealed class ZLinkAsyncSubmitterTests
         await submitter.DisposeAsync();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await pending.AsTask());
+    }
+
+    [Fact]
+    public async Task DisposeAsync_Twice_RacingReady_CleansPendingResourcesOnce()
+    {
+        using var operation = new Activity("submit-dispose-race").Start();
+        var operationId = Assert.IsType<string>(operation.Id);
+        var events = new ConcurrentQueue<(string Name, int Pending, int Reservations, int Callbacks)>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == ZLinkTelemetry.ActivitySourceName,
+            Sample = static (ref ActivityCreationOptions<ActivityContext> _) =>
+                ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (!string.Equals(
+                        activity.GetTagItem("zlink.submit.operation_id") as string,
+                        operationId,
+                        StringComparison.Ordinal))
+                    return;
+                events.Enqueue((
+                    Assert.IsType<string>(activity.GetTagItem("zlink.submit.event")),
+                    Assert.IsType<int>(activity.GetTagItem("zlink.submit.pending_waiters")),
+                    Assert.IsType<int>(activity.GetTagItem("zlink.submit.reservations")),
+                    Assert.IsType<int>(activity.GetTagItem("zlink.submit.callbacks"))));
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        Action? ready = null;
+        var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None,
+            capacity: 1);
+        var pending = submitter.Async(Message.From("payload"), _ => false);
+
+        var firstDispose = submitter.DisposeAsync().AsTask();
+        var secondDispose = submitter.DisposeAsync().AsTask();
+        var signal = Task.Run(Assert.IsType<Action>(ready));
+
+        Assert.Same(firstDispose, secondDispose);
+        await Task.WhenAll(firstDispose, secondDispose, signal);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => pending.AsTask());
+
+        var snapshot = events.ToArray();
+        Assert.Single(snapshot, item => item.Name == "pending");
+        var cleanup = Assert.Single(snapshot, item => item.Name == "cleanup");
+        Assert.Equal(0, cleanup.Pending);
+        Assert.Equal(0, cleanup.Reservations);
+        Assert.Equal(0, cleanup.Callbacks);
+        Assert.Empty(snapshot.Where(item => item.Name == "commit"));
+        Assert.InRange(snapshot.Count(item => item.Name == "transport-attempt"), 1, 2);
+        Assert.Equal(
+            snapshot.Count(item => item.Name == "send-ready"),
+            snapshot.Count(item => item.Name == "retry-attempt"));
     }
 
     [Fact]
@@ -237,7 +482,7 @@ public sealed class ZLinkAsyncSubmitterTests
             message =>
             {
                 Assert.Equal("payload", message.GetString());
-                if (Interlocked.Increment(ref attempts) < 3) return false;
+                if (Interlocked.Increment(ref attempts) < 2) return false;
 
                 entered.TrySetResult();
                 release.Task.GetAwaiter().GetResult();
@@ -256,7 +501,7 @@ public sealed class ZLinkAsyncSubmitterTests
         await drain;
         await dispose;
         await Assert.ThrowsAsync<ObjectDisposedException>(() => pending.AsTask());
-        Assert.Equal(3, attempts);
+        Assert.Equal(2, attempts);
     }
 
     [Fact]

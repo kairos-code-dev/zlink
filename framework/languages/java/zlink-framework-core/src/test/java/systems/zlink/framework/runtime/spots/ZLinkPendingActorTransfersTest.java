@@ -84,6 +84,13 @@ final class ZLinkPendingActorTransfersTest {
             null,
             null,
             null,
+            0,
+            false,
+            0,
+            0,
+            0,
+            0,
+            0,
             0);
     }
 }

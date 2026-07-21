@@ -38,7 +38,10 @@ internal sealed class ZLinkActorRemoteJoiner(
                 .ConfigureAwait(false);
         }
 
-        var remoteAddress = await ResolveRemoteActorJoinTargetAsync(spotRid, cancellationToken)
+        var remoteAddress = await ResolveRemoteActorJoinTargetAsync(
+                actor.Context.MeshName,
+                spotRid,
+                cancellationToken)
             .ConfigureAwait(false);
         return await SubmitRoutedJoinActorAsync(
                 actor,
@@ -636,6 +639,7 @@ internal sealed class ZLinkActorRemoteJoiner(
     }
 
     private async ValueTask<ZLinkResolvedSpotHandle> ResolveRemoteActorJoinTargetAsync(
+        string meshName,
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
@@ -643,7 +647,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             as IZLinkSpotHandleResolver;
         if (resolver is null) throw new InvalidOperationException($"SPOT '{spotRid}' is not active.");
 
-        var handle = await resolver.ResolveSpotHandleAsync(spotRid, cancellationToken)
+        var handle = await resolver.ResolveSpotHandleAsync(meshName, spotRid, cancellationToken)
             .ConfigureAwait(false) as ZLinkResolvedSpotHandle;
         if (handle is null)
             throw new ZLinkFrameworkException(

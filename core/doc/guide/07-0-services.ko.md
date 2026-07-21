@@ -83,8 +83,8 @@ flowchart TB
 - **Public C API**는 진입점으로, 핸들·versioned 구조체 유효성을 검사한 뒤 mesh
   runtime으로 위임한다.
 - **Mesh Runtime**은 프로세스-로컬 상태 기계(`mesh_runtime`)와 원격
-  wire(`mesh_wire`)로 나뉜다. 내부 구조는
-  [서비스 계층 내부 설계](../internals/services-internals.ko.md)를 본다.
+  wire(`mesh_wire`)로 나뉜다. 11.0 목표 service 계약은
+  [Framework 공개 계약](../../../framework/doc/framework/spec/README.ko.md)을 본다.
 - raw socket 계층은 mesh를 모른다. MeshNode는 자기 소유 ROUTER 하나로 모든
   peer와 통신한다.
 
@@ -98,19 +98,19 @@ flowchart TB
 | **STREAM session** | 외부 byte 세션 | raw STREAM socket과 1:1로 붙는 service가 session↔Actor binding과 relay를 소유 |
 
 - MeshNode lifecycle과 메시징: `zlink_mesh_node_*`
-  ([정식 spec](../spec/core/service/01-mesh-node.ko.md))
+  ([정식 spec](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md))
 - dispatch(ready handler·drain·claim·receive batch·reply):
   `zlink_mesh_*` dispatch 계열
-  ([정식 spec](../spec/core/service/02-dispatch.ko.md))
+  ([정식 spec](../../../framework/doc/framework/spec/server/11-channel-messaging.ko.md))
 - Spot: `zlink_spot_*`, `zlink_mesh_node_spot_*`
-  ([정식 spec](../spec/core/service/03-spot.ko.md), [가이드](07-3-spot.ko.md))
+  ([정식 spec](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md), [가이드](07-3-spot.ko.md))
 - Actor: `zlink_mesh_node_actor_*`, `zlink_actor_*`
-  ([정식 spec](../spec/core/service/04-actor.ko.md), [가이드](07-4-actor.ko.md))
+  ([정식 spec](../../../framework/doc/framework/spec/server/23-spot-actor.ko.md), [가이드](07-4-actor.ko.md))
 - STREAM session: `zlink_stream_session_*`
-  ([정식 spec](../spec/core/service/05-stream-session.ko.md))
+  ([정식 spec](../../../framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md))
 - **Thread-safe** — 하나의 MeshNode/Spot 핸들에서 여러 스레드가 operational
   API를 동시에 호출할 수 있다. 재진입 금지 지점은
-  [정식 spec의 thread safety 절](../spec/core/service/01-mesh-node.ko.md)이 정한다.
+  [정식 spec의 thread safety 절](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md)이 정한다.
 
 ## 4. 점검을 위한 graceful maintenance (가중치)
 

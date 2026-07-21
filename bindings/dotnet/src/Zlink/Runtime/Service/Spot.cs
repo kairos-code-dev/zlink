@@ -39,7 +39,8 @@ internal sealed class Spot : ISpot
             native.ActiveActorCount,
             native.Draining != 0,
             native.LastError,
-            native.LastChangedMs);
+            native.LastChangedMs,
+            (SpotActivationState)native.ActivationState);
     }
 
     public SubmitResult SendToChannel(string channelName,
@@ -106,11 +107,15 @@ internal sealed class Spot : ISpot
         return result;
     }
 
-    public MeshPublishDetail Publish(string channelName, string? topic,
+    public MeshPublishResult Publish(string channelName, string? topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(
+            topic ?? throw new ArgumentNullException(nameof(topic)),
+            nameof(topic),
+            allowEmpty: false);
         EnsureNotDisposed();
         var detailPtr =
             Marshal.AllocHGlobal(Marshal.SizeOf<ZlinkMeshPublishDetail>());
@@ -126,17 +131,18 @@ internal sealed class Spot : ISpot
                 metadata, (np, count, meta) =>
                     NativeMethods.zlink_spot_publish(Handle, channelName, topic,
                         meta, np, count, detailPtr, (int)flags));
-            ZlinkException.ThrowSubmitIfError((int)result);
             var detail =
                 Marshal.PtrToStructure<ZlinkMeshPublishDetail>(detailPtr);
-            return new MeshPublishDetail(
-                detail.SnapshotRemoteTargetCount,
-                detail.AdmittedRemoteTargetCount,
-                detail.DroppedRemoteTargetCount,
-                detail.UnreachableRemoteTargetCount,
-                detail.SnapshotLocalSpotCount,
-                detail.AdmittedLocalSpotCount,
-                detail.DroppedLocalSpotCount);
+            return new MeshPublishResult(
+                result,
+                new MeshPublishDetail(
+                    detail.SnapshotRemoteTargetCount,
+                    detail.AdmittedRemoteTargetCount,
+                    detail.DroppedRemoteTargetCount,
+                    detail.UnreachableRemoteTargetCount,
+                    detail.SnapshotLocalSpotCount,
+                    detail.AdmittedLocalSpotCount,
+                    detail.DroppedLocalSpotCount));
         }
         finally
         {
@@ -148,6 +154,9 @@ internal sealed class Spot : ISpot
         SpotSubscriptionKind kind = SpotSubscriptionKind.Exact)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(
+            topicFilter,
+            nameof(topicFilter));
         EnsureNotDisposed();
         ZlinkException.ThrowConfigIfError(
             NativeMethods.zlink_spot_set_subscription(Handle, channelName,
@@ -158,6 +167,9 @@ internal sealed class Spot : ISpot
         SpotSubscriptionKind kind = SpotSubscriptionKind.Exact)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(
+            topicFilter,
+            nameof(topicFilter));
         EnsureNotDisposed();
         ZlinkException.ThrowConfigIfError(
             NativeMethods.zlink_spot_unset_subscription(Handle, channelName,

@@ -15,16 +15,16 @@ internal static class ZLinkRoutingIdSlotAllocationValidator
         if (request.Members is null || request.Members.Count == 0)
             throw new ArgumentException("At least one allocation member is required.", nameof(request));
 
-        var channelNames = new HashSet<string>(StringComparer.Ordinal);
+        var meshNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var member in request.Members)
         {
-            if (member is null || string.IsNullOrWhiteSpace(member.ChannelName))
-                throw new ArgumentException("Allocation member channel names must not be empty.", nameof(request));
+            if (member is null || string.IsNullOrWhiteSpace(member.MeshName))
+                throw new ArgumentException("Allocation member mesh names must not be empty.", nameof(request));
             if (string.IsNullOrWhiteSpace(member.RoutingIdPrefix))
                 throw new ArgumentException("Allocation member routing-id prefixes must not be empty.", nameof(request));
-            if (!channelNames.Add(member.ChannelName))
+            if (!meshNames.Add(member.MeshName))
                 throw new ArgumentException(
-                    $"Allocation member channel '{member.ChannelName}' is duplicated.",
+                    $"Allocation member mesh '{member.MeshName}' is duplicated.",
                     nameof(request));
         }
     }

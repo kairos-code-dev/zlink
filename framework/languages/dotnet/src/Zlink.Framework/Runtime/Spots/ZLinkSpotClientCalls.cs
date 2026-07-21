@@ -20,9 +20,9 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
             request);
     }
 
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+    public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
-        return ZLinkSpotAmbientContext.RequireCurrent().Outbound.Publish(topic, message);
+        return ZLinkSpotAmbientContext.RequireCurrent().Outbound.Publish(channelName, topic, message);
     }
 
     public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
@@ -62,39 +62,6 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         return this;
     }
 
-    // One-shot non-blocking submit: a single DontWait attempt whose routine
-    // failures map to statuses. Blocking admission stays on SubmitAsync.
-    public ZLinkSubmitResult TrySubmit()
-    {
-        var snapshot = target.Snapshot;
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            activation.ChannelName,
-            ZLinkMessageNameResolver.ResolveFromMessage(message));
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        try
-        {
-            var accepted = activation.OutboundEndpoint.TrySendToSpotOnce(
-                snapshot.RouterChannelId,
-                snapshot.NodeRid,
-                snapshot.SpotRid,
-                (ulong)snapshot.Generation,
-                parts,
-                _metadata.Encode());
-            return new ZLinkSubmitResult(
-                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            return failed;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default)
     {
@@ -109,7 +76,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         try
         {
-            await activation.OutboundEndpoint.SendToSpotAsync(
+            return await activation.OutboundEndpoint.SendToSpotAsync(
                     snapshot.RouterChannelId,
                     snapshot.NodeRid,
                     snapshot.SpotRid,
@@ -119,12 +86,11 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
                     _metadata.Encode())
                 .ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            return failed;
         }
-
-        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -211,40 +177,18 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     string channelName,
     TMessage message) : IZLinkSendCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
+
     public IZLinkSendCall Metadata(string key, string value)
     {
-        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+        _metadata.Set(key, value);
+        return this;
     }
 
     public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
     {
-        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
-    }
-
-    // One-shot non-blocking submit: a single DontWait attempt whose routine
-    // failures map to statuses. Blocking admission stays on SubmitAsync.
-    public ZLinkSubmitResult TrySubmit()
-    {
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            channelName,
-            ZLinkMessageNameResolver.ResolveFromMessage(message));
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        try
-        {
-            var accepted = activation.OutboundEndpoint.TrySendToChannelOnce(channelName, parts);
-            return new ZLinkSubmitResult(
-                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            return failed;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
+        _metadata.Merge(metadata);
+        return this;
     }
 
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(
@@ -258,16 +202,15 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
         try
         {
-            await activation.OutboundEndpoint
-                .SendToChannelAsync(channelName, parts, cancellationToken)
+            return await activation.OutboundEndpoint
+                .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
                 .ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            return failed;
         }
-
-        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -276,6 +219,7 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
     string channelName,
     TMessage request) : IZLinkRequestCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
@@ -288,12 +232,14 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
 
     public IZLinkRequestCall Metadata(string key, string value)
     {
-        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+        _metadata.Set(key, value);
+        return this;
     }
 
     public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
     {
-        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+        _metadata.Merge(metadata);
+        return this;
     }
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
@@ -321,7 +267,8 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             channelName,
             parts,
             timeout,
-            cancellationToken);
+            cancellationToken,
+            _metadata.Encode());
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,
             "SPOT channel request reply is empty.",

@@ -30,7 +30,14 @@ inline bool actor_admit_join (zlink::service::mesh_node_t &node_, int timeout_ms
 {
     detail::mesh_record_t joined;
     if (!detail::mesh_pull_one (node_, zlink::service::owner_kind_t::spot,
-                                zlink::service::ready_domain_t::application, joined, timeout_ms_))
+                                zlink::service::ready_domain_t::application, joined, timeout_ms_,
+                                [] (const detail::mesh_record_t &record) {
+                                    return record.record.kind
+                                             == zlink::service::record_kind_t::spot_control
+                                           && record.record.actor_control
+                                           && record.record.actor_control->kind
+                                                == zlink::service::lifecycle_kind_t::joined;
+                                }))
         return false;
     std::vector<zlink::message_t> reply = detail::make_parts ("accepted");
     return zlink::service::actor_join_reply (joined.record.reply_token,
@@ -44,10 +51,58 @@ inline bool actor_recv_text (zlink::service::mesh_node_t &node_, std::string &ou
 {
     detail::mesh_record_t message;
     if (!detail::mesh_pull_one (node_, zlink::service::owner_kind_t::actor,
-                                zlink::service::ready_domain_t::application, message, timeout_ms_))
+                                zlink::service::ready_domain_t::application, message, timeout_ms_,
+                                [] (const detail::mesh_record_t &record) {
+                                    return record.record.kind
+                                             == zlink::service::record_kind_t::actor_send
+                                           || record.record.kind
+                                                == zlink::service::record_kind_t::actor_request;
+                                }))
         return false;
     out_ = message.first_text ();
     return true;
+}
+
+//  Drains Actor application claims until @p expected_count payloads have been
+//  observed. Every Actor message in a claimed batch is retained before the
+//  claim is released, so a burst is not reduced to its first record.
+inline bool actor_recv_texts (zlink::service::mesh_node_t &node_,
+                              size_t expected_count_,
+                              std::vector<std::string> &out_,
+                              int timeout_ms_ = 3000)
+{
+    using namespace zlink::service;
+    ready_batch_t ready (16);
+    receive_batch_t batch (32, 128, 1u << 20);
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
+    while (out_.size () < expected_count_ && std::chrono::steady_clock::now () < deadline) {
+        ready.reset ();
+        bool has_residue = false;
+        if (node_.drain_ready (ready_domain_t::all, ready, has_residue,
+                               zlink::recv_flags_t::dontwait)
+            != static_cast<int> (zlink::recv_result_t::ok)) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            continue;
+        }
+        for (size_t i = 0; i < ready.count (); ++i) {
+            const auto ready_record = ready.at (i);
+            if (ready_record.owner_kind != owner_kind_t::actor
+                || (ready_record.domain & ready_domain_t::application) == ready_domain_t::none)
+                continue;
+            auto claim = ready.take_claim (i);
+            std::vector<::detail::mesh_record_t> records;
+            if (!::detail::mesh_drain_claim (claim, batch, records))
+                continue;
+            for (const auto &record : records) {
+                if (record.record.kind == record_kind_t::actor_send
+                    || record.record.kind == record_kind_t::actor_request)
+                    out_.push_back (record.first_text ());
+            }
+            claim.release ();
+        }
+    }
+    return out_.size () >= expected_count_;
 }
 
 //  A STREAM gateway session bound to an actor: a raw TCP client connects to the

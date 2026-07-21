@@ -58,7 +58,7 @@ export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
     if (request.terminator === 'yield') {
       await call.yield();
     } else {
-      await call.submit();
+      await call.async();
     }
     spot.writeCounter(observed + 1);
     this.evidence.add(
@@ -147,7 +147,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
       );
       return { operationId, call };
     });
-    const pending = calls.map(({ call }, index) => index === calls.length - 1 ? call.yield() : call.submit());
+    const pending = calls.map(({ call }, index) => index === calls.length - 1 ? call.yield() : call.async());
     const results = await Promise.all(calls.map(async ({ operationId }, index) => {
       const result = await pending[index];
       this.evidence.add(
@@ -182,7 +182,7 @@ export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeS
       `cpu-worker-${request.terminator}-${request.terminator === 'yield' ? 'released' : 'held'}`
       + `|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
     );
-    const workerThread = request.terminator === 'yield' ? await call.yield() : await call.submit();
+    const workerThread = request.terminator === 'yield' ? await call.yield() : await call.async();
     this.evidence.add(
       `cpu-worker-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
       + `|request=${request.requestId}|worker-thread=${workerThread}`
@@ -200,7 +200,10 @@ export class SelfCycleHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
 
   async handle(spot: AwaitProbeSpot, request: SelfCycleMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    const self = await this.spotHandles.resolveSpotHandle(String(spot.context.spotRid));
+    const self = await this.spotHandles.resolveSpotHandle(
+      spot.context.meshName,
+      String(spot.context.spotRid)
+    );
     if (self === undefined) throw new Error(`Self SpotHandle was not resolved for '${spot.context.spotRid}'.`);
     try {
       await spot.context.outbound

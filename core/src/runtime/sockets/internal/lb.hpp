@@ -64,6 +64,7 @@ class lb_t
     size_t _weighted_current;
     pipe_t *_weighted_multipart_pipe;
 
+    void deactivate (pipe_t *pipe_);
     void mark_weighted_dirty ();
     void rebuild_weighted_schedule ();
 

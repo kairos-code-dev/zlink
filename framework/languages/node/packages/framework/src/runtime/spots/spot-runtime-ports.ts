@@ -29,7 +29,8 @@ export interface ZLinkEntryActorRuntime {
     actorId: string,
     parts: readonly Message[],
     returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
   ): Promise<{ readonly handled: boolean; readonly response?: unknown }>;
 }
 
@@ -48,8 +49,17 @@ export interface ZLinkSpotActorTransferRuntime {
     spotRid: RoutingId,
     spotMeshName: string
   ): Promise<ZLinkNativeActorJoinSnapshot>;
-  claimRoutedActorLocation(actor: ZLinkActor, spotRid: RoutingId, spotMeshName: string): Promise<void>;
+  claimRoutedActorLocation(
+    actor: ZLinkActor,
+    spotRid: RoutingId,
+    spotMeshName: string,
+    joinedLocation?: {
+      readonly spotGeneration: bigint;
+      readonly membershipEpoch: bigint;
+    }
+  ): Promise<void>;
   publishRoutedActorOwnership(actor: ZLinkActor): Promise<void>;
+  bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void;
   commitRoutedActor(actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot): void;
   clearRoutedActor(actor: ZLinkActor): void;
   rollbackNativeActorJoin(
@@ -57,13 +67,19 @@ export interface ZLinkSpotActorTransferRuntime {
     snapshot: ZLinkNativeActorJoinSnapshot
   ): Promise<void>;
   rollbackRoutedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  notifyCoreSourceLeave(actor: ZLinkActor, callback: () => Promise<void>): Promise<void>;
   actorEntryNodeRid(actor: ZLinkActor): RoutingId | undefined;
 }
 
 export interface ZLinkNativeActorJoinSnapshot {
   readonly spotRid?: RoutingId;
   readonly spot?: ZLinkSpot;
+  readonly locationSpotRid?: RoutingId;
   readonly spotMeshName?: string;
+  readonly actorRef?: ActorRef;
+  readonly spotGeneration?: bigint;
+  readonly membershipEpoch?: bigint;
+  readonly ownerNodeGeneration?: bigint;
 }
 
 export interface ZLinkSpotBoundSessionRuntime {

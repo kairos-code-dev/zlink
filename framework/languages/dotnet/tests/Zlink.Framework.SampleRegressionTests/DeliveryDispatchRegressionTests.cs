@@ -5,6 +5,32 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void DeliveryDispatch_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    {
+        var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
+        var hosts = Directory.EnumerateFiles(
+                Path.Combine(sampleRoot, "Server"), "*HostFactory.cs", SearchOption.AllDirectories)
+            .ToArray();
+
+        Assert.Equal(5, hosts.Length);
+        foreach (var host in hosts)
+        {
+            var source = File.ReadAllText(host);
+            Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
+        }
+
+        var dispatch = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Dispatch", "DispatchServerHostFactory.cs"));
+        var tracking = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Tracking", "TrackingServerHostFactory.cs"));
+        Assert.Contains("AddHandlerGroup(SampleNames.DispatchChannel)", dispatch, StringComparison.Ordinal);
+        Assert.Contains("AddHandlerGroup(SampleNames.TrackingRouteChannel)", tracking, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DeliveryDispatch_Client_Gate_Verifies_Status_Arrival_Order()
     {
         var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
@@ -166,7 +192,8 @@ public sealed partial class RegressionTests
         Assert.Contains("builder.Services.AddSingleton<CourierSessionBinder>()", courierSessionHost,
             StringComparison.Ordinal);
         Assert.Contains("await binder.BindAsync(request.CourierId", courierSessionHandler, StringComparison.Ordinal);
-        Assert.Contains("context.Client.Reply(bound).Submit()", courierSessionHandler, StringComparison.Ordinal);
+        Assert.Contains("context.Client.Reply(bound).SubmitAsync(cancellationToken)", courierSessionHandler,
+            StringComparison.Ordinal);
     }
 
     [Fact]

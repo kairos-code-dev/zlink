@@ -95,18 +95,18 @@ function buildFramework(options: ConsumerOptions, traceLabel = options.traceLabe
     .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`)
     .traceLabel(traceLabel);
-  const profile = builder.addClientServerChannel('profile');
+  const profile = builder.addRouteMesh('profile');
   if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
     builder.addLocationStore(createRedisLocationStore({ redisEndpoint: options.redisEndpoint, redisKeyPrefix: options.redisKeyPrefix }));
     Object.assign(builder.configureLocations(), resilienceLocationOptions());
-    profile.enableClient();
+    profile.peerConnections();
     if (includeFanout) {
       builder.addFanoutChannel(ResilienceNames.fanoutChannel)
         .enableSubscriber()
         .addPublishHandler(PacketNames.loadEvent, LoadEventHandler);
     }
   } else {
-    profile.enableClient(options.providerEndpoints);
+    for (const endpoint of options.providerEndpoints) profile.peerConnections().connect(endpoint);
   }
   return builder.build();
 }

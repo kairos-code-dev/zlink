@@ -71,6 +71,11 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         _socket.OnPacket((routingId, header, body) => handler(routingId, header, body));
     }
 
+    public void OnSendReady(Action handler)
+    {
+        _socket.OnSendReady(handler);
+    }
+
     public bool Send(RoutingId routingId, Message payload, SendFlags flags)
     {
         lock (_sendGate)

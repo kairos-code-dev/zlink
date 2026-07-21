@@ -94,13 +94,6 @@ public sealed class test_callback_contract
         finally
         {
             Zlink.UnhandledCallbackException -= OnUnhandled;
-            try
-            {
-                stream.DetachStream();
-            }
-            catch (ZlinkException)
-            {
-            }
         }
     }
 }

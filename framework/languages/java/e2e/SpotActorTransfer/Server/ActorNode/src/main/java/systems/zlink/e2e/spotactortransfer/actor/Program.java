@@ -12,7 +12,7 @@ import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -91,16 +91,16 @@ public final class Program {
                 })
                 .traceLogFile(config.logDirectory() + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-spot-transfer-" + nodeRid);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.MESH);
-            node.enableRouter(config.routerEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.MESH);
+            node.listen(config.meshEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            for (String peer : config.routerPeers().split(",")) {
+            node.channelName(Contracts.MESH);
+            for (String peer : config.meshPeers().split(",")) {
                 String[] fields = peer.split("=", 2);
                 if (fields.length == 2 && !nodeRid.equals(fields[0])) {
-                    node.connectRouter(RoutingId.from(fields[0]), fields[1]);
+                    node.peerConnections().connect(RoutingId.from(fields[0]), fields[1]);
                 }
             }
-            node.configureEntrySpot().setRoutingId(RoutingId.from(Contracts.ENTRY_SPOT_RID));
             node.addEntrySpot(TransferComponents.TransferEntrySpot.class);
             registerActor(node, Contracts.STATEFUL, true);
             registerActor(node, Contracts.EMPTY_STATE, true);
@@ -111,12 +111,13 @@ public final class Program {
             node.addSpotFactory(TransferComponents.TransferUserSpot.class);
             options.addStreamNode("spot-transfer-session-" + nodeRid)
                 .bind(config.streamEndpoint())
+                .enableActorDispatch(Contracts.MESH)
                 .registerSession(TransferComponents.TransferSession.class);
         };
     }
 
     private static void registerActor(
-        ZLinkSpotNodeBuilder node,
+        ZLinkMeshNodeBuilder node,
         String actorType,
         boolean adapter) {
         node.addActorFactory(actorType, TransferComponents.TransferActorFactory.class);

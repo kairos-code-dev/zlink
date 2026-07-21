@@ -826,14 +826,14 @@ public sealed class StreamSessionForcedCleanupTests
             ZLinkStreamError error,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
-        public ValueTask OnDispatchAsync(
+        public async ValueTask OnDispatchAsync(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
-            Context.Client.Reply(new StreamFlowReply("reply")).Submit(cancellationToken);
+            await Context.Client.Reply(new StreamFlowReply("reply"))
+                .SubmitAsync(cancellationToken);
             lifetime.ReplyCompleted.TrySetResult();
-            return ValueTask.CompletedTask;
         }
     }
 
@@ -1349,6 +1349,8 @@ public sealed class StreamSessionForcedCleanupTests
         {
             _handler = handler;
         }
+
+        public void OnSendReady(Action handler) { }
 
         public void Emit(RoutingId routingId, Message header, Message payload)
         {

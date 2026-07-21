@@ -50,7 +50,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
     private IZLinkRequestCall RequestToOwner<TMessage>(string orderId, TMessage command)
     {
         var owner = topology.ForOrderId(orderId);
-        return channels.RequestToChannel(SampleNames.OrderWorkflowChannelFor(owner.InstanceId), SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
+        return channels.RequestToChannel(SampleNames.MeshName, SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
             command);
     }
 }

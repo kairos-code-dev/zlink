@@ -35,13 +35,24 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationStore;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupConfigurationMismatch;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 
 public final class ZLinkInMemoryLocationStore implements
     ZLinkLocationStore,
-    ZLinkLocationChangeStampStore {
+    ZLinkLocationChangeStampStore,
+    ZLinkRoutingIdSlotAllocationStore {
 
     private final Object gate = new Object();
     private final Clock clock;
@@ -51,6 +62,7 @@ public final class ZLinkInMemoryLocationStore implements
     private final RowTable<ZLinkActorLocation> actors = new RowTable<>();
     private final RowTable<ZLinkRouteLocation> routes = new RowTable<>();
     private final Map<ZLinkLocationChangeStampScope, Long> stamps = new HashMap<>();
+    private final Map<String, SlotGroup> slotGroups = new HashMap<>();
 
     public ZLinkInMemoryLocationStore() {
         this(Clock.systemUTC());
@@ -117,7 +129,8 @@ public final class ZLinkInMemoryLocationStore implements
             ZLinkSpotLocation::ownerId,
             ZLinkSpotLocation::generation,
             (row, generation, now) -> new ZLinkSpotLocation(
-                row.meshName(), row.spotRid(), row.spotType(), row.nodeRid(), row.spotKind(),
+                row.meshName(), row.spotRid(), row.spotGeneration(), row.spotType(),
+                row.nodeRid(), row.spotKind(),
                 row.routeEndpoint(), row.ownerId(), generation, now),
             ZLinkLocationKind.SPOT,
             spot.meshName()));
@@ -299,6 +312,117 @@ public final class ZLinkInMemoryLocationStore implements
         }
     }
 
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlot(
+        ZLinkRoutingIdSlotAcquireRequest request) {
+        Objects.requireNonNull(request, "request");
+        List<ZLinkRoutingIdSlotAllocationMember> members = normalizeMembers(request.members());
+        synchronized (gate) {
+            Instant now = clock.instant();
+            SlotGroup group = slotGroups.get(request.groupName());
+            if (group == null) {
+                group = new SlotGroup(members, request.slotCount());
+                slotGroups.put(request.groupName(), group);
+            } else if (group.slotCount != request.slotCount()
+                || !group.members.equals(members)) {
+                return completed(new ZLinkRoutingIdSlotGroupConfigurationMismatch(
+                    members,
+                    request.slotCount(),
+                    group.members,
+                    group.slotCount));
+            }
+
+            for (var entry : group.allocations.entrySet()) {
+                ZLinkRoutingIdSlotAllocation current = entry.getValue();
+                if (current.owner().ownerId().equals(request.ownerId())
+                    && isOwnerLive(request.ownerId(), now)) {
+                    ZLinkRoutingIdSlotAllocation renewed = new ZLinkRoutingIdSlotAllocation(
+                        current.slot(),
+                        current.owner(),
+                        now.plus(request.leaseTtl()),
+                        now);
+                    entry.setValue(renewed);
+                    renewAllocationOwner(request.ownerId(), request.leaseTtl(), now);
+                    return completed(new ZLinkRoutingIdSlotAcquired(renewed));
+                }
+            }
+
+            int selected = 0;
+            for (int slot = 1; slot <= group.slotCount; slot++) {
+                ZLinkRoutingIdSlotAllocation current = group.allocations.get(slot);
+                if (current == null || !isOwnerLive(current.owner().ownerId(), now)) {
+                    selected = slot;
+                    break;
+                }
+            }
+            if (selected == 0) {
+                return completed(new ZLinkRoutingIdSlotGroupExhausted());
+            }
+
+            long generation = group.generations.getOrDefault(selected, 0L) + 1L;
+            group.generations.put(selected, generation);
+            ZLinkRoutingIdSlotAllocation acquired = new ZLinkRoutingIdSlotAllocation(
+                selected,
+                new ZLinkLocationOwnerToken(request.ownerId(), generation),
+                now.plus(request.leaseTtl()),
+                now);
+            group.allocations.put(selected, acquired);
+            renewAllocationOwner(request.ownerId(), request.leaseTtl(), now);
+            return completed(new ZLinkRoutingIdSlotAcquired(acquired));
+        }
+    }
+
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotReleaseResult> releaseRoutingIdSlot(
+        String groupName,
+        int slot,
+        ZLinkLocationOwnerToken owner) {
+        synchronized (gate) {
+            SlotGroup group = slotGroups.get(groupName);
+            ZLinkRoutingIdSlotAllocation current = group == null
+                ? null
+                : group.allocations.get(slot);
+            if (current == null || !current.owner().equals(owner)) {
+                return completed(ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE);
+            }
+            group.allocations.remove(slot);
+            return completed(ZLinkRoutingIdSlotReleaseResult.RELEASED);
+        }
+    }
+
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotAllocationSnapshot> listRoutingIdSlots(
+        String groupName) {
+        synchronized (gate) {
+            Instant now = clock.instant();
+            SlotGroup group = slotGroups.get(groupName);
+            if (group == null) {
+                return completed(new ZLinkRoutingIdSlotAllocationSnapshot(
+                    groupName, List.of(), 0, List.of(), now));
+            }
+            List<ZLinkRoutingIdSlotAllocation> allocations = group.allocations.values().stream()
+                .filter(value -> isOwnerLive(value.owner().ownerId(), now))
+                .sorted(Comparator.comparingInt(ZLinkRoutingIdSlotAllocation::slot))
+                .toList();
+            return completed(new ZLinkRoutingIdSlotAllocationSnapshot(
+                groupName, group.members, group.slotCount, allocations, now));
+        }
+    }
+
+    private void renewAllocationOwner(String ownerId, Duration leaseTtl, Instant now) {
+        ZLinkOwnerLease current = leases.get(ownerId);
+        RoutingId nodeRid = current == null ? RoutingId.from(ownerId) : current.nodeRid();
+        leases.put(ownerId, new ZLinkOwnerLease(ownerId, nodeRid, now.plus(leaseTtl), now));
+    }
+
+    private static List<ZLinkRoutingIdSlotAllocationMember> normalizeMembers(
+        List<ZLinkRoutingIdSlotAllocationMember> members) {
+        return members.stream()
+            .sorted(Comparator.comparing(ZLinkRoutingIdSlotAllocationMember::meshName)
+                .thenComparing(ZLinkRoutingIdSlotAllocationMember::routingIdPrefix))
+            .toList();
+    }
+
     private <TRow> ZLinkLocationWriteResult write(
         RowTable<TRow> table,
         String key,
@@ -474,5 +598,17 @@ public final class ZLinkInMemoryLocationStore implements
     private static final class RowTable<TRow> {
         private final Map<String, TRow> rows = new HashMap<>();
         private final Map<String, Long> generations = new HashMap<>();
+    }
+
+    private static final class SlotGroup {
+        private final List<ZLinkRoutingIdSlotAllocationMember> members;
+        private final int slotCount;
+        private final Map<Integer, ZLinkRoutingIdSlotAllocation> allocations = new HashMap<>();
+        private final Map<Integer, Long> generations = new HashMap<>();
+
+        private SlotGroup(List<ZLinkRoutingIdSlotAllocationMember> members, int slotCount) {
+            this.members = List.copyOf(members);
+            this.slotCount = slotCount;
+        }
     }
 }

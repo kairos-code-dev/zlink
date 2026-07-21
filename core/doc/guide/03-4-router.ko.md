@@ -202,7 +202,6 @@ SPOT 에서 시작된 요청일 때만 spot rid 가 채워진다.
 > ZMP request-reply envelope wire 형식은
 > [ZMP 프로토콜](../internals/protocol-zmp.ko.md)을 참고.
 > ROUTER dispatch 내부 구조는
-> [서비스 내부 설계](../internals/services-internals.ko.md)를 참고.
 
 ```c
 /* 서버 루프: poller 로 READABLE 을 관찰한 뒤 router_recv 로 드레인 */

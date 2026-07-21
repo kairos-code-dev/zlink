@@ -7,6 +7,7 @@ import {
   DefaultZLinkFanoutClient,
   DefaultZLinkSpotPublisherClient,
   type ZLinkChannelClientTransport,
+  type ZLinkRouteClientTransport,
   type ZLinkSpotPublisherClientTransport
 } from '../channels';
 import type { ZLinkDispatchErrorReporter } from '../channels';
@@ -28,7 +29,7 @@ export interface ZLinkSpotNodeRuntimeOptionsFactoryOptions {
   readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   readonly context: ZLinkBackendContext;
   readonly channelTransport: ZLinkChannelClientTransport;
-  readonly routeTransport: ZLinkSpotRoutedTransport;
+  readonly routeTransport: ZLinkRouteClientTransport & ZLinkSpotRoutedTransport;
   readonly spotPublisherTransport: ZLinkSpotPublisherClientTransport;
   readonly meshRouters: MeshRouterResolver;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -48,9 +49,10 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
   create(): ZLinkSpotNodeRuntimeManagerOptions {
     return {
       registration: this.options.registration,
+      primaryMeshName: this.options.meshRouters.primaryMeshName(),
       backendAdapterFactory: this.options.backendAdapterFactory,
       context: this.options.context,
-      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),
+      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.routeTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.options.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(
         this.options.registration,

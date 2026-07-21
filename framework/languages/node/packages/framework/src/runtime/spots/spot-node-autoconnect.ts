@@ -1,7 +1,7 @@
+import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
   ZLinkLocationChangeStampStore,
   ZLinkLocationWatchStore,
-  ZLinkLocationOptions,
   ZLinkPeerLocation
 } from '../../contracts';
 import {
@@ -9,7 +9,8 @@ import {
   ZLinkLocationRole
 } from '../../contracts';
 import type { ZLinkSpotNodeOptions } from '../configuration';
-import type { ZLinkBackendSpotNode } from '../backend/contracts';
+import type { ZLinkBackendMeshNode } from '../backend/contracts';
+import { toBindingRoutingId } from '../routing-id';
 import {
   ZLinkLocationRuntime,
   ZLinkOwnerLeaseTracker,
@@ -24,7 +25,7 @@ import {
 export interface ZLinkSpotNodeLocationAutoConnectContext {
   readonly runtime: ZLinkLocationRuntime;
   readonly stores: ZLinkLocationRuntimeStores;
-  readonly options: ZLinkLocationOptions;
+  readonly options: ZLinkLocationOptionOverrides;
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly resolver: ZLinkStoreLocationResolvers;
   readonly events?: ZLinkLocationEventSink;
@@ -38,12 +39,10 @@ export interface ZLinkSpotNodeAutoConnectCapability {
   readonly executor: IZLinkAutoConnectExecutor;
 }
 
-const SPOT_PUB_ENDPOINT_METADATA_KEY = 'pub-endpoint';
-
 export function createSpotNodeLocationAutoConnectContext(
   runtime: ZLinkLocationRuntime,
   stores: ZLinkLocationRuntimeStores,
-  options: ZLinkLocationOptions,
+  options: ZLinkLocationOptionOverrides,
   events?: ZLinkLocationEventSink
 ): ZLinkSpotNodeLocationAutoConnectContext {
   const leaseTracker = new ZLinkOwnerLeaseTracker({
@@ -69,22 +68,23 @@ export function createSpotNodeLocationAutoConnectContext(
 export function spotNodeAutoConnectCapability(
   spotNodeName: string,
   spotNode: ZLinkSpotNodeOptions,
-  node: ZLinkBackendSpotNode
+  node: ZLinkBackendMeshNode
 ): ZLinkSpotNodeAutoConnectCapability | undefined {
   if (spotNode.router === undefined) {
     return undefined;
   }
-  const endpoint = spotNode.router.bind ?? '';
+  // The node has already started when this capability is built. Publishing
+  // the configured bind string would advertise port 0 for wildcard binds,
+  // so peers must receive the concrete endpoint resolved by Core.
+  const status = node.status();
+  const endpoint = status.localEndpoint;
   const local: ZLinkAutoConnectLocal = {
-    autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+    autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
     meshName: spotNodeName,
-    role: ZLinkLocationRole.Spot,
-    nodeRid: node.routingId,
+    role: ZLinkLocationRole.Router,
+    nodeRid: String(status.routingId),
     endpoint
   };
-  const metadata = spotNode.pubSub?.bind === undefined
-    ? undefined
-    : { [SPOT_PUB_ENDPOINT_METADATA_KEY]: spotNode.pubSub.bind };
   return {
     local,
     localRow: {
@@ -96,7 +96,6 @@ export function spotNodeAutoConnectCapability(
       weight: 100,
       draining: false,
       value: 0n,
-      metadata,
       capabilities: Object.keys(spotNode.actorFactories ?? {})
         .map((actorType) => `actor:${actorType}`)
         .sort(),
@@ -104,10 +103,10 @@ export function spotNodeAutoConnectCapability(
       generation: 0n,
       updatedAt: new Date(0)
     },
-    executor: new ZLinkSpotNodeAutoConnectExecutor(node, {
-      router: hasManualRouterConnections(spotNode),
-      pubSub: (spotNode.pubSub?.manualConnections?.length ?? 0) > 0
-    })
+    executor: new ZLinkSpotNodeAutoConnectExecutor(
+      node,
+      hasManualRouterConnections(spotNode)
+    )
   };
 }
 
@@ -117,50 +116,70 @@ function hasManualRouterConnections(spotNode: ZLinkSpotNodeOptions): boolean {
 }
 
 class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
+  private readonly connectionIntents = new Map<string, bigint>();
+
   constructor(
-    private readonly node: ZLinkBackendSpotNode,
-    private readonly manualRoles: Readonly<{ router: boolean; pubSub: boolean }>
+    private readonly node: ZLinkBackendMeshNode,
+    private readonly manualConnections: boolean
   ) {}
 
   connect(target: ZLinkAutoConnectTarget): boolean {
-    if (target.connectionKind === 'spot-pub') {
-      if (this.manualRoles.pubSub) return false;
-      this.node.connectPeer(target.endpoint);
-      return true;
-    }
-    if (target.connectionKind === 'spot-router') {
-      if (this.manualRoles.router) return false;
-      if (target.nodeRid !== undefined) {
-        this.node.connectPeerRid(target.nodeRid, target.endpoint);
-      } else {
-        this.node.connectPeer(target.endpoint);
-      }
-      return true;
-    }
-    return false;
+    if (this.manualConnections) return false;
+    this.connectPeer(target);
+    return true;
   }
 
   disconnect(target: ZLinkAutoConnectTarget): void {
-    if (target.connectionKind === 'spot-pub') {
-      if (this.manualRoles.pubSub) return;
-      this.node.disconnectPeer(target.endpoint);
-      return;
-    }
-    if (target.connectionKind === 'spot-router') {
-      if (this.manualRoles.router) return;
-      if (target.nodeRid !== undefined) {
-        this.node.disconnectPeerRid(target.nodeRid);
-      } else {
-        this.node.disconnectPeer(target.endpoint);
-      }
-    }
+    if (this.manualConnections) return;
+    this.disconnectPeer(target);
   }
 
   isDisconnected(target: ZLinkAutoConnectTarget): boolean {
     return !this.node.peers().some((peer) =>
-      peer.peerEndpoint === target.endpoint && peer.state === 3);
+      peer.routingId !== null &&
+      peer.endpoint === target.endpoint &&
+      (target.nodeRid === undefined || String(peer.routingId) === String(target.nodeRid)) &&
+      peer.state === 3);
   }
 
+  private connectPeer(target: ZLinkAutoConnectTarget): void {
+    const key = connectionKey(target);
+    if (this.connectionIntents.has(key)) {
+      return;
+    }
+    const connectionIntentId = this.node.connectPeer({
+      endpoint: target.endpoint,
+      expectedRid: target.nodeRid === undefined
+        ? undefined
+        : toBindingRoutingId(target.nodeRid)
+    });
+    this.connectionIntents.set(key, connectionIntentId);
+  }
+
+  private disconnectPeer(target: ZLinkAutoConnectTarget): void {
+    const key = connectionKey(target);
+    const connectionIntentId = this.connectionIntents.get(key);
+    if (connectionIntentId !== undefined) {
+      this.node.removePeerConnection(connectionIntentId);
+      this.connectionIntents.delete(key);
+    }
+    for (const peer of this.node.peers()) {
+      if (peer.routingId === null) {
+        continue;
+      }
+      if (peer.endpoint !== target.endpoint) {
+        continue;
+      }
+      if (target.nodeRid !== undefined && String(peer.routingId) !== String(target.nodeRid)) {
+        continue;
+      }
+      this.node.disconnectPeer(peer.routingId, peer.lifecycleGeneration);
+    }
+  }
+}
+
+function connectionKey(target: ZLinkAutoConnectTarget): string {
+  return `${target.nodeRid ?? ''}\0${target.endpoint}`;
 }
 
 function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {

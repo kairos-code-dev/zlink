@@ -199,44 +199,131 @@ test('location monitoring event emitter publishes registered row and resolve-mis
   assert.equal(events[3].key.routeKey, 'api');
 });
 
-test('spot monitoring source publishes status peers and subjects snapshot changes', async () => {
+test('mesh monitoring source adapts formal peer endpoint into the public spot event contract', async () => {
   const events = [];
-  let connectedPeerCount = 1;
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
   publisher.register({ async handle(event) { events.push(event); } });
-  const source = new framework.ZLinkSpotMonitoringSource(
-    { sourceName: 'stage-node', intervalMs: 1000 },
+  const source = new framework.ZLinkMeshMonitoringSource(
+    { sourceName: 'room-route-mesh', intervalMs: 1000 },
     {
       status() {
-        return spotStatus(connectedPeerCount);
+        return {
+          state: 2,
+          routingId: 'room-node',
+          meshName: 'room',
+          localEndpoint: 'tcp://room',
+          lifecycleGeneration: 1n,
+          descriptorRevision: 1n,
+          channelCount: 1,
+          configuredPeerCount: 1,
+          admittedPeerCount: 1,
+          drainingPeerCount: 0,
+          pendingApplicationMessages: 0n,
+          pendingInfrastructureMessages: 0n,
+          pendingBytes: 0n,
+          multicastSubmitted: 0n,
+          multicastDroppedTargets: 0n,
+          lastError: 0,
+          lastChangedMs: 2n
+        };
       },
       peers() {
-        return [spotPeer(connectedPeerCount)];
+        return [{
+          connectionIntentId: 1n,
+          source: framework.ZLinkSpotPeerSource.Manual,
+          state: 3,
+          routingId: 'play-node',
+          lifecycleGeneration: 1n,
+          descriptorRevision: 1n,
+          endpoint: 'tcp://play',
+          channelCount: 1,
+          lastError: 0,
+          lastChangedMs: 2n
+        }];
       },
-      subjects() {
-        return [spotSubject(connectedPeerCount)];
+      peerChannels() {
+        return { names: ['bingo.room'], weights: [3] };
+      }
+    },
+    publisher,
+    { meshChannels: { 'bingo.room': { weight: 2 } } }
+  );
+
+  await source.pollOnce();
+
+  const statusEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.StatusChanged);
+  const peerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.PeersChanged);
+  assert.equal(statusEvent.status.meshName, 'room');
+  assert.equal(statusEvent.status.rid, 'room-node');
+  assert.equal(statusEvent.status.channels[0].channelName, 'bingo.room');
+  assert.equal(statusEvent.status.channels[0].localWeight, 2);
+  assert.equal(statusEvent.status.channels[0].readyMemberCount, 1n);
+  assert.equal(peerEvent.peers[0].endpoint, 'tcp://play');
+  assert.equal(peerEvent.peers[0].ready, true);
+  assert.equal(peerEvent.peers[0].admissionState, 'ready');
+  assert.deepEqual(peerEvent.peers[0].channelNames, ['bingo.room']);
+});
+
+test('mesh monitoring preserves a connecting peer before its routing identity is known', async () => {
+  const events = [];
+  let peerChannelQueries = 0;
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle(event) { events.push(event); } });
+  const source = new framework.ZLinkMeshMonitoringSource(
+    { sourceName: 'room-route-mesh', intervalMs: 1000 },
+    {
+      status() {
+        return {
+          state: 2,
+          routingId: 'room-node',
+          meshName: 'room',
+          localEndpoint: 'tcp://room',
+          lifecycleGeneration: 1n,
+          descriptorRevision: 1n,
+          channelCount: 1,
+          configuredPeerCount: 1,
+          admittedPeerCount: 0,
+          drainingPeerCount: 0,
+          pendingApplicationMessages: 0n,
+          pendingInfrastructureMessages: 0n,
+          pendingBytes: 0n,
+          multicastSubmitted: 0n,
+          multicastDroppedTargets: 0n,
+          lastError: 0,
+          lastChangedMs: 2n
+        };
+      },
+      peers() {
+        return [{
+          connectionIntentId: 1n,
+          source: framework.ZLinkSpotPeerSource.Manual,
+          state: 2,
+          routingId: null,
+          lifecycleGeneration: 0n,
+          descriptorRevision: 0n,
+          endpoint: 'tcp://play',
+          channelCount: 0,
+          lastError: 0,
+          lastChangedMs: 2n
+        }];
+      },
+      peerChannels() {
+        peerChannelQueries += 1;
+        throw new Error('A connecting peer has no routing identity for a channel query.');
       }
     },
     publisher
   );
 
   await source.pollOnce();
-  await source.pollOnce();
-  connectedPeerCount = 2;
-  await source.pollOnce();
 
-  assert.deepEqual(events.map((event) => event.event), [
-    framework.ZLinkSpotEventKind.StatusChanged,
-    framework.ZLinkSpotEventKind.PeersChanged,
-    framework.ZLinkSpotEventKind.SubjectsChanged,
-    framework.ZLinkSpotEventKind.StatusChanged,
-    framework.ZLinkSpotEventKind.PeersChanged,
-    framework.ZLinkSpotEventKind.SubjectsChanged
-  ]);
-  assert.equal(events[0].status.connectedPeerCount, 1);
-  assert.equal(events[3].status.connectedPeerCount, 2);
-  assert.equal(events[4].peers[0].state, framework.ZLinkSpotPeerState.Connected);
-  assert.equal(events[5].subjects[0].readyPeerCount, 2);
+  assert.equal(peerChannelQueries, 0);
+  const peerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.PeersChanged);
+  assert.equal(peerEvent.peers.length, 1);
+  assert.equal(peerEvent.peers[0].ready, false);
+  assert.equal(peerEvent.peers[0].admissionState, 'connecting');
+  assert.equal(peerEvent.peers[0].endpoint, 'tcp://play');
+  assert.deepEqual(peerEvent.peers[0].channelNames, []);
 });
 
 test('spot timer reports handler failure immediately through runtime publisher', async () => {
@@ -319,47 +406,6 @@ function peerRow() {
     ownerId: 'owner-a',
     generation: 1n,
     updatedAt: new Date(1)
-  };
-}
-
-function spotStatus(connectedPeerCount) {
-  return {
-    channelName: 'game.stage',
-    localEndpoint: 'tcp://stage',
-    nodeRoutingId: 'stage-node',
-    state: framework.ZLinkSpotNodeState.Ready,
-    configuredPeerCount: 2,
-    activePeerCount: connectedPeerCount,
-    connectedPeerCount,
-    subjectCount: 1,
-    readySubjectCount: 1,
-    lastError: 0,
-    lastChangedMs: BigInt(connectedPeerCount)
-  };
-}
-
-function spotPeer(connectedPeerCount) {
-  return {
-    channelName: 'game.stage',
-    localEndpoint: 'tcp://stage',
-    peerEndpoint: `tcp://peer-${connectedPeerCount}`,
-    source: framework.ZLinkSpotPeerSource.Manual,
-    kind: framework.ZLinkSpotPeerKind.SpotMesh,
-    state: framework.ZLinkSpotPeerState.Connected,
-    weight: 1,
-    connectedSinceMs: 1n,
-    lastChangedMs: BigInt(connectedPeerCount)
-  };
-}
-
-function spotSubject(readyPeerCount) {
-  return {
-    role: framework.ZLinkSpotRole.Sub,
-    subject: 'room.*',
-    subjectKind: framework.ZLinkSubjectKind.Pattern,
-    readyPeerCount,
-    activePeerCount: readyPeerCount,
-    lastChangedMs: BigInt(readyPeerCount)
   };
 }
 

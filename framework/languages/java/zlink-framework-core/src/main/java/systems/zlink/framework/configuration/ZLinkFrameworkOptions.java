@@ -34,8 +34,6 @@ public interface ZLinkFrameworkOptions {
 
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
-    void useInMemoryLocationStores();
-
     void addLocationStore(ZLinkLocationStore store);
 
     ZLinkLocationOptions configureLocations();

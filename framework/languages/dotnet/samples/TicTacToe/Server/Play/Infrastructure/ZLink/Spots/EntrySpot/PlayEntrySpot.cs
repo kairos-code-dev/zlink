@@ -19,7 +19,9 @@ internal sealed class PlayEntrySpot(
     {
         Context.Handlers.AddActorPacket<PlayActorJoinGameHandler, PlayActor>();
         Context.Handlers.AddActorPacket<PlayActorObserveMilestoneHandler, PlayActor>();
-        Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(SampleTopics.PlayerMilestone);
+        Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(
+            SampleTopics.PlayerMilestoneChannel,
+            SampleTopics.PlayerMilestone);
     }
 
     public ValueTask OnCreateActorAsync(
@@ -119,7 +121,7 @@ internal sealed class PlayEntrySpot(
             _observers.Remove(actor.ActorId);
         }
 
-        public ValueTask NotifyAsync(
+        public async ValueTask NotifyAsync(
             PlayerWinMilestoneEvent milestone,
             string receivingSpotNodeRid,
             CancellationToken cancellationToken)
@@ -133,10 +135,8 @@ internal sealed class PlayEntrySpot(
 
             var observers = _observers.Values.ToArray();
             foreach (var observer in observers)
-                observer.Context.BoundSession.Send(notify)
-                    .Submit(cancellationToken);
-
-            return ValueTask.CompletedTask;
+                await observer.Context.BoundSession.Send(notify)
+                    .SubmitAsync(cancellationToken);
         }
     }
 }

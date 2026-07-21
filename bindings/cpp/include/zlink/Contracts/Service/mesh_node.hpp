@@ -68,9 +68,9 @@ class mesh_node_t
 
     // Lifecycle.
     void set_bind (const std::string &endpoint_);
-    /// @brief Sets this node's routing id. Required before start(): the node
-    ///        must have a non-empty routing id, a bind endpoint and at least
-    ///        one channel. Configuration is immutable once started.
+    /// @brief Sets this node's routing id. Required before start() together
+    ///        with a non-empty bind endpoint. Channel membership may be empty.
+    ///        Configuration is immutable once started.
     void set_routing_id (const routing_id_t &routing_id_);
     void add_channel_name (const std::string &channel_name_);
     void set_channel_weight (const std::string &channel_name_, uint32_t weight_);
@@ -123,12 +123,22 @@ class mesh_node_t
                                       send_flags_t flags_ = send_flags_t::none,
                                       std::chrono::milliseconds timeout_ = {},
                                       mesh_metadata_t metadata_ = {});
+    /// @brief Sends only to the specified nonzero binding generation. A stale
+    ///        generation is rejected instead of selecting a replacement binding.
+    submit_result_t send_bound_session (const actor_ref_t &actor_,
+                                        uint64_t expected_binding_generation_,
+                                        const std::vector<message_t> &parts_,
+                                        send_flags_t flags_ = send_flags_t::none);
 
     // Node options (must be set while the node is still in the created state).
     void set_router_hwm_profile (int32_t profile_);
     int32_t router_hwm_profile () const;
     void set_router_hwm (int32_t hwm_);
     int32_t router_hwm () const;
+    /// @brief Changes the live inbound message-size limit. A value of -1
+    ///        disables the limit; values below -1 are rejected.
+    void set_max_message_size (int64_t max_message_size_);
+    int64_t max_message_size () const;
     void set_mailbox_message_budget (uint64_t budget_);
     uint64_t mailbox_message_budget () const;
     void set_mailbox_byte_budget (uint64_t budget_);

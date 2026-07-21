@@ -6,9 +6,8 @@
 
 ## 1. 목적
 
-Java framework는 지금 `bindings/java`를 backend로 사용한다. 그러나 public API가
-binding 구현 객체에 얽히면 binding 내부 구조가 바뀔 때 framework 사용자 코드까지
-깨진다. 따라서 framework와 binding 사이에는 adapter layer를 둔다.
+Java/Kotlin framework는 `bindings/java`의 exported public raw socket API만 transport 경계로 사용한다.
+Framework service runtime은 Java와 Kotlin이 공유하며 binding 구현 객체와 Core service object를 숨긴다.
 
 ## 2. 원칙
 
@@ -18,14 +17,15 @@ binding 구현 객체에 얽히면 binding 내부 구조가 바뀔 때 framework
   안에 숨긴다.
 - `RoutingId`, `Message`, `SendFlags`처럼 언어 중립 의미가 있는 값 타입만 public
   contract에 남길 수 있다.
-- framework는 Java binding의 public API만 호출한다.
+- framework는 Java binding의 exported public raw socket API만 호출한다.
+- `runtime.nativeapi`, package-private 구현, JNI symbol과 Core private symbol은 호출하지 않는다.
+- MeshNode, Spot, Actor, STREAM session과 maintenance 상태 기계는 JVM service runtime이 소유한다.
 
 ## 3. Adapter 계약
 
-backend 의존은 `systems.zlink.framework.runtime.backend` 의 port interface 한 묶음으로
-격리한다. 이 port를 `bindings/java` 위에 구현한 어댑터(`ZLinkJavaBackendAdapterFactory`)가
-Java backend 구현이다. `ZLinkBackendAdapterFactory` 와 5개 adapter port로 구성된다
-(`ZLink` prefix 유지, `I` prefix 없음).
+binding 의존은 `systems.zlink.framework.runtime.backend`의 internal port 한 묶음으로 격리한다.
+이 port를 public raw binding 위에 구현한 adapter가 JVM transport 구현이다. Port와 adapter는 application
+public interface가 아니며 Java module export에 포함하지 않는다.
 
 | port interface (`systems.zlink.framework.runtime.backend`) | 역할 | Java backend 구현 대상 (`bindings/java`) |
 |-----------------------------------------------|------|------------------------------------------|
@@ -62,10 +62,8 @@ concrete type은 public surface에 새어 나오지 않는다.
 adapter는 framework internal package에 둔다. 사용자 guide와 sample은 adapter 타입을
 직접 보여 주지 않는다.
 
-> 참고: port의 정확한 시그니처는 Java 구현
-> (`systems.zlink.framework.runtime.backend`)을 기준으로 한다. 다른 언어의 어댑터 구성
-> 규칙과 비교하려면 Node [backend-dependency-policy](../../node/internals/backend-dependency-policy.ko.md)를
-> 선택적으로 참고한다.
+Port의 정확한 시그니처는 JVM implementation internals가 소유한다. 다른 runtime의 adapter 구조를 JVM에
+복사해 public abstraction으로 만들지 않는다.
 
 ## 4. Public API에 새면 안 되는 것
 
@@ -88,8 +86,9 @@ status는 꼭 필요한 경우 optional detail로만 둔다.
 |--------|-----------|
 | public surface backend leakage | 허용한 값 타입을 제외하고 binding concrete type이 public API에 없다 |
 | backend factory wrappers | factory가 channel, spot, stream, registry, monitoring adapter 5종을 모두 만들어 내고, wrapper 생성이 adapter 내부에 머문다 |
-| no reflection bypass | framework 코드가 binding non-public member를 reflection으로 호출하지 않는다 |
-| adapter-only native construction | native object 생성은 adapter 내부에서만 일어난다 |
+| public raw binding only | package-private, reflection, JNI와 Core private symbol 직접 호출이 없다 |
+| adapter-only transport construction | raw socket과 monitor 생성은 adapter 내부에서만 일어난다 |
+| no Core service model | Core MeshNode, Spot, Actor, session service type이 JVM runtime dependency와 public ABI에 없다 |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

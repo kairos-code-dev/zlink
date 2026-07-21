@@ -63,7 +63,10 @@ export class ZLinkActorPacketRelay {
       actorManager: options.actorManager,
       streamBindingRuntime: options.streamBindingRuntime,
       meshRouters: options.meshRouters,
-      primaryNodeRid: () => options.spotNodeRuntime()?.primaryNode?.routingId as RoutingId | undefined
+      primaryNodeRid: () => {
+        const node = options.spotNodeRuntime()?.primaryMeshNode;
+        return node === undefined ? undefined : String(node.status().routingId);
+      }
     });
   }
 
@@ -181,13 +184,9 @@ export class ZLinkActorPacketRelay {
         if (state === undefined || actorRef === undefined) {
           throw new Error(`Actor '${relay.actorId}' does not have a concrete actor ref.`);
         }
-        const node = this.requireSpotNodeRuntime().primaryNode;
-        if (node === undefined) throw new Error('SPOT primary node is not started.');
-        node.bindRemoteActorSession(
-          actorRef,
-          sessionNodeRid,
-          sessionRid
-        );
+        if (this.requireSpotNodeRuntime().primaryMeshNode === undefined) {
+          throw new Error('MeshNode actor runtime is not started.');
+        }
         const target = this.options.meshRouters.remoteBoundSessionTargetForSource(sessionNodeRid)
           ?? (relay.routerChannelId === undefined
             ? undefined
@@ -345,7 +344,8 @@ export class ZLinkActorPacketRelay {
     if (remoteTarget === undefined) {
       return false;
     }
-    const localNodeRid = this.options.spotNodeRuntime()?.primaryNode?.routingId as RoutingId | undefined;
+    const localNode = this.options.spotNodeRuntime()?.primaryMeshNode;
+    const localNodeRid = localNode === undefined ? undefined : String(localNode.status().routingId);
     const request = encodeRemoteActorPacketRelayPayload({
       actorId: actor.actorId,
       routerChannelId: remoteTarget.routerChannelId,
@@ -480,7 +480,8 @@ export class ZLinkActorPacketRelay {
       return false;
     }
     const actorRef = state?.nativeActorRef as ActorRef | undefined;
-    const localNodeRid = this.options.spotNodeRuntime()?.primaryNode?.routingId as RoutingId | undefined;
+    const localNode = this.options.spotNodeRuntime()?.primaryMeshNode;
+    const localNodeRid = localNode === undefined ? undefined : String(localNode.status().routingId);
     if (
       actorRef?.nodeRid !== undefined &&
       localNodeRid !== undefined &&

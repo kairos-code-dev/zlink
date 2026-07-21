@@ -73,15 +73,14 @@ internal sealed class QuestProgressNotifyActorHandler
         PlayerSessionActor,
         QuestProgressNotify>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
         ZLinkSpotActorSendContext context,
         QuestProgressNotify request,
         CancellationToken cancellationToken)
     {
-        actor.Context.BoundSession.Send(request).Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+        await actor.Context.BoundSession.Send(request).SubmitAsync(cancellationToken);
     }
 }
 
@@ -92,14 +91,13 @@ internal sealed class QuestCompletedNotifyActorHandler
         PlayerSessionActor,
         QuestCompletedNotify>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
         ZLinkSpotActorSendContext context,
         QuestCompletedNotify request,
         CancellationToken cancellationToken)
     {
-        actor.Context.BoundSession.Send(request).Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+        await actor.Context.BoundSession.Send(request).SubmitAsync(cancellationToken);
     }
 }

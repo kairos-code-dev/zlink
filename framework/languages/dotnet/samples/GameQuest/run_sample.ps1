@@ -12,30 +12,22 @@ $SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir, $SampleLogDir | Out-Null
 
 try {
-    $ports = New-SamplePorts -Count 21 -BasePort 0
+    $ports = New-SamplePorts -Count 10 -BasePort 0
 
     $GAMEQUEST_LOG_DIR = $SampleLogDir
     $GAMEQUEST_REDIS_KEY_PREFIX = "gamequest:dotnet:${RunId}:"
-    $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL = "http://127.0.0.1:$($ports[3])"
-    $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL = "http://127.0.0.1:$($ports[4])"
-    $GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT = "ws://127.0.0.1:$($ports[3])/quest/ws"
-    $GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT = "ws://127.0.0.1:$($ports[4])/quest/ws"
-    $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
-    $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
-    $GAMEQUEST_MISSION_A_HTTP_URL = "http://127.0.0.1:$($ports[7])"
-    $GAMEQUEST_MISSION_B_HTTP_URL = "http://127.0.0.1:$($ports[8])"
-    $GAMEQUEST_MISSION_A_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[9])"
-    $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[10])"
-    $GAMEQUEST_MISSION_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[11])"
-    $GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[12])"
-    $GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[13])"
-    $GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[14])"
-    $GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[15])"
-    $GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[16])"
-    $GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[17])"
-    $GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[18])"
-    $GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[19])"
-    $GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[20])"
+    $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL = "http://127.0.0.1:$($ports[0])"
+    $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL = "http://127.0.0.1:$($ports[1])"
+    $GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT = "ws://127.0.0.1:$($ports[0])/quest/ws"
+    $GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT = "ws://127.0.0.1:$($ports[1])/quest/ws"
+    $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
+    $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
+    $GAMEQUEST_MISSION_A_HTTP_URL = "http://127.0.0.1:$($ports[4])"
+    $GAMEQUEST_MISSION_B_HTTP_URL = "http://127.0.0.1:$($ports[5])"
+    $GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[7])"
+    $GAMEQUEST_MISSION_A_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[8])"
+    $GAMEQUEST_MISSION_B_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[9])"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "GameQuest.csproj")
 
@@ -52,23 +44,19 @@ try {
     $roles = @{
         "mission-a" = $common + @{
             InstanceName = "mission-a"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
-            MissionAHttpBaseUrl = $GAMEQUEST_MISSION_A_HTTP_URL; MissionAChannelEndpoint = $GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
-            MissionASpotEndpoint = $GAMEQUEST_MISSION_A_SPOT_ENDPOINT; MissionASpotRouterEndpoint = $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
+            MissionAHttpBaseUrl = $GAMEQUEST_MISSION_A_HTTP_URL; MissionAMeshEndpoint = $GAMEQUEST_MISSION_A_MESH_ENDPOINT
         }
         "mission-b" = $common + @{
             InstanceName = "mission-b"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
-            MissionBHttpBaseUrl = $GAMEQUEST_MISSION_B_HTTP_URL; MissionBChannelEndpoint = $GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
-            MissionBSpotEndpoint = $GAMEQUEST_MISSION_B_SPOT_ENDPOINT; MissionBSpotRouterEndpoint = $GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
+            MissionBHttpBaseUrl = $GAMEQUEST_MISSION_B_HTTP_URL; MissionBMeshEndpoint = $GAMEQUEST_MISSION_B_MESH_ENDPOINT
         }
         "api-a" = $common + @{
             InstanceName = "api-a"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
-            GameApiAStreamBindEndpoint = $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT; GameApiAChannelEndpoint = $GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
-            GameApiASpotEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT; GameApiASpotRouterEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
+            GameApiAStreamBindEndpoint = $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT; GameApiAMeshEndpoint = $GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT
         }
         "api-b" = $common + @{
             InstanceName = "api-b"; GameApiBHttpBaseUrl = $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
-            GameApiBStreamBindEndpoint = $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT; GameApiBChannelEndpoint = $GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
-            GameApiBSpotEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT; GameApiBSpotRouterEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
+            GameApiBStreamBindEndpoint = $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT; GameApiBMeshEndpoint = $GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT
         }
     }
     foreach ($instance in $roles.Keys) {
@@ -85,30 +73,22 @@ try {
     $configFiles["client"] = $clientPath
 
     Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["mission-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "mission-a-spot-router" $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-a-spot-pub" $GAMEQUEST_MISSION_A_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-a-channel" $GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
-    Wait-SampleHttpHealth "mission-a" $GAMEQUEST_MISSION_A_HTTP_URL
+    Wait-SampleTcpEndpoint "mission-a-mesh" $GAMEQUEST_MISSION_A_MESH_ENDPOINT -Attempts 30
+    Wait-SampleHttpHealth "mission-a" $GAMEQUEST_MISSION_A_HTTP_URL -Attempts 30
 
     Start-SampleDotnetAssembly -Name "mission-b" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["mission-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "mission-b-spot-router" $GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-b-spot-pub" $GAMEQUEST_MISSION_B_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "mission-b-channel" $GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
-    Wait-SampleHttpHealth "mission-b" $GAMEQUEST_MISSION_B_HTTP_URL
+    Wait-SampleTcpEndpoint "mission-b-mesh" $GAMEQUEST_MISSION_B_MESH_ENDPOINT -Attempts 30
+    Wait-SampleHttpHealth "mission-b" $GAMEQUEST_MISSION_B_HTTP_URL -Attempts 30
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "api-a-stream" $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
-    Wait-SampleTcpEndpoint "api-a-channel" $GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "api-a-spot" $GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "api-a-spot-router" $GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
-    Wait-SampleHttpHealth "api-a" $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
+    Wait-SampleTcpEndpoint "api-a-stream" $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT -Attempts 30
+    Wait-SampleTcpEndpoint "api-a-mesh" $GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT -Attempts 30
+    Wait-SampleHttpHealth "api-a" $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL -Attempts 30
 
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/GameApi/GameQuest.GameApi.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "api-b-stream" $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
-    Wait-SampleTcpEndpoint "api-b-channel" $GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "api-b-spot" $GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "api-b-spot-router" $GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
-    Wait-SampleHttpHealth "api-b" $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
+    Wait-SampleTcpEndpoint "api-b-stream" $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT -Attempts 30
+    Wait-SampleTcpEndpoint "api-b-mesh" $GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT -Attempts 30
+    Wait-SampleHttpHealth "api-b" $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL -Attempts 30
 
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/GameQuest.Client.csproj") -Arguments @("--config", $configFiles["client"])
 

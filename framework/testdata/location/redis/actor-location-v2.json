@@ -1,22 +1,30 @@
 {
-  "notice": "All official Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
+  "notice": "All official Redis extensions must match this fixture. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
   "format": "actor-location-v2",
+  "keyContract": {
+    "objectKind": "actor",
+    "meshName": "game",
+    "identityHex": "6163746f722d31",
+    "authorityKey": "zla1:a:4:game:7:actor-1"
+  },
   "hashFields": [
-    "owner",
-    "gen",
-    "json",
-    "updatedAtMs",
-    "mesh"
+    "payload",
+    "storeVersion",
+    "objectGeneration",
+    "authorityOwnerGeneration",
+    "ownerId",
+    "ownerLeaseGeneration"
   ],
   "row": {
     "kind": "actor",
-    "key": "4:game7:actor-1",
+    "key": "zla1:a:4:game:7:actor-1",
     "hash": {
-      "owner": "actor-owner-a",
-      "gen": "5",
-      "json": "{\"MeshName\":\"game\",\"ActorId\":\"actor-1\",\"ActorType\":\"player\",\"ActorRef\":{\"nodeRid\":\"67616d652d61\",\"actorId\":\"actor-1\",\"generation\":11},\"OwnerNodeRid\":\"67616d652d61\",\"OwnerNodeGeneration\":7,\"SpotRid\":\"73706f742d31\",\"SpotGeneration\":3,\"SpotKind\":2,\"MembershipEpoch\":4,\"OwnerId\":\"actor-owner-a\",\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\"}",
-      "updatedAtMs": "1721001600000",
-      "mesh": "game"
+      "payload": "opaque-actor-authority-v1",
+      "storeVersion": "101",
+      "objectGeneration": "11",
+      "authorityOwnerGeneration": "4",
+      "ownerId": "actor-owner-a",
+      "ownerLeaseGeneration": "9"
     }
   }
 }

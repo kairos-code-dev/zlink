@@ -120,7 +120,13 @@ internal static class PsB2PublisherRestartScenario
         EvidenceWaitReq request)
     {
         var waits = subscribers
-            .Select(subscriber => subscriber.Post("/evidence/wait").Body(request).Async<string[]>().AsTask())
+            .Select(subscriber => subscriber.Post("/evidence/wait")
+                .Body(request)
+                // The server may use the full evidence wait window. Keep the HTTP
+                // deadline slightly longer so a valid terminal response is observable.
+                .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMilliseconds + 2000))
+                .Async<string[]>()
+                .AsTask())
             .ToArray();
         await Task.WhenAll(waits);
     }

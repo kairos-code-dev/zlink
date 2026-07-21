@@ -19,6 +19,7 @@ import {
 import { validateTimerRegistration } from './TimerRegistrationValidator';
 import { collectRoutingIdAllocationMembers } from './RoutingIdAllocationRegistration';
 import { zlinkDefaultLocationOptions } from '../Locations';
+import { requireValidSendTimeoutMs } from './SendTimeoutValidation';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -40,6 +41,7 @@ export function validateFrameworkRegistration(
   validateWorkerOptions(registration.worker);
   validateMonitoring(registration);
   validateLocationRegistration(registration);
+  validateActorTransferAuthority(registration);
   validateRoutingIdAllocations(registration);
 }
 
@@ -124,6 +126,34 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
   if (locations.useInMemoryStores && locations.storeInstance !== undefined) {
     throw new ZLinkConfigurationException(
       'In-memory location stores cannot be combined with explicit location store registrations.'
+    );
+  }
+}
+
+function validateActorTransferAuthority(registration: ZLinkFrameworkRegistration): void {
+  if (registration.actorTransferAdapters.size === 0) {
+    return;
+  }
+  const store = registration.locations.storeInstance as {
+    prepareActorTransfer?: unknown;
+    commitActorTransfer?: unknown;
+    activateActorTransfer?: unknown;
+    abortActorTransfer?: unknown;
+    takeOverActorTransfer?: unknown;
+    resolveActorTransfer?: unknown;
+  } | undefined;
+  if (
+    registration.locations.useInMemoryStores
+    || store === undefined
+    || typeof store.prepareActorTransfer !== 'function'
+    || typeof store.commitActorTransfer !== 'function'
+    || typeof store.activateActorTransfer !== 'function'
+    || typeof store.abortActorTransfer !== 'function'
+    || typeof store.takeOverActorTransfer !== 'function'
+    || typeof store.resolveActorTransfer !== 'function'
+  ) {
+    throw new ZLinkConfigurationException(
+      'Actor transfer adapters require a durable location store with Actor transfer authority.'
     );
   }
 }
@@ -349,6 +379,10 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' router`, spotNode.router);
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
+    requireValidSendTimeoutMs(
+      `SpotNode '${spotNodeName}' publisher sendTimeoutMs`,
+      spotNode.publisherConfig?.sendTimeoutMs
+    );
     validateEntrySpot(spotNodeName, spotNode);
     validateSpotNodeFactories(spotNodeName, spotNode);
     validateSpotNodeTimers(spotNode);
@@ -582,7 +616,5 @@ function requireSocketOptions(
   requireNonNegativeInteger(`${label} sendHighWaterMark`, options.sendHighWaterMark);
   requireNonNegativeInteger(`${label} receiveHighWaterMark`, options.receiveHighWaterMark);
   requireNonNegativeInteger(`${label} maxMessageSize`, options.maxMessageSize);
-  if (options.sendTimeoutMs !== undefined && (!Number.isInteger(options.sendTimeoutMs) || options.sendTimeoutMs < -1)) {
-    throw new ZLinkConfigurationException(`${label} sendTimeoutMs must be -1 or a non-negative integer.`);
-  }
+  requireValidSendTimeoutMs(`${label} sendTimeoutMs`, options.sendTimeoutMs);
 }

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-BUILD_DIR="$FRAMEWORK_DIR/build-redis-vcpkg"
+BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
 SCENARIO="${1:-all}"
 SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
 case "$SCENARIO_LOWER" in
@@ -35,17 +35,17 @@ mkdir -p "$CONFIG_DIR"
 
 echo "log_dir=$LOG_DIR"
 
-read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW CHANNEL_REMAP SPOT_ROUTER_REMAP SPOT_PUB_REMAP HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER HTTP_SERVICE_REMAP <<<"$(python3 - <<'PY'
+read -r CHANNEL CHANNEL_FILTERED CHANNEL_THROW SPOT_ROUTER_SERVICE SPOT_ROUTER_FILTERED SPOT_ROUTER_THROW SPOT_PUB_SERVICE SPOT_PUB_FILTERED SPOT_PUB_THROW CHANNEL_REMAP SPOT_ROUTER_REMAP SPOT_PUB_REMAP MESH_SERVICE MESH_FILTERED MESH_THROW HTTP_SERVICE HTTP_FILTERED HTTP_THROW HTTP_TRIGGER HTTP_SERVICE_REMAP <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 ports = []
-for _ in range(17):
+for _ in range(20):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:12]), end=" ")
-print(" ".join(f"http://127.0.0.1:{p}" for p in ports[12:17]))
+print(" ".join(f"tcp://127.0.0.1:{p}" for p in ports[:15]), end=" ")
+print(" ".join(f"http://127.0.0.1:{p}" for p in ports[15:20]))
 for s in sockets:
     s.close()
 PY
@@ -69,11 +69,16 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
 REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 REDIS_KEY_PREFIX="zlink:cpp:runtime-monitoring:${RUN_ID}"
 PIDS=()
+FILTERED_STOPPED=0
 
 cleanup() {
   local code=$?
   local cleanup_failed=0
   local status
+  if [[ "$FILTERED_STOPPED" == "1" ]]; then
+    kill -CONT "$FILTERED_PID" >/dev/null 2>&1 || true
+    FILTERED_STOPPED=0
+  fi
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -132,16 +137,19 @@ write_service_config() {
   local pub_endpoint="$6"
   local evidence_file="$7"
   local monitor_profile="$8"
+  local mesh_endpoint="$9"
+  local mesh_peer_endpoints="${10}"
   python3 - "$path" "$rid" "$http_endpoint" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" \
     "$channel_endpoint" "$router_endpoint" "$pub_endpoint" "$evidence_file" \
-    "$monitor_profile" "$LOG_DIR" <<'PY'
+    "$monitor_profile" "$LOG_DIR" "$mesh_endpoint" "$mesh_peer_endpoints" <<'PY'
 import json
 import os
 import stat
 import sys
 
 (path, rid, http_endpoint, redis_endpoint, redis_key_prefix, channel_endpoint,
- router_endpoint, pub_endpoint, evidence_file, monitor_profile, log_dir) = sys.argv[1:]
+ router_endpoint, pub_endpoint, evidence_file, monitor_profile, log_dir,
+ mesh_endpoint, mesh_peer_endpoints) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"rid": rid, "httpEndpoint": http_endpoint,
                        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
@@ -150,7 +158,9 @@ with open(path, "w", encoding="utf-8") as file:
                        "spotPubEndpoint": pub_endpoint,
                        "evidenceFile": evidence_file,
                        "monitorProfile": monitor_profile,
-                       "logDir": log_dir}}, file, indent=2)
+                       "logDir": log_dir,
+                       "meshEndpoint": mesh_endpoint,
+                       "meshPeerEndpoints": mesh_peer_endpoints}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
@@ -197,6 +207,24 @@ crash_service() {
   local name="$2"
   local endpoint="$3"
   kill -KILL "$pid"
+  wait "$pid" >/dev/null 2>&1 || true
+  wait_port_closed "$name" "$endpoint"
+}
+
+stop_service() {
+  local pid="$1"
+  local name="$2"
+  local endpoint="$3"
+  python3 - "$endpoint" <<'PY'
+import sys
+import urllib.request
+
+base = sys.argv[1]
+request = urllib.request.Request(f"{base}/shutdown", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status >= 400:
+        raise RuntimeError(f"shutdown failed with status {response.status}")
+PY
   wait "$pid" >/dev/null 2>&1 || true
   wait_port_closed "$name" "$endpoint"
 }
@@ -252,6 +280,32 @@ else:
 PY
 }
 
+wait_mesh_peer_ready() {
+  local rid="$1"
+  local expected="$2"
+  python3 - "$HTTP_SERVICE" "$rid" "$expected" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base, rid, expected = sys.argv[1:]
+wanted = expected == "true"
+deadline = time.monotonic() + 25
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{base}/runtime/snapshot", timeout=2) as response:
+        snapshot = json.load(response)
+    peers = [peer for peer in snapshot["peers"] if peer["rid"] == rid]
+    ready = any(peer["ready"] for peer in peers)
+    if ready == wanted:
+        break
+    time.sleep(0.1)
+else:
+    raise RuntimeError(
+        f"RouteMesh peer {rid} readiness did not become {expected}")
+PY
+}
+
 start_service_a() {
   local channel_endpoint="$1"
   local router_endpoint="$2"
@@ -259,8 +313,13 @@ start_service_a() {
   local http_endpoint="$4"
   local label="$5"
   local config_path="$CONFIG_DIR/$label.json"
+  local mesh_peers="$MESH_FILTERED,$MESH_THROW"
+  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
+    mesh_peers=""
+  fi
   write_service_config "$config_path" svc-a "$http_endpoint" "$channel_endpoint" \
-    "$router_endpoint" "$pub_endpoint" "$LOG_DIR/$label.evidence.log" all
+    "$router_endpoint" "$pub_endpoint" "$LOG_DIR/$label.evidence.log" all \
+    "$MESH_SERVICE" "$mesh_peers"
   "$SERVICE" --config="$config_path" \
     >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
   SERVICE_PID="$!"
@@ -271,9 +330,13 @@ start_service_a() {
 start_service_b() {
   local label="$1"
   local config_path="$CONFIG_DIR/$label.json"
+  local mesh_peers="$MESH_SERVICE,$MESH_THROW"
+  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
+    mesh_peers=""
+  fi
   write_service_config "$config_path" svc-b "$HTTP_FILTERED" "$CHANNEL_FILTERED" \
     "$SPOT_ROUTER_FILTERED" "$SPOT_PUB_FILTERED" "$LOG_DIR/$label.evidence.log" \
-    socket-filter
+    socket-filter "$MESH_FILTERED" "$mesh_peers"
   "$FILTERED_SERVICE" --config="$config_path" \
     >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
   FILTERED_PID="$!"
@@ -285,8 +348,13 @@ start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
   "$HTTP_SERVICE" service
 start_service_b filtered
 
+THROW_MESH_PEERS="$MESH_SERVICE,$MESH_FILTERED"
+if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
+  THROW_MESH_PEERS=""
+fi
 write_service_config "$CONFIG_DIR/throw.json" svc-throw "$HTTP_THROW" "$CHANNEL_THROW" \
-  "$SPOT_ROUTER_THROW" "$SPOT_PUB_THROW" "$LOG_DIR/throw.evidence.log" throwing
+  "$SPOT_ROUTER_THROW" "$SPOT_PUB_THROW" "$LOG_DIR/throw.evidence.log" throwing \
+  "$MESH_THROW" "$THROW_MESH_PEERS"
 "$THROWING_SERVICE" --config="$CONFIG_DIR/throw.json" \
   >"$LOG_DIR/throw.stdout.log" 2>"$LOG_DIR/throw.stderr.log" &
 PIDS+=("$!")
@@ -331,6 +399,104 @@ os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
 
+if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
+  python3 - "$HTTP_SERVICE" "$HTTP_FILTERED" "$HTTP_THROW" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+service_a, service_b, service_c = sys.argv[1:]
+
+def post(base, path):
+    request = urllib.request.Request(f"{base}{path}", data=b"", method="POST")
+    with urllib.request.urlopen(request, timeout=5) as response:
+        if response.status >= 400:
+            raise RuntimeError(f"POST {path} failed with status {response.status}")
+
+post(service_a, "/runtime/observe")
+post(service_a, "/admin/subject/create?spotRid=mon-b1-a")
+post(service_b, "/admin/subject/create?spotRid=mon-b1-b")
+post(service_c, "/admin/subject/create?spotRid=mon-b1-c")
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{service_a}/runtime/snapshot", timeout=2) as response:
+        snapshot = json.load(response)
+    if sum(1 for peer in snapshot["peers"] if peer["ready"]) >= 2:
+        break
+    time.sleep(0.05)
+else:
+    raise RuntimeError(
+        "MON-B1 expected two ready remote peers: "
+        + json.dumps(snapshot["peers"], sort_keys=True))
+PY
+  kill -STOP "$FILTERED_PID"
+  FILTERED_STOPPED=1
+fi
+
+if [[ "$SCENARIO_LOWER" == "mon-a5" ]]; then
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base = sys.argv[1]
+request = urllib.request.Request(f"{base}/runtime/observe", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status >= 400:
+        raise RuntimeError("failed to start public RouteMesh observer")
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{base}/runtime/snapshot", timeout=2) as response:
+        snapshot = json.load(response)
+    if snapshot["location"]["state"] == "ready":
+        break
+    time.sleep(0.1)
+else:
+    raise RuntimeError("location runtime did not become ready before Redis pause")
+PY
+  docker pause "$REDIS_CONTAINER" >/dev/null
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base = sys.argv[1]
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{base}/runtime/snapshot", timeout=2) as response:
+        snapshot = json.load(response)
+    if snapshot["location"]["state"] == "degraded":
+        if sum(1 for peer in snapshot["peers"] if peer["ready"]) < 2:
+            raise RuntimeError("admitted peers were lost during store-only failure")
+        break
+    time.sleep(0.2)
+else:
+    raise RuntimeError("location runtime did not become degraded during Redis pause")
+PY
+  request_profile mon-a5-store-degraded
+  docker unpause "$REDIS_CONTAINER" >/dev/null
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import time
+import urllib.request
+
+base = sys.argv[1]
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    with urllib.request.urlopen(f"{base}/runtime/snapshot", timeout=2) as response:
+        snapshot = json.load(response)
+    if snapshot["location"]["state"] == "ready":
+        break
+    time.sleep(0.2)
+else:
+    raise RuntimeError("location runtime did not recover after Redis restart")
+PY
+fi
+
 if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
   write_client_config "$SCENARIO_LOWER"
   "$CLIENT" --config="$CONFIG_DIR/client.json" \
@@ -339,27 +505,87 @@ if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
   cat "$LOG_DIR/client.stdout.log"
   grep -q "runtime-monitoring client result=passed" "$LOG_DIR/client.stdout.log"
   if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-c1" ]]; then
-    grep -q "monitoring-event-dispatch" "$LOG_DIR/throw.stderr.log"
-    grep -q "monitoring dispatch failure for e2e" "$LOG_DIR/throw.stderr.log"
+    grep -q "mesh-request-completed|target=svc-throw|marker=mon-c1-infrastructure" \
+      "$LOG_DIR/filtered.evidence.log"
+    grep -q "claim-domain=application|reason=active" \
+      "$LOG_DIR/filtered.evidence.log"
+    grep -q "claim-domain=application|reason=released" \
+      "$LOG_DIR/filtered.evidence.log"
+  fi
+  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
+    kill -CONT "$FILTERED_PID"
+    FILTERED_STOPPED=0
   fi
 fi
 
 if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-a4" ]]; then
-  OLD_SERVICE_CHANNEL="$CHANNEL"
-  request_profile mon-a4-before-remap
-  crash_service "$SERVICE_PID" service "$HTTP_SERVICE"
-  wait_trigger_route_state svc-a absent
+  python3 - "$HTTP_SERVICE" <<'PY'
+import sys
+import urllib.request
 
-  CHANNEL="$CHANNEL_REMAP"
-  SPOT_ROUTER_SERVICE="$SPOT_ROUTER_REMAP"
-  SPOT_PUB_SERVICE="$SPOT_PUB_REMAP"
-  HTTP_SERVICE="$HTTP_SERVICE_REMAP"
-  start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
-    "$HTTP_SERVICE" service-remap
-  wait_trigger_route_state svc-a "$CHANNEL"
-  request_profile mon-a4-after-remap
+base = sys.argv[1]
+request = urllib.request.Request(f"{base}/runtime/observe", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status >= 400:
+        raise RuntimeError("failed to start public RouteMesh observer")
+PY
+  wait_mesh_peer_ready svc-b true
+  stop_service "$FILTERED_PID" filtered-service-normal "$HTTP_FILTERED"
+  wait_mesh_peer_ready svc-b false
+  start_service_b filtered-normal-restart
+  wait_mesh_peer_ready svc-b true
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import urllib.request
 
-  write_client_config mon-a4 "$OLD_SERVICE_CHANNEL" "$CHANNEL"
+base = sys.argv[1]
+body = json.dumps({"value": "normal-restart", "marker": "mon-a4-normal"}).encode()
+request = urllib.request.Request(
+    f"{base}/mesh/profile/request?targetRid=svc-b", data=body,
+    headers={"Content-Type": "application/json"}, method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if json.load(response)["provider_rid"] != "svc-b":
+        raise RuntimeError("normal replacement request reached the wrong peer")
+PY
+  crash_service "$FILTERED_PID" filtered-service-crash "$HTTP_FILTERED"
+  wait_mesh_peer_ready svc-b false
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base = sys.argv[1]
+body = json.dumps({"value": "crash-window", "marker": "mon-a4-crash"}).encode()
+request = urllib.request.Request(
+    f"{base}/mesh/profile/request?targetRid=svc-b", data=body,
+    headers={"Content-Type": "application/json"}, method="POST")
+try:
+    urllib.request.urlopen(request, timeout=5)
+except urllib.error.HTTPError:
+    pass
+else:
+    raise RuntimeError("crashed peer remained a successful ready route")
+PY
+  start_service_b filtered-crash-restart
+  wait_mesh_peer_ready svc-b true
+  python3 - "$HTTP_SERVICE" <<'PY'
+import json
+import sys
+import urllib.request
+
+base = sys.argv[1]
+body = json.dumps({"value": "crash-restart", "marker": "mon-a4-recovered"}).encode()
+request = urllib.request.Request(
+    f"{base}/mesh/profile/request?targetRid=svc-b", data=body,
+    headers={"Content-Type": "application/json"}, method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if json.load(response)["provider_rid"] != "svc-b":
+        raise RuntimeError("crash recovery request reached the wrong peer")
+PY
+
+  write_client_config mon-a4
   "$CLIENT" --config="$CONFIG_DIR/client.json" \
     >"$LOG_DIR/client-a4.stdout.log" 2>"$LOG_DIR/client-a4.stderr.log"
 
@@ -368,12 +594,22 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-a4" ]]; then
 fi
 
 if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
-  MON_D1_CYCLES=2
+  python3 - "$HTTP_SERVICE" <<'PY'
+import sys
+import urllib.request
+
+base = sys.argv[1]
+request = urllib.request.Request(f"{base}/runtime/observe", data=b"", method="POST")
+with urllib.request.urlopen(request, timeout=5) as response:
+    if response.status >= 400:
+        raise RuntimeError("failed to start public RouteMesh observer")
+PY
+  MON_D1_CYCLES=3
   for cycle in $(seq 1 "$MON_D1_CYCLES"); do
     crash_service "$FILTERED_PID" "filtered-service-cycle-$cycle" "$HTTP_FILTERED"
-    wait_trigger_route_state svc-b absent
+    wait_mesh_peer_ready svc-b false
     start_service_b "filtered-restart-$cycle"
-    wait_trigger_route_state svc-b "$CHANNEL_FILTERED"
+    wait_mesh_peer_ready svc-b true
   done
 
   write_client_config mon-d1
@@ -382,7 +618,6 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
 
   cat "$LOG_DIR/client-d1.stdout.log"
   grep -q "scenario MON-D1 passed" "$LOG_DIR/client-d1.stdout.log"
-  grep -q "message flow" "$LOG_DIR/trigger-service-b-mon-d1-flow.log"
 fi
 
 echo "runtime-monitoring e2e result=passed"

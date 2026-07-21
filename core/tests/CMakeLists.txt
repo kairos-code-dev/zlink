@@ -122,6 +122,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_stream_threadsafe
   ${INTEGRATION_TEST_ROOT}/test_stream_send_blocking_wakeup
   ${INTEGRATION_TEST_ROOT}/test_stream_fastpath
+  ${INTEGRATION_TEST_ROOT}/test_asio_ws
   ${INTEGRATION_TEST_ROOT}/test_transport_matrix
   ${INTEGRATION_TEST_ROOT}/routing-id/test_router_auto_id_format
   ${INTEGRATION_TEST_ROOT}/routing-id/test_stream_routing_id_size
@@ -377,6 +378,12 @@ foreach(test_source ${tests})
           TIMEOUT 180)
     endif()
     if(${test} STREQUAL "test_mesh_peer_admission")
+      set_tests_properties(
+        ${test}
+        PROPERTIES
+          TIMEOUT 30)
+    endif()
+    if(${test} STREQUAL "test_router_handover")
       set_tests_properties(
         ${test}
         PROPERTIES
@@ -849,7 +856,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_asio_connect
     test_asio_poller
     test_asio_tcp
-    test_asio_ws
     test_bind_ws_fuzzer
     test_bind_after_connect_tcp
     test_bind_src_address

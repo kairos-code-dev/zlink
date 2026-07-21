@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkActor,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
   ZLinkRequestContext,
@@ -50,13 +51,15 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
 export class MonitoringEntrySpot implements ZLinkEntrySpot {
   declare readonly context: ZLinkEntrySpotContext;
 
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
-  async onJoinedActor(_actor: ZLinkActor): Promise<void> {}
+  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
 
-  async onLeaveActor(_actor: ZLinkActor): Promise<void> {}
+  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 
   async onInitialize(): Promise<void> {
     await this.context.addTimer('failing', 1000, FailingTimerHandler, { stopOnUnhandledException: false });
@@ -127,8 +130,6 @@ function spotEventDetails(event: ZLinkSpotEvent): string {
       return 'peers=0|subjects=0|timer=<none>';
     case ZLinkSpotEventKind.PeersChanged:
       return `peers=${event.peers.length}|subjects=0|timer=<none>`;
-    case ZLinkSpotEventKind.SubjectsChanged:
-      return `peers=0|subjects=${event.subjects.length}|timer=<none>`;
     case ZLinkSpotEventKind.TimerHandlerFailed:
     case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
       return `peers=0|subjects=0|timer=${event.timerDiagnostic.timerName}`;

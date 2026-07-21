@@ -1,5 +1,6 @@
 import type {
   ZLinkActor,
+  ZLinkActorJoinRequest,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpotActorJoinResponse
@@ -33,8 +34,7 @@ import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedActorAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
 }
 
 interface ZLinkSpotRoutedActorAdmissionOptions {
@@ -164,7 +164,7 @@ export class ZLinkSpotRoutedActorAdmission {
     pending: ZLinkPendingRoutedActorTransfer
   ): Promise<Record<string, unknown>> {
     try {
-      const response = await this.runJoinCallback(decoded.actorId, decoded.request);
+      const response = await this.runJoinCallback(decoded, decoded.request);
       const reply = response.reply === undefined
         ? undefined
         : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
@@ -227,13 +227,29 @@ export class ZLinkSpotRoutedActorAdmission {
     }
   }
 
-  private runJoinCallback(actorId: string, request: Message): Promise<ZLinkSpotActorJoinResponse> {
+  private runJoinCallback(
+    decoded: ZLinkDecodedRemoteActorJoinRequest,
+    request: Message
+  ): Promise<ZLinkSpotActorJoinResponse> {
     const target = this.options.getTarget();
     const joinPayload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
+    const actorRef = decoded.actorRef;
+    if (actorRef === undefined) {
+      throw new Error(`Remote actor '${decoded.actorId}' join identity is missing its ActorRef.`);
+    }
+    const joinRequest: ZLinkActorJoinRequest = Object.freeze({
+      actor: Object.freeze({
+        nodeRid: actorRef.nodeRid,
+        actorId: actorRef.actorId,
+        generation: actorRef.generation
+      }),
+      actorType: decoded.actorType,
+      expectedMembershipEpoch: decoded.expectedMembershipEpoch
+    });
     return this.options.serial.execute(async () =>
       target.onActorJoin === undefined
         ? { accepted: this.options.defaultAccept }
-        : target.onActorJoin(actorId, joinPayload)
+        : target.onActorJoin(joinRequest, joinPayload)
     );
   }
 

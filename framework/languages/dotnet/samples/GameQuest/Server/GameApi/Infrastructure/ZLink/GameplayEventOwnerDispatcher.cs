@@ -11,12 +11,12 @@ internal sealed class GameplayEventOwnerDispatcher(
     GameQuestTopology topology,
     IZLinkRouteClient channels) : IGameplayEventOwnerDispatcher
 {
-    public ValueTask<string> DispatchAsync(
+    public async ValueTask<string> DispatchAsync(
         GameplayEvent gameplayEvent,
         CancellationToken cancellationToken)
     {
         var owner = topology.OwnerRouteRid(gameplayEvent.PlayerId);
-        channels.SendToChannel(topology.QuestOwnerChannel(gameplayEvent.PlayerId), topology.QuestOwnerChannel(gameplayEvent.PlayerId),
+        await channels.SendToChannel(SampleNames.MeshName, topology.QuestOwnerChannel(gameplayEvent.PlayerId),
                 new GameplayMsg(
                     gameplayEvent.EventId,
                     gameplayEvent.PlayerId,
@@ -26,8 +26,8 @@ internal sealed class GameplayEventOwnerDispatcher(
                         gameplayEvent.Count,
                         gameplayEvent.SourceApi)),
                     gameplayEvent.CreatedAtUnixMs))
-            .TrySubmit();
-        return ValueTask.FromResult(owner.ToString());
+            .SubmitAsync(cancellationToken);
+        return owner.ToString();
     }
 
     private sealed record GameplayPayload(string Value, int Count, string SourceApi);

@@ -23,10 +23,12 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -61,29 +63,6 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     @Override
     public ZLinkActorRequestCall requestToActor(ActorRef actorRef, Object request) {
         return new RequestCall(actorRef, request);
-    }
-
-    private CompletionStage<Void> sendAsync(String actorId, String packetName, Object message) {
-        return resolveActorAddress(actorId)
-            .thenCompose(actor -> submitSendWithRouteRetry(actor, packetName, message)
-                .exceptionallyCompose(error -> {
-                    if (isStaleActorError(error)) {
-                        return reResolveActorAddress(actorId)
-                            .thenCompose(reResolved -> submitSendWithRouteRetry(reResolved, packetName, message))
-                            .exceptionallyCompose(retryError -> {
-                                if (isStaleActorError(retryError)) {
-                                    return failed(actorLocationStale(actorId, retryError));
-                                }
-                                return failed(unwrap(retryError));
-                            });
-                    }
-                    return failed(unwrap(error));
-                }));
-    }
-
-    private CompletionStage<Void> sendAsync(ActorRef actorRef, String packetName, Object message) {
-        return submitSendWithRouteRetry(toBackendActorRef(actorRef), packetName, message)
-            .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
     private <TReply> CompletionStage<TReply> requestAsync(
@@ -126,18 +105,32 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                 request,
                 timeout,
                 replyType)
-            .exceptionallyCompose(error -> failed(unwrap(error)));
+            .exceptionallyCompose(error -> classifyExplicitRefFailure(actorRef, error)
+                .thenCompose(ZLinkActorClientRuntime::failed));
     }
 
-    private CompletionStage<Void> submitSendWithRouteRetry(
-        ZLinkBackendActorRef actor,
-        String packetName,
-        Object message) {
-        return ZLinkActorRetryScheduler.retryRouteUntil(
-                routeRetryTimeout(defaultTimeout),
-                () -> submitSend(actor, packetName, message),
-                ZLinkActorClientRuntime::isRouteNotConnected)
-            .exceptionallyCompose(error -> failed(unwrap(error)));
+    private CompletionStage<RuntimeException> classifyExplicitRefFailure(
+        ActorRef requested,
+        Throwable error) {
+        Throwable unwrapped = unwrap(error);
+        RuntimeException original = unwrapped instanceof RuntimeException runtime
+            ? runtime
+            : new ZLinkConfigurationException("Actor request failed.", unwrapped);
+        if (!isStaleActorError(unwrapped)) {
+            return CompletableFuture.completedFuture(original);
+        }
+        return locations.resolveActorRow(new ZLinkActorLocationKey(requested.actorId()))
+            .handle((row, lookupError) -> {
+                if (lookupError != null || row == null || row.actorRef() == null) {
+                    return original;
+                }
+                ZLinkBackendActorRef current = toBackendActorRef(row);
+                if (!current.nodeRid().equals(requested.nodeRid())
+                    || current.generation() != requested.generation()) {
+                    return actorLocationStale(requested.actorId(), original);
+                }
+                return original;
+            });
     }
 
     private <TReply> CompletionStage<TReply> submitRequestWithRouteRetry(
@@ -178,26 +171,25 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             });
     }
 
-    private CompletionStage<Void> submitSend(
-        ZLinkBackendActorRef actor,
+    private CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult>
+    submitSendResult(
+        ActorRef actorRef,
         String packetName,
         Object message) {
+        ZLinkBackendActorRef actor = toBackendActorRef(actorRef);
         List<Message> parts = createPacketParts(ZLinkStreamMessageKind.SEND, Optional.empty(), packetName, message);
-        try {
-            boolean submitted = spotNode.get().sendToActor(actor, parts, SendFlags.NONE);
-            if (!submitted) {
-                return failed(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
-                    "Actor send failed because the target route is not connected.",
-                    true,
-                    null));
-            }
-            return CompletableFuture.completedFuture(null);
-        } catch (RuntimeException error) {
-            return failed(mapBackendException(error, "Actor send"));
-        } finally {
-            closeAll(parts);
-        }
+        ZLinkInternalSpotNode node = spotNode.get();
+        return ZLinkSubmitResults.submitAsync(
+                node,
+                ZLinkBackendAdmissionKey.actor(
+                    actor.nodeRid(), actor.actorId(), actor.generation()),
+                () -> node.sendToActor(actor, parts, SendFlags.DONT_WAIT),
+                () -> closeAll(parts))
+            .exceptionallyCompose(error -> classifyExplicitRefFailure(actorRef, error)
+                .thenCompose(classified -> isStaleActorError(classified)
+                    ? CompletableFuture.completedFuture(ZLinkSubmitResults.result(
+                        systems.zlink.framework.channels.ZLinkSubmitStatus.TARGET_NOT_FOUND))
+                    : ZLinkActorClientRuntime.failed(classified)));
     }
 
     private <TReply> CompletionStage<TReply> submitRequest(
@@ -424,6 +416,8 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private final class SendCall implements ZLinkActorSendCall {
+        private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+            new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
         private final ActorRef actorRef;
         private final Object message;
         private String packetName;
@@ -440,12 +434,13 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         }
 
         @Override
-        public void submit() {
-            sendAsync(actorRef, packetName, message).exceptionally(error -> {
-                java.util.logging.Logger.getLogger(ZLinkActorClientRuntime.class.getName())
-                    .log(java.util.logging.Level.SEVERE, "one-way actor submission failed", error);
-                return null;
-            });
+        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+                submitGate.begin();
+            if (duplicate != null) {
+                return duplicate;
+            }
+            return submitSendResult(actorRef, packetName, message);
         }
     }
 

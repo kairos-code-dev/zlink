@@ -137,6 +137,7 @@ final class LocationContractTest {
             ZLinkSpotLocation.class,
             "meshName",
             "spotRid",
+            "spotGeneration",
             "spotType",
             "nodeRid",
             "spotKind",
@@ -213,9 +214,7 @@ final class LocationContractTest {
         assertNoMethod("add" + "Actor" + "LocationStore");
         assertNoMethod("add" + "Route" + "LocationStore");
         assertNoMethod("add" + "OwnerLease" + "Store");
-        assertEquals(void.class, ZLinkFrameworkOptions.class
-            .getMethod("useInMemoryLocationStores")
-            .getReturnType());
+        assertNoMethod("useInMemoryLocationStores");
         assertEquals(void.class, ZLinkFrameworkOptions.class
             .getMethod("addLocationStore", ZLinkLocationStore.class)
             .getReturnType());
@@ -302,7 +301,7 @@ final class LocationContractTest {
         assertEquals(ZLinkActorRequestCall.class, ZLinkActorClient.class
             .getMethod("requestToActor", ActorRef.class, Object.class)
             .getReturnType());
-        assertEquals(void.class, ZLinkActorSendCall.class
+        assertEquals(CompletionStage.class, ZLinkActorSendCall.class
             .getMethod("submit")
             .getReturnType());
         assertNoPublicMethod(ZLinkActorSendCall.class, "await");
@@ -513,10 +512,22 @@ final class LocationContractTest {
             .getMethod("requestToNode", String.class, RoutingId.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkSendCall.class, ZLinkRouteClient.class
-            .getMethod("sendToSpot", String.class, SpotHandle.class, Object.class)
+            .getMethod(
+                "sendToChannel",
+                String.class,
+                Object.class)
             .getReturnType());
         assertEquals(ZLinkRequestCall.class, ZLinkRouteClient.class
-            .getMethod("requestToSpot", String.class, SpotHandle.class, Object.class)
+            .getMethod(
+                "requestToChannel",
+                String.class,
+                Object.class)
+            .getReturnType());
+        assertEquals(ZLinkSendCall.class, ZLinkRouteClient.class
+            .getMethod("sendToSpot", SpotHandle.class, Object.class)
+            .getReturnType());
+        assertEquals(ZLinkRequestCall.class, ZLinkRouteClient.class
+            .getMethod("requestToSpot", SpotHandle.class, Object.class)
             .getReturnType());
         assertNoPublicMethod(ZLinkRouteClient.class, "send", String.class, RoutingId.class, Object.class);
         assertNoPublicMethod(ZLinkRouteClient.class, "request", String.class, RoutingId.class, Object.class);

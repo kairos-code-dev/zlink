@@ -66,7 +66,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_dealer_option(
 
 For `zlink_get_dealer_option()`, `*optvallen_` is the input capacity of
 `optval_`. On success it is updated to the number of bytes written. HWM,
-reconnect, heartbeat, and timeout options that are not DEALER-specific use
+reconnect and timeout options that are not DEALER-specific use
 `zlink_set_option()` and `zlink_get_option()`.
 
 Outbound peers with equal positive weights are selected in round-robin order.

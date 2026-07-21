@@ -65,9 +65,9 @@ return to Entry Spot, and are destroyed from the Entry Spot context.
 
 Session and Play also attach the standard .NET `MeterListener` to
 `ZLinkMeters.Framework`. The runner verifies real STREAM and Spot samples, while
-Play declares `DrainNatural` for its short-lived room mesh. Message-flow logs,
-runtime metrics, and graceful-drain policy therefore use only the public
-framework configuration shown by the common sample specification.
+Play uses the fixed MeshNode drain sequence. It stops new application admission,
+finishes accepted work, completes Actor handoff and the STREAM barrier, and then
+closes the remaining local rooms before releasing location ownership.
 
 Redis is required for two responsibilities: framework location store data and
 the Bingo match queue. The runner always provisions a dedicated Redis Docker

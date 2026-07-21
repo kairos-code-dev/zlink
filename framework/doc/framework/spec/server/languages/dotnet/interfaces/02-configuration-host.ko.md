@@ -1,0 +1,150 @@
+# .NET 시스템 구조와 host 등록
+
+[.NET exact interface 목차](README.ko.md) · [Topology configuration](03-configuration-topology.ko.md)
+
+## 1. 범위
+
+이 문서는 ZLink Framework 11.0.0을 ASP.NET Core host와 DI에 등록하는 계약을 정의한다. RouteMesh builder,
+ChannelName membership, manual peer와 runtime option의 정확한 시그니처는
+[Topology configuration](03-configuration-topology.ko.md)이 소유한다. Handler, context와 messaging client의
+시그니처는 [exact interface 목차](README.ko.md)의 기능별 문서가 소유한다.
+
+## 2. Package 경계
+
+| package | 책임 |
+|---|---|
+| `Zlink.Framework.Contracts` | handler, context, call과 공통 오류 타입 |
+| `Zlink.Framework` | RouteMesh, Spot, Actor, STREAM session과 location runtime |
+| `Zlink.Framework.AspNetCore` | `IServiceCollection` 등록과 host lifecycle 연결 |
+| `Zlink.Framework.Codecs.Protobuf` | 선택 Protobuf codec extension |
+| `Zlink.Framework.Codecs.MessagePack` | 선택 MessagePack codec extension |
+| `Zlink.Framework.Locations.Redis` | Redis location store extension |
+
+Server framework는 bindings package의 public raw socket API만 호출한다. Core service C API, bindings의
+service object, non-public member, reflection과 native symbol 직접 호출은 사용하지 않는다. ASP.NET Core
+adapter는 framework runtime을 DI와 hosted service lifecycle에 연결하며 raw socket을 application에 노출하지
+않는다.
+
+## 3. Host 등록
+
+ASP.NET Core 진입점은 다음 시그니처다.
+
+```csharp
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddZLinkFramework(
+        this IServiceCollection services,
+        Action<IZLinkFrameworkOptions> configure);
+    public static IServiceCollection AddZLinkMonitoring(
+        this IServiceCollection services,
+        Action<IZLinkMonitoringOptions> configure);
+    public static IHealthChecksBuilder AddZLinkDrainHealthCheck(
+        this IHealthChecksBuilder builder);
+    public static IServiceCollection AddZLinkHttpClient(
+        this IServiceCollection services,
+        string name,
+        Action<ZLinkHttpClientBuilder> configure);
+}
+```
+
+한 `IServiceCollection`에 framework root를 한 번 등록한다. `IZLinkFrameworkOptions`의 정확한 멤버는
+[Topology configuration §2](03-configuration-topology.ko.md#2-등록-인터페이스)가 소유한다.
+
+Host는 구성 검증, routing ID 확보, public raw socket 생성, bind, peer admission, handler 준비 순서로
+시작한다. Application callback은 handler와 owner queue가 준비된 뒤에만 실행한다. Hosting stop은
+`IZLinkFrameworkRuntime.ShutdownAsync(...)`를 호출한다. Application이 logical continuity를 요구하면 stop 전에
+`RetireAsync(...)`를 명시적으로 호출한다.
+
+## 4. DI public service
+
+Framework를 등록하면 다음 service가 public DI surface로 제공된다.
+
+| service | lifetime | 책임 |
+|---|---|---|
+| `IZLinkRouteClient` | singleton | Node direct와 ChannelName send/request |
+| `IZLinkSpotClient` | singleton | resolved Spot과 Instance logical address direct send/request |
+| `IZLinkSpotManager` | singleton | Spot 생성, resolve와 종료 |
+| `IZLinkSpotPublisherClient` | singleton | Spot Logical Multicast publish |
+| `IZLinkFanoutClient` | singleton | classic fanout ChannelName에 typed event publish |
+| `IZLinkActorClient` | singleton | ActorRef direct send/request |
+| `IZLinkActorManager` | singleton | Actor 생성, resolve와 종료 |
+| `IZLinkRouteMeshRuntimeOptions` | singleton | ChannelName weight 조회·설정 |
+| `IZLinkFrameworkRuntime` | singleton | host state, readiness, `Retire`와 `Shutdown` |
+| `IZLinkRouteMeshRuntime` | singleton | MeshNode snapshot과 typed event |
+| `IZLinkClientServerRuntime` | singleton | ClientServer Channel snapshot과 typed event |
+| `IZLinkFanoutRuntime` | singleton | automatic fanout Channel snapshot과 publisher lifecycle event |
+| `IZLinkMessageFlowRuntime` | singleton | message flow mode와 observer event |
+| `IZLinkAllocatedRoutingIdProvider` | singleton | 준비된 allocation 결과 조회 |
+
+등록되지 않은 MeshName이나 runtime capability를 조회하면 `ZLinkConfigurationException`이 발생한다.
+Channel send/request의 등록되지 않은 ChannelName은 `RequestTargetNotFound`로 완료한다.
+Spot과 Actor handler instance는 owner의 DI scope에서 resolve한다. Handler가 service를 사용할 때는 context를
+service locator로 사용하지 않고 constructor injection을 사용한다.
+
+## 5. Redis location store 등록
+
+자동 discovery, 분산 Spot·Actor address, Instance Spot activation 또는 Actor transfer를 사용하는 host는
+`Zlink.Framework.Locations.Redis`가 제공하는 store instance를 만든 뒤 root에 명시적으로 등록한다.
+
+```csharp
+services.AddZLinkFramework(options =>
+{
+    options.AddLocationStore(
+        new ZLinkRedisLocationStore(redisOptions)); // Location record, lease와 owner authority를 함께 맡는다.
+    options.AddCheckpointStore(checkpointStore);    // transfer envelope을 opaque bytes로 보관한다.
+});
+```
+
+Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`는
+`IZLinkLocationStore` instance 하나를 받는다. 이 instance가 authority CAS를 반드시 제공하며 routing ID slot
+allocation을 사용하면 allocation capability도 같은 instance가 구현해야 한다.
+
+Manual peer만 사용하고 분산 location 기능을 사용하지 않는 MeshNode는 location store 없이 시작할 수 있다.
+Manual peer도 MeshName, RID, lifecycle generation, ChannelName set과 security identity admission을 통과한다.
+
+## 6. Codec
+
+Typed handler와 client는 업무 객체를 주고받는다. Framework는 JSON serializer를 기본으로 제공하므로 JSON을
+사용하기 위한 message-specific registration API는 없다. Protobuf, MessagePack과 사용자 codec은 root의
+codec registry에 extension 단위로 한 번 등록한다.
+
+Codec은 payload와 업무 객체의 변환만 담당한다. Packet name, metadata, routing과 reply correlation은
+Framework가 소유한다. Packet name은 handler registration descriptor에서 결정하며 codec을 바꾸어도
+dispatch key는 바뀌지 않는다.
+
+## 7. Startup validation
+
+Host는 network bind 전에 다음 조건을 검증한다.
+
+- framework root와 MeshName의 중복
+- MeshNode의 routing ID와 listener 설정. Server membership은 0개일 수 있다
+- ChannelName의 `Client()`·`Server()` 역할과 process-local topology 중복
+- ClientServer automatic discovery에 필요한 location store
+- wildcard BindHost를 사용할 때 connect 가능한 AdvertiseHost
+- 같은 owner namespace의 handler key 중복
+- Spot, Actor와 STREAM factory의 owner 관계
+- Instance Spot의 stable type·구현 class 중복, actor-free lifecycle interface, type별 active 상한과 activation timeout
+- Instance Spot을 사용할 때 location store 등록과 MeshName별 source Entry Spot 단일성
+- Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
+- `Snapshot` policy의 state contract ID·adapter type과 Checkpoint Store 등록
+- 자동 discovery 또는 분산 location 기능에 필요한 store instance
+- 자동 routing ID와 fixed routing ID의 동시 설정
+- TLS certificate, key와 trust 설정
+
+검증 실패는 `ZLinkConfigurationException`으로 host startup을 실패시킨다. Runtime을 first call에서 만들지
+않으므로 구성 오류가 message 처리 중에 처음 나타나지 않는다.
+
+## 8. Runtime option
+
+Channel weight의 public runtime option은
+[Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다. 실행 중에는
+ChannelName으로 선택한 local Server의 `Weight`만 설정할 수 있다. `MaxMessageSize`를 포함한 transport
+option은 startup 전에만 설정하며 runtime setter를 제공하지 않는다.
+
+Framework service liveness는 application traffic과 무관하게 5초마다 probe를 보내고 같은 current connection의
+matching ACK를 15초 안에 받아야 하는 profile로 고정한다. 다른 inbound frame은 ACK deadline을 충족하지
+않는다. 이 값을 바꾸는 C# public option은 제공하지 않으며 owner lease renew interval과 같은 설정으로
+취급하지 않는다.
+
+Logical Multicast publisher는 publish 전용 전달 정책 option을 제공하지 않는다. 각 remote target은
+MeshNode ROUTER의 HWM과 send timeout을 따르고, local Spot queue는 독립적으로 수락하거나 drop한다.

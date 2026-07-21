@@ -21,7 +21,6 @@ function createShoppingMallWorkflowModule(role: string): Function {
   class ShoppingMallWorkflowModule {}
   const configuration = createShoppingMallConfigurationModule([
     role === SampleNames.workflowA ? 'workflowAHttpUrl' : 'workflowBHttpUrl',
-    role === SampleNames.workflowA ? 'workflowAChannelEndpoint' : 'workflowBChannelEndpoint',
     role === SampleNames.workflowA ? 'workflowASpotEndpoint' : 'workflowBSpotEndpoint',
     role === SampleNames.workflowA ? 'workflowASpotPubEndpoint' : 'workflowBSpotPubEndpoint',
     'redisEndpoint',
@@ -43,18 +42,14 @@ function createShoppingMallWorkflowModule(role: string): Function {
             .traceLogFile(`${config.logDir}/flow-${role}.log`)
             .traceLabel(role);
           builder.addLocationStore(createShoppingMallLocationStore(config));
-          Object.assign(builder.configureLocations(), shoppingMallLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.orderWorkflowChannel)
-              .enableServer(workflowChannelEndpointForRole(role, config))
-              .routingId(role)
-              .addHandlerGroup('workflow')
-            .addSpotMesh(SampleNames.orderWorkflowSpotMesh)
-              .routingId(role)
-              .enableRouter(workflowSpotEndpointForRole(role, config))
-              .enablePubSub(workflowSpotPubEndpointForRole(role, config))
-              .addSpotFactory(OrderWorkflowSpot)
-            .build();
+          shoppingMallLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
+            .routingId(role)
+            .listen(workflowSpotEndpointForRole(role, config))
+            .addSpotFactory(OrderWorkflowSpot);
+          mesh.channelName(SampleNames.orderWorkflowChannel).addHandlerGroup('workflow');
+          mesh.channelName(SampleNames.orderWorkflowSpotMesh);
+          return builder.build();
         }
       })
     ],
@@ -83,16 +78,6 @@ function createShoppingMallWorkflowModule(role: string): Function {
   return ShoppingMallWorkflowModule;
 }
 
-function workflowChannelEndpointForRole(role: string, values: ShoppingMallServerConfig): string {
-  if (role === SampleNames.workflowA) {
-    return values.workflowAChannelEndpoint;
-  }
-  if (role === SampleNames.workflowB) {
-    return values.workflowBChannelEndpoint;
-  }
-  throw new Error(`Role '${role}' is not an OrderWorkflow role.`);
-}
-
 function workflowSpotEndpointForRole(role: string, values: ShoppingMallServerConfig): string {
   if (role === SampleNames.workflowA) {
     return values.workflowASpotEndpoint;
@@ -100,12 +85,6 @@ function workflowSpotEndpointForRole(role: string, values: ShoppingMallServerCon
   if (role === SampleNames.workflowB) {
     return values.workflowBSpotEndpoint;
   }
-  throw new Error(`Role '${role}' is not an OrderWorkflow role.`);
-}
-
-function workflowSpotPubEndpointForRole(role: string, values: ShoppingMallServerConfig): string {
-  if (role === SampleNames.workflowA) return values.workflowASpotPubEndpoint;
-  if (role === SampleNames.workflowB) return values.workflowBSpotPubEndpoint;
   throw new Error(`Role '${role}' is not an OrderWorkflow role.`);
 }
 

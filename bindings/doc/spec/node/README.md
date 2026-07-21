@@ -550,6 +550,31 @@ but use TypeScript spelling.
 - Operation-start naming follows the Function Naming Rules above. Terminal
   builder methods keep `submit(...)` even for Promise-returning operations.
   Do not add a separate `submitAsync` terminator.
+- The MeshNode Logical Multicast publisher also provides `publishAsync(...)`
+  because one blocking Core publish must run outside the Node.js event loop.
+  This name is limited to that publisher and does not extend async suffixes to
+  other binding operations. The binding copies payload and metadata into owned
+  storage before queuing the worker. An `AbortSignal` can cancel only before
+  the Core call starts. An abort after that point does not replace the started
+  publish's normal submit result and detail. Programming or system failures
+  remain exceptional. This operation adds no timeout option and uses the
+  MeshNode Core send timeout.
+- `publishAsync(...)` returns `Promise<MeshPublishResult>`. `Ok`,
+  `Backpressured`, `NotFound`, `NotConnected`, `Terminated`, and `NotAdmitted`
+  are normal submit outcomes and preserve the detail returned by Core. In
+  particular, a partially admitted `Backpressured` result does not discard its
+  non-zero detail. `InvalidArgument`, `InvalidHandle`, `InvalidState`,
+  `NotSupported`, `ThreadViolation`, `OutOfMemory`, `SeqExhausted`, and
+  `InternalError` are programming or system errors and throw `SubmitError`.
+- When `close()` follows a queued `publishAsync(...)`, new publishes are
+  rejected immediately and `close()` does not block the Node.js event loop. A
+  queued or started operation retains the native publisher handle. The binding
+  releases that handle after the last operation's Core call and Promise
+  completion processing finish.
+- `sendActorBoundSession(...)` on a MeshNode requires a non-zero
+  `expectedBindingGeneration`. A call for an old generation is not redirected
+  to a replacement session, and zero does not select the current binding; the
+  binding preserves Core's `InvalidArgument` result.
 
 ## Public Entry Shape
 

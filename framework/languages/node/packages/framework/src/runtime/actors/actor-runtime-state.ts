@@ -13,9 +13,10 @@ import {
 import type { Message } from '../../contracts/Common/Message';
 import type {
   ZLinkBackendActorRef,
-  ZLinkBackendSpotNode
+  ZLinkBackendMeshNode
 } from '../backend/contracts';
 import { routingIdsEqual } from '../routing-id';
+import { lookupNativeActorRef } from './actor-native-lookup';
 
 export interface ZLinkRemoteBoundSessionTarget {
   readonly routerChannelId: string;
@@ -45,7 +46,9 @@ export class ZLinkActorRuntimeState {
   private actorValue: ZLinkActor | undefined;
   private spotValue: ZLinkSpot | undefined;
   private spotRidValue: RoutingId | undefined;
+  private spotMembershipEpochValue = 0n;
   private nativeActorRefValue: ZLinkBackendActorRef | undefined;
+  private boundSessionBindingGenerationValue = 0n;
   private entryNodeRidValue: RoutingId | undefined;
   private remoteBoundSessionTargetValue: ZLinkRemoteBoundSessionTarget | undefined;
   private remoteActorPacketTargetValue: ZLinkRemoteActorPacketTarget | undefined;
@@ -73,8 +76,16 @@ export class ZLinkActorRuntimeState {
     return this.spotRidValue;
   }
 
+  get spotMembershipEpoch(): bigint {
+    return this.spotMembershipEpochValue;
+  }
+
   get nativeActorRef(): ZLinkBackendActorRef | undefined {
     return this.nativeActorRefValue;
+  }
+
+  get boundSessionBindingGeneration(): bigint {
+    return this.boundSessionBindingGenerationValue;
   }
 
   get entryNodeRid(): RoutingId | undefined {
@@ -245,8 +256,19 @@ export class ZLinkActorRuntimeState {
     }
   }
 
-  ensureNativeActorRef(node: ZLinkBackendSpotNode, request?: Message): ZLinkBackendActorRef {
-    this.nativeActorRefValue ??= node.actorLookup(this.actorId) ?? node.createActor(this.actorId, request);
+  ensureNativeActorRef(node: ZLinkBackendMeshNode, request?: Message): ZLinkBackendActorRef {
+    if (this.nativeActorRefValue === undefined) {
+      const existing = lookupNativeActorRef(node, this.actorId);
+      const native = existing ?? node.createActor(
+        this.actorId,
+        request === undefined ? undefined : Buffer.from(request.data())
+      );
+      this.nativeActorRefValue = {
+        nodeRid: native.nodeRid as ZLinkBackendActorRef['nodeRid'],
+        actorId: native.actorId,
+        generation: native.generation
+      };
+    }
     this.entryNodeRidValue ??= toFrameworkRoutingId(this.nativeActorRefValue.nodeRid);
     return this.nativeActorRefValue;
   }
@@ -254,6 +276,12 @@ export class ZLinkActorRuntimeState {
   setNativeActorRef(actorRef: ZLinkBackendActorRef): void {
     this.nativeActorRefValue = actorRef;
     this.entryNodeRidValue ??= toFrameworkRoutingId(actorRef.nodeRid);
+  }
+
+  setBoundSessionBindingGeneration(generation: bigint): void {
+    if (generation > 0n) {
+      this.boundSessionBindingGenerationValue = generation;
+    }
   }
 
   setEntryNodeRid(entryNodeRid: RoutingId): void {
@@ -284,14 +312,16 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = Buffer.from(payload);
   }
 
-  setJoinedSpot(spotRid: RoutingId, spot?: ZLinkSpot): void {
+  setJoinedSpot(spotRid: RoutingId, spot?: ZLinkSpot, membershipEpoch = 0n): void {
     this.spotRidValue = spotRid;
     this.spotValue = spot;
+    this.spotMembershipEpochValue = membershipEpoch;
   }
 
   clearJoinedSpot(): void {
     this.spotRidValue = undefined;
     this.spotValue = undefined;
+    this.spotMembershipEpochValue = 0n;
   }
 
   clearAfterDestroy(): void {
@@ -302,7 +332,9 @@ export class ZLinkActorRuntimeState {
     this.actorValue = undefined;
     this.spotValue = undefined;
     this.spotRidValue = undefined;
+    this.spotMembershipEpochValue = 0n;
     this.nativeActorRefValue = undefined;
+    this.boundSessionBindingGenerationValue = 0n;
     this.entryNodeRidValue = undefined;
     this.remoteBoundSessionTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
@@ -322,6 +354,7 @@ export class ZLinkActorRuntimeState {
     this.spotValue = undefined;
     this.spotRidValue = undefined;
     this.nativeActorRefValue = undefined;
+    this.boundSessionBindingGenerationValue = 0n;
     this.remoteBoundSessionTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;
@@ -332,8 +365,11 @@ export class ZLinkActorRuntimeState {
   }
 }
 
-export function toFrameworkRoutingId(routingId: ZLinkBackendActorRef['nodeRid']): RoutingId {
-  return String(routingId);
+export function toFrameworkRoutingId(routingId: unknown): RoutingId {
+  // Runtime routing identities are opaque binary values. Preserve binding
+  // RoutingId instances so a later native call cannot reinterpret their
+  // hexadecimal display string as different literal bytes.
+  return routingId as unknown as RoutingId;
 }
 
 export function toFrameworkActorRef(actor: ZLinkBackendActorRef): ActorRef {

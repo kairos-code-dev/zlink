@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MessageDiagnosticsContractTest {
@@ -17,12 +16,11 @@ public class MessageDiagnosticsContractTest {
         TestSupport.assumeNative();
 
         try (Message msg = Message.from("diagnostic")) {
-            assertTrue(hasPublicMethod(Message.class, "getProperty",
+            assertFalse(hasPublicMethod(Message.class, "getProperty",
                 String.class));
             assertFalse(hasPublicMethod(Message.class, "property",
                 String.class));
             assertEquals(1, msg.refCount());
-            assertNull(msg.getProperty("Socket-Type"));
         }
     }
 

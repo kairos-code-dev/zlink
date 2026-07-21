@@ -47,18 +47,18 @@ export interface ZLinkSpotTimerHandler<TSpot> {
   handle(spot: TSpot, tick: ZLinkTimerTick): Promise<void>;
 }
 
-export interface ZLinkSpotActorSendHandler<TSpot, TActor extends ZLinkActor, TMessage> {
-  handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
+export interface ZLinkSpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
+  handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
 }
 
-export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
-  handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkSpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
+  handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }
 
-export interface ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor extends ZLinkActor, TMessage> {
-  handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
+export interface ZLinkEntrySpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
+  handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
 }
 
-export interface ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor extends ZLinkActor, TRequest, TReply> {
-  handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkEntrySpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
+  handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }

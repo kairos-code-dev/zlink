@@ -169,6 +169,7 @@ final class BoundSessionTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(BoundSessionTest.class);
         var node = options.addSpotMesh("game");
+        node.enableRouter("inproc://bound-session-entry-node");
         node.configureEntrySpot()
             .setRoutingId(RoutingId.from("entry-spot"));
         node.addEntrySpot(BoundSessionEntrySpot.class);

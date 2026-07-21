@@ -23,7 +23,7 @@ import {
   ZLINK_MESSAGE_METADATA_POLICY,
   ZLINK_ROUTE_CLIENT,
   ZLINK_RUNTIME_EVENT_PUBLISHER,
-  ZLINK_DRAIN_CONTROL,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND,
   ZLINK_SPOT_PUBLISHER_CLIENT,
@@ -34,7 +34,6 @@ import {
   isNestRuntimeEventHandler
 } from './handler-metadata';
 import { framework, type FrameworkRuntimeHost } from './framework-loader';
-import { ZLinkDrainHealthIndicator } from './drain-health-indicator';
 import { resolveInNestDispatchScope, runInNestDispatchScope } from './dispatch-scope';
 
 type RuntimeHostWithNestLifecycle = FrameworkRuntimeHost & OnModuleInit & OnModuleDestroy;
@@ -68,10 +67,6 @@ const ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS: readonly AlwaysAvailableClientProv
   {
     token: ZLINK_RUNTIME_EVENT_PUBLISHER,
     create: (_registration, runtime) => runtime.eventPublisher
-  },
-  {
-    token: ZLINK_DRAIN_CONTROL,
-    create: (_registration, runtime) => runtime
   }
 ];
 
@@ -80,7 +75,6 @@ export function alwaysAvailableClientProviders(registration?: ZLinkFrameworkRegi
     ...ALWAYS_AVAILABLE_CLIENT_PROVIDER_SPECS.map((spec) =>
       createAlwaysAvailableClientProvider(spec, registration)
     ),
-    ZLinkDrainHealthIndicator,
     { provide: ZLINK_MESSAGE_METADATA_POLICY, useValue: Object.freeze({ forward: true }) }
   ];
 }
@@ -111,9 +105,7 @@ export function alwaysAvailableClientTokens(): InjectionToken[] {
     ZLINK_FANOUT_CLIENT,
     ZLINK_BOUND_SESSION_FACTORY,
     ZLINK_RUNTIME_EVENT_PUBLISHER,
-    ZLINK_DRAIN_CONTROL,
     ZLINK_MESSAGE_METADATA_POLICY,
-    ZLinkDrainHealthIndicator
   ];
 }
 
@@ -136,6 +128,12 @@ interface ConditionalClientProviderSpec {
 }
 
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
+  {
+    token: ZLINK_ROUTE_MESH_RUNTIME,
+    requiresRuntime: true,
+    isEnabled: (registration) => registration.spotNodes.size > 0,
+    create: (_registration, runtime) => requireRuntime(runtime).routeMeshRuntime
+  },
   {
     token: ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
     requiresRuntime: true,
@@ -338,7 +336,6 @@ export function createRuntimeHost(
     // explicit test/module teardown where Nest does not run shutdown hooks.
   };
   runtime.onApplicationBootstrap = async () => {};
-  runtime.onApplicationShutdown = async () => { await runtime.drain(); };
   return runtime;
 }
 

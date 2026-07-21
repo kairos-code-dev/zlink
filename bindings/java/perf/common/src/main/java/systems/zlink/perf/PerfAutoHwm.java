@@ -8,9 +8,6 @@ import systems.zlink.contracts.eventing.MonitorStatus;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.service.spot.SpotNodeSocketOwner;
-import systems.zlink.contracts.service.spot.SpotNodeSocketEntry;
 import java.util.Locale;
 
 final class PerfAutoHwm {
@@ -42,38 +39,6 @@ final class PerfAutoHwm {
             + ",effective_rcvbuf=" + monitorStatus.autoHwmAppliedRcvBuffer()
             + ",socket_message_slots="
             + monitorStatus.autoHwmSocketMessageSlots());
-    }
-
-    static void printSingleSpotNode(PerfUtil.Config config, SpotNode node,
-                                    String component) {
-        for (SpotNodeSocketEntry entry : node.internalSockets()) {
-            if (!entry.autoHwmVisible()) {
-                continue;
-            }
-            MonitorStatus monitorStatus = entry.monitorStatus();
-            if (monitorStatus.autoHwmAppliedSndHwm() <= 0
-                && monitorStatus.autoHwmAppliedRcvHwm() <= 0) {
-                continue;
-            }
-            System.out.println("AUTO_HWM_DETAIL"
-                + ",pattern=" + config.pattern()
-                + ",transport=" + config.transport()
-                + ",component=" + component
-                + ",msg_size=" + config.size()
-                + ",owner=" + ownerName(entry.owner())
-                + ",owner_id=" + entry.ownerId()
-                + ",socket=" + entry.socketName()
-                + ",socket_type=" + socketTypeName(entry.socketType())
-                + ",role=" + roleName(monitorStatus.autoHwmRole())
-                + ",sndhwm=" + monitorStatus.autoHwmAppliedSndHwm()
-                + ",rcvhwm=" + monitorStatus.autoHwmAppliedRcvHwm()
-                + ",effective_message_bytes="
-                + monitorStatus.autoHwmEffectiveMessageBytes()
-                + ",effective_sndbuf=" + monitorStatus.autoHwmAppliedSndBuffer()
-                + ",effective_rcvbuf=" + monitorStatus.autoHwmAppliedRcvBuffer()
-                + ",socket_message_slots="
-                + monitorStatus.autoHwmSocketMessageSlots());
-        }
     }
 
     static void printMultiSocket(PerfUtil.Config config, Socket socket,
@@ -122,54 +87,6 @@ final class PerfAutoHwm {
             + monitorStatus.autoHwmSendBlockedRatioPpm()
             + ",deferred_sndhwm=" + monitorStatus.autoHwmDeferredSndHwm()
             + ",deferred_rcvhwm=" + monitorStatus.autoHwmDeferredRcvHwm());
-    }
-
-    static void printMultiSpotNode(PerfUtil.Config config, SpotNode node,
-                                   String component) {
-        for (SpotNodeSocketEntry entry : node.internalSockets()) {
-            if (!entry.autoHwmVisible()) {
-                continue;
-            }
-            MonitorStatus monitorStatus = entry.monitorStatus();
-            if (!visible(monitorStatus)) {
-                continue;
-            }
-            System.out.println("AUTO_HWM_DETAIL"
-                + ",pattern=MULTI_" + config.pattern()
-                + ",transport=" + config.transport()
-                + ",component=" + component
-                + ",label=" + entry.socketName()
-                + ",owner=" + ownerName(entry.owner())
-                + ",owner_id=" + entry.ownerId()
-                + ",socket=" + entry.socketName()
-                + ",socket_type=" + socketTypeName(entry.socketType())
-                + ",msg_size=" + config.size()
-                + ",source=spotnode_snapshot"
-                + ",enabled=" + (monitorStatus.autoHwmEnabled() ? 1 : 0)
-                + ",role=" + roleName(monitorStatus.autoHwmRole())
-                + ",role_id=" + monitorStatus.autoHwmRole()
-                + ",profile=" + profileName(monitorStatus.autoHwmProfile())
-                + ",profile_id=" + profileId(monitorStatus.autoHwmProfile())
-                + ",policy_class="
-                + policyClassName(monitorStatus.autoHwmPolicyClass())
-                + ",policy_class_id=" + monitorStatus.autoHwmPolicyClass()
-                + ",unit_budget_bytes=" + monitorStatus.autoHwmUnitBudgetBytes()
-                + ",size_cap=" + monitorStatus.autoHwmSizeCap()
-                + ",scope=" + (entry.owner() == SpotNodeSocketOwner.NODE
-                    ? "shared" : "per-spot")
-                + ",sndhwm=" + hwmDisplay(monitorStatus, entry.socketType(), true)
-                + ",rcvhwm=" + hwmDisplay(monitorStatus, entry.socketType(), false)
-                + ",socket_message_slots="
-                + monitorStatus.autoHwmSocketMessageSlots()
-                + ",effective_message_bytes="
-                + monitorStatus.autoHwmEffectiveMessageBytes()
-                + ",effective_sndbuf="
-                + bufferDisplay(monitorStatus, entry.socketType(), true)
-                + ",effective_rcvbuf="
-                + bufferDisplay(monitorStatus, entry.socketType(), false)
-                + ",last_recalc_reason="
-                + recalcReasonName(monitorStatus.autoHwmLastRecalcReason()));
-        }
     }
 
     private static boolean visible(MonitorStatus monitorStatus) {
@@ -232,14 +149,6 @@ final class PerfAutoHwm {
             case REFRESH -> "refresh";
             case DEFERRED_SHRINK -> "deferred_shrink";
             default -> "none";
-        };
-    }
-
-    private static String ownerName(SpotNodeSocketOwner owner) {
-        return switch (owner) {
-            case NODE -> "node";
-            case SPOT -> "spot";
-            default -> "unknown";
         };
     }
 

@@ -20,9 +20,9 @@ standalone `Client`도 별도 실행 대상으로 사용한다. 열세 시나리
 | OBS-B4 | `implemented` | metrics-off 노드의 메시징 성공을 확인하고 단위 테스트가 reader 없는 10,000회 계측 뒤 내부 저장 구조 불변을 검증한다. |
 | OBS-C1 | `deferred` | typed draining row 유지, 기존 route 요청 8/8, owner lease 갱신과 명시적 create 거절은 확인한다. 그러나 신규 ChannelName 선택 제외와 `zlink.drain.state`의 serving→draining 전이를 같은 실행에서 대조하지 않는다. |
 | OBS-C2 | `deferred` | actor 이동 뒤 ping은 확인하지만 bound-session push 연속성, moving 직전 pending request 결과와 `zlink.drain.actors.handed_off` 계기를 함께 확인하지 않는다. |
-| OBS-C3 | `implemented` | drain-natural room은 Draining 중 public close까지 유지되고, release-and-recreate workflow는 새 owner에서 append-only event를 재생한다. 두 policy의 room counter를 각각 확인한다. |
+| OBS-C3 | `deferred` | 정상 request 뒤 Spot 유지, drain 뒤 신규 turn 거부, accepted turn 완료와 actor·STREAM barrier 이후 local Spot close·row 제거, stale handle의 숨은 원격 생성 금지와 명시적 local `GetOrCreate` 뒤 새 generation을 확인해야 한다. 현재 runner는 제거 대상인 기존 분기 시나리오를 실행하므로 이 고정 drain 회귀를 검증하지 않는다. |
 | OBS-C4 | `deferred` | 별도 `Session`과 `Play` 역할에서 강제 종료와 public `closeReason`은 확인한다. versioned `session-closing` 제어 프레임의 `reason=server_drain`, terminal `ForceStopped` 결과와 `zlink.drain.forced{kind=session}`을 한 실행에서 대조하지 않는다. |
-| OBS-C5 | `deferred` | rolling drain의 정상 종료는 확인하지만, 두 번째 drain에서 이미 draining인 peer가 handoff 대상에서 제외되어 eligible target이 0이 되는 증거와 `ForceStopped(DeadlineExceeded)` terminal 결과를 함께 확인하지 않는다. |
+| OBS-C5 | `deferred` | rolling drain의 정상 종료는 확인하지만, 두 번째 drain에서 이미 draining인 peer가 handoff 대상에서 제외되어 eligible target이 0이 되는 증거와 `ForceStopped(deadline_exceeded)` terminal 결과를 함께 확인하지 않는다. |
 
 실행: `./run_e2e.sh [all|flow|metrics|fanout|drain|handoff|force|policy|offnode]`
 

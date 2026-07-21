@@ -145,3 +145,8 @@ public sealed record MeshNodePeer(
     uint ChannelCount,
     int LastError,
     ulong LastChangedMs);
+
+/// <summary>
+///     One ChannelName and advertised weight in an admitted peer snapshot.
+/// </summary>
+public sealed record MeshPeerChannel(string Name, uint Weight);

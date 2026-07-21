@@ -364,15 +364,17 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     {
         try
         {
-            using var timeout = _options.AllocatedRoutingIdsEnabled
-                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
-                : null;
-            timeout?.CancelAfter(_options.OwnerLeaseRenewTimeout);
+            using var deadline = new CancellationTokenSource(_options.OwnerLeaseRenewTimeout);
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                deadline.Token);
             var result = await _ownerLeaseStore.RenewOwnerLeaseAsync(
-                OwnerId,
-                _nodeRid,
-                _options.OwnerLeaseTtl,
-                timeout?.Token ?? cancellationToken)
+                    OwnerId,
+                    _nodeRid,
+                    _options.OwnerLeaseTtl,
+                    operation.Token)
+                .AsTask()
+                .WaitAsync(deadline.Token)
                 .ConfigureAwait(false);
             UpdateHealth(
                 health => health with
@@ -389,6 +391,13 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            RecordLeaseFailure(
+                $"Owner lease renewal timeout after {_options.OwnerLeaseRenewTimeout}.");
+            OwnerLeaseRenewalFailed?.Invoke();
+            return false;
         }
         catch (Exception exception)
         {

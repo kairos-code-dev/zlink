@@ -3,6 +3,7 @@ package systems.zlink.samples.bingo.server.api;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -36,12 +37,14 @@ public final class ApiServerApplication {
                 .traceLogFile(topology.logDirectory() + "/flow-api.log")
                 .traceLabel("api");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
+            options.configureLocations();
             options.addHandlersFromPackageOf(ApiServerApplication.class);
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(topology.selectedApiChannelEndpoint())
-                .addHandlerGroup("api");
-            options.addRouteMeshChannel(SampleNames.PlayChannel)
-                .enableClient();
+            ZLinkMeshNodeBuilder api = options.addRouteMesh(SampleNames.Mesh)
+                .useAllocatedRoutingId(2, "api")
+                .setRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
+                .listen(topology.selectedApiChannelEndpoint());
+            api.channelName(SampleNames.ApiChannel);
+            api.channelName(SampleNames.RoomSpotDiscovery);
         };
     }
 

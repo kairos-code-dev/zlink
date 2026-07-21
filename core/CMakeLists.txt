@@ -1175,6 +1175,7 @@ set(public_contract_group_headers
     include/zlink/service/mesh_node.h
     include/zlink/service/actor.h
     include/zlink/service/spot.h
+    include/zlink/service/instance_spot_driver.h
     include/zlink/service/stream_session.h
     include/zlink/socket/api.h)
 

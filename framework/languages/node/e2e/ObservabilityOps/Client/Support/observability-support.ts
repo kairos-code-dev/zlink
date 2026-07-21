@@ -38,7 +38,7 @@ export async function waitForDrain(
   client: ZLinkHttpClient,
   predicate: (status: DrainStatus) => boolean,
   message: string,
-  timeoutMs = 10000
+  timeoutMs = 3000
 ): Promise<DrainStatus> {
   return await waitFor(async () => await client.get('/drain/status').fetch<DrainStatus>(), predicate, message, timeoutMs);
 }
@@ -47,7 +47,7 @@ export async function waitFor<T>(
   read: () => Promise<T>,
   predicate: (value: T) => boolean,
   message: string,
-  timeoutMs = 10000
+  timeoutMs = 3000
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   let last: T | undefined;
@@ -62,7 +62,7 @@ export async function waitFor<T>(
 export async function waitForFlow(
   clients: readonly ZLinkHttpClient[],
   packetName: string,
-  timeoutMs = 10000
+  timeoutMs = 3000
 ): Promise<string> {
   const uuid = /flow=([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/;
   return await waitFor(async () => {

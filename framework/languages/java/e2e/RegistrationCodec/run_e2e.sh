@@ -25,11 +25,6 @@ readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/RegistrationCodec-gradl
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
-if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "RegistrationCodec must use a 5s route settle limit" >&2
-  exit 1
-fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
     "$(pwd)/Client/src/main/java" --glob '*.java'; then
   echo "RegistrationCodec client must use ZLinkHttpClient" >&2
@@ -259,14 +254,12 @@ done
 if [[ "${run_main_scenarios}" == "true" ]]; then
   wait_port server "${SERVER_ENDPOINT}"
   wait_health server "${HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 if [[ "${run_mismatch_scenario}" == "true" ]]; then
   wait_port mismatch-server "${MISMATCH_ENDPOINT}"
   wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
   wait_health codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 "$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \

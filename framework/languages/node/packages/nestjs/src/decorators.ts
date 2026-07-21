@@ -114,6 +114,7 @@ export function zlinkSpotSubscriptionHandler<TSpot extends ZLinkSpot>(
       handlerType: target as Type,
       kind: 'spotSubscription',
       spot: options.spot,
+      channelName: options.channelName,
       topic: options.topic
     });
   };
@@ -128,6 +129,7 @@ export function zlinkEntrySpotSubscriptionHandler<TEntrySpot extends ZLinkEntryS
       entrySpot: options.entrySpot,
       handlerType: target as Type,
       kind: 'entrySpotSubscription',
+      channelName: options.channelName,
       topic: options.topic
     });
   };

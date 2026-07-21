@@ -11,6 +11,9 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.service.spot.Actor;
 import systems.zlink.contracts.service.spot.ActorLocation;
 import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.ActorTransferPrepare;
+import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
+import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.DrainResult;
 import systems.zlink.contracts.service.spot.MeshNode;
 import systems.zlink.contracts.service.spot.MeshNodeOptions;
@@ -20,7 +23,9 @@ import systems.zlink.contracts.service.spot.MeshNodeStatus;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.MeshReadyHandler;
 import systems.zlink.contracts.service.spot.OperationId;
+import systems.zlink.contracts.service.spot.PeerChannels;
 import systems.zlink.contracts.service.spot.ReadyBatch;
+import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
 import systems.zlink.contracts.service.spot.ReceiveBatch;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.service.spot.StreamSessionService;
@@ -54,6 +59,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class NativeMeshNode implements MeshNode {
+    private static final int MAX_MESSAGE_SIZE_OPTION = 0x300E;
+    private static final int ROUTER_HWM_OPTION = 0x3621;
+    private static final int MAILBOX_MESSAGE_BUDGET_OPTION = 0x3622;
     private static final Duration DEFAULT_ACTOR_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration DEFAULT_SHUTDOWN_TIMEOUT = Duration.ofSeconds(30);
 
@@ -136,6 +144,102 @@ public final class NativeMeshNode implements MeshNode {
             throw ZlinkException.fromLastError(ErrorCategory.CONFIG);
         }
         return new NativeMeshNode(context, handle);
+    }
+
+    @Override
+    public long maxMessageSize() {
+        requireOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment length = arena.allocate(ValueLayout.JAVA_LONG);
+            length.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
+            if (Native.getSockOpt(handle, MAX_MESSAGE_SIZE_OPTION, value, length) != 0) {
+                throw ZlinkException.fromLastError(ErrorCategory.CONFIG);
+            }
+            return value.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    @Override
+    public void setMaxMessageSize(long value) {
+        requireOpen();
+        if (value < -1) {
+            throw new IllegalArgumentException(
+                "max message size must be -1 or non-negative");
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment option = arena.allocate(ValueLayout.JAVA_LONG);
+            option.set(ValueLayout.JAVA_LONG, 0, value);
+            if (Native.setSockOpt(
+                handle,
+                MAX_MESSAGE_SIZE_OPTION,
+                option,
+                ValueLayout.JAVA_LONG.byteSize()) != 0) {
+                throw ZlinkException.fromLastError(ErrorCategory.CONFIG);
+            }
+        }
+    }
+
+    @Override
+    public int routerHighWaterMark() {
+        requireOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment length = arena.allocate(ValueLayout.JAVA_LONG);
+            length.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            MeshCalls.configOk(NativeServiceSymbols.getMeshNodeOption(
+                handle, ROUTER_HWM_OPTION, value, length));
+            return value.get(ValueLayout.JAVA_INT, 0);
+        }
+    }
+
+    @Override
+    public void setRouterHighWaterMark(int value) {
+        requireOpen();
+        if (value < 0) {
+            throw new IllegalArgumentException(
+                "router high-water mark must be non-negative");
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment option = arena.allocate(ValueLayout.JAVA_INT);
+            option.set(ValueLayout.JAVA_INT, 0, value);
+            MeshCalls.configOk(NativeServiceSymbols.setMeshNodeOption(
+                handle,
+                ROUTER_HWM_OPTION,
+                option,
+                ValueLayout.JAVA_INT.byteSize()));
+        }
+    }
+
+    @Override
+    public long mailboxMessageBudget() {
+        requireOpen();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment length = arena.allocate(ValueLayout.JAVA_LONG);
+            length.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
+            MeshCalls.configOk(NativeServiceSymbols.getMeshNodeOption(
+                handle, MAILBOX_MESSAGE_BUDGET_OPTION, value, length));
+            return value.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    @Override
+    public void setMailboxMessageBudget(long value) {
+        requireOpen();
+        if (value < 0) {
+            throw new IllegalArgumentException(
+                "mailbox message budget must be non-negative");
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment option = arena.allocate(ValueLayout.JAVA_LONG);
+            option.set(ValueLayout.JAVA_LONG, 0, value);
+            MeshCalls.configOk(NativeServiceSymbols.setMeshNodeOption(
+                handle,
+                MAILBOX_MESSAGE_BUDGET_OPTION,
+                option,
+                ValueLayout.JAVA_LONG.byteSize()));
+        }
     }
 
     MemorySegment handle() {
@@ -258,6 +362,51 @@ public final class NativeMeshNode implements MeshNode {
     }
 
     @Override
+    public PeerChannels peerChannels(RoutingId peerRid, long lifecycleGeneration) {
+        Objects.requireNonNull(peerRid, "peerRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeRid = ServiceInterop.routingIdToNative(arena, peerRid);
+            MemorySegment countSeg = arena.allocate(ValueLayout.JAVA_LONG);
+            countSeg.set(ValueLayout.JAVA_LONG, 0, 0L);
+            int rc = NativeServiceSymbols.meshNodePeerChannels(
+                handle,
+                nativeRid,
+                lifecycleGeneration,
+                MemorySegment.NULL,
+                MemorySegment.NULL,
+                countSeg);
+            long capacity = countSeg.get(ValueLayout.JAVA_LONG, 0);
+            if (rc != MeshCalls.CONFIG_OK && capacity == 0) {
+                MeshCalls.configOk(rc);
+            }
+            if (capacity == 0) {
+                return new PeerChannels(List.of(), List.of());
+            }
+
+            final long channelNameStride = 256;
+            MemorySegment names = arena.allocate(channelNameStride * capacity);
+            MemorySegment weights = arena.allocate(ValueLayout.JAVA_INT, capacity);
+            countSeg.set(ValueLayout.JAVA_LONG, 0, capacity);
+            MeshCalls.configOk(NativeServiceSymbols.meshNodePeerChannels(
+                handle,
+                nativeRid,
+                lifecycleGeneration,
+                names,
+                weights,
+                countSeg));
+
+            int count = Math.toIntExact(countSeg.get(ValueLayout.JAVA_LONG, 0));
+            List<String> channelNames = new ArrayList<>(count);
+            List<Integer> channelWeights = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                channelNames.add(names.getString(i * channelNameStride));
+                channelWeights.add(weights.getAtIndex(ValueLayout.JAVA_INT, i));
+            }
+            return new PeerChannels(channelNames, channelWeights);
+        }
+    }
+
+    @Override
     public MeshNodeMonitor openMonitor(long events) {
         return NativeMeshNodeMonitor.open(this, events);
     }
@@ -314,13 +463,22 @@ public final class NativeMeshNode implements MeshNode {
     // --- messaging ---
     @Override
     public void sendToNode(RoutingId targetRid, List<Message> parts, SendFlags flags) {
+        sendToNode(targetRid, new byte[0], parts, flags);
+    }
+
+    @Override
+    public void sendToNode(
+        RoutingId targetRid,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(targetRid, "targetRid");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rid = ServiceInterop.routingIdToNative(arena, targetRid);
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
             int rc = NativeServiceSymbols.meshNodeSendToNode(
-                handle, rid, MemorySegment.NULL, array, n, flags.value());
+                handle, rid, MeshCalls.metadata(arena, metadata), array, n, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_send_to_node");
         }
     }
@@ -328,6 +486,16 @@ public final class NativeMeshNode implements MeshNode {
     @Override
     public OperationId requestToNode(RoutingId targetRid, List<Message> parts, SendFlags flags,
                                      Duration timeout) {
+        return requestToNode(targetRid, new byte[0], parts, flags, timeout);
+    }
+
+    @Override
+    public OperationId requestToNode(
+        RoutingId targetRid,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags,
+        Duration timeout) {
         Objects.requireNonNull(targetRid, "targetRid");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rid = ServiceInterop.routingIdToNative(arena, targetRid);
@@ -335,7 +503,7 @@ public final class NativeMeshNode implements MeshNode {
             long n = MeshCalls.count(parts);
             MemorySegment opid = MeshCalls.newOperationId(arena);
             int rc = NativeServiceSymbols.meshNodeRequestToNode(
-                handle, rid, MemorySegment.NULL, array, n, opid, flags.value(),
+                handle, rid, MeshCalls.metadata(arena, metadata), array, n, opid, flags.value(),
                 MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_request_to_node");
             return MeshCalls.operationId(opid);
@@ -344,13 +512,22 @@ public final class NativeMeshNode implements MeshNode {
 
     @Override
     public void sendToChannel(String channelName, List<Message> parts, SendFlags flags) {
+        sendToChannel(channelName, new byte[0], parts, flags);
+    }
+
+    @Override
+    public void sendToChannel(
+        String channelName,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(channelName, "channelName");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment name = NativeHelpers.toCString(arena, channelName);
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
             int rc = NativeServiceSymbols.meshNodeSendToChannel(
-                handle, name, MemorySegment.NULL, array, n, flags.value());
+                handle, name, MeshCalls.metadata(arena, metadata), array, n, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_send_to_channel");
         }
     }
@@ -358,6 +535,16 @@ public final class NativeMeshNode implements MeshNode {
     @Override
     public OperationId requestToChannel(String channelName, List<Message> parts, SendFlags flags,
                                         Duration timeout) {
+        return requestToChannel(channelName, new byte[0], parts, flags, timeout);
+    }
+
+    @Override
+    public OperationId requestToChannel(
+        String channelName,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags,
+        Duration timeout) {
         Objects.requireNonNull(channelName, "channelName");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment name = NativeHelpers.toCString(arena, channelName);
@@ -365,7 +552,7 @@ public final class NativeMeshNode implements MeshNode {
             long n = MeshCalls.count(parts);
             MemorySegment opid = MeshCalls.newOperationId(arena);
             int rc = NativeServiceSymbols.meshNodeRequestToChannel(
-                handle, name, MemorySegment.NULL, array, n, opid, flags.value(),
+                handle, name, MeshCalls.metadata(arena, metadata), array, n, opid, flags.value(),
                 MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_request_to_channel");
             return MeshCalls.operationId(opid);
@@ -399,6 +586,23 @@ public final class NativeMeshNode implements MeshNode {
                 MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_request_to_actor");
             return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public void sendActorBoundSession(
+        ActorRef actor,
+        List<Message> parts,
+        SendFlags flags) {
+        Objects.requireNonNull(actor, "actor");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ref = ServiceInterop.actorRefToNative(arena, actor);
+            MemorySegment array = MeshCalls.parts(arena, parts);
+            long n = MeshCalls.count(parts);
+            int rc = NativeServiceSymbols.actorSendBoundSession(
+                handle, ref, array, n, flags.value());
+            MeshCalls.submitOk(
+                rc, array, n, "zlink_mesh_node_actor_send_bound_session");
         }
     }
 
@@ -467,6 +671,162 @@ public final class NativeMeshNode implements MeshNode {
                 handle, ref, opid, MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, MemorySegment.NULL, 0, "zlink_mesh_node_actor_destroy");
             return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public OperationId joinActorSpot(
+        ActorRef actor,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        List<Message> creationParts,
+        Duration timeout) {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        Objects.requireNonNull(targetSpotRid, "targetSpotRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ref = ServiceInterop.actorRefToNative(arena, actor);
+            MemorySegment nodeRid = ServiceInterop.routingIdToNative(arena, targetNodeRid);
+            MemorySegment spotRid = ServiceInterop.routingIdToNative(arena, targetSpotRid);
+            MemorySegment array = MeshCalls.parts(arena, creationParts);
+            long n = MeshCalls.count(creationParts);
+            MemorySegment opid = MeshCalls.newOperationId(arena);
+            int rc = NativeServiceSymbols.actorJoinSpot(
+                handle,
+                ref,
+                nodeRid,
+                spotRid,
+                targetSpotGeneration,
+                array,
+                n,
+                opid,
+                MeshCalls.timeout(timeout));
+            MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_actor_join_spot");
+            return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public OperationId joinActorEntrySpot(
+        ActorRef actor,
+        RoutingId targetNodeRid,
+        List<Message> creationParts,
+        Duration timeout) {
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ref = ServiceInterop.actorRefToNative(arena, actor);
+            MemorySegment nodeRid = ServiceInterop.routingIdToNative(arena, targetNodeRid);
+            MemorySegment array = MeshCalls.parts(arena, creationParts);
+            long n = MeshCalls.count(creationParts);
+            MemorySegment opid = MeshCalls.newOperationId(arena);
+            int rc = NativeServiceSymbols.actorJoinEntrySpot(
+                handle,
+                ref,
+                nodeRid,
+                array,
+                n,
+                opid,
+                MeshCalls.timeout(timeout));
+            MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_actor_join_entry_spot");
+            return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public OperationId leaveActor(
+        ActorRef actor,
+        long expectedMembershipEpoch,
+        Duration timeout) {
+        Objects.requireNonNull(actor, "actor");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ref = ServiceInterop.actorRefToNative(arena, actor);
+            MemorySegment opid = MeshCalls.newOperationId(arena);
+            int rc = NativeServiceSymbols.actorLeaveSpot(
+                handle,
+                ref,
+                expectedMembershipEpoch,
+                opid,
+                MeshCalls.timeout(timeout));
+            MeshCalls.submitOk(rc, MemorySegment.NULL, 0,
+                "zlink_mesh_node_actor_leave_spot");
+            return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public OperationId closeActorBoundSession(
+        ActorRef actor,
+        long expectedBindingGeneration,
+        Duration timeout) {
+        Objects.requireNonNull(actor, "actor");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ref = ServiceInterop.actorRefToNative(arena, actor);
+            MemorySegment opid = MeshCalls.newOperationId(arena);
+            int rc = NativeServiceSymbols.actorCloseBoundSession(
+                handle,
+                ref,
+                expectedBindingGeneration,
+                opid,
+                MeshCalls.timeout(timeout));
+            MeshCalls.submitOk(rc, MemorySegment.NULL, 0,
+                "zlink_mesh_node_actor_close_bound_session");
+            return MeshCalls.operationId(opid);
+        }
+    }
+
+    @Override
+    public PrepareActorTransferResult prepareActorTransfer(
+        ActorTransferPrepare prepare, Duration timeout) {
+        Objects.requireNonNull(prepare, "prepare");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativePrepare =
+                ServiceInterop.actorTransferPrepareToNative(arena, prepare);
+            MemorySegment tokenOut = arena.allocate(ServiceLayouts.ACTOR_TRANSFER_TOKEN);
+            MemorySegment resultOut = ServiceInterop.allocStamped(
+                arena, ServiceLayouts.ACTOR_TRANSFER_PREPARE_RESULT);
+            int rc = NativeServiceSymbols.actorTransferPrepare(
+                handle, nativePrepare, MeshCalls.timeout(timeout), tokenOut, resultOut);
+            MeshCalls.requestOk(rc);
+            ActorTransferToken token =
+                ServiceInterop.actorTransferTokenFromNative(tokenOut);
+            ActorTransferPrepareResult result =
+                ServiceInterop.actorTransferPrepareResultFromNative(resultOut);
+            return new PrepareActorTransferResult(token, result);
+        }
+    }
+
+    @Override
+    public void commitActorTransfer(
+        ActorTransferToken token, long newMembershipEpoch) {
+        Objects.requireNonNull(token, "token");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeToken =
+                ServiceInterop.actorTransferTokenToNative(arena, token);
+            MeshCalls.configOk(NativeServiceSymbols.actorTransferCommit(
+                nativeToken, newMembershipEpoch));
+        }
+    }
+
+    @Override
+    public void activateActorTransfer(ActorTransferToken token) {
+        Objects.requireNonNull(token, "token");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeToken =
+                ServiceInterop.actorTransferTokenToNative(arena, token);
+            MeshCalls.configOk(
+                NativeServiceSymbols.actorTransferActivate(nativeToken));
+        }
+    }
+
+    @Override
+    public void abortActorTransfer(ActorTransferToken token) {
+        Objects.requireNonNull(token, "token");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nativeToken =
+                ServiceInterop.actorTransferTokenToNative(arena, token);
+            MeshCalls.configOk(NativeServiceSymbols.actorTransferAbort(nativeToken));
         }
     }
 
@@ -568,6 +928,12 @@ public final class NativeMeshNode implements MeshNode {
 
     void releaseSpot(NativeSpot spot) {
         ownedSpots.remove(spot);
+    }
+
+    private void requireOpen() {
+        if (handle == null || handle.address() == 0) {
+            throw new IllegalStateException("mesh node is closed");
+        }
     }
 
     // --- reply helpers ---

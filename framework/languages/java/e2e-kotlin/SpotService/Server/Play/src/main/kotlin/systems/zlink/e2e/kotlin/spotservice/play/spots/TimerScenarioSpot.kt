@@ -42,21 +42,21 @@ class TimerScenarioSpot(
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         val rid = context.spotRid().toString()
         if (rid.startsWith("timer-overrun-")) {
-            val options = ZLinkTimerOptions()
-            if (rid.endsWith("catchup")) {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED)
-                options.setMaxCatchUpTicks(2)
-            } else if (rid.endsWith("delay")) {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK)
-            } else {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS)
+            val overrunPolicy = when {
+                rid.endsWith("catchup") -> ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED
+                rid.endsWith("delay") -> ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK
+                else -> ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS
             }
-            options.setStopOnUnhandledException(false)
+            val options = ZLinkTimerOptions(
+                overrunPolicy,
+                if (rid.endsWith("catchup")) 2 else 1,
+                false,
+            )
             context.addTimer("overrun", Duration.ofMillis(50), TimerOverrunHandler::class.java, options)
                 .thenAccept { timer -> overrunTimer = timer }
             evidence.record("TimerOverrunConfigured", rid, options.overrunPolicy().name)
         } else {
-            context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler::class.java, ZLinkTimerOptions())
+            context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler::class.java, null)
             evidence.record("IdleTimerConfigured", rid, "idle")
         }
         return ZLinkSpotCreateResponse.accept()

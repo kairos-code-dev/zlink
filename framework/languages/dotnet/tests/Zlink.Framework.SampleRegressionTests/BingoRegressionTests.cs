@@ -5,6 +5,30 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void Bingo_Uses_One_Physical_Mesh_And_Scanned_Api_Handlers()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var hosts = new[]
+        {
+            Path.Combine(sampleRoot, "Server", "Api", "ApiServerHostFactory.cs"),
+            Path.Combine(sampleRoot, "Server", "Play", "PlayServerHostFactory.cs"),
+            Path.Combine(sampleRoot, "Server", "Session", "SessionServerHostFactory.cs")
+        };
+
+        foreach (var host in hosts)
+        {
+            var source = File.ReadAllText(host);
+            Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+        }
+
+        var api = File.ReadAllText(hosts[0]);
+        Assert.Contains("AddHandlersFromAssemblyOf", api, StringComparison.Ordinal);
+        Assert.Contains("AddHandlerGroup(\"api\")", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddRequestHandler<", api, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Registers_Stateful_Actor_Transfer_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");
@@ -25,7 +49,7 @@ public sealed partial class RegressionTests
 
         AssertNoSampleRouteStore(sampleRoot);
         AssertNoSampleMetadataStore(sampleRoot);
-        AssertSessionServerUsesSessionRelay(sampleRoot, true);
+        AssertSessionServerUsesSessionRelay(sampleRoot);
         AssertSessionHandlersDoNotResolveActorRemoteAddresses(sampleRoot);
         AssertEnsureActorHandlersReturnSessionRelayRemoteAddresses(sampleRoot);
         AssertNoSampleSessionRelayJson(sampleRoot);

@@ -371,13 +371,14 @@ class transfer_entry_spot_t : public fw::entry_spot_t
         return fw::spot_actor_join_response_t::accept (request);
     }
 
-    void on_actor_joined (transfer_actor_t &actor)
+    fw::task_t<void> on_actor_joined (transfer_actor_t &actor)
     {
         g_evidence->add ("local", actor.actor_id, "entry_joined",
                          std::to_string (actor.state_version));
+        co_return;
     }
 
-    void on_leave_actor (const transfer_actor_t &actor)
+    fw::task_t<void> on_leave_actor (const transfer_actor_t &actor)
     {
         if (actor.actor_type == e2e::actor_type_no_adapter) {
             g_evidence->add ("transfer", actor.actor_id, "transfer_out_empty_default",
@@ -390,6 +391,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t
         }
         g_evidence->add ("transfer", actor.actor_id, "leave",
                          std::to_string (actor.state_version));
+        co_return;
     }
 
     fw::task_t<e2e::join_target_res_t> join_target (const transfer_actor_t &actor,
@@ -497,7 +499,7 @@ class transfer_user_spot_t : public fw::spot_t
           make_join_reply (join.scenario, id, true, std::string (_context.spot_rid ().value ())));
     }
 
-    void on_actor_joined (transfer_actor_t &actor)
+    fw::task_t<void> on_actor_joined (transfer_actor_t &actor)
     {
         if (_mode == "delay-joined") {
             const auto scenario = scenario_for (actor.actor_id);
@@ -509,7 +511,7 @@ class transfer_user_spot_t : public fw::spot_t
             g_evidence->add ("transfer", actor.actor_id, "joined",
                              std::string (_context.spot_rid ().value ()) + ":"
                                + std::to_string (actor.state_version));
-            return;
+            co_return;
         }
         if (_mode == "fail-joined") {
             const auto scenario = scenario_for (actor.actor_id);
@@ -524,12 +526,14 @@ class transfer_user_spot_t : public fw::spot_t
             actor.state_version = g_domain_state->load (actor.actor_id);
             g_evidence->add ("transfer", actor.actor_id, "domain_state_loaded", actor.actor_id);
         }
+        co_return;
     }
 
-    void on_leave_actor (const transfer_actor_t &actor)
+    fw::task_t<void> on_leave_actor (const transfer_actor_t &actor)
     {
         g_evidence->add ("transfer", actor.actor_id, "target_leave",
                          std::string (_context.spot_rid ().value ()));
+        co_return;
     }
 
     fw::task_t<e2e::join_target_res_t> join_target (const transfer_actor_t &actor,
@@ -1129,10 +1133,9 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
         locations.owner_lease_ttl = std::chrono::seconds (3);
         locations.polling_interval = std::chrono::milliseconds (500);
 
-        auto mesh = framework.add_spot_mesh (e2e::mesh_name);
-        mesh.enable_router (router_endpoint)
-          .enable_pub_sub (pub_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (rid));
+        auto mesh = framework.add_route_mesh (e2e::mesh_name);
+        mesh.listen (router_endpoint).set_routing_id (zlink::routing_id_t::from (rid));
+        mesh.channel_name (e2e::mesh_name);
         if (host_role == transfer_host_role_t::actor_node) {
             mesh.add_entry_spot<transfer_entry_spot_t> ()
               .add_spot<transfer_user_spot_t> ("transfer-user")

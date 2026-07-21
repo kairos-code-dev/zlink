@@ -21,16 +21,16 @@ internal sealed class CourierActor(
     public IZLinkActorContext Context { get; } = context;
 
     /// <summary>Pushes the offer and returns. The courier takes as long as it takes.</summary>
-    public void Offer(OfferDeliveryMsg offer, CancellationToken cancellationToken)
+    public async ValueTask OfferAsync(OfferDeliveryMsg offer, CancellationToken cancellationToken)
     {
         _offeredAttempts[offer.DeliveryId] = offer.Attempt;
-        Context.BoundSession
+        await Context.BoundSession
             .Send(new OfferDeliveryNotify(
                 offer.CourierId,
                 offer.DeliveryId,
                 offer.PickupAddress,
                 offer.DropoffAddress))
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
     }
 
     /// <summary>

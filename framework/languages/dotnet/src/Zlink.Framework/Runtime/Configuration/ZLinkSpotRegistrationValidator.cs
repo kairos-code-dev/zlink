@@ -6,20 +6,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ZLinkSpotNodeRegistration spotNode,
         ZLinkFrameworkRegistration registration,
         ISet<Type> globalSpotFactories,
-        ISet<Type> globalEntrySpots)
+        ISet<Type> globalEntrySpots,
+        ZLinkHandlerExposureCatalog handlerExposure)
     {
-        if (registration.SpotDiscovery is null) ValidateSpotNodeWithoutMesh(spotNode);
-
         if (spotNode.Router is not null && string.IsNullOrWhiteSpace(spotNode.Router.BindEndpoint))
             throw new ZLinkConfigurationException(
                 $"SPOT node '{spotNode.SpotNodeName}' enables router capability but does not define a router bind endpoint.");
 
-        if (spotNode.PubSub is not null && string.IsNullOrWhiteSpace(spotNode.PubSub.BindEndpoint))
-            throw new ZLinkConfigurationException(
-                $"SPOT node '{spotNode.SpotNodeName}' enables pub/sub capability but does not define a pub/sub bind endpoint.");
-
-        if (spotNode.Router is null
-            && spotNode.PubSub is null)
+        if (spotNode.Router is null)
             throw new ZLinkConfigurationException(
                 $"MeshNode '{spotNode.SpotNodeName}' must define its ROUTER endpoint via Listen(...).");
 
@@ -52,29 +46,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 router.ManualConnections);
             router.ManualConnections.Freeze(router.AcquisitionMode);
         }
-        if (spotNode.PubSub is { } pubSub)
-        {
-            pubSub.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
-                registration.Locations.Enabled,
-                pubSub.ManualConnections);
-            pubSub.ManualConnections.Freeze(pubSub.AcquisitionMode);
-        }
-
         ValidateUniqueSpotFactories(spotNode, globalSpotFactories);
         ValidateUniqueEntrySpot(spotNode, globalEntrySpots);
-    }
-
-    private static void ValidateSpotNodeWithoutMesh(ZLinkSpotNodeRegistration spotNode)
-    {
-        if (spotNode.PubSub is null) return;
-
-        throw new ZLinkConfigurationException(
-            $"MeshNode '{spotNode.SpotNodeName}' requires AddRouteMesh(...) for mesh capabilities.");
+        handlerExposure.ValidateMeshNode(spotNode);
     }
 
     private static bool SpotNodeUsesDistributedLookup(ZLinkSpotNodeRegistration spotNode)
     {
         return spotNode.SpotFactories.Count > 0
+               || spotNode.InstanceSpotFactories.Count > 0
                || spotNode.EntrySpotType is not null
                || spotNode.ActorFactories.Count > 0
                || spotNode.ActorTransfers.Count > 0;
@@ -88,6 +68,17 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             if (!globalSpotFactories.Add(spotFactory))
                 throw new ZLinkConfigurationException(
                     $"Duplicate SPOT factory '{spotFactory}' across nodes.");
+
+        foreach (var registration in spotNode.InstanceSpotFactories.Values)
+        {
+            if (spotNode.SpotFactories.Contains(registration.SpotType))
+                throw new ZLinkConfigurationException(
+                    $"Spot type '{registration.SpotType}' cannot be registered "
+                    + "as both Domain and Instance Spot on one MeshNode.");
+            if (!globalSpotFactories.Add(registration.SpotType))
+                throw new ZLinkConfigurationException(
+                    $"Duplicate SPOT factory '{registration.SpotType}' across nodes.");
+        }
     }
 
     private static void ValidateUniqueEntrySpot(

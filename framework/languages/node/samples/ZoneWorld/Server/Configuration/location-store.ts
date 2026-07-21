@@ -1,4 +1,5 @@
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import type { ZLinkLocationOptions } from '@zlink-systems/framework';
 import type { SharedSettings } from './configuration';
 
 function createZoneWorldLocationStore(shared: SharedSettings): ZLinkRedisLocationStore {
@@ -8,20 +9,13 @@ function createZoneWorldLocationStore(shared: SharedSettings): ZLinkRedisLocatio
   });
 }
 
-function zoneWorldLocationOptions(): {
-  pollingIntervalMs: number;
-  heartbeatIntervalMs: number;
-  ownerLeaseTtlMs: number;
-  routingIdFencingMarginMs: number;
-  ownerLeaseRenewTimeoutMs: number;
-} {
-  return {
-    pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1_000,
-    ownerLeaseTtlMs: 3_000,
-    routingIdFencingMarginMs: 500,
-    ownerLeaseRenewTimeoutMs: 500
-  };
+function zoneWorldLocationOptions(options: ZLinkLocationOptions): void {
+  options
+    .pollingIntervalMs(100)
+    .heartbeatIntervalMs(1_000)
+    .ownerLeaseTtlMs(3_000)
+    .routingIdFencingMarginMs(500)
+    .ownerLeaseRenewTimeoutMs(500);
 }
 
 export { createZoneWorldLocationStore, zoneWorldLocationOptions };

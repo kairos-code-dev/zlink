@@ -107,7 +107,7 @@ public interface IStreamSessionService : IDisposable, IAsyncDisposable
 public interface IMeshNodePublisher : IDisposable, IAsyncDisposable
 {
     /// <summary>Publishes parts under a channel/topic.</summary>
-    MeshPublishDetail Publish(string channelName, string? topic,
+    MeshPublishResult Publish(string channelName, string? topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
 

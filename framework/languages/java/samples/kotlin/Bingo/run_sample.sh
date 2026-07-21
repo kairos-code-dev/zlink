@@ -48,7 +48,7 @@ trap cleanup EXIT
 reserve_ports() {
   local base=$((48000 + ((RANDOM + $$) % 1000) * 15 % 12000))
   local endpoints=()
-  for offset in $(seq 0 14); do
+  for offset in $(seq 0 7); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -57,7 +57,7 @@ reserve_ports() {
 build_framework_jars() {
   (
     cd ../../..
-    ./gradlew --no-daemon \
+    ./gradlew --no-daemon --no-parallel \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-framework-kotlin:jar \
@@ -68,27 +68,15 @@ build_framework_jars() {
   )
 }
 
-read -r api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_stream unused_endpoint < <(reserve_ports)
+read -r api_a_channel session_a_router play_a_router session_a_stream api_b_channel session_b_router play_b_router session_b_stream < <(reserve_ports)
 api_a_host="${api_a_channel%:*}"
 api_a_port="${api_a_channel##*:}"
 api_b_host="${api_b_channel%:*}"
 api_b_port="${api_b_channel##*:}"
-play_a_host="${play_a_channel%:*}"
-play_a_port="${play_a_channel##*:}"
-play_b_host="${play_b_channel%:*}"
-play_b_port="${play_b_channel##*:}"
-session_a_spot_host="${session_a_spot%:*}"
-session_a_spot_port="${session_a_spot##*:}"
-session_b_spot_host="${session_b_spot%:*}"
-session_b_spot_port="${session_b_spot##*:}"
 session_a_router_host="${session_a_router%:*}"
 session_a_router_port="${session_a_router##*:}"
 session_b_router_host="${session_b_router%:*}"
 session_b_router_port="${session_b_router##*:}"
-play_a_spot_host="${play_a_spot%:*}"
-play_a_spot_port="${play_a_spot##*:}"
-play_b_spot_host="${play_b_spot%:*}"
-play_b_spot_port="${play_b_spot##*:}"
 play_a_router_host="${play_a_router%:*}"
 play_a_router_port="${play_a_router##*:}"
 play_b_router_host="${play_b_router%:*}"
@@ -109,14 +97,8 @@ write_config() {
   cat >"$path" <<EOF
 sample.api-a-channel-endpoint=tcp://${api_a_host}:${api_a_port}
 sample.api-b-channel-endpoint=tcp://${api_b_host}:${api_b_port}
-sample.play-a-channel-endpoint=tcp://${play_a_host}:${play_a_port}
-sample.play-b-channel-endpoint=tcp://${play_b_host}:${play_b_port}
-sample.session-a-spot-endpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
-sample.session-b-spot-endpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
 sample.session-a-router-endpoint=tcp://${session_a_router_host}:${session_a_router_port}
 sample.session-b-router-endpoint=tcp://${session_b_router_host}:${session_b_router_port}
-sample.play-a-spot-endpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
-sample.play-b-spot-endpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
 sample.play-a-spot-router-endpoint=tcp://${play_a_router_host}:${play_a_router_port}
 sample.play-b-spot-router-endpoint=tcp://${play_b_router_host}:${play_b_router_port}
 sample.session-a-stream-endpoint=tcp://${stream_a_host}:${stream_a_port}
@@ -168,9 +150,7 @@ wait_port "${stream_b_host}" "${stream_b_port}"
 wait_port "${api_a_host}" "${api_a_port}"
 wait_port "${api_b_host}" "${api_b_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
-wait_port "${play_a_spot_host}" "${play_a_spot_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
-wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1
 

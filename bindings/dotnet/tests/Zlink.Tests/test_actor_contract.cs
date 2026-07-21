@@ -1,476 +1,71 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Reflection;
 using Xunit;
 
 namespace Systems.Zlink.Tests;
 
 public sealed class test_actor_contract
 {
-    [Fact]
-    public void spot_node_actor_ref_send_and_request_surface_exists()
-    {
-        Assert.Equal(typeof(SendOperation),
-            FindPublicInstanceMethod(typeof(ISpotNode),
-                nameof(ISpotNode.SendToActor))!.ReturnType);
-        Assert.Equal(typeof(RequestOperation),
-            FindPublicInstanceMethod(typeof(ISpotNode),
-                nameof(ISpotNode.RequestToActor))!.ReturnType);
-    }
-
-    private static System.Reflection.MethodInfo? FindPublicInstanceMethod(
-        Type type,
-        string name)
+    private static MethodInfo FindPublicInstanceMethod(Type type, string name)
     {
         return type.GetMethods()
             .Concat(type.GetInterfaces().SelectMany(current =>
                 current.GetMethods()))
-            .FirstOrDefault(method => method.Name == name);
+            .Single(method => method.Name == name);
     }
 
     [Fact]
-    public async Task local_actor_join_carries_request_and_reply_messages()
+    public void mesh_node_actor_send_and_request_surface_exists()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.From("join:hello");
-
-        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-            actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).Async();
-
-        ActorJoinRequest? request = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            request = spot.RecvActorJoin(RecvFlags.DontWait);
-            return request != null;
-        }, 2000));
-
-        Assert.NotNull(request);
-        Message receivedJoinMessage = request!.Message;
-        Assert.Equal("join:hello", receivedJoinMessage.GetString());
-        Assert.Equal(actor.Ref.ActorId, request.Info.TargetActor.ActorId);
-
-        using Message reply = Message.From("join:accepted");
-        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
-        request.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => _ = receivedJoinMessage.Size);
-
-        IReadOnlyList<Message> replies =
-            (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
-        Assert.Single(replies);
-        using (replies[0])
-        {
-            Assert.Equal("join:accepted", replies[0].GetString());
-        }
-
-        Assert.Contains(spot.Actors(),
-            entry => entry.ActorId == actor.Ref.ActorId);
-        Zlink.MultipartClose(await actor.Leave(spot)
-            .Async().WaitAsync(TimeSpan.FromSeconds(5)));
-    }
-
-    [Fact]
-    public async Task rejected_actor_join_preserves_application_result_code_and_reply()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.From("join:reject");
-
-        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-            actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).Async();
-
-        ActorJoinRequest? request = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            request = spot.RecvActorJoin(RecvFlags.DontWait);
-            return request != null;
-        }, 2000));
-
-        request!.Message.Dispose();
-        using Message reply = Message.From("join:room-full");
-        spot.ReplyActorJoin(request, joinResultCode: 42).Message(reply).Submit();
-
-        var rejected = await joinTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(RequestResult.Ok, rejected.Result.Result);
-        Assert.Equal(42, rejected.Result.JoinResultCode);
-        Assert.Equal(actor.Ref.ActorId, rejected.Result.Actor.ActorId);
-        Assert.DoesNotContain(spot.Actors(),
-            entry => entry.ActorId == actor.Ref.ActorId);
-
-        Assert.Single(rejected.Parts);
-        using (rejected.Parts[0])
-        {
-            Assert.Equal("join:room-full", rejected.Parts[0].GetString());
-        }
-    }
-
-    [Fact]
-    public async Task spot_actor_lifecycle_events_observe_join_and_leave()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.From("join:lifecycle");
-        var joined = new TaskCompletionSource<SpotActorLifecycleInfo>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var left = new TaskCompletionSource<SpotActorLifecycleInfo>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        spot.SetDispatchHandler(info =>
-        {
-            if (info.Event != SpotDispatchEvent.ActorLifecycleReadable)
-                return;
-
-            while (true)
+        MethodInfo send = FindPublicInstanceMethod(
+            typeof(IMeshNode),
+            nameof(IMeshNode.SendToActor));
+        Assert.Equal(typeof(SubmitResult), send.ReturnType);
+        Assert.Equal(
+            new[]
             {
-                SpotActorLifecycleEvent? lifecycle =
-                    spot.RecvActorLifecycle(RecvFlags.DontWait);
-                if (lifecycle == null)
-                    return;
+                typeof(ActorRef),
+                typeof(IReadOnlyList<Message>),
+                typeof(SendFlags),
+                typeof(ReadOnlyMemory<byte>)
+            },
+            send.GetParameters().Select(parameter => parameter.ParameterType));
 
-                if (lifecycle.Kind == SpotActorLifecycleEventKind.Joined)
-                    joined.TrySetResult(lifecycle.Info);
-                else if (lifecycle.Kind == SpotActorLifecycleEventKind.Left)
-                    left.TrySetResult(lifecycle.Info);
-            }
-        });
-
-        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-            actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).Async();
-
-        ActorJoinRequest? request = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            request = spot.RecvActorJoin(RecvFlags.DontWait);
-            return request != null;
-        }, 2000));
-
-        request!.Message.Dispose();
-        using Message reply = Message.From("join:accepted");
-        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
-        IReadOnlyList<Message> replies =
-            (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts;
-        foreach (Message message in replies)
-            message.Dispose();
-
-        SpotActorLifecycleInfo joinInfo =
-            await joined.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(actor.Ref, joinInfo.CurrentActor);
-        Assert.Equal(spot.RoutingId, joinInfo.CurrentSpotRid);
-        Assert.True(joinInfo.JoinEpoch > 0);
-
-        Zlink.MultipartClose(await actor.Leave(spot)
-            .Async().WaitAsync(TimeSpan.FromSeconds(5)));
-
-        SpotActorLifecycleInfo leaveInfo =
-            await left.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(actor.Ref, leaveInfo.PreviousActor);
-        Assert.Equal(spot.RoutingId, leaveInfo.PreviousSpotRid);
-        Assert.True(leaveInfo.JoinEpoch > 0);
+        MethodInfo request = FindPublicInstanceMethod(
+            typeof(IMeshNode),
+            nameof(IMeshNode.RequestToActor));
+        Assert.Equal(typeof(SubmitResult), request.ReturnType);
+        Assert.Equal(typeof(MeshOperationId).MakeByRefType(),
+            request.GetParameters()[2].ParameterType);
     }
 
     [Fact]
-    public void actor_create_request_payload_is_exposed_on_entry_spot_lifecycle()
+    public void actor_lifecycle_uses_pull_dispatch_payloads()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
+        Assert.Equal(MeshRecordKind.SpotControl,
+            Enum.Parse<MeshRecordKind>("SpotControl"));
+        Assert.Equal(MeshOperationKind.ActorJoin,
+            Enum.Parse<MeshOperationKind>("ActorJoin"));
 
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var entrySpot = node.EntrySpot();
-        SpotActorLifecycleEvent? lifecycle = null;
-        entrySpot.SetDispatchHandler(info =>
-        {
-            if (info.Event != SpotDispatchEvent.ActorLifecycleReadable)
-                return;
-            lifecycle ??= entrySpot.RecvActorLifecycle(RecvFlags.DontWait);
-        });
-        using Message profile = Message.From("profile");
-        using Message displayName = Message.From("display-name");
-
-        using var actor = node.CreateActor(
-            $"actor-{Guid.NewGuid():N}",
-            new[] { profile, displayName });
-
-        Assert.Throws<ObjectDisposedException>(() => _ = profile.Size);
-        Assert.Throws<ObjectDisposedException>(() => _ = displayName.Size);
-
-        Assert.True(CoreTestSupport.WaitUntil(() => lifecycle != null, 2000));
-
-        SpotActorLifecycleEvent created = lifecycle!;
-        using (created)
-        {
-            Assert.Equal(SpotActorLifecycleEventKind.Joined, created.Kind);
-            Assert.Equal(actor.Ref.ActorId,
-                created.Info.CurrentActor.ActorId);
-            Assert.Equal(2, created.RequestParts.Count);
-            Assert.Equal("profile", created.RequestParts[0].GetString());
-            Assert.Equal("display-name",
-                created.RequestParts[1].GetString());
-        }
-
-        created.Dispose();
+        Assert.Equal(typeof(ActorControlRecord),
+            typeof(MeshReceiveRecord)
+                .GetProperty(nameof(MeshReceiveRecord.ActorControl))!
+                .PropertyType);
+        Assert.Equal(typeof(ActorJoinCompletion),
+            typeof(MeshReceiveRecord)
+                .GetProperty(nameof(MeshReceiveRecord.JoinCompletion))!
+                .PropertyType);
     }
 
     [Fact]
-    public async Task actor_dispatch_preserves_multipart_message_across_no_data_turn()
+    public void mesh_receive_record_projects_binding_generation()
     {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using var stream = ctx.CreateStreamSocket();
-        var sessionRid = CoreTestSupport.RoutingIdUtf8("actor-multipart-session");
-        var received = new TaskCompletionSource<string[]>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        List<Exception> callbackErrors = new();
-
-        void OnCallbackError(Exception ex)
-        {
-            lock (callbackErrors)
-            {
-                callbackErrors.Add(ex);
-            }
-        }
-
-        Zlink.UnhandledCallbackException += OnCallbackError;
-        try
-        {
-            spot.SetDispatchHandler(info =>
-            {
-                if (info.Event != SpotDispatchEvent.ActorReadable)
-                    return;
-
-                ActorReceived? message;
-                while ((message = info.RecvActor()) != null)
-                {
-                    using (message)
-                    {
-                        received.TrySetResult(message.Parts
-                            .Select(part => part.GetString())
-                            .ToArray());
-                    }
-                }
-            });
-
-            Zlink.MultipartClose(await stream.BindActor(sessionRid, actor.Ref)
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async()
-                .WaitAsync(TimeSpan.FromSeconds(5)));
-
-            using Message joinMessage = Message.From("join");
-            Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-                actor.Join(spot).Message(joinMessage)
-                    .Timeout(TimeSpan.FromSeconds(2)).Async();
-
-            ActorJoinRequest? request = null;
-            Assert.True(CoreTestSupport.WaitUntil(() =>
-            {
-                request = spot.RecvActorJoin(RecvFlags.DontWait);
-                return request != null;
-            }, 2000));
-
-            request!.Message.Dispose();
-            using Message joinReply = Message.From("ok");
-            spot.ReplyActorJoin(request, joinResultCode: 0)
-                .Message(joinReply)
-                .Submit();
-            Zlink.MultipartClose((await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts);
-
-            using Message first = Message.From("first");
-            using Message second = Message.From("second");
-            Assert.True(stream.SendBoundActor(sessionRid, actor.Ref.ActorId)
-                .Messages(new[] { first, second })
-                .Submit());
-
-            string[] parts = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(new[] { "first", "second" }, parts);
-            Assert.Empty(callbackErrors);
-
-            using Message sendFirst = Message.From("send-first");
-            using Message sendSecond = Message.From("send-second");
-            Assert.True(node.SendToActor(actor.Ref)
-                .Messages(new[] { sendFirst, sendSecond })
-                .Submit());
-
-            actor.CloseBoundSession(TimeSpan.FromSeconds(2));
-            Zlink.MultipartClose(await actor.Leave(spot)
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async()
-                .WaitAsync(TimeSpan.FromSeconds(5)));
-        }
-        finally
-        {
-            Zlink.UnhandledCallbackException -= OnCallbackError;
-        }
+        Assert.Equal(typeof(ulong),
+            typeof(MeshReceiveRecord)
+                .GetProperty(nameof(MeshReceiveRecord.SourceBindingGeneration))!
+                .PropertyType);
     }
 
-    [Fact]
-    public async Task spot_node_join_actor_entry_spot_returns_final_actor_ref()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var entry = node.EntrySpot();
-        using var actor = node.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message joinMessage = Message.From("join:user");
-
-        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-            actor.Join(spot).Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2)).Async();
-
-        ActorJoinRequest? request = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            request = spot.RecvActorJoin(RecvFlags.DontWait);
-            return request != null;
-        }, 2000));
-
-        request!.Message.Dispose();
-        using Message reply = Message.From("ok");
-        spot.ReplyActorJoin(request, joinResultCode: 0).Message(reply).Submit();
-        foreach (Message message in
-                 (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
-            message.Dispose();
-
-        using Message entryJoinMessage = Message.From("join:entry");
-        Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)>
-            entryJoinTask = node.JoinActorEntrySpot(actor.Ref, node.RoutingId,
-                    entryJoinMessage)
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async();
-
-        ActorJoinRequest? entryRequest = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            entryRequest = entry.RecvActorJoin(RecvFlags.DontWait);
-            return entryRequest != null;
-        }, 2000));
-
-        Assert.Equal("join:entry",
-            Encoding.UTF8.GetString(entryRequest!.Message.ToArray()));
-        entryRequest.Message.Dispose();
-        using Message entryReply = Message.From("entry-ok");
-        entry.ReplyActorJoin(entryRequest, joinResultCode: 0)
-            .Message(entryReply)
-            .Submit();
-
-        (ActorJoinEntrySpotResult result, IReadOnlyList<Message> entryParts) =
-            await entryJoinTask.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(RequestResult.Ok, result.Result);
-        Assert.Equal(0, result.JoinResultCode);
-        Assert.Equal(actor.Ref.ActorId, result.Actor.ActorId);
-        Assert.Equal(node.RoutingId, result.Actor.NodeRid);
-        Assert.Equal(node.RoutingId, result.TargetNodeRid);
-        Assert.Equal(entry.RoutingId, result.JoinedSpotRid);
-        Assert.True(result.JoinEpoch > 0);
-        Assert.Single(entryParts);
-        Assert.Equal("entry-ok",
-            Encoding.UTF8.GetString(entryParts[0].ToArray()));
-        foreach (Message message in entryParts)
-            message.Dispose();
-        Assert.Contains(entry.Actors(),
-            row => row.ActorId == actor.Ref.ActorId);
-        Assert.Null(entry.RecvActorJoin(RecvFlags.DontWait));
-    }
-
-    [Fact]
-    public async Task connect_peer_rid_routes_entry_spot_join_to_target_node_rid()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var sourceContext = Zlink.CreateContext();
-        using var targetContext = Zlink.CreateContext();
-        using var sourceNode = sourceContext.CreateSpotNode(SpotNodeMode.Routed);
-        using var targetNode = targetContext.CreateSpotNode(SpotNodeMode.Routed);
-        using var entry = targetNode.EntrySpot();
-
-        RoutingId sourceRid = CoreTestSupport.RoutingIdUtf8("source-rid-peer");
-        RoutingId targetRid = CoreTestSupport.RoutingIdUtf8("target-rid-peer");
-        string sourceEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "connect-peer-rid-source");
-        string targetEndpoint = CoreTestSupport.NewEndpoint("tcp",
-            "connect-peer-rid-target");
-
-        sourceNode.SetRoutingId(sourceRid);
-        targetNode.SetRoutingId(targetRid);
-        sourceNode.SetRouterBind(sourceEndpoint);
-        targetNode.SetRouterBind(targetEndpoint);
-        sourceNode.ConnectPeerRid(targetRid, targetEndpoint);
-        Thread.Sleep(300);
-
-        IActor actor = sourceNode.CreateActor($"actor-{Guid.NewGuid():N}");
-        using Message request = Message.From("join:remote-entry");
-        Task<(ActorJoinEntrySpotResult Result, IReadOnlyList<Message> Parts)>
-            joinTask = sourceNode.JoinActorEntrySpot(actor.Ref, targetRid, request)
-                .Timeout(TimeSpan.FromSeconds(5))
-                .Async();
-
-        ActorJoinRequest? joinRequest = null;
-        Assert.True(CoreTestSupport.WaitUntil(() =>
-        {
-            joinRequest = entry.RecvActorJoin(RecvFlags.DontWait);
-            return joinRequest != null;
-        }, 5000));
-
-        Assert.Equal(actor.Ref.ActorId, joinRequest!.Info.TargetActor.ActorId);
-        joinRequest.Message.Dispose();
-        using Message reply = Message.From("remote-entry-ok");
-        entry.ReplyActorJoin(joinRequest, joinResultCode: 0)
-            .Message(reply)
-            .Submit();
-
-        (ActorJoinEntrySpotResult result, IReadOnlyList<Message> parts) =
-            await joinTask.WaitAsync(TimeSpan.FromSeconds(10));
-
-        Assert.Equal(RequestResult.Ok, result.Result);
-        Assert.Equal(targetRid, result.TargetNodeRid);
-        Assert.Single(parts);
-        Assert.Equal("remote-entry-ok", parts[0].GetString());
-        foreach (Message part in parts)
-            part.Dispose();
-        await targetNode.DestroyActor(result.Actor)
-            .Timeout(TimeSpan.FromSeconds(5))
-            .Async();
-    }
-
-    [Fact]
-    public void remote_actor_ref_generation_zero_is_not_invalid()
-    {
-        RoutingId nodeRid = CoreTestSupport.RoutingIdUtf8("remote-node");
-        ActorRef actor = new(nodeRid, "remote-actor", generation: 0);
-
-        Assert.True(actor.IsUnchecked);
-        Assert.Equal(0UL, actor.Generation);
-        Assert.Equal("remote-actor", actor.ActorId);
-        Assert.Equal(nodeRid, actor.NodeRid);
-    }
 }

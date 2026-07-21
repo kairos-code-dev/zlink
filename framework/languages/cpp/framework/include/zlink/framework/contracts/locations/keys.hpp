@@ -29,6 +29,7 @@ struct spot_location_key_t
 
 struct actor_location_key_t
 {
+    std::string mesh_name;
     std::string actor_id;
 };
 
@@ -60,10 +61,11 @@ struct spot_location_filter_t
 
 struct actor_location_filter_t
 {
+    std::optional<std::string> mesh_name;
     std::optional<std::string> actor_type;
-    std::optional<zlink::routing_id_t> node_rid;
+    std::optional<zlink::routing_id_t> owner_node_rid;
     std::optional<zlink::routing_id_t> spot_rid;
-    std::optional<zlink::spot_kind> location_kind;
+    std::optional<zlink::spot_kind> spot_kind;
 };
 
 struct route_location_filter_t

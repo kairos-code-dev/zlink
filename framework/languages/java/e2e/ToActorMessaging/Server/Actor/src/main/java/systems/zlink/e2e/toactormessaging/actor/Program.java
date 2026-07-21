@@ -119,12 +119,12 @@ public final class Program {
                 .setConnectionString(config.redisLocationEndpoint())
                 .setKeyPrefix(config.locationKeyPrefix())));
             boot("addLocationStore done");
-            boot("addSpotMesh");
-            var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
-            boot("addSpotMesh done");
-            boot("enableRouter");
-            spotMesh.enableRouter(config.actorSpotEndpoint());
-            boot("enableRouter done");
+            boot("addRouteMesh");
+            var spotMesh = options.addRouteMesh(Contracts.SPOT_MESH);
+            boot("addRouteMesh done");
+            boot("listen");
+            spotMesh.listen(config.actorSpotEndpoint());
+            boot("listen done");
             boot("setRoutingId");
             spotMesh.setRoutingId(RoutingId.from(config.actorRid()));
             boot("setRoutingId done");

@@ -3,6 +3,7 @@ import { DeliveryStatusNotify, PacketNames } from '../../Shared/Contracts/messag
 import { CustomerActor } from './customer-actor';
 import { CustomerEntrySpot } from './customer-entry-spot';
 import type { DeliveryStatusUpdatedMsg } from '../../Shared/Contracts/messages';
+import type { ZLinkSpotActorSendContext } from '@zlink-systems/framework';
 
 @zlinkEntrySpotActorSendHandler({
   entrySpot: () => CustomerEntrySpot,
@@ -10,7 +11,7 @@ import type { DeliveryStatusUpdatedMsg } from '../../Shared/Contracts/messages';
   packetName: PacketNames.deliveryStatusUpdated
 })
 class CustomerStatusHandler {
-  async handle(_spot: CustomerEntrySpot, actor: CustomerActor, _context: unknown, message: DeliveryStatusUpdatedMsg): Promise<void> {
+  async handle(actor: CustomerActor, _context: ZLinkSpotActorSendContext, message: DeliveryStatusUpdatedMsg): Promise<void> {
     if (!actor.accepts(message.deliveryId)) return;
     actor.context.boundSession.send(new DeliveryStatusNotify(
       message.deliveryId,

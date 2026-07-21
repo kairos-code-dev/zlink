@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.handlers;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
@@ -66,5 +67,9 @@ public final class ZLinkFilterPipeline {
             return inner.contentType();
         }
 
+        @Override
+        public Map<String, String> metadata() {
+            return inner.metadata();
+        }
     }
 }

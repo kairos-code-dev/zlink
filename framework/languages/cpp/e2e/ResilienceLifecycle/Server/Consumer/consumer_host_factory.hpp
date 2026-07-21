@@ -46,6 +46,8 @@ inline void configure_consumer_host (zlink::framework::zlink_framework_options_t
       .map_post<profile_command_handler_t> ("/profile/command")
       .map_post<missing_profile_command_handler_t> ("/profile/command/missing")
       .map_post<new_client_profile_request_handler_t> ("/profile/request/new-client")
+      .map_post<recreated_mesh_request_handler_t> (
+        "/route/request/recreated-mesh")
       .map_get<topology_handler_t> ("/topology")
       .map_post<topology_wait_handler_t> ("/topology/wait");
 }

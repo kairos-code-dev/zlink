@@ -35,12 +35,7 @@ location_store_failure_grace_ms=6000
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
-if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "StoreFailure must use a 5s route settle limit" >&2
-  exit 1
-fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
     Client/src/main/java Shared/src/main/java --glob '*.java'; then
   echo "StoreFailure client must use ZLinkHttpClient" >&2
@@ -551,7 +546,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-A1" stamp false
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-A1" "" "api-b" "false"
 cat "${log_dir}/client-SF-A1.stdout.log"
 stop_all
@@ -562,7 +556,6 @@ read -r AH BH CH CPH A B C <<<"$(reserve_ports 7)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; API_C="$(tcp "${C}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; HTTP_C="$(http "${CPH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-A2" polling
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A2" "api-a,api-b" "SF-A2-initial" "" "api-b" "false"
 cat "${log_dir}/client-SF-A2-initial.stdout.log"
 start_provider api-c "${API_C}" api-c "${HTTP_C}"
@@ -582,7 +575,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-B1"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-B1-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-B1-baseline.stdout.log"
 pause_redis_container
@@ -601,7 +593,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-B2"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-B2-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-B2-baseline.stdout.log"
 pause_redis_container
@@ -619,7 +610,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-C1" stamp false
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-C1-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-C1-baseline.stdout.log"
 kill -9 "${API_B_PID}" >/dev/null 2>&1 || true
@@ -634,7 +624,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-C2"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-C2-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-C2-baseline.stdout.log"
 shutdown_http "${HTTP_B}"
@@ -650,7 +639,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-D1"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-D1-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-D1-baseline.stdout.log"
 run_client "SF-D1" "api-a,api-b" "SF-D1" "" "api-b" "true"
@@ -678,7 +666,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-D2"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-A1" "api-a,api-b" "SF-D2-baseline" "" "api-b" "false"
 cat "${log_dir}/client-SF-D2-baseline.stdout.log"
 run_client "SF-D2" "api-a" "SF-D2" "" "api-b" "true"
@@ -710,7 +697,6 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 start_initial_topology "consumer-SF-D3"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-D3-HEALTHY" "api-a,api-b" "SF-D3-healthy" "" "api-b" "false"
 cat "${log_dir}/client-SF-D3-healthy.stdout.log"
 SF_D3_BEFORE_REFRESH="$(status_field "${CONSUMER_HTTP}" lastRefreshAt)"
@@ -755,7 +741,6 @@ for role in "${SF_E1_ROLES[@]}"; do
   esac
 done
 redis_location_endpoint="${SF_E1_PROXY_ENDPOINT}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client "SF-E1" "api-a,api-b" "SF-E1" "" "api-b" "false"
 cat "${log_dir}/client-SF-E1.stdout.log"
 grep -q "redis proxy peer-list response delay milliseconds=1200" \

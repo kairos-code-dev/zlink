@@ -4,11 +4,14 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CompletableFuture;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.StreamSessionBinding;
+import systems.zlink.contracts.service.spot.StreamSessionService;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
@@ -23,10 +26,17 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 
 final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJavaSocketBacked {
     private final StreamSocket socket;
+    private final ZLinkJavaMeshNode meshNode;
+    private final StreamSessionService sessionService;
     private SocketMonitor monitor;
+    private boolean sessionServiceStarted;
 
-    ZLinkJavaStreamSocket(StreamSocket socket) {
+    ZLinkJavaStreamSocket(StreamSocket socket, ZLinkJavaMeshNode meshNode) {
         this.socket = socket;
+        this.meshNode = meshNode;
+        this.sessionService = meshNode == null
+            ? null
+            : StreamSessionService.create(meshNode.nativeNode(), socket);
     }
 
     @Override public Socket nativeSocket() { return socket; }
@@ -48,6 +58,12 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         monitor.onEvent(event -> event.routingId().ifPresent(routingId ->
             handler.handle(routingId, 0, event.event().name())));
     }
+    @Override public void startSessionService() {
+        if (sessionService != null && !sessionServiceStarted) {
+            sessionService.start();
+            sessionServiceStarted = true;
+        }
+    }
     @Override public boolean send(RoutingId routingId, List<Message> parts, SendFlags flags) {
         return ZLinkJavaStreamFraming.submit(socket.send(routingId), 1, null, null, parts, flags);
     }
@@ -64,14 +80,38 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         return ZLinkJavaStreamFraming.submit(socket.send(routingId), header, parts, flags);
     }
     @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
-        return timeout -> unsupportedStreamSession();
+        return timeout -> {
+            try {
+                return meshNode.track(
+                    requireSessionService().bindActor(sessionRid, toNative(actor), timeout));
+            } catch (ZlinkSubmitException error) {
+                throw new IllegalStateException(
+                    "STREAM actor bind submit failed: result=" + error.getResult()
+                        + " errno=" + error.getNativeErrno()
+                        + " session=" + sessionRid
+                        + " actor=" + actor.actorId()
+                        + " generation=" + actor.generation(),
+                    error);
+            }
+        };
     }
     @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
-        return timeout -> unsupportedStreamSession();
+        return timeout -> {
+            StreamSessionBinding binding = requireBinding(sessionRid, actorId);
+            return meshNode.track(requireSessionService().unbindActor(
+                sessionRid,
+                binding.actor(),
+                binding.bindingGeneration(),
+                timeout));
+        };
     }
     @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
-        throw new UnsupportedOperationException(
-            "STREAM actor relay requires the RouteMesh StreamSessionService");
+        requireSessionService().sendToActor(
+            sessionRid,
+            requireBinding(sessionRid, actorId).actor(),
+            parts,
+            flags);
+        return true;
     }
     @Override public boolean relayBoundActor(
         RoutingId sessionRid,
@@ -81,14 +121,22 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         SendFlags flags) {
         Message header = Message.from(ZLinkStreamHeaderCodec.encode(streamHeader));
         try {
-            throw new UnsupportedOperationException(
-                "STREAM actor relay requires the RouteMesh StreamSessionService");
+            requireSessionService().sendToActor(
+                sessionRid,
+                requireBinding(sessionRid, actorId).actor(),
+                prepend(header, parts),
+                flags);
+            return true;
         } finally {
             header.close();
         }
     }
     @Override public void close() {
+        notifyAdmissionShutdown();
         closeMonitor();
+        if (sessionService != null) {
+            sessionService.close();
+        }
         socket.close();
     }
 
@@ -106,12 +154,23 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         return result;
     }
 
-    private static CompletionStage<Void> toVoid(CompletionStage<List<Message>> stage) {
-        return stage.thenAccept(parts -> parts.forEach(Message::close));
+    private StreamSessionBinding requireBinding(RoutingId sessionRid, String actorId) {
+        return requireSessionService().bindings(sessionRid).stream()
+            .filter(binding -> binding.actor().actorId().equals(actorId))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "STREAM session is not bound to actor: " + actorId));
     }
 
-    private static CompletionStage<Void> unsupportedStreamSession() {
-        return CompletableFuture.failedFuture(new UnsupportedOperationException(
-            "STREAM actor binding requires the RouteMesh StreamSessionService"));
+    private static ActorRef toNative(ZLinkBackendActorRef actor) {
+        return new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation());
+    }
+
+    private StreamSessionService requireSessionService() {
+        if (sessionService == null) {
+            throw new IllegalStateException(
+                "STREAM actor dispatch is not enabled for this stream node");
+        }
+        return sessionService;
     }
 }

@@ -8,7 +8,7 @@ using Systems.Zlink;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink;
 
-[ZLinkHandlerGroup("quest-owner")]
+[ZLinkHandlerGroup(SampleNames.QuestOwnerHandlerGroup)]
 internal sealed class ApplyGameplayEventRouteHandler(
     PlayerQuestOwnerProvisioner owners,
     QuestOwnerRouter ownerRouter)
@@ -24,7 +24,7 @@ internal sealed class ApplyGameplayEventRouteHandler(
     }
 }
 
-[ZLinkHandlerGroup("quest-owner")]
+[ZLinkHandlerGroup(SampleNames.QuestOwnerHandlerGroup)]
 internal sealed class SyncQuestProgressRouteHandler(
     PlayerQuestOwnerProvisioner owners,
     QuestOwnerRouter ownerRouter,

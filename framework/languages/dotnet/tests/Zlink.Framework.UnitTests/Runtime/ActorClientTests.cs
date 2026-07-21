@@ -137,15 +137,17 @@ public sealed class ActorClientTests
     }
 
     [Fact]
-    public void ActorSendCall_Has_One_Void_Submit_Terminal()
+    public void ActorSendCall_Has_One_Async_Submit_Terminal()
     {
         var submit = Assert.Single(
             typeof(IZLinkActorSendCall).GetMethods(),
-            static method => method.Name == "Submit");
-        Assert.Equal(typeof(void), submit.ReturnType);
+            static method => method.Name == "SubmitAsync");
+        Assert.Equal(typeof(ValueTask<ZLinkSubmitResult>), submit.ReturnType);
         var cancellation = Assert.Single(submit.GetParameters());
         Assert.Equal(typeof(CancellationToken), cancellation.ParameterType);
         Assert.True(cancellation.HasDefaultValue);
+        Assert.Empty(typeof(IZLinkActorSendCall).GetMethods().Where(static method =>
+            method.Name is "Submit" or "TrySubmit"));
     }
 
     [Fact]

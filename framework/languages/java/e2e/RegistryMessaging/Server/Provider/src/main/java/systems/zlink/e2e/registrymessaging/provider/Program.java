@@ -96,17 +96,17 @@ public final class Program {
 
             String routeEndpoint = server.routeEndpoint();
             if (!routeEndpoint.isBlank()) {
-                var route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                    .enableServer(routeEndpoint)
+                var route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+                    .listen(routeEndpoint)
                     .setRoutingId(RoutingId.from(state.providerRid()));
-                route.addRequestHandler(
+                route.channelName(Contracts.ROUTE_CHANNEL);
+                route.addRouteRequestHandler(
                     RouteReqHandler.class,
                     Contracts.RouteReq.class,
-                    Contracts.RouteRes.class,
-                    Contracts.ROUTE_PACKET);
+                    Contracts.RouteRes.class);
                 for (String peer : server.routePeers().split(",")) {
                     if (!peer.isBlank()) {
-                        route.enableClient(peer);
+                        route.peerConnections().connect(peer);
                     }
                 }
             }

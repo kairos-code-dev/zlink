@@ -64,7 +64,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 13:
+    while len(sockets) < 8:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -87,16 +87,12 @@ API_A_BIND_URL="http://127.0.0.1:${PORTS[0]}"
 API_B_BIND_URL="http://127.0.0.1:${PORTS[1]}"
 API_A_PUBLIC_URL="${API_A_BIND_URL}"
 API_B_PUBLIC_URL="${API_B_BIND_URL}"
-API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
-PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
-PLAY_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+API_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+API_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+PLAY_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+PLAY_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
 PLAY_A_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 PLAY_B_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-SPOT_A_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
-SPOT_B_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-SPOT_A_PUBSUB_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
-SPOT_B_PUBSUB_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -116,35 +112,28 @@ import sys
 
 api_a_path, api_b_path, play_a_path, play_b_path, client_path = sys.argv[1:]
 
-def api(instance_name, api_index, bind_url, channel_endpoint):
+def api(instance_name, bind_url, mesh_endpoint):
     return {
         "Sample": {
             "InstanceName": instance_name,
-            "ApiIndex": api_index,
             "ApiBindUrl": bind_url,
-            "ApiChannelEndpoint": channel_endpoint,
-            "PlayChannelEndpoints": ["${PLAY_A_CHANNEL_ENDPOINT}", "${PLAY_B_CHANNEL_ENDPOINT}"],
+            "MeshEndpoint": mesh_endpoint,
+            "PeerMeshEndpoints": ["${PLAY_A_MESH_ENDPOINT}", "${PLAY_B_MESH_ENDPOINT}"],
             "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
             "LogDirectory": "${SAMPLE_LOG_DIR}"
         }
     }
 
-def play(instance_name, play_index, channel_endpoint, play_endpoint, spot_endpoint,
-         spot_pubsub_endpoint, peer_play_index):
+def play(instance_name, play_index, mesh_endpoint, peer_mesh_endpoints, play_endpoint):
     return {
         "Sample": {
             "InstanceName": instance_name,
             "PlayIndex": play_index,
-            "ApiChannelEndpoints": ["${API_A_CHANNEL_ENDPOINT}", "${API_B_CHANNEL_ENDPOINT}"],
-            "PlayChannelEndpoint": channel_endpoint,
+            "MeshEndpoint": mesh_endpoint,
+            "PeerMeshEndpoints": peer_mesh_endpoints,
             "PlayEndpoint": play_endpoint,
             "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
-            "SpotEndpoint": spot_endpoint,
-            "SpotPubSubEndpoint": spot_pubsub_endpoint,
-            "PlaySpotNodeRid": f"play-node-{play_index + 1}",
-            "PeerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
-            "PeerSpotEndpoint": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"][peer_play_index],
-            "PeerSpotPubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
+            "PlayMeshNodeRid": f"play-node-{play_index + 1}",
             "RedisEndpoint": "${REDIS_ENDPOINT}",
             "RedisKeyPrefix": "${TICTACTOE_REDIS_KEY_PREFIX}",
             "LogDirectory": "${SAMPLE_LOG_DIR}"
@@ -152,10 +141,10 @@ def play(instance_name, play_index, channel_endpoint, play_endpoint, spot_endpoi
     }
 
 for path, settings in [
-    (api_a_path, api("api-a", 0, "${API_A_BIND_URL}", "${API_A_CHANNEL_ENDPOINT}")),
-    (api_b_path, api("api-b", 1, "${API_B_BIND_URL}", "${API_B_CHANNEL_ENDPOINT}")),
-    (play_a_path, play("play-a", 0, "${PLAY_A_CHANNEL_ENDPOINT}", "${PLAY_A_ENDPOINT}", "${SPOT_A_ENDPOINT}", "${SPOT_A_PUBSUB_ENDPOINT}", 1)),
-    (play_b_path, play("play-b", 1, "${PLAY_B_CHANNEL_ENDPOINT}", "${PLAY_B_ENDPOINT}", "${SPOT_B_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}", 0)),
+    (api_a_path, api("api-a", "${API_A_BIND_URL}", "${API_A_MESH_ENDPOINT}")),
+    (api_b_path, api("api-b", "${API_B_BIND_URL}", "${API_B_MESH_ENDPOINT}")),
+    (play_a_path, play("play-a", 0, "${PLAY_A_MESH_ENDPOINT}", [], "${PLAY_A_ENDPOINT}")),
+    (play_b_path, play("play-b", 1, "${PLAY_B_MESH_ENDPOINT}", ["${PLAY_A_MESH_ENDPOINT}"], "${PLAY_B_ENDPOINT}")),
     (client_path, {"Sample": {"ApiPublicUrls": ["${API_A_PUBLIC_URL}"], "LogDirectory": "${SAMPLE_LOG_DIR}"}}),
 ]:
     with open(path, "w", encoding="utf-8") as output:
@@ -183,7 +172,7 @@ wait_port() {
   local port
   host="$(endpoint_host "${endpoint}")"
   port="$(endpoint_port "${endpoint}")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -197,7 +186,7 @@ wait_log_contains() {
   local description="$1"
   local pattern="$2"
   shift 2
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if grep -Eq "${pattern}" "$@" 2>/dev/null; then
       return 0
     fi
@@ -221,21 +210,19 @@ wait_port redis "tcp://${REDIS_ENDPOINT}"
 
 start_server play-a "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_A_CONFIG_FILE}"
 wait_port play-a-stream "${PLAY_A_ENDPOINT}"
-wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}"
-wait_port play-a-spot "${SPOT_A_ENDPOINT}"
+wait_port play-a-mesh "${PLAY_A_MESH_ENDPOINT}"
 
 start_server play-b "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-stream "${PLAY_B_ENDPOINT}"
-wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
-wait_port play-b-spot "${SPOT_B_ENDPOINT}"
+wait_port play-b-mesh "${PLAY_B_MESH_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_A_CONFIG_FILE}"
 wait_port api-a-http "${API_A_BIND_URL}"
-wait_port api-a-channel "${API_A_CHANNEL_ENDPOINT}"
+wait_port api-a-mesh "${API_A_MESH_ENDPOINT}"
 
 start_server api-b "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_B_CONFIG_FILE}"
 wait_port api-b-http "${API_B_BIND_URL}"
-wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
+wait_port api-b-mesh "${API_B_MESH_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
   --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1

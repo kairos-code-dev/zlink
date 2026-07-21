@@ -197,6 +197,22 @@ owner spot이 파생 event를 방출해 별도 aggregator가 cross-player 집계
 
 ## 6. 서버 구성
 
+GameQuest의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. GameApi와 QuestMission은 `gamequest` RouteMesh 하나를 공유한다. 양쪽이 독립 업무 호출을 시작하고
+Spot·Actor·session route도 이어지므로 방향별 ClientServer Channel을 추가하지 않는다.
+
+이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId`에서 Spot RID를 만들고
+`(gamequest, gamequest.player-quest, PlayerId RID)`의 `InstanceSpotAddress`로 direct send/request를 수행한다.
+QuestMission은 actor-free `PlayerQuestSpot` Instance factory를 등록하고 GameApi는 호출 전용 membership 0개
+MeshNode로 같은 RouteMesh에 참여한다. Caller는 Spot manager의 `GetOrCreate`, SpotHandle resolve, owner node
+RID나 endpoint 선택을 수행하지 않는다. `gamequest.mission.*` 같은 wildcard ChannelName이나 실행 중 역할
+추가도 사용하지 않는다.
+
+Gameplay event의 one-way 호출은 public async submit만 사용한다. Framework는 row가 없을 때만 cold placement를
+실행하고, `Ready` owner가 있으면 node RID, Spot RID와 Spot generation으로 고정한 기존 exact Spot direct route를
+내부에서 사용한다. `PlayerQuestSpot`은 message 없는 actor-free initialize lifecycle에서 event stream 상태를
+복구하며 기존 Spot create callback에 빈 message를 전달하지 않는다.
+
 ```mermaid
 graph LR
     C[Game Client]
@@ -276,12 +292,15 @@ scale-out 검증:
 - 어느 노드가 연결·action을 받아도 같은 `PlayerId`는 항상 같은 `PlayerQuestSpot` owner로 간다.
 - 서로 다른 player는 다른 노드 owner에서 동시에 처리된다.
 - notify는 현재 그 player의 연결을 가진 노드로 route된다.
-- owner tier에 node를 추가해도 기존 player owner는 자동으로 이동하지 않는다. 새 player는 공개 배치
-  입력과 정책에 따라 새 node owner를 사용할 수 있다.
+- owner tier에 node를 추가해도 기존 player owner는 자동으로 이동하지 않는다. 새 player의 첫 call은
+  Framework가 등록된 type capability와 내부 placement 정책으로 eligible node를 선택한다. Caller는 node RID나
+  endpoint를 placement 입력으로 제공하지 않는다.
 
-샘플 self-check의 복구 시나리오는 owner를 비활성화한 뒤 같은 논리 owner를 다시 만들고
-`QuestEventStore` replay로 aggregate를 복원한다. process kill/restart, replacement, failover는 정상
-사용법을 보여 주는 샘플이 아니라 공통 E2E Config 2·5의 수명 시나리오에서 검증한다.
+샘플 self-check의 복구 시나리오는 owner를 정상 close하거나 process를 종료한다. 다음 gameplay call은 다른
+QuestMission node에서 같은 논리 주소를 새 generation으로 활성화하고 `QuestEventStore`와
+`QuestReadModelStore`에서 상태를 복구한다. 복구 뒤 이미 반영한 `EventId`를 다시 보내도 진행과 reward 결정
+event가 중복으로 적용되지 않아야 한다. 이 시나리오는 Instance Spot의 reference sample gate이므로 공통 E2E
+Config 14에서도 같은 조건으로 검증한다.
 
 ## 7. 책임 분리
 
@@ -596,6 +615,8 @@ per-player 처리는 owner spot에서 끝난다. 여러 player를 가로지르�
 
 game client는 하나의 WebSocket으로 join·action·progress push를 다룬다. self-check driver는 같은
 연결로 gameplay command를 보내 event를 만든다. store 검증은 server-side assertion으로 한다.
+Owner 교체와 상태 복구 항목은 [공통 E2E Config 14](../../e2e/config-14-instance-spot.ko.md#71-gamequest)의
+GameQuest reference sample gate와 같은 조건을 사용한다.
 
 - **성공/완료**: join → bind 검증 → KillMonster ×3 → 진행 push → 완료 push →
   `QuestEventStore`에 QuestProgressed/Completed/RewardGranted append 검증. 샘플은 reward 지급 요청
@@ -604,8 +625,12 @@ game client는 하나의 WebSocket으로 join·action·progress push를 다룬�
   복원되는지 검증.
 - **중복(idempotency)**: 같은 IdempotencyKey 재전송 → 같은 EventId → 진행 중복 증가 없음.
 - **reward idempotency**: 완료된 quest에 같은 SourceEventId 재적용 → reward 결정 event 중복 append 없음.
-- **rehydrate 복원**: owner 비활성→재활성 → `QuestEventStore` replay로 aggregate 복원. process
-  restart·replacement·failover는 E2E에서 검증한다.
+- **owner close 뒤 복구**: owner를 정상 close → 다른 QuestMission node의 새 generation 활성화 →
+  `QuestEventStore`와 `QuestReadModelStore`에서 aggregate와 projection 복원 → 같은 `EventId` 재전송에도 진행과
+  reward 결정 event가 중복으로 적용되지 않는지 검증.
+- **owner crash 뒤 복구**: owner process 종료 → lease 만료 전 replacement가 없는지 확인 → 만료 뒤 다음
+  gameplay call이 다른 node에서 새 generation을 활성화하고 상태를 복구하는지 검증. 복구 뒤 같은 `EventId`를
+  재전송해도 진행과 reward 결정 event를 중복으로 적용하지 않는다.
 - **reconnect**: 연결 끊고 binding 해제 → 다른 노드로 재접속 → 조회로 복원 → 이후 notify가 새
   노드로.
 - **reset 보정**: owner 메시징 없이 `GameplayStateStore`만 kill count 증가시킨 뒤 SyncQuestProgress →
@@ -621,6 +646,9 @@ game client는 하나의 WebSocket으로 join·action·progress push를 다룬�
 - `PlayerQuestSpot`은 event-sourced aggregate다: `QuestEventStore`에 domain event를 append하고
   replay로 상태를 복원하며, 진행 카운트는 event fold의 결과다.
 - `QuestReadModelStore` projection은 event stream replay로 재생성된다.
+- Owner close·crash 뒤 다른 QuestMission node가 새 generation을 활성화하고 event stream과 projection
+  store에서 상태를 복구한다.
+- 복구 뒤 이미 적용한 gameplay event를 다시 보내도 진행과 reward 결정 event가 중복으로 적용되지 않는다.
 - reward 결정 event는 중복 append되지 않는다. 실제 재화 지급의 durable/outbox 경로는 production
   확장 tier로 분리한다.
 - 진행 push는 owner event 적용 뒤 bound session으로 전달되고, binding 없는 player의 push는

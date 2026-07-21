@@ -37,9 +37,16 @@ final class ZLinkFrameworkSpotSubsystem {
         ZLinkChannelRuntime channels,
         ZLinkBackendContext backendContext,
         ZLinkLocationLifecycle locationLifecycle,
-        SpotTransportAddressResolver locationTransportResolver) {
+        SpotTransportAddressResolver locationTransportResolver,
+        java.util.Map<String, systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode>
+            meshNodes) {
         SpotTransportAddressResolver remoteAddressResolver = locationTransportResolver;
-        if (options.registration().spotNodes().isEmpty()) {
+        boolean hasMeshServices = options.registration().meshNodes().stream()
+            .anyMatch(node -> !node.spotFactories().isEmpty()
+                || !node.entrySpots().isEmpty()
+                || !node.actorFactories().isEmpty()
+                || !node.channelNames().isEmpty());
+        if (options.registration().spotNodes().isEmpty() && !hasMeshServices) {
             return new ZLinkFrameworkSpotSubsystem(
                 null, remoteAddressResolver,
                 java.util.concurrent.CompletableFuture.completedFuture(null));
@@ -53,12 +60,15 @@ final class ZLinkFrameworkSpotSubsystem {
             backendContext,
             serializer,
             runtimeHandlers,
-            eventDispatcher);
+            eventDispatcher,
+            meshNodes);
         spots.setLocationLifecycle(locationLifecycle);
         java.util.concurrent.CompletionStage<Void> startup = spots.claimEntrySpotLocations();
         runtimeHandlers.add(ZLinkSpotManager.class, spots);
-        channels.registerSpotRouteBridgeOwner(spots::primaryNode);
-        channels.registerSpotRouteBridgeDispatchDrainer(spots::drainRoutedDispatchQueues);
+        if (!options.registration().spotNodes().isEmpty()) {
+            channels.registerSpotRouteBridgeOwner(spots::primaryNode);
+            channels.registerSpotRouteBridgeDispatchDrainer(spots::drainRoutedDispatchQueues);
+        }
         return new ZLinkFrameworkSpotSubsystem(spots, remoteAddressResolver, startup);
     }
 

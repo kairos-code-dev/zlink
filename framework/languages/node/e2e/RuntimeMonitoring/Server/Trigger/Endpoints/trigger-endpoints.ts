@@ -77,7 +77,7 @@ function toProfileReq(body: unknown): ProfileReq {
 
 export async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
   return await channel
-    .requestToChannel(RuntimeMonitoringNames.channel, request)
+    .requestToChannel(RuntimeMonitoringNames.channel, RuntimeMonitoringNames.channel, request)
     .timeout(10000)
     .submit<ProfileRes>();
 }

@@ -17,7 +17,7 @@ import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -74,9 +74,8 @@ public final class Program {
             options.addClientServerChannel(SampleNames.orderWorkflowChannelFor(workflow.instanceName()))
                 .enableServer(workflow.channelEndpoint())
                 .addHandlerGroup("order-workflow");
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.OrderSpotDiscovery);
-            node.enableRouter(workflow.spotRouterEndpoint())
-                .enablePubSub(workflow.spotEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.OrderSpotDiscovery);
+            node.listen(workflow.spotRouterEndpoint())
                 .setRoutingId(workflow.routingId());
             node.addSpotFactory(OrderWorkflowSpot.class);
         };

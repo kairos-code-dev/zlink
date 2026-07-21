@@ -34,10 +34,9 @@ abstract class SpotMsgRouteHandler<TCommand>
         ZLinkSessionDispatchContext dispatch,
         TCommand command) {
         RoutingId targetSpotRid = targetSpot(dispatch);
-        return spots.resolveSpotHandle(targetSpotRid).thenAccept(handle -> routes.sendToSpot(
-            Contracts.SPOT_MESH,
+        return spots.resolveSpotHandle(targetSpotRid).thenCompose(handle -> routes.sendToSpot(
             handle.orElseThrow(() -> new IllegalStateException("spot not found: " + targetSpotRid)),
-            command).submit());
+            command).submit().thenApply(ignored -> null));
     }
 
     static RoutingId targetNode(ZLinkSessionDispatchContext dispatch) {

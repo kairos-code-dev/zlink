@@ -17,11 +17,15 @@ internal sealed class MeshNodePublisher : IMeshNodePublisher
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
 
-    public MeshPublishDetail Publish(string channelName, string? topic,
+    public MeshPublishResult Publish(string channelName, string? topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default)
     {
         BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
+        BoundaryValidation.ValidateTopicOrFilterUtf8(
+            topic ?? throw new ArgumentNullException(nameof(topic)),
+            nameof(topic),
+            allowEmpty: false);
         EnsureNotDisposed();
         var detailPtr =
             Marshal.AllocHGlobal(Marshal.SizeOf<ZlinkMeshPublishDetail>());
@@ -38,17 +42,18 @@ internal sealed class MeshNodePublisher : IMeshNodePublisher
                     NativeMethods.zlink_mesh_node_publisher_publish(_handle,
                         channelName, topic, meta, np, count, detailPtr,
                         (int)flags));
-            ZlinkException.ThrowSubmitIfError((int)result);
             var detail =
                 Marshal.PtrToStructure<ZlinkMeshPublishDetail>(detailPtr);
-            return new MeshPublishDetail(
-                detail.SnapshotRemoteTargetCount,
-                detail.AdmittedRemoteTargetCount,
-                detail.DroppedRemoteTargetCount,
-                detail.UnreachableRemoteTargetCount,
-                detail.SnapshotLocalSpotCount,
-                detail.AdmittedLocalSpotCount,
-                detail.DroppedLocalSpotCount);
+            return new MeshPublishResult(
+                result,
+                new MeshPublishDetail(
+                    detail.SnapshotRemoteTargetCount,
+                    detail.AdmittedRemoteTargetCount,
+                    detail.DroppedRemoteTargetCount,
+                    detail.UnreachableRemoteTargetCount,
+                    detail.SnapshotLocalSpotCount,
+                    detail.AdmittedLocalSpotCount,
+                    detail.DroppedLocalSpotCount));
         }
         finally
         {

@@ -1,4 +1,6 @@
 import type {
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkSpot,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
@@ -45,10 +47,11 @@ export class ScenarioUserSpot implements ZLinkSpot {
     this.context.handlers.addPacket(SpotToSpotTimeoutHandler);
     this.context.handlers.addPacket(SpotToSpotNegativeHandler);
     this.context.handlers.addPacket(SpotAdminHandler);
-    this.context.handlers.addActorPacket(UserActorPingHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(UserActorPushHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(UserActorLeaveHandler, ScenarioActor);
-    this.context.handlers.addSubscribe(SpotMsgHandler, SpotServiceNames.spotEventTopic);
+    this.context.handlers.addSubscribe(
+      SpotMsgHandler,
+      SpotServiceNames.spotChannel,
+      SpotServiceNames.spotEventTopic
+    );
   }
 
   async onInitialize(): Promise<void> {
@@ -66,7 +69,8 @@ export class ScenarioUserSpot implements ZLinkSpot {
     return this.value;
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    const actorId = actor.actor.actorId;
     const payload = request.decode<Partial<{ readonly actorId: string }>>(Object as never);
     if (payload.actorId?.includes('reject') === true) {
       const evidence = ScenarioUserSpot.requireEvidence();
@@ -78,24 +82,24 @@ export class ScenarioUserSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ScenarioActor): Promise<void> {
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
     );
   }
 
-  async onLeaveActor(actor: ScenarioActor): Promise<void> {
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
     );
   }
 
-  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actorId}`
+      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
     );
   }
 
@@ -108,10 +112,9 @@ export class ScenarioUserSpot implements ZLinkSpot {
 }
 
 export class UserActorPingHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPingReq, ActorPingRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioActor, ActorPingReq, ActorPingRes> {
   @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
-    spot: ScenarioUserSpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPingReq
@@ -120,13 +123,13 @@ export class UserActorPingHandler
     actor.seen += 1;
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `actor-pingMsg|rid=${spot.context.nodeRid}|actor=${actor.actorId}`
-      + `|spot=${spot.context.spotRid}|value=${request.value}|seen=${actor.seen}`
+      `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
+      + `|spot=${actor.context.spotRid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
-      nodeRid: String(spot.context.nodeRid),
-      spotRid: String(spot.context.spotRid),
+      nodeRid: evidence.rid,
+      spotRid: String(actor.context.spotRid),
       value: request.value,
       seen: actor.seen
     };
@@ -134,10 +137,9 @@ export class UserActorPingHandler
 }
 
 export class UserActorPushHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioActor, ActorPushReq, ActorPingRes> {
   @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
-    spot: ScenarioUserSpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushReq
@@ -147,10 +149,11 @@ export class UserActorPushHandler
     actor.context.boundSession
       .send(new ActorPushNotify(actor.actorId, request.value, actor.seen))
       .submit();
+    const evidence = ScenarioUserSpot.requireEvidence();
     return {
       actorId: actor.actorId,
-      nodeRid: String(spot.context.nodeRid),
-      spotRid: String(spot.context.spotRid),
+      nodeRid: evidence.rid,
+      spotRid: String(actor.context.spotRid),
       value: request.value,
       seen: actor.seen
     };
@@ -158,10 +161,9 @@ export class UserActorPushHandler
 }
 
 export class UserActorLeaveHandler
-  implements ZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, LeaveReq, LeaveRes> {
+  implements ZLinkSpotActorRequestHandler<ScenarioActor, LeaveReq, LeaveRes> {
   @ZLinkSpotActorRequest('LeaveReq')
   async handle(
-    spot: ScenarioUserSpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: LeaveReq
@@ -169,7 +171,7 @@ export class UserActorLeaveHandler
     if (request.actorId !== actor.actorId) {
       throw new Error('Leave request actor does not match dispatched actor.');
     }
-    await spot.context.leaveActor(actor, context.connectionAborted);
+    await actor.context.leaveSpot(context.connectionAborted);
     return {
       actorId: actor.actorId,
       accepted: true
@@ -182,4 +184,5 @@ export class ScenarioAlternateSpot implements ZLinkSpot {
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
   async onJoinedActor(): Promise<void> {}
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 }

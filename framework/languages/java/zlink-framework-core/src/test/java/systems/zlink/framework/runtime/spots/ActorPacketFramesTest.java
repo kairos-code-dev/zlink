@@ -41,7 +41,7 @@ final class ActorPacketFramesTest {
     }
 
     @Test
-    void actorReplyKeepsMetadataButDoesNotClaimCompressionWithoutCompressedPayload() {
+    void actorReplyDoesNotCopyMetadataOrClaimUnappliedCompression() {
         ZLinkStreamHeader request = new ZLinkStreamHeader(
             ZLinkStreamMessageKind.REQUEST,
             ZLinkStreamCodec.JSON,
@@ -57,7 +57,7 @@ final class ActorPacketFramesTest {
             DecodedFrame decoded = decodeFrame(frame);
 
             assertEquals(ZLinkStreamMessageKind.RESPONSE, decoded.header().kind());
-            assertEquals(Map.of("trace-id", "trace-1"), decoded.header().metadata());
+            assertEquals(Map.of(), decoded.header().metadata());
             assertFalse(decoded.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
             assertEquals("reply", new String(decoded.body(), StandardCharsets.UTF_8));
         }

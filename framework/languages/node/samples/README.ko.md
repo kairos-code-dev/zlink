@@ -73,6 +73,9 @@ cd framework/languages/node
 ./samples/run_samples.sh
 ```
 
+예를 들어 Bingo의 전체 client 흐름은
+[`bingo-client-scenario.ts`](Bingo.Ts/Client/bingo-client-scenario.ts)에서 확인할 수 있다.
+
 일부 샘플만 실행할 때는 디렉터리 이름을 인자로 넘긴다.
 
 ```bash

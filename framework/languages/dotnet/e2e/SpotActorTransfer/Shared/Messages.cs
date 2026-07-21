@@ -32,6 +32,10 @@ public sealed record CreateSpotRes(
     string NodeRid,
     string State);
 
+public sealed record MeshReadyRes(
+    string NodeRid,
+    string[] ReadyPeerRids);
+
 public sealed record GateReleaseRes(
     string SpotRid,
     bool Released);

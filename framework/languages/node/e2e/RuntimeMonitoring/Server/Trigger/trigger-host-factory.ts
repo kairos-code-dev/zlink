@@ -96,7 +96,7 @@ async function requestWithTransientHost(
   } finally {
     await Promise.race([
       app.close(),
-      new Promise<void>((resolve) => setTimeout(resolve, 5000))
+      new Promise<void>((resolve) => setTimeout(resolve, 3000))
     ]);
   }
 }
@@ -132,7 +132,8 @@ function buildTriggerFramework(
   const builder = zlinkFramework();
   builder.configureDispatch().messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`).traceLabel(traceLabel);
-  builder.addClientServerChannel(RuntimeMonitoringNames.channel).enableClient(channelEndpoints);
+  const serviceMesh = builder.addRouteMesh(RuntimeMonitoringNames.channel);
+  for (const endpoint of channelEndpoints) serviceMesh.peerConnections().connect(endpoint);
   return { ...builder.build(), monitoring: { socket: [{ sourceName: RuntimeMonitoringNames.channelClientSource }] } };
 }
 

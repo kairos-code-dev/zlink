@@ -22,6 +22,37 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public ZLinkHttpClient NodeB { get; }
     public ZLinkHttpClient NodeC { get; }
 
+    public async Task WaitMeshReadyAsync()
+    {
+        var expected = new[]
+        {
+            (Node: NodeA, Peers: new[] { "actor-b", "actor-c", "session-a", "session-b" }),
+            (Node: NodeB, Peers: new[] { "actor-a", "actor-c", "session-a", "session-b" }),
+            (Node: NodeC, Peers: new[] { "actor-a", "actor-b", "session-a", "session-b" })
+        };
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        do
+        {
+            var ready = true;
+            foreach (var (node, peers) in expected)
+            {
+                var snapshot = (await node.Get("/mesh/ready").Async<MeshReadyRes>()).Body;
+                if (peers.Any(peer => !snapshot.ReadyPeerRids.Contains(
+                        peer,
+                        StringComparer.Ordinal)))
+                {
+                    ready = false;
+                    break;
+                }
+            }
+
+            if (ready) return;
+            await Task.Delay(100);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        throw new TimeoutException("SpotActorTransfer RouteMesh peers did not become ready.");
+    }
+
     public void Dispose()
     {
         NodeA.Dispose();
@@ -282,8 +313,16 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
     public async Task WaitRuntimeEvidenceAsync(ZLinkHttpClient client, params string[] containsAll)
     {
+        await WaitRuntimeEvidenceAsync(client, 10000, containsAll);
+    }
+
+    public async Task WaitRuntimeEvidenceAsync(
+        ZLinkHttpClient client,
+        int timeoutMilliseconds,
+        params string[] containsAll)
+    {
         var evidence = (await client.Post("/runtime-evidence/wait")
-                .Body(new EvidenceWaitReq(containsAll))
+                .Body(new EvidenceWaitReq(containsAll, timeoutMilliseconds))
                 .Async<string[]>()).Body
             ?? throw new InvalidOperationException("Runtime evidence response was null.");
         foreach (var expected in containsAll)

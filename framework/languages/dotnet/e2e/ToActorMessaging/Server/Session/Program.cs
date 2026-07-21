@@ -29,6 +29,7 @@ builder.Services.AddZLinkFramework(framework =>
     mesh26.ChannelName("to-actor");
     framework.AddStreamNode("to-actor-session")
         .Bind(options.StreamEndpoint)
+        .EnableActorDispatch("to-actor")
         .AddSession<ToActorSession>();
 });
 
@@ -106,8 +107,8 @@ internal sealed class BindActorHandler(
         evidence.Add(
             $"actor-bound|session={context.SessionId}|actor={actor.ActorId}"
             + $"|node={actor.NodeRid}|generation={actor.Generation}");
-        context.Client.Reply(new BindActorReply(actor.ActorId, actor.NodeRid.ToString(), actor.Generation))
-            .Submit(cancellationToken);
+        await context.Client.Reply(new BindActorReply(actor.ActorId, actor.NodeRid.ToString(), actor.Generation))
+            .SubmitAsync(cancellationToken);
     }
 }
 

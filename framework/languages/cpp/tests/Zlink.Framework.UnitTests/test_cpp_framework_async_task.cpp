@@ -146,6 +146,41 @@ int main ()
         return 9;
     }
 
+    bool one_way_invoked = false;
+    zlink::framework::send_call_t accepted (
+      "test.command",
+      [&one_way_invoked] (const std::string &,
+                          const zlink::framework::send_call_t::metadata_map_t &) {
+          one_way_invoked = true;
+          return zlink::framework::result_t<void>::success ();
+      });
+    const auto accepted_result = accepted.submit ().result ();
+    if (!accepted_result || !one_way_invoked
+        || accepted_result.value ().status
+             != zlink::framework::submit_status_t::submitted) {
+        return 10;
+    }
+
+    zlink::framework::send_call_t timed_out (
+      zlink::framework::detail::boundary_failure<void> (
+        zlink::framework::detail::boundary_error_t::timed_out, "send timed out"));
+    const auto timed_out_result = timed_out.submit ().result ();
+    if (!timed_out_result
+        || timed_out_result.value ().status
+             != zlink::framework::submit_status_t::timed_out) {
+        return 11;
+    }
+
+    zlink::framework::send_call_t disconnected (
+      zlink::framework::detail::boundary_failure<void> (
+        zlink::framework::detail::boundary_error_t::disconnected, "route unavailable"));
+    const auto disconnected_result = disconnected.submit ().result ();
+    if (!disconnected_result
+        || disconnected_result.value ().status
+             != zlink::framework::submit_status_t::route_not_connected) {
+        return 12;
+    }
+
 
     return 0;
 }

@@ -41,6 +41,7 @@ namespace zlink::framework
 namespace detail
 {
 class spot_node_builder_state_t;
+struct mesh_node_builder_state_t;
 void drain_spot_node_executors (spot_node_builder_state_t &node);
 void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
 } // namespace detail
@@ -303,11 +304,11 @@ struct spot_actor_admission_callbacks_t
     std::function<spot_actor_join_response_t (
       void *, std::string_view, const zlink::message_t &, serializer_registry_t &)>
       join;
-    std::function<void (void *, void *)> on_actor_joined;
+    std::function<task_t<void> (void *, void *)> on_actor_joined;
     std::function<void (void *, void *, const zlink::message_t &, serializer_registry_t &)>
       on_create_actor;
-    std::function<void (void *, void *)> on_leave_actor;
-    std::function<void (void *, void *)> on_disconnect_actor;
+    std::function<task_t<void> (void *, void *)> on_leave_actor;
+    std::function<task_t<void> (void *, void *)> on_disconnect_actor;
     bool entry_spot = false;
 };
 
@@ -1069,8 +1070,15 @@ class spot_handler_registry_t
                               static_cast<TSpot *> (spot)->on_actor_joined (
                                 *static_cast<TActor *> (actor));
                           }) {
-                static_cast<TSpot *> (spot)->on_actor_joined (*static_cast<TActor *> (actor));
+                static_assert (
+                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_actor_joined (
+                                 *static_cast<TActor *> (actor))),
+                               task_t<void>>,
+                  "on_actor_joined must return task_t<void>");
+                return static_cast<TSpot *> (spot)->on_actor_joined (
+                  *static_cast<TActor *> (actor));
             }
+            return task_t<void> (result_t<void>::success ());
         };
         callbacks.on_create_actor = [] (void *spot, void *actor, const zlink::message_t &request,
                                       serializer_registry_t &serializers) {
@@ -1098,16 +1106,30 @@ class spot_handler_registry_t
                               static_cast<TSpot *> (spot)->on_leave_actor (
                                 *static_cast<TActor *> (actor));
                           }) {
-                static_cast<TSpot *> (spot)->on_leave_actor (*static_cast<TActor *> (actor));
+                static_assert (
+                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_leave_actor (
+                                 *static_cast<TActor *> (actor))),
+                               task_t<void>>,
+                  "on_leave_actor must return task_t<void>");
+                return static_cast<TSpot *> (spot)->on_leave_actor (
+                  *static_cast<TActor *> (actor));
             }
+            return task_t<void> (result_t<void>::success ());
         };
         callbacks.on_disconnect_actor = [] (void *spot, void *actor) {
             if constexpr (requires {
                               static_cast<TSpot *> (spot)->on_disconnect_actor (
                                 *static_cast<TActor *> (actor));
                           }) {
-                static_cast<TSpot *> (spot)->on_disconnect_actor (*static_cast<TActor *> (actor));
+                static_assert (
+                  std::same_as<decltype (static_cast<TSpot *> (spot)->on_disconnect_actor (
+                                 *static_cast<TActor *> (actor))),
+                               task_t<void>>,
+                  "on_disconnect_actor must return task_t<void>");
+                return static_cast<TSpot *> (spot)->on_disconnect_actor (
+                  *static_cast<TActor *> (actor));
             }
+            return task_t<void> (result_t<void>::success ());
         };
         register_actor_admission_erased (std::type_index (typeid (TActor)), std::move (callbacks));
     }
@@ -1263,12 +1285,13 @@ class spot_publisher_client_t
     spot_publisher_client_t (spot_node_manager_t manager, serializer_registry_t &serializers);
 
     template <typename TEvent>
-    task_t<void> publish (std::string channel_name, std::string topic, const TEvent &event) const
+    publish_call_t publish (std::string channel_name,
+                            std::string topic,
+                            const TEvent &event) const
     {
         if (!_serializers) {
-            return task_t<void> (
-              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                       "spot publisher client has no serializer registry"));
+            return publish_call_t (
+              publish_result_t{.status = submit_status_t::shutdown});
         }
         try {
             auto payload =
@@ -1276,14 +1299,14 @@ class spot_publisher_client_t
             return publish_raw (std::move (channel_name), std::move (topic),
                                 detail::message_name<TEvent> (), std::move (payload));
         }
-        catch (const framework_exception_t &error) {
-            return task_t<void> (
-              detail::result_access_t::failure<void> (error));
+        catch (const framework_exception_t &) {
+            return publish_call_t (
+              publish_result_t{.status = submit_status_t::shutdown});
         }
     }
 
   private:
-    task_t<void>
+    publish_call_t
     publish_raw (std::string channel_name,
                  std::string topic,
                  std::string packet_name,
@@ -1357,15 +1380,6 @@ class spot_node_builder_t
     spot_node_builder_t (const spot_node_builder_t &) = default;
     spot_node_builder_t &operator= (const spot_node_builder_t &) = default;
 
-    spot_node_builder_t &bind (std::string endpoint);
-    spot_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
-    spot_node_builder_t &enable_router (std::string endpoint);
-    spot_node_builder_t &connect_router (std::string endpoint);
-    spot_node_builder_t &connect_router (zlink::routing_id_t peer_rid, std::string endpoint);
-    spot_node_builder_t &enable_pub_sub (std::string endpoint);
-    spot_node_builder_t &connect_pub_sub (std::string endpoint);
-    spot_node_builder_t &connect_peer_pub (std::string endpoint);
-    spot_node_builder_t &set_spot_route_channel (std::string route_channel_name);
     // In-flight handoff (spot-actor.ko.md 10.4): how long this node keeps the
     // straggler forwarding mapping after a completed transfer. Default 5s;
     // deployments override it, tests shorten it.
@@ -1583,8 +1597,9 @@ class spot_node_builder_t
 
   private:
     friend class zlink_builder_t;
+    friend class mesh_node_builder_t;
+    friend struct detail::mesh_node_builder_state_t;
     friend class detail::spot_node_runtime_t;
-    friend class spot_node_options_builder_t;
     explicit spot_node_builder_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
     spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
     spot_create_result_t

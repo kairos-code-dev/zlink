@@ -87,20 +87,17 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 ## 4. Channel Regression 항목
 
 > dotnet `ContractTests/Channels`, `ContractTests/Handlers`,
-> `ContractTests/Configuration`, `E2ETests/Channels` 미러. node `register*`
-> builder channel 등록(`.addClientServerChannel(...)`)과 `ZLinkChannelClient` /
-> `ZLinkFanoutClient` 표면을 검증한다.
+> `ContractTests/Configuration`, `E2ETests/Channels` 미러. Node의
+> `addRouteMesh(meshName)` / `channelName(channelName)` 등록과
+> `ZLinkChannelClient` / `ZLinkRouteClient` / `ZLinkFanoutClient` 표면을 검증한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| duplicate channel 이름 등록 (`channels` 키 / `addClientServerChannel`, `addFanoutChannel`) | `unit` | startup validation 예외 |
-| 같은 channel 이름을 client-server와 fanout 역할로 동시에 등록 | `unit` | startup validation 예외 |
-| server 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
-| `.addClientServerChannel(...)` + `.enableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
-| `addClientServerChannel(...)` + `enableClient(...)` + 전역 `useDiscovery().addRegistryEndpoint(...)` | `integration-single-process` | discovery 기반 request/send 성공 |
+| duplicate MeshName 등록 (`addRouteMesh`) | `unit` | startup validation 예외 |
+| 빈 MeshName 또는 빈 ROUTER endpoint | `unit` | startup validation 예외 |
+| `addRouteMesh(...).listen(...)` + `channelName(...)` | `integration-single-process` | 명시한 MeshNode와 논리 channel에서 request/send 성공 |
+| `peerConnections().connect(...)` | `integration-single-process` | 수동 peer 연결을 사용한 request/send 성공 |
 | `.addFanoutChannel(...)` + `.enableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
-| client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
-| 같은 역할에서 discovery/manual 혼용 | `unit` | startup validation 예외 |
 | publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber discovery attach | `integration-multi-process` | 원격 publish 수신 |
@@ -109,13 +106,13 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | handler exposure 없는 server channel validation | `unit` | handler exposure 없는 server channel 은 application handler를 열지 않는다 |
 | fanout subscriber handler exposure | `unit` | `addPublishHandler(...)` 또는 handler group으로 등록한 publish handler만 subscriber dispatch 대상으로 노출된다 |
 | typed handler registration | `unit` | channel 의 `add*Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
-| channel type handler compatibility | `unit` | client-server는 request/send, route mesh는 route send/request, fanout subscriber는 publish handler만 허용하며 각 channel 역할과 맞지 않는 등록은 거부한다 |
+| channel type handler compatibility | `unit` | RouteMesh는 send/request, fanout subscriber는 publish handler만 허용하며 각 channel 역할과 맞지 않는 등록은 거부한다 |
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
 | route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `addHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
 | route mesh packet dispatcher | `integration-single-process` | route mesh `ROUTER` 로 들어온 routed send/request packet 을 handler 로 dispatch 하고 request reply/error 를 돌려주며 빈 probe frame 은 application handler 로 넘기지 않는다 |
 | DI route channel inbound handler dispatch | `integration-single-process` | `ZLinkModule.forRoot(...)` route channel 의 `sendHandlers`/`requestHandlers`가 runtime host 시작 후 host-owned `ROUTER` receive loop 에 연결되어 routed send/request 를 처리한다 |
 | DI route client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkRouteClient`가 framework runtime host 시작 이후 host-owned ROUTER transport로 target node RID에 routed send/request/reply를 수행한다 |
-| Spot route transport 전용 channel | `integration-single-process` | RouteMesh와 local SpotMesh가 함께 있으면 handler group 없이도 Spot route transport 로 동작하지만 application handler 를 열지 않는다 |
+| Spot route transport 전용 membership | `integration-single-process` | MeshNode에 Spot factory와 논리 channel만 등록해도 Spot route transport로 동작하며, 등록하지 않은 application handler는 노출하지 않는다 |
 | 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
 | 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
 | 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `zlinkRequestHandler('api', ...)` group 을 두 채널에 `handlerGroups`로 노출해도 채널마다 dispatch namespace가 독립이다 |
@@ -125,16 +122,16 @@ CI workflow 가 만들어 내는 native artifact 조합은 위 여섯 플랫폼 
 | DI channel client host transport | `integration-single-process` | `ZLinkModule.forRoot(...)`가 노출한 `ZLinkChannelClient`가 framework runtime host 시작 이후 host-owned DEALER transport로 manual channel request/reply를 수행한다 |
 | channel handler에서 `ZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `ZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
-| send one-way submit backpressure[^backpressure] | `integration-single-process` | local queue가 frame을 수락하면 호출자에게 제어를 바로 돌려주고, 수락할 수 없으면 동기 예외를 던진다 |
-| publish one-way submit backpressure | `integration-single-process` | send와 같은 local queue 수락 계약을 사용하며 원격 수신 완료를 기다리지 않는다 |
+| send one-way submit backpressure[^backpressure] | `integration-single-process` | `submit()`은 즉시 한 번 admission을 시도하고, capacity가 부족하면 send timeout까지 기다린 결과를 반환한다 |
+| publish one-way submit backpressure | `integration-single-process` | send와 같은 admission 계약을 사용하며 원격 수신 완료를 기다리지 않는다 |
 | request submit/reply timeout 분리 | `integration-single-process` | request packet의 submit 지연은 submitter timeout 정책으로, reply 대기는 `timeout(...)`으로 판정 |
 | pending request 정리 | `unit` | submit 실패, timeout, cancellation(`AbortSignal`), runtime stop이 일어날 때 request sequence가 pending map에서 제거된다 |
 | ready callback batch drain | `integration-single-process` | socket이 ready된 뒤 pending send/publish를 batch로 처리하고, 같은 frame을 중복 전송하지 않는다 |
 | channel wire multipart[^wire-multipart] | `integration-single-process` | 서버 간 channel send/request/reply가 `header`와 `payload`를 별도 message part로 보내고, handler dispatch는 header part만 보고 packet을 고른다 |
 | publish wire multipart | `integration-single-process` | `PUB/SUB` publish도 framework header와 payload를 별도 part로 유지하고, subscriber handler에는 typed payload만 전달된다 |
 
-one-way send와 publish의 `submit(): void`는 local queue가 수락하면 즉시 반환한다.
-local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 전송 실패는 runtime 오류 관측 경로에서 처리한다.
+one-way send와 publish의 `submit()`은 bounded admission 결과를 비동기로 반환하지만 원격 수신이나
+handler 실행 완료는 기다리지 않는다.
 
 ## 4.1 Dispatch Error Observer Regression 항목
 
@@ -153,17 +150,17 @@ local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| actor factory without SpotNode | `unit` | actor factory 만 등록하면 startup validation 예외 |
-| actor manager without SpotNode | `unit` | SpotNode 없는 구성에서는 `ZLinkActorManager` provider token 이 DI 에 없다 |
-| actor manager with SpotNode only | `unit` | SpotNode 만 있고 actor factory 가 없으면 `ZLinkActorManager` 가 DI 에 없다 |
-| actor manager with SpotNode and actor factory | `unit` | SpotNode 와 actor factory 가 모두 있으면 `ZLinkActorManager` 가 DI 에 등록된다 |
-| Spot service without SpotNode | `unit` | SpotNode 없는 구성에서는 `ZLinkSpotManager` 가 DI 에 없다 |
-| Spot service with SpotNode | `unit` | SpotNode 가 있으면 Spot service 가 DI 에 등록된다 |
-| Spot publisher without publisher 역할 | `unit` | SpotNode 가 있어도 publisher 역할이 없으면 Spot publisher service 는 DI 에 없다 |
+| actor factory without MeshNode | `unit` | actor factory만 등록하면 startup validation 예외 |
+| actor manager without MeshNode | `unit` | MeshNode 없는 구성에서는 `ZLinkActorManager` provider token이 DI에 없다 |
+| actor manager with MeshNode only | `unit` | MeshNode만 있고 actor factory가 없으면 `ZLinkActorManager`가 DI에 없다 |
+| actor manager with MeshNode and actor factory | `unit` | MeshNode와 actor factory가 모두 있으면 `ZLinkActorManager`가 DI에 등록된다 |
+| Spot service without MeshNode | `unit` | MeshNode 없는 구성에서는 `ZLinkSpotManager`가 DI에 없다 |
+| Spot service with MeshNode | `unit` | MeshNode가 있으면 Spot service가 DI에 등록된다 |
+| Spot publisher without publisher 역할 | `unit` | MeshNode가 있어도 publisher 역할이 없으면 Spot publisher service는 DI에 없다 |
 | Spot publisher with publisher 역할 | `unit` | Spot publisher 역할이 있으면 `ZLinkSpotPublisherClient` 가 DI 에 등록된다 |
 | bound session factory registration | `unit` | `ZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
-| SpotRef resolver without SpotNode | `unit` | location store 를 등록한 서버는 SpotNode 없이 `ZLinkSpotRefResolver` 를 등록할 수 있다 |
-| Spot outbound with resolver only | `unit` | SpotRef resolver 만 있고 SpotNode 가 없으면 `ZLinkSpotOutbound` 는 DI 에 없다 |
+| SpotRef resolver without MeshNode | `unit` | location store를 등록한 서버는 MeshNode 없이 `ZLinkSpotRefResolver`를 등록할 수 있다 |
+| Spot outbound with resolver only | `unit` | SpotRef resolver만 있고 MeshNode가 없으면 `ZLinkSpotOutbound`는 DI에 없다 |
 | route channel missing at call time | `unit` | `ZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
 | channel client missing at call time | `unit` | `ZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
 
@@ -176,10 +173,9 @@ local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
-| duplicate `addEntrySpot(EntrySpotClass)` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| root `useDiscovery().addRegistryEndpoint(...)` 없이 `addSpotMesh(...)`만 등록 | `unit` | top-level discovery endpoint 를 상속하거나 local-only mesh 로 등록된다 |
-| `addSpotMesh(channel, configureMesh)` | `integration-single-process` | mesh 빌더 한 호출로 discovery, node, spot factory 등록을 한 번에 끝낸다 |
-| `addSpotMesh(...)` + 빈 `addRegistryEndpoint` + local-only spot factory | `integration-single-process` | discovery endpoint 없이 단일 local SpotNode runtime을 시작한다 |
+| duplicate `addEntrySpot(EntrySpotClass)` | `unit` | 같은 MeshNode 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
+| `addRouteMesh(meshName)` + `addEntrySpot(...)` | `integration-single-process` | MeshNode 빌더에서 Entry Spot과 Spot factory 등록을 한 번에 끝낸다 |
+| location store 없이 local MeshNode 등록 | `integration-single-process` | 수동 peer 연결만 사용하는 MeshNode runtime을 시작한다 |
 | `create(spotType)` | `integration-single-process` | `spotId`, `Created` 상태가 일관되게 유지된다 |
 | `create(spotType)` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `ZLinkSpot.onCreate(...)`를 한 번 호출한다 |
 | `create(spotType, request)` payload | `integration-single-process` | create request `ZLinkMessage`가 `ZLinkSpot.onCreate(...)`로 한 번 전달된다 |
@@ -203,10 +199,10 @@ local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 
 | SPOT timer cancel | `integration-single-process` | `cancel()` 뒤 managed timer loop가 추가 callback을 실행하지 않는다 |
 | outbound 전용 외부 publish client | `integration-multi-process` | target SPOT[^spot] channel에 publish가 성공한다 |
 | Spot route channel acceptance | `unit` | fanout/dealer mesh/ambiguous/missing router/missing peer source 구성을 startup validation에서 거부한다 |
-| Spot route channel manual connect | `integration-single-process` | RouteMesh 수동 endpoint가 route bridge의 router channel endpoint로 적용된다 |
-| Spot route channel transport | `integration-single-process` | caller가 명시한 local egress channel이 channel type에 맞는 ROUTER 또는 DEALER socket으로 egress 설정의 target SpotNode ingress channel을 통해 target Spot으로 routed send/request를 보낸다 |
-| route mesh Spot egress target peer 선택 | `integration-single-process` | source process가 target route channel 을 local registration 으로 갖지 않아도, 수동 연결과 registry metadata 의 target SpotNode ingress channel / ROUTER `routingId`로 route mesh egress target peer 를 선택한다 |
-| Spot route egress 역할 validation | `unit` | routed Spot egress 는 client-server client 역할 또는 route mesh transport 에서만 켤 수 있고 fanout/dealer mesh 에서는 startup validation 오류다 |
+| MeshNode 수동 peer 연결 | `integration-single-process` | `peerConnections().connect(...)`의 endpoint가 RouteMesh peer admission에 적용된다 |
+| Spot route transport | `integration-single-process` | MeshNode의 ROUTER 경로가 target Spot handle을 사용해 routed send/request를 전달한다 |
+| Spot egress target peer 선택 | `integration-single-process` | 수동 연결과 location metadata의 owner RID를 사용해 target MeshNode peer를 선택한다 |
+| Spot route egress 역할 validation | `unit` | routed Spot egress는 RouteMesh에서만 사용할 수 있고 fanout 구성에서는 startup validation 오류다 |
 | spot close 후 scope 정리 | `integration-single-process` | 이후 callback이 발생하지 않고 dispose도 정상 완료된다 |
 | actor join 이후 dispatch 문맥 | `integration-single-process` | `ZLinkSpotContext.addHandler(...)`로 등록한 actor handler가 join된 `Spot` 실행 문맥에서 실행된다 |
 | Entry Spot actor dispatch serialization | `integration-single-process` | Entry Spot actor packet이 actor별 입력 순서를 보존한 뒤 Entry Spot 실행 queue에서 순서대로 처리된다 |
@@ -214,7 +210,7 @@ local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 
 | user Spot actor dispatch serialization | `integration-single-process` | 같은 user Spot 안의 여러 actor packet이 Spot 실행 queue에서 순서대로 처리되어 Spot 상태가 보호된다 |
 | runtime task exception observation | `unit` | detached runtime task와 fire-and-forget handler에서 발생한 예외가 unhandled rejection으로 묻히지 않고 runtime error sink 또는 logger로 관찰된다 |
 | execution queue cancellation semantics | `unit` | queue enqueue/wait cancellation이 이미 queue에 들어간 work item의 순서를 깨거나 중간에 제거하지 않는다 |
-| explicit egress channel Spot route 경로 | `integration-single-process` | routed Spot 호출은 target 정보만으로 egress transport를 고르지 않고, caller가 명시한 local egress channel, egress 설정의 target SpotNode ingress channel, `routingId` target으로 routed message를 보낸다 |
+| Spot handle route 경로 | `integration-single-process` | routed Spot 호출은 `SpotHandle`의 MeshName, owner RID, generation을 검증한 뒤 routed message를 보낸다 |
 | actor manager 생성 중복/타입 충돌 | `integration-single-process` | `ZLinkActorManager.create(...)` 중복 생성은 `ActorAlreadyExists`, `getOrCreate(...)` actor type 충돌은 `ActorTypeMismatch` 로 실패한다 |
 | local actor bind 생성 금지 | `integration-single-process` | `bind(...)` 는 local actor 가 없을 때 factory 를 호출하지 않고 `ActorRouteNotFound` 로 실패한다 |
 | session actor bind: fallback 없이 logical actor handle 등록 | `integration-single-process` | `bind(...)` 는 application resolver fallback 없이 logical actor handle 을 등록한다 |
@@ -238,8 +234,8 @@ local queue가 수락하지 못하면 동기 예외를 던지고, 반환 뒤의 
 | session context close | `integration-single-process` | `ZLinkSessionContext.close(...)`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| spot context channel request 경로 | `integration-single-process` | `spot.context.outbound.requestToChannel(...)`이 route bridge가 참조하는 channel runtime socket 경로를 사용한다 |
-| spot context routed send/request 표면 | `contract`, `integration-single-process` | `ZLinkSpotOutbound`가 `sendToSpot`, `requestToSpot`, `publish`, `sendToChannel`, `requestToChannel`을 모두 노출하고, `spot.context.outbound.sendToSpot(...)` / `requestToSpot(...)`이 route transport를 사용한다 |
+| spot context channel request 경로 | `integration-single-process` | `spot.context.outbound.requestToChannel(channelName, request)`가 현재 MeshNode의 논리 channel을 사용한다 |
+| spot context routed send/request 표면 | `contract`, `integration-single-process` | `ZLinkSpotOutbound`의 Spot·channel send/request와 publish가 현재 MeshNode의 route transport를 사용한다 |
 | actor bound session send API | `integration-single-process` | actor는 `context.boundSession.send(...)`로 client stream에 push하고, `ZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
@@ -349,7 +345,7 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 대상은 현재 실제로 존재하는 Node 공개 계약과 구현 기준 문서다.
 
 - `framework/spec/server/languages/node/README.ko.md`
-- `framework/spec/server/languages/node/02-handler-interfaces.ko.md`
+- `framework/spec/server/languages/node/interfaces/README.ko.md`와 그 범주별 interface 문서
 - `framework/node/README.ko.md`
 - `framework/node/internals/regression-test-matrix.ko.md`
 - `framework/node/internals/runtime-lifecycle.ko.md`
@@ -361,11 +357,11 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 [^abi]: ABI(Application Binary Interface) 조합은 Node.js native addon 이 동작하는 OS·CPU 아키텍처 조합을 가리킨다. 예: `linux-x64`, `darwin-arm64`. `@zlink-systems/zlink` prebuilt artifact 가 이 조합으로 배포된다.
 [^ci-gate]: CI gate 는 새 변경을 머지하거나 배포하기 전에 통과해야 하는 자동 검증 단계(빌드, 테스트 등)의 묶음을 가리킨다.
 [^di]: DI(Dependency Injection) 는 객체가 필요한 의존성을 직접 만들지 않고 외부 컨테이너에서 주입받도록 하는 패턴이다. NestJS 에서는 module + provider + token 기반 컨테이너가 표준이다.
-[^backpressure]: backpressure 는 송신 측이 수신 측의 처리 속도를 넘어 메시지를 밀어 넣지 못하도록 흐름을 조절하는 메커니즘이다.
+[^backpressure]: backpressure는 송신 속도가 수신 측의 처리 용량을 넘지 않도록 흐름을 조절하는 메커니즘이다.
 [^hwm]: HWM(High Water Mark) 은 송신 큐에 쌓을 수 있는 최대 메시지 수를 가리키며, 이 한계에 도달하면 backpressure 가 발동한다.
 [^wire-multipart]: wire multipart 는 한 논리 메시지를 header, payload 등 여러 message part 로 나누어 전송하는 방식이다. 한쪽만 떼어 살펴봐도 라우팅이 가능해진다.
-[^entry-spot]: Entry Spot 은 SpotNode 가 접속한 actor 를 가장 먼저 받아들이는 진입용 spot 이다. 이후 user Spot 으로 옮겨 가기 전 단계 역할을 한다.
-[^spot]: `SPOT` 은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. `SpotNode` 는 하나 이상의 spot 인스턴스를 호스팅하는 컨테이너 노드를 가리킨다.
+[^entry-spot]: Entry Spot은 MeshNode에 들어온 actor를 가장 먼저 처리하는 진입용 Spot이다. 이후 user Spot으로 이동하기 전 단계 역할을 한다.
+[^spot]: `SPOT`은 동적으로 생성·소멸되는 논리적 노드(예: room, stage 등) 단위로 메시지를 라우팅하는 추상이다. MeshNode는 하나 이상의 Spot 인스턴스를 호스팅한다.
 [^binding-token]: session binding token 은 actor 와 stream session 의 연결 상태를 식별하는 토큰으로, 재연결 시 어느 binding 이 최신인지 구분하는 데 쓰인다.
 
 ---
@@ -394,9 +390,9 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `forRoot throws when spot factory class is duplicated across nodes` | 같은 Spot factory 클래스를 중복 등록하면 startup validation 예외가 난다. |
-| `forRoot allows standalone local spot node` | Discovery 없이도 local-only SpotNode 구성은 시작할 수 있다. |
+| `forRoot allows standalone local spot node` | location store 없이도 수동 peer 연결만 사용하는 MeshNode 구성을 시작할 수 있다. |
 | `spotManager create/find/list/close work through framework runtime` | `create`, `find`, `list`, `close` 와 scope 정리가 일관된다. |
-| `spot publish/timer and close stop callbacks work` | timer 와 publish callback 이 spot lifecycle 안에서 돌고, 종료 뒤에는 멈춘다. |
+| `spot publish/timer and close stop callbacks work` | timer와 publish callback이 Spot lifecycle 문맥에서 실행되고, 종료 뒤에는 추가로 실행되지 않는다. |
 | `spot timer provides tick metadata` | timer handler 가 callback 번호, 예정/시작 시각, 지연, skip metadata 를 받는다. |
 | `spot timer skips late ticks when configured` | `SkipLateTicks` 정책은 늦은 tick 을 무제한 전달하지 않고 `skippedTicks` 로 드러낸다. |
 | `spot timer catches up within configured limit` | `CatchUpBounded` 정책은 `maxCatchUpTicks` 상한 안에서만 연속 실행한다. |
@@ -449,11 +445,11 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 | `spot monitoring source publishes status peers and subjects snapshot changes` | Spot의 status·peer·subject snapshot 변경을 typed event로 전달한다. |
 | `spot timer reports handler failure immediately through runtime publisher` | timer handler 예외를 runtime publisher를 통해 즉시 전달한다. |
 | 공통 개념 | Node 타입 / 멤버 |
-| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
-| outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived` } |
-| event | `ZLinkMessageFlowEvent`: `phase`, `surface`, `messageKind`, `packetName?`, `channelName?`, `topic?`, `correlationId?`, `sourceRid?`, `spotRid?`, `actorId?`, `messageSize?` |
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose` } |
+| outcome | `ZLinkMessageFlowOutcome` { `succeeded`, `failed`, `backpressured`, `dropped`, `cancelled`, `shutdown` } |
+| event | `ZLinkMessageFlowEvent`: `eventId`, `outcome`, `surface`, `messageKind`, `phase?`, `packetName?`, `meshName?`, `channelName?`, `topic?`, `correlationId?`, `sourceRid?`, `targetRid?`, `spotRid?`, `actorId?`, `messageSizeBytes?` |
 | observer | `ZLinkMessageFlowObserver.onMessageFlow(flow): Promise<void> \| void` |
-| 진단 옵션 | `ZLinkDiagnosticsOptions` { `messageFlowLogMode?`, `sampleRate?`, `includeMessageSizes?`, `logFile?`, `label?` } |
+| 진단 옵션 | `ZLinkDiagnosticsOptions` { `messageFlow`, `sampleRate`, `includeMessageSizes`, `logFile?`, `label?` } |
 | 런타임 토글 | host `ZLinkMessageFlowControl.setMessageFlowMode(mode)` / `messageFlowMode()` |
 | 공통 개념 | Node.js |
 | meter 이름(상수) | `ZLinkMeters.Framework` = `'zlink.framework'` |
@@ -464,12 +460,15 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 | 생성 게이트 | 기존 `configureDispatch().messageFlow(...)` 설정을 그대로 사용한다. 별도 flow id 설정은 없다. |
 | event 필드(추가) | `readonly flowId: string`, `readonly flowOrigin: ZLinkFlowOrigin` — 오류 이벤트에도 동일한 root 값 |
 | 공통 개념 | Node.js |
-| 자동 drain(기본) | framework가 `onApplicationShutdown(signal)`에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy('ReleaseAndRecreate')`(기본 `'DrainNatural'`) |
-| 명시 제어(선택) | `ZLinkDrainControl` { `drain(deadlineMs?: number, signal?: AbortSignal): Promise<ZLinkDrainResult>`, `awaitDrained(signal?: AbortSignal): Promise<ZLinkDrainResult>`, `isReady(): boolean` } (기본 30,000ms, injectable) |
-| 종료 결과 | `ZLinkDrainResult` = `{ kind: 'drained' } | { kind: 'force-stopped'; reason: 'DeadlineExceeded' | 'DrainingStatePublishFailed' | 'OwnerCleanupFailed' | 'TeardownFailed' }` |
-| readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator`를 제공, health controller에 등록. 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
-| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `sourceName` = 고정값 `'drain'` |
+| 자동 종료(기본) | framework가 `onApplicationShutdown()`에서 진행 중인 host 종료에 합류하거나 `Shutdown`을 시작한다 |
+| `Shutdown` 순서 | 신규 application 수락 차단 → 이미 수락한 실행 차례와 request 완료 → 진행 중인 transfer·STREAM barrier 확인 → local object·ownership·peer resource 정리 → 필요하면 제한된 강제 종료 |
+| `Retire` 순서 | all-or-none preflight → target reservation → admission seal → Actor·Instance Spot continuity transfer → STREAM barrier → host resource 정리 |
+| Spot 재생성 경계 | public `create`·`getOrCreate`는 local-only다. Instance address cold activation과 명시적 `Retire` target materialization만 별도 계약으로 실행되며 stale handle은 숨은 remote create를 시작하지 않는다 |
+| 명시 제어 | host singleton `ZLinkFrameworkRuntime`의 `retire(options?)`와 `shutdown(options?)`; 기본 deadline은 30,000ms이고 `AbortSignal`은 waiter만 끝낸다 |
+| 종료 결과 | `ZLinkTerminationResult`가 effective intent, `Stopped|Blocked|ForceStopped` outcome과 닫힌 reason을 함께 제공한다 |
+| readiness probe | framework가 NestJS Terminus `ZLinkDrainHealthIndicator(runtime, meshName)`를 제공해 특정 MeshName의 readiness를 확인한다. 또는 `ZLinkRouteMeshRuntime.isReady(meshName)`을 직접 조회한다 |
+| Mesh drain 결과 | `ZLinkRouteMeshRuntime.drain(...)`과 `awaitDrained(...)`는 `ZLinkMeshDrainResult`를 반환한다. 강제 종료 reason은 `deadline_exceeded`, `drain_state_publish_failed`, `owner_cleanup_failed`, `teardown_failed` 네 값으로 제한한다 |
+| 상태 관측 | host 종료는 `ZLinkFrameworkRuntime.observe(...)`의 `zlink.runtime.host.termination_changed`로, Mesh projection은 `ZLinkRouteMeshRuntime.observe(...)`로 확인한다 |
 
 ### Session actor dispatch
 
@@ -499,7 +498,7 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 | `RegressionTests.NodeSessionActorDispatch_Documents_ExecutionSerialization_Core_Code` | 실행 직렬화 핵심 코드 섹션이 queue, runtime task, error sink, cancellation 의미를 계속 설명한다. |
 | `RegressionTests.NodeRegressionMatrix_Includes_ExecutionSerialization_Guards` | 중앙 regression matrix가 실행 직렬화 관련 회귀 항목을 유지한다. |
 
-### SpotNode
+### MeshNode와 Spot
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|

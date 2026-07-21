@@ -42,35 +42,28 @@ internal sealed class PlayServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            var api = options.AddRouteMesh(SampleChannels.Api)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-api"));
-            api.ChannelName(SampleChannels.Api).SetWeight(0);
-            api.PeerConnections.Connect(settings.ApiChannelEndpoints[0]);
-            api.PeerConnections.Connect(settings.ApiChannelEndpoints[1]);
-
-            var playChannel = SampleChannels.Play(settings.PlayIndex);
-            options.AddRouteMesh(playChannel)
-                .Listen(settings.PlayChannelEndpoint)
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-play"))
-                .ChannelName(playChannel)
-                .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
-
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)
-                .EnableActorDispatch(SampleNodes.PlaySpot)
+                .EnableActorDispatch(SampleNodes.Mesh)
                 .AddSession<PlaySession>();
 
-            var mesh = options.AddRouteMesh(SampleNodes.PlaySpot)
-                .Listen(settings.SpotEndpoint)
-                .SetRoutingId(RoutingId.From(settings.PlaySpotNodeRid))
+            var mesh = options.AddRouteMesh(SampleNodes.Mesh)
+                .Listen(settings.MeshEndpoint)
+                .SetRoutingId(RoutingId.From(settings.PlayMeshNodeRid))
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
                 .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();
-            mesh.ChannelName(SampleNodes.PlaySpot);
-            mesh.PeerConnections.Connect(
-                RoutingId.From(settings.PeerPlaySpotNodeRid), settings.PeerSpotEndpoint);
+            mesh.ChannelName(SampleChannels.Api).SetWeight(0);
+            var playA = mesh.ChannelName(SampleChannels.Play(0))
+                .SetWeight(settings.PlayIndex == 0 ? 100 : 0);
+            var playB = mesh.ChannelName(SampleChannels.Play(1))
+                .SetWeight(settings.PlayIndex == 1 ? 100 : 0);
+            (settings.PlayIndex == 0 ? playA : playB)
+                .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
+            mesh.ChannelName(SampleTopics.PlayerMilestoneChannel);
+            foreach (var endpoint in settings.PeerMeshEndpoints)
+                mesh.PeerConnections.Connect(endpoint);
         });
 
         return builder.Build();

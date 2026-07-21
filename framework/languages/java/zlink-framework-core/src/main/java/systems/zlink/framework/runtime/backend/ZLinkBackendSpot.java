@@ -9,6 +9,10 @@ import systems.zlink.contracts.sockets.SendFlags;
 public interface ZLinkBackendSpot extends ZLinkBackendObject {
     RoutingId routingId();
 
+    default long lifecycleGeneration() {
+        return 0L;
+    }
+
     void setRoutingId(RoutingId routingId);
 
     void setSubscription(String topic);
@@ -17,22 +21,75 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
 
     ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode);
 
-    boolean publish(String topic, List<Message> parts, SendFlags flags);
+    boolean publish(
+        String channelName,
+        String topic,
+        List<Message> parts,
+        SendFlags flags);
+
+    default boolean publish(
+        String channelName,
+        String topic,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
+        if (metadata == null || metadata.length == 0) {
+            return publish(channelName, topic, parts, flags);
+        }
+        throw new UnsupportedOperationException("Spot publish metadata is unavailable");
+    }
 
     boolean sendToSpot(
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         List<Message> parts,
         SendFlags flags);
+
+    default boolean sendToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
+        if (metadata == null || metadata.length == 0) {
+            return sendToSpot(
+                targetNodeRid, spotRid, spotGeneration, parts, flags);
+        }
+        throw new UnsupportedOperationException("Spot send metadata is unavailable");
+    }
 
     boolean requestToSpot(
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,
         Duration timeout);
 
+    default boolean requestToSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        byte[] metadata,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        if (metadata == null || metadata.length == 0) {
+            return requestToSpot(
+                targetNodeRid,
+                spotRid,
+                spotGeneration,
+                parts,
+                callback,
+                flags,
+                timeout);
+        }
+        throw new UnsupportedOperationException("Spot request metadata is unavailable");
+    }
     void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler);
 
     ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode);

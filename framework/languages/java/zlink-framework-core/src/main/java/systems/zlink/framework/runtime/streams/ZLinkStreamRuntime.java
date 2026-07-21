@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.streams;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
 import systems.zlink.framework.runtime.backend.*;
 
@@ -32,6 +33,7 @@ import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
+import systems.zlink.framework.runtime.configuration.ZLinkMetadataPolicyRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
@@ -62,6 +64,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private static final boolean STREAM_TRACE =
         "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
     private final ZLinkBackendContext context;
+    private final boolean ownsContext;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actors;
     private final ZLinkHandlerActivator handlerFactory;
@@ -72,6 +75,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final ZLinkStreamCompressionCodec compressionCodec;
     private final Predicate<RoutingId> sessionRelayRouteReady;
     private final ZLinkSessionActorsRuntime.LocalActorDispatcher localActorDispatcher;
+    private final ZLinkMetadataPolicyRegistration metadataPolicy;
     private final List<ZLinkBackendStreamSocket> streams = new ArrayList<>();
     private final Map<String, ZLinkBackendStreamSocket> streamsByName = new HashMap<>();
     private final Map<String, Boolean> streamSessionRelayAttached = new HashMap<>();
@@ -99,11 +103,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             adapterOptions,
             registration,
             spotNodes,
+            Map.of(),
             serializer,
             actors,
             handlerFactory,
             ignored -> true,
-            null);
+            null,
+            null,
+            backendFactory.createChannelAdapter(adapterOptions).createContext(),
+            true);
     }
 
     public ZLinkStreamRuntime(
@@ -121,12 +129,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             adapterOptions,
             registration,
             spotNodes,
+            Map.of(),
             serializer,
             actors,
             handlerFactory,
             sessionRelayRouteReady,
             spots,
-            null);
+            null,
+            backendFactory.createChannelAdapter(adapterOptions).createContext(),
+            true);
     }
 
     public ZLinkStreamRuntime(
@@ -134,12 +145,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
         Map<String, ZLinkInternalSpotNode> spotNodes,
+        Map<String, ZLinkInternalMeshNode> meshNodes,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actors,
         ZLinkHandlerActivator handlerFactory,
         Predicate<RoutingId> sessionRelayRouteReady,
         ZLinkSpotRuntime spots,
-        ZLinkRuntimeEventDispatcher eventDispatcher) {
+        ZLinkRuntimeEventDispatcher eventDispatcher,
+        ZLinkBackendContext context,
+        boolean ownsContext) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
         }
@@ -157,19 +171,22 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         this.sessionRelayRouteReady =
             sessionRelayRouteReady == null ? ignored -> true : sessionRelayRouteReady;
         this.localActorDispatcher = spots == null ? null : spots::dispatchLocalSessionActor;
+        this.metadataPolicy = registration.metadataPolicy();
         this.livenessExecutor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "zlink-stream-liveness");
             thread.setDaemon(true);
             return thread;
         });
-        ZLinkChannelBackendAdapter channelAdapter =
-            backendFactory.createChannelAdapter(adapterOptions);
         ZLinkStreamBackendAdapter streamAdapter =
             backendFactory.createStreamAdapter(adapterOptions);
-        this.context = channelAdapter.createContext();
+        this.context = java.util.Objects.requireNonNull(context, "context");
+        this.ownsContext = ownsContext;
         for (StreamNodeRegistration streamNode : registration.streamNodes()) {
+            ZLinkInternalMeshNode meshNode = streamNode.actorDispatchMeshName() == null
+                ? null
+                : meshNodes.get(streamNode.actorDispatchMeshName());
             ZLinkBackendStreamSocket stream =
-                streamAdapter.createStreamSocket(context);
+                streamAdapter.createStreamSocket(context, meshNode);
             if (streamNode.tlsServer() != null) {
                 stream.setTlsServer(
                     streamNode.tlsServer().certificatePath(),
@@ -184,6 +201,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 dispatchToSession(streamNode, routingId, header, payload));
             stream.onTransportError((routingId, nativeCode, message) ->
                 reportTransportError(streamNode, routingId, nativeCode, message));
+            stream.startSessionService();
             ZLinkInternalSpotNode spotNode = resolveSessionRelayNode(spotNodes);
             streams.add(stream);
             streamsByName.put(streamNode.name(), stream);
@@ -222,7 +240,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             localActorDispatcher,
             streamSessionRelayAttached.getOrDefault(streamNodeName, false),
             defaultCodec,
-            flow).actorDirectory(actorDirectory);
+            flow)
+            .metadataPolicy(
+                metadataPolicy.sessionToActorKeys(),
+                metadataPolicy.actorToSessionKeys())
+            .actorDirectory(actorDirectory);
     }
 
     private void dispatchToSession(
@@ -448,7 +470,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     localActorDispatcher,
                     streamSessionRelayAttached.getOrDefault(streamNode.name(), false),
                     defaultCodec,
-                    flow).actorDirectory(actorDirectory),
+                    flow)
+                    .metadataPolicy(
+                        metadataPolicy.sessionToActorKeys(),
+                        metadataPolicy.actorToSessionKeys())
+                    .actorDirectory(actorDirectory),
             serializer,
             defaultCodec,
             compressionCodec,
@@ -527,11 +553,26 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             stream.close();
         }
         livenessExecutor.shutdownNow();
-        context.close();
+        if (ownsContext) {
+            context.close();
+        }
     }
 
     public void beginDrain() {
         draining = true;
+    }
+
+    public CompletionStage<Void> awaitDrainBarrier() {
+        List<SessionState> activeSessions;
+        synchronized (sessions) {
+            activeSessions = List.copyOf(sessions.values());
+        }
+        CompletableFuture<?>[] barriers = activeSessions.stream()
+            .map(state -> state.queue().enqueue(
+                () -> CompletableFuture.completedFuture(null)))
+            .map(CompletionStage::toCompletableFuture)
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(barriers);
     }
 
     public CompletionStage<Void> notifyServerDrain() {

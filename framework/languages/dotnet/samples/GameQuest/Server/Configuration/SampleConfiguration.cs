@@ -6,12 +6,11 @@ namespace GameQuest.Server.Configuration;
 
 public static class SampleNames
 {
+    public const string MeshName = "gamequest";
     public const string GameApiChannel = "gamequest.session.api";
-    public const string SessionSpotDiscovery = "gamequest.session.spot";
+    public const string GameApiHandlerGroup = "game-api";
     public const string SessionActorType = "gamequest.session.actor";
-    public const string QuestOwnerRouteChannel = "gamequest.quest.owner";
-    public const string QuestSpotDiscovery = "gamequest.quest.spot";
-    public const string QuestSpotNode = "gamequest.quest.node";
+    public const string QuestOwnerHandlerGroup = "quest-owner";
     public const string StreamNode = "gamequest.stream";
     public const string ProgressPacket = nameof(QuestProgressNotify);
     public const string CompletedPacket = nameof(QuestCompletedNotify);
@@ -20,7 +19,6 @@ public static class SampleNames
 
     public static string QuestOwnerChannelFor(string missionName) => $"gamequest.quest.owner.{missionName}";
 
-    public static string GameApiChannelFor(string apiName) => $"gamequest.game-api.{apiName}";
 }
 
 public static class QuestIds
@@ -46,26 +44,14 @@ public sealed record GameQuestTopology(
     string GameApiBHttpBaseUrl,
     string MissionAHttpBaseUrl,
     string MissionBHttpBaseUrl,
-    string GameApiAStreamEndpoint,
-    string GameApiBStreamEndpoint,
-    string GameApiAChannelEndpoint,
-    string GameApiBChannelEndpoint,
-    string MissionAChannelEndpoint,
-    string MissionBChannelEndpoint,
-    string MissionASpotEndpoint,
-    string MissionASpotRouterEndpoint,
-    string MissionBSpotEndpoint,
-    string MissionBSpotRouterEndpoint,
-    string GameApiASpotEndpoint,
-    string GameApiASpotRouterEndpoint,
-    string GameApiBSpotEndpoint,
-    string GameApiBSpotRouterEndpoint,
-    RoutingId MissionASpotRid,
-    RoutingId MissionBSpotRid,
-    RoutingId GameApiARouteRid,
-    RoutingId GameApiBRouteRid,
-    RoutingId GameApiASpotRid,
-    RoutingId GameApiBSpotRid)
+    string GameApiAMeshEndpoint,
+    string GameApiBMeshEndpoint,
+    string MissionAMeshEndpoint,
+    string MissionBMeshEndpoint,
+    RoutingId MissionAMeshRid,
+    RoutingId MissionBMeshRid,
+    RoutingId GameApiAMeshRid,
+    RoutingId GameApiBMeshRid)
 {
     public static GameQuestRuntimeConfiguration LoadGameApi(string[] args) => Load(args, "api");
 
@@ -89,24 +75,12 @@ public sealed record GameQuestTopology(
             settings.GameApiBHttpBaseUrl,
             settings.MissionAHttpBaseUrl,
             settings.MissionBHttpBaseUrl,
-            settings.GameApiAStreamEndpoint,
-            settings.GameApiBStreamEndpoint,
-            settings.GameApiAChannelEndpoint,
-            settings.GameApiBChannelEndpoint,
-            settings.MissionAChannelEndpoint,
-            settings.MissionBChannelEndpoint,
-            settings.MissionASpotEndpoint,
-            settings.MissionASpotRouterEndpoint,
-            settings.MissionBSpotEndpoint,
-            settings.MissionBSpotRouterEndpoint,
-            settings.GameApiASpotEndpoint,
-            settings.GameApiASpotRouterEndpoint,
-            settings.GameApiBSpotEndpoint,
-            settings.GameApiBSpotRouterEndpoint,
+            settings.GameApiAMeshEndpoint,
+            settings.GameApiBMeshEndpoint,
+            settings.MissionAMeshEndpoint,
+            settings.MissionBMeshEndpoint,
             RoutingId.From("7101"),
             RoutingId.From("7102"),
-            RoutingId.From("7001"),
-            RoutingId.From("7002"),
             RoutingId.From("7201"),
             RoutingId.From("7202"));
         var streamBindEndpoint = string.Equals(settings.InstanceName, "api-b", StringComparison.Ordinal)
@@ -122,8 +96,8 @@ public sealed record GameQuestTopology(
     public QuestMissionInstanceTopology ForQuestMission(string missionName)
     {
         return string.Equals(missionName, "mission-b", StringComparison.Ordinal)
-            ? new QuestMissionInstanceTopology(missionName, MissionBSpotEndpoint, MissionBSpotRouterEndpoint, MissionBSpotRid, OwnerIndex: 1)
-            : new QuestMissionInstanceTopology("mission-a", MissionASpotEndpoint, MissionASpotRouterEndpoint, MissionASpotRid, OwnerIndex: 0);
+            ? new QuestMissionInstanceTopology(missionName, MissionBMeshEndpoint, MissionBMeshRid, OwnerIndex: 1)
+            : new QuestMissionInstanceTopology("mission-a", MissionAMeshEndpoint, MissionAMeshRid, OwnerIndex: 0);
     }
 
     public string MissionHttpBaseUrl(string missionName) =>
@@ -131,41 +105,26 @@ public sealed record GameQuestTopology(
             ? MissionBHttpBaseUrl
             : MissionAHttpBaseUrl;
 
-    public RoutingId RouteRidForApi(string apiName) =>
+    public RoutingId MeshRidForApi(string apiName) =>
         string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBRouteRid
-            : GameApiARouteRid;
+            ? GameApiBMeshRid
+            : GameApiAMeshRid;
 
     public RoutingId OwnerRouteRid(string playerId) =>
-        GameQuestRouting.OwnerIndex(playerId) == 1 ? MissionBSpotRid : MissionASpotRid;
+        GameQuestRouting.OwnerIndex(playerId) == 1 ? MissionBMeshRid : MissionAMeshRid;
 
     public string QuestOwnerChannel(string playerId) =>
         SampleNames.QuestOwnerChannelFor(GameQuestRouting.OwnerIndex(playerId) == 1 ? "mission-b" : "mission-a");
 
-    public string GameApiChannelEndpoint(string apiName) =>
+    public string GameApiMeshEndpoint(string apiName) =>
         string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBChannelEndpoint
-            : GameApiAChannelEndpoint;
+            ? GameApiBMeshEndpoint
+            : GameApiAMeshEndpoint;
 
-    public string GameApiSpotEndpoint(string apiName) =>
-        string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBSpotEndpoint
-            : GameApiASpotEndpoint;
-
-    public string GameApiSpotRouterEndpoint(string apiName) =>
-        string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBSpotRouterEndpoint
-            : GameApiASpotRouterEndpoint;
-
-    public RoutingId GameApiSpotRid(string apiName) =>
-        string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBSpotRid
-            : GameApiASpotRid;
-
-    public string MissionChannelEndpoint(string missionName) =>
+    public string MissionMeshEndpoint(string missionName) =>
         string.Equals(missionName, "mission-b", StringComparison.Ordinal)
-            ? MissionBChannelEndpoint
-            : MissionAChannelEndpoint;
+            ? MissionBMeshEndpoint
+            : MissionAMeshEndpoint;
 }
 
 public sealed record GameQuestRuntimeConfiguration(
@@ -184,22 +143,12 @@ public sealed class GameQuestConfiguration
     public string GameApiBHttpBaseUrl { get; init; } = "";
     public string MissionAHttpBaseUrl { get; init; } = "";
     public string MissionBHttpBaseUrl { get; init; } = "";
-    public string GameApiAStreamEndpoint { get; init; } = "";
-    public string GameApiBStreamEndpoint { get; init; } = "";
     public string GameApiAStreamBindEndpoint { get; init; } = "";
     public string GameApiBStreamBindEndpoint { get; init; } = "";
-    public string GameApiAChannelEndpoint { get; init; } = "";
-    public string GameApiBChannelEndpoint { get; init; } = "";
-    public string MissionAChannelEndpoint { get; init; } = "";
-    public string MissionBChannelEndpoint { get; init; } = "";
-    public string MissionASpotEndpoint { get; init; } = "";
-    public string MissionASpotRouterEndpoint { get; init; } = "";
-    public string MissionBSpotEndpoint { get; init; } = "";
-    public string MissionBSpotRouterEndpoint { get; init; } = "";
-    public string GameApiASpotEndpoint { get; init; } = "";
-    public string GameApiASpotRouterEndpoint { get; init; } = "";
-    public string GameApiBSpotEndpoint { get; init; } = "";
-    public string GameApiBSpotRouterEndpoint { get; init; } = "";
+    public string GameApiAMeshEndpoint { get; init; } = "";
+    public string GameApiBMeshEndpoint { get; init; } = "";
+    public string MissionAMeshEndpoint { get; init; } = "";
+    public string MissionBMeshEndpoint { get; init; } = "";
 
     public void Validate(string role)
     {
@@ -214,12 +163,8 @@ public sealed class GameQuestConfiguration
                 isB ? nameof(GameApiBHttpBaseUrl) : nameof(GameApiAHttpBaseUrl));
             Require(isB ? GameApiBStreamBindEndpoint : GameApiAStreamBindEndpoint,
                 isB ? nameof(GameApiBStreamBindEndpoint) : nameof(GameApiAStreamBindEndpoint));
-            Require(isB ? GameApiBChannelEndpoint : GameApiAChannelEndpoint,
-                isB ? nameof(GameApiBChannelEndpoint) : nameof(GameApiAChannelEndpoint));
-            Require(isB ? GameApiBSpotEndpoint : GameApiASpotEndpoint,
-                isB ? nameof(GameApiBSpotEndpoint) : nameof(GameApiASpotEndpoint));
-            Require(isB ? GameApiBSpotRouterEndpoint : GameApiASpotRouterEndpoint,
-                isB ? nameof(GameApiBSpotRouterEndpoint) : nameof(GameApiASpotRouterEndpoint));
+            Require(isB ? GameApiBMeshEndpoint : GameApiAMeshEndpoint,
+                isB ? nameof(GameApiBMeshEndpoint) : nameof(GameApiAMeshEndpoint));
             return;
         }
         if (role != "mission")
@@ -227,12 +172,8 @@ public sealed class GameQuestConfiguration
         Require(GameApiAHttpBaseUrl, nameof(GameApiAHttpBaseUrl));
         Require(isB ? MissionBHttpBaseUrl : MissionAHttpBaseUrl,
             isB ? nameof(MissionBHttpBaseUrl) : nameof(MissionAHttpBaseUrl));
-        Require(isB ? MissionBChannelEndpoint : MissionAChannelEndpoint,
-            isB ? nameof(MissionBChannelEndpoint) : nameof(MissionAChannelEndpoint));
-        Require(isB ? MissionBSpotEndpoint : MissionASpotEndpoint,
-            isB ? nameof(MissionBSpotEndpoint) : nameof(MissionASpotEndpoint));
-        Require(isB ? MissionBSpotRouterEndpoint : MissionASpotRouterEndpoint,
-            isB ? nameof(MissionBSpotRouterEndpoint) : nameof(MissionASpotRouterEndpoint));
+        Require(isB ? MissionBMeshEndpoint : MissionAMeshEndpoint,
+            isB ? nameof(MissionBMeshEndpoint) : nameof(MissionAMeshEndpoint));
     }
 
     private static void Require(string value, string name)
@@ -258,7 +199,6 @@ public static class GameQuestRouting
 
 public sealed record QuestMissionInstanceTopology(
     string MissionName,
-    string SpotEndpoint,
-    string SpotRouterEndpoint,
-    RoutingId SpotRid,
+    string MeshEndpoint,
+    RoutingId MeshRid,
     int OwnerIndex);

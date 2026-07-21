@@ -1,18 +1,24 @@
 import type {
+  RoutingId,
   Type,
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotSubscriptionHandler
 } from '../../contracts';
+import { zlinkMessageMetadata } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
-  ZLinkMessageFlowOutcome
-} from '../../contracts';
-import { TopicMessage as BindingTopicMessage } from '@zlink-systems/zlink';
+  ZLinkDispatchMessageKind
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
+import {
+  TopicMessage as BindingTopicMessage,
+  type Message,
+  type RoutingId as BindingRoutingId
+} from '@zlink-systems/zlink';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import {
@@ -53,13 +59,16 @@ export class ZLinkSpotSubscriptionDispatch {
 
   configure(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
     for (const registration of registrations) {
-      if (registration.kind !== 'subscribe' || registration.topic === undefined) {
+      if (registration.kind !== 'subscribe'
+        || registration.channelName === undefined
+        || registration.topic === undefined) {
         continue;
       }
-      const existing = this.handlers.get(registration.topic) ?? [];
+      const key = subscriptionKey(registration.channelName, registration.topic);
+      const existing = this.handlers.get(key) ?? [];
       existing.push(registration);
-      this.handlers.set(registration.topic, existing);
-      this.options.nativeSpot.setSubscription(registration.topic);
+      this.handlers.set(key, existing);
+      this.options.nativeSpot.setSubscription(registration.channelName, registration.topic);
     }
   }
 
@@ -78,6 +87,18 @@ export class ZLinkSpotSubscriptionDispatch {
     } finally {
       this.draining = false;
     }
+  }
+
+  async dispatchRecord(
+    topic: string,
+    parts: readonly Message[],
+    sourceRid: RoutingId | BindingRoutingId | null
+  ): Promise<void> {
+    await this.dispatch({
+      topic,
+      parts,
+      routingId: sourceRid
+    });
   }
 
   private async drainAvailable(): Promise<void> {
@@ -101,15 +122,16 @@ export class ZLinkSpotSubscriptionDispatch {
     }
   }
 
-  private async dispatch(message: BindingTopicMessage): Promise<void> {
-    const registrations = this.handlers.get(message.topic);
-    if (registrations === undefined || registrations.length === 0 || message.parts.length === 0) {
+  private async dispatch(message: {
+    readonly topic: string;
+    readonly parts: readonly Message[];
+    readonly routingId: RoutingId | BindingRoutingId | null;
+  }): Promise<void> {
+    if (message.parts.length === 0) {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotSubscription,
         messageKind: ZLinkDispatchMessageKind.Publish,
-        reason: message.parts.length === 0
-          ? ZLinkDispatchErrorReason.InvalidFrame
-          : ZLinkDispatchErrorReason.HandlerMissing,
+        reason: ZLinkDispatchErrorReason.InvalidFrame,
         action: ZLinkDispatchErrorAction.Drop,
         topic: message.topic,
         sourceRid: message.routingId === null ? undefined : String(message.routingId)
@@ -122,6 +144,21 @@ export class ZLinkSpotSubscriptionDispatch {
         surface: ZLinkDispatchErrorSurface.SpotSubscription,
         messageKind: ZLinkDispatchMessageKind.Publish,
         reason: ZLinkDispatchErrorReason.InvalidFrame,
+        action: ZLinkDispatchErrorAction.Drop,
+        packetName: envelope.packetName,
+        channelName: envelope.header.channelName,
+        topic: message.topic,
+        sourceRid: message.routingId === null ? undefined : String(message.routingId),
+        correlationId: envelope.header.correlationId ?? undefined
+      });
+      return;
+    }
+    const registrations = this.handlers.get(subscriptionKey(envelope.header.channelName, message.topic));
+    if (registrations === undefined || registrations.length === 0) {
+      this.options.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.SpotSubscription,
+        messageKind: ZLinkDispatchMessageKind.Publish,
+        reason: ZLinkDispatchErrorReason.HandlerMissing,
         action: ZLinkDispatchErrorAction.Drop,
         packetName: envelope.packetName,
         channelName: envelope.header.channelName,
@@ -164,7 +201,8 @@ export class ZLinkSpotSubscriptionDispatch {
             contentType: envelope.header.contentType,
             packetName: envelope.packetName,
             topic: message.topic,
-            source: subSource
+            source: subSource,
+            metadata: zlinkMessageMetadata(envelope.header.metadata)
           });
           flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
             outcome: ZLinkMessageFlowOutcome.Dispatched,
@@ -196,4 +234,8 @@ export class ZLinkSpotSubscriptionDispatch {
       }
     }));
   }
+}
+
+function subscriptionKey(channelName: string, topic: string): string {
+  return `${channelName}\u0000${topic}`;
 }

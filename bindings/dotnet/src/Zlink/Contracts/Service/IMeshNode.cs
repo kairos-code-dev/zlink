@@ -14,7 +14,7 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
 
     /// <summary>
     ///     Sets the node routing id. Required before <see cref="Start" /> along
-    ///     with a bind endpoint and at least one channel. Maps to
+    ///     with a bind endpoint. Channel membership may be empty. Maps to
     ///     <c>zlink_set_routing_id</c>.
     /// </summary>
     void SetRoutingId(RoutingId routingId);
@@ -33,6 +33,40 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
 
     /// <summary>Sets a channel's load-balancing weight.</summary>
     void SetChannelWeight(string channelName, uint weight);
+
+    /// <summary>
+    ///     Gets or sets the maximum accepted transport message size in bytes.
+    ///     A value of -1 removes the Core limit. This option may change while
+    ///     the node is running.
+    /// </summary>
+    long MaxMessageSize { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the physical ROUTER send/receive high-water mark.
+    ///     Configure this before <see cref="Start" />; 0 selects the Core
+    ///     profile-derived value.
+    /// </summary>
+    int RouterHighWaterMark { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the per-owner application mailbox message budget.
+    ///     Configure this before <see cref="Start" />; 0 selects the finite
+    ///     Core profile default.
+    /// </summary>
+    ulong MailboxMessageBudget { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the per-owner application mailbox byte budget.
+    ///     Configure this before <see cref="Start" />; 0 selects the finite
+    ///     Core profile default.
+    /// </summary>
+    ulong MailboxByteBudget { get; set; }
+
+    /// <summary>
+    ///     Gets or sets how long a blocking ROUTER send waits for capacity.
+    ///     Configure this before <see cref="Start" />; null waits indefinitely.
+    /// </summary>
+    TimeSpan? SendTimeout { get; set; }
 
     /// <summary>
     ///     Connects to a peer endpoint, optionally pinned to an expected routing
@@ -79,6 +113,14 @@ public interface IMeshNode : IDisposable, IAsyncDisposable
 
     /// <summary>Lists the node's peers.</summary>
     MeshNodePeer[] Peers();
+
+    /// <summary>
+    ///     Lists the ChannelNames and weights advertised by one exact peer
+    ///     lifecycle. A stale or unknown lifecycle is reported as not found.
+    /// </summary>
+    MeshPeerChannel[] PeerChannels(
+        RoutingId peerRid,
+        ulong lifecycleGeneration);
 
     /// <summary>
     ///     Opens the push monitor for RouteMesh lifecycle and messaging events.

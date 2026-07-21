@@ -95,7 +95,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 26:
+    while len(sockets) < 10:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -114,9 +114,9 @@ finally:
 PY
 )"
 
-GATEWAY_ENDPOINT="ws://127.0.0.1:${PORTS[18]}"
-OPS_ENDPOINT="ws://127.0.0.1:${PORTS[15]}"
-BROWSER_PREVIEW_PORT="${PORTS[20]}"
+GATEWAY_ENDPOINT="ws://127.0.0.1:${PORTS[7]}"
+OPS_ENDPOINT="ws://127.0.0.1:${PORTS[4]}"
+BROWSER_PREVIEW_PORT="${PORTS[9]}"
 
 python3 - "$CONFIG_DIR" "$REDIS_ENDPOINT" "$RUN_ID" "$LOG_DIR" "${PORTS[@]}" <<'PY'
 import json
@@ -132,21 +132,16 @@ shared = {
     "redisEndpoint": redis,
     "redisKeyPrefix": f"zoneworld-{run_id}:",
     "logDirectory": log_dir,
-    "broadcastEndpoint": f"tcp://127.0.0.1:{ports[16]}",
+    "broadcastEndpoint": f"tcp://127.0.0.1:{ports[5]}",
 }
 
 def write(name, role, value):
     (root / f"{name}.json").write_text(json.dumps({"shared": shared, role: value}), encoding="utf-8")
 
 for index in (1, 2, 3):
-    offset = (index - 1) * 5
     write(f"zone-node-{index}", "zoneNode", {
         "nodeId": f"zone-node-{index}",
-        "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[offset]}",
-        "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[offset + 1]}",
-        "opsChannelEndpoint": f"tcp://127.0.0.1:{ports[offset + 2]}",
-        "actorsChannelEndpoint": f"tcp://127.0.0.1:{ports[offset + 3]}",
-        "bridgeEndpoint": f"tcp://127.0.0.1:{ports[offset + 4]}",
+        "meshEndpoint": f"tcp://127.0.0.1:{ports[index - 1]}",
         "faultTickZone": "zone-nw" if index == 1 else None,
         "disableBots": False,
     })
@@ -156,23 +151,19 @@ for index in (1, 2, 3):
 # allocation completes before framework sockets are created.
 write("zone-node-replacement", "zoneNode", {
     "nodeId": "zone-node-2",
-    "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[21]}",
-    "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[22]}",
-    "opsChannelEndpoint": f"tcp://127.0.0.1:{ports[23]}",
-    "actorsChannelEndpoint": f"tcp://127.0.0.1:{ports[24]}",
-    "bridgeEndpoint": f"tcp://127.0.0.1:{ports[25]}",
+    "meshEndpoint": f"tcp://127.0.0.1:{ports[3]}",
     "faultTickZone": None,
     "disableBots": False,
 })
 
 write("ops", "ops", {
-    "streamEndpoint": f"ws://127.0.0.1:{ports[15]}",
-    "broadcastEndpoint": f"tcp://127.0.0.1:{ports[16]}",
-    "reportEndpoint": f"tcp://127.0.0.1:{ports[17]}",
+    "streamEndpoint": f"ws://127.0.0.1:{ports[4]}",
+    "broadcastEndpoint": f"tcp://127.0.0.1:{ports[5]}",
+    "meshEndpoint": f"tcp://127.0.0.1:{ports[6]}",
 })
 write("gateway", "gateway", {
-    "streamEndpoint": f"ws://127.0.0.1:{ports[18]}",
-    "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[19]}",
+    "streamEndpoint": f"ws://127.0.0.1:{ports[7]}",
+    "meshEndpoint": f"tcp://127.0.0.1:{ports[8]}",
 })
 PY
 
@@ -268,7 +259,6 @@ start_zone_node() {
   # has submitted a status report, and Ops has observed the new socket connection.
   wait_for_log_after "$name" "node status report submitted. node=$name" "$first_new_line" 450
   wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line" 450
-  wait_for_log_after ops "ops channel observed. node=$name, connected=True, kind=ConnectionReady" "$first_new_ops_line" 450
 }
 
 client_config() {
@@ -401,20 +391,17 @@ if [[ "$G4_PROVEN" == "1" ]]; then g_pass ZW-G4; fi
 node2_slot="$(allocation_field zone-node-2 slot)"
 node2_generation="$(allocation_field zone-node-2 generation)"
 if scenario_selected ZW-G1 && [[ "$G4_CHILD" == "0" ]]; then
-  node2_zone_rid="$(allocation_field zone-node-2 zoneRid)"
-  node2_bridge_rid="$(allocation_field zone-node-2 bridgeRid)"
-  node2_report_rid="$(allocation_field zone-node-2 reportRid)"
+  node2_mesh_rid="$(allocation_field zone-node-2 meshRid)"
   if [[ "$(allocation_field zone-node-2 group)" == "zoneworld.zone-node" \
-        && "$node2_zone_rid" == "$node2_bridge_rid" \
-        && "$node2_zone_rid" == "$node2_report_rid" ]]; then
+        && -n "$node2_mesh_rid" ]]; then
     g_pass ZW-G1
   else
     g_fail ZW-G1 "zone, bridge, and report members did not share one allocation group"
   fi
 fi
 if scenario_selected ZW-G2 && [[ "$G4_CHILD" == "0" ]]; then
-  node2_zone_rid="$(allocation_field zone-node-2 zoneRid)"
-  if [[ "$node2_slot" == "1" && "$node2_zone_rid" == "zn1" ]]; then
+  node2_mesh_rid="$(allocation_field zone-node-2 meshRid)"
+  if [[ "$node2_slot" == "1" && "$node2_mesh_rid" == "zn1" ]]; then
     g_pass ZW-G2-allocation
   else
     g_fail ZW-G2 "reverse-started zone-node-2 did not keep its NodeId while receiving zn1"
@@ -467,8 +454,6 @@ wait_for_log zone-node-3 "topology=ready"
 echo "==> gateway"
 start gateway "$GATEWAY_BIN" --config "$CONFIG_DIR/gateway.json"
 wait_for_log gateway "Application started."
-wait_for_log ops "ops channel observed. node=zone-node-1, connected=True, kind=ConnectionReady"
-wait_for_log ops "ops channel observed. node=zone-node-2, connected=True, kind=ConnectionReady"
 # topology=ready proves that each process created its local spots. Border synchronization has
 # an additional distributed readiness boundary: each remote zone must receive at least one
 # snapshot before a client can use cross-zone visibility as a deterministic assertion.

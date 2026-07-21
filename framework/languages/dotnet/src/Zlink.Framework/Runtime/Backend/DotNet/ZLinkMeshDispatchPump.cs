@@ -77,7 +77,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         RoutingId spotRid,
         Action<ZLinkBackendSpotDispatchInfo> handler)
     {
-        RegisterSpot(spotRid).DispatchHandler = handler;
+        var state = RegisterSpot(spotRid);
+        state.DispatchHandler = handler;
         EnsureStarted();
     }
 
@@ -350,7 +351,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
             targetOwner: true, record);
         var message = new ZLinkBackendSubscribeMessage(
-            record.Topic ?? string.Empty, RetainParts(batch, index), metadata);
+            record.ChannelName ?? string.Empty,
+            record.Topic ?? string.Empty,
+            RetainParts(batch, index),
+            metadata);
         state.Subscriptions.Enqueue(message);
         state.Raise(ZLinkBackendSpotDispatchEvent.SubscribeReadable);
     }

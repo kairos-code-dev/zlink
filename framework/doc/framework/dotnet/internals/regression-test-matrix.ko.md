@@ -59,30 +59,26 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
-| duplicate channel 이름 등록 (`AddClientServerChannel`, `AddFanoutChannel`) | `unit` | startup validation 예외 |
-| 같은 channel 이름을 client-server와 fanout 역할로 동시에 등록 | `unit` | startup validation 예외 |
-| server 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
-| `AddClientServerChannel(...).EnableClient(endpoint)` | `integration-single-process` | manual request/send 성공 |
+| duplicate fanout channel 이름 등록 | `unit` | startup validation 예외 |
 | `AddFanoutChannel(...).EnableSubscriber(endpoint)` | `integration-single-process` | manual 기반 subscribe 성공 |
-| client 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
-| location store가 있는 역할에 manual endpoint 명시 | `unit` | 명시한 역할은 manual 연결을 사용하고 다른 역할의 자동 연결에는 영향을 주지 않는다 |
+| subscriber 역할에 peer acquisition 경로 없음 | `unit` | startup validation 예외 |
+| location store가 있는 subscriber에 manual endpoint 명시 | `unit` | 해당 subscriber는 manual 연결을 사용하고 다른 역할의 자동 연결에는 영향을 주지 않는다 |
 | publisher 역할에 bind endpoint 없음 | `unit` | startup validation 예외 |
 | publisher 전용 channel | `integration-single-process` | publish submit 성공 |
 | subscriber location-store attach | `integration-multi-process` | 원격 publish 수신 |
 | handler group mapping | `unit` | `AddZLinkHandlers...()`만으로는 전역 dispatch 대상이 되지 않고, `channel.AddHandlerGroup("...")`로 매핑한 그룹의 handler만 해당 채널에서 dispatch된다 |
-| handler exposure 없는 server channel | `unit` | scan 된 handler 가 있어도 `AddHandlerGroup(...)` 또는 `Add...Handler(...)`가 없으면 application handler 가 자동 노출되지 않는다 |
 | empty fanout subscriber validation | `unit` | publish handler exposure 없는 fanout subscriber 는 빈 수신자로 허용하지 않고 startup validation 오류다 |
 | typed handler registration | `unit` | channel 의 `Add...Handler(...)`로 직접 등록한 handler 는 group mapping 없이도 해당 channel 에 노출된다 |
-| channel type handler compatibility | `unit` | client-server 는 send/request, fanout subscriber 는 publish, route mesh 는 route send/request handler 만 허용하고 dealer mesh 는 handler registration 을 노출하지 않는다 |
+| channel type handler compatibility | `unit` | fanout subscriber는 publish handler만 허용하고 MeshNode ChannelName은 send/request handler만 허용한다 |
 | incompatible handler group mapping | `unit` | channel type 과 맞지 않는 handler 가 group 안에 섞이면 일부만 제외하지 않고 startup validation 오류로 실패한다 |
 | route mesh handler group mapping | `integration-single-process` | route mesh channel 의 `AddHandlerGroup(...)`은 route send/request handler group 을 실제 routed dispatch 대상으로 노출한다 |
-| 같은 channel server에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
-| 다른 channel server에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 channel에 매핑해도 각 채널이 독립적으로 dispatch된다 |
+| 같은 ChannelName에 handler 중복 | `unit` | 같은 `kind + packetName` handler가 둘 이상이면 startup validation 예외 |
+| 다른 ChannelName에 같은 packet handler | `integration-single-process` | 같은 `kind + packetName`을 서로 다른 ChannelName에 매핑해도 각 namespace가 독립적으로 dispatch된다 |
 | 같은 그룹을 여러 채널에 매핑 | `integration-single-process` | 같은 `[ZLinkHandlerGroup("api")]`를 두 채널에 `AddHandlerGroup`으로 노출해도 채널마다 dispatch namespace가 독립이다 |
 | `AddHandlerGroup`이 가리키는 그룹 없음 | `unit` | 매핑한 그룹에 handler가 하나도 없으면 startup validation 오류 |
 | event handler group mapping | `unit` | `channel.AddHandlerGroup("...")`로 매핑한 그룹의 publish handler만 해당 subscriber channel에서 dispatch된다 |
-| HTTP handler에서 `IZLinkChannelClient` 사용 | `integration-single-process` | route handler와 동일한 DI[^di] 컨테이너에서 정상 동작 |
-| channel handler에서 `IZLinkChannelClient` 사용 | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkChannelClient`로 다른 channel 에 request 하고 reply 를 받는다 |
+| HTTP handler에서 `IZLinkRouteClient` 사용 | `integration-single-process` | route handler와 동일한 DI[^di] 컨테이너에서 정상 동작 |
+| ChannelName handler에서 `IZLinkRouteClient` 사용 | `integration-single-process` | request handler가 같은 DI 컨테이너의 client로 다른 ChannelName에 request하고, process-local 송신 경로가 선택한 target의 reply를 받는다 |
 | channel handler에서 fanout publish | `integration-single-process` | 일반 request handler가 같은 DI 컨테이너의 `IZLinkFanoutClient`로 fanout event 를 publish 하고 subscriber handler가 수신한다 |
 | send async submit backpressure[^backpressure] | `integration-single-process` | HWM[^hwm]에 도달해도 caller thread를 block하지 않고, ready 이후에 완료된다 |
 | publish async submit backpressure | `integration-single-process` | ROUTER HWM 조건에서 thread를 block하지 않고 `SendTimeout` 정책에 따라 완료 또는 실패 |
@@ -116,8 +112,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | bound session factory registration | `unit` | `IZLinkBoundSessionFactory` 는 framework runtime 과 함께 등록된다 |
 | Spot handle resolver without SpotNode | `unit` | location store가 있는 서버는 SpotNode 없이 `IZLinkSpotHandleResolver`를 제공할 수 있다. |
 | Spot outbound with resolver only | `unit` | Spot ref resolver 만 있고 SpotNode 가 없으면 `IZLinkSpotOutbound` 는 DI 에 없다 |
-| route channel missing at call time | `unit` | `IZLinkRouteClient` 호출 시 route channel 이 없으면 `ZLinkConfigurationException` |
-| channel client missing at call time | `unit` | `IZLinkChannelClient` 호출 시 channel client 역할이 없으면 `ZLinkConfigurationException` |
+| ChannelName 송신 경로 누락 | `unit`, `contract` | `IZLinkRouteClient.SendToChannel(...)`과 `RequestToChannel(...)`은 MeshName 인자 없이 ChannelName만 받고, 등록된 process-local 송신 경로가 없으면 `RequestTargetNotFound`로 끝난다 |
 
 ## 5. Spot Regression 항목
 
@@ -125,7 +120,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 |------|------|-----------|
 | duplicate Spot factory type | `unit` | startup validation 예외 |
 | duplicate `AddEntrySpot<TEntrySpot>()` | `unit` | 같은 `SpotNode` 안에서 Entry Spot[^entry-spot] registry를 중복 등록하면 startup validation 예외 |
-| `AddSpotMesh` 호출 | `integration-single-process` | mesh 빌더 한 호출로 mesh channel, node, spot factory 등록을 한 번에 끝낸다 |
+| `AddRouteMesh` 호출 | `integration-single-process` | MeshNode builder 한 개가 ChannelName, node와 Spot factory 등록을 함께 소유한다 |
 | location store 없이 local-only spot factory | `integration-single-process` | store endpoint 없이 단일 local SpotNode runtime을 시작한다 |
 | `CreateAsync<TSpot>()` | `integration-single-process` | `SpotId`, create `State`, create reply 값이 일관되게 유지된다 |
 | `CreateAsync<TSpot>()` empty create payload | `integration-single-process` | payload 없는 생성도 빈 `ZLinkMessage`로 `IZLinkSpot.OnCreateAsync(...)`를 한 번 호출한다 |
@@ -188,8 +183,8 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 | session context close | `integration-single-process` | `IZLinkSessionContext.CloseAsync()`가 현재 stream client 연결을 서버 쪽에서 끊고, 이어서 disconnect callback으로 연결된다 |
 | actor join 직후 packet dispatch | `integration-single-process` | join이 끝난 뒤 들어온 packet이 새 `Spot` 실행 문맥에서 실행된다 |
 | actor spot 이동 직후 packet dispatch | `integration-single-process` | 이전 `Spot` 문맥으로 stale dispatch가 발생하지 않는다 |
-| spot context channel request 경로 | `unit` | `Spot.Context.Outbound.RequestToChannel(...)`이 현재 Spot 에 설정된 channel egress bridge 경로를 사용한다 |
-| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출하고, `Spot.Context.Outbound.SendToSpot(...)` / `RequestToSpot(...)`이 route transport를 사용한다 |
+| spot context channel request 경로 | `unit` | `Spot.Context.Outbound.RequestToChannel(channelName, ...)`이 MeshName 인자 없이 process-local ChannelName 송신 경로를 사용한다 |
+| spot context routed send/request 표면 | `contract`, `integration-single-process` | `IZLinkSpotOutbound`가 `SendToSpot`, `RequestToSpot`, `Publish`, `SendToChannel`, `RequestToChannel`을 모두 노출한다. `Publish`·channel send/request는 ChannelName만으로 송신 경로를 고르고, Spot direct는 `SpotHandle`의 route를 사용한다 |
 | actor bound session send API | `integration-single-process` | actor는 `Context.BoundSession.Send(...)`로 client stream에 push하고, `IZLinkStream`을 직접 노출받지 않는다 |
 | actor request handler reply | `unit` | actor request packet은 actor request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
 | Spot actor request handler reply | `unit` | Entry Spot/user Spot actor request packet은 request handler 반환값으로만 reply되고 send handler로 fallback dispatch되지 않는다. send/request 밖 stream kind도 actor packet으로 처리하지 않는다 |
@@ -218,7 +213,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 ## 7. Location / Monitoring Regression 항목
 
 routing id 자동 할당의 정확한 `.NET` public interface와 lifecycle 증거는
-[routing id 자동 할당 공개 계약](../../spec/server/languages/dotnet/04-routing-id-allocation.ko.md)을
+[routing id 자동 할당 공개 계약](../../spec/server/languages/dotnet/interfaces/09-routing-id-allocation.ko.md)을
 따른다.
 
 | 항목 | 계층 | 통과 기준 |
@@ -385,12 +380,15 @@ backend gate 와 별도로 유지한다.
 | 생성 gate | 기존 `MessageFlow` mode가 `Off`가 아니면 create-if-absent 자동 생성 |
 | event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
 | 공통 개념 | `.NET` |
-| 자동 drain(기본) | framework hosted service가 `IHostApplicationLifetime` 종료에 참여, `StopAsync`에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `UseDrainPolicy(ZLinkSpotDrainPolicy.{DrainNatural(기본)/ReleaseAndRecreate})` |
-| terminal result | abstract `ZLinkDrainResult` + sealed `Drained`, `ForceStopped(ZLinkDrainForceReason Reason)`; reason은 `DeadlineExceeded`, `DrainingStatePublishFailed`, `OwnerCleanupFailed`, `TeardownFailed` |
-| 명시 제어(선택) | `IZLinkDrainControl` { `ValueTask<ZLinkDrainResult> DrainAsync(TimeSpan deadline, CancellationToken)`, `DrainAsync(CancellationToken)`(30초), `AwaitDrainedAsync(CancellationToken)`, `bool IsReady { get; }` } (DI singleton) |
-| readiness probe | `IZLinkDrainControl.IsReady` 또는 `IHealthChecksBuilder.AddZLinkDrainHealthCheck()` |
-| 상태 관측 | 기존 `IZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.State` { `Serving`/`Draining`/`Drained`/`ForceStopping` }, `SourceName` = 고정값 `"drain"` |
+| 자동 Shutdown | framework hosted service가 `IHostApplicationLifetime` 종료에 참여하고 `StopAsync`에서 host `ShutdownAsync(...)` terminal result를 기다린다 |
+| Retire 순서 | all-or-none preflight → admission seal → accepted work → Actor·Instance transfer → STREAM barrier → authority·descriptor → listener·raw socket cleanup |
+| User Spot blocker | User Spot instance가 하나라도 남아 있으면 state를 추론하지 않고 `Blocked/TransferDisabled`이며 admission은 유지된다 |
+| Spot 생성 경계 | `CreateAsync`·`GetOrCreateAsync`는 local-only, `ResolveAsync`는 existing-only다. Missing Instance의 cold activation은 `InstanceSpotAddress` call만 시작한다 |
+| terminal result | `ZLinkFrameworkTerminationResult(EffectiveIntent, Outcome, Reason)`의 enum 숫자와 허용 조합이 공통 54와 일치한다 |
+| 명시 제어 | DI singleton `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 host shared operation을 제공하고 `deadline == null`은 30초다 |
+| first intent | `Draining` 이후 cross-intent waiter는 first operation의 `EffectiveIntent`, deadline과 terminal result를 공유한다. `Blocked`는 terminal cache에 넣지 않는다 |
+| readiness probe | `IZLinkFrameworkRuntime.IsReady`는 host `Serving`에서만 true이고 기존 component `IsReady(...)`는 host state projection을 포함한다 |
+| transport liveness | public option 없이 RouteMesh·ClientServer는 5초 probe·ACK과 15초 inbound deadline을 적용한다. Classic fanout은 publisher별 전용 SUB socket에서 5초 단방향 beacon과 15초 inbound deadline을 적용하고 첫 valid receive 뒤에 ready가 된다 |
 
 ### Session actor dispatch
 
@@ -436,6 +434,12 @@ backend gate 와 별도로 유지한다.
 | `NodesAndServicesTests.AddZLinkFramework_AddLocationStores_ResolvesEveryStoreRoleToOneInstance` | 하나의 store 인스턴스가 모든 location 역할로 등록된다. |
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore` | 외부 store와 in-memory store를 함께 등록하면 시작 전에 실패한다. |
 | `LocationResolverTests.Rows_Of_Expired_Owner_Are_Not_Returned` | owner lease가 만료된 위치 row를 resolver가 반환하지 않는다. |
+| `AuthorityStoreTests.Missing_Version_Can_Be_Compared_And_Conflict_Returns_Current` | missing과 found를 같은 opaque expected version CAS로 처리한다. |
+| `AuthorityStoreTests.Owner_And_Transfer_Phase_Change_In_One_Cas` | Actor·Instance owner와 transfer phase가 한 payload로 바뀐다. |
+| `CheckpointStoreTests.Retention_Is_Exactly_24Hours` | Framework가 provider clock 기준 24시간 retention만 전달한다. |
+| `CheckpointStoreTests.Delete_Missing_Is_Idempotent` | missing checkpoint read는 닫힌 결과이고 반복 delete는 성공 cleanup이다. |
+| `FrameworkRuntimeTests.ApplicationVersion_Uses_Long_Numeric_Order` | `0..long.MaxValue` ordering과 음수 startup rejection을 검증한다. |
+| `FrameworkRuntimeTests.TypedFactory_Policy_Hides_Transfer_Protocol` | typed adapter가 application state만 받고 authority·checkpoint·journal detail을 받지 않는다. |
 | `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones` | 자동 연결이 새 peer를 연결하고 사라진 peer를 연결 집합에서 제거한다. |
 | `RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations` | in-memory와 Redis 구현이 같은 write status와 generation을 반환한다. |
 | `E2E:RM-A1`, `E2E:RM-A4`, `E2E:RM-B1`, `E2E:RM-B2` | store 기반 자동 연결, failover, scale-out과 scale-in을 실제 프로세스에서 검증한다. |

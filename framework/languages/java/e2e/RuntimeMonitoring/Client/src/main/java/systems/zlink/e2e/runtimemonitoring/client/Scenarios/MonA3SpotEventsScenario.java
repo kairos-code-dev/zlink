@@ -1,24 +1,67 @@
 package systems.zlink.e2e.runtimemonitoring.client.Scenarios;
 
-import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
+import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 
+/** Verifies channel weight, ready membership, and actual select-one requests. */
 public final class MonA3SpotEventsScenario {
     private MonA3SpotEventsScenario() {
     }
 
     public static void run(MonitoringScenarioContext context) {
-        String service = context.serviceEndpoint();
-        int subjectsBefore = context.latestEvidenceCount(
-            service, "spot", "SUBJECTS_CHANGED", "subjects");
-        int entriesBefore = context.evidenceEntryCount(service);
-        context.post(service, "/admin/create-subject-spot");
-        context.waitForEvidenceCountAfter(
-            service, "spot", "SUBJECTS_CHANGED", "subjects", entriesBefore,
-            count -> count > subjectsBefore,
-            "MON-A3 spot subjects did not increase from " + subjectsBefore);
-        context.waitForEvent(service, "spot", Set.of(
-            "STATUS_CHANGED", "PEERS_CHANGED", "SUBJECTS_CHANGED", "TIMER_HANDLER_FAILED"));
+        context.awaitRuntimeSnapshot(
+            context.serviceEndpoint(),
+            snapshot -> channel(snapshot).readyMemberCount() >= 2,
+            "MON-A3 initial ready member count did not reach two");
+        int evidenceBaseline = context.evidenceEntryCount(context.serviceEndpoint());
+
+        context.post(context.serviceBEndpoint(), "/runtime/weight/zero");
+        context.awaitRuntimeSnapshot(
+            context.serviceBEndpoint(),
+            snapshot -> channel(snapshot).localWeight() == 0,
+            "MON-A3 service-b local weight did not become zero");
+        context.awaitRuntimeSnapshot(
+            context.serviceEndpoint(),
+            snapshot -> channel(snapshot).readyMemberCount() == 1,
+            "MON-A3 zero-weight peer remained selectable");
+        Contracts.WorkRes zeroWeightReply =
+            context.runtimeRequest(context.serviceEndpoint(), "zero-weight");
+        MonitoringScenarioContext.ensure(
+            "svc-a".equals(zeroWeightReply.providerRid()),
+            "MON-A3 zero-weight service-b handled a new request");
+
+        context.post(context.serviceBEndpoint(), "/runtime/weight/restore");
+        context.awaitRuntimeSnapshot(
+            context.serviceEndpoint(),
+            snapshot -> channel(snapshot).readyMemberCount() >= 2,
+            "MON-A3 restored peer did not become selectable");
+
+        boolean reachedServiceB = false;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        int request = 0;
+        while (System.nanoTime() < deadline && !reachedServiceB) {
+            Contracts.WorkRes reply = context.runtimeRequest(
+                context.serviceEndpoint(), "restored-" + request++);
+            reachedServiceB = "svc-b".equals(reply.providerRid());
+        }
+        MonitoringScenarioContext.ensure(
+            reachedServiceB,
+            "MON-A3 restored service-b was not selected");
+        context.waitForEvidenceAfter(
+            context.serviceEndpoint(),
+            evidenceBaseline,
+            "route-mesh-runtime",
+            "zlink.runtime.mesh_node.channel_changed");
+
         System.out.println("scenario MON-A3 passed");
+    }
+
+    private static Contracts.RuntimeChannel channel(Contracts.RuntimeSnapshot snapshot) {
+        return snapshot.channels().stream()
+            .filter(value -> Contracts.SPOT_CHANNEL.equals(value.channelName()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "RouteMesh channel snapshot is missing"));
     }
 }

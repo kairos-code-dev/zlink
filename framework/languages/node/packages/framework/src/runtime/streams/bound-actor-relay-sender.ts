@@ -1,8 +1,10 @@
 import type {
   ZLinkMessage,
   ZLinkMessageSerializer,
-  ZLinkSessionActor
+  ZLinkSessionActor,
+  ZLinkSubmitResult
 } from '../../contracts';
+import { ZLinkSubmitStatus } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { encodeFrameworkPayloadMessage } from '../messaging/payload-codec';
 import {
@@ -10,6 +12,7 @@ import {
   messageToBytes,
   type ZLinkStreamFrameHeader
 } from './protocol';
+import { throwIfAborted } from '../abort';
 import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
@@ -42,38 +45,41 @@ export class ZLinkBoundActorRelaySender {
     actor: DefaultZLinkSessionActor,
     payload: ZLinkMessage,
     signal?: AbortSignal
-  ): Promise<void> {
-    await this.lifecycle.run(actor.actorId, () => this.relayInsideLifecycle(actor, payload, signal));
+  ): Promise<ZLinkSubmitResult> {
+    return await this.lifecycle.run(actor.actorId, () => this.relayInsideLifecycle(actor, payload, signal));
   }
 
   private async relayInsideLifecycle(
     actor: DefaultZLinkSessionActor,
     payload: ZLinkMessage,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<ZLinkSubmitResult> {
     this.routes.requireCurrentToken(actor.actorId, actor.bindingToken);
     const currentHeader = this.routes.requireRoute(actor.actorId).context.dispatchHeader;
     if (currentHeader === undefined) {
       throw new Error('Session actor relay requires an active stream dispatch.');
     }
+    throwIfAborted(signal);
     const payloadMessage = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
     try {
       if (this.options.relay !== undefined) {
         const handled = await this.options.relay(actor, currentHeader, payloadMessage, signal);
         if (handled) {
-          return;
+          return { status: ZLinkSubmitStatus.Submitted };
         }
       }
       const route = this.routes.requireRoute(actor.actorId);
       if (!(route.context.stream instanceof ZLinkManagedStream)) {
-        return;
+        return { status: ZLinkSubmitStatus.TargetNotFound };
       }
       const headerMessage = this.frameMessages.createBinaryMessage(encodeStreamHeader(currentHeader));
       const framePayloadMessage = this.frameMessages.createBinaryMessage(messageToBytes(payloadMessage));
       try {
-        if (!route.context.stream.sendBoundActor(actor.actorId, [headerMessage, framePayloadMessage], 0)) {
-          throw new Error('Actor session relay failed because the session relay route was not ready before timeout.');
-        }
+        return await route.context.stream.submitBoundActor(
+          actor.actorId,
+          [headerMessage, framePayloadMessage],
+          signal
+        );
       } finally {
         headerMessage.close();
         framePayloadMessage.close();

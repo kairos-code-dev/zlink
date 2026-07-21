@@ -830,341 +830,6 @@ class route_mesh_channel_builder_t
     std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
 };
 
-class spot_node_options_builder_t
-{
-  public:
-    spot_node_options_builder_t (std::string spot_node_name,
-                                 std::shared_ptr<detail::framework_options_state_t> options) :
-        _spot_node_name (std::move (spot_node_name)), _options (std::move (options))
-    {
-        detail::require_non_blank (_spot_node_name, "SPOT node name is required");
-        _options->spot_nodes.insert (_spot_node_name);
-    }
-
-    spot_node_options_builder_t &bind (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT node bind endpoint is required");
-        _endpoint = std::move (endpoint);
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &set_routing_id (zlink::routing_id_t routing_id)
-    {
-        _routing_id = std::move (routing_id);
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &enable_router (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT router endpoint is required");
-        _router_endpoint = std::move (endpoint);
-        {
-            auto connections = router_connections ();
-            for (const auto &existing : connections.list_connections ()) {
-                connections.disconnect (existing);
-            }
-        }
-        _options->spot_nodes_with_router.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &connect_router (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
-        router_connections ().connect (std::move (endpoint));
-        apply ();
-        return *this;
-    }
-
-    endpoint_connections_t router_connections ()
-    {
-        return _options->spot_router_endpoint_connections[_spot_node_name];
-    }
-
-    spot_node_options_builder_t &connect_router (zlink::routing_id_t peer_rid,
-                                                 std::string endpoint)
-    {
-        if (peer_rid.size () == 0u) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT router manual peer routing id is required");
-        }
-        detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
-        router_connections ().connect (endpoint);
-        _router_manual_rid_connections.push_back ({std::move (peer_rid), std::move (endpoint)});
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &enable_pub_sub (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT pub/sub endpoint is required");
-        _pub_endpoint = std::move (endpoint);
-        {
-            auto connections = pub_sub_connections ();
-            for (const auto &existing : connections.list_connections ()) {
-                connections.disconnect (existing);
-            }
-        }
-        _options->spot_nodes_with_pub_sub.insert (_spot_node_name);
-        _options->spot_nodes_with_runtime_capability.insert (_spot_node_name);
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &connect_pub_sub (std::string endpoint)
-    {
-        detail::require_non_blank (endpoint, "SPOT pub/sub manual endpoint is required");
-        pub_sub_connections ().connect (std::move (endpoint));
-        apply ();
-        return *this;
-    }
-
-    endpoint_connections_t pub_sub_connections ()
-    {
-        return _options->spot_pub_sub_endpoint_connections[_spot_node_name];
-    }
-
-    spot_node_options_builder_t &connect_peer_pub (std::string endpoint)
-    {
-        return connect_pub_sub (std::move (endpoint));
-    }
-
-    spot_node_options_builder_t &accept_route_mesh (std::string route_channel_name)
-    {
-        detail::require_non_blank (route_channel_name, "accepted SPOT route channel is required");
-        if (_accepted_route_channels.empty ()
-            && _options->implicit_spot_route_channels.erase (_spot_node_name) != 0) {
-            _options->accepted_spot_route_channels.erase (_spot_node_name);
-            if (auto found = _options->accepted_spot_route_channels_by_node.find (_spot_node_name);
-                found != _options->accepted_spot_route_channels_by_node.end ()) {
-                found->second.erase (_spot_node_name);
-                if (found->second.empty ()) {
-                    _options->accepted_spot_route_channels_by_node.erase (found);
-                }
-            }
-        }
-        _accepted_route_channels.push_back (std::move (route_channel_name));
-        _options->accepted_spot_route_channels.insert (_accepted_route_channels.back ());
-        _options->accepted_spot_route_channels_by_node[_spot_node_name].insert (
-          _accepted_route_channels.back ());
-        if (_accepted_route_channels.size () == 1) {
-            _spot_route_channel_name = _accepted_route_channels.front ();
-        } else {
-            _spot_route_channel_name.reset ();
-        }
-        apply ();
-        return *this;
-    }
-
-    template <typename TSpot> spot_node_options_builder_t &add_spot (std::string spot_name)
-    {
-        detail::require_non_blank (spot_name, "SPOT name is required");
-        _actions.push_back (
-          [spot_name = std::move (spot_name)] (spot_node_builder_t &spot_node) mutable {
-              spot_node.add_spot<TSpot> (std::move (spot_name));
-          });
-        apply ();
-        return *this;
-    }
-
-    template <typename TSpot>
-    spot_node_options_builder_t &add_spot (std::string spot_name,
-                                           std::function<std::shared_ptr<TSpot> ()> factory)
-    {
-        detail::require_non_blank (spot_name, "SPOT name is required");
-        _actions.push_back ([spot_name = std::move (spot_name), factory = std::move (factory)] (
-                              spot_node_builder_t &spot_node) mutable {
-            spot_node.add_spot<TSpot> (std::move (spot_name), std::move (factory));
-        });
-        apply ();
-        return *this;
-    }
-
-    template <typename TEntrySpot> spot_node_options_builder_t &add_entry_spot ()
-    {
-        _actions.push_back (
-          [] (spot_node_builder_t &spot_node) { spot_node.add_entry_spot<TEntrySpot> (); });
-        apply ();
-        return *this;
-    }
-
-    template <typename TEntrySpot>
-    spot_node_options_builder_t &
-    add_entry_spot (std::function<std::shared_ptr<TEntrySpot> ()> factory)
-    {
-        _actions.push_back (
-          [factory = std::move (factory)] (spot_node_builder_t &spot_node) mutable {
-              spot_node.add_entry_spot<TEntrySpot> (std::move (factory));
-          });
-        apply ();
-        return *this;
-    }
-
-    template <typename TFactory>
-    spot_node_options_builder_t &add_actor_factory (std::string actor_type)
-    {
-        detail::require_non_blank (actor_type, "actor factory name is required");
-        _actions.push_back (
-          [actor_type = std::move (actor_type)] (spot_node_builder_t &spot_node) mutable {
-              spot_node.add_actor_factory<TFactory> (std::move (actor_type));
-          });
-        apply ();
-        return *this;
-    }
-
-    template <typename TActor, typename TAdapter>
-    spot_node_options_builder_t &add_actor_transfer_adapter (std::string actor_type)
-    {
-        detail::require_non_blank (actor_type, "actor transfer name is required");
-        _actions.push_back (
-          [actor_type = std::move (actor_type)] (spot_node_builder_t &spot_node) mutable {
-              spot_node.add_actor_transfer_adapter<TActor, TAdapter> (std::move (actor_type));
-          });
-        apply ();
-        return *this;
-    }
-
-    spot_node_options_builder_t &
-    add_spot_resolver (std::string name,
-                       std::function<std::optional<spot_route_t> (spot_rid_t)> resolver)
-    {
-        detail::require_non_blank (name, "SPOT resolver name is required");
-        if (!resolver) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT resolver must not be empty");
-        }
-        _actions.push_back ([name = std::move (name), resolver = std::move (resolver)] (
-                              spot_node_builder_t &spot_node) mutable {
-            spot_node.add_spot_resolver (std::move (name), std::move (resolver));
-        });
-        apply ();
-        return *this;
-    }
-
-  private:
-    void apply ()
-    {
-        const auto spot_node_name = _spot_node_name;
-        const auto endpoint = _endpoint;
-        const auto router_endpoint = _router_endpoint;
-        const auto pub_endpoint = _pub_endpoint;
-        const auto routing_id = _routing_id;
-        const auto router_manual_connections =
-          _options->spot_router_endpoint_connections[_spot_node_name].list_connections ();
-        const auto router_manual_rid_connections = _router_manual_rid_connections;
-        const auto pub_sub_manual_connections =
-          _options->spot_pub_sub_endpoint_connections[_spot_node_name].list_connections ();
-        const auto accepted_route_channels = _accepted_route_channels;
-        const auto options = _options;
-        auto spot_route_channel_name = _spot_route_channel_name;
-        std::vector<std::string> effective_accepted_route_channels = accepted_route_channels;
-        if (!spot_route_channel_name && accepted_route_channels.empty ()
-            && options->route_mesh_channels.size () == 1) {
-            spot_route_channel_name = *options->route_mesh_channels.begin ();
-        }
-        const auto actions = _actions;
-        auto configure = [=] (spot_node_builder_t &spot_node) {
-            if (!endpoint.empty ()) {
-                spot_node.bind (endpoint);
-            }
-            if (routing_id) {
-                spot_node.set_routing_id (*routing_id);
-            }
-            if (options->actor_transfer_forward_window) {
-                spot_node.set_actor_transfer_forward_window (
-                  *options->actor_transfer_forward_window);
-            }
-            if (!router_endpoint.empty ()) {
-                spot_node.enable_router (router_endpoint);
-                for (const auto &endpoint : router_manual_connections) {
-                    if (std::find_if (
-                          router_manual_rid_connections.begin (),
-                          router_manual_rid_connections.end (),
-                          [&endpoint] (const auto &connection) {
-                              return connection.second == endpoint;
-                          })
-                        != router_manual_rid_connections.end ()) {
-                        continue;
-                    }
-                    spot_node.connect_router (endpoint);
-                }
-                for (const auto &connection : router_manual_rid_connections) {
-                    spot_node.connect_router (connection.first, connection.second);
-                }
-            }
-            if (!pub_endpoint.empty ()) {
-                spot_node.enable_pub_sub (pub_endpoint);
-                for (const auto &endpoint : pub_sub_manual_connections) {
-                    spot_node.connect_pub_sub (endpoint);
-                }
-            }
-            if (accepted_route_channels.empty () && !options->route_mesh_channels.empty ()) {
-                for (const auto &route_channel_name : options->route_mesh_channels) {
-                    spot_node.accept_implicit_route_mesh (route_channel_name);
-                }
-            } else {
-                for (const auto &route_channel_name : effective_accepted_route_channels) {
-                    spot_node.accept_implicit_route_mesh (route_channel_name);
-                }
-            }
-            if (spot_route_channel_name) {
-                spot_node.set_spot_route_channel (*spot_route_channel_name);
-            }
-            for (const auto &action : actions) {
-                action (spot_node);
-            }
-        };
-        _options->spot_node_appliers[spot_node_name] = [options = _options, spot_node_name,
-                                                        configure] {
-            if (options->active_zlink == nullptr) {
-                return;
-            }
-            auto spot_node = options->active_zlink->add_spot_node (spot_node_name);
-            configure (spot_node);
-        };
-    }
-
-    std::string _spot_node_name;
-    std::shared_ptr<detail::framework_options_state_t> _options;
-    std::string _endpoint;
-    std::string _router_endpoint;
-    std::string _pub_endpoint;
-    std::optional<zlink::routing_id_t> _routing_id;
-    std::vector<std::pair<zlink::routing_id_t, std::string>> _router_manual_rid_connections;
-    std::vector<std::string> _accepted_route_channels;
-    std::optional<std::string> _spot_route_channel_name;
-    std::vector<std::function<void (spot_node_builder_t &)>> _actions;
-};
-
-class spot_mesh_builder_t : public spot_node_options_builder_t
-{
-  public:
-    spot_mesh_builder_t (std::string channel_name,
-                         std::shared_ptr<detail::framework_options_state_t> options) :
-        spot_node_options_builder_t (channel_name, options),
-        _mesh_name (std::move (channel_name)),
-        _mesh_options (std::move (options))
-    {
-    }
-
-    /* Drain policy for the spots of this mesh (graceful-drain-handoff §5.1).
-     * release_and_recreate is only valid when the application declares the
-     * spot rebuildable from external persistent state. */
-    spot_mesh_builder_t &use_drain_policy (spot_drain_policy_t policy)
-    {
-        _mesh_options->spot_drain_policies[_mesh_name] = policy;
-        return *this;
-    }
-
-  private:
-    std::string _mesh_name;
-    std::shared_ptr<detail::framework_options_state_t> _mesh_options;
-};
-
 class stream_node_options_builder_t
 {
   public:
@@ -1427,14 +1092,9 @@ class zlink_framework_options_t
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    route_mesh_channel_builder_t add_route_mesh (std::string channel_name)
+    mesh_node_builder_t add_route_mesh (std::string mesh_name)
     {
-        return route_mesh_channel_builder_t (std::move (channel_name), _options, _handler_groups);
-    }
-
-    spot_mesh_builder_t add_spot_mesh (std::string channel_name)
-    {
-        return spot_mesh_builder_t (std::move (channel_name), _options);
+        return _zlink->add_route_mesh (std::move (mesh_name));
     }
 
     stream_node_options_builder_t add_stream_node (std::string stream_name)
@@ -1457,11 +1117,6 @@ class zlink_framework_options_t
         return _options->stream_session_factories;
     }
 
-    const std::map<std::string, spot_drain_policy_t> &spot_drain_policies () const noexcept
-    {
-        return _options->spot_drain_policies;
-    }
-
     /* Live endpoint handles per manual role (endpoint_connections contract):
      * the host attaches runtime connect/disconnect appliers after apply(). */
     std::map<std::string, endpoint_connections_t> &client_endpoint_connections () const noexcept
@@ -1473,18 +1128,6 @@ class zlink_framework_options_t
     subscriber_endpoint_connections () const noexcept
     {
         return _options->subscriber_endpoint_connections;
-    }
-
-    std::map<std::string, endpoint_connections_t> &
-    spot_router_endpoint_connections () const noexcept
-    {
-        return _options->spot_router_endpoint_connections;
-    }
-
-    std::map<std::string, endpoint_connections_t> &
-    spot_pub_sub_endpoint_connections () const noexcept
-    {
-        return _options->spot_pub_sub_endpoint_connections;
     }
 
     template <typename TFilter> zlink_framework_options_t &use_filter ()
@@ -1511,7 +1154,6 @@ class zlink_framework_options_t
         _options->http.validate ();
         detail::validate_framework_options (*_options, *_handler_groups);
         detail::apply_dispatch_options (*_zlink, _options->dispatch);
-        _options->active_zlink = _zlink;
         try {
             for (const auto &[_, action] : _options->keyed_zlink_actions) {
                 action (*_zlink);
@@ -1520,15 +1162,10 @@ class zlink_framework_options_t
             for (const auto &action : _options->deferred_zlink_actions) {
                 action (*_zlink);
             }
-            for (const auto &[_, apply] : _options->spot_node_appliers) {
-                apply ();
-            }
         }
         catch (...) {
-            _options->active_zlink = nullptr;
             throw;
         }
-        _options->active_zlink = nullptr;
         _options->applied = true;
     }
 

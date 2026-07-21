@@ -6,6 +6,7 @@ using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 
 namespace AutomaticTurnDispatch.Server.Play;
@@ -74,6 +75,26 @@ internal static class PlayHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", role = "play", options.Rid }));
+        app.MapGet("/topology/ready", (
+            string meshName,
+            string rid,
+            IZLinkRouteMeshRuntime runtime) =>
+        {
+            var snapshot = runtime.Snapshot(meshName);
+            var ready = snapshot.Peers.Any(peer =>
+                            peer.Ready
+                            && string.Equals(
+                                peer.Rid.ToString(),
+                                rid,
+                                StringComparison.Ordinal))
+                        && snapshot.Channels.Any(channel =>
+                            string.Equals(
+                                channel.ChannelName,
+                                meshName,
+                                StringComparison.Ordinal)
+                            && channel.Selectable);
+            return Results.Ok(new { ready });
+        });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         return app;
     }

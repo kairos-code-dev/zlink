@@ -2,10 +2,7 @@ import { ZLinkLocationAutoConnectType, ZLinkLocationRole } from '../../contracts
 
 const autoConnectCanonicalNames = new Map<ZLinkLocationAutoConnectType, string>([
   [ZLinkLocationAutoConnectType.RouteMesh, 'route-mesh'],
-  [ZLinkLocationAutoConnectType.ClientServer, 'client-server'],
-  [ZLinkLocationAutoConnectType.DealerMesh, 'dealer-mesh'],
-  [ZLinkLocationAutoConnectType.Fanout, 'fanout'],
-  [ZLinkLocationAutoConnectType.SpotMesh, 'spot-mesh']
+  [ZLinkLocationAutoConnectType.Fanout, 'fanout']
 ]);
 
 const roleCanonicalNames = new Map<ZLinkLocationRole, string>([

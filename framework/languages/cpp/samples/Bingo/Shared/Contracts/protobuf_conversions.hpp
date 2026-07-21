@@ -44,6 +44,8 @@ inline void to_protobuf (const bingo_player_state_t &value, pb::BingoPlayerState
         message.add_marks (mark);
     }
     message.set_completed_lines (value.completed_lines);
+    message.set_wins (value.wins);
+    message.set_losses (value.losses);
 }
 
 inline void from_protobuf (const pb::BingoPlayerState &message, bingo_player_state_t &value)
@@ -55,6 +57,8 @@ inline void from_protobuf (const pb::BingoPlayerState &message, bingo_player_sta
     value.card.assign (message.card ().begin (), message.card ().end ());
     value.marks.assign (message.marks ().begin (), message.marks ().end ());
     value.completed_lines = message.completed_lines ();
+    value.wins = message.wins ();
+    value.losses = message.losses ();
 }
 
 inline void to_protobuf (const bingo_room_state_t &value, pb::BingoRoomState &message)
@@ -147,6 +151,68 @@ inline void from_protobuf (const pb::AuthenticatePlayerRes &message,
     value.actor_id = message.actor_id ();
     value.display_name = message.display_name ();
     value.reason = message.reason ();
+}
+
+inline void to_protobuf (const get_player_record_req_t &value,
+                         pb::GetPlayerRecordReq &message)
+{
+    message.set_actor_id (value.actor_id);
+}
+
+inline void from_protobuf (const pb::GetPlayerRecordReq &message,
+                           get_player_record_req_t &value)
+{
+    value.actor_id = message.actor_id ();
+}
+
+inline void to_protobuf (const get_player_record_res_t &value,
+                         pb::GetPlayerRecordRes &message)
+{
+    message.set_actor_id (value.actor_id);
+    message.set_wins (value.wins);
+    message.set_losses (value.losses);
+}
+
+inline void from_protobuf (const pb::GetPlayerRecordRes &message,
+                           get_player_record_res_t &value)
+{
+    value.actor_id = message.actor_id ();
+    value.wins = message.wins ();
+    value.losses = message.losses ();
+}
+
+inline void to_protobuf (const report_bingo_result_req_t &value,
+                         pb::ReportBingoResultReq &message)
+{
+    message.set_room_id (value.room_id);
+    message.set_actor_id (value.actor_id);
+    message.set_won (value.won);
+    message.set_final_draw_seq (value.final_draw_seq);
+}
+
+inline void from_protobuf (const pb::ReportBingoResultReq &message,
+                           report_bingo_result_req_t &value)
+{
+    value.room_id = message.room_id ();
+    value.actor_id = message.actor_id ();
+    value.won = message.won ();
+    value.final_draw_seq = message.final_draw_seq ();
+}
+
+inline void to_protobuf (const report_bingo_result_res_t &value,
+                         pb::ReportBingoResultRes &message)
+{
+    message.set_actor_id (value.actor_id);
+    message.set_wins (value.wins);
+    message.set_losses (value.losses);
+}
+
+inline void from_protobuf (const pb::ReportBingoResultRes &message,
+                           report_bingo_result_res_t &value)
+{
+    value.actor_id = message.actor_id ();
+    value.wins = message.wins ();
+    value.losses = message.losses ();
 }
 
 inline void to_protobuf (const ensure_player_actor_req_t &value, pb::EnsurePlayerActorReq &message)
@@ -507,6 +573,10 @@ ZLINK_BINGO_STREAM_PAYLOAD (authenticate_req_t, AuthenticateReq)
 ZLINK_BINGO_STREAM_PAYLOAD (authenticate_res_t, AuthenticateRes)
 ZLINK_BINGO_STREAM_PAYLOAD (authenticate_player_req_t, AuthenticatePlayerReq)
 ZLINK_BINGO_STREAM_PAYLOAD (authenticate_player_res_t, AuthenticatePlayerRes)
+ZLINK_BINGO_STREAM_PAYLOAD (get_player_record_req_t, GetPlayerRecordReq)
+ZLINK_BINGO_STREAM_PAYLOAD (get_player_record_res_t, GetPlayerRecordRes)
+ZLINK_BINGO_STREAM_PAYLOAD (report_bingo_result_req_t, ReportBingoResultReq)
+ZLINK_BINGO_STREAM_PAYLOAD (report_bingo_result_res_t, ReportBingoResultRes)
 ZLINK_BINGO_STREAM_PAYLOAD (ensure_player_actor_req_t, EnsurePlayerActorReq)
 ZLINK_BINGO_STREAM_PAYLOAD (ensure_player_actor_res_t, EnsurePlayerActorRes)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_req_t, MatchBingoReq)

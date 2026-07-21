@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("e2e")
 public record SessionOptions(
     String messageFlowMode, String routeEndpoint, String routeBEndpoint,
-    String sessionRouteEndpoint, String sessionSpotEndpoint, String delayEndpoint,
+    String sessionRouteEndpoint, String delayEndpoint,
     String streamEndpoint, String httpEndpoint, String sessionDrainSpotRid,
     String redisLocationEndpoint, String locationKeyPrefix, String logDirectory) {
     public SessionOptions {
@@ -14,7 +14,7 @@ public record SessionOptions(
             throw new IllegalArgumentException("e2e.message-flow-mode must be on or off");
         }
         required(routeEndpoint, "route-endpoint"); routeBEndpoint = optional(routeBEndpoint, "");
-        required(sessionRouteEndpoint, "session-route-endpoint"); required(sessionSpotEndpoint, "session-spot-endpoint");
+        required(sessionRouteEndpoint, "session-route-endpoint");
         required(delayEndpoint, "delay-endpoint"); required(streamEndpoint, "stream-endpoint");
         required(httpEndpoint, "http-endpoint"); sessionDrainSpotRid = optional(sessionDrainSpotRid, "");
         required(redisLocationEndpoint, "redis-location-endpoint"); required(locationKeyPrefix, "location-key-prefix");

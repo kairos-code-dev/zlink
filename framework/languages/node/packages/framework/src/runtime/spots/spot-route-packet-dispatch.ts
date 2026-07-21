@@ -6,12 +6,13 @@ import type {
   ZLinkSpotPacketHandler,
   ZLinkSpotRequestHandler
 } from '../../contracts';
+import { zlinkMessageMetadata } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
-} from '../../contracts';
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import {
@@ -144,7 +145,8 @@ export class ZLinkSpotRoutePacketDispatch {
     const context = {
       channelName: envelope.header.channelName,
       contentType: envelope.header.contentType,
-      packetName: envelope.packetName
+      packetName: envelope.packetName,
+      metadata: zlinkMessageMetadata(envelope.header.metadata)
     };
     try {
       let response: unknown;
@@ -232,7 +234,8 @@ export class ZLinkSpotRoutePacketDispatch {
           );
           response = await handler.handle(spot, envelope.payload, {
             channelName: envelope.channelName,
-            packetName: envelope.packetName
+            packetName: envelope.packetName,
+            metadata: zlinkMessageMetadata({})
           });
         }
       });

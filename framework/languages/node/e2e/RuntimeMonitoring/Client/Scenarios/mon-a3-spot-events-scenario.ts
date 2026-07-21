@@ -1,4 +1,4 @@
-// MON-A3: spot 이벤트 관찰 시나리오를 검증한다.
+// MON-A3: ChannelName readiness와 선택 가능 상태 시나리오를 검증한다.
 import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
@@ -10,7 +10,6 @@ export async function runMonA3(options: ClientOptions): Promise<void> {
     containsAnyGroups: [
       ['kind=statusChanged'],
       ['kind=peersChanged'],
-      ['kind=subjectsChanged'],
       ['kind=timerHandlerFailed'],
       ['timer=failing']
     ],
@@ -24,10 +23,6 @@ export async function runMonA3(options: ClientOptions): Promise<void> {
   ensure(
     evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=peersChanged')),
     'MON-A3 spot peer evidence missing.'
-  );
-  ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=subjectsChanged')),
-    'MON-A3 spot subject evidence missing.'
   );
   ensure(
     evidence.some((line) =>

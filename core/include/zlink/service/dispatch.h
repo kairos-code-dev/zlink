@@ -14,7 +14,7 @@ extern "C" {
 /* MeshNode service dispatch: ready index, claims, batches and reply.
    Contract: core/doc/spec/core/service/02-dispatch.md */
 
-#define ZLINK_MESH_DISPATCH_ABI_VERSION 1u
+#define ZLINK_MESH_DISPATCH_ABI_VERSION 2u
 
 typedef uint32_t zlink_mesh_ready_domain_mask_t;
 
@@ -44,7 +44,8 @@ typedef enum zlink_mesh_record_kind_t {
   ZLINK_MESH_RECORD_ACTOR_REQUEST      = 10,
   ZLINK_MESH_RECORD_COMPLETION         = 11,
   ZLINK_MESH_RECORD_SEND_READY         = 12,
-  ZLINK_MESH_RECORD_TRANSFER_CONTROL   = 13
+  ZLINK_MESH_RECORD_TRANSFER_CONTROL          = 13,
+  ZLINK_MESH_RECORD_INSTANCE_SPOT_ACTIVATION = 14
 } zlink_mesh_record_kind_t;
 
 typedef enum zlink_mesh_operation_kind_t {
@@ -106,6 +107,7 @@ typedef struct zlink_mesh_receive_record_t {
   zlink_mesh_ready_domain_mask_t domain;
   zlink_routing_id_t source_node_rid;
   zlink_routing_id_t source_spot_rid;
+  uint64_t source_binding_generation;
   zlink_actor_ref_t source_actor;
   zlink_mesh_operation_id_t operation_id;
   zlink_mesh_operation_kind_t operation_kind;

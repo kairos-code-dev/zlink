@@ -6,9 +6,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
@@ -16,8 +15,6 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorFactory;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActorTransferAdapter;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.matchmaking.RedisBingoMatchQueue;
-import systems.zlink.samples.bingo.server.play.infrastructure.zlink.handlers.AllocateBingoRoomHandler;
-import systems.zlink.samples.bingo.shared.contracts.Messages;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers.BingoRoomSettingsInitializer;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
@@ -29,7 +26,6 @@ import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.server.configuration.BingoMetricsReporter;
-import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy;
 import io.micrometer.core.instrument.MeterRegistry;
 
 
@@ -57,22 +53,12 @@ public final class PlayServerApplication {
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.configureLocations();
             options.addHandlersFromPackageOf(PlayServerApplication.class);
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient();
-            var playRoute = options.addRouteMeshChannel(SampleNames.PlayChannel)
-                .enableServer(topology.selectedPlayChannelEndpoint())
-                .enableClient()
-                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()));
-            playRoute.addRequestHandler(
-                AllocateBingoRoomHandler.class,
-                Messages.AllocateBingoRoomReq.class,
-                Messages.AllocateBingoRoomRes.class);
-            ZLinkSpotMeshBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
-            node.useDrainPolicy(ZLinkSpotDrainPolicy.DRAIN_NATURAL);
-            node.enableRouter(topology.selectedPlaySpotRouterEndpoint())
-                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()));
-            node.enablePubSub(topology.selectedPlaySpotEndpoint());
-            node.configureEntrySpot().setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()));
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.Mesh);
+            node.listen(topology.selectedPlaySpotRouterEndpoint())
+                .useAllocatedRoutingId(2, "play")
+                .setRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup);
+            node.channelName(SampleNames.ApiChannel).setWeight(0);
+            node.channelName(SampleNames.RoomSpotDiscovery);
             node.addEntrySpot(BingoEntrySpot.class);
             node.addSpotFactory(BingoRoomSpot.class);
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory.class);

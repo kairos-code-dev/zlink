@@ -373,6 +373,7 @@ int run_server (const std::string &lib_name, const std::string &transport)
     command_state_t commands;
     std::thread command_thread (read_commands, &commands);
     size_t active_size = 0;
+    size_t last_size = 0;
     uint32_t run_id = 0;
     uint64_t sequence = 1;
     std::chrono::steady_clock::time_point deadline;
@@ -391,6 +392,7 @@ int run_server (const std::string &lib_name, const std::string &transport)
         const size_t pending = commands.pending_size.exchange (0, std::memory_order_acq_rel);
         if (pending != 0) {
             active_size = pending;
+            last_size = pending;
             ++run_id;
             sequence = 1;
             deadline = std::chrono::steady_clock::now ()
@@ -438,6 +440,24 @@ int run_server (const std::string &lib_name, const std::string &transport)
     }
     if (command_thread.joinable ())
         command_thread.join ();
+    zlink_mesh_node_status_t final_status;
+    std::memset (&final_status, 0, sizeof (final_status));
+    final_status.struct_size = sizeof (final_status);
+    final_status.version = 1;
+    if (zlink_mesh_node_status (node, &final_status) == ZLINK_CONFIG_OK) {
+        std::cout << "SPOT_DIAG," << lib_name << "," << k_pattern << ","
+                  << transport << "," << last_size
+                  << ",role=hub"
+                  << ",pending_application_messages="
+                  << final_status.pending_application_messages
+                  << ",pending_infrastructure_messages="
+                  << final_status.pending_infrastructure_messages
+                  << ",pending_bytes=" << final_status.pending_bytes
+                  << ",multicast_submitted="
+                  << final_status.multicast_submitted
+                  << ",multicast_dropped_targets="
+                  << final_status.multicast_dropped_targets << std::endl;
+    }
     zlink_mesh_ready_batch_destroy (&ready);
     zlink_mesh_receive_batch_destroy (&batch);
     zlink_spot_destroy (&spot);

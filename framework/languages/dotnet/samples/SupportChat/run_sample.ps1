@@ -34,15 +34,12 @@ function Wait-SampleLogContains {
 }
 
 try {
-    $ports = New-SamplePorts -Count 7 -BasePort 0
+    $ports = New-SamplePorts -Count 4 -BasePort 0
 
-    $SUPPORTCHAT_API_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
-    $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[1])"
-    $SUPPORTCHAT_SESSION_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
-    $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
-    $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[4])"
-    $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
-    $SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $SUPPORTCHAT_SUPPORT_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
+    $SUPPORTCHAT_API_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[1])"
+    $SUPPORTCHAT_SESSION_MESH_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
+    $SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
     $SUPPORTCHAT_REDIS_KEY_PREFIX = "supportchat:dotnet:${RunId}:"
 
     $redis = Start-SampleRedisContainer "zlink-supportchat-dotnet-redis"
@@ -59,16 +56,13 @@ try {
     $sessionConfigFile = Join-Path $RunDir "appsettings.session.json"
     $clientConfigFile = Join-Path $RunDir "appsettings.client.json"
     @{ Sample = $common + @{
-        SupportChannelEndpoint = $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
-        SupportEntrySpotEndpoint = $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
-        SupportEntrySpotRouterEndpoint = $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
+        MeshEndpoint = $SUPPORTCHAT_SUPPORT_MESH_ENDPOINT
     } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $supportConfigFile
     @{ Sample = $common + @{
-        ApiChannelEndpoint = $SUPPORTCHAT_API_CHANNEL_ENDPOINT
+        MeshEndpoint = $SUPPORTCHAT_API_MESH_ENDPOINT
     } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiConfigFile
     @{ Sample = $common + @{
-        SessionSpotEndpoint = $SUPPORTCHAT_SESSION_SPOT_ENDPOINT
-        SessionRouterEndpoint = $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
+        MeshEndpoint = $SUPPORTCHAT_SESSION_MESH_ENDPOINT
         StreamEndpoint = $SUPPORTCHAT_STREAM_ENDPOINT
     } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $sessionConfigFile
     @{ Client = [ordered]@{
@@ -79,16 +73,13 @@ try {
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "SupportChat.csproj")
 
     Start-SampleDotnetAssembly -Name "support" -Project (Join-Path $ScriptDir "Server/Support/SupportChat.Server.Support.csproj") -LogDirectory $LogDir -Arguments @("--config", $supportConfigFile) | Out-Null
-    Wait-SampleTcpEndpoint "support-channel" $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "support-spot-router" $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "support-spot-pub" $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "support-mesh" $SUPPORTCHAT_SUPPORT_MESH_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "api" -Project (Join-Path $ScriptDir "Server/Api/SupportChat.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiConfigFile) | Out-Null
-    Wait-SampleTcpEndpoint "api" $SUPPORTCHAT_API_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-mesh" $SUPPORTCHAT_API_MESH_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "session" -Project (Join-Path $ScriptDir "Server/Session/SupportChat.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $sessionConfigFile) | Out-Null
-    Wait-SampleTcpEndpoint "session-route" $SUPPORTCHAT_SESSION_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "session-router" $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "session-mesh" $SUPPORTCHAT_SESSION_MESH_ENDPOINT
     Wait-SampleTcpEndpoint "session-stream" $SUPPORTCHAT_STREAM_ENDPOINT
 
     $clientLog = Join-Path $LogDir "client.log"

@@ -23,7 +23,7 @@ internal sealed class AuthenticateBingoSessionHandler(
         AuthenticateReq request,
         CancellationToken cancellationToken)
     {
-        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel, SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.ApiChannel,
                 new AuthenticatePlayerReq { AccessToken = request.AccessToken })
             .Async<AuthenticatePlayerRes>(cancellationToken);
 
@@ -37,6 +37,7 @@ internal sealed class AuthenticateBingoSessionHandler(
             cancellationToken);
         var preferredPlayNodeRid = RoutingId.From($"play{sessionAllocation.Slot}");
         var playEntrySpot = await spots.ResolveSpotHandleAsync(
+                                SampleNames.MeshName,
                                 preferredPlayNodeRid,
                                 cancellationToken)
                             ?? throw new InvalidOperationException(
@@ -59,13 +60,13 @@ internal sealed class AuthenticateBingoSessionHandler(
             ensured.Actor.NodeRid,
             context.SessionId);
 
-        context.Client.Reply(new AuthenticateRes
+        await context.Client.Reply(new AuthenticateRes
             {
                 ActorId = ensured.ActorId,
                 DisplayName = authenticated.DisplayName,
                 ActorNodeRid = ensured.Actor.NodeRid
             })
-            .Submit();
+            .SubmitAsync(cancellationToken);
     }
 
     private static ActorRef ToActorRef(ActorRefWire snapshot)

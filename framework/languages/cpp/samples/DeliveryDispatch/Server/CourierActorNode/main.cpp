@@ -238,11 +238,11 @@ int main (int argc, char **argv)
         /* 배송원의 결정을 배차 쪽으로 돌려보내는 통로. */
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_client ();
-        options.add_spot_mesh (sample_names_t::courier_actor_discovery)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_router (spot_router_endpoint)
-          .enable_pub_sub (spot_endpoint)
-          .add_entry_spot<courier_entry_spot_t> (
+        auto actor_mesh = options.add_route_mesh (sample_names_t::courier_actor_discovery);
+        actor_mesh.set_routing_id (zlink::routing_id_t::from (node_rid))
+          .listen (spot_router_endpoint);
+        actor_mesh.channel_name (sample_names_t::courier_actor_discovery);
+        actor_mesh.add_entry_spot<courier_entry_spot_t> (
             [runtime_ptr] { return std::make_shared<courier_entry_spot_t> (*runtime_ptr); })
           .add_actor_factory<courier_actor_factory_t> (sample_names_t::courier_actor_type);
     });

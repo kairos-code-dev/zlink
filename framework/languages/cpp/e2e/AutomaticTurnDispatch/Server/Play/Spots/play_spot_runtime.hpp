@@ -91,7 +91,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                           .node_rid = _evidence.node_rid});
     }
 
-    void on_leave_actor (const await_actor_t &actor)
+    zlink::framework::task_t<void> on_leave_actor (const await_actor_t &actor)
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-source-left|rid=" + _evidence.node_rid + "|spot="
@@ -99,9 +99,10 @@ class await_probe_spot_t : public zlink::framework::spot_t
                            + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
                            + current_turn_id ());
         }
+        co_return;
     }
 
-    void on_actor_joined (const await_actor_t &actor)
+    zlink::framework::task_t<void> on_actor_joined (const await_actor_t &actor)
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-target-joined|rid=" + _evidence.node_rid + "|spot="
@@ -109,6 +110,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                            + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
                            + current_turn_id ());
         }
+        co_return;
     }
 
     zlink::framework::task_t<yd::automatic_turn_dispatch_res_t> hold_req (const yd::hold_req_t &request)

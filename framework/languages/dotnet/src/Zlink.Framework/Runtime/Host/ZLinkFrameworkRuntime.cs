@@ -160,13 +160,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return drained;
     }
 
-    internal void BeginSpotDrain()
-    {
-        var state = _state;
-        if (state is null) return;
-        foreach (var spotNode in state.SpotNodes.Values) spotNode.BeginDrain();
-    }
-
     internal async ValueTask<bool> QuiesceServingChannelsForDrainAsync(
         ZLinkLocationAutoConnectHost? autoConnect,
         CancellationToken cancellationToken)
@@ -179,28 +172,21 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         // were still processed; later traffic is removed from peer load balancing before owner
         // cleanup can terminate the pipes.
         var published = true;
-        foreach (var (name, bundle) in state.ServerBundles)
+        foreach (var (name, spotNode) in state.SpotNodes)
         {
-            if (bundle.Socket is IZLinkBackendWeightedSocket weighted)
-                weighted.SetPeerWeight(0);
-            if (Registration.Channels.TryGetValue(name, out var channel))
-                published &= await PublishWeightAsync(
-                    autoConnect,
-                    ZLinkLocationAutoConnectType.ClientServer,
-                    channel.ChannelName,
-                    ZLinkLocationRole.Router,
-                    cancellationToken).ConfigureAwait(false);
-        }
-        foreach (var (name, route) in state.RouteChannels)
-        {
-            route.ServingSocket.SetPeerWeight(0);
-            if (Registration.RouteChannels.TryGetValue(name, out var registration))
-                published &= await PublishWeightAsync(
-                    autoConnect,
-                    ZLinkLocationAutoConnectType.RouteMesh,
-                    registration.RouterChannelId,
-                    ZLinkLocationRole.Router,
-                    cancellationToken).ConfigureAwait(false);
+            if (!Registration.SpotNodes.TryGetValue(name, out var registration))
+                continue;
+
+            foreach (var membership in registration.ChannelMemberships)
+                spotNode.Node.SetChannelWeight(membership.ChannelName, 0);
+
+            var meshName = registration.SpotMeshChannelName ?? registration.SpotNodeName;
+            published &= await PublishWeightAsync(
+                autoConnect,
+                ZLinkLocationAutoConnectType.SpotMesh,
+                meshName,
+                ZLinkLocationRole.Spot,
+                cancellationToken).ConfigureAwait(false);
         }
 
         return published;
@@ -216,12 +202,23 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             ? ValueTask.FromResult(true)
             : autoConnect.SetLocalWeightAsync(type, meshName, role, 0, cancellationToken);
 
-    internal void SealRequestAdmissionsForDrain()
+    internal void SealApplicationAdmissionsForDrain()
     {
-        lock (_operationGate) _drainAdmission.Seal();
+        lock (_operationGate)
+        {
+            _drainAdmission.Seal();
+            _acceptingOperations = false;
+        }
     }
 
-    internal Task StopAndWaitOperationsForDrainAsync() => StopAcceptingOperationsAsync();
+    internal Task WaitForAcceptedOperationsForDrainAsync()
+    {
+        lock (_operationGate)
+            return _activeOperations == 0
+                ? Task.CompletedTask
+                : (_operationsDrained ??= new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+    }
 
     internal async Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken)
     {
@@ -291,6 +288,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             {
                 lease = new ZLinkRuntimeOperationLease();
                 return false;
+            }
+            // Before native startup no transport can deliver a record. A
+            // neutral lease keeps dispatcher construction independent from
+            // runtime startup while the drain seal remains authoritative.
+            if (Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running)
+            {
+                lease = new ZLinkRuntimeOperationLease();
+                return true;
             }
             lease = EnterOperationUnderLock(countAsRequest);
             return true;
@@ -434,6 +439,47 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 stateToDispose?.CancelActiveSpotOperations();
                 await operationsDrained.ConfigureAwait(false);
                 var failures = await CleanupRuntimeGenerationAsync(stateToDispose).ConfigureAwait(false);
+                ThrowCleanupFailures(failures);
+            }
+            finally
+            {
+                _state = null;
+                Interlocked.Exchange(ref _executionScope, null);
+                Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopped);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stops a runtime after the drain deadline has already expired. Unlike
+    /// the normal stop path, this does not wait for active operations before
+    /// disposing their owners: stream-session and worker disposal cancel the
+    /// corresponding execution tokens and bound their cleanup.
+    /// </summary>
+    internal async ValueTask ForceStopAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfStopRequestedFromOwnedWork();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfStopRequestedFromOwnedWork();
+            if ((ZLinkRuntimeLifecyclePhase)Volatile.Read(ref _lifecyclePhase)
+                == ZLinkRuntimeLifecyclePhase.Stopped)
+                return;
+
+            var stateToDispose = _state;
+            Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Stopping);
+            try
+            {
+                lock (_operationGate) _acceptingOperations = false;
+                stateToDispose?.CancelActiveSpotOperations();
+                stateToDispose?.ForceStopStreamSessions();
+                var failures = await CleanupRuntimeGenerationAsync(stateToDispose)
+                    .ConfigureAwait(false);
                 ThrowCleanupFailures(failures);
             }
             finally

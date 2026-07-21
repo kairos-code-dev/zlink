@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.AspNetCore;
@@ -46,6 +47,22 @@ public sealed class SharedAsyncDisposalTests
         var second = owner.DisposeAsync().AsTask();
         Assert.Same(first, second);
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task LocationStoreOwner_Disposes_Dependents_Before_The_Store()
+    {
+        var store = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
+        var tracker = (TrackedLocationStoreProxy)(object)store;
+        var dependent = new StoreUsingDisposable(tracker);
+        var owner = new ZLinkLocationStoreInstanceOwner(store);
+        owner.RegisterBeforeStoreDispose(dependent);
+
+        await owner.DisposeAsync();
+
+        Assert.Equal(1, dependent.DisposeCount);
+        Assert.Equal(1, tracker.DisposeCount);
+        Assert.True(dependent.ObservedUsableStore);
     }
 
     [Fact]
@@ -219,6 +236,41 @@ public sealed class SharedAsyncDisposalTests
 
         release.TrySetResult();
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private interface ITrackedLocationStore : IZLinkLocationStore, IAsyncDisposable;
+
+    private class TrackedLocationStoreProxy : DispatchProxy
+    {
+        private readonly ZLinkInMemoryLocationStore _inner = new();
+
+        public int DisposeCount { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.NotNull(targetMethod);
+            if (targetMethod.DeclaringType == typeof(IAsyncDisposable))
+            {
+                DisposeCount++;
+                return ValueTask.CompletedTask;
+            }
+
+            return targetMethod.Invoke(_inner, args);
+        }
+    }
+
+    private sealed class StoreUsingDisposable(TrackedLocationStoreProxy store) : IAsyncDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public bool ObservedUsableStore { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            ObservedUsableStore = store.DisposeCount == 0;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class BlockingSocket : IZLinkBackendSocket

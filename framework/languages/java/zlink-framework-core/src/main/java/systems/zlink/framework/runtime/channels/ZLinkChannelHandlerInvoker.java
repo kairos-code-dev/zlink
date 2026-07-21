@@ -136,6 +136,15 @@ final class ZLinkChannelHandlerInvoker {
         String channelName,
         ChannelSendHandlerRegistration registration,
         Message payload) {
+        return invokeSendHandler(channelName, registration, payload, Map.of());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Void> invokeSendHandler(
+        String channelName,
+        ChannelSendHandlerRegistration registration,
+        Message payload,
+        Map<String, String> metadata) {
         Object message;
         try {
             message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
@@ -149,7 +158,8 @@ final class ZLinkChannelHandlerInvoker {
             ZLinkSendContext context = new DefaultSendContext(
                 channelName,
                 registration.packetName(),
-                contentTypeFor(registration.messageType()));
+                contentTypeFor(registration.messageType()),
+                metadata);
             return invokeWithFilters(context, message, () ->
                 invokeSendHandlerCore(registration, message, context));
         } catch (RuntimeException ex) {
@@ -184,6 +194,15 @@ final class ZLinkChannelHandlerInvoker {
         String channelName,
         ChannelRequestHandlerRegistration registration,
         Message payload) {
+        return invokeRequestHandler(channelName, registration, payload, Map.of());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Message> invokeRequestHandler(
+        String channelName,
+        ChannelRequestHandlerRegistration registration,
+        Message payload,
+        Map<String, String> metadata) {
         Object request;
         try {
             request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
@@ -197,7 +216,8 @@ final class ZLinkChannelHandlerInvoker {
             ZLinkRequestContext context = new DefaultRequestContext(
                 channelName,
                 registration.packetName(),
-                contentTypeFor(registration.requestType()));
+                contentTypeFor(registration.requestType()),
+                metadata);
             return invokeWithFilters(context, request, () ->
                 invokeRequestHandlerCore(registration, request, context))
                 .thenApply(reply -> ZLinkMessagePayloads.message(serializer.serialize(reply)));
@@ -336,6 +356,17 @@ final class ZLinkChannelHandlerInvoker {
         ChannelRouteSendHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
+        return invokeRouteSendHandler(
+            channelName, registration, sourceRoutingId, payload, Map.of());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Void> invokeRouteSendHandler(
+        String channelName,
+        ChannelRouteSendHandlerRegistration registration,
+        RoutingId sourceRoutingId,
+        Message payload,
+        Map<String, String> metadata) {
         Object message;
         try {
             message = ZLinkMessagePayloads.deserialize(serializer, payload, registration.messageType());
@@ -351,7 +382,8 @@ final class ZLinkChannelHandlerInvoker {
                     channelName,
                     registration.packetName(),
                     sourceRoutingId,
-                    contentTypeFor(registration.messageType()));
+                    contentTypeFor(registration.messageType()),
+                    metadata);
             if (registration.handlerMethod() != null) {
                 Object handler = handlerFactory.create(registration.handlerType());
                 return ZLinkHandlerMethodInvoker
@@ -375,6 +407,17 @@ final class ZLinkChannelHandlerInvoker {
         ChannelRouteRequestHandlerRegistration registration,
         RoutingId sourceRoutingId,
         Message payload) {
+        return invokeRouteRequestHandler(
+            channelName, registration, sourceRoutingId, payload, Map.of());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    CompletionStage<Message> invokeRouteRequestHandler(
+        String channelName,
+        ChannelRouteRequestHandlerRegistration registration,
+        RoutingId sourceRoutingId,
+        Message payload,
+        Map<String, String> metadata) {
         Object request;
         try {
             request = ZLinkMessagePayloads.deserialize(serializer, payload, registration.requestType());
@@ -390,7 +433,8 @@ final class ZLinkChannelHandlerInvoker {
                     channelName,
                     registration.packetName(),
                     sourceRoutingId,
-                    contentTypeFor(registration.requestType()));
+                    contentTypeFor(registration.requestType()),
+                    metadata);
             if (registration.handlerMethod() != null) {
                 Object handler = handlerFactory.create(registration.handlerType());
                 return ZLinkHandlerMethodInvoker

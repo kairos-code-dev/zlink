@@ -10,6 +10,31 @@ internal static class ZLinkTelemetry
 
     public static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 
+    public static string CaptureSubmitOperationId() =>
+        Activity.Current?.Id ?? Guid.NewGuid().ToString("N");
+
+    public static void TraceSubmitAdmission(
+        string operationId,
+        string eventName,
+        int pendingWaiterCount,
+        bool retry = false)
+    {
+        if (!ActivitySource.HasListeners()) return;
+
+        using var activity = ActivitySource.StartActivity(
+            "zlink.submit.admission",
+            ActivityKind.Internal);
+        if (activity is null) return;
+
+        activity.SetTag("zlink.submit.operation_id", operationId);
+        activity.SetTag("zlink.submit.event", eventName);
+        activity.SetTag("zlink.submit.retry", retry);
+        activity.SetTag("zlink.submit.pending_waiters", pendingWaiterCount);
+        activity.SetTag("zlink.submit.reservations", pendingWaiterCount);
+        activity.SetTag("zlink.submit.callbacks", 0);
+        activity.AddEvent(new ActivityEvent(eventName));
+    }
+
     public static void RecordHandlerMissing(
         string surface,
         string kind,

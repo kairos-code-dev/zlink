@@ -54,6 +54,7 @@ record ZLinkJavaDealerSocket(DealerSocket socket)
     @Override
     public void close() {
         synchronized (socket) {
+            notifyAdmissionShutdown();
             socket.close();
         }
     }

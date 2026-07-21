@@ -41,8 +41,7 @@ public sealed class ZLinkLocationOptions
     public TimeSpan RoutingIdFencingMargin { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Maximum time allowed for one owner-lease renewal attempt when allocated routing ids
-    /// require a bounded fencing decision.
+    /// Maximum time allowed for one owner-lease renewal attempt.
     /// </summary>
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
 

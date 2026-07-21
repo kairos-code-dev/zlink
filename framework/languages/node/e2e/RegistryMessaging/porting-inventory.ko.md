@@ -25,7 +25,7 @@
 | `RM-C5` | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | done | missing request/send dispatch error |
 | `RM-C7` | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | done | build-time provider weight 75/25 분산 검증 |
 | `RM-C8` | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | done | payload length/hash 왕복과 server socket max 초과 실패, 이후 정상 request 회복을 검증 |
-| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | 10.0.0 전환 대상 | 현재 one-way send pressure 제출과 recovery를 검증한다. `trySubmit()`과 `submit()`의 admission 결과 대조는 남아 있다. |
+| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | 10.0.0 전환 대상 | 현재 one-way send pressure 제출과 recovery를 검증한다. `submit()`의 최초 시도, bounded wait와 timeout 검증은 남아 있다. |
 
 ## 파일 매핑
 
@@ -82,9 +82,9 @@
 
 - `RM-C7`은 `.NET`에서 `ChannelName(...).SetWeight(...)`를 사용한다. Node는 같은 의미의
   `addRouteMesh(...).channelName(...).setWeight(...)`로 build-time provider weight를 설정한다.
-- `RM-C9`의 10.0.0 Node exact interface는 one-way call에 non-blocking `trySubmit()`과 blocking
-  `submit()`을 제공한다. 현재 pressure/recovery 증거는 보존하되 두 operation의 public admission
-  결과를 직접 대조해야 한다.
+- `RM-C9`의 10.0.0 Node exact interface는 one-way call에 bounded
+  `submit()`을 제공한다. 현재 pressure/recovery 증거는 보존하되 최초 시도, bounded wait와 timeout의
+  public admission 결과를 직접 검증해야 한다.
 - `.NET` README에는 `RM-A6`이 빠져 있지만 `.NET feature-map`, `Client/Program.cs`, 공통 문서에는
   존재하므로 Node 포팅 대상에 포함한다.
 
@@ -92,4 +92,4 @@
 
 | Scenario | 판정 | 다음 작업 |
 |----------|------|-----------|
-| `RM-C9` | 10.0.0 전환 대상 | `trySubmit()`의 즉시 결과와 `submit()`의 bounded admission 결과를 대조한다. |
+| `RM-C9` | 10.0.0 전환 대상 | `submit()`의 최초 non-blocking 시도와 bounded admission 결과를 검증한다. |

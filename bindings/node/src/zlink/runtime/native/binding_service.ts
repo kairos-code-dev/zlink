@@ -17,6 +17,7 @@ import type {
   MeshMonitorEventRaw,
   MeshMonitorStatusRaw,
   MeshPublishDetailRaw,
+  MeshPublisherPublishAsyncOperationRaw,
   NativeReadyHandler,
   SpotGetOrNewRaw,
   SpotStatusRaw,
@@ -113,6 +114,15 @@ export interface ServiceNativeBinding {
     parts: NativeParts,
     flags: number
   ) => MeshPublishDetailRaw;
+  meshNodePublisherPublishAsync: (
+    publisher: NativeHandle,
+    channelName: string,
+    topic: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => MeshPublisherPublishAsyncOperationRaw;
+  meshNodePublisherPublishCancel: (cancelToken: NativeHandle) => boolean;
   meshNodePublisherDestroy: (publisher: NativeHandle) => void;
 
   // --- Pull dispatch ------------------------------------------------------
@@ -341,6 +351,7 @@ export interface ServiceNativeBinding {
   meshNodeActorSendBoundSession: (
     node: NativeHandle,
     actor: ActorRefRaw,
+    expectedBindingGeneration: bigint,
     parts: NativeParts,
     flags: number
   ) => number;

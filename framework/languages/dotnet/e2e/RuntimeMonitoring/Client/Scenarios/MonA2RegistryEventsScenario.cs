@@ -1,4 +1,5 @@
-// Verifies that adding and removing a provider changes both topology and service-summary projections.
+// Verifies Config 7 MON-A2 peer admission and same-RID lifetime replacement.
+using System.Diagnostics;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
@@ -12,53 +13,132 @@ internal static class MonA2RegistryEventsScenario
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
-        var baseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        var service = await EphemeralService.StartAsync(options, "svc-c");
-        var added = await WaitForProjectionAsync(observer, baseline, "added=svc-c");
-        var addedSummary = AssertProjection(added, "added=svc-c", "MON-A2 add");
-        ZlinkStreamAssert.Ensure(HasReadyServiceCount(addedSummary, 3),
-            "MON-A2 add did not project three ready services.");
+        var evidenceBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
 
-        var removedBaseline = baseline + added.Length;
-        await service.DisposeAsync();
-        var removed = await WaitForProjectionAsync(observer, removedBaseline, "removed=svc-c");
-        var removedSummary = AssertProjection(removed, "removed=svc-c", "MON-A2 remove");
-        ZlinkStreamAssert.Ensure(HasReadyServiceCount(removedSummary, 2),
-            "MON-A2 remove did not restore the two-service projection.");
+        ulong firstGeneration;
+        string firstEndpoint;
+        await using (var first = await EphemeralService.StartAsync(options, "svc-b"))
+        {
+            var firstReady = await WaitForReadyPeerAsync(observer, "svc-b");
+            var peer = firstReady.Peers.Single(candidate =>
+                candidate.Rid == "svc-b" && candidate.Ready);
+            firstGeneration = peer.LifecycleGeneration;
+            firstEndpoint = peer.Endpoint;
+            ZlinkStreamAssert.Ensure(
+                firstGeneration > 0
+                && peer.DescriptorRevision > 0
+                && peer.Endpoint == first.ChannelEndpoint
+                && peer.AdmissionState == "ready"
+                && peer.LastFailure is null,
+                "MON-A2 first admitted lifetime fields were incomplete.");
+        }
+
+        await WaitUntilNotReadyAsync(observer, "svc-b", firstGeneration);
+
+        await using var replacement = await EphemeralService.StartAsync(options, "svc-b");
+        var replacementReady = await WaitForReadyPeerAsync(observer, "svc-b");
+        var replacementPeer = replacementReady.Peers.Single(candidate =>
+            candidate.Rid == "svc-b" && candidate.Ready);
+        ZlinkStreamAssert.Ensure(
+            replacementPeer.LifecycleGeneration != firstGeneration
+            && replacementPeer.Endpoint != firstEndpoint
+            && replacementPeer.Endpoint == replacement.ChannelEndpoint,
+            "MON-A2 replacement did not expose a new generation and endpoint.");
+        ZlinkStreamAssert.Ensure(
+            !replacementReady.Peers.Any(peer =>
+                peer.Rid == "svc-b"
+                && peer.LifecycleGeneration == firstGeneration
+                && peer.Ready),
+            "MON-A2 old peer lifetime remained ready after replacement.");
+
+        var evidence = (await observer.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                [
+                    "identifier=zlink.runtime.mesh_node.peer_changed",
+                    "routing=svc-b",
+                    "kind=ConnectionReady"
+                ],
+                [],
+                TimeoutMilliseconds: 3000,
+                AfterIndex: evidenceBaseline))
+            .Async<string[]>()).Body;
+        var sequences = evidence
+            .Where(line =>
+                line.Contains("identifier=zlink.runtime.mesh_node.peer_changed",
+                    StringComparison.Ordinal)
+                && line.Contains(
+                    $"source={RuntimeMonitoringNames.Channel}",
+                    StringComparison.Ordinal)
+                && line.Contains("routing=svc-b", StringComparison.Ordinal))
+            .Select(ParseSequence)
+            .ToArray();
+        ZlinkStreamAssert.Ensure(
+            sequences.Length >= 3
+            && sequences.Zip(sequences.Skip(1), static (left, right) => right > left)
+                .All(static increasing => increasing),
+            "MON-A2 peer event sequence was not strictly increasing.");
+        ZlinkStreamAssert.Ensure(
+            evidence.Any(line => line.Contains(
+                $"generation={replacementPeer.LifecycleGeneration}",
+                StringComparison.Ordinal)),
+            "MON-A2 replacement event did not carry the new lifecycle generation.");
+
         Console.WriteLine("scenario MON-A2 passed");
     }
 
-    private static async Task<string[]> WaitForProjectionAsync(
-        ZLinkHttpClient observer,
-        int afterIndex,
-        string transition)
-        => (await observer.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["kind=TopologyChanged", transition, "kind=ServiceSummaryChanged"],
-                [],
-                TimeoutMilliseconds: 30000,
-                AfterIndex: afterIndex))
-            .Async<string[]>()).Body;
+    private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(
+        ZLinkHttpClient service)
+        => (await service.Get(
+                $"/runtime/snapshot/{RuntimeMonitoringNames.Channel}")
+            .Async<MeshRuntimeSnapshotRes>()).Body;
 
-    private static string AssertProjection(string[] evidence, string transition, string operation)
+    private static async Task<MeshRuntimeSnapshotRes> WaitForReadyPeerAsync(
+        ZLinkHttpClient service,
+        string rid)
     {
-        ZlinkStreamAssert.Ensure(evidence.Any(line =>
-                line.Contains("kind=TopologyChanged", StringComparison.Ordinal)
-                && line.Contains(transition, StringComparison.Ordinal)
-                && line.Contains("entries=", StringComparison.Ordinal)),
-            $"{operation} topology projection did not contain the actual transition.");
-        ZlinkStreamAssert.Ensure(evidence.Any(line =>
-                line.Contains("kind=ServiceSummaryChanged", StringComparison.Ordinal)
-                && line.Contains("summary-entries=", StringComparison.Ordinal)
-                && !line.EndsWith("summary-entries=", StringComparison.Ordinal)),
-            $"{operation} service-summary projection evidence missing.");
-        return LatestSummary(evidence);
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
+                return snapshot;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-A2 peer '{rid}' did not become ready.");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
     }
 
-    private static string LatestSummary(IEnumerable<string> evidence)
-        => evidence.LastOrDefault(line => line.Contains("kind=ServiceSummaryChanged", StringComparison.Ordinal))
-           ?? throw new InvalidOperationException("Location service-summary evidence is missing.");
+    private static async Task WaitUntilNotReadyAsync(
+        ZLinkHttpClient service,
+        string rid,
+        ulong generation)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (!snapshot.Peers.Any(peer =>
+                    peer.Rid == rid
+                    && peer.LifecycleGeneration == generation
+                    && peer.Ready))
+                return;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-A2 peer '{rid}' generation {generation} remained ready.");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+    }
 
-    private static bool HasReadyServiceCount(string summary, int count)
-        => summary.Contains($":{count}:{count}:0:0", StringComparison.Ordinal);
+    private static ulong ParseSequence(string line)
+    {
+        const string prefix = "|sequence=";
+        var start = line.IndexOf(prefix, StringComparison.Ordinal);
+        if (start < 0)
+            return 0;
+        start += prefix.Length;
+        var end = line.IndexOf('|', start);
+        var text = end < 0 ? line[start..] : line[start..end];
+        return ulong.TryParse(text, out var value) ? value : 0;
+    }
 }

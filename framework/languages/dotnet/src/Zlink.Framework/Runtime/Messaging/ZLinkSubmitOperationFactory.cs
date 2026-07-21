@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Messaging;
 
 internal sealed class ZLinkSubmitOperationFactory(
     TimeSpan? sendTimeout,
-    Action wake)
+    object admissionGate,
+    Action<PendingSubmit> wake)
 {
     public DateTimeOffset? ResolveDeadline()
     {
@@ -13,17 +14,32 @@ internal sealed class ZLinkSubmitOperationFactory(
 
     public PendingSubmit CreateCommand(
         IReadOnlyList<Message> parts,
-        Func<IReadOnlyList<Message>, bool> trySubmit)
+        Func<IReadOnlyList<Message>, bool> trySubmit,
+        string operationId)
     {
-        return PendingSubmit.CreateCommand(parts, trySubmit, ResolveDeadlineOrThrow(parts), wake);
+        return PendingSubmit.CreateCommand(
+            parts,
+            trySubmit,
+            ResolveDeadlineOrThrow(parts),
+            admissionGate,
+            wake,
+            operationId);
     }
 
     public PendingSubmit CreateRequest<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
-        ZLinkRequestCompletion<T> completion)
+        ZLinkRequestCompletion<T> completion,
+        string operationId)
     {
-        return PendingSubmit.CreateRequest(parts, trySubmit, ResolveDeadlineOrThrow(parts), wake, completion);
+        return PendingSubmit.CreateRequest(
+            parts,
+            trySubmit,
+            ResolveDeadlineOrThrow(parts),
+            admissionGate,
+            wake,
+            completion,
+            operationId);
     }
 
     private DateTimeOffset? ResolveDeadlineOrThrow(IReadOnlyList<Message> parts)

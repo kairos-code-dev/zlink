@@ -1,5 +1,6 @@
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Locations;
@@ -22,7 +23,10 @@ internal sealed class SelfCycleHandler(
             $"self-cycle-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
         try
         {
-            var handle = await spots.ResolveSpotHandleAsync(spot.Context.SpotRid, cancellationToken)
+            var handle = await spots.ResolveSpotHandleAsync(
+                             spot.Context.MeshName,
+                             spot.Context.SpotRid,
+                             cancellationToken)
                          ?? throw new InvalidOperationException("The current Spot handle was not found.");
             await spot.Context.Outbound.RequestToSpot(handle, new ProbeReq(request.RequestId, "self-cycle"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
@@ -40,7 +44,9 @@ internal sealed class SelfCycleHandler(
 }
 
 [ZLinkSpotRequestHandler("AwaitTimeoutReq")]
-internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
+internal sealed class AwaitTimeoutHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotRequestHandler<AwaitProbeSpot, AwaitTimeoutReq, AwaitTimeoutRes>
 {
     public async ValueTask<AwaitTimeoutRes> HandleAsync(
@@ -52,7 +58,8 @@ internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
             $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         try
         {
-            var call = spot.Context.Outbound.RequestToChannel(
+            var call = routeClient.RequestToChannel(
+                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "timeout"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
@@ -81,7 +88,9 @@ internal sealed class AwaitTimeoutHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotPacketHandler("AwaitTimeoutMsg")]
-internal sealed class AwaitTimeoutCommandHandler(EvidenceStore evidence)
+internal sealed class AwaitTimeoutCommandHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, AwaitTimeoutMsg>
 {
     public async ValueTask HandleAsync(
@@ -93,7 +102,8 @@ internal sealed class AwaitTimeoutCommandHandler(EvidenceStore evidence)
             $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
         try
         {
-            var call = spot.Context.Outbound.RequestToChannel(
+            var call = routeClient.RequestToChannel(
+                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "timeout"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
@@ -113,7 +123,9 @@ internal sealed class AwaitTimeoutCommandHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotRequestHandler("AwaitCancelReq")]
-internal sealed class AwaitCancelHandler(EvidenceStore evidence)
+internal sealed class AwaitCancelHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotRequestHandler<AwaitProbeSpot, AwaitCancelReq, AwaitCancelRes>
 {
     public async ValueTask<AwaitCancelRes> HandleAsync(
@@ -127,7 +139,8 @@ internal sealed class AwaitCancelHandler(EvidenceStore evidence)
         cts.CancelAfter(TimeSpan.FromMilliseconds(request.CancelAfterMs));
         try
         {
-            var call = spot.Context.Outbound.RequestToChannel(
+            var call = routeClient.RequestToChannel(
+                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "cancel"))
                 .Timeout(TimeSpan.FromSeconds(5));
@@ -156,7 +169,9 @@ internal sealed class AwaitCancelHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotPacketHandler("AwaitCancelMsg")]
-internal sealed class AwaitCancelCommandHandler(EvidenceStore evidence)
+internal sealed class AwaitCancelCommandHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, AwaitCancelMsg>
 {
     public async ValueTask HandleAsync(
@@ -170,7 +185,8 @@ internal sealed class AwaitCancelCommandHandler(EvidenceStore evidence)
         cts.CancelAfter(TimeSpan.FromMilliseconds(request.CancelAfterMs));
         try
         {
-            var call = spot.Context.Outbound.RequestToChannel(
+            var call = routeClient.RequestToChannel(
+                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "cancel"))
                 .Timeout(TimeSpan.FromSeconds(5));

@@ -2,6 +2,7 @@ namespace Zlink.Framework.Contracts.Streams;
 
 public sealed class ZLinkSessionDispatchContext
 {
+    private int _replyClaimed;
     public ZLinkSessionDispatchContext(
         string packetName,
         ZLinkMessageMetadata? metadata = null,
@@ -30,4 +31,9 @@ public sealed class ZLinkSessionDispatchContext
     public bool CanReply { get; }
 
     internal ZlinkStreamHeader? Header { get; }
+
+    internal bool TryClaimReply()
+    {
+        return CanReply && Interlocked.CompareExchange(ref _replyClaimed, 1, 0) == 0;
+    }
 }

@@ -186,6 +186,19 @@ const spotPublisher = spotNode.createPublisher();
 spotPublisher.publish('topic').message('payload').submit();
 spotPublisher.close();
 
+const serviceMeshNode = zlink.createMeshNode(ctx, { meshName: 'typecheck.mesh' });
+const meshPublisher = serviceMeshNode.createPublisher();
+const meshPublishResult: Promise<zlink.MeshPublishResult> = meshPublisher.publishAsync(
+  'mesh.channel',
+  'topic',
+  'payload',
+  undefined,
+  new AbortController().signal
+);
+void meshPublishResult;
+meshPublisher.close();
+serviceMeshNode.close();
+
 const monitor = pub.monitorOpen();
 monitor.recv();
 monitor.onEvent(() => {});

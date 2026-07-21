@@ -27,12 +27,40 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
     public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
         String meshName,
         RoutingId spotRid,
+        long spotGeneration,
         String spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
         String routeEndpoint,
         Runnable deactivate) {
-        return spots.claim(meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, deactivate);
+        return spots.claim(
+            meshName,
+            spotRid,
+            spotGeneration,
+            spotType,
+            nodeRid,
+            spotKind,
+            routeEndpoint,
+            deactivate);
+    }
+
+    public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
+        String meshName,
+        RoutingId spotRid,
+        String spotType,
+        RoutingId nodeRid,
+        ZLinkSpotKind spotKind,
+        String routeEndpoint,
+        Runnable deactivate) {
+        return claimSpot(
+            meshName,
+            spotRid,
+            1L,
+            spotType,
+            nodeRid,
+            spotKind,
+            routeEndpoint,
+            deactivate);
     }
 
     public CompletionStage<Void> releaseSpot(String meshName, RoutingId spotRid) {

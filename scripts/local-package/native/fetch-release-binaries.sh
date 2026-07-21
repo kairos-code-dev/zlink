@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=release-tag.sh
+source "${script_dir}/release-tag.sh"
+
 if [ $# -lt 1 ]; then
   echo "usage: $0 <release-url-or-tag>" >&2
   echo "env:   ZLINK_RELEASE_REPO=owner/repo (optional override)" >&2
@@ -34,14 +38,9 @@ if [ -z "$repo" ]; then
   exit 1
 fi
 
-tag="$input"
-if [[ "$input" == *"/releases/tag/"* ]]; then
-  tag="${input##*/}"
-fi
-if [[ ! "$tag" =~ ^core/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "release tag must use core/vX.Y.Z exactly: $tag" >&2
-  exit 1
-fi
+zlink_parse_core_release_ref "$input"
+tag="${ZLINK_CORE_RELEASE_TAG}"
+runtime_version="${ZLINK_CORE_RUNTIME_VERSION}"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh CLI required" >&2
@@ -74,6 +73,30 @@ if [ ! -f checksums.txt ]; then
   echo "core release is missing checksums.txt: $tag" >&2
   exit 1
 fi
+if [ ! -f release-provenance.txt ]; then
+  echo "core release is missing release-provenance.txt: $tag" >&2
+  exit 1
+fi
+source_archive="zlink-${runtime_version}-source.tar.gz"
+if [ ! -f "${source_archive}" ]; then
+  echo "core release is missing source archive: ${source_archive}" >&2
+  exit 1
+fi
+if [ ! -f extracted/libzlink-linux-x64/include/zlink.h ]; then
+  echo "core release is missing the linux-x64 public version header" >&2
+  exit 1
+fi
+
+encoded_tag="${ZLINK_CORE_RELEASE_TAG_ENCODED}"
+resolved_source_sha="$(gh api "repos/${repo}/commits/${encoded_tag}" --jq .sha)"
+"${script_dir}/verify-release-provenance.sh" \
+  --tag "${tag}" \
+  --repo "${repo}" \
+  --manifest release-provenance.txt \
+  --checksums checksums.txt \
+  --source-archive "${source_archive}" \
+  --header extracted/libzlink-linux-x64/include/zlink.h \
+  --resolved-source-sha "${resolved_source_sha}"
 (
   cd extracted
   sha256sum --check ../checksums.txt
@@ -263,12 +286,7 @@ copy libzlink-linux-x64/include/zlink.h "$repo_root/bindings/rust/include/zlink.
 copy libzlink-linux-x64/include/zlink_enum.h "$repo_root/bindings/rust/include/zlink_enum.h"
 copy libzlink-linux-x64/include/zlink_errno.h "$repo_root/bindings/rust/include/zlink_errno.h"
 
-release_version="${tag#core/v}"
-IFS='.' read -r release_major release_minor release_patch <<< "$release_version"
-if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "release tag must use core/vX.Y.Z exactly: $tag" >&2
-  exit 1
-fi
+IFS='.' read -r release_major release_minor release_patch <<< "${runtime_version}"
 
 align_version_macros() {
   header="$1"

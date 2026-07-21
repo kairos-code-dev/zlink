@@ -19,8 +19,13 @@ export interface ZLinkSpotLocationKey {
   readonly spotRid: RoutingId;
 }
 
+export interface ZLinkMeshNodeDescriptorKey {
+  readonly meshName: string;
+  readonly rid: RoutingId;
+}
+
 export interface ZLinkActorLocationKey {
-  /** Actor id is framework-wide unique; actor type is not part of identity. */
+  readonly meshName: string;
   readonly actorId: string;
 }
 

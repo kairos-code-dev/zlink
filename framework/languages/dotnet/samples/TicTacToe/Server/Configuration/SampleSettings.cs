@@ -4,57 +4,34 @@ namespace TicTacToe.Server.Configuration;
 
 internal sealed record SampleSettings(
     string InstanceName,
-    int ApiIndex,
     int PlayIndex,
     string ApiBindUrl,
-    string ApiPublicUrl,
-    string ApiChannelEndpoint,
-    IReadOnlyList<string> ApiChannelEndpoints,
-    string PlayChannelEndpoint,
-    IReadOnlyList<string> PlayChannelEndpoints,
+    string MeshEndpoint,
+    IReadOnlyList<string> PeerMeshEndpoints,
     string PlayEndpoint,
     IReadOnlyList<string> PlayEndpoints,
-    string SpotEndpoint,
-    IReadOnlyList<string> SpotEndpoints,
-    string SpotPubSubEndpoint,
-    IReadOnlyList<string> SpotPubSubEndpoints,
-    string PlaySpotNodeRid,
-    string PeerPlaySpotNodeRid,
-    string PeerSpotEndpoint,
-    string PeerSpotPubEndpoint,
+    string PlayMeshNodeRid,
     string RedisEndpoint,
     string RedisKeyPrefix,
     string LogDirectory)
 {
     public IReadOnlyList<PlayNodeInfo> PlayNodes =>
         PlayEndpoints
-            .Select((endpoint, index) => new PlayNodeInfo(endpoint, PlaySpotNodeRidAt(index)))
+            .Select((endpoint, index) => new PlayNodeInfo(endpoint, PlayMeshNodeRidAt(index)))
             .ToArray();
 
     public static SampleSettings LoadApi(string[] args)
     {
         var section = LoadSection(args);
-        var apiIndex = RequireIndex(section, nameof(ApiIndex));
         var playEndpoints = RequireList(section, nameof(PlayEndpoints), 2);
         return new SampleSettings(
             RequireString(section, nameof(InstanceName)),
-            apiIndex,
             0,
             RequireString(section, nameof(ApiBindUrl)),
-            string.Empty,
-            RequireString(section, nameof(ApiChannelEndpoint)),
-            [],
-            string.Empty,
-            RequireList(section, nameof(PlayChannelEndpoints), 2),
+            RequireString(section, nameof(MeshEndpoint)),
+            RequireList(section, nameof(PeerMeshEndpoints), 2),
             string.Empty,
             playEndpoints,
-            string.Empty,
-            [],
-            string.Empty,
-            [],
-            string.Empty,
-            string.Empty,
-            string.Empty,
             string.Empty,
             string.Empty,
             string.Empty,
@@ -67,24 +44,13 @@ internal sealed record SampleSettings(
         var playIndex = RequireIndex(section, nameof(PlayIndex));
         return new SampleSettings(
             RequireString(section, nameof(InstanceName)),
-            0,
             playIndex,
             string.Empty,
-            string.Empty,
-            string.Empty,
-            RequireList(section, nameof(ApiChannelEndpoints), 2),
-            RequireString(section, nameof(PlayChannelEndpoint)),
-            [],
+            RequireString(section, nameof(MeshEndpoint)),
+            ReadList(section, nameof(PeerMeshEndpoints)),
             RequireString(section, nameof(PlayEndpoint)),
             RequireList(section, nameof(PlayEndpoints), 2),
-            RequireString(section, nameof(SpotEndpoint)),
-            [],
-            RequireString(section, nameof(SpotPubSubEndpoint)),
-            [],
-            RequireString(section, nameof(PlaySpotNodeRid)),
-            RequireString(section, nameof(PeerPlaySpotNodeRid)),
-            RequireString(section, nameof(PeerSpotEndpoint)),
-            RequireString(section, nameof(PeerSpotPubEndpoint)),
+            RequireString(section, nameof(PlayMeshNodeRid)),
             RequireString(section, nameof(RedisEndpoint)),
             RequireString(section, nameof(RedisKeyPrefix)),
             RequireString(section, nameof(LogDirectory)));
@@ -121,17 +87,24 @@ internal sealed record SampleSettings(
         string name,
         int count)
     {
-        var values = section.GetSection(name)
+        var values = ReadList(section, name);
+        return values.Count == count
+            ? values
+            : throw new InvalidOperationException($"Sample.{name} must contain {count} values.");
+    }
+
+    private static IReadOnlyList<string> ReadList(
+        IConfigurationSection section,
+        string name)
+    {
+        return section.GetSection(name)
             .GetChildren()
             .Select(static child => child.Value)
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Select(static value => value!)
             .ToArray();
-        return values.Length == count
-            ? values
-            : throw new InvalidOperationException($"Sample.{name} must contain {count} values.");
     }
 
-    private static string PlaySpotNodeRidAt(int index) => $"play-node-{index + 1}";
+    private static string PlayMeshNodeRidAt(int index) => $"play-node-{index + 1}";
 
 }

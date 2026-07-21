@@ -39,10 +39,11 @@ internal static class StC1SourceDownBeforeCommitScenario
             ZlinkStreamAssert.Ensure(!response.Accepted,
                 "ST-C1 join should not be accepted after source shutdown before commit.");
 
-        // Target drain cannot complete while an accepted handoff admission is pending. Its
-        // completion is the public lifecycle barrier that proves the abandoned admission was
-        // aborted or expired; a fixed observation delay cannot prove that state transition.
-        await context.DrainAsync(context.NodeB);
+        // The runtime cleanup marker is the bounded proof required by the common
+        // scenario; draining the target would also wait for its independent Spot
+        // lifecycle and would not isolate admission cleanup.
+        await context.WaitRuntimeEvidenceAsync(context.NodeB, 30000,
+            $"pending_admission_expired actor={actorId}");
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
         ZlinkStreamAssert.Ensure(
             !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)

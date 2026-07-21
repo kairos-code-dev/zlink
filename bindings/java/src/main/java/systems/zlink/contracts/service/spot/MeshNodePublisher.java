@@ -15,6 +15,10 @@ public interface MeshNodePublisher extends AutoCloseable {
     PublishDetail publishDetailed(String channel, String topic, List<Message> parts,
                                   SendFlags flags);
 
+    /** Publishes with an encoded application-metadata snapshot. */
+    PublishDetail publishDetailed(String channel, String topic, byte[] metadata,
+                                  List<Message> parts, SendFlags flags);
+
     @Override
     void close();
 }

@@ -70,8 +70,8 @@ export async function runSmC3(options: ClientOptions): Promise<void> {
       `spot-msg|rid=play-a|spot=${targetSpotRid}|marker=sm-c3-publish-direct`,
       `spot-to-spot-timeout|rid=play-a|source=${sourceSpotRid}|target=${targetSpotRid}|failed=True`,
       `spot-to-spot-negative|rid=play-a|source=${sourceSpotRid}|target=${targetSpotRid}|requestFailed=True`,
-      'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=replyError|packet=MissingSpotReq',
-      'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotMsg'
+      'dispatch-error|surface=spot|kind=request|reason=no_handler|action=reply_error|packet=MissingSpotReq',
+      'dispatch-error|surface=spot|kind=send|reason=no_handler|action=drop|packet=MissingSpotMsg'
     ];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,

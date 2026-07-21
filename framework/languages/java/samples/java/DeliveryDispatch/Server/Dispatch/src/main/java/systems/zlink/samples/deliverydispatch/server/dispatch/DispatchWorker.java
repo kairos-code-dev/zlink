@@ -103,9 +103,8 @@ public final class DispatchWorker {
         Messages.AssignDeliveryMsg request,
         String courierId,
         int attempt) {
-        return courierAddress(courierId).thenAccept(address -> routes
+        return courierAddress(courierId).thenCompose(address -> routes
             .sendToSpot(
-                SampleNames.CourierSpotDiscovery,
                 address,
                 new Messages.OfferDeliveryMsg(
                     courierId,
@@ -113,7 +112,8 @@ public final class DispatchWorker {
                     attempt,
                     request.pickupAddress(),
                     request.dropoffAddress()))
-            .submit());
+            .submit()
+            .thenApply(ignored -> null));
     }
 
     private CompletionStage<SpotHandle> courierAddress(String courierId) {

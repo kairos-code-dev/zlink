@@ -2,6 +2,7 @@ import type { ActorRef, ZLinkActor } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import {
+  createActorMembership,
   type ZLinkActorHandoffPacket,
   type ZLinkActorHandoffResult,
   type ZLinkRemoteBoundSessionTarget
@@ -90,7 +91,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
             fallbackActorRef
           ),
         bindRemoteSession: (actor, sourceNodeRid, sourceSessionRid) => {
-          const node = this.options.nativeSpotNodeProvider?.();
+          const node = this.options.nativeSpotNodeProvider?.(activation.meshName);
           if (node === undefined || routingIdsEqual(sourceNodeRid, node.routingId)) return;
           const target = this.options.boundSessionRuntime?.resolveRemoteBoundSessionTarget(sourceNodeRid, sourceSessionRid);
           if (target !== undefined) {
@@ -99,7 +100,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
           node.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
         },
         replyNoBind: (info, parts, result) =>
-          this.options.nativeSpotNodeProvider?.()?.replyActorNoBind(info, parts, result)
+          this.options.nativeSpotNodeProvider?.(activation.meshName)?.replyActorNoBind(info, parts, result)
       },
       boundSessionRuntime: this.options.boundSessionRuntime,
       messageSerializers: this.options.messageSerializers,
@@ -131,7 +132,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       onRemoteBoundSessionTarget: (targetActorId, target) =>
         this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(targetActorId, target),
       onDisconnectActor: (actor) =>
-        activation.serial.execute(() => activation.spot.onDisconnectActor?.(actor)),
+        activation.serial.execute(() => activation.spot.onDisconnectActor(createActorMembership(actor))),
       actorResponseSender: this.options.boundSessionRuntime?.sendActorResponse.bind(this.options.boundSessionRuntime),
       actorErrorSender: this.options.boundSessionRuntime?.sendActorError.bind(this.options.boundSessionRuntime),
       providerResolver: this.options.providerResolver,
@@ -151,11 +152,11 @@ export class ZLinkSpotActorAdmissionCoordinator {
       snapshot = await transfer?.claimNativeActorLocation(
         actor,
         activation.spotRid,
-        this.options.locationClaim.meshNameForRelease()
+        activation.meshName
       );
       transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
       rollbackMembership = activation.commitActorJoin(actor);
-      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
       await transfer?.publishRoutedActorOwnership(actor);
     } catch (error) {
       rollbackMembership?.();
@@ -177,14 +178,14 @@ export class ZLinkSpotActorAdmissionCoordinator {
     try {
       transfer?.commitRoutedActor(actor, activation.spotRid, activation.spot);
       activation.commitActorJoin(actor);
-      await activation.serial.execute(() => activation.spot.onJoinedActor(actor));
+      await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
       const results = backlog.length === 0
         ? []
         : await this.replayActorBacklog(activation, actor, backlog);
       await transfer?.claimRoutedActorLocation(
         actor,
         activation.spotRid,
-        this.options.locationClaim.meshNameForRelease()
+        activation.meshName
       );
       await transfer?.publishRoutedActorOwnership(actor);
       return results;

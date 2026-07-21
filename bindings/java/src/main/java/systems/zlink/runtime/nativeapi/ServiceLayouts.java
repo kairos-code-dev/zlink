@@ -26,6 +26,10 @@ public final class ServiceLayouts {
     private static final MemoryLayout ROUTING_ID = NativeLayouts.ROUTING_ID_LAYOUT;
     private static final MemoryLayout ACTOR_REF = NativeLayouts.ACTOR_REF_LAYOUT;
 
+    public static final MemoryLayout MESH_METADATA_VIEW = MemoryLayout.structLayout(
+        PTR.withName("data"),
+        U64.withName("size"));
+
     private static MemoryLayout seq(int n) {
         return MemoryLayout.sequenceLayout(n, ValueLayout.JAVA_BYTE);
     }
@@ -164,6 +168,73 @@ public final class ServiceLayouts {
         U64.withName("spot_generation"),
         U64.withName("membership_epoch"));
 
+    public static final MemoryLayout ACTOR_CONTROL_RECORD = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("kind"),
+        pad(4),
+        ACTOR_REF.withName("previous_actor"),
+        ACTOR_REF.withName("current_actor"),
+        ROUTING_ID.withName("previous_spot_rid"),
+        ROUTING_ID.withName("current_spot_rid"),
+        U64.withName("previous_spot_generation"),
+        U64.withName("current_spot_generation"),
+        U64.withName("previous_membership_epoch"),
+        U64.withName("current_membership_epoch"),
+        I32.withName("result_code"),
+        pad(4));
+
+    public static final MemoryLayout ACTOR_JOIN_COMPLETION = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("join_result"),
+        pad(4),
+        ACTOR_REF.withName("actor"),
+        ACTOR_LOCATION.withName("location"));
+
+    public static final MemoryLayout ACTOR_TRANSFER_ID = MemoryLayout.structLayout(
+        U64.withName("high"),
+        U64.withName("low"));
+
+    public static final MemoryLayout ACTOR_TRANSFER_TOKEN = MemoryLayout.structLayout(
+        MemoryLayout.sequenceLayout(8, U64).withName("opaque"));
+
+    public static final MemoryLayout ACTOR_TRANSFER_PREPARE = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("role"),
+        pad(4),
+        ACTOR_TRANSFER_ID.withName("transfer_id"),
+        ACTOR_REF.withName("actor"),
+        U64.withName("expected_membership_epoch"),
+        ROUTING_ID.withName("peer_node_rid"),
+        U64.withName("final_sequence"),
+        U64.withName("reserve_message_count"),
+        U64.withName("reserve_byte_count"));
+
+    public static final MemoryLayout ACTOR_TRANSFER_PREPARE_RESULT = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("role"),
+        pad(4),
+        ACTOR_TRANSFER_ID.withName("transfer_id"),
+        ACTOR_REF.withName("actor"),
+        U64.withName("final_sequence"),
+        U64.withName("reserve_message_count"),
+        U64.withName("reserve_byte_count"));
+
+    public static final MemoryLayout ACTOR_TRANSFER_CONTROL = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("phase"),
+        I32.withName("role"),
+        ACTOR_TRANSFER_ID.withName("transfer_id"),
+        ACTOR_REF.withName("actor"),
+        U64.withName("membership_epoch"),
+        U64.withName("final_sequence"),
+        I32.withName("result_code"),
+        I32.withName("failure_errno"));
+
     public static final MemoryLayout SPOT_STATUS = MemoryLayout.structLayout(
         I32.withName("struct_size"),
         I32.withName("version"),
@@ -212,6 +283,7 @@ public final class ServiceLayouts {
         I32.withName("domain"),
         ROUTING_ID.withName("source_node_rid"),
         ROUTING_ID.withName("source_spot_rid"),
+        U64.withName("source_binding_generation"),
         ACTOR_REF.withName("source_actor"),
         U64.withName("operation_id_high"),
         U64.withName("operation_id_low"),
@@ -230,6 +302,17 @@ public final class ServiceLayouts {
         U64.withName("part_count"),
         I32.withName("terminal_result"),
         I32.withName("failure_errno"));
+
+    public static final MemoryLayout MESH_SEND_READY_DATA = MemoryLayout.structLayout(
+        I32.withName("struct_size"),
+        I32.withName("version"),
+        I32.withName("destination_kind"),
+        ROUTING_ID.withName("target_node_rid"),
+        ROUTING_ID.withName("target_spot_rid"),
+        pad(4),
+        ACTOR_REF.withName("target_actor"),
+        PTR.withName("channel_name"),
+        U64.withName("channel_name_size"));
 
     public static final MemoryLayout STREAM_SESSION_BINDING = MemoryLayout.structLayout(
         I32.withName("struct_size"),

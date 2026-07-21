@@ -17,11 +17,16 @@ public interface IMaintenanceStorePort
 /// </summary>
 public interface IOpsReportPort
 {
-    void ReportSpotEvent(string kind, string detail, DateTimeOffset occurredAt);
+    ValueTask ReportSpotEventAsync(
+        string kind,
+        string detail,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken);
 
-    void ReportNodeStatus(
+    ValueTask ReportNodeStatusAsync(
         string nodeRid,
         IReadOnlyList<string> zones,
         int playerCount,
-        bool maintenance);
+        bool maintenance,
+        CancellationToken cancellationToken);
 }

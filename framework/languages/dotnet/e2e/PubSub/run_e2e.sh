@@ -15,19 +15,7 @@ mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-LOCAL_READINESS_ATTEMPTS="$(
-  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
-import math
-import sys
-
-timeout = float(sys.argv[1])
-poll = float(sys.argv[2])
-print(max(1, math.ceil(timeout / poll)))
-PY
-)"
 
 PUBLISHER_PROJECT="$ROOT_DIR/Server/Publisher/PubSub.Publisher.csproj"
 SUBSCRIBER_PROJECT="$ROOT_DIR/Server/Subscriber/PubSub.Subscriber.csproj"
@@ -131,6 +119,34 @@ PY
   return 1
 }
 
+wait_evidence_contains() {
+  local file="$1"
+  local marker="$2"
+  local name="$3"
+  local deadline_ns
+  deadline_ns="$(python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while [[ "$(python3 - "$deadline_ns" <<'PY'
+import sys
+import time
+
+print("yes" if time.monotonic_ns() < int(sys.argv[1]) else "no")
+PY
+  )" == "yes" ]]; do
+    if [[ -f "$file" ]] && grep -Fq "$marker" "$file"; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name evidence: $marker" >&2
+  return 1
+}
+
 start_server() {
   local name="$1"
   local project="$2"
@@ -174,7 +190,12 @@ start_server pub-a "$PUBLISHER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$PUB_URL" pub-a
 
-sleep "$ROUTE_SETTLE_SECONDS"
+for sub in 1 2 3; do
+  wait_evidence_contains \
+    "$LOG_DIR/sub-$sub.evidence.log" \
+    "event=ConnectionReady" \
+    "sub-$sub publisher connection"
+done
 
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \

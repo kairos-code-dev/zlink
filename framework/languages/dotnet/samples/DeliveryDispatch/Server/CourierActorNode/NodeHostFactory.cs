@@ -37,19 +37,17 @@ public static class NodeHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel(configuration.Role.Name);
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            var mesh11 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
-                .Listen(node.SpotRouterEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.MeshEndpoint)
                 .SetRoutingId(node.Rid)
                 .SetEntrySpotRoutingId(node.Rid)
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
-            mesh11.ChannelName(SampleNames.CourierActorDiscovery);
+            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec §7.4).
-            var dispatchMesh = options.AddRouteMesh(SampleNames.DispatchChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(Systems.Zlink.RoutingId.From($"{configuration.Role.Name}-dispatch"));
-            dispatchMesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
         });
 
         return builder.Build();
@@ -71,24 +69,18 @@ public static class NodeHostFactory
         if (nodeRid == topology.CourierActorNode1Rid.ToString())
         {
             return new NodeOptions(
-                topology.CourierActorNode1Rid,
-                topology.CourierActorNode1RouterEndpoint,
-                topology.CourierActorNode1Endpoint);
+                topology.CourierActorNode1Rid);
         }
 
         if (nodeRid == topology.CourierActorNode2Rid.ToString())
         {
             return new NodeOptions(
-                topology.CourierActorNode2Rid,
-                topology.CourierActorNode2RouterEndpoint,
-                topology.CourierActorNode2Endpoint);
+                topology.CourierActorNode2Rid);
         }
 
         throw new InvalidOperationException($"Unknown courier actor node '{nodeRid}'.");
     }
 
     private sealed record NodeOptions(
-        Systems.Zlink.RoutingId Rid,
-        string SpotRouterEndpoint,
-        string SpotEndpoint);
+        Systems.Zlink.RoutingId Rid);
 }

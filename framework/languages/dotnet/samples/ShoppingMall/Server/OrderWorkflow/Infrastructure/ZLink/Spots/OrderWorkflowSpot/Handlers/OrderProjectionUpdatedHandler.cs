@@ -5,7 +5,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Spots.OrderWorkflowSpot.Handlers;
 
-[ZLinkSpotSubscriptionHandler(SampleNames.OrderProjectionTopic)]
+[ZLinkSpotSubscriptionHandler(SampleNames.OrderProjectionChannel, SampleNames.OrderProjectionTopic)]
 internal sealed class OrderProjectionUpdatedHandler(
     ILogger<OrderProjectionUpdatedHandler> logger)
     : IZLinkSpotSubscriptionHandler<OrderWorkflowSpot, OrderProjectionUpdatedEvent>

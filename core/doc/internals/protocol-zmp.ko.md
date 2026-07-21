@@ -60,7 +60,7 @@ request-reply 는 전용 공개 API 가 control part 를 앞에
 
 request-reply envelope 의 part 들은 ZMP `CONTROL` 프레임이 아니라
 application payload 앞에 붙는 일반 multipart 데이터 frame(`MORE` 플래그)으로
-전송된다. ZMP `CONTROL` 비트는 HELLO/READY/heartbeat 같은 프로토콜 control
+전송된다. ZMP `CONTROL` 비트는 HELLO/READY 같은 protocol control
 frame에만 쓰이며, decoder는 `CONTROL` 과 `MORE` 를 함께 켠 frame을 거부한다.
 
 ## 3. Handshake
@@ -130,11 +130,10 @@ sequenceDiagram
     D->>D: pending[seq=N] 매칭 → reply_handler 호출
 ```
 
-## 5. ZMP와 Mesh wire의 경계
+## 5. ZMP의 범위
 
-MeshNode 사이의 service 메시지는 ZMP가 아니라 mesh wire envelope
-(`'Z' 'M'` magic)을 사용하며, 그
-구조는 [서비스 계층 내부 설계 §5](services-internals.ko.md)가 설명한다.
+ZMP는 raw socket handshake, request-reply와 connection control frame만 정의한다. Application service
+topology나 stateful object protocol을 포함하지 않는다.
 
 ## 6. encode / decode 흐름
 

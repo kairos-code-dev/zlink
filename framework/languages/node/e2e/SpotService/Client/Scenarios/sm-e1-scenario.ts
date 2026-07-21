@@ -31,8 +31,8 @@ export async function runSmE1(options: ClientOptions): Promise<void> {
   ensure(missingCommand.sent, 'SM-E1 missing handler command was not sent.');
 
   const expectedEvidence = [
-    'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=failCaller|packet=MissingSpotReq',
-    'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotMsg'
+    'dispatch-error|surface=spot|kind=request|reason=no_handler|action=fail_caller|packet=MissingSpotReq',
+    'dispatch-error|surface=spot|kind=send|reason=no_handler|action=drop|packet=MissingSpotMsg'
   ];
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,

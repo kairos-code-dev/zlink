@@ -1,10 +1,10 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](../../../server/languages/java/01-system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Java STREAM](../../../server/languages/java/interfaces/stream-session.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](../../../server/languages/java/README.ko.md)
 
-[Java 묶음](../../../../java/README.ko.md) | [STREAM](../../../server/languages/java/01-system-structure.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
+[Java 묶음](../../../../java/README.ko.md) | [STREAM](../../../server/languages/java/interfaces/stream-session.ko.md) | [Samples](../../../../../../languages/java/samples/README.md)
 
 # Java/Kotlin Stream Connector
 
@@ -517,5 +517,5 @@ Java connector는 아래 테스트를 별도 suite로 가진다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: ZLink Framework Spring Boot STREAM](../../../server/languages/java/01-system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Java STREAM](../../../server/languages/java/interfaces/stream-session.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

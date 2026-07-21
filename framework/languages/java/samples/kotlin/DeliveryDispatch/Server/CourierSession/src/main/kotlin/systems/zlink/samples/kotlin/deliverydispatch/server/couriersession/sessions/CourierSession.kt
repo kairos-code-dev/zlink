@@ -80,7 +80,7 @@ class CourierSession(
         val spotRef = spots.resolveSpotHandle(nodeRid).await()
             .orElseThrow { IllegalStateException("spot not found: $nodeRid") }
         val found = routes
-            .requestToSpot(SampleNames.CourierSpotMesh, spotRef, FindCourierActorReq(courierId))
+            .requestToSpot(spotRef, FindCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
             .submit(FindCourierActorRes::class.java).await()
         val foundActor = found.actor
@@ -88,7 +88,7 @@ class CourierSession(
             return foundActor
         }
         return routes
-            .requestToSpot(SampleNames.CourierSpotMesh, spotRef, EnsureCourierActorReq(courierId))
+            .requestToSpot(spotRef, EnsureCourierActorReq(courierId))
             .timeout(SampleTimings.RequestTimeout)
             .submit(EnsureCourierActorRes::class.java).await()
             .actor

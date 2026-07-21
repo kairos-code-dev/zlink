@@ -87,6 +87,7 @@ final class NativeMeshNodeMonitor implements MeshNodeMonitor {
 
     private static MeshMonitorEvent convertEvent(MemorySegment e) {
         MemoryLayout layout = ServiceLayouts.MESH_MONITOR_EVENT;
+        MeshMonitorEventKind kind = MeshMonitorEventKind.fromValue(i(e, "kind"));
         RoutingId peer = NativeRoutingIds.readAllowEmptyValue(e.asSlice(
             ServiceLayouts.off(layout, "peer_rid"),
             NativeLayouts.ROUTING_ID_LAYOUT.byteSize()));
@@ -99,10 +100,13 @@ final class NativeMeshNodeMonitor implements MeshNodeMonitor {
         String channel = NativeHelpers.fromCString(e.asSlice(
             ServiceLayouts.off(layout, "channel_name"), 256), 256);
         return new MeshMonitorEvent(
-            MeshMonitorEventKind.fromValue(i(e, "kind")),
+            kind,
             l(e, "timestamp_ms"), l(e, "mesh_lifecycle_generation"),
             l(e, "mesh_descriptor_revision"),
-            MeshNodeState.fromValue(i(e, "mesh_state")), peer,
+            kind == MeshMonitorEventKind.STATE_CHANGED
+                ? MeshNodeState.fromValue(i(e, "mesh_state"))
+                : null,
+            peer,
             l(e, "peer_lifecycle_generation"), l(e, "peer_descriptor_revision"),
             ownerKindOrNull(i(e, "owner_kind")), spot, actor, channel,
             new OperationId(l(e, "operation_id_high"), l(e, "operation_id_low")),

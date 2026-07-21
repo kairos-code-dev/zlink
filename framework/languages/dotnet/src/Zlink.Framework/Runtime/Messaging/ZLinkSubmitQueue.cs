@@ -14,14 +14,15 @@ internal sealed class ZLinkSubmitQueue
             : throw new ArgumentOutOfRangeException(nameof(capacity));
     }
 
-    public void Enqueue(PendingSubmit pending)
+    public bool TryEnqueue(PendingSubmit pending)
     {
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_pending.Count >= _capacity) throw new InvalidOperationException("ZLink async submit queue is full.");
+            if (_pending.Count >= _capacity) return false;
 
             _pending.Enqueue(pending);
+            return true;
         }
     }
 
@@ -31,6 +32,14 @@ internal sealed class ZLinkSubmitQueue
         {
             pending = _pending.Count > 0 ? _pending.Peek() : null;
             return pending is not null;
+        }
+    }
+
+    public int Count
+    {
+        get
+        {
+            lock (_gate) return _pending.Count;
         }
     }
 
@@ -48,6 +57,37 @@ internal sealed class ZLinkSubmitQueue
         }
 
         pending = null;
+        return false;
+    }
+
+    public bool TryRemove(PendingSubmit expected, out PendingSubmit? pending)
+    {
+        pending = null;
+        lock (_gate)
+        {
+            if (_pending.Count == 0)
+            {
+                return false;
+            }
+
+            var removed = false;
+            var count = _pending.Count;
+            for (var index = 0; index < count; index++)
+            {
+                var candidate = _pending.Dequeue();
+                if (!removed && ReferenceEquals(candidate, expected))
+                {
+                    pending = candidate;
+                    removed = true;
+                    continue;
+                }
+
+                _pending.Enqueue(candidate);
+            }
+
+            if (removed) return true;
+        }
+
         return false;
     }
 

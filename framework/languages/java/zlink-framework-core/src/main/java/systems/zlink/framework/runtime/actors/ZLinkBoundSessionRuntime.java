@@ -22,6 +22,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -40,6 +41,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkActor actor;
     private final ZLinkStreamCodec defaultCodec;
     private final Predicate<RoutingId> routeReady;
+    private final ZLinkRelayMetadataPolicy metadataPolicy;
     private long bindingToken;
     private Runnable unbindListener = () -> {};
     private Consumer<ZLinkBackendActorRef> rebindListener = ignored -> {};
@@ -53,7 +55,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkActorRuntime actorRuntime,
         ZLinkActor actor,
         ZLinkStreamCodec defaultCodec,
-        Predicate<RoutingId> routeReady) {
+        Predicate<RoutingId> routeReady,
+        ZLinkRelayMetadataPolicy metadataPolicy) {
         this.stream = stream;
         this.spotNode = spotNode;
         this.sessionRid = sessionRid;
@@ -63,6 +66,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         this.actor = actor;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
         this.routeReady = routeReady == null ? ignored -> true : routeReady;
+        this.metadataPolicy =
+            metadataPolicy == null ? ZLinkRelayMetadataPolicy.EMPTY : metadataPolicy;
     }
 
     void setBindingToken(long bindingToken) {
@@ -165,7 +170,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             sessionRid,
             actorId,
             encoded.payload(),
-            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec));
+            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec),
+            metadataPolicy);
     }
 
     @Override
@@ -183,14 +189,28 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId sessionRid,
         String actorId,
         Message payload,
-        ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
+        ZLinkBoundSessionSendOptions options,
+        ZLinkRelayMetadataPolicy metadataPolicy,
+        systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+        implements ZLinkBoundSessionSendCall {
+        SendCall(
+            ZLinkBackendStreamSocket stream,
+            RoutingId sessionRid,
+            String actorId,
+            Message payload,
+            ZLinkBoundSessionSendOptions options,
+            ZLinkRelayMetadataPolicy metadataPolicy) {
+            this(stream, sessionRid, actorId, payload, options, metadataPolicy,
+                new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+        }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
                 stream,
                 sessionRid,
                 actorId,
                 payload,
-                options.withPacketName(packetName));
+                options.withPacketName(packetName),
+                metadataPolicy);
         }
 
         @Override
@@ -200,47 +220,36 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 sessionRid,
                 actorId,
                 payload,
-                options.withMetadata(key, value));
+                options.withMetadata(key, value),
+                metadataPolicy);
         }
 
         @Override
-        public void submit() {
+        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+                submitGate.begin();
+            if (duplicate != null) {
+                return duplicate;
+            }
             byte[] payloadBytes;
             try {
                 payloadBytes = payload.toByteArray();
             } finally {
                 payload.close();
             }
-            ZLinkStreamHeader header = options.header();
-            sendWithRetry(stream, sessionRid, header, payloadBytes, actorId)
-                .exceptionally(error -> {
-                    java.util.logging.Logger.getLogger(ZLinkBoundSessionRuntime.class.getName())
-                        .log(java.util.logging.Level.SEVERE, "bound-session send failed", error);
-                    return null;
-                });
+            ZLinkStreamHeader header = metadataPolicy.actorToSession(options).header();
+            Message payloadPart = Message.from(payloadBytes);
+            return ZLinkSubmitResults.submitAsync(
+                stream,
+                ZLinkBackendAdmissionKey.socket(),
+                () -> stream.send(
+                    sessionRid,
+                    header,
+                    List.of(payloadPart),
+                    SendFlags.DONT_WAIT),
+                payloadPart::close);
         }
 
-    }
-
-    private static CompletionStage<Void> sendWithRetry(
-        ZLinkBackendStreamSocket stream,
-        RoutingId sessionRid,
-        ZLinkStreamHeader header,
-        byte[] payloadBytes,
-        String actorId) {
-        return ZLinkActorRetryScheduler.submitRelayUntilAcceptedAsync(
-            DEFAULT_TIMEOUT,
-            () -> {
-                try (Message payloadPart = Message.from(payloadBytes)) {
-                    return stream.send(
-                        sessionRid,
-                        header,
-                        List.of(payloadPart),
-                        SendFlags.DONT_WAIT);
-                }
-            },
-            () -> new ZLinkConfigurationException(
-                "bound session send failed: " + actorId));
     }
 
 }

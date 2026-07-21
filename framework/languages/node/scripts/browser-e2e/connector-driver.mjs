@@ -47,7 +47,7 @@ async function createBrowserConnectorDriver(options = {}) {
       [packetName, payload, compress]
     ),
     state: () => page.evaluate(() => window.zlinkBrowserConnector.state()),
-    waitForCloseReason: async (reason, timeoutMs = 7000) => {
+    waitForCloseReason: async (reason, timeoutMs = 3000) => {
       await page.waitForFunction(
         (expected) => window.zlinkBrowserConnector.state().closeReason === expected,
         reason,

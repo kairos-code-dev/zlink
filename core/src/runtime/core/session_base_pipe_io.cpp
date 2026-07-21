@@ -74,18 +74,33 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
 
 int zlink::session_base_t::pull_msg (msg_t *msg_)
 {
-    if (!_pipe || !_pipe->read (msg_)) {
-        errno = EAGAIN;
-        return -1;
+    while (true) {
+        if (!_pipe || !_pipe->read (msg_)) {
+            errno = EAGAIN;
+            return -1;
+        }
+        const bool more = (msg_->flags () & msg_t::more) != 0;
+        const uint64_t stamped = msg_->transport_connection_id ();
+        const uint64_t current = _pipe->get_transport_connection_id ();
+        if (_dropping_stale_transport_message
+            || (stamped != 0 && stamped != current)) {
+            _dropping_stale_transport_message = more;
+            const int close_rc = msg_->close ();
+            errno_assert (close_rc == 0);
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            continue;
+        }
+        _incomplete_in = more;
+        return 0;
     }
-
-    _incomplete_in = (msg_->flags () & msg_t::more) != 0;
-
-    return 0;
 }
 
 int zlink::session_base_t::push_msg (msg_t *msg_)
 {
+    if (_pipe)
+        msg_->set_transport_connection_id (
+          _pipe->get_transport_connection_id ());
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe () && !msg_->is_cancel ()) {
         trace_router_session_push (_socket, msg_, session_push_trace_command);
         if (_socket) {

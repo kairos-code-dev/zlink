@@ -6,14 +6,7 @@ const { NestFactory } = require('@nestjs/core');
 const framework = require('../../packages/framework/dist/internal');
 const nestjs = require('../../packages/nestjs/dist');
 
-test('Node registration rejects server and subscriber capabilities without matching handlers', () => {
-  assert.throws(
-    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
-      builder.addClientServerChannel('api').enableServer('tcp://127.0.0.1:0');
-    })),
-    /server must register at least one request or send handler/
-  );
-
+test('Node registration rejects subscriber capability without matching handlers', () => {
   assert.throws(
     () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
       builder.addFanoutChannel('events').enableSubscriber('tcp://127.0.0.1:1');
@@ -22,15 +15,7 @@ test('Node registration rejects server and subscriber capabilities without match
   );
 });
 
-test('Node module registration rejects server and subscriber capabilities without matching handlers', () => {
-  assert.throws(
-    () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addClientServerChannel('api')
-        .enableServer('tcp://127.0.0.1:0')
-      .build()),
-    /server must register at least one request or send handler/
-  );
-
+test('Node module registration rejects subscriber capability without matching handlers', () => {
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
       .addFanoutChannel('events')
@@ -40,30 +25,48 @@ test('Node module registration rejects server and subscriber capabilities withou
   );
 });
 
-test('Node registration rejects incomplete SpotNode capabilities before startup', async () => {
+test('Node registration rejects incomplete MeshNode capabilities before startup', async () => {
   await assertNestStartupRejects(
     nestjs.zlinkFramework()
-      .addSpotMesh('empty')
+      .addRouteMesh('empty')
       .build(),
     /must enable router or pubSub capability/
   );
 
   await assertNestStartupRejects(
     nestjs.zlinkFramework()
-      .addSpotMesh('missing-bind')
-        .enableRouter(undefined)
+      .addRouteMesh('missing-bind')
+        .listen(undefined)
       .build(),
     /router must define a bind endpoint/
   );
 
-  class ActorFactory {}
-  await assertNestStartupRejects(
-    nestjs.zlinkFramework()
-      .addSpotMesh('actors')
-        .enablePubSub('tcp://127.0.0.1:0')
-        .actorFactory('player', ActorFactory)
-      .build(),
-    /must enable router capability when actor factories are registered/
+});
+
+test('Node registration requires durable Actor transfer authority when transfer adapters are enabled', () => {
+  class Player {}
+  class PlayerTransferAdapter {}
+  const base = {
+    actorTransferAdapters: new Map([[Player, PlayerTransferAdapter]])
+  };
+
+  assert.throws(
+    () => framework.createFrameworkRegistration(base),
+    /Actor transfer adapters require a durable location store with Actor transfer authority/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({
+      ...base,
+      locations: { useInMemoryStores: true }
+    }),
+    /Actor transfer adapters require a durable location store with Actor transfer authority/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({
+      ...base,
+      locations: { storeInstance: { updateActor() {} } }
+    }),
+    /Actor transfer adapters require a durable location store with Actor transfer authority/
   );
 });
 
@@ -121,6 +124,71 @@ test('Node registration rejects invalid Spot timer options before startup', () =
     })),
     /MaxCatchUpTicks must be greater than zero/
   );
+});
+
+test('Node one-way send timeout accepts only integer milliseconds in the public range', () => {
+  const invalid = [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648];
+  for (const sendTimeoutMs of invalid) {
+    assert.throws(
+      () => framework.createFrameworkRegistration({
+        channels: {
+          api: {
+            client: {
+              manualConnections: ['tcp://127.0.0.1:7101'],
+              sendTimeoutMs
+            }
+          }
+        }
+      }),
+      /between 1 and 2147483647 milliseconds/
+    );
+    assert.throws(
+      () => framework.createFrameworkRegistration({
+        spotNodes: {
+          play: {
+            router: { bind: 'tcp://127.0.0.1:7102' },
+            publisherConfig: { sendTimeoutMs }
+          }
+        }
+      }),
+      /between 1 and 2147483647 milliseconds/
+    );
+  }
+
+  framework.createFrameworkRegistration({
+    channels: {
+      api: {
+        client: {
+          manualConnections: ['tcp://127.0.0.1:7101'],
+          sendTimeoutMs: 2_147_483_647
+        }
+      }
+    }
+  });
+});
+
+test('Node live socket send timeout setter applies the same public range', () => {
+  const socket = {
+    peerWeight: 100,
+    sendHighWaterMark: 1000,
+    receiveHighWaterMark: 1000,
+    sendTimeoutMs: 1000,
+    maxMessageSize: 1024
+  };
+  const options = new framework.DefaultZLinkChannelRuntimeOptions(() => ({
+    clientServerServerSocket() { return socket; },
+    routeMeshSocket() { return socket; }
+  }));
+  const config = options.serverChannel('api');
+
+  for (const sendTimeoutMs of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
+    assert.throws(
+      () => { config.sendTimeoutMs = sendTimeoutMs; },
+      /between 1 and 2147483647 milliseconds/
+    );
+  }
+  config.sendTimeoutMs = 2_147_483_647;
+  assert.equal(socket.sendTimeoutMs, 2_147_483_647);
 });
 
 async function assertNestStartupRejects(options, pattern) {

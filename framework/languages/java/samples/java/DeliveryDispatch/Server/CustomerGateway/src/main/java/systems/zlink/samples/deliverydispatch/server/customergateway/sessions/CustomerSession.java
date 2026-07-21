@@ -56,7 +56,7 @@ public final class CustomerSession implements ZLinkSession {
                 default -> throw new IllegalStateException(
                     "Exactly one customer actor must be bound before relaying packet '" + dispatch.packetName() + "'");
             };
-            return actor.relay(payload);
+            return actor.relay(payload).thenApply(ignored -> null);
         });
     }
 }

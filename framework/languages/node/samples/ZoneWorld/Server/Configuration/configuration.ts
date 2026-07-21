@@ -11,10 +11,6 @@ type SharedSettings = {
 type ZoneNodeSettings = {
   nodeId: string;
   spotRouterEndpoint: string;
-  spotPubSubEndpoint: string;
-  opsChannelEndpoint: string;
-  actorsChannelEndpoint: string;
-  bridgeEndpoint: string;
   faultTickZone?: string | null;
   disableBots?: boolean;
   botStartSignalPath?: string;
@@ -23,7 +19,6 @@ type ZoneNodeSettings = {
 type GatewaySettings = {
   streamEndpoint: string;
   spotRouterEndpoint: string;
-  spotPubSubEndpoint: string;
 };
 
 type OpsSettings = {
@@ -107,10 +102,9 @@ function validateConfiguration(
 function roleKeys(role: keyof Omit<ZoneWorldConfiguration, 'shared'>): readonly string[] {
   switch (role) {
     case 'zoneNode': return [
-      'nodeId', 'spotRouterEndpoint', 'spotPubSubEndpoint', 'opsChannelEndpoint',
-      'actorsChannelEndpoint', 'bridgeEndpoint'
+      'nodeId', 'spotRouterEndpoint'
     ];
-    case 'gateway': return ['streamEndpoint', 'spotRouterEndpoint', 'spotPubSubEndpoint'];
+    case 'gateway': return ['streamEndpoint', 'spotRouterEndpoint'];
     case 'ops': return ['streamEndpoint', 'broadcastEndpoint', 'reportEndpoint'];
     case 'client': return ['gatewayEndpoint', 'opsEndpoint'];
   }

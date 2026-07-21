@@ -83,8 +83,18 @@ internal sealed class MeshEventRecorder(
                 : @event.Reason ?? @event.Identifier
         };
         evidence.Add(
-            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
-            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}");
+            $"monitor-mesh|source={@event.MeshName}|identifier={@event.Identifier}|kind={kind}"
+            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}"
+            + $"|generation={@event.LifecycleGeneration}"
+            + $"|revision={@event.DescriptorRevision}"
+            + $"|channel={@event.ChannelName}|state={@event.State}"
+            + $"|remote-snapshot={@event.RemoteSnapshotCount}"
+            + $"|remote-admitted={@event.RemoteAdmittedCount}"
+            + $"|remote-dropped={@event.RemoteDroppedCount}"
+            + $"|local-snapshot={@event.LocalSnapshotCount}"
+            + $"|local-admitted={@event.LocalAdmittedCount}"
+            + $"|local-dropped={@event.LocalDroppedCount}"
+            + $"|reason={@event.Reason}");
 
         // The peer's channel weight lives in its descriptor row (a weight
         // change bumps the descriptor revision, which raised this event);
@@ -95,9 +105,11 @@ internal sealed class MeshEventRecorder(
         {
             try
             {
-                var rows = await locations.ListMeshNodeDescriptorsAsync(
-                    @event.MeshName, cancellationToken);
-                var row = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer);
+                var row = await WaitForDescriptorRevisionAsync(
+                    @event.MeshName,
+                    peer,
+                    @event.DescriptorRevision ?? 0,
+                    cancellationToken);
                 if (row is not null
                     && row.ChannelWeights.TryGetValue(@event.MeshName, out var weight)
                     && (!LastKnownWeights.TryGetValue(peer, out var known) || known != weight))
@@ -108,10 +120,31 @@ internal sealed class MeshEventRecorder(
                         + $"|remote={row.Endpoint}|routing={peer}|value={weight}");
                 }
             }
-            catch (Exception)
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
             {
-                // Store reads may fail during shutdown; the next event retries.
+                // Store reads may fail during shutdown; a later event retries.
             }
+        }
+    }
+
+    private async ValueTask<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor?>
+        WaitForDescriptorRevisionAsync(
+            string meshName,
+            string peer,
+            ulong minimumRevision,
+            CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            var rows = await locations.ListMeshNodeDescriptorsAsync(
+                meshName, cancellationToken);
+            var row = rows.FirstOrDefault(entry => entry.Rid.ToString() == peer);
+            if (row is not null && row.DescriptorRevision >= minimumRevision)
+                return row;
+            if (DateTimeOffset.UtcNow >= deadline)
+                return row;
+            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
         }
     }
 }

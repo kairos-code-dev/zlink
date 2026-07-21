@@ -1,3 +1,4 @@
+import { ZLinkSpotKind } from '../../contracts';
 import type {
   RoutingId,
   SpotHandle,
@@ -6,10 +7,11 @@ import type {
   ZLinkPublishCall,
   ZLinkRequestCall,
   ZLinkSendCall,
+  ZLinkMessageMetadata,
+  ZLinkSubmitResult,
   ZLinkSpotOutbound,
   ZLinkSpotPublisherClient
 } from '../../contracts';
-import { ZLinkSpotKind } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
 import {
@@ -18,6 +20,7 @@ import {
 } from '../../contracts/Errors/ZLinkFrameworkException';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
+import { captureZLinkExecutionTurn } from '../execution';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import type { ZLinkSpotRouteTarget } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
@@ -35,7 +38,9 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly spotPublisherClient?: ZLinkSpotPublisherClient,
     private readonly routedTransport?: ZLinkSpotRoutedTransport,
     private readonly spotRouterChannelIdForMesh: (meshName: string) => string = (meshName) => meshName,
-    private readonly sourceSpotProvider?: () => ZLinkBackendSpot | undefined
+    private readonly sourceSpotProvider?: () => ZLinkBackendSpot | undefined,
+    private readonly meshName?: string,
+    private readonly channelMeshNameForChannel?: (channelName: string) => string | undefined
   ) {}
 
   sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall {
@@ -60,19 +65,28 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  publish(topic: string, event: unknown): ZLinkPublishCall {
+  publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall {
     if (this.spotPublisherClient !== undefined) {
-      return wrapPublishCall(this.serial, this.spotPublisherClient.publish('', topic, event));
+      return wrapPublishCall(
+        this.serial,
+        this.spotPublisherClient.publish(this.requireMeshName(), channelName, topic, event)
+      );
     }
     throw new ZLinkConfigurationException('Spot outbound publish requires a configured Spot publisher client.');
   }
 
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall {
-    return wrapSendCall(this.serial, this.requireChannelClient().sendToChannel(channelName, message));
+    return wrapSendCall(
+      this.serial,
+      this.requireChannelClient().sendToChannel(this.resolveChannelMeshName(channelName), channelName, message)
+    );
   }
 
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
-    return wrapRequestCall(this.serial, this.requireChannelClient().requestToChannel(channelName, request));
+    return wrapRequestCall(
+      this.serial,
+      this.requireChannelClient().requestToChannel(this.resolveChannelMeshName(channelName), channelName, request)
+    );
   }
 
   private requireChannelClient(): ZLinkChannelClient {
@@ -80,6 +94,17 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
       throw new ZLinkConfigurationException('Spot channel outbound runtime is not started.');
     }
     return this.channelClient;
+  }
+
+  private requireMeshName(): string {
+    if (this.meshName === undefined || this.meshName.length === 0) {
+      throw new ZLinkConfigurationException('Spot channel outbound requires a MeshName context.');
+    }
+    return this.meshName;
+  }
+
+  private resolveChannelMeshName(channelName: string): string {
+    return this.channelMeshNameForChannel?.(channelName) ?? this.requireMeshName();
   }
 
   private requireRoutedTransport(): ZLinkSpotRoutedTransport {
@@ -95,13 +120,13 @@ export interface ZLinkSpotRoutedTransport {
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
     options: ZLinkSpotRoutedSendOptions
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
   sendFromSpotToSpot?(
     sourceSpot: ZLinkBackendSpot,
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
     options: ZLinkSpotRoutedSendOptions
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
   requestToSpot<TReply = unknown>(
     spotRouteTarget: ZLinkSpotRouteTarget,
     request: unknown,
@@ -118,6 +143,7 @@ export interface ZLinkSpotRoutedTransport {
 export interface ZLinkSpotRoutedSendOptions {
   readonly packetName?: string;
   readonly signal?: AbortSignal;
+  readonly metadata?: ReadonlyMap<string, string>;
 }
 
 export interface ZLinkSpotRoutedRequestOptions extends ZLinkSpotRoutedSendOptions {
@@ -125,22 +151,28 @@ export interface ZLinkSpotRoutedRequestOptions extends ZLinkSpotRoutedSendOption
 }
 
 function wrapSendCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkSendCall): ZLinkSendCall {
-  return wrapFireAndForgetPacketCall(serial, inner);
+  return {
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      if (typeof key === 'string') inner.metadata(key, value!);
+      else inner.metadata(key);
+      return this;
+    },
+    async submit(signal?: AbortSignal) {
+      const result = await serial.execute(() => inner.submit(signal));
+      return result;
+    }
+  };
 }
 
 function wrapPublishCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkPublishCall): ZLinkPublishCall {
-  return wrapFireAndForgetPacketCall(serial, inner);
-}
-
-function wrapFireAndForgetPacketCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkSendCall): ZLinkSendCall;
-function wrapFireAndForgetPacketCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkPublishCall): ZLinkPublishCall;
-function wrapFireAndForgetPacketCall(
-  serial: ZLinkSpotSerialExecutor,
-  inner: ZLinkSendCall | ZLinkPublishCall
-): ZLinkSendCall {
   return {
-    submit() {
-      void serial.execute(() => inner.submit()).catch(() => undefined);
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      if (typeof key === 'string') inner.metadata(key, value!);
+      else inner.metadata(key);
+      return this;
+    },
+    submit(signal?: AbortSignal) {
+      return serial.execute(() => inner.submit(signal));
     }
   };
 }
@@ -149,6 +181,11 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
   const begin = <TReply>(signal?: AbortSignal) =>
     startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
   return {
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      if (typeof key === 'string') inner.metadata(key, value!);
+      else inner.metadata(key);
+      return this;
+    },
     timeout(timeoutMs: number) {
       inner.timeout(timeoutMs);
       return this;
@@ -159,7 +196,9 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
     },
     yield<TReply>(signal?: AbortSignal) {
       const pending = begin<TReply>(signal);
-      return serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
+      const executionTurn = captureZLinkExecutionTurn();
+      return executionTurn?.yieldPromise(pending)
+        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
     }
   };
 }
@@ -185,16 +224,32 @@ function wrapRoutedSpotSendCall(
   spotRouterChannelIdForMesh: (meshName: string) => string,
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
 ): ZLinkSendCall {
+  const metadata = new Map<string, string>();
   return {
-    submit() {
-      void serial.execute(async () => {
-        await sendToSpotHandle(
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      if (typeof key === 'string') {
+        metadata.set(key, value!);
+      } else {
+        for (const [selectedKey, selectedValue] of key.values) {
+          metadata.set(selectedKey, selectedValue);
+        }
+      }
+      return this;
+    },
+    async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+      return await serial.execute(async () => {
+        return await sendToSpotHandle(
           transport,
           spot,
           message,
-          { spotRouterChannelIdForMesh, sourceSpot: sourceSpotProvider?.() }
+          {
+            metadata,
+            signal,
+            spotRouterChannelIdForMesh,
+            sourceSpot: sourceSpotProvider?.()
+          }
         );
-      }).catch(() => undefined);
+      });
     }
   };
 }
@@ -208,15 +263,27 @@ function wrapRoutedSpotRequestCall(
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
 ): ZLinkRequestCall {
   let selectedTimeoutMs: number | undefined;
+  const metadata = new Map<string, string>();
   const begin = <TReply>(signal?: AbortSignal) => startRequestOnSerial<TReply>(serial, () => ({
     pending: requestToSpotHandle<TReply>(transport, spot, request, {
       timeoutMs: selectedTimeoutMs,
       signal,
+      metadata,
       spotRouterChannelIdForMesh,
       sourceSpot: sourceSpotProvider?.()
     })
   }));
   return {
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      if (typeof key === 'string') {
+        metadata.set(key, value!);
+      } else {
+        for (const [metadataKey, metadataValue] of key.values) {
+          metadata.set(metadataKey, metadataValue);
+        }
+      }
+      return this;
+    },
     timeout(timeoutMs: number) {
       selectedTimeoutMs = timeoutMs;
       return this;
@@ -227,12 +294,15 @@ function wrapRoutedSpotRequestCall(
     },
     yield<TReply>(signal?: AbortSignal) {
       const pending = begin<TReply>(signal);
-      return serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending);
+      const executionTurn = captureZLinkExecutionTurn();
+      return executionTurn?.yieldPromise(pending)
+        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
     }
   };
 }
 
 export interface ZLinkSpotHandleCallOptions {
+  readonly metadata?: ReadonlyMap<string, string>;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
   readonly spotRouterChannelIdForMesh?: (meshName: string) => string;
@@ -244,20 +314,24 @@ export async function sendToSpotHandle(
   spot: SpotHandle,
   message: unknown,
   options: ZLinkSpotHandleCallOptions = {}
-): Promise<void> {
+): Promise<ZLinkSubmitResult> {
   const packetName = resolveFrameworkPacketName(message, undefined, 'SPOT');
   const target = spotRefToSpotRouteTarget(
     await requireSpotRef(spot, options.signal),
     options.spotRouterChannelIdForMesh
   );
   if (options.sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
-    await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
+    return await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
       packetName,
-      signal: options.signal
+      signal: options.signal,
+      metadata: options.metadata
     });
-    return;
   }
-  await transport.sendToSpot(target, message, { packetName, signal: options.signal });
+  return await transport.sendToSpot(target, message, {
+    packetName,
+    signal: options.signal,
+    metadata: options.metadata
+  });
 }
 
 export async function requestToSpotHandle<TReply = unknown>(
@@ -272,7 +346,8 @@ export async function requestToSpotHandle<TReply = unknown>(
     const transportOptions = {
       packetName,
       timeoutMs: options.timeoutMs,
-      signal: options.signal
+      signal: options.signal,
+      metadata: options.metadata
     };
     if (options.sourceSpot !== undefined && transport.requestFromSpotToSpot !== undefined) {
       return await transport.requestFromSpotToSpot<TReply>(
@@ -327,7 +402,8 @@ function spotRefToSpotRouteTarget(
     routerChannelId: spotRouterChannelIdForMesh(spot.meshName),
     targetNodeRid: normalizeSpotRefRoutingId(spot.nodeRid),
     spotRid: normalizeSpotRefRoutingId(spot.spotRid),
-    spotKind: spot.spotKind ?? ZLinkSpotKind.User
+    spotKind: spot.spotKind ?? ZLinkSpotKind.User,
+    targetSpotGeneration: spot.spotGeneration
   };
 }
 

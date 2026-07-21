@@ -28,7 +28,7 @@
 namespace zlink::framework::detail
 {
 
-class spot_node_builder_state_t;
+struct mesh_node_builder_state_t;
 class channel_runtime_state_t;
 class monitoring_runtime_state_t;
 class stream_runtime_state_t;
@@ -89,13 +89,27 @@ class route_client_state_t
 class channel_runtime_state_t
 {
   public:
+    using mesh_node_send_t = std::function<result_t<void> (
+      const zlink::routing_id_t &,
+      runtime::messaging::message_parts_t)>;
+    using mesh_node_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
+      const zlink::routing_id_t &,
+      runtime::messaging::message_parts_t,
+      std::chrono::milliseconds)>;
+    using mesh_channel_send_t = std::function<result_t<void> (
+      runtime::messaging::message_parts_t)>;
+    using mesh_channel_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
+      runtime::messaging::message_parts_t,
+      std::chrono::milliseconds)>;
     using spot_mesh_send_t = std::function<result_t<void> (
       const zlink::routing_id_t &,
       const zlink::routing_id_t &,
+      std::uint64_t,
       runtime::messaging::message_parts_t)>;
     using spot_mesh_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
       const zlink::routing_id_t &,
       const zlink::routing_id_t &,
+      std::uint64_t,
       runtime::messaging::message_parts_t,
       std::chrono::milliseconds)>;
 
@@ -122,6 +136,10 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_native_client_t>> native_clients;
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
+    std::map<std::string, mesh_node_send_t> mesh_node_senders;
+    std::map<std::string, mesh_node_request_t> mesh_node_requesters;
+    std::map<std::string, mesh_channel_send_t> mesh_channel_senders;
+    std::map<std::string, mesh_channel_request_t> mesh_channel_requesters;
     std::map<std::string, spot_mesh_send_t> spot_mesh_senders;
     std::map<std::string, spot_mesh_request_t> spot_mesh_requesters;
     std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
@@ -145,7 +163,7 @@ class zlink_builder_state_t
 
     std::string node_name;
     std::shared_ptr<channel_runtime_state_t> runtime = std::make_shared<channel_runtime_state_t> ();
-    std::map<std::string, std::shared_ptr<spot_node_builder_state_t>> spot_nodes;
+    std::map<std::string, std::shared_ptr<mesh_node_builder_state_t>> mesh_nodes;
     std::map<std::string, std::shared_ptr<route_channel_builder_state_t>> route_channels;
     std::shared_ptr<stream_runtime_state_t> stream_runtime =
       std::make_shared<stream_runtime_state_t> ();
@@ -198,6 +216,13 @@ class channel_runtime_t
     void bind_spot_mesh_transport (std::string mesh_name,
                                    channel_runtime_state_t::spot_mesh_send_t send,
                                    channel_runtime_state_t::spot_mesh_request_t request);
+    void bind_mesh_node_transport (std::string mesh_name,
+                                   channel_runtime_state_t::mesh_node_send_t send,
+                                   channel_runtime_state_t::mesh_node_request_t request);
+    void bind_mesh_channel_transport (
+      std::string channel_name,
+      channel_runtime_state_t::mesh_channel_send_t send,
+      channel_runtime_state_t::mesh_channel_request_t request);
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void mark_auto_connect_active ();

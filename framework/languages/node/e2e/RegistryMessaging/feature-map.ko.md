@@ -18,7 +18,7 @@
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
 | RM-C7 | done | public `addRouteMesh(meshName).channelName(channelName).setWeight(...)`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
 | RM-C8 | done | payload length/hash 왕복을 검증하고, server socket `maxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 확인한다. |
-| RM-C9 | 10.0.0 전환 대상 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복만 검증한다. non-blocking `trySubmit()`의 즉시 backpressure 결과와 blocking `submit()`의 bounded admission 결과를 직접 대조해야 한다. |
+| RM-C9 | 10.0.0 전환 대상 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복을 검증한다. `submit()`의 최초 non-blocking 시도, bounded wait와 timeout 결과를 직접 검증해야 한다. |
 
 검증:
 
@@ -39,5 +39,5 @@
 
 후속 계약 판정:
 
-- `RM-C9`: 기존 one-way send 제출과 recovery 증거는 보존하되, `trySubmit()`과 `submit()`의
+- 위 `RM-C9`의 기존 one-way send 제출과 recovery 증거는 보존하되, `submit()`의 최초 시도와 bounded wait의
   public admission 결과를 대조한 후에만 10.0.0 완료로 바꾼다.

@@ -18,6 +18,7 @@ DEFAULT_SCENARIOS=(
   ToActorMessaging
   SpotActorTransfer
   ObservabilityOps
+  SubmitAdmission
 )
 START_ORDER_CONFIGS=(RegistryMessaging SpotService ToActorMessaging)
 START_ORDER_MODES=(reverse "shuffle:20260715")

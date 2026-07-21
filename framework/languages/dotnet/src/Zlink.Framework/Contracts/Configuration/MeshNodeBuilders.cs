@@ -5,12 +5,6 @@ namespace Zlink.Framework.Contracts.Configuration;
 // AddRouteMesh(meshName) registers one process-local MeshNode; ChannelName(...)
 // adds an immutable logical membership + handler namespace without a new socket.
 
-public enum ZLinkMeshNodeDrainPolicy
-{
-    DrainNatural = 0,
-    ReleaseAndRecreate = 1
-}
-
 public readonly record struct ZLinkMeshPeerConnection(
     string Endpoint,
     RoutingId? ExpectedRoutingId);
@@ -37,6 +31,10 @@ public interface IZLinkMeshNodeSocketConfig
 
     int ReceiveHighWaterMark { get; set; }
 
+    ulong MailboxMessageBudget { get; set; }
+
+    ulong MailboxByteBudget { get; set; }
+
     TimeSpan? ReceiveTimeout { get; set; }
 
     TimeSpan? SendTimeout { get; set; }
@@ -45,6 +43,8 @@ public interface IZLinkMeshNodeSocketConfig
 public interface IZLinkMeshChannelBuilder
 {
     IZLinkMeshChannelBuilder SetWeight(int weight);
+
+    IZLinkMeshChannelBuilder AddHandlerGroup(string groupName);
 
     IZLinkMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
@@ -77,8 +77,6 @@ public interface IZLinkMeshNodeBuilder
 
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
 
-    IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy);
-
     IZLinkMeshPeerConnections PeerConnections { get; }
 
     IZLinkMeshNodeBuilder SetDefaultRequestTimeout(TimeSpan timeout);
@@ -101,6 +99,11 @@ public interface IZLinkMeshNodeBuilder
 
     IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot;
+
+    IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
+        string instanceSpotType,
+        ZLinkInstanceSpotFactoryOptions? options = null)
+        where TSpot : class, IZLinkInstanceSpot;
 
     IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;

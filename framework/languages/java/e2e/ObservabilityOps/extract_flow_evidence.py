@@ -230,15 +230,13 @@ if SELECTOR in ("all", "OBS-C2"):
     }, indent=2) + "\n", encoding="utf-8")
 
 if SELECTOR in ("all", "OBS-C3"):
-    natural = json.loads((LOG_DIR / "c3-natural-during.json").read_text(encoding="utf-8"))
-    closed = json.loads((LOG_DIR / "c3-natural-close-room.json").read_text(encoding="utf-8"))
-    released = json.loads((LOG_DIR / "c3-release-terminal.json").read_text(encoding="utf-8"))
+    drained = json.loads((LOG_DIR / "c3-fixed-terminal.json").read_text(encoding="utf-8"))
     read_output = "\n".join(lines("c3-read.stdout.log"))
-    metrics = load_metrics("c3-natural-metrics.json") + load_metrics("c3-release-metrics.json")
+    metrics = load_metrics("c3-fixed-metrics.json")
     (OUT_DIR / "OBS-C3.json").write_text(json.dumps({
         "scenario": "OBS-C3",
-        "naturalRoomKeptUntilClose": not natural.get("result") and closed.get("closed") is True,
-        "ownerReleasedAndRecreated": released.get("result") == "drained" and "node=play-b" in read_output,
+        "fixedDrainCompleted": drained.get("result") == "drained",
+        "ownerReleasedAndRecreated": drained.get("result") == "drained" and "node=play-b" in read_output,
         "replayRestoredState": "value=state-v1" in read_output and "replayed=true" in read_output,
         "metrics": metrics,
     }, indent=2) + "\n", encoding="utf-8")

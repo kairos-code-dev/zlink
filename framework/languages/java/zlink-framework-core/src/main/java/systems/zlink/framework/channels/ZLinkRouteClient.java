@@ -4,13 +4,20 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.SpotHandle;
 
 public interface ZLinkRouteClient {
+    ZLinkSendCall sendToChannel(
+        String channelName,
+        Object message);
+
+    ZLinkRequestCall requestToChannel(
+        String channelName,
+        Object request);
+
     ZLinkSendCall sendToNode(
         String channelName,
         RoutingId target,
         Object message);
 
     ZLinkSendCall sendToSpot(
-        String channelName,
         SpotHandle spot,
         Object message);
 
@@ -20,7 +27,6 @@ public interface ZLinkRouteClient {
         Object message);
 
     ZLinkRequestCall requestToSpot(
-        String channelName,
         SpotHandle spot,
         Object message);
 }

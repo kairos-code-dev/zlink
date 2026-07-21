@@ -9,7 +9,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
-import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SupportChatRoles
 import systems.zlink.samples.kotlin.supportchat.server.support.application.AgentAssignmentService
@@ -71,7 +70,7 @@ class ConversationSpot(
             "conversation-idle",
             Duration.ofMillis(200),
             ConversationIdleTimerHandler::class.java,
-            ZLinkTimerOptions(),
+            null,
         ).await()
     }
 

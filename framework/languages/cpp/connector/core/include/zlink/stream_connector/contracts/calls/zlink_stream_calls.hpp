@@ -291,10 +291,21 @@ template <typename TMessage> class wait_call_t
         if constexpr (std::is_same_v<TMessage, packet_t>) {
             return result_t<TMessage>::success (std::move (packet.value ()));
         } else {
-            TMessage message{};
-            detail::apply_packet_payload (message, packet.value ().codec, packet.value ().payload,
-                                          0);
-            return result_t<TMessage>::success (std::move (message));
+            try {
+                TMessage message{};
+                detail::apply_packet_payload (
+                  message, packet.value ().codec, packet.value ().payload, 0);
+                return result_t<TMessage>::success (std::move (message));
+            }
+            catch (const std::exception &error) {
+                return result_t<TMessage>::failure (
+                  error_code_t::frame_decode_failed, error.what ());
+            }
+            catch (...) {
+                return result_t<TMessage>::failure (
+                  error_code_t::frame_decode_failed,
+                  "stream connector wait payload decode failed");
+            }
         }
     }
 
@@ -337,10 +348,21 @@ template <typename TMessage> class wait_call_t
               } else if constexpr (std::is_same_v<TMessage, packet_t>) {
                   result = result_t<TMessage>::success (std::move (packet.value ()));
               } else {
-                  TMessage message{};
-                  detail::apply_packet_payload (message, packet.value ().codec,
-                                                packet.value ().payload, 0);
-                  result = result_t<TMessage>::success (std::move (message));
+                  try {
+                      TMessage message{};
+                      detail::apply_packet_payload (
+                        message, packet.value ().codec, packet.value ().payload, 0);
+                      result = result_t<TMessage>::success (std::move (message));
+                  }
+                  catch (const std::exception &error) {
+                      result = result_t<TMessage>::failure (
+                        error_code_t::frame_decode_failed, error.what ());
+                  }
+                  catch (...) {
+                      result = result_t<TMessage>::failure (
+                        error_code_t::frame_decode_failed,
+                        "stream connector wait payload decode failed");
+                  }
               }
               if (callback) {
                   callback (std::move (result));

@@ -18,6 +18,11 @@ export class ZLinkSpotRouteTargetResolver {
     if (named?.router !== undefined) {
       return this.spotNodes?.get(routerChannelId);
     }
+    const channelOwners = [...this.registration.spotNodes.entries()]
+      .filter(([, node]) => Object.prototype.hasOwnProperty.call(node.meshChannels ?? {}, routerChannelId));
+    if (channelOwners.length === 1) {
+      return this.spotNodes?.get(channelOwners[0][0]);
+    }
     const routeChannel = this.registration.routeChannelOptions.get(routerChannelId);
     if (routeChannel === undefined) {
       return undefined;

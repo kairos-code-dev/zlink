@@ -28,11 +28,9 @@ location_key_prefix="zlink:e2e:runtime-monitoring:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
-  echo "RuntimeMonitoring must use 3s readiness and 5s route settle limits" >&2
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+  echo "RuntimeMonitoring must use a 3s readiness limit" >&2
   exit 1
 fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Client/src/main/java --glob '*.java'; then
@@ -175,11 +173,11 @@ trigger_bin() {
   echo "${e2e_build_dir}/Server-Trigger/install/runtime-monitoring-trigger/bin/runtime-monitoring-trigger"
 }
 
-read -r API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTER_API_PORT FILTER_HTTP_PORT THROW_API_PORT THROW_HTTP_PORT TRIGGER_HTTP_PORT _ _ _ <<<"$(reserve_ports)"
+read -r API_PORT HANDSHAKE_PORT MESH_PORT MESH_B_PORT SVC_HTTP_PORT FILTER_API_PORT FILTER_HTTP_PORT THROW_API_PORT THROW_HTTP_PORT TRIGGER_HTTP_PORT _ _ _ <<<"$(reserve_ports)"
 API_ENDPOINT="$(tcp "${API_PORT}")"
 HANDSHAKE_ENDPOINT="$(tcp "${HANDSHAKE_PORT}")"
-SPOT_ENDPOINT="$(tcp "${SPOT_PORT}")"
-SPOT_PUB_ENDPOINT="$(tcp "${SPOT_PUB_PORT}")"
+MESH_ENDPOINT="$(tcp "${MESH_PORT}")"
+MESH_B_ENDPOINT="$(tcp "${MESH_B_PORT}")"
 SERVICE_HTTP="$(http "${SVC_HTTP_PORT}")"
 FILTER_API_ENDPOINT="$(tcp "${FILTER_API_PORT}")"
 FILTER_HTTP="$(http "${FILTER_HTTP_PORT}")"
@@ -220,12 +218,13 @@ client_config="${config_dir}/client.properties"
 create_configs() {
   write_role_config "${service_config}" \
     "routing-id=svc-a" "api-endpoint=${API_ENDPOINT}" \
-    "handshake-endpoint=${HANDSHAKE_ENDPOINT}" "spot-endpoint=${SPOT_ENDPOINT}" \
-    "spot-pub-endpoint=${SPOT_PUB_ENDPOINT}" "http-endpoint=${SERVICE_HTTP}" \
+    "handshake-endpoint=${HANDSHAKE_ENDPOINT}" "mesh-endpoint=${MESH_ENDPOINT}" \
+    "http-endpoint=${SERVICE_HTTP}" \
     "enable-handshake=true" "enable-spot=true"
   write_role_config "${filtered_service_config}" \
     "routing-id=svc-b" "api-endpoint=${FILTER_API_ENDPOINT}" \
-    "http-endpoint=${FILTER_HTTP}" "enable-handshake=false" "enable-spot=false"
+    "mesh-endpoint=${MESH_B_ENDPOINT}" "mesh-peer-endpoint=${MESH_ENDPOINT}" \
+    "http-endpoint=${FILTER_HTTP}" "enable-handshake=false" "enable-spot=true"
   write_role_config "${throwing_service_config}" \
     "routing-id=svc-throw" "api-endpoint=${THROW_API_ENDPOINT}" \
     "http-endpoint=${THROW_HTTP}" "enable-handshake=false" "enable-spot=false"
@@ -239,7 +238,8 @@ create_configs() {
     "serviceBApiEndpoint=${FILTER_API_ENDPOINT}" \
     "handshakeEndpoint=${HANDSHAKE_ENDPOINT}" \
     "filteredServiceBinary=$(filtered_service_bin)" \
-    "filteredServiceConfigPath=${filtered_service_config}"
+    "filteredServiceConfigPath=${filtered_service_config}" \
+    "redisContainer=${REDIS_CONTAINER}"
 }
 
 start_initial_role() {
@@ -266,17 +266,17 @@ create_configs
 
 mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles service filtered-service throwing-service trigger)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  if [[ "${role}" == "filtered-service" ]]; then
+    continue
+  fi
   start_initial_role "${role}"
 done
 
 wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
-wait_port filtered-service-api "${FILTER_API_ENDPOINT}"
-wait_port filtered-service-http "${FILTER_HTTP}"
 wait_port throwing-service-api "${THROW_API_ENDPOINT}"
 wait_port throwing-service-http "${THROW_HTTP}"
 wait_port trigger-http "${TRIGGER_HTTP}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 "$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
   >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"

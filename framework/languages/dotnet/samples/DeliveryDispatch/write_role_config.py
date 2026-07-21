@@ -22,21 +22,9 @@ def main() -> None:
     parser.add_argument("--redis-endpoint", required=True)
     parser.add_argument("--redis-key-prefix", required=True)
     parser.add_argument("--dispatch-http", required=True)
-    parser.add_argument("--dispatch-channel", required=True)
-    parser.add_argument("--dispatch-spot-router", required=True)
-    parser.add_argument("--tracking-channel", required=True)
-    parser.add_argument("--tracking-spot-router", required=True)
-    parser.add_argument("--tracking-spot", required=True)
+    parser.add_argument("--mesh-endpoint", required=True)
     parser.add_argument("--customer-stream", required=True)
-    parser.add_argument("--customer-spot-router", required=True)
-    parser.add_argument("--customer-spot", required=True)
     parser.add_argument("--courier-stream", required=True)
-    parser.add_argument("--courier-session-spot-router", required=True)
-    parser.add_argument("--courier-session-spot", required=True)
-    parser.add_argument("--courier-node1-router", required=True)
-    parser.add_argument("--courier-node1", required=True)
-    parser.add_argument("--courier-node2-router", required=True)
-    parser.add_argument("--courier-node2", required=True)
     args = parser.parse_args()
 
     role = {
@@ -60,36 +48,21 @@ def main() -> None:
         topology = {
             "redisEndpoint": args.redis_endpoint,
             "redisKeyPrefix": args.redis_key_prefix,
+            "meshEndpoint": args.mesh_endpoint,
         }
         role_topology = {
             "dispatch": {
                 "dispatchHttpUrl": args.dispatch_http,
-                "dispatchChannelEndpoint": args.dispatch_channel,
-                "dispatchSpotRouterEndpoint": args.dispatch_spot_router,
             },
-            "tracking": {
-                "trackingChannelEndpoint": args.tracking_channel,
-                "trackingSpotRouterEndpoint": args.tracking_spot_router,
-                "trackingSpotEndpoint": args.tracking_spot,
-            },
+            "tracking": {},
             "customer-gateway": {
                 "customerStreamEndpoint": args.customer_stream,
-                "customerSpotRouterEndpoint": args.customer_spot_router,
-                "customerSpotEndpoint": args.customer_spot,
             },
             "courier-session": {
                 "courierStreamEndpoint": args.courier_stream,
-                "courierSessionSpotRouterEndpoint": args.courier_session_spot_router,
-                "courierSessionSpotEndpoint": args.courier_session_spot,
             },
-            "courier-actor-node1": {
-                "courierActorNode1RouterEndpoint": args.courier_node1_router,
-                "courierActorNode1Endpoint": args.courier_node1,
-            },
-            "courier-actor-node2": {
-                "courierActorNode2RouterEndpoint": args.courier_node2_router,
-                "courierActorNode2Endpoint": args.courier_node2,
-            },
+            "courier-actor-node1": {},
+            "courier-actor-node2": {},
         }
         topology.update(role_topology[args.role])
         document = {

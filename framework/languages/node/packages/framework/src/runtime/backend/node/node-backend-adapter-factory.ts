@@ -8,12 +8,10 @@ import type {
   ZLinkBackendRouterSocket,
   ZLinkBackendSocket,
   ZLinkBackendSocketMonitor,
-  ZLinkBackendSpotNode,
   ZLinkBackendStreamSocket,
   ZLinkBackendSubscriberSocket,
   ZLinkChannelBackendAdapter,
   ZLinkMonitoringBackendAdapter,
-  ZLinkSpotBackendAdapter,
   ZLinkStreamBackendAdapter
 } from '../contracts';
 import {
@@ -23,7 +21,7 @@ import {
 } from './node-backend-adapter-support';
 import { wrapMonitorSocket } from './node-monitor-backend-adapter';
 import { wrapSocket } from './node-socket-backend-adapter';
-import { wrapSpotNode } from './node-spot-backend-adapter';
+import { ZLinkNodeMeshBackendAdapter } from './node-mesh-backend-adapter';
 
 export { isDisconnectRouteNotFoundError } from './node-socket-backend-adapter';
 
@@ -32,8 +30,8 @@ export class ZLinkNodeBackendAdapterFactory implements ZLinkBackendAdapterFactor
     return new ZLinkNodeChannelBackendAdapter();
   }
 
-  createSpotAdapter(): ZLinkSpotBackendAdapter {
-    return new ZLinkNodeSpotBackendAdapter();
+  createMeshAdapter(): ZLinkNodeMeshBackendAdapter {
+    return new ZLinkNodeMeshBackendAdapter();
   }
 
   createStreamAdapter(): ZLinkStreamBackendAdapter {
@@ -84,15 +82,6 @@ class ZLinkNodeChannelBackendAdapter implements ZLinkChannelBackendAdapter {
         poller.close();
       }
     };
-  }
-}
-
-class ZLinkNodeSpotBackendAdapter implements ZLinkSpotBackendAdapter {
-  createSpotNode(
-    context: ZLinkBackendContext,
-    mode: Parameters<ZLinkBindingModule['createSpotNode']>[1]
-  ): ZLinkBackendSpotNode {
-    return wrapSpotNode(zlink.createSpotNode(asNodeContext(context), mode));
   }
 }
 

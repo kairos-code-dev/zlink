@@ -6,17 +6,36 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace RuntimeMonitoring.Server.Service.Handlers;
 
-internal sealed class ProfileRequestHandler(EvidenceStore evidence)
+internal sealed class ProfileRequestHandler(
+    EvidenceStore evidence,
+    ApplicationDispatchGate? applicationGate = null)
     : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public ValueTask<ProfileRes> HandleAsync(
+    public async ValueTask<ProfileRes> HandleAsync(
         ProfileReq request,
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"profile-request|rid={evidence.Rid}|marker={request.Marker}|value={request.Value}");
-        return ValueTask.FromResult(new ProfileRes($"profile:{request.Value}", evidence.Rid, request.Marker));
+        if (string.Equals(
+                request.Value,
+                "application-gate",
+                StringComparison.Ordinal))
+        {
+            evidence.Add(
+                $"application-gate-enter|rid={evidence.Rid}|marker={request.Marker}");
+            await (applicationGate
+                   ?? throw new InvalidOperationException(
+                       "Application dispatch gate is not configured."))
+                .WaitAsync(cancellationToken);
+            evidence.Add(
+                $"application-gate-exit|rid={evidence.Rid}|marker={request.Marker}");
+        }
+        return new ProfileRes(
+            $"profile:{request.Value}",
+            evidence.Rid,
+            request.Marker);
     }
 }
 
@@ -57,7 +76,61 @@ internal sealed class MonitoringSubjectSpot(IZLinkSpotContext context) : IZLinkS
 
     public void Configure()
     {
-        Context.Handlers.AddSubscribe<MonitoringSubjectHandler>("monitor.dynamic");
+        Context.Handlers.AddSubscribe<MonitoringSubjectHandler>(
+            RuntimeMonitoringNames.SpotChannel,
+            "monitor.dynamic");
+        Context.Handlers.AddSubscribe<MulticastProbeHandler>(
+            RuntimeMonitoringNames.SpotChannel,
+            "monitor.multicast");
+    }
+}
+
+internal sealed class MulticastProbeHandler(EvidenceStore evidence)
+    : IZLinkSpotSubscriptionHandler<MonitoringSubjectSpot, MulticastProbe>
+{
+    public ValueTask HandleAsync(
+        MonitoringSubjectSpot spot,
+        MulticastProbe message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"multicast-received|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|marker={message.Marker}|sequence={message.Sequence}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class MonitoringSlowSpot(IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddSubscribe<SlowMulticastProbeHandler>(
+            RuntimeMonitoringNames.SpotChannel,
+            "monitor.prefill");
+        Context.Handlers.AddSubscribe<SlowMulticastProbeHandler>(
+            RuntimeMonitoringNames.SpotChannel,
+            "monitor.multicast");
+    }
+}
+
+internal sealed class SlowMulticastProbeHandler(EvidenceStore evidence)
+    : IZLinkSpotSubscriptionHandler<MonitoringSlowSpot, MulticastProbe>
+{
+    public async ValueTask HandleAsync(
+        MonitoringSlowSpot spot,
+        MulticastProbe message,
+        CancellationToken cancellationToken)
+    {
+        // Keep one target busy long enough for its bounded mailbox to fill.
+        // This creates the partial local-target drop required by MON-B2/C1
+        // without generating thousands of unrelated messages.
+        await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        evidence.Add(
+            $"multicast-received|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|marker={message.Marker}|sequence={message.Sequence}");
     }
 }
 

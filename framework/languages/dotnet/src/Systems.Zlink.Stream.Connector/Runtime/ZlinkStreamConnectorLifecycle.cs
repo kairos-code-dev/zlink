@@ -290,6 +290,12 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         catch (OperationCanceledException) when (_closeCts.IsCancellationRequested)
         {
         }
+        catch (ObjectDisposedException) when (_closeCts.IsCancellationRequested)
+        {
+            // Close won the race after the transport connected but before the
+            // reconnect loop could attach it. AttachConnectionAsync already
+            // closed that transport; the background reconnect is complete.
+        }
     }
 
     private async ValueTask<IZlinkStreamConnection> OpenConnectionAsync(CancellationToken cancellationToken)

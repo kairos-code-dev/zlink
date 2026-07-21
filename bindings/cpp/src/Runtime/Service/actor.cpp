@@ -169,14 +169,15 @@ submit_result_t actor_t::request_to (const actor_ref_t &target_actor_,
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 
-submit_result_t actor_t::send_bound_session (const std::vector<message_t> &parts_,
+submit_result_t actor_t::send_bound_session (uint64_t expected_binding_generation_,
+                                             const std::vector<message_t> &parts_,
                                              send_flags_t flags_)
 {
     void *node = zlink::detail::native_handle (*_node);
     const int rc = zlink::detail::submit_borrowed_message_array (
       parts_, [&] (zlink_msg_t *native_, size_t count_) {
           return zlink_mesh_node_actor_send_bound_session (
-            node, zlink::detail::actor_ref_native (_ref), native_, count_,
+            node, zlink::detail::actor_ref_native (_ref), expected_binding_generation_, native_, count_,
             static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);

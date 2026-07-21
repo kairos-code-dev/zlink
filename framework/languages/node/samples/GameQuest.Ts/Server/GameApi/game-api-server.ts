@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
+import { questMissionRouteChannel, SampleNames } from '../../Shared/Configuration/sample-names';
 import { GameQuestSelfCheckStore, GameplayStateStore } from '../Shared/Store/quest-progress-store';
 import {
   deleteQuestProjectionReq,
@@ -41,7 +41,7 @@ function startGameApiServer(
         const playerId = decodeURIComponent(deleteMatch[1]);
         const questId = decodeURIComponent(deleteMatch[2]);
         const deleted = await routes
-          .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), deleteQuestProjectionReq(playerId, questId))
+          .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), deleteQuestProjectionReq(playerId, questId))
           .timeout(SampleNames.requestTimeout)
           .submit<DeleteQuestProjectionRes>();
         sendJson(response, 200, deleted);
@@ -52,7 +52,7 @@ function startGameApiServer(
         const playerId = decodeURIComponent(rebuildMatch[1]);
         const questId = decodeURIComponent(rebuildMatch[2]);
         const rebuilt = await routes
-          .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), rebuildQuestProjectionReq(playerId, questId))
+          .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), rebuildQuestProjectionReq(playerId, questId))
           .timeout(SampleNames.requestTimeout)
           .submit<QuestProgress>();
         sendJson(response, 200, rebuilt);

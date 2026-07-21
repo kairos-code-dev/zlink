@@ -3,7 +3,12 @@ import { SpotActorTransferNames, nodeA, nodeB, assertSourceFailure, createSpot, 
 
 export async function runStC3(): Promise<void> {
   await assertSourceFailure('transfer-out', SpotActorTransferNames.actorTypeFailTransferOut, 'transfer_out_failed');
-  await assertSourceFailure('leave', SpotActorTransferNames.actorTypeFailLeave, 'leave_failed');
+  await assertSourceFailure(
+    'leave',
+    SpotActorTransferNames.actorTypeFailLeave,
+    'leave_failed',
+    true
+  );
 
   const transferInId = unique('actor-fail-transfer-in');
   const transferInSpot = unique('spot-fail-transfer-in');

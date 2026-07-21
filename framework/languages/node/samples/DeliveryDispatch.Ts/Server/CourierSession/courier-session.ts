@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_ACTOR_CLIENT, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { courierActorNodeRid, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { courierActorNodeRid, SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
 import { actorRefFromMessage, bindCourier, ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
 import {
   ZLinkPacket,
@@ -44,7 +44,11 @@ class BindCourierSessionHandler {
     const request = payload.decode<BindCourierSessionReq>(Object as never);
     const actorRef = await this.findOrEnsureActor(request.courierId);
     const actor = await context.actors.bindOrGet(actorRef);
-    await this.actors.requestToActor(actorRef, bindCourier(request.courierId, context.sessionId))
+    await this.actors.requestToActor(
+      SampleNames.routeMesh,
+      actorRef,
+      bindCourier(request.courierId, context.sessionId)
+    )
       .timeout(SampleTimings.requestTimeout)
       .submit<BindCourierRes>();
     console.error(`deliverydispatch courier-session: bound courier=${request.courierId} actor=${actorRef.actorId}`);
@@ -52,9 +56,12 @@ class BindCourierSessionHandler {
   }
 
   private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
-    const found = await this.locations.resolveActor({ actorId: courierId });
+    const found = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: courierId });
     if (found !== undefined) return found.actorRef;
-    const entrySpot = await this.spotHandles.resolveSpotHandle(courierActorNodeRid(courierId));
+    const entrySpot = await this.spotHandles.resolveSpotHandle(
+      SampleNames.routeMesh,
+      courierActorNodeRid(courierId)
+    );
     if (entrySpot === undefined) throw new Error(`Courier entry spot was not found for '${courierId}'.`);
     const ensured = await this.spotOutbound
       .requestToSpot(entrySpot, ensureCourierActor(courierId))

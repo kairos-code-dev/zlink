@@ -33,16 +33,16 @@ test('in-memory location store issues generations and fences owner writes', asyn
   assert.equal(stale.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
 
   const staleRemove = await store.removeActor(
-    { actorType: 'player', actorId: 'actor-1' },
+    { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-a', generation: claim.generation }
   );
-  assert.equal(staleRemove.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+  assert.equal(staleRemove, framework.ZLinkLocationWriteStatus.IgnoredStale);
 
   const removed = await store.removeActor(
-    { actorType: 'player', actorId: 'actor-1' },
+    { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-b', generation: takeover.generation }
   );
-  assert.equal(removed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal(removed, framework.ZLinkLocationWriteStatus.Stored);
 
   const reclaim = await store.updateActor(actor('owner-a', 0n), framework.ZLinkLocationWriteIntent.NewClaim);
   assert.equal(reclaim.status, framework.ZLinkLocationWriteStatus.Stored);
@@ -92,14 +92,15 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
   });
   assert.deepEqual([...resolvedRoute.value], [1, 2, 3, 4]);
 
-  assert.equal(await store.removeAllByOwner('owner-a'), 5);
+  assert.equal(await store.removeAllByOwner('owner-a'), 5n);
   assert.equal((await store.listSpots({ meshName: 'play' })).items.length, 0);
 });
 
-test('in-memory location store matches the dotnet operation trace for core write statuses', async () => {
+test('in-memory location store matches the formal operation trace for core write statuses', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const trace = [];
   const record = (step, result) => trace.push(`${step}=${statusName(result.status)}:${result.generation}`);
+  const recordStatus = (step, status) => trace.push(`${step}=${statusName(status)}:0`);
   const recordLease = (step, result) => trace.push(`${step}=expires:${result.leaseExpiresAt.toISOString()}`);
 
   recordLease('lease-a', await store.renewOwnerLease('owner-a', rid('node-1'), 30000));
@@ -111,18 +112,18 @@ test('in-memory location store matches the dotnet operation trace for core write
     await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.NewClaim));
   record('actor-renew',
     await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew));
-  record('actor-renew-wrong-generation',
+  record('actor-renew-same-owner',
     await store.updateActor(actor('owner-a', claim.generation + 9n), framework.ZLinkLocationWriteIntent.Renew));
   const takeover = await store.updateActor(actor('owner-b', 0n), framework.ZLinkLocationWriteIntent.Takeover);
   record('actor-takeover', takeover);
   record('actor-old-owner-renew',
     await store.updateActor(actor('owner-a', claim.generation), framework.ZLinkLocationWriteIntent.Renew));
-  record('actor-old-owner-remove', await store.removeActor(
-    { actorType: 'player', actorId: 'actor-1' },
+  recordStatus('actor-old-owner-remove', await store.removeActor(
+    { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-a', generation: claim.generation }
   ));
-  record('actor-remove', await store.removeActor(
-    { actorType: 'player', actorId: 'actor-1' },
+  recordStatus('actor-remove', await store.removeActor(
+    { meshName: 'play', actorId: 'actor-1' },
     { ownerId: 'owner-b', generation: takeover.generation }
   ));
   record('actor-reclaim',
@@ -132,7 +133,7 @@ test('in-memory location store matches the dotnet operation trace for core write
     await store.updateSpot(spot('owner-a', 'spot-1'), framework.ZLinkLocationWriteIntent.NewClaim));
   record('spot-claim-2',
     await store.updateSpot(spot('owner-a', 'spot-2'), framework.ZLinkLocationWriteIntent.NewClaim));
-  record('spot-remove-wrong-owner', await store.removeSpot(
+  recordStatus('spot-remove-wrong-owner', await store.removeSpot(
     { meshName: 'play', spotRid: rid('spot-1') },
     { ownerId: 'owner-b', generation: 1n }
   ));
@@ -158,11 +159,11 @@ test('in-memory location store matches the dotnet operation trace for core write
     'actor-claim=Stored:1',
     'actor-claim-conflict=RejectedConflict:0',
     'actor-renew=Stored:1',
-    'actor-renew-wrong-generation=IgnoredStale:0',
+    'actor-renew-same-owner=Stored:1',
     'actor-takeover=Stored:2',
     'actor-old-owner-renew=IgnoredStale:0',
     'actor-old-owner-remove=IgnoredStale:0',
-    'actor-remove=Stored:2',
+    'actor-remove=Stored:0',
     'actor-reclaim=Stored:3',
     'spot-claim-1=Stored:1',
     'spot-claim-2=Stored:1',
@@ -177,23 +178,100 @@ test('in-memory location store matches the dotnet operation trace for core write
   ]);
 });
 
+test('in-memory exact MeshNode descriptor and Actor transfer stores enforce their fences', async () => {
+  let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
+  await store.renewOwnerLease('mesh-owner-a', rid('game-a'), 30_000);
+  const descriptor = {
+    meshName: 'game',
+    rid: rid('game-a'),
+    lifecycleGeneration: 7n,
+    descriptorRevision: 3n,
+    endpoint: 'tcp://10.0.0.1:7300',
+    channelWeights: { orders: 100, world: 50 },
+    draining: false,
+    securityIdentity: 'cluster-a',
+    ownerId: 'mesh-owner-a',
+    updatedAt: new Date(0)
+  };
+  const descriptorClaim = await store.updateMeshNode(
+    descriptor,
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  assert.equal(descriptorClaim.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.deepEqual(await store.listMeshNodes('game'), [{
+    ...descriptor,
+    updatedAt: new Date(nowMs)
+  }]);
+  assert.equal(
+    await store.removeMeshNode(
+      { meshName: 'game', rid: rid('game-a') },
+      { ownerId: 'mesh-owner-a', generation: descriptorClaim.generation + 1n }
+    ),
+    framework.ZLinkLocationWriteStatus.IgnoredStale
+  );
+
+  const request = actorTransferRequest();
+  const prepared = await store.prepareActorTransfer(request);
+  assert.equal(prepared.status, 'stored');
+  assert.equal((await store.prepareActorTransfer(request)).status, 'stored');
+  assert.equal((await store.prepareActorTransfer({
+    ...request,
+    transferId: '11111111-1111-1111-1111-111111111111'
+  })).status, 'rejectedConflict');
+  assert.equal((await store.commitActorTransfer(
+    request.meshName, request.actorId, request.transferId, 'wrong-owner'
+  )).status, 'rejectedConflict');
+  assert.equal((await store.commitActorTransfer(
+    request.meshName, request.actorId, request.transferId, request.recoveryOwnerId
+  )).record.state, 'committed');
+  nowMs += 30_001;
+  assert.equal((await store.takeOverActorTransfer(
+    request.meshName,
+    request.actorId,
+    request.transferId,
+    'recovery-b',
+    30_000
+  )).record.recoveryOwnerId, 'recovery-b');
+  assert.equal((await store.activateActorTransfer(
+    request.meshName, request.actorId, request.transferId, 'recovery-b'
+  )).record.state, 'activated');
+  assert.equal(await store.resolveActorTransfer(request.meshName, request.actorId), undefined);
+});
+
 function rid(value) {
   return zlink.RoutingId.from(value);
 }
 
-function actor(ownerId, generation) {
+function actor(ownerId, _generation) {
   return {
+    meshName: 'play',
     actorType: 'player',
     actorId: 'actor-1',
-    actorRef: 'actor-ref',
-    nodeRid: rid('node-1'),
-    generation,
-    locationKind: framework.ZLinkSpotKind.Entry,
-    spotMeshName: 'play',
-    spotRid: undefined,
+    actorRef: { nodeRid: rid('node-1'), actorId: 'actor-1', generation: 1n },
+    ownerNodeRid: rid('node-1'),
+    ownerNodeGeneration: 1n,
+    spotRid: rid('node-1'),
+    spotGeneration: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
+    membershipEpoch: 1n,
     ownerId,
     updatedAt: new Date(0)
+  };
+}
+
+function actorTransferRequest() {
+  return {
+    meshName: 'game',
+    actorId: 'actor-1',
+    transferId: '01234567-89ab-cdef-0123-456789abcdef',
+    source: { nodeRid: rid('game-a'), actorId: 'actor-1', generation: 11n },
+    target: { nodeRid: rid('game-b'), actorId: 'actor-1', generation: 11n },
+    expectedActorGeneration: 11n,
+    expectedMembershipEpoch: 4n,
+    participants: new Set([rid('game-a'), rid('game-b')]),
+    recoveryOwnerId: 'recovery-a',
+    recoveryLeaseTtlMs: 30_000
   };
 }
 
@@ -219,11 +297,11 @@ function spot(ownerId, spotRid) {
     meshName: 'play',
     spotRid: rid(spotRid),
     spotType: 'game',
-    nodeRid: rid('node-1'),
+    spotGeneration: 1n,
+    ownerNodeRid: rid('node-1'),
+    ownerNodeGeneration: 1n,
     spotKind: framework.ZLinkSpotKind.User,
-    routeEndpoint: undefined,
     ownerId,
-    generation: 0n,
     updatedAt: new Date(0)
   };
 }

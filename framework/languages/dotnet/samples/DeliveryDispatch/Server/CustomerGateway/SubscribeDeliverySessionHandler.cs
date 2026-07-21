@@ -46,6 +46,7 @@ internal sealed class SubscribeDeliverySessionHandler(
             "deliverydispatch customer-session: subscribed customer={CustomerId} delivery={DeliveryId}",
             CustomerId,
             request.DeliveryId);
-        context.Client.Reply(new SubscribeDeliveryRes(request.DeliveryId)).Submit();
+        await context.Client.Reply(new SubscribeDeliveryRes(request.DeliveryId))
+            .SubmitAsync(cancellationToken);
     }
 }

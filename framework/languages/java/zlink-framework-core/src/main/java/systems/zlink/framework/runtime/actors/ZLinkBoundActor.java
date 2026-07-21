@@ -22,6 +22,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -45,6 +46,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     private final ZLinkSessionRelayHeaders relayHeaders;
     private final ZLinkMessageFlowTracer flow;
     private final ZLinkActorDirectory actorDirectory;
+    private final ZLinkRelayMetadataPolicy metadataPolicy;
     private volatile boolean nativeRebound;
     private CompletionStage<Void> bindingRefresh = CompletableFuture.completedFuture(null);
 
@@ -62,7 +64,8 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         ZLinkStreamCodec defaultCodec,
         ZLinkSessionRelayHeaders relayHeaders,
         ZLinkMessageFlowTracer flow,
-        ZLinkActorDirectory actorDirectory) {
+        ZLinkActorDirectory actorDirectory,
+        ZLinkRelayMetadataPolicy metadataPolicy) {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.ref = ref;
@@ -77,6 +80,8 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         this.relayHeaders = relayHeaders;
         this.flow = flow;
         this.actorDirectory = actorDirectory;
+        this.metadataPolicy =
+            metadataPolicy == null ? ZLinkRelayMetadataPolicy.EMPTY : metadataPolicy;
     }
 
     @Override
@@ -100,18 +105,19 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     }
 
     @Override
-    public CompletionStage<Void> relay(ZLinkMessage payload) {
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(
+        ZLinkMessage payload) {
         return relay(relayHeaders.current(), payload);
     }
 
     @Override
-    public CompletionStage<Void> relay(
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         return relay(relayHeaders.find(dispatch).or(relayHeaders::current), payload);
     }
 
-    private CompletionStage<Void> relay(
+    private CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(
         Optional<ZLinkStreamHeader> currentHeader,
         ZLinkMessage payload) {
         if (payload == null) {
@@ -122,17 +128,17 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
             return CompletableFuture.failedFuture(new IllegalStateException(
                 "Session actor relay requires an active stream dispatch."));
         }
-        ZLinkStreamHeader header = currentHeader.get();
+        ZLinkStreamHeader header = metadataPolicy.sessionToActor(currentHeader.get());
         traceRelay(header);
         Message message = ZLinkMessagePayloads.message(payload, serializer);
         byte[] payloadBytes = message.toByteArray();
         message.close();
         if (managedActor.isPresent() && localActorDispatcher != null && !nativeRebound) {
-            return relayLocal(header, payloadBytes);
+            return ZLinkSubmitResults.fromVoidStage(relayLocal(header, payloadBytes));
         }
-        return refreshNativeBinding()
+        return ZLinkSubmitResults.fromVoidStage(refreshNativeBinding()
             .thenCompose(ignored -> ensureNativeBinding())
-            .thenCompose(ignored -> relayWithRetry(header, payloadBytes));
+            .thenCompose(ignored -> relayWithRetry(header, payloadBytes)));
     }
 
     private synchronized CompletionStage<Void> refreshNativeBinding() {
@@ -234,7 +240,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
                 header.codec(),
                 EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
                 header.packetName(),
-                header.metadata());
+                Map.of());
             byte[] replyBytes = reply.toByteArray();
             return ZLinkActorRetryScheduler.submitRelayUntilAccepted(
                 ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT,

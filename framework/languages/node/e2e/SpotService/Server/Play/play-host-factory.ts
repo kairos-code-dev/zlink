@@ -22,6 +22,7 @@ import { EvidenceStore } from './Infrastructure/evidence-store';
 import {
   ComplexActorHandler,
   EntryActorDestroyHandler,
+  InitializeScenarioActorHandler,
   EntryActorLeaveHandler,
   EntryActorPingHandler,
   EntrySlowActorPingHandler,
@@ -54,7 +55,6 @@ export async function startPlayHost(): Promise<void> {
   EntryUserActorPingHandler.useEvidence(evidence);
   ComplexActorHandler.useEvidence(evidence);
   EntryActorLeaveHandler.useEvidence(evidence);
-  EntryActorDestroyHandler.useEvidence(evidence);
     return evidence;
   };
   let stopping = false;
@@ -76,42 +76,44 @@ export async function startPlayHost(): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.useInMemoryLocationStores();
-          builder.addRouteMeshChannel(SpotServiceNames.controlChannel)
-            .enableRouter(options.controlRouterEndpoint)
+          builder.addRouteMesh(SpotServiceNames.controlChannel)
+            .listen(options.controlRouterEndpoint)
             .routingId(options.rid)
             .addRequestHandler('ControlPingReq', ControlPingHandler)
             .addRequestHandler('EnsureActorReq', EnsureActorHandler)
             .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
-            .addRequestHandler('CreateSpotReq', CreateSpotHandler);
+            .addRequestHandler('CreateSpotReq', CreateSpotHandler)
+            .channelName(SpotServiceNames.controlChannel);
           const externalSpotChannel = options.rid === 'play-b'
             ? SpotServiceNames.externalSpotChannelB
             : SpotServiceNames.externalSpotChannel;
-          builder.addRouteMeshChannel(externalSpotChannel)
-            .enableRouter(options.externalSpotEndpoint)
+          builder.addRouteMesh(externalSpotChannel)
+            .listen(options.externalSpotEndpoint)
             .routingId(options.rid)
             .addRequestHandler('ChannelEchoReq', ChannelEchoHandler)
-            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler);
+            .addRequestHandler('CrossRoleActorPushReq', CrossRoleActorPushHandler)
+            .channelName(externalSpotChannel);
           if (options.rid === 'play-b' && options.playAExternalSpotEndpoint !== undefined) {
-            builder.addRouteMeshChannel(SpotServiceNames.externalSpotChannel)
-              .connect(options.playAExternalSpotEndpoint);
+            const externalMesh = builder.addRouteMesh(SpotServiceNames.externalSpotChannel)
+              .listen(`inproc://spot-service-${options.rid}-external`)
+              .routingId(`${options.rid}-external`);
+            externalMesh.channelName(SpotServiceNames.externalSpotChannel);
+            externalMesh.peerConnections().connect(options.playAExternalSpotEndpoint);
           }
-          const spot = builder.addSpotMesh(SpotServiceNames.spotChannel)
+          const spot = builder.addRouteMesh(SpotServiceNames.spotChannel)
             .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
-            .enablePubSub(options.spotPubEndpoint)
-            .addEntrySpot(ScenarioEntrySpot)
+            .listen(options.spotRouterEndpoint)
+                        .addEntrySpot(ScenarioEntrySpot)
             .addSpotFactory(ScenarioUserSpot)
             .addSpotFactory(ScenarioAlternateSpot)
             .actorFactory(SpotServiceNames.actorType, ScenarioActorFactory);
-          for (const endpoint of options.clientSpotPubEndpoints) {
-            spot.connectPeerPub(endpoint);
-          }
+          spot.channelName(SpotServiceNames.spotChannel);
           if (options.externalClientEndpoint !== undefined) {
-            builder.addClientServerChannel(SpotServiceNames.externalClientChannel)
-              .enableServer(options.externalClientEndpoint)
-              .routingId(options.rid)
-              .enableClient(options.externalClientEndpoint)
+            const external = builder.addRouteMesh(SpotServiceNames.externalClientChannel)
+              .listen(options.externalClientEndpoint)
+              .routingId(options.rid);
+            external.peerConnections().connect(options.externalClientEndpoint);
+            external.channelName(SpotServiceNames.externalClientChannel)
               .addRequestHandler('ChannelEchoReq', ChannelEchoHandler)
               .addSendHandler('ChannelNotify', ChannelNotifyHandler);
           }
@@ -139,6 +141,7 @@ export async function startPlayHost(): Promise<void> {
       ComplexActorHandler,
       EntryActorLeaveHandler,
       EntryActorDestroyHandler,
+      InitializeScenarioActorHandler,
       StateReqHandler,
       SpotAdminHandler,
       StateCommandHandler,

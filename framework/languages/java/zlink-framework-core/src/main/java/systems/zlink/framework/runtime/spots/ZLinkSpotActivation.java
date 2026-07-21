@@ -149,23 +149,20 @@ final class SpotActivation
         });
     }
 
-    void handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
+    CompletionStage<Void> handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
         if (host.isClosing()) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
-            drainRoutesForDispatch();
-            return;
+            return drainRoutesForDispatch();
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE) {
-            drainActorLifecycleEvents();
-            return;
+            return drainActorLifecycleEvents();
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
-            drainUnhandledActorJoinsAsync().exceptionally(error -> null);
-            return;
+            return drainUnhandledActorJoinsAsync();
         }
-        context.enqueueDispatch(() -> dispatchEventAsync(info)
+        return context.enqueueDispatch(() -> dispatchEventAsync(info)
             .whenComplete((ignored, error) -> {
                 for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
                     actorMessage.close();
@@ -192,7 +189,7 @@ final class SpotActivation
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
-    private void drainRoutesForDispatch() {
+    private CompletionStage<Void> drainRoutesForDispatch() {
         List<ZLinkBackendReceived> routes = new ArrayList<>();
         while (true) {
             ZLinkBackendReceived received =
@@ -207,11 +204,15 @@ final class SpotActivation
             routes.add(received);
         }
         if (routes.isEmpty()) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
+        List<CompletableFuture<Void>> completions = new ArrayList<>(routes.size());
         for (ZLinkBackendReceived received : routes) {
-            context.enqueueDispatch(() -> dispatchRouteAsync(received));
+            completions.add(context.enqueueDispatch(
+                () -> dispatchRouteAsync(received)).toCompletableFuture());
         }
+        return CompletableFuture.allOf(
+            completions.toArray(CompletableFuture[]::new));
     }
 
     private CompletionStage<Void> dispatchRoutesAsync(List<ZLinkBackendReceived> routes) {
@@ -282,6 +283,21 @@ final class SpotActivation
                 .thenApply(ignored -> (Void) null)
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
         }
+        if (host.isDraining()
+            && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
+            if (received.requestSeq().isPresent()) {
+                host.replySpotRouteDispatchError(
+                    received,
+                    packet.packetName(),
+                    backendSpot.routingId(),
+                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        "Actor application admission is sealed"));
+            }
+            closeRouteReceived(received);
+            return CompletableFuture.completedFuture(null);
+        }
         if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
             return handleRoutedActorPacketParts(received.parts())
                 .thenAccept(reply -> {
@@ -293,6 +309,20 @@ final class SpotActivation
                 })
                 .thenApply(ignored -> (Void) null)
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
+        }
+        if (host.isDraining()) {
+            if (received.requestSeq().isPresent()) {
+                host.replySpotRouteDispatchError(
+                    received,
+                    packet.packetName(),
+                    backendSpot.routingId(),
+                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        "SPOT application admission is sealed"));
+            }
+            closeRouteReceived(received);
+            return CompletableFuture.completedFuture(null);
         }
         return dispatchSpotRouteHandler(received, packet);
         } finally {
@@ -492,7 +522,7 @@ final class SpotActivation
                 return replies;
             }
             host.replyTransferredRequestDirect(
-                packet.header(), packet.replyRoute(), reply);
+                actorRef, packet.header(), packet.replyRoute(), reply);
             replies.add(Message.from(new byte[0]));
             return replies;
         } finally {

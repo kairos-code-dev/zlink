@@ -111,14 +111,4 @@ public sealed class test_message
         Assert.Throws<ObjectDisposedException>(() => message.AsReadOnlySpan());
     }
 
-    [Fact]
-    public void message_property_accessor_uses_canonical_name()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var message = Message.From("property-check");
-
-        Assert.Null(message.GetProperty("Identity"));
-    }
 }

@@ -8,6 +8,10 @@ namespace Systems.Zlink;
 
 internal sealed partial class MeshNode : IMeshNode
 {
+    private const int RouterHwmOption = 0x3621;
+    private const int MailboxMessageBudgetOption = 0x3622;
+    private const int MailboxByteBudgetOption = 0x3623;
+
     private readonly HashSet<Spot> _spots = new();
     private readonly object _spotsGate = new();
     private MeshReadyHandler? _readyHandler;
@@ -83,6 +87,37 @@ internal sealed partial class MeshNode : IMeshNode
                 weight));
     }
 
+    public long MaxMessageSize
+    {
+        get => GetInt64CommonOption(SocketOption.MaxMsgSize);
+        set => SetInt64CommonOption(SocketOption.MaxMsgSize, value);
+    }
+
+    public int RouterHighWaterMark
+    {
+        get => GetInt32MeshOption(RouterHwmOption);
+        set => SetInt32MeshOption(RouterHwmOption, value);
+    }
+
+    public ulong MailboxMessageBudget
+    {
+        get => GetUInt64MeshOption(MailboxMessageBudgetOption);
+        set => SetUInt64MeshOption(MailboxMessageBudgetOption, value);
+    }
+
+    public ulong MailboxByteBudget
+    {
+        get => GetUInt64MeshOption(MailboxByteBudgetOption);
+        set => SetUInt64MeshOption(MailboxByteBudgetOption, value);
+    }
+
+    public TimeSpan? SendTimeout
+    {
+        get => DecodeDuration(GetInt32CommonOption(SocketOption.SndTimeo));
+        set => SetInt32CommonOption(
+            SocketOption.SndTimeo, EncodeDuration(value, nameof(value)));
+    }
+
     public ulong ConnectPeer(string endpoint, RoutingId? expectedRid = null)
     {
         BoundaryValidation.ValidateMeshEndpoint(endpoint, nameof(endpoint));
@@ -110,6 +145,98 @@ internal sealed partial class MeshNode : IMeshNode
         {
             endpointHandle.Free();
         }
+    }
+
+    private unsafe int GetInt32MeshOption(int option)
+    {
+        EnsureNotDisposed();
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_get_mesh_node_option(
+                Handle, option, (IntPtr)(&value), ref size));
+        return value;
+    }
+
+    private unsafe void SetInt32MeshOption(int option, int value)
+    {
+        EnsureNotDisposed();
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_set_mesh_node_option(
+                Handle, option, (IntPtr)(&value), (nuint)sizeof(int)));
+    }
+
+    private unsafe ulong GetUInt64MeshOption(int option)
+    {
+        EnsureNotDisposed();
+        ulong value = 0;
+        var size = (nuint)sizeof(ulong);
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_get_mesh_node_option(
+                Handle, option, (IntPtr)(&value), ref size));
+        return value;
+    }
+
+    private unsafe void SetUInt64MeshOption(int option, ulong value)
+    {
+        EnsureNotDisposed();
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_set_mesh_node_option(
+                Handle, option, (IntPtr)(&value), (nuint)sizeof(ulong)));
+    }
+
+    private unsafe int GetInt32CommonOption(SocketOption option)
+    {
+        EnsureNotDisposed();
+        var value = 0;
+        var size = (nuint)sizeof(int);
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_get_option(
+                Handle, (int)option, (IntPtr)(&value), ref size));
+        return value;
+    }
+
+    private unsafe void SetInt32CommonOption(SocketOption option, int value)
+    {
+        EnsureNotDisposed();
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_set_option(
+                Handle, (int)option, (IntPtr)(&value), (nuint)sizeof(int)));
+    }
+
+    private unsafe long GetInt64CommonOption(SocketOption option)
+    {
+        EnsureNotDisposed();
+        long value = 0;
+        var size = (nuint)sizeof(long);
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_get_option(
+                Handle, (int)option, (IntPtr)(&value), ref size));
+        return value;
+    }
+
+    private unsafe void SetInt64CommonOption(SocketOption option, long value)
+    {
+        EnsureNotDisposed();
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_set_option(
+                Handle, (int)option, (IntPtr)(&value), (nuint)sizeof(long)));
+    }
+
+    private static TimeSpan? DecodeDuration(int value) =>
+        value < 0 ? null : TimeSpan.FromMilliseconds(value);
+
+    private static int EncodeDuration(TimeSpan? value, string paramName)
+    {
+        if (value is null)
+            return -1;
+        var milliseconds = value.Value.TotalMilliseconds;
+        if (double.IsNaN(milliseconds)
+            || double.IsInfinity(milliseconds)
+            || milliseconds < 0
+            || milliseconds > int.MaxValue)
+            throw new ArgumentOutOfRangeException(paramName);
+        return (int)Math.Ceiling(milliseconds);
     }
 
     public void RemovePeerConnection(ulong connectionIntentId)
@@ -213,6 +340,63 @@ internal sealed partial class MeshNode : IMeshNode
             (IntPtr entries, ref nuint count) =>
                 NativeMethods.zlink_mesh_node_peers(Handle, entries, ref count),
             (ref ZlinkMeshPeerEntry native) => ConvertPeer(ref native));
+    }
+
+    public MeshPeerChannel[] PeerChannels(
+        RoutingId peerRid,
+        ulong lifecycleGeneration)
+    {
+        EnsureNotDisposed();
+        var nativeRid = peerRid.ToNative();
+        nuint count = 0;
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_mesh_node_peer_channels(
+                Handle,
+                ref nativeRid,
+                lifecycleGeneration,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                ref count));
+        if (count == 0)
+            return [];
+        if (count > int.MaxValue)
+            throw new OverflowException("Peer channel count exceeds the managed array limit.");
+
+        const int nameStride = 256;
+        var names = Marshal.AllocHGlobal(checked((int)count * nameStride));
+        var weights = Marshal.AllocHGlobal(checked((int)count * sizeof(uint)));
+        try
+        {
+            var returned = count;
+            ZlinkException.ThrowConfigIfError(
+                NativeMethods.zlink_mesh_node_peer_channels(
+                    Handle,
+                    ref nativeRid,
+                    lifecycleGeneration,
+                    names,
+                    weights,
+                    ref returned));
+            if (returned > count)
+                throw new InvalidOperationException(
+                    "Peer channel snapshot grew while it was being copied.");
+
+            var result = new MeshPeerChannel[(int)returned];
+            for (var index = 0; index < result.Length; index++)
+            {
+                var name = Marshal.PtrToStringUTF8(IntPtr.Add(names, index * nameStride))
+                           ?? string.Empty;
+                var weight = unchecked((uint)Marshal.ReadInt32(
+                    weights,
+                    index * sizeof(uint)));
+                result[index] = new MeshPeerChannel(name, weight);
+            }
+            return result;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(weights);
+            Marshal.FreeHGlobal(names);
+        }
     }
 
     public IMeshNodeMonitor OpenMonitor(

@@ -1,0 +1,53 @@
+{
+  "format": "authority-payload-v1",
+  "consumers": ["cpp", "dotnet", "jvm", "node"],
+  "encodedHex": "5a4c41550100000000d70202000d03000a04000704636861740173076f776e65722d610000000000000005016e000000000000000101000000a7000000000000000000000000000000090000000000000002016e0000000000000001076f776e65722d610000000000000005016d0000000000000002076f776e65722d620000000000000008000000000000000305636f6f72640000000000000007016300000000000000040301000a000463702d3112345678000000000000000100000001000000000000000100000000000000010000000000000000000000010000000000151e54a6",
+  "decoded": {
+    "operationKind": "maintenanceTransfer",
+    "object": {
+      "objectKind": "spot",
+      "spotKind": "instance",
+      "authorityState": "transferring",
+      "instanceType": "chat",
+      "spotRidUtf8Fixture": "s"
+    },
+    "ownerId": "owner-a",
+    "ownerLeaseGeneration": "5",
+    "ownerNodeRidUtf8Fixture": "n",
+    "ownerNodeGeneration": "1",
+    "transferState": {
+      "transferHigh": "0",
+      "transferLow": "9",
+      "targetAttemptGeneration": "2",
+      "sourceNodeRidUtf8Fixture": "n",
+      "sourceNodeGeneration": "1",
+      "sourceOwnerId": "owner-a",
+      "sourceOwnerLeaseGeneration": "5",
+      "targetNodeRidUtf8Fixture": "m",
+      "targetNodeGeneration": "2",
+      "targetOwnerId": "owner-b",
+      "targetOwnerLeaseGeneration": "8",
+      "reservationGeneration": "3",
+      "coordinatorOwnerId": "coord",
+      "coordinatorLeaseGeneration": "7",
+      "coordinatorNodeRidUtf8Fixture": "c",
+      "coordinatorNodeGeneration": "4",
+      "phase": "prepared",
+      "checkpoint": {
+        "referenceUtf8Fixture": "cp-1",
+        "checksumCrc32c": 305419896
+      },
+      "applicationVersion": "1",
+      "participantProgress": [
+        {
+          "participantId": "1",
+          "acceptedBoundary": "1",
+          "replayCursor": "0"
+        }
+      ],
+      "terminalCompletionCount": 1,
+      "pendingRelayCount": 0,
+      "sourceCleanupState": "pending"
+    }
+  }
+}

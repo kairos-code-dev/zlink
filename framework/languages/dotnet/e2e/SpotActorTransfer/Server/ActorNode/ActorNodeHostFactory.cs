@@ -38,7 +38,10 @@ internal static class ActorNodeHostFactory
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
             framework.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+            // The common ST-F4/F5 contract permits a short controller window so
+            // the E2E verifies cutoff semantics without coupling the scenario to
+            // the independently tested owner-lease TTL.
+            framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(2);
             var redisStore = new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix));
@@ -47,7 +50,7 @@ internal static class ActorNodeHostFactory
                 cleanupGates));
             var locations = framework.ConfigureLocations();
             locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-            locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+            locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
             locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
             var mesh28 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)

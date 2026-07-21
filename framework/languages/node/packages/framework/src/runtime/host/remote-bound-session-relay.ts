@@ -1,6 +1,6 @@
 import type { ActorRef, RoutingId, ZLinkActor } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
-import type { ZLinkBackendSpotNode } from '../backend';
+import type { ZLinkBackendActorSessionNode } from '../backend';
 import {
   type ZLinkActorRoutedJoinTransport,
   type ZLinkRemoteActorPacketTarget,
@@ -35,7 +35,7 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly streamBindingRuntime: () => ZLinkRemoteBoundSessionPort & ZLinkStreamActorLookupPort;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly meshRouters: MeshRouterResolver;
-  readonly primarySpotNode: () => ZLinkBackendSpotNode;
+  readonly primarySpotNode?: () => ZLinkBackendActorSessionNode;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
   readonly updateRemoteActorPacketTarget: (actorId: string, value: unknown) => void;
@@ -265,8 +265,12 @@ export class ZLinkRemoteBoundSessionRelay {
     if (actorRef === undefined) {
       throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
     }
+    const primarySpotNode = this.options.primarySpotNode?.();
+    if (primarySpotNode === undefined) {
+      throw new Error('Native bound-session response requires the RouteMesh stream-session service.');
+    }
     await this.options.streamBindingRuntime().sendNativeBoundSessionResponse(
-      this.options.primarySpotNode(),
+      primarySpotNode,
       actorRef,
       packetName,
       requestSeq,
@@ -316,8 +320,12 @@ export class ZLinkRemoteBoundSessionRelay {
     if (actorRef === undefined) {
       throw new Error(`Actor '${actorId}' does not have a native actor ref.`);
     }
+    const primarySpotNode = this.options.primarySpotNode?.();
+    if (primarySpotNode === undefined) {
+      throw new Error('Native bound-session error response requires the RouteMesh stream-session service.');
+    }
     await this.options.streamBindingRuntime().sendNativeBoundSessionError(
-      this.options.primarySpotNode(),
+      primarySpotNode,
       actorRef,
       packetName,
       requestSeq,

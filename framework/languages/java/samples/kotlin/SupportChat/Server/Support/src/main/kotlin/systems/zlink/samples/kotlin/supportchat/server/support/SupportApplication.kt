@@ -55,10 +55,9 @@ class SupportApplication {
                 .addHandlerGroup(SampleNames.SupportChannel)
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
-            val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
-            node.enableRouter(support.entryRouterEndpoint)
+            val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
+            node.listen(support.entryRouterEndpoint)
                 .setRoutingId(support.entryRoutingId)
-            node.enablePubSub(support.entrySpotEndpoint)
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
             node.addActorTransferAdapter(

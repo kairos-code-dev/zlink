@@ -6,14 +6,12 @@
   "types": "dist/browser/index.d.ts",
   "files": [
     "dist/browser",
-    "dist/server",
     "LICENSE"
   ],
   "exports": {
     ".": {
       "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.mjs",
-      "require": "./dist/server/index.cjs"
+      "import": "./dist/browser/index.mjs"
     }
   },
   "dependencies": {

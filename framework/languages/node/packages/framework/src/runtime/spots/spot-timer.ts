@@ -32,7 +32,11 @@ type ZLinkTimerFailureReporter = (
 ) => Promise<void> | void;
 
 export class ZLinkSpotTimerRegistry {
-  private readonly timers = new Set<ZLinkTimer>();
+  private readonly timers = new Map<string, {
+    readonly generation: bigint;
+    readonly timer: ZLinkManagedTimer;
+  }>();
+  private readonly generations = new Map<string, bigint>();
 
   constructor(
     private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
@@ -53,6 +57,13 @@ export class ZLinkSpotTimerRegistry {
     validateTimerRegistration(name, periodMs, options);
     throwIfAborted(signal);
     const handler = await createProviderInstance(handlerType, providerResolver);
+    const previous = this.timers.get(name);
+    if (previous !== undefined) {
+      this.timers.delete(name);
+      await previous.timer.cancel(signal);
+    }
+    const generation = (this.generations.get(name) ?? 0n) + 1n;
+    this.generations.set(name, generation);
     const timer = new ZLinkManagedTimer(
       name,
       periodMs,
@@ -60,21 +71,62 @@ export class ZLinkSpotTimerRegistry {
       async (tick) => {
         this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
         const timerFlow = createInboundFlow(undefined, 'Timer', this.flowCreationEnabled());
-        await serial.execute(() => runWithFlow(timerFlow, () => handler.handle(spot, tick)));
+        await serial.execute(() => {
+          const current = this.timers.get(name);
+          if (current?.generation !== generation || current.timer !== timer) {
+            return undefined;
+          }
+          return runWithFlow(timerFlow, () => handler.handle(spot, tick));
+        });
       },
       reportFailure,
       () => !serial.isExecuting
     );
-    this.timers.add(timer);
-    return timer;
+    this.timers.set(name, { generation, timer });
+    return new ZLinkRegisteredTimer(this, name, generation, timer);
   }
 
   async dispose(): Promise<void> {
-    const timers = [...this.timers];
+    const timers = [...this.timers.values()].map((entry) => entry.timer);
     this.timers.clear();
     for (const timer of timers) {
       await timer.dispose();
     }
+  }
+
+  async cancel(
+    name: string,
+    generation: bigint,
+    timer: ZLinkManagedTimer,
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const current = this.timers.get(name);
+    if (current?.generation === generation && current.timer === timer) {
+      this.timers.delete(name);
+    }
+    await timer.cancel(signal);
+  }
+}
+
+class ZLinkRegisteredTimer implements ZLinkTimer {
+  constructor(
+    private readonly registry: ZLinkSpotTimerRegistry,
+    private readonly name: string,
+    private readonly generation: bigint,
+    private readonly timer: ZLinkManagedTimer
+  ) {}
+
+  get isDisposed(): boolean {
+    return this.timer.isDisposed;
+  }
+
+  cancel(signal?: AbortSignal): Promise<void> {
+    return this.registry.cancel(this.name, this.generation, this.timer, signal);
+  }
+
+  dispose(): Promise<void> {
+    return this.cancel();
   }
 }
 

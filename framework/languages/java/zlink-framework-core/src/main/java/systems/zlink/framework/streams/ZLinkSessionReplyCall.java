@@ -1,10 +1,10 @@
 package systems.zlink.framework.streams;
 
+import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.channels.ZLinkSubmitResult;
 
 public interface ZLinkSessionReplyCall {
-    ZLinkSessionReplyCall metadata(String key, String value);
-
     ZLinkSessionReplyCall compress();
 
-    void submit();
+    CompletionStage<ZLinkSubmitResult> submit();
 }

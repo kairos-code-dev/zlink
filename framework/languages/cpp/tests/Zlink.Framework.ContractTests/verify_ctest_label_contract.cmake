@@ -19,32 +19,11 @@ set(required_labels
   framework-zlink-stream
   framework-zlink-actor-gateway
   framework-observability
-  timer
   framework-http
   framework-http-e2e
   framework-http-perf
   framework-package
   framework-tooling
-  framework-extension
-  framework-sample-parity
-  framework-sample-api
-  framework-sample-bingo
-  framework-sample-courier
-  framework-sample-deliverydispatch
-  framework-sample-dispatch
-  framework-sample-gamequest
-  framework-sample-mission
-  framework-sample-play
-  framework-sample-probe
-  framework-sample-registry
-  framework-sample-session
-  framework-sample-smoke
-  framework-sample-shoppingmall
-  framework-sample-support
-  framework-sample-supportchat
-  framework-sample-tictactoe
-  framework-sample-tracking
-  framework-sample-workflow
   http-client-contract
   http-client-unit
   http-client-e2e
@@ -65,11 +44,38 @@ set(required_labels
   connector-perf-scale
   connector-unreal-contract
   connector-unreal-compile
-  connector-unreal-smoke
-  parity)
+  connector-unreal-smoke)
+
+set(sample_labels
+  framework-sample-parity
+  framework-sample-api
+  framework-sample-bingo
+  framework-sample-courier
+  framework-sample-deliverydispatch
+  framework-sample-dispatch
+  framework-sample-gamequest
+  framework-sample-mission
+  framework-sample-play
+  framework-sample-registry
+  framework-sample-session
+  framework-sample-smoke
+  framework-sample-shoppingmall
+  framework-sample-support
+  framework-sample-supportchat
+  framework-sample-tictactoe
+  framework-sample-tracking
+  framework-sample-workflow)
+
+file(READ "${ZLINK_FRAMEWORK_CPP_BUILD_DIR}/CMakeCache.txt" build_cache)
+if(build_cache MATCHES "ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES:BOOL=ON")
+  list(APPEND required_labels ${sample_labels})
+endif()
 
 set(known_labels
   ${required_labels}
+  ${sample_labels}
+  framework-extension
+  parity
   ActorGateway
   CH-001
   CH-006
@@ -92,6 +98,7 @@ set(known_labels
   messaging
   module
   monitoring
+  metrics
   registry
   reliability
   redis
@@ -99,7 +106,8 @@ set(known_labels
   scope
   serializer
   spot
-  stream)
+  stream
+  framework-actor)
 
 if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
   list(APPEND required_labels framework-coverage)

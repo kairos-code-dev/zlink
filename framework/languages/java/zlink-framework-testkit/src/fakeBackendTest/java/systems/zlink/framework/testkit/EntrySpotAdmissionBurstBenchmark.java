@@ -66,7 +66,9 @@ final class EntrySpotAdmissionBurstBenchmark {
         BenchActorSendHandler.reset(total);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(EntrySpotAdmissionBurstBenchmark.class);
-        { var mesh = options.addSpotMesh("bench"); { var node = mesh; { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("bench-entry-spot")); };
+        { var mesh = options.addSpotMesh("bench"); { var node = mesh;
+                node.enableRouter("inproc://entry-admission-bench-router");
+                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("bench-entry-spot")); };
                 node.addEntrySpot(SpotRuntimeFakeBackendTest.LifecycleEntrySpot.class);
                 node.addActorFactory("player", SpotRuntimeFakeBackendTest.PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();

@@ -1,6 +1,6 @@
 export enum ZLinkStreamSessionError {
-  TransportError = 'transportError',
-  HandshakeFailed = 'handshakeFailed'
+  Internal = 'internal',
+  TransportError = 'transportError'
 }
 
 export interface ZLinkStreamDiagnostic {

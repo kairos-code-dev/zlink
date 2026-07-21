@@ -18,29 +18,17 @@
 #include <zlink/framework.hpp>
 
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
-
-inline std::vector<std::string> split_play_endpoints (const std::string &text)
-{
-    std::vector<std::string> endpoints;
-    std::stringstream input (text);
-    std::string endpoint;
-    while (std::getline (input, endpoint, ',')) {
-        if (!endpoint.empty ()) {
-            endpoints.push_back (endpoint);
-        }
-    }
-    return endpoints;
-}
 
 struct play_options_t
 {
     std::string log_dir;
     std::string node_rid;
     std::string route_endpoint;
+    std::vector<std::string> route_peer_endpoints;
     std::string spot_router_endpoint;
+    std::vector<std::string> spot_peer_endpoints;
     std::string pubsub_endpoint;
     std::vector<std::string> peer_pubsub_endpoints;
     std::string api_peer_endpoint;
@@ -58,9 +46,13 @@ struct play_options_t
         return {.log_dir = section.require ("logDir"),
                 .node_rid = section.get ("nodeRid").value_or ("play-a"),
                 .route_endpoint = section.require ("routeEndpoint"),
+                .route_peer_endpoints =
+                  split_endpoints (section.get ("routePeerEndpoints").value_or ("")),
                 .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_peer_endpoints =
+                  split_endpoints (section.get ("spotPeerEndpoints").value_or ("")),
                 .pubsub_endpoint = section.require ("pubsubEndpoint"),
-                .peer_pubsub_endpoints = split_play_endpoints (
+                .peer_pubsub_endpoints = split_endpoints (
                   section.get ("peerPubsubEndpoints").value_or ("")),
                 .api_peer_endpoint = section.get ("apiPeerEndpoint").value_or (""),
                 .api_endpoint = section.get ("apiEndpoint").value_or (""),
@@ -83,7 +75,9 @@ inline int run_play_server (int argc, char **argv)
     const auto &log_dir = config.log_dir;
     const auto &node_rid = config.node_rid;
     const auto &route_endpoint = config.route_endpoint;
+    const auto &route_peer_endpoints = config.route_peer_endpoints;
     const auto &spot_router_endpoint = config.spot_router_endpoint;
+    const auto &spot_peer_endpoints = config.spot_peer_endpoints;
     const auto &pubsub_endpoint = config.pubsub_endpoint;
     const auto &api_peer_endpoint = config.api_peer_endpoint;
     const auto &api_endpoint = config.api_endpoint;
@@ -223,19 +217,23 @@ inline int run_play_server (int argc, char **argv)
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
         if (route_mesh_enabled) {
-            options.add_route_mesh (e2e::route_channel)
-              .enable_server (route_endpoint)
+            auto route = options.add_route_mesh (e2e::route_channel);
+            route.listen (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (node_rid))
-              .enable_client ()
-              .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
-                                   e2e::ensure_actor_res_t> (
-                "EnsureActor", &ensure_actor_handler_t::handle)
-              .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
-                                   e2e::channel_echo_res_t> (
-                "ChannelEchoReq", &channel_echo_handler_t::route_handle)
-              .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
-                                   e2e::lifecycle_res_t> (
-                "LifecycleReq", &spot_lifecycle_handler_t::handle);
+              .channel_name (e2e::route_channel);
+            for (const auto &peer : route_peer_endpoints)
+                route.peer_connections ().connect (peer);
+            route
+              .add_route_request_handler<ensure_actor_handler_t,
+                                          e2e::ensure_actor_req_t,
+                                          e2e::ensure_actor_res_t> ("EnsureActor")
+              .add_route_request_handler<channel_echo_handler_t,
+                                          e2e::channel_echo_req_t,
+                                          e2e::channel_echo_res_t> (
+                "ChannelEchoReq")
+              .add_route_request_handler<spot_lifecycle_handler_t,
+                                          e2e::lifecycle_req_t,
+                                          e2e::lifecycle_res_t> ("LifecycleReq");
         }
         if (!api_endpoint.empty () || !api_peer_endpoint.empty ()) {
             auto api = options.add_client_server_channel (e2e::api_channel);
@@ -250,20 +248,22 @@ inline int run_play_server (int argc, char **argv)
             options.add_fanout_channel (e2e::publisher_channel)
               .enable_publisher (publisher_endpoint);
         }
-        auto spot = options.add_spot_mesh (e2e::spot_mesh)
-                      .set_routing_id (zlink::routing_id_t::from (node_rid))
-                      .enable_router (spot_router_endpoint)
-                      .enable_pub_sub (pubsub_endpoint)
-                      .add_entry_spot<entry_spot_t> (
-                        [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
-                      .add_spot<user_spot_t> (
-                        e2e::user_spot,
-                        [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
-                      .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
-                      .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
-        for (const auto &endpoint : config.peer_pubsub_endpoints) {
-            spot.connect_peer_pub (endpoint);
-        }
+        auto spot = options.add_route_mesh (e2e::spot_mesh);
+        spot.listen (spot_router_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .channel_name (e2e::spot_mesh);
+        for (const auto &peer : spot_peer_endpoints)
+            spot.peer_connections ().connect (peer);
+        spot.add_route_request_handler<channel_echo_handler_t,
+                                       e2e::channel_echo_req_t,
+                                       e2e::channel_echo_res_t> ("ChannelEchoReq");
+        spot.add_entry_spot<entry_spot_t> (
+          [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
+          .add_spot<user_spot_t> (
+            e2e::user_spot,
+            [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
+          .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
+          .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
         auto &http = options.http ().listen (http_endpoint);
         map_operational_endpoints (http);
         map_spot_lifecycle_endpoints (http);

@@ -583,7 +583,22 @@ public sealed partial class ZlinkConfigException : ZlinkException
         /// <summary>
         ///     The target was not found.
         /// </summary>
-        NotFound = 706
+        NotFound = 706,
+
+        /// <summary>
+        ///     The requested identity, name, or binding already exists.
+        /// </summary>
+        Conflict = 707,
+
+        /// <summary>
+        ///     The caller-provided output capacity is too small.
+        /// </summary>
+        BufferTooSmall = 708,
+
+        /// <summary>
+        ///     A mutable object is already in concurrent use.
+        /// </summary>
+        Busy = 709
     }
 
     /// <summary>

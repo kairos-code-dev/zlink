@@ -14,6 +14,7 @@ import type {
   ZLinkSessionPacketHandler,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
+  ZLinkSubmitResult,
   ZLinkStream
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -40,6 +41,7 @@ import { ZLinkSessionLocalActorBindings } from './session-local-actors';
 
 export interface ZLinkSessionContextStream extends ZLinkStream {
   writeRaw(payload: Message, flags?: number): boolean;
+  submitRaw(payload: Message, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }
 
 interface ZLinkSessionContextRuntime {
@@ -73,7 +75,7 @@ interface ZLinkSessionContextRuntime {
     actorRef: ActorRef,
     signal?: AbortSignal
   ): Promise<DefaultZLinkSessionActor>;
-  relay(actor: DefaultZLinkSessionActor, payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
+  relay(actor: DefaultZLinkSessionActor, payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
   notifyDisconnected(actor: DefaultZLinkSessionActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -84,7 +86,7 @@ interface ZLinkBoundSessionRuntime {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
   disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void>;
 }
 
@@ -100,6 +102,7 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   private readonly localActors = new ZLinkSessionLocalActorBindings<DefaultZLinkSessionActor>();
   private readonly requests = new ZLinkSessionRequestTracker();
   private currentDispatchHeader: ZLinkStreamFrameHeader | undefined;
+  private currentReplyClaimed = false;
 
   constructor(
     private readonly runtime: ZLinkSessionContextRuntime,
@@ -184,14 +187,26 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
 
   enterDispatch(header: ZLinkStreamFrameHeader): void {
     this.currentDispatchHeader = header;
+    this.currentReplyClaimed = false;
   }
 
   exitDispatch(): void {
     this.currentDispatchHeader = undefined;
+    this.currentReplyClaimed = false;
   }
 
   get dispatchHeader(): ZLinkStreamFrameHeader | undefined {
     return this.currentDispatchHeader;
+  }
+
+  claimReply(requestHeader: ZLinkStreamFrameHeader): void {
+    if (this.currentDispatchHeader !== requestHeader || requestHeader.requestSeq === undefined) {
+      throw new Error('Reply is only available while handling its request packet.');
+    }
+    if (this.currentReplyClaimed) {
+      throw new Error('The current stream request already has a reply submission.');
+    }
+    this.currentReplyClaimed = true;
   }
 
   startRequest(timeoutMs?: number): ZLinkPendingSessionRequest {
@@ -375,7 +390,7 @@ export class DefaultZLinkSessionActor implements ZLinkSessionActor {
     this.currentRef = ref;
   }
 
-  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult> {
     return this.runtime.relay(this, payload, signal);
   }
 

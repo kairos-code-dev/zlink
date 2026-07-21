@@ -2,6 +2,7 @@ using Systems.Zlink;
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -9,7 +10,9 @@ using Zlink.Framework.Contracts.Spots;
 namespace AutomaticTurnDispatch.Server.Play.Handlers;
 
 [ZLinkSpotActorRequestHandler("ActorAwaitReq")]
-internal sealed class EntryActorAwaitHandler(EvidenceStore evidence)
+internal sealed class EntryActorAwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorAwaitReq, ActorAwaitRes>
 {
     public async ValueTask<ActorAwaitRes> HandleAsync(
@@ -24,7 +27,8 @@ internal sealed class EntryActorAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        var call = entrySpot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
@@ -69,7 +73,9 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotActorRequestHandler("ActorAwaitReq")]
-internal sealed class SpotActorAwaitHandler(EvidenceStore evidence)
+internal sealed class SpotActorAwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorAwaitReq, ActorAwaitRes>
 {
     public async ValueTask<ActorAwaitRes> HandleAsync(
@@ -84,7 +90,8 @@ internal sealed class SpotActorAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        var call = spot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
@@ -129,7 +136,9 @@ internal sealed class SpotActorFastHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotActorRequestHandler("ActorPushAwaitReq")]
-internal sealed class SpotActorPushAwaitHandler(EvidenceStore evidence)
+internal sealed class SpotActorPushAwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes>
 {
     public async ValueTask<ActorAwaitRes> HandleAsync(
@@ -144,7 +153,8 @@ internal sealed class SpotActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        var call = spot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-push-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
@@ -155,12 +165,12 @@ internal sealed class SpotActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        actor.Context.BoundSession.Send(
+        await actor.Context.BoundSession.Send(
                 new ActorPushNotify(
                     actor.ActorId,
                     request.RequestId,
                     request.Value,
-                    spot.Context.NodeRid.ToString())).Submit(cancellationToken);
+                    spot.Context.NodeRid.ToString())).SubmitAsync(cancellationToken);
         evidence.Add(
             $"actor-push-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
@@ -230,7 +240,9 @@ internal sealed class SpotActorJoinAwaitHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotActorRequestHandler("ActorPushAwaitReq")]
-internal sealed class EntryActorPushAwaitHandler(EvidenceStore evidence)
+internal sealed class EntryActorPushAwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes>
 {
     public async ValueTask<ActorAwaitRes> HandleAsync(
@@ -245,7 +257,8 @@ internal sealed class EntryActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        var call = entrySpot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-push-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
@@ -256,12 +269,12 @@ internal sealed class EntryActorPushAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"actor-push-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
-        actor.Context.BoundSession.Send(
+        await actor.Context.BoundSession.Send(
                 new ActorPushNotify(
                     actor.ActorId,
                     request.RequestId,
                     request.Value,
-                    entrySpot.Context.NodeRid.ToString())).Submit(cancellationToken);
+                    entrySpot.Context.NodeRid.ToString())).SubmitAsync(cancellationToken);
         evidence.Add(
             $"actor-push-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");

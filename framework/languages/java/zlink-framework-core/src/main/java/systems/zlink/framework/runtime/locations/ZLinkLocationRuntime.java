@@ -178,7 +178,8 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent) {
         ZLinkSpotLocation stamped = new ZLinkSpotLocation(
-            spot.meshName(), spot.spotRid(), spot.spotType(), spot.nodeRid(), spot.spotKind(),
+            spot.meshName(), spot.spotRid(), spot.spotGeneration(), spot.spotType(),
+            spot.nodeRid(), spot.spotKind(),
             spot.routeEndpoint(), ownerId, spot.generation(), spot.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid()));
         return stores.spotStore().updateSpot(stamped, intent)

@@ -288,11 +288,11 @@ class spot_publish_route_handler_t
           _publisher
             .publish (e2e::publisher_channel, e2e::mesh_topic,
                       e2e::mesh_msg_t{"evt-sm-c1", request.marker})
-            .result ();
-        if (!published) {
+            .submit ();
+        if (published.status != zlink::framework::submit_status_t::submitted) {
             throw zlink::framework::framework_exception_t (
-              published.error_kind (),
-              published.error () ? published.error ()->what () : "SPOT mesh publish failed");
+              zlink::framework::framework_error_kind_t::request_failed,
+              "SPOT mesh publish was not submitted");
         }
 
         zlink::framework::http_response_t response;

@@ -9,11 +9,11 @@ internal sealed partial class ZLinkSpotActivation
         _packets.Add(typeof(THandler));
     }
 
-    public void AddSubscribe<THandler>(string topic)
+    public void AddSubscribe<THandler>(string channelName, string topic)
         where THandler : class
     {
         EnsureConfigurationOpen();
-        _subscriptions.Add(topic, typeof(THandler));
+        _subscriptions.Add(channelName, topic, typeof(THandler));
     }
 
     public void AddHandler<THandler>()
@@ -103,10 +103,13 @@ internal sealed partial class ZLinkSpotActivation
                     && !string.Equals(handler.SpotNodeName, SpotNodeName, StringComparison.Ordinal)) return;
                 var topic = handler.Topic
                             ?? throw new InvalidOperationException("Scanned SPOT subscription requires a topic.");
+                var channelName = handler.ChannelName
+                                  ?? throw new InvalidOperationException(
+                                      "Scanned SPOT subscription requires a channel name.");
                 if (handler.Method is { } subscriptionMethod)
-                    _subscriptions.Add(topic, handler.HandlerType, subscriptionMethod);
+                    _subscriptions.Add(channelName, topic, handler.HandlerType, subscriptionMethod);
                 else
-                    _subscriptions.Add(topic, handler.HandlerType);
+                    _subscriptions.Add(channelName, topic, handler.HandlerType);
                 return;
             case ZLinkScannedSpotHandlerKind.ActorSend:
             case ZLinkScannedSpotHandlerKind.ActorRequest:

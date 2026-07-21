@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -58,11 +58,12 @@ public final class Program {
                 .enableClient();
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableClient();
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportActorMesh);
-            node.enableRouter(session.routerEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
+            node.listen(session.routerEndpoint())
                 .setRoutingId(session.routingId());
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint())
+                .enableActorDispatch(SampleNames.SupportActorMesh)
                 .registerSession(SupportChatSession.class);
         };
     }

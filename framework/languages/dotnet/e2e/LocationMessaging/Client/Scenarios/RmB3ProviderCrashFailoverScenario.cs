@@ -31,7 +31,12 @@ internal static class RmB3ProviderCrashFailoverScenario
 
         await WaitForPeerAsync(requester, "api-a", present: true);
         await WaitForPeerAsync(requester, "api-b", present: true);
-        await ProveBothProvidersAsync(requester, providerAClient, providerBClient);
+        await ProveBothProvidersAsync(
+            requester,
+            providerAClient,
+            providerBClient,
+            providerA.ChannelEndpoint,
+            providerB.ChannelEndpoint);
 
         var marker = $"rm-b3-transition-{Guid.NewGuid():N}";
         var inFlight = Enumerable.Range(0, 4)
@@ -104,8 +109,13 @@ internal static class RmB3ProviderCrashFailoverScenario
     private static async Task ProveBothProvidersAsync(
         ZLinkHttpClient requester,
         ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB)
+        ZLinkHttpClient providerB,
+        string providerAEndpoint,
+        string providerBEndpoint)
     {
+        await WaitConnectionReadyAsync(requester, providerAEndpoint);
+        await WaitConnectionReadyAsync(requester, providerBEndpoint);
+
         var marker = $"rm-b3-before-{Guid.NewGuid():N}";
         for (var index = 0; index < 40; index++)
             _ = await requester.Post("/profile/request")
@@ -119,6 +129,16 @@ internal static class RmB3ProviderCrashFailoverScenario
             .Body(new EvidenceWaitReq($"profile-request|rid=api-b|value={marker}"))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(a.Length > 0 && b.Length > 0, "RM-B3 expected both providers before crash.");
+    }
+
+    private static async Task WaitConnectionReadyAsync(
+        ZLinkHttpClient requester,
+        string endpoint)
+    {
+        _ = await requester.Post("/connections/wait")
+            .Body(new EvidenceWaitReq(
+                $"monitor-mesh|source=profile|kind=ConnectionReady|remote={endpoint}"))
+            .Async<string[]>();
     }
 
     private static async Task<RequestOutcome> ObserveRequestAsync(ZLinkHttpClient requester, string value)

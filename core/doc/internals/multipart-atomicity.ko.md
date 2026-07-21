@@ -296,39 +296,6 @@ multipart를 aggregate shape로 설명하게 해 준다.
 
 ---
 
-## Service / Spot 예외
-
-Spot은 raw socket과 완전히 같은 atomicity surface가 아니다.
-
-핵심 구현:
-
-- [mesh_runtime.cpp](../../src/runtime/services/mesh/mesh_runtime.cpp)
-- [mesh_dispatch_api.cpp](../../src/api/mesh/mesh_dispatch_api.cpp)
-
-Spot direct 메시지와 Logical Multicast record는 raw part receive가 아니라
-Spot claim의 receive batch(`zlink_mesh_claim_recv_batch()`)로 수신한다.
-이 경로는 다음 성격을 띤다.
-
-- ingress가 complete multipart를 mailbox admission 단위로 취급하므로
-  batch에는 완성된 record만 나타난다
-- 첫 message가 capacity에 들어가지 않으면 batch를 비운 채
-  `BUFFER_TOO_SMALL`과 필요한 크기를 반환한다
-- record·part view의 수명은 batch reset/destroy에 묶인다
-
-즉 Spot은:
-
-- raw socket fq invariant와 1:1로 동일한 surface가 아니라
-- MeshNode dispatch runtime이 얹힌 higher-level claim consumer
-
-이다.
-
-따라서 raw socket atomicity 문장을 그대로 Spot에 복사하면 안 된다.
-Spot 경로의 정식 계약은 dispatch spec
-(`doc/spec/core/service/02-dispatch.ko.md`)이 소유하며, raw socket처럼
-"첫 part 후 follow-up 즉시 EPROTO 승격"으로 설명되지 않는다.
-
----
-
 ## 콜백 경로와 원자성
 
 직접 콜백/핸들러 경로도 결과적으로는 완성된 multipart를 콜백에
@@ -1361,25 +1328,7 @@ public API surface는 다르다.
 `libzmq`의 `dist_t::attach()`는 `_more == true`일 때 새 pipe를
 `_eligible`에만 추가하여 multipart 완료 후 `_active`로 승격한다.
 
-`zlink`에서도 같은 패턴이 유지되며, 추가로 subscriber 측의
-ready probe filtering이 있어 service 계층에서 한 겹 더 보호가 동작한다.
-
-### 차이 6. service handles
-
-`libzmq`는 raw socket library다.
-`SPOT` 같은 service abstraction은 직접 제공하지 않는다.
-
-`zlink`는 raw socket 위에 service runtime이 있어:
-
-- ready probe filtering
-- topic/routing framing 분리
-- service-specific blocking semantics
-
-이 추가된다.
-
-따라서 `SPOT`은 raw socket atomicity 모델의 상위 추상화다.
-
----
+`zlink`에서도 같은 패턴을 유지해 새 pipe가 진행 중인 multipart 중간에 활성화되지 않게 한다.
 
 ## 현재 설계의 장점
 
@@ -1484,9 +1433,6 @@ multipart atomicity가 유지된다고 보려면 아래가 계속 참이어야 �
   - [core/src/api/socket/socket_message_recv_api.cpp](../../src/api/socket/socket_message_recv_api.cpp)
   - [core/src/runtime/sockets/internal/fq.cpp](../../src/runtime/sockets/internal/fq.cpp)
   - [core/src/runtime/core/recv_tls_view.hpp](../../src/runtime/core/recv_tls_view.hpp)
-- service / spot
-  - [core/src/runtime/services/mesh/mesh_runtime.cpp](../../src/runtime/services/mesh/mesh_runtime.cpp)
-  - [core/src/api/mesh/mesh_dispatch_api.cpp](../../src/api/mesh/mesh_dispatch_api.cpp)
 - public contract
   - [core/include/zlink.h](../../include/zlink.h)
 - libzmq 참조

@@ -10,6 +10,11 @@ namespace
 std::atomic<uint64_t> next_connection_id (1);
 }
 
+uint64_t zlink::allocate_connection_id ()
+{
+    return next_connection_id.fetch_add (1, std::memory_order_relaxed);
+}
+
 zlink::endpoint_uri_pair_t::endpoint_uri_pair_t () :
     local_type (endpoint_type_none),
     connection_id (0)
@@ -23,7 +28,7 @@ zlink::endpoint_uri_pair_t::endpoint_uri_pair_t (
     local (local_),
     remote (remote_),
     local_type (local_type_),
-    connection_id (next_connection_id.fetch_add (1, std::memory_order_relaxed))
+    connection_id (allocate_connection_id ())
 {
 }
 

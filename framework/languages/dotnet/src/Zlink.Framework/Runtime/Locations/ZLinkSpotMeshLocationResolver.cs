@@ -12,7 +12,6 @@ internal sealed class ZLinkSpotMeshLocationResolver
         _rows = rows;
         _meshNames = registration.SpotNodes.Values
             .Select(static node => node.SpotMeshChannelName ?? node.SpotNodeName)
-            .Concat(registration.SpotMeshChannels.Keys)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
     }

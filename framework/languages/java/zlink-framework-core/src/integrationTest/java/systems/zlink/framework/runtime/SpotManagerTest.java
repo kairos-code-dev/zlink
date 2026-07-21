@@ -317,7 +317,7 @@ final class SpotManagerTest {
                 PublishingSpot.afterRemoveTick.countDown();
             }
             PublishingSpot.ticks.incrementAndGet();
-            spot.context().outbound().publish("heartbeat", "tick").submit();
+            spot.context().outbound().publish("game", "heartbeat", "tick").submit();
             PublishingSpot.timerPublished.countDown();
             return CompletableFuture.completedFuture(null);
         }

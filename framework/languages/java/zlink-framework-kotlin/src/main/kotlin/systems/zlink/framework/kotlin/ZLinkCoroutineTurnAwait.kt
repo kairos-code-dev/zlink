@@ -11,6 +11,9 @@ public suspend fun <T> CompletionStage<T>.await(): T =
 @PublishedApi
 internal suspend fun <T> awaitFrameworkStage(stage: CompletionStage<T>): T {
     return suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation {
+            stage.toCompletableFuture().cancel(false)
+        }
         stage.whenComplete { value, error ->
             if (error == null) {
                 continuation.resume(value)

@@ -6,12 +6,18 @@ import {
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationStore,
   type ZLinkActorLocation,
+  type ZLinkActorTransferPrepareRequest,
+  type ZLinkActorTransferRecord,
+  type ZLinkActorTransferState,
+  type ZLinkActorTransferWriteResult,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
   type ZLinkLocationChangeStampScope,
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
+  type ZLinkMeshNodeDescriptor,
+  type ZLinkMeshNodeDescriptorKey,
   type ZLinkRoutingIdSlotAcquireRequest,
   type ZLinkRoutingIdSlotAcquireResult,
   type ZLinkRoutingIdSlotAllocation,
@@ -46,14 +52,57 @@ export class ZLinkInMemoryLocationStore implements
   ZLinkLocationChangeStampStore,
   ZLinkRoutingIdSlotAllocationStore {
   private readonly leases = new Map<string, ZLinkOwnerLease>();
+  private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();
   private readonly actors = new RowTable<ZLinkActorLocation>();
   private readonly routes = new RowTable<ZLinkRouteLocation>();
   private readonly stamps = new Map<string, bigint>();
   private readonly routingIdGroups = new Map<string, InMemoryRoutingIdGroup>();
+  private readonly actorTransfers = new Map<string, InMemoryActorTransferSlot>();
 
   constructor(private readonly now: () => Date = () => new Date()) {}
+
+  async updateMeshNode(
+    descriptor: ZLinkMeshNodeDescriptor,
+    intent: ZLinkLocationWriteIntent
+  ): Promise<ZLinkLocationWriteResult> {
+    return this.write(
+      this.meshNodes,
+      meshNodeKey(descriptor.meshName, descriptor.rid),
+      descriptor,
+      intent,
+      descriptor.ownerId,
+      0n,
+      (row) => row.ownerId,
+      () => 0n,
+      (row, _generation, updatedAt) => ({ ...row, updatedAt }),
+      ZLinkLocationKind.Peer,
+      descriptor.meshName
+    );
+  }
+
+  async removeMeshNode(
+    key: ZLinkMeshNodeDescriptorKey,
+    owner: ZLinkLocationOwnerToken
+  ): Promise<ZLinkLocationWriteStatus> {
+    const encoded = meshNodeKey(key.meshName, key.rid);
+    const current = this.meshNodes.rows.get(encoded);
+    if (
+      current === undefined
+      || current.ownerId !== owner.ownerId
+      || this.meshNodes.generations.get(encoded) !== owner.generation
+    ) {
+      return ZLinkLocationWriteStatus.IgnoredStale;
+    }
+    this.meshNodes.rows.delete(encoded);
+    this.bump(ZLinkLocationKind.Peer, key.meshName);
+    return ZLinkLocationWriteStatus.Stored;
+  }
+
+  async listMeshNodes(meshName: string): Promise<readonly ZLinkMeshNodeDescriptor[]> {
+    return [...this.meshNodes.rows.values()].filter((row) => row.meshName === meshName);
+  }
 
   async acquireRoutingIdSlot(
     request: ZLinkRoutingIdSlotAcquireRequest,
@@ -65,7 +114,7 @@ export class ZLinkInMemoryLocationStore implements
     const members = normalizeRoutingIdMembers(request.members);
     let group = this.routingIdGroups.get(request.groupName);
     if (group === undefined) {
-      const memberNames = new Set(members.map((member) => member.channelName));
+      const memberNames = new Set(members.map((member) => member.meshName));
       if ([...this.peers.rows.values()].some((peer) =>
         memberNames.has(peer.meshName) && this.isOwnerLive(peer.ownerId, storeNow))) {
         return { kind: 'identityModeConflict' };
@@ -202,31 +251,38 @@ export class ZLinkInMemoryLocationStore implements
     spot: ZLinkSpotLocation,
     intent: ZLinkLocationWriteIntent
   ): Promise<ZLinkLocationWriteResult> {
-    return this.write(
-      this.spots,
-      ZLinkLocationKeyCodec.encodeSpotKey({ meshName: spot.meshName, spotRid: spot.spotRid }),
-      spot,
-      intent,
-      spot.ownerId,
-      spot.generation,
-      (row) => row.ownerId,
-      (row) => row.generation,
-      (row, generation, updatedAt) => ({ ...row, generation, updatedAt }),
-      ZLinkLocationKind.Spot,
-      spot.meshName
-    );
+    const key = ZLinkLocationKeyCodec.encodeSpotKey({ meshName: spot.meshName, spotRid: spot.spotRid });
+    const updatedAt = this.now();
+    const current = this.spots.rows.get(key);
+    if (intent === ZLinkLocationWriteIntent.NewClaim
+      && current !== undefined
+      && this.isOwnerLive(current.ownerId, updatedAt)) {
+      return rejectedConflict();
+    }
+    if (intent === ZLinkLocationWriteIntent.Renew) {
+      if (current === undefined || current.ownerId !== spot.ownerId) return ignoredStale();
+      this.spots.rows.set(key, { ...spot, updatedAt });
+      this.bump(ZLinkLocationKind.Spot, spot.meshName);
+      return stored(this.spots.generations.get(key) ?? 0n, updatedAt);
+    }
+    const generation = (this.spots.generations.get(key) ?? 0n) + 1n;
+    this.spots.generations.set(key, generation);
+    this.spots.rows.set(key, { ...spot, updatedAt });
+    this.bump(ZLinkLocationKind.Spot, spot.meshName);
+    return stored(generation, updatedAt);
   }
 
-  async removeSpot(key: ZLinkSpotLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteResult> {
-    return this.remove(
-      this.spots,
-      ZLinkLocationKeyCodec.encodeSpotKey(key),
-      owner,
-      (row) => row.ownerId,
-      (row) => row.generation,
-      ZLinkLocationKind.Spot,
-      key.meshName
-    );
+  async removeSpot(key: ZLinkSpotLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteStatus> {
+    const encoded = ZLinkLocationKeyCodec.encodeSpotKey(key);
+    const current = this.spots.rows.get(encoded);
+    if (current === undefined
+      || current.ownerId !== owner.ownerId
+      || this.spots.generations.get(encoded) !== owner.generation) {
+      return ZLinkLocationWriteStatus.IgnoredStale;
+    }
+    this.spots.rows.delete(encoded);
+    this.bump(ZLinkLocationKind.Spot, key.meshName);
+    return ZLinkLocationWriteStatus.Stored;
   }
 
   async resolveSpot(key: ZLinkSpotLocationKey): Promise<ZLinkSpotLocation | undefined> {
@@ -244,31 +300,38 @@ export class ZLinkInMemoryLocationStore implements
     actor: ZLinkActorLocation,
     intent: ZLinkLocationWriteIntent
   ): Promise<ZLinkLocationWriteResult> {
-    return this.write(
-      this.actors,
-      ZLinkLocationKeyCodec.encodeActorKey({ actorId: actor.actorId }),
-      actor,
-      intent,
-      actor.ownerId,
-      actor.generation,
-      (row) => row.ownerId,
-      (row) => row.generation,
-      (row, generation, updatedAt) => ({ ...row, generation, updatedAt }),
-      ZLinkLocationKind.Actor,
-      undefined
-    );
+    const key = ZLinkLocationKeyCodec.encodeActorKey({ meshName: actor.meshName, actorId: actor.actorId });
+    const updatedAt = this.now();
+    const current = this.actors.rows.get(key);
+    if (intent === ZLinkLocationWriteIntent.NewClaim
+      && current !== undefined
+      && this.isOwnerLive(current.ownerId, updatedAt)) {
+      return rejectedConflict();
+    }
+    if (intent === ZLinkLocationWriteIntent.Renew) {
+      if (current === undefined || current.ownerId !== actor.ownerId) return ignoredStale();
+      this.actors.rows.set(key, { ...actor, updatedAt });
+      this.bump(ZLinkLocationKind.Actor, actor.meshName);
+      return stored(this.actors.generations.get(key) ?? 0n, updatedAt);
+    }
+    const generation = (this.actors.generations.get(key) ?? 0n) + 1n;
+    this.actors.generations.set(key, generation);
+    this.actors.rows.set(key, { ...actor, updatedAt });
+    this.bump(ZLinkLocationKind.Actor, actor.meshName);
+    return stored(generation, updatedAt);
   }
 
-  async removeActor(key: ZLinkActorLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteResult> {
-    return this.remove(
-      this.actors,
-      ZLinkLocationKeyCodec.encodeActorKey(key),
-      owner,
-      (row) => row.ownerId,
-      (row) => row.generation,
-      ZLinkLocationKind.Actor,
-      undefined
-    );
+  async removeActor(key: ZLinkActorLocationKey, owner: ZLinkLocationOwnerToken): Promise<ZLinkLocationWriteStatus> {
+    const encoded = ZLinkLocationKeyCodec.encodeActorKey(key);
+    const current = this.actors.rows.get(encoded);
+    if (current === undefined
+      || current.ownerId !== owner.ownerId
+      || this.actors.generations.get(encoded) !== owner.generation) {
+      return ZLinkLocationWriteStatus.IgnoredStale;
+    }
+    this.actors.rows.delete(encoded);
+    this.bump(ZLinkLocationKind.Actor, key.meshName);
+    return ZLinkLocationWriteStatus.Stored;
   }
 
   async resolveActor(key: ZLinkActorLocationKey): Promise<ZLinkActorLocation | undefined> {
@@ -324,6 +387,124 @@ export class ZLinkInMemoryLocationStore implements
     return pageRows(this.routes, (row) => matchesRouteLocation(row, filter), page);
   }
 
+  async prepareActorTransfer(
+    request: ZLinkActorTransferPrepareRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    signal?.throwIfAborted();
+    validateTransferRequest(request);
+    const key = actorTransferKey(request.meshName, request.actorId);
+    let slot = this.actorTransfers.get(key);
+    if (slot === undefined) {
+      slot = { records: new Map() };
+      this.actorTransfers.set(key, slot);
+    }
+    if (slot.activeTransferId !== undefined) {
+      const existing = slot.records.get(slot.activeTransferId);
+      if (slot.activeTransferId === request.transferId && existing?.state === 'prepared') {
+        return transferStored(existing);
+      }
+      return transferResult('rejectedConflict');
+    }
+    const updatedAt = this.now();
+    const record: ZLinkActorTransferRecord = {
+      meshName: request.meshName,
+      actorId: request.actorId,
+      transferId: request.transferId,
+      source: request.source,
+      target: request.target,
+      expectedActorGeneration: request.expectedActorGeneration,
+      expectedMembershipEpoch: request.expectedMembershipEpoch,
+      participants: new Set(request.participants),
+      state: 'prepared',
+      recoveryOwnerId: request.recoveryOwnerId,
+      recoveryLeaseExpiresAt: new Date(updatedAt.getTime() + request.recoveryLeaseTtlMs),
+      updatedAt
+    };
+    slot.records.set(request.transferId, record);
+    slot.activeTransferId = request.transferId;
+    return transferStored(record);
+  }
+
+  async commitActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    signal?.throwIfAborted();
+    return this.transitionActorTransfer(
+      meshName, actorId, transferId, recoveryOwnerId, 'prepared', 'committed', false
+    );
+  }
+
+  async activateActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    signal?.throwIfAborted();
+    return this.transitionActorTransfer(
+      meshName, actorId, transferId, recoveryOwnerId, 'committed', 'activated', true
+    );
+  }
+
+  async abortActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    signal?.throwIfAborted();
+    return this.transitionActorTransfer(
+      meshName, actorId, transferId, recoveryOwnerId, 'prepared', 'aborted', true
+    );
+  }
+
+  async takeOverActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    successorOwnerId: string,
+    recoveryLeaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    signal?.throwIfAborted();
+    validateTransferIdentity(meshName, actorId, transferId);
+    validateTransferLease(successorOwnerId, recoveryLeaseTtlMs);
+    const record = this.actorTransfers.get(actorTransferKey(meshName, actorId))?.records.get(transferId);
+    if (record === undefined) return transferResult('notFound');
+    if (record.state !== 'prepared' && record.state !== 'committed') {
+      return transferResult('invalidState');
+    }
+    const updatedAt = this.now();
+    if (record.recoveryLeaseExpiresAt.getTime() > updatedAt.getTime()) {
+      return transferResult('rejectedConflict');
+    }
+    const updated: ZLinkActorTransferRecord = {
+      ...record,
+      recoveryOwnerId: successorOwnerId,
+      recoveryLeaseExpiresAt: new Date(updatedAt.getTime() + recoveryLeaseTtlMs),
+      updatedAt
+    };
+    this.actorTransfers.get(actorTransferKey(meshName, actorId))?.records.set(transferId, updated);
+    return transferStored(updated);
+  }
+
+  async resolveActorTransfer(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferRecord | undefined> {
+    signal?.throwIfAborted();
+    const slot = this.actorTransfers.get(actorTransferKey(meshName, actorId));
+    return slot?.activeTransferId === undefined ? undefined : slot.records.get(slot.activeTransferId);
+  }
+
   async renewOwnerLease(
     ownerId: string,
     nodeRid: RoutingId,
@@ -344,13 +525,13 @@ export class ZLinkInMemoryLocationStore implements
     return this.leases.delete(ownerId);
   }
 
-  async removeAllByOwner(ownerId: string): Promise<number> {
+  async removeAllByOwner(ownerId: string): Promise<bigint> {
     let removed = 0;
     removed += this.removeByOwner(this.peers, ownerId, (row) => row.ownerId, ZLinkLocationKind.Peer, (row) => row.meshName);
     removed += this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
     removed += this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
     removed += this.removeByOwner(this.routes, ownerId, (row) => row.ownerId, ZLinkLocationKind.Route, () => undefined);
-    return removed;
+    return BigInt(removed);
   }
 
   async listOwnerLeases(): Promise<ZLinkOwnerLeaseSnapshot> {
@@ -396,13 +577,40 @@ export class ZLinkInMemoryLocationStore implements
 
     if (current !== undefined
       && ownerOf(current) === ownerId
-      && generationOf(current) === generation) {
+      && (generation === 0n || generationOf(current) === generation)) {
       table.rows.set(key, finalize(row, generation, updatedAt));
       this.bump(kind, meshName);
-      return stored(generation, updatedAt);
+      return stored(table.generations.get(key) ?? generation, updatedAt);
     }
 
     return ignoredStale();
+  }
+
+  private transitionActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    requiredState: ZLinkActorTransferState,
+    nextState: ZLinkActorTransferState,
+    clearActive: boolean
+  ): ZLinkActorTransferWriteResult {
+    validateTransferIdentity(meshName, actorId, transferId);
+    const slot = this.actorTransfers.get(actorTransferKey(meshName, actorId));
+    const record = slot?.records.get(transferId);
+    if (record === undefined || slot?.activeTransferId !== transferId) {
+      return transferResult('notFound');
+    }
+    if (record.state !== requiredState) return transferResult('invalidState');
+    if (record.recoveryOwnerId !== recoveryOwnerId) return transferResult('rejectedConflict');
+    const updated: ZLinkActorTransferRecord = {
+      ...record,
+      state: nextState,
+      updatedAt: this.now()
+    };
+    slot.records.set(transferId, updated);
+    if (clearActive) slot.activeTransferId = undefined;
+    return transferStored(updated);
   }
 
   private remove<TRow>(
@@ -482,6 +690,58 @@ interface InMemoryRoutingIdGroup {
   readonly generations: Map<number, bigint>;
 }
 
+interface InMemoryActorTransferSlot {
+  readonly records: Map<string, ZLinkActorTransferRecord>;
+  activeTransferId?: string;
+}
+
+const TRANSFER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function meshNodeKey(meshName: string, rid: RoutingId): string {
+  const value = typeof rid === 'string'
+    ? rid
+    : (rid as unknown as { toHex(): string }).toHex();
+  return `${meshName.length}:${meshName}:${value.length}:${value}`;
+}
+
+function actorTransferKey(meshName: string, actorId: string): string {
+  return `${meshName.length}:${meshName}${actorId.length}:${actorId}`;
+}
+
+function validateTransferRequest(request: ZLinkActorTransferPrepareRequest): void {
+  validateTransferIdentity(request.meshName, request.actorId, request.transferId);
+  validateTransferLease(request.recoveryOwnerId, request.recoveryLeaseTtlMs);
+  if (request.expectedActorGeneration < 1n || request.expectedMembershipEpoch < 1n) {
+    throw new RangeError('Actor transfer generation and membership epoch must be positive.');
+  }
+  if (request.participants.size === 0) {
+    throw new TypeError('Actor transfer requires at least one participant.');
+  }
+}
+
+function validateTransferIdentity(meshName: string, actorId: string, transferId: string): void {
+  if (meshName.trim().length === 0 || actorId.trim().length === 0) {
+    throw new TypeError('Actor transfer meshName and actorId are required.');
+  }
+  if (!TRANSFER_ID_PATTERN.test(transferId)) {
+    throw new TypeError('Actor transferId must be a lowercase canonical UUID.');
+  }
+}
+
+function validateTransferLease(ownerId: string, ttlMs: number): void {
+  if (ownerId.trim().length === 0 || !Number.isFinite(ttlMs) || ttlMs <= 0) {
+    throw new TypeError('Actor transfer recovery owner and positive lease TTL are required.');
+  }
+}
+
+function transferStored(record: ZLinkActorTransferRecord): ZLinkActorTransferWriteResult {
+  return { status: 'stored', record };
+}
+
+function transferResult(status: ZLinkActorTransferWriteResult['status']): ZLinkActorTransferWriteResult {
+  return { status };
+}
+
 function validateRoutingIdSlotAcquireRequest(request: ZLinkRoutingIdSlotAcquireRequest): void {
   validateRoutingIdGroupName(request.groupName);
   if (!Number.isInteger(request.slotCount) || request.slotCount < 1) {
@@ -498,13 +758,13 @@ function validateRoutingIdSlotAcquireRequest(request: ZLinkRoutingIdSlotAcquireR
   }
   const names = new Set<string>();
   for (const member of request.members) {
-    if (member.channelName.trim().length === 0 || member.routingIdPrefix.trim().length === 0) {
+    if (member.meshName.trim().length === 0 || member.routingIdPrefix.trim().length === 0) {
       throw new TypeError('Routing-id allocation member names and prefixes must not be empty.');
     }
-    if (names.has(member.channelName)) {
-      throw new TypeError(`Routing-id allocation member '${member.channelName}' is duplicated.`);
+    if (names.has(member.meshName)) {
+      throw new TypeError(`Routing-id allocation member '${member.meshName}' is duplicated.`);
     }
-    names.add(member.channelName);
+    names.add(member.meshName);
   }
 }
 
@@ -533,7 +793,7 @@ function normalizeRoutingIdMembers(
 ): readonly ZLinkRoutingIdSlotAllocationMember[] {
   return members
     .map((member) => ({ ...member }))
-    .sort((left, right) => left.channelName.localeCompare(right.channelName));
+    .sort((left, right) => left.meshName.localeCompare(right.meshName));
 }
 
 function sameRoutingIdMembers(
@@ -541,7 +801,7 @@ function sameRoutingIdMembers(
   right: readonly ZLinkRoutingIdSlotAllocationMember[]
 ): boolean {
   return left.length === right.length && left.every((member, index) =>
-    member.channelName === right[index]?.channelName
+    member.meshName === right[index]?.meshName
       && member.routingIdPrefix === right[index]?.routingIdPrefix);
 }
 

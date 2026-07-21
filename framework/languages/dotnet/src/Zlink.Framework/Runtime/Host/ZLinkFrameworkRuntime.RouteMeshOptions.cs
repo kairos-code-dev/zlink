@@ -13,8 +13,8 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         return ExecuteOperation<IZLinkMeshNodeRuntimeOptions>(() =>
         {
-            var (_, registration) = ResolveMeshNode(meshName);
-            return new ZLinkMeshNodeRuntimeOptions(registration);
+            var (nodeRuntime, registration) = ResolveMeshNode(meshName);
+            return new ZLinkMeshNodeRuntimeOptions(registration, nodeRuntime.Node);
         });
     }
 

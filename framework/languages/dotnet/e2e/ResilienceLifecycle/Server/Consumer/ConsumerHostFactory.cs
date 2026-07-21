@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 
 using Microsoft.AspNetCore.Builder;
@@ -40,7 +41,6 @@ internal static class ConsumerHostFactory
         });
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<ConnectionEvidence>();
-        builder.Services.AddSingleton(new StormClientFleet(options));
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -75,9 +75,11 @@ internal static class ConsumerHostFactory
         // surface the scenarios verify recovery against (config-5 §3).
         app.MapPost("/topology/wait", async (
             IZLinkLocationRuntimeQuery query,
+            IZLinkRouteMeshRuntime meshRuntime,
             TopologyWaitReq request) =>
         {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(request.TimeoutMilliseconds);
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            var elapsed = Stopwatch.StartNew();
             while (true)
             {
                 var peers = await query.ListMeshNodeDescriptorsAsync(ResilienceLifecycleNames.Channel);
@@ -89,9 +91,14 @@ internal static class ConsumerHostFactory
                                    && (request.ExpectedDraining is null
                                        || peer.Draining == request.ExpectedDraining))
                     .ToArray();
+                var readyRids = meshRuntime.Snapshot(ResilienceLifecycleNames.Channel).Peers
+                    .Where(static peer => peer.Ready)
+                    .Select(static peer => peer.Rid.ToString())
+                    .ToHashSet(StringComparer.Ordinal);
                 var satisfied = request.ExpectedCount == 0
                     ? matches.Length == 0
-                    : matches.Length >= request.ExpectedCount;
+                    : matches.Length >= request.ExpectedCount
+                      && matches.All(peer => readyRids.Contains(peer.Rid.ToString()));
                 if (satisfied)
                     return Results.Ok(matches
                         .Select(peer => new TopologyEntryRes(
@@ -104,7 +111,7 @@ internal static class ConsumerHostFactory
                             peer.Draining))
                         .ToArray());
 
-                if (DateTimeOffset.UtcNow >= deadline)
+                if (elapsed.Elapsed >= timeout)
                     return Results.Problem(
                         $"Topology wait for '{request.RoutingId}' (expected {request.ExpectedCount}) timed out.");
 
@@ -178,67 +185,17 @@ internal static class ConsumerHostFactory
                 return Results.Problem(ex.Message);
             }
         });
-        app.MapPost("/profile/command", (
+        app.MapPost("/profile/command", async (
             ProfileMsg command,
-            IZLinkRouteClient channel) =>
+            IZLinkRouteClient channel,
+            CancellationToken cancellationToken) =>
         {
-            channel.SendToChannel(
-                ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, command).TrySubmit();
+            await channel.SendToChannel(
+                    ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, command)
+                .SubmitAsync(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
-        app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
-        {
-            using var host = CreateClientHost(options, $"storm-{request.Marker}");
-            await host.StartAsync();
-            try
-            {
-                var channel = host.Services.GetRequiredService<IZLinkRouteClient>();
-                var reply = await RequestProfileAsync(channel, request);
-                return Results.Ok(reply);
-            }
-            finally
-            {
-                await StopClientHostAsync(host);
-            }
-        });
-        app.MapPost("/storm/start", async (
-            ProfileReq request,
-            StormClientFleet fleet,
-            CancellationToken cancellationToken) => Results.Ok(
-                await fleet.StartAndRequestAsync(request.Marker, cancellationToken)));
-        app.MapPost("/storm/request-all", async (
-            ProfileReq request,
-            StormClientFleet fleet,
-            CancellationToken cancellationToken) => Results.Ok(
-                await fleet.RequestAllAsync(request.Marker, cancellationToken)));
-        app.MapGet("/storm/connections/count", (StormClientFleet fleet) => Results.Ok(fleet.ConnectionCount));
-        app.MapPost("/storm/wait-ready", async (
-            ConnectionWaitReq request,
-            StormClientFleet fleet,
-            CancellationToken cancellationToken) => Results.Ok(
-                await fleet.WaitReadyAsync(request.AfterCount, cancellationToken)));
         return app;
-    }
-
-    static IHost CreateClientHost(ConsumerOptions options, string traceLabel)
-    {
-        return Host.CreateDefaultBuilder()
-            .ConfigureAppConfiguration((_, configuration) => configuration.Sources.Clear())
-            .ConfigureServices(services =>
-            {
-                services.AddZLinkFramework(framework =>
-                {
-                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                        .SetConnectionString(options.RedisEndpoint)
-                        .SetKeyPrefix(options.RedisKeyPrefix)));
-                    framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-                        .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
-                        .TraceLabel(traceLabel);
-                    JoinConsumerMesh(framework, "newclient");
-                });
-            })
-            .Build();
     }
 
     // A caller joins the providers' RouteMesh with its own membership and
@@ -252,19 +209,6 @@ internal static class ConsumerHostFactory
             .UseAllocatedRoutingId(slotCount: 128, routingIdPrefix: ridPrefix)
             .SetRoutingIdAllocationGroup($"resilience.{ridPrefix}");
         mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
-    }
-
-    static async Task StopClientHostAsync(IHost host)
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        try
-        {
-            await host.StopAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // A reconnect storm scenario must not hang the HTTP response while host shutdown waits.
-        }
     }
 
     static async Task<ProfileRes> RequestProfileAsync(
@@ -411,9 +355,20 @@ internal sealed class MeshConnectionObserverService(
                             : peer.Endpoint,
                         StringComparer.Ordinal);
                 foreach (var (rid, endpoint) in current)
-                    if (!ready.ContainsKey(rid))
+                    if (!ready.TryGetValue(rid, out var previousEndpoint))
                     {
                         evidence.Add($"{linePrefix}kind=ConnectionReady|remote={endpoint}|routing={rid}");
+                    }
+                    else if (!string.Equals(previousEndpoint, endpoint, StringComparison.Ordinal))
+                    {
+                        // A same-RID replacement may keep the logical peer
+                        // continuously ready while its physical endpoint
+                        // changes. Preserve both edges so operators can
+                        // distinguish a handover from an unchanged peer.
+                        evidence.Add(
+                            $"{linePrefix}kind=Disconnected|remote={previousEndpoint}|routing={rid}");
+                        evidence.Add(
+                            $"{linePrefix}kind=ConnectionReady|remote={endpoint}|routing={rid}");
                     }
                 foreach (var (rid, endpoint) in ready)
                     if (!current.ContainsKey(rid))

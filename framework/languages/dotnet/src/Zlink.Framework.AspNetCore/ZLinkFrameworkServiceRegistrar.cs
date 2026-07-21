@@ -29,9 +29,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton(endpoint);
         }
 
-        foreach (var endpoint in registration.ScannedHandlerCatalog.RouteEndpoints)
-            services.TryAddTransient(endpoint.DeclaringType);
-
         foreach (var channel in registration.Channels.Values) AddExplicitChannelHandlers(services, channel);
 
         return services;
@@ -94,6 +91,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         // relayed push arrives on a router-capable node.
         services.TryAddScoped<ZLinkRemoteSessionPushRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorFrameRelayHandler>();
+        services.TryAddScoped<ZLinkRemoteActorReplyRelayHandler>();
 
         // Install the shared, runtime-mutable message-flow mode cell (seeded from the
         // configured mode) so SetMessageFlowMode can flip tracing on/off live and
@@ -130,6 +128,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddSingleton<IZLinkDrainExecutor>(provider =>
             new ZLinkFrameworkDrainExecutor(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<ZLinkRouteMeshRuntimeService>(),
                 registration.Locations.Options,
                 provider.GetService<ZLinkLocationAutoConnectHost>(),
                 provider.GetService<ZLinkLocationRuntime>(),
@@ -146,6 +145,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkFrameworkHostedService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<ZLinkRouteMeshRuntimeService>(),
                 provider.GetService<ZLinkMonitoringRegistration>(),
                 provider.GetService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<ZLinkAutoConnectLifecycleCoordinator>(),
@@ -164,12 +164,14 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkRouteMeshRuntimeOptions>(static provider =>
             new ZLinkRouteMeshRuntimeOptionsService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>()));
-        services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
+        services.AddSingleton(static provider =>
             new ZLinkRouteMeshRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkLocationStoreHealth>(),
                 provider.GetService<IZLinkLocationRuntimeQuery>(),
                 () => provider.GetService<IZLinkDrainControl>()));
+        services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkRouteMeshRuntimeService>());
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClient>();
@@ -244,11 +246,13 @@ internal static class ZLinkFrameworkServiceRegistrar
                 services.TryAddScoped(handler.HandlerType);
         }
 
-        foreach (var routed in registration.RouteChannels.Values)
+        foreach (var meshNode in registration.SpotNodes.Values)
         {
-            foreach (var handler in routed.SendHandlers) services.TryAddScoped(handler.HandlerType);
+            foreach (var handler in meshNode.RouteSendHandlers)
+                services.TryAddScoped(handler.HandlerType);
 
-            foreach (var handler in routed.RequestHandlers) services.TryAddScoped(handler.HandlerType);
+            foreach (var handler in meshNode.RouteRequestHandlers)
+                services.TryAddScoped(handler.HandlerType);
         }
 
         return services;
@@ -350,7 +354,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
         services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
             provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
-            provider.GetRequiredService<ZLinkSpotMeshLocationResolver>(),
             provider.GetRequiredService<ZLinkSpotHandleRegistry>()));
         services.AddSingleton<IZLinkSpotHandleResolver>(
             static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
@@ -383,17 +386,10 @@ internal static class ZLinkFrameworkServiceRegistrar
         }
         // Every mesh namespace this host can advertise or dial under; the
         // operational query enumerates these when no mesh filter is given.
-        var registeredMeshNames = registration.RouteChannels.Values
-            .Select(static route => route.RouterChannelId)
-            .Concat(registration.Channels.Values.Select(static channel => channel.ChannelName))
+        var registeredMeshNames = registration.Channels.Values
+            .Select(static channel => channel.ChannelName)
             .Concat(registration.SpotNodes.Values.Select(static spot =>
                 spot.SpotMeshChannelName ?? spot.SpotNodeName))
-            .Concat(registration.SpotNodes.Values
-                .Where(static spot => spot.PubSub is not null)
-                .Select(static spot =>
-                    (spot.SpotMeshChannelName ?? spot.SpotNodeName)
-                    + ZLinkLocationAutoConnectHost.SpotPubMeshSuffix))
-            .Concat(registration.SpotMeshChannels.Keys)
             // Observer hosts (an ops console watching a mesh it never joins)
             // extend the enumeration scope explicitly.
             .Concat(registration.Locations.Options.ObservedMeshNames)
@@ -419,11 +415,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             static provider => provider.GetRequiredService<ZLinkLocationLifecycle>().ActorOwnership);
         services.AddSingleton(static provider =>
         {
-            // The externally supplied store is owned by a hosted service. Resolve
-            // that owner before auto-connect so provider disposal always finalizes
-            // loops (including their row cleanup) before it disposes the store.
-            _ = provider.GetService<ZLinkLocationStoreInstanceOwner>();
-            return new ZLinkLocationAutoConnectHost(
+            var owner = provider.GetService<ZLinkLocationStoreInstanceOwner>();
+            var host = new ZLinkLocationAutoConnectHost(
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<IZLinkMeshNodeLocationResolver>(),
                 provider.GetRequiredService<ZLinkLocationOptions>(),
@@ -431,6 +424,10 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<IZLinkLocationWatchStore>(),
                 events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
                 leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>());
+            // The store owner enforces this dependency even when host startup
+            // fails and the DI container starts disposing services concurrently.
+            owner?.RegisterBeforeStoreDispose(host);
+            return host;
         });
         services.AddSingleton<IZLinkAutoConnectTopologyQuery>(static provider =>
             provider.GetRequiredService<ZLinkLocationAutoConnectHost>());
@@ -443,6 +440,7 @@ internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
     : IHostedService, IAsyncDisposable
 {
     private readonly object _disposeGate = new();
+    private readonly List<IAsyncDisposable> _beforeStoreDispose = [];
     private Task? _disposeTask;
 
     public IZLinkLocationStore Store { get; } = store;
@@ -450,6 +448,16 @@ internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    internal void RegisterBeforeStoreDispose(IAsyncDisposable dependent)
+    {
+        ArgumentNullException.ThrowIfNull(dependent);
+        lock (_disposeGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposeTask is not null, this);
+            _beforeStoreDispose.Add(dependent);
+        }
+    }
 
     public ValueTask DisposeAsync()
     {
@@ -471,9 +479,33 @@ internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
     private async Task DisposeCoreAsync(Task started)
     {
         await started.ConfigureAwait(false);
-        if (Store is IAsyncDisposable asyncDisposable)
-            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-        else if (Store is IDisposable disposable)
-            disposable.Dispose();
+        List<Exception>? failures = null;
+        foreach (var dependent in _beforeStoreDispose)
+        {
+            try
+            {
+                await dependent.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        try
+        {
+            if (Store is IAsyncDisposable asyncDisposable)
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            else if (Store is IDisposable disposable)
+                disposable.Dispose();
+        }
+        catch (Exception exception)
+        {
+            (failures ??= []).Add(exception);
+        }
+
+        if (failures is { Count: 1 })
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 }

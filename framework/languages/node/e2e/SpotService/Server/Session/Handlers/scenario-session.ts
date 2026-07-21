@@ -135,6 +135,7 @@ class ScenarioSession implements ZLinkSession {
 
   private async ensureLocalActor(request: AuthReq, signal?: AbortSignal): Promise<EnsureActorRes> {
     const actorRef = await this.actors.getOrCreate(
+      SpotServiceNames.spotChannel,
       request.actorId,
       SpotServiceNames.actorType,
       request,

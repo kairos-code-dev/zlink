@@ -6,9 +6,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -40,30 +39,28 @@ public final class PlayApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("kotlin-atd-" + nodeRid);
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
-                .enableServer(Env.get("playRouteEndpoint"))
-                .enableClient(Env.get("sessionRouteEndpoint"))
+            ZLinkMeshNodeBuilder mesh = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(Env.get("playRouteEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
-            route.addRequestHandler(
+            mesh.channelName(Contracts.SPOT_MESH);
+            mesh.peerConnections().connect(Env.get("sessionRouteEndpoint"));
+            mesh.addRouteRequestHandler(
                 EvidenceRouteRequestHandler.class,
                 Contracts.EvidenceReq.class,
                 Contracts.EvidenceRes.class);
-            route.addRequestHandler(
+            mesh.addRouteRequestHandler(
                 EnsureSpotRouteRequestHandler.class,
                 Contracts.EnsureSpotReq.class,
                 Contracts.EnsureSpotRes.class);
-            route.addRequestHandler(
+            mesh.addRouteRequestHandler(
                 PlayBindActorsHandler.class,
                 Contracts.BindActorsReq.class,
                 Contracts.BindActorsRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(Env.get("delayEndpoint"));
-            ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("spotEndpoint"))
-                .setRoutingId(RoutingId.from(nodeRid));
-            spot.addEntrySpot(ProbeEntrySpot.class);
-            spot.addSpotFactory(ProbeSpot.class);
-            spot.addActorFactory("probe", ProbeActorFactory.class);
+            mesh.addEntrySpot(ProbeEntrySpot.class);
+            mesh.addSpotFactory(ProbeSpot.class);
+            mesh.addActorFactory("probe", ProbeActorFactory.class);
         };
     }
 

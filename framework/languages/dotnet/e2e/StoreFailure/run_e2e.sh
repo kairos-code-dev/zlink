@@ -4,16 +4,29 @@ umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
-mkdir -p "$LOG_DIR"
-CONFIG_DIR="$(mktemp -d)"
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
 else
   SCENARIO="$*"
   SCENARIO="${SCENARIO// /,}"
 fi
+
+# Failure scenarios mutate leases, transports, and Redis state. Running every
+# scenario in one process graph lets recovery from one case overlap the next
+# case, so the aggregate runner gives each scenario a clean baseline.
+if [[ "$SCENARIO" == "all" ]]; then
+  scenarios=(SF-A1 SF-A2 SF-B1 SF-B2 SF-D1 SF-D3 SF-C2 SF-C1 SF-D2 SF-E1)
+  for scenario in "${scenarios[@]}"; do
+    "$0" "$scenario"
+  done
+  echo "StoreFailure all scenarios passed"
+  exit 0
+fi
+
+RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
+LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 # Location timing constants (config-6 §2): every scenario wait derives
 # from these, not from generic readiness defaults.
 LOCATION_HEARTBEAT_MS=1000
@@ -23,8 +36,6 @@ LOCATION_GRACE_MS=6000
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -150,11 +161,14 @@ PY
 start_server() {
   local name="$1"
   local project="$2"
+  local project_dir application
   shift
   shift
   local config="$CONFIG_DIR/$name.json"
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
-  setsid dotnet run --no-build --project "$project" -- --config "$config" \
+  project_dir="$(dirname "$project")"
+  application="$project_dir/bin/Debug/net8.0/$(basename "${project%.csproj}").dll"
+  setsid dotnet "$application" --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -207,8 +221,6 @@ start_server consumer "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$CONSUMER_URL" consumer
 
-sleep "$ROUTE_SETTLE_SECONDS"
-
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \
   --consumer-url "$CONSUMER_URL" \
@@ -232,7 +244,8 @@ python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
   --location-lease-ttl-ms "$LOCATION_LEASE_TTL_MS" \
   --location-polling-ms "$LOCATION_POLLING_MS" \
   --location-grace-ms "$LOCATION_GRACE_MS"
-dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
+CLIENT_APPLICATION="$ROOT_DIR/Client/bin/Debug/net8.0/StoreFailure.Client.dll"
+dotnet "$CLIENT_APPLICATION" --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

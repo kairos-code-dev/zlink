@@ -46,7 +46,7 @@ public sealed class FlowCorrelationTests
         var parts = Assert.IsAssignableFrom<IReadOnlyList<Message>>(
             createPacketParts.MakeGenericMethod(typeof(string)).Invoke(
                 null,
-                [ZlinkStreamMessageKind.Send, null, "packet", "payload"]));
+                [ZlinkStreamMessageKind.Send, null, "packet", "payload", null]));
         try
         {
             return Assert.IsType<string>(

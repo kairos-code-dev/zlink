@@ -25,6 +25,13 @@ export function validateActorTransferForwardWindow(timeoutMs: number): number {
   return timeoutMs;
 }
 
+export function validateActorTransferTimeout(timeoutMs: number): number {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new ZLinkConfigurationException('actor transfer timeout must be a positive safe integer.');
+  }
+  return timeoutMs;
+}
+
 export function registerEntrySpot(
   options: { entrySpotType?: Type<ZLinkEntrySpot> },
   entrySpotType: Type<ZLinkEntrySpot>

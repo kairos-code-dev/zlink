@@ -10,7 +10,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace ShoppingMall.Server.OrderWorkflow.Infrastructure.ZLink.Handlers;
 
-[ZLinkHandlerGroup("order-workflow")]
+[ZLinkHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)]
 internal sealed class StartOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,
@@ -51,12 +51,15 @@ internal sealed class StartOrderWorkflowRouteHandler(
             RoutingId.From(orderId),
             new OrderWorkflowSpotCreateReq(orderId),
             cancellationToken);
-        return await spotHandles.ResolveSpotHandleAsync(RoutingId.From(orderId), cancellationToken)
+        return await spotHandles.ResolveSpotHandleAsync(
+                   SampleNames.MeshName,
+                   RoutingId.From(orderId),
+                   cancellationToken)
                ?? throw new InvalidOperationException($"Order workflow spot '{orderId}' was not found.");
     }
 }
 
-[ZLinkHandlerGroup("order-workflow")]
+[ZLinkHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)]
 internal sealed class ContinueOrderWorkflowRouteHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,
@@ -79,7 +82,7 @@ internal sealed class ContinueOrderWorkflowRouteHandler(
     }
 }
 
-[ZLinkHandlerGroup("order-workflow")]
+[ZLinkHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)]
 internal sealed class RebuildOrderProjectionRouteHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,
@@ -108,7 +111,7 @@ internal sealed class RebuildOrderProjectionRouteHandler(
     }
 }
 
-[ZLinkHandlerGroup("order-workflow")]
+[ZLinkHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)]
 internal sealed class PrepareInventoryReservedCheckpointRouteHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,

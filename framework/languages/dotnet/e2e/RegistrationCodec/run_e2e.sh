@@ -15,19 +15,7 @@ mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-LOCAL_READINESS_ATTEMPTS="$(
-  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
-import math
-import sys
-
-timeout = float(sys.argv[1])
-poll = float(sys.argv[2])
-print(max(1, math.ceil(timeout / poll)))
-PY
-)"
 
 SERVER_PROJECT="$ROOT_DIR/Server/Main/RegistrationCodec.Server.csproj"
 INVALID_SERVER_PROJECT="$ROOT_DIR/Server/InvalidDuplicate/RegistrationCodec.InvalidDuplicate.csproj"
@@ -140,6 +128,41 @@ PY
   return 1
 }
 
+wait_route_ready() {
+  local url="$1"
+  local name="$2"
+  local deadline_ns
+  deadline_ns="$(python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+remaining = (int(sys.argv[1]) - time.monotonic_ns()) / 1_000_000_000
+print("0" if remaining <= 0 else f"{min(float(sys.argv[2]), remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$url/topology/ready" 2>/dev/null | grep -Fq '"ready":true'; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name route readiness" >&2
+  return 1
+}
+
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$INVALID_SERVER_PROJECT" --maxcpucount:1 >/dev/null
@@ -172,7 +195,7 @@ start_server codec-mismatch-requester "$CODEC_REQUESTER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$CODEC_REQUESTER_URL" codec-mismatch-requester
 
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_route_ready "$CODEC_REQUESTER_URL" codec-mismatch-requester
 
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \

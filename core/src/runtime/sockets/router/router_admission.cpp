@@ -121,8 +121,20 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool lo
             return false;
 
         if (!duplicate_pipe_should_replace (*existing_outpipe, routing_id_, locally_initiated_)) {
-            pipe_->terminate (false);
-            return false;
+            unsigned char buf[5];
+            buf[0] = 0;
+            put_uint32 (buf + 1, _next_integral_routing_id++);
+            blob_t standby_routing_id (buf, sizeof buf);
+            blob_t original_routing_id (
+              routing_id_.data (), routing_id_.size ());
+            pipe_->set_router_socket_routing_id (
+              standby_routing_id);
+            add_out_pipe (
+              ZLINK_MOVE (standby_routing_id), pipe_,
+              locally_initiated_);
+            _standby_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (
+              pipe_, ZLINK_MOVE (original_routing_id));
+            return true;
         }
 
         if (router_debug_enabled ()) {
@@ -142,15 +154,22 @@ bool router_t::adopt_peer_routing_id (pipe_t *pipe_, blob_t routing_id_, bool lo
 
         pipe_t *const old_pipe = existing_outpipe->pipe;
         const bool old_locally_initiated = existing_outpipe->locally_initiated;
+        const bool reciprocal_duplicate =
+          old_locally_initiated != locally_initiated_;
 
         erase_out_pipe (old_pipe);
         old_pipe->set_router_socket_routing_id (new_routing_id);
         add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe, old_locally_initiated);
-
-        if (old_pipe == _current_in)
+        if (reciprocal_duplicate) {
+            blob_t original_routing_id (
+              routing_id_.data (), routing_id_.size ());
+            _standby_pipes.ZLINK_MAP_INSERT_OR_EMPLACE (
+              old_pipe, ZLINK_MOVE (original_routing_id));
+        } else if (old_pipe == _current_in) {
             _terminate_current_in = true;
-        else
+        } else {
             old_pipe->terminate (true);
+        }
     }
 
     pipe_->set_router_socket_routing_id (routing_id_);

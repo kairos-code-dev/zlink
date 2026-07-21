@@ -321,22 +321,27 @@ int main (int argc, char **argv)
           .trace_label (instance.instance_id);
         /* 공통 sample spec §16: 서버 발견은 registry 프로세스 없이 공유 location store가 맡는다.
          * endpoint를 코드에 박지 않는다. */
-        options.add_route_mesh (order_workflow_channel_for ("workflow-a"))
+        auto workflow_a = options.add_route_mesh (
+          order_workflow_channel_for ("workflow-a"));
+        workflow_a.listen ("tcp://127.0.0.1:0")
           .set_routing_id (instance.route_rid)
-          .enable_client ();
-        options.add_route_mesh (order_workflow_channel_for ("workflow-b"))
+          .channel_name (order_workflow_channel_for ("workflow-a"));
+        auto workflow_b = options.add_route_mesh (
+          order_workflow_channel_for ("workflow-b"));
+        workflow_b.listen ("tcp://127.0.0.1:0")
           .set_routing_id (instance.route_rid)
-          .enable_client ();
-        options.add_route_mesh (sample_names_t::order_spot_route)
+          .channel_name (order_workflow_channel_for ("workflow-b"));
+        auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
+        spot_route.listen ("tcp://127.0.0.1:0")
           .set_routing_id (instance.route_rid)
-          .enable_client ();
+          .channel_name (sample_names_t::order_spot_route);
         options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
           sample_names_t::order_spot_route;
-        options.add_spot_mesh (std::string (sample_names_t::order_spot_discovery) + "."
-                               + instance.instance_id)
+        options.add_route_mesh (std::string (sample_names_t::order_spot_discovery) + "."
+                                + instance.instance_id)
           .set_routing_id (instance.spot_rid)
-          .enable_router (instance.spot_router_endpoint)
-          .accept_route_mesh (sample_names_t::order_spot_route);
+          .listen (instance.spot_router_endpoint)
+          .channel_name (sample_names_t::order_spot_route);
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health")

@@ -98,21 +98,19 @@ launch_role() {
   local log_dir="${9:-$LOG_DIR}"
   local trace_mode="${10:-key_transitions}"
   local metrics="${11:-on}"
-  local drain_policy="${12:-drain_natural}"
-  local room_timer="${13:-off}"
+  local room_timer="${12:-off}"
   local config_path="$CONFIG_DIR/$node_rid-$(date +%s%N).json"
   mkdir -p "$log_dir"
   python3 - "$config_path" "$node_rid" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" \
     "$http" "$route" "$peer_route" "$spot_router" "$spot_pub" "$stream" \
-    "$log_dir" "$trace_mode" "$metrics" "$drain_policy" "$room_timer" <<'PY'
+    "$log_dir" "$trace_mode" "$metrics" "$room_timer" <<'PY'
 import json
 import os
 import stat
 import sys
 
 (path, node_rid, redis_endpoint, redis_key_prefix, http, route, peer_route,
- spot_router, spot_pub, stream, log_dir, trace_mode, metrics, drain_policy,
- room_timer) = sys.argv[1:]
+ spot_router, spot_pub, stream, log_dir, trace_mode, metrics, room_timer) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": node_rid,
         "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
@@ -120,7 +118,7 @@ with open(path, "w", encoding="utf-8") as file:
         "peerRouteEndpoint": peer_route, "spotRouterEndpoint": spot_router,
         "spotPubEndpoint": spot_pub, "streamEndpoint": stream,
         "logDir": log_dir, "traceMode": trace_mode, "metrics": metrics,
-        "drainPolicy": drain_policy, "roomTimer": room_timer}}, file, indent=2)
+        "roomTimer": room_timer}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
   "$binary" --config="$config_path" \
@@ -160,11 +158,11 @@ PY
 
 launch_role "$SESSION_SERVER" session "$SESSION_HTTP" "$SESSION_ROUTE" "$PLAY_A_ROUTE" \
   "$SESSION_SPOT_ROUTER" "$SESSION_SPOT_PUB" "$STREAM_ENDPOINT" \
-  "$LOG_DIR" key_transitions on drain_natural off
+  "$LOG_DIR" key_transitions on off
 wait_health "$SESSION_HTTP"
 launch_role "$PLAY_SERVER" play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
   "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "" \
-  "$LOG_DIR" key_transitions on drain_natural on
+  "$LOG_DIR" key_transitions on on
 wait_health "$PLAY_A_HTTP"
 launch_role "$PLAY_SERVER" play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
   "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
@@ -454,7 +452,7 @@ PY
 fi
 
 relaunch_topology() {
-  local phase="$1" policy_b="${2:-}" trace_a="${3:-}" metrics_a="${4:-}"
+  local phase="$1" trace_a="${2:-}" metrics_a="${3:-}"
   stop_roles
   assign_ports
   REDIS_KEY_PREFIX="zlink:cpp:observability-ops:${RUN_ID}:${phase}"
@@ -469,7 +467,7 @@ relaunch_topology() {
   wait_health "$PLAY_A_HTTP"
   launch_role "$PLAY_SERVER" play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
     "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "" \
-    "$PHASE_LOG_DIR" key_transitions on "${policy_b:-drain_natural}"
+    "$PHASE_LOG_DIR" key_transitions on
   wait_health "$PLAY_B_HTTP"
   launch_role "$ORDER_WORKFLOW_SERVER" workflow-a "$WORKFLOW_A_HTTP" "$WORKFLOW_A_ROUTE" \
     "$WORKFLOW_B_ROUTE" "$WORKFLOW_A_SPOT_ROUTER" "$WORKFLOW_A_SPOT_PUB" "" \
@@ -633,100 +631,53 @@ PY
   fi
 fi
 
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
-  # OBS-C3 — release-and-recreate frees the owner rows so the next
-  # GetOrCreate rebuilds on another owner; rooms.drained counts both policies.
-  relaunch_topology policy-natural
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fixed-drain" ]]; then
+  # OBS-C3 — one fixed lifecycle: a normal request leaves its Spot active,
+  # drain rejects new turns, then closes local user Spots and owner rows.
+  relaunch_topology fixed-drain
+  FIXED_SPOT_RID="obs-c3-fixed-room"
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-c3-natural-room"}' >"$PHASE_LOG_DIR/create-natural.json"
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-c3-natural-room","marker":"natural","value":1}' \
-    >"$PHASE_LOG_DIR/action-natural.json"
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\",\"marker\":\"normal\",\"value\":1}" \
+    >"$PHASE_LOG_DIR/normal-action.json"
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/still-open.json"
+  python3 - "$PHASE_LOG_DIR/still-open.json" <<'PY'
+import json, sys
+assert json.load(open(sys.argv[1], encoding="utf-8"))["state"] == "existing"
+PY
   curl_local -fsS -X POST "$PLAY_B_HTTP/drain" -H 'Content-Type: application/json' \
     -d '{"deadlineMs":15000}' >/dev/null
-  for _ in $(seq 1 100); do
-    curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/play-b.during.json"
-    if python3 - "$PHASE_LOG_DIR/play-b.during.json" <<'PY'
-import json, sys
-states = [event["state"] for event in json.load(open(sys.argv[1], encoding="utf-8"))["drainEvents"]]
-raise SystemExit(0 if "draining" in states and "drained" not in states else 1)
-PY
-    then break; fi
-    sleep "$EVIDENCE_POLL_SECONDS"
-  done
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"obs-c3-rejected\"}" >"$PHASE_LOG_DIR/rejected-create.json"
+  drain_and_wait_terminal "$PLAY_B_HTTP" 15000 "$PHASE_LOG_DIR/drained.evidence.json"
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/close" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-c3-natural-room"}' >"$PHASE_LOG_DIR/close-natural.json"
-  python3 - "$PHASE_LOG_DIR/close-natural.json" <<'PY'
-import json, sys
-assert json.load(open(sys.argv[1], encoding="utf-8"))["state"] == "closed"
-PY
-  for _ in $(seq 1 200); do
-    curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/play-b.evidence.json" || break
-    if python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
-import json, sys
-states = [event["state"] for event in json.load(open(sys.argv[1], encoding="utf-8"))["drainEvents"]]
-raise SystemExit(0 if "drained" in states or "force_stopping" in states else 1)
-PY
-    then break; fi
-    sleep "$EVIDENCE_POLL_SECONDS"
-  done
-  python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
-import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))
-states = [event["state"] for event in body["drainEvents"]]
-assert "drained" in states, states
-rooms = [m for m in body["metrics"] if m["name"] == "zlink.drain.rooms.drained"]
-assert rooms and all(m["tags"].get("policy") == "drain_natural" for m in rooms), rooms
-PY
-
-  relaunch_topology policy
-  curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
-  sleep "$SCENARIO_SETTLE_SECONDS"
-  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"before-release\",\"value\":7}" \
-    >"$PHASE_LOG_DIR/before-release.json"
-  drain_and_wait_terminal "$WORKFLOW_B_HTTP" 15000 "$PHASE_LOG_DIR/workflow-b.evidence.json"
-  python3 - "$PHASE_LOG_DIR/workflow-b.evidence.json" <<'PY'
-import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))
-states = [event["state"] for event in body["drainEvents"]]
-assert "drained" in states, states
-rooms = [m for m in body["metrics"] if m["name"] == "zlink.drain.rooms.drained"]
-assert rooms and all(m["tags"].get("policy") == "release_and_recreate" for m in rooms), rooms
-PY
-  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
-  replay_status=000
-  for _ in $(seq 1 100); do
-    replay_status=$(curl_local -sS -o "$PHASE_LOG_DIR/replayed.json" -w '%{http_code}' \
-      -X POST "$WORKFLOW_B_HTTP/spot/action" -H 'Content-Type: application/json' \
-      -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"replayed\",\"value\":0}" \
-      || true)
-    [[ "$replay_status" == "200" ]] && break
-    sleep "$EVIDENCE_POLL_SECONDS"
-  done
-  [[ "$replay_status" == "200" ]] || {
-    echo "OBS-C3 recreated route did not become ready: HTTP $replay_status" >&2
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/close-after-drain.json"
+  stale_status=$(curl_local -sS -o "$PHASE_LOG_DIR/stale-action-response.json" -w '%{http_code}' \
+    -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\",\"marker\":\"stale\",\"value\":1}" \
+    || true)
+  [[ "$stale_status" != "200" ]] || {
+    echo "OBS-C3 stale handle unexpectedly resolved after owner cleanup" >&2
     exit 1
   }
-  python3 - "$PHASE_LOG_DIR/recreate.json" <<'PY'
-import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))
-assert body["state"] == "created", body
-print("OBS-C3 PASS (release-and-recreate freed the row; peer rebuilt the room)")
-PY
-  verify_scenario OBS-C3 \
-    naturalEvidence "$LOG_DIR/policy-natural/play-b.evidence.json" \
-    drainedEvidence "$PHASE_LOG_DIR/workflow-b.evidence.json" \
-    recreate "$PHASE_LOG_DIR/recreate.json" replayed "$PHASE_LOG_DIR/replayed.json"
+  echo '{"accepted":false}' >"$PHASE_LOG_DIR/stale-action.json"
+  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
+  verify_scenario OBS-C3 normalAction "$PHASE_LOG_DIR/normal-action.json" \
+    rejectedCreate "$PHASE_LOG_DIR/rejected-create.json" \
+    drainedEvidence "$PHASE_LOG_DIR/drained.evidence.json" \
+    closeAfterDrain "$PHASE_LOG_DIR/close-after-drain.json" \
+    staleAction "$PHASE_LOG_DIR/stale-action.json" \
+    recreate "$PHASE_LOG_DIR/recreate.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
   # OBS-A3 — a tracing-off middle node creates nothing but the flow pair
   # still crosses it; OBS-B4 — no metric reader on play-a and messaging is
   # unchanged with an empty evidence collector.
-  relaunch_topology offnode "" off off
+  relaunch_topology offnode off off
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
   sleep "$ROUTE_SETTLE_SECONDS"

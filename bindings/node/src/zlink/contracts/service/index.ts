@@ -6,6 +6,7 @@ export type * from './shared';
 
 // Pull-dispatch value types and batch/claim/record contracts.
 export {
+  ReadyDomain,
   ReadyOwnerKind,
   ReceiveKind,
   OperationKind,
@@ -14,6 +15,7 @@ export {
   MeshDestinationKind
 } from './dispatch';
 export type {
+  ReadyDomainValue,
   ReadyOwnerKindValue,
   ReceiveKindValue,
   OperationKindValue,
@@ -71,7 +73,7 @@ export { SpotKind, SubscriptionKind } from './spot';
 export type { SpotKindValue, SubscriptionKindValue, Spot, SpotStatus } from './spot';
 
 // Publisher.
-export type { Publisher, MeshPublishDetail } from './publisher';
+export type { Publisher, MeshPublishDetail, MeshPublishResult } from './publisher';
 
 // Stream session service.
 export type {

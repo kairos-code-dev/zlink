@@ -9,6 +9,8 @@ import {
 } from './redis-options';
 import {
   encodeActorKey,
+  encodeKeySegments,
+  encodeMeshNodeKey,
   encodePeerKey,
   encodeRouteKey,
   encodeSpotKey,
@@ -16,17 +18,23 @@ import {
 } from './redis-row-keys';
 import {
   ACQUIRE_ROUTING_ID_SLOT_SCRIPT,
+  ABORT_ACTOR_TRANSFER_SCRIPT,
+  ACTIVATE_ACTOR_TRANSFER_SCRIPT,
+  COMMIT_ACTOR_TRANSFER_SCRIPT,
   LIST_ROUTING_ID_SLOTS_SCRIPT,
   LIST_LEASES_SCRIPT,
   RELEASE_ROUTING_ID_SLOT_SCRIPT,
+  PREPARE_ACTOR_TRANSFER_SCRIPT,
   REMOVE_ALL_BY_OWNER_SCRIPT,
   REMOVE_LEASE_SCRIPT,
   REMOVE_SCRIPT,
   RENEW_LEASE_SCRIPT,
+  TAKE_OVER_ACTOR_TRANSFER_SCRIPT,
   WRITE_SCRIPT
 } from './redis-scripts';
 import {
   kindActor,
+  kindMeshNode,
   kindPeer,
   kindRoute,
   kindSpot,
@@ -44,12 +52,19 @@ import {
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationStore,
   type ZLinkActorLocation,
+  type ZLinkActorTransferPrepareRequest,
+  type ZLinkActorTransferRecord,
+  type ZLinkActorTransferState,
+  type ZLinkActorTransferWriteResult,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
   type ZLinkLocationChangeStampScope,
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
+  type ZLinkLocationWriteStatus,
+  type ZLinkMeshNodeDescriptor,
+  type ZLinkMeshNodeDescriptorKey,
   type ZLinkOwnerLease,
   type ZLinkOwnerLeaseRenewal,
   type ZLinkOwnerLeaseSnapshot,
@@ -103,6 +118,35 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
+  async updateMeshNode(
+    descriptor: ZLinkMeshNodeDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult> {
+    return await this.write(kindMeshNode, descriptor, intent, signal);
+  }
+
+  async removeMeshNode(
+    key: ZLinkMeshNodeDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult['status']> {
+    return (await this.remove(
+      kindMeshNode,
+      encodeMeshNodeKey(key),
+      key.meshName,
+      owner,
+      signal
+    )).status;
+  }
+
+  async listMeshNodes(
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkMeshNodeDescriptor[]> {
+    return (await this.loadAll(kindMeshNode, signal)).filter((row) => row.meshName === meshName);
+  }
+
   async updatePeer(
     peer: ZLinkPeerLocation,
     intent: ZLinkLocationWriteIntent,
@@ -136,8 +180,8 @@ export class ZLinkRedisLocationStore implements
     key: ZLinkSpotLocationKey,
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult> {
-    return await this.remove(kindSpot, encodeSpotKey(key), key.meshName, owner, signal);
+  ): Promise<ZLinkLocationWriteStatus> {
+    return (await this.remove(kindSpot, encodeSpotKey(key), key.meshName, owner, signal)).status;
   }
 
   async resolveSpot(key: ZLinkSpotLocationKey, signal?: AbortSignal): Promise<ZLinkSpotLocation | undefined> {
@@ -164,8 +208,8 @@ export class ZLinkRedisLocationStore implements
     key: ZLinkActorLocationKey,
     owner: ZLinkLocationOwnerToken,
     signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult> {
-    return await this.remove(kindActor, encodeActorKey(key), undefined, owner, signal);
+  ): Promise<ZLinkLocationWriteStatus> {
+    return (await this.remove(kindActor, encodeActorKey(key), key.meshName, owner, signal)).status;
   }
 
   async resolveActor(key: ZLinkActorLocationKey, signal?: AbortSignal): Promise<ZLinkActorLocation | undefined> {
@@ -208,6 +252,109 @@ export class ZLinkRedisLocationStore implements
     return await this.listPage(kindRoute, (row) => matchesRoute(row, filter), page, signal);
   }
 
+  async prepareActorTransfer(
+    request: ZLinkActorTransferPrepareRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    validateTransferRequest(request);
+    const actorRowKey = transferActorRowKey(request.meshName, request.actorId);
+    const raw = asArray(await this.eval(PREPARE_ACTOR_TRANSFER_SCRIPT, [
+      this.keys.actorTransfer(actorRowKey, request.transferId),
+      this.keys.actorTransferByActor(actorRowKey)
+    ], [
+      request.transferId,
+      serializeActorRef(request.source),
+      serializeActorRef(request.target),
+      request.expectedActorGeneration.toString(),
+      request.expectedMembershipEpoch.toString(),
+      serializeParticipants(request.participants),
+      request.recoveryOwnerId,
+      String(Math.max(1, Math.trunc(request.recoveryLeaseTtlMs)))
+    ], signal));
+    return transferResultOf(raw, request.meshName, request.actorId, request.transferId);
+  }
+
+  async commitActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    return await this.transitionActorTransfer(
+      COMMIT_ACTOR_TRANSFER_SCRIPT,
+      meshName, actorId, transferId, recoveryOwnerId, signal
+    );
+  }
+
+  async activateActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    return await this.transitionActorTransfer(
+      ACTIVATE_ACTOR_TRANSFER_SCRIPT,
+      meshName, actorId, transferId, recoveryOwnerId, signal
+    );
+  }
+
+  async abortActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    return await this.transitionActorTransfer(
+      ABORT_ACTOR_TRANSFER_SCRIPT,
+      meshName, actorId, transferId, recoveryOwnerId, signal
+    );
+  }
+
+  async takeOverActorTransfer(
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    successorOwnerId: string,
+    recoveryLeaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    validateTransferIdentity(meshName, actorId, transferId);
+    validateTransferLease(successorOwnerId, recoveryLeaseTtlMs);
+    const actorRowKey = transferActorRowKey(meshName, actorId);
+    const raw = asArray(await this.eval(TAKE_OVER_ACTOR_TRANSFER_SCRIPT, [
+      this.keys.actorTransfer(actorRowKey, transferId),
+      this.keys.actorTransferByActor(actorRowKey)
+    ], [
+      transferId,
+      successorOwnerId,
+      String(Math.max(1, Math.trunc(recoveryLeaseTtlMs)))
+    ], signal));
+    return transferResultOf(raw, meshName, actorId, transferId);
+  }
+
+  async resolveActorTransfer(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferRecord | undefined> {
+    const actorRowKey = transferActorRowKey(meshName, actorId);
+    const active = await this.command([
+      'GET',
+      this.keys.actorTransferByActor(actorRowKey)
+    ], signal);
+    if (active === null) return undefined;
+    const transferId = asString(active);
+    const fields = asArray(await this.command([
+      'HMGET',
+      this.keys.actorTransfer(actorRowKey, transferId),
+      ...TRANSFER_HASH_FIELDS
+    ], signal));
+    return materializeTransfer(meshName, actorId, transferId, fields);
+  }
+
   async renewOwnerLease(
     ownerId: string,
     nodeRid: RoutingId,
@@ -239,26 +386,30 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
-  async removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number> {
-    return toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
+  async removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<bigint> {
+    return BigInt(toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
+      this.keys.ownerIndexPrefix(kindMeshNode.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindPeer.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindSpot.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindActor.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindRoute.tag) + ownerId,
+      this.keys.kindIndex(kindMeshNode.tag),
       this.keys.kindIndex(kindPeer.tag),
       this.keys.kindIndex(kindSpot.tag),
       this.keys.kindIndex(kindActor.tag),
       this.keys.kindIndex(kindRoute.tag)
     ], [
+      this.keys.rowHashPrefix(kindMeshNode.tag),
       this.keys.rowHashPrefix(kindPeer.tag),
       this.keys.rowHashPrefix(kindSpot.tag),
       this.keys.rowHashPrefix(kindActor.tag),
       this.keys.rowHashPrefix(kindRoute.tag),
+      this.keys.stamp(kindMeshNode.tag, undefined),
       this.keys.stamp(kindPeer.tag, undefined),
       this.keys.stamp(kindSpot.tag, undefined),
       this.keys.stamp(kindActor.tag, undefined),
       this.keys.stamp(kindRoute.tag, undefined)
-    ], signal));
+    ], signal)));
   }
 
   async listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot> {
@@ -294,9 +445,9 @@ export class ZLinkRedisLocationStore implements
   ): Promise<ZLinkRoutingIdSlotAcquireResult> {
     validateAcquire(request);
     const members = [...request.members]
-      .sort((left, right) => left.channelName.localeCompare(right.channelName));
+      .sort((left, right) => left.meshName.localeCompare(right.meshName));
     const config = JSON.stringify(members.map((member) => ({
-      ChannelName: member.channelName,
+      MeshName: member.meshName,
       RoutingIdPrefix: member.routingIdPrefix
     })));
     const raw = asArray(await this.eval(ACQUIRE_ROUTING_ID_SLOT_SCRIPT, [
@@ -407,7 +558,7 @@ export class ZLinkRedisLocationStore implements
         intentName(intent),
         kind.ownerOf(row),
         String(kind.generationOf(row)),
-        JSON.stringify(kind.toJson(row)),
+        kind.toJsonText?.(row) ?? JSON.stringify(kind.toJson(row)),
         rowKey,
         this.keys.leasePrefix(),
         this.keys.ownerIndexPrefix(kind.tag),
@@ -420,6 +571,24 @@ export class ZLinkRedisLocationStore implements
     } catch (error) {
       throw error;
     }
+  }
+
+  private async transitionActorTransfer(
+    script: string,
+    meshName: string,
+    actorId: string,
+    transferId: string,
+    recoveryOwnerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferWriteResult> {
+    validateTransferIdentity(meshName, actorId, transferId);
+    if (recoveryOwnerId.trim().length === 0) throw new TypeError('recoveryOwnerId is required.');
+    const actorRowKey = transferActorRowKey(meshName, actorId);
+    const raw = asArray(await this.eval(script, [
+      this.keys.actorTransfer(actorRowKey, transferId),
+      this.keys.actorTransferByActor(actorRowKey)
+    ], [transferId, recoveryOwnerId], signal));
+    return transferResultOf(raw, meshName, actorId, transferId);
   }
 
   private async remove<TRow>(
@@ -532,15 +701,145 @@ export class ZLinkRedisLocationStore implements
 
 }
 
+const TRANSFER_HASH_FIELDS = [
+  'state',
+  'source',
+  'target',
+  'expectedActorGeneration',
+  'expectedMembershipEpoch',
+  'participants',
+  'recoveryOwnerId',
+  'recoveryLeaseExpiresAtMs',
+  'updatedAtMs'
+] as const;
+const TRANSFER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function transferActorRowKey(meshName: string, actorId: string): string {
+  return encodeKeySegments(meshName, actorId);
+}
+
+function serializeActorRef(actorRef: ZLinkActorTransferRecord['source']): string {
+  return [
+    '{',
+    `"nodeRid":${JSON.stringify(routingIdHex(actorRef.nodeRid))}`,
+    `,"actorId":${JSON.stringify(actorRef.actorId)}`,
+    `,"generation":${actorRef.generation}`,
+    '}'
+  ].join('');
+}
+
+function parseActorRef(json: string): ZLinkActorTransferRecord['source'] {
+  const row = JSON.parse(json.replace(/("generation":)([0-9]+)/, '$1"$2"')) as {
+    nodeRid: string;
+    actorId: string;
+    generation: string;
+  };
+  return {
+    nodeRid: ridOf(row.nodeRid),
+    actorId: row.actorId,
+    generation: BigInt(row.generation)
+  };
+}
+
+function serializeParticipants(participants: ReadonlySet<RoutingId>): string {
+  return JSON.stringify([...participants].map(routingIdHex).sort());
+}
+
+function transferResultOf(
+  raw: readonly unknown[],
+  meshName: string,
+  actorId: string,
+  transferId: string
+): ZLinkActorTransferWriteResult {
+  const status = asString(raw[0]);
+  if (status !== 'stored') {
+    const mapped = status === 'notfound'
+      ? 'notFound'
+      : status === 'conflict'
+        ? 'rejectedConflict'
+        : status === 'invalid'
+          ? 'invalidState'
+          : 'ignoredStale';
+    return { status: mapped };
+  }
+  return {
+    status: 'stored',
+    record: materializeTransfer(meshName, actorId, transferId, asArray(raw[1]))
+  };
+}
+
+function materializeTransfer(
+  meshName: string,
+  actorId: string,
+  transferId: string,
+  fields: readonly unknown[]
+): ZLinkActorTransferRecord {
+  if (fields.length !== TRANSFER_HASH_FIELDS.length || fields.some((field) => field === null)) {
+    throw new Error('Redis Actor transfer record is incomplete.');
+  }
+  return {
+    meshName,
+    actorId,
+    transferId,
+    state: transferStateOf(asString(fields[0])),
+    source: parseActorRef(asString(fields[1])),
+    target: parseActorRef(asString(fields[2])),
+    expectedActorGeneration: BigInt(asString(fields[3])),
+    expectedMembershipEpoch: BigInt(asString(fields[4])),
+    participants: new Set(
+      (JSON.parse(asString(fields[5])) as string[]).map(ridOf)
+    ),
+    recoveryOwnerId: asString(fields[6]),
+    recoveryLeaseExpiresAt: fromUnixMs(toNumber(fields[7])),
+    updatedAt: fromUnixMs(toNumber(fields[8]))
+  };
+}
+
+function transferStateOf(state: string): ZLinkActorTransferState {
+  switch (state) {
+    case 'Prepared': return 'prepared';
+    case 'Committed': return 'committed';
+    case 'Activated': return 'activated';
+    case 'Aborted': return 'aborted';
+    default: throw new Error(`Unknown Redis Actor transfer state '${state}'.`);
+  }
+}
+
+function validateTransferRequest(request: ZLinkActorTransferPrepareRequest): void {
+  validateTransferIdentity(request.meshName, request.actorId, request.transferId);
+  validateTransferLease(request.recoveryOwnerId, request.recoveryLeaseTtlMs);
+  if (request.expectedActorGeneration < 1n || request.expectedMembershipEpoch < 1n) {
+    throw new RangeError('Actor transfer generation and membership epoch must be positive.');
+  }
+  if (request.participants.size === 0) {
+    throw new TypeError('Actor transfer requires at least one participant.');
+  }
+}
+
+function validateTransferIdentity(meshName: string, actorId: string, transferId: string): void {
+  if (meshName.trim().length === 0 || actorId.trim().length === 0) {
+    throw new TypeError('Actor transfer meshName and actorId are required.');
+  }
+  if (!TRANSFER_ID_PATTERN.test(transferId)) {
+    throw new TypeError('Actor transferId must be a lowercase canonical UUID.');
+  }
+}
+
+function validateTransferLease(ownerId: string, ttlMs: number): void {
+  if (ownerId.trim().length === 0 || !Number.isFinite(ttlMs) || ttlMs <= 0) {
+    throw new TypeError('Actor transfer recovery owner and positive lease TTL are required.');
+  }
+}
+
 function decodeMembers(value: string): readonly ZLinkRoutingIdSlotAllocationMember[] {
   const decoded = JSON.parse(value) as Array<{
-    ChannelName?: string;
+    MeshName?: string;
     RoutingIdPrefix?: string;
-    channelName?: string;
+    meshName?: string;
     routingIdPrefix?: string;
   }>;
   return decoded.map((member) => ({
-    channelName: member.ChannelName ?? member.channelName ?? '',
+    meshName: member.MeshName ?? member.meshName ?? '',
     routingIdPrefix: member.RoutingIdPrefix ?? member.routingIdPrefix ?? ''
   }));
 }

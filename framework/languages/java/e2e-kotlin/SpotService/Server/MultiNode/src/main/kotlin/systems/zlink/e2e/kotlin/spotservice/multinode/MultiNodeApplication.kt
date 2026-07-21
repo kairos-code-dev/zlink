@@ -77,18 +77,21 @@ class MultiNodeApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            if (!options.spotOnly) {
-                framework.addRouteMeshChannel(node.routeChannel)
-                    .enableServer(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
-                    .enableClient(requireOption(node.routeEndpoint(options), node.routeEndpointOption))
-                    .setRoutingId(RoutingId.from(node.rid))
-            }
-            framework.addSpotMesh(node.spotMesh(options))
-                .enableRouter(requireOption(node.spotRouterEndpoint(options), node.spotRouterEndpointOption))
+            val mesh = framework.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(
+                    if (options.spotOnly) {
+                        requireOption(node.spotRouterEndpoint(options), node.spotRouterEndpointOption)
+                    } else {
+                        requireOption(node.routeEndpoint(options), node.routeEndpointOption)
+                    }
+                )
                 .setRoutingId(RoutingId.from(node.rid))
-                .addEntrySpot(MultiNodeEntrySpot::class.java)
-                .addSpotFactory(node.spotClass)
-                .addActorFactory("multi-node", MultiNodeActorFactory::class.java)
+            if (!options.spotOnly) {
+                mesh.channelName(node.routeChannel)
+            }
+            mesh.addEntrySpot(MultiNodeEntrySpot::class.java)
+            mesh.addSpotFactory(node.spotClass)
+            mesh.addActorFactory("multi-node", MultiNodeActorFactory::class.java)
         }
 
     @Bean

@@ -37,9 +37,9 @@ export class ZLinkLocationLifecycle {
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     actorStore: ZLinkActorLocationStore,
-    entrySpotMeshName = ''
+    entryMeshName = ''
   ) {
-    this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entrySpotMeshName);
+    this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entryMeshName);
     this.spotClaims = new ZLinkSpotLocationClaims(runtime);
     this.actorSessionRoutes = new ZLinkActorSessionRouteClaims(runtime);
     this.runtime.addOwnershipLostHandler(this.ownershipLostHandler);
@@ -69,8 +69,13 @@ export class ZLinkLocationLifecycle {
     return await this.actorClaims.claim(actorType, actorId, nodeRid, deactivate);
   }
 
-  async setActorRef(actorType: string, actorId: string, actorRef: ActorRef): Promise<void> {
-    await this.actorClaims.setRef(actorType, actorId, actorRef);
+  async setActorRef(
+    actorType: string,
+    actorId: string,
+    actorRef: ActorRef,
+    ownerNodeGeneration = 0n
+  ): Promise<void> {
+    await this.actorClaims.setRef(actorType, actorId, actorRef, ownerNodeGeneration);
   }
 
   async takeoverActorJoinedSpot(
@@ -79,6 +84,9 @@ export class ZLinkLocationLifecycle {
     actorRef: ActorRef,
     spotMeshName: string,
     spotRid: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint,
     deactivate?: () => Promise<void>
   ): Promise<ZLinkActorClaimResult> {
     return await this.actorClaims.takeoverJoinedSpot(
@@ -87,16 +95,49 @@ export class ZLinkLocationLifecycle {
       actorRef,
       spotMeshName,
       spotRid,
+      spotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration,
       deactivate
     );
   }
 
-  async notifyActorJoinedSpot(actorType: string, actorId: string, spotMeshName: string, spotRid: RoutingId): Promise<void> {
-    await this.actorClaims.notifyJoinedSpot(actorType, actorId, spotMeshName, spotRid);
+  async notifyActorJoinedSpot(
+    actorType: string,
+    actorId: string,
+    spotMeshName: string,
+    spotRid: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): Promise<void> {
+    await this.actorClaims.notifyJoinedSpot(
+      actorType,
+      actorId,
+      spotMeshName,
+      spotRid,
+      spotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
+    );
   }
 
-  async notifyActorLeftSpot(actorType: string, actorId: string): Promise<void> {
-    await this.actorClaims.notifyLeftSpot(actorType, actorId);
+  async notifyActorLeftSpot(
+    actorType: string,
+    actorId: string,
+    entrySpotRid: RoutingId,
+    entrySpotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): Promise<void> {
+    await this.actorClaims.notifyLeftSpot(
+      actorType,
+      actorId,
+      entrySpotRid,
+      entrySpotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
+    );
   }
 
   async releaseActor(actorType: string, actorId: string): Promise<void> {
@@ -139,13 +180,23 @@ export class ZLinkLocationLifecycle {
   async claimSpot(
     meshName: string,
     spotRid: RoutingId,
-    spotType: string | undefined,
+    spotType: string,
     nodeRid: RoutingId,
     spotKind: ZLinkSpotKind,
-    routeEndpoint?: string,
+    spotGeneration: bigint,
+    ownerNodeGeneration: bigint,
     deactivate?: () => Promise<void>
   ): Promise<ZLinkLocationWriteStatus> {
-    return await this.spotClaims.claim(meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, deactivate);
+    return await this.spotClaims.claim(
+      meshName,
+      spotRid,
+      spotType,
+      nodeRid,
+      spotKind,
+      spotGeneration,
+      ownerNodeGeneration,
+      deactivate
+    );
   }
 
   async releaseSpot(meshName: string, spotRid: RoutingId): Promise<void> {

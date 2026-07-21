@@ -8,7 +8,9 @@ internal sealed class ZLinkStreamSessionTable(
     Type? headerSessionType,
     ZLinkDrainAdmissionGate drainAdmission,
     string transport,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    string? actorDispatchMeshName,
+    ZLinkAsyncSubmitter sendSubmitter)
 {
     private readonly object _gate = new();
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
@@ -86,7 +88,9 @@ internal sealed class ZLinkStreamSessionTable(
                 headerSessionType,
                 Remove,
                 transport,
-                timeProvider)
+                timeProvider,
+                actorDispatchMeshName,
+                sendSubmitter)
             .ConfigureAwait(false);
         ZLinkStreamSessionRuntime? duplicate = null;
         lock (_gate)
@@ -141,6 +145,18 @@ internal sealed class ZLinkStreamSessionTable(
             foreach (var closed in results) allClosed &= closed;
         }
         return allClosed;
+    }
+
+    public void ForceStopSessions()
+    {
+        ZLinkStreamSessionRuntime[] sessions;
+        lock (_gate)
+        {
+            _rejectNewSessions = true;
+            sessions = _sessions.Values.ToArray();
+        }
+
+        foreach (var session in sessions) session.RequestForceStopForDrain();
     }
 
     public void QueueConnectionMetadata(string localAddr, string remoteAddr)

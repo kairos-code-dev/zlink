@@ -1,4 +1,9 @@
-import type { Type } from '../Common';
+import type { RoutingId, Type } from '../Common';
+import type {
+  ZLinkMessageKind,
+  ZLinkMessageSurface,
+  ZLinkRuntimeErrorSink
+} from '../RouteMesh';
 
 export interface ZLinkDispatchOptions {
   readonly unhandled: ZLinkUnhandledDispatchOptions;
@@ -7,6 +12,7 @@ export interface ZLinkDispatchOptions {
 
 export interface ZLinkDispatchOptionsBuilder {
   setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this;
+  setRuntimeErrorSink(sinkType: Type<ZLinkRuntimeErrorSink>): this;
 
   /** Fluent diagnostics/tracing config (builder-chain only). */
   messageFlow(mode: ZLinkMessageFlowLogMode): this;
@@ -26,7 +32,7 @@ export interface ZLinkDispatchOptionsBuilder {
  * A message lifecycle outcome. Error outcomes carry the dispatch error fields on the
  * same typed event used by the success path.
  */
-export enum ZLinkMessageFlowOutcome {
+export enum ZLinkRuntimeMessageFlowOutcome {
   Received = 'received',
   Dispatched = 'dispatched',
   Replied = 'replied',
@@ -36,8 +42,60 @@ export enum ZLinkMessageFlowOutcome {
   Error = 'error'
 }
 
+export enum ZLinkMessageFlowPhase {
+  Received = 'received',
+  Admitted = 'admitted',
+  Dispatched = 'dispatched',
+  Completed = 'completed',
+  Replied = 'replied',
+  Sent = 'sent',
+  ReplyReceived = 'reply_received',
+  Backpressured = 'backpressured',
+  Dropped = 'dropped'
+}
+
 export interface ZLinkMessageFlowEvent {
+  readonly eventId: 'zlink.message_flow' | 'zlink.dispatch_error';
+  readonly timestamp: Date;
+  readonly phase?: ZLinkMessageFlowPhase;
   readonly outcome: ZLinkMessageFlowOutcome;
+  readonly surface: ZLinkMessageSurface;
+  readonly messageKind: ZLinkMessageKind;
+  readonly reason?: ZLinkDispatchErrorReason;
+  readonly action?: ZLinkDispatchErrorAction;
+  readonly packetName?: string;
+  readonly meshName?: string;
+  readonly channelName?: string;
+  readonly topic?: string;
+  readonly correlationId?: string;
+  readonly sourceRid?: RoutingId;
+  readonly targetRid?: RoutingId;
+  readonly flowId?: string;
+  readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
+  readonly spotRid?: RoutingId;
+  readonly actorId?: string;
+  readonly messageSizeBytes?: number;
+  readonly durationSeconds?: number;
+  readonly remoteSnapshotCount?: bigint;
+  readonly remoteAdmittedCount?: bigint;
+  readonly remoteDroppedCount?: bigint;
+  readonly localSnapshotCount?: bigint;
+  readonly localAdmittedCount?: bigint;
+  readonly localDroppedCount?: bigint;
+  readonly targetCount?: bigint;
+  readonly dropCount?: bigint;
+}
+
+export type ZLinkMessageFlowOutcome =
+  | 'succeeded'
+  | 'failed'
+  | 'backpressured'
+  | 'dropped'
+  | 'cancelled'
+  | 'shutdown';
+
+export interface ZLinkRuntimeMessageFlowEvent {
+  readonly outcome: ZLinkRuntimeMessageFlowOutcome;
   readonly surface: ZLinkDispatchErrorSurface;
   readonly messageKind: ZLinkDispatchMessageKind;
   readonly packetName?: string;
@@ -117,8 +175,7 @@ export enum ZLinkMessageFlowLogMode {
   Off = 'off',
   ErrorsOnly = 'errorsOnly',
   KeyTransitions = 'keyTransitions',
-  Verbose = 'verbose',
-  Diagnostic = 'diagnostic'
+  Verbose = 'verbose'
 }
 
 /** Severity rank for the mode ladder (off < errorsOnly < keyTransitions < verbose < diagnostic). */
@@ -126,8 +183,7 @@ export const MESSAGE_FLOW_MODE_RANK: Record<ZLinkMessageFlowLogMode, number> = {
   [ZLinkMessageFlowLogMode.Off]: 0,
   [ZLinkMessageFlowLogMode.ErrorsOnly]: 1,
   [ZLinkMessageFlowLogMode.KeyTransitions]: 2,
-  [ZLinkMessageFlowLogMode.Verbose]: 3,
-  [ZLinkMessageFlowLogMode.Diagnostic]: 4
+  [ZLinkMessageFlowLogMode.Verbose]: 3
 };
 
 export enum ZLinkDispatchErrorSurface {
@@ -149,17 +205,33 @@ export enum ZLinkDispatchMessageKind {
   ActorSend = 'actorSend'
 }
 
-export enum ZLinkDispatchErrorReason {
-  HandlerMissing = 'handlerMissing',
-  PayloadDecodeFailed = 'payloadDecodeFailed',
-  HandlerException = 'handlerException',
-  InvalidFrame = 'invalidFrame',
-  ReplyPathMissing = 'replyPathMissing',
-  UnexpectedReply = 'unexpectedReply'
+export type ZLinkDispatchErrorReason =
+  | 'no_handler'
+  | 'decode_error'
+  | 'handler_exception'
+  | 'invalid_frame'
+  | 'reply_path_missing'
+  | 'unexpected_reply'
+  | 'backpressure'
+  | 'stale_target'
+  | 'shutdown';
+
+export type ZLinkDispatchErrorAction = 'reply_error' | 'fail_caller' | 'drop';
+
+export enum ZLinkRuntimeDispatchErrorReason {
+  HandlerMissing = 'no_handler',
+  PayloadDecodeFailed = 'decode_error',
+  HandlerException = 'handler_exception',
+  InvalidFrame = 'invalid_frame',
+  ReplyPathMissing = 'reply_path_missing',
+  UnexpectedReply = 'unexpected_reply',
+  Backpressure = 'backpressure',
+  StaleTarget = 'stale_target',
+  Shutdown = 'shutdown'
 }
 
-export enum ZLinkDispatchErrorAction {
-  ReplyError = 'replyError',
-  FailCaller = 'failCaller',
+export enum ZLinkRuntimeDispatchErrorAction {
+  ReplyError = 'reply_error',
+  FailCaller = 'fail_caller',
   Drop = 'drop'
 }

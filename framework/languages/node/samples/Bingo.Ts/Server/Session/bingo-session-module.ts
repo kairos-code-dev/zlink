@@ -40,18 +40,16 @@ function createBingoSessionModule() {
             .traceLogFile(`${endpoints.logDir}/flow-session.log`)
             .traceLabel('session');
           builder.addLocationStore(createBingoLocationStore(endpoints));
-          Object.assign(builder.configureLocations(), bingoLocationOptions());
-          return builder
-          .codecs()
-            .use(bingoFrameworkProtobuf)
-          .addClientServerChannel(SampleNames.apiChannel)
-            .enableClient()
-          .addSpotMesh(SampleNames.roomSpotNode)
+          bingoLocationOptions(builder.configureLocations());
+          builder.codecs().use(bingoFrameworkProtobuf);
+          const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)
             .useAllocatedRoutingId(2, 'session')
             .setRoutingIdAllocationGroup('bingo.session')
-            .enableRouter(endpoints.sessionSpotEndpoint)
-            .enablePubSub(endpoints.sessionSpotPubSubEndpoint)
-          .addStreamNode(SampleNames.sessionStream)
+            .listen(endpoints.sessionSpotEndpoint);
+          mesh.channelName(SampleNames.apiChannel).setWeight(0);
+          mesh.channelName(SampleNames.roomSpotNode).setWeight(0);
+          return builder.addStreamNode(SampleNames.sessionStream)
+            .enableActorDispatch(SampleNames.roomSpotNode)
             .bind(endpoints.sessionEndpoint)
             .registerSession(BingoSessionFactory)
           .build();

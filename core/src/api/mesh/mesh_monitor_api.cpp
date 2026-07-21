@@ -113,7 +113,7 @@ zlink_config_result_t zlink_mesh_node_monitor_status (void *monitor_,
     mesh_node_t *node = monitor->node;
     std::lock_guard<std::mutex> node_lock (node->mutex);
     std::lock_guard<std::mutex> lock (monitor->mutex);
-    zlink_mesh_monitor_status_t out = monitor->counters;
+    zlink_mesh_monitor_status_t out = node->monitor_counters;
     out.struct_size = sizeof (out);
     out.version = 1;
     out.state = node->state;

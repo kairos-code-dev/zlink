@@ -1,10 +1,7 @@
 export enum ZLinkLocationAutoConnectType {
   Invalid = 0,
   RouteMesh = 1,
-  ClientServer = 2,
-  DealerMesh = 3,
-  Fanout = 4,
-  SpotMesh = 5
+  Fanout = 2
 }
 
 export enum ZLinkLocationRole {

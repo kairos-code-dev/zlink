@@ -1,6 +1,9 @@
 import { ZoneState } from '../../../Domain/zone-state';
 import { Inject, Injectable, Scope } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
+import {
+  ZLINK_ACTOR_CLIENT,
+  ZLINK_SPOT_PUBLISHER_CLIENT
+} from '@zlink-systems/nestjs';
 import { ZoneWorldNames, ZoneWorldSpec } from '../../../../../Shared/spec';
 import type { ZoneId } from '../../../../../Shared/spec';
 import { BotTickReq, ZoneChangedNotify, ZoneBorderEvent, ZoneStateNotify } from '../../../../../Shared/contracts';
@@ -8,31 +11,43 @@ import type { BotTickRes } from '../../../../../Shared/contracts';
 import type { EnterZoneMsg } from '../../../../../Shared/contracts';
 import type {
   ZLinkActorClient,
-  ZLinkActorManager,
+  ActorRef,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotContext,
+  ZLinkSpotPublisherClient,
   ZLinkTimer
 } from '@zlink-systems/framework';
 import type { PlayerActor } from '../Actors/player-actor';
-import { PlayerActor as PlayerActorClass } from '../Actors/player-actor';
-import { PlayerBotTickHandler, PlayerMoveHandler, ZoneJoinWorldHandler } from '../Handlers/player-handlers';
+import { DeliverZoneNotification } from '../Actors/player-actor';
 import { adjacentZones } from '../../../Domain/world';
 import {
   BotTickHandler,
   FirstBorderSubscriptionHandler,
   DeliverAnnounceHandler,
   SecondBorderSubscriptionHandler,
+  UpdateZonePositionHandler,
   ZoneTickHandler
 } from '../Handlers/zone-runtime-handlers';
 import { NodeRuntimeState } from '../../../Domain/node-runtime-state';
+
+interface ZoneParticipant {
+  readonly actor: ActorRef;
+  readonly actorId: string;
+  x: number;
+  y: number;
+  readonly zoneId: ZoneId;
+  readonly isBot: boolean;
+}
 
 @Injectable({ scope: Scope.TRANSIENT })
 class ZoneSpot implements ZLinkSpot<PlayerActor> {
   readonly context!: ZLinkSpotContext<PlayerActor, ZoneSpot>;
   private state?: ZoneState;
-  private readonly actors = new Map<string, PlayerActor>();
+  private readonly actors = new Map<string, ZoneParticipant>();
   private readonly pendingJoins = new Map<string, EnterZoneMsg>();
   private timer?: ZLinkTimer;
   private botTimer?: ZLinkTimer;
@@ -41,22 +56,22 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   constructor(
     private readonly nodeState: NodeRuntimeState,
-    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
-    @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient,
+    @Inject(ZLINK_SPOT_PUBLISHER_CLIENT) private readonly publisher: ZLinkSpotPublisherClient
   ) {}
 
   configure(): void {
-    this.context.handlers.addActorPacket(ZoneJoinWorldHandler, PlayerActorClass);
-    this.context.handlers.addActorPacket(PlayerMoveHandler, PlayerActorClass);
-    this.context.handlers.addActorPacket(PlayerBotTickHandler, PlayerActorClass);
     this.context.handlers.addPacket(DeliverAnnounceHandler);
+    this.context.handlers.addPacket(UpdateZonePositionHandler);
     const adjacent = adjacentZones(String(this.context.spotRid) as ZoneId);
     this.context.handlers.addSubscribe(
       FirstBorderSubscriptionHandler,
+      ZoneWorldNames.bridgeMesh,
       ZoneWorldNames.borderTopic(adjacent[0], String(this.context.spotRid))
     );
     this.context.handlers.addSubscribe(
       SecondBorderSubscriptionHandler,
+      ZoneWorldNames.bridgeMesh,
       ZoneWorldNames.borderTopic(adjacent[1], String(this.context.spotRid))
     );
   }
@@ -84,7 +99,8 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     this.botTimer = undefined;
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    const actorId = actor.actor.actorId;
     const enter = request.decode<EnterZoneMsg>(Object as never);
     if (enter.playerId !== actorId) {
       return { accepted: false };
@@ -97,36 +113,48 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: PlayerActor): Promise<void> {
-    const enter = this.pendingJoins.get(actor.actorId);
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+    const actorId = actor.actor.actorId;
+    const enter = this.pendingJoins.get(actorId);
     if (enter === undefined) return;
-    this.pendingJoins.delete(actor.actorId);
-    actor.x = enter.x;
-    actor.y = enter.y;
-    actor.zoneId = this.requireState().zoneId;
-    actor.isBot = enter.isBot;
-    this.actors.set(actor.actorId, actor);
-    this.nodeState.joined(actor.actorId, actor.zoneId);
-    this.requireState().enter(actor.actorId, actor.x, actor.y, actor.isBot);
-    if (!actor.isBot && enter.fromNodeId !== null) {
-      actor.push(new ZoneChangedNotify(
-        actor.actorId,
-        actor.zoneId,
+    this.pendingJoins.delete(actorId);
+    const participant: ZoneParticipant = {
+      actor: actor.actor,
+      actorId,
+      x: enter.x,
+      y: enter.y,
+      zoneId: this.requireState().zoneId,
+      isBot: enter.isBot
+    };
+    this.actors.set(actorId, participant);
+    this.nodeState.joined(actorId, participant.zoneId);
+    this.requireState().enter(actorId, participant.x, participant.y, participant.isBot);
+    if (!participant.isBot && enter.fromNodeId !== null) {
+      await this.notifyActor(participant.actor, new ZoneChangedNotify(
+        actorId,
+        participant.zoneId,
         this.nodeState.nodeId,
         enter.fromNodeId !== this.nodeState.nodeId
       ));
     }
-    console.log(`zone player entered zone=${actor.zoneId} player=${actor.actorId} from=${enter.fromNodeId ?? 'new'}`);
+    console.log(`zone player entered zone=${participant.zoneId} player=${actorId} from=${enter.fromNodeId ?? 'new'}`);
   }
 
-  async onLeaveActor(actor: PlayerActor): Promise<void> {
-    this.actors.delete(actor.actorId);
-    this.nodeState.left(actor.actorId, actor.zoneId);
-    this.requireState().leave(actor.actorId);
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+    const participant = this.actors.get(actor.actor.actorId);
+    this.actors.delete(actor.actor.actorId);
+    if (participant !== undefined) this.nodeState.left(participant.actorId, participant.zoneId);
+    this.requireState().leave(actor.actor.actorId);
   }
 
-  updatePosition(actor: PlayerActor): void {
-    this.requireState().updatePosition(actor.actorId, actor.x, actor.y);
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+
+  updatePosition(actorId: string, x: number, y: number): void {
+    const actor = this.actors.get(actorId);
+    if (actor === undefined) throw new Error(`Player '${actorId}' is not joined to this zone.`);
+    actor.x = x;
+    actor.y = y;
+    this.requireState().updatePosition(actorId, x, y);
   }
 
   applyBorder(event: ZoneBorderEvent): void {
@@ -141,10 +169,12 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     await Promise.allSettled(
       [...this.actors.values()]
         .filter((actor) => !actor.isBot)
-        .map((actor) => actor.push(new ZoneStateNotify(state.zoneId, tick, visible)))
+        .map((actor) => this.notifyActor(actor.actor, new ZoneStateNotify(state.zoneId, tick, visible)))
     );
     for (const adjacent of adjacentZones(state.zoneId)) {
-      this.context.outbound.publish(
+      await this.publisher.publish(
+        ZoneWorldNames.zoneMesh,
+        ZoneWorldNames.bridgeMesh,
         ZoneWorldNames.borderTopic(state.zoneId, adjacent),
         new ZoneBorderEvent(state.zoneId, adjacent, tick, state.borderBandFor(adjacent))
       ).submit();
@@ -156,7 +186,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   async pushHumans(payload: unknown): Promise<void> {
     await Promise.allSettled(
-      [...this.actors.values()].filter((actor) => !actor.isBot).map((actor) => actor.push(payload))
+      [...this.actors.values()].filter((actor) => !actor.isBot).map((actor) => this.notifyActor(actor.actor, payload))
     );
   }
 
@@ -181,11 +211,18 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   private async runBotTicks(): Promise<void> {
     for (const actor of [...this.actors.values()].filter((candidate) => candidate.isBot)) {
-      const actorRef = await this.actorManager.find(actor.actorId);
-      if (actorRef !== undefined) {
-        await this.actorClient.requestToActor(actorRef, new BotTickReq()).timeout(30_000).submit<BotTickRes>();
-      }
+      await this.actorClient.requestToActor(
+        ZoneWorldNames.zoneMesh,
+        actor.actor,
+        new BotTickReq()
+      ).submit<BotTickRes>();
     }
+  }
+
+  private async notifyActor(actor: ActorRef, payload: unknown): Promise<void> {
+    await this.actorClient
+      .sendToActor(ZoneWorldNames.zoneMesh, actor, new DeliverZoneNotification(payload))
+      .submit();
   }
 
   private requireState(): ZoneState {

@@ -24,6 +24,16 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // it after start (descriptor-revision bump, spec 21 §4).
     void SetChannelWeight(string channelName, uint weight);
 
+    // Applies the Core MeshNode receive cap. Framework 0 means no limit and
+    // is translated by the backend to Core's -1 sentinel.
+    void SetMaxMessageSize(long value);
+
+    void SetRouterHighWaterMark(int value);
+
+    void SetRouterSendTimeout(TimeSpan? value);
+
+    void SetMailboxBudgets(ulong messageBudget, ulong byteBudget);
+
     // Starts the node explicitly at the host-startup point after routing id,
     // bind and channels are applied (spec 21 §3). Idempotent.
     void Start();
@@ -58,6 +68,10 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     MeshNodeStatus MeshStatus();
 
     IReadOnlyList<MeshNodePeer> MeshPeers();
+
+    IReadOnlyList<MeshPeerChannel> MeshPeerChannels(
+        RoutingId peerRid,
+        ulong lifecycleGeneration);
 
     IMeshNodeMonitor OpenMeshMonitor(
         MeshMonitorEventMask events = MeshMonitorEventMask.All);
@@ -133,7 +147,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         IReadOnlyList<Message> parts,
         SendFlags flags);
 
-    bool SendToActor(
+    SubmitResult SendToActor(
         ZLinkBackendActorRef actor,
         IReadOnlyList<Message> parts,
         SendFlags flags);
@@ -144,7 +158,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         TimeSpan? timeout,
         CancellationToken cancellationToken);
 
-    void ReplyActorNoBind(
+    bool ReplyActorNoBind(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -211,7 +225,7 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     void SetRoutingId(RoutingId routingId);
 
-    void SetSubscription(string topic);
+    void SetSubscription(string channelName, string topic);
 
     ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags);
 
@@ -253,13 +267,15 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
         SendFlags flags,
         ReadOnlyMemory<byte> metadata);
 
-    MeshPublishDetail Publish(
+    MeshPublishResult Publish(
+        string channelName,
         string topic,
         Message message,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata);
 
-    MeshPublishDetail Publish(
+    MeshPublishResult Publish(
+        string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         SendFlags flags,

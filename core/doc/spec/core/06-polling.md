@@ -1,10 +1,10 @@
 [한국어](06-polling.ko.md) | English
 
-[Specification index](../README.md) · [Core index](README.md) · [Dispatch](service/02-dispatch.md) · [errno map](04-errno-map.md)
+[Specification index](../README.md) · [Core index](README.md) · [errno map](04-errno-map.md)
 
 # Poll and poller
 
-This document defines the ZLink Core 10.1.0 public readiness contract. Its audience is developers of the C API and bindings that wait for raw sockets, timers, and MeshNodes in one event loop. It answers: “What do `POLLIN`, `POLLOUT`, single-consumer receive mode, and lifetime mean for each source?”
+This document defines the ZLink Core 11.0 public readiness contract. Its audience is developers of the C API and bindings that wait for raw sockets, file descriptors, and generic timers in one event loop. It answers: “What do `POLLIN`, `POLLOUT`, single-consumer receive mode, and lifetime mean for each source?”
 
 ## 1. Public types
 
@@ -31,8 +31,7 @@ typedef enum zlink_poller_event_flag_e {
 typedef enum zlink_poller_source_kind_t {
   ZLINK_POLLER_SOURCE_SOCKET    = 1,
   ZLINK_POLLER_SOURCE_FD        = 2,
-  ZLINK_POLLER_SOURCE_TIMER     = 3,
-  ZLINK_POLLER_SOURCE_MESH_NODE = 4
+  ZLINK_POLLER_SOURCE_TIMER     = 3
 } zlink_poller_source_kind_t;
 
 typedef struct zlink_pollitem_t {
@@ -52,7 +51,7 @@ typedef struct zlink_poller_event_t {
 } zlink_poller_event_t;
 ```
 
-A MeshNode source is returned in the `socket` field. Only an `FD` source has a valid `fd`, and only a `TIMER` source has a valid `timer`. `user_data` is the borrowed pointer supplied at registration.
+Only a `SOCKET` source has a valid `socket`, only an `FD` source has a valid `fd`, and only a `TIMER` source has a valid `timer`. `user_data` is the borrowed pointer supplied at registration.
 
 ## 2. One-shot poll
 
@@ -118,7 +117,6 @@ The caller serializes add, modify, remove, and wait on one poller. Different pol
 | raw socket | A complete record can be received | A submit retry is worthwhile | Per-socket receive mode applies |
 | timer | A fire count can be received | Unsupported | Drain with `zlink_timer_recv()` |
 | FD | Platform-readable | Platform-writable | Platform poll semantics |
-| MeshNode | Ready index is non-empty | Retry of a backpressured service submit is worthwhile | Acquire claims with `zlink_mesh_node_drain_ready()` |
 
 `ZLINK_POLLITEMS_DFLT` is the recommended initial item count for internal and
 application stack buffers; it is not a readiness bit. `ZLINK_HAVE_POLLER == 1`
@@ -136,16 +134,6 @@ The `recv_part` families do not drain this completion. Using
 `zlink_poller_modify()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` with
 `errno == EINVAL`.
 
-MeshNode `POLLIN` means that at least one application or infrastructure domain is readable. A poll event itself contains no payload, owner, or per-domain claim. The consumer drains a ready batch and takes a domain-specific claim from each record.
-
-MeshNode `POLLOUT` is independent of ready-handler or `POLLIN` use. Readiness does not guarantee success of the next submit.
-
-## 5. MeshNode receive-mode exclusion
-
-A MeshNode ready handler and a `POLLIN` poller are single consumers of the same ready index. Registering one mode after the other returns `ZLINK_CONFIG_BUSY` or `ZLINK_HANDLER_BUSY` with `errno == EBUSY`. A ready handler can be registered after removing `POLLIN`, and a poller can be registered after removing the handler.
-
-Holding an application claim does not suppress the same owner’s independent infrastructure-ready record. The poller consumer can drain infrastructure claims first or separately, so request completion and send-ready progress do not depend on the end of an application turn.
-
-## 6. Errors and close
+## 5. Errors and close
 
 An invalid event bit returns `ZLINK_CONFIG_INVALID_ARGUMENT` with `EINVAL`; an event unsupported by the source returns `ZLINK_CONFIG_NOT_SUPPORTED` with `ENOTSUP`. Destroy while wait is active returns `ZLINK_CLOSE_BUSY` with `EBUSY`. The [errno map](04-errno-map.md) defines all result and errno mappings.

@@ -4,7 +4,7 @@ import {
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
-import { questMissionSpotRid } from '../../../../Shared/Configuration/sample-names';
+import { questMissionSpotRid, SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { PlayerQuestSpot } from './Spots/PlayerQuestSpot/player-quest-spot';
 import type {
   ZLinkSpotHandleResolver,
@@ -21,13 +21,13 @@ class PlayerQuestSpotProvisioner {
 
   async ensure(playerId: string): Promise<string> {
     const spotRid = questMissionSpotRid(playerId);
-    await this.spots.getOrCreate(PlayerQuestSpot, spotRid, { playerId });
+    await this.spots.getOrCreate(SampleNames.playerQuestSpotMesh, PlayerQuestSpot, spotRid, { playerId });
     return spotRid;
   }
 
   async request<TResponse>(playerId: string, request: object): Promise<TResponse> {
     const spotRid = await this.ensure(playerId);
-    const spot = await this.spotHandles.resolveSpotHandle(spotRid);
+    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playerQuestSpotMesh, spotRid);
     if (spot === undefined) {
       throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
     }
@@ -38,7 +38,7 @@ class PlayerQuestSpotProvisioner {
 
   async send(playerId: string, message: object): Promise<void> {
     const spotRid = await this.ensure(playerId);
-    const spot = await this.spotHandles.resolveSpotHandle(spotRid);
+    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playerQuestSpotMesh, spotRid);
     if (spot === undefined) {
       throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
     }
@@ -46,7 +46,7 @@ class PlayerQuestSpotProvisioner {
   }
 
   async deactivate(playerId: string): Promise<boolean> {
-    return await this.spots.close(questMissionSpotRid(playerId));
+    return await this.spots.close(SampleNames.playerQuestSpotMesh, questMissionSpotRid(playerId));
   }
 }
 

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/messaging/pending_submit.hpp"
+#include "runtime/messaging/async_submit_runtime.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
@@ -11,7 +12,12 @@
 #include <zlink/framework/contracts/errors/result.hpp>
 
 #include <chrono>
+#include <atomic>
+#include <condition_variable>
+#include <future>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 namespace
@@ -346,6 +352,343 @@ int main ()
 
     if (!disposed_error) {
         return 10;
+    }
+
+    /* Async one-way admission performs the first non-blocking attempt inline.
+     * Each matching capacity signal permits one retry; unrelated signals and
+     * timeout completion cannot create a late admission. */
+    {
+        namespace msg = zlink::framework::runtime::messaging;
+        msg::reset_async_submit_runtime_for_tests ();
+        std::atomic_int attempts{0};
+        auto admitted = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:node:01", &attempts,
+                                      std::chrono::milliseconds (100));
+            const auto attempt = attempts.fetch_add (1) + 1;
+            if (attempt < 3) {
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            }
+            return zlink::framework::result_t<void>::success ();
+        });
+        if (attempts.load () != 1 || admitted.await_ready ()
+            || msg::pending_submit_count_for_tests () != 1) {
+            return 60;
+        }
+        msg::notify_submit_ready ("mesh:node:02", &attempts);
+        if (attempts.load () != 1 || admitted.await_ready ()) {
+            return 61;
+        }
+        msg::notify_submit_ready ("mesh:node:01", &attempts);
+        const auto retry_deadline = std::chrono::steady_clock::now ()
+                                    + std::chrono::milliseconds (100);
+        while (attempts.load () != 2
+               && std::chrono::steady_clock::now () < retry_deadline) {
+            std::this_thread::yield ();
+        }
+        if (attempts.load () != 2 || admitted.await_ready ()) {
+            return 62;
+        }
+        msg::notify_submit_ready ("mesh:node:01", &attempts);
+        const auto &admitted_result = admitted.result ();
+        if (attempts.load () != 3) {
+            return 63;
+        }
+        if (!admitted.await_ready ()) {
+            return 67;
+        }
+        if (admitted_result.value ().status
+            != zlink::framework::submit_status_t::submitted) {
+            return 68;
+        }
+        if (msg::pending_submit_count_for_tests () != 0) {
+            return 69;
+        }
+
+        int timed_out_attempts = 0;
+        auto timed_out = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:spot:01:02", &timed_out_attempts,
+                                      std::chrono::milliseconds (10));
+            ++timed_out_attempts;
+            return zlink::framework::result_t<void>::failure (
+              zlink::framework::framework_error_kind_t::worker_queue_full,
+              "capacity is not available");
+        });
+        if (timed_out.result ().value ().status
+              != zlink::framework::submit_status_t::timed_out
+            || timed_out_attempts != 1) {
+            return 64;
+        }
+        msg::notify_submit_ready ("mesh:spot:01:02", &timed_out_attempts);
+        if (timed_out_attempts != 1 || msg::pending_submit_count_for_tests () != 0) {
+            return 65;
+        }
+
+        int shutdown_owner = 0;
+        auto shutdown = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("stream:session-1", &shutdown_owner,
+                                      std::chrono::milliseconds (100));
+            return zlink::framework::result_t<void>::failure (
+              zlink::framework::framework_error_kind_t::worker_queue_full,
+              "capacity is not available");
+        });
+        msg::shutdown_submit_owner (&shutdown_owner);
+        if (shutdown.result ().value ().status
+            != zlink::framework::submit_status_t::shutdown) {
+            return 66;
+        }
+
+        /* Stop/start of the same runtime object advances its owner epoch. An
+         * operation whose first attempt crossed that boundary cannot reserve
+         * a waiter in the new lifecycle. */
+        msg::reset_async_submit_runtime_for_tests ();
+        int epoch_owner = 0;
+        std::mutex epoch_mutex;
+        std::condition_variable epoch_changed;
+        bool epoch_attempt_entered = false;
+        bool epoch_attempt_release = false;
+        std::promise<zlink::framework::submit_status_t> epoch_terminal_source;
+        auto epoch_terminal = epoch_terminal_source.get_future ();
+        std::thread epoch_submitter ([&] {
+            auto operation = zlink::framework::detail::submit_one_way_task ([&] {
+                msg::note_submit_attempt ("mesh:node:epoch", &epoch_owner,
+                                          std::chrono::milliseconds (500), 1);
+                std::unique_lock lock (epoch_mutex);
+                epoch_attempt_entered = true;
+                epoch_changed.notify_all ();
+                epoch_changed.wait (lock, [&] { return epoch_attempt_release; });
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            });
+            epoch_terminal_source.set_value (operation.result ().value ().status);
+        });
+        {
+            std::unique_lock lock (epoch_mutex);
+            if (!epoch_changed.wait_for (
+                  lock, std::chrono::milliseconds (250),
+                  [&] { return epoch_attempt_entered; })) {
+                epoch_attempt_release = true;
+                lock.unlock ();
+                epoch_changed.notify_all ();
+                epoch_submitter.join ();
+                return 82;
+            }
+        }
+        msg::shutdown_submit_owner (&epoch_owner);
+        msg::activate_submit_owner (&epoch_owner);
+        {
+            std::lock_guard lock (epoch_mutex);
+            epoch_attempt_release = true;
+        }
+        epoch_changed.notify_all ();
+        epoch_submitter.join ();
+        if (epoch_terminal.get () != zlink::framework::submit_status_t::shutdown
+            || msg::pending_submit_count_for_tests () != 0) {
+            return 83;
+        }
+
+        /* A pending slot remains reserved while its retry is in flight. A
+         * second operation must perform its first transport attempt, then
+         * fail without joining the bounded waiter set. */
+        msg::reset_async_submit_runtime_for_tests ();
+        int reservation_owner = 0;
+        std::mutex reservation_mutex;
+        std::condition_variable reservation_changed;
+        bool retry_entered = false;
+        bool retry_release = false;
+        std::atomic_int first_attempts{0};
+        auto first_reserved = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:node:reserved", &reservation_owner,
+                                      std::chrono::milliseconds (500), 1);
+            if (first_attempts.fetch_add (1) == 0) {
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            }
+            std::unique_lock lock (reservation_mutex);
+            retry_entered = true;
+            reservation_changed.notify_all ();
+            reservation_changed.wait (lock, [&] { return retry_release; });
+            return zlink::framework::result_t<void>::success ();
+        });
+        msg::notify_submit_ready ("mesh:node:reserved", &reservation_owner);
+        {
+            std::unique_lock lock (reservation_mutex);
+            if (!reservation_changed.wait_for (
+                  lock, std::chrono::milliseconds (250), [&] { return retry_entered; })) {
+                return 70;
+            }
+        }
+        std::atomic_int second_attempts{0};
+        auto second_reserved = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:node:reserved", &reservation_owner,
+                                      std::chrono::milliseconds (500), 1);
+            ++second_attempts;
+            return zlink::framework::result_t<void>::failure (
+              zlink::framework::framework_error_kind_t::worker_queue_full,
+              "capacity is not available");
+        });
+        if (!second_reserved.await_ready () || second_attempts.load () != 1
+            || second_reserved.result ().value ().status
+                 != zlink::framework::submit_status_t::backpressured) {
+            {
+                std::lock_guard lock (reservation_mutex);
+                retry_release = true;
+            }
+            reservation_changed.notify_all ();
+            return 71;
+        }
+        {
+            std::lock_guard lock (reservation_mutex);
+            retry_release = true;
+        }
+        reservation_changed.notify_all ();
+        if (first_reserved.result ().value ().status
+            != zlink::framework::submit_status_t::submitted) {
+            return 72;
+        }
+
+        /* A readiness signal received while retrying belongs to that
+         * operation. It must not become an extra retry credit for a later
+         * operation that happens to use the same owner and target. */
+        msg::reset_async_submit_runtime_for_tests ();
+        int credit_owner = 0;
+        std::mutex credit_mutex;
+        std::condition_variable credit_changed;
+        bool credit_retry_entered = false;
+        bool credit_retry_release = false;
+        std::atomic_int credit_first_attempts{0};
+        auto credit_first = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:node:credit", &credit_owner,
+                                      std::chrono::milliseconds (500), 1);
+            if (credit_first_attempts.fetch_add (1) == 0) {
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            }
+            std::unique_lock lock (credit_mutex);
+            credit_retry_entered = true;
+            credit_changed.notify_all ();
+            credit_changed.wait (lock, [&] { return credit_retry_release; });
+            return zlink::framework::result_t<void>::success ();
+        });
+        msg::notify_submit_ready ("mesh:node:credit", &credit_owner);
+        {
+            std::unique_lock lock (credit_mutex);
+            if (!credit_changed.wait_for (
+                  lock, std::chrono::milliseconds (250),
+                  [&] { return credit_retry_entered; })) {
+                credit_retry_release = true;
+                lock.unlock ();
+                credit_changed.notify_all ();
+                return 73;
+            }
+        }
+        msg::notify_submit_ready ("mesh:node:credit", &credit_owner);
+        {
+            std::lock_guard lock (credit_mutex);
+            credit_retry_release = true;
+        }
+        credit_changed.notify_all ();
+        if (credit_first.result ().value ().status
+            != zlink::framework::submit_status_t::submitted) {
+            return 74;
+        }
+
+        std::atomic_int credit_second_attempts{0};
+        auto credit_second = zlink::framework::detail::submit_one_way_task ([&] {
+            msg::note_submit_attempt ("mesh:node:credit", &credit_owner,
+                                      std::chrono::milliseconds (500), 1);
+            const auto attempt = credit_second_attempts.fetch_add (1) + 1;
+            if (attempt < 3) {
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            }
+            return zlink::framework::result_t<void>::success ();
+        });
+        msg::notify_submit_ready ("mesh:node:credit", &credit_owner);
+        const auto single_signal_deadline = std::chrono::steady_clock::now ()
+                                            + std::chrono::milliseconds (100);
+        while (credit_second_attempts.load () < 2
+               && std::chrono::steady_clock::now () < single_signal_deadline) {
+            std::this_thread::yield ();
+        }
+        if (credit_second_attempts.load () != 2 || credit_second.await_ready ()) {
+            return 75;
+        }
+        msg::notify_submit_ready ("mesh:node:credit", &credit_owner);
+        if (credit_second.result ().value ().status
+              != zlink::framework::submit_status_t::submitted
+            || credit_second_attempts.load () != 3) {
+            return 76;
+        }
+
+        /* Copies refer to the same logical call. Exactly one public
+         * terminator may start transport admission. */
+        std::atomic_int duplicate_attempts{0};
+        zlink::framework::send_call_t duplicate_call (
+          "duplicate",
+          [&] (const std::string &,
+               const zlink::framework::send_call_t::metadata_map_t &) {
+              ++duplicate_attempts;
+              return zlink::framework::result_t<void>::success ();
+          });
+        auto duplicate_copy = duplicate_call;
+        if (duplicate_call.submit ().result ().value ().status
+            != zlink::framework::submit_status_t::submitted) {
+            return 77;
+        }
+        bool duplicate_rejected = false;
+        try {
+            (void) duplicate_copy.submit ().result ().value ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            duplicate_rejected =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::request_protocol_error;
+        }
+        if (!duplicate_rejected || duplicate_attempts.load () != 1) {
+            return 78;
+        }
+
+        std::atomic_int multicast_calls{0};
+        zlink::framework::publish_call_t multicast_call (
+          [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+              ++multicast_calls;
+              return zlink::framework::publish_result_t{};
+          });
+        auto multicast_copy = multicast_call;
+        if (multicast_call.submit ().result ().value ().status
+            != zlink::framework::submit_status_t::submitted) {
+            return 79;
+        }
+        bool duplicate_multicast_rejected = false;
+        try {
+            (void) multicast_copy.submit ().result ().value ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            duplicate_multicast_rejected =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::request_protocol_error;
+        }
+        if (!duplicate_multicast_rejected || multicast_calls.load () != 1) {
+            return 80;
+        }
+        zlink::framework::logical_multicast_detail_t multicast_detail{
+          .snapshot_remote_node_count = 3,
+          .admitted_remote_node_count = 1,
+          .dropped_remote_node_count = 1,
+          .unreachable_remote_node_count = 1};
+        if (multicast_detail.snapshot_remote_node_count
+            != multicast_detail.admitted_remote_node_count
+                 + multicast_detail.dropped_remote_node_count
+                 + multicast_detail.unreachable_remote_node_count) {
+            return 81;
+        }
+        msg::reset_async_submit_runtime_for_tests ();
     }
 
     /* flow-correlation: envelope marker + optional flow pair round-trip,

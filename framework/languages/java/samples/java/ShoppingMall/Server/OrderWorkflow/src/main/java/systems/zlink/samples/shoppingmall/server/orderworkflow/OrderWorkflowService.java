@@ -35,7 +35,7 @@ public final class OrderWorkflowService {
 
     public CompletionStage<Messages.OrderState> start(Messages.StartOrderWorkflowReq request) {
         return orderSpot(request.orderId()).thenCompose(address -> routes
-            .requestToSpot(SampleNames.OrderSpotDiscovery, address, request)
+            .requestToSpot(address, request)
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.StartOrderWorkflowRes.class))
             .thenApply(Messages.StartOrderWorkflowRes::state);
@@ -43,7 +43,6 @@ public final class OrderWorkflowService {
 
     public CompletionStage<Messages.OrderState> continueOrder(String orderId) {
         return orderSpot(orderId).thenCompose(address -> routes.requestToSpot(
-                SampleNames.OrderSpotDiscovery,
                 address,
                 new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
@@ -53,7 +52,6 @@ public final class OrderWorkflowService {
 
     public CompletionStage<Messages.OrderState> prepareInventoryReserved(Messages.StartOrderWorkflowReq request) {
         return orderSpot(request.orderId()).thenCompose(address -> routes.requestToSpot(
-                SampleNames.OrderSpotDiscovery,
                 address,
                 new Messages.PrepareInventoryReservedCheckpointReq(request))
             .timeout(SampleTimings.WorkflowTimeout)
@@ -63,7 +61,6 @@ public final class OrderWorkflowService {
 
     public CompletionStage<Messages.OrderState> rebuildProjection(String orderId) {
         return orderSpot(orderId).thenCompose(address -> routes.requestToSpot(
-                SampleNames.OrderSpotDiscovery,
                 address,
                 new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)

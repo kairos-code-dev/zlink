@@ -1,11 +1,13 @@
+import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
   RoutingId,
-  ZLinkLocationOptions,
+  ZLinkSubmitResult,
   ZLinkProviderResolver
 } from '../../contracts';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkMessageFlowModeCell } from '../diagnostics';
 import type { Message } from '@zlink-systems/zlink';
+import type { ReceiveRecord } from '@zlink-systems/zlink';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration
@@ -99,7 +101,7 @@ export class ZLinkChannelRuntimeManager {
   configureLocationAutoConnect(
     runtime: ZLinkLocationRuntime,
     stores: ZLinkLocationRuntimeStores,
-    options: ZLinkLocationOptions,
+    options: ZLinkLocationOptionOverrides,
     events?: ZLinkLocationEventSink
   ): void {
     this.lifecycle.configureLocationAutoConnect(runtime, stores, options, events);
@@ -147,8 +149,47 @@ export class ZLinkChannelRuntimeManager {
     return this.lifecycle.start(taskRunner);
   }
 
-  send(channelName: string, packetName: string | undefined, message: unknown, signal?: AbortSignal): void {
-    this.outbound.send(channelName, packetName, message, signal);
+  prepareMeshDispatch(taskRunner?: ZLinkRuntimeTaskRunner): void {
+    this.lifecycle.prepareMeshDispatch(taskRunner);
+  }
+
+  dispatchMeshChannel(meshName: string, record: ReceiveRecord, signal?: AbortSignal): Promise<void> {
+    return this.lifecycle.dispatchMeshChannel(meshName, record, signal);
+  }
+
+  dispatchMeshRoute(meshName: string, record: ReceiveRecord): Promise<void> {
+    return this.lifecycle.dispatchMeshRoute(meshName, record);
+  }
+
+  dispatchLocalMeshRoute(
+    meshName: string,
+    sourceNodeRid: RoutingId,
+    parts: readonly Message[]
+  ): Promise<void> {
+    return this.lifecycle.dispatchLocalMeshRoute(meshName, sourceNodeRid, parts);
+  }
+
+  canDispatchLocalMeshRoute(meshName: string): boolean {
+    return this.lifecycle.canDispatchLocalMeshRoute(meshName);
+  }
+
+  trySend(
+    channelName: string,
+    packetName: string | undefined,
+    message: unknown,
+    metadata?: ReadonlyMap<string, string>
+  ): ZLinkSubmitResult {
+    return this.outbound.trySend(channelName, packetName, message, metadata);
+  }
+
+  send(
+    channelName: string,
+    packetName: string | undefined,
+    message: unknown,
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
+  ): Promise<ZLinkSubmitResult> {
+    return this.outbound.send(channelName, packetName, message, signal, metadata);
   }
 
   async request<TReply>(
@@ -156,13 +197,41 @@ export class ZLinkChannelRuntimeManager {
     packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
-    return this.outbound.request<TReply>(channelName, packetName, request, timeoutMs, signal);
+    return this.outbound.request<TReply>(channelName, packetName, request, timeoutMs, signal, metadata);
   }
 
-  publish(channelName: string, topic: string, packetName: string | undefined, event: unknown, signal?: AbortSignal): void {
-    this.outbound.publish(channelName, topic, packetName, event, signal);
+  tryPublish(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: unknown,
+    metadata?: ReadonlyMap<string, string>
+  ) {
+    return this.outbound.tryPublish(channelName, topic, packetName, event, metadata);
+  }
+
+  publish(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: unknown,
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
+  ) {
+    return this.outbound.publish(channelName, topic, packetName, event, signal, metadata);
+  }
+
+  tryRouteSubmit(
+    routerChannelId: string,
+    targetNodeRid: string,
+    packetName: string | undefined,
+    message: unknown,
+    metadata?: ReadonlyMap<string, string>
+  ): ZLinkSubmitResult {
+    return this.outbound.tryRouteSubmit(routerChannelId, targetNodeRid, packetName, message, metadata);
   }
 
   routeSubmit(
@@ -170,9 +239,17 @@ export class ZLinkChannelRuntimeManager {
     targetNodeRid: string,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
-  ): void {
-    this.outbound.routeSubmit(routerChannelId, targetNodeRid, packetName, message, signal);
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
+  ): Promise<ZLinkSubmitResult> {
+    return this.outbound.routeSubmit(
+      routerChannelId,
+      targetNodeRid,
+      packetName,
+      message,
+      signal,
+      metadata
+    );
   }
 
   async routeRequest<TReply>(
@@ -181,7 +258,8 @@ export class ZLinkChannelRuntimeManager {
     packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
     return this.outbound.routeRequest<TReply>(
       routerChannelId,
@@ -189,7 +267,8 @@ export class ZLinkChannelRuntimeManager {
       packetName,
       request,
       timeoutMs,
-      signal
+      signal,
+      metadata
     );
   }
 
@@ -207,9 +286,17 @@ export class ZLinkChannelRuntimeManager {
     packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
-    return this.spotRoutes.routeRequestToSpot<TReply>(spotRouteTarget, packetName, request, timeoutMs, signal);
+    return this.spotRoutes.routeRequestToSpot<TReply>(
+      spotRouteTarget,
+      packetName,
+      request,
+      timeoutMs,
+      signal,
+      metadata
+    );
   }
 
   async routeRequestFromSpotToSpot<TReply>(

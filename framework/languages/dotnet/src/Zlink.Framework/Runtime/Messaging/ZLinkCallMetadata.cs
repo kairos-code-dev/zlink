@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.DotNet;
+using Systems.Zlink.Stream.Connector.Runtime;
 
 namespace Zlink.Framework.Runtime.Messaging;
 
@@ -36,5 +37,14 @@ internal sealed class ZLinkCallMetadata
         if (_values is null || _values.Count == 0)
             return default;
         return ZLinkMeshMetadataCodec.Encode(new ZLinkMessageMetadata(_values));
+    }
+
+    public ZlinkStreamMetadata ToStreamMetadata()
+    {
+        _ = Encode();
+        var metadata = ZlinkStreamMetadata.Empty;
+        if (_values is null) return metadata;
+        foreach (var (key, value) in _values) metadata = metadata.With(key, value);
+        return metadata;
     }
 }

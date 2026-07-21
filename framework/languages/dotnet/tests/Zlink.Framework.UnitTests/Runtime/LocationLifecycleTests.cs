@@ -79,6 +79,35 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
+    public async Task Actor_Create_Retries_Lease_Expiry_Boundary_Conflict()
+    {
+        await using var fixture = await LifecycleFixture.CreateAsync();
+        var controlled = new ControlledActorStore(fixture.Store)
+        {
+            RejectNewClaimCount = 1
+        };
+        var node = await fixture.NodeAsync("node-b", controlled);
+        var activated = 0;
+
+        var result = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
+            MeshName,
+            ActorType,
+            ActorId,
+            RoutingId.From("node-b"),
+            deactivate: null,
+            activate: _ =>
+            {
+                activated++;
+                return ValueTask.FromResult("instance-b");
+            },
+            CancellationToken.None);
+
+        Assert.Equal("instance-b", result.Activated);
+        Assert.Equal(1, activated);
+        Assert.Equal(0, controlled.RejectNewClaimCount);
+    }
+
+    [Fact]
     public async Task Actor_Activation_Failure_Rolls_The_Claim_Back()
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
@@ -483,13 +512,8 @@ public sealed class LocationLifecycleTests
         var node = await fixture.NodeAsync("node-a");
         var spotRid = RoutingId.From("spot-9");
 
-        var registration = new ZLinkFrameworkRegistration();
-        registration.SpotMeshChannels.Add(
-            "mesh", new ZLinkSpotMeshChannelRegistration { ChannelName = "mesh" });
-        var spots = new ZLinkSpotMeshLocationResolver(registration, node.Resolvers);
         var resolver = new ZLinkLocationAddressResolvers(
             node.Resolvers,
-            spots,
             new ZLinkSpotHandleRegistry());
 
         var status = await node.SpotLocations.ClaimAsync(
@@ -503,7 +527,7 @@ public sealed class LocationLifecycleTests
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
 
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
-            await resolver.ResolveSpotHandleAsync(spotRid, CancellationToken.None));
+            await resolver.ResolveSpotHandleAsync("mesh", spotRid, CancellationToken.None));
         Assert.Equal("mesh", handle.Snapshot.RouterChannelId);
         Assert.Equal(RoutingId.From("node-a"), handle.Snapshot.NodeRid);
         Assert.Equal(spotRid, handle.SpotRid);
@@ -512,7 +536,10 @@ public sealed class LocationLifecycleTests
         // the resolver reports a clean miss instead of a wrong node.
         fixture.Time.Advance(fixture.Options.OwnerLeaseTtl + TimeSpan.FromSeconds(1));
 
-        Assert.Null(await resolver.ResolveSpotHandleAsync(spotRid, CancellationToken.None));
+        Assert.Null(await resolver.ResolveSpotHandleAsync(
+            "mesh",
+            spotRid,
+            CancellationToken.None));
     }
 
     [Fact]
@@ -689,6 +716,8 @@ public sealed class LocationLifecycleTests
 
     private sealed class ControlledActorStore(IZLinkActorLocationStore inner) : IZLinkActorLocationStore
     {
+        public int RejectNewClaimCount { get; set; }
+
         public bool RejectNextRenew { get; set; }
 
         public TaskCompletionSource? RenewGate { get; init; }
@@ -712,6 +741,12 @@ public sealed class LocationLifecycleTests
             ZLinkLocationWriteIntent intent,
             CancellationToken cancellationToken = default)
         {
+            if (intent == ZLinkLocationWriteIntent.NewClaim
+                && RejectNewClaimCount > 0)
+            {
+                RejectNewClaimCount--;
+                return ZLinkLocationWriteResult.RejectedConflict;
+            }
             if (intent == ZLinkLocationWriteIntent.Renew)
             {
                 RenewStarted.TrySetResult();

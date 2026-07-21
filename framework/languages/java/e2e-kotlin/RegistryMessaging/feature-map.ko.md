@@ -26,9 +26,9 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
 
 ## 검증 결과
 
-- `RM-C8` 통과 범위는 payload round-trip이다. MaxMessageSize 초과 거부는 .NET feature-map도
+- 위 `RM-C8`의 통과 범위는 payload round-trip이다. MaxMessageSize 초과 거부는 .NET feature-map도
   framework channel runtime 미배선 한계로 별도 한계라고 기록하므로 Kotlin에서 완료로 확장하지 않는다.
-- `RM-C9`는 one-way send pressure와 recovery 증거를 보존하되, public submit result 단언을
+- 위 `RM-C9`는 one-way send pressure와 recovery 증거를 보존하되, public submit result 단언을
   추가한 후에만 완료로 바꾼다.
 - `all` runner는 Redis location store endpoint와 key prefix를 provider, consumer, workflow role에
   전달한다. 별도 registry process는 구성하지 않으며, scenario별 isolated sub-run은 동적 scenario와

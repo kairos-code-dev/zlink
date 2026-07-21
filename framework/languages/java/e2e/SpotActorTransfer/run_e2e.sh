@@ -51,7 +51,6 @@ PID_C=""
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 mkdir -p "${LOG_DIR}"
 
 cleanup() {
@@ -70,9 +69,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "SpotActorTransfer must use 3s readiness and 5s route settle limits" >&2
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+  echo "SpotActorTransfer must use a 3s readiness limit" >&2
   exit 1
 fi
 
@@ -97,6 +95,11 @@ zlink_redis_start_scoped_assign \
   "redis:7.2-alpine" \
   "127.0.0.1::6379"
 REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+if [[ "${ZLINK_E2E_REDIS_MONITOR:-0}" == "1" ]]; then
+  docker exec "${REDIS_CONTAINER}" redis-cli --csv monitor \
+    >"${LOG_DIR}/redis-monitor.log" 2>&1 &
+  PIDS+=("$!")
+fi
 
 LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
 NODE_BIN="${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node"
@@ -115,8 +118,8 @@ start_node() {
   local config_path="${CONFIG_DIR}/${rid}.properties"
   cat >"${config_path}" <<EOF
 e2e.node-rid=${rid}
-e2e.router-endpoint=tcp://127.0.0.1:${router_port}
-e2e.router-peers=actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}
+e2e.mesh-endpoint=tcp://127.0.0.1:${router_port}
+e2e.mesh-peers=actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}
 e2e.http-endpoint=http://127.0.0.1:${http_port}
 e2e.stream-endpoint=tcp://127.0.0.1:${stream_port}
 e2e.redis-location-endpoint=${REDIS_LOCATION_ENDPOINT}
@@ -176,7 +179,6 @@ done
 wait_http "http://127.0.0.1:${HTTP_A_PORT}" "${PID_A}"
 wait_http "http://127.0.0.1:${HTTP_B_PORT}" "${PID_B}"
 wait_http "http://127.0.0.1:${HTTP_C_PORT}" "${PID_C}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 run_client() {
   local config_path="${CONFIG_DIR}/client.properties"
@@ -215,8 +217,15 @@ fi
 
 grep -q "spot-actor-transfer e2e result=passed" "${LOG_DIR}/client.stdout.log"
 if [[ "${SCENARIO}" == "ST-F6" ]]; then
-  grep -q "packet=handoff_request_frame" "${LOG_DIR}/actor-a-flow.log"
-  grep -q "packet=handoff_direct_reply" "${LOG_DIR}/actor-b-flow.log"
+  grep -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
+    "${LOG_DIR}/actor-b-flow.log"
+  grep -q "outcome=REPLIED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
+    "${LOG_DIR}/actor-b-flow.log"
+  if grep -q "outcome=RECEIVED.*kind=ACTOR_REQUEST.*packet=ProbeReq" \
+      "${LOG_DIR}/actor-a-flow.log"; then
+    echo "ST-F6 transferred request was dispatched again on the source" >&2
+    exit 1
+  fi
   grep -q "|request_timeout|" "${LOG_DIR}/actor-a.evidence.log"
 fi
 cat "${LOG_DIR}/client.stdout.log"

@@ -36,7 +36,7 @@ plain HTTP driver로 동작하고 framework 호출은 server role의 public API 
   실행 결과 registry/discovery 의존이 없는 현재 구조에서 전체 scenario가 다시 통과했다.
 - 통과 scenario: `RC-A1`, `RC-A2`, `RC-A3`, `RC-A4`, `RC-A5`, `RC-A6`, `RC-B1`, `RC-B2`,
   `RC-B3`, `RC-B4`, `RC-B5`.
-- `RC-A6`은 `invalid-server.stdout.log`의 duplicate packet registration startup failure로 확인하고,
+- 중복 등록 시나리오인 `RC-A6`은 `invalid-server.stdout.log`의 duplicate packet registration startup failure로 확인하고,
   `RC-B5`는 Kotlin client가 `--mode codec-mismatch`로 실행된 `mismatch-client.stdout.log`의
   `scenario RC-B5 passed` marker로 확인한다.
 - 이 결과는 현재 구현의 동작 기준선, process 분리, client scenario/support 분리, server role 파일

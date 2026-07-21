@@ -70,32 +70,27 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task SpotNode_Initializer_Applies_Publisher_And_Subscriber_Role_Config()
+    public async Task SpotNode_Initializer_Applies_Router_Send_Config()
     {
         var services = new ServiceCollection().BuildServiceProvider();
         var node = new CapturingSpotNode();
         var registration = new ZLinkFrameworkRegistration();
-        registration.SpotNodes["pubsub"] = new ZLinkSpotNodeRegistration
+        registration.SpotNodes["publisher"] = new ZLinkSpotNodeRegistration
         {
-            SpotNodeName = "pubsub",
-            RoutingId = RoutingId.From("pubsub-node"),
-            // RouteMesh 10.0.0: publisher config is node-level (SpotPublisherConfig,
-            // read by the initializer via ApplyRoleConfig); subscriber config stays
-            // under the PubSub capability.
-            SpotPublisherConfig =
+            SpotNodeName = "publisher",
+            RoutingId = RoutingId.From("publisher-node"),
+            Router = new ZLinkSpotRouterCapabilityRegistration
             {
-                SendHighWaterMark = 17,
-                SendTimeout = TimeSpan.FromMilliseconds(21),
-                Linger = TimeSpan.FromMilliseconds(34)
-            },
-            PubSub = new ZLinkSpotPubSubCapabilityRegistration
-            {
-                SubscriberConfig =
+                BindEndpoint = "inproc://publisher",
+                SocketConfig =
                 {
-                    ReceiveHighWaterMark = 55,
-                    ReceiveTimeout = TimeSpan.FromMilliseconds(89),
-                    Linger = TimeSpan.FromMilliseconds(144)
+                    SendHighWaterMark = 17,
+                    SendTimeout = TimeSpan.FromMilliseconds(21)
                 }
+            },
+            ChannelMemberships =
+            {
+                new ZLinkMeshChannelMembership { ChannelName = "events" }
             }
         };
         var runtime = new ZLinkFrameworkRuntime(
@@ -110,11 +105,74 @@ public sealed partial class EntrySpotActorDispatchTests
         await runtime.StartAsync(CancellationToken.None);
         try
         {
-            Assert.Equal(17, node.PublisherConfig?.SendHighWaterMark);
-            Assert.Equal(TimeSpan.FromMilliseconds(34), node.PublisherConfig?.Linger);
-            Assert.Equal(55, node.SubscriberConfig?.ReceiveHighWaterMark);
-            Assert.Equal(TimeSpan.FromMilliseconds(89), node.SubscriberConfig?.ReceiveTimeout);
-            Assert.Equal(TimeSpan.FromMilliseconds(144), node.SubscriberConfig?.Linger);
+            Assert.Equal(17, node.RouterHighWaterMark);
+            Assert.Equal(TimeSpan.FromMilliseconds(21), node.RouterSendTimeout);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RouteClient_NodeSubmitAsync_Forwards_The_Metadata_Snapshot()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var client = new ZLinkRouteClient(runtime);
+
+            var result = await client.SendToNode(
+                    "entry",
+                    RoutingId.From("target-node"),
+                    new ProbeRouteMessage("send"))
+                .Metadata("trace-id", "first")
+                .Metadata("trace-id", "last")
+                .SubmitAsync();
+
+            Assert.Equal(ZLinkSubmitStatus.Submitted, result.Status);
+            Assert.Equal(RoutingId.From("target-node"), node.LastNodeSendTarget);
+            Assert.Equal(SendFlags.DontWait, node.LastNodeSendFlags);
+            Assert.True(ZLinkMeshMetadataCodec.TryDecode(
+                node.LastNodeSendMetadata,
+                out var metadata));
+            Assert.Equal("last", metadata.Find("trace-id"));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RouteClient_NodeRequest_Forwards_The_Metadata_Snapshot()
+    {
+        var node = new CapturingSpotNode
+        {
+            NodeRequestFailure = new InvalidOperationException("request captured")
+        };
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var client = new ZLinkRouteClient(runtime);
+
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                client.RequestToNode(
+                        "entry",
+                        RoutingId.From("target-node"),
+                        new ProbeRouteMessage("request"))
+                    .Metadata("trace-id", "request")
+                    .Async<ProbeReply>()
+                    .AsTask());
+
+            Assert.Equal("request captured", failure.Message);
+            Assert.Equal(RoutingId.From("target-node"), node.LastNodeRequestTarget);
+            Assert.Equal(SendFlags.DontWait, node.LastNodeRequestFlags);
+            Assert.True(ZLinkMeshMetadataCodec.TryDecode(
+                node.LastNodeRequestMetadata,
+                out var metadata));
+            Assert.Equal("request", metadata.Find("trace-id"));
         }
         finally
         {
@@ -1393,7 +1451,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var state = await runtime.GetStartedStateForRoutingAsync(CancellationToken.None);
             var activation = Assert.IsType<ZLinkEntrySpotActivation>(state.SpotNodes["entry"].EntrySpotActivation);
             _ = await activation.Outbound
-                .Publish("events", new ProbeRouteMessage("published"))
+                .Publish("entry", "events", new ProbeRouteMessage("published"))
                 .SubmitAsync();
 
             var header = Assert.IsType<ZLinkEnvelopeHeader>(node.EntrySpotBackend.PublishedHeader);
@@ -1420,14 +1478,14 @@ public sealed partial class EntrySpotActorDispatchTests
         var root = Path.Combine(Path.GetTempPath(), $"zlink-external-publish-{Guid.NewGuid():N}");
         var logPath = Path.Combine(root, "flow.log");
         var node = new CapturingSpotNode();
-        var (runtime, _) = await CreateStartedRuntimeAsync(node, includePubSub: true);
+        var (runtime, _) = await CreateStartedRuntimeAsync(node);
         runtime.Registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
         runtime.Registration.DispatchOptions.TraceLogFile(logPath);
 
         try
         {
             _ = await new ZLinkSpotPublisherClientService(runtime)
-                .PublishSpot("entry", "events", new ProbeRouteMessage("published"))
+                .Publish("entry", "entry", "events", new ProbeRouteMessage("published"))
                 .SubmitAsync();
 
             var publisher = Assert.Single(node.CreatedSpots);
@@ -1482,6 +1540,41 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task EntrySpotActorDispatch_HandoffReply_RelaysToTheNodeHoldingTheCompletion()
+    {
+        var node = new CapturingSpotNode
+        {
+            NoBindReplyAccepted = false
+        };
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            _ = RegisterProbeActor(runtime, actorRef);
+
+            await DispatchEntryActorPartsAsync(
+                runtime,
+                CreateActorRequestParts(
+                    actorRef,
+                    "request",
+                    "handoff",
+                    requestId: 46,
+                    flags: 1,
+                    sourceNodeRid: "caller-node",
+                    sourceSessionRid: null),
+                CancellationToken.None);
+
+            Assert.Empty(node.NoBindReplies);
+            Assert.Equal(RoutingId.From("caller-node"), node.LastNodeSendTarget);
+            Assert.Equal(SendFlags.DontWait, node.LastNodeSendFlags);
+            Assert.NotEmpty(node.LastNodeSendParts);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller()
     {
         var node = new CapturingSpotNode();
@@ -1490,8 +1583,8 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var boundSession = new ZLinkBoundSessionService(runtime).Create("missing-actor");
 
-            var exception = Assert.Throws<ZLinkFrameworkException>(() =>
-                boundSession.Send(new ProbeRouteMessage("push")).Submit());
+            var exception = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+                await boundSession.Send(new ProbeRouteMessage("push")).SubmitAsync());
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorSessionNotBound, exception.Kind);
             Assert.Empty(node.BoundSessionReplies);
@@ -1503,7 +1596,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller()
+    public async Task Actor_Send_Submit_Times_Out_When_Transport_Remains_Backpressured()
     {
         var node = new CapturingSpotNode();
         var (runtime, actor) = await CreateStartedRuntimeAsync(node);
@@ -1512,10 +1605,11 @@ public sealed partial class EntrySpotActorDispatchTests
             var client = new ZLinkActorClient(runtime);
             var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
 
-            var exception = Assert.Throws<ZLinkFrameworkException>(() =>
-                client.SendToActor(publicActor, new ProbeRouteMessage("send")).Submit());
+            var result = await client.SendToActor(
+                    "entry", publicActor, new ProbeRouteMessage("send"))
+                .SubmitAsync();
 
-            Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, exception.Kind);
+            Assert.Equal(ZLinkSubmitStatus.TimedOut, result.Status);
             Assert.Equal(SendFlags.DontWait, node.LastActorSendFlags);
         }
         finally
@@ -1534,34 +1628,9 @@ public sealed partial class EntrySpotActorDispatchTests
             var client = new ZLinkActorClient(runtime);
             var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
 
-            client.SendToActor(publicActor, new ProbeRouteMessage("send")).Submit();
+            await client.SendToActor("entry", publicActor, new ProbeRouteMessage("send")).SubmitAsync();
 
             Assert.Single(node.ActorSends);
-        }
-        finally
-        {
-            await runtime.StopAsync(CancellationToken.None);
-        }
-    }
-
-    [Fact]
-    public async Task Actor_Send_Skips_A_PubSub_Only_Spot_Node_Registered_First()
-    {
-        var routedNode = new CapturingSpotNode { ActorSendAccepted = true };
-        var pubSubNode = new CapturingSpotNode { ActorSendAccepted = true };
-        var (runtime, actor) = await CreateStartedRuntimeAsync(
-            routedNode,
-            includeActorFactory: false,
-            pubSubOnlyNode: pubSubNode);
-        try
-        {
-            var client = new ZLinkActorClient(runtime);
-            var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
-
-            client.SendToActor(publicActor, new ProbeRouteMessage("send")).Submit();
-
-            Assert.Single(routedNode.ActorSends);
-            Assert.Empty(pubSubNode.ActorSends);
         }
         finally
         {
@@ -1588,7 +1657,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var client = new ZLinkActorClient(runtime);
             var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
 
-            client.SendToActor(publicActor, new ProbeRouteMessage("send")).Submit();
+            await client.SendToActor("entry", publicActor, new ProbeRouteMessage("send")).SubmitAsync();
 
             Assert.Null(ZLinkFlowContext.Current);
             var sentPacket = Assert.Single(node.ActorSends);
@@ -1638,7 +1707,8 @@ public sealed partial class EntrySpotActorDispatchTests
             var client = new ZLinkActorClient(runtime);
             var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
 
-            var reply = await client.RequestToActor(publicActor, new ProbeRouteMessage("request"))
+            var reply = await client.RequestToActor(
+                    "entry", publicActor, new ProbeRouteMessage("request"))
                 .Async<ProbeReply>();
 
             Assert.Equal("reply", reply.Value);
@@ -1681,7 +1751,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var retained = new ZLinkBoundSessionService(runtime).Create(actor.ActorId);
             Assert.Null(ZLinkFlowContext.Current);
 
-            retained.Send(new ProbeRouteMessage("push")).Submit();
+            await retained.Send(new ProbeRouteMessage("push")).SubmitAsync();
 
             Assert.Null(ZLinkFlowContext.Current);
             var boundPush = Assert.Single(node.BoundSessionReplies);
@@ -1721,11 +1791,14 @@ public sealed partial class EntrySpotActorDispatchTests
                 ZLinkActorBoundSessionBindingToken.Native(RoutingId.From("session-rid")));
             var retained = new ZLinkBoundSessionService(runtime).Create(actor.ActorId);
 
-            retained.Send(new ProbeRouteMessage("queued")).Submit();
+            var pending = retained.Send(new ProbeRouteMessage("queued")).SubmitAsync().AsTask();
             Assert.Empty(node.BoundSessionReplies);
 
             node.BoundSessionSendAccepted = true;
             node.SignalSendReady();
+
+            var result = await pending;
+            Assert.Equal(ZLinkSubmitStatus.Submitted, result.Status);
 
             Assert.True(SpinWait.SpinUntil(
                 () => node.BoundSessionReplies.Count == 1,
@@ -1755,7 +1828,7 @@ public sealed partial class EntrySpotActorDispatchTests
                        ZLinkFlowOrigin.Application,
                        createIfAbsent: false,
                        ZLinkFlowOrigin.Inbound))
-                client.SendToActor(publicActor, new ProbeRouteMessage("relay")).Submit();
+                await client.SendToActor("entry", publicActor, new ProbeRouteMessage("relay")).SubmitAsync();
 
             Assert.Null(ZLinkFlowContext.Current);
             var sentPacket = Assert.Single(node.ActorSends);
@@ -1782,7 +1855,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var publicActor = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation);
 
             Assert.Null(ZLinkFlowContext.Current);
-            client.SendToActor(publicActor, new ProbeRouteMessage("off-no-flow")).Submit();
+            await client.SendToActor("entry", publicActor, new ProbeRouteMessage("off-no-flow")).SubmitAsync();
 
             Assert.Null(ZLinkFlowContext.Current);
             var sentPacket = Assert.Single(node.ActorSends);
@@ -2402,7 +2475,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 var targetActor = new ZLinkBackendActorRef(
                     RoutingId.From("joined-node"),
                     actor.ActorId,
-                    actorRef.Generation + 1);
+                    actorRef.Generation);
                 var result = new ZLinkBackendActorJoinResult(
                     RequestResult.Ok,
                     0,
@@ -2651,17 +2724,16 @@ public sealed partial class EntrySpotActorDispatchTests
         IZLinkMessageFlowObserver? messageFlowObserver = null,
         ZLinkMessageFlowLogMode? messageFlowMode = null,
         bool includeJoinTarget = false,
-        bool includePubSub = false,
         Type? entrySpotType = null,
         Type? userSpotType = null,
         BlockingSpotCreateProbe? blockingCreateProbe = null,
         BlockingActorJoinProbe? blockingActorJoinProbe = null,
-        bool includeActorFactory = true,
-        CapturingSpotNode? pubSubOnlyNode = null)
+        bool includeActorFactory = true)
     {
         var services = new ServiceCollection()
             .AddSingleton<FlowJoinProbe>()
             .AddSingleton<LocalEntryJoinProbe>()
+            .AddSingleton<IZLinkAutoConnectTopologyQuery>(KnownRouteMeshTopology.Instance)
             .AddSingleton(blockingCreateProbe ?? new BlockingSpotCreateProbe())
             .AddSingleton(blockingActorJoinProbe ?? new BlockingActorJoinProbe())
             .AddTransient<ProbeActorFactory>()
@@ -2679,13 +2751,6 @@ public sealed partial class EntrySpotActorDispatchTests
             registration.DispatchOptions.MessageFlow(mode);
         if (messageFlowObserver is not null)
             registration.DispatchOptions.SetMessageFlowObserver(messageFlowObserver);
-        if (pubSubOnlyNode is not null)
-            registration.SpotNodes["pubsub"] = new ZLinkSpotNodeRegistration
-            {
-                SpotNodeName = "pubsub",
-                RoutingId = RoutingId.From("pubsub-node"),
-                PubSub = new ZLinkSpotPubSubCapabilityRegistration()
-            };
         registration.SpotNodes["entry"] = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "entry",
@@ -2693,10 +2758,10 @@ public sealed partial class EntrySpotActorDispatchTests
             Router = new ZLinkSpotRouterCapabilityRegistration { BindEndpoint = "inproc://entry" },
             EntrySpotType = entrySpotType ?? typeof(ProbeEntrySpot),
         };
+        registration.SpotNodes["entry"].Router!.AcquisitionMode =
+            ZLinkPeerAcquisitionMode.AutoConnect;
         if (includeActorFactory)
             registration.SpotNodes["entry"].ActorFactories["probe"] = typeof(ProbeActorFactory);
-        if (includePubSub)
-            registration.SpotNodes["entry"].PubSub = new ZLinkSpotPubSubCapabilityRegistration();
         if (includeJoinTarget)
             registration.SpotNodes["entry"].SpotFactories.Add(typeof(JoinTargetSpot));
         if (userSpotType is not null)
@@ -2704,12 +2769,25 @@ public sealed partial class EntrySpotActorDispatchTests
         registration.ActorCatalog.Build(registration.SpotNodes.Values);
         var runtime = new ZLinkFrameworkRuntime(
             services,
-            new CapturingBackendAdapterFactory(node, pubSubOnlyNode),
+            new CapturingBackendAdapterFactory(node),
             registration,
             new ZLinkHandlerRegistry([]),
             new ZLinkHandlerDispatcher(services.GetRequiredService<IServiceScopeFactory>(), registration));
         await runtime.StartAsync(CancellationToken.None);
         return (runtime, new ZLinkBackendActorRef(RoutingId.From("actor-node"), "actor-a", 1));
+    }
+
+    private sealed class KnownRouteMeshTopology : IZLinkAutoConnectTopologyQuery
+    {
+        public static KnownRouteMeshTopology Instance { get; } = new();
+
+        public bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid)
+        {
+            _ = meshName;
+            _ = nodeRid;
+            return true;
+        }
+
     }
 
     private static void ConfigureNotConnectedEntryJoin(CapturingSpotNode node)
@@ -2773,8 +2851,14 @@ public sealed partial class EntrySpotActorDispatchTests
         string value,
         ulong requestId,
         uint flags,
-        bool malformedPayload = false)
+        bool malformedPayload = false,
+        string sourceNodeRid = "entry-node",
+        string? sourceSessionRid = "source-session")
     {
+        var sourceNode = RoutingId.From(sourceNodeRid);
+        var sourceSession = sourceSessionRid is null
+            ? default
+            : RoutingId.From(sourceSessionRid);
         var header = new ZlinkStreamHeader(
             ZlinkStreamMessageKind.Request,
             ZlinkStreamCodec.Json,
@@ -2790,16 +2874,16 @@ public sealed partial class EntrySpotActorDispatchTests
                 // The runtime's own node rid: these parts model a locally
                 // relayed session frame (a differing rid now means a remote
                 // session node and takes the relay plane instead).
-                RoutingId.From("entry-node"),
-                RoutingId.From("source-session"),
+                sourceNode,
+                sourceSession,
                 requestId,
                 flags,
                 Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
                 true),
             new ZLinkBackendActorPart(
                 actorRef,
-                RoutingId.From("entry-node"),
-                RoutingId.From("source-session"),
+                sourceNode,
+                sourceSession,
                 requestId,
                 flags,
                 malformedPayload
@@ -3462,7 +3546,7 @@ public sealed partial class EntrySpotActorDispatchTests
             RoutingIdChanged?.Invoke(routingId);
         }
 
-        public void SetSubscription(string topic) { }
+        public void SetSubscription(string channelName, string topic) { }
 
         public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags) => null;
 
@@ -3504,30 +3588,36 @@ public sealed partial class EntrySpotActorDispatchTests
             string channelName, IReadOnlyList<Message> parts, SendFlags flags,
             ReadOnlyMemory<byte> metadata) => SubmitResult.Backpressured;
 
-        public MeshPublishDetail Publish(
-            string topic, Message message, SendFlags flags,
+        public MeshPublishResult Publish(
+            string channelName, string topic, Message message, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
             _ = topic;
             _ = flags;
             PublishedHeader = ZLinkEnvelopeCodec.DecodeHeader(message);
             return PublishAccepted
-                ? new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0)
-                : throw new ZlinkSubmitException(
-                    ZlinkSubmitException.ErrorCode.Backpressured);
+                ? new MeshPublishResult(
+                    SubmitResult.Ok,
+                    new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0))
+                : new MeshPublishResult(
+                    SubmitResult.Backpressured,
+                    new MeshPublishDetail(0, 0, 0, 0, 1, 0, 1));
         }
 
-        public MeshPublishDetail Publish(
-            string topic, IReadOnlyList<Message> parts, SendFlags flags,
+        public MeshPublishResult Publish(
+            string channelName, string topic, IReadOnlyList<Message> parts, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
             _ = topic;
             _ = flags;
             PublishedHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
             return PublishAccepted
-                ? new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0)
-                : throw new ZlinkSubmitException(
-                    ZlinkSubmitException.ErrorCode.Backpressured);
+                ? new MeshPublishResult(
+                    SubmitResult.Ok,
+                    new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0))
+                : new MeshPublishResult(
+                    SubmitResult.Backpressured,
+                    new MeshPublishDetail(0, 0, 0, 0, 1, 0, 1));
         }
 
         public SubmitResult SendToSpot(
@@ -3612,6 +3702,10 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IZLinkSpotSubscriberConfig? SubscriberConfig { get; private set; }
 
+        public int RouterHighWaterMark { get; private set; }
+
+        public TimeSpan? RouterSendTimeout { get; private set; }
+
         public CapturingSpot EntrySpotBackend => _entrySpot;
 
         public List<CapturingSpot> CreatedSpots { get; } = [];
@@ -3625,6 +3719,8 @@ public sealed partial class EntrySpotActorDispatchTests
         }
 
         public List<CapturedActorReply> NoBindReplies { get; } = [];
+
+        public bool NoBindReplyAccepted { get; set; } = true;
 
         public List<(ZLinkBackendActorRef Actor, IReadOnlyList<byte[]> Parts)> BoundSessionReplies { get; } = [];
 
@@ -3641,6 +3737,20 @@ public sealed partial class EntrySpotActorDispatchTests
         public IReadOnlyList<Message> EntrySpotJoinReplyParts { get; set; } = [];
 
         public Exception? NodeRequestFailure { get; set; }
+
+        public RoutingId LastNodeSendTarget { get; private set; }
+
+        public SendFlags LastNodeSendFlags { get; private set; }
+
+        public byte[] LastNodeSendMetadata { get; private set; } = [];
+
+        public IReadOnlyList<byte[]> LastNodeSendParts { get; private set; } = [];
+
+        public RoutingId LastNodeRequestTarget { get; private set; }
+
+        public SendFlags LastNodeRequestFlags { get; private set; }
+
+        public byte[] LastNodeRequestMetadata { get; private set; } = [];
 
         public Func<IReadOnlyList<Message>, (ZLinkBackendActorJoinResult Result, IReadOnlyList<Message> Reply)>?
             ActorJoinHandler { get; set; }
@@ -3720,6 +3830,18 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void SetPubBind(string endpoint) { }
 
+        public void SetMailboxBudgets(ulong messageBudget, ulong byteBudget) { }
+
+        public void SetRouterHighWaterMark(int value)
+        {
+            RouterHighWaterMark = value;
+        }
+
+        public void SetRouterSendTimeout(TimeSpan? value)
+        {
+            RouterSendTimeout = value;
+        }
+
         public void ApplyRoleConfig(
             IZLinkSpotPublisherConfig? publisher,
             IZLinkSpotSubscriberConfig? subscriber)
@@ -3791,6 +3913,10 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IReadOnlyList<MeshNodePeer> MeshPeers() => [];
 
+        public IReadOnlyList<MeshPeerChannel> MeshPeerChannels(
+            RoutingId peerRid,
+            ulong lifecycleGeneration) => [];
+
         public IMeshNodeMonitor OpenMeshMonitor(
             MeshMonitorEventMask events = MeshMonitorEventMask.All) =>
             new UnusedMeshNodeMonitor();
@@ -3811,6 +3937,10 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void SetChannelWeight(string channelName, uint weight) =>
             ChannelWeights[channelName] = weight;
+
+        public void SetMaxMessageSize(long value)
+        {
+        }
 
         public void Start() => StartCount++;
 
@@ -3936,6 +4066,19 @@ public sealed partial class EntrySpotActorDispatchTests
             IReadOnlyList<Message> parts,
             SendFlags flags)
         {
+            return SendToNode(targetNodeRid, parts, flags, default);
+        }
+
+        public SubmitResult SendToNode(
+            RoutingId targetNodeRid,
+            IReadOnlyList<Message> parts,
+            SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
+        {
+            LastNodeSendTarget = targetNodeRid;
+            LastNodeSendFlags = flags;
+            LastNodeSendMetadata = metadata.ToArray();
+            LastNodeSendParts = CopyParts(parts);
             return SubmitResult.Ok;
         }
 
@@ -3947,12 +4090,12 @@ public sealed partial class EntrySpotActorDispatchTests
             TimeSpan timeout,
             ReadOnlyMemory<byte> metadata = default)
         {
-            _ = targetNodeRid;
+            LastNodeRequestTarget = targetNodeRid;
             _ = parts;
             _ = callback;
-            _ = flags;
+            LastNodeRequestFlags = flags;
             _ = timeout;
-            _ = metadata;
+            LastNodeRequestMetadata = metadata.ToArray();
             throw NodeRequestFailure
                   ?? new NotSupportedException("No node request result was configured for this test.");
         }
@@ -3968,14 +4111,14 @@ public sealed partial class EntrySpotActorDispatchTests
             return BoundSessionSendAccepted;
         }
 
-        public bool SendToActor(
+        public SubmitResult SendToActor(
             ZLinkBackendActorRef actor,
             IReadOnlyList<Message> parts,
             SendFlags flags)
         {
             LastActorSendFlags = flags;
             ActorSends.Add((actor, CopyParts(parts)));
-            return ActorSendAccepted;
+            return ActorSendAccepted ? SubmitResult.Ok : SubmitResult.Backpressured;
         }
 
         public ValueTask<IReadOnlyList<Message>> RequestToActorAsync(
@@ -3992,7 +4135,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 ?? throw new NotSupportedException());
         }
 
-        public void ReplyActorNoBind(
+        public bool ReplyActorNoBind(
             ZLinkBackendActorRef actor,
             RoutingId sourceNodeRid,
             RoutingId sourceSessionRid,
@@ -4001,6 +4144,9 @@ public sealed partial class EntrySpotActorDispatchTests
             IReadOnlyList<Message> parts)
         {
             BeforeNoBindReply?.Invoke(actor);
+            if (!NoBindReplyAccepted)
+                return false;
+
             NoBindReplies.Add(new CapturedActorReply(
                 actor,
                 sourceNodeRid,
@@ -4008,6 +4154,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 requestId,
                 flags,
                 CopyParts(parts)));
+            return true;
         }
 
         public bool ForwardActorBoundSessionPart(
@@ -4042,15 +4189,14 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     private sealed class CapturingBackendAdapterFactory(
-        CapturingSpotNode node,
-        CapturingSpotNode? pubSubOnlyNode = null) : IZLinkBackendAdapterFactory
+        CapturingSpotNode node) : IZLinkBackendAdapterFactory
     {
         private readonly CapturingChannelBackendAdapter _channelAdapter = new();
 
         public IZLinkChannelBackendAdapter CreateChannelAdapter() => _channelAdapter;
 
         public IZLinkSpotBackendAdapter CreateSpotAdapter() =>
-            new CapturingSpotBackendAdapter(node, pubSubOnlyNode);
+            new CapturingSpotBackendAdapter(node);
 
         public IZLinkStreamBackendAdapter CreateStreamAdapter() => throw new NotSupportedException();
 
@@ -4075,19 +4221,11 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     private sealed class CapturingSpotBackendAdapter(
-        CapturingSpotNode node,
-        CapturingSpotNode? pubSubOnlyNode) : IZLinkSpotBackendAdapter
+        CapturingSpotNode node) : IZLinkSpotBackendAdapter
     {
-        private int _createCount;
-
-        // RouteMesh 10.0.0 unified the spot node: CreateSpotNode no longer carries
-        // a SpotNodeMode and is invoked once per ZLinkSpotNodeRegistration. When a
-        // pub/sub-only registration is present it is enumerated first, so the first
-        // call resolves to the pub/sub-only node and later calls to the routed node.
         public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context, string meshName)
         {
-            var index = _createCount++;
-            return index == 0 && pubSubOnlyNode is not null ? pubSubOnlyNode : node;
+            return node;
         }
     }
 

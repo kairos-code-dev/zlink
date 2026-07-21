@@ -33,6 +33,12 @@ class fq_t
     int recvpipe (msg_t *msg_, pipe_t **pipe_);
     bool has_in ();
 
+#ifdef ZLINK_BUILD_TESTS
+    typedef bool (*recv_test_hook_fn) (fq_t *fq_, pipe_t *pipe_, void *userdata_);
+    static void set_recv_test_hook (recv_test_hook_fn hook_, void *userdata_);
+    size_t test_pipe_count () const { return _pipes.size (); }
+#endif
+
   private:
     bool try_get_pipe_index (pipe_t *pipe_, pipes_t::size_type *index_out_);
     void normalize_state ();

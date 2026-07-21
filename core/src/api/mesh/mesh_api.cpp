@@ -188,7 +188,6 @@ int zlink::mesh::set_tls_server (void *handle_,
                                  const char *key_,
                                  int require_client_cert_)
 {
-    LIBZLINK_UNUSED (require_client_cert_);
     mesh_node_pin_t node_pin (handle_);
     mesh_node_t *node = node_pin.get ();
     if (!node) {
@@ -204,8 +203,9 @@ int zlink::mesh::set_tls_server (void *handle_,
         errno = EBUSY;
         return -1;
     }
-    //  TLS material applies to the bind-side ROUTER when the wire engages
-    //  with peer admission; the configuration itself is start-gated here.
+    node->tls_server_cert = cert_;
+    node->tls_server_key = key_;
+    node->tls_require_client_cert = require_client_cert_;
     return 0;
 }
 
@@ -214,7 +214,6 @@ int zlink::mesh::set_tls_client (void *handle_,
                                  const char *hostname_,
                                  int trust_system_)
 {
-    LIBZLINK_UNUSED (trust_system_);
     mesh_node_pin_t node_pin (handle_);
     mesh_node_t *node = node_pin.get ();
     if (!node) {
@@ -230,6 +229,9 @@ int zlink::mesh::set_tls_client (void *handle_,
         errno = EBUSY;
         return -1;
     }
+    node->tls_client_ca = ca_cert_;
+    node->tls_client_hostname = hostname_;
+    node->tls_trust_system = trust_system_;
     return 0;
 }
 
@@ -266,6 +268,31 @@ void *zlink::mesh::spot_timer_new (void *spot_)
     if (!facade) {
         errno = EFAULT;
         return NULL;
+    }
+    {
+        std::lock_guard<std::mutex> lock (facade->node->mutex);
+        const std::string key (facade->spot_rid.begin (),
+                               facade->spot_rid.end ());
+        std::map<std::string, spot_state_t>::iterator spot =
+          facade->node->spots.find (key);
+        if (spot == facade->node->spots.end ()
+            || spot->second.generation != facade->generation) {
+            errno = ESTALE;
+            return NULL;
+        }
+        if (spot->second.kind == ZLINK_SPOT_KIND_INSTANCE) {
+            std::map<std::string, instance_activation_state_t>::iterator activation =
+              facade->node->instance_activations.find (key);
+            if (activation == facade->node->instance_activations.end ()
+                || activation->second.state
+                     != ZLINK_SPOT_ACTIVATION_READY
+                || activation->second.owner_deadline_ns == 0
+                || zlink::request_timeout::monotonic_now_ns ()
+                     >= activation->second.owner_deadline_ns) {
+                errno = ESHUTDOWN;
+                return NULL;
+            }
+        }
     }
     //  The Spot-owned timer runs on the owning node's scheduler (never the
     //  global one), and the registry ties tick delivery and lifetime to the
@@ -323,6 +350,25 @@ bool zlink::mesh::spot_timer_enter_turn (void *timer_)
         std::map<std::string, spot_state_t>::iterator spot_it = node->spots.find (entry.spot_key);
         if (spot_it == node->spots.end () || spot_it->second.generation != entry.generation)
             return false; //  the owning generation ended: skip the tick
+        if (spot_it->second.kind == ZLINK_SPOT_KIND_INSTANCE) {
+            std::map<std::string, instance_activation_state_t>::iterator activation =
+              node->instance_activations.find (entry.spot_key);
+            if (activation == node->instance_activations.end ()
+                || activation->second.state
+                     != ZLINK_SPOT_ACTIVATION_READY
+                || activation->second.owner_deadline_ns == 0
+                || zlink::request_timeout::monotonic_now_ns ()
+                     >= activation->second.owner_deadline_ns) {
+                if (activation != node->instance_activations.end ()) {
+                    activation->second.state =
+                      ZLINK_SPOT_ACTIVATION_CLOSING;
+                    spot_it->second.activation_state =
+                      ZLINK_SPOT_ACTIVATION_CLOSING;
+                    spot_it->second.draining = true;
+                }
+                return false;
+            }
+        }
         owner_id_t owner;
         owner.kind = owner_spot;
         owner.key = entry.spot_key;
@@ -408,7 +454,25 @@ bool zlink::mesh::spot_timer_tick_allowed (void *timer_)
         return false;
     std::lock_guard<std::mutex> lock (node->mutex);
     std::map<std::string, spot_state_t>::iterator it = node->spots.find (entry.spot_key);
-    return it != node->spots.end () && it->second.generation == entry.generation;
+    if (it == node->spots.end () || it->second.generation != entry.generation)
+        return false;
+    if (it->second.kind != ZLINK_SPOT_KIND_INSTANCE)
+        return true;
+    std::map<std::string, instance_activation_state_t>::iterator activation =
+      node->instance_activations.find (entry.spot_key);
+    if (activation == node->instance_activations.end ()
+        || activation->second.state != ZLINK_SPOT_ACTIVATION_READY
+        || activation->second.owner_deadline_ns == 0
+        || zlink::request_timeout::monotonic_now_ns ()
+             >= activation->second.owner_deadline_ns) {
+        if (activation != node->instance_activations.end ()) {
+            activation->second.state = ZLINK_SPOT_ACTIVATION_CLOSING;
+            it->second.activation_state = ZLINK_SPOT_ACTIVATION_CLOSING;
+            it->second.draining = true;
+        }
+        return false;
+    }
+    return true;
 }
 
 void zlink::mesh::spot_timer_closed (void *timer_)

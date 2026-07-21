@@ -14,15 +14,7 @@ public final class ZLinkLocationStoreResolver {
             return null;
         }
 
-        if (registration.storeInstance() != null) {
-            return fromUnified(registration.storeInstance());
-        }
-
-        if (registration.useInMemoryStores()) {
-            return fromUnified(new ZLinkInMemoryLocationStore());
-        }
-
-        return null;
+        return fromUnified(registration.storeInstance());
     }
 
     private static ZLinkRegisteredLocationStores fromUnified(ZLinkLocationStore store) {

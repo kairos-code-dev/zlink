@@ -12,13 +12,16 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 struct session_options_t
 {
     std::string log_dir;
     std::string node_rid;
     std::string route_endpoint;
+    std::vector<std::string> route_peer_endpoints;
     std::string spot_router_endpoint;
+    std::vector<std::string> spot_peer_endpoints;
     std::string pubsub_endpoint;
     std::string http_endpoint;
     std::string redis_endpoint;
@@ -34,7 +37,11 @@ struct session_options_t
         return {.log_dir = section.require ("logDir"),
                 .node_rid = section.get ("nodeRid").value_or ("session-a"),
                 .route_endpoint = section.require ("routeEndpoint"),
+                .route_peer_endpoints =
+                  split_endpoints (section.get ("routePeerEndpoints").value_or ("")),
                 .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_peer_endpoints =
+                  split_endpoints (section.get ("spotPeerEndpoints").value_or ("")),
                 .pubsub_endpoint = section.require ("pubsubEndpoint"),
                 .http_endpoint = section.require ("httpEndpoint"),
                 .redis_endpoint = section.require ("redis.endpoint"),
@@ -56,7 +63,9 @@ inline int run_session_server (int argc, char **argv)
     const auto &log_dir = config.log_dir;
     const auto &node_rid = config.node_rid;
     const auto &route_endpoint = config.route_endpoint;
+    const auto &route_peer_endpoints = config.route_peer_endpoints;
     const auto &spot_router_endpoint = config.spot_router_endpoint;
+    const auto &spot_peer_endpoints = config.spot_peer_endpoints;
     const auto &pubsub_endpoint = config.pubsub_endpoint;
     const auto &http_endpoint = config.http_endpoint;
     const auto &redis_endpoint = config.redis_endpoint;
@@ -81,15 +90,19 @@ inline int run_session_server (int argc, char **argv)
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
         if (route_mesh_enabled) {
-            options.add_route_mesh (e2e::route_channel)
-              .enable_server (route_endpoint)
+            auto route = options.add_route_mesh (e2e::route_channel);
+            route.listen (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (node_rid))
-              .enable_client ();
+              .channel_name (e2e::route_channel);
+            for (const auto &peer : route_peer_endpoints)
+                route.peer_connections ().connect (peer);
         }
-        options.add_spot_mesh (e2e::spot_mesh)
+        auto spot = options.add_route_mesh (e2e::spot_mesh);
+        spot.listen (spot_router_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_router (spot_router_endpoint)
-          .enable_pub_sub (pubsub_endpoint);
+          .channel_name (e2e::spot_mesh);
+        for (const auto &peer : spot_peer_endpoints)
+            spot.peer_connections ().connect (peer);
         if (!stream_endpoint.empty ()) {
             options.add_stream_node ("spot-service-stream")
               .bind (stream_endpoint)

@@ -21,9 +21,9 @@ Formal specifications describe only the current 10.0.0 contract. Guides own purp
 | [Context](core/01-context.md) | Context lifecycle and options |
 | [Message](core/02-message.md) | Message and routing-ID storage and ownership |
 | [Socket](core/socket/README.md) | Generic socket types and send/receive behavior |
-| [Service](core/service/README.md) | MeshNode, Spot, Actor, and STREAM-session behavior |
 | [Polling](core/06-polling.md) | Poll items, pollers, and readiness |
-| [Monitoring](core/07-monitoring.md) | Socket and MeshNode monitors and snapshots |
+| [Monitoring](core/07-monitoring.md) | Raw-socket monitors and snapshots |
+| [Runtime boundary](core/09-runtime-boundary.md) | Core raw C ABI and Framework service responsibility boundary |
 | [Events](core/05-events.md) | Public events and state-transition meaning |
 | [Errors](core/03-errors.md) | Result enums, errno, and the 10.0.0 version ABI |
 | [Errno map](core/04-errno-map.md) | Per-function result and errno mappings |

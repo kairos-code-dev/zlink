@@ -197,6 +197,35 @@ public sealed class LocationRuntimeQueryTests
     }
 
     [Fact]
+    public async Task Status_Reports_The_Most_Recent_Success_Across_Reads_And_Lease_Renewal()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions();
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var runtime = new ZLinkLocationRuntime(
+            options, store, store, store, store, store, time);
+        var health = new ZLinkLocationStoreHealth();
+        var query = new ZLinkLocationRuntimeQueryService(
+            options,
+            store,
+            RegisteredMeshes,
+            tracker,
+            runtime,
+            new ZLinkObservedLocationGenerations(),
+            storeHealth: health);
+        health.ReportSuccess("mesh-node-query-read");
+        var readSuccessAt = health.GetSnapshot().LastSuccessAt;
+        time.Advance(TimeSpan.FromDays(30));
+        Assert.True(await runtime.RenewOwnerLeaseOnceAsync());
+
+        var status = await query.GetStatusAsync();
+
+        Assert.True(status.LastRefreshAt > readSuccessAt);
+        Assert.Equal(time.GetUtcNow(), status.LastRefreshAt);
+    }
+
+    [Fact]
     public async Task Store_Health_Distinguishes_Caller_Cancellation_From_Internal_Cancellation()
     {
         var callerHealth = new ZLinkLocationStoreHealth();

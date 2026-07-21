@@ -16,26 +16,47 @@ public final class ZLinkStoreSpotHandleResolver
     }
 
     @Override
+    public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(
+        String meshName,
+        RoutingId spotRid) {
+        return flowAware(addresses.resolveSpotRow(meshName, spotRid)).thenApply(row -> row == null
+            ? Optional.empty()
+            : Optional.of(new FrameworkSpotHandle(
+                row.meshName(), row.spotRid(), row.nodeRid(), row.spotGeneration())));
+    }
+
+    @Override
     public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(RoutingId spotRid) {
         return flowAware(addresses.resolveAnySpotRow(spotRid)).thenApply(row -> row == null
             ? Optional.empty()
-            : Optional.of(new FrameworkSpotHandle(row.spotRid())));
+            : Optional.of(new FrameworkSpotHandle(
+                row.meshName(), row.spotRid(), row.nodeRid(), row.spotGeneration())));
     }
 
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveActorSpotHandle(String actorId) {
-        return flowAware(addresses.resolveActorSpotRow(actorId)).thenApply(row -> row == null
-            ? Optional.empty()
-            : Optional.of(new FrameworkSpotHandle(targetSpot(
-                row.locationKind(), row.nodeRid(), row.spotRid()))));
+        return flowAware(addresses.resolveActorSpotRow(actorId)).thenCompose(row -> {
+            if (row == null) {
+                return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
+            }
+            RoutingId spotRid = targetSpot(row.locationKind(), row.nodeRid(), row.spotRid());
+            return flowAware(addresses.resolveAnySpotRow(spotRid)).thenApply(spot -> spot == null
+                ? Optional.empty()
+                : Optional.of(new FrameworkSpotHandle(
+                    spot.meshName(), spot.spotRid(), spot.nodeRid(), spot.spotGeneration())));
+        });
     }
 
     @Override
     public CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle) {
-        return flowAware(addresses.resolveAnySpotRow(handle.spotRid())).thenApply(row -> row == null
+        return flowAware(addresses.resolveSpotRow(handle.meshName(), handle.spotRid())).thenApply(row -> row == null
             ? Optional.empty()
             : Optional.of(new SpotTransportAddress(
-                addresses.routerChannelId(row.meshName()), row.nodeRid(), row.spotRid(), row.spotKind())));
+                addresses.routerChannelId(row.meshName()),
+                row.nodeRid(),
+                row.spotRid(),
+                row.spotGeneration(),
+                row.spotKind())));
     }
 
     private static <T> CompletionStage<T> flowAware(CompletionStage<T> source) {

@@ -27,23 +27,16 @@ internal sealed class ApiServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            options.AddRouteMesh(SampleChannels.Api)
-                .Listen(settings.ApiChannelEndpoint)
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-api"))
-                .ChannelName(SampleChannels.Api)
+            var mesh = options.AddRouteMesh(SampleNodes.Mesh)
+                .Listen(settings.MeshEndpoint)
+                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-mesh"));
+            mesh.ChannelName(SampleChannels.Api)
                 .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
-
-            var play0 = options.AddRouteMesh(SampleChannels.Play(0))
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-play-0"));
-            play0.ChannelName(SampleChannels.Play(0)).SetWeight(0);
-            play0.PeerConnections.Connect(settings.PlayChannelEndpoints[0]);
-
-            var play1 = options.AddRouteMesh(SampleChannels.Play(1))
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-play-1"));
-            play1.ChannelName(SampleChannels.Play(1)).SetWeight(0);
-            play1.PeerConnections.Connect(settings.PlayChannelEndpoints[1]);
+            mesh.ChannelName(SampleChannels.Play(0)).SetWeight(0);
+            mesh.ChannelName(SampleChannels.Play(1)).SetWeight(0);
+            mesh.ChannelName(SampleTopics.PlayerMilestoneChannel).SetWeight(0);
+            foreach (var endpoint in settings.PeerMeshEndpoints)
+                mesh.PeerConnections.Connect(endpoint);
         });
 
         var app = builder.Build();

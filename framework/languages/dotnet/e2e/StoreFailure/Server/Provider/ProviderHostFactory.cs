@@ -41,6 +41,8 @@ internal static class ProviderHostFactory
                 var locations = framework.ConfigureLocations();
                 locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
                 locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
+                locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(
+                    Math.Max(100, options.LocationHeartbeatMs / 2));
                 locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
                 locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
             }

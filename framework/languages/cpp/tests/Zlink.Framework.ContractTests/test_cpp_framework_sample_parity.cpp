@@ -259,7 +259,7 @@ TEST (CppFrameworkSampleParity, BingoRoomClosesAfterItsLastActorLeaves)
 
     EXPECT_NE (room.find ("if (actors.empty () && observers.empty ())"), std::string::npos)
       << "Bingo room must close only after both player and observer occupancy are empty";
-    EXPECT_NE (room.find ("(void) _context.close ()"), std::string::npos)
+    EXPECT_NE (room.find ("co_await _context.close ()"), std::string::npos)
       << "Bingo room must request spot closure after its last actor leaves";
 }
 
@@ -617,7 +617,7 @@ TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
       cpp_language_root ()
       / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/"
         "tictactoe_entry_spot.hpp");
-    const auto disconnect = entry.find ("void on_disconnect_actor");
+    const auto disconnect = entry.find ("task_t<void> on_disconnect_actor");
     ASSERT_NE (disconnect, std::string::npos);
     const auto callback_end = entry.find ("std::vector<std::string> created_actor_ids", disconnect);
     ASSERT_NE (callback_end, std::string::npos);
@@ -685,7 +685,7 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchTrackingHasNoDeadSpotModel)
 
     const auto main = read_file (tracking / "main.cpp");
     const auto handlers = read_file (tracking / "Handlers/tracking_handlers.hpp");
-    EXPECT_NE (main.find ("add_spot_mesh"), std::string::npos)
+    EXPECT_NE (main.find ("add_route_mesh"), std::string::npos)
       << "Tracking still needs mesh participation for outbound customer actor delivery";
     EXPECT_EQ (handlers.find ("delivery_spot_directory_t"), std::string::npos)
       << "status handling must not maintain an unread parallel history";
@@ -921,11 +921,11 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
     EXPECT_NE (tictactoe_readme.find ("`POST /games`를 호출"), std::string::npos);
 
     const auto top_level_readme = read_file (cpp_root / "samples/README.ko.md");
-    EXPECT_NE (top_level_readme.find ("full client/server self-check"), std::string::npos)
+    EXPECT_NE (top_level_readme.find ("client self-check"), std::string::npos)
       << "C++ sample overview must describe full self-check scope";
-    EXPECT_NE (top_level_readme.find ("TicTacToe sample-local script"), std::string::npos)
+    EXPECT_NE (top_level_readme.find ("samples/TicTacToe/run_sample.sh"), std::string::npos)
       << "C++ sample overview must name the TicTacToe full self-check";
-    EXPECT_NE (top_level_readme.find ("Bingo sample-local script"), std::string::npos)
+    EXPECT_NE (top_level_readme.find ("samples/Bingo/run_sample.sh"), std::string::npos)
       << "C++ sample overview must name the Bingo full self-check";
     EXPECT_NE (top_level_readme.find ("DeliveryDispatch 샘플은 현재 Linux 또는 WSL용"),
                std::string::npos)
@@ -1250,7 +1250,7 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.readme_path << " must document room leave responsibility";
         EXPECT_NE (readme.find ("`destroy_actor`"), std::string::npos)
           << sample.readme_path << " must document Entry Spot destroy responsibility";
-        EXPECT_NE (readme.find ("`on_leave_actor`를 호출하지 않는다"), std::string::npos)
+        EXPECT_NE (readme.find ("추가 `on_leave_actor`가 없음을 확인"), std::string::npos)
           << sample.readme_path << " must document destroy callback isolation";
         EXPECT_NE (readme.find ("actor lookup에서 사라지는지"), std::string::npos)
           << sample.readme_path << " must document post-destroy registry cleanup evidence";
@@ -1259,9 +1259,9 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 
         EXPECT_NE (runner.find ("test_cpp_framework_sample_parity"), std::string::npos)
           << sample.runner_path << " must run sample parity gate";
-        EXPECT_NE (runner.find ("test_cpp_framework_spot_runtime"), std::string::npos)
-          << sample.runner_path << " must run actor lifecycle runtime gate";
-        EXPECT_NE (runner.find ("test_cpp_framework_ActorGateway_actor_session_relay"),
+        EXPECT_NE (runner.find ("zlink_cpp_framework_mesh_node_vertical_test"), std::string::npos)
+          << sample.runner_path << " must run the current MeshNode Actor vertical gate";
+        EXPECT_NE (runner.find ("test_cpp_framework_actor_gateway"),
                    std::string::npos)
           << sample.runner_path << " must run ActorGateway registry cleanup gate";
     }
@@ -1291,13 +1291,12 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (play_factory.find ("topology.all_api_endpoints ()"), std::string::npos);
     EXPECT_NE (api_factory.find (".enable_client (endpoint)"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_client (endpoint)"), std::string::npos);
-    EXPECT_EQ (play_factory.find ("options.add_route_mesh"), std::string::npos);
-    EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),
                std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
-    EXPECT_NE (play_factory.find (".enable_router"), std::string::npos);
+    EXPECT_NE (play_factory.find (".peer_connections ()"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
                std::string::npos);
     EXPECT_NE (play_factory.find (".register_session<play_session_t> ()"), std::string::npos);
@@ -1337,7 +1336,6 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
                std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
     EXPECT_NE (client.find (".async<create_game_http_res_t> ().result ().value ().body"), std::string::npos);
-    EXPECT_EQ (client.find (".async<create_game_http_res_t> ()"), std::string::npos);
     EXPECT_EQ (client.find (".json ()"), std::string::npos);
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
@@ -1355,7 +1353,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_EQ (client.find ("std::ofstream"), std::string::npos);
 }
 
-TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
+TEST (CppFrameworkSampleParity, BingoHostsUseRouteMeshCapabilities)
 {
     const auto bingo_root = cpp_language_root () / "samples/Bingo";
     const auto api_framework = read_file (bingo_root / "Server/Api/api_server_framework.hpp");
@@ -1368,12 +1366,8 @@ TEST (CppFrameworkSampleParity, BingoHostsUseSpotMeshCapabilitiesLikeDotNet)
     const auto client = read_file (bingo_root / "Client/bingo_client_scenario.hpp");
     const auto client_main = read_file (bingo_root / "Client/main.cpp");
 
-    EXPECT_NE (play_factory.find ("options.add_spot_mesh"), std::string::npos);
-    EXPECT_NE (session_factory.find ("options.add_spot_mesh"), std::string::npos);
-    EXPECT_NE (play_factory.find (".enable_router"), std::string::npos);
-    EXPECT_NE (session_factory.find (".enable_router"), std::string::npos);
-    EXPECT_NE (play_factory.find (".enable_pub_sub"), std::string::npos);
-    EXPECT_NE (session_factory.find (".enable_pub_sub"), std::string::npos);
+    EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
+    EXPECT_NE (session_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ("), std::string::npos);
     EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
                std::string::npos);

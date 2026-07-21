@@ -12,7 +12,7 @@ internal static class RegistrationScenarioEndpoints
         {
             var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAutoReq("rc-a1"))
                 .Async<EchoRes>(cancellationToken);
-            channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAutoMsg("cmd-rc-a1", "rc-a1-send")).TrySubmit();
+            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAutoMsg("cmd-rc-a1", "rc-a1-send")).SubmitAsync(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/registration/attribute",
@@ -20,15 +20,15 @@ internal static class RegistrationScenarioEndpoints
             {
                 var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAttrReq("rc-a2"))
                     .Async<EchoRes>(cancellationToken);
-                channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAttrMsg("cmd-rc-a2", "rc-a2-send")).TrySubmit();
+                await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoAttrMsg("cmd-rc-a2", "rc-a2-send")).SubmitAsync(cancellationToken);
                 return Results.Ok(reply);
             });
         app.MapPost("/registration/manual", async (IZLinkRouteClient channel, CancellationToken cancellationToken) =>
         {
             var reply = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new EchoManualReq("rc-a3"))
                 .Async<EchoRes>(cancellationToken);
-            channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
-                    new EchoManualMsg("cmd-rc-a3", "rc-a3-send")).TrySubmit();
+            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
+                    new EchoManualMsg("cmd-rc-a3", "rc-a3-send")).SubmitAsync(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/registration/di-filter-order",
@@ -44,18 +44,18 @@ internal static class RegistrationScenarioEndpoints
         {
             var json = await channel.RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new JsonEchoReq("rc-b1"))
                 .Async<EchoRes>(cancellationToken);
-            channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new JsonEchoMsg("cmd-rc-b1", "rc-b1-send")).TrySubmit();
+            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new JsonEchoMsg("cmd-rc-b1", "rc-b1-send")).SubmitAsync(cancellationToken);
 
             var protobuf = await channel
                 .RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2" })
                 .Async<StringValue>(cancellationToken);
-            channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2-send" }).TrySubmit();
+            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new StringValue { Value = "rc-b2-send" }).SubmitAsync(cancellationToken);
 
             var packed = await channel
                 .RequestToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel, new PackedEchoReq { Value = "rc-b3" })
                 .Async<PackedEchoReq>(cancellationToken);
-            channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
-                    new PackedEchoMsg { CommandId = "cmd-rc-b3", Value = "rc-b3-send" }).TrySubmit();
+            await channel.SendToChannel(RegistrationCodecNames.Channel, RegistrationCodecNames.Channel,
+                    new PackedEchoMsg { CommandId = "cmd-rc-b3", Value = "rc-b3-send" }).SubmitAsync(cancellationToken);
 
             return Results.Ok(new CodecScenarioRes(json, protobuf.Value, packed.Value));
         });

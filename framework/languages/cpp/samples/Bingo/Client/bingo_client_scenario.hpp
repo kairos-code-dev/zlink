@@ -126,6 +126,11 @@ class bingo_client_scenario_t
             const auto room_id = client1_match.room_id;
             trace ("client1 wait joined");
             ensure (client1_joined.actor_id == client2_auth.actor_id);
+            ensure (std::all_of (
+              client1_joined.state.players.begin (), client1_joined.state.players.end (),
+              [] (const bingo_player_state_t &player) {
+                  return player.wins == 0 && player.losses == 0;
+              }));
 
             trace ("wait game started");
             ensure (client1_started.state.room_id == room_id);
@@ -209,6 +214,10 @@ class bingo_client_scenario_t
             // Drawing is server-driven after both cards arrive; the submit reply
             // still reflects the running game (same as the .NET scenario).
             ensure (client1_card.state.status == bingo_room_status_t::running);
+            ensure (client1_card.state.players.size () == 2);
+            ensure (std::all_of (
+              client1_card.state.players.begin (), client1_card.state.players.end (),
+              [] (const bingo_player_state_t &player) { return player.card.size () == 9; }));
             std::vector<number_drawn_notify_t> drawn_numbers;
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
                 auto client1_drawn =
@@ -219,6 +228,7 @@ class bingo_client_scenario_t
                 ensure (client1_drawn.draw_seq == draw_seq);
                 ensure (client2_drawn.draw_seq == draw_seq);
                 ensure (client2_drawn.number == client1_drawn.number);
+                ensure (same_bingo_room_state (client1_drawn.state, client2_drawn.state));
             }
             ensure (drawn_numbers.size () == expected_draw_count);
             ensure (drawn_numbers.back ().state.status == bingo_room_status_t::finished);
@@ -228,6 +238,8 @@ class bingo_client_scenario_t
             ensure (client2_ended.state.status == bingo_room_status_t::finished);
             ensure (client2_ended.state.drawn_numbers == client1_ended.state.drawn_numbers);
             ensure (client2_ended.state.winners == client1_ended.state.winners);
+            ensure (same_bingo_player_list (client1_ended.state.players,
+                                            client2_ended.state.players));
             ensure (client1_ended.state.drawn_numbers.size () == drawn_numbers.size ());
             for (std::size_t index = 0; index < drawn_numbers.size (); ++index) {
                 ensure (client1_ended.state.drawn_numbers[index] == drawn_numbers[index].number);
@@ -261,6 +273,9 @@ class bingo_client_scenario_t
             ensure (stopped.stopped);
             ensure (stopped.observer_node_rid == observed.observer_node_rid);
 
+            co_await client1.close ().async ();
+            co_await client2.close ().async ();
+            co_await observer.close ().async ();
             co_return true;
         }
         catch (const std::exception &ex) {
@@ -277,6 +292,31 @@ class bingo_client_scenario_t
         if (!condition) {
             throw std::runtime_error (std::string ("Ensure failed: ") + expression);
         }
+    }
+
+    static bool same_bingo_player_list (const std::vector<bingo_player_state_t> &left,
+                                        const std::vector<bingo_player_state_t> &right)
+    {
+        return left.size () == right.size ()
+               && std::equal (
+                 left.begin (), left.end (), right.begin (), [] (const auto &a, const auto &b) {
+                     return a.actor_id == b.actor_id && a.display_name == b.display_name
+                            && a.seat == b.seat && a.is_host == b.is_host && a.card == b.card
+                            && a.marks == b.marks && a.completed_lines == b.completed_lines
+                            && a.wins == b.wins && a.losses == b.losses;
+                 });
+    }
+
+    static bool same_bingo_room_state (const bingo_room_state_t &left,
+                                       const bingo_room_state_t &right)
+    {
+        return left.room_id == right.room_id && left.status == right.status
+               && left.host_actor_id == right.host_actor_id && left.can_start == right.can_start
+               && left.draw_seq == right.draw_seq
+               && left.last_drawn_number == right.last_drawn_number
+               && left.drawn_numbers == right.drawn_numbers
+               && same_bingo_player_list (left.players, right.players)
+               && left.winners == right.winners;
     }
 
     static stream_e2e_client::task_t<authenticate_res_t>

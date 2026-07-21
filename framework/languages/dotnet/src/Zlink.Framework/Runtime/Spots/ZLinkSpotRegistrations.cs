@@ -6,6 +6,11 @@ internal sealed record ZLinkSpotPacketRegistration(
     System.Reflection.MethodInfo? Method = null);
 
 internal sealed record ZLinkSpotSubscriptionRegistration(
+    string ChannelName,
     string Topic,
     Type HandlerType,
     System.Reflection.MethodInfo? Method = null);
+
+internal readonly record struct ZLinkSpotSubscriptionKey(
+    string ChannelName,
+    string Topic);

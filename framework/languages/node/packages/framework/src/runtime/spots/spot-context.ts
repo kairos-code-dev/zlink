@@ -42,6 +42,7 @@ interface ZLinkEntrySpotContextOptions {
 }
 
 interface ZLinkSpotContextOptions {
+  readonly meshName: string;
   readonly spotRid: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
@@ -53,12 +54,12 @@ interface ZLinkSpotContextOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime: ZLinkWorkerRuntime;
-  readonly leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly close: (signal?: AbortSignal) => Promise<boolean>;
 }
 
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
   return {
+    meshName: options.spotNodeName,
     spotRid: options.nativeSpotRid,
     nodeRid: options.nodeRid,
     routingId: options.nativeSpotRid,
@@ -109,6 +110,7 @@ export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): Z
 
 export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotContext {
   return {
+    meshName: options.meshName,
     spotRid: options.spotRid,
     get nodeRid() {
       return options.nodeRidProvider?.() ?? options.nodeRid ?? '';
@@ -116,7 +118,6 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
     routingId: options.spotRid,
     handlers: options.handlers,
     outbound: options.outbound,
-    leaveActor: options.leaveActor,
     close: options.close,
     addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
       name: string,

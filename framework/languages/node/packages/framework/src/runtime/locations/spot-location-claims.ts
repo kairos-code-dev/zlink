@@ -20,21 +20,22 @@ export class ZLinkSpotLocationClaims {
   async claim(
     meshName: string,
     spotRid: RoutingId,
-    spotType: string | undefined,
+    spotType: string,
     nodeRid: RoutingId,
     spotKind: ZLinkSpotKind,
-    routeEndpoint?: string,
+    spotGeneration: bigint,
+    ownerNodeGeneration: bigint,
     deactivate?: () => Promise<void>
   ): Promise<ZLinkLocationWriteStatus> {
     const row: ZLinkSpotLocation = {
       meshName,
       spotRid,
       spotType,
-      nodeRid,
+      spotGeneration,
+      ownerNodeRid: nodeRid,
+      ownerNodeGeneration,
       spotKind,
-      routeEndpoint,
       ownerId: '',
-      generation: 0n,
       updatedAt: new Date(0)
     };
     const result = await this.runtime.writeSpot(row, ZLinkLocationWriteIntent.NewClaim);

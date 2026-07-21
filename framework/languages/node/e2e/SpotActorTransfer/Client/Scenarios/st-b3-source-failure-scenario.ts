@@ -21,8 +21,13 @@ export async function runStB3(): Promise<void> {
     `transfer|${actorId}|joined|${spotRid}:0`,
     `ST-B3|${actorId}|location_committed|node=actor-b|spot=${spotRid}`
   ]);
+  assertOrder(source, actorId, [
+    'transfer_out_empty_default', 'leave', 'commit_request', 'commit_ack', 'success_reply'
+  ]);
+  assertOrder(target, actorId, [
+    'admission', 'transfer_in_empty_default', 'joined', 'location_committed'
+  ]);
   assertOrder(mergeEvidence(source, target), actorId, [
-    'admission', 'transfer_out_empty_default', 'leave', 'commit_request',
-    'transfer_in_empty_default', 'joined', 'location_committed', 'commit_ack', 'success_reply'
+    'location_committed', 'commit_ack', 'success_reply'
   ]);
 }

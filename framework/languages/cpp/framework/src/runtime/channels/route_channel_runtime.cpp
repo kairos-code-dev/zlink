@@ -2,8 +2,6 @@
 
 #include "runtime/channels/route_channel_runtime.hpp"
 
-#include "runtime/backend/native_route_backend.hpp"
-
 #include <algorithm>
 #include <thread>
 #include <utility>
@@ -343,21 +341,6 @@ void route_channel_runtime_t::set_request_backend (request_backend_t backend)
 {
     std::lock_guard lock (_mutex);
     _request_backend = std::move (backend);
-}
-
-void route_channel_runtime_t::attach_native_backend (backend::native_route_backend_t &backend)
-{
-    set_send_backend ([&backend] (const zlink::routing_id_t &target_node_rid,
-                                  const std::optional<zlink::routing_id_t> &target_spot_rid,
-                                  const runtime::messaging::message_parts_t &parts) {
-        return backend.submit_send (target_node_rid, target_spot_rid, parts);
-    });
-    set_request_backend ([&backend] (const zlink::routing_id_t &target_node_rid,
-                                     const std::optional<zlink::routing_id_t> &target_spot_rid,
-                                     const runtime::messaging::message_parts_t &parts,
-                                     std::chrono::milliseconds timeout) {
-        return backend.submit_request (target_node_rid, target_spot_rid, parts, timeout);
-    });
 }
 
 const std::vector<route_outbound_packet_t> &

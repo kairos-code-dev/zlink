@@ -130,7 +130,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runCpuWorker(() -> {
+            return spot.context().runCpuWorker(cancellation -> {
                     Thread.sleep(2000);
                     return request.requestId();
                 })
@@ -173,7 +173,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runCpuWorker(() -> {
+            return spot.context().runCpuWorker(cancellation -> {
                     Thread.sleep(request.delayMillis());
                     return request.requestId();
                 })
@@ -400,11 +400,17 @@ public final class AwaitProbeHandlers {
                 spot.closeTimer(tick.name());
             } else if ("fast".equals(scenario.mode())) {
                 if (fanout != null && fanoutEnabled) {
-                    fanout.publish(
+                    return fanout.publish(
                         Contracts.OBS_FANOUT_CHANNEL,
-                        "timer",
                         new Contracts.ObservabilityFanoutEvent(
-                            scenario.requestId(), tick.deliveryIndex())).submit();
+                            scenario.requestId(), tick.deliveryIndex()))
+                        .submit()
+                        .thenApply(ignored -> {
+                            evidence.record("timer-fast-started", scenario.requestId(), value);
+                            evidence.record("timer-fast-completed", scenario.requestId(), value);
+                            spot.closeTimer(tick.name());
+                            return null;
+                        });
                 }
                 evidence.record("timer-fast-started", scenario.requestId(), value);
                 evidence.record("timer-fast-completed", scenario.requestId(), value);

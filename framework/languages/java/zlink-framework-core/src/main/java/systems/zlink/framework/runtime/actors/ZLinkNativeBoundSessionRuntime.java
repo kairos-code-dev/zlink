@@ -17,6 +17,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
@@ -29,6 +30,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     private final RoutingId sourceSessionRid;
     private final Duration timeout;
     private final ZLinkStreamCodec defaultCodec;
+    private final ZLinkRelayMetadataPolicy metadataPolicy;
     private long bindingToken;
 
     ZLinkNativeBoundSessionRuntime(
@@ -40,7 +42,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         Duration timeout,
-        ZLinkStreamCodec defaultCodec) {
+        ZLinkStreamCodec defaultCodec,
+        ZLinkRelayMetadataPolicy metadataPolicy) {
         this.spotNode = spotNode;
         this.actorRef = actorRef;
         this.serializer = serializer;
@@ -50,6 +53,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         this.sourceSessionRid = sourceSessionRid;
         this.timeout = timeout;
         this.defaultCodec = defaultCodec == null ? ZLinkStreamCodec.JSON : defaultCodec;
+        this.metadataPolicy =
+            metadataPolicy == null ? ZLinkRelayMetadataPolicy.EMPTY : metadataPolicy;
     }
 
     void setBindingToken(long bindingToken) {
@@ -72,19 +77,22 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             sourceSessionRid,
             encoded.payload(),
             timeout,
-            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec));
+            ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec),
+            metadataPolicy);
     }
 
     CompletionStage<Void> sendFrame(byte[] frameBytes) {
         ZLinkBackendActorRef currentActorRef = currentActorRef();
-        return sendWithRetry(
+        Message frame = Message.from(frameBytes);
+        return ZLinkSubmitResults.submitAsync(
             spotNode,
-            currentActorRef,
-            sourceNodeRid,
-            sourceSessionRid,
-            frameBytes,
-            timeout,
-            "actor bound session send failed: " + currentActorRef.actorId());
+            ZLinkBackendAdmissionKey.boundSession(
+                currentActorRef.nodeRid(),
+                currentActorRef.actorId(),
+                currentActorRef.generation()),
+            () -> spotNode.sendActorBoundSession(
+                currentActorRef, List.of(frame), SendFlags.DONT_WAIT),
+            frame::close).thenApply(ignored -> null);
     }
 
     @Override
@@ -105,7 +113,24 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         RoutingId sourceSessionRid,
         Message payload,
         Duration timeout,
-        ZLinkBoundSessionSendOptions options) implements ZLinkBoundSessionSendCall {
+        ZLinkBoundSessionSendOptions options,
+        ZLinkRelayMetadataPolicy metadataPolicy,
+        systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+        implements ZLinkBoundSessionSendCall {
+        SendCall(
+            ZLinkInternalSpotNode spotNode,
+            ZLinkActorRuntime actorRuntime,
+            ZLinkActor actor,
+            RoutingId sourceNodeRid,
+            RoutingId sourceSessionRid,
+            Message payload,
+            Duration timeout,
+            ZLinkBoundSessionSendOptions options,
+            ZLinkRelayMetadataPolicy metadataPolicy) {
+            this(spotNode, actorRuntime, actor, sourceNodeRid, sourceSessionRid, payload,
+                timeout, options, metadataPolicy,
+                new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+        }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
                 spotNode,
@@ -115,7 +140,8 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 sourceSessionRid,
                 payload,
                 timeout,
-                options.withPacketName(packetName));
+                options.withPacketName(packetName),
+                metadataPolicy);
         }
 
         @Override
@@ -128,54 +154,36 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 sourceSessionRid,
                 payload,
                 timeout,
-                options.withMetadata(key, value));
+                options.withMetadata(key, value),
+                metadataPolicy);
         }
 
         @Override
-        public void submit() {
+        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+                submitGate.begin();
+            if (duplicate != null) {
+                return duplicate;
+            }
             ZLinkBackendActorRef currentActorRef = actorRuntime.actorRef(actor);
             byte[] frameBytes;
             try {
-                frameBytes = options.encodeFrame(payload);
+                frameBytes = metadataPolicy.actorToSession(options).encodeFrame(payload);
             } finally {
                 payload.close();
             }
-            sendWithRetry(
+            Message frame = Message.from(frameBytes);
+            return ZLinkSubmitResults.submitAsync(
                 spotNode,
-                currentActorRef,
-                sourceNodeRid,
-                sourceSessionRid,
-                frameBytes,
-                timeout,
-                "actor bound session send failed: " + currentActorRef.actorId())
-                .exceptionally(error -> {
-                    java.util.logging.Logger.getLogger(ZLinkNativeBoundSessionRuntime.class.getName())
-                        .log(java.util.logging.Level.SEVERE, "native bound-session send failed", error);
-                    return null;
-                });
+                ZLinkBackendAdmissionKey.boundSession(
+                    currentActorRef.nodeRid(),
+                    currentActorRef.actorId(),
+                    currentActorRef.generation()),
+                () -> spotNode.sendActorBoundSession(
+                    currentActorRef, List.of(frame), SendFlags.DONT_WAIT),
+                frame::close);
         }
 
-    }
-
-    private static CompletionStage<Void> sendWithRetry(
-        ZLinkInternalSpotNode spotNode,
-        ZLinkBackendActorRef actorRef,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid,
-        byte[] frameBytes,
-        Duration timeout,
-        String failureMessage) {
-        return ZLinkActorRetryScheduler.submitNativeBoundSessionUntilAcceptedAsync(
-            timeout,
-            () -> {
-                try (Message frame = Message.from(frameBytes)) {
-                    return spotNode.sendActorBoundSession(
-                        actorRef,
-                        List.of(frame),
-                        SendFlags.DONT_WAIT);
-                }
-            },
-            () -> new ZLinkConfigurationException(failureMessage));
     }
 
 }

@@ -35,10 +35,12 @@ internal static class WorkflowHostFactory
         builder.Services.AddSingleton<WorkflowEvidenceStore>();
         builder.Services.AddSingleton<MetricEvidenceCollector>();
         builder.Services.AddSingleton<DrainOperation>();
+        builder.Services.AddSingleton<StaleSpotHandleProbe>();
+        var locationStore = new ZLinkRedisLocationStore(redis => redis
+            .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix));
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
+            framework.AddLocationStore(locationStore);
             var locations = framework.ConfigureLocations();
             locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
@@ -47,7 +49,6 @@ internal static class WorkflowHostFactory
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));
             var mesh16 = framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
-                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddSpotFactory<WorkflowSpot>()
@@ -72,7 +73,10 @@ internal static class WorkflowHostFactory
             AdvanceWorkflowReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)
+            var handle = await resolver.ResolveSpotHandleAsync(
+                             ObservabilityNames.WorkflowMesh,
+                             RoutingId.From(workflowRid),
+                             cancellationToken)
                          ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, request).Async<AdvanceWorkflowRes>(cancellationToken);
             return Results.Ok(response);
@@ -80,23 +84,58 @@ internal static class WorkflowHostFactory
         app.MapGet("/workflows/{workflowRid}/state", async (string workflowRid,
             IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes, CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)
+            var handle = await resolver.ResolveSpotHandleAsync(
+                             ObservabilityNames.WorkflowMesh,
+                             RoutingId.From(workflowRid),
+                             cancellationToken)
                          ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, new ReadWorkflowReq())
                 .Async<ReadWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });
+        app.MapPost("/workflows/{workflowRid}/signal", async (string workflowRid,
+            WorkflowSignalReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
+            CancellationToken cancellationToken) =>
+        {
+            var handle = await resolver.ResolveSpotHandleAsync(
+                             ObservabilityNames.WorkflowMesh,
+                             RoutingId.From(workflowRid),
+                             cancellationToken)
+                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+            var submit = await routes.SendToSpot(handle, request).SubmitAsync(cancellationToken);
+            return Results.Ok(new
+            {
+                submitted = submit.Status
+            });
+        });
+        app.MapPost("/workflows/{workflowRid}/stale-handle/capture", async (string workflowRid,
+            IZLinkSpotHandleResolver resolver, StaleSpotHandleProbe probe,
+            CancellationToken cancellationToken) =>
+        {
+            var handle = await resolver.ResolveSpotHandleAsync(
+                             ObservabilityNames.WorkflowMesh,
+                             RoutingId.From(workflowRid),
+                             cancellationToken)
+                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+            probe.Capture(handle);
+            return Results.Ok();
+        });
+        app.MapPost("/stale-handle/execute", async (StaleSpotHandleProbe probe,
+            IZLinkSpotClient routes, CancellationToken cancellationToken) =>
+            Results.Ok(await probe.ExecuteAsync(routes, cancellationToken)));
         app.MapPost("/workflows/{workflowRid}/publish", async (string workflowRid,
             PublishProjectionReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
-            var handle = await resolver.ResolveSpotHandleAsync(RoutingId.From(workflowRid), cancellationToken)
+            var handle = await resolver.ResolveSpotHandleAsync(
+                             ObservabilityNames.WorkflowMesh,
+                             RoutingId.From(workflowRid),
+                             cancellationToken)
                          ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, request).Async<PublishProjectionRes>(cancellationToken);
             return Results.Ok(response);
         });
         app.MapGet("/evidence", async (IZLinkDrainControl drain, IZLinkLocationRuntimeQuery locations,
-            Zlink.Framework.Contracts.Locations.IZLinkSpotHandleResolver spots,
             WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics, string? spotRid) =>
         {
             // Spot rows are resolve-only store records in 10.0.0: the
@@ -122,13 +161,16 @@ internal static class WorkflowHostFactory
             {
                 try
                 {
-                    if (await spots.ResolveSpotHandleAsync(Systems.Zlink.RoutingId.From(spotRid))
-                            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500)) is { } handle)
+                    if (await locationStore.ResolveSpotAsync(new ZLinkSpotLocationKey(
+                                ObservabilityNames.WorkflowMesh,
+                                Systems.Zlink.RoutingId.From(spotRid)))
+                            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500)) is { } row)
                         spotRows =
                         [
                             new SpotRow(
-                                ObservabilityNames.WorkflowMesh, options.Rid,
-                                handle.SpotRid.ToString(), "spot", 0)
+                                row.MeshName, row.OwnerNodeRid.ToString(),
+                                row.SpotRid.ToString(), row.SpotKind.ToString(),
+                                (long)row.SpotGeneration)
                         ];
                 }
                 catch (Exception)

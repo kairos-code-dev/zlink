@@ -17,7 +17,7 @@ import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -61,6 +61,7 @@ public final class Program {
         ZLinkActorManager actors,
         ZLinkActorClient actorClient,
         systems.zlink.framework.spots.SpotHandleResolver spotHandles,
+        systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime meshRuntime,
         MultiNodeOptions options) {
         return new MultiNodeHttpServer(
             state,
@@ -70,7 +71,8 @@ public final class Program {
             routes,
             actors,
             actorClient,
-            spotHandles);
+            spotHandles,
+            meshRuntime);
     }
 
     @Bean
@@ -82,19 +84,20 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-sm-" + nodeRid);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-            node
-                .enableRouter(multi.spotEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(multi.spotOnly() ? multi.spotEndpoint() : multi.routeEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
             node.addEntrySpot(ScenarioEntrySpot.class);
             node.addActorFactory("scenario", ScenarioActorFactory.class);
             node.addSpotFactory(MultiNodeSpot.class);
             if (!multi.spotOnly()) {
-                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                    .enableServer(multi.routeEndpoint())
-                    .enableClient(multi.routeAEndpoint())
-                    .enableClient(multi.routeBEndpoint())
-                    .setRoutingId(RoutingId.from(nodeRid));
+                node.channelName(Contracts.ROUTE_CHANNEL);
+                if (!multi.routeEndpoint().equals(multi.routeAEndpoint())) {
+                    node.peerConnections().connect(multi.routeAEndpoint());
+                }
+                if (!multi.routeEndpoint().equals(multi.routeBEndpoint())) {
+                    node.peerConnections().connect(multi.routeBEndpoint());
+                }
             } else {
                 System.out.println("[topology] role=" + nodeRid + " route_mesh=disabled");
             }

@@ -57,7 +57,7 @@ public HTTP client만 사용한다.
 
 - `RM-B3`은 미구현이다. Java catalog의 `failover` 별칭은 실제로 `RM-A4` 정상 replacement를 실행하며,
   provider `SIGKILL`, lease 만료 전후의 유한 결과, 남은 provider의 지속 성공을 검증하지 않는다.
-- `RM-B2`에 slow in-flight와 drain 전파 중 target 미지정 요청 20개를 넣은 집중 gate는 여러 요청이
+- 위 `RM-B2`에 slow in-flight와 drain 전파 중 target 미지정 요청 20개를 넣은 집중 gate는 여러 요청이
   framework의 5초 request timeout으로 실패했다. draining peer가 신규 부하에서 제외되는 runtime
   수정 전까지 전파 구간 완료 조건은 차단 상태다.
 - 동적 역할 readiness는 3초, peer convergence는 이름 있는 5초 route settle로 제한한다. 이 상한 안에

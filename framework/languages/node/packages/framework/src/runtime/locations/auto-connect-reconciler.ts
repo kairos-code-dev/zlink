@@ -1,10 +1,12 @@
+import {
+  zlinkRuntimeDefaultLocationOptions,
+  type ZLinkLocationOptionOverrides
+} from '../../contracts/Locations/Options';
 import type { RoutingId } from '../../contracts/Common';
 import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  zlinkDefaultLocationOptions,
   type ZLinkPeerLocationResolver,
-  type ZLinkLocationOptions,
   type ZLinkPeerLocation
 } from '../../contracts/Locations';
 import { ZLinkLocationKeyCodec } from './key-codec';
@@ -29,7 +31,7 @@ export interface ZLinkAutoConnectReconcilerOptions {
   readonly executor: IZLinkAutoConnectExecutor;
   readonly reconcilePeers?: boolean;
   readonly events?: ZLinkAutoConnectEventSink;
-  readonly options?: ZLinkLocationOptions;
+  readonly options?: ZLinkLocationOptionOverrides;
   readonly monotonicNowMs?: () => number;
 }
 
@@ -41,7 +43,7 @@ export class ZLinkAutoConnectReconciler {
   private readonly executor: IZLinkAutoConnectExecutor;
   private readonly reconcilePeers: boolean;
   private readonly events?: ZLinkAutoConnectEventSink;
-  private readonly options: Required<ZLinkLocationOptions>;
+  private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly monotonicNowMs: () => number;
   private readonly active = new Map<string, ZLinkAutoConnectTarget>();
   private readonly pendingDisconnects = new Map<string, ZLinkAutoConnectTarget>();
@@ -62,7 +64,7 @@ export class ZLinkAutoConnectReconciler {
     this.executor = options.executor;
     this.reconcilePeers = options.reconcilePeers ?? true;
     this.events = options.events;
-    this.options = { ...zlinkDefaultLocationOptions, ...options.options };
+    this.options = { ...zlinkRuntimeDefaultLocationOptions, ...options.options };
     this.monotonicNowMs = options.monotonicNowMs ?? (() => performance.now());
     this.executor.onDisconnected?.((endpoint) => this.recordDisconnectedEndpoint(endpoint));
   }
@@ -155,10 +157,12 @@ export class ZLinkAutoConnectReconciler {
         this.disconnectIfNeeded(current);
         disconnectedEndpoints.push(current.endpoint);
         this.active.delete(key);
-        if (this.executor.isDisconnected !== undefined) {
+        if (this.executor.isDisconnected !== undefined
+          && !this.executor.isDisconnected(current)) {
           this.pendingDisconnects.set(key, current);
           continue;
         }
+        this.pendingDisconnects.delete(key);
         const connected = this.executor.connect(target);
         if (connected) {
           connectedEndpoints.push(target.endpoint);

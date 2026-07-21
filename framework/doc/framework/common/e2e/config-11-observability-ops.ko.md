@@ -1,5 +1,6 @@
 <!-- framework-adapter-nav:start -->
-[E2E 목차](README.ko.md) | [이전: Spot actor transfer](config-10-spot-actor-transfer.ko.md)
+[E2E 목차](README.ko.md) | [이전: Spot actor transfer](config-10-spot-actor-transfer.ko.md) |
+[다음: Channel egress routing](config-12-channel-egress-routing.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 11 — 관측·운영 배포 (metrics · flow correlation · drain)
@@ -16,7 +17,7 @@ event를 다룬다면, 이 config는 (1) 한 흐름을 노드 경계 너머로 �
 ## 1. 목적과 범위
 
 - 다룬다: `flow=` 로그가 STREAM→actor→spot 경계를 관통하는지, 메트릭 계기가 실제 사건과 일치하는지,
-  drain이 draining 마커·핸드오프·MeshNode 정책·강제 종료를 계약대로 수행하는지.
+  drain이 draining 마커·핸드오프·고정된 Spot 종료 순서·강제 종료를 계약대로 수행하는지.
 - 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), MeshNode runtime snapshot·event
   관찰(Config 7), 대시보드·exporter 구성(앱 몫,
   [Runtime Metrics §7](../../spec/server/51-runtime-metrics.ko.md#7-reader와-성능)).
@@ -31,7 +32,7 @@ Bingo형 3역할에 owner-spot 서비스를 더한 구성을 쓴다.
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 key prefix. |
 | `Session` | 1 | client STREAM endpoint, 인증, actor binding, packet relay. STREAM 세션이 CCU/재접속 계기의 소스. |
 | `Play` | 2 (`play-a`, `play-b`) | room MeshNode + player actor + transfer adapter. actor 이동·룸 타이머·bound push의 소스. 두 노드로 핸드오프·drain을 본다. |
-| `OrderWorkflow` | 2 | event-sourcing owner Spot(`OrderWorkflowSpot`). `ReleaseAndRecreate` MeshNode drain 정책 검증용. |
+| `OrderWorkflow` | 2 | event-sourcing owner Spot(`OrderWorkflowSpot`)과 projection fan-out의 소스. |
 | trigger client | 시나리오별 | STREAM 접속·게임 진행·주문 흐름·연결 해제를 유발한다. |
 
 각 host는 기존 message-flow 설정, 언어별 표준 meter/registry와 MeshNode runtime drain을 사용한다.
@@ -52,7 +53,7 @@ message-flow가 켜진 발원점에서 자동 생성되며 별도 설정을
 - **메트릭**: 각 host가 언어 표준 in-process reader(.NET `MeterListener`, Java/Kotlin Micrometer
   test registry, Node.js OpenTelemetry test reader)를 연결한다. C++는 기존 `metric_event_payload_t`
   이벤트를 test collector가 집계한다. 계기 스냅샷은 `/evidence`에 노출하며 외부 exporter는 쓰지 않는다.
-- **drain evidence**: drain lifecycle 이벤트와 location row 상태를 `/evidence`에 기록한다.
+- **drain evidence**: drain lifecycle 이벤트와 authority projection 상태를 `/evidence`에 기록한다.
 
 `/evidence` JSON은 언어와 무관하게 다음 최소 배열을 제공한다. metric snapshot은 시나리오 시작 직전
 기준값과 사건 완료 뒤 값을 함께 저장해 counter delta와 current gauge를 구분한다.
@@ -213,7 +214,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 - 절차: `play-a` drain 중 bound actor가 `play-b`로 transfer된다.
 - 검증: transfer가 [Spot Actor §5](../../spec/server/23-spot-actor.ko.md#5-다른-meshnode로-transfer) 완료 조건까지
-  진행되고 committed location row가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
+  진행되고 committed Actor authority가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
   `play-b` Actor로 이어진다.
   `zlink.drain.actors.handed_off`가 계수된다. 이동 전 pending actor request는
   `zlink.mesh_node.requests.inflight{surface=actor}`에 반영되고, 이동 중 각 request는 원래 reply
@@ -222,20 +223,35 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   [Graceful Drain §6](../../spec/server/54-graceful-drain-handoff.ko.md#6-actor와-spot-handoff)).
 - 세부 동작: 핸드오프 + FIFO 연속성.
 
-#### OBS-C3 MeshNode 정책 — DrainNatural vs ReleaseAndRecreate
+#### OBS-C3 고정 Spot drain 순서와 명시적 재생성
 
 우선순위: `P0`
 
-**검증 질문:** 서로 다른 MeshNode에 설정한 `DrainNatural`과 `ReleaseAndRecreate`가 각각 계약대로 동작하는가.
+**검증 질문:** 정상 동작 중인 Spot이 request 완료만으로 닫히지 않고, drain을 시작한 뒤에는 이미 받은
+turn과 Actor·STREAM 경계를 정리한 다음 local Spot과 authority row를 한 번만 닫는가. 닫힌 Spot의 이전
+`SpotHandle`이 다른 노드에서 Spot을 몰래 다시 만들지 않는가.
 
-- 절차: (a) `DrainNatural`을 설정한 `play` MeshNode를 drain한다. (b) 별도 실행에서
-  `ReleaseAndRecreate`를 설정한 `OrderWorkflow` MeshNode를 drain한다. 한 MeshNode 안의 Spot마다 서로 다른
-  정책을 설정하지 않는다.
-- 검증: (a) 신규 join만 막히고 진행 중 룸은 자연 종료될 때까지 유지된다. (b) accepted Spot turn이 끝난
-  뒤 owner Spot row가 해제되고, 다음 요청이 serving MeshNode에서 `GetOrCreate`로 상태를 다시 구성한다.
-  Framework가 event replay를 수행했다고 단언하지 않는다. `zlink.spot.count{spot_kind=...}`와 location
-  evidence로 각 결과를 확인하며, 계약에 없는 policy label이나 room drain metric을 요구하지 않는다.
-- 세부 동작: MeshNode 정책별 Spot location 정리.
+- 절차:
+  1. `play-a`의 room Spot을 만들고 `SpotHandle`, Spot generation과 authority projection을 기록한다. 정상 request를
+     완료한 뒤 같은 handle로 후속 request를 보내 같은 Spot generation과 row가 유지되는지 확인한다.
+  2. 다음 Spot request가 handler에 들어온 evidence를 남긴 뒤 bounded gate에서 turn 완료를 막고
+     `play-a` drain을 시작한다. Spot-local admission이 닫힌 evidence를 확인한 다음 같은 Spot에 새 request를
+     보내 handler에 들어가지 않고 공개 실패로 끝나는지 확인한다. 이미 accepted된 turn의 gate는 이후
+     해제해 정상 완료시킨다.
+  3. OBS-C2가 소유하는 actor handoff 완료와 bound STREAM 연속성 barrier를 기다린다. 두 barrier가 모두
+     끝나기 전에는 local room Spot close와 row removal evidence가 없어야 한다. barrier 이후 local close와
+     owner Spot row 제거를 순서대로 확인한다.
+  4. row 제거 전 얻은 `SpotHandle`로 다시 request한다. 요청은 stale target 또는 route failure로 끝나며,
+     `play-b`에 remote `GetOrCreate`가 실행되었다는 evidence와 새 authority row가 없어야 한다.
+  5. application이 `play-b`의 local Spot manager에서 같은 논리 ID를 명시적으로 `GetOrCreate`한다. 새
+     generation의 handle과 row가 생긴 뒤에만 request가 성공해야 한다.
+- 검증: drain 전 정상 request completion은 Spot을 유지한다. Drain은 새 Spot turn admission을 닫지만 이미
+  accepted된 turn은 완료시킨다. Actor handoff와 STREAM barrier가 local Spot close보다 먼저이고, close 뒤
+  authority row가 제거된다. Stale handle은 숨은 remote 생성으로 이어지지 않으며 명시적 local
+  `GetOrCreate`만 새 Spot을 만든다. 한 drain operation의 terminal result와 terminal lifecycle event는 각각
+  정확히 한 번 기록된다. OBS-C1의 membership 배치 제외, OBS-C2의 handoff·session 내용, OBS-C4의 강제
+  종료와 OBS-C5의 zero-target 판단은 여기서 다시 판정하지 않고 각 시나리오 evidence를 barrier로만 사용한다.
+- 세부 동작: 고정 admission seal → accepted turn 완료 → handoff·STREAM barrier → local close → row 제거.
 
 #### OBS-C4 강제 종료 + 세션 종료 통지
 
@@ -259,15 +275,15 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 **검증 질문:** serving target이 있는 순차 롤아웃과 target이 없는 강제 종료가 각각 계약대로 동작하는가.
 
-- 절차: (a) fresh topology에서 장기 `DrainNatural` 대상이 없음을 확인하고 `play-a`만 drain해 actor를
+- 절차: (a) fresh topology에서 accepted turn이 남지 않았음을 확인하고 `play-a`만 drain해 actor를
   serving `play-b`로 이동시킨다. (b) topology를 다시 시작하고 actor는 `play-a`에 둔다. `play-b`에서
   application handler를 bounded gate로 막은 뒤 `play-a`보다 긴 deadline으로 `play-b`의 drain을 먼저
   시작하고, location 성공 조회에서 `play-b`의 `Draining=true`를 확인한다. 그 상태에서 `play-a`를
   drain하면 handoff 대상 선택은 이미 draining인 `play-b`를 제외하므로 eligible target이 0이 된다.
   `play-a`의 terminal result를 확인한 뒤 `play-b`의 gate를 해제한다.
 - 검증: (a)는 `ForceStopping` 없이 `Drained`로 끝난다. (b)는 draining peer를 target에서 제외하고,
-  actor는 source에서 유지되다가 자연 종료하거나 전역 deadline에 `ForceStopped(DeadlineExceeded)`가
-  된다. 각 MeshNode의 모든 Spot은 그 MeshNode에 설정한 `DrainNatural` 또는 `ReleaseAndRecreate` 정책을 따른다.
+  actor는 source에서 유지된다. application이 actor 작업을 정상 종료하면 고정 drain 순서가 계속되고,
+  종료되지 않으면 전역 deadline에 `ForceStopped(deadline_exceeded)`가 된다.
 - 세부 동작: 동시 drain 폴백.
 
 ## 5. 완료 기준
@@ -276,6 +292,6 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   줄이지 않는다.
 - flow 로그는 노드 경계를 관통하고 error 라인에도 `flow=`가 있다.
 - 메트릭 계기는 실제 사건과 일치하고 고카디널리티 라벨이 없다.
-- drain은 마커로 연결을 유지하며 배치만 제외하고, MeshNode 정책에 따라 Spot을 정리하며, owner lease를
-  drain 동안 계속 갱신한다.
+- drain은 마커로 연결을 유지하며 배치만 제외하고, accepted turn과 actor·STREAM barrier 뒤에 Spot과 row를
+  정리하며, owner lease를 drain 동안 계속 갱신한다.
 - 공개 표면만 직접 사용하고 `ensure`로 단언한다.

@@ -8,7 +8,12 @@ internal static class ZLinkSpotReplySubmitter
         try
         {
             if (received.CanReply)
-                received.Reply(replyParts);
+            {
+                var result = received.Reply(replyParts);
+                if (result != SubmitResult.Ok)
+                    throw new ZlinkSubmitException(
+                        (ZlinkSubmitException.ErrorCode)(int)result);
+            }
         }
         finally
         {

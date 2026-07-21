@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -48,9 +48,9 @@ public final class DispatchServerApplication {
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
                 .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"));
-            ZLinkSpotNodeBuilder courierRoutes = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
+            ZLinkMeshNodeBuilder courierRoutes = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             courierRoutes
-                .enableRouter("inproc://deliverydispatch-dispatch-courier-client")
+                .listen("inproc://deliverydispatch-dispatch-courier-client")
                 .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"));
         };
     }

@@ -149,6 +149,20 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
   다른 RouteMesh의 descriptor와 routing에 영향을 주지 않는다.
 - 세부 동작: MeshName 기반 descriptor 격리.
 
+#### RM-A7 다중 Mesh logical address 충돌 격리
+
+우선순위: `P0`
+
+**검증 질문:** 서로 다른 Mesh에 같은 Actor ID와 Spot RID가 존재해도 host-level resolve가
+지정한 Mesh의 owner만 반환하는가.
+
+- 절차: `profile`과 `workflow` Mesh에 같은 Actor ID와 Spot RID를 각각 등록한다. 역할 server가
+  MeshName을 포함한 공개 resolver로 각 address를 조회하고 request를 제출한다.
+- 검증: 두 resolve 결과의 owner가 다르고 각 request가 지정한 Mesh의 evidence에만 기록된다.
+  MeshName을 생략하는 host-level Actor·Spot resolver는 공개 API에 없어야 한다.
+- 회귀: 두 Mesh 중 하나를 scale-in한 뒤 다른 Mesh의 같은 logical ID resolve와 request가 계속
+  성공한다.
+
 > Track A의 `A3`·`A5`는 예약 번호로 유지한다. 신규 시나리오는 이 번호를 재사용하지 않고 새 번호를 사용한다.
 
 ### Track B — scale
@@ -266,8 +280,9 @@ public error로 실패하는가.
 **검증 질문:** 두 ChannelName member의 weight를 다르게 설정하면 select-one 분포가 높은 weight의
 member를 더 자주 선택하는가.
 
-- 절차: startup의 `ChannelName("profile").SetWeight(...)`로 `api-a=75`, `api-b=25`를 설정한다. 실행 중
-  변경 시나리오는 `IZLinkRouteMeshRuntimeOptions.Channel(meshName, channelName).Weight`를 사용한다.
+- 절차: startup의 `Channel("profile").Server().SetWeight(...)`로 `api-a=75`, `api-b=25`를
+  설정한다. 실행 중 변경 시나리오는 `IZLinkRouteMeshRuntimeOptions.Channel(channelName).Weight`를
+  사용한다.
   `ListMeshNodesAsync(meshName)`의 descriptor `ChannelWeights`와 local runtime option getter가 같은 값을
   제공하는지 확인한 뒤 충분한 수의 request(예: 200개)를 보낸다.
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
@@ -288,9 +303,15 @@ member를 더 자주 선택하는가.
 
 **검증 질문:** 작은 payload부터 큰 payload, 상한 근처까지 모두 정확히 왕복하고, 상한을 넘기면 정해진 error로 거부되는가.
 
-- 절차: 같은 request를 payload 크기만 바꿔(소형, 대형, `MaxMessageSize` 근접) 왕복시키고, 상한을 넘는 payload도 한 번 보낸다.
-- 검증: 소형·대형·근접-max payload는 내용이 손상 없이 정확히 왕복한다(대형도 분할/재조립이 투명). `MaxMessageSize`를 넘는 payload는 정해진 public error로 거부되고, 그 뒤 정상 크기 request는 영향 없이 동작한다.
-- 세부 동작: payload 크기 경계(왕복 + 상한 거부).
+- 절차: 같은 request를 payload 크기만 바꿔 소형, 17 MiB, negotiated `MaxMessageSize` 근접 크기로
+  왕복시킨다. 양쪽을 32 MiB로 설정한 조합, sender 32 MiB·receiver 8 MiB 조합과 `0`을 사용하는 조합을
+  분리해 실행하고 effective bound를 admission evidence로 기록한다.
+- 검증: 32 MiB 조합은 17 MiB와 근접-max payload를 손상 없이 정확히 왕복하므로 숨은 16 MiB 상한이
+  없어야 한다. Mismatch 조합은 양쪽 bound의 작은 값보다 큰 payload를 encoding·allocation 전에 정해진
+  public error로 거부한다. `0`은 binding/transport receive max를 사용하고 unlimited transport에서는 service
+  wire의 u32 representational limit으로 normalize한 non-zero 값을 교환한다. 상한 거부 뒤 정상 크기 request는
+  영향 없이 동작한다.
+- 세부 동작: negotiated complete-message bound, u32 표현 한계와 allocation 전 거부.
 
 > 주의: 크기 다양성 **왕복**은 public typed client로 바로 유도된다. 상한 초과 거부는 각 언어의 public channel builder가 server socket의 max message size를 live socket에 적용한 뒤 검증한다. public typed client는 항상 정상 envelope를 만들기 때문에, payload decode 실패처럼 raw frame이 필요한 경로는 이 config 범위가 아니라 binding/raw-frame contract 테스트에서 다룬다.
 
@@ -303,10 +324,11 @@ admission 결과를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결�
 남는가.
 
 - 절차: provider handler를 느리게 두고, client가 처리 속도보다 빠르게 다량 request/send를 보내
-  송신 큐를 HWM까지 채운다. 이 상태에서 non-blocking submit과 send timeout을 적용한 blocking
-  submit을 각각 실행한다.
-- 검증: non-blocking submit은 즉시 `backpressured`, blocking submit은 admission 성공 또는
-  정해진 timeout/backpressure 결과로 유한 시간 안에 끝난다. `submitted`는 remote handler 완료가
+  송신 큐를 HWM까지 채운다. 이 상태에서 public asynchronous submit을 실행하고 MeshNode send timeout과
+  caller cancellation을 각각 경쟁시킨다.
+- 검증: Asynchronous submit은 admission 성공, 정해진 timeout/backpressure 또는 cancellation 결과로 유한
+  시간 안에 끝난다. 별도 동기 `TrySubmit`이나 즉시 한 번만 시도하는 public path는 사용하지 않는다.
+  `submitted`는 remote handler 완료가
   아니라 송신 큐 admission을 뜻한다. 연결이 깨지거나 다른 정상 트래픽이 오염되지
   않고, 적체가 풀리면 follow-up request와 provider evidence가 정상으로 회복된다.
 - 세부 동작: 송신 HWM 포화 시 backpressure 계약.
@@ -315,9 +337,22 @@ admission 결과를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결�
 > handler 완료를 보고하지 않는다. 호출자는 send-ready 재시도, peer queue와 transport 정책을
 > 알 필요 없이 정식 submit result만 처리한다.
 
+#### RM-C10 descriptor registration bound
+
+우선순위: `P0`
+
+**검증 질문:** Host가 공개 registration을 모두 반영한 descriptor의 공통 상한을 startup에서 원자적으로
+검증하고 언어별로 truncate하거나 나누어 게시하지 않는가.
+
+- 절차: Encoded descriptor가 정확히 1 MiB 이하인 경계, 1 MiB 초과, type·stateful capability entry 1,024개와
+  1,025개, 한 type의 readable state contract 1,024개와 1,025개인 host를 각각 시작한다.
+- 검증: 경계 이하는 descriptor 하나로 게시되고 모든 entry가 보존된다. 한 상한이라도 넘으면 host startup이
+  stable configuration error로 전체 실패하며 descriptor, owner lease와 partial capability가 Store에 남지 않는다.
+  Truncate, 여러 descriptor로 split과 언어별 다른 상한은 허용하지 않는다.
+
 ## 5. 완료 기준
 
-- Track A·B·C의 `P0` 시나리오가 모두 통과한다.
+- Track A·B·C의 `P0` 시나리오가 모두 통과한다. `RM-C10` 음성 startup case도 required다.
 - 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다. store 상태는
   `ListMeshNodesAsync(meshName)`, 연결 상태는 `IZLinkRouteMeshRuntime.Snapshot(meshName)`으로 검증한다.
 - Redis를 쓰는 실행은 전용 key prefix로 격리하고, 실행 후 key cleanup 또는 disposable Redis instance를 사용한다.

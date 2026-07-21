@@ -6,8 +6,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
 /**
@@ -17,17 +22,22 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
  * It never drains a claim or invokes application code.
  */
 final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
+    private static final Logger LOGGER =
+        Logger.getLogger(ZLinkJavaMeshDispatchPump.class.getName());
     interface Source extends AutoCloseable {
         void setReadyHandler(IntUnaryOperator handler);
 
-        boolean drain(int domains, Consumer<ZLinkMeshDispatchRecord> receiver);
+        boolean drain(
+            int domains,
+            Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
+            IntConsumer released);
 
         @Override
         void close();
     }
 
     private final Source source;
-    private final Consumer<ZLinkMeshDispatchRecord> receiver;
+    private final Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver;
     private final ExecutorService executor;
     private final AtomicInteger pendingDomains = new AtomicInteger();
     private final AtomicBoolean scheduled = new AtomicBoolean();
@@ -35,7 +45,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
 
     ZLinkJavaMeshDispatchPump(
         Source source,
-        Consumer<ZLinkMeshDispatchRecord> receiver) {
+        Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver) {
         this(
             source,
             receiver,
@@ -46,7 +56,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
 
     ZLinkJavaMeshDispatchPump(
         Source source,
-        Consumer<ZLinkMeshDispatchRecord> receiver,
+        Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
         ExecutorService executor) {
         this.source = Objects.requireNonNull(source, "source");
         this.receiver = Objects.requireNonNull(receiver, "receiver");
@@ -58,9 +68,16 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
         if (closed.get()) {
             return 0;
         }
+        requestDrain(domains);
+        return domains;
+    }
+
+    void requestDrain(int domains) {
+        if (closed.get()) {
+            return;
+        }
         pendingDomains.getAndUpdate(current -> current | domains);
         schedule();
-        return domains;
     }
 
     private void schedule() {
@@ -78,9 +95,11 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
                 }
                 boolean residue;
                 do {
-                    residue = source.drain(domains, receiver);
+                    residue = source.drain(domains, receiver, this::requestDrain);
                 } while (residue && !closed.get());
             }
+        } catch (RuntimeException error) {
+            LOGGER.log(Level.SEVERE, "MeshNode dispatch pump failed", error);
         } finally {
             scheduled.set(false);
             if (!closed.get() && pendingDomains.get() != 0) {

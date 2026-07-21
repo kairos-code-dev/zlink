@@ -21,16 +21,21 @@ internal sealed class SpotToSpotHandler(
         // Resolve one opaque handle for the interaction; the framework owns its
         // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         spot.Context.MeshName,
+                         RoutingId.From(request.TargetSpotRid),
+                         cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var reply = await spot.Context.Outbound
             .RequestToSpot(target, new StateReq("add", 3))
             .Async<StateRes>(cancellationToken);
-        spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
-            .TrySubmit();
-        spot.Context.Outbound.Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
-            .TrySubmit();
+        await spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
+            .SubmitAsync(cancellationToken);
+        await spot.Context.Outbound.Publish(
+                SpotServiceNames.SpotChannel,
+                SpotServiceNames.SpotMsgTopic,
+                new SpotMsg($"sm-c3-publish-{request.Marker}"))
+            .SubmitAsync(cancellationToken);
         evidence.Add(
             $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|value={reply.Value}");
@@ -56,7 +61,9 @@ internal sealed class SpotToSpotTimeoutHandler(
         try
         {
             var target = await spots.ResolveSpotHandleAsync(
-                             RoutingId.From(request.TargetSpotRid), cancellationToken)
+                             spot.Context.MeshName,
+                             RoutingId.From(request.TargetSpotRid),
+                             cancellationToken)
                          ?? throw new InvalidOperationException(
                              $"Target spot '{request.TargetSpotRid}' has no live location row.");
             await spot.Context.Outbound
@@ -94,7 +101,9 @@ internal sealed class SpotToSpotNegativeHandler(
         // the handle resolves, the request reply-errors, and the
         // best-effort send is dropped at the target with evidence.
         var target = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         spot.Context.MeshName,
+                         RoutingId.From(request.TargetSpotRid),
+                         cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var requestFailed = false;
@@ -110,8 +119,8 @@ internal sealed class SpotToSpotNegativeHandler(
             requestFailed = true;
         }
 
-        spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
-            .TrySubmit();
+        await spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
+            .SubmitAsync(cancellationToken);
 
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
@@ -138,14 +147,15 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
                 new ChannelEchoReq(request.Marker))
             .Async<ChannelEchoRes>(cancellationToken);
         var notifyMarker = $"notify-{request.Marker}";
-        spot.Context.Outbound.SendToChannel(
+        await spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify(notifyMarker))
-            .TrySubmit();
-        spot.Context.Outbound.Publish(
+            .SubmitAsync(cancellationToken);
+        await spot.Context.Outbound.Publish(
+                SpotServiceNames.SpotChannel,
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg("sm-c2-publish"))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
         evidence.Add(
             $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|echo={echo.Value}|notify={notifyMarker}");
@@ -176,10 +186,10 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
             requestFailed = true;
         }
 
-        spot.Context.Outbound.SendToChannel(
+        await spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new MissingChannelNotify($"missing-{request.Marker}"))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
         evidence.Add(
             $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|requestFailed={requestFailed}");

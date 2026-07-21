@@ -44,8 +44,9 @@ if intent == 'takeover' then
 end
 
 if currentOwner and currentOwner == owner
-    and tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3]) then
-    local gen = tonumber(ARGV[3])
+    and (tonumber(ARGV[3]) == 0
+        or tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3])) then
+    local gen = tonumber(redis.call('HGET', KEYS[1], 'gen'))
     redis.call('HSET', KEYS[1], 'json', ARGV[4], 'updatedAtMs', nowMs)
     bumpStamps()
     return {'stored', gen, nowMs}
@@ -72,11 +73,11 @@ return {'stored', tonumber(ARGV[2]), nowMs}
 export const REMOVE_ALL_BY_OWNER_SCRIPT = `
 if redis.replicate_commands then redis.replicate_commands() end
 local removed = 0
-for i = 1, 4 do
+for i = 1, 5 do
     local ownerIndex = KEYS[i]
-    local kindIndex = KEYS[i + 4]
+    local kindIndex = KEYS[i + 5]
     local rowPrefix = ARGV[i]
-    local stampBase = ARGV[i + 4]
+    local stampBase = ARGV[i + 5]
     local rowKeys = redis.call('SMEMBERS', ownerIndex)
     for _, rowKey in ipairs(rowKeys) do
         local rowHash = rowPrefix .. rowKey
@@ -105,6 +106,88 @@ export const REMOVE_LEASE_SCRIPT = PROLOGUE + `
 local removed = redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[2], ARGV[1])
 return removed
+`;
+
+const TRANSFER_PROLOGUE = PROLOGUE + `
+local function readRecord()
+    return {
+        redis.call('HGET', KEYS[1], 'state'),
+        redis.call('HGET', KEYS[1], 'source'),
+        redis.call('HGET', KEYS[1], 'target'),
+        redis.call('HGET', KEYS[1], 'expectedActorGeneration'),
+        redis.call('HGET', KEYS[1], 'expectedMembershipEpoch'),
+        redis.call('HGET', KEYS[1], 'participants'),
+        redis.call('HGET', KEYS[1], 'recoveryOwnerId'),
+        redis.call('HGET', KEYS[1], 'recoveryLeaseExpiresAtMs'),
+        redis.call('HGET', KEYS[1], 'updatedAtMs')
+    }
+end
+`;
+
+export const PREPARE_ACTOR_TRANSFER_SCRIPT = TRANSFER_PROLOGUE + `
+local active = redis.call('GET', KEYS[2])
+if active then
+    if active == ARGV[1] and redis.call('HGET', KEYS[1], 'state') == 'Prepared' then
+        return {'stored', readRecord()}
+    end
+    return {'conflict'}
+end
+local expiresAt = nowMs + tonumber(ARGV[8])
+redis.call('HSET', KEYS[1],
+    'state', 'Prepared',
+    'source', ARGV[2],
+    'target', ARGV[3],
+    'expectedActorGeneration', ARGV[4],
+    'expectedMembershipEpoch', ARGV[5],
+    'participants', ARGV[6],
+    'recoveryOwnerId', ARGV[7],
+    'recoveryLeaseExpiresAtMs', expiresAt,
+    'updatedAtMs', nowMs)
+redis.call('SET', KEYS[2], ARGV[1])
+return {'stored', readRecord()}
+`;
+
+export const COMMIT_ACTOR_TRANSFER_SCRIPT = TRANSFER_PROLOGUE + `
+if redis.call('EXISTS', KEYS[1]) == 0 or redis.call('GET', KEYS[2]) ~= ARGV[1] then
+    return {'notfound'}
+end
+if redis.call('HGET', KEYS[1], 'state') ~= 'Prepared' then return {'invalid'} end
+if redis.call('HGET', KEYS[1], 'recoveryOwnerId') ~= ARGV[2] then return {'conflict'} end
+redis.call('HSET', KEYS[1], 'state', 'Committed', 'updatedAtMs', nowMs)
+return {'stored', readRecord()}
+`;
+
+export const ACTIVATE_ACTOR_TRANSFER_SCRIPT = TRANSFER_PROLOGUE + `
+if redis.call('EXISTS', KEYS[1]) == 0 then return {'notfound'} end
+if redis.call('HGET', KEYS[1], 'state') ~= 'Committed' then return {'invalid'} end
+if redis.call('HGET', KEYS[1], 'recoveryOwnerId') ~= ARGV[2] then return {'conflict'} end
+redis.call('HSET', KEYS[1], 'state', 'Activated', 'updatedAtMs', nowMs)
+if redis.call('GET', KEYS[2]) == ARGV[1] then redis.call('DEL', KEYS[2]) end
+return {'stored', readRecord()}
+`;
+
+export const ABORT_ACTOR_TRANSFER_SCRIPT = TRANSFER_PROLOGUE + `
+if redis.call('EXISTS', KEYS[1]) == 0 then return {'notfound'} end
+if redis.call('HGET', KEYS[1], 'state') ~= 'Prepared' then return {'invalid'} end
+if redis.call('HGET', KEYS[1], 'recoveryOwnerId') ~= ARGV[2] then return {'conflict'} end
+redis.call('HSET', KEYS[1], 'state', 'Aborted', 'updatedAtMs', nowMs)
+if redis.call('GET', KEYS[2]) == ARGV[1] then redis.call('DEL', KEYS[2]) end
+return {'stored', readRecord()}
+`;
+
+export const TAKE_OVER_ACTOR_TRANSFER_SCRIPT = TRANSFER_PROLOGUE + `
+if redis.call('EXISTS', KEYS[1]) == 0 then return {'notfound'} end
+local state = redis.call('HGET', KEYS[1], 'state')
+if state ~= 'Prepared' and state ~= 'Committed' then return {'invalid'} end
+if tonumber(redis.call('HGET', KEYS[1], 'recoveryLeaseExpiresAtMs')) > nowMs then
+    return {'conflict'}
+end
+local expiresAt = nowMs + tonumber(ARGV[3])
+redis.call('HSET', KEYS[1],
+    'recoveryOwnerId', ARGV[2],
+    'recoveryLeaseExpiresAtMs', expiresAt,
+    'updatedAtMs', nowMs)
+return {'stored', readRecord()}
 `;
 
 export const LIST_LEASES_SCRIPT = PROLOGUE + `

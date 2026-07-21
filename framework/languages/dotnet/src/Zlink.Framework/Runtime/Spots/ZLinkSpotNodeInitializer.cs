@@ -27,14 +27,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             node.SetRoutingId(nodeRoutingId);
             node.ApplyRoleConfig(
                 spotNodeRegistration.SpotPublisherConfig,
-                spotNodeRegistration.PubSub?.SubscriberConfig);
-            if (nodeRoutingId.Size > 0 && spotNodeRegistration.PubSub is not null)
-            {
-                node.SetPublisherRoutingId(
-                    ZLinkRoutingIdPolicy.Derive(nodeRoutingId, "pub"));
-                node.SetSubscriberRoutingId(
-                    ZLinkRoutingIdPolicy.Derive(nodeRoutingId, "sub"));
-            }
+                subscriber: null);
 
             var nodeRuntime = new ZLinkSpotNodeRuntime(
                 services,
@@ -57,10 +50,17 @@ internal sealed class ZLinkSpotNodeInitializer(
             var hasRouterBind = routerEndpoint is { Length: > 0 };
             if (hasRouterBind)
                 node.SetRouterBind(routerEndpoint!);
-            if (spotNodeRegistration.PubSub is not null
-                && spotNodeRegistration.PubSub.BindEndpoint is { Length: > 0 } pubEndpoint)
-                node.SetPubBind(pubEndpoint);
-
+            if (spotNodeRegistration.Router is { } router)
+            {
+                node.SetMaxMessageSize(router.SocketConfig.MaxMessageSize);
+                node.SetRouterHighWaterMark(router.SocketConfig.SendHighWaterMark);
+                node.SetRouterSendTimeout(
+                    router.SocketConfig.SendTimeout
+                    ?? registration.DefaultSocketSendTimeout);
+                node.SetMailboxBudgets(
+                    router.SocketConfig.MailboxMessageBudget,
+                    router.SocketConfig.MailboxByteBudget);
+            }
             if (hasRouterBind)
             {
                 // spec 05-route-mesh §4: each logical membership joins the node's
@@ -136,15 +136,16 @@ internal sealed class ZLinkSpotNodeInitializer(
             endpoint =>
             {
                 _ = router.PeerRoutingIds.TryGetValue(endpoint, out var peerRid)
-                    ? nodeRuntime.ConnectRouterAsync(peerRid, endpoint, CancellationToken.None)
-                    : nodeRuntime.ConnectRouterAsync(endpoint, CancellationToken.None);
+                    ? nodeRuntime.ConnectPeerAsync(peerRid, endpoint, CancellationToken.None)
+                    : nodeRuntime.ConnectPeerAsync(endpoint, CancellationToken.None);
             },
-            nodeRuntime.DisconnectRouterManual);
-
-        if (registration.PubSub is { AcquisitionMode: ZLinkPeerAcquisitionMode.Manual } pubSub)
-            pubSub.ManualConnections.Attach(
-                endpoint => _ = nodeRuntime.ConnectPubSubAsync(endpoint, CancellationToken.None),
-                nodeRuntime.DisconnectPubSubManual);
+            endpoint =>
+            {
+                if (router.PeerRoutingIds.TryGetValue(endpoint, out var peerRid))
+                    nodeRuntime.DisconnectPeerManual(endpoint, peerRid);
+                else
+                    nodeRuntime.DisconnectPeerManual(endpoint);
+            });
     }
 
     private static RoutingId CreateNodeRoutingId(ZLinkSpotNodeRegistration registration)

@@ -8,8 +8,6 @@ import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.RouterSocketOptions;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.service.spot.SpotNodeMode;
 import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.contracts.sockets.SubSocket;
 import java.lang.reflect.Method;
@@ -24,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 public class BoundaryValidationContractTest {
     @Test
     public void streamSocketDoesNotExposeActorGatewayAttach() {
-        assertFalse(hasPublicMethod(StreamSocket.class, "attachActorGateway", SpotNode.class));
+        assertFalse(java.util.Arrays.stream(StreamSocket.class.getMethods())
+            .anyMatch(method -> method.getName().equals("attachActorGateway")));
     }
 
     @Test

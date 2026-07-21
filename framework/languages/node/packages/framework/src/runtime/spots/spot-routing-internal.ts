@@ -10,4 +10,6 @@ export interface ZLinkSpotRouteTarget {
   readonly targetNodeRid: RoutingId;
   readonly spotRid: RoutingId;
   readonly spotKind: ZLinkSpotKind;
+  /** Required for user Spot operations and absent for an Entry Spot route. */
+  readonly targetSpotGeneration?: bigint;
 }

@@ -16,7 +16,7 @@ public final class OutboundReqHandler {
             .thenApply(channelReply -> {
                 spot.context().outbound().sendToChannel(Contracts.INGRESS_CHANNEL,
                     new Contracts.OutboundMsg("send:" + request.value())).submit();
-                spot.context().outbound().publish("spot.events",
+                spot.context().outbound().publish(Contracts.ROUTE_CHANNEL, "spot.events",
                     new Contracts.MeshMsg("publish:" + request.value())).submit();
                 spot.record("SpotOutbound", request.value() + "/" + channelReply);
                 return new Contracts.OutboundRes(spot.context().spotRid().toString(),

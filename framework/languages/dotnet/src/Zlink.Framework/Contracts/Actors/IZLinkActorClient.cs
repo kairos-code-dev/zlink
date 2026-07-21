@@ -3,20 +3,23 @@ namespace Zlink.Framework.Contracts.Actors;
 public interface IZLinkActorClient
 {
     IZLinkActorSendCall SendToActor<TMessage>(
+        string meshName,
         ActorRef actor,
         TMessage message);
 
     IZLinkActorRequestCall RequestToActor<TRequest>(
+        string meshName,
         ActorRef actor,
         TRequest request);
 }
 
-public interface IZLinkActorSendCall
+public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
 {
-    void Submit(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorRequestCall
+public interface IZLinkActorRequestCall : IZLinkMetadataCall<IZLinkActorRequestCall>
 {
     IZLinkActorRequestCall Timeout(TimeSpan timeout);
 

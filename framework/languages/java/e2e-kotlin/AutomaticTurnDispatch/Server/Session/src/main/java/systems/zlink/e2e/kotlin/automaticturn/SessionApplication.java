@@ -6,7 +6,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -34,19 +34,17 @@ public final class SessionApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
                 .traceLabel("kotlin-atd-session");
-            var route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
-                .enableServer(Env.get("sessionRouteEndpoint"))
-                .enableClient(Env.get("playRouteEndpoint"))
+            ZLinkMeshNodeBuilder mesh = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(Env.get("sessionRouteEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
+            mesh.channelName(Contracts.SPOT_MESH);
+            mesh.peerConnections().connect(Env.get("playRouteEndpoint"));
             String playBRoute = Env.get("playBRouteEndpoint", "");
             if (!playBRoute.isBlank()) {
-                route.enableClient(playBRoute);
+                mesh.peerConnections().connect(playBRoute);
             }
-            ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("sessionSpotEndpoint"))
-                .setRoutingId(RoutingId.from(nodeRid));
-            spot.addEntrySpot(ProbeEntrySpot.class);
-            spot.addActorFactory("probe", ProbeActorFactory.class);
+            mesh.addEntrySpot(ProbeEntrySpot.class);
+            mesh.addActorFactory("probe", ProbeActorFactory.class);
             options.addStreamNode("gateway")
                 .bind(Env.get("streamEndpoint"))
                 .registerSession(ProbeSession.class)

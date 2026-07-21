@@ -23,6 +23,11 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationStore;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
@@ -30,6 +35,7 @@ import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 public final class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
     ZLinkLocationChangeStampStore,
+    ZLinkRoutingIdSlotAllocationStore,
     AutoCloseable {
 
     private final ZLinkRedisLocationConnection connection;
@@ -203,6 +209,26 @@ public final class ZLinkRedisLocationStore implements
         RoutingId nodeRid,
         Duration leaseTtl) {
         return scripts.renewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl);
+    }
+
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlot(
+        ZLinkRoutingIdSlotAcquireRequest request) {
+        return scripts.acquireRoutingIdSlotAsync(request);
+    }
+
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotReleaseResult> releaseRoutingIdSlot(
+        String groupName,
+        int slot,
+        systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
+        return scripts.releaseRoutingIdSlotAsync(groupName, slot, owner);
+    }
+
+    @Override
+    public CompletionStage<ZLinkRoutingIdSlotAllocationSnapshot> listRoutingIdSlots(
+        String groupName) {
+        return scripts.listRoutingIdSlotsAsync(groupName);
     }
 
     @Override

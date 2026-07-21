@@ -5,12 +5,14 @@ import {
   zlinkSpotKindToWire,
   type RoutingId,
   type ZLinkActorLocation,
+  type ZLinkMeshNodeDescriptor,
   type ZLinkPeerLocation,
   type ZLinkRouteLocation,
   type ZLinkSpotLocation
 } from '@zlink-systems/framework';
 import {
   encodeActorKey,
+  encodeMeshNodeKey,
   encodePeerKey,
   encodeRouteKey,
   encodeSpotKey,
@@ -26,7 +28,9 @@ export interface LocationKind<TRow> {
   ownerOf(row: TRow): string;
   generationOf(row: TRow): bigint;
   toJson(row: TRow): unknown;
+  toJsonText?(row: TRow): string;
   fromJson(json: unknown, generation: bigint, updatedAt: Date): TRow;
+  fromJsonText?(json: string, generation: bigint, updatedAt: Date): TRow;
 }
 
 export const kindPeer: LocationKind<ZLinkPeerLocation> = {
@@ -45,24 +49,57 @@ export const kindPeer: LocationKind<ZLinkPeerLocation> = {
   fromJson: peerFromJson
 };
 
+export const kindMeshNode: LocationKind<ZLinkMeshNodeDescriptor> = {
+  tag: 'mesh',
+  encodeKey: (row) => encodeMeshNodeKey({ meshName: row.meshName, rid: row.rid }),
+  meshOf: (row) => row.meshName,
+  ownerOf: (row) => row.ownerId,
+  generationOf: () => 0n,
+  toJson: meshNodeToJson,
+  toJsonText: meshNodeToJsonText,
+  fromJson: meshNodeFromJson,
+  fromJsonText: (json, generation, updatedAt) => meshNodeFromJson(
+    JSON.parse(json.replace(
+      /("(?:LifecycleGeneration|DescriptorRevision)":)([0-9]+)/g,
+      '$1"$2"'
+    )),
+    generation,
+    updatedAt
+  )
+};
+
 export const kindSpot: LocationKind<ZLinkSpotLocation> = {
   tag: 'spot',
   encodeKey: (row) => encodeSpotKey({ meshName: row.meshName, spotRid: row.spotRid }),
   meshOf: (row) => row.meshName,
   ownerOf: (row) => row.ownerId,
-  generationOf: (row) => row.generation,
+  generationOf: () => 0n,
   toJson: spotToJson,
-  fromJson: spotFromJson
+  toJsonText: spotToJsonText,
+  fromJson: spotFromJson,
+  fromJsonText: (json, generation, updatedAt) => spotFromJson(
+    JSON.parse(json.replace(
+      /("(?:SpotGeneration|OwnerNodeGeneration)":)([0-9]+)/g,
+      '$1"$2"'
+    )),
+    generation,
+    updatedAt
+  )
 };
 
 export const kindActor: LocationKind<ZLinkActorLocation> = {
   tag: 'actor',
-  encodeKey: (row) => encodeActorKey({ actorId: row.actorId }),
-  meshOf: () => undefined,
+  encodeKey: (row) => encodeActorKey({
+    meshName: row.meshName,
+    actorId: row.actorId
+  }),
+  meshOf: (row) => row.meshName,
   ownerOf: (row) => row.ownerId,
-  generationOf: (row) => row.generation,
+  generationOf: () => 0n,
   toJson: actorToJson,
-  fromJson: actorFromJson
+  toJsonText: actorToJsonText,
+  fromJson: actorFromJson,
+  fromJsonText: actorFromJsonText
 };
 
 export const kindRoute: LocationKind<ZLinkRouteLocation> = {
@@ -93,6 +130,67 @@ function peerToJson(row: ZLinkPeerLocation): unknown {
   };
 }
 
+function meshNodeToJson(row: ZLinkMeshNodeDescriptor): unknown {
+  return {
+    MeshName: row.meshName,
+    Rid: routingIdHex(row.rid),
+    LifecycleGeneration: requiredUnsignedNumber(row.lifecycleGeneration, 'LifecycleGeneration'),
+    DescriptorRevision: requiredUnsignedNumber(row.descriptorRevision, 'DescriptorRevision'),
+    Endpoint: row.endpoint,
+    ChannelWeights: sortedWeights(row.channelWeights),
+    Draining: row.draining,
+    SecurityIdentity: row.securityIdentity,
+    OwnerId: row.ownerId,
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
+  };
+}
+
+function meshNodeToJsonText(row: ZLinkMeshNodeDescriptor): string {
+  return [
+    '{',
+    `"MeshName":${JSON.stringify(row.meshName)}`,
+    `,"Rid":${JSON.stringify(routingIdHex(row.rid))}`,
+    `,"LifecycleGeneration":${requiredUnsigned(row.lifecycleGeneration, 'LifecycleGeneration')}`,
+    `,"DescriptorRevision":${requiredUnsigned(row.descriptorRevision, 'DescriptorRevision')}`,
+    `,"Endpoint":${JSON.stringify(row.endpoint)}`,
+    `,"ChannelWeights":${JSON.stringify(sortedWeights(row.channelWeights))}`,
+    `,"Draining":${row.draining ? 'true' : 'false'}`,
+    `,"SecurityIdentity":${JSON.stringify(row.securityIdentity)}`,
+    `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
+    '}'
+  ].join('');
+}
+
+function meshNodeFromJson(
+  json: unknown,
+  _generation: bigint,
+  updatedAt: Date
+): ZLinkMeshNodeDescriptor {
+  const row = objectOf(json);
+  const weights = objectOf(row.ChannelWeights);
+  return {
+    meshName: stringOf(row.MeshName),
+    rid: ridOf(row.Rid),
+    lifecycleGeneration: unsignedBigIntOf(row.LifecycleGeneration),
+    descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
+    endpoint: stringOf(row.Endpoint),
+    channelWeights: Object.fromEntries(
+      Object.entries(weights).map(([name, weight]) => [name, numberOf(weight)])
+    ),
+    draining: booleanOf(row.Draining),
+    securityIdentity: stringOf(row.SecurityIdentity),
+    ownerId: stringOf(row.OwnerId),
+    updatedAt
+  };
+}
+
+function sortedWeights(weights: Readonly<Record<string, number>>): Readonly<Record<string, number>> {
+  return Object.fromEntries(
+    Object.entries(weights).sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
 function peerFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLinkPeerLocation {
   const row = objectOf(json);
   return {
@@ -116,66 +214,161 @@ function spotToJson(row: ZLinkSpotLocation): unknown {
   return {
     MeshName: row.meshName,
     SpotRid: routingIdHex(row.spotRid),
-    SpotType: row.spotType ?? null,
-    NodeRid: routingIdHex(row.nodeRid),
+    SpotGeneration: requiredUnsignedNumber(row.spotGeneration, 'SpotGeneration'),
+    OwnerNodeRid: routingIdHex(row.ownerNodeRid),
+    OwnerNodeGeneration: requiredUnsignedNumber(row.ownerNodeGeneration, 'OwnerNodeGeneration'),
     SpotKind: zlinkSpotKindToWire(row.spotKind),
-    RouteEndpoint: row.routeEndpoint ?? null,
+    SpotType: row.spotType,
     OwnerId: row.ownerId,
-    Generation: Number(row.generation),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
-function spotFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLinkSpotLocation {
+function spotToJsonText(row: ZLinkSpotLocation): string {
+  return [
+    '{',
+    `"MeshName":${JSON.stringify(row.meshName)}`,
+    `,"SpotRid":${JSON.stringify(routingIdHex(row.spotRid))}`,
+    `,"SpotGeneration":${requiredUnsigned(row.spotGeneration, 'SpotGeneration')}`,
+    `,"OwnerNodeRid":${JSON.stringify(routingIdHex(row.ownerNodeRid))}`,
+    `,"OwnerNodeGeneration":${requiredUnsigned(row.ownerNodeGeneration, 'OwnerNodeGeneration')}`,
+    `,"SpotKind":${zlinkSpotKindToWire(row.spotKind)}`,
+    `,"SpotType":${JSON.stringify(row.spotType)}`,
+    `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
+    '}'
+  ].join('');
+}
+
+function spotFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLinkSpotLocation {
   const row = objectOf(json);
+  const ownerNodeRid = ridOf(row.OwnerNodeRid);
   return {
     meshName: stringOf(row.MeshName),
     spotRid: ridOf(row.SpotRid),
-    spotType: optionalString(row.SpotType),
-    nodeRid: ridOf(row.NodeRid),
+    spotGeneration: unsignedBigIntOf(row.SpotGeneration),
+    spotType: stringOf(row.SpotType),
+    ownerNodeRid,
+    ownerNodeGeneration: unsignedBigIntOf(row.OwnerNodeGeneration),
     spotKind: zlinkSpotKindFromWire(numberOf(row.SpotKind)),
-    routeEndpoint: optionalString(row.RouteEndpoint),
     ownerId: stringOf(row.OwnerId),
-    generation,
     updatedAt
   };
 }
 
 function actorToJson(row: ZLinkActorLocation): unknown {
   return {
+    MeshName: row.meshName,
     ActorId: row.actorId,
-    ActorType: row.actorType ?? null,
-    ActorRef: row.actorRef == null
-      ? null
-      : {
-          nodeRid: routingIdHex(row.actorRef.nodeRid),
-          actorId: row.actorRef.actorId,
-          generation: Number(row.actorRef.generation)
-        },
-    NodeRid: routingIdHex(row.nodeRid),
-    LocationKind: zlinkSpotKindToWire(row.locationKind),
-    SpotMeshName: row.spotMeshName,
-    SpotRid: row.spotRid == null ? null : routingIdHex(row.spotRid),
+    ActorType: row.actorType,
+    ActorRef: actorRefToJson(row.actorRef),
+    OwnerNodeRid: routingIdHex(row.ownerNodeRid),
+    OwnerNodeGeneration: requiredUnsignedNumber(row.ownerNodeGeneration, 'OwnerNodeGeneration'),
+    SpotRid: routingIdHex(row.spotRid),
+    SpotGeneration: requiredUnsignedNumber(row.spotGeneration, 'SpotGeneration'),
+    SpotKind: zlinkSpotKindToWire(row.spotKind),
+    MembershipEpoch: requiredUnsignedNumber(row.membershipEpoch, 'MembershipEpoch'),
     OwnerId: row.ownerId,
-    Generation: Number(row.generation),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
 
-function actorFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLinkActorLocation {
+function actorToJsonText(row: ZLinkActorLocation): string {
+  const actorRef = row.actorRef;
+  const ownerNodeGeneration = requiredUnsigned(row.ownerNodeGeneration, 'OwnerNodeGeneration');
+  const spotRid = requiredValue(row.spotRid, 'SpotRid');
+  const spotGeneration = requiredUnsigned(row.spotGeneration, 'SpotGeneration');
+  const membershipEpoch = requiredUnsigned(row.membershipEpoch, 'MembershipEpoch');
+  return [
+    '{',
+    `"MeshName":${JSON.stringify(row.meshName)}`,
+    `,"ActorId":${JSON.stringify(row.actorId)}`,
+    `,"ActorType":${JSON.stringify(requiredString(row.actorType, 'ActorType'))}`,
+    ',"ActorRef":{',
+    `"nodeRid":${JSON.stringify(routingIdHex(actorRef.nodeRid))}`,
+    `,"actorId":${JSON.stringify(actorRef.actorId)}`,
+    `,"generation":${requiredUnsigned(actorRef.generation, 'ActorRef.generation')}`,
+    '}',
+    `,"OwnerNodeRid":${JSON.stringify(routingIdHex(row.ownerNodeRid))}`,
+    `,"OwnerNodeGeneration":${ownerNodeGeneration}`,
+    `,"SpotRid":${JSON.stringify(routingIdHex(spotRid))}`,
+    `,"SpotGeneration":${spotGeneration}`,
+    `,"SpotKind":${zlinkSpotKindToWire(row.spotKind)}`,
+    `,"MembershipEpoch":${membershipEpoch}`,
+    `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
+    '}'
+  ].join('');
+}
+
+function actorFromJsonText(json: string, generation: bigint, updatedAt: Date): ZLinkActorLocation {
+  const lossless = json.replace(
+    /("(?:generation|OwnerNodeGeneration|SpotGeneration|MembershipEpoch)":)([0-9]+)/g,
+    '$1"$2"'
+  );
+  return actorFromJson(JSON.parse(lossless), generation, updatedAt);
+}
+
+function actorFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLinkActorLocation {
   const row = objectOf(json);
+  const ownerNodeRid = ridOf(row.OwnerNodeRid);
+  const spotKind = zlinkSpotKindFromWire(numberOf(row.SpotKind));
   return {
-    actorType: optionalString(row.ActorType),
+    meshName: stringOf(row.MeshName),
+    actorType: stringOf(row.ActorType),
     actorId: stringOf(row.ActorId),
     actorRef: actorRefOf(row.ActorRef),
-    nodeRid: ridOf(row.NodeRid),
-    generation,
-    locationKind: zlinkSpotKindFromWire(numberOf(row.LocationKind)),
-    spotMeshName: stringOf(row.SpotMeshName),
-    spotRid: optionalRid(row.SpotRid),
+    ownerNodeRid,
+    ownerNodeGeneration: unsignedBigIntOf(row.OwnerNodeGeneration),
+    spotKind,
+    spotRid: ridOf(row.SpotRid),
+    spotGeneration: unsignedBigIntOf(row.SpotGeneration),
+    membershipEpoch: unsignedBigIntOf(row.MembershipEpoch),
     ownerId: stringOf(row.OwnerId),
     updatedAt
   };
+}
+
+function actorRefToJson(actorRef: ZLinkActorLocation['actorRef']): unknown {
+  const value = requiredValue(actorRef, 'ActorRef');
+  return {
+    nodeRid: routingIdHex(value.nodeRid),
+    actorId: value.actorId,
+    generation: requiredUnsignedNumber(value.generation, 'ActorRef.generation')
+  };
+}
+
+function requiredValue<T>(value: T | null | undefined, field: string): T {
+  if (value === null || value === undefined) {
+    throw new TypeError(`${field} is required by the exact Actor location contract.`);
+  }
+  return value;
+}
+
+function requiredString(value: string | null | undefined, field: string): string {
+  return requiredValue(value, field);
+}
+
+function requiredUnsignedNumber(value: bigint | undefined, field: string): number {
+  const exact = requiredValue(value, field);
+  if (exact < 0n || exact > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError(`${field} cannot be represented as an exact JSON integer.`);
+  }
+  return Number(exact);
+}
+
+function unsignedBigIntOf(value: unknown): bigint {
+  const result = typeof value === 'string'
+    ? BigInt(value)
+    : BigInt(numberOf(value));
+  if (result < 0n) throw new RangeError('Location row generation is unsigned.');
+  return result;
+}
+
+function requiredUnsigned(value: bigint | undefined, field: string): string {
+  const exact = requiredValue(value, field);
+  if (exact < 0n) throw new RangeError(`${field} is unsigned.`);
+  return exact.toString();
 }
 
 function routeToJson(row: ZLinkRouteLocation): unknown {
@@ -255,11 +448,12 @@ export function materialize<TRow>(
   if (fields[0] === null || fields[0] === undefined) {
     return undefined;
   }
-  return kind.fromJson(
-    JSON.parse(asString(fields[0])),
-    BigInt(asString(fields[1])),
-    fromUnixMs(toNumber(fields[2]))
-  );
+  const json = asString(fields[0]);
+  const generation = BigInt(asString(fields[1]));
+  const updatedAt = fromUnixMs(toNumber(fields[2]));
+  return kind.fromJsonText === undefined
+    ? kind.fromJson(JSON.parse(json), generation, updatedAt)
+    : kind.fromJsonText(json, generation, updatedAt);
 }
 
 export function ridOf(value: unknown): RoutingId {
@@ -273,13 +467,13 @@ function optionalRid(value: unknown): RoutingId | undefined {
 
 function actorRefOf(value: unknown): ZLinkActorLocation['actorRef'] {
   if (value === null || value === undefined) {
-    return undefined;
+    throw new TypeError('ActorRef is required by the exact Actor location contract.');
   }
   const row = objectOf(value);
   return {
     nodeRid: ridOf(row.nodeRid),
     actorId: stringOf(row.actorId),
-    generation: BigInt(numberOf(row.generation))
+    generation: unsignedBigIntOf(row.generation)
   };
 }
 

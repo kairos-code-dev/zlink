@@ -2,7 +2,7 @@
 [문서 목록](../../../README.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[C++ 묶음](../README.ko.md) | [공개 인터페이스](../../spec/server/languages/cpp/02-framework-interfaces.ko.md)
+[C++ 묶음](../README.ko.md) | [공개 인터페이스](../../spec/server/languages/cpp/interfaces/README.ko.md)
 
 # ZLink Framework C++ Runtime Architecture
 
@@ -69,6 +69,71 @@ pending request와 submit은 timeout, cancellation 또는 runtime dispose로 반
 | `test_cpp_framework_layout_contract` | public header와 private runtime 경계, 실제 source tree와 sample public API 사용을 검사한다. |
 | `test_cpp_framework_contract_headers` | 설치 대상 public header가 독립적으로 compile된다. |
 | `test_cpp_framework_runtime` | runtime 시작·종료와 subsystem 소유권을 검증한다. |
+
+## 7. Public raw binding 경계
+
+C++ service runtime은 설치된 C++ binding의 public raw socket API만 사용한다. RouteMesh와 ClientServer는
+ROUTER·DEALER, classic fanout은 PUB·SUB, 외부 session은 STREAM을 사용한다. Multipart, connection monitor,
+send readiness와 shutdown도 binding public contract를 통해서만 사용한다.
+
+Core service header, C handle, claim·receive batch, reply token, MeshNode monitor와 binding의 private native
+accessor는 참조하지 않는다. Raw socket option을 Framework public builder로 그대로 전달하는 pass-through도
+두지 않는다.
+
+## 8. Service runtime과 mailbox
+
+`framework_runtime_t`가 process 안의 RouteMesh, ClientServer, fanout, Spot, Actor, STREAM, Location과
+monitoring subsystem을 조정한다. 각 subsystem은 transport callback에서 application handler를 직접 실행하지
+않고 다음 owner mailbox에 immutable work를 제출한다.
+
+| Work | 직렬화 owner |
+|---|---|
+| Node direct와 Channel handler | 해당 node 또는 channel application mailbox |
+| Spot packet·timer·subscription | Spot mailbox |
+| Actor packet과 lifecycle | Actor가 속한 Spot의 Actor turn |
+| STREAM lifecycle·packet | session mailbox |
+| reply·timeout·send-ready | infrastructure completion mailbox |
+
+Application mailbox가 실행 중이어도 infrastructure completion mailbox는 진행한다. Request reply, timeout,
+cancellation, disconnect와 shutdown 경쟁은 pending operation의 단일 terminal winner가 정리한다. One-way
+admission은 signal 기반으로 대기하며 busy polling이나 timeout 증가로 지연을 숨기지 않는다.
+
+## 9. Transport liveness
+
+Service runtime의 기본 liveness timing은 idle 5초, inbound deadline 15초다. RouteMesh와 ClientServer runtime은
+Framework service protocol의 `livenessProbe`와 `livenessAck`을 처리한다. Fanout subscriber runtime은
+publisher마다 전용 SUB socket과 receive loop를 두고, 첫 valid application record 또는
+[exact two-frame beacon](../../common/internals/service-wire-protocol.ko.md#411-classic-fanout-liveness-frame)을 받은
+뒤에만 해당 publisher를 ready로 만든다. 이 정책을 Framework public API로 노출하지 않는다. Core raw socket은
+disconnect·error monitor와 reconnect primitive만 제공한다. Orderly disconnect와 transport monitor failure는
+즉시 ready index에서 제거하고, 마지막 valid receive부터 15초가 지난 connection만 not-ready로 바꾸고 닫는다.
+
+Reconnect는 service admission, RID와 lifecycle generation 검증을 다시 수행한다. 이전 connection의 ready,
+reply correlation, session binding과 callback을 재사용하지 않는다. Fanout timeout은 해당 publisher의 전용
+socket만 닫고 해당 publisher만 not-ready로 바꾼다. Location Store 장애가 발생해도 이미 연결된 peer의 transport
+liveness는 진행하며, service liveness ACK와 fanout beacon이 만료된 owner lease를 복구하지 않는다.
+
+## 10. Authority와 checkpoint
+
+Location runtime은 provider가 발급한 opaque store version으로 owner·transfer authority를 compare-exchange한다.
+Framework가 authority payload 안의 owner, fence, phase, coordinator lease와 recovery cursor를 encode한다.
+Provider와 application adapter는 이 내부 schema를 해석하지 않는다.
+
+Snapshot transfer는 application의 typed adapter가 만든 state를 Framework serializer로 bytes로 바꾼 뒤
+Checkpoint Store에 24시간 retention으로 저장한다. Checkpoint reference, retention, journal sequence와 transfer
+phase는 application callback에 전달하지 않는다. Commit·abort 뒤에는 checkpoint를 즉시 삭제하고, process
+중단으로 남은 orphan은 provider TTL이 정리한다.
+
+## 11. Retire와 Shutdown
+
+Host maintenance coordinator 하나가 `Retire`와 `Shutdown`을 직렬화한다. `Retire`는 admission을 바꾸기 전에
+target, transfer policy, provider와 capacity를 모두 preflight한다. 실패하면 state를 `Serving`으로 유지한다.
+`Shutdown`은 새 transfer를 시작하지 않고 admission seal, accepted work, STREAM barrier와 resource cleanup을
+deadline까지 수행한다.
+
+기존 `drain`, `await_drained`, `stop`과 `request_stop` public member는 coordinator의 Shutdown 경로에 연결한다.
+Compatibility를 위해 같은 책임의 두 번째 상태 기계를 만들지 않는다. Terminal cleanup은 service
+liveness·reconnect timer, monitor subscription과 pending callback을 socket보다 늦게 남기지 않는다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

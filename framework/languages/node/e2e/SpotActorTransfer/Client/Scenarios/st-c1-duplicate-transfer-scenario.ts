@@ -8,8 +8,9 @@ export async function runStC1(): Promise<void> {
   await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 62);
   const join = joinActor(nodeA, actorId, { scenario: 'ST-C1', targetSpotRid: spotRid }).catch(() => undefined);
   await waitEvidence(nodeB, [`ST-C1|${actorId}|admission|spot=${spotRid}`]);
-  await waitEvidence(nodeA, [`ST-C1|${actorId}|before_commit_gate|62`]);
-  await post(nodeA, '/shutdown', {});
+  await post(nodeA, '/crash', {});
+  await delay(100);
+  await post(nodeB, `/transfer-gates/${actorId}/release`, {});
   await join;
   await delay(31_000);
   const entries = await getEvidence(nodeB);

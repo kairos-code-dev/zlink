@@ -1,0 +1,74 @@
+{
+  "samples": {
+    "Bingo": {
+      "routeMeshes": ["bingo"],
+      "clientServer": [],
+      "channels": {
+        "bingo.api": {"clients": ["Session", "Play"], "servers": ["Api"]},
+        "bingo.room": {"clients": ["Api"], "servers": ["Play"]}
+      }
+    },
+    "TicTacToe": {
+      "routeMeshes": ["tictactoe"],
+      "clientServer": [],
+      "manualPeerInitiators": {
+        "ApiA": ["ApiB", "PlayA", "PlayB"],
+        "ApiB": ["PlayA", "PlayB"],
+        "PlayA": ["PlayB"]
+      },
+      "channels": {
+        "tictactoe.api": {"clients": ["PlayA", "PlayB"], "servers": ["ApiA", "ApiB"]},
+        "play-0": {"clients": ["ApiA", "ApiB"], "servers": ["PlayA"]},
+        "play-1": {"clients": ["ApiA", "ApiB"], "servers": ["PlayB"]}
+      }
+    },
+    "SupportChat": {
+      "routeMeshes": ["supportchat"],
+      "clientServer": [],
+      "channels": {
+        "supportchat.api": {"clients": ["Session", "Support"], "servers": ["Api"]},
+        "supportchat.support": {"clients": ["Session", "Api"], "servers": ["Support"]}
+      }
+    },
+    "DeliveryDispatch": {
+      "routeMeshes": ["deliverydispatch.courier", "deliverydispatch.customer"],
+      "clientServer": ["deliverydispatch.tracking"],
+      "channels": {
+        "deliverydispatch.dispatch": {"clients": ["CourierActorNode"], "servers": ["Dispatch"]},
+        "deliverydispatch.tracking": {"clients": ["Dispatch"], "servers": ["Tracking"]}
+      }
+    },
+    "ShoppingMall": {
+      "routeMeshes": ["shoppingmall.workflow"],
+      "clientServer": [],
+      "channels": {},
+      "instanceSpots": {
+        "shoppingmall.order-workflow": {
+          "callers": ["CommerceApi"],
+          "providers": ["WorkflowA", "WorkflowB"]
+        }
+      }
+    },
+    "GameQuest": {
+      "routeMeshes": ["gamequest"],
+      "clientServer": [],
+      "channels": {},
+      "instanceSpots": {
+        "gamequest.player-quest": {
+          "callers": ["GameApi"],
+          "providers": ["QuestMissionA", "QuestMissionB"]
+        }
+      }
+    },
+    "ZoneWorld": {
+      "routeMeshes": ["zoneworld.mesh"],
+      "clientServer": [],
+      "classicFanout": ["zoneworld.broadcast"],
+      "channels": {
+        "zoneworld.actors": {"clients": ["Gateway"], "servers": ["ZoneNode"]},
+        "zoneworld.report": {"clients": ["ZoneNode"], "servers": ["Ops"]},
+        "zoneworld.zones": {"clients": [], "servers": ["ZoneNode"]}
+      }
+    }
+  }
+}

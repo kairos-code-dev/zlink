@@ -17,6 +17,7 @@ internal sealed record ZLinkScannedSpotHandler(
     Type SpotType,
     Type? ActorType = null,
     string? PacketName = null,
+    string? ChannelName = null,
     string? Topic = null,
     string? TimerName = null,
     TimeSpan TimerPeriod = default,
@@ -55,6 +56,7 @@ internal static class ZLinkScannedSpotHandlerScanner
                     ZLinkScannedSpotHandlerKind.Subscription,
                     handlerType,
                     handlerType,
+                    ChannelName: subscription.ChannelName,
                     Topic: subscription.Topic,
                     Method: method,
                     SpotNodeName: subscription.SpotNodeName);
@@ -77,6 +79,7 @@ internal static class ZLinkScannedSpotHandlerScanner
                         ZLinkScannedSpotHandlerKind.Subscription,
                         handlerType,
                         arguments[0],
+                        ChannelName: subscription.ChannelName,
                         Topic: subscription.Topic);
             }
             else if (definition == typeof(IZLinkSpotTimerHandler<>))

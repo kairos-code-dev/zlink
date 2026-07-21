@@ -4,11 +4,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("e2e")
 public record ActorNodeOptions(
-    String nodeRid, String routerEndpoint, String routerPeers, String streamEndpoint,
+    String nodeRid, String meshEndpoint, String meshPeers, String streamEndpoint,
     String httpEndpoint, String redisLocationEndpoint, String locationKeyPrefix, String logDirectory) {
     public ActorNodeOptions {
-        required(nodeRid, "node-rid"); required(routerEndpoint, "router-endpoint");
-        required(routerPeers, "router-peers"); required(streamEndpoint, "stream-endpoint");
+        required(nodeRid, "node-rid"); required(meshEndpoint, "mesh-endpoint");
+        required(meshPeers, "mesh-peers"); required(streamEndpoint, "stream-endpoint");
         required(httpEndpoint, "http-endpoint"); required(redisLocationEndpoint, "redis-location-endpoint");
         required(locationKeyPrefix, "location-key-prefix"); required(logDirectory, "log-directory");
     }

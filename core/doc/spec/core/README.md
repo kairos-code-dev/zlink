@@ -2,9 +2,9 @@
 
 [Specification index](../README.md)
 
-# ZLink Core 10.1.0 specification
+# ZLink Core 11.0 specification
 
-This index links the Core 10.1.0 public C ABI contract exposed by `zlink.h`. Formal API documents describe only public contracts; they do not describe source directories, socket wiring, or queue structure.
+This index links the Core 11.0 public C ABI contract exposed by `zlink.h`. Formal API documents describe only public contracts; they do not describe source directories, socket wiring, or queue structure.
 
 ## 1. Common contracts
 
@@ -17,8 +17,9 @@ This index links the Core 10.1.0 public C ABI contract exposed by `zlink.h`. For
 | [Errno map](04-errno-map.md) | Result and errno mappings by API family |
 | [Events](05-events.md) | Common event types and readiness meaning |
 | [Polling](06-polling.md) | Poll items, pollers, and source support |
-| [Monitoring](07-monitoring.md) | Socket and MeshNode monitors and status snapshots |
+| [Monitoring](07-monitoring.md) | Raw-socket monitors and status snapshots |
 | [Utilities](08-utilities.md) | Timers, threads, stopwatch, and atomic helpers |
+| [Runtime boundary](09-runtime-boundary.md) | Core raw C ABI and Framework service responsibility boundary |
 
 ## 2. Socket contracts
 
@@ -33,14 +34,3 @@ This index links the Core 10.1.0 public C ABI contract exposed by `zlink.h`. For
 | [DEALER](socket/06-dealer.md) | Asynchronous request source |
 | [ROUTER](socket/07-router.md) | Raw routing-ID router |
 | [STREAM](socket/08-stream.md) | Raw TCP or WebSocket session socket |
-
-## 3. Service contracts
-
-| Document | Content |
-|---|---|
-| [Service index](service/README.md) | Shared service boundaries and document map |
-| [MeshNode](service/01-mesh-node.md) | RouteMesh membership, peers, and node/channel messaging |
-| [Dispatch](service/02-dispatch.md) | Readiness, claims, receive batches, and reply tokens |
-| [Spot](service/03-spot.md) | Direct Spot messaging and Logical Multicast |
-| [Actor](service/04-actor.md) | ActorRef, mailboxes, Spot membership, and transfer |
-| [STREAM session](service/05-stream-session.md) | Session-to-Actor bindings and transfer barriers |

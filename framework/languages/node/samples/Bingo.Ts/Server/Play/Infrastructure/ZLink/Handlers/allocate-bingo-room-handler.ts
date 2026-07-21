@@ -18,7 +18,6 @@ import {
 import { BingoRoomSpot } from '../Spots/BingoRoomSpot/bingo-room-spot';
 import { BingoEntrySpot } from '../Spots/EntrySpot/bingo-entry-spot';
 import type {
-  RoutingId,
   ZLinkAllocatedRoutingIdProvider,
   ZLinkRequestHandler,
   ZLinkRouteClient,
@@ -38,9 +37,9 @@ class BingoRoomProvisioner {
 
   async localNodeRid(): Promise<string> {
     const allocation = await this.allocatedRoutingIds.waitForReadyAllocation('bingo.play');
-    const localNodeRid = allocation.memberRoutingIds.get(SampleNames.playChannel);
+    const localNodeRid = allocation.memberRoutingIds.get(SampleNames.roomSpotNode);
     if (localNodeRid === undefined) {
-      throw new Error("Bingo allocation group 'bingo.play' did not allocate the Play channel.");
+      throw new Error("Bingo allocation group 'bingo.play' did not allocate the room MeshNode.");
     }
     return localNodeRid;
   }
@@ -54,6 +53,7 @@ class BingoRoomProvisioner {
     );
     if (allocated.created && allocated.ownerPlayNodeRid === localNodeRid) {
       await this.spots.getOrCreate(
+        SampleNames.roomSpotNode,
         BingoRoomSpot,
         allocated.roomId,
         new BingoRoomSettingsPayload({
@@ -81,7 +81,8 @@ class AllocateBingoRoomHandler implements ZLinkRequestHandler<AllocateBingoRoomR
       return await this.provisioner.allocate(request);
     }
     const preferredEntrySpot = await this.spotHandles.resolveSpotHandle(
-      request.preferredOwnerNodeRid as unknown as RoutingId
+      SampleNames.roomSpotNode,
+      request.preferredOwnerNodeRid
     );
     if (preferredEntrySpot === undefined) {
       throw new Error(`Preferred Play entry spot '${request.preferredOwnerNodeRid}' was not found.`);

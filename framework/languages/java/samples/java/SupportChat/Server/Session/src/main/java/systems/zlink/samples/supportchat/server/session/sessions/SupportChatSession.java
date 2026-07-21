@@ -103,12 +103,12 @@ public final class SupportChatSession implements ZLinkSession {
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if (SampleNames.Roles.Customer.equals(identityRole)) {
-            return requireIdentityActor().relay(dispatch, payload);
+            return requireIdentityActor().relay(dispatch, payload).thenApply(ignored -> null);
         }
         String conversationId = requireConversationId(dispatch);
         ZLinkSessionActor existing = conversationActors.get(conversationId);
         if (existing != null) {
-            return existing.relay(dispatch, payload);
+            return existing.relay(dispatch, payload).thenApply(ignored -> null);
         }
         return channels.requestToChannel(
                 SampleNames.SupportChannel,
@@ -132,7 +132,7 @@ public final class SupportChatSession implements ZLinkSession {
         if (target == null) {
             target = requireIdentityActor();
         }
-        return target.relay(dispatch, payload);
+        return target.relay(dispatch, payload).thenApply(ignored -> null);
     }
 
     private CompletionStage<ZLinkSessionActor> bindOrGet(

@@ -2,19 +2,9 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal ZLinkChannelRuntimeBundle GetClientBundle(string channelName)
-    {
-        return _channels.GetClientBundle(GetOrStartState(), channelName);
-    }
-
     internal ZLinkChannelRuntimeBundle GetPublisherBundle(string channelName)
     {
         return _channels.GetPublisherBundle(GetOrStartState(), channelName);
-    }
-
-    internal ZLinkRouteChannelRuntime GetRouteChannel(string routerChannelId)
-    {
-        return _channels.GetRouteChannel(GetOrStartState(), routerChannelId);
     }
 
     /// <summary>
@@ -23,73 +13,42 @@ internal sealed partial class ZLinkFrameworkRuntime
     /// hidden store I/O. True: a known route mesh peer, the route socket is
     /// the delivery path. False: the mesh does not know this rid (a spot
     /// rid or a stale node) — the egress owns it. Null: no loop manages
-    /// this mesh yet, keep the legacy ordering.
+    /// this mesh yet, keep the default ordering.
     /// </summary>
     private bool? IsKnownRouteMeshPeer(string routerChannelId, RoutingId targetNodeRid)
     {
         return _topologyQuery?.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
     }
 
-    private void EnsureKnownRouteMeshPeer(
+    internal void EnsureKnownRouteMeshPeer(
         string routerChannelId,
         RoutingId targetNodeRid,
         string targetDescription)
     {
-        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) != false) return;
+        var nodeRuntime = GetMeshNodeRuntime(routerChannelId);
+        if (nodeRuntime.Node.RoutingId == targetNodeRid) return;
 
-        if (Registration.RouteChannels.TryGetValue(routerChannelId, out var registration)
-            && registration.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual
-            && _topologyQuery?.WasKnownManualRouteMeshPeer(routerChannelId, targetNodeRid) == true)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
-                $"Route channel '{routerChannelId}' is not connected to node '{targetNodeRid}' for {targetDescription}.",
-                isRetriable: true);
+        if (nodeRuntime.UsesManualRouterAcquisition)
+        {
+            if (nodeRuntime.TryClassifyManualRouterTarget(targetNodeRid, out var connected))
+            {
+                if (connected) return;
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                    $"Route channel '{routerChannelId}' is not connected to node '{targetNodeRid}' for {targetDescription}.",
+                    isRetriable: true);
+            }
+
+            throw CreateUnknownRouteTargetException(
+                routerChannelId, targetNodeRid, targetDescription);
+        }
+
+        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) != false) return;
 
         throw CreateUnknownRouteTargetException(routerChannelId, targetNodeRid, targetDescription);
     }
 
-    internal ValueTask SubmitRouteSendAsync<TMessage>(
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        string packetName,
-        TMessage message,
-        CancellationToken cancellationToken)
-    {
-        using var operation = EnterOperation();
-        // Route channel sends target node rids only; spot-addressed
-        // traffic goes through the address-based spot outbound instead
-        // (spot-address messaging contract §6).
-        var routeChannel = GetRouteChannel(routerChannelId);
-        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"packet '{packetName}'");
-
-        return routeChannel.SubmitSendAsync(
-            targetNodeRid,
-            packetName,
-            message,
-            cancellationToken);
-    }
-
-    internal async ValueTask<TReply> SubmitRouteRequestAsync<TRequest, TReply>(
-        string routerChannelId,
-        RoutingId targetNodeRid,
-        string packetName,
-        TRequest request,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        using var operation = EnterOperation(countAsRequest: true);
-        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"packet '{packetName}'");
-
-        return await GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(
-                targetNodeRid,
-                packetName,
-                request,
-                timeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    internal ValueTask SendToSpotViaRouterChannelAsync(
+    internal async ValueTask<ZLinkSubmitResult> SendToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
@@ -99,6 +58,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = EnterOperation();
+        var handedOff = false;
         try
         {
             EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
@@ -111,31 +71,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                 parts,
                 cancellationToken,
                 metadata);
-            if (!accepted.IsCompletedSuccessfully)
-                return AwaitAndDisposeSpotSendAsync(accepted, parts);
-
-            accepted.GetAwaiter().GetResult();
-            ZLinkMessageParts.DisposeAll(parts);
-            return ValueTask.CompletedTask;
+            handedOff = true;
+            return await accepted.ConfigureAwait(false);
         }
         catch
         {
-            ZLinkMessageParts.DisposeAll(parts);
+            if (!handedOff) ZLinkMessageParts.DisposeAll(parts);
             throw;
-        }
-    }
-
-    private static async ValueTask AwaitAndDisposeSpotSendAsync(
-        ValueTask accepted,
-        IReadOnlyList<Message> parts)
-    {
-        try
-        {
-            await accepted.ConfigureAwait(false);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
         }
     }
 
@@ -144,8 +86,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _spotRouteRouter.ResolveAcceptedSpotRouteNodeRid(targetSpotNodeChannelName);
     }
 
-    /// <summary>One-shot non-blocking spot send (TrySubmit surface): a single
-    /// DontWait attempt after the route-mesh peer check.</summary>
+    /// <summary>Performs the first non-blocking spot-send admission attempt
+    /// after the route-mesh peer check.</summary>
     internal bool TrySendToSpotViaRouterChannelOnce(
         string routerChannelId,
         RoutingId targetNodeRid,

@@ -180,4 +180,11 @@ internal sealed partial class ZLinkEntrySpotActivation
             static (activation, ct) => activation._dispatcher.DispatchSubscriptionsAsync(ct),
             cancellationToken).ConfigureAwait(false);
     }
+
+    public async ValueTask DiscardSubscriptionsAsync(CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            static (activation, ct) => activation._dispatcher.DiscardSubscriptionsAsync(ct),
+            cancellationToken).ConfigureAwait(false);
+    }
 }

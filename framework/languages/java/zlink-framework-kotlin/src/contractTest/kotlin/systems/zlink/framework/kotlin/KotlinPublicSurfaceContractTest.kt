@@ -7,6 +7,11 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import systems.zlink.framework.channels.ZLinkClient
+import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.channels.ZLinkSendCall
+import systems.zlink.framework.channels.ZLinkSubmitResult
+import systems.zlink.framework.streams.ZLinkSessionActor
 
 class KotlinPublicSurfaceContractTest {
     private val facadeClasses = listOf(
@@ -19,6 +24,13 @@ class KotlinPublicSurfaceContractTest {
         "ZLinkMessageExtensionsKt",
         "ZLinkSpotHandlerRegistryExtensionsKt",
     ).map { Class.forName("systems.zlink.framework.kotlin.$it") }
+
+    @Test
+    fun `one way projections preserve call and result types`() {
+        assertExtensionReturnCount(ZLinkClient::class.java, "send", ZLinkSendCall::class.java, 1)
+        assertExtensionReturnCount(ZLinkRouteClient::class.java, "send", ZLinkSendCall::class.java, 3)
+        assertStageResultType(ZLinkSessionActor::class.java, "relay", ZLinkSubmitResult::class.java)
+    }
 
     @Test
     fun `public coroutine surface exposes one await terminator and no yield alternative`() {
@@ -298,6 +310,35 @@ class KotlinPublicSurfaceContractTest {
             .groupingBy { it.name }
             .eachCount()
         assertEquals(expected, actual, "$typeName public extension overloads changed")
+    }
+
+    private fun assertExtensionReturnCount(
+        receiver: Class<*>,
+        methodName: String,
+        returnType: Class<*>,
+        expected: Int,
+    ) {
+        val methods = Class.forName("systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt")
+            .declaredMethods
+            .filter { method ->
+                Modifier.isPublic(method.modifiers) &&
+                    method.name == methodName &&
+                    method.parameterTypes.firstOrNull() == receiver &&
+                    method.returnType == returnType
+            }
+        assertEquals(expected, methods.size)
+    }
+
+    private fun assertStageResultType(
+        owner: Class<*>,
+        methodName: String,
+        resultType: Class<*>,
+    ) {
+        val methods = owner.methods.filter { it.name == methodName }
+        assertTrue(methods.isNotEmpty())
+        methods.forEach { method ->
+            assertTrue(method.genericReturnType.typeName.contains(resultType.name))
+        }
     }
 
     private fun assertEqualsDistinct(signatures: List<Pair<String, List<Class<*>>>>) {

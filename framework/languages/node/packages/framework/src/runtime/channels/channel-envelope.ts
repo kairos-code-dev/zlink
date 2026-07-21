@@ -37,6 +37,7 @@ export interface ZLinkChannelEnvelopeHeader {
   readonly errorCode?: string | null;
   readonly errorMessage?: string | null;
   readonly source?: string | null;
+  readonly metadata: Readonly<Record<string, string>>;
   readonly flowId?: string;
   readonly flowOrigin?: ZLinkFlowOrigin;
 }
@@ -64,7 +65,8 @@ export function encodeChannelEnvelopeParts(
   topic?: string,
   codecs?: ZLinkChannelEnvelopeCodecRegistry,
   correlationId?: string,
-  createFlow = true
+  createFlow = true,
+  metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
   const flow = currentOrCreateFlow('Application', createFlow);
@@ -79,6 +81,7 @@ export function encodeChannelEnvelopeParts(
     topic: topic ?? null,
     errorCode: null,
     errorMessage: null,
+    metadata: applicationMetadataRecord(metadata),
     ...(flow ?? {})
   };
   return [encodeChannelHeader(header), encoded.message];
@@ -90,7 +93,8 @@ export function encodeChannelPublishEnvelopeParts(
   packetName: string | undefined,
   payload: unknown,
   codecs?: ZLinkChannelEnvelopeCodecRegistry,
-  createFlow = true
+  createFlow = true,
+  metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
   const encoded = encodePayload(payload, codecs, { packetName });
   const flow = currentOrCreateFlow('Application', createFlow);
@@ -105,6 +109,7 @@ export function encodeChannelPublishEnvelopeParts(
     topic,
     errorCode: null,
     errorMessage: null,
+    metadata: applicationMetadataRecord(metadata),
     ...(flow ?? {})
   };
   return [encodeChannelHeader(header), encoded.message];
@@ -125,6 +130,7 @@ export function encodeChannelReplyParts(
     correlationId: request.correlationId,
     deadline: null,
     topic: null,
+    metadata: {},
     flowId: request.flowId,
     flowOrigin: request.flowOrigin
   };
@@ -149,6 +155,7 @@ export function encodeChannelErrorReplyParts(request: ZLinkChannelEnvelopeHeader
     topic: null,
     errorCode: errorCode.length > 0 ? errorCode : 'Error',
     errorMessage,
+    metadata: {},
     flowId: request.flowId,
     flowOrigin: request.flowOrigin
   };
@@ -363,9 +370,40 @@ function validateChannelHeader(value: unknown): ZLinkChannelEnvelopeHeader {
     errorCode: header.errorCode === undefined ? null : requireNullableString(header.errorCode, 'errorCode'),
     errorMessage: header.errorMessage === undefined ? null : requireNullableString(header.errorMessage, 'errorMessage'),
     source: header.source === undefined ? undefined : requireNullableString(header.source, 'source'),
+    metadata: requireApplicationMetadata(header.metadata),
     flowId,
     flowOrigin
   };
+}
+
+function applicationMetadataRecord(metadata: ReadonlyMap<string, string>): Readonly<Record<string, string>> {
+  const record: Record<string, string> = {};
+  for (const [key, value] of metadata) {
+    if (key.length === 0 || key.includes('\0') || value.includes('\0')) {
+      throw new ZLinkConfigurationException(
+        'Channel application metadata keys must be non-empty and keys and values must not contain NUL.'
+      );
+    }
+    record[key] = value;
+  }
+  if (Buffer.byteLength(JSON.stringify(record), 'utf8') > 1024) {
+    throw new ZLinkConfigurationException('Channel application metadata exceeds the 1024-byte limit.');
+  }
+  return Object.freeze(record);
+}
+
+function requireApplicationMetadata(value: unknown): Readonly<Record<string, string>> {
+  if (value === undefined) {
+    return Object.freeze({});
+  }
+  if (!isRecord(value)) {
+    throw new ZLinkConfigurationException('Channel application metadata must be a JSON object.');
+  }
+  const metadata = new Map<string, string>();
+  for (const [key, selectedValue] of Object.entries(value)) {
+    metadata.set(key, requireString(selectedValue, `metadata.${key}`));
+  }
+  return applicationMetadataRecord(metadata);
 }
 
 function optionalFlowId(value: unknown): string | undefined {

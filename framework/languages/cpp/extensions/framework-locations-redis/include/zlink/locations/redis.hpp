@@ -91,7 +91,8 @@ if intent == 'takeover' then
 end
 
 if currentOwner and currentOwner == owner
-    and tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3]) then
+    and (tonumber(ARGV[3]) == 0
+         or tonumber(redis.call('HGET', KEYS[1], 'gen')) == tonumber(ARGV[3])) then
     local gen = tonumber(ARGV[3])
     redis.call('HSET', KEYS[1], 'json', ARGV[4], 'updatedAtMs', nowMs)
     bumpStamps()
@@ -228,7 +229,7 @@ class redis_location_key_schema_t
 
     static std::string encode_actor_key (const actor_location_key_t &key)
     {
-        return encode (key.actor_id);
+        return encode (key.mesh_name, key.actor_id);
     }
 
     static std::string encode_route_key (const route_location_key_t &key)
@@ -331,8 +332,8 @@ class redis_location_key_schema_t
 
     static actor_location_key_t decode_actor_key (std::string_view encoded)
     {
-        const auto segments = decode (encoded, 1);
-        return actor_location_key_t{segments[0]};
+        const auto segments = decode (encoded, 2);
+        return actor_location_key_t{segments[0], segments[1]};
     }
 
     static route_location_key_t decode_route_key (std::string_view encoded)
@@ -537,6 +538,7 @@ class redis_location_row_codec_t
         nlohmann::ordered_json json;
         json["MeshName"] = row.mesh_name;
         json["SpotRid"] = row.spot_rid.to_hex ();
+        json["SpotGeneration"] = row.spot_generation;
         json["SpotType"] = row.spot_type ? nlohmann::json (*row.spot_type)
                                          : nlohmann::json (nullptr);
         json["NodeRid"] = row.node_rid.to_hex ();
@@ -555,6 +557,7 @@ class redis_location_row_codec_t
         spot_location_t row;
         row.mesh_name = json.at ("MeshName").get<std::string> ();
         row.spot_rid = zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
+        row.spot_generation = json.value ("SpotGeneration", std::uint64_t{0});
         if (!json.at ("SpotType").is_null ()) {
             row.spot_type = json.at ("SpotType").get<std::string> ();
         }
@@ -574,27 +577,22 @@ class redis_location_row_codec_t
     static std::string encode_actor (const actor_location_t &row)
     {
         nlohmann::ordered_json json;
+        json["MeshName"] = row.mesh_name;
         json["ActorId"] = row.actor_id;
-        json["ActorType"] = row.actor_type ? nlohmann::json (*row.actor_type)
-                                           : nlohmann::json (nullptr);
-        if (row.actor_ref) {
-            nlohmann::ordered_json actor_ref;
-            actor_ref["nodeRid"] =
-              zlink::routing_id_t::from (std::string (row.actor_ref->node_rid ().value ()))
-                .to_hex ();
-            actor_ref["actorId"] = std::string (row.actor_ref->actor_id ());
-            actor_ref["generation"] = row.actor_ref->generation ();
-            json["ActorRef"] = std::move (actor_ref);
-        } else {
-            json["ActorRef"] = nullptr;
-        }
-        json["NodeRid"] = row.node_rid.to_hex ();
-        json["LocationKind"] = static_cast<int> (row.location_kind);
-        json["SpotMeshName"] = row.spot_mesh_name;
-        json["SpotRid"] = row.spot_rid ? nlohmann::json (row.spot_rid->to_hex ())
-                                       : nlohmann::json (nullptr);
+        json["ActorType"] = row.actor_type;
+        nlohmann::ordered_json actor_ref;
+        actor_ref["nodeRid"] =
+          zlink::routing_id_t::from (std::string (row.actor_ref.node_rid ().value ())).to_hex ();
+        actor_ref["actorId"] = std::string (row.actor_ref.actor_id ());
+        actor_ref["generation"] = row.actor_ref.generation ();
+        json["ActorRef"] = std::move (actor_ref);
+        json["OwnerNodeRid"] = row.owner_node_rid.to_hex ();
+        json["OwnerNodeGeneration"] = row.owner_node_generation;
+        json["SpotRid"] = row.spot_rid.to_hex ();
+        json["SpotGeneration"] = row.spot_generation;
+        json["SpotKind"] = static_cast<int> (row.spot_kind);
+        json["MembershipEpoch"] = row.membership_epoch;
         json["OwnerId"] = row.owner_id;
-        json["Generation"] = row.generation;
         json["UpdatedAt"] = format_updated_at (row.updated_at);
         return json.dump ();
     }
@@ -603,33 +601,24 @@ class redis_location_row_codec_t
     {
         const auto json = nlohmann::json::parse (value);
         actor_location_t row;
-        if (json.contains ("ActorType") && !json.at ("ActorType").is_null ()) {
-            row.actor_type = json.at ("ActorType").get<std::string> ();
-        }
+        row.mesh_name = json.at ("MeshName").get<std::string> ();
         row.actor_id = json.at ("ActorId").get<std::string> ();
-        if (json.contains ("ActorRef") && !json.at ("ActorRef").is_null ()) {
-            const auto &actor_ref = json.at ("ActorRef");
-            row.actor_ref = actor_ref_t{
-              node_rid_t::from_string (
-                zlink::routing_id_t::from_hex (
-                  read_actor_ref_string (actor_ref, "nodeRid", "NodeRid"))
-                  .to_string ()),
-              json.contains ("ActorType") && !json.at ("ActorType").is_null ()
-                ? json.at ("ActorType").get<std::string> ()
-                : std::string {},
-              read_actor_ref_string (actor_ref, "actorId", "ActorId"),
-              read_actor_ref_generation (actor_ref)};
-        }
-        row.node_rid = zlink::routing_id_t::from_hex (json.at ("NodeRid").get<std::string> ());
-        row.generation = json.at ("Generation").get<std::int64_t> ();
-        row.location_kind = static_cast<zlink::spot_kind> (json.at ("LocationKind").get<int> ());
-        if (json.contains ("SpotMeshName") && !json.at ("SpotMeshName").is_null ()) {
-            row.spot_mesh_name = json.at ("SpotMeshName").get<std::string> ();
-        }
-        if (!json.at ("SpotRid").is_null ()) {
-            row.spot_rid =
-              zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
-        }
+        row.actor_type = json.at ("ActorType").get<std::string> ();
+        const auto &actor_ref = json.at ("ActorRef");
+        row.actor_ref = actor_ref_t{
+          node_rid_t::from_string (
+            zlink::routing_id_t::from_hex (actor_ref.at ("nodeRid").get<std::string> ())
+              .to_string ()),
+          row.actor_type,
+          actor_ref.at ("actorId").get<std::string> (),
+          actor_ref.at ("generation").get<std::uint64_t> ()};
+        row.owner_node_rid =
+          zlink::routing_id_t::from_hex (json.at ("OwnerNodeRid").get<std::string> ());
+        row.owner_node_generation = json.at ("OwnerNodeGeneration").get<std::uint64_t> ();
+        row.spot_rid = zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
+        row.spot_generation = json.at ("SpotGeneration").get<std::uint64_t> ();
+        row.spot_kind = static_cast<zlink::spot_kind> (json.at ("SpotKind").get<int> ());
+        row.membership_epoch = json.at ("MembershipEpoch").get<std::uint64_t> ();
         row.owner_id = json.at ("OwnerId").get<std::string> ();
         if (json.contains ("UpdatedAt") && !json.at ("UpdatedAt").is_null ()) {
             row.updated_at = parse_updated_at (json.at ("UpdatedAt").get<std::string> ());
@@ -715,24 +704,6 @@ class redis_location_row_codec_t
         const auto time = timegm (&tm);
 #endif
         return std::chrono::system_clock::from_time_t (time);
-    }
-
-    static std::string read_actor_ref_string (const nlohmann::json &json,
-                                              const char *preferred_name,
-                                              const char *legacy_name)
-    {
-        if (json.contains (preferred_name)) {
-            return json.at (preferred_name).get<std::string> ();
-        }
-        return json.at (legacy_name).get<std::string> ();
-    }
-
-    static std::uint64_t read_actor_ref_generation (const nlohmann::json &json)
-    {
-        if (json.contains ("generation")) {
-            return json.at ("generation").get<std::uint64_t> ();
-        }
-        return json.at ("Generation").get<std::uint64_t> ();
     }
 
     static std::string base64_encode (const std::vector<std::uint8_t> &value)
@@ -955,9 +926,9 @@ class redis_location_store_t final : public location_store_t,
                                                   location_write_intent_t intent) override
     {
         const auto row_key = detail::redis_location_key_schema_t::encode_actor_key (
-          actor_location_key_t{actor.actor_id});
-        return write_row (location_kind_t::actor, row_key, std::nullopt, actor.owner_id,
-                          actor.generation, detail::redis_location_row_codec_t::encode_actor (actor),
+          actor_location_key_t{actor.mesh_name, actor.actor_id});
+        return write_row (location_kind_t::actor, row_key, actor.mesh_name, actor.owner_id,
+                          0, detail::redis_location_row_codec_t::encode_actor (actor),
                           intent);
     }
 
@@ -966,7 +937,7 @@ class redis_location_store_t final : public location_store_t,
     {
         return remove_row (location_kind_t::actor,
                            detail::redis_location_key_schema_t::encode_actor_key (key),
-                           std::nullopt, std::move (owner));
+                           key.mesh_name, std::move (owner));
     }
 
     task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key) override
@@ -1412,8 +1383,10 @@ class redis_location_store_t final : public location_store_t,
             return std::nullopt;
         }
         auto row = decode (*fields[0]);
-        if (fields[1]) {
+        if constexpr (requires { row.generation; }) {
+          if (fields[1]) {
             row.generation = std::stoll (*fields[1]);
+          }
         }
         if (fields[2]) {
             row.updated_at =
@@ -1461,7 +1434,6 @@ class redis_location_store_t final : public location_store_t,
             _event_loop = std::make_shared<sw::redis::EventLoop> ();
             auto connection_options = uri.connection_options ();
             connection_options.connect_timeout = std::chrono::milliseconds (500);
-            connection_options.socket_timeout = std::chrono::milliseconds (500);
             _client = std::make_unique<sw::redis::AsyncRedis> (
               connection_options, sw::redis::ConnectionPoolOptions{}, _event_loop);
         }
@@ -1542,10 +1514,11 @@ class redis_location_store_t final : public location_store_t,
 
     static bool matches (const actor_location_t &row, const actor_location_filter_t &filter)
     {
-        return (!filter.actor_type || (row.actor_type && *row.actor_type == *filter.actor_type))
-               && (!filter.node_rid || row.node_rid == *filter.node_rid)
-               && (!filter.spot_rid || (row.spot_rid && *row.spot_rid == *filter.spot_rid))
-               && (!filter.location_kind || row.location_kind == *filter.location_kind);
+        return (!filter.mesh_name || row.mesh_name == *filter.mesh_name)
+               && (!filter.actor_type || row.actor_type == *filter.actor_type)
+               && (!filter.owner_node_rid || row.owner_node_rid == *filter.owner_node_rid)
+               && (!filter.spot_rid || row.spot_rid == *filter.spot_rid)
+               && (!filter.spot_kind || row.spot_kind == *filter.spot_kind);
     }
 
     static bool matches (const route_location_t &row, const route_location_filter_t &filter)

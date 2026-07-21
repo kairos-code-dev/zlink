@@ -44,6 +44,10 @@ export function createFrameworkRegistration(
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
     actorFactories: actorFactoriesFromSpotNodes(spotNodes),
     actorTransferAdapters: new Map(options.actorTransferAdapters),
+    actorTransferTimeoutMs: normalizeOptionalPositiveInteger(
+      options.actorTransferTimeoutMs,
+      'actorTransferTimeoutMs'
+    ),
     actorTransferForwardWindowMs: normalizeNonNegativeInteger(
       options.actorTransferForwardWindowMs,
       'actorTransferForwardWindowMs',

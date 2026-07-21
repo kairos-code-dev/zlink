@@ -32,8 +32,9 @@ function createInvalidDuplicateModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          const channel = builder.addClientServerChannel(RegistrationCodecNames.channel)
-            .enableServer(options.channelEndpoint);
+          const mesh = builder.addRouteMesh(RegistrationCodecNames.channel)
+            .listen(options.channelEndpoint);
+          const channel = mesh.channelName(RegistrationCodecNames.channel);
           if (options.invalidCase === 'missing-handler-group') {
             channel.addHandlerGroup('missing-handler-group');
           } else {

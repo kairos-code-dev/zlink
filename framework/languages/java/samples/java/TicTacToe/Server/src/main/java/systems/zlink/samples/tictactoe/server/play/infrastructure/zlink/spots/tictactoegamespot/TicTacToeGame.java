@@ -12,7 +12,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.server.play.domain.tictactoe.TicTacToeMatch;
@@ -120,7 +119,7 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
                 "game-tick",
                 GAME_TICK_PERIOD,
                 TicTacToeGameTimerHandler.class,
-                new ZLinkTimerOptions())
+                null)
             .thenAccept(timer -> gameTick = timer);
     }
 
@@ -278,7 +277,8 @@ public final class TicTacToeGame implements ZLinkSpot<PlayActor> {
             return;
         }
         context.outbound()
-            .publish(SampleNames.PlayerMilestoneTopic, new PlayerWinMilestoneMsg(
+            .publish(SampleNames.PlayNode, SampleNames.PlayerMilestoneTopic,
+                new PlayerWinMilestoneMsg(
                 after.roomId(),
                 actor.actorId(),
                 player.displayName(),

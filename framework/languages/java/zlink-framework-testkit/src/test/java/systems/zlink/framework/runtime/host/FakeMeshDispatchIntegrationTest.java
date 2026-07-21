@@ -1,0 +1,74 @@
+package systems.zlink.framework.runtime.host;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkRouteSendHandler;
+import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
+
+final class FakeMeshDispatchIntegrationTest {
+    @BeforeEach
+    void resetHandlers() {
+        NodeHandler.received = new CompletableFuture<>();
+        ChannelHandler.received = new CompletableFuture<>();
+    }
+
+    @Test
+    void runtimeWiresFormalMeshNodeAndChannelHandlers() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game")
+            .listen("inproc://formal-mesh-dispatch")
+            .addRouteSendHandler(NodeHandler.class, String.class);
+        mesh.channelName("play")
+            .addSendHandler(ChannelHandler.class, String.class);
+        FakeZLinkBackendAdapterFactory backend = new FakeZLinkBackendAdapterFactory();
+
+        try (ZLinkFrameworkRuntime ignored = ZLinkFrameworkRuntime.start(options, backend)) {
+            backend.dispatchMeshNodeSend("String", "\"node-value\"");
+            backend.dispatchMeshChannelSend("play", "String", "\"channel-value\"");
+
+            assertEquals("node-value@fake-mesh-source",
+                NodeHandler.received.get(2, TimeUnit.SECONDS));
+            assertEquals("channel-value@play",
+                ChannelHandler.received.get(2, TimeUnit.SECONDS));
+        }
+    }
+
+    public static final class NodeHandler implements ZLinkRouteSendHandler<String> {
+        private static CompletableFuture<String> received;
+
+        public NodeHandler() {
+        }
+
+        @Override
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkRouteSendContext context) {
+            received.complete(message + "@" + context.routingId());
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class ChannelHandler implements ZLinkSendHandler<String> {
+        private static CompletableFuture<String> received;
+
+        public ChannelHandler() {
+        }
+
+        @Override
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkSendContext context) {
+            received.complete(message + "@" + context.channelName().orElse(""));
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+}

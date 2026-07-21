@@ -54,9 +54,10 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/publisher-flow.log")
                 .traceLabel("java-sm-publisher");
-            options.addSpotMesh(Contracts.SPOT_MESH)
-                .enablePubSub(publisher.spotPublisherEndpoint())
+            var mesh = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(publisher.spotPublisherEndpoint())
                 .setRoutingId(RoutingId.from("publisher"));
+            mesh.configureSpotPublisher();
         };
     }
 

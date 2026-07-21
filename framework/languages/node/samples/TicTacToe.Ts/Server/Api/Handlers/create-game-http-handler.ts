@@ -15,7 +15,11 @@ class CreateGameEndpoint {
 
   async handle(request: CreateGameHttpReq): Promise<CreateGameHttpRes> {
     const response = await this.playClient
-      .requestToChannel(SampleNames.playChannel, createGameReq(request.gameName ?? 'match'))
+      .requestToChannel(
+        SampleNames.playSpotNode,
+        SampleNames.playChannel,
+        createGameReq(request.gameName ?? 'match')
+      )
       .submit<CreateGameRes>();
     return createGameHttpRes(response);
   }

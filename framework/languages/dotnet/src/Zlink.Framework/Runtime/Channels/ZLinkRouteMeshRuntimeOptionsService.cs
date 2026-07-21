@@ -25,11 +25,11 @@ internal sealed class ZLinkRouteMeshRuntimeOptionsService(ZLinkFrameworkRuntime 
 }
 
 // Live MeshNode option surface. MaxMessageSize is validated against the spec
-// (negative rejected, zero = no framework limit) and recorded on the node's
-// ROUTER socket recipe. The 10.0.0 IMeshNode binding exposes no runtime
-// MaxMessageSize setter, so the byte cap is fixed at node startup from the recipe;
-// runtime writes update the recipe value the interface reports.
-internal sealed class ZLinkMeshNodeRuntimeOptions(ZLinkSpotNodeRegistration registration)
+// (negative rejected, zero = no framework limit), applied to the running Core
+// MeshNode, and retained in the registration recipe exposed by the getter.
+internal sealed class ZLinkMeshNodeRuntimeOptions(
+    ZLinkSpotNodeRegistration registration,
+    IZLinkBackendSpotNode node)
     : IZLinkMeshNodeRuntimeOptions
 {
     public long MaxMessageSize
@@ -43,6 +43,7 @@ internal sealed class ZLinkMeshNodeRuntimeOptions(ZLinkSpotNodeRegistration regi
             if (registration.Router is not { } router)
                 throw new ZLinkConfigurationException(
                     $"MeshNode '{registration.SpotNodeName}' has no ROUTER socket to configure MaxMessageSize.");
+            node.SetMaxMessageSize(value);
             router.SocketConfig.MaxMessageSize = value;
         }
     }

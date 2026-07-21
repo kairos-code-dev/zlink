@@ -49,8 +49,8 @@ function createCodecRequesterModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addClientServerChannel(RegistrationCodecNames.channel)
-            .enableClient(options.targetEndpoint);
+          builder.addRouteMesh(RegistrationCodecNames.channel)
+            .peerConnections().connect(options.targetEndpoint);
           return builder.build();
         }
       })

@@ -44,6 +44,7 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.channels.ZLinkFanoutPublishCall;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshChannelRuntimeOptions;
@@ -373,33 +374,62 @@ public final class ZLinkChannelRuntime
     public ZLinkSendCall sendToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
-        return new SendCall(
-            callRuntime,
-            requireClient(channelName),
-            encoded.payload(),
-            Optional.of(encoded.packetName()));
+        ZLinkBackendDealerSocket client = sockets.client(channelName);
+        if (client != null) {
+            return new SendCall(
+                callRuntime,
+                client,
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
+        }
+        ZLinkInternalSpotNode node = sockets.spotRouterNode(channelName);
+        if (node != null) {
+            return new MeshChannelRouteSendCall(
+                callRuntime,
+                channelName,
+                node,
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
+        }
+        throw new ZLinkConfigurationException(
+            "channel is not configured: " + channelName);
     }
 
     @Override
     public ZLinkRequestCall requestToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
-        return new RequestCall(
-            callRuntime,
-            requireClient(channelName),
-            encoded.payload(),
-            Optional.of(encoded.packetName()),
-            defaultRequestTimeout(channelName));
+        ZLinkBackendDealerSocket client = sockets.client(channelName);
+        if (client != null) {
+            return new RequestCall(
+                callRuntime,
+                client,
+                encoded.payload(),
+                Optional.of(encoded.packetName()),
+                defaultRequestTimeout(channelName));
+        }
+        ZLinkInternalSpotNode node = sockets.spotRouterNode(channelName);
+        if (node != null) {
+            return new MeshChannelRouteRequestCall(
+                callRuntime,
+                channelName,
+                node,
+                encoded.payload(),
+                Optional.of(encoded.packetName()),
+                defaultRequestTimeout(channelName));
+        }
+        throw new ZLinkConfigurationException(
+            "channel is not configured: " + channelName);
     }
 
     @Override
-    public ZLinkPublishCall publish(String channelName, String topic, Object message) {
+    public ZLinkFanoutPublishCall publish(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new PublishCall(
             callRuntime,
             requirePublisher(channelName),
-            topic,
+            encoded.packetName(),
             encoded.payload(),
             Optional.of(encoded.packetName()));
     }
@@ -408,9 +438,23 @@ public final class ZLinkChannelRuntime
     public ZLinkSendCall sendToNode(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
+        ZLinkBackendRouterSocket router = sockets.routeRouter(channelName);
+        if (router == null) {
+            ZLinkInternalSpotNode node = sockets.spotRouterNode(channelName);
+            if (node != null) {
+                return new MeshNodeRouteSendCall(
+                    callRuntime,
+                    node,
+                    target,
+                    encoded.payload(),
+                    Optional.of(encoded.packetName()));
+            }
+            throw new ZLinkConfigurationException(
+                "route mesh channel is not configured: " + channelName);
+        }
         return new RouteSendCall(
             callRuntime,
-            requireRouteRouter(channelName),
+            router,
             target,
             encoded.payload(),
             Optional.of(encoded.packetName()));
@@ -418,7 +462,6 @@ public final class ZLinkChannelRuntime
 
     @Override
     public ZLinkSendCall sendToSpot(
-        String channelName,
         SpotHandle spot,
         Object message) {
         Objects.requireNonNull(spot, "spot");
@@ -426,7 +469,7 @@ public final class ZLinkChannelRuntime
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotSendCall(
             callRuntime,
-            channelName,
+            null,
             spotAddressResolver,
             spot,
             encoded.payload(),
@@ -437,10 +480,26 @@ public final class ZLinkChannelRuntime
     public ZLinkRequestCall requestToNode(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
+        ZLinkBackendRouterSocket router = sockets.routeRouter(channelName);
+        if (router == null) {
+            ZLinkInternalSpotNode node = sockets.spotRouterNode(channelName);
+            if (node != null) {
+                return new MeshNodeRouteRequestCall(
+                    callRuntime,
+                    channelName,
+                    node,
+                    target,
+                    encoded.payload(),
+                    Optional.of(encoded.packetName()),
+                    defaultRequestTimeout(channelName));
+            }
+            throw new ZLinkConfigurationException(
+                "route mesh channel is not configured: " + channelName);
+        }
         return new RouteRequestCall(
             callRuntime,
             channelName,
-            requireRouteRouter(channelName),
+            router,
             target,
             encoded.payload(),
             Optional.of(encoded.packetName()),
@@ -449,7 +508,6 @@ public final class ZLinkChannelRuntime
 
     @Override
     public ZLinkRequestCall requestToSpot(
-        String channelName,
         SpotHandle spot,
         Object message) {
         Objects.requireNonNull(spot, "spot");
@@ -457,12 +515,12 @@ public final class ZLinkChannelRuntime
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotRequestCall(
             callRuntime,
-            channelName,
+            null,
             spotAddressResolver,
             spot,
             encoded.payload(),
             Optional.of(encoded.packetName()),
-            defaultRequestTimeout(channelName));
+            Duration.ofSeconds(1));
     }
 
     private static SpotTransportAddressResolver resolveSpotAddressResolver(
@@ -587,6 +645,16 @@ public final class ZLinkChannelRuntime
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         List<Message> spotParts) {
+        return sendToSpotViaRouterChannel(
+            routerChannelId, targetNodeRid, targetSpotRid, 0L, spotParts);
+    }
+
+    public CompletionStage<Void> sendToSpotViaRouterChannel(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        List<Message> spotParts) {
         ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId, targetNodeRid);
         if (target instanceof ZLinkSpotRouterNodeTarget spotRouterNodeTarget) {
             return sendToSpotViaSpotRouterNode(
@@ -594,6 +662,7 @@ public final class ZLinkChannelRuntime
                 spotRouterNodeTarget.node(),
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 spotParts);
         }
         try {
@@ -625,6 +694,22 @@ public final class ZLinkChannelRuntime
         RoutingId targetSpotRid,
         List<Message> spotParts,
         Duration timeout) {
+        return requestToSpotViaRouterChannel(
+            routerChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            0L,
+            spotParts,
+            timeout);
+    }
+
+    public CompletionStage<List<Message>> requestToSpotViaRouterChannel(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        List<Message> spotParts,
+        Duration timeout) {
         trace("spot-route request-start router=" + routerChannelId
             + " targetNode=" + targetNodeRid
             + " targetSpot=" + targetSpotRid
@@ -639,6 +724,7 @@ public final class ZLinkChannelRuntime
                 spotRouterNodeTarget.node(),
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 spotParts,
                 timeout);
         }
@@ -698,12 +784,14 @@ public final class ZLinkChannelRuntime
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        long targetSpotGeneration,
         List<Message> spotParts) {
         return ZLinkSpotRouterNodeDispatcher.send(
             routerChannelId,
             node,
             targetNodeRid,
             targetSpotRid,
+            targetSpotGeneration,
             spotParts);
     }
 
@@ -712,6 +800,7 @@ public final class ZLinkChannelRuntime
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        long targetSpotGeneration,
         List<Message> spotParts,
         Duration timeout) {
         return ZLinkSpotRouterNodeDispatcher.request(
@@ -719,9 +808,11 @@ public final class ZLinkChannelRuntime
             node,
             targetNodeRid,
             targetSpotRid,
+            targetSpotGeneration,
             spotParts,
             timeout,
-            callRuntime::track);
+            callRuntime::track,
+            callRuntime::retryRouteRequest);
     }
 
     static void trace(String message) {

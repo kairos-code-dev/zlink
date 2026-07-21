@@ -60,7 +60,11 @@ public final class Program implements AutoCloseable {
         if ("all".equalsIgnoreCase(selected)) {
             return implemented;
         }
-        return List.of(selected.toUpperCase(java.util.Locale.ROOT));
+        return java.util.Arrays.stream(selected.split(","))
+            .map(String::trim)
+            .filter(value -> !value.isEmpty())
+            .map(value -> value.toUpperCase(java.util.Locale.ROOT))
+            .toList();
     }
 
     private void run(String scenario) throws Exception {
@@ -111,7 +115,7 @@ public final class Program implements AutoCloseable {
         Contracts.JoinTargetRes join = join(nodeA, actorId, "ST-A2", spotRid, "reject");
         require(!join.accepted(), "ST-A2 join should be rejected");
         Contracts.ProbeRes probe = probe(nodeA, actorId, "ST-A2", "after-reject");
-        require(Contracts.ENTRY_SPOT_RID.equals(probe.spotRid()),
+        require("actor-a".equals(probe.spotRid()),
             "ST-A2 source membership changed after rejection");
         List<Contracts.Evidence> evidence = evidence();
         require(noKind(evidence, actorId, "leave"), "ST-A2 leave side effect exists");
@@ -173,7 +177,8 @@ public final class Program implements AutoCloseable {
                 "ST-F1 backlog did not replay on target");
         }
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("P1", "P2", "P3"));
-        assertNodeOrder(fixture.actorId(), "actor-b", List.of("backlog_enqueued", "packet_handler"));
+        assertNodeOrder(
+            fixture.actorId(), "actor-b", List.of("target_backlog_replayed", "packet_handler"));
     }
 
     private void directDoesNotOvertake() throws Exception {
@@ -190,7 +195,8 @@ public final class Program implements AutoCloseable {
         b2.get(8, TimeUnit.SECONDS);
         direct.get(8, TimeUnit.SECONDS);
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("B1", "B2", "D1"));
-        assertNodeOrder(fixture.actorId(), "actor-b", List.of("backlog_enqueued", "packet_handler"));
+        assertNodeOrder(
+            fixture.actorId(), "actor-b", List.of("target_backlog_replayed", "packet_handler"));
     }
 
     private void boundSessionCrossMoveOrder() throws Exception {

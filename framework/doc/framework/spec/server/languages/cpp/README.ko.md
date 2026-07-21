@@ -10,8 +10,8 @@ contract test는 이 계약을 따라야 한다.
 | 번호 | 문서 | 범위 |
 |---|------|------|
 | `01` | [시스템 구조](01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, **configuration**, **logging**, lifecycle, 등록 표면 |
-| `02` | [framework 인터페이스](02-framework-interfaces.ko.md) | 전체 public 타입·시그니처 카탈로그 — App/Host, DI, builder, handler registry, messaging, SPOT, dispatch 오류, health, HTTP 타입, location store |
-| `03` | [Location Store·Redis](03-location-store.ko.md) | store-neutral descriptor·location·lease·transfer authority와 공식 Redis 구현 |
+| `02` | [기능별 exact interface](interfaces/README.ko.md) | Server package의 기능별 C++ public type과 member |
+| `03` | [Location Store·Redis 이동 안내](03-location-store.ko.md) | 기능별 exact interface의 Location Store·Redis 문서로 연결 |
 | `60` | [HTTP hosting](60-http-hosting.ko.md) | HTTP 호스팅 계약 |
 | `61` | [내장 HTTP 서버](61-embedded-http-server.ko.md) | 내장 서버 |
 

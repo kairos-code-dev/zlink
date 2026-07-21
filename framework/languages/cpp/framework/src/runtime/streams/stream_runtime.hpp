@@ -14,6 +14,11 @@
 #include <string>
 #include <vector>
 
+namespace zlink::framework::runtime
+{
+class serial_execution_queue_t;
+}
+
 namespace zlink::framework::detail
 {
 
@@ -35,6 +40,7 @@ class stream_state_t
     std::vector<zlink::message_t> written_payloads;
     mutable std::mutex state_mutex;
     mutable std::mutex dispatch_mutex;
+    std::shared_ptr<zlink::framework::runtime::serial_execution_queue_t> dispatch_queue;
     std::mutex transport_writer_mutex;
     std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
       transport_writer;
@@ -47,6 +53,7 @@ class stream_runtime_state_t
   public:
     std::map<std::string, std::shared_ptr<stream_builder_state_t>> streams;
     std::uint64_t next_session_id = 1;
+    std::size_t max_pending = 1024;
     dispatch_options_t dispatch;
     serializer_registry_t *serializers = nullptr;
     std::shared_ptr<const stream_compression_codec_t> compression_codec =
@@ -72,6 +79,7 @@ class stream_runtime_t
     result_t<void> validate_header (const stream_header_t &header) const;
 
     stream_t open_session (std::string stream_name) const;
+    std::size_t pending_limit () const noexcept { return _state->max_pending; }
     result_t<void> dispatch_connected (packet_stream_session_t &session, stream_t &stream) const;
     result_t<void> dispatch_packet (packet_stream_session_t &session,
                                     stream_t &stream,
@@ -82,6 +90,23 @@ class stream_runtime_t
     result_t<void> dispatch_error (packet_stream_session_t &session,
                                    stream_t &stream,
                                    const stream_error_t &error) const;
+    using async_dispatch_completion_t =
+      std::function<void (const result_t<void> &)>;
+    result_t<void> dispatch_connected_async (
+      packet_stream_session_t &session,
+      stream_t &stream,
+      async_dispatch_completion_t completion = {}) const;
+    result_t<void> dispatch_packet_async (
+      packet_stream_session_t &session,
+      stream_t &stream,
+      const stream_header_t &header,
+      const zlink::message_t &payload,
+      async_dispatch_completion_t completion = {}) const;
+    result_t<void> dispatch_disconnected_async (
+      packet_stream_session_t &session,
+      stream_t &stream,
+      async_dispatch_completion_t completion = {}) const;
+    void drain_async_dispatch (stream_t &stream) const;
     void attach_transport_writer (
       stream_t &stream,
       std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)> writer)
@@ -95,6 +120,11 @@ class stream_runtime_t
     result_t<void> dispatch_serial (stream_t &stream,
                                     std::string operation,
                                     std::function<task_t<void> ()> callback) const;
+    result_t<void> dispatch_serial_async (
+      stream_t &stream,
+      std::string operation,
+      std::function<task_t<void> ()> callback,
+      async_dispatch_completion_t completion) const;
 
   public:
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
@@ -109,6 +139,7 @@ class stream_runtime_t
     /* Server liveness ping (graceful-drain-handoff §7.2): empty control frame
      * on the session's transport writer; the sweep loop owns the cadence. */
     void send_heartbeat_ping (stream_t &stream) const noexcept;
+    void send_heartbeat_pong (stream_t &stream) const noexcept;
 
   private:
     std::shared_ptr<stream_runtime_state_t> _state;

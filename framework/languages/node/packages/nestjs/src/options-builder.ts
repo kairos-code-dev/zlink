@@ -8,12 +8,16 @@ import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkLocationStore,
+  ZLinkLocationOptionValues,
   ZLinkLocationOptions,
+  ZLinkMeshNodeSocketConfig,
+  ZLinkMeshPeerConnection,
+  ZLinkMeshPeerConnections,
   ZLinkMessageSerializer,
   ZLinkSession,
   ZLinkSessionFactory,
-  ZLinkSocketConfig,
   ZLinkSpot,
+  ZLinkSpotPublisherConfig,
   ZLinkStreamCompressionBuilder,
 } from '@zlink-systems/framework';
 import type {
@@ -30,27 +34,27 @@ import {
   type Mutable,
   type MutableCodecRegistryOptions,
   type ZLinkModuleOptions,
-  type ZLinkNestClientServerChannelBuilder,
-  type InternalZLinkNestClientServerChannelOptions,
   type ZLinkNestCodecRegistryBuilder,
   type ZLinkNestFanoutChannelBuilder,
   type InternalZLinkNestFanoutChannelOptions,
   type ZLinkNestFrameworkAdditionalOptions,
   type ZLinkNestFrameworkOptionsBuilder,
   type ZLinkNestModuleRegistrationOptions,
-  type ZLinkNestRouterMeshBuilder,
-  type InternalZLinkNestRouterMeshOptions,
-  type ZLinkNestSpotNodeBuilder,
+  type ZLinkNestMeshChannelBuilder,
+  type ZLinkNestMeshNodeBuilder,
   type ZLinkNestStreamNodeBuilder
 } from './contracts';
 import { framework } from './framework-loader';
 
 
+type ZLinkNestBuilderAdditionalOptions = Omit<
+  ZLinkFrameworkRegistrationOptions,
+  'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes' | 'codecs'
+>;
+
 interface ZLinkNestBuilderState {
-  additionalOptions: ZLinkNestFrameworkAdditionalOptions;
-  readonly clientServerChannels: Record<string, InternalZLinkNestClientServerChannelOptions>;
+  additionalOptions: ZLinkNestBuilderAdditionalOptions;
   readonly fanoutChannels: Record<string, InternalZLinkNestFanoutChannelOptions>;
-  readonly routerMeshes: Record<string, InternalZLinkNestRouterMeshOptions>;
   readonly streams: Record<string, ZLinkStreamNodeOptions>;
   readonly spotNodes: Record<string, ZLinkSpotNodeOptions>;
   readonly codecOptions: MutableCodecRegistryOptions;
@@ -61,9 +65,7 @@ function createBuilderState(): ZLinkNestBuilderState {
   const codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
   return {
     additionalOptions: {},
-    clientServerChannels: {},
     fanoutChannels: {},
-    routerMeshes: {},
     streams: {},
     spotNodes: {},
     codecOptions,
@@ -104,17 +106,6 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     );
   }
 
-  useInMemoryLocationStores(): this {
-    this.state.additionalOptions = {
-      ...this.state.additionalOptions,
-      locations: {
-        ...(this.state.additionalOptions.locations ?? {}),
-        useInMemoryStores: true
-      }
-    };
-    return this;
-  }
-
   addLocationStore(store: ZLinkLocationStore): this {
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
@@ -126,7 +117,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return this;
   }
 
-  addActorTransferAdapter<TActor extends ZLinkActor>(
+  protected registerActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this {
@@ -135,6 +126,14 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
       actorTransferAdapters: adapters
+    };
+    return this;
+  }
+
+  setActorTransferTimeout(timeoutMs: number): this {
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      actorTransferTimeoutMs: framework.validateActorTransferTimeout(timeoutMs)
     };
     return this;
   }
@@ -159,8 +158,10 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
       locations: this.state.additionalOptions.locations ?? { options: {} }
     };
     const locations = this.state.additionalOptions.locations as NonNullable<ZLinkFrameworkRegistrationOptions['locations']>;
-    (locations as { options?: ZLinkLocationOptions }).options ??= {};
-    return locations.options as ZLinkLocationOptions;
+    (locations as { options?: Partial<ZLinkLocationOptionValues> }).options ??= {};
+    return framework.createIntegrationLocationOptionsBuilder(
+      locations.options as Partial<ZLinkLocationOptionValues>
+    );
   }
 
   protected addSerializer(contentType: string, serializer: ZLinkMessageSerializer): void {
@@ -171,28 +172,21 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     this.state.codecRegistry.addStreamCodec(contentType, codec);
   }
 
-  addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
-    this.ensureChannelAvailable(name);
-    this.state.clientServerChannels[name] = {};
-    return new DefaultZLinkNestClientServerChannelBuilder(this.state, name, this.state.clientServerChannels[name]);
-  }
-
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
     this.ensureChannelAvailable(name);
     this.state.fanoutChannels[name] = {};
     return new DefaultZLinkNestFanoutChannelBuilder(this.state, name, this.state.fanoutChannels[name]);
   }
 
-  addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
-    this.ensureChannelAvailable(name);
-    this.state.routerMeshes[name] = {};
-    markRouteTransportDeclared(this.state.routerMeshes[name]);
-    return new DefaultZLinkNestRouterMeshBuilder(this.state, name, this.state.routerMeshes[name]);
-  }
-
-  addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
-    this.state.spotNodes[name] ??= {};
-    return new DefaultZLinkNestSpotNodeBuilder(this.state, name, this.state.spotNodes[name]);
+  addRouteMesh(name: string): ZLinkNestMeshNodeBuilder {
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new framework.ZLinkConfigurationException('RouteMesh name must not be empty or padded.');
+    }
+    if (Object.prototype.hasOwnProperty.call(this.state.spotNodes, name)) {
+      throw new framework.ZLinkConfigurationException(`Duplicate RouteMesh '${name}'.`);
+    }
+    this.state.spotNodes[name] = {};
+    return new DefaultZLinkNestMeshNodeBuilder(this.state, name, this.state.spotNodes[name]);
   }
 
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
@@ -205,9 +199,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
       throw new framework.ZLinkConfigurationException('Channel name must not be empty or padded.');
     }
     if (
-      Object.prototype.hasOwnProperty.call(this.state.clientServerChannels, name)
-      || Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)
-      || Object.prototype.hasOwnProperty.call(this.state.routerMeshes, name)
+      Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)
     ) {
       throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
     }
@@ -217,9 +209,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     const options: ZLinkNestModuleRegistrationOptions = {
       [ZLINK_MODULE_OPTIONS_BRAND]: true,
       ...this.state.additionalOptions,
-      clientServerChannels: { ...this.state.clientServerChannels },
       fanoutChannels: { ...this.state.fanoutChannels },
-      routerMeshes: { ...this.state.routerMeshes },
       streams: { ...this.state.streams },
       spotNodes: { ...this.state.spotNodes },
       codecs: this.state.codecOptions.serializers.length === 0 &&
@@ -265,70 +255,6 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder imple
 
 }
 
-class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly channelOptions: Mutable<InternalZLinkNestClientServerChannelOptions>) {
-    super(state);
-  }
-
-  enableServer(bind: string | undefined): this {
-    this.channelOptions.server = { ...this.channelOptions.server, bind };
-    return this;
-  }
-
-  routingId(routingId: string | undefined): this {
-    framework.rejectAllocatedRoutingId(this.channelOptions.routingIdAllocation, this.name);
-    this.channelOptions.server = {
-      ...this.channelOptions.server,
-      routingId
-    };
-    return this;
-  }
-
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    framework.rejectFixedRoutingId(this.channelOptions.server?.routingId, this.name);
-    this.channelOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.channelOptions.routingIdAllocation?.groupName);
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.channelOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.channelOptions.routingIdAllocation, this.name);
-    return this;
-  }
-
-  configureServerSocket(): ZLinkSocketConfig {
-    this.channelOptions.server ??= {};
-    return this.channelOptions.server;
-  }
-
-  configureClientSocket(): ZLinkSocketConfig {
-    this.channelOptions.client ??= {};
-    return this.channelOptions.client;
-  }
-
-  enableClient(endpoint?: string | readonly string[]): this {
-    this.channelOptions.client = {
-      ...this.channelOptions.client,
-      ...(endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) })
-    };
-    return this;
-  }
-
-  addHandlerGroup(groupName: string): this {
-    this.channelOptions.handlerGroups = [...(this.channelOptions.handlerGroups ?? []), groupName];
-    return this;
-  }
-
-  addRequestHandler(packetName: string, handlerType: Type): this {
-    this.channelOptions.requestHandlerTypes = [...(this.channelOptions.requestHandlerTypes ?? []), { packetName, handlerType }];
-    return this;
-  }
-
-  addSendHandler(packetName: string, handlerType: Type): this {
-    this.channelOptions.sendHandlerTypes = [...(this.channelOptions.sendHandlerTypes ?? []), { packetName, handlerType }];
-    return this;
-  }
-}
-
 class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestFanoutChannelBuilder {
   constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
     super(state);
@@ -372,65 +298,6 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
   }
 }
 
-class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestRouterMeshBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly routeOptions: Mutable<InternalZLinkNestRouterMeshOptions>) {
-    super(state);
-  }
-
-  enableRouter(endpoint: string | undefined): this {
-    this.routeOptions.bind = endpoint;
-    return this;
-  }
-
-  enableClient(): this {
-    markRouteClientEnabled(this.routeOptions);
-    this.routeOptions.manualConnections = [];
-    return this;
-  }
-
-  routingId(routingId: string | undefined): this {
-    framework.rejectAllocatedRoutingId(this.routeOptions.routingIdAllocation, this.name);
-    this.routeOptions.routingId = routingId;
-    return this;
-  }
-
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    framework.rejectFixedRoutingId(this.routeOptions.routingId, this.name);
-    this.routeOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.routeOptions.routingIdAllocation?.groupName);
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.routeOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.routeOptions.routingIdAllocation, this.name);
-    return this;
-  }
-
-  configureSocket(): ZLinkSocketConfig {
-    return this.routeOptions;
-  }
-
-  connect(endpoint: string | readonly string[] | undefined): this {
-    markRouteClientEnabled(this.routeOptions);
-    this.routeOptions.manualConnections = endpoint === undefined ? [] : endpointList(endpoint);
-    return this;
-  }
-
-  addHandlerGroup(groupName: string): this {
-    this.routeOptions.handlerGroups = [...(this.routeOptions.handlerGroups ?? []), groupName];
-    return this;
-  }
-
-  addSendHandler(packetName: string, handlerType: Type): this {
-    this.routeOptions.sendHandlerTypes = [...(this.routeOptions.sendHandlerTypes ?? []), { packetName, handlerType }];
-    return this;
-  }
-
-  addRequestHandler(packetName: string, handlerType: Type): this {
-    this.routeOptions.requestHandlerTypes = [...(this.routeOptions.requestHandlerTypes ?? []), { packetName, handlerType }];
-    return this;
-  }
-}
-
 class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestStreamNodeBuilder {
   constructor(state: ZLinkNestBuilderState, private readonly streamOptions: Mutable<ZLinkStreamNodeOptions>) {
     super(state);
@@ -438,6 +305,21 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implemen
 
   bind(endpoint: string | undefined): this {
     this.streamOptions.bind = endpoint;
+    return this;
+  }
+
+  enableActorDispatch(meshName: string): this {
+    if (meshName.trim().length === 0 || meshName.trim() !== meshName) {
+      throw new framework.ZLinkConfigurationException(
+        'STREAM actor dispatch MeshName must not be empty or padded.'
+      );
+    }
+    if (this.streamOptions.actorDispatchMeshName !== undefined) {
+      throw new framework.ZLinkConfigurationException(
+        'STREAM node actor dispatch MeshName is already configured.'
+      );
+    }
+    this.streamOptions.actorDispatchMeshName = meshName;
     return this;
   }
 
@@ -460,9 +342,31 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implemen
 
 }
 
-class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestSpotNodeBuilder {
+class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestMeshNodeBuilder {
   constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
     super(state);
+  }
+
+  channelName(name: string): ZLinkNestMeshChannelBuilder {
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new framework.ZLinkConfigurationException('Mesh channel name must not be empty or padded.');
+    }
+    const channels = {
+      ...(this.spotOptions.meshChannels ?? {})
+    } as Record<string, Mutable<NonNullable<ZLinkSpotNodeOptions['meshChannels']>[string]>>;
+    if (Object.prototype.hasOwnProperty.call(channels, name)) {
+      throw new framework.ZLinkConfigurationException(
+        `Duplicate channel '${name}' in RouteMesh '${this.name}'.`
+      );
+    }
+    channels[name] = {};
+    this.spotOptions.meshChannels = channels;
+    return new DefaultZLinkNestMeshChannelBuilder(this.state, channels[name]);
+  }
+
+  listen(endpoint: string): this {
+    this.spotOptions.router = { ...(this.spotOptions.router ?? {}), bind: endpoint };
+    return this;
   }
 
   routingId(routingId: string | undefined): this {
@@ -488,52 +392,34 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
-  enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
-    this.spotOptions.router = {
-      ...(this.spotOptions.router ?? {}),
-      bind,
-      routingId: routingId ?? this.spotOptions.routingId,
-      manualConnections: connect === undefined ? this.spotOptions.router?.manualConnections : endpointList(connect)
-    };
-    return this;
-  }
-
-  connectRouter(peerRidOrEndpoint: string, endpoint?: string): this {
+  configureRouterSocket(): ZLinkMeshNodeSocketConfig {
     this.spotOptions.router ??= {};
-    const router = this.spotOptions.router as {
-      manualConnections?: string[];
-      manualPeerConnections?: { peerRid: string; endpoint: string }[];
-    };
-    if (endpoint === undefined) {
-      router.manualConnections ??= [];
-      router.manualConnections.push(peerRidOrEndpoint);
-      return this;
-    }
-    router.manualPeerConnections ??= [];
-    router.manualPeerConnections.push({
-      peerRid: peerRidOrEndpoint,
-      endpoint
-    });
+    return this.spotOptions.router as ZLinkMeshNodeSocketConfig;
+  }
+
+  configureSpotPublisher(): ZLinkSpotPublisherConfig {
+    this.spotOptions.publisherConfig ??= {};
+    return this.spotOptions.publisherConfig as ZLinkSpotPublisherConfig;
+  }
+
+  peerConnections(): ZLinkMeshPeerConnections {
+    this.spotOptions.router ??= {};
+    return new DefaultZLinkNestMeshPeerConnections(this.spotOptions.router);
+  }
+
+  addSendHandler(packetName: string, handlerType: Type): this {
+    this.spotOptions.routeSendHandlers = [
+      ...(this.spotOptions.routeSendHandlers ?? []),
+      { packetName, handlerType }
+    ];
     return this;
   }
 
-  enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this {
-    this.spotOptions.pubSub = {
-      ...(this.spotOptions.pubSub ?? {}),
-      bind,
-      routingId: routingId ?? this.spotOptions.routingId,
-      manualConnections: connect === undefined ? this.spotOptions.pubSub?.manualConnections : endpointList(connect)
-    };
-    return this;
-  }
-
-  connectPeerPub(endpoint: string): this {
-    this.spotOptions.pubSub ??= {};
-    const pubSub = this.spotOptions.pubSub as {
-      manualConnections?: string[];
-    };
-    pubSub.manualConnections ??= [];
-    pubSub.manualConnections.push(endpoint);
+  addRequestHandler(packetName: string, handlerType: Type): this {
+    this.spotOptions.routeRequestHandlers = [
+      ...(this.spotOptions.routeRequestHandlers ?? []),
+      { packetName, handlerType }
+    ];
     return this;
   }
 
@@ -561,41 +447,89 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
-  useDrainPolicy(policy: import('@zlink-systems/framework').ZLinkSpotDrainPolicy): this {
-    this.spotOptions.drainPolicy = policy;
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: string,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this {
+    const actorFactory = this.spotOptions.actorFactories instanceof Map
+      ? this.spotOptions.actorFactories.get(actorType)
+      : (this.spotOptions.actorFactories as Readonly<Record<string, Type>> | undefined)?.[actorType];
+    if (actorFactory === undefined) {
+      throw new framework.ZLinkConfigurationException(
+        `Actor transfer adapter '${actorType}' requires an actor factory on RouteMesh '${this.name}'.`
+      );
+    }
+    this.registerActorTransferAdapter(actorFactory as Type<TActor>, adapterType);
     return this;
+  }
+
+}
+
+class DefaultZLinkNestMeshChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestMeshChannelBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly channel: Mutable<NonNullable<ZLinkSpotNodeOptions['meshChannels']>[string]>
+  ) {
+    super(state);
+  }
+
+  setWeight(weight: number): this {
+    this.channel.weight = weight;
+    return this;
+  }
+
+  addSendHandler(packetName: string, handlerType: Type): this {
+    this.channel.sendHandlers = [...(this.channel.sendHandlers ?? []), { packetName, handlerType }];
+    return this;
+  }
+
+  addRequestHandler(packetName: string, handlerType: Type): this {
+    this.channel.requestHandlers = [...(this.channel.requestHandlers ?? []), { packetName, handlerType }];
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    this.channel.handlerGroups = [...(this.channel.handlerGroups ?? []), groupName];
+    return this;
+  }
+}
+
+class DefaultZLinkNestMeshPeerConnections implements ZLinkMeshPeerConnections {
+  constructor(private readonly router: Mutable<NonNullable<ZLinkSpotNodeOptions['router']>>) {}
+
+  connect(endpoint: string): void;
+  connect(expectedRoutingId: string, endpoint: string): void;
+  connect(expectedRoutingIdOrEndpoint: string, endpoint?: string): void {
+    if (endpoint === undefined) {
+      this.router.manualConnections = [...(this.router.manualConnections ?? []), expectedRoutingIdOrEndpoint];
+      return;
+    }
+    this.router.manualPeerConnections = [
+      ...(this.router.manualPeerConnections ?? []),
+      { peerRid: expectedRoutingIdOrEndpoint, endpoint }
+    ];
+  }
+
+  disconnect(endpoint: string): void {
+    this.router.manualConnections = (this.router.manualConnections ?? [])
+      .filter((value) => value !== endpoint);
+    this.router.manualPeerConnections = (this.router.manualPeerConnections ?? [])
+      .filter((value) => value.endpoint !== endpoint);
+  }
+
+  listConnections(): readonly ZLinkMeshPeerConnection[] {
+    return [
+      ...(this.router.manualConnections ?? []).map((endpoint) => ({ endpoint })),
+      ...(this.router.manualPeerConnections ?? []).map((connection) => ({
+        endpoint: connection.endpoint,
+        expectedRoutingId: connection.peerRid
+      }))
+    ];
   }
 }
 
 function endpointList(endpoint: string | readonly string[]): string[] {
   return typeof endpoint === 'string' ? [endpoint] : [...endpoint];
-}
-
-function markRouteClientEnabled(routeOptions: object): void {
-  defineRouteInternalFlag(routeOptions, 'clientEnabled');
-}
-
-function markRouteTransportDeclared(routeOptions: object): void {
-  defineRouteInternalFlag(routeOptions, 'transportDeclared');
-}
-
-export function copyRouteInternalState(source: object, target: object): void {
-  const state = source as InternalZLinkNestRouterMeshOptions;
-  if (state.clientEnabled === true) {
-    markRouteClientEnabled(target);
-  }
-  if (state.transportDeclared === true) {
-    markRouteTransportDeclared(target);
-  }
-}
-
-function defineRouteInternalFlag(routeOptions: object, key: 'clientEnabled' | 'transportDeclared'): void {
-  Object.defineProperty(routeOptions, key, {
-    value: true,
-    configurable: true,
-    enumerable: false,
-    writable: true
-  });
 }
 
 export function createZLinkNestFrameworkOptionsBuilder(): ZLinkNestFrameworkOptionsBuilder {

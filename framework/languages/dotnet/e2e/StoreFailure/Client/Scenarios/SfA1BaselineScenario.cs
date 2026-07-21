@@ -20,6 +20,10 @@ internal static class SfA1BaselineScenario
             SfProbe.PeerRows(options.OwnerLeaseTtl + options.PollingInterval * 4,
                 present: ["api-a", "api-b"]),
             "SF-A1: both provider rows did not appear in the consumer's peer list.");
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-A1: both provider routes did not become ready.");
 
         var served = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < 8; i++)

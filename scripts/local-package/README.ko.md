@@ -69,6 +69,22 @@ Core version marker를 먼저 맞춘 뒤 .NET, Java/Kotlin, Node.js, C++ package
 ./scripts/local-package/publish-all-wsl.sh core/v9.0.0
 ```
 
+RC를 검증할 때는 asset tag의 `-rc.N`을 유지한다. 다만 Core의 C header와 runtime이 보고하는 version은
+항상 숫자 `X.Y.Z`이며 RC suffix를 포함하지 않는다.
+
+```bash
+./scripts/local-package/publish-all-wsl.sh core/v10.7.0-rc.1
+```
+
+동기화 단계는 release의 `release-provenance.txt`를 읽어 tag가 가리키는 source commit, 숫자 runtime
+version, `checksums.txt`와 source archive의 SHA-256, source asset URL을 함께 검증한다. 어느 값이라도
+다르면 binding workspace를 갱신하기 전에 실패한다. stable과 RC fixture 및 실패 조건은 다음 명령으로
+로컬에서 확인한다.
+
+```bash
+./scripts/local-package/native/test-release-contract.sh
+```
+
 release repository를 명시하거나 기대 버전을 검증하려면 다음처럼 실행한다.
 
 ```bash
@@ -221,6 +237,7 @@ core release 산출물이나 로컬 core 빌드 결과를 bindings workspace에 
 | `native/update-zlink-libs.sh` | GitHub release asset을 받아 bindings native library와 버전 마커를 갱신한다 |
 | `native/sync-local-core-libs.sh` | 로컬 `core/build/lib` 결과를 bindings native 위치에 복사한다 |
 | `native/fetch-release-binaries.sh` | release asset 다운로드와 파일 복사를 수행하는 내부 스크립트 |
+| `native/test-release-contract.sh` | RC/stable tag와 provenance 실패 조건을 fixture로 검증한다 |
 
 기존에 `bindings/` 또는 `core/tools/` 아래에 있던 동기화 스크립트는 유지하지 않는다. 자동화와
 문서는 이 표의 경로를 직접 호출해야 한다.

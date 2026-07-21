@@ -307,11 +307,11 @@ int main (int argc, char **argv)
           .add_singleton<customer_actor_runtime_t> (std::move (runtime));
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
-        options.add_spot_mesh (sample_names_t::customer_actor_discovery)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::customer_spot_node))
-          .enable_router (topology.customer_spot_router_endpoint)
-          .enable_pub_sub (topology.customer_spot_endpoint)
-          .add_entry_spot<customer_entry_spot_t> ([sessions_ptr, runtime_ptr] {
+        auto actor_mesh = options.add_route_mesh (sample_names_t::customer_actor_discovery);
+        actor_mesh.set_routing_id (zlink::routing_id_t::from (sample_names_t::customer_spot_node))
+          .listen (topology.customer_spot_router_endpoint);
+        actor_mesh.channel_name (sample_names_t::customer_actor_discovery);
+        actor_mesh.add_entry_spot<customer_entry_spot_t> ([sessions_ptr, runtime_ptr] {
               return std::make_shared<customer_entry_spot_t> (*sessions_ptr, *runtime_ptr);
           })
           .add_actor_factory<customer_actor_factory_t> (sample_names_t::customer_actor_type);

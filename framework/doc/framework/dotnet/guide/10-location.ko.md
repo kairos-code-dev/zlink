@@ -169,7 +169,7 @@ locations.ObservedMeshNames.Add("game-mesh"); // 직접 참여하지 않는 mesh
 | `ListPageSize` | 1000 | 목록 조회 한 페이지 크기 |
 | `ObservedMeshNames` | 빈 목록 | 이 호스트가 직접 참여하지 않는 mesh를 운영 조회로 관찰할 때 열거 |
 | `RoutingIdFencingMargin` | 5s | 할당 routing id 사용 시 lease 만료 전 소켓 정지에 확보하는 여유 |
-| `OwnerLeaseRenewTimeout` | 3s | 할당 routing id의 fencing 판정에 허용하는 1회 갱신 시도 시간 |
+| `OwnerLeaseRenewTimeout` | 3s | owner lease를 한 번 갱신할 때 허용하는 최대 시간 |
 
 ## 4. 운영 조회
 
@@ -213,16 +213,18 @@ SPOT과 actor 메시징이 원격 대상을 찾을 때도 같은 store를 쓴다
 ```csharp
 public sealed class OrderRouter(IZLinkSpotHandleResolver spots)
 {
-    public async Task<SpotHandle> FindRoomAsync(RoutingId roomRid)
+    public async Task<SpotHandle> FindRoomAsync(string meshName, RoutingId roomRid)
     {
-        return await spots.ResolveSpotHandleAsync(roomRid)
+        return await spots.ResolveSpotHandleAsync(meshName, roomRid)
             ?? throw new InvalidOperationException($"room '{roomRid}' not found");
     }
 }
 ```
 
-- `IZLinkActorSpotHandleResolver.ResolveActorSpotHandleAsync(actorId)`는 actor가
+- `IZLinkActorSpotHandleResolver.ResolveActorSpotHandleAsync(meshName, actorId)`는 actor가
   위치한 spot의 handle을 돌려준다.
+- Spot RID와 actor id는 다른 MeshName에서 같을 수 있으므로 두 resolver 모두 MeshName을
+  명시한다. framework는 등록된 mesh를 순서대로 탐색하지 않는다.
 - 이동·소멸로 handle이 낡으면 framework가 주소를 한 번 갱신하고, 안전한 요청만
   한 번 재전송한다. 세부 흐름은 [06-spot](06-spot.ko.md)과
   [07-actor-spot](07-actor-spot.ko.md)을 참고한다.

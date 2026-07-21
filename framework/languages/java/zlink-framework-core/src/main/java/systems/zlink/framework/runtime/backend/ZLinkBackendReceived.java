@@ -11,11 +11,33 @@ public record ZLinkBackendReceived(
     Optional<RoutingId> routingId,
     Optional<RoutingId> spotRid,
     Optional<Long> requestSeq,
+    byte[] applicationMetadata,
     List<Message> parts,
     Consumer<List<Message>> reply,
     Runnable closeAction) implements AutoCloseable {
     public ZLinkBackendReceived {
         result = result == null ? ZLinkBackendRequestResult.OK : result;
+        applicationMetadata =
+            applicationMetadata == null ? new byte[0] : applicationMetadata.clone();
+    }
+
+    public ZLinkBackendReceived(
+        ZLinkBackendRequestResult result,
+        Optional<RoutingId> routingId,
+        Optional<RoutingId> spotRid,
+        Optional<Long> requestSeq,
+        List<Message> parts,
+        Consumer<List<Message>> reply,
+        Runnable closeAction) {
+        this(
+            result,
+            routingId,
+            spotRid,
+            requestSeq,
+            new byte[0],
+            parts,
+            reply,
+            closeAction);
     }
 
     public ZLinkBackendReceived(
@@ -23,7 +45,15 @@ public record ZLinkBackendReceived(
         Optional<RoutingId> spotRid,
         Optional<Long> requestSeq,
         List<Message> parts) {
-        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, null, () -> { });
+        this(
+            ZLinkBackendRequestResult.OK,
+            routingId,
+            spotRid,
+            requestSeq,
+            new byte[0],
+            parts,
+            null,
+            () -> { });
     }
 
     public ZLinkBackendReceived(
@@ -32,7 +62,15 @@ public record ZLinkBackendReceived(
         Optional<Long> requestSeq,
         List<Message> parts,
         Consumer<List<Message>> reply) {
-        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, reply, () -> { });
+        this(
+            ZLinkBackendRequestResult.OK,
+            routingId,
+            spotRid,
+            requestSeq,
+            new byte[0],
+            parts,
+            reply,
+            () -> { });
     }
 
     public ZLinkBackendReceived(
@@ -42,7 +80,15 @@ public record ZLinkBackendReceived(
         List<Message> parts,
         Consumer<List<Message>> reply,
         Runnable closeAction) {
-        this(ZLinkBackendRequestResult.OK, routingId, spotRid, requestSeq, parts, reply, closeAction);
+        this(
+            ZLinkBackendRequestResult.OK,
+            routingId,
+            spotRid,
+            requestSeq,
+            new byte[0],
+            parts,
+            reply,
+            closeAction);
     }
 
     public ZLinkBackendReceived(
@@ -51,7 +97,20 @@ public record ZLinkBackendReceived(
         Optional<RoutingId> spotRid,
         Optional<Long> requestSeq,
         List<Message> parts) {
-        this(result, routingId, spotRid, requestSeq, parts, null, () -> { });
+        this(
+            result,
+            routingId,
+            spotRid,
+            requestSeq,
+            new byte[0],
+            parts,
+            null,
+            () -> { });
+    }
+
+    @Override
+    public byte[] applicationMetadata() {
+        return applicationMetadata.clone();
     }
 
     public void reply(List<Message> replyParts) {

@@ -23,11 +23,14 @@ internal sealed class CourierOfferPort(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var entrySpot = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
+        var entrySpot = await spots.ResolveSpotHandleAsync(
+                            SampleNames.MeshName,
+                            placement.NodeRid,
+                            cancellationToken)
                         ?? throw new InvalidOperationException(
                             $"Courier entry spot has no live location row: {placement.NodeRid}");
 
-        spotsClient
+        await spotsClient
             .SendToSpot(
                 entrySpot,
                 new OfferDeliveryMsg(
@@ -36,7 +39,7 @@ internal sealed class CourierOfferPort(
                     attempt,
                     delivery.PickupAddress,
                     delivery.DropoffAddress))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
     }
 }
 
@@ -70,7 +73,7 @@ internal static class DispatchChannelClient
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        var call = channels.RequestToChannel(channelName, channelName, request);
+        var call = channels.RequestToChannel(SampleNames.MeshName, channelName, request);
         if (timeout is { } value)
         {
             call = call.Timeout(value);

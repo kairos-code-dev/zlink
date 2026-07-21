@@ -9,22 +9,18 @@ public sealed record ZoneWorldSettings(
 
 public sealed record ZoneNodeSettings(
     string NodeId,
-    string SpotRouterEndpoint,
-    string SpotPubSubEndpoint,
-    string OpsChannelEndpoint,
-    string ActorsChannelEndpoint,
-    string BridgeEndpoint,
+    string MeshEndpoint,
     string? FaultTickZone = null,
     bool DisableBots = false);
 
 public sealed record GatewaySettings(
     string StreamEndpoint,
-    string SpotRouterEndpoint);
+    string MeshEndpoint);
 
 public sealed record OpsSettings(
     string StreamEndpoint,
     string BroadcastEndpoint,
-    string ReportEndpoint);
+    string MeshEndpoint);
 
 public sealed record ZoneWorldClientSettings(
     string GatewayEndpoint,

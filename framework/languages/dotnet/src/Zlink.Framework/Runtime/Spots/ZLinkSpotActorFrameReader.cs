@@ -36,7 +36,8 @@ internal sealed class ZLinkSpotActorFrame(
 }
 
 internal sealed class ZLinkSpotActorFrameBatch(
-    IReadOnlyList<ZLinkSpotActorFrame> frames) : IDisposable
+    IReadOnlyList<ZLinkSpotActorFrame> frames,
+    Action? completion = null) : IDisposable
 {
     private int _disposed;
 
@@ -44,11 +45,21 @@ internal sealed class ZLinkSpotActorFrameBatch(
 
     public ZLinkSpotActorFrame this[int index] => frames[index];
 
+    public ZLinkSpotActorFrameBatch WithCompletion(Action onCompleted) =>
+        new(frames, onCompleted);
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-        foreach (var frame in frames) frame.Dispose();
+        try
+        {
+            foreach (var frame in frames) frame.Dispose();
+        }
+        finally
+        {
+            completion?.Invoke();
+        }
     }
 }
 

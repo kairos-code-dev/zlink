@@ -22,15 +22,15 @@ export function matchesPeer(row: ZLinkPeerLocation, filter: ZLinkPeerLocationFil
 export function matchesSpot(row: ZLinkSpotLocation, filter: ZLinkSpotLocationFilter): boolean {
   return (filter.meshName === undefined || row.meshName === filter.meshName)
     && (filter.spotType === undefined || row.spotType === filter.spotType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
+    && (filter.nodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.nodeRid))
     && (filter.spotKind === undefined || row.spotKind === filter.spotKind);
 }
 
 export function matchesActor(row: ZLinkActorLocation, filter: ZLinkActorLocationFilter): boolean {
   return (filter.actorType === undefined || row.actorType === filter.actorType)
-    && (filter.nodeRid === undefined || routingIdsEqual(row.nodeRid, filter.nodeRid))
+    && (filter.nodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.nodeRid))
     && (filter.spotRid === undefined || routingIdsEqual(row.spotRid, filter.spotRid))
-    && (filter.locationKind === undefined || row.locationKind === filter.locationKind);
+    && (filter.locationKind === undefined || row.spotKind === filter.locationKind);
 }
 
 export function matchesRoute(row: ZLinkRouteLocation, filter: ZLinkRouteLocationFilter): boolean {

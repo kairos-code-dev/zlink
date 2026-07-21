@@ -10,8 +10,8 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("MON-A3", () => MonA3SpotEventsScenario.RunAsync(options)),
     ("MON-A4", () => MonA4AvailabilityTransitionScenario.RunAsync(options)),
     ("MON-A5", () => MonA5FixedKindsScenario.RunAsync(options)),
-    ("MON-B1", () => MonB1KindFilterScenario.RunAsync(options)),
-    ("MON-B2", () => MonB2RegistrationValidationScenario.RunAsync(options)),
+    ("MON-B1", () => MonB1RemoteBackpressureScenario.RunAsync(options)),
+    ("MON-B2", () => MonB2LocalTargetDropScenario.RunAsync(options)),
     ("MON-C1", () => MonC1DispatchFailureScenario.RunAsync(options)),
     ("MON-D1", () => MonD1FailureRecoveryScenario.RunAsync(options))
 };

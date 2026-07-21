@@ -57,9 +57,10 @@ function createJsonOnlyModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addClientServerChannel(RegistrationCodecNames.channel)
-            .enableServer(options.channelEndpoint)
-            .enableClient(options.channelEndpoint)
+          const mesh = builder.addRouteMesh(RegistrationCodecNames.channel)
+            .listen(options.channelEndpoint);
+          mesh.peerConnections().connect(options.channelEndpoint);
+          mesh.channelName(RegistrationCodecNames.channel)
             .addRequestHandler(PacketNames.echoJsonReq, JsonOnlyEchoRequestHandler);
           return builder.build();
         }

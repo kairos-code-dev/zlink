@@ -48,6 +48,10 @@ public final class NativeServiceSymbols {
         dc("zlink_mesh_node_add_channel_name", FunctionDescriptor.of(I, A, A));
     private static final MethodHandle MESH_NODE_SET_CHANNEL_WEIGHT =
         dc("zlink_mesh_node_set_channel_weight", FunctionDescriptor.of(I, A, A, I));
+    private static final MethodHandle SET_MESH_NODE_OPTION =
+        dc("zlink_set_mesh_node_option", FunctionDescriptor.of(I, A, I, A, L));
+    private static final MethodHandle GET_MESH_NODE_OPTION =
+        dc("zlink_get_mesh_node_option", FunctionDescriptor.of(I, A, I, A, A));
     private static final MethodHandle MESH_NODE_CONNECT_PEER =
         dc("zlink_mesh_node_connect_peer", FunctionDescriptor.of(I, A, A, A));
     private static final MethodHandle MESH_NODE_REMOVE_PEER_CONNECTION =
@@ -58,6 +62,8 @@ public final class NativeServiceSymbols {
         dc("zlink_mesh_node_status", FunctionDescriptor.of(I, A, A));
     private static final MethodHandle MESH_NODE_PEERS =
         dc("zlink_mesh_node_peers", FunctionDescriptor.of(I, A, A, A));
+    private static final MethodHandle MESH_NODE_PEER_CHANNELS =
+        dc("zlink_mesh_node_peer_channels", FunctionDescriptor.of(I, A, A, L, A, A, A));
     private static final MethodHandle MESH_NODE_MONITOR_OPEN =
         dc("zlink_mesh_node_monitor_open", FunctionDescriptor.of(A, A, A));
     private static final MethodHandle MESH_NODE_MONITOR_RECV =
@@ -174,6 +180,15 @@ public final class NativeServiceSymbols {
         dc("zlink_mesh_receive_batch_retain_message", FunctionDescriptor.of(I, A, L, A, A));
     private static final MethodHandle MESH_REPLY =
         dc("zlink_mesh_reply", FunctionDescriptor.of(I, A, A, L, I));
+    private static final MethodHandle ACTOR_TRANSFER_PREPARE =
+        dc("zlink_mesh_node_actor_transfer_prepare",
+            FunctionDescriptor.of(I, A, A, I, A, A));
+    private static final MethodHandle ACTOR_TRANSFER_COMMIT =
+        dc("zlink_mesh_node_actor_transfer_commit", FunctionDescriptor.of(I, A, L));
+    private static final MethodHandle ACTOR_TRANSFER_ACTIVATE =
+        dc("zlink_mesh_node_actor_transfer_activate", FunctionDescriptor.of(I, A));
+    private static final MethodHandle ACTOR_TRANSFER_ABORT =
+        dc("zlink_mesh_node_actor_transfer_abort", FunctionDescriptor.of(I, A));
 
     // --- stream_session ---
     private static final MethodHandle STREAM_SESSION_NEW =
@@ -261,6 +276,32 @@ public final class NativeServiceSymbols {
         }
     }
 
+    public static int setMeshNodeOption(
+        MemorySegment node,
+        int option,
+        MemorySegment value,
+        long valueSize) {
+        try {
+            return (int) SET_MESH_NODE_OPTION.invokeExact(
+                node, option, value, valueSize);
+        } catch (Throwable t) {
+            throw fail("zlink_set_mesh_node_option", t);
+        }
+    }
+
+    public static int getMeshNodeOption(
+        MemorySegment node,
+        int option,
+        MemorySegment value,
+        MemorySegment valueSize) {
+        try {
+            return (int) GET_MESH_NODE_OPTION.invokeExact(
+                node, option, value, valueSize);
+        } catch (Throwable t) {
+            throw fail("zlink_get_mesh_node_option", t);
+        }
+    }
+
     public static int meshNodeConnectPeer(MemorySegment node, MemorySegment options,
                                    MemorySegment intentOut) {
         try {
@@ -299,6 +340,21 @@ public final class NativeServiceSymbols {
             return (int) MESH_NODE_PEERS.invokeExact(node, entries, count);
         } catch (Throwable t) {
             throw fail("zlink_mesh_node_peers", t);
+        }
+    }
+
+    public static int meshNodePeerChannels(
+        MemorySegment node,
+        MemorySegment peerRid,
+        long lifecycleGeneration,
+        MemorySegment channelNames,
+        MemorySegment weights,
+        MemorySegment count) {
+        try {
+            return (int) MESH_NODE_PEER_CHANNELS.invokeExact(
+                node, peerRid, lifecycleGeneration, channelNames, weights, count);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_peer_channels", t);
         }
     }
 
@@ -782,6 +838,44 @@ public final class NativeServiceSymbols {
             return (int) MESH_REPLY.invokeExact(token, parts, count, flags);
         } catch (Throwable t) {
             throw fail("zlink_mesh_reply", t);
+        }
+    }
+
+    public static int actorTransferPrepare(
+        MemorySegment node,
+        MemorySegment prepare,
+        int timeoutMs,
+        MemorySegment tokenOut,
+        MemorySegment resultOut) {
+        try {
+            return (int) ACTOR_TRANSFER_PREPARE.invokeExact(
+                node, prepare, timeoutMs, tokenOut, resultOut);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_actor_transfer_prepare", t);
+        }
+    }
+
+    public static int actorTransferCommit(MemorySegment token, long newMembershipEpoch) {
+        try {
+            return (int) ACTOR_TRANSFER_COMMIT.invokeExact(token, newMembershipEpoch);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_actor_transfer_commit", t);
+        }
+    }
+
+    public static int actorTransferActivate(MemorySegment token) {
+        try {
+            return (int) ACTOR_TRANSFER_ACTIVATE.invokeExact(token);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_actor_transfer_activate", t);
+        }
+    }
+
+    public static int actorTransferAbort(MemorySegment token) {
+        try {
+            return (int) ACTOR_TRANSFER_ABORT.invokeExact(token);
+        } catch (Throwable t) {
+            throw fail("zlink_mesh_node_actor_transfer_abort", t);
         }
     }
 

@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.spots;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -16,6 +17,9 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationA
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkSendContext;
 
 final class ZLinkSpotHandlerInvoker {
     private final ZLinkMessageSerializer serializer;
@@ -36,10 +40,11 @@ final class ZLinkSpotHandlerInvoker {
         Object spotSurface,
         ZLinkActor actor,
         Message payload,
+        Map<String, String> metadata,
         String failureMessage) {
         Object message = deserialize(payload, registration.messageType());
         ZLinkSpotActorSendContext context =
-            new ZLinkSpotActorSendHandlerContext(registration.packetName());
+            new ZLinkSpotActorSendHandlerContext(registration.packetName(), metadata);
         if (registration.handlerMethod() == null) {
             return invokeActorSendInterface(
                 registration,
@@ -66,10 +71,11 @@ final class ZLinkSpotHandlerInvoker {
         Object spotSurface,
         ZLinkActor actor,
         Message payload,
+        Map<String, String> metadata,
         String failureMessage) {
         Object message = deserialize(payload, registration.messageType());
         ZLinkSpotActorRequestContext context =
-            new ZLinkSpotActorRequestHandlerContext(registration.packetName());
+            new ZLinkSpotActorRequestHandlerContext(registration.packetName(), metadata);
         CompletionStage<Object> reply = registration.handlerMethod() == null
             ? invokeActorRequestInterface(
                 registration,
@@ -97,19 +103,31 @@ final class ZLinkSpotHandlerInvoker {
         SpotPacketHandlerRegistration registration,
         Object spot,
         Message payload) {
+        return invokePacket(registration, spot, payload, Map.of());
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    CompletionStage<Void> invokePacket(
+        SpotPacketHandlerRegistration registration,
+        Object spot,
+        Message payload,
+        Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
+        ZLinkSendContext context = new ZLinkSpotSendHandlerContext(
+            registration.packetName(), null, metadata);
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             CompletionStage<?> stage = registration.handlerMethod() != null
                 ? ZLinkHandlerMethodInvoker.invoke(
                     handler,
                     registration.handlerMethod(),
-                    new Object[] {spot, message},
+                    spotMessageArguments(
+                        registration.handlerMethod(), spot, message, context),
                     suspendHandlerInvokers)
                 : ZLinkHandlerMethodInvoker.invokeHandler(
                     handler,
                     "handle",
-                    new Object[] {spot, message},
+                    new Object[] {spot, message, context},
                     suspendHandlerInvokers);
             return stage.thenApply(ignored -> null);
         } catch (RuntimeException ex) {
@@ -125,19 +143,31 @@ final class ZLinkSpotHandlerInvoker {
         SpotPacketHandlerRegistration registration,
         Object spot,
         Message payload) {
+        return invokeRequest(registration, spot, payload, Map.of());
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    CompletionStage<Message> invokeRequest(
+        SpotPacketHandlerRegistration registration,
+        Object spot,
+        Message payload,
+        Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
+        ZLinkRequestContext context = new ZLinkSpotRequestHandlerContext(
+            registration.packetName(), null, metadata);
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             CompletionStage<?> stage = registration.handlerMethod() != null
                 ? ZLinkHandlerMethodInvoker.invoke(
                     handler,
                     registration.handlerMethod(),
-                    new Object[] {spot, message},
+                    spotMessageArguments(
+                        registration.handlerMethod(), spot, message, context),
                     suspendHandlerInvokers)
                 : ZLinkHandlerMethodInvoker.invokeHandler(
                     handler,
                     "handle",
-                    new Object[] {spot, message},
+                    new Object[] {spot, message, context},
                     suspendHandlerInvokers);
             return stage.thenApply(reply ->
                 ZLinkMessagePayloads.message(serializer.serialize(reply)));
@@ -154,19 +184,46 @@ final class ZLinkSpotHandlerInvoker {
         SpotSubscriptionHandlerRegistration registration,
         Object spot,
         Message payload) {
+        return invokeSubscription(
+            registration,
+            spot,
+            null,
+            null,
+            Optional.empty(),
+            payload,
+            Map.of());
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    CompletionStage<Void> invokeSubscription(
+        SpotSubscriptionHandlerRegistration registration,
+        Object spot,
+        String channelName,
+        String topic,
+        Optional<String> source,
+        Message payload,
+        Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
+        ZLinkPublishContext context = new ZLinkSpotPublishHandlerContext(
+            channelName,
+            registration.packetName(),
+            topic,
+            null,
+            source,
+            metadata);
         try {
             Object handler = handlerFactory.create(registration.handlerType());
             CompletionStage<?> stage = registration.handlerMethod() != null
                 ? ZLinkHandlerMethodInvoker.invoke(
                     handler,
                     registration.handlerMethod(),
-                    new Object[] {spot, message},
+                    spotMessageArguments(
+                        registration.handlerMethod(), spot, message, context),
                     suspendHandlerInvokers)
                 : ZLinkHandlerMethodInvoker.invokeHandler(
                     handler,
                     "handle",
-                    new Object[] {spot, message},
+                    new Object[] {spot, message, context},
                     suspendHandlerInvokers);
             return stage.thenApply(ignored -> null);
         } catch (RuntimeException ex) {
@@ -188,6 +245,29 @@ final class ZLinkSpotHandlerInvoker {
             return new Object[] {actor, message};
         }
         return new Object[] {spot, actor, context, message};
+    }
+
+    private static Object[] spotMessageArguments(
+        Method method,
+        Object spot,
+        Object message,
+        ZLinkHandlerContext context) {
+        Class<?>[] parameterTypes =
+            ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
+        if (parameterTypes.length == 2) {
+            return new Object[] {spot, message};
+        }
+        Object[] arguments = new Object[parameterTypes.length];
+        for (int index = 0; index < parameterTypes.length; index++) {
+            if (parameterTypes[index].isInstance(context)) {
+                arguments[index] = context;
+            } else if (parameterTypes[index].isInstance(spot)) {
+                arguments[index] = spot;
+            } else {
+                arguments[index] = message;
+            }
+        }
+        return arguments;
     }
 
     private CompletionStage<Void> invokeVoidMethod(

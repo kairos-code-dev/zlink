@@ -4,6 +4,7 @@ using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Notifications;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -101,9 +102,9 @@ internal sealed class BingoRoom(
         // PublishAsync excludes the joining actor, so the destination room
         // notifies it after the actor has completed the join lifecycle.
         if (_game is not null && _game.Status == BingoRoomStatus.Running)
-            actor.Context.BoundSession
+            await actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
 
     }
 
@@ -221,7 +222,8 @@ internal sealed class BingoRoom(
                 change.State.Winners[0],
                 BingoRewardItems.GoldenDauberId,
                 Context.NodeRid.ToString());
-            Context.Outbound.Publish(
+            var publish = await Context.Outbound.Publish(
+                    SampleNames.RoomChannel,
                     SampleNames.RewardTopic,
                     new BingoRewardAcquiredEvent
                     {
@@ -232,7 +234,18 @@ internal sealed class BingoRoom(
                         ItemName = BingoRewardItems.GoldenDauberName,
                         Rarity = BingoRewardItems.LegendaryRarity
                     })
-                .TrySubmit();
+                .SubmitAsync(cancellationToken);
+            logger.LogInformation(
+                "bingo reward: multicast status={Status}, remote={AdmittedRemote}/{SnapshotRemote}, local={AdmittedLocal}/{SnapshotLocal}",
+                publish.Status,
+                publish.Detail.AdmittedRemoteNodeCount,
+                publish.Detail.SnapshotRemoteNodeCount,
+                publish.Detail.AdmittedLocalSpotCount,
+                publish.Detail.SnapshotLocalSpotCount);
+            if (publish.Status != ZLinkSubmitStatus.Submitted
+                || publish.Detail.AdmittedRemoteNodeCount != 1)
+                throw new InvalidOperationException(
+                    "Bingo reward multicast did not admit the other Play MeshNode.");
             logger.LogInformation(
                 "bingo reward: published. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,
@@ -272,7 +285,7 @@ internal sealed class BingoRoom(
             throw new InvalidOperationException($"Player is not submitting to this room. room={roomId}");
     }
 
-    internal ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
+    internal async ValueTask AnnounceRewardAsync(BingoRewardAcquiredEvent message, CancellationToken cancellationToken)
     {
         if (!_settings.IsObserver
             || _observerActor is null
@@ -287,7 +300,7 @@ internal sealed class BingoRoom(
                 _observerActor is not null,
                 _settings.ObservedRoomId ?? "-",
                 Context.NodeRid.ToString());
-            return ValueTask.CompletedTask;
+            return;
         }
 
         logger.LogInformation(
@@ -297,7 +310,7 @@ internal sealed class BingoRoom(
             message.ItemId,
             _observerActor.ActorId,
             Context.NodeRid.ToString());
-        _observerActor.Context.BoundSession
+        await _observerActor.Context.BoundSession
             .Send(
                 new BingoRewardAnnouncedNotify
                 {
@@ -309,8 +322,7 @@ internal sealed class BingoRoom(
                     Rarity = message.Rarity,
                     ReceivingSpotNodeRid = Context.NodeRid.ToString()
                 })
-            .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+            .SubmitAsync(cancellationToken);
     }
 
     internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId,

@@ -143,6 +143,7 @@ final class EntrySpotActorDispatchTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTest.class);
         var node = options.addSpotMesh("entry-actor-dispatch");
+        node.enableRouter("inproc://entry-actor-dispatch-router");
         var entry = node.configureEntrySpot();
         entry.setRoutingId(RoutingId.from("entry-actor-dispatch-entry"));
         node.addEntrySpot(EntryActorDispatchSpot.class);
@@ -287,7 +288,7 @@ final class EntrySpotActorDispatchTest {
                 return CompletableFuture.completedFuture(null);
             }
             if ("yield".equals(message)) {
-                return entrySpot.context().runCpuWorker(() -> message).submit()
+                return entrySpot.context().runCpuWorker(cancellation -> message).submit()
                     .thenAccept(ignored -> yieldObserved.countDown())
                     .exceptionally(error -> {
                         yieldError.set(error);

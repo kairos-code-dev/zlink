@@ -15,7 +15,7 @@
       "cpp": {
         "document": "framework/doc/framework/spec/stream-connector/languages/cpp/03-stream-connector.ko.md",
         "code_tags": ["cpp"],
-        "code_fixture": {"block_count": 10, "sha256": "68a38351bca942dd06d8e83254ff553501613673bb1e411764b5c54f37106117"},
+        "code_fixture": {"block_count": 11, "sha256": "323b52edd34ad5ecf4ab8d62fad43e186f48e4eea617f2fa16c43c69e640ba31"},
         "required_fragments": ["wait_for", "expect_none", "wait_for_sequence", "typed_codec"],
         "forbidden_fragments": ["codec_registry_t", "send_call_t& codec(", "request_call_t& codec("]
       },
@@ -44,15 +44,15 @@
         "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md",
         "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md"
       ],
-      "required_fragments": ["AddRouteMesh", "ChannelName", "EnableActorDispatch", "IZLinkMeshPeerConnections", "ExpectedRoutingId", "IZLinkPublishCall", "TrySubmit", "SubmitAsync", "IZLinkWorkerCall", "IZLinkWorkerOptions", "ZLinkHandlerGroupAttribute", "ZLinkLogicalMulticastDetail", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "SourceRid", "TargetRid", "Topic", "SpotRid", "SpotGeneration", "ActorId", "RemoteSnapshotCount", "RemoteAdmittedCount", "RemoteDroppedCount", "LocalSnapshotCount", "LocalAdmittedCount", "LocalDroppedCount", "LifecycleGeneration", "DescriptorRevision", "MaxMessageSize", "ZLinkRedisLocationStore", "IZLinkActorTransferStore", "GetOrCreateAsync", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "UseDrainPolicy", "IZLinkMessageFlowObserver", "IZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "SetRuntimeErrorSink", "string? Action"],
+      "required_fragments": ["AddRouteMesh", "Channel(string channelName)", "AddClientServerChannel", "IZLinkMeshChannelRoleBuilder", "IZLinkClientServerChannelRoleBuilder", "IZLinkNetworkOptions", "IZLinkClientServerRuntime", "ZLinkClientServerServerDescriptor", "AddHandlerGroup", "EnableActorDispatch", "IZLinkMeshPeerConnections", "ExpectedRoutingId", "IZLinkPublishCall", "IZLinkFanoutClient", "IZLinkFanoutPublishCall", "Publish<TEvent>", "ZLinkSubmitResult", "SubmitAsync", "IZLinkWorkerCall", "IZLinkWorkerOptions", "ZLinkHandlerGroupAttribute", "ZLinkLogicalMulticastDetail", "UnreachableRemoteNodeCount", "ZLinkMeshNodeSnapshot", "ZLinkInstanceSpotTypeSnapshot", "IReadOnlyList<ZLinkInstanceSpotTypeSnapshot> InstanceSpots", "LastActivationOutcome", "ZLinkMeshRuntimeEvent", "SourceRid", "TargetRid", "Topic", "SpotRid", "SpotGeneration", "ActorId", "RemoteSnapshotCount", "RemoteAdmittedCount", "RemoteDroppedCount", "LocalSnapshotCount", "LocalAdmittedCount", "LocalDroppedCount", "LifecycleGeneration", "DescriptorRevision", "MaxMessageSize", "ZLinkRedisLocationStore", "IZLinkFanoutLocationStore", "ZLinkFanoutPublisherDescriptor", "IZLinkEndpointConnections", "SubscriberConnections", "EnableSubscriber()", "ConnectSubscriber(string endpoint)", "IZLinkFanoutRuntime", "ZLinkFanoutChannelSnapshot", "ZLinkFanoutRuntimeEvent", "IZLinkActorTransferStore", "GetOrCreateAsync", "ZLinkActorMembership", "InstanceSpotAddress", "ZLinkInstanceSpotFactoryOptions", "IZLinkInstanceSpot", "OnInitializeAsync", "AddInstanceSpotFactory", "InstanceSpotAddress target", "IZLinkInstanceSpotLocationStore", "ClaimInstanceSpotAsync", "CommitInstanceSpotReadyAsync", "InstanceSpotFence", "source local outbound admission까지만 포함하며", "BeginInstanceSpotClosingAsync", "ReleaseInstanceSpotAsync", "ResolveInstanceSpotAsync", "InstanceSpotTypes", "string? InstanceSpotType", "string? ActivationState", "zlink.instance_spot.activations", "zlink.instance_spot.activation.duration", "zlink.instance_spot.pending.messages", "zlink.instance_spot.pending.bytes", "zlink.instance_spot.claim.conflicts", "zlink.instance_spot.takeovers", "IZLinkMessageFlowObserver", "IZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "SetRuntimeErrorSink", "string? Action"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md": {"block_count": 2, "sha256": "bae9568693603292573820b15213165fed7e88dd10011b72906c6b8b0463e321"},
-        "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {"block_count": 15, "sha256": "cce32b9115c6ec967d4d7ea6f2feb2fdf8335703851380e1f2164c37cbafdaef"},
-        "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "47bf700eb4c1aa5f35ef6474d28629c29ad27159ecf73ceb300b83b7cd506643"},
-        "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {"block_count": 8, "sha256": "fbfe6320e9032d6e931f3769e05353061fc80d5f120285a7bb1ad31ba399e83f"},
-        "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {"block_count": 9, "sha256": "437e405605c7e34f2a1c4e78523ced45777f3b299f6f3c12b54734217bdbcf1b"}
+        "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md": {"block_count": 2, "sha256": "b2ec1f58a2ca2e426485fe136d614d3801b35ab2815523c53ea03e4a7413c368"},
+        "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {"block_count": 16, "sha256": "d180536f587a9d93e789698921ed4e798a488e38d8bfa3e7599c83cb7c6deb59"},
+        "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "980cd034e18d47a1e91958f6243a15cc5ce95a4d256d0fb95c484d12776c56a5"},
+        "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {"block_count": 7, "sha256": "ebf1ca85e8ee11ac08ae5261340eea059e31687ade3d54da858e1eac9922fead"},
+        "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {"block_count": 9, "sha256": "b07e94c55b618bedd40c6a90482017df81a635f85035d1ffcd146c557a29f073"}
       },
-      "declaration_fixture": {"count": 183, "sha256": "0f1b40ce421b07c1536aa87969f2802044d16eb06e1bb7be387e9ad2050a89e0"}
+      "declaration_fixture": {"count": 245, "sha256": "e281f2cc7fbc52c48426f87d49520ca8d4e258ad1c0dd8848f080bb711c67cdf"}
     },
     "cpp": {
       "documents": [
@@ -63,15 +63,15 @@
         "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md",
         "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md"
       ],
-      "required_fragments": ["add_route_mesh", "channel_name", "mesh_node_builder_t", "mesh_peer_connections_t", "expected_routing_id", "publish_call_t", "logical_multicast_detail_t", "try_submit", "channel_request_call_t", "run_cpu_worker", "run_io_worker", "std::stop_token", "add_stream_node", "enable_actor_dispatch", "service_lifetime_t lifetime", "allocated_routing_id_provider_t", "mesh_node_socket_config_t", "routing_id_slot_group_exhausted_t", "routing_id_slot_group_configuration_mismatch_t", "mesh_node_snapshot_t", "mesh_runtime_event_t", "remote_snapshot_count", "remote_admitted_count", "remote_dropped_count", "local_snapshot_count", "local_admitted_count", "local_dropped_count", "lifecycle_generation", "descriptor_revision", "max_message_size", "redis_location_store_t", "actor_transfer_store_t", "spot_generation", "spot_handle_t", "resolve_spot_handle", "actor_membership_t", "mesh_node_drain_policy_t", "use_drain_policy", "message_flow_observer_t", "runtime_error_sink_t", "runtime_error_event_t", "set_runtime_error_sink", "std::optional<std::string> action"],
+      "required_fragments": ["add_route_mesh", "channel(std::string channel_name)", "add_client_server_channel", "mesh_channel_role_builder_t", "client_server_channel_role_builder_t", "network_options_t", "client_server_runtime_t", "client_server_server_descriptor_t", "mesh_node_builder_t", "mesh_peer_connections_t", "expected_routing_id", "publish_call_t", "fanout_publish_call_t", "publisher_t", "submit_result_t", "logical_multicast_detail_t", "unreachable_remote_node_count", "task_t<submit_result_t>", "channel_request_call_t", "run_cpu_worker", "run_io_worker", "std::stop_token", "add_stream_node", "enable_actor_dispatch", "service_lifetime_t lifetime", "allocated_routing_id_provider_t", "mesh_node_socket_config_t", "routing_id_slot_group_exhausted_t", "routing_id_slot_group_configuration_mismatch_t", "mesh_node_snapshot_t", "mesh_runtime_event_t", "remote_snapshot_count", "remote_admitted_count", "remote_dropped_count", "local_snapshot_count", "local_admitted_count", "local_dropped_count", "lifecycle_generation", "descriptor_revision", "max_message_size", "redis_location_store_t", "fanout_location_store_t", "fanout_publisher_descriptor_t", "endpoint_connections_t &subscriber_connections()", "enable_subscriber()", "fanout_runtime_t", "fanout_channel_snapshot_t", "fanout_runtime_event_t", "fanout_runtime_observation_t", "actor_transfer_store_t", "spot_generation", "spot_handle_t", "resolve_spot_handle", "actor_membership_t", "instance_spot_address_t", "instance_spot_factory_options_t", "instance_spot_t", "on_initialize", "add_instance_spot_factory", "instance_spot_type_snapshot_t", "instance_spot_location_store_t", "claim_instance_spot", "commit_instance_spot_ready", "instance_spot_fence_t", "local outbound admission 결과를", "begin_instance_spot_closing", "release_instance_spot", "resolve_instance_spot", "instance_spot_types", "zlink.instance_spot.activations", "zlink.instance_spot.activation.duration", "zlink.instance_spot.pending.messages", "zlink.instance_spot.pending.bytes", "zlink.instance_spot.claim.conflicts", "zlink.instance_spot.takeovers", "message_flow_observer_t", "runtime_error_sink_t", "runtime_error_event_t", "set_runtime_error_sink", "std::optional<std::string> action"],
       "code_fixtures": {
         "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md": {"block_count": 7, "sha256": "bebc6006ac0bdd6101cc1a66e938bedf290e621e198f7c4caee3686d59936822"},
-        "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md": {"block_count": 50, "sha256": "1ae5b475080830b848f13d923a9167d54f72b613fb0328064d519c6f608ac2ae"},
-        "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md": {"block_count": 4, "sha256": "3d88d978d63f5d91964ba5f0e30aea0b999890b158cb1b457858162d2ea124f9"},
-        "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md": {"block_count": 7, "sha256": "139e8f1a7bfd2d79fefdc43b4e6230b74cf08e2fc409d0437ae04fa8e0d2d891"},
+        "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md": {"block_count": 51, "sha256": "12002ff06fcafe56fe7702322f803ec973d6a71fcd9b0007bbc32dad37912f83"},
+        "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md": {"block_count": 4, "sha256": "4a2e0a9902a71ce62d7995c205faf0933805cc9460fb0e1bde1a47108ae6993e"},
+        "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md": {"block_count": 7, "sha256": "09b4611942e3f87053cd7ec316100b002fab5857b6ea4d8b2f25604975179f5d"},
         "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md": {"block_count": 3, "sha256": "f832768595a91ec8c9c8c3826721321b29971bddb37d0ea2bdffea856bb971ba"}
       },
-      "declaration_fixture": {"count": 291, "sha256": "c486499a17d57b3cbace68ea6dc7914c7551d7e06824a3cf0be7c21c2d982649"}
+      "declaration_fixture": {"count": 352, "sha256": "024c4738a972d6ba403c4d682b3d0ec94ef3843a19d08a4c9bd5db907af981e7"}
     },
     "java": {
       "documents": [
@@ -81,14 +81,14 @@
         "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md",
         "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md"
       ],
-      "required_fragments": ["addRouteMesh", "channelName", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "actorTransferTimeout", "actorTransferForwardWindow", "ZLinkFrameworkErrorKind", "ZLinkRoutingIdSlotAllocationStore", "ZLinkRouteMeshRuntimeOptions", "ZLinkMeshNodeRuntimeOptions", "ZLinkPublishResult", "ZLinkLogicalMulticastDetail", "trySubmit", "ZLinkWorkerTask", "ZLinkIoWorkerTask", "ZLinkWorkerCancellation", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "maxMessageSize", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "String meshName()", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "Optional<String> action"],
+      "required_fragments": ["addRouteMesh", "channel(String channelName)", "addClientServerChannel", "ZLinkMeshChannelRoleBuilder", "ZLinkClientServerChannelRoleBuilder", "ZLinkNetworkOptions", "ZLinkClientServerRuntime", "ZLinkClientServerServerDescriptor", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "actorTransferTimeout", "actorTransferForwardWindow", "ZLinkFrameworkErrorKind", "ZLinkRoutingIdSlotAllocationStore", "ZLinkRouteMeshRuntimeOptions", "ZLinkMeshNodeRuntimeOptions", "ZLinkPublishResult", "ZLinkFanoutClient", "ZLinkFanoutPublishCall", "ZLinkSubmitResult", "ZLinkLogicalMulticastDetail", "unreachableRemoteNodeCount", "CompletionStage<ZLinkSubmitResult>", "ZLinkWorkerTask", "ZLinkIoWorkerTask", "ZLinkWorkerCancellation", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "maxMessageSize", "ZLinkRedisLocationStore", "ZLinkFanoutLocationStore", "ZLinkFanoutPublisherDescriptor", "enableSubscriber()", "ZLinkFanoutRuntime", "ZLinkFanoutChannelSnapshot", "ZLinkFanoutRuntimeEvent", "ZLinkActorTransferStore", "spotGeneration", "String meshName()", "ZLinkActorMembership", "InstanceSpotAddress", "ZLinkInstanceSpotFactoryOptions", "ZLinkSpotLifecycle", "ZLinkInstanceSpot", "onInitialize()", "addInstanceSpotFactory", "ZLinkInstanceSpotLocationStore", "claimInstanceSpot", "commitInstanceSpotReady", "ZLinkInstanceSpotFence", "source local outbound admission까지만", "beginInstanceSpotClosing", "releaseInstanceSpot", "resolveInstanceSpot", "instanceSpotTypes", "Optional<String> instanceSpotType", "Optional<String> activationState", "ZLinkInstanceSpotTypeSnapshot", "List<ZLinkInstanceSpotTypeSnapshot> instanceSpots", "pendingMessageCount", "pendingByteCount", "lastActivationOutcome", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "Optional<String> action"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md": {"block_count": 25, "sha256": "5f68d8478c9f9c17f8cef15b9505044fdf8e8dcb0d7fd4fd49572026346bc27a"},
-        "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md": {"block_count": 23, "sha256": "c3b19b105c3af80184485c6e2d86c392ed4a0773a1646d2b6783c76257004d30"},
-        "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md": {"block_count": 4, "sha256": "379b097ef014713781a0ca92b5621568f59f0330c358859715a90274f75b5837"},
-        "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "1121a14a895eee304cc39a7034b223a82d5c5c2320311749079409079c9cedf3"}
+        "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md": {"block_count": 25, "sha256": "cfb819427b21166c3a646cb227570449f26b3f2f66ec6c09b6488e5c36502763"},
+        "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md": {"block_count": 24, "sha256": "0f72cf64aa95339fb17f35bd1a5e041658e665f72fda629e1c417e0c0ddb94a7"},
+        "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md": {"block_count": 5, "sha256": "5c4fe2d3ef1c7bdbd4b26353ec2e25c574772e4b929a2593ce18fb3bfb946b50"},
+        "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "54f9293ed57893787776227faec4d3e45f239369266ee5bd1dbc091e3e517190"}
       },
-      "declaration_fixture": {"count": 235, "sha256": "daf100e1e9ab1ea691f961cbe5df34ce19eb77a3c3a01c940ed8723a2cdd429e"}
+      "declaration_fixture": {"count": 288, "sha256": "9d0996320ba0c3a9e8ec29819d349e2f63be84c72cf544071fbd0334f22de608"}
     },
     "kotlin": {
       "documents": [
@@ -96,12 +96,12 @@
         "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md",
         "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md"
       ],
-      "required_fragments": ["ZLinkFrameworkOptions.routeMesh", "ZLinkMeshNodeBuilder.channelName", "enableActorDispatch", "ZLinkMeshPeerConnections.connect", "ZLinkFrameworkErrorKind", "setActorTransferTimeout", "setActorTransferForwardWindow", "trySubmit()", "yield()", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "meshName: String", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "onRuntimeError"],
+      "required_fragments": ["ZLinkFrameworkOptions.routeMesh", "ZLinkMeshNodeBuilder.channel", "ZLinkMeshChannelRoleBuilder", "ZLinkClientServerChannelRoleBuilder", "ZLinkClientServerRuntime", "ZLinkClientServerServerDescriptor", "enableActorDispatch", "ZLinkMeshPeerConnections.connect", "ZLinkFrameworkErrorKind", "setActorTransferTimeout", "setActorTransferForwardWindow", "ZLinkFanoutClient.publish(channelName: String, message: Any)", "ZLinkFanoutPublishCall", "ZLinkSubmitResult", "submit().await()", "unreachableRemoteNodeCount", "yield()", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "ZLinkRedisLocationStore", "ZLinkFanoutLocationStore", "ZLinkFanoutPublisherDescriptor", "enableSubscriber()", "ZLinkActorTransferStore", "spotGeneration", "meshName: String", "ZLinkActorMembership", "InstanceSpotAddress", "ZLinkInstanceSpotFactoryOptions", "ZLinkSpotLifecycle", "ZLinkInstanceSpot", "onInitialize", "target: InstanceSpotAddress", "ZLinkInstanceSpotLocationStore", "ZLinkInstanceSpotFence", "source local outbound admission의 유한한 대기만 수행한다.", "instanceSpotTypes", "instanceSpotType", "activationState", "ZLinkInstanceSpotTypeSnapshot", "ZLinkMeshNodeSnapshot.instanceSpots", "pendingMessage", "pendingByte", "lastActivationOutcome", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "onRuntimeError"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md": {"block_count": 13, "sha256": "f8c2362b3f8fccf396644fcf4855ad28b5bc33945d4c9dd201f33cc216ef46c7"},
+        "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md": {"block_count": 15, "sha256": "a57096843744766cfde90239c36d41108ba781883d1a06be3a2fd52b858cb6b5"},
         "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md": {"block_count": 1, "sha256": "a0c53cce3f1a101f963936462f0ab3d077f367d894c0e346fe97d1c6574f1d32"}
       },
-      "declaration_fixture": {"count": 83, "sha256": "a52189885cbbc8233916e40b3f8b17e219e68e9e0564f7ca8226cc31e8246e32"}
+      "declaration_fixture": {"count": 83, "sha256": "a1462168dd86038c4fa8e89e5f409a9efdd3c23b1c4a8a0b0bf5c808a0af87fd"}
     },
     "node": {
       "documents": [
@@ -111,22 +111,30 @@
         "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md",
         "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md"
       ],
-      "required_fragments": ["addRouteMesh", "channelName", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "setActorTransferTimeout", "setActorTransferForwardWindow", "ZLinkPublishResult", "trySubmit", "snapshotRemoteNodeCount", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "ZLinkNestMeshNodeBuilder", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "readonly meshName", "ZLinkActorMembership", "readonly code: number", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "ZLinkDispatchErrorAction"],
+      "required_fragments": ["addRouteMesh", "channel(channelName: string)", "addClientServerChannel", "ZLinkMeshChannelRoleBuilder", "ZLinkClientServerChannelRoleBuilder", "ZLinkNetworkOptions", "ZLinkClientServerRuntime", "ZLinkClientServerServerDescriptor", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "setActorTransferTimeout", "setActorTransferForwardWindow", "ZLinkPublishResult", "ZLinkFanoutClient", "ZLinkFanoutPublishCall", "ZLinkSubmitResult", "Promise<ZLinkSubmitResult>", "unreachableRemoteNodeCount", "snapshotRemoteNodeCount", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "ZLinkNestMeshNodeBuilder", "ZLinkRedisLocationStore", "ZLinkFanoutLocationStore", "ZLinkFanoutPublisherDescriptor", "enableSubscriber(): this", "ZLinkFanoutRuntime", "ZLinkFanoutChannelSnapshot", "ZLinkFanoutRuntimeEvent", "ZLINK_ROUTE_MESH_RUNTIME", "ZLINK_CLIENT_SERVER_RUNTIME", "ZLINK_FANOUT_RUNTIME", "ZLinkActorTransferStore", "spotGeneration", "readonly meshName", "ZLinkActorMembership", "InstanceSpotAddress", "ZLinkInstanceSpotFactoryOptions", "ZLinkSpotLifecycle", "ZLinkInstanceSpot", "ZLinkInstanceSpotContext", "onInitialize?(): Promise<void>;", "addInstanceSpotFactory", "target: InstanceSpotAddress", "ZLinkInstanceSpotLocationStore", "claimInstanceSpot", "commitInstanceSpotReady", "ZLinkInstanceSpotFence", "local outbound admission까지만 포함하며", "beginInstanceSpotClosing", "releaseInstanceSpot", "resolveInstanceSpot", "instanceSpotTypes", "instance_spot", "ZLinkMessageFlowReason", "ZLinkInstanceSpotTypeSnapshot", "readonly instanceSpots: readonly ZLinkInstanceSpotTypeSnapshot[]", "lastActivationOutcome", "zlink.instance_spot.activations", "zlink.instance_spot.activation.duration", "zlink.instance_spot.pending.messages", "zlink.instance_spot.pending.bytes", "zlink.instance_spot.claim.conflicts", "zlink.instance_spot.takeovers", "readonly code: number", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "ZLinkDispatchErrorAction"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md": {"block_count": 30, "sha256": "7b0cead7e555440128836f30a35c176c21b85b364cfee4448fb75977a8c178f1"},
-        "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md": {"block_count": 5, "sha256": "f352d64b08654bacad9d1bec978be1d106392a5af1519a99b947cde9d7615409"},
-        "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md": {"block_count": 4, "sha256": "0b4c578b4968e7231d116ee9961715d28114d914baa6cc7b3c9dfd33d4fb8eb4"}
+        "framework/doc/framework/spec/server/languages/node/01-system-structure.ko.md": {"block_count": 1, "sha256": "d3faaf9ec5fc32fc5610c2092f8a907f8045d2026c1b966394478a8991e34725"},
+        "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md": {"block_count": 31, "sha256": "6d9abda5933216078a66b77e9451ed50cf17c381a9dbfc39462c57ade2a23c9c"},
+        "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md": {"block_count": 5, "sha256": "6835ea740478870aed9f82f0092c8151e1172e65b6135ee7a14c66c198a6e862"},
+        "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md": {"block_count": 5, "sha256": "48362f749871732d36bf6635ddc373401588a4d42a8e0eb7b5f41c9cbfb5c3b3"}
       },
-      "declaration_fixture": {"count": 373, "sha256": "0cbd3fa594b28c1c9b5b1ff954ef7f9c9687bd2e8f0ad63c084a89c6e1229d9a"}
+      "declaration_fixture": {"count": 427, "sha256": "3851d33112b9c0ad94e431db2cafa0f1eec3bbfe405d0e5bbbe4049020d89026"}
     }
   },
   "redis_fixtures": {
-    "framework/testdata/location/redis/mesh-node-descriptor-v1.json": "72f41eeae43c395c680cc3e2ca25d557c251c775a246daa5268e20a3dd4ef2e8",
+    "framework/testdata/location/redis/mesh-node-descriptor-v1.json": "d3e64efab836cdb51ec2a0a79e8142561aab09575410db33358173e1534b7854",
+    "framework/testdata/location/redis/instance-spot-location-v1.json": "61c1b9ba93a1fb5cba948823f1039900659b6d7121031cb329c87c0d337aa541",
+    "framework/testdata/location/redis/client-server-server-descriptor-v1.json": "be27553858059ba5e045e432eb1f7a33a46ce5bc1664cc1d9299992b8e68d465",
+    "framework/testdata/location/redis/fanout-publisher-descriptor-v1.json": "8fa6d758a52755f6a079c75fddffc894c446a41148bedd4236447417a2a2e4b3",
     "framework/testdata/location/redis/actor-location-v2.json": "402318ca53d9cf7abb7d1119b66e9de0669f1bf2818284eb3f70683b3af90c95",
     "framework/testdata/location/redis/actor-transfer-v1.json": "6ca7306829d33af17ebefffe3d4f29edf1ae8201b7cb9cae4e90739520b047ea"
   },
+  "framework_contract_fixtures": {
+    "framework/doc/framework/common/e2e/fixtures/config-12-channel-egress-routing.json": "ee87607f42d665820450d8215af823a88cdcc7384d62df3867dbf1657573801a",
+    "framework/doc/framework/common/e2e/config-14-instance-spot.ko.md": "399ea0acb5b6eafab6865a921028e1b99c93548262be7075d1ef4f6c6fa390b5",
+    "framework/doc/framework/common/sample/fixtures/channel-topology.json": "5c6190f512185f24d5ac842d5bd5f94deeb7c42ebf0b6c2eda53dc8537168fbd"
+  },
   "forbidden_surface": [
-    "AddClientServerChannel", "addClientServerChannel", "add_client_server_channel",
     "AddRouteMeshChannel", "addRouteMeshChannel", "add_route_mesh_channel",
     "AddSpotMesh", "addSpotMesh", "add_spot_mesh",
     "IZLinkClientServerChannelBuilder", "ZLinkClientServerChannelBuilder", "ClientServerChannelBuilder", "client_server_channel_builder_t",
@@ -142,60 +150,48 @@
     "현재 구현", "현재 public", "구현 차이", "목표 interface와 현재", "미결정:", "미충족", "AS-IS", "TO-BE", "이전 version", "제거 이력"
   ],
   "forbidden_exact_fragments": {
-    "dotnet": [": IZLinkMetadataCall<IZLinkSessionReplyCall>", "LastRemoteTargetCount", "LastLocalMatchCount", "LocalMatchCount", "ZLinkSpotDrainPolicy"],
-    "cpp": ["spot_actor_reply_options_t &metadata", "client_server_channel_runtime_options_t", "route_mesh_channel_runtime_options_t", "route_mesh_channel", "spot_drain_policy_t"],
-    "java": ["ZLinkSessionReplyCall metadata", "DIAGNOSTIC", "LastRemoteTargetCount", "LastLocalMatchCount", "ZLinkSpotDrainPolicy"],
-    "kotlin": ["DIAGNOSTIC", "LastRemoteTargetCount", "LastLocalMatchCount", "frameworkCoroutineBridge", "frameworkVoidCoroutineBridge", "ZLinkSpotDrainPolicy"],
-    "node": ["ZLinkSessionReplyCall {\n    metadata", "ZLinkSpotActorReplyOptions {\n    metadata", "PartialReady", "RouteMeshChannel", "routeMeshChannel", "Diagnostic = \"diagnostic\"", "ZLinkSpotDrainPolicy"]
+    "dotnet": [": IZLinkMetadataCall<IZLinkSessionReplyCall>", "LastRemoteTargetCount", "LastLocalMatchCount", "LocalMatchCount", "IZLinkMeshChannelBuilder", "ChannelName(string channelName)", "TrySubmit", "ZLinkSpotDrainPolicy", "ZLinkMeshNodeDrainPolicy", "UseDrainPolicy", "expectedOwnerNodeGeneration"],
+    "cpp": ["spot_actor_reply_options_t &metadata", "client_server_channel_runtime_options_t", "route_mesh_channel_runtime_options_t", "mesh_channel_builder_t channel_name", "route_mesh_channel", "try_submit", "stream_write_call_t &metadata", "send_call_t &timeout", "route_send_call_t &timeout", "actor_send_call_t &timeout", "spot_drain_policy_t", "mesh_node_drain_policy_t", "use_drain_policy", "request(mesh_name, channel_name", "expected_owner_node_generation"],
+    "java": ["ZLinkSessionReplyCall metadata", "DIAGNOSTIC", "LastRemoteTargetCount", "LastLocalMatchCount", "ZLinkMeshChannelBuilder", "channelName(String channelName)", "trySubmit", "publishToTopic", "ZLinkSpotDrainPolicy", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "expectedOwnerNodeGeneration"],
+    "kotlin": ["DIAGNOSTIC", "LastRemoteTargetCount", "LastLocalMatchCount", "ZLinkMeshNodeBuilder.channelName", "trySubmit", "publishToTopic", "frameworkCoroutineBridge", "frameworkVoidCoroutineBridge", "ZLinkSpotDrainPolicy", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "expectedOwnerNodeGeneration"],
+    "node": ["ZLinkSessionReplyCall {\n    metadata", "ZLinkSpotActorReplyOptions {\n    metadata", "PartialReady", "ZLinkMeshChannelBuilder", "channelName(channelName: string)", "ZLinkNestMeshChannelBuilder", "RouteMeshChannel", "routeMeshChannel", "trySubmit", "Fanout = \"fanout\"", "Pub = \"pub\"", "Sub = \"sub\"", "Diagnostic = \"diagnostic\"", "ZLinkSpotDrainPolicy", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkDrainControl", "ZLINK_DRAIN_CONTROL", "expectedOwnerNodeGeneration"]
   },
   "source_fixtures": {
-    "framework/languages/dotnet/src/Zlink.Framework/Contracts/Configuration/Builders.cs": "3c8ed78ebe820e777c4a8dcdafb387baf9c31f256e9e86ca4445a5cb72c16ea2",
-    "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp": "e1bf1936a50a05bfa22ed45da2a1765ec818c4eeaad945c21774bfc1de1fb2c8",
-    "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkFrameworkOptions.java": "7ad4834ec56232495447b480e6ffd07989cc93299cebb65aee162eafee8da590",
+    "framework/languages/dotnet/src/Zlink.Framework/Contracts/Configuration/Builders.cs": "413e76a7e7ac177a6ea122f4c04a23e94995a79fd10c6a7e35d7733ad81379b4",
+    "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp": "9edafd2a70ee3b65881ecc27f86d0f22f686048c08737ec2e8ce4c120d739189",
+    "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkFrameworkOptions.java": "7ca2d00216833cd2a2d10c46da406088157864502b1a2b8655316845ce4833b5",
     "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ClientServerChannelBuilder.java": "c829243632aeac2e5f0229846cf126746fb45b3fe5c4a28d96b3af164563754d",
     "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/RouteMeshChannelBuilder.java": "e2adf1851f0a710f82626352312088378d03a6959107217fc388045c8090530c",
     "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkSpotNodeBuilder.java": "05e2fead9f6af07a734e6638e03563f1da3b0a0ebbcff903098aa10ea232f456",
-    "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkSpotMeshBuilder.java": "b45cb6687d8413da6e913958cf727a8294cd34473d7f265a0a995ae2941200f9",
-    "framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkFrameworkExtensions.kt": "6f62c7d0d56132fb222d58230a25d26259295d48be84022610c92fba39f833dc",
-    "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts": "aed82ab8f8013891fbe782dbe312cfc5f83539cde317107412046fe8aa39185d",
-    "framework/languages/node/packages/framework/src/contracts/Spots/Builders.ts": "5123a0a19585fe1e4de8d74971e92ed3d0c18cbba546fbb14e23e173300893a3"
+    "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkSpotMeshBuilder.java": "3c8319f9ec0031bfc2152af9c4ff07a85b10b9cd8438552b13bc93696af74f1c",
+    "framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkFrameworkExtensions.kt": "b7654fb036ae5de668e22d7ed7e9f19b76034a21521b76880263978fa6bb317c",
+    "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts": "505692a95db5dbb38c901bfe79eb73dde8332c1519d6f9e83701a7c4c3bcab7e",
+    "framework/languages/node/packages/framework/src/contracts/Spots/Builders.ts": "69177f82b6e07ab1b611923afb2fe50566d4e58bd44d7a8b7c605176f1548641"
   },
   "transition_owners": {
     "dotnet": [
       {"type": "IZLinkFrameworkOptions", "source": "framework/languages/dotnet/src/Zlink.Framework/Contracts/Configuration/Builders.cs", "rules": [
-        {"members": ["AddClientServerChannel"], "action": "remove", "target": "AddRouteMesh(meshName).ChannelName(channelName)"},
-        {"members": ["AddRouteMeshChannel"], "action": "move", "target": "AddRouteMesh(meshName)"},
         {"default": true, "action": "keep", "target": "IZLinkFrameworkOptions"}
-      ]},
-      {"type": "IZLinkClientServerChannelBuilder", "source": "framework/languages/dotnet/src/Zlink.Framework/Contracts/Configuration/Builders.cs", "rules": [{"default": true, "action": "move", "target": "IZLinkMeshNodeBuilder or IZLinkMeshChannelBuilder"}]},
-      {"type": "IZLinkRouteMeshChannelBuilder", "source": "framework/languages/dotnet/src/Zlink.Framework/Contracts/Configuration/Builders.cs", "rules": [{"default": true, "action": "move", "target": "IZLinkMeshNodeBuilder"}]}
+      ]}
     ],
     "cpp": [
       {"type": "zlink_framework_options_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [
-        {"members": ["add_client_server_channel"], "action": "remove", "target": "add_route_mesh(mesh_name).channel_name(channel_name)"},
+        {"members": ["add_client_server_channel"], "action": "move", "target": "add_client_server_channel(channel_name).client() or server()"},
         {"members": ["add_route_mesh"], "action": "move", "target": "add_route_mesh(mesh_name)"},
-        {"members": ["add_spot_mesh"], "action": "move", "target": "mesh_node_builder_t Spot and Actor registration"},
         {"members": ["use_in_memory_location_stores"], "action": "remove", "target": null},
         {"default": true, "action": "keep", "target": "zlink_framework_options_t"}
       ]},
-      {"type": "client_server_channel_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [{"default": true, "action": "move", "target": "mesh_node_builder_t or mesh_channel_builder_t"}]},
-      {"type": "route_mesh_channel_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [{"default": true, "action": "move", "target": "mesh_node_builder_t"}]},
-      {"type": "spot_node_options_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [
-        {"members": ["enable_pub_sub", "connect_pub_sub", "connect_peer_pub"], "action": "remove", "target": null},
-        {"members": ["enable_router", "connect_router"], "action": "move", "target": "mesh_node_builder_t.listen or peer_connections"},
-        {"default": true, "action": "move", "target": "mesh_node_builder_t"}
-      ]},
-      {"type": "spot_mesh_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [{"default": true, "action": "move", "target": "mesh_node_builder_t"}]}
+      {"type": "client_server_channel_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [{"default": true, "action": "move", "target": "client_server_channel_role_builder_t and its client/server builders"}]},
+      {"type": "route_mesh_channel_builder_t", "source": "framework/languages/cpp/framework/include/zlink/framework/contracts/configuration/framework_options.hpp", "rules": [{"default": true, "action": "move", "target": "mesh_node_builder_t"}]}
     ],
     "java": [
       {"type": "ZLinkFrameworkOptions", "source": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkFrameworkOptions.java", "rules": [
-        {"members": ["addClientServerChannel"], "action": "remove", "target": "addRouteMesh(meshName).channelName(channelName)"},
+        {"members": ["addClientServerChannel"], "action": "move", "target": "addClientServerChannel(channelName).client() or server()"},
         {"members": ["addRouteMeshChannel"], "action": "move", "target": "addRouteMesh(meshName)"},
         {"members": ["addSpotMesh"], "action": "move", "target": "ZLinkMeshNodeBuilder Spot and Actor registration"},
-        {"members": ["useInMemoryLocationStores"], "action": "remove", "target": null},
         {"default": true, "action": "keep", "target": "ZLinkFrameworkOptions"}
       ]},
-      {"type": "ClientServerChannelBuilder", "source": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ClientServerChannelBuilder.java", "rules": [{"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder or ZLinkMeshChannelBuilder"}]},
+      {"type": "ClientServerChannelBuilder", "source": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ClientServerChannelBuilder.java", "rules": [{"default": true, "action": "move", "target": "ZLinkClientServerChannelRoleBuilder and its client/server builders"}]},
       {"type": "RouteMeshChannelBuilder", "source": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/RouteMeshChannelBuilder.java", "rules": [{"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder"}]},
       {"type": "ZLinkSpotNodeBuilder", "source": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/configuration/ZLinkSpotNodeBuilder.java", "rules": [
         {"members": ["enablePubSub", "connectPeerPub"], "action": "remove", "target": null},
@@ -206,25 +202,19 @@
     ],
     "kotlin": [
       {"type": "ZLinkFrameworkExtensions", "kind": "top_level", "source": "framework/languages/java/zlink-framework-kotlin/src/main/kotlin/systems/zlink/framework/kotlin/ZLinkFrameworkExtensions.kt", "rules": [
-        {"default": true, "action": "keep", "target": "Kotlin-only extensions; topology builders follow Java owner mapping"}
+        {"default": true, "action": "keep", "target": "Kotlin extensions return one-way call objects; callers await the Java async admission result"}
       ]}
     ],
     "node": [
       {"type": "ZLinkFrameworkOptions", "source": "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts", "rules": [
-        {"members": ["addClientServerChannel"], "action": "remove", "target": "addRouteMesh(meshName).channelName(channelName)"},
-        {"members": ["addRouteMeshChannel"], "action": "move", "target": "addRouteMesh(meshName)"},
-        {"members": ["addSpotMesh"], "action": "move", "target": "ZLinkMeshNodeBuilder Spot and Actor registration"},
-        {"members": ["useInMemoryLocationStores"], "action": "remove", "target": null},
         {"default": true, "action": "keep", "target": "ZLinkFrameworkOptions"}
       ]},
-      {"type": "ZLinkClientServerChannelBuilder", "source": "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts", "rules": [{"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder or ZLinkMeshChannelBuilder"}]},
-      {"type": "ZLinkRouteMeshChannelBuilder", "source": "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts", "rules": [{"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder"}]},
+      {"type": "ZLinkMeshNodeBuilder", "source": "framework/languages/node/packages/framework/src/contracts/Configuration/Builders.ts", "rules": [{"default": true, "action": "keep", "target": "ZLinkMeshNodeBuilder"}]},
       {"type": "ZLinkSpotNodeBuilder", "source": "framework/languages/node/packages/framework/src/contracts/Spots/Builders.ts", "rules": [
         {"members": ["enablePubSub", "connectPeerPub"], "action": "remove", "target": null},
         {"members": ["enableRouter", "connectRouter"], "action": "move", "target": "ZLinkMeshNodeBuilder.listen or peerConnections"},
         {"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder"}
-      ]},
-      {"type": "ZLinkSpotMeshBuilder", "source": "framework/languages/node/packages/framework/src/contracts/Spots/Builders.ts", "rules": [{"default": true, "action": "move", "target": "ZLinkMeshNodeBuilder"}]}
+      ]}
     ]
   }
 }

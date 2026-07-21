@@ -4,5 +4,5 @@ import java.util.concurrent.CompletionStage;
 
 @FunctionalInterface
 public interface ZLinkIoWorkerTask<T> {
-    CompletionStage<T> run() throws Exception;
+    CompletionStage<T> run(ZLinkWorkerCancellation cancellation) throws Exception;
 }

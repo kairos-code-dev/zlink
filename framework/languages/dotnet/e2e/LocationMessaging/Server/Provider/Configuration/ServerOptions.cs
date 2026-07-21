@@ -13,7 +13,6 @@ internal sealed record ServerOptions(
     string? RedisEndpoint = null,
     string? RedisKeyPrefix = null,
     string? ChannelEndpoint = null,
-    string? ManualClientEndpoint = null,
     string? RouteEndpoint = null,
     IReadOnlyList<string>? RoutePeers = null)
 {

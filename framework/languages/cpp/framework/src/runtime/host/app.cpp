@@ -2,15 +2,13 @@
 
 #include <zlink/framework/contracts/configuration/app.hpp>
 
-#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/actors/actor_client.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/channels/channel_host_service.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
-#include "runtime/channels/route_channel_host_service.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
-#include "runtime/host/actor_gateway_spot_bridge.hpp"
 #include "runtime/host/framework_runtime.hpp"
 #include "runtime/http/http_host_service.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
@@ -19,12 +17,13 @@
 #include "runtime/locations/location_host_service.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_monitoring_host_service.hpp"
+#include "runtime/mesh/mesh_node_host_service.hpp"
+#include "runtime/mesh/route_mesh_runtime_service.hpp"
+#include "runtime/mesh/route_mesh_runtime_options_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/configuration/endpoint_connections.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
-#include "runtime/spots/spot_node_host_service.hpp"
-#include "runtime/spots/spot_runtime.hpp"
 #include "runtime/streams/stream_host_service.hpp"
 
 #include <algorithm>
@@ -57,14 +56,19 @@ class store_actor_directory_t final : public actor_directory_t
   public:
     store_actor_directory_t (
       runtime::live_location_reader_t &store,
-      std::shared_ptr<runtime::actor_location_observer_t> actor_locations) :
-        _store (store), _actor_locations (std::move (actor_locations))
+      std::shared_ptr<runtime::actor_location_observer_t> actor_locations,
+      std::shared_ptr<std::string> actor_mesh_name) :
+        _store (store), _actor_locations (std::move (actor_locations)),
+        _actor_mesh_name (std::move (actor_mesh_name))
     {
     }
 
     task_t<std::optional<actor_ref_t>> find (std::string actor_id) override
     {
-        auto row = _store.resolve_actor (actor_location_key_t{std::move (actor_id)}).result ();
+        auto row = _store
+                     .resolve_actor (
+                       actor_location_key_t{*_actor_mesh_name, std::move (actor_id)})
+                     .result ();
         if (!row) {
             return task_t<std::optional<actor_ref_t>> (
               result_t<std::optional<actor_ref_t>>::failure (
@@ -77,7 +81,7 @@ class store_actor_directory_t final : public actor_directory_t
               result_t<std::optional<actor_ref_t>>::success (std::nullopt));
         }
         return task_t<std::optional<actor_ref_t>> (
-          result_t<std::optional<actor_ref_t>>::success (*row.value ()->actor_ref));
+          result_t<std::optional<actor_ref_t>>::success (row.value ()->actor_ref));
     }
 
     task_t<actor_ref_t> ensure (std::string, message_t, actor_placement_t) override
@@ -90,6 +94,7 @@ class store_actor_directory_t final : public actor_directory_t
   private:
     runtime::live_location_reader_t &_store;
     std::shared_ptr<runtime::actor_location_observer_t> _actor_locations;
+    std::shared_ptr<std::string> _actor_mesh_name;
 };
 
 bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
@@ -106,17 +111,15 @@ bool has_inbound_channel (const std::vector<channel_snapshot_t> &channels)
     return false;
 }
 
-zlink::routing_id_t
-location_owner_node_rid (const std::vector<spot_node_snapshot_t> &spot_node_snapshot)
+zlink::routing_id_t location_owner_node_rid (
+  const std::vector<std::shared_ptr<mesh_node_builder_state_t>> &mesh_nodes)
 {
-    if (spot_node_snapshot.empty ()) {
-        return zlink::routing_id_t::from ("framework");
+    for (const auto &node : mesh_nodes) {
+        if (node && node->routing_id) {
+            return *node->routing_id;
+        }
     }
-    const auto &first_node = spot_node_snapshot.front ();
-    if (first_node.routing_id) {
-        return *first_node.routing_id;
-    }
-    return zlink::routing_id_t::from (first_node.name);
+    return zlink::routing_id_t::from ("framework");
 }
 
 bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &channels,
@@ -224,19 +227,11 @@ class app_state_t
         stream_services.reserve (started.size ());
         std::vector<hosted_service_t *> http_services;
         http_services.reserve (started.size ());
-        std::vector<hosted_service_t *> spot_services;
-        spot_services.reserve (started.size ());
-        std::vector<hosted_service_t *> route_services;
-        route_services.reserve (started.size ());
         for (auto it = started.rbegin (); it != started.rend (); ++it) {
             if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
                 stream_services.push_back (*it);
             } else if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
                 http_services.push_back (*it);
-            } else if (dynamic_cast<runtime::spot_node_host_service_t *> (*it) != nullptr) {
-                spot_services.push_back (*it);
-            } else if (dynamic_cast<runtime::route_channel_host_service_t *> (*it) != nullptr) {
-                route_services.push_back (*it);
             }
         }
         for (auto *service : stream_services) {
@@ -254,23 +249,11 @@ class app_state_t
         for (auto *service : stream_services) {
             stop_service (service);
         }
-        for (auto *service : spot_services) {
-            stop_service (service);
-        }
-        for (auto *service : route_services) {
-            stop_service (service);
-        }
         for (auto it = started.rbegin (); it != started.rend (); ++it) {
             if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
                 continue;
             }
             if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
-                continue;
-            }
-            if (dynamic_cast<runtime::spot_node_host_service_t *> (*it) != nullptr) {
-                continue;
-            }
-            if (dynamic_cast<runtime::route_channel_host_service_t *> (*it) != nullptr) {
                 continue;
             }
             stop_service (*it);
@@ -299,7 +282,6 @@ class app_state_t
     };
 
     std::shared_ptr<std::atomic_bool> draining = std::make_shared<std::atomic_bool> (false);
-    std::map<std::string, spot_drain_policy_t> spot_drain_policies;
     drain_operation_t drain_operation;
 
     service_collection_t services;
@@ -337,6 +319,43 @@ bool host_stop_trace_enabled ()
 {
     const char *value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
     return value != nullptr && std::string_view (value) != "0" && std::string_view (value) != "";
+}
+
+zlink::framework::result_t<void>
+one_way_native_submit_result (zlink::submit_result_t result, std::string_view operation)
+{
+    using namespace zlink::framework;
+    switch (result) {
+        case zlink::submit_result_t::ok:
+            return result_t<void>::success ();
+        case zlink::submit_result_t::backpressured:
+            return result_t<void>::failure (
+              framework_error_kind_t::worker_queue_full,
+              std::string (operation) + " is backpressured", true);
+        case zlink::submit_result_t::not_found:
+        case zlink::submit_result_t::not_admitted:
+            return result_t<void>::failure (
+              framework_error_kind_t::request_target_not_found,
+              std::string (operation) + " target was not found");
+        case zlink::submit_result_t::not_connected:
+            return result_t<void>::failure (
+              framework_error_kind_t::route_not_connected,
+              std::string (operation) + " route is not connected", true);
+        case zlink::submit_result_t::terminated:
+            return detail::boundary_failure<void> (
+              detail::boundary_error_t::shutdown,
+              std::string (operation) + " runtime is stopped");
+        case zlink::submit_result_t::invalid_argument:
+        case zlink::submit_result_t::invalid_handle:
+        case zlink::submit_result_t::invalid_state:
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              std::string (operation) + " rejected an invalid call");
+        default:
+            return result_t<void>::failure (
+              framework_error_kind_t::request_failed,
+              std::string (operation) + " was not submitted");
+    }
 }
 
 } // namespace
@@ -557,6 +576,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto actor_location_observer =
       std::make_shared<runtime::actor_location_observer_t> ();
+    const auto actor_mesh_name = std::make_shared<std::string> ();
     if (!_state->services.contains (
           std::type_index (typeid (runtime::store_location_resolvers_t)))) {
         const auto resolver_location_options = options.location_options ();
@@ -615,11 +635,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!_state->services.contains (std::type_index (typeid (actor_directory_t)))) {
         _state->services.add_factory<actor_directory_t> (
-          [actor_location_observer] (service_provider_t &provider) {
+          [actor_location_observer, actor_mesh_name] (service_provider_t &provider) {
               return std::shared_ptr<actor_directory_t> (
                 std::make_shared<detail::store_actor_directory_t> (
                   provider.get_required<runtime::live_location_reader_t> (),
-                  actor_location_observer));
+                  actor_location_observer, actor_mesh_name));
           },
           service_lifetime_t::singleton);
     }
@@ -648,20 +668,419 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     detail::bind_stream_serializers (_state->zlink, _state->serializers);
     auto &actor_gateway_runtime =
       _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> ();
-    auto &location_lifecycle =
-      _state->services.build_provider ().get_required<runtime::location_lifecycle_t> ();
     _state->services.build_provider ()
       .get_required<runtime::location_runtime_t> ()
       .bind_monitoring (detail::monitoring_runtime_t::from (_state->monitoring).state ());
-    auto &spot_location_resolver =
-      _state->services.build_provider ().get_required<runtime::spot_address_resolver_t> ();
     actor_gateway_runtime.bind_serializers (_state->serializers);
     actor_gateway_runtime.set_dispatch (options.configure_dispatch ());
-    _state->spot_drain_policies = options.spot_drain_policies ();
     auto channel_runtime = detail::channel_runtime_t::from (_state->zlink.message_bus ());
     const auto channel_snapshot = channel_runtime.channel_snapshots ();
     auto channel_runtime_manager = detail::channel_runtime_manager_t::from (_state->zlink);
     channel_runtime_manager.initialize_route_channels (_state->zlink);
+    auto mesh_node_registrations =
+      detail::mesh_node_runtime_t::registrations (_state->zlink);
+    auto monitoring_state = detail::monitoring_runtime_t::from (_state->monitoring).state ();
+    const auto application_mesh_registration =
+      std::find_if (mesh_node_registrations.begin (),
+                    mesh_node_registrations.end (),
+                    [] (const auto &registration) {
+                        return registration->spot_state
+                                 ->snapshot.entry_spot_name.has_value ();
+                    });
+    const auto application_mesh_name =
+      application_mesh_registration != mesh_node_registrations.end ()
+        ? (*application_mesh_registration)->mesh_name
+        : (mesh_node_registrations.empty ()
+             ? std::string{}
+             : mesh_node_registrations.front ()->mesh_name);
+    *actor_mesh_name = application_mesh_name;
+    {
+        auto provider = _state->services.build_provider ();
+        provider.get_required<runtime::store_location_resolvers_t> ()
+          .set_actor_mesh_name (application_mesh_name);
+        auto &location_lifecycle =
+          provider.get_required<runtime::location_lifecycle_t> ();
+        auto &spot_resolver =
+          provider.get_required<runtime::spot_address_resolver_t> ();
+        auto route_client = provider.get_required<route_client_t> ();
+        for (const auto &registration : mesh_node_registrations) {
+            registration->spot_state->dispatch = options.configure_dispatch ();
+            registration->spot_state->monitoring = monitoring_state;
+            detail::spot_node_runtime_t spot_runtime (registration->spot_state);
+            spot_runtime.bind_location_lifecycle (location_lifecycle);
+            spot_runtime.bind_spot_location_resolver (spot_resolver);
+            spot_runtime.bind_drain_flag (_state->draining);
+            spot_runtime.set_route_client (route_client);
+        }
+    }
+    if (!mesh_node_registrations.empty ()
+        && !_state->services.contains (std::type_index (typeid (spot_node_manager_t)))) {
+        _state->services.add_singleton<spot_node_manager_t> (
+          std::make_unique<spot_node_manager_t> (
+            detail::spot_node_runtime_t (
+              application_mesh_registration != mesh_node_registrations.end ()
+                ? (*application_mesh_registration)->spot_state
+                : mesh_node_registrations.front ()->spot_state)
+              .manager ()));
+    }
+    if (!mesh_node_registrations.empty ()
+        && !_state->services.contains (
+          std::type_index (typeid (spot_publisher_client_t)))) {
+        auto provider = _state->services.build_provider ();
+        _state->services.add_singleton<spot_publisher_client_t> (
+          std::make_unique<spot_publisher_client_t> (
+            provider.get_required<spot_node_manager_t> (),
+            _state->serializers));
+    }
+    const auto location_owner = detail::location_owner_node_rid (mesh_node_registrations);
+    std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes;
+    runtime::mesh_node_host_service_t *mesh_node_service = nullptr;
+    if (!mesh_node_registrations.empty ()) {
+        auto mesh_service = std::make_unique<runtime::mesh_node_host_service_t> (
+          std::move (mesh_node_registrations), _state->serializers,
+          options.dispatch_options ());
+        mesh_node_service = mesh_service.get ();
+        mesh_nodes = mesh_service->nodes ();
+        add_hosted_service (std::move (mesh_service));
+    }
+    if (!mesh_nodes.empty ()
+        && !_state->services.contains (
+          std::type_index (typeid (route_mesh_runtime_t)))) {
+        auto provider = _state->services.build_provider ();
+        auto location_runtime = provider.get<location_runtime_query_t> ();
+        auto mesh_runtime =
+          std::make_shared<runtime::route_mesh_runtime_service_t> (
+            mesh_nodes,
+            location_runtime ? &location_runtime->get () : nullptr,
+            [this] (std::chrono::milliseconds deadline) {
+                return drain (deadline);
+            },
+            [this] { return await_drained (); });
+        _state->services.add_factory<route_mesh_runtime_t> (
+          [mesh_runtime] (service_provider_t &) {
+              return std::static_pointer_cast<route_mesh_runtime_t> (mesh_runtime);
+          },
+          service_lifetime_t::singleton);
+        add_hosted_service (
+          std::make_unique<runtime::route_mesh_runtime_host_service_t> (
+            std::move (mesh_runtime)));
+    }
+    if (!mesh_nodes.empty ()
+        && !_state->services.contains (
+          std::type_index (typeid (route_mesh_runtime_options_t)))) {
+        _state->services.add_singleton<route_mesh_runtime_options_t> (
+          std::make_unique<runtime::route_mesh_runtime_options_service_t> (
+            mesh_nodes));
+    }
+    const auto spot_router_channels = options.location_options ().spot_router_channels;
+    for (const auto &mesh : mesh_nodes) {
+        const auto source_spot_rid = zlink::routing_id_t::from (
+          mesh->routing_id ()->to_string () + ":__zlink-route-origin");
+        auto send_to_spot = [mesh, source_spot_rid] (
+            const zlink::routing_id_t &target_node,
+            const zlink::routing_id_t &target_spot,
+            std::uint64_t target_spot_generation,
+            runtime::messaging::message_parts_t parts) {
+              const auto submitted = mesh->send_to_spot (
+                source_spot_rid, target_node, target_spot,
+                target_spot_generation, parts.items ());
+              return one_way_native_submit_result (submitted, "MeshNode Spot send");
+          };
+        auto request_to_spot = [mesh, source_spot_rid] (
+            const zlink::routing_id_t &target_node,
+            const zlink::routing_id_t &target_spot,
+            std::uint64_t target_spot_generation,
+            runtime::messaging::message_parts_t parts,
+            std::chrono::milliseconds timeout) {
+              zlink::service::operation_id_t operation;
+              const auto submitted = mesh->request_to_spot (
+                source_spot_rid, target_node, target_spot, target_spot_generation,
+                parts.items (), operation, timeout);
+              if (submitted != zlink::submit_result_t::ok) {
+                  return result_t<runtime::messaging::message_parts_t>::failure (
+                    framework_error_kind_t::route_not_connected,
+                    "MeshNode Spot request was not submitted");
+              }
+              auto completion = mesh->wait_for_completion (operation, timeout);
+              if (!completion) {
+                  return detail::propagate_failure<
+                    runtime::messaging::message_parts_t> (
+                    completion, "MeshNode Spot request failed");
+              }
+              if (completion.value ().record.terminal_result
+                  != static_cast<int> (zlink::request_result_t::ok)) {
+                  return result_t<runtime::messaging::message_parts_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "MeshNode '" + mesh->mesh_name ()
+                      + "' Spot request returned terminal result "
+                      + std::to_string (completion.value ().record.terminal_result));
+              }
+              return result_t<runtime::messaging::message_parts_t>::success (
+                runtime::messaging::message_parts_t (
+                  std::move (completion.value ().parts)));
+          };
+        const auto mesh_name = mesh->mesh_name ();
+        const auto claimed_as_route_alias =
+          std::any_of (spot_router_channels.begin (), spot_router_channels.end (),
+                       [&mesh_name] (const auto &mapping) {
+                           return mapping.first != mesh_name && mapping.second == mesh_name;
+                       });
+        if (!claimed_as_route_alias) {
+            channel_runtime.bind_spot_mesh_transport (
+              mesh_name, send_to_spot, request_to_spot);
+        }
+        if (const auto route = spot_router_channels.find (mesh_name);
+            route != spot_router_channels.end () && route->second != mesh_name) {
+            /* SpotHandle keeps the configured routing alias opaque. RouteMesh
+             * owns the physical MeshNode, so that alias must select the same
+             * node instead of a different MeshNode that happens to use the
+             * alias as its MeshName. */
+            channel_runtime.bind_spot_mesh_transport (
+              route->second, std::move (send_to_spot), std::move (request_to_spot));
+        }
+        channel_runtime.bind_mesh_node_transport (
+          mesh_name,
+          [mesh, mesh_node_service] (const zlink::routing_id_t &target,
+                                    runtime::messaging::message_parts_t parts) {
+              const auto local_rid = mesh->routing_id ();
+              const auto submitted = local_rid && *local_rid == target
+                                       ? mesh_node_service->submit_local_node_send (
+                                           mesh, parts.items ())
+                                       : mesh->send_to_node (target, parts.items ());
+              return one_way_native_submit_result (submitted, "MeshNode send");
+          },
+          [mesh] (const zlink::routing_id_t &target,
+                  runtime::messaging::message_parts_t parts,
+                  std::chrono::milliseconds timeout) {
+              zlink::service::operation_id_t operation;
+              const auto submitted =
+                mesh->request_to_node (target, parts.items (), operation, timeout);
+              if (submitted != zlink::submit_result_t::ok) {
+                  return result_t<runtime::messaging::message_parts_t>::failure (
+                    framework_error_kind_t::route_not_connected,
+                    "MeshNode request was not submitted");
+              }
+              auto completion = mesh->wait_for_completion (operation, timeout);
+              if (!completion) {
+                  return detail::propagate_failure<
+                    runtime::messaging::message_parts_t> (
+                    completion, "MeshNode request failed");
+              }
+              if (completion.value ().record.terminal_result
+                  != static_cast<int> (zlink::request_result_t::ok)) {
+                  return result_t<runtime::messaging::message_parts_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "MeshNode request returned a terminal error");
+              }
+              return result_t<runtime::messaging::message_parts_t>::success (
+                runtime::messaging::message_parts_t (
+                  std::move (completion.value ().parts)));
+          });
+        for (const auto &[channel_name, weight] : mesh->channel_weights ()) {
+            (void) weight;
+            channel_runtime.bind_mesh_channel_transport (
+              channel_name,
+              [mesh, channel_name] (runtime::messaging::message_parts_t parts) {
+                  const auto submitted = mesh->send_to_channel (channel_name, parts.items ());
+                  return one_way_native_submit_result (submitted,
+                                                       "RouteMesh channel send");
+              },
+              [mesh, channel_name] (runtime::messaging::message_parts_t parts,
+                                    std::chrono::milliseconds timeout) {
+                  zlink::service::operation_id_t operation;
+                  const auto submitted = mesh->request_to_channel (
+                    channel_name, parts.items (), operation, timeout);
+                  if (submitted != zlink::submit_result_t::ok) {
+                      return result_t<runtime::messaging::message_parts_t>::failure (
+                        framework_error_kind_t::route_not_connected,
+                        "RouteMesh channel request was not submitted");
+                  }
+                  auto completion = mesh->wait_for_completion (operation, timeout);
+                  if (!completion) {
+                      return detail::propagate_failure<
+                        runtime::messaging::message_parts_t> (
+                        completion, "RouteMesh channel request failed");
+                  }
+                  if (completion.value ().record.terminal_result
+                      != static_cast<int> (zlink::request_result_t::ok)) {
+                      return result_t<runtime::messaging::message_parts_t>::failure (
+                        framework_error_kind_t::request_failed,
+                        "RouteMesh channel request returned a terminal error");
+                  }
+                  return result_t<runtime::messaging::message_parts_t>::success (
+                    runtime::messaging::message_parts_t (
+                      std::move (completion.value ().parts)));
+              });
+        }
+    }
+    if (!mesh_nodes.empty ()) {
+        const auto application_mesh_it =
+          std::find_if (mesh_nodes.begin (), mesh_nodes.end (),
+                        [&] (const auto &mesh) {
+                            return mesh->mesh_name () == application_mesh_name;
+                        });
+        const auto application_mesh =
+          application_mesh_it != mesh_nodes.end () ? *application_mesh_it
+                                                   : mesh_nodes.front ();
+        const auto request_timeout = std::chrono::seconds (30);
+        actor_gateway_runtime.on_create (
+          [application_mesh, request_timeout] (
+            std::string actor_type,
+            std::string actor_id,
+            const std::optional<zlink::message_t> &creation_payload) {
+              return application_mesh->create_application_actor (
+                std::move (actor_type), std::move (actor_id), creation_payload,
+                request_timeout);
+          });
+        actor_gateway_runtime.on_join_entry_spot (
+          [application_mesh, request_timeout] (
+            const actor_ref_t &actor,
+            node_rid_t target_node,
+            const zlink::message_t &request) {
+              return application_mesh->join_application_actor_to_entry_spot (
+                actor, target_node, request, request_timeout);
+          });
+        actor_gateway_runtime.on_join_spot (
+          [application_mesh, actor_gateway_runtime, live_locations =
+             &_state->services.build_provider ()
+                .get_required<runtime::live_location_reader_t> (),
+           request_timeout] (
+            const actor_ref_t &actor,
+            spot_rid_t target_spot,
+            const zlink::message_t &request) {
+              const auto deadline =
+                std::chrono::steady_clock::now () + request_timeout;
+              result_t<std::optional<spot_location_t>> located =
+                result_t<std::optional<spot_location_t>>::success (std::nullopt);
+              do {
+                  located =
+                    live_locations
+                      ->resolve_spot (spot_location_key_t{
+                        application_mesh->mesh_name (),
+                        zlink::routing_id_t::from (
+                          std::string (target_spot.value ()))})
+                      .result ();
+                  if (located && located.value ())
+                      break;
+                  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+              } while (std::chrono::steady_clock::now () < deadline);
+              if (!located) {
+                  return result_t<detail::actor_join_reply_t>::failure (
+                    located.error_kind (),
+                    located.error () ? located.error ()->what ()
+                                     : "target Spot location lookup failed",
+                    located.error () && located.error ()->is_retriable ());
+              }
+              if (!located.value ()) {
+                  return result_t<detail::actor_join_reply_t>::failure (
+                    framework_error_kind_t::spot_route_not_found,
+                    "target Spot location was not found");
+              }
+              const auto &target = *located.value ();
+              if (target.spot_generation == 0) {
+                  return result_t<detail::actor_join_reply_t>::failure (
+                    framework_error_kind_t::spot_route_not_found,
+                    "target Spot lifecycle generation was not published");
+              }
+              const auto bound_session =
+                actor_gateway_runtime.bound_session_route (actor);
+              return application_mesh->join_application_actor_to_spot (
+                actor, node_rid_t::from_string (target.node_rid.to_string ()),
+                target_spot, target.spot_generation,
+                request, request_timeout,
+                bound_session
+                  ? std::make_optional (bound_session->node_rid)
+                  : std::nullopt,
+                bound_session ? bound_session->session_rid : std::nullopt);
+          });
+        actor_gateway_runtime.on_relay (
+          [application_mesh, live_locations =
+             &_state->services.build_provider ()
+                .get_required<runtime::live_location_reader_t> (),
+           request_timeout] (
+            const actor_ref_t &actor,
+            actor_context_t,
+            const detail::stream_header_t &header,
+            const zlink::message_t &payload) {
+              auto routed_actor = actor;
+              auto located =
+                live_locations->resolve_actor (
+                  actor_location_key_t{application_mesh->mesh_name (),
+                                       std::string (actor.actor_id ())})
+                  .result ();
+              if (located && located.value () && !located.value ()->actor_ref.empty ()
+                  && located.value ()->actor_ref.generation () == actor.generation ()) {
+                  routed_actor = located.value ()->actor_ref;
+              }
+              return application_mesh->relay_application_actor (
+                routed_actor, header, payload, request_timeout);
+          });
+        actor_gateway_runtime.on_disconnect (
+          [mesh_nodes, request_timeout] (const actor_ref_t &actor) {
+              bool notified = false;
+              result_t<void> last = result_t<void>::failure (
+                framework_error_kind_t::spot_route_not_found,
+                "Actor disconnect RouteMesh was not found");
+              for (const auto &mesh : mesh_nodes) {
+                  last = mesh->notify_application_actor_disconnected (
+                    actor, actor.node_rid (), request_timeout);
+                  notified = notified || static_cast<bool> (last);
+              }
+              return notified ? result_t<void>::success () : last;
+          });
+        const auto stream_runtime = detail::stream_runtime_t::from (_state->zlink);
+        actor_gateway_runtime.on_bound_session_send (
+          [application_mesh, stream_runtime] (
+            const actor_ref_t &actor,
+            std::uint64_t expected_binding_generation,
+            const detail::stream_header_t &header,
+            const zlink::message_t &payload) {
+              auto encoded_header = stream_runtime.encode_header (header);
+              if (!encoded_header) {
+                  return result_t<void>::failure (
+                    encoded_header.error_kind (),
+                    encoded_header.error () ? encoded_header.error ()->what ()
+                                            : "bound session header encode failed");
+              }
+              const auto payload_bytes = payload.to_bytes ();
+              const auto header_size = encoded_header.value ().size ();
+              std::vector<std::uint8_t> frame;
+              frame.reserve (6 + header_size + payload_bytes.size ());
+              frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+              frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+              frame.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+              frame.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+              frame.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+              frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+              frame.insert (frame.end (), encoded_header.value ().begin (),
+                            encoded_header.value ().end ());
+              frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+              const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
+                zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
+                std::string (actor.actor_id ()), actor.generation ());
+              const std::vector<zlink::message_t> parts{
+                zlink::message_t::from (frame)};
+              const auto submitted =
+                application_mesh->send_actor_bound_session (
+                  native_actor, expected_binding_generation, parts);
+              return one_way_native_submit_result (
+                submitted, "Core actor bound session send");
+          });
+    }
+    if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
+        _state->services.add_factory<actor_client_t> (
+          [mesh_nodes,
+           actor_location_observer] (service_provider_t &provider) mutable {
+              return runtime::make_actor_client (
+                provider.get_required<runtime::live_location_reader_t> (),
+                provider.get_required<serializer_registry_t> (), mesh_nodes,
+                actor_location_observer);
+          },
+          service_lifetime_t::singleton);
+    }
     /* endpoint_connections live attach (CONN-001): client-channel handles
      * mutate the runtime connection bundle from now on; disconnects apply to
      * the same set the requests iterate. */
@@ -690,121 +1109,27 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               });
         }
     }
-    const auto spot_node_snapshot = detail::spot_node_runtime_t::snapshots (_state->zlink);
-    add_hosted_service (std::make_unique<runtime::location_host_service_t> (
-      detail::location_owner_node_rid (spot_node_snapshot)));
-    auto monitoring_state = detail::monitoring_runtime_t::from (_state->monitoring).state ();
+    add_hosted_service (
+      std::make_unique<runtime::location_host_service_t> (location_owner));
     if (!monitoring_state->location_sources.empty ()) {
         add_hosted_service (
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
     }
     const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
-    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, spot_node_snapshot);
-    std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
-    if (!spot_node_snapshot.empty ()) {
-        for (const auto &spot_node : spot_node_snapshot) {
-            auto runtime = detail::spot_node_runtime_t::from (_state->zlink, spot_node.name);
-            if (runtime) {
-                runtime->bind_location_lifecycle (location_lifecycle);
-                runtime->bind_spot_location_resolver (spot_location_resolver);
-                runtime->bind_drain_flag (_state->draining);
-                channel_runtime.bind_spot_mesh_transport (
-                  spot_node.name,
-                  [spot_runtime = *runtime] (const zlink::routing_id_t &target_node_rid,
-                                             const zlink::routing_id_t &target_spot_rid,
-                                             runtime::messaging::message_parts_t parts) {
-                      return spot_runtime.send_spot_mesh_parts (
-                        target_node_rid, target_spot_rid, std::move (parts));
-                  },
-                  [spot_runtime = *runtime] (const zlink::routing_id_t &target_node_rid,
-                                             const zlink::routing_id_t &target_spot_rid,
-                                             runtime::messaging::message_parts_t parts,
-                                             std::chrono::milliseconds timeout) {
-                      return spot_runtime.request_spot_mesh_parts (
-                        target_node_rid, target_spot_rid, std::move (parts), timeout);
-                  });
-                auto node_runtime =
-                  runtime::spot_node_host_service_t::node_runtime_t{spot_node, *runtime};
-                {
-                    auto router_connections = options.spot_router_endpoint_connections ();
-                    if (const auto found = router_connections.find (spot_node.name);
-                        found != router_connections.end ()) {
-                        node_runtime.router_connections = found->second;
-                    }
-                    auto pub_sub_connections = options.spot_pub_sub_endpoint_connections ();
-                    if (const auto found = pub_sub_connections.find (spot_node.name);
-                        found != pub_sub_connections.end ()) {
-                        node_runtime.pub_sub_connections = found->second;
-                    }
-                }
-                spot_node_runtimes.push_back (std::move (node_runtime));
-            }
-        }
-        add_hosted_service (
-          std::make_unique<runtime::spot_node_host_service_t> (spot_node_runtimes));
-    }
+    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, {});
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
-      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels ()));
+      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels (),
+      mesh_nodes));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));
-    }
-    if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
-        std::vector<detail::spot_node_runtime_t> actor_client_spot_nodes;
-        actor_client_spot_nodes.reserve (spot_node_runtimes.size ());
-        for (const auto &spot_node : spot_node_runtimes) {
-            actor_client_spot_nodes.push_back (spot_node.runtime);
-        }
-        _state->services.add_factory<actor_client_t> (
-          [spot_nodes = std::move (actor_client_spot_nodes),
-           actor_location_observer] (service_provider_t &provider) {
-              return runtime::make_actor_client (
-                provider.get_required<runtime::live_location_reader_t> (),
-                provider.get_required<serializer_registry_t> (), spot_nodes,
-                actor_location_observer);
-          },
-          service_lifetime_t::singleton);
-    }
-    const auto route_channel_ids =
-      detail::channel_runtime_manager_t::configured_route_channel_ids (_state->zlink);
-    if (!route_channel_ids.empty ()) {
-        std::vector<runtime::route_channel_host_service_t::spot_node_runtime_t>
-          route_spot_node_runtimes;
-        route_spot_node_runtimes.reserve (spot_node_runtimes.size ());
-        for (const auto &spot_node : spot_node_runtimes) {
-            route_spot_node_runtimes.push_back (
-              runtime::route_channel_host_service_t::spot_node_runtime_t{spot_node.snapshot,
-                                                                         spot_node.runtime});
-        }
-        add_hosted_service (std::make_unique<runtime::route_channel_host_service_t> (
-          _state->zlink.message_bus (), _state->serializers, std::move (route_spot_node_runtimes),
-          detail::build_route_internal_dispatchers (
-            _state->zlink, spot_node_snapshot, route_channel_ids,
-            _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> (),
-            _state->serializers)));
-    }
-    detail::configure_actor_gateway_spot_bridge (_state->zlink, _state->services,
-                                                 _state->serializers, spot_node_snapshot);
-    const bool has_spot_publisher_client =
-      std::any_of (spot_node_snapshot.begin (), spot_node_snapshot.end (),
-                   [] (const spot_node_snapshot_t &spot_node) {
-                       return spot_node.pub_bind_endpoint.has_value ();
-                   });
-    if (has_spot_publisher_client
-        && !_state->services.contains (std::type_index (typeid (spot_publisher_client_t)))) {
-        _state->services.add_factory<spot_publisher_client_t> (
-          [] (service_provider_t &provider) {
-              return std::make_unique<spot_publisher_client_t> (
-                provider.get_required<spot_node_manager_t> (),
-                provider.get_required<serializer_registry_t> ());
-          },
-          service_lifetime_t::singleton);
     }
     if (!stream_snapshot.empty ()) {
         detail::configure_stream_dispatch_executor ();
         auto stream_service = std::make_unique<runtime::stream_host_service_t> (
           detail::stream_runtime_t::from (_state->zlink), stream_snapshot,
-          options.stream_session_factories ());
+          options.stream_session_factories (),
+          mesh_nodes.empty () ? nullptr : mesh_nodes.front ());
         stream_service->bind_drain_flag (_state->draining);
         stream_service->bind_monitoring (
           detail::monitoring_runtime_t::from (_state->monitoring).state ());
@@ -984,6 +1309,7 @@ task_t<drain_result_t> app_t::drain (std::chrono::milliseconds deadline)
 void app_t::run_shared_drain (detail::app_state_t &state) noexcept
 {
     const auto started_at = std::chrono::steady_clock::now ();
+    const auto deadline_at = started_at + state.drain_operation.deadline;
     auto publisher = state.monitoring.publisher ();
     auto emit_state = [&] (drain_state_t drain_state) {
         try {
@@ -1001,19 +1327,26 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
 
     emit_state (drain_state_t::draining);
 
-    std::map<std::string, std::size_t> natural_room_counts;
-    for (const auto &[mesh_name, policy] : state.spot_drain_policies) {
-        if (policy != spot_drain_policy_t::drain_natural) {
-            continue;
+    drain_result_t result = drained_t{};
+    bool force_state_emitted = false;
+    auto force = [&] (drain_force_reason_t reason) {
+        if (!std::holds_alternative<drained_t> (result))
+            return;
+        result = force_stopped_t{reason};
+        if (!force_state_emitted) {
+            force_state_emitted = true;
+            emit_state (drain_state_t::force_stopping);
         }
-        if (auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name)) {
-            natural_room_counts.emplace (mesh_name, runtime->active_user_spot_count ());
+    };
+
+    std::vector<runtime::mesh_node_host_service_t *> mesh_services;
+    for (const auto &service : state.hosted_services) {
+        if (auto *mesh = dynamic_cast<runtime::mesh_node_host_service_t *> (service.get ())) {
+            mesh->seal_application_dispatch ();
+            mesh_services.push_back (mesh);
         }
     }
 
-    /* Draining marker (graceful-drain-handoff §3.1): keep the connection,
-     * leave placement. The auto-connect writer preserves this flag on every
-     * registration/lease renewal republish. */
     bool marker_published = false;
     try {
         auto provider = state.services.build_provider ();
@@ -1028,11 +1361,11 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         marker_published = false;
     }
 
-    const auto deadline_at = started_at + state.drain_operation.deadline;
-    drain_result_t result = drained_t{};
     if (!marker_published) {
         while (std::chrono::steady_clock::now () < deadline_at && !marker_published) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+            std::this_thread::sleep_until (
+              std::min (deadline_at, std::chrono::steady_clock::now ()
+                                       + std::chrono::milliseconds (100)));
             try {
                 auto provider = state.services.build_provider ();
                 if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
@@ -1043,11 +1376,8 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
             catch (...) {
             }
         }
-        if (!marker_published) {
-            emit_state (drain_state_t::force_stopping);
-            result =
-              force_stopped_t{drain_force_reason_t::draining_state_publish_failed};
-        }
+        if (!marker_published)
+            force (drain_force_reason_t::draining_state_publish_failed);
     }
 
     /* Keep the typed marker and owner lease observable until every polling
@@ -1075,181 +1405,170 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
                           << propagation_bound.count () << std::endl;
                 if (std::chrono::steady_clock::now () + propagation_bound > deadline_at) {
                     std::this_thread::sleep_until (deadline_at);
-                    emit_state (drain_state_t::force_stopping);
-                    result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+                    force (drain_force_reason_t::deadline_exceeded);
                 } else {
                     std::this_thread::sleep_for (propagation_bound);
                 }
             }
             catch (...) {
-                emit_state (drain_state_t::force_stopping);
-                result = force_stopped_t{drain_force_reason_t::teardown_failed};
+                force (drain_force_reason_t::teardown_failed);
             }
         }
     }
 
-    /* Actor handoff (graceful-drain-handoff §5.2/§5.3): bounded sequential
-     * passes move every locally joined actor to an eligible non-draining
-     * entry-spot node; each pass refreshes the store view. No eligible target
-     * keeps the actor on the source and the shared deadline owns the forced
-     * outcome. */
+    /* Admission is sealed before this barrier. Each callback accepted before
+     * the seal owns a pending/active count until its terminal reply or send
+     * completion, so a normal request completion cannot close its Spot. */
     if (std::holds_alternative<drained_t> (result)) {
-        runtime::runtime_metrics_t handoff_metrics (
-          detail::monitoring_runtime_t::from (state.monitoring).state ());
-        bool actors_done = false;
-        while (!actors_done) {
-            detail::drain_actor_handoff_result_t pass;
+        auto outbound_pending = [&state] () -> bool {
             try {
-                auto provider = state.services.build_provider ();
-                pass =
-                  detail::drain_actors_through_route (state.zlink, provider, state.serializers);
-            }
-            catch (...) {
-                pass.completed = false;
-            }
-            if (pass.moved > 0 && handoff_metrics.enabled ()) {
-                handoff_metrics.counter ("zlink.drain.actors.handed_off", "{actor}",
-                                         static_cast<double> (pass.moved));
-            }
-            actors_done = pass.completed;
-            if (actors_done) {
-                break;
-            }
-            if (std::chrono::steady_clock::now () >= deadline_at) {
-                emit_state (drain_state_t::force_stopping);
-                result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
-                if (pass.remaining > 0 && handoff_metrics.enabled ()) {
-                    handoff_metrics.counter ("zlink.drain.forced", "{event}",
-                                             static_cast<double> (pass.remaining),
-                                             {{"kind", "actor"}});
-                }
-                break;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-    }
-
-    /* In-flight completion wait (graceful-drain-handoff §4-4): outbound
-     * pending requests and running spot callbacks must complete within the
-     * shared deadline; otherwise the drain force-stops. */
-    if (std::holds_alternative<drained_t> (result)) {
-        auto in_flight_pending = [&state] () -> bool {
-            try {
-                if (detail::channel_runtime_t::from (state.zlink.message_bus ()).pending_count ()
-                    > 0) {
-                    return true;
-                }
-                for (const auto &spot_node : detail::spot_node_runtime_t::snapshots (state.zlink)) {
-                    auto runtime = detail::spot_node_runtime_t::from (state.zlink, spot_node.name);
-                    if (runtime && runtime->has_active_callbacks ()) {
-                        return true;
-                    }
-                }
+                return detail::channel_runtime_t::from (state.zlink.message_bus ())
+                         .pending_count () > 0;
             }
             catch (...) {
             }
             return false;
         };
-        bool timed_out = false;
-        while (in_flight_pending ()) {
-            if (std::chrono::steady_clock::now () >= deadline_at) {
-                timed_out = true;
-                break;
-            }
+        while (outbound_pending () && std::chrono::steady_clock::now () < deadline_at)
             std::this_thread::sleep_for (std::chrono::milliseconds (50));
-        }
-        if (timed_out) {
-            emit_state (drain_state_t::force_stopping);
-            result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
-        }
-    }
-
-    /* DrainNatural keeps user spots available until the application closes
-     * them through the existing spot lifecycle API. The drain worker owns the
-     * deadline and records exactly the rooms observed when draining began. */
-    if (std::holds_alternative<drained_t> (result)) {
-        auto natural_rooms_remaining = [&state, &natural_room_counts] () {
-            std::size_t remaining = 0;
-            for (const auto &[mesh_name, _] : natural_room_counts) {
-                if (auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name)) {
-                    remaining += runtime->active_user_spot_count ();
-                }
-            }
-            return remaining;
-        };
-        while (natural_rooms_remaining () > 0
-               && std::chrono::steady_clock::now () < deadline_at) {
-            std::this_thread::sleep_for (std::chrono::milliseconds (50));
-        }
-        const auto remaining = natural_rooms_remaining ();
-        runtime::runtime_metrics_t drain_metrics (
-          detail::monitoring_runtime_t::from (state.monitoring).state ());
-        if (remaining > 0) {
-            emit_state (drain_state_t::force_stopping);
-            result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
-            if (drain_metrics.enabled ()) {
-                drain_metrics.counter ("zlink.drain.forced", "{event}",
-                                       static_cast<double> (remaining), {{"kind", "room"}});
-            }
-        } else if (drain_metrics.enabled ()) {
-            for (const auto &[_, count] : natural_room_counts) {
-                if (count > 0) {
-                    drain_metrics.counter ("zlink.drain.rooms.drained", "{room}",
-                                           static_cast<double> (count),
-                                           {{"policy", "drain_natural"}});
+        if (outbound_pending ()) {
+            force (drain_force_reason_t::deadline_exceeded);
+        } else {
+            for (auto *mesh : mesh_services) {
+                if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
+                    force (drain_force_reason_t::deadline_exceeded);
+                    break;
                 }
             }
         }
     }
 
-    /* SPOT drain policies (graceful-drain-handoff §5.1): release-and-recreate
-     * meshes close their spots after the serial queues emptied so the next
-     * GetOrCreate rebuilds the state on another owner; drain-natural meshes
-     * only rely on the in-flight wait above. */
     if (std::holds_alternative<drained_t> (result)) {
+        bool actors_completed = false;
         try {
-            for (const auto &[mesh_name, policy] : state.spot_drain_policies) {
-                if (policy != spot_drain_policy_t::release_and_recreate) {
-                    continue;
-                }
-                auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name);
-                if (!runtime) {
-                    continue;
-                }
-                runtime::runtime_metrics_t drain_metrics (
-                  detail::monitoring_runtime_t::from (state.monitoring).state ());
-                for (auto &context : runtime->active_contexts ()) {
-                    try {
-                        const auto closed = runtime->close_spot (context.spot_rid ()).result ();
-                        if (closed && closed.value () && drain_metrics.enabled ()) {
-                            drain_metrics.counter ("zlink.drain.rooms.drained", "{room}", 1,
-                                                   {{"policy", "release_and_recreate"}});
+            auto provider = state.services.build_provider ();
+            while (std::chrono::steady_clock::now () < deadline_at) {
+                bool pass_completed = true;
+                auto peers = provider.get<peer_location_resolver_t> ();
+                for (auto *mesh_service : mesh_services) {
+                    for (const auto &node : mesh_service->nodes ()) {
+                        auto spot_runtime = detail::spot_node_runtime_t::from (
+                          state.zlink, node->mesh_name ());
+                        if (!spot_runtime)
+                            continue;
+                        const auto actors = spot_runtime->local_actor_refs ();
+                        if (actors.empty ())
+                            continue;
+                        if (!peers) {
+                            pass_completed = false;
+                            continue;
+                        }
+                        std::vector<peer_location_t> live;
+                        try {
+                            live = peers->get ()
+                                     .list_live_peers (peer_location_filter_t{
+                                       .auto_connect_type =
+                                         location_auto_connect_type_t::spot_mesh,
+                                       .mesh_name = node->mesh_name (),
+                                       .role = location_role_t::spot})
+                                     .result ()
+                                     .value ();
+                        }
+                        catch (...) {
+                            pass_completed = false;
+                            continue;
+                        }
+                        const auto local_rid = node->routing_id ();
+                        for (const auto &actor : actors) {
+                            const auto capability =
+                              "actor:" + std::string (actor.actor_type ());
+                            const auto target = std::find_if (
+                              live.begin (), live.end (), [&] (const auto &peer) {
+                                  return !peer.draining && peer.node_rid
+                                         && (!local_rid
+                                             || peer.node_rid->to_hex ()
+                                                  != local_rid->to_hex ())
+                                         && std::find (peer.capabilities.begin (),
+                                                       peer.capabilities.end (), capability)
+                                              != peer.capabilities.end ();
+                              });
+                            if (target == live.end ()) {
+                                pass_completed = false;
+                                continue;
+                            }
+                            const auto now = std::chrono::steady_clock::now ();
+                            if (now >= deadline_at) {
+                                pass_completed = false;
+                                break;
+                            }
+                            const auto remaining =
+                              std::max (std::chrono::milliseconds (1),
+                                        std::chrono::duration_cast<std::chrono::milliseconds> (
+                                          deadline_at - now));
+                            auto moved = node->join_application_actor_to_entry_spot (
+                              actor,
+                              node_rid_t::from_string (target->node_rid->to_string ()),
+                              zlink::message_t{}, remaining);
+                            if (!moved || moved.value ().result_code != 0)
+                                pass_completed = false;
                         }
                     }
-                    catch (...) {
-                    }
                 }
+                if (pass_completed) {
+                    actors_completed = true;
+                    break;
+                }
+                std::this_thread::sleep_until (
+                  std::min (deadline_at, std::chrono::steady_clock::now ()
+                                           + std::chrono::milliseconds (25)));
             }
         }
         catch (...) {
         }
+        if (!actors_completed)
+            force (std::chrono::steady_clock::now () >= deadline_at
+                     ? drain_force_reason_t::deadline_exceeded
+                     : drain_force_reason_t::teardown_failed);
     }
 
-    /* Owner cleanup (graceful-drain-handoff §4-5): lease and rows are removed
-     * before the terminal result completes; the store stays usable. */
+    if (std::holds_alternative<drained_t> (result)) {
+        for (const auto &service : state.hosted_services) {
+            if (auto *stream = dynamic_cast<runtime::stream_host_service_t *> (service.get ());
+                stream && !stream->drain_sessions_until (deadline_at)) {
+                force (std::chrono::steady_clock::now () >= deadline_at
+                         ? drain_force_reason_t::deadline_exceeded
+                         : drain_force_reason_t::teardown_failed);
+                break;
+            }
+        }
+    }
+
+    if (std::holds_alternative<drained_t> (result)) {
+        bool spots_closed = true;
+        for (const auto &snapshot : detail::spot_node_runtime_t::snapshots (state.zlink)) {
+            auto runtime = detail::spot_node_runtime_t::from (state.zlink, snapshot.name);
+            if (runtime && !runtime->close_all_user_spots ()) {
+                spots_closed = false;
+                break;
+            }
+        }
+        if (!spots_closed)
+            force (std::chrono::steady_clock::now () >= deadline_at
+                     ? drain_force_reason_t::deadline_exceeded
+                     : drain_force_reason_t::teardown_failed);
+    }
+
     if (std::holds_alternative<drained_t> (result)) {
         try {
             auto provider = state.services.build_provider ();
             if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
                 if (!location_runtime->get ().cleanup_owner ()) {
-                    emit_state (drain_state_t::force_stopping);
-                    result = force_stopped_t{drain_force_reason_t::owner_cleanup_failed};
+                    force (drain_force_reason_t::owner_cleanup_failed);
                 }
             }
         }
         catch (...) {
-            emit_state (drain_state_t::force_stopping);
-            result = force_stopped_t{drain_force_reason_t::owner_cleanup_failed};
+            force (drain_force_reason_t::owner_cleanup_failed);
         }
     }
 
@@ -1276,7 +1595,8 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         catch (...) {
         }
     }
-    emit_state (force_stopped ? drain_state_t::force_stopping : drain_state_t::drained);
+    if (!force_stopped)
+        emit_state (drain_state_t::drained);
     try {
         runtime::runtime_metrics_t drain_metrics (
           detail::monitoring_runtime_t::from (state.monitoring).state ());
@@ -1294,10 +1614,12 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
     std::vector<detail::task_completion_source_t<drain_result_t>> waiters;
     {
         std::lock_guard lock (state.drain_operation.mutex);
-        state.drain_operation.terminal = true;
-        state.drain_operation.result = result;
-        waiters = std::move (state.drain_operation.waiters);
-        state.drain_operation.waiters.clear ();
+        if (!state.drain_operation.terminal) {
+            state.drain_operation.terminal = true;
+            state.drain_operation.result = result;
+            waiters = std::move (state.drain_operation.waiters);
+            state.drain_operation.waiters.clear ();
+        }
     }
     for (auto &waiter : waiters) {
         waiter.complete (result_t<drain_result_t>::success (result));

@@ -85,6 +85,17 @@ if(DEFINED ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE)
   list(APPEND tooling_configure_args
     -D CMAKE_TOOLCHAIN_FILE=${ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE})
 endif()
+foreach(tooling_dependency IN ITEMS
+    protobuf_DIR
+    absl_DIR
+    utf8_range_DIR
+    ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX)
+  if(DEFINED ZLINK_FRAMEWORK_CPP_TOOLING_${tooling_dependency}
+      AND NOT "${ZLINK_FRAMEWORK_CPP_TOOLING_${tooling_dependency}}" STREQUAL "")
+    list(APPEND tooling_configure_args
+      -D ${tooling_dependency}=${ZLINK_FRAMEWORK_CPP_TOOLING_${tooling_dependency}})
+  endif()
+endforeach()
 file(MAKE_DIRECTORY "${smoke_run_dir}")
 execute_process(
   COMMAND "${CMAKE_COMMAND}"

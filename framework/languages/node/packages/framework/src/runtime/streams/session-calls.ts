@@ -1,7 +1,8 @@
 import type {
   ZLinkBoundSessionSendCall,
   ZLinkSessionReplyCall,
-  ZLinkSessionSendCall
+  ZLinkSessionSendCall,
+  ZLinkSubmitResult
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
@@ -20,12 +21,13 @@ export interface ZLinkBoundSessionSendRuntime {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
 }
 
 export interface ZLinkSessionCallContext {
   readonly stream: {
     writeRaw(payload: Message): boolean;
+    submitRaw(payload: Message, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
   };
   readonly dispatchHeader: ZLinkStreamFrameHeader | undefined;
   createJsonFrameMessage(
@@ -44,6 +46,7 @@ export interface ZLinkSessionCallContext {
     compressed: boolean,
     payload: unknown
   ): Message;
+  claimReply(requestHeader: ZLinkStreamFrameHeader): void;
 }
 
 export class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCall {
@@ -67,13 +70,15 @@ export class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
     ensureSingleSubmit(this.executed);
+    const packetName = resolvePacketName(this.message, this.selectedPacketName);
     this.executed = true;
-    await this.runtime.sendBoundSession(
+    throwIfAborted(signal);
+    return await this.runtime.sendBoundSession(
       this.actorId,
       this.message,
-      this.selectedPacketName,
+      packetName,
       this.selectedMetadata,
       signal
     );
@@ -106,22 +111,21 @@ export class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): void {
-    throwIfAborted(signal);
+  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
     ensureSingleSubmit(this.executed);
+    const packetName = resolvePacketName(this.message, this.selectedPacketName);
     this.executed = true;
+    throwIfAborted(signal);
     const message = this.context.createJsonFrameMessage(
       ZLinkStreamMessageKind.Send,
-      resolvePacketName(this.message, this.selectedPacketName),
+      packetName,
       this.selectedMetadata,
       this.compressionEnabled,
       undefined,
       this.message
     );
     try {
-      if (!this.context.stream.writeRaw(message)) {
-        throw new Error('Client stream send failed.');
-      }
+      return await this.context.stream.submitRaw(message, signal);
     } finally {
       message.close();
     }
@@ -129,7 +133,6 @@ export class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
 }
 
 export class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
-  private readonly selectedMetadata = new Map<string, string>();
   private compressionEnabled = false;
   private executed = false;
 
@@ -138,35 +141,32 @@ export class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
     private readonly message: unknown
   ) {}
 
-  metadata(key: string, value: string): this {
-    this.selectedMetadata.set(key, value);
-    return this;
-  }
-
   compress(enabled = true): this {
     this.compressionEnabled = enabled;
     return this;
   }
 
-  submit(signal?: AbortSignal): void {
-    throwIfAborted(signal);
+  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
     ensureSingleSubmit(this.executed);
     this.executed = true;
     const requestHeader = this.context.dispatchHeader;
     if (requestHeader?.requestSeq === undefined) {
       throw new Error('Reply is only available while handling a request packet.');
     }
+    this.context.claimReply(requestHeader);
+    // Reply-token validity wins over caller cancellation. Claiming before the
+    // pre-cancel check keeps duplicate calls deterministic while still making
+    // a pre-cancelled first call perform no transport admission.
+    throwIfAborted(signal);
     const message = this.context.createJsonReplyFrameMessage(
       requestHeader,
       ZLinkStreamMessageKind.Response,
-      this.selectedMetadata,
+      new Map<string, string>(),
       this.compressionEnabled,
       this.message
     );
     try {
-      if (!this.context.stream.writeRaw(message)) {
-        throw new Error('Client stream reply send failed.');
-      }
+      return await this.context.stream.submitRaw(message, signal);
     } finally {
       message.close();
     }

@@ -196,6 +196,44 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
         const auto evidence = fetch_evidence (options.http_b_endpoint);
         for (const auto &entry : evidence.entries) {
             if (entry.marker == "ProfileReq" && entry.value.rfind ("rl-b2-restored-", 0) == 0) {
+                touch_file (options.second_ready_file);
+                wait_for_file (options.second_continue_file);
+
+                topology.post ("/topology/wait")
+                  .body (nlohmann::json{{"routingId", "api-b"},
+                                        {"state", "Ready"},
+                                        {"expectedCount", 0},
+                                        {"timeoutMilliseconds", 30000}}
+                           .dump (),
+                         "application/json")
+                  .async<std::vector<topology_entry_result_t>> ()
+                  .result ()
+                  .value ();
+
+                auto second_crash_consumer = zlink::http_client::client_t::create ()
+                                               .base_url (
+                                                 options.http_consumer_endpoint)
+                                               .timeout (
+                                                 std::chrono::milliseconds (10000))
+                                               .build ();
+                const auto second_crash_raw =
+                  second_crash_consumer.post ("/profile/request")
+                    .body (profile_req_t{.value = "fast",
+                                         .marker = "rl-b2-second-crash-alternate"})
+                    .async_raw ()
+                    .result ()
+                    .value ();
+                ensure (second_crash_raw.status < 400,
+                        "RL-B2 second-crash alternate request failed with status "
+                          + std::to_string (second_crash_raw.status) + ": "
+                          + second_crash_raw.body);
+                const auto second_crash =
+                  nlohmann::json::parse (second_crash_raw.body).get<profile_res_t> ();
+                ensure (second_crash.provider_rid == "api-a",
+                        "RL-B2 second-crash request did not complete through provider A");
+                ensure (second_crash.value == "profile:fast",
+                        "RL-B2 second-crash request returned an invalid value");
+                std::cout << "scenario RL-B2 second-crash alternate passed\n";
                 std::cout << "scenario RL-B2 passed\n";
                 return;
             }

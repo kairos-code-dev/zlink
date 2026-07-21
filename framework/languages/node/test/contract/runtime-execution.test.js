@@ -5,7 +5,7 @@ const framework = require('../../packages/framework/dist/internal');
 
 test('runtime task runner observes detached task exceptions without unhandled rejection', async () => {
   const abortController = new AbortController();
-  const sink = new framework.ZLinkRuntimeErrorSink();
+  const sink = new framework.ZLinkRuntimeTaskErrorSink();
   const runner = new framework.ZLinkRuntimeTaskRunner(sink, abortController.signal);
   const observed = [];
   const unhandled = [];

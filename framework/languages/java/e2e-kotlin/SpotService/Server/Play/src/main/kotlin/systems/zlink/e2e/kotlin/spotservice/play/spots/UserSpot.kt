@@ -10,7 +10,6 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
-import systems.zlink.framework.spots.ZLinkTimerOptions
 
 class UserSpot(
     private val context: ZLinkSpotContext,
@@ -38,7 +37,7 @@ class UserSpot(
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         evidence.record("SpotCreated", context.spotRid().toString(), if (request.isEmpty) "" else "request")
-        context.addTimer("state-timer", Duration.ofSeconds(2), StateTimerHandler::class.java, ZLinkTimerOptions())
+        context.addTimer("state-timer", Duration.ofSeconds(2), StateTimerHandler::class.java, null)
         return ZLinkSpotCreateResponse.accept()
     }
 
@@ -101,7 +100,7 @@ class UserSpot(
     fun startWorker(op: String): String {
         workerDone = false
         evidence.record("WorkerStarted", context.spotRid().toString(), op)
-        context.runWorker {
+        context.runCpuWorker {
             val delayMillis = if (op == "worker-start-long") 5000L else 1500L
             Thread.sleep(delayMillis)
             "$op-done"

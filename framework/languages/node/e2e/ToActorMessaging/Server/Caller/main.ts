@@ -44,10 +44,10 @@ Module({
           .traceLogFile(path.join(options.logDir, 'caller-flow.log'))
           .traceLabel(options.rid);
         builder
-          .addSpotMesh('to-actor')
-          .enableRouter(options.routerEndpoint, options.rid)
+          .addRouteMesh('to-actor')
+          .listen(options.routerEndpoint).routingId(options.rid)
           .configureEntrySpot({ routingId: options.rid })
-          .enablePubSub(options.pubSubEndpoint, options.rid);
+          .channelName('to-actor');
         return builder.build();
       }
     })
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           await actors
-            .sendToActor(requireActorRef(request), actorNotify(request.scenario, request.actorId, request.value))
+            .sendToActor('to-actor', requireActorRef(request), actorNotify(request.scenario, request.actorId, request.value))
             .submit();
           return { scenario: request.scenario, actorId: request.actorId, result: 'sent' } satisfies ActorCallResponse;
         } catch (error) {
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           const reply = await actors
-            .requestToActor(requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
+            .requestToActor('to-actor', requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
             .timeout(callTimeoutMs)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
         const request = body as ActorCallRequest;
         try {
           const reply = await actors
-            .requestToActor(requireActorRef(request), actorPush(request.scenario, request.actorId, request.value))
+            .requestToActor('to-actor', requireActorRef(request), actorPush(request.scenario, request.actorId, request.value))
             .timeout(5000)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;

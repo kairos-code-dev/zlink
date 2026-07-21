@@ -18,7 +18,7 @@ function Wait-LogContains {
         [Parameter(Mandatory = $true)][string]$Path,
         [Parameter(Mandatory = $true)][string]$Pattern,
         [Parameter(Mandatory = $true)][string]$Description,
-        [int]$Attempts = 50
+        [int]$Attempts = 15
     )
 
     for ($i = 0; $i -lt $Attempts; $i++) {
@@ -35,7 +35,7 @@ function Wait-SampleLogContains {
     param(
         [Parameter(Mandatory = $true)][string]$Pattern,
         [Parameter(Mandatory = $true)][string]$Description,
-        [int]$Attempts = 50
+        [int]$Attempts = 15
     )
 
     for ($i = 0; $i -lt $Attempts; $i++) {
@@ -54,22 +54,18 @@ function Wait-SampleLogContains {
 try {
     $TICTACTOE_REDIS_KEY_PREFIX = "tictactoe:dotnet:${RunId}:"
 
-    $ports = New-SamplePorts -Count 13 -BasePort 0
+    $ports = New-SamplePorts -Count 8 -BasePort 0
 
     $apiABindUrl = "http://127.0.0.1:$($ports[0])"
     $apiBBindUrl = "http://127.0.0.1:$($ports[1])"
     $apiAPublicUrl = $apiABindUrl
     $apiBPublicUrl = $apiBBindUrl
-    $apiAChannelEndpoint = "tcp://127.0.0.1:$($ports[2])"
-    $apiBChannelEndpoint = "tcp://127.0.0.1:$($ports[3])"
-    $playAChannelEndpoint = "tcp://127.0.0.1:$($ports[4])"
-    $playBChannelEndpoint = "tcp://127.0.0.1:$($ports[5])"
+    $apiAMeshEndpoint = "tcp://127.0.0.1:$($ports[2])"
+    $apiBMeshEndpoint = "tcp://127.0.0.1:$($ports[3])"
+    $playAMeshEndpoint = "tcp://127.0.0.1:$($ports[4])"
+    $playBMeshEndpoint = "tcp://127.0.0.1:$($ports[5])"
     $playAEndpoint = "tcp://127.0.0.1:$($ports[6])"
     $playBEndpoint = "tcp://127.0.0.1:$($ports[7])"
-    $spotAEndpoint = "tcp://127.0.0.1:$($ports[8])"
-    $spotBEndpoint = "tcp://127.0.0.1:$($ports[9])"
-    $spotAPubSubEndpoint = "tcp://127.0.0.1:$($ports[10])"
-    $spotBPubSubEndpoint = "tcp://127.0.0.1:$($ports[11])"
     $apiAConfigFile = Join-Path $RunDir "appsettings.api-a.json"
     $apiBConfigFile = Join-Path $RunDir "appsettings.api-b.json"
     $playAConfigFile = Join-Path $RunDir "appsettings.play-a.json"
@@ -84,20 +80,18 @@ try {
     function New-TicTacToeApiSettings {
         param(
             [string]$InstanceName,
-            [int]$ApiIndex,
             [string]$ApiBindUrl,
-            [string]$ApiChannelEndpoint
+            [string]$MeshEndpoint
         )
 
         @{
             Sample = @{
                 InstanceName = $InstanceName
-                ApiIndex = $ApiIndex
                 ApiBindUrl = $ApiBindUrl
-                ApiChannelEndpoint = $ApiChannelEndpoint
-                PlayChannelEndpoints = @($playAChannelEndpoint, $playBChannelEndpoint)
+                MeshEndpoint = $MeshEndpoint
+                PeerMeshEndpoints = @($playAMeshEndpoint, $playBMeshEndpoint)
                 PlayEndpoints = @($playAEndpoint, $playBEndpoint)
-                LogDirectory = $LogDir
+                LogDirectory = $SampleLogDir
             }
         }
     }
@@ -105,37 +99,31 @@ try {
         param(
             [string]$InstanceName,
             [int]$PlayIndex,
-            [string]$PlayChannelEndpoint,
+            [string]$MeshEndpoint,
+            [string[]]$PeerMeshEndpoints,
             [string]$PlayEndpoint,
-            [string]$SpotEndpoint,
-            [string]$SpotPubSubEndpoint,
-            [int]$PeerPlayIndex
+            [string]$PlayMeshNodeRid
         )
 
         @{
             Sample = @{
                 InstanceName = $InstanceName
                 PlayIndex = $PlayIndex
-                ApiChannelEndpoints = @($apiAChannelEndpoint, $apiBChannelEndpoint)
-                PlayChannelEndpoint = $PlayChannelEndpoint
+                MeshEndpoint = $MeshEndpoint
+                PeerMeshEndpoints = $PeerMeshEndpoints
                 PlayEndpoint = $PlayEndpoint
                 PlayEndpoints = @($playAEndpoint, $playBEndpoint)
-                SpotEndpoint = $SpotEndpoint
-                SpotPubSubEndpoint = $SpotPubSubEndpoint
-                PlaySpotNodeRid = "play-node-$($PlayIndex + 1)"
-                PeerPlaySpotNodeRid = "play-node-$($PeerPlayIndex + 1)"
-                PeerSpotEndpoint = @($spotAEndpoint, $spotBEndpoint)[$PeerPlayIndex]
-                PeerSpotPubEndpoint = @($spotAPubSubEndpoint, $spotBPubSubEndpoint)[$PeerPlayIndex]
+                PlayMeshNodeRid = $PlayMeshNodeRid
                 RedisEndpoint = $redisEndpoint
                 RedisKeyPrefix = $TICTACTOE_REDIS_KEY_PREFIX
-                LogDirectory = $LogDir
+                LogDirectory = $SampleLogDir
             }
         }
     }
-    New-TicTacToeApiSettings "api-a" 0 $apiABindUrl $apiAChannelEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiAConfigFile
-    New-TicTacToeApiSettings "api-b" 1 $apiBBindUrl $apiBChannelEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiBConfigFile
-    New-TicTacToePlaySettings "play-a" 0 $playAChannelEndpoint $playAEndpoint $spotAEndpoint $spotAPubSubEndpoint 1 | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playAConfigFile
-    New-TicTacToePlaySettings "play-b" 1 $playBChannelEndpoint $playBEndpoint $spotBEndpoint $spotBPubSubEndpoint 0 | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playBConfigFile
+    New-TicTacToeApiSettings -InstanceName "api-a" -ApiBindUrl $apiABindUrl -MeshEndpoint $apiAMeshEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiAConfigFile
+    New-TicTacToeApiSettings -InstanceName "api-b" -ApiBindUrl $apiBBindUrl -MeshEndpoint $apiBMeshEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiBConfigFile
+    New-TicTacToePlaySettings -InstanceName "play-a" -PlayIndex 0 -MeshEndpoint $playAMeshEndpoint -PeerMeshEndpoints @() -PlayEndpoint $playAEndpoint -PlayMeshNodeRid "play-node-1" | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playAConfigFile
+    New-TicTacToePlaySettings -InstanceName "play-b" -PlayIndex 1 -MeshEndpoint $playBMeshEndpoint -PeerMeshEndpoints @($playAMeshEndpoint) -PlayEndpoint $playBEndpoint -PlayMeshNodeRid "play-node-2" | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playBConfigFile
     @{ Sample = @{ ApiPublicUrls = @($apiAPublicUrl); LogDirectory = $LogDir } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $clientConfigFile
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "TicTacToe.sln")
@@ -144,23 +132,19 @@ try {
 
     Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-a-stream" $playAEndpoint
-    Wait-SampleTcpEndpoint "play-a-channel" $playAChannelEndpoint
-    Wait-SampleTcpEndpoint "play-a-spot" $spotAEndpoint
-    Wait-SampleTcpEndpoint "play-a-spot-pubsub" $spotAPubSubEndpoint
+    Wait-SampleTcpEndpoint "play-a-mesh" $playAMeshEndpoint
 
     Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server.Play/TicTacToe.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $playBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "play-b-stream" $playBEndpoint
-    Wait-SampleTcpEndpoint "play-b-channel" $playBChannelEndpoint
-    Wait-SampleTcpEndpoint "play-b-spot" $spotBEndpoint
-    Wait-SampleTcpEndpoint "play-b-spot-pubsub" $spotBPubSubEndpoint
+    Wait-SampleTcpEndpoint "play-b-mesh" $playBMeshEndpoint
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiAConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-a-http" $apiABindUrl
-    Wait-SampleTcpEndpoint "api-a-channel" $apiAChannelEndpoint
+    Wait-SampleTcpEndpoint "api-a-mesh" $apiAMeshEndpoint
 
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server.Api/TicTacToe.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $apiBConfigFile) | Out-Null
     Wait-SampleTcpEndpoint "api-b-http" $apiBBindUrl
-    Wait-SampleTcpEndpoint "api-b-channel" $apiBChannelEndpoint
+    Wait-SampleTcpEndpoint "api-b-mesh" $apiBMeshEndpoint
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--config", $clientConfigFile) *> $clientLog

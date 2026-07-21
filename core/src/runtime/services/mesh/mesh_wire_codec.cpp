@@ -139,6 +139,109 @@ std::vector<unsigned char> read_blob16 (wire_reader_t &reader_)
     return std::vector<unsigned char> (bytes.begin (), bytes.end ());
 }
 
+namespace
+{
+bool valid_instance_string (const std::string &value_,
+                            size_t maximum_,
+                            bool allow_empty_)
+{
+    if ((!allow_empty_ && value_.empty ()) || value_.size () > maximum_
+        || value_.find ('\0') != std::string::npos)
+        return false;
+    return value_.empty ()
+           || valid_utf8 (
+             reinterpret_cast<const unsigned char *> (value_.data ()),
+             value_.size ());
+}
+
+bool valid_instance_placement (const instance_placement_value_t &target_)
+{
+    return valid_instance_string (
+          target_.instance_spot_type, ZLINK_INSTANCE_SPOT_TYPE_MAX, false)
+           && valid_instance_string (
+          target_.message_contract_id, ZLINK_INSTANCE_SPOT_CONTRACT_ID_MAX,
+          false)
+           && !target_.node_rid.empty () && target_.node_rid.size () <= 255
+           && !target_.spot_rid.empty () && target_.spot_rid.size () <= 255
+           && target_.node_generation > 0;
+}
+}
+
+//  The public placement contains pointers and platform-sized fields, so the
+//  wire uses a stable section rather than copying the ABI structure. The
+//  byte count lets a receiver reject truncated or extended version-1 sections
+//  before any mailbox state changes.
+bool encode_instance_placement (std::vector<unsigned char> &out_,
+                             const instance_placement_value_t &target_)
+{
+    if (!valid_instance_placement (target_)) {
+        errno = EINVAL;
+        return false;
+    }
+
+    std::vector<unsigned char> body;
+    try {
+        body.reserve (32 + target_.instance_spot_type.size ()
+                      + target_.message_contract_id.size ()
+                      + target_.node_rid.size () + target_.spot_rid.size ());
+        put_rid (body, target_.node_rid);
+        put_u64 (body, target_.node_generation);
+        put_rid (body, target_.spot_rid);
+        put_u8 (
+          body, static_cast<unsigned char> (target_.instance_spot_type.size ()));
+        put_bytes (body, target_.instance_spot_type.data (),
+                   target_.instance_spot_type.size ());
+        put_u8 (
+          body, static_cast<unsigned char> (target_.message_contract_id.size ()));
+        put_bytes (body, target_.message_contract_id.data (),
+                   target_.message_contract_id.size ());
+        if (body.size () > UINT16_MAX) {
+            errno = EINVAL;
+            return false;
+        }
+        put_u8 (out_, wire_instance_placement_version);
+        put_u16 (out_, static_cast<uint16_t> (body.size ()));
+        put_bytes (out_, body.data (), body.size ());
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return false;
+    }
+    return true;
+}
+
+bool decode_instance_placement (wire_reader_t &reader_,
+                             instance_placement_value_t *target_)
+{
+    if (!target_) {
+        reader_.failed = true;
+        return false;
+    }
+    const unsigned char version = reader_.u8 ();
+    const size_t target_size = reader_.u16 ();
+    if (reader_.failed || version != wire_instance_placement_version
+        || !reader_.need (target_size)) {
+        reader_.failed = true;
+        return false;
+    }
+
+    wire_reader_t target_reader (reader_.data + reader_.pos, target_size);
+    instance_placement_value_t decoded;
+    decoded.node_rid = read_rid (target_reader);
+    decoded.node_generation = target_reader.u64 ();
+    decoded.spot_rid = read_rid (target_reader);
+    decoded.instance_spot_type = target_reader.bytes (target_reader.u8 ());
+    decoded.message_contract_id = target_reader.bytes (target_reader.u8 ());
+    if (target_reader.failed || target_reader.pos != target_reader.size
+        || !valid_instance_placement (decoded)) {
+        reader_.failed = true;
+        return false;
+    }
+    reader_.pos += target_size;
+    *target_ = decoded;
+    return true;
+}
+
 //  Serializes one frozen record for TRANSFER_DATA (parts travel as payload
 //  frames). relay_serial_ replaces a source-sealed reply token with the
 //  source-route relay key; 0 means the record carries no reply route.
@@ -149,6 +252,7 @@ void put_record_header (std::vector<unsigned char> &out_,
     put_u8 (out_, static_cast<unsigned char> (record_.kind));
     put_rid (out_, record_.source_node_rid);
     put_rid (out_, record_.source_spot_rid);
+    put_u64 (out_, record_.source_binding_generation);
     put_actor_ref (out_, record_.source_actor);
     put_u8 (out_, static_cast<unsigned char> (record_.channel_name.size ()));
     put_bytes (out_, record_.channel_name.data (), record_.channel_name.size ());
@@ -175,6 +279,7 @@ bool read_record_header (wire_reader_t &reader_,
     record_->kind = static_cast<zlink_mesh_record_kind_t> (reader_.u8 ());
     record_->source_node_rid = read_rid (reader_);
     record_->source_spot_rid = read_rid (reader_);
+    record_->source_binding_generation = reader_.u64 ();
     {
         const size_t id_len = reader_.u8 ();
         const std::string id = reader_.bytes (id_len);

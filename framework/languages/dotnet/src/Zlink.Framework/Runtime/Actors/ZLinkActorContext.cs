@@ -9,6 +9,14 @@ internal sealed class ZLinkActorContext(
         => state.Actor ?? throw new InvalidOperationException(
             $"Actor '{state.ActorId}' has not been created.");
 
+    public string MeshName
+        => ZLinkActorDrainCoordinator.ResolveMeshName(
+               runtime.Registration,
+               state.ActorType ?? throw new InvalidOperationException(
+                   $"Actor '{state.ActorId}' does not have a registered actor type."))
+           ?? throw new InvalidOperationException(
+               $"Actor '{state.ActorId}' does not belong to a registered RouteMesh.");
+
     public RoutingId? SpotRid => state.SpotRid;
 
     public IZLinkBoundSession BoundSession

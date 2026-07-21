@@ -16,6 +16,10 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSock
 
     public int ReceiveHighWaterMark { get; set; }
 
+    public ulong MailboxMessageBudget { get; set; }
+
+    public ulong MailboxByteBudget { get; set; }
+
     public int SendBufferSize { get; set; }
 
     public int ReceiveBufferSize { get; set; }
@@ -29,8 +33,7 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSock
         get => _sendTimeout;
         set
         {
-            ValidateSendTimeout(value);
-            _sendTimeout = value;
+            _sendTimeout = NormalizeSendTimeout(value);
         }
     }
 
@@ -54,10 +57,19 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSock
         }
     }
 
-    internal static void ValidateSendTimeout(TimeSpan? value)
+    internal static TimeSpan? NormalizeSendTimeout(TimeSpan? value)
     {
-        if (value is { } timeout && timeout < TimeSpan.Zero)
-            throw new ZLinkConfigurationException("SendTimeout must be null, zero, or a positive duration.");
+        if (value is not { } timeout) return null;
+        if (timeout <= TimeSpan.Zero)
+            throw new ZLinkConfigurationException("SendTimeout must be greater than zero.");
+
+        var wholeMilliseconds = timeout.Ticks / TimeSpan.TicksPerMillisecond;
+        if (timeout.Ticks % TimeSpan.TicksPerMillisecond != 0) wholeMilliseconds++;
+        if (wholeMilliseconds > int.MaxValue)
+            throw new ZLinkConfigurationException(
+                $"SendTimeout must not exceed {int.MaxValue} milliseconds.");
+
+        return TimeSpan.FromMilliseconds(wholeMilliseconds);
     }
 
     internal static void ValidatePeerWeight(int value)
@@ -98,8 +110,7 @@ internal sealed class ZLinkSpotPublisherConfig : IZLinkSpotPublisherConfig
         get => _sendTimeout;
         set
         {
-            ZLinkSocketConfig.ValidateSendTimeout(value);
-            _sendTimeout = value;
+            _sendTimeout = ZLinkSocketConfig.NormalizeSendTimeout(value);
         }
     }
 

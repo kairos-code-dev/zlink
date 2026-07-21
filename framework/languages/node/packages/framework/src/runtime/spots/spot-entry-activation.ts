@@ -22,10 +22,12 @@ import type {
   ZLinkEntrySpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
 import type { Message } from '../../contracts/Common/Message';
+import type { Message as BindingMessage } from '@zlink-systems/zlink';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import {
+  createActorMembership,
   ZLinkActorDispatchMailboxSet,
   ZLinkSpotActorHandlerRegistryRuntime
 } from '../actors';
@@ -35,6 +37,7 @@ import type {
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
+import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkWorkerRuntime } from '../workers';
 import { ZLinkSpotActorPacketDispatch } from './spot-actor-packet-dispatch';
 import {
@@ -56,6 +59,7 @@ import {
   ZLinkSpotTimerRegistry
 } from './spot-timer';
 import { createEntrySpotContext } from './spot-context';
+import { ZLinkRoutedSpotPacketDispatch } from './spot-routed-spot-packet-dispatch';
 import type { RequestResult } from '@zlink-systems/zlink';
 import {
   replayActorHandoffBacklog,
@@ -86,6 +90,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly spotPublisherClient?: ZLinkSpotPublisherClient;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly spotRouterChannelIdForMesh?: (meshName: string) => string;
+  readonly channelMeshNameForChannel?: (channelName: string) => string | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
@@ -108,6 +113,7 @@ export class ZLinkEntrySpotActivation {
   private readonly outbound: DefaultZLinkSpotOutbound;
   private readonly workerRuntime: ZLinkWorkerRuntime;
   private readonly lifecycleMetrics: ZLinkSpotLifecycleMetrics;
+  private readonly packetDispatch: ZLinkRoutedSpotPacketDispatch;
   private initialized = false;
   private disposed = false;
   private actorDispatch?: ZLinkSpotActorJoinDispatch;
@@ -125,7 +131,10 @@ export class ZLinkEntrySpotActivation {
       options.fanoutClient,
       options.spotPublisherClient,
       options.routedTransport,
-      options.spotRouterChannelIdForMesh ?? ((meshName) => meshName)
+      options.spotRouterChannelIdForMesh ?? ((meshName) => meshName),
+      undefined,
+      options.spotNodeName,
+      options.channelMeshNameForChannel
     );
     this.timers = new ZLinkSpotTimerRegistry(
       options.metrics,
@@ -161,6 +170,18 @@ export class ZLinkEntrySpotActivation {
       packetHandlers: options.packetHandlers,
       subscriptionHandlers: options.subscriptionHandlers
     });
+    this.packetDispatch = new ZLinkRoutedSpotPacketDispatch({
+      resolveActivation: (spotRid) => routingIdsEqual(spotRid, this.spotRid)
+        ? {
+            spotRid: this.spotRid,
+            spot: this.entrySpot as unknown as ZLinkSpot,
+            serial: this.serial,
+            handlers: this.handlers
+          }
+        : undefined,
+      providerResolver: options.providerResolver,
+      dispatchErrors: options.dispatchErrors
+    });
   }
 
   /**
@@ -174,6 +195,34 @@ export class ZLinkEntrySpotActivation {
 
   get nodeRid(): RoutingId {
     return this.options.nodeRid;
+  }
+
+  get spotRid(): RoutingId {
+    return this.options.nativeSpot.routingId;
+  }
+
+  dispatchSubscriptionRecord(
+    topic: string,
+    parts: readonly BindingMessage[],
+    sourceRid: RoutingId | null
+  ): Promise<void> {
+    if (this.actorDispatch === undefined) {
+      throw new ZLinkConfigurationException(
+        `Entry Spot '${this.options.spotNodeName}' subscription runtime is not configured.`
+      );
+    }
+    return this.actorDispatch.dispatchSubscriptionRecord(topic, parts, sourceRid);
+  }
+
+  dispatchPacket(
+    packetName: string | undefined,
+    payload: unknown,
+    context: { readonly channelName: string; readonly contentType?: string },
+    returnResponse: boolean
+  ): Promise<unknown> {
+    return returnResponse
+      ? this.packetDispatch.request(this.spotRid, packetName, payload, context)
+      : this.packetDispatch.send(this.spotRid, packetName, payload, context);
   }
 
   async create(): Promise<void> {
@@ -236,12 +285,13 @@ export class ZLinkEntrySpotActivation {
 
   notifyCreateActor(actor: ZLinkActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onCreateActor?.(actor, createRequest));
+    return this.serial.execute(() =>
+      this.entrySpot.onCreateActor?.(createActorMembership(actor), createRequest));
   }
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
+    return this.serial.execute(() => this.entrySpot.onJoinedActor(createActorMembership(actor)));
   }
 
   /**
@@ -299,7 +349,8 @@ export class ZLinkEntrySpotActivation {
   }
 
   private async commitEntryActorTransaction(actor: ZLinkActor): Promise<void> {
-    const notifyJoined = () => this.serial.execute(() => this.entrySpot.onJoinedActor(actor));
+    const notifyJoined = () => this.serial.execute(() =>
+      this.entrySpot.onJoinedActor(createActorMembership(actor)));
     const runtime = this.options.entryActorRuntime;
     if (runtime === undefined) {
       await notifyJoined();
@@ -308,14 +359,20 @@ export class ZLinkEntrySpotActivation {
     await runtime.commitActorTransaction(actor, notifyJoined);
   }
 
-  notifyLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  notifyLeaveActor(
+    actor: ZLinkActor,
+    signal?: AbortSignal,
+    actorRef?: ActorRef,
+    membershipEpoch?: bigint
+  ): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onLeaveActor(actor));
+    return this.serial.execute(() =>
+      this.entrySpot.onLeaveActor(createActorMembership(actor, actorRef, membershipEpoch)));
   }
 
   notifyDisconnectActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
-    return this.serial.execute(() => this.entrySpot.onDisconnectActor?.(actor));
+    return this.serial.execute(() => this.entrySpot.onDisconnectActor(createActorMembership(actor)));
   }
 
   async dispatchActorPacket(
@@ -380,12 +437,19 @@ export class ZLinkEntrySpotActivation {
       spotRid: () => String(this.options.nativeSpot.routingId),
       registry: this.actorHandlers,
       resolveActor: (targetActorId) => this.options.entryActorRuntime?.resolveActor(targetActorId),
-      routeBeforeLocal: (targetActorId, targetParts, targetReturnResponse, targetRemoteBoundSessionTarget) =>
+      routeBeforeLocal: (
+        targetActorId,
+        targetParts,
+        targetReturnResponse,
+        targetRemoteBoundSessionTarget,
+        targetFallbackActorRef
+      ) =>
         this.options.entryActorRuntime?.routePacket(
           targetActorId,
           targetParts,
           targetReturnResponse,
-          targetRemoteBoundSessionTarget
+          targetRemoteBoundSessionTarget,
+          targetFallbackActorRef
         ),
       onRemoteBoundSessionTarget: (targetActorId, target) =>
         this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(targetActorId, target),

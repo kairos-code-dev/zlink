@@ -9,8 +9,8 @@
 이 문서는 Actor 생성, Spot join/leave, 메시징, 종료, STREAM 세션 바인딩과
 transfer 흐름을 설명한다. MeshNode 기본 설정과 claim 소비 흐름은
 [SPOT 가이드](07-3-spot.ko.md)를 본다. 정확한 함수 계약은
-[Actor spec](../spec/core/service/04-actor.ko.md)과
-[STREAM session spec](../spec/core/service/05-stream-session.ko.md)이 소유한다.
+[Actor spec](../../../framework/doc/framework/spec/server/23-spot-actor.ko.md)과
+[STREAM session spec](../../../framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md)이 소유한다.
 
 > Actor가 **무슨 역할이고 언제** 쓰는지(세션↔처리 단위 binding, 재접속 이전성,
 > plain Spot과의 차이)는
@@ -83,7 +83,7 @@ completion으로 끝난다.
 Actor의 연결은 STREAM session service가 소유한다.
 
 ```c
-void *svc = zlink_stream_session_service_new(stream_socket, node);
+void *svc = zlink_stream_session_service_new(node, stream_socket);
 zlink_stream_session_service_start(svc);
 
 /* 세션 라우팅 ID ↔ Actor binding (generation CAS, idempotent) */
@@ -93,12 +93,16 @@ zlink_stream_session_bind_actor(svc, &session_rid, &player, &bind_op, 2000);
 /* 세션 byte → Actor로 relay */
 zlink_stream_session_send_to_actor(svc, &session_rid, &player, NULL, &part, 1, 0);
 
-/* Actor 쪽에서 세션으로 회신 */
-zlink_mesh_node_actor_send_bound_session(node, &player, &part, 1, 0);
+/* Actor handler가 받은 record의 generation과 일치하는 binding에만 회신 */
+zlink_mesh_node_actor_send_bound_session(
+  node, &player, actor_record->source_binding_generation, &part, 1, 0);
 ```
 
 - 하나의 세션은 여러 Actor를 바인딩할 수 있고, binding CAS는 generation을
   검증한다.
+- Actor handler는 session routing ID와 binding generation을 각각 수신 record의
+  `source_spot_rid`, `source_binding_generation`에서 읽는다. 이전 binding에서
+  받은 record의 generation은 unbind와 rebind 뒤 `ESTALE`로 거부된다.
 - 세션 disconnect는 그 세션의 binding만 제거하며 Actor의 joined Spot은 바뀌지
   않는다 — 재접속한 새 세션을 같은 Actor에 다시 바인딩하면 이어진다(재접속
   이전성).

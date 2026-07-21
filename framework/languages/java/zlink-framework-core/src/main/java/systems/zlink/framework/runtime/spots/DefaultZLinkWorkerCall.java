@@ -3,11 +3,12 @@ package systems.zlink.framework.runtime.spots;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
@@ -48,31 +49,55 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     public CompletionStage<T> submit() {
         ensureSingleTerminator();
         CompletableFuture<T> result = new CompletableFuture<>();
-        start(result::complete, result::completeExceptionally);
+        start(result);
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
-    private void start(
-        Consumer<T> complete,
-        Consumer<Throwable> fail) {
+    private void start(CompletableFuture<T> result) {
         AtomicBoolean settled = new AtomicBoolean();
+        DefaultZLinkWorkerCancellation cancellation =
+            new DefaultZLinkWorkerCancellation();
         ScheduledFuture<?> timeoutFuture = timeout == null
             ? null
             : pool.scheduleTimeout(() -> {
                 if (settled.compareAndSet(false, true)) {
-                    fail.accept(new ZLinkWorkerTimeoutException(
+                    cancellation.cancel();
+                    result.completeExceptionally(new ZLinkWorkerTimeoutException(
                         "worker call timed out after " + timeout));
                 }
             }, timeout);
+        AtomicReference<Runnable> unregisterShutdown =
+            new AtomicReference<>(() -> { });
+        result.whenComplete((ignored, error) -> {
+            if (result.isCancelled() && settled.compareAndSet(false, true)) {
+                cancellation.cancel();
+                cancelTimeout(timeoutFuture);
+            }
+            unregisterShutdown.get().run();
+        });
+        unregisterShutdown.set(pool.registerShutdownListener(() -> {
+            result.cancel(false);
+            cancellation.cancel();
+        }));
+        if (result.isDone()) {
+            unregisterShutdown.get().run();
+        }
         try {
             pool.execute(() -> {
                 T value;
                 try {
-                    value = work.run();
+                    value = work.run(cancellation);
+                } catch (CancellationException ex) {
+                    if (settled.compareAndSet(false, true)) {
+                        cancelTimeout(timeoutFuture);
+                        result.cancel(false);
+                    }
+                    return;
                 } catch (Exception ex) {
                     if (settled.compareAndSet(false, true)) {
                         cancelTimeout(timeoutFuture);
-                        fail.accept(new ZLinkWorkerFailedException("worker call failed", ex));
+                        result.completeExceptionally(
+                            new ZLinkWorkerFailedException("worker call failed", ex));
                     }
                     return;
                 }
@@ -80,13 +105,15 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
                 // taken, so the result is dropped without user callbacks.
                 if (settled.compareAndSet(false, true)) {
                     cancelTimeout(timeoutFuture);
-                    complete.accept(value);
+                    result.complete(value);
                 }
             });
         } catch (RejectedExecutionException ex) {
+            cancellation.cancel();
             cancelTimeout(timeoutFuture);
             if (settled.compareAndSet(false, true)) {
-                fail.accept(new ZLinkWorkerQueueFullException("worker queue is full"));
+                result.completeExceptionally(
+                    new ZLinkWorkerQueueFullException("worker queue is full"));
             }
         }
     }

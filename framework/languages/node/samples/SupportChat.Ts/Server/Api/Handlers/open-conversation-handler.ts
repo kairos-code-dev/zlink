@@ -16,6 +16,7 @@ class OpenConversationHandler implements ZLinkRequestHandler<OpenConversationApi
   async handle(request: OpenConversationApiReq): Promise<OpenConversationApiRes> {
     return await this.channels
       .requestToChannel(
+        SampleNames.conversationSpotMesh,
         SampleNames.supportChannel,
         allocateConversation(request.customerActorId, request.customerDisplayName, request.subject)
       )

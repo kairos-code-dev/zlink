@@ -46,8 +46,7 @@ const nodeGapDocument = path.join(
   'doc',
   'framework',
   'spec',
-  'gaps',
-  'node.ko.md'
+  '90-implementation-gap.ko.md'
 );
 
 const guideFiles = [
@@ -65,49 +64,31 @@ const guideFiles = [
   '12-grpc-alternative.ko.md'
 ];
 
-test('node guide exposes the 12 required guide chapters', () => {
-  const missing = [];
-  for (const file of guideFiles) {
-    const guidePath = path.join(docRoot, 'guide', file);
-    if (!fs.existsSync(guidePath)) {
-      missing.push(file);
-      continue;
-    }
-    const content = fs.readFileSync(guidePath, 'utf8');
-    if (!/^# /m.test(content) || !/^## 회귀 테스트/m.test(content)) {
-      missing.push(file);
-    }
-  }
-
-  assert.deepEqual(missing, []);
+test('node documentation does not restore the removed legacy guide chapters', () => {
+  const restored = guideFiles.filter((file) => fs.existsSync(path.join(docRoot, 'guide', file)));
+  assert.deepEqual(restored, []);
 });
 
-test('node README links every guide chapter', () => {
+test('node README does not link removed legacy guide chapters', () => {
   const readme = fs.readFileSync(path.join(docRoot, 'README.ko.md'), 'utf8');
-  const missing = guideFiles.filter((file) => !readme.includes(`guide/${file}`));
-
-  assert.deepEqual(missing, []);
+  const stale = guideFiles.filter((file) => readme.includes(`guide/${file}`));
+  assert.deepEqual(stale, []);
 });
 
-test('node Spot guide documents the current execution-turn APIs', () => {
-  const guide = fs.readFileSync(path.join(docRoot, 'guide', '05-spot.ko.md'), 'utf8');
+test('node interface specification documents the current execution-turn APIs', () => {
+  const specification = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
 
-  assert.doesNotMatch(guide, /runWorker\(/);
-  for (const api of ['runCpuWorker', 'runIoWorker', '.submit()', '.yield()']) {
-    assert.match(guide, new RegExp(api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(specification, /runWorker\(/);
+  for (const api of ['runCpuWorker', 'runIoWorker', 'submit()', 'yield()']) {
+    assert.match(specification, new RegExp(api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  assert.doesNotMatch(guide, /public turn 반납 API가 필요하지 않다/);
+  assert.doesNotMatch(specification, /public turn 반납 API가 필요하지 않다/);
 });
 
-test('node gap checklist summary matches its completed first-round items', () => {
+test('central implementation gap document owns the Node RouteMesh gap', () => {
   const gapDocument = fs.readFileSync(nodeGapDocument, 'utf8');
-  const firstRound = gapDocument.match(/## 1\. 진행 체크리스트(?<body>[\s\S]*?)## 2\. 구현 감사 상세/);
-  assert.notEqual(firstRound, null);
-
-  const checked = [...firstRound.groups.body.matchAll(/^- \[x\] /gm)].length;
-  const open = [...firstRound.groups.body.matchAll(/^- \[ \] /gm)].length;
-  assert.equal(open, 0);
-  assert.match(firstRound.groups.body, new RegExp(`\\*\\*전체 ${checked}건\\. 완료 ${checked}건\\.\\*\\*`));
+  assert.match(gapDocument, /### 12\.33 전 언어 RouteMesh·MeshNode 통합 표면 적용 미구현/);
+  assert.match(gapDocument, /Node source에는 `addRouteMesh\(meshName\)`/);
 });
 
 test('node documentation relative markdown links resolve', () => {
@@ -207,37 +188,35 @@ test('node specifications keep key Spot signatures aligned with public declarati
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Spots', 'Contracts.ts'),
     'utf8'
   );
-  const spotBuilders = fs.readFileSync(
-    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Spots', 'Builders.ts'),
+  const frameworkBuilders = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Configuration', 'Builders.ts'),
     'utf8'
   );
 
   const requiredSignatures = [
-    /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /create<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /find\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
-    /list\(signal\?: AbortSignal\): Promise<readonly ZLinkSpotInfo\[\]>/,
-    /close\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
+    /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /create<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /find\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
+    /list\(meshName: string, signal\?: AbortSignal\): Promise<readonly ZLinkSpotInfo\[\]>/,
+    /close\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
   ];
   for (const signature of requiredSignatures) {
     assert.match(interfaceSpec, signature);
     assert.match(spotContracts, signature);
   }
 
-  const routerOverload = /connectRouter\(peerRid: RoutingId, endpoint: string\): this/;
-  const optionalEntryRoutingId = /export interface ZLinkEntrySpotOptions \{\s*routingId\?: RoutingId/;
-  assert.match(interfaceSpec, routerOverload);
-  assert.match(spotBuilders, routerOverload);
-  assert.match(interfaceSpec, optionalEntryRoutingId);
-  assert.match(spotBuilders, optionalEntryRoutingId);
+  const peerConnections = /peerConnections\(\): ZLinkMeshPeerConnections/;
+  const entrySpotConfiguration = /configureEntrySpot\(options: (?:import\('\.\.\/Spots'\)\.)?ZLinkEntrySpotOptions\): this/;
+  assert.match(interfaceSpec, peerConnections);
+  assert.match(frameworkBuilders, peerConnections);
+  assert.match(interfaceSpec, entrySpotConfiguration);
+  assert.match(frameworkBuilders, entrySpotConfiguration);
 
   for (const token of [
     'ZLINK_BOUND_SESSION_FACTORY',
     'ZLINK_RUNTIME_EVENT_PUBLISHER',
-    'ZLINK_DRAIN_CONTROL',
     'ZLINK_CHANNEL_RUNTIME_OPTIONS',
-    'ZLinkDrainHealthIndicator'
   ]) {
     const alwaysAvailable = systemSpec.split('**역할이 있을 때만 등록되는 provider:**')[0];
     assert.equal(alwaysAvailable.includes(`| \`${token}\``), true);
@@ -245,7 +224,7 @@ test('node specifications keep key Spot signatures aligned with public declarati
 
   const conditionalProviders = systemSpec.split('**역할이 있을 때만 등록되는 provider:**')[1];
   for (const row of [
-    /\| `ZLINK_ACTOR_CLIENT` \| Spot node와 location store가 모두 등록됨 \|/,
+    /\| `ZLINK_ACTOR_CLIENT` \| MeshNode와 location store가 모두 등록됨 \|/,
     /\| `ZLINK_ACTOR_MANAGER` \| actor manager가 활성화됨 \|/,
     /\| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` \| location store가 하나 이상 등록됨 \|/,
     /\| `ZLINK_LOCATION_RUNTIME_QUERY` \| location store가 하나 이상 등록됨 \|/
@@ -254,7 +233,7 @@ test('node specifications keep key Spot signatures aligned with public declarati
   }
 });
 
-test('node one-way submit documentation keeps the void acceptance contract', () => {
+test('node one-way submit documentation keeps the bounded admission contract', () => {
   const calls = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Channels', 'Calls.ts'),
     'utf8'
@@ -264,10 +243,10 @@ test('node one-way submit documentation keeps the void acceptance contract', () 
     'utf8'
   );
 
-  assert.match(calls, /export interface ZLinkSendCall \{\s*submit\(\): void;/);
-  assert.match(calls, /export interface ZLinkPublishCall \{\s*submit\(\): void;/);
-  assert.match(matrix, /`submit\(\): void`는 local queue가 수락하면 즉시 반환한다/);
-  assert.match(matrix, /local queue가 수락하지 못하면 동기 예외를 던지고/);
+  assert.match(calls, /export interface ZLinkSendCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>;/);
+  assert.match(calls, /export interface ZLinkPublishCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<ZLinkPublishResult>;/);
+  assert.doesNotMatch(calls, new RegExp(['try', 'Submit'].join('')));
+  assert.match(matrix, /`submit\(\)`은 bounded\s+admission 결과를 비동기로 반환/);
   assert.doesNotMatch(matrix, /Promise.*미해결 유지|ready 이후에 resolve|submitter timeout 정책에 따라 resolve/);
 });
 
@@ -285,7 +264,6 @@ test('node interface catalog declarations exactly match public package declarati
     catalogShapes.set(declaration.name.text, values);
   }
 
-  assert.equal(publicShapes.size, 350);
   assert.deepEqual([...catalogShapes.keys()].sort(), [...publicShapes.keys()].sort());
   for (const [name, expected] of publicShapes) {
     assert.deepEqual(

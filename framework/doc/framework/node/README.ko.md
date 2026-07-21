@@ -1,7 +1,7 @@
 # ZLink Framework for Node.js -- 문서
 
 > 이 묶음은 `Node.js`, `NestJS`용 ZLink Framework 정식 문서다. 이 디렉토리에는
-> `guide/`(사용법·sample)와 `internals/`(구현·검증 기준)를 두고, 공개 계약은
+> `internals/`(구현·검증 기준)를 두고, 공개 계약은
 > [중앙 Node.js spec](../spec/server/languages/node/README.ko.md)에 둔다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따르며, 여기서는
 > 그 의미를 Node.js와 NestJS 표면으로만 구체화한다. 공개 계약은 중앙 언어별
@@ -19,26 +19,11 @@ Node framework 의 서버와 client network API 는 `Promise` 기반 비동기 �
 Sample과 E2E의 설정 파일, 환경 변수 금지와 NestJS typed configuration provider 기준은
 [Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
 
-## 1. 사용자 guide
+## 1. 사용 안내
 
-NestJS 애플리케이션 개발자가 읽고 바로 따라 쓸 수 있도록 기능과 사용법을 설명한다.
-내부 backend adapter나 binding wrapper 구조는 guide에서 설명하지 않고, 필요하면
-`internals/` 문서로 연결한다.
-
-| 문서 | 범위 |
-|------|------|
-| [01-overview](guide/01-overview.ko.md) | Node framework 개요 |
-| [02-getting-started](guide/02-getting-started.ko.md) | NestJS 등록과 provider 사용 |
-| [03-concepts](guide/03-concepts.ko.md) | channel, Spot, actor, stream 개념 |
-| [04-channel-messaging](guide/04-channel-messaging.ko.md) | request, send, publish 사용 |
-| [05-spot](guide/05-spot.ko.md) | Spot manager, outbound, timer |
-| [06-actor-session](guide/06-actor-session.ko.md) | actor bind, relay, bound session |
-| [07-stream](guide/07-stream.ko.md) | stream session 과 connector |
-| [08-registry](guide/08-registry.ko.md) | location store와 runtime topology query |
-| [09-monitoring](guide/09-monitoring.ko.md) | typed runtime event 관찰 |
-| [10-feature-map](guide/10-feature-map.ko.md) | .NET 기능 이름의 Node 대응 |
-| [11-interface-catalog](guide/11-interface-catalog.ko.md) | 주요 public interface 목록 |
-| [12-grpc-alternative](guide/12-grpc-alternative.ko.md) | gRPC/HTTP 대비 도입 판단과 기술 선택 경계 |
+Node framework의 공개 API와 동작은 아래 정식 spec에서 확인한다. 실행 가능한 사용 예시는
+[공통 샘플](../common/sample/README.ko.md)과
+[Node 샘플](../../../languages/node/samples/README.ko.md)에서 확인할 수 있다.
 
 ## 2. 공개 계약 spec
 
@@ -48,7 +33,7 @@ API만 설명한다.
 | 문서 | 범위 |
 |------|------|
 | [system-structure](../spec/server/languages/node/01-system-structure.ko.md) | 패키지 구조, NestJS 등록, lifecycle과 startup validation |
-| [handler-interfaces](../spec/server/languages/node/02-handler-interfaces.ko.md) | 모든 interface·decorator·context·options 카탈로그 |
+| [인터페이스 목차](../spec/server/languages/node/interfaces/README.ko.md) | 범주별 interface·decorator·context·options 카탈로그 |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../spec/README.ko.md)이 소유한다.** 언어별 문서는
 그 의미가 Node/NestJS에서 어떤 모양인지만 고정한다.
@@ -62,6 +47,7 @@ API만 설명한다.
 |------|------|
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | backend 교체 가능성, public surface 격리 |
 | [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | NestJS hook과 내부 runtime의 시작·종료 배선 |
+| [stateful-maintenance-runtime](internals/stateful-maintenance-runtime.ko.md) | authority CAS, checkpoint, recovery와 target replacement 내부 구조 |
 | [actor-execution-serialization](internals/actor-execution-serialization.ko.md) | actor 실행 직렬화 참조 구현 — queue 소유자와 completion 의미 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | 회귀 테스트 기준 |
 
@@ -77,7 +63,7 @@ API만 설명한다.
 
 | 테스트 | 확인 기준 |
 |--------|-----------|
-| `documentation-regression.test.js › node README links every guide chapter` | `README.ko.md`가 12개 guide 장을 모두 연결한다. |
+| `documentation-regression.test.js › node README does not link removed legacy guide chapters` | 삭제한 이전 guide 링크를 다시 추가하지 않는다. |
 | `documentation-regression.test.js › node documentation relative markdown links resolve` | 문서 간 상대 링크가 깨지지 않는다. |
-| `documentation-regression.test.js › node guide exposes the 12 required guide chapters` | guide 01–12가 제목과 회귀 테스트 섹션을 갖춘다. |
+| `documentation-regression.test.js › node interface specification documents the current execution-turn APIs` | 실행 turn API가 정식 interface spec과 맞는지 확인한다. |
 | `sample-regression.test.js › node samples define required files and use only common sample documents` | 샘플 구현이 공통 sample 문서만 참조하고 삭제한 언어별 sample README를 다시 만들지 않는지 확인한다. |

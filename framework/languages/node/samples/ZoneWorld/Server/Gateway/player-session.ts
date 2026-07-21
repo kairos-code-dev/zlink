@@ -46,7 +46,11 @@ class JoinWorldSessionHandler {
     if (context.actors.bound.length !== 0) throw new Error('Session already joined the world.');
     const request = payload.decode<JoinWorldReq>(Object as never);
     const ensured = await this.channels
-      .requestToChannel(ZoneWorldNames.actorsChannel, new EnsurePlayerActorReq(request.playerId))
+      .requestToChannel(
+        ZoneWorldNames.zoneMesh,
+        ZoneWorldNames.actorsChannel,
+        new EnsurePlayerActorReq(request.playerId)
+      )
       .timeout(5_000)
       .submit<EnsurePlayerActorRes>();
     const actor = await context.actors.bindOrGet({

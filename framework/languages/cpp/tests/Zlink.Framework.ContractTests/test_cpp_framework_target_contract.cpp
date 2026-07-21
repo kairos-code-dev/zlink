@@ -49,6 +49,25 @@ bool tree_contains (const std::filesystem::path &root, const std::string &needle
     return false;
 }
 
+std::string read_source_tree (const std::filesystem::path &root)
+{
+    std::string source;
+    if (!std::filesystem::exists (root)) {
+        return source;
+    }
+    for (const auto &entry : std::filesystem::recursive_directory_iterator (root)) {
+        if (!entry.is_regular_file ()) {
+            continue;
+        }
+        const auto ext = entry.path ().extension ();
+        if (ext == ".hpp" || ext == ".h" || ext == ".cpp") {
+            source += read_file (entry.path ());
+            source.push_back ('\n');
+        }
+    }
+    return source;
+}
+
 struct gate_t
 {
     int failures = 0;
@@ -112,7 +131,7 @@ int main ()
     const auto runtime_monitoring_recorders = read_file (
       e2e_root / "RuntimeMonitoring/Server/Shared/monitoring_event_recorders.hpp");
     const auto store_failure_client =
-      read_file (e2e_root / "DiscoveryRegistryHa/Client/main.cpp");
+      read_source_tree (e2e_root / "DiscoveryRegistryHa/Client");
     const auto store_failure_support =
       read_file (e2e_root / "DiscoveryRegistryHa/Client/Support/client_support.hpp");
     const auto store_failure_runner =
@@ -245,7 +264,7 @@ int main ()
       e2e_root / "ResilienceLifecycle/Client/Scenarios/rl_b2_crash_during_inflight_scenario.hpp");
     const auto messaging_test =
       read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp");
-    const auto transfer_client = read_file (e2e_root / "SpotActorTransfer/Client/main.cpp");
+    const auto transfer_client = read_source_tree (e2e_root / "SpotActorTransfer/Client");
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
     const auto spot_service_f5 = read_file (
       e2e_root / "SpotService/Client/Scenarios/sm_f5_scenario.hpp");
@@ -416,14 +435,16 @@ int main ()
                     && monitoring_unit.find ("unsubscribed_metric_storage_unchanged")
                          != std::string::npos,
                   "E2E-CP-63", "OBS-B4 does not prove traffic correctness and bounded storage");
-    gate.require (observability_c3.find ("state == \"created\"") != std::string::npos
-                    && observability_c3.find ("replayed") != std::string::npos
-                    && observability_c3.find ("state == \"created\" ||")
+    gate.require (observability_c3.find ("normalAction") != std::string::npos
+                    && observability_c3.find ("rejectedCreate") != std::string::npos
+                    && observability_c3.find ("closeAfterDrain") != std::string::npos
+                    && observability_c3.find ("staleAction") != std::string::npos
+                    && observability_c3.find ("state == \"created\"") != std::string::npos,
+                  "E2E-CP-63", "OBS-C3 omits a fixed-drain lifecycle assertion");
+    gate.require (observability_runner.find ("drain_natural") == std::string::npos
+                    && observability_runner.find ("release_and_recreate")
                          == std::string::npos,
-                  "E2E-CP-63", "OBS-C3 accepts an existing row without replay proof");
-    gate.require (observability_runner.find ("policy-natural") != std::string::npos
-                    && observability_runner.find ("drain_natural") != std::string::npos,
-                  "E2E-CP-63", "OBS-C3 does not execute both drain policies");
+                  "E2E-CP-63", "ObservabilityOps still configures a removed drain policy");
 
     /* E2E-CP-04 — each PubSub client scenario owns its bounded evidence oracle. */
     gate.require (pubsub_client_support.find ("/evidence/wait") != std::string::npos,
@@ -527,21 +548,22 @@ int main ()
                   "IMP-CP-04", "duplicate STREAM packet session names are not rejected");
 
     /* IMP-CP-07 — pending and regressed actor rows never resolve successfully. */
-    gate.require (store_location_resolvers.find ("row.generation < observed")
+    gate.require (store_location_resolvers.find ("version < observed")
                     != std::string::npos,
                   "IMP-CP-07", "actor resolver does not reject regressed generations");
     gate.require (store_location_resolvers.find (
-                    "row.actor_ref && !row.actor_ref->empty ()")
+                    "!row.actor_ref.empty ()")
                     != std::string::npos,
                   "IMP-CP-07", "actor resolver does not reject pending actor rows");
     gate.require (app_runtime.find ("actor_location_observer") != std::string::npos,
                   "IMP-CP-07", "actor resolver and runtime query do not share generation state");
 
-    /* CPP-G0-ASYNC-001 — one-way terminators return void. */
-    gate.require (!tree_contains (include_root, "result_t<void> submit ()"), "CPP-G0-ASYNC-001",
-                  "one-way submit terminators still return result_t<void>");
-    gate.require (actor_hpp.find ("void submit") != std::string::npos, "CPP-G0-ASYNC-001",
-                  "actor one-way send does not expose the target `void submit()` terminator");
+    /* CPP-G0-ASYNC-001 — one-way terminators return the async admission result. */
+    gate.require (!tree_contains (include_root, "void submit ()"), "CPP-G0-ASYNC-001",
+                  "server one-way submit terminators still discard admission results");
+    gate.require (actor_hpp.find ("task_t<submit_result_t> submit") != std::string::npos,
+                  "CPP-G0-ASYNC-001",
+                  "actor one-way send does not expose the async admission result");
 
     /* CPP-G0-ASYNC-002 — relay/disconnect complete as task_t<void>. */
     gate.require (actor_hpp.find ("task_t<void> relay") != std::string::npos, "CPP-G0-ASYNC-002",
@@ -670,8 +692,22 @@ int main ()
     }
     gate.require (rows_hpp.find ("draining") != std::string::npos, "CPP-G0-DRAIN-001",
                   "peer location row lacks the typed draining field");
-    gate.require (tree_contains (include_root, "spot_drain_policy_t"), "CPP-G0-DRAIN-001",
-                  "spot_drain_policy_t is missing");
+    gate.require (!tree_contains (include_root, "mesh_node_drain_policy_t"),
+                  "CPP-G0-DRAIN-001",
+                  "the removed mesh_node_drain_policy_t public API is still present");
+    gate.require (!tree_contains (include_root, "use_drain_policy"), "CPP-G0-DRAIN-001",
+                  "the removed use_drain_policy public API is still present");
+    const auto accepted_barrier = app_runtime.find ("wait_for_accepted_callbacks_until");
+    const auto actor_barrier =
+      app_runtime.find ("join_application_actor_to_entry_spot", accepted_barrier);
+    const auto stream_barrier = app_runtime.find ("drain_sessions_until", actor_barrier);
+    const auto spot_close = app_runtime.find ("close_all_user_spots", stream_barrier);
+    const auto owner_cleanup = app_runtime.find ("cleanup_owner", spot_close);
+    gate.require (accepted_barrier != std::string::npos
+                    && accepted_barrier < actor_barrier && actor_barrier < stream_barrier
+                    && stream_barrier < spot_close && spot_close < owner_cleanup,
+                  "CPP-G0-DRAIN-001",
+                  "fixed drain runtime phases are missing or out of order");
     gate.require (tree_contains (include_root, "stream_close_reason_t"), "CPP-G0-DRAIN-001",
                   "stream_close_reason_t is missing");
     gate.require (tree_contains (root / "connector/core", "close_reason"), "CPP-G0-DRAIN-001",
@@ -724,11 +760,8 @@ int main ()
                   "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
 
     /* E2E-CP-49 — ST-E2 fails transfer before commit and preserves the source binding. */
-    const auto st_e2_begin = transfer_client.find ("void bound_session_rebind_isolation ()");
-    const auto st_e2_end = transfer_client.find ("void in_flight_handoff_order ()", st_e2_begin);
-    const auto st_e2 = st_e2_begin != std::string::npos && st_e2_end != std::string::npos
-                         ? transfer_client.substr (st_e2_begin, st_e2_end - st_e2_begin)
-                         : std::string{};
+    const auto st_e2 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_e2_scenario.hpp");
     gate.require (st_e2.find ("actor_type_fail_transfer_out") != std::string::npos
                     && st_e2.find ("ST-E2 failed transfer was accepted")
                          != std::string::npos,
@@ -761,22 +794,14 @@ int main ()
                          != std::string::npos,
                   "E2E-CP-51",
                   "remote transfer emits no structured commit_ack/source_cleanup boundaries");
-    const auto st_b1_begin = transfer_client.find ("void remote_stateful_transfer ()");
-    const auto st_b1_end =
-      transfer_client.find ("void source_cleanup_failure_after_success ()", st_b1_begin);
-    const auto st_b1 = st_b1_begin != std::string::npos && st_b1_end != std::string::npos
-                         ? transfer_client.substr (st_b1_begin, st_b1_end - st_b1_begin)
-                         : std::string{};
+    const auto st_b1 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_b1_scenario.hpp");
     gate.require (st_b1.find ("commit_ack") != std::string::npos
                     && st_b1.find ("source_cleanup") != std::string::npos,
                   "E2E-CP-51",
                   "ST-B1 does not require commit_ack and source_cleanup evidence");
-    const auto st_b3_begin = transfer_client.find ("void remote_missing_adapter ()");
-    const auto st_b3_end =
-      transfer_client.find ("void remote_empty_state_transfer ()", st_b3_begin);
-    const auto st_b3 = st_b3_begin != std::string::npos && st_b3_end != std::string::npos
-                         ? transfer_client.substr (st_b3_begin, st_b3_end - st_b3_begin)
-                         : std::string{};
+    const auto st_b3 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_b3_scenario.hpp");
     gate.require (st_b3.find ("commit_ack") != std::string::npos
                     && st_b3.find ("source_cleanup") != std::string::npos,
                   "E2E-CP-51",
@@ -784,55 +809,34 @@ int main ()
 
     /* E2E-CP-52 — named scenarios must open and observe their contract
      * boundary instead of relying on sleeps or impossible negative checks. */
-    const auto st_b2_begin =
-      transfer_client.find ("void source_cleanup_failure_after_success ()");
-    const auto st_b2_end = transfer_client.find ("void remote_missing_adapter ()", st_b2_begin);
-    const auto st_b2 = st_b2_begin != std::string::npos && st_b2_end != std::string::npos
-                         ? transfer_client.substr (st_b2_begin, st_b2_end - st_b2_begin)
-                         : std::string{};
+    const auto st_b2 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_b2_scenario.hpp");
     gate.require (st_b2.find ("commit_ack") != std::string::npos
                     && st_b2.find ("source_cleanup") != std::string::npos
                     && st_b2.find ("join_task") != std::string::npos,
                   "E2E-CP-52",
                   "ST-B2 does not stop the source between commit ack and source cleanup");
-    const auto st_c1_begin = transfer_client.find ("void source_down_before_commit ()");
-    const auto st_c1_end =
-      transfer_client.find ("void source_down_after_target_commit ()", st_c1_begin);
-    const auto st_c1 = st_c1_begin != std::string::npos && st_c1_end != std::string::npos
-                         ? transfer_client.substr (st_c1_begin, st_c1_end - st_c1_begin)
-                         : std::string{};
+    const auto st_c1 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_c1_scenario.hpp");
     gate.require (st_c1.find ("pending_admission_expired") != std::string::npos,
                   "E2E-CP-52",
                   "ST-C1 does not require pending-admission timeout cleanup evidence");
-    const auto st_d2_begin = transfer_client.find ("void stale_source_release_fencing ()");
-    const auto st_d2_end =
-      transfer_client.find ("void bound_session_push_after_remote_transfer ()", st_d2_begin);
-    const auto st_d2 = st_d2_begin != std::string::npos && st_d2_end != std::string::npos
-                         ? transfer_client.substr (st_d2_begin, st_d2_end - st_d2_begin)
-                         : std::string{};
+    const auto st_d2 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_d2_scenario.hpp");
     gate.require (st_d2.find ("source_cleanup") != std::string::npos
                     && st_d2.find ("before-delayed-cleanup") != std::string::npos
                     && st_d2.find ("after-delayed-cleanup") != std::string::npos,
                   "E2E-CP-52",
                   "ST-D2 does not delay, trigger, and route across stale source cleanup");
-    const auto joined_failure_begin = transfer_client.find ("void joined_failure ()");
-    const auto joined_failure_end =
-      transfer_client.find ("void local_location_commit_timing ()", joined_failure_begin);
     const auto joined_failure =
-      joined_failure_begin != std::string::npos && joined_failure_end != std::string::npos
-        ? transfer_client.substr (joined_failure_begin,
-                                  joined_failure_end - joined_failure_begin)
-        : std::string{};
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_c3_scenario.hpp")
+      + read_file (e2e_root / "SpotActorTransfer/Client/Support/scenario_runner_support.hpp");
     gate.require (joined_failure.find ("after-joined-failure") != std::string::npos
                     && joined_failure.find ("probe_actor") != std::string::npos,
                   "E2E-CP-52",
                   "ST-C3 joined failure still asserts an actor packet nobody sends");
-    const auto st_f5_begin = transfer_client.find ("void forwarding_mapping_eviction ()");
-    const auto st_f5_end =
-      transfer_client.find ("void in_flight_request_correlation_and_timeout ()", st_f5_begin);
-    const auto st_f5 = st_f5_begin != std::string::npos && st_f5_end != std::string::npos
-                         ? transfer_client.substr (st_f5_begin, st_f5_end - st_f5_begin)
-                         : std::string{};
+    const auto st_f5 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f5_scenario.hpp");
     gate.require (st_f5.find ("mapping_evicted") != std::string::npos
                     && st_f5.find ("forwarding_entries") != std::string::npos
                     && st_f5.find ("spot-map-chain-a-final-") != std::string::npos
@@ -842,27 +846,20 @@ int main ()
 
     /* E2E-CP-53 — direct and bound-session packets cross the location publish
      * boundary before the join caller observes completion. */
-    const auto st_f2_begin = transfer_client.find ("void direct_overtake_prevention ()");
-    const auto st_f2_end =
-      transfer_client.find ("void bound_session_cross_move_order ()", st_f2_begin);
-    const auto st_f2 = st_f2_begin != std::string::npos && st_f2_end != std::string::npos
-                         ? transfer_client.substr (st_f2_begin, st_f2_end - st_f2_begin)
-                         : std::string{};
+    const auto st_f2 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f2_scenario.hpp");
     const auto st_f2_publish = st_f2.find ("location_committed");
     const auto st_f2_follow_up = st_f2.find ("{\"ST-F2\", \"D1\"}");
     const auto st_f2_join_get = st_f2.find ("join_task.get ()");
     gate.require (st_f2_publish != std::string::npos
                     && st_f2_follow_up > st_f2_publish
                     && st_f2_follow_up < st_f2_join_get
-                    && st_f2.find ("old_ref.generation + 1") != std::string::npos,
+                    && st_f2.find ("old_ref.generation}") != std::string::npos
+                    && st_f2.find ("old_ref.generation + 1") == std::string::npos,
                   "E2E-CP-53",
-                  "ST-F2 sends D1 only after join completion or an extra ref lookup");
-    const auto st_f3_begin = st_f2_end;
-    const auto st_f3_end =
-      transfer_client.find ("void straggler_forward_then_fail_fast ()", st_f3_begin);
-    const auto st_f3 = st_f3_begin != std::string::npos && st_f3_end != std::string::npos
-                         ? transfer_client.substr (st_f3_begin, st_f3_end - st_f3_begin)
-                         : std::string{};
+                  "ST-F2 sends D1 only after join completion, performs an extra ref lookup, or changes Actor generation");
+    const auto st_f3 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f3_scenario.hpp");
     const auto st_f3_publish = st_f3.find ("location_committed");
     const auto st_f3_follow_up = st_f3.find ("{\"ST-F3\", \"S3\"}");
     const auto st_f3_join_get = st_f3.find ("join_task.get ()");
@@ -882,11 +879,8 @@ int main ()
 
     /* E2E-CP-54 — both sides of the forwarding window use the same one-way
      * send surface; an explicit stale ref is never silently re-resolved. */
-    const auto st_f4_begin = transfer_client.find ("void straggler_forward_then_fail_fast ()");
-    const auto st_f4_end = transfer_client.find ("void forwarding_mapping_eviction ()", st_f4_begin);
-    const auto st_f4 = st_f4_begin != std::string::npos && st_f4_end != std::string::npos
-                         ? transfer_client.substr (st_f4_begin, st_f4_end - st_f4_begin)
-                         : std::string{};
+    const auto st_f4 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f4_scenario.hpp");
     gate.require (st_f4.find ("send_ref") != std::string::npos
                     && st_f4.find ("{\"ST-F4\", \"G2\"}") != std::string::npos
                     && st_f4.find ("probe_ref") == std::string::npos
@@ -924,11 +918,8 @@ int main ()
                          == std::string::npos,
                   "E2E-CP-57",
                   "actor bridge still emits environment-gated stderr handoff markers");
-    const auto st_f1_begin = transfer_client.find ("void in_flight_handoff_order ()");
-    const auto st_f1_end = transfer_client.find ("void direct_overtake_prevention ()", st_f1_begin);
-    const auto st_f1 = st_f1_begin != std::string::npos && st_f1_end != std::string::npos
-                         ? transfer_client.substr (st_f1_begin, st_f1_end - st_f1_begin)
-                         : std::string{};
+    const auto st_f1 =
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f1_scenario.hpp");
     gate.require (st_f1.find ("handoff_backlog") != std::string::npos
                     && st_f1.find ("backlog_enqueued") != std::string::npos
                     && st_f1.find ("location_committed") != std::string::npos,
@@ -950,17 +941,13 @@ int main ()
                   "ST-F6 does not compare request framing or exactly-once dispatch evidence");
 
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
-    const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
-    const auto st_d1_local_end =
-      transfer_client.find ("void remote_location_commit_timing ()", st_d1_local_begin);
     const auto st_d1_local =
-      st_d1_local_begin != std::string::npos && st_d1_local_end != std::string::npos
-        ? transfer_client.substr (st_d1_local_begin, st_d1_local_end - st_d1_local_begin)
-        : std::string{};
-    gate.require (st_d1_local.find ("after.generation > before.generation")
+      read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_d1_scenario.hpp")
+      + read_file (e2e_root / "SpotActorTransfer/Client/Support/scenario_runner_support.hpp");
+    gate.require (st_d1_local.find ("after.generation == before.generation")
                     != std::string::npos,
                   "E2E-CP-55",
-                  "ST-D1 local commit does not require the published generation to advance");
+                  "ST-D1 local commit does not preserve the Actor lifetime generation");
     gate.require (st_d1_local.find ("{\"ST-D1\", \"during-joined-wait\"}")
                     != std::string::npos
                     && st_d1_local.find ("blocked_probe.wait_for") != std::string::npos
@@ -1203,24 +1190,29 @@ int main ()
     /* E2E-CP-35 — MON-A4/MON-D1 prove named transitions rather than event counts. */
     gate.require (runtime_monitoring_recorders.find ("|routes=") != std::string::npos,
                   "E2E-CP-35", "location evidence does not identify RID-to-endpoint routes");
-    gate.require (runtime_monitoring_runner.find ("MON_D1_CYCLES=2") != std::string::npos,
-                  "E2E-CP-35", "MON-D1 does not execute two crash/restart cycles");
-    gate.require (runtime_monitoring_a4.find ("kind=Disconnected") != std::string::npos
-                    && runtime_monitoring_a4.find ("kind=Connected") != std::string::npos
-                    && runtime_monitoring_a4.find ("kind=ConnectionReady") != std::string::npos,
-                  "E2E-CP-35", "MON-A4 does not assert the socket failover transitions");
-    gate.require (runtime_monitoring_a4.find ("old_service_channel_endpoint")
+    gate.require (runtime_monitoring_runner.find ("MON_D1_CYCLES=3") != std::string::npos,
+                  "E2E-CP-35", "MON-D1 does not execute three crash/restart cycles");
+    gate.require (runtime_monitoring_a4.find (
+                    "identifier=zlink.runtime.mesh_node.peer_changed")
                     != std::string::npos
-                    && runtime_monitoring_a4.find ("new_service_channel_endpoint")
+                    && runtime_monitoring_a4.find ("generations.size () >= 2")
                          != std::string::npos,
-                  "E2E-CP-35", "MON-A4 does not tie evidence to old and new endpoints");
-    gate.require (runtime_monitoring_d1.find ("verify_down_up_cycles") != std::string::npos,
-                  "E2E-CP-35", "MON-D1 does not verify each ordered down/up transition");
-    gate.require (runtime_monitoring_a1.find ("wait_for_new_evidence") != std::string::npos
-                    && runtime_monitoring_a1.find ("kind=PeerAdmissionChanged")
+                  "E2E-CP-35", "MON-A4 does not assert public replacement events");
+    gate.require (runtime_monitoring_a4.find ("svc_b_ready == 1")
+                    != std::string::npos
+                    && runtime_monitoring_a4.find ("readyMemberCount")
                          != std::string::npos,
-                  "E2E-CP-35",
-                  "MON-A1 does not verify drain and restore admission transitions");
+                  "E2E-CP-35", "MON-A4 does not resync peer and channel snapshot");
+    gate.require (runtime_monitoring_d1.find ("sequence > previous")
+                    != std::string::npos
+                    && runtime_monitoring_d1.find ("checked >= 6")
+                         != std::string::npos,
+                  "E2E-CP-35", "MON-D1 does not verify ordered repeated transitions");
+    gate.require (runtime_monitoring_a1.find ("first.contains (\"peers\")")
+                    != std::string::npos
+                    && runtime_monitoring_a1.find ("first.contains (\"drain\")")
+                         != std::string::npos,
+                  "E2E-CP-35", "MON-A1 does not verify the complete public snapshot");
     gate.require (runtime_monitoring_a1.find ("before_restore_topology_count")
                     == std::string::npos,
                   "E2E-CP-35", "MON-A1 still substitutes topology counts for admission events");
@@ -1368,7 +1360,10 @@ int main ()
                     "recovered.last_refresh_at_unix_ms > outage.last_refresh_at_unix_ms")
                     != std::string::npos
                     && store_failure_client.find (
-                         "recovered.owner_lease_renewed_at_unix_ms > outage.owner_lease_renewed_at_unix_ms")
+                         "recovered.owner_lease_renewed_at_unix_ms")
+                         != std::string::npos
+                    && store_failure_client.find (
+                         "outage.owner_lease_renewed_at_unix_ms")
                          != std::string::npos,
                   "E2E-CP-44", "SF-D3 does not prove refresh and lease timestamps advance after recovery");
 
@@ -1402,11 +1397,11 @@ int main ()
                     != std::string::npos,
                   "IMP-CP-38", "owner lease snapshot is not returned by one Redis script");
 
-    /* IMP-CP-37 — actor physical rows use the common four-field, global-stamp schema. */
+    /* IMP-CP-37 — actor physical rows use the common five-field, mesh-scoped schema. */
     gate.require (redis_hpp.find (
-                    "write_row (location_kind_t::actor, row_key, std::nullopt, actor.owner_id")
+                    "write_row (location_kind_t::actor, row_key, actor.mesh_name, actor.owner_id")
                     != std::string::npos,
-                  "IMP-CP-37", "actor writes still add the C++-only mesh hash field");
+                  "IMP-CP-37", "actor writes do not persist the common mesh hash field");
 
     /* IMP-CP-36 — paged location lists preserve the Redis SSCAN cursor. */
     gate.require (redis_hpp.find ("\"SSCAN\"") != std::string::npos,

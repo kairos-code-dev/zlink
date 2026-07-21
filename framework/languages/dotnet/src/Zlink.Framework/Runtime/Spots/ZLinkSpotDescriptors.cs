@@ -23,6 +23,8 @@ internal sealed class ZLinkSpotDescriptor
 
 internal sealed class ZLinkSpotSubscriptionDescriptor
 {
+    public required string ChannelName { get; init; }
+
     public required string Topic { get; init; }
 
     public required Type HandlerType { get; init; }

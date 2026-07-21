@@ -30,7 +30,7 @@ using var backpressureConsumer = ZLinkHttpClient.Create(options.BackpressureCons
 var scenarios = new (string Name, Func<Task> Run)[]
 {
     ("RM-A1", () => RmA1LocationStoreAutoConnectScenario.RunAsync(providerA, providerB)),
-    ("RM-A2", () => RmA2ManualEndpointScenario.RunAsync(providerA)),
+    ("RM-A2", () => RmA2ManualEndpointScenario.RunAsync(singleConsumer, providerA)),
     ("RM-A4", () => RmA4SameRidFailoverScenario.RunAsync(options)),
     ("RM-A6", () => RmA6MultipleChannelsScenario.RunAsync(providerA, providerB, workflow)),
     ("RM-B1", () => RmB1ScaleOutScenario.RunAsync(options)),

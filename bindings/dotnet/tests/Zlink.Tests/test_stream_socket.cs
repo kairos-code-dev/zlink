@@ -113,44 +113,6 @@ public sealed class test_stream_socket
     }
 
     [Fact]
-    public void stream_callback_lifecycle_contract()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var stream = ctx.CreateStreamSocket();
-
-        stream.OnPacket((StreamPacketHandler)((_, header, body) =>
-        {
-            header.Dispose();
-            body.Dispose();
-        }));
-        ZlinkHandlerException ex1 = Assert.Throws<ZlinkHandlerException>(() =>
-            stream.OnPacket((StreamPacketHandler)((_, header, body) =>
-            {
-                header.Dispose();
-                body.Dispose();
-            })));
-        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, ex1.Result);
-        ZlinkHandlerException ex2 = Assert.Throws<ZlinkHandlerException>(() =>
-            stream.OnPacket((StreamPacketHandler)((_, header, body) =>
-            {
-                header.Dispose();
-                body.Dispose();
-            })));
-        Assert.Equal(ZlinkHandlerException.ErrorCode.Busy, ex2.Result);
-        stream.DetachStream();
-
-        stream.OnPacket((StreamPacketHandler)((_, header, body) =>
-        {
-            header.Dispose();
-            body.Dispose();
-        }));
-        stream.DetachStream();
-    }
-
-    [Fact]
     public void stream_callback_exception_reports_unhandled_event()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -188,13 +150,6 @@ public sealed class test_stream_socket
         finally
         {
             Zlink.UnhandledCallbackException -= OnUnhandled;
-            try
-            {
-                stream.DetachStream();
-            }
-            catch (ZlinkException)
-            {
-            }
         }
     }
 
@@ -218,7 +173,6 @@ public sealed class test_stream_socket
         {
             body.Dispose();
         }));
-        stream.DetachStream();
     }
 
     [Fact]
@@ -264,8 +218,6 @@ public sealed class test_stream_socket
         Assert.Equal(expected, echoed);
         Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
             15000));
-
-        stream.DetachStream();
     }
 
     [Fact]
@@ -309,8 +261,6 @@ public sealed class test_stream_socket
         {
             _ = owned.Size;
         });
-
-        stream.DetachStream();
     }
 
     [Fact]
@@ -344,8 +294,6 @@ public sealed class test_stream_socket
         Assert.Equal(payload, echoed);
         Assert.True(CoreTestSupport.WaitUntil(() => Volatile.Read(ref matched) >= 1,
             3000));
-
-        stream.DetachStream();
     }
 
     [Fact]
@@ -385,8 +333,6 @@ public sealed class test_stream_socket
         Assert.Equal("session-closing"u8.ToArray(), ReceiveExact(ns, "session-closing"u8.Length));
         Assert.True(WaitForRawClientClose(ns, 3000),
             "stream DisconnectRid(rid) did not close the raw TCP client.");
-
-        stream.DetachStream();
     }
 
     [Fact]
@@ -555,7 +501,6 @@ public sealed class test_stream_socket
         }
 
         await Task.WhenAll(clients);
-        stream.DetachStream();
     }
 
     [Fact]

@@ -8,7 +8,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
 import java.nio.file.Path
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
@@ -44,19 +43,16 @@ class SessionServerApplication {
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.configureLocations()
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient()
-            val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
+            val node = options.addRouteMesh(SampleNames.Mesh)
 
-            node.enableRouter(topology.selectedSessionRouterEndpoint())
-                .setRoutingId(RoutingId.from(topology.selectedSessionRouterRid()))
-            node.connectRouter(
-                RoutingId.from(topology.preferredPlayNodeRid()),
-                topology.preferredPlaySpotRouterEndpoint(),
-            )
-            node.enablePubSub(topology.selectedSessionSpotEndpoint())
+            node.listen(topology.selectedSessionRouterEndpoint())
+                .useAllocatedRoutingId(2, "session")
+                .setRoutingIdAllocationGroup("bingo.session")
+            node.channelName(SampleNames.ApiChannel).setWeight(0)
+            node.channelName(SampleNames.RoomSpotDiscovery)
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(topology.selectedStreamEndpoint())
+                .enableActorDispatch(SampleNames.Mesh)
                 .registerSession(BingoSession::class.java)
         }
 

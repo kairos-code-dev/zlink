@@ -35,6 +35,12 @@ struct handle_registry_t
 std::atomic<int> g_mesh_alloc_faults (0);
 #endif
 
+std::atomic<uint64_t> g_last_lifecycle_generation (0);
+#ifdef HAVE_FORK
+std::atomic<long> g_lifecycle_generation_process (
+  static_cast<long> (getpid ()));
+#endif
+
 handle_registry_t &registry ()
 {
     static handle_registry_t *instance = new handle_registry_t ();
@@ -50,6 +56,11 @@ extern "C" void zlink_test_set_mesh_alloc_fault (int count_)
 {
     g_mesh_alloc_faults.store (count_ < 0 ? 0 : count_, std::memory_order_relaxed);
 }
+
+extern "C" void zlink_test_set_lifecycle_generation_floor (uint64_t floor_)
+{
+    g_last_lifecycle_generation.store (floor_, std::memory_order_relaxed);
+}
 #endif
 
 namespace zlink
@@ -57,6 +68,23 @@ namespace zlink
 namespace mesh
 {
 #ifdef ZLINK_BUILD_TESTS
+extern "C" int zlink_test_mesh_set_operation_committing (
+  void *node_, const zlink_mesh_operation_id_t *operation_id_, int enabled_)
+{
+    if (!node_ || !operation_id_)
+        return 0;
+    mesh_node_t *node = static_cast<mesh_node_t *> (node_);
+    std::lock_guard<std::mutex> lock (node->mutex);
+    std::unordered_map<uint64_t, pending_operation_t>::iterator operation =
+      node->operations.find (operation_id_->low);
+    if (operation == node->operations.end ()
+        || operation->second.id.high != operation_id_->high
+        || !operation->second.completion)
+        return 0;
+    operation->second.completion->committing = enabled_ != 0;
+    return 1;
+}
+
 void test_maybe_throw_alloc ()
 {
     int remaining = g_mesh_alloc_faults.load (std::memory_order_relaxed);
@@ -92,8 +120,34 @@ uint64_t allocate_lifecycle_generation ()
     //  rolled-back system clock surfaces as the duplicate/stale generation
     //  admission conflict the peer contract already defines (01-mesh-node
     //  §5), not as silent replacement.
-    static std::atomic<uint64_t> last_generation (0);
-    uint64_t previous = last_generation.load (std::memory_order_relaxed);
+#ifdef HAVE_FORK
+    const long process = static_cast<long> (getpid ());
+    long generation_process =
+      g_lifecycle_generation_process.load (std::memory_order_acquire);
+    while (generation_process != process) {
+        if (generation_process == 0) {
+            std::this_thread::yield ();
+            generation_process =
+              g_lifecycle_generation_process.load (std::memory_order_acquire);
+            continue;
+        }
+        if (!g_lifecycle_generation_process.compare_exchange_weak (
+              generation_process, 0, std::memory_order_acq_rel))
+            continue;
+
+        //  A fork copies the parent's process-local high-water mark. It is not
+        //  an observation made by the child and can be ahead of wall time
+        //  after a clock adjustment. Publish the child PID only after the
+        //  inherited floor is cleared, so concurrent first allocations cannot
+        //  reset a generation another child thread has already issued.
+        g_last_lifecycle_generation.store (0, std::memory_order_relaxed);
+        g_lifecycle_generation_process.store (process,
+                                              std::memory_order_release);
+        break;
+    }
+#endif
+    uint64_t previous =
+      g_last_lifecycle_generation.load (std::memory_order_relaxed);
     for (;;) {
         uint64_t candidate = static_cast<uint64_t> (
           std::chrono::duration_cast<std::chrono::microseconds> (
@@ -101,8 +155,8 @@ uint64_t allocate_lifecycle_generation ()
             .count ());
         if (candidate <= previous)
             candidate = previous + 1;
-        if (last_generation.compare_exchange_weak (previous, candidate,
-                                                   std::memory_order_relaxed))
+        if (g_last_lifecycle_generation.compare_exchange_weak (
+              previous, candidate, std::memory_order_relaxed))
             return candidate;
     }
 }
@@ -178,12 +232,70 @@ bool rid_equal (const zlink_routing_id_t &a_, const zlink_routing_id_t &b_)
     return a_.size == b_.size && memcmp (a_.data, b_.data, a_.size) == 0;
 }
 
+send_ready_interest_t::send_ready_interest_t () :
+    destination_kind (ZLINK_MESH_DESTINATION_NODE),
+    remote_capacity (false),
+    required_bytes (0)
+{
+    source_owner.kind = owner_node;
+    source_owner.generation = 0;
+    local_target_owner.kind = owner_node;
+    local_target_owner.generation = 0;
+    memset (&target_actor, 0, sizeof (target_actor));
+}
+
+bool send_ready_interest_t::operator< (
+  const send_ready_interest_t &other_) const
+{
+    if (source_owner < other_.source_owner)
+        return true;
+    if (other_.source_owner < source_owner)
+        return false;
+    if (destination_kind != other_.destination_kind)
+        return destination_kind < other_.destination_kind;
+    if (target_node_rid != other_.target_node_rid)
+        return target_node_rid < other_.target_node_rid;
+    if (target_spot_rid != other_.target_spot_rid)
+        return target_spot_rid < other_.target_spot_rid;
+    const size_t actor_node_common =
+      std::min<size_t> (target_actor.node_rid.size,
+                        other_.target_actor.node_rid.size);
+    const int actor_node_compare =
+      memcmp (target_actor.node_rid.data, other_.target_actor.node_rid.data,
+              actor_node_common);
+    if (actor_node_compare != 0)
+        return actor_node_compare < 0;
+    if (target_actor.node_rid.size != other_.target_actor.node_rid.size)
+        return target_actor.node_rid.size < other_.target_actor.node_rid.size;
+    const int actor_id_compare =
+      strncmp (target_actor.actor_id, other_.target_actor.actor_id,
+               sizeof (target_actor.actor_id));
+    if (actor_id_compare != 0)
+        return actor_id_compare < 0;
+    if (target_actor.generation != other_.target_actor.generation)
+        return target_actor.generation < other_.target_actor.generation;
+    if (channel_name != other_.channel_name)
+        return channel_name < other_.channel_name;
+    if (remote_capacity != other_.remote_capacity)
+        return remote_capacity < other_.remote_capacity;
+    if (remote_capacity)
+        return false;
+    if (local_target_owner < other_.local_target_owner)
+        return true;
+    if (other_.local_target_owner < local_target_owner)
+        return false;
+    return false;
+}
+
 queued_record_t::queued_record_t () :
     kind (ZLINK_MESH_RECORD_NODE_SEND),
+    source_binding_generation (0),
     has_reply_token (false),
     has_metadata (false),
     terminal_result (0),
     failure_errno (0),
+    deadline_ns (0),
+    instance_admission_sequence (0),
     byte_size (0)
 {
     memset (&source_actor, 0, sizeof (source_actor));
@@ -206,6 +318,7 @@ queued_record_t &queued_record_t::operator= (queued_record_t &&other_) noexcept
     kind = other_.kind;
     source_node_rid = std::move (other_.source_node_rid);
     source_spot_rid = std::move (other_.source_spot_rid);
+    source_binding_generation = other_.source_binding_generation;
     source_actor = other_.source_actor;
     operation_id = other_.operation_id;
     operation_kind = other_.operation_kind;
@@ -217,6 +330,9 @@ queued_record_t &queued_record_t::operator= (queued_record_t &&other_) noexcept
     has_metadata = other_.has_metadata;
     terminal_result = other_.terminal_result;
     failure_errno = other_.failure_errno;
+    deadline_ns = other_.deadline_ns;
+    instance_admission_sequence = other_.instance_admission_sequence;
+    instance_deadline_task = std::move (other_.instance_deadline_task);
     kind_data = std::move (other_.kind_data);
     parts = std::move (other_.parts);
     other_.parts.clear ();
@@ -263,11 +379,14 @@ spot_state_t::spot_state_t () :
     active_actor_count (0),
     draining (false),
     last_error (0),
-    last_changed_ms (0)
+    last_changed_ms (0),
+    activation_state (ZLINK_SPOT_ACTIVATION_READY)
 {
 }
 
-spot_facade_t::spot_facade_t () : tag (0x4d455348), node (NULL), generation (0)
+spot_facade_t::spot_facade_t () :
+    tag (0x4d455348), node (NULL), generation (0), caller_owned (true),
+    retired_next (NULL)
 {
 }
 
@@ -288,6 +407,7 @@ transfer_state_t::transfer_state_t () :
     reserve_bytes (0),
     deadline_ms (0),
     ready_exchanged (false),
+    commit_in_progress (false),
     data_plane_result (ZLINK_REQUEST_OK),
     data_plane_errno (0),
     acked_high_water (0),
@@ -295,7 +415,8 @@ transfer_state_t::transfer_state_t () :
     offered_participant_bytes (0),
     seal_requested (false),
     source_complete (false),
-    complete_sent (false)
+    complete_sent (false),
+    has_pending_bound_session_route (false)
 {
     memset (&transfer_id, 0, sizeof (transfer_id));
     memset (&actor, 0, sizeof (actor));
@@ -310,9 +431,6 @@ monitor_state_t::monitor_state_t () :
     handler_active (0),
     closed (false)
 {
-    memset (&counters, 0, sizeof (counters));
-    counters.struct_size = sizeof (counters);
-    counters.version = 1;
 }
 
 publisher_t::publisher_t () : tag (0x4d505542), node (NULL)
@@ -349,6 +467,11 @@ void receive_batch_t::clear ()
 mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     tag (0x4d4e4f44),
     ctx (ctx_),
+    remote_route_flights (0),
+    remote_route_disconnect_overflow (false),
+    forced_reply_retry_active (false),
+    tls_require_client_cert (0),
+    tls_trust_system (0),
     state (ZLINK_MESH_NODE_CREATED),
     lifecycle_generation (allocate_lifecycle_generation ()),
     descriptor_revision (0),
@@ -358,6 +481,9 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     router_hwm_override (0),
     mailbox_message_budget (0),
     mailbox_byte_budget (0),
+    instance_activation_message_budget (0),
+    instance_activation_byte_budget (0),
+    instance_activation_timeout_ms (0),
     max_msg_size (-1),
     sndtimeo_ms (1000),
     rcvtimeo_ms (1000),
@@ -369,11 +495,20 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     pollin_signaled (false),
     next_operation_serial (1),
     next_reply_serial (1),
+    force_retry_epoch (0),
     shutdown_active (false),
     lifecycle_pins (0),
     destroy_claimed (false),
-    next_spot_generation (1),
-    next_actor_generation (1),
+    retired_instance_facades (NULL),
+    //  Spot and Actor generations must not restart at the same value when a
+    //  MeshNode with the same RID is created again. The node lifecycle is the
+    //  Core-owned restart-ordering source; each node then advances its local
+    //  object generations only after the corresponding operation commits.
+    next_instance_token_serial (1),
+    next_instance_admission_sequence (1),
+    next_spot_generation (lifecycle_generation),
+    next_actor_generation (lifecycle_generation),
+    next_stream_binding_generation (lifecycle_generation),
     next_transfer_serial (1),
     publisher_count (0),
     monitor_emit_refs (0),
@@ -384,10 +519,18 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     router_monitor (NULL),
     io_stop (false)
 {
+    memset (&monitor_counters, 0, sizeof (monitor_counters));
+    monitor_counters.struct_size = sizeof (monitor_counters);
+    monitor_counters.version = 1;
 }
 
 mesh_node_t::~mesh_node_t ()
 {
+    while (retired_instance_facades) {
+        spot_facade_t *retired = retired_instance_facades;
+        retired_instance_facades = retired->retired_next;
+        delete retired;
+    }
     tag = 0xdeadbeef;
 }
 
@@ -423,6 +566,29 @@ uint64_t mesh_node_t::effective_byte_budget () const
         default:
             return 64ull << 20;
     }
+}
+
+uint64_t mesh_node_t::effective_instance_activation_message_budget () const
+{
+    return instance_activation_message_budget > 0
+             ? instance_activation_message_budget
+             : 256;
+}
+
+uint64_t mesh_node_t::effective_instance_activation_byte_budget () const
+{
+    return instance_activation_byte_budget > 0
+             ? instance_activation_byte_budget
+             : 4ull * 1024ull * 1024ull;
+}
+
+uint32_t mesh_node_t::effective_instance_activation_timeout_ms () const
+{
+    const uint64_t value = instance_activation_timeout_ms > 0
+                             ? instance_activation_timeout_ms
+                             : 5000;
+    return static_cast<uint32_t> (
+      std::min<uint64_t> (value, static_cast<uint64_t> (UINT32_MAX)));
 }
 
 mesh_node_t *find_node_by_name (const std::string &name_)
@@ -798,13 +964,71 @@ static int admit_record_impl (mesh_node_t *node_,
         errno = ENOENT;
         return -1;
     }
+    if (domain_ == domain_application && owner_.kind == owner_spot) {
+        std::map<std::string, spot_state_t>::iterator spot =
+          node_->spots.find (owner_.key);
+        if (spot != node_->spots.end ()
+            && spot->second.kind == ZLINK_SPOT_KIND_INSTANCE) {
+            if (record_->deadline_ns != 0
+                && zlink::request_timeout::monotonic_now_ns ()
+                     >= record_->deadline_ns) {
+                errno = ETIMEDOUT;
+                return -1;
+            }
+            std::map<std::string, instance_activation_state_t>::iterator activation =
+              node_->instance_activations.find (owner_.key);
+            if (activation == node_->instance_activations.end ()
+                || activation->second.state
+                     != ZLINK_SPOT_ACTIVATION_READY
+                || activation->second.owner_deadline_ns == 0
+                || zlink::request_timeout::monotonic_now_ns ()
+                     >= activation->second.owner_deadline_ns) {
+                if (activation != node_->instance_activations.end ()) {
+                    activation->second.state =
+                      ZLINK_SPOT_ACTIVATION_CLOSING;
+                    spot->second.activation_state =
+                      ZLINK_SPOT_ACTIVATION_CLOSING;
+                    spot->second.draining = true;
+                }
+                errno = EBUSY;
+                return -1;
+            }
+        }
+    }
     mailbox_t &mailbox = it->second.domains[domain_];
 
-    //  Transfer fence: the frozen application lane accepts no new records
-    //  until commit or abort resolves the fence.
-    if (domain_ == domain_application && it->second.fenced_transfer_serial != 0)
-        return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN,
-                                    emit_backpressure_event_);
+    //  Transfer fence: ordinary Actor ingress is retained in a bounded
+    //  private participant instead of entering the frozen mailbox. The
+    //  transfer data plane publishes it only after the frozen range.
+    if (domain_ == domain_application && it->second.fenced_transfer_serial != 0) {
+        const uint64_t transfer_serial = it->second.fenced_transfer_serial;
+        std::unordered_map<uint64_t, transfer_state_t>::iterator transfer_it =
+          node_->transfers.find (transfer_serial);
+        if (owner_.kind != owner_actor || transfer_it == node_->transfers.end ()
+            || transfer_it->second.role != ZLINK_ACTOR_TRANSFER_SOURCE
+            || transfer_it->second.phase != ZLINK_ACTOR_TRANSFER_FENCED)
+            return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN,
+                                        emit_backpressure_event_);
+
+        transfer_participant_state_t &participant =
+          transfer_it->second.participants[transfer_actor_ingress_participant];
+        const uint64_t next_sequence = participant.staged.size () + 1;
+        if (next_sequence > participant.allowance_messages
+            || record_->byte_size > participant.allowance_bytes - participant.staged_bytes)
+            return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN,
+                                        emit_backpressure_event_);
+        try {
+            participant.staged[next_sequence] = std::move (record_);
+        }
+        catch (const std::bad_alloc &) {
+            errno = ENOMEM;
+            return -1;
+        }
+        participant.staged_bytes += participant.staged[next_sequence]->byte_size;
+        lock.unlock ();
+        transfer_send_actor_ingress (node_, transfer_serial);
+        return 0;
+    }
 
     const uint64_t message_budget = node_->effective_message_budget ();
     const uint64_t byte_budget = node_->effective_byte_budget ();
@@ -880,6 +1104,320 @@ int admit_multicast_record (mesh_node_t *node_,
       node_, owner_, domain_application, record_, false, 0, false);
 }
 
+send_ready_interest_t make_node_send_ready_interest (
+  const owner_id_t &source_owner_, const rid_bytes_t &target_node_rid_)
+{
+    send_ready_interest_t interest;
+    interest.source_owner = source_owner_;
+    interest.destination_kind = ZLINK_MESH_DESTINATION_NODE;
+    interest.target_node_rid = target_node_rid_;
+    return interest;
+}
+
+send_ready_interest_t make_channel_send_ready_interest (
+  const owner_id_t &source_owner_, const std::string &channel_name_)
+{
+    send_ready_interest_t interest;
+    interest.source_owner = source_owner_;
+    interest.destination_kind = ZLINK_MESH_DESTINATION_CHANNEL;
+    interest.channel_name = channel_name_;
+    return interest;
+}
+
+send_ready_interest_t make_spot_send_ready_interest (
+  const owner_id_t &source_owner_, const rid_bytes_t &target_node_rid_,
+  const rid_bytes_t &target_spot_rid_)
+{
+    send_ready_interest_t interest;
+    interest.source_owner = source_owner_;
+    interest.destination_kind = ZLINK_MESH_DESTINATION_SPOT;
+    interest.target_node_rid = target_node_rid_;
+    interest.target_spot_rid = target_spot_rid_;
+    return interest;
+}
+
+send_ready_interest_t make_actor_send_ready_interest (
+  const owner_id_t &source_owner_, const zlink_actor_ref_t &target_actor_)
+{
+    send_ready_interest_t interest;
+    interest.source_owner = source_owner_;
+    interest.destination_kind = ZLINK_MESH_DESTINATION_ACTOR;
+    interest.target_node_rid = rid_bytes (target_actor_.node_rid);
+    interest.target_actor = target_actor_;
+    return interest;
+}
+
+namespace
+{
+std::unique_ptr<queued_record_t> make_send_ready_record (
+  const send_ready_interest_t &interest_)
+{
+    std::unique_ptr<queued_record_t> record (
+      new (std::nothrow) queued_record_t ());
+    if (!record.get ())
+        return record;
+    try {
+        record->kind = ZLINK_MESH_RECORD_SEND_READY;
+        record->channel_name = interest_.channel_name;
+        record->kind_data.resize (sizeof (zlink_mesh_send_ready_data_t));
+        zlink_mesh_send_ready_data_t *data =
+          reinterpret_cast<zlink_mesh_send_ready_data_t *> (
+            &record->kind_data[0]);
+        memset (data, 0, sizeof (*data));
+        data->struct_size = sizeof (*data);
+        data->version = 1;
+        data->destination_kind = interest_.destination_kind;
+        data->target_node_rid = rid_value (interest_.target_node_rid);
+        data->target_spot_rid = rid_value (interest_.target_spot_rid);
+        data->target_actor = interest_.target_actor;
+        if (!record->channel_name.empty ()) {
+            data->channel_name = record->channel_name.c_str ();
+            data->channel_name_size = record->channel_name.size ();
+        }
+        record->byte_size = record->kind_data.size () + record->channel_name.size ();
+    }
+    catch (const std::bad_alloc &) {
+        record.reset ();
+    }
+    return record;
+}
+
+void notify_send_ready_interests (mesh_node_t *node_,
+                                  bool remote_capacity_,
+                                  const owner_id_t *local_target_owner_,
+                                  uint64_t transfer_serial_)
+{
+    typedef std::pair<send_ready_interest_t, send_ready_interest_state_t>
+      pending_interest_t;
+    std::vector<pending_interest_t> pending;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        try {
+            for (std::map<send_ready_interest_t,
+                          send_ready_interest_state_t>::iterator it =
+                   node_->send_ready_interests.begin ();
+                 it != node_->send_ready_interests.end ();) {
+                const bool matches = remote_capacity_
+                  ? it->first.remote_capacity
+                  : (!it->first.remote_capacity && local_target_owner_
+                     && it->first.local_target_owner == *local_target_owner_
+                     && (transfer_serial_ != 0
+                           ? it->second.transfer_serial == transfer_serial_
+                           : it->second.transfer_serial == 0));
+                if (node_->owners.find (it->first.source_owner)
+                    == node_->owners.end ()) {
+                    it = node_->send_ready_interests.erase (it);
+                    continue;
+                }
+                bool retry_worthwhile = matches;
+                if (retry_worthwhile && !remote_capacity_) {
+                    const std::map<owner_id_t, owner_state_t>::const_iterator
+                      target = node_->owners.find (it->first.local_target_owner);
+                    if (target != node_->owners.end ()) {
+                        const mailbox_t &mailbox =
+                          target->second.domains[domain_application];
+                        const uint64_t message_budget =
+                          node_->effective_message_budget ();
+                        const uint64_t byte_budget =
+                          node_->effective_byte_budget ();
+                        const size_t retry_bytes =
+                          it->second.min_required_bytes;
+                        retry_worthwhile =
+                          mailbox.pending_messages < message_budget
+                          && retry_bytes <= byte_budget
+                          && mailbox.pending_bytes
+                               <= byte_budget - retry_bytes;
+                    }
+                }
+                if (!retry_worthwhile) {
+                    ++it;
+                    continue;
+                }
+                send_ready_interest_t interest = it->first;
+                interest.required_bytes = it->second.min_required_bytes;
+                pending.push_back (
+                  std::make_pair (interest, it->second));
+                //  Detach before admitting the record. A ready handler may
+                //  retry inline; a new EAGAIN must create a new interest that
+                //  this notification cannot erase on return.
+                it = node_->send_ready_interests.erase (it);
+            }
+        }
+        catch (const std::bad_alloc &) {
+            for (size_t i = 0; i < pending.size (); ++i) {
+                node_->send_ready_interests.insert (pending[i]);
+            }
+            return;
+        }
+    }
+
+    for (size_t i = 0; i < pending.size (); ++i) {
+        std::unique_ptr<queued_record_t> record =
+          make_send_ready_record (pending[i].first);
+        const bool delivered =
+          record.get ()
+          && admit_record (node_, pending[i].first.source_owner,
+                           domain_infrastructure, record, false, 0)
+               == 0;
+        if (delivered)
+            continue;
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        if (node_->owners.find (pending[i].first.source_owner)
+              == node_->owners.end ()
+            || node_->state == ZLINK_MESH_NODE_DRAINING
+            || node_->state == ZLINK_MESH_NODE_STOPPED)
+            continue;
+        try {
+            const std::pair<
+              std::map<send_ready_interest_t,
+                       send_ready_interest_state_t>::iterator,
+              bool> restored =
+              node_->send_ready_interests.insert (pending[i]);
+            if (!restored.second) {
+                restored.first->second.min_required_bytes =
+                  std::min (restored.first->second.min_required_bytes,
+                            pending[i].second.min_required_bytes);
+                if (restored.first->second.transfer_serial == 0)
+                    restored.first->second.transfer_serial =
+                      pending[i].second.transfer_serial;
+            }
+        }
+        catch (const std::bad_alloc &) {
+        }
+    }
+}
+}
+
+void register_local_send_ready_interest (
+  mesh_node_t *node_, send_ready_interest_t interest_,
+  const owner_id_t &target_owner_, size_t required_bytes_,
+  uint64_t transfer_serial_hint_)
+{
+    bool ready_now = false;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        if (node_->owners.find (interest_.source_owner) == node_->owners.end ()
+            || node_->state == ZLINK_MESH_NODE_DRAINING
+            || node_->state == ZLINK_MESH_NODE_STOPPED)
+            return;
+        interest_.remote_capacity = false;
+        interest_.local_target_owner = target_owner_;
+        interest_.required_bytes = required_bytes_;
+        try {
+            const std::pair<
+              std::map<send_ready_interest_t,
+                       send_ready_interest_state_t>::iterator,
+              bool> inserted = node_->send_ready_interests.insert (
+                std::make_pair (
+                  interest_, send_ready_interest_state_t (required_bytes_)));
+            if (!inserted.second)
+                inserted.first->second.min_required_bytes =
+                  std::min (inserted.first->second.min_required_bytes,
+                            required_bytes_);
+            if (transfer_serial_hint_ != 0)
+                inserted.first->second.transfer_serial =
+                  transfer_serial_hint_;
+        }
+        catch (const std::bad_alloc &) {
+            return;
+        }
+        const std::map<owner_id_t, owner_state_t>::const_iterator target =
+          node_->owners.find (target_owner_);
+        if (target == node_->owners.end ()) {
+            ready_now = true;
+        } else if (transfer_serial_hint_ != 0) {
+            ready_now = target->second.fenced_transfer_serial
+                        != transfer_serial_hint_;
+        } else if (target->second.fenced_transfer_serial != 0) {
+            const std::map<send_ready_interest_t,
+                           send_ready_interest_state_t>::iterator registered =
+              node_->send_ready_interests.find (interest_);
+            registered->second.transfer_serial =
+              target->second.fenced_transfer_serial;
+        } else {
+            const mailbox_t &mailbox =
+              target->second.domains[domain_application];
+            const uint64_t message_budget = node_->effective_message_budget ();
+            const uint64_t byte_budget = node_->effective_byte_budget ();
+            const std::map<send_ready_interest_t,
+                           send_ready_interest_state_t>::const_iterator
+              registered = node_->send_ready_interests.find (interest_);
+            const size_t retry_bytes =
+              registered->second.min_required_bytes;
+            ready_now = mailbox.pending_messages < message_budget
+                        && retry_bytes <= byte_budget
+                        && mailbox.pending_bytes
+                             <= byte_budget - retry_bytes;
+        }
+    }
+    if (ready_now) {
+        if (transfer_serial_hint_ != 0)
+            notify_transfer_send_ready (
+              node_, target_owner_, transfer_serial_hint_);
+        else
+            notify_local_send_ready (node_, target_owner_);
+    }
+}
+
+void register_remote_send_ready_interest (
+  mesh_node_t *node_, send_ready_interest_t interest_)
+{
+    std::lock_guard<std::mutex> lock (node_->mutex);
+    if (node_->owners.find (interest_.source_owner) == node_->owners.end ()
+        || node_->state == ZLINK_MESH_NODE_DRAINING
+        || node_->state == ZLINK_MESH_NODE_STOPPED)
+        return;
+    interest_.remote_capacity = true;
+    try {
+        node_->send_ready_interests.insert (
+          std::make_pair (interest_, send_ready_interest_state_t (0)));
+    }
+    catch (const std::bad_alloc &) {
+    }
+}
+
+void notify_local_send_ready (mesh_node_t *node_,
+                              const owner_id_t &target_owner_)
+{
+    notify_send_ready_interests (node_, false, &target_owner_, 0);
+}
+
+void notify_transfer_send_ready (mesh_node_t *node_,
+                                 const owner_id_t &target_owner_,
+                                 uint64_t transfer_serial_)
+{
+    if (transfer_serial_ != 0)
+        notify_send_ready_interests (
+          node_, false, &target_owner_, transfer_serial_);
+}
+
+void notify_remote_send_ready (mesh_node_t *node_)
+{
+    retry_forced_reply_routes (node_);
+    notify_send_ready_interests (node_, true, NULL, 0);
+}
+
+void erase_send_ready_interests_for_owner_locked (
+  mesh_node_t *node_, const owner_id_t &owner_)
+{
+    for (std::map<send_ready_interest_t,
+                  send_ready_interest_state_t>::iterator it =
+           node_->send_ready_interests.begin ();
+         it != node_->send_ready_interests.end ();) {
+        if (it->first.source_owner == owner_
+            || (!it->first.remote_capacity
+                && it->first.local_target_owner == owner_))
+            it = node_->send_ready_interests.erase (it);
+        else
+            ++it;
+    }
+}
+
+void clear_send_ready_interests_locked (mesh_node_t *node_)
+{
+    node_->send_ready_interests.clear ();
+}
+
 void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_)
 {
     std::map<std::string, spot_state_t>::iterator it = node_->spots.find (spot_key_);
@@ -889,7 +1427,14 @@ void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_)
     //  The entry Spot is referenced by the node for its whole lifetime.
     if (spot.kind == ZLINK_SPOT_KIND_ENTRY)
         return;
-    if (spot.facade_count > 0 || spot.timer_count > 0 || spot.active_actor_count > 0)
+    const bool closing_instance =
+      spot.kind == ZLINK_SPOT_KIND_INSTANCE
+      && spot.activation_state == ZLINK_SPOT_ACTIVATION_CLOSING;
+    if (spot.kind == ZLINK_SPOT_KIND_INSTANCE && !closing_instance)
+        return;
+    const uint32_t retained_facades = closing_instance ? 1 : 0;
+    if (spot.facade_count > retained_facades || spot.timer_count > 0
+        || spot.active_actor_count > 0)
         return;
     owner_id_t owner;
     owner.kind = owner_spot;
@@ -901,10 +1446,28 @@ void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_)
             || owner_it->second.timer_turn_active
             || owner_it->second.fenced_transfer_serial != 0)
             return;
+        erase_send_ready_interests_for_owner_locked (node_, owner);
         node_->owners.erase (owner_it);
     }
     node_->ready.erase (std::make_pair (owner, static_cast<int> (domain_application)));
     node_->ready.erase (std::make_pair (owner, static_cast<int> (domain_infrastructure)));
+    if (closing_instance) {
+        std::map<std::string, instance_activation_state_t>::iterator activation =
+          node_->instance_activations.find (spot_key_);
+        if (activation != node_->instance_activations.end ()) {
+            spot_facade_t *borrowed = activation->second.borrowed_facade;
+            if (borrowed) {
+                track_facade (borrowed, false);
+                borrowed->tag = 0xdeadbeef;
+                //  Keep storage until node destruction. A copied stale public
+                //  pointer is rejected by the live-handle registry without
+                //  ever dereferencing freed memory.
+                borrowed->retired_next = node_->retired_instance_facades;
+                node_->retired_instance_facades = borrowed;
+            }
+            node_->instance_activations.erase (activation);
+        }
+    }
     node_->spots.erase (it);
 }
 
@@ -913,6 +1476,19 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
     monitor_state_t *monitor;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
+        switch (event_.kind) {
+            case ZLINK_MESH_MONITOR_PEER_ADMITTED:
+                node_->monitor_counters.peer_admitted += 1;
+                break;
+            case ZLINK_MESH_MONITOR_PEER_REJECTED:
+                node_->monitor_counters.peer_rejected += 1;
+                break;
+            case ZLINK_MESH_MONITOR_BACKPRESSURED:
+                node_->monitor_counters.backpressured_submits += 1;
+                break;
+            default:
+                break;
+        }
         monitor = node_->monitor;
         if (!monitor)
             return;
@@ -1063,8 +1639,7 @@ void observe_operation_completed (mesh_node_t *node_,
 {
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        if (node_->monitor)
-            node_->monitor->counters.completed_operations += 1;
+        node_->monitor_counters.completed_operations += 1;
     }
     zlink_mesh_monitor_event_t event;
     memset (&event, 0, sizeof (event));
@@ -1088,6 +1663,85 @@ int complete_pending_operation (mesh_node_t *node_,
       NULL, NULL);
 }
 
+int complete_pending_operation_by_id (
+  mesh_node_t *node_, const zlink_mesh_operation_id_t &operation_id_,
+  int32_t terminal_result_, int32_t failure_errno_)
+{
+    return complete_pending_operation_by_id (
+      node_, operation_id_, terminal_result_, failure_errno_, NULL, NULL);
+}
+
+int complete_pending_operation_by_id (
+  mesh_node_t *node_, const zlink_mesh_operation_id_t &operation_id_,
+  int32_t terminal_result_, int32_t failure_errno_,
+  std::vector<unsigned char> *kind_data_,
+  std::vector<zlink_msg_t> *reply_parts_)
+{
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
+    bool owner_missing = false;
+    bool completed = false;
+    {
+        std::unique_lock<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator operation =
+          node_->operations.find (operation_id_.low);
+        if (operation == node_->operations.end ()
+            || operation->second.id.high != operation_id_.high)
+            return 0;
+        const std::shared_ptr<completion_reservation_t> reservation =
+          operation->second.completion;
+        if (!reservation || reservation->records.empty ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (reservation->committing) {
+            errno = EBUSY;
+            return 0;
+        }
+        std::map<owner_id_t, owner_state_t>::iterator owner =
+          node_->owners.find (reservation->ready_owner);
+        if (owner == node_->owners.end ()) {
+            timeout_task = detach_pending_operation_locked (
+              node_, operation);
+            owner_missing = true;
+        } else {
+            queued_record_t &record = *reservation->records.front ();
+            if (!reservation->prepared) {
+                record.kind = ZLINK_MESH_RECORD_COMPLETION;
+                record.operation_id = operation->second.id;
+                record.operation_kind = operation->second.kind;
+                record.terminal_result = terminal_result_;
+                record.failure_errno = failure_errno_;
+                if (kind_data_)
+                    record.kind_data.swap (*kind_data_);
+                if (reply_parts_)
+                    record.parts.swap (*reply_parts_);
+                for (size_t i = 0; i < record.parts.size (); ++i)
+                    record.byte_size += zlink_msg_size (&record.parts[i]);
+                reservation->prepared = true;
+            }
+            node_->ready.merge (reservation->ready_node);
+            mailbox_t &mailbox =
+              owner->second.domains[domain_infrastructure];
+            mailbox.records.splice (
+              mailbox.records.end (), reservation->records);
+            mailbox.pending_messages += 1;
+            mailbox.pending_bytes += record.byte_size;
+            timeout_task = detach_pending_operation_locked (
+              node_, operation);
+            notify_consumer_locked (node_, lock);
+            completed = true;
+        }
+    }
+    if (timeout_task)
+        zlink::request_timeout::cancel (timeout_task);
+    if (owner_missing)
+        return 0;
+    if (completed)
+        observe_operation_completed (
+          node_, operation_id_, terminal_result_, failure_errno_);
+    return completed ? 1 : 0;
+}
+
 int complete_pending_operation_with_commit (
   mesh_node_t *node_,
   const pending_operation_t &op_,
@@ -1098,17 +1752,6 @@ int complete_pending_operation_with_commit (
   pending_operation_commit_fn commit_locked_,
   void *commit_userdata_)
 {
-    owner_id_t ready_owner;
-    std::pair<owner_id_t, int> ready_key;
-    try {
-        ready_owner = op_.requester;
-        ready_key =
-          std::make_pair (ready_owner, static_cast<int> (domain_infrastructure));
-    }
-    catch (const std::bad_alloc &) {
-        errno = ENOMEM;
-        return -1;
-    }
     const std::shared_ptr<completion_reservation_t> reservation = op_.completion;
     if (!reservation || reservation->records.empty ()) {
         errno = EFAULT;
@@ -1124,7 +1767,7 @@ int complete_pending_operation_with_commit (
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     bool owner_missing = false;
     {
-        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unique_lock<std::mutex> lock (node_->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
           node_->operations.find (op_.id.low);
         if (op_it == node_->operations.end ())
@@ -1137,7 +1780,7 @@ int complete_pending_operation_with_commit (
         if (reservation->committing)
             return 0;
         std::map<owner_id_t, owner_state_t>::iterator owner_it =
-          node_->owners.find (op_it->second.requester);
+          node_->owners.find (reservation->ready_owner);
         if (owner_it == node_->owners.end ()) {
             timeout_task = detach_pending_operation_locked (node_, op_it);
             owner_missing = true;
@@ -1160,37 +1803,22 @@ int complete_pending_operation_with_commit (
             record_bytes = record.byte_size;
             observed_terminal_result = record.terminal_result;
             observed_failure_errno = record.failure_errno;
-            mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
-            bool ready_inserted = false;
-            try {
-#ifdef ZLINK_BUILD_TESTS
-                test_maybe_throw_alloc ();
-#endif
-                ready_inserted = node_->ready.insert (ready_key).second;
-            }
-            catch (const std::bad_alloc &) {
-                if (ready_inserted)
-                    node_->ready.erase (ready_key);
-                errno = ENOMEM;
-                return -1;
-            }
             if (commit_locked_
-                && !commit_locked_ (node_, commit_userdata_)) {
-                if (ready_inserted)
-                    node_->ready.erase (ready_key);
+                && !commit_locked_ (node_, commit_userdata_))
                 return 0;
-            }
+            node_->ready.merge (reservation->ready_node);
+            mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
             mailbox.records.splice (mailbox.records.end (), reservation->records);
             mailbox.pending_messages += 1;
             mailbox.pending_bytes += record_bytes;
             timeout_task = detach_pending_operation_locked (node_, op_it);
+            notify_consumer_locked (node_, lock);
         }
     }
     if (timeout_task)
         zlink::request_timeout::cancel (timeout_task);
     if (owner_missing)
         return 0;
-    signal_ready (node_, ready_owner, domain_infrastructure);
     observe_operation_completed (
       node_, op_.id, observed_terminal_result, observed_failure_errno);
     return 1;

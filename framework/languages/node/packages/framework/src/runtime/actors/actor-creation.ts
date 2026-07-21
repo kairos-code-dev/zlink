@@ -56,8 +56,7 @@ export class ZLinkActorCreationCoordinator {
         () => this.createActorAfterClaim(actorId, actorType, state, createRequest, true, signal)
       );
       if (activation.activated !== undefined) {
-        const claimed = lifecycle.actorLocationSnapshot(actorId);
-        if (claimed !== undefined) state.setLocationGeneration(claimed.generation);
+        if (activation.generation !== undefined) state.setLocationGeneration(activation.generation);
         state.markLocationOwned();
         return activation.activated;
       }
@@ -65,7 +64,7 @@ export class ZLinkActorCreationCoordinator {
         ZLinkFrameworkErrorKind.ActorCreateFailed,
         activation.existingLocation === undefined
           ? `Actor '${actorId}' location claim was rejected and no live location row was found.`
-          : `Actor '${actorId}' is already active on node '${activation.existingLocation.nodeRid}' (location claim conflict).`
+          : `Actor '${actorId}' is already active on node '${activation.existingLocation.ownerNodeRid}' (location claim conflict).`
       );
     }
 
@@ -82,7 +81,9 @@ export class ZLinkActorCreationCoordinator {
       state,
       this.options.joinCoordinator,
       this.options.boundSessionFactory,
-      this.options.messageSerializers
+      this.options.messageSerializers,
+      this.options.actorMeshNameProvider,
+      this.options.actorLeaveSpot
     ));
     const actor = restore === undefined
       ? await (await this.createFactory(actorType)).create(actorId, context)
@@ -109,7 +110,9 @@ export class ZLinkActorCreationCoordinator {
       state,
       this.options.joinCoordinator,
       this.options.boundSessionFactory,
-      this.options.messageSerializers
+      this.options.messageSerializers,
+      this.options.actorMeshNameProvider,
+      this.options.actorLeaveSpot
     ));
     const actor = await factory.create(actorId, context);
     try {
@@ -127,7 +130,8 @@ export class ZLinkActorCreationCoordinator {
           await this.options.locationLifecycle?.setActorRef(
             actorType,
             actorId,
-            toFrameworkActorRef(actorRef)
+            toFrameworkActorRef(actorRef),
+            nativeActorNode.status().lifecycleGeneration
           );
         }
       } else {
@@ -138,7 +142,8 @@ export class ZLinkActorCreationCoordinator {
             await this.options.locationLifecycle?.setActorRef(
               actorType,
               actorId,
-              { nodeRid, actorId, generation: 0n }
+              { nodeRid, actorId, generation: 0n },
+              0n
             );
           }
         }
@@ -154,7 +159,7 @@ export class ZLinkActorCreationCoordinator {
     const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
     const nodeRid = nativeActorNode === undefined
       ? this.options.actorCreatedNodeRidProvider?.()
-      : toFrameworkRoutingId(nativeActorNode.routingId);
+      : toFrameworkRoutingId(nativeActorNode.status().routingId as never);
     if (nodeRid === undefined) {
       throw new ZLinkConfigurationException('Location actor claim requires a node routing id.');
     }

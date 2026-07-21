@@ -46,8 +46,6 @@ CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 PROCESS_CLEANUP_TIMEOUT_SECONDS=35
 TURN_SHUTDOWN_TIMEOUT_SECONDS=60
@@ -361,6 +359,46 @@ PY
   return 1
 }
 
+wait_route_ready() {
+  local url="$1"
+  local mesh_name="$2"
+  local rid="$3"
+  local name="$4"
+  local deadline_ns
+  deadline_ns="$(python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+remaining = (int(sys.argv[1]) - time.monotonic_ns()) / 1_000_000_000
+print("0" if remaining <= 0 else f"{min(float(sys.argv[2]), remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS --get \
+      --data-urlencode "meshName=$mesh_name" \
+      --data-urlencode "rid=$rid" \
+      "$url/topology/ready" 2>/dev/null | grep -Fq '"ready":true'; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name route readiness" >&2
+  return 1
+}
+
 start_server() {
   local name="$1"
   local dll="$2"
@@ -597,7 +635,13 @@ wait_port session-b-control "$SESSION_B_CONTROL"
 wait_port session-b-spot-router "$SESSION_B_SPOT_ROUTER"
 wait_port session-b-stream "$SESSION_B_STREAM"
 
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_route_ready "$PLAY_A_HTTP" await.delay delay-a "play-a to delay-a"
+wait_route_ready "$PLAY_B_HTTP" await.delay delay-b "play-b to delay-b"
+for session_url in "$SESSION_A_HTTP" "$SESSION_B_HTTP"; do
+  for play_rid in play-a play-b; do
+    wait_route_ready "$session_url" await.control "$play_rid" "session control to $play_rid"
+  done
+done
 
 if scenario_selected full; then
   python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-full.json" -- \
@@ -665,7 +709,10 @@ if scenario_selected shutdown; then
   wait_port play-a-control "$PLAY_A_CONTROL"
   wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
   wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
-  sleep "$ROUTE_SETTLE_SECONDS"
+  wait_route_ready "$PLAY_A_HTTP" await.delay delay-a "restarted play-a to delay-a"
+  for session_url in "$SESSION_A_HTTP" "$SESSION_B_HTTP"; do
+    wait_route_ready "$session_url" await.control play-a "session control to restarted play-a"
+  done
 
   python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-shutdown-recovery.json" -- \
     --config-dir "$CONFIG_DIR" \

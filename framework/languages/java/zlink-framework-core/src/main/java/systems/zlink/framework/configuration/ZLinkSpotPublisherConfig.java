@@ -2,6 +2,7 @@ package systems.zlink.framework.configuration;
 
 import java.time.Duration;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 public interface ZLinkSpotPublisherConfig {
     int sendHighWaterMark();
@@ -10,7 +11,8 @@ public interface ZLinkSpotPublisherConfig {
 
     Optional<Duration> sendTimeout();
 
-    void setSendTimeout(Duration value);
+    /** Sets the send timeout, or clears it to the one-second default when null. */
+    void setSendTimeout(@Nullable Duration value);
 
     Optional<Duration> linger();
 

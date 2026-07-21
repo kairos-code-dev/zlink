@@ -253,6 +253,11 @@ explicit_redis_endpoint=""
 zlink_redis_start_scoped_assign redis_container_name redis_port \
   "zlink-redis-java-e2e" "redis:7.2-alpine" "127.0.0.1::6379"
 redis_location_endpoint="127.0.0.1:${redis_port}"
+if [[ "${ZLINK_E2E_REDIS_MONITOR:-0}" == "1" ]]; then
+  docker exec "${redis_container_name}" redis-cli --csv monitor \
+    >"${log_dir}/redis-monitor.log" 2>&1 &
+  pids+=("$!")
+fi
 start_redis_proxy
 create_store_outage_commands
 

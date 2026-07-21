@@ -65,7 +65,6 @@ public final class ShutdownRecoveryReqRouteHandler
         long deadline) {
         return spots.resolveSpotHandle(targetSpot)
             .thenCompose(handle -> routes.requestToSpot(
-                    Contracts.SPOT_MESH,
                     handle.orElseThrow(() -> new IllegalStateException("spot not found: " + targetSpot)),
                     new Contracts.ProbeReq("shutdown-recovery-probe", 0))
                 .timeout(ATTEMPT_TIMEOUT)

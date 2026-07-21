@@ -72,16 +72,23 @@ public sealed class ZLinkSpotRequestHandlerAttribute(string packetName) : Attrib
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class ZLinkSpotSubscriptionAttribute(
     string spotNodeName,
+    string channelName,
     string topic) : Attribute
 {
     public string SpotNodeName { get; } = spotNodeName;
+
+    public string ChannelName { get; } = channelName;
 
     public string Topic { get; } = topic;
 }
 
 [AttributeUsage(AttributeTargets.Class)]
-public sealed class ZLinkSpotSubscriptionHandlerAttribute(string topic) : Attribute
+public sealed class ZLinkSpotSubscriptionHandlerAttribute(
+    string channelName,
+    string topic) : Attribute
 {
+    public string ChannelName { get; } = channelName;
+
     public string Topic { get; } = topic;
 }
 

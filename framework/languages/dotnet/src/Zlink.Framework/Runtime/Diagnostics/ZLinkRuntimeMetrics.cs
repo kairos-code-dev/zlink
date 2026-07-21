@@ -86,8 +86,6 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateHistogram<double>("zlink.drain.duration", "s");
     private static readonly Counter<long> DrainActorsHandedOff =
         Meter.CreateCounter<long>("zlink.drain.actors.handed_off", "{actor}");
-    private static readonly Counter<long> DrainRoomsDrained =
-        Meter.CreateCounter<long>("zlink.drain.rooms.drained", "{spot}");
     private static readonly Counter<long> DrainForced =
         Meter.CreateCounter<long>("zlink.drain.forced", "{item}");
 
@@ -257,9 +255,6 @@ internal static class ZLinkRuntimeMetrics
     }
 
     public static void RecordDrainActorHandedOff() => SafeAdd(DrainActorsHandedOff, 1);
-
-    public static void RecordDrainRoom(string policy) =>
-        SafeAdd(DrainRoomsDrained, 1, "policy", policy);
 
     public static void RecordDrainForced(string kind, long count = 1)
     {

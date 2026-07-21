@@ -7,10 +7,12 @@ export interface ZLinkPreparedActorSource {
   readonly adapterKey?: string;
   readonly state: ZLinkMessage;
   readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
+  readonly sourceLeaveCompletion?: Promise<void>;
   commit(
     target: ZLinkSpotRouteTarget,
     targetActorRef: ActorRef,
-    results: readonly ZLinkActorHandoffResult[]
+    results: readonly ZLinkActorHandoffResult[],
+    releaseLocation?: boolean
   ): void;
   rollback(): Promise<void>;
 }
@@ -19,6 +21,7 @@ export interface ZLinkActorSourceTransfer {
   prepareSource(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    lifecycleAuthority?: 'framework' | 'core'
   ): Promise<ZLinkPreparedActorSource>;
 }

@@ -5,6 +5,11 @@ import type {
 } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
 import {
+  ZLinkSubmitStatus,
+  type ZLinkPublishResult,
+  type ZLinkSubmitResult
+} from '../../contracts';
+import {
   decodeChannelReply,
   encodeChannelEnvelopeParts,
   ZLinkChannelMessageKind
@@ -22,12 +27,41 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     private readonly publisher?: PubSocket
   ) {}
 
-  send(channelName: string, packetName: string | undefined, message: Message, signal?: AbortSignal): void {
-    throwIfAborted(signal);
-    appendParts(
+  trySend(
+    channelName: string,
+    packetName: string | undefined,
+    message: Message,
+    metadata: ReadonlyMap<string, string> = new Map()
+  ): ZLinkSubmitResult {
+    const result = appendParts(
       this.dealer.send(),
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Command, channelName, packetName, message)
+      encodeChannelEnvelopeParts(
+        ZLinkChannelMessageKind.Command,
+        channelName,
+        packetName,
+        message,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        metadata
+      )
     ).submit();
+    return {
+      status: result === false ? ZLinkSubmitStatus.Backpressured : ZLinkSubmitStatus.Submitted
+    };
+  }
+
+  async send(
+    channelName: string,
+    packetName: string | undefined,
+    message: Message,
+    signal?: AbortSignal,
+    metadata: ReadonlyMap<string, string> = new Map()
+  ): Promise<ZLinkSubmitResult> {
+    throwIfAborted(signal);
+    return this.trySend(channelName, packetName, message, metadata);
   }
 
   async request<TReply>(
@@ -35,12 +69,24 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     packetName: string | undefined,
     request: Message,
     timeoutMs: number | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata: ReadonlyMap<string, string> = new Map()
   ): Promise<TReply> {
     throwIfAborted(signal);
     const operation = appendParts(
       this.dealer.request(),
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Request, channelName, packetName, request, timeoutMs)
+      encodeChannelEnvelopeParts(
+        ZLinkChannelMessageKind.Request,
+        channelName,
+        packetName,
+        request,
+        timeoutMs,
+        undefined,
+        undefined,
+        undefined,
+        true,
+        metadata
+      )
     );
     if (timeoutMs !== undefined) {
       operation.timeout(timeoutMs);
@@ -49,14 +95,60 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     return decodeChannelReply<TReply>(reply);
   }
 
-  publish(channelName: string, topic: string, packetName: string | undefined, event: Message, signal?: AbortSignal): void {
-    throwIfAborted(signal);
+  tryPublish(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: Message,
+    metadata: ReadonlyMap<string, string> = new Map()
+  ): ZLinkPublishResult {
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');
     }
-    appendParts(
+    const accepted = appendParts(
       this.publisher.publish(topic),
-      encodeChannelEnvelopeParts(ZLinkChannelMessageKind.Publish, channelName, packetName, event, undefined, topic)
+      encodeChannelEnvelopeParts(
+        ZLinkChannelMessageKind.Publish,
+        channelName,
+        packetName,
+        event,
+        undefined,
+        topic,
+        undefined,
+        undefined,
+        true,
+        metadata
+      )
     ).submit();
+    return emptyPublishResult(
+      accepted === false ? ZLinkSubmitStatus.Backpressured : ZLinkSubmitStatus.Submitted
+    );
   }
+
+  async publish(
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: Message,
+    signal?: AbortSignal,
+    metadata: ReadonlyMap<string, string> = new Map()
+  ): Promise<ZLinkPublishResult> {
+    throwIfAborted(signal);
+    return this.tryPublish(channelName, topic, packetName, event, metadata);
+  }
+}
+
+function emptyPublishResult(status: ZLinkSubmitStatus): ZLinkPublishResult {
+  return {
+    status,
+    detail: {
+      snapshotRemoteNodeCount: 0n,
+      admittedRemoteNodeCount: 0n,
+      droppedRemoteNodeCount: 0n,
+      unreachableRemoteNodeCount: 0n,
+      snapshotLocalSpotCount: 0n,
+      admittedLocalSpotCount: 0n,
+      droppedLocalSpotCount: 0n
+    }
+  };
 }

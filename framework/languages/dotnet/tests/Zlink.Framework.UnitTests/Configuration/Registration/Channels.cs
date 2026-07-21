@@ -25,8 +25,6 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     {
         Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddChannel"));
         Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddRouteChannel"));
-        Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddClientServerChannel"));
-        Assert.Null(typeof(IZLinkFrameworkOptions).GetMethod("AddRouteMeshChannel"));
     }
 
     [Fact]

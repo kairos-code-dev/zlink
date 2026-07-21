@@ -39,12 +39,13 @@ class ApiServerApplication {
                 traceLabel("api")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableServer(topology.selectedApiChannelEndpoint())
-                .addHandlerGroup("api")
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableClient(topology.playAChannelEndpoint)
-                .enableClient(topology.playBChannelEndpoint)
+            options.configureLocations()
+            val api = options.addRouteMesh(SampleNames.Mesh)
+                .useAllocatedRoutingId(2, "api")
+                .setRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
+                .listen(topology.selectedApiChannelEndpoint())
+            api.channelName(SampleNames.ApiChannel)
+            api.channelName(SampleNames.RoomSpotDiscovery)
         }
 
     @Bean

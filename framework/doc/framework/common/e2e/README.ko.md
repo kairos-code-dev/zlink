@@ -248,7 +248,7 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
   번 띄워도 되지만, 서로 다른 역할은 프로젝트와 폴더를 분리한다.
 - `Server/<Role>/Configuration/`: 해당 role의 실행 옵션과 인자 해석을 둔다.
 - `Server/<Role>/Endpoints/`: HTTP endpoint mapping을 둔다. client가 호출하는 app endpoint와
-  evidence/wait/shutdown 같은 운영 endpoint가 여기에 들어간다.
+  evidence/wait/shutdown 같은 운영 endpoint를 여기에 포함한다.
 - `Server/<Role>/Handlers/`: framework handler, route handler, observer처럼 framework runtime에
   등록되는 타입을 둔다.
 - `Server/<Role>/Infrastructure/`: evidence store, role 내부 상태 저장소처럼 endpoint와 handler가
@@ -488,17 +488,20 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + MeshNode api 노드 2 | location store 자동/수동 연결, RID resolve, MeshNode descriptor와 runtime snapshot, ChannelName provider scale-out/in·replacement·failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
-| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | ChannelName↔Spot·Spot↔Spot messaging, Logical Multicast, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), MeshNode scale-out의 신규 배치와 기존 owner 유지, stateful crash 격리·재join/replay 복구·경합. actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
-| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | classic fanout publisher + subscriber 3 | manual PUB/SUB endpoint, fanout, topic filter, 현재 연결에만 전달·replay 없음, late subscriber, subscriber 격리, publish negative, 기존 subscription을 유지하는 재연결·publisher 재시작 |
-| [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |
-| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | provider restart·replacement·failover, reconnect, cancellation, in-flight crash, shutdown, ChannelName weight 부하 제외·복원, graceful drain rollout, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
-| [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale descriptor 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, MeshNode runtime 관측 |
+| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + MeshNode api 노드 2 | location store 자동/수동 연결, RID resolve, MeshNode descriptor와 runtime snapshot, ChannelName provider scale-out/in·replacement·failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure, 서로 다른 MeshName에서 같은 Actor·Spot 논리 주소 격리 |
+| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | ChannelName↔Spot·Spot↔Spot messaging, Logical Multicast, explicit Actor type을 사용하는 local-only create·GetOrCreate와 existing-only directory resolve, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), MeshNode scale-out의 신규 배치와 기존 owner 유지, stateful crash 격리·재join/replay 복구·경합. actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
+| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | classic fanout publisher + subscriber 3 | Redis publisher descriptor와 endpoint 없는 subscriber 자동 발견, ChannelName·role 격리, lease·store 장애·port 0 재시작 수렴, manual endpoint 회귀, publisher별 전용 subscriber 연결과 최초 유효 수신 준비 장벽, application traffic과 독립된 periodic beacon·topic filter 격리, 예약 topic 차단·malformed beacon 처리, fanout, 현재 연결에만 전달·replay 없음, late subscriber, subscriber 격리와 publish negative |
+| [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치, `framework-json-v1` typed message·Snapshot state의 언어 간 의미 호환성 |
+| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | provider restart·replacement·failover, reconnect, cancellation, in-flight crash, Retire·Shutdown, orderly disconnect 즉시 반영, RouteMesh·ClientServer half-open 탐지, stale liveness ACK 격리, terminal-once와 숨은 replay 금지, location store 독립성, ChannelName weight 부하 제외·복원, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환, transfer preflight·seal 용량 경합, `Activated` admission seal·`Completed` 공개 경계, Actor ABA fence, 언어 간 terminal failure 일치와 ClientServer command 격리 |
+| [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, host lifecycle owner lease·global lease generation·여러 routing slot 분리, bounded descriptor page·stable-scope reconcile, durable authority와 owner lease 분리, compact authority·checkpoint completion 분리, snapshot-consistent recovery scan과 Serving gate, chunked checkpoint manifest·renew·orphan cleanup, target reservation·bulk cleanup의 exact lease fence, 복구 순서(재등록 → owner lease renew 유예 → diff), polling fallback, MeshNode runtime 관측, 언어 간 authority 교환, object·owner generation 원자 전이·exhaustion과 고정 복구 기간 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(replacement/failover/socket weight 변경)·장애 중 관측, 다중 source 격리 |
 | [Config 8 — 실행 turn과 terminator](config-8-execution-turn.ko.md) | location store + play 노드 2 + delay service 2 + **external API 1** + session gateway 2 | `submit`/`async`/`yield` 세 terminator의 실행 줄 의미, async의 turn 유지와 상태 불변식, yield의 turn 반납과 순차 재개, CPU/IO worker 분리, HTTP client yield, actor·timer mailbox 격리, join orchestration, timeout·cancellation·shutdown, 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
-| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | 명시적 local join·remote actor transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source backlog handoff·순서·중복 억제·짧은 forwarding window, source cleanup, failure/recovery, bound session 이전. node 추가만으로 owner가 바뀌는 동작은 검증하지 않는다. |
-| [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), graceful drain(typed Draining field·연결 유지, actor 핸드오프, SPOT 정책 drain-natural/release-and-recreate, 강제 종료 통지, 동시 drain 폴백) |
+| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | 명시적 local join·remote actor transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source backlog handoff·순서·중복 억제·짧은 forwarding window, source cleanup, failure/recovery, bound session sequence barrier와 paused session-owner lease fence. node 추가만으로 owner가 바뀌는 동작은 검증하지 않는다. |
+| [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), graceful drain(신규 수락 차단, accepted turn 완료, Actor handoff, STREAM barrier, local Spot 종료와 ownership 정리, 강제 종료 통지, 동시 drain 폴백) |
+| [Config 12 — Channel egress routing](config-12-channel-egress-routing.ko.md) | location store + Session + Play + API 2 + 별도 ClientServer service 2 | ChannelName 단일 주소, RouteMesh·ClientServer 역할과 local egress 선택, 다른 egress의 request completion, Spot `async`·`yield`, server weight·drain·restart, 중복 이름·target 없음 오류, 자동 port와 advertised host, 단방향 ClientServer send |
+| [Config 13 — One-way submit admission](config-13-submit-admission.ko.md) | location store + RouteMesh·ClientServer·Spot·Actor target + fanout + bound session·server STREAM + receiver gate | async-only one-way submit, deterministic HWM backpressure, timeout·cancellation·shutdown terminal 경쟁, Logical Multicast의 고정 snapshot 단일 처리·target별 단일 admission·commit barrier·partial detail, fanout subscriber 0, session·STREAM ordering·reply token, cleanup과 public `TrySubmit` 제거 회귀 |
+| [Config 14 — Instance Spot activation](config-14-instance-spot.ko.md) | Redis location store + caller 2 + Instance owner 2 + Spot owner + external state store + process pause·activation barrier | Instance address 기반 지연 activation, source-side authority claim과 target-side fence 검증, Framework activation leader·internal Ready barrier·serial queue, lease·close fencing, takeover·drain·cross-mesh 격리, 재제출 금지, Core·binding service 표면 제거 회귀, 14개 회귀와 31개 E2E, GameQuest·ShoppingMall reference sample |
 
 ## 3.1 구성 축 — config를 관통하는 변형
 
@@ -661,6 +664,9 @@ Config 1은 `RM` 접두사를 사용한다.
 | `TA` | To-actor messaging |
 | `ST` | Spot·Actor transfer |
 | `OBS` | Observability와 운영 제어 |
+| `CH` | Channel egress routing |
+| `SA` | One-way submit admission |
+| `IS` | Instance Spot |
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 

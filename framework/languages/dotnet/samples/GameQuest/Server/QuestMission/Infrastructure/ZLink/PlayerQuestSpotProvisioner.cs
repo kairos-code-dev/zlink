@@ -20,7 +20,7 @@ internal sealed class PlayerQuestOwnerProvisioner(
         CancellationToken cancellationToken)
     {
         var address = await EnsureAddressAsync(gameplayEvent.PlayerId, cancellationToken);
-        routes.SendToSpot(address, gameplayEvent).TrySubmit();
+        await routes.SendToSpot(address, gameplayEvent).SubmitAsync(cancellationToken);
     }
 
     public async ValueTask<SyncQuestProgressRes> SyncAsync(
@@ -42,7 +42,10 @@ internal sealed class PlayerQuestOwnerProvisioner(
             spotRid,
             new PlayerQuestSpotCreateReq(playerId),
             cancellationToken);
-        return await spotHandles.ResolveSpotHandleAsync(spotRid, cancellationToken)
+        return await spotHandles.ResolveSpotHandleAsync(
+                   SampleNames.MeshName,
+                   spotRid,
+                   cancellationToken)
                ?? throw new InvalidOperationException($"Player quest spot '{spotRid}' was not found.");
     }
 }

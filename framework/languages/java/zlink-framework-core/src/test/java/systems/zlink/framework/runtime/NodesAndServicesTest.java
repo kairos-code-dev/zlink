@@ -12,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
-import java.net.ServerSocket;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -43,30 +42,36 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class NodesAndServicesTest {
     @Test
-    void addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedOnNode() {
+    void addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedOnMeshNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = options.addSpotMesh("game"); mesh.addSpotFactory(GameSpot.class); mesh.addSpotFactory(GameSpot.class); });
+            { var mesh = options.addRouteMesh("game").listen("inproc://duplicate-spot");
+                mesh.addSpotFactory(GameSpot.class);
+                mesh.addSpotFactory(GameSpot.class);
+                options.validate(); });
     }
 
     @Test
-    void addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots() {
+    void addZLinkFramework_throws_whenMeshNodeRegistersMultipleEntrySpots() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addEntrySpot(EntrySpotA.class);
+        { var mesh = options.addRouteMesh("game").listen("inproc://multiple-entry-spots");
+            { var node = mesh; node.addEntrySpot(EntrySpotA.class);
                 node.addEntrySpot(EntrySpotB.class); }; };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
-    void addZLinkFramework_throws_whenMultipleSpotNodesOwnActorFactories() {
+    void addZLinkFramework_throws_whenMultipleMeshNodesOwnActorFactories() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addSpotMesh("alpha")
+        options.addRouteMesh("alpha")
+            .listen("inproc://actor-alpha")
             .addActorFactory("player", PlayerActorFactory.class);
-        options.addSpotMesh("beta")
+        options.addRouteMesh("beta")
+            .listen("inproc://actor-beta")
             .addActorFactory("mage", PlayerActorFactory.class);
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -88,68 +93,46 @@ final class NodesAndServicesTest {
     }
 
     @Test
-    void addZLinkFramework_allowsStandaloneLocalSpotNode() {
+    void addZLinkFramework_allowsStandaloneLocalMeshNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game");
-            mesh.enableRouter("inproc://standalone-local-spot");
+        { var mesh = options.addRouteMesh("game")
+            .listen("inproc://standalone-local-mesh");
             mesh.addSpotFactory(GameSpot.class); };
 
         assertDoesNotThrow(options::validate);
     }
 
     @Test
-    void routeMeshBridgeDispatchesRemoteSpotRequestToTargetSpot() throws Exception {
+    void routeMeshDispatchesSpotRequestToTargetSpot() throws Exception {
         String suffix = Long.toUnsignedString(System.nanoTime());
-        String routeA = "tcp://127.0.0.1:" + freePort();
-        String routeB = "tcp://127.0.0.1:" + freePort();
-        String spotA = "tcp://127.0.0.1:" + freePort();
-        String spotB = "tcp://127.0.0.1:" + freePort();
-        RoutingId targetNodeRid = RoutingId.from("target-node-" + suffix);
-        RoutingId sourceNodeRid = RoutingId.from("source-node-" + suffix);
+        RoutingId nodeRid = RoutingId.from("game-node-" + suffix);
         RoutingId roomRid = RoutingId.from("room-" + suffix);
         ClientSpot.reply = new CompletableFuture<>();
         PingHandler.received = new CompletableFuture<>();
         FlowObserver.events.clear();
         ClientSpot.targetRoomRid = roomRid;
-        ClientSpot.targetNodeRid = targetNodeRid;
+        ClientSpot.targetNodeRid = nodeRid;
+        ClientSpot.targetMeshName = "game-" + suffix;
 
-        DefaultZLinkFrameworkOptions target = routeBridgeOptions(
-            targetNodeRid,
-            routeA,
-            routeB);
+        DefaultZLinkFrameworkOptions options = routeMeshOptions();
         ZLinkInMemoryLocationStore sharedLocations = new ZLinkInMemoryLocationStore();
-        target.addLocationStore(sharedLocations);
-        target.configureLocations().setSpotRouterChannel("game", "route");
-        target.addSpotMesh("game")
-            .setRoutingId(targetNodeRid)
-            .enableRouter(spotA)
-            .connectRouter(sourceNodeRid, spotB)
-            .addSpotFactory(RoomSpot.class);
+        options.addLocationStore(sharedLocations);
+        var mesh = options.addRouteMesh("game-" + suffix)
+            .setRoutingId(nodeRid)
+            .listen("inproc://route-mesh-request-" + suffix);
+        mesh.channelName("game");
+        mesh.addSpotFactory(RoomSpot.class);
+        mesh.addSpotFactory(ClientSpot.class);
 
-        DefaultZLinkFrameworkOptions source = routeBridgeOptions(
-            sourceNodeRid,
-            routeB,
-            routeA);
-        source.addLocationStore(sharedLocations);
-        source.configureLocations().setSpotRouterChannel("game", "route");
-        source.addSpotMesh("game")
-            .setRoutingId(sourceNodeRid)
-            .enableRouter(spotB)
-            .connectRouter(targetNodeRid, spotA)
-            .addSpotFactory(ClientSpot.class);
-
-        try (ZLinkFrameworkRuntime targetRuntime =
-                 ZLinkFrameworkRuntime.start(target, new ZLinkJavaBackendAdapterFactory());
-             ZLinkFrameworkRuntime sourceRuntime =
-                 ZLinkFrameworkRuntime.start(source, new ZLinkJavaBackendAdapterFactory())) {
-            targetRuntime.spotManager()
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
+            runtime.spotManager()
                 .getOrCreate(RoomSpot.class, roomRid)
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
 
-            Thread.sleep(200);
-            sourceRuntime.spotManager()
+            runtime.spotManager()
                 .create(ClientSpot.class)
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
@@ -191,33 +174,22 @@ final class NodesAndServicesTest {
 
     private static DefaultZLinkFrameworkOptions optionsWithSpotNodeAndActorFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addSpotFactory(GameSpot.class);
-                node.addActorFactory("player", PlayerActorFactory.class); }; };
+        var mesh = options.addRouteMesh("game")
+            .listen("inproc://play-router")
+            .setRoutingId(RoutingId.from("play-node"));
+        mesh.channelName("game");
+        mesh.addSpotFactory(GameSpot.class);
+        mesh.addActorFactory("player", PlayerActorFactory.class);
         return options;
     }
 
-    private static DefaultZLinkFrameworkOptions routeBridgeOptions(
-        RoutingId nodeRid,
-        String routeBind,
-        String routePeer) {
+    private static DefaultZLinkFrameworkOptions routeMeshOptions() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofSeconds(2));
         options.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .setMessageFlowObserver(new FlowObserver());
-        options.addRouteMeshChannel("route")
-            .enableServer(routeBind)
-            .enableClient(routePeer)
-            .setRoutingId(nodeRid);
         return options;
-    }
-
-    private static int freePort() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0)) {
-            socket.setReuseAddress(true);
-            return socket.getLocalPort();
-        }
     }
 
     public static final class GameSpot implements ZLinkSpot<ZLinkActor> {
@@ -295,6 +267,7 @@ final class NodesAndServicesTest {
         static CompletableFuture<Pong> reply = new CompletableFuture<>();
         static RoutingId targetRoomRid;
         static RoutingId targetNodeRid;
+        static String targetMeshName;
         private final ZLinkSpotContext context;
         private final SpotHandleResolver handles;
 
@@ -310,7 +283,7 @@ final class NodesAndServicesTest {
 
         @Override
         public CompletionStage<Void> onInitialize() {
-            return handles.resolveSpotHandle(targetRoomRid)
+            return handles.resolveSpotHandle(targetMeshName, targetRoomRid)
                 .thenCompose(handle -> context.outbound()
                     .requestToSpot(
                         handle.orElseThrow(() -> new IllegalStateException("target Spot handle not found")),

@@ -30,6 +30,29 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void MeshMembership_RecordsScannedHandlerGroup()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddHandlersFromAssemblyOf(typeof(HandlerExposureTests));
+            options.AddRouteMesh("profile")
+                .Listen("tcp://127.0.0.1:7101")
+                .SetRoutingId(RoutingId.From("profile"))
+                .ChannelName("profile")
+                .AddHandlerGroup("mesh-handler-exposure-test");
+        });
+
+        var registration = services.BuildServiceProvider()
+            .GetRequiredService<ZLinkFrameworkRegistration>();
+        var membership = Assert.Single(
+            Assert.Single(registration.SpotNodes.Values).ChannelMemberships);
+
+        Assert.Contains("mesh-handler-exposure-test", membership.HandlerGroups);
+        Assert.Empty(membership.RequestHandlers);
+    }
+
+    [Fact]
     public void MeshNode_RecordsExplicitDirectRouteHandlers()
     {
         var services = new ServiceCollection();
@@ -51,6 +74,44 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void MeshMembership_RejectsDuplicateExplicitRequestPacket()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(
+            () => services.AddZLinkFramework(options =>
+            {
+                var mesh = options.AddRouteMesh("profile")
+                    .Listen("tcp://127.0.0.1:7101")
+                    .SetRoutingId(RoutingId.From("profile"));
+                mesh.ChannelName("profile")
+                    .AddRequestHandler<TestRequestHandler, TestRequest, TestReply>("request")
+                    .AddRequestHandler<AlternateTestRequestHandler, TestRequest, TestReply>("request");
+            }));
+
+        Assert.Contains("Duplicate request handler 'profile:profile:request'", exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MeshNode_RejectsDuplicateExplicitRouteRequestPacket()
+    {
+        var services = new ServiceCollection();
+        var exception = Assert.Throws<ZLinkConfigurationException>(
+            () => services.AddZLinkFramework(options =>
+            {
+                var mesh = options.AddRouteMesh("profile")
+                    .Listen("tcp://127.0.0.1:7101")
+                    .SetRoutingId(RoutingId.From("profile"));
+                mesh.ChannelName("profile");
+                mesh.AddRouteRequestHandler<ExplicitRouteRequestHandler, TestRequest, TestReply>("route-request")
+                    .AddRouteRequestHandler<AlternateRouteRequestHandler, TestRequest, TestReply>("route-request");
+            }));
+
+        Assert.Contains("Duplicate routed request handler 'profile:route-request'", exception.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PublicClients_ExposeOnlyUnifiedRouteClientForChannelAndNodeCalls()
     {
         var services = new ServiceCollection();
@@ -58,9 +119,6 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         using var provider = services.BuildServiceProvider();
         Assert.NotNull(provider.GetRequiredService<IZLinkRouteClient>());
-        Assert.DoesNotContain(
-            typeof(IZLinkRouteClient).Assembly.GetExportedTypes(),
-            static type => type.Name == "IZLinkChannelClient");
     }
 
     private sealed record TestMessage(string Value);
@@ -75,7 +133,17 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
+    [ZLinkHandlerGroup("mesh-handler-exposure-test")]
     private sealed class TestRequestHandler : IZLinkRequestHandler<TestRequest, TestReply>
+    {
+        public ValueTask<TestReply> HandleAsync(
+            TestRequest request,
+            ZLinkRequestContext context,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new TestReply(request.Value));
+    }
+
+    private sealed class AlternateTestRequestHandler : IZLinkRequestHandler<TestRequest, TestReply>
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,
@@ -93,6 +161,15 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     }
 
     private sealed class ExplicitRouteRequestHandler : IZLinkRouteRequestHandler<TestRequest, TestReply>
+    {
+        public ValueTask<TestReply> HandleAsync(
+            TestRequest request,
+            ZLinkRouteRequestContext context,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new TestReply(request.Value));
+    }
+
+    private sealed class AlternateRouteRequestHandler : IZLinkRouteRequestHandler<TestRequest, TestReply>
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,

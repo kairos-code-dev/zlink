@@ -14,6 +14,16 @@ final class ZLinkFrameworkSpotPublisherClientBean implements ZLinkSpotPublisherC
 
     @Override
     public ZLinkPublishCall publish(
+        String meshName,
+        String channelName,
+        String topic,
+        Object message) {
+        return lifecycle.spotPublisherClient().publish(
+            meshName, channelName, topic, message);
+    }
+
+    @Override
+    public ZLinkPublishCall publish(
         String channelName,
         String topic,
         Object message) {

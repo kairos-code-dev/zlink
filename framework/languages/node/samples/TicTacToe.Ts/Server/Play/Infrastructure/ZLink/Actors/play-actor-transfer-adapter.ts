@@ -7,7 +7,6 @@ interface PlayActorTransferState {
   readonly level: number;
   readonly wins: number;
   readonly roomId?: string;
-  readonly destroyAfterEntrySpotJoin: boolean;
 }
 
 class PlayActorTransferAdapter implements ZLinkActorTransferAdapter<PlayActor> {
@@ -16,8 +15,7 @@ class PlayActorTransferAdapter implements ZLinkActorTransferAdapter<PlayActor> {
       displayName: actor.displayName,
       level: actor.level,
       wins: actor.wins,
-      roomId: actor.roomId,
-      destroyAfterEntrySpotJoin: actor.destroyAfterEntrySpotJoin
+      roomId: actor.roomId
     });
   }
 
@@ -25,9 +23,6 @@ class PlayActorTransferAdapter implements ZLinkActorTransferAdapter<PlayActor> {
     const restored = state.decode<PlayActorTransferState>();
     const actor = new PlayActor(actorId, restored.displayName, undefined, restored.level, restored.wins);
     actor.roomId = restored.roomId;
-    if (restored.destroyAfterEntrySpotJoin) {
-      actor.markForDestroyAfterRoomLeave();
-    }
     return actor;
   }
 }

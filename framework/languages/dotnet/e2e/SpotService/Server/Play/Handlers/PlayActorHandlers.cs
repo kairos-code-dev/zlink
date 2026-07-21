@@ -313,7 +313,7 @@ internal sealed class ActorPushHandler
 
     private EvidenceStore Evidence { get; }
 
-    public ValueTask<ActorPingRes> HandleAsync(
+    public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -324,13 +324,14 @@ internal sealed class ActorPushHandler
         Evidence.Add(
             $"actor-push|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
             + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
-        return ValueTask.FromResult(new ActorPingRes(
+        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .SubmitAsync(cancellationToken);
+        return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
             entrySpot.Context.SpotRid.ToString(),
             request.Value,
-            actor.Seen));
+            actor.Seen);
     }
 }
 
@@ -338,7 +339,7 @@ internal sealed class ActorPushHandler
 internal sealed class EntryUserActorPushHandler
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes>
 {
-    public ValueTask<ActorPingRes> HandleAsync(
+    public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -348,13 +349,14 @@ internal sealed class EntryUserActorPushHandler
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
-        return ValueTask.FromResult(new ActorPingRes(
+        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .SubmitAsync(cancellationToken);
+        return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
             actor.DisplayName,
             request.Value,
-            actor.Seen));
+            actor.Seen);
     }
 }
 
@@ -362,7 +364,7 @@ internal sealed class EntryUserActorPushHandler
 internal sealed class UserActorPushHandler
     : IZLinkSpotActorRequestHandler<ScenarioUserSpot, ScenarioActor, ActorPushReq, ActorPingRes>
 {
-    public ValueTask<ActorPingRes> HandleAsync(
+    public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioUserSpot spot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -371,13 +373,14 @@ internal sealed class UserActorPushHandler
     {
         _ = context;
         actor.Seen++;
-        actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen)).Submit();
-        return ValueTask.FromResult(new ActorPingRes(
+        await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
+            .SubmitAsync(cancellationToken);
+        return new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),
             spot.Context.SpotRid.ToString(),
             request.Value,
-            actor.Seen));
+            actor.Seen);
     }
 }
 

@@ -157,6 +157,8 @@ class msg_t
     uint32_t get_routing_id () const;
     int set_routing_id (uint32_t routing_id_);
     int reset_routing_id ();
+    uint64_t transport_connection_id () const;
+    void set_transport_connection_id (uint64_t connection_id_);
     const char *group () const;
     int set_group (const char *group_);
     int set_group (const char *, size_t length_);
@@ -179,7 +181,8 @@ class msg_t
     };
     enum
     {
-        max_vsm_size = msg_t_size - (3 + 16 + sizeof (uint32_t))
+        max_vsm_size = msg_t_size
+                       - (3 + 16 + sizeof (uint32_t) + sizeof (uint64_t))
     };
     enum
     {
@@ -252,10 +255,13 @@ class msg_t
     {
         struct
         {
-            unsigned char unused[msg_t_size - (2 + sizeof (uint32_t) + sizeof (group_t))];
+            unsigned char unused[msg_t_size
+                                 - (2 + sizeof (uint32_t) + sizeof (uint64_t)
+                                    + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } base;
         struct
@@ -265,6 +271,7 @@ class msg_t
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } vsm;
         struct
@@ -272,10 +279,12 @@ class msg_t
             content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (content_t *) + 2 + sizeof (uint32_t) + sizeof (group_t))];
+                     - (sizeof (content_t *) + 2 + sizeof (uint32_t)
+                        + sizeof (uint64_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } lmsg;
         struct
@@ -283,10 +292,12 @@ class msg_t
             content_t *content;
             unsigned char
               unused[msg_t_size
-                     - (sizeof (content_t *) + 2 + sizeof (uint32_t) + sizeof (group_t))];
+                     - (sizeof (content_t *) + 2 + sizeof (uint32_t)
+                        + sizeof (uint64_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } zclmsg;
         struct
@@ -295,18 +306,22 @@ class msg_t
             size_t size;
             unsigned char unused[msg_t_size
                                  - (sizeof (void *) + sizeof (size_t) + 2 + sizeof (uint32_t)
-                                    + sizeof (group_t))];
+                                    + sizeof (uint64_t) + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } cmsg;
         struct
         {
-            unsigned char unused[msg_t_size - (2 + sizeof (uint32_t) + sizeof (group_t))];
+            unsigned char unused[msg_t_size
+                                 - (2 + sizeof (uint32_t) + sizeof (uint64_t)
+                                    + sizeof (group_t))];
             unsigned char type;
             unsigned char flags;
             uint32_t routing_id;
+            uint64_t transport_connection_id;
             group_t group;
         } delimiter;
     } _u;

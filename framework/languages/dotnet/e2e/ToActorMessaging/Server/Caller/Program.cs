@@ -49,8 +49,8 @@ app.MapPost("/send", async (
     try
     {
         var actor = await ResolveActorAsync(request, actorDirectory, ct);
-        actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
-            .Submit(ct);
+        await actors.SendToActor("to-actor", actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
+            .SubmitAsync(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
     }
     catch (ZLinkFrameworkException error)
@@ -67,7 +67,8 @@ app.MapPost("/request", async (
     try
     {
         var actor = await ResolveActorAsync(request, actorDirectory, ct);
-        var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+        var reply = await actors.RequestToActor(
+                "to-actor", actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));
@@ -106,7 +107,8 @@ app.MapPost("/cached/request", async (
     {
         if (!cachedActors.TryGetValue(request.ActorId, out var actor))
             throw new InvalidOperationException($"Actor ref '{request.ActorId}' was not captured.");
-        var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
+        var reply = await actors.RequestToActor(
+                "to-actor", actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<ActorReply>(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, reply.Value));

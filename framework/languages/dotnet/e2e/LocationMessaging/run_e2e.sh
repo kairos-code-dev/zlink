@@ -16,20 +16,8 @@ else
 fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=60
-LOCAL_READINESS_ATTEMPTS="$(
-  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
-import math
-import sys
-
-timeout = float(sys.argv[1])
-poll = float(sys.argv[2])
-print(max(1, math.ceil(timeout / poll)))
-PY
-)"
 
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/LocationMessaging.Provider.csproj"
 WORKFLOW_PROJECT="$ROOT_DIR/Server/Workflow/LocationMessaging.Workflow.csproj"
@@ -200,6 +188,43 @@ PY
   return 1
 }
 
+wait_route_ready() {
+  local url="$1"
+  local expected_count="$2"
+  local name="$3"
+  local deadline_ns
+  deadline_ns="$(python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+remaining = (int(sys.argv[1]) - time.monotonic_ns()) / 1_000_000_000
+print("0" if remaining <= 0 else f"{min(float(sys.argv[2]), remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$url/topology/ready?count=$expected_count" 2>/dev/null \
+      | grep -Fq '"ready":true'; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name route readiness" >&2
+  return 1
+}
+
 start_server() {
   local name="$1"
   local project="$2"
@@ -226,7 +251,6 @@ start_server api-a "$PROVIDER_PROJECT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
   --max-message-size 2097152 \
-  --manual-client-endpoint "$API_A" \
   --route-endpoint "$ROUTE_A" \
   --route-peer "$ROUTE_B" \
   --weight 100 \
@@ -242,7 +266,6 @@ start_server api-b "$PROVIDER_PROJECT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
   --max-message-size 2097152 \
-  --manual-client-endpoint "$API_B" \
   --route-endpoint "$ROUTE_B" \
   --route-peer "$ROUTE_A" \
   --weight 100 \
@@ -292,7 +315,10 @@ start_server backpressure-consumer "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
 
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_route_ready "http://127.0.0.1:$CONSUMER_HTTP_PORT" 2 direct-consumer
+wait_route_ready "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" 1 single-consumer
+wait_route_ready "http://127.0.0.1:$STORE_CONSUMER_HTTP_PORT" 2 store-consumer
+wait_route_ready "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" 1 backpressure-consumer
 
 set +e
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \

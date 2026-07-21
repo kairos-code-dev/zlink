@@ -12,7 +12,6 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 
 public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     private final ZLinkSpotContext context;
@@ -52,7 +51,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
         evidence.record("SpotCreated", context.spotRid().toString(), request.isEmpty() ? "" : "request");
         context.addTimer("state-timer", Duration.ofSeconds(2),
-            StateTimerHandler.class, new ZLinkTimerOptions());
+            StateTimerHandler.class, null);
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }
 
@@ -164,7 +163,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         workerFollowUp = new CountDownLatch(1);
         evidence.record("WorkerStarted", context.spotRid().toString(), op);
         CountDownLatch latch = workerFollowUp;
-        context.runCpuWorker(() -> {
+        context.runCpuWorker(cancellation -> {
             latch.await(5, TimeUnit.SECONDS);
             return op + "-done";
         }).submit().whenComplete((value, error) -> {

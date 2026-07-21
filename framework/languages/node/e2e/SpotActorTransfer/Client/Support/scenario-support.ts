@@ -64,20 +64,35 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
     `${scenario}|${actorId}|location_committed|node=actor-b|spot=${spotRid}`
   ]);
   require(source.length > 0 && target.length > 0, `${scenario} transfer evidence missing.`);
-  assertOrder(mergeEvidence(source, target), actorId, [
-    'admission',
+  assertOrder(source, actorId, [
     'transfer_out',
     'leave',
     'commit_request',
+    'commit_ack',
+    'success_reply'
+  ]);
+  assertOrder(target, actorId, [
+    'admission',
     'transfer_in',
     'joined',
+    'location_committed'
+  ]);
+  assertOrder(mergeEvidence(source, target), actorId, [
+    'transfer_out',
+    'admission',
+    'transfer_in',
     'location_committed',
     'commit_ack',
     'success_reply'
   ]);
 }
 
-export async function assertSourceFailure(label: string, actorType: string, expectedKind: string): Promise<void> {
+export async function assertSourceFailure(
+  label: string,
+  actorType: string,
+  expectedKind: string,
+  targetCommitted = false
+): Promise<void> {
   const actorId = unique(`actor-fail-${label}`);
   const spotRid = unique(`spot-fail-${label}`);
   await createSpot(nodeB, spotRid);
@@ -86,7 +101,20 @@ export async function assertSourceFailure(label: string, actorType: string, expe
   const source = await getEvidence(nodeA);
   const target = await getEvidence(nodeB);
   require(has(source, actorId, expectedKind), `ST-C3 ${label} evidence missing.`);
-  require(!has(target, actorId, 'joined'), `ST-C3 target joined after ${label} failure.`);
+  if (!targetCommitted) {
+    require(!has(target, actorId, 'joined'), `ST-C3 target joined after ${label} failure.`);
+    return;
+  }
+  require(has(target, actorId, 'joined'), `ST-C3 target membership missing after ${label} failure.`);
+  require(has(target, actorId, 'location_committed'), `ST-C3 target location missing after ${label} failure.`);
+  let dispatched = false;
+  try {
+    await probeActor(nodeB, actorId, 'ST-C3', `after-${label}-failure`);
+    dispatched = true;
+  } catch {
+    // A committed-but-unreconciled target must not dispatch application packets.
+  }
+  require(!dispatched, `ST-C3 target dispatched while ${label} failure reconciliation is pending.`);
 }
 
 export async function connectAndBind(
@@ -212,7 +240,10 @@ export function assertOrder(entries: readonly ActorEvidence[], actorId: string, 
   let cursor = -1;
   for (const kind of kinds) {
     const next = filtered.findIndex((entry, index) => index > cursor && entry.kind === kind);
-    require(next > cursor, `Expected '${kind}' after evidence index ${cursor}.`);
+    require(
+      next > cursor,
+      `Expected '${kind}' after evidence index ${cursor}; observed '${filtered.map((entry) => entry.kind).join(',')}'.`
+    );
     cursor = next;
   }
 }

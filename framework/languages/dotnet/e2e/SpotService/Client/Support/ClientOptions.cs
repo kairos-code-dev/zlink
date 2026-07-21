@@ -11,6 +11,9 @@ internal sealed record ClientOptions(
     string SessionAStreamEndpoint,
     string SessionATlsStreamEndpoint,
     string SessionBStreamEndpoint,
+    string SmC6PauseAckFile,
+    string SmC6ResumeAckFile,
+    string SmC6BlockingPauseAckFile,
     string OperationGroup)
 {
     public static ClientOptions Parse(string[] args)

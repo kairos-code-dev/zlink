@@ -5,6 +5,33 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void ShoppingMall_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    {
+        var sampleRoot = ResolveSampleRoot("ShoppingMall");
+        var hosts = new[]
+        {
+            Path.Combine(sampleRoot, "Server", "CommerceApi", "Program.cs"),
+            Path.Combine(sampleRoot, "Server", "OrderWorkflow", "OrderWorkflowServerHostFactory.cs")
+        };
+
+        foreach (var host in hosts)
+        {
+            var source = File.ReadAllText(host);
+            Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
+            Assert.Contains("OrderWorkflowChannelFor", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleNames.MeshName)", source, StringComparison.Ordinal);
+        }
+
+        var workflow = File.ReadAllText(hosts[1]);
+        Assert.Contains("AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup)", workflow,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShoppingMall_Runner_Uses_Isolated_Docker_Redis_And_Redis_Stores()
     {
         var sampleRoot = ResolveSampleRoot("ShoppingMall");
@@ -71,7 +98,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$ports = New-SamplePorts -Count 12 -BasePort 0", powershellRunner,
+        Assert.Contains("$ports = New-SamplePorts -Count 8 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("$SHOPPINGMALL_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$SHOPPINGMALL_REDIS_KEY_PREFIX = \"shoppingmall:dotnet:${RunId}:\"",
@@ -189,7 +216,7 @@ public sealed partial class RegressionTests
         Assert.Contains("주문 이벤트 스트림, 조회 모델, 장바구니·재고·결제·멱등 상태도 같은 Redis", readme,
             StringComparison.Ordinal);
         Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
-        Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("동시에 실행되는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("같은 멱등 키의 동시 시작 경쟁", readme, StringComparison.Ordinal);
         Assert.Contains("`InventoryReserved` 이후 명시 재개", readme, StringComparison.Ordinal);
     }

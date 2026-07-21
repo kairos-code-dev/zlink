@@ -257,6 +257,61 @@ internal sealed class ZLinkSpotActivationDispatcher
             .ConfigureAwait(false);
     }
 
+    public async ValueTask DiscardSubscriptionsAsync(CancellationToken cancellationToken)
+    {
+        await subscriptions
+            .DrainAsync(
+                nativeSpot,
+                runtime.Registration.Codecs,
+                _dispatchErrors,
+                _logger,
+                static (_, _, _) => ValueTask.CompletedTask,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static bool IsInfrastructureRoute(ZLinkBackendRouteReceived received)
+    {
+        if (received.Parts.Count == 0) return false;
+        try
+        {
+            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            return header.MessageName is ZLinkRemoteActorJoinPackets.RequestPacketName
+                or ZLinkRemoteActorJoinPackets.AdmissionPacketName
+                or ZLinkRemoteActorJoinPackets.CommitPacketName
+                or ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static void RejectApplicationRouteForDrain(
+        ZLinkBackendRouteReceived received,
+        string channelName)
+    {
+        using (received)
+        {
+            if (!received.CanReply || received.Parts.Count == 0) return;
+            try
+            {
+                var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+                var reply = ZLinkSpotReplyEnvelope.EncodeErrorParts(
+                    channelName,
+                    header.MessageName,
+                    header.CorrelationId,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.RequestRejected,
+                        "SPOT application admission is sealed for drain."));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private async ValueTask InvokeSubscriptionAsync(
         ZLinkSpotSubscriptionDescriptor descriptor,
         object? message,

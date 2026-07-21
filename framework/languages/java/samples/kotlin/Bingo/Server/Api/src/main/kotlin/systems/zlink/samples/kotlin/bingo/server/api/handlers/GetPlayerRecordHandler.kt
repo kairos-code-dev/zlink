@@ -4,10 +4,11 @@ import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.bingo.server.api.BingoPlayerRecordStore
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.shared.contracts.GetPlayerRecordReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.GetPlayerRecordRes
 
-@ZLinkHandlerGroup("api")
+@ZLinkHandlerGroup(SampleNames.ApiChannel)
 class GetPlayerRecordHandler(private val records: BingoPlayerRecordStore) :
     ZLinkSuspendingRequestHandler<GetPlayerRecordReq, GetPlayerRecordRes> {
     override suspend fun handle(request: GetPlayerRecordReq, context: ZLinkRequestContext): GetPlayerRecordRes {

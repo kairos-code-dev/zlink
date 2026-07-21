@@ -76,78 +76,6 @@ public sealed class test_validation_contract
     }
 
     [Fact]
-    public void service_surface_rejects_overlong_fixed_utf8_inputs()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        string overlong = new string('a', 256);
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => node.SetPubBind(overlong));
-    }
-
-    [Fact]
-    public void boundary_strings_reject_embedded_nul()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var pair = ctx.CreatePairSocket();
-        using var pub = ctx.CreatePubSocket();
-        using var sub = ctx.CreateSubSocket();
-        using var dealer = ctx.CreateDealerSocket();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var message = Message.From("x");
-
-        Assert.Throws<ArgumentException>(() =>
-            pair.Bind("tcp://127.0.0.1:5555\0"));
-        Assert.Throws<ArgumentException>(() =>
-            pair.Connect("tcp://127.0.0.1:5555\0"));
-        Assert.Throws<ArgumentException>(() =>
-            pub.Publish("topic\0").Message(message).Submit());
-        Assert.Throws<ArgumentException>(() =>
-            sub.SetSubscription("topic\0"));
-        Assert.Throws<ArgumentException>(() =>
-            spot.SetSubscription("topic\0"));
-        Assert.Throws<ArgumentException>(() =>
-            spot.Publish("topic\0").Message(message).Submit());
-        Assert.Throws<ArgumentException>(() =>
-            ctx.Options.ThreadNamePrefix = "io\0");
-        Assert.Throws<ArgumentException>(() =>
-            dealer.SetChannelName("channel\0"));
-    }
-
-    [Fact]
-    public void topic_and_subscription_boundaries_reject_overlong_utf8_inputs()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        string overlong = new string('t', 256);
-
-        using var ctx = Zlink.CreateContext();
-        using var pub = ctx.CreatePubSocket();
-        using var sub = ctx.CreateSubSocket();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
-        using var message = Message.From("x");
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            pub.Publish(overlong).Message(message).Submit());
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            sub.SetSubscription(overlong));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.SetSubscription(overlong));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            spot.Publish(overlong).Message(message).Submit());
-    }
-
-    [Fact]
     public void fixed_utf8_boundary_values_reject_overlong_inputs()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -247,19 +175,6 @@ public sealed class test_validation_contract
             errorCodeType,
             typeof(int)
         }));
-    }
-
-    [Fact]
-    public void service_surface_accepts_255_byte_fixed_utf8_inputs()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        string maxLength = new string('a', 255);
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        node.SetPubBind(CoreTestSupport.NewEndpoint("tcp", maxLength));
     }
 
     [Fact]

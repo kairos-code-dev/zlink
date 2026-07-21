@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkPublishCall;
+import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -44,11 +46,13 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
+import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
+import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 final class HandlerContractTest {
@@ -76,6 +80,19 @@ final class HandlerContractTest {
     }
 
     @Test
+    void timerOptionsAreImmutableExactInterfaceRecord() {
+        assertTrue(ZLinkTimerOptions.class.isRecord());
+        assertEquals(
+            List.of("overrunPolicy", "maxCatchUpTicks", "stopOnUnhandledException"),
+            Arrays.stream(ZLinkTimerOptions.class.getRecordComponents())
+                .map(component -> component.getName())
+                .toList());
+        assertFalse(hasMethod(ZLinkTimerOptions.class, "setOverrunPolicy"));
+        assertFalse(hasMethod(ZLinkTimerOptions.class, "setMaxCatchUpTicks"));
+        assertFalse(hasMethod(ZLinkTimerOptions.class, "setStopOnUnhandledException"));
+    }
+
+    @Test
     void handlerFilterUsesInvocationContextAndTypedNext() throws NoSuchMethodException {
         Method method = ZLinkHandlerFilter.class.getMethod(
             "invoke",
@@ -86,16 +103,35 @@ final class HandlerContractTest {
     }
 
     @Test
+    void metadataContractsMatchTheExactInterface() throws NoSuchMethodException {
+        assertEquals(
+            java.util.Map.class,
+            ZLinkHandlerContext.class.getMethod("metadata").getReturnType());
+        assertEquals(
+            ZLinkMetadataPolicyBuilder.class,
+            ZLinkMetadataPolicyBuilder.class
+                .getMethod("allowSessionToActor", String.class)
+                .getReturnType());
+        assertEquals(
+            ZLinkMetadataPolicyBuilder.class,
+            ZLinkMetadataPolicyBuilder.class
+                .getMethod("allowActorToSession", String.class)
+                .getReturnType());
+        assertFalse(hasMethod(ZLinkMetadataPolicyBuilder.class, "addForwardedMetadataKey"));
+        assertFalse(hasMethod(ZLinkSessionReplyCall.class, "metadata"));
+    }
+
+    @Test
     void requestCallExposesYieldWithoutBlockingAwait() throws NoSuchMethodException {
         ZLinkRequestCall.class.getMethod("yield", Class.class);
         assertFalse(hasMethod(ZLinkRequestCall.class, "await"));
     }
 
     @Test
-    void channelCallsDoNotExposeDiscardedMetadataBuilder() {
-        assertFalse(hasMethod(ZLinkSendCall.class, "metadata"));
-        assertFalse(hasMethod(ZLinkRequestCall.class, "metadata"));
-        assertFalse(hasMethod(ZLinkPublishCall.class, "metadata"));
+    void channelCallsExposeApplicationMetadataBuilders() {
+        assertTrue(hasMethod(ZLinkSendCall.class, "metadata"));
+        assertTrue(hasMethod(ZLinkRequestCall.class, "metadata"));
+        assertTrue(hasMethod(ZLinkPublishCall.class, "metadata"));
     }
 
     @Test

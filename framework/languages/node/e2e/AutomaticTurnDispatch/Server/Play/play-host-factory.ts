@@ -67,29 +67,31 @@ export async function startPlayHost(): Promise<void> {
           .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
           .traceLabel(options.rid);
       builder.addLocationStore(locationStore);
-      builder.addRouteMeshChannel(AutomaticTurnDispatchNames.controlChannel)
-        .enableRouter(options.controlEndpoint)
+      builder.addRouteMesh(AutomaticTurnDispatchNames.controlChannel)
+        .listen(options.controlEndpoint)
         .routingId(options.rid)
         .addRequestHandler('EnsureSpotReq', EnsureSpotControlHandler)
         .addRequestHandler('BindAwaitActorsReq', BindAwaitActorsControlHandler)
         .addRequestHandler('AwaitEvidenceReq', AwaitEvidenceControlHandler)
-        .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler);
-      builder.addClientServerChannel(AutomaticTurnDispatchNames.delayChannel)
-        .enableClient(options.delayEndpoint);
-      const spotRoute = builder.addRouteMeshChannel(AutomaticTurnDispatchNames.spotRouteChannel)
-        .enableRouter(options.spotRouteEndpoint)
+        .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler)
+        .channelName(AutomaticTurnDispatchNames.controlChannel);
+      builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel)
+        .peerConnections().connect(options.delayEndpoint);
+      const spotRoute = builder.addRouteMesh(AutomaticTurnDispatchNames.spotRouteChannel)
+        .listen(options.spotRouteEndpoint)
         .routingId(options.rid);
-      if (options.peerSpotRouteEndpoints.length > 0) {
-        spotRoute.connect(options.peerSpotRouteEndpoints);
+      spotRoute.channelName(AutomaticTurnDispatchNames.spotRouteChannel);
+      for (const endpoint of options.peerSpotRouteEndpoints) {
+        spotRoute.peerConnections().connect(endpoint);
       }
-      const spotMesh = builder.addSpotMesh(AutomaticTurnDispatchNames.spotChannel)
+      const spotMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotChannel)
         .routingId(options.rid)
-        .enableRouter(options.spotRouterEndpoint)
-        .enablePubSub(options.spotPubEndpoint)
+        .listen(options.spotRouterEndpoint)
         .addEntrySpot(AwaitEntrySpot)
         .actorFactory(AutomaticTurnDispatchNames.actorType, AwaitActorFactory)
         .addSpotFactory(AwaitProbeSpot);
-      for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
+      spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
+      for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
       return builder.build();
     }
   });

@@ -54,8 +54,11 @@ final class ZLinkAmbientSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkPublishCall publish(String topic, Object message) {
-        return scope.requireCurrent().publish(topic, message);
+    public ZLinkPublishCall publish(
+        String channelName,
+        String topic,
+        Object message) {
+        return scope.requireCurrent().publish(channelName, topic, message);
     }
 
     @Override

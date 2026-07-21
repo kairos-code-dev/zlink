@@ -17,26 +17,27 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Monitoring;
 internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
     : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
 {
-    public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
     {
         switch (@event)
         {
             case ZLinkSpotEvent.TimerHandlerFailed failed:
-                ops.ReportSpotEvent(
+                await ops.ReportSpotEventAsync(
                     NodeAlertKinds.TimerHandlerFailed,
                     $"timer={failed.Diagnostic.TimerName} spot={failed.Diagnostic.SpotRid}",
-                    failed.Timestamp);
+                    failed.Timestamp,
+                    cancellationToken);
                 break;
 
             case ZLinkSpotEvent.PeersChanged peers:
-                ops.ReportSpotEvent(
+                await ops.ReportSpotEventAsync(
                     NodeAlertKinds.PeersChanged,
                     $"peers={peers.Peers.Count}",
-                    peers.Timestamp);
+                    peers.Timestamp,
+                    cancellationToken);
                 break;
         }
 
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -45,26 +46,31 @@ internal sealed class OpsReportAdapter(
     IZLinkRouteClient channels,
     NodeMaintenancePolicy maintenance) : IOpsReportPort
 {
-    public void ReportSpotEvent(string kind, string detail, DateTimeOffset occurredAt) =>
-        channels
-            .SendToChannel(ZoneWorldNames.ReportChannel, ZoneWorldNames.ReportChannel,
+    public async ValueTask ReportSpotEventAsync(
+        string kind,
+        string detail,
+        DateTimeOffset occurredAt,
+        CancellationToken cancellationToken) =>
+        await channels
+            .SendToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ReportChannel,
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
 
-    public void ReportNodeStatus(
+    public async ValueTask ReportNodeStatusAsync(
         string nodeRid,
         IReadOnlyList<string> zones,
         int playerCount,
-        bool maintenanceEnabled) =>
-        channels
-            .SendToChannel(ZoneWorldNames.ReportChannel, ZoneWorldNames.ReportChannel,
+        bool maintenanceEnabled,
+        CancellationToken cancellationToken) =>
+        await channels
+            .SendToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ReportChannel,
                 new ReportNodeStatusMsg(
                     maintenance.OwnNodeId,
                     nodeRid,
                     zones,
                     playerCount,
                     maintenanceEnabled))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
 }
 
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>
@@ -85,16 +91,15 @@ internal sealed class NodeStatusReporter(
             allocation.GroupName,
             stoppingToken);
         var lease = snapshot.Allocations.Single(item => item.Slot == allocation.Slot);
-        var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.ZoneMesh].ToString();
+        var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.MeshName].ToString();
         logger.LogInformation(
             "zone node allocation ready. node={NodeId} group={Group} slot={Slot} generation={Generation} "
-            + "zoneRid={ZoneRid} reportRid={ReportRid}",
+            + "meshRid={MeshRid}",
             maintenance.OwnNodeId,
             allocation.GroupName,
             allocation.Slot,
             lease.Owner.Generation,
-            nodeRid,
-            allocation.MemberRoutingIds[ZoneWorldNames.ReportChannel]);
+            nodeRid);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));
         var firstReport = true;
@@ -103,11 +108,12 @@ internal sealed class NodeStatusReporter(
         {
             try
             {
-                ops.ReportNodeStatus(
+                await ops.ReportNodeStatusAsync(
                     nodeRid,
                     ZoneTopology.ZonesOf(maintenance.OwnNodeId),
                     census.TotalPlayers,
-                    maintenance.IsOwnNodeUnderMaintenance);
+                    maintenance.IsOwnNodeUnderMaintenance,
+                    stoppingToken);
                 if (firstReport)
                 {
                     firstReport = false;

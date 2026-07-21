@@ -214,8 +214,7 @@ submit_result_t spot_t::publish (const std::string &channel_name_,
             _impl->handle, channel_name_.c_str (), topic_.c_str (), meta_ptr, native_, count_,
             &native_detail, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
-    if (rc == ZLINK_SUBMIT_OK)
-        detail::store_publish_detail (detail_out_, native_detail);
+    detail::store_publish_detail (detail_out_, native_detail);
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 

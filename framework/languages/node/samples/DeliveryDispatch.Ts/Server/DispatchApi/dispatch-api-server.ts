@@ -72,6 +72,7 @@ function submitDispatch(
 ): void {
   channels
     .sendToChannel(
+      SampleNames.routeMesh,
       SampleNames.dispatchChannel,
       assignDelivery(request.deliveryId, request.customerId, request.pickupAddress, request.dropoffAddress))
     .submit();

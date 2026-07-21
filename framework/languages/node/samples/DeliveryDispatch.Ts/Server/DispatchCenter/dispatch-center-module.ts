@@ -36,16 +36,13 @@ function createDispatchCenterModule() {
             .traceLogFile(`${config.logDir}/flow-dispatch-center.log`)
             .traceLabel('dispatch-center');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.dispatchChannel)
-              .enableServer(config.dispatchEndpoint)
-              .addHandlerGroup('dispatch')
-            .addClientServerChannel(SampleNames.trackingChannel)
-              .enableClient()
-            .addSpotMesh(SampleNames.courierActorSpotMesh)
-              .enableRouter(config.dispatchSpotEndpoint, 'dispatch-center')
-            .build();
+          deliveryDispatchLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+            .listen(config.dispatchSpotEndpoint).routingId('dispatch-center');
+          mesh.channelName(SampleNames.dispatchChannel).addHandlerGroup('dispatch');
+          mesh.channelName(SampleNames.trackingChannel).setWeight(0);
+          mesh.channelName(SampleNames.routeMesh);
+          return builder.build();
         }
       })
     ],

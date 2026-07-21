@@ -167,11 +167,16 @@ internal static class ZLinkHandlerGroupBuilderSupport
     public static void AddHandlerGroup(
         ZLinkChannelRegistration registration,
         string groupName)
+        => AddHandlerGroup(registration.HandlerGroups, groupName);
+
+    public static void AddHandlerGroup(
+        ISet<string> handlerGroups,
+        string groupName)
     {
         if (string.IsNullOrWhiteSpace(groupName))
             throw new ZLinkConfigurationException("Handler group name must not be empty.");
 
-        registration.HandlerGroups.Add(groupName);
+        handlerGroups.Add(groupName);
     }
 }
 

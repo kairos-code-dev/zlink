@@ -28,11 +28,9 @@ location_key_prefix="zlink:e2e:registry-messaging:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "RegistryMessaging must use 3s readiness and 5s route settle limits" >&2
+   || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+  echo "RegistryMessaging must use a 3s readiness limit" >&2
   exit 1
 fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
@@ -369,7 +367,6 @@ if is_common_scenario "${SCENARIO}"; then
         ;;
     esac
   done
-  sleep "${ROUTE_SETTLE_SECONDS}"
 
   common_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
@@ -390,7 +387,6 @@ if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-C7" ]]; then
   API_A_PID="${LAST_PID}"
   start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b 25 "${HTTP_API_B}"
   API_B_PID="${LAST_PID}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
   weighted_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then
     weighted_client_scenario="weighted"

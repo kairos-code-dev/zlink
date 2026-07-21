@@ -29,7 +29,6 @@ int zlink::stream_t::stream_dispatch_send_from_io (const zlink_routing_id_t *rid
     }
 
     pipe_t *const direct_out = resolve_direct_dispatch_output_pipe (this, routing_id);
-
     if (size_ == 0) {
         if (direct_out) {
             direct_out->terminate (false);
@@ -119,7 +118,6 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (const zlink_routing_id_t 
     }
 
     pipe_t *const direct_out = resolve_direct_dispatch_output_pipe (this, routing_id);
-
     if (direct_out) {
         if (msg_->size () == 0) {
             direct_out->terminate (false);

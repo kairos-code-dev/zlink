@@ -352,7 +352,8 @@ if (removedContracts.Length > 0)
     throw new InvalidOperationException(
         $"Removed public contracts are present in the package: {string.Join(", ", removedContracts)}");
 if (!typeof(SpotHandle).IsAbstract
-    || typeof(IZLinkSpotHandleResolver).GetMethod("ResolveSpotHandleAsync") is null
+    || !typeof(IZLinkSpotHandleResolver).GetMethods()
+        .Any(method => method.Name == "ResolveSpotHandleAsync")
     || !typeof(IZLinkActorJoinCall).GetMethods().Any(method => method.Name == "Async"))
     throw new InvalidOperationException("The frozen public contract is missing from the package.");
 var packagedAssemblies = new[]

@@ -8,6 +8,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     internal static readonly TimeSpan SessionShutdownUpperBound = TimeSpan.FromMilliseconds(900);
     internal static readonly TimeSpan SessionForceCleanupUpperBound = TimeSpan.FromMilliseconds(100);
     private readonly ZLinkStreamSessionTable _sessions;
+    private readonly ZLinkAsyncSubmitter _sendSubmitter;
     private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
@@ -27,7 +28,8 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         Type? headerSessionType,
         ZLinkRuntimeTaskRunner taskRunner,
         string transport,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        string? actorDispatchMeshName = null)
     {
         NodeName = nodeName;
         Socket = socket;
@@ -38,13 +40,19 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         var runtime = services.GetRequiredService<ZLinkFrameworkRuntime>();
         _errorSink = runtime.ErrorSink;
         _sessionIngress = new ZLinkStreamSessionSerialExecutor(runtime.ExecutionOwner, runtime.ErrorSink);
+        _sendSubmitter = new ZLinkAsyncSubmitter(
+            socket.OnSendReady,
+            runtime.Registration.DefaultSocketSendTimeout,
+            _stopSource.Token);
         _sessions = new ZLinkStreamSessionTable(
             services,
             socket,
             headerSessionType,
             runtime.DrainAdmission,
             transport,
-            _timeProvider);
+            _timeProvider,
+            actorDispatchMeshName,
+            _sendSubmitter);
     }
 
     public string NodeName { get; }
@@ -64,6 +72,9 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
 
     internal ValueTask<bool> DrainSessionsAsync(CancellationToken cancellationToken) =>
         _sessions.DrainSessionsAsync(cancellationToken);
+
+    internal void ForceStopSessions() =>
+        _sessions.ForceStopSessions();
 
     public ValueTask DisposeAsync()
     {
@@ -112,6 +123,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             }
 
         await CaptureAsync(() => DisposeSessionsAsync(sessions)).ConfigureAwait(false);
+        await CaptureAsync(_sendSubmitter.DisposeAsync).ConfigureAwait(false);
 
         var socketDisposed = false;
         try

@@ -22,12 +22,13 @@ export async function startDelayHost(): Promise<void> {
         inject: [DELAY_OPTIONS],
         useFactory: (value: unknown) => {
           const options = value as DelayOptions;
-          return zlinkFramework()
-          .addClientServerChannel(AutomaticTurnDispatchNames.delayChannel)
-            .enableServer(options.delayEndpoint)
-            .routingId(options.rid)
-            .addRequestHandler('DelayReq', DelayHandler)
-          .build();
+          const builder = zlinkFramework();
+          const delay = builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel)
+            .listen(options.delayEndpoint)
+            .routingId(options.rid);
+          delay.channelName(AutomaticTurnDispatchNames.delayChannel)
+            .addRequestHandler('DelayReq', DelayHandler);
+          return builder.build();
         }
       })
     ],

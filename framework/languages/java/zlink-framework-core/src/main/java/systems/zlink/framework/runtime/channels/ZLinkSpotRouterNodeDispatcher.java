@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -22,6 +23,7 @@ final class ZLinkSpotRouterNodeDispatcher {
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        long targetSpotGeneration,
         List<Message> spotParts) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         List<Message> requestParts = ZLinkChannelRuntime.copyMessages(spotParts);
@@ -29,6 +31,7 @@ final class ZLinkSpotRouterNodeDispatcher {
             boolean submitted = node.entrySpot().sendToSpot(
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 requestParts,
                 SendFlags.NONE);
             ZLinkChannelRuntime.trace("spot-route node-send-submit router=" + routerChannelId
@@ -55,68 +58,97 @@ final class ZLinkSpotRouterNodeDispatcher {
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        long targetSpotGeneration,
         List<Message> spotParts,
         Duration timeout,
-        BiConsumer<CompletableFuture<List<Message>>, Duration> trackPendingRequest) {
+        BiConsumer<CompletableFuture<List<Message>>, Duration> trackPendingRequest,
+        Consumer<Runnable> retryRequest) {
         CompletableFuture<List<Message>> result = new CompletableFuture<>();
         trackPendingRequest.accept(result, timeout);
-        List<Message> requestParts = ZLinkChannelRuntime.copyMessages(spotParts);
+        List<byte[]> payloads = spotParts.stream().map(Message::toByteArray).toList();
         long requestStartedNanos = System.nanoTime();
-        try {
-            boolean submitted = node.entrySpot().requestToSpot(
-                targetNodeRid,
-                targetSpotRid,
-                requestParts,
-                reply -> {
-                    try {
-                        ZLinkChannelRuntime.trace("spot-route node-reply router=" + routerChannelId
-                            + " targetNode=" + targetNodeRid
-                            + " targetSpot=" + targetSpotRid
-                            + " elapsedMs=" + ZLinkChannelRuntime.elapsedMillis(requestStartedNanos)
-                            + " result=" + reply.result()
-                            + " origin=spot-node-callback"
-                            + " sourceRid=" + reply.routingId().map(Object::toString).orElse(null)
-                            + " sourceSpot=" + reply.spotRid().map(Object::toString).orElse(null)
-                            + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
-                            + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
-                        if (reply.result() != ZLinkBackendRequestResult.OK) {
-                            result.completeExceptionally(new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                                "SPOT route request failed through router '" + routerChannelId
-                                    + "': " + reply.result()));
-                            return;
-                        }
-                        List<Message> replyParts = ZLinkChannelRuntime.copyMessages(reply.parts());
-                        if (ZLinkChannelRuntime.isFrameworkErrorReply(replyParts)) {
-                            replyParts.forEach(Message::close);
-                            result.completeExceptionally(new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                                ZLinkChannelRuntime.frameworkErrorReplyMessage(reply.parts())));
-                            return;
-                        }
-                        if (!result.complete(replyParts)) {
-                            replyParts.forEach(Message::close);
-                        }
-                    } finally {
-                        reply.close();
+        long deadline = requestStartedNanos + timeout.toNanos();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                List<Message> requestParts = payloads.stream().map(Message::from).toList();
+                try {
+                    boolean submitted = node.entrySpot().requestToSpot(
+                        targetNodeRid,
+                        targetSpotRid,
+                        targetSpotGeneration,
+                        requestParts,
+                        reply -> completeReply(reply, result, requestStartedNanos),
+                        SendFlags.NONE,
+                        timeout);
+                    ZLinkChannelRuntime.trace("spot-route node-submit router=" + routerChannelId
+                        + " targetNode=" + targetNodeRid
+                        + " targetSpot=" + targetSpotRid
+                        + " submitted=" + submitted);
+                    if (!submitted && System.nanoTime() < deadline) {
+                        retryRequest.accept(this);
+                    } else if (!submitted) {
+                        result.completeExceptionally(new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                            "Spot node router '" + routerChannelId
+                                + "' was not ready before the request timeout."));
                     }
-                },
-                SendFlags.NONE,
-                timeout);
-            ZLinkChannelRuntime.trace("spot-route node-submit router=" + routerChannelId
-                + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid
-                + " submitted=" + submitted);
-            if (!submitted) {
+                } catch (RuntimeException ex) {
+                    ZLinkChannelRuntime.trace("spot-route node-submit-error router="
+                        + routerChannelId
+                        + " targetNode=" + targetNodeRid
+                        + " targetSpot=" + targetSpotRid
+                        + " error=" + ZLinkChannelRuntime.requestErrorSummary(ex));
+                    if (ZLinkChannelRequestSubmitter.isRetriableSubmit(ex)
+                        && System.nanoTime() < deadline) {
+                        retryRequest.accept(this);
+                    } else {
+                        result.completeExceptionally(ex);
+                    }
+                } finally {
+                    requestParts.forEach(Message::close);
+                }
+            }
+        }
+        new Attempt().run();
+        return result;
+    }
+
+    private static void completeReply(
+        systems.zlink.framework.runtime.backend.ZLinkBackendReceived reply,
+        CompletableFuture<List<Message>> result,
+        long requestStartedNanos) {
+        try {
+            ZLinkChannelRuntime.trace("spot-route node-reply"
+                + " elapsedMs=" + ZLinkChannelRuntime.elapsedMillis(requestStartedNanos)
+                + " result=" + reply.result()
+                + " origin=spot-node-callback"
+                + " sourceRid=" + reply.routingId().map(Object::toString).orElse(null)
+                + " sourceSpot=" + reply.spotRid().map(Object::toString).orElse(null)
+                + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
+                + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
+            if (reply.result() != ZLinkBackendRequestResult.OK) {
                 result.completeExceptionally(new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                    "Spot node router '" + routerChannelId + "' is not ready for SPOT request."));
+                    "SPOT route request failed: " + reply.result()));
+                return;
             }
-        } catch (RuntimeException ex) {
-            result.completeExceptionally(ex);
+            List<Message> replyParts = ZLinkChannelRuntime.copyMessages(reply.parts());
+            if (ZLinkChannelRuntime.isFrameworkErrorReply(replyParts)) {
+                replyParts.forEach(Message::close);
+                result.completeExceptionally(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkChannelRuntime.frameworkErrorReplyMessage(reply.parts())));
+                return;
+            }
+            if (!result.complete(replyParts)) {
+                replyParts.forEach(Message::close);
+            }
         } finally {
-            requestParts.forEach(Message::close);
+            reply.close();
         }
-        return result;
     }
 }

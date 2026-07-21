@@ -154,7 +154,7 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 | 시점 | 경로 |
 |---|---|
 | 노드 시작 시 | maintenance store에서 **전 노드의** desired state를 읽어 캐시를 채운다 |
-| 상태 변경 시 | `Ops`가 **fanout**(`zoneworld.broadcast`, topic `world.maintenance`)으로 `NodeMaintenanceChangedEvent`를 발행한다. 전 노드가 구독해 캐시를 갱신한다 |
+| 상태 변경 시 | `Ops`가 **fanout** Channel `zoneworld.broadcast`로 `NodeMaintenanceChangedEvent`를 발행한다. 전 노드가 구독해 packet name으로 handler를 선택하고 캐시를 갱신한다. |
 
 fanout이 여기서 두 번째로 쓰인다 — `Ops`는 노드 목록을 갖지 않은 채 상태 변경을 전파하고,
 노드가 늘어도 발행 코드가 바뀌지 않는다.
@@ -256,6 +256,10 @@ actor — 서버 로직이 `actorId`로 구동하는 봇/NPC"가 이 모양이�
 
 ## 3. 서버 구성
 
+ZoneWorld의 Channel 역할과 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. Gateway·ZoneNode·Ops는 `zoneworld.mesh` 하나를 공유하고, 특정 ZoneNode 운영 명령은 Channel이
+아니라 Node direct로 보낸다. `zoneworld.broadcast` classic fanout과 두 STREAM listener만 별도 연결이다.
+
 | 서버 | 수 | 책임 |
 |------|:--:|------|
 | `Gateway` | 1 | 브라우저 STREAM(WS) 종단, 인증, session actor bind, actor relay, client push |
@@ -266,10 +270,10 @@ actor — 서버 로직이 `actorId`로 구동하는 봇/NPC"가 이 모양이�
 
 `ZoneNode`는 같은 실행 파일을 `NodeId`와 담당 zone 목록만 바꿔 2개 실행한다.
 
-| 인스턴스 | `NodeId` | 담당 zone | ops channel |
+| 인스턴스 | `NodeId` | 담당 zone | Node direct target |
 |---|---|---|---|
-| 1 | `zone-node-1` | `zone-nw`, `zone-sw` | `zoneworld.ops.zone-node-1` |
-| 2 | `zone-node-2` | `zone-ne`, `zone-se` | `zoneworld.ops.zone-node-2` |
+| 1 | `zone-node-1` | `zone-nw`, `zone-sw` | status report에서 관측한 현재 `NodeRid` |
+| 2 | `zone-node-2` | `zone-ne`, `zone-se` | status report에서 관측한 현재 `NodeRid` |
 
 **`NodeId`와 `ZoneId`는 다른 식별자다.** `NodeId`는 프로세스 식별자이고 `ZoneId`는 zone
 spot의 `spotRid`다. 노드 점검 정책은 그 노드의 **모든 zone**에 적용되므로 `NodeId` 단위다.
@@ -290,7 +294,7 @@ graph TD
     B1["browser: game view"]
     B2["browser: ops view"]
     GW["Gateway<br/>STREAM(WS) · session actor bind · relay"]
-    OPS["Ops<br/>STREAM(WS) · runtime event<br/>fanout publisher · ops ChannelName client"]
+    OPS["Ops<br/>STREAM(WS) · runtime event<br/>fanout publisher · Node direct client"]
     subgraph ZN["zone nodes"]
       Z1["zone-node-1<br/>entry spot · zone-nw spot · zone-sw spot"]
       Z2["zone-node-2<br/>entry spot · zone-ne spot · zone-se spot"]
@@ -304,8 +308,8 @@ graph TD
     Z1 <-->|"border sync · Logical Multicast"| Z2
     Z1 -->|"actor transfer (X boundary)"| Z2
     OPS -->|"announce · channel fanout"| ZN
-    OPS -->|"zoneworld.ops.zone-node-1"| Z1
-    OPS -->|"zoneworld.ops.zone-node-2"| Z2
+    OPS -->|"Node direct: observed RID for node 1"| Z1
+    OPS -->|"Node direct: observed RID for node 2"| Z2
     Z1 -->|"spot event report"| OPS
     Z2 -->|"spot event report"| OPS
     GW -. auto connect .-> LS
@@ -331,8 +335,9 @@ Spot·Actor는 같은 MeshNode RID를 사용하며 별도 transport identity를 
 | group member | `zoneworld.mesh` MeshNode 하나 |
 | entry spot RID | `zoneworld.zones` MeshNode에 할당된 RID와 동일 |
 
-한 runtime은 MeshNode RID `zn1` 또는 `zn2` 하나를 사용한다. `zoneworld.zones`, `zoneworld.report`와
-운영 ChannelName은 descriptor의 immutable membership이며 별도 socket이나 allocation member가 아니다.
+한 runtime은 MeshNode RID `zn1` 또는 `zn2` 하나를 사용한다. `zoneworld.zones`와 `zoneworld.report`는
+descriptor의 immutable membership이며 별도 socket이나 allocation member가 아니다. 노드 지정 호출은
+Channel membership을 추가하지 않고 현재 관측한 RID를 Node direct 대상에 사용한다.
 
 Gateway도 같은 MeshNode에 고정 RID를 설정하지 않는다. 별도 `zoneworld.gateway` group에서 slot 하나를
 자동 할당하고 prefix `gw0`을 사용하므로 현재 결과는 `gw01`이다. 이 group은 ZoneNode의 slot pool과
@@ -343,9 +348,10 @@ var gatewayMesh = options.AddRouteMesh(ZoneWorldNames.Mesh)
     // Gateway transport identity도 설정 파일이 아니라 location store에서 받는다.
     .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
     .SetRoutingIdAllocationGroup("zoneworld.gateway")
-    .Listen(gateway.MeshEndpoint);
+    .Listen(); // automatic discovery가 실제 bound port를 descriptor에 기록한다.
 
-gatewayMesh.ChannelName(ZoneWorldNames.ZoneChannel); // Logical Multicast membership을 추가한다.
+gatewayMesh.Channel(ZoneWorldNames.ActorsChannel)
+    .Client(); // actor 생성을 담당할 ZoneNode를 호출하고 membership은 게시하지 않는다.
 ```
 
 필수 구성은 다음과 같다. 언어별 API 표현은 달라도 같은 allocation group과 member 구성을 사용한다.
@@ -357,11 +363,13 @@ var mesh = options.AddRouteMesh(ZoneWorldNames.Mesh)
     // 두 ZoneNode 중 하나의 slot을 받고 Entry Spot도 같은 RID를 사용한다.
     .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
     .SetRoutingIdAllocationGroup(zoneNodeAllocationGroup)
-    .Listen(node.MeshEndpoint)
+    .Listen() // runner나 orchestrator가 RouteMesh port를 미리 할당하지 않는다.
     .AddEntrySpot<ZoneEntrySpot>();
 
-mesh.ChannelName(ZoneWorldNames.ZoneChannel);   // zone Logical Multicast membership
-mesh.ChannelName(ZoneWorldNames.ReportChannel); // Ops report select-one membership
+mesh.Channel(ZoneWorldNames.ZoneChannel)
+    .Server(); // zone Logical Multicast의 처리 대상 membership이다.
+mesh.Channel(ZoneWorldNames.ReportChannel)
+    .Client(); // runtime report를 Ops로 보낸다.
 ```
 
 ZoneNode는 세 member에서 `SetRoutingId(node.NodeRid)`를 호출하지 않고 entry spot에도
@@ -374,9 +382,9 @@ reconcile 시간을 포함하도록 조정하고, 고정된 짧은 대기로 통
 
 #### `NodeId`, 담당 zone과 자동 slot의 관계
 
-`NodeId`와 자동 slot은 같은 값이 아니다. `NodeId`는 점검 정책, 담당 zone과
-`zoneworld.ops.<NodeId>` channel을 정하는 application topology 식별자다. 자동 slot은 location
-runtime이 socket과 MeshNode에 적용하는 transport identity다.
+`NodeId`와 자동 slot은 같은 값이 아니다. `NodeId`는 점검 정책과 담당 zone을 정하고 관제 화면이
+사용하는 application topology 식별자다. 자동 slot은 location runtime이 socket과 MeshNode에 적용하는
+transport identity다.
 
 따라서 `slot 1`을 항상 `zone-node-1`이나 서쪽 zone으로 해석하지 않는다. 두 process의 시작 순서가
 바뀌면 `zone-node-2`가 `zn1`을 받을 수 있다. 특정 NodeId가 특정 slot을 받도록 예약하는 affinity는
@@ -446,8 +454,8 @@ member 구성이 다른 probe를 같은 group에 넣으면 configuration mismatc
 | target MeshNode RID | Node direct | `Ops` → 특정 `ZoneNode` 점검·진단 |
 | `zoneworld.broadcast` | **fanout channel** | `Ops`(publisher) → 전 `ZoneNode`(subscriber) |
 | `zoneworld.report` | ChannelName | `ZoneNode` → ready `Ops` member. local Spot 이벤트 보고 |
-| `world.announce` | fanout topic (`zoneworld.broadcast`) | 공지 발행 |
-| `world.maintenance` | fanout topic (`zoneworld.broadcast`) | 점검 상태 전파(§2.3) |
+| `WorldAnnounceEvent` | fanout packet (`zoneworld.broadcast`) | 공지 발행 |
+| `NodeMaintenanceChangedEvent` | fanout packet (`zoneworld.broadcast`) | 점검 상태 전파(§2.3) |
 | `zoneworld.actors` | ChannelName | `Gateway` → 입장 zone을 호스팅하는 ready member. player actor를 보장하고 `ActorRefWire`를 받는다. |
 | `zone.border.<from>.<to>` | Logical Multicast topic (`zoneworld.zones`) | zone spot이 **인접 zone별로 따로** publish |
 
@@ -596,7 +604,7 @@ Server/Ops/
 | `LocalSpotEventHandler` | local spot runtime event → `Ops` 보고 |
 | `MaintenanceStoreRepository` | desired state — `Ops`는 읽고 쓰고, `ZoneNode`는 **읽기만** 한다(쓰는 것은 관제의 권한이다) |
 | `NodeRegistry` | runtime event와 노드 보고를 합쳐 노드 상태 집계 |
-| `MaintenanceService` | desired state 기록 + `zoneworld.ops.<NodeId>` 호출 |
+| `MaintenanceService` | desired state 기록 + `NodeRegistry`에서 확인한 현재 RID로 Node direct 호출 |
 
 ## 7. Message 계약
 
@@ -634,15 +642,15 @@ Server/Ops/
 
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
-| `WorldAnnounceEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`, topic `world.announce`) | `AnnouncementId`, `Text` | 노드 목록 없이 전 노드에 공지를 발행한다. |
-| `NodeMaintenanceChangedEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`, topic `world.maintenance`) | `NodeId`, `Enabled` | 점검 상태 변경을 전 노드에 전파한다. 각 노드가 캐시를 갱신해 cross-node 이동을 판정한다(§2.3). |
+| `WorldAnnounceEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`) | `AnnouncementId`, `Text` | 노드 목록이나 transport topic 없이 typed event를 전 노드에 발행한다. |
+| `NodeMaintenanceChangedEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`) | `NodeId`, `Enabled` | 점검 상태 변경을 전 노드에 전파한다. 각 노드가 packet name으로 handler를 선택하고 캐시를 갱신해 cross-node 이동을 판정한다(§2.3). |
 | `DeliverAnnounceMsg` | fanout subscriber -> **자기 node-local** zone Spot | `AnnouncementId`, `Text` | 공지를 받은 node가 local Spot handle로 자기가 호스팅하는 `ZoneId`들에만 send한다(§8.2). |
 | `BotTickMsg` | zone spot -> 봇 actor (actor send) | (없음) | 봇을 구동한다. 봇 actor가 순찰 규칙(§2.7)으로 다음 좌표를 계산해 이동 경로(§2.1)를 탄다. |
 | `EnsurePlayerActorReq` | `Gateway` -> 입장 zone 호스팅 노드 (channel `zoneworld.actors`) | `PlayerId` | player actor를 보장한다. 받는 노드가 자기 점검 상태를 **권위로** 판정한다(§2.3). |
 | `EnsurePlayerActorRes` | 그 `ZoneNode` -> `Gateway` | `PlayerId`, `Actor` | `ActorRefWire`를 반환한다. `Gateway`는 이 `ActorRef`로 session을 bind하고, 입장 좌표·zone은 relay된 `JoinWorldReq`의 응답(`JoinWorldRes`)으로 client에 간다. |
 | `EnterWorldReq` | ensure handler -> 갓 만들어진 player actor (actor request) | `X`, `Y`, `IsBot`, `DirX`, `DirY` | actor가 자기 zone spot에 join해 월드에 들어간다. **join이 유일한 zone 진입 경로**이므로(§2.6) 이것은 send가 아니라 request다 — 부르는 쪽이 join 완료를 기다려야 session을 bind할 수 있다. |
 | `EnterWorldRes` | player actor -> ensure handler | `ZoneId`, `NodeId`, `X`, `Y`, `Error` | 어디에 들어갔는지 반환한다. 점검 중이면 `Error`가 채워진다. |
-| `ApplyNodeMaintenanceReq` | `Ops` -> 특정 `ZoneNode` (**Node direct** `zoneworld.ops.<NodeId>`) | `NodeId`, `Enabled` | 노드 전체의 점검 모드를 전환한다. |
+| `ApplyNodeMaintenanceReq` | `Ops` -> 특정 `ZoneNode` (**Node direct**, `zoneworld.mesh` + 관측한 target RID) | `NodeId`, `Enabled` | 노드 전체의 점검 모드를 전환한다. |
 | `ApplyNodeMaintenanceRes` | 특정 `ZoneNode` -> `Ops` | `NodeId`, `Enabled`, `Zones` | 전환 결과와 그 노드의 zone 목록을 반환한다. |
 | `GetNodeDiagnosticsReq` | `Ops` -> 특정 `ZoneNode` (**Node direct**) | `NodeId` | 노드 진단 정보를 요청한다. |
 | `GetNodeDiagnosticsRes` | 특정 `ZoneNode` -> `Ops` | `NodeId`, `Zones`, `PlayerCount`, `Maintenance` | 노드 레벨 정보를 반환한다. |
@@ -770,15 +778,17 @@ sequenceDiagram
 
     C->>O: SetMaintenanceReq(zone-node-2, true)
     O->>S: write desired state
-    O->>N2: ApplyNodeMaintenanceReq (zoneworld.ops.zone-node-2)
+    O->>N2: Node direct ApplyNodeMaintenanceReq (observed target RID)
     Note over N1: zone-node-1 is not affected
     N2->>N2: node policy = maintenance
     N2-->>O: ApplyNodeMaintenanceRes(zone-node-2, true, [zone-ne, zone-se])
     O-->>C: SetMaintenanceRes
 ```
 
-`Ops`는 노드별 channel 이름(`zoneworld.ops.zone-node-2`)으로 호출하므로 **그 노드만**
-받는다. 일반 ChannelName처럼 peer 사이에 분산되지 않는다.
+`Ops`는 `NodeRegistry`가 `ReportNodeStatusMsg`와 현재 연결 정보에서 확인한 `NodeId → NodeRid` snapshot을
+읽고, `zoneworld.mesh`와 target RID로 public Node direct request를 제출한다. 따라서 **그 RID의 노드만**
+받으며 ChannelName select-one을 거치지 않는다. 대상 RID가 현재 연결되어 있지 않으면
+`NodeUnavailable`을 반환하고 다른 ZoneNode로 대체 선택하지 않는다.
 
 점검 모드의 의미:
 

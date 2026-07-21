@@ -57,7 +57,7 @@ class captured_actor_refs_t
 class actor_route_connections_t
 {
   public:
-    actor_route_connections_t (zlink::framework::endpoint_connections_t connections,
+    actor_route_connections_t (zlink::framework::mesh_peer_connections_t connections,
                                std::string actor_endpoint,
                                std::string actor_b_endpoint) :
         _connections (std::move (connections)),
@@ -79,7 +79,7 @@ class actor_route_connections_t
     }
 
   private:
-    zlink::framework::endpoint_connections_t _connections;
+    zlink::framework::mesh_peer_connections_t _connections;
     std::string _actor_endpoint;
     std::string _actor_b_endpoint;
 };
@@ -364,21 +364,22 @@ int main (int argc, char **argv)
           std::make_unique<e2e::caller_configuration_t> (configuration));
         framework.services ().add_singleton<captured_actor_refs_t> ();
         add_redis_location_store (framework, configuration.redis);
-        auto mesh = framework.add_spot_mesh (e2e::spot_mesh_name)
-          .enable_router (configuration.spot_endpoint)
-          .enable_pub_sub (configuration.pub_sub_endpoint)
+        auto mesh = framework.add_route_mesh (e2e::spot_mesh_name)
+          .listen (configuration.spot_endpoint)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid));
         if (!configuration.actor_spot_endpoint.empty ()) {
-            mesh.connect_router (zlink::routing_id_t::from (configuration.actor_rid),
-                                 configuration.actor_spot_endpoint);
+            mesh.peer_connections ().connect (
+              zlink::routing_id_t::from (configuration.actor_rid),
+              configuration.actor_spot_endpoint);
         }
         if (!configuration.actor_b_spot_endpoint.empty ()) {
-            mesh.connect_router (zlink::routing_id_t::from (configuration.actor_b_rid),
-                                 configuration.actor_b_spot_endpoint);
+            mesh.peer_connections ().connect (
+              zlink::routing_id_t::from (configuration.actor_b_rid),
+              configuration.actor_b_spot_endpoint);
         }
         framework.services ().add_singleton<actor_route_connections_t> (
           std::make_unique<actor_route_connections_t> (
-            mesh.router_connections (), configuration.actor_spot_endpoint,
+            mesh.peer_connections (), configuration.actor_spot_endpoint,
             configuration.actor_b_spot_endpoint));
         framework.http ()
           .listen (configuration.http_endpoint)

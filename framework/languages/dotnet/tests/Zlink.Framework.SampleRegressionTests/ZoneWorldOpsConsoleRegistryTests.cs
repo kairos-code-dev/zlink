@@ -1,5 +1,6 @@
 using Systems.Zlink;
 using Xunit;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Shared.Contracts;
@@ -9,34 +10,35 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed class ZoneWorldOpsConsoleRegistryTests
 {
     [Fact]
-    public void StaleConsoleFailureDoesNotBlockHealthyConsoleAndIsReported()
+    public async Task StaleConsoleFailureDoesNotBlockHealthyConsoleAndIsReported()
     {
         var registry = new OpsConsoleRegistry();
         var stale = new TestSessionContext("stale", failSend: true);
         var healthy = new TestSessionContext("healthy", failSend: false);
-        registry.Add(stale);
-        registry.Add(healthy);
+        await registry.AddAsync(stale, CancellationToken.None);
+        await registry.AddAsync(healthy, CancellationToken.None);
 
-        var error = Assert.Throws<AggregateException>(() => registry.Broadcast(Status("node-a")));
+        var error = await Assert.ThrowsAsync<AggregateException>(async () =>
+            await registry.BroadcastAsync(Status("node-a"), CancellationToken.None));
 
         Assert.Single(error.InnerExceptions);
         Assert.Equal(1, healthy.SendCount);
-        registry.Broadcast(Status("node-a"));
+        await registry.BroadcastAsync(Status("node-a"), CancellationToken.None);
         Assert.Equal(2, healthy.SendCount);
         Assert.Equal(1, stale.SendCount);
     }
 
     [Fact]
-    public void LateDisconnectCannotRemoveReplacementWithTheSameSessionId()
+    public async Task LateDisconnectCannotRemoveReplacementWithTheSameSessionId()
     {
         var registry = new OpsConsoleRegistry();
         var previous = new TestSessionContext("console", failSend: false);
         var replacement = new TestSessionContext("console", failSend: false);
-        registry.Add(previous);
-        registry.Add(replacement);
+        await registry.AddAsync(previous, CancellationToken.None);
+        await registry.AddAsync(replacement, CancellationToken.None);
 
         registry.Remove(previous);
-        registry.Broadcast(Status("node-b"));
+        await registry.BroadcastAsync(Status("node-b"), CancellationToken.None);
 
         Assert.Equal(0, previous.SendCount);
         Assert.Equal(1, replacement.SendCount);
@@ -80,11 +82,13 @@ public sealed class ZoneWorldOpsConsoleRegistryTests
     private sealed class TestSendCall(Action submit) : IZLinkSessionSendCall
     {
         public IZLinkSessionSendCall Metadata(string key, string value) => this;
+        public IZLinkSessionSendCall Metadata(ZLinkMessageMetadata metadata) => this;
         public IZLinkSessionSendCall Compress() => this;
-        public void Submit(CancellationToken cancellationToken = default)
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             submit();
+            return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
         }
     }
 }

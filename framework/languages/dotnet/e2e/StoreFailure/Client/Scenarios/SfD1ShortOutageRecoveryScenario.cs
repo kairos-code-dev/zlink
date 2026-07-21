@@ -1,4 +1,5 @@
 // Verifies SF-D1 Short Outage Recovery behavior.
+using System.Diagnostics;
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 
@@ -14,12 +15,18 @@ internal static class SfD1ShortOutageRecoveryScenario
         ZLinkHttpClient consumer,
         StoreFailureProcessManager processes)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-D1: provider routes were not ready before the store outage.");
+
         var traffic = Task.Run(() => SfProbe.DriveRequestsAsync(
             consumer,
             "sf-d1",
             options.OwnerLeaseTtl * 2,
             "SF-D1"));
 
+        var outage = Stopwatch.StartNew();
         await processes.PauseStoreAsync();
         try
         {
@@ -29,6 +36,11 @@ internal static class SfD1ShortOutageRecoveryScenario
         {
             await processes.UnpauseStoreAsync();
         }
+        outage.Stop();
+        ZlinkStreamAssert.Ensure(
+            outage.Elapsed < options.OwnerLeaseTtl,
+            $"SF-D1: the requested short outage took {outage.Elapsed}, exceeding the lease TTL.");
+        Console.WriteLine($"SF-D1 short outage elapsed_ms={outage.Elapsed.TotalMilliseconds:0}");
 
         // Every request across pause, outage, and recovery must succeed.
         await traffic;

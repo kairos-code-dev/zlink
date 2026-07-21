@@ -1,4 +1,4 @@
-import { objectValues, optional, required } from '../../Shared/Configuration/server-options';
+import { objectValues, optional } from '../../Shared/Configuration/server-options';
 
 export const SUBSCRIBER_OPTIONS = Symbol.for('@zlink-systems/e2e-pubsub:subscriber-options');
 
@@ -6,8 +6,6 @@ export interface SubscriberOptions {
   readonly rid: string;
   readonly httpUrl: string;
   readonly logDir: string;
-  readonly redisEndpoint: string;
-  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly handlerDelayMs: number;
   readonly publisherEndpoint?: string;
@@ -21,8 +19,6 @@ export function validateSubscriberOptions(value: unknown): SubscriberOptions {
     rid: optional(values, 'rid') ?? 'subscriber',
     httpUrl: optional(values, 'httpUrl') ?? 'http://127.0.0.1:0',
     logDir: optional(values, 'logDir') ?? 'logs',
-    redisEndpoint: required(values, 'redisEndpoint'),
-    redisKeyPrefix: required(values, 'redisKeyPrefix'),
     evidenceFile: optional(values, 'evidenceFile'),
     handlerDelayMs,
     publisherEndpoint: optional(values, 'publisherEndpoint')

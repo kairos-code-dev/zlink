@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/live_location_reader.hpp"
 
 #include <gtest/gtest.h>
 
@@ -29,6 +30,7 @@ using zlink::framework::spot_location_filter_t;
 using zlink::framework::spot_location_key_t;
 using zlink::framework::spot_location_t;
 using zlink::framework::runtime::in_memory_location_store_t;
+using zlink::framework::runtime::live_location_reader_t;
 
 peer_location_t make_peer (std::string owner_id)
 {
@@ -55,16 +57,20 @@ spot_location_t make_spot (std::string owner_id, std::string spot_name = "spot-1
 
 actor_location_t make_actor (std::string owner_id, std::int64_t generation)
 {
+    (void) generation;
     return actor_location_t{
+      .mesh_name = "play",
       .actor_id = "actor-1",
       .actor_type = "player",
-      .actor_ref = std::nullopt,
-      .node_rid = zlink::routing_id_t::from ("node-1"),
-      .location_kind = zlink::spot_kind::entry,
-      .spot_mesh_name = "play",
-      .spot_rid = std::nullopt,
-      .owner_id = std::move (owner_id),
-      .generation = generation};
+      .actor_ref = zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("node-1"), "player", "actor-1", 1),
+      .owner_node_rid = zlink::routing_id_t::from ("node-1"),
+      .owner_node_generation = 1,
+      .spot_rid = zlink::routing_id_t::from ("entry-spot"),
+      .spot_generation = 1,
+      .spot_kind = zlink::spot_kind::entry,
+      .membership_epoch = 1,
+      .owner_id = std::move (owner_id)};
 }
 
 route_location_t make_route (std::string owner_id)
@@ -327,13 +333,14 @@ TEST (ZLinkFrameworkInMemoryLocationStore, RemovesRowsOnlyWithMatchingOwnerToken
         .value ();
     EXPECT_EQ (location_write_status_t::stored,
                store
-                 .remove_actor (actor_location_key_t{.actor_id = "actor-1"},
+                 .remove_actor (actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"},
                                 owner_token ("owner-a", actor_claim.generation))
                  .result ()
                  .value ()
                  .status);
     EXPECT_FALSE (store
-                    .resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+                    .resolve_actor (
+                      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"})
                     .result ()
                     .value ()
                     .has_value ());
@@ -361,6 +368,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore, RemovesRowsOnlyWithMatchingOwnerToken
 TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
 {
     in_memory_location_store_t store;
+    live_location_reader_t live (store);
     store
       .renew_owner_lease ("owner-live", zlink::routing_id_t::from ("node-1"),
                           std::chrono::seconds (15))
@@ -379,13 +387,13 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
     expired_peer.node_rid = zlink::routing_id_t::from ("node-2");
     store.update_peer (live_peer, location_write_intent_t::new_claim).result ().value ();
     store.update_peer (expired_peer, location_write_intent_t::new_claim).result ().value ();
-    EXPECT_EQ (1u, store.list_peers (peer_location_filter_t{.node_rid =
-                                                              zlink::routing_id_t::from ("node-1")})
+    EXPECT_EQ (1u, live.list_peers (peer_location_filter_t{.node_rid =
+                                                             zlink::routing_id_t::from ("node-1")})
                      .result ()
                      .value ()
                      .size ());
-    EXPECT_TRUE (store.list_peers (peer_location_filter_t{.node_rid =
-                                                            zlink::routing_id_t::from ("node-2")})
+    EXPECT_TRUE (live.list_peers (peer_location_filter_t{.node_rid =
+                                                           zlink::routing_id_t::from ("node-2")})
                    .result ()
                    .value ()
                    .empty ());
@@ -394,17 +402,17 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
     live_actor.actor_id = "actor-live";
     auto expired_actor = make_actor ("owner-expired", 0);
     expired_actor.actor_id = "actor-expired";
-    expired_actor.node_rid = zlink::routing_id_t::from ("node-2");
+    expired_actor.owner_node_rid = zlink::routing_id_t::from ("node-2");
     store.update_actor (live_actor, location_write_intent_t::new_claim).result ().value ();
     store.update_actor (expired_actor, location_write_intent_t::new_claim).result ().value ();
-    EXPECT_EQ (1u, store
-                     .list_actors (actor_location_filter_t{.node_rid =
+    EXPECT_EQ (1u, live
+                     .list_actors (actor_location_filter_t{.owner_node_rid =
                                                              zlink::routing_id_t::from ("node-1")})
                      .result ()
                      .value ()
                      .items.size ());
-    EXPECT_TRUE (store
-                   .list_actors (actor_location_filter_t{.node_rid =
+    EXPECT_TRUE (live
+                   .list_actors (actor_location_filter_t{.owner_node_rid =
                                                            zlink::routing_id_t::from ("node-2")})
                    .result ()
                    .value ()
@@ -416,13 +424,13 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
     expired_route.owner_node_rid = zlink::routing_id_t::from ("node-2");
     store.update_route (live_route, location_write_intent_t::new_claim).result ().value ();
     store.update_route (expired_route, location_write_intent_t::new_claim).result ().value ();
-    EXPECT_EQ (1u, store
+    EXPECT_EQ (1u, live
                      .list_routes (route_location_filter_t{.owner_node_rid =
                                                              zlink::routing_id_t::from ("node-1")})
                      .result ()
                      .value ()
                      .items.size ());
-    EXPECT_TRUE (store
+    EXPECT_TRUE (live
                    .list_routes (route_location_filter_t{.owner_id = "owner-expired"})
                    .result ()
                    .value ()

@@ -7,8 +7,13 @@ import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 
 final class ZLinkJavaStreamBackendAdapter implements ZLinkStreamBackendAdapter {
     @Override
-    public ZLinkBackendStreamSocket createStreamSocket(ZLinkBackendContext context) {
-        return new ZLinkJavaStreamSocket(ZLinkJavaSocketOptions.configureFrameworkSocket(nativeContext(context).createStreamSocket()));
+    public ZLinkBackendStreamSocket createStreamSocket(
+        ZLinkBackendContext context,
+        systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode meshNode) {
+        return new ZLinkJavaStreamSocket(
+            ZLinkJavaSocketOptions.configureFrameworkSocket(
+                nativeContext(context).createStreamSocket()),
+            meshNode == null ? null : (ZLinkJavaMeshNode) meshNode);
     }
 
     private static Context nativeContext(ZLinkBackendContext context) {

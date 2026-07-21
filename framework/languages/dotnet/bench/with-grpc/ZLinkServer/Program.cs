@@ -1,4 +1,5 @@
 using WithGrpcBench.Shared;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Handlers;
@@ -13,8 +14,10 @@ builder.Services.AddSingleton<BenchServerMetrics>();
 builder.Services.AddZLinkFramework(framework =>
 {
     framework.Codecs.Use(ZLinkProtobufCodec.Default);
-    framework.AddClientServerChannel("bench")
-        .EnableServer(endpoint)
+    var mesh = framework.AddRouteMesh("bench")
+        .Listen(endpoint)
+        .SetRoutingId(RoutingId.From("bench-server"));
+    mesh.ChannelName("bench")
         .AddRequestHandler<EchoHandler, BenchPayload, BenchPayload>("BenchPayload")
         .AddSendHandler<CommandHandler, BenchPayload>("BenchPayload");
 });

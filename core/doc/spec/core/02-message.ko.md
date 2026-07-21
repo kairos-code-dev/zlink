@@ -4,12 +4,12 @@
 
 # 메시지 API 레퍼런스
 
-이 문서는 ZLink Core 10.1.0의 message 생성, payload 접근, ownership과 multipart 공개 계약을 정의한다.
+이 문서는 ZLink Core 11.0.0의 message 생성, payload 접근, ownership과 multipart 공개 계약을 정의한다.
 대상 독자는 message lifecycle과 zero-copy buffer ownership을 C API와 bindings에 투영하는 개발자다. 이
 문서는 “socket이 송수신하는 message를 어떻게 만들고 공유하며 정확히 한 번 해제하는가?”에 답한다.
 
-request-reply와 service routing은 각 socket·service 정식 문서가 정의한다. 공개 message API는
-request-reply 또는 service routing 상태를 노출하지 않는다. Message는 socket 사이에서 임의의 binary
+request-reply와 routing은 각 socket 정식 문서가 정의한다. 공개 message API는
+request-reply 또는 socket routing 상태를 노출하지 않는다. Message는 socket 사이에서 임의의 binary
 payload를 전달하는 기본 단위이며 zero-copy semantics와 multipart sequence를 지원한다.
 
 ### 용어
@@ -64,9 +64,8 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 | `ZLINK_MSG_METADATA_KEY_USER_MIN` | `0x0100` | 사용자 정의 metadata 키의 최소값 |
 | `ZLINK_MSG_METADATA_VALUE_MAX` | `65535` | metadata 값의 최대 바이트 길이 |
 
-이 두 상수는 service wire envelope에서 사용하는 metadata codec의 key와 value 범위를 고정한다. 일반
-`zlink_msg_t` payload part에 metadata 값을 읽거나 쓰는 API를 추가하지 않는다. MeshNode와 Spot service가
-metadata를 받는 함수와 wire 형식은 각 service 문서가 소유한다.
+이 두 상수는 raw ZMP metadata codec의 사용자 정의 key와 value 범위를 고정한다. 일반 `zlink_msg_t`
+payload part에는 metadata 값을 읽거나 쓰는 API가 없다.
 
 ## 함수
 
@@ -334,10 +333,8 @@ ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 
 공개 메시지 API 는 payload part 컨테이너입니다. message-level
 request-reply 함수를 제공하지 않으며, per-message metadata 값도 현재 노출하지
-않습니다. request-reply와 peer 상세 정보는 message API가 아니라 각각의
-socket·service 공개 계약이 제공합니다.
+않습니다. request-reply와 peer 상세 정보는 message API가 아니라 socket 공개 계약이 제공합니다.
 
 관련 계약은 다음 문서를 참조합니다.
 
 - socket request-reply 공개 표면: [socket/README.ko.md](socket/README.ko.md)
-- SPOT direct와 request-reply 공개 표면: [service/03-spot.ko.md](service/03-spot.ko.md)

@@ -1,157 +1,168 @@
 # Spot과 Actor membership
 
-[스펙 목차](../README.ko.md) · [MeshNode](21-mesh-node.ko.md) ·
-[Actor 모델](22-actor-model.ko.md) · [Location runtime](40-location-runtime.ko.md)
+[스펙 목차](../README.ko.md) · [Actor 모델](22-actor-model.ko.md) ·
+[Spot 주소 메시징](24-spot-address-messaging.ko.md) ·
+[Session Actor Dispatch](31-session-actor-dispatch.ko.md) ·
+[Location runtime](40-location-runtime.ko.md)
 
-이 문서는 ZLink Framework 10.0.0에서 Actor가 Spot에 참여하고 다른 Spot으로 이동할 때의 공개 lifecycle,
-ordering과 location authority를 정의한다. 대상 독자는 Spot·Actor runtime과 location store를 구현하는
-개발자다.
+이 문서는 ZLink Framework 11.0.0에서 Actor 생성, Spot membership, 이동, ordering과 recovery를 정의한다.
+Core는 raw socket과 transport만 제공하며 이 상태와 lifecycle은 각 언어 Framework runtime이 소유한다.
 
 ## 1. Identity와 authority
 
-`ActorRef`의 generation은 같은 Actor ID의 생성 수명을 구분한다. Membership epoch는 같은 generation이
-참여하는 Spot 위치가 바뀔 때 증가한다. Spot과 Actor가 같은 MeshNode에 있더라도 두 값의 의미는 달라지지
+`ActorRef`의 generation은 ObjectGeneration이다. 같은 Actor ID의 생성 수명 동안 유지하며 destroy 뒤 같은 ID를
+다시 만들 때만 새 값을 발급한다. Spot membership 또는 owner MeshNode가 바뀌면 ObjectGeneration은 유지하고
+provider가 새 AuthorityOwnerGeneration을 발급한다.
+
+Store-backed Actor authority row는 current owner, Spot membership, ObjectGeneration, AuthorityOwnerGeneration,
+StoreVersion과 exact owner lease를 저장한다. Runtime route cache는 row snapshot이며 단독으로 authority를 결정하지
+않는다. Join, leave, transfer와 destroy는 expected StoreVersion, 두 generation과 owner lease를 검증하는 CAS만
+사용한다.
+
+Location Store가 없는 Actor는 runtime-local opaque authority와 same-process handle만 사용한다. Remote directory
+resolve, distributed join, transfer·relocation과 distributed session binding은 `TransferDisabled` 또는
+startup/configuration error로 거부한다. Hidden local Store나 CAS provider를 만들지 않는다.
+
+## 2. Creating에서 Ready까지
+
+Store-backed Actor Create는 internal `Creating → Ready` publication barrier를 사용한다.
+
+1. NewObject CAS가 final ObjectGeneration, AuthorityOwnerGeneration과 `Creating` row를 먼저 발급한다.
+2. 같은 exact fence를 가진 local activation registry에서 typed factory, initialize와 initial Entry Spot membership을
+   수행한다.
+3. 모든 단계가 성공하면 same object·owner fence의 Ready CAS를 수행한다.
+4. Resolver와 remote send·request는 Ready row만 반환하거나 수락한다.
+
+Factory, initialize 또는 initial membership이 실패하면 local barrier를 failed·sealed로 고정한다. Current request는
+typed failure로 terminal-once 완료하고 exact StoreVersion, ObjectGeneration, AuthorityOwnerGeneration과 owner lease로
+row를 fenced delete한다. Cancellation, timeout과 response loss는 exact Read로 reconcile한다. Missing이 확인될
+때까지 같은 failure를 반환하고 callback을 숨겨서 다시 실행하지 않는다. Registry를 정리한 뒤 다음 caller만
+NewObject claim으로 새 generation을 발급한다. Late callback은 exact fence가 다르면 아무 상태도 변경하지 못한다.
+
+Entry Spot은 startup initialization을 마치기 전 descriptor와 resolver에 publish하지 않는다. 이 조건은 host
+Preparing→Serving gate의 일부다.
+
+## 3. Entry Spot과 User Spot
+
+Actor를 만들면 owner MeshNode의 Entry Spot이 initial membership을 처리한다. Actor 업무 message는 Actor queue로
+직접 전달하며 Entry Spot이나 User Spot callback을 경유하지 않는다.
+
+User Spot은 join, joined, leave와 disconnected lifecycle control을 해당 Spot control queue에서 직렬화한다. 같은
+Spot의 packet·timer turn과 callback 순서는 Spot turn이 정한다. Instance Spot은 Actor membership target이 아니다.
+
+Store-backed dynamic User Spot도 internal `Creating → Ready` barrier를 사용한다. NewObject CAS가 final
+ObjectGeneration과 `Creating` row를 발급하고 factory·configure·initialize가 끝난 뒤 same fence Ready CAS를
+수행한다. Resolver와 remote messaging은 Ready만 사용한다. 실패한 creation은 §2와 같은 exact delete·read
+reconcile을 수행하고 다음 caller만 새 generation을 발급한다.
+
+일반 User Spot Close는 current Actor membership이 하나라도 있으면 public `false`로 실패하고 admission과
+authority를 유지한다. Internal observer는 `InUse/Conflict` reason을 기록할 수 있지만 새 public result type을
+추가하지 않는다. Caller가 명시적 leave 또는 destroy를 끝낸 뒤에만 close할 수 있다. Framework는 Actor를
+숨겨서 이동하거나 파괴하지 않는다. Host Shutdown과 Retire는 Actor barrier를 Spot cleanup보다 먼저 처리한다.
+
+## 4. Join commit
+
+Join은 다음 순서를 지킨다.
+
+1. Source가 target Spot과 expected ObjectGeneration, AuthorityOwnerGeneration과 owner lease를 확인한다.
+2. Target `OnActorJoin`이 Actor identity와 admission payload를 검증해 accept 또는 reject를 반환한다.
+3. Accept 뒤 authority NewOwner CAS가 current membership과 새 AuthorityOwnerGeneration을 commit한다.
+4. CAS 성공 뒤 source `OnLeaveActor`가 이전 membership을 정리한다.
+5. Target membership을 공개하고 `OnJoinedActor`를 실행한다.
+6. 새 owner route를 가리키는 같은 ActorRef로 operation을 완료한다.
+
+Accept는 proposal 승인일 뿐이며 CAS 전 current membership을 바꾸지 않는다. Reject 또는 CAS conflict는 source
+membership을 유지한다. Stale ObjectGeneration, AuthorityOwnerGeneration 또는 owner lease는 stale-location으로
+끝내고 current owner를 추측해 적용하지 않는다.
+
+같은 MeshNode의 다른 User Spot으로 이동할 때도 callback은 각 Spot control queue에 제출한다. Typed Actor instance와
+immutable membership snapshot처럼 언어별 callback 표현이 달라도 committed identity와 순서는 같아야 한다.
+서로 반대 방향 join이 동시에 시작되어도 local join 전체를 MeshNode global lock으로 직렬화하지 않는다.
+
+## 5. Maintenance policy
+
+다른 MeshNode로 이동하는 transfer는 host `Retire`만 시작한다. Application은 특정 Actor target이나
+prepare·commit·activate phase를 선택하지 않는다.
+
+| Policy | Retire behavior |
+|---|---|
+| `Disabled` | Actor가 남아 있으면 `Blocked/TransferDisabled`로 끝내고 owner와 admission을 유지한다. |
+| `Recreate` | Target typed factory로 같은 Actor identity를 만들며 application state payload는 만들지 않는다. |
+| `Snapshot` | Typed state adapter로 application state를 capture·restore한다. |
+
+Policy는 Actor type startup registration에 고정한다. Snapshot은 state contract ID와 typed adapter를 같은 등록에서
+받고 factory type과 adapter target type을 검증한다. Operation별 policy·adapter와 별도 untyped registry를 제공하지
 않는다.
 
-Actor generation은 Actor 생성이 성공할 때 해당 Actor lifetime의 값으로 확정된다. 확정된 generation은
-Actor가 destroy될 때까지 변경되지 않는다. 같은 Actor가 같은 MeshNode의 다른 Spot으로 이동하거나 다른
-MeshNode로 transfer되어도 generation을 새로 할당하거나 변경하지 않는다. 이동 결과의 `ActorRef`는 새
-owner의 Node RID를 사용하더라도 source `ActorRef`와 동일한 Actor ID와 generation을 유지해야 한다.
-이동을 구분해야 할 때는 Actor generation을 바꾸지 않고 membership epoch를 증가시킨다. 같은 Actor ID를
-destroy 후 다시 생성하면 새 Actor lifetime이 시작되므로 생성 과정에서 다음 generation을 확정한다.
+Retire로 transfer할 수 있는 Actor는 source Entry Spot의 current member로 한정한다. User Spot member Actor가 하나라도
+있으면 preflight를 `Blocked/TransferDisabled`로 끝내고 state와 admission을 변경하지 않는다.
 
-Redis location store의 Actor location row가 분산 owner와 membership epoch의 authority다. Framework
-memory의 route cache는 이 row의 snapshot이며 단독으로 owner를 확정하지 않는다. Join, leave와 transfer는
-expected generation과 membership epoch를 검증하는 CAS로 location을 갱신한다.
+## 6. Transfer transaction
 
-## 2. Entry Spot과 user Spot
+Actor transfer는 [Location runtime](40-location-runtime.ko.md)의 common maintenance phase를 따른다.
 
-Actor를 만들면 owner MeshNode의 Entry Spot이 creation record를 처리한다. Entry Spot은 actor type을 확인하고
-initial state를 만든 뒤 user Spot join을 시작할 수 있다. Actor 업무 message는 Actor application queue로
-직접 전달되며 Entry Spot이나 user Spot callback을 경유하지 않는다.
+1. Preflight가 type capability, policy와 bounded target headroom을 확인한다.
+2. Source admission을 reversible하게 seal하고 pre-seal turn과 timer turn을 완료한다.
+3. Bound-session request와 connection-bound accepted work를 Captured 전에 terminal drain한다.
+4. Preparing CAS 뒤 exact boundary와 journal을 checkpoint에 쓰고 Captured CAS로 complete root를 연결한다.
+5. Target offer가 compatible initialized target Entry Spot RID·ObjectGeneration·kind를 고정하고
+   offer·accept·reservation ACK 뒤 Prepared CAS를 수행한다.
+6. NewOwner CAS가 owner, AuthorityOwnerGeneration과 current membership을 target Entry Spot identity로 atomic
+   commit한다.
+7. Target factory·restore를 끝낸 뒤 target Entry Spot `OnJoinedActor`를 실행하고 journal을 replay한다.
+   Admission은 sealed 상태로 유지한다.
+8. Source `OnLeaveActor`와 old Entry membership 제거를 durable source cleanup에 포함한다. Completed CAS,
+   bound-session route ACK와 steady normalization 뒤 Ready와 admission을 연다.
 
-User Spot은 join, joined, leave와 disconnected lifecycle control을 처리한다. Lifecycle callback은 해당
-Spot의 control claim에서 실행되며 같은 Spot의 일반 packet·timer turn과 정의된 순서로 직렬화된다.
+TransferId는 stable durable identity고 TargetAttemptGeneration은 target reservation attempt fence다. Target replacement는
+attempt와 reservation만 바꾸며 Actor ObjectGeneration과 immutable checkpoint를 바꾸지 않는다.
 
-## 3. Join commit
+Seal 뒤 source handler에는 신규 application message를 제출하지 않는다. Framework가 failed send·request를 새
+owner로 숨겨서 재제출하지 않는다. Captured checkpoint에 포함된 lease-backed record만 target에서 replay한다.
+Handler completion과 replay cursor CAS 사이 crash로 같은 operation이 다시 실행될 수 있으므로 callback은
+retry-safe해야 한다. Request terminal result는 한 번만 확정한다.
 
-Join은 다음 순서로 완료된다.
+## 7. Failure와 recovery
 
-1. source가 target Spot과 expected Actor generation을 확인한다.
-2. target `OnActorJoin`이 join admission payload와 immutable Actor identity snapshot을 검증해 accept 또는 reject를 반환한다.
-3. accept reply를 처리하는 location authority가 membership epoch를 증가시키는 CAS를 commit한다.
-4. CAS 성공 뒤 source `OnLeaveActor`가 이전 membership을 정리한다.
-5. target membership을 공개하고 immutable membership snapshot으로 `OnJoinedActor`를 실행한다.
-6. source operation을 새 ActorRef location snapshot으로 완료한다.
+Commit 전 failure는 durable Aborted CAS, bound-session abort route ACK, checkpoint·reservation cleanup과 steady
+source normalization 뒤 source admission을 다시 연다. Captured 전 source crash에는 durable replay를 보장하지
+않으며 original request는 normal connection failure, timeout 또는 cancellation terminal을 따른다.
 
-6단계에서 반환하는 location snapshot은 새 owner의 Node RID를 담지만 Actor generation은 join 전과
-같아야 한다. Join 처리는 Actor 생성이 아니므로 generation을 할당하거나 변경하지 않는다.
+Commit 뒤에는 source로 rollback하지 않는다. Recovery coordinator가 durable authority와 checkpoint에서 target
+activation을 이어가며 current target이 실패하면 새 TargetAttemptGeneration과 reservation을 CAS한다. Factory와
+restore는 attempt 사이에서 at-least-once로 실행될 수 있고 stale attempt와 겹칠 수 있다. Current exact owner와
+attempt만 completion과 admission을 commit할 수 있다.
 
-`OnActorJoin` reject 또는 CAS 실패에서는 source `OnLeaveActor`를 실행하지 않고 target membership도
-공개하지 않는다. Accepted join reply를 처리하는 CAS가 membership epoch를 증가시키는 유일한 commit
-point다. Stale
-generation 또는 epoch는 stale-location 결과로 완료하며 Framework가 현재 owner를 추측해 적용하지
-않는다. CAS 뒤 callback이 실패하면 이미 commit한 location을 source로 되돌리지 않고 §6의 commit 이후
-복구 절차를 따른다.
+Process pause 뒤 재개한 이전 owner는 stale AuthorityOwnerGeneration, owner lease와 local monotonic admission
+deadline 때문에 message, timer, phase update와 cleanup을 수행하지 못한다.
 
-## 4. 같은 MeshNode의 join
+## 8. Stale route와 forwarding
 
-Actor handler가 같은 MeshNode의 다른 user Spot으로 이동을 요청하면 caller의 Actor turn은 join completion을
-기다릴 수 있지만 Spot callback을 직접 실행하지 않는다. Target `OnActorJoin`, source `OnLeaveActor`와 target
-`OnJoinedActor`는 각각 해당 Spot의 control claim으로 제출하며 관찰 순서는 §3과 같다. Actor의
-infrastructure claim은 이 control operation의 completion을 Actor turn과 독립적으로 진행한다.
+Commit 뒤 이전 ActorRef route로 도착한 message는 bounded forwarding window 안에서 target으로 한 번 전달할 수 있다.
+Forwarding entry는 Actor ObjectGeneration과 source·target AuthorityOwnerGeneration을 exact 검증한다. Actor가 다시
+이동하면 이전 transfer chain을 따라가지 않고 current authority를 resolve한다.
 
-Spot control callback에는 ActorRef, Actor type과 membership epoch를 담은 immutable membership snapshot을
-전달한다. callback은 mutable Actor object나 다른 Spot의 실행 흐름을 보유하지 않는다. Actor의 업무 상태를
-읽거나 바꿔야 하면 snapshot의 ActorRef로 Actor send/request를 제출해 Actor turn에서 처리한다. 서로 반대
-방향인 두 join이 동시에 시작되어도 control claim 사이의 순환 대기가 생기지 않아야 하며 local join 전체를
-MeshNode 전역 lock으로 직렬화하지 않는다.
+Window가 끝나거나 fence가 다르면 `ActorLocationStale`로 실패한다. Framework는 send·request를 새 location으로
+자동 재제출하지 않으며 실행 여부가 불명확한 timeout도 다시 제출하지 않는다.
 
-## 5. 다른 MeshNode로 transfer
+## 9. Bound session
 
-다른 MeshNode의 Spot으로 이동할 때 location authority는 transfer identity, source·target participant,
-expected Actor generation과 membership epoch로 한 operation을 식별한다. Framework는 Core가 발급한 sealed
-transfer token과 정확히 다음 membership epoch로 source·target fence를 적용한다. Location store는 Core
-token을 저장하지 않고 다음 durable 상태를 원자적으로 기록한다.
+Actor가 이동해도 physical STREAM connection, session identity와 Actor ObjectGeneration은 유지된다. Session owner는
+binding token, AuthorityOwnerGeneration과 sequence barrier로 새 Actor owner route를 선택한다. Target은 Completed,
+route commit ACK와 steady normalization 전 packet·push admission을 열지 않는다. 이전 authority owner generation,
+binding token과 sequence의 packet, reply, push와 close는 current binding에 적용하지 않는다.
 
-Target `ActorRef`의 Node RID는 target owner로 바뀌지만 Actor ID와 generation은 source `ActorRef`의 값을
-그대로 사용한다. Transfer의 prepare, commit, activation과 recovery 전 과정에서 Actor generation은
-변경되지 않는다.
+## 10. 검증 요구
 
-| 상태 | 의미 |
-|---|---|
-| Prepared | source snapshot과 target reserve가 있으며 location owner는 바뀌지 않았다 |
-| Committed | location row가 target owner와 새 membership epoch를 가리킨다 |
-| Activated | target Actor queue가 새 owner route로 message를 처리할 수 있다 |
-| Aborted | target reserve를 해제하고 source owner를 유지한다 |
-
-Commit 전에는 target Actor handler를 실행하지 않는다. Commit 뒤 target activation이 끝나야 새 owner route를
-ready로 공개한다. Source route는 설정된 forwarding window가 끝나면 stale target을 거부한다. 세부 queue와
-barrier 자료 구조는 Core와 internals가 소유한다.
-
-## 6. Failure와 recovery
-
-Prepare 전에 실패하면 source membership을 유지한다. Prepared 상태에서 deadline이 끝나면 participant가
-transfer ID와 recovery lease를 확인해 abort할 수 있다. Committed 상태에서는 source로 rollback하지 않고 target
-activation을 복구한다. Successor MeshNode는 Redis의 participant state와 Actor location row를 읽어 같은
-결정을 이어서 수행한다. Successor가 authority를 takeover하면 자신의 Core runtime에서 participant를 다시
-prepare해 새 opaque token을 얻으며 다른 process의 token을 재사용하지 않는다.
-
-Application callback이 실패한 경우 location row를 임의로 변경하지 않는다. Commit 전 실패는 source
-membership을 유지한다. Commit 뒤 실패는 recoverable Actor error로 기록하고 target activation 또는
-reconciliation을 계속한다. Callback 재시도는 transfer token과 phase를 기준으로 idempotent해야 한다.
-
-## 7. Session binding
-
-Actor가 bound STREAM session을 가진 상태에서 membership이 바뀌어도 session identity는 유지된다. 새 owner가
-session relay authority를 얻기 전까지 application message를 처리하지 않는다. Disconnect와 unbind record는
-Actor의 infrastructure queue에서 진행되며 Spot lifecycle callback으로 전달하지 않는다.
-
-## 8. 검증 요구
-
-- join reject, stale generation과 stale epoch가 membership을 변경하지 않는다.
-- 같은 MeshNode에서 반대 방향 join 두 개가 서로 기다리지 않고 완료된다.
-- transfer의 각 failure point가 Prepared abort 또는 Committed recovery 중 하나로 수렴한다.
-- Actor 생성이 성공할 때 확정된 generation이 destroy까지 유지된다.
-- 같은 MeshNode의 join과 다른 MeshNode로의 transfer 모두 전후 Actor generation이 동일하고, 성공한
-  location commit에서 membership epoch만 정확히 1 증가한다.
-- message sequence가 transfer 전후에 중복되거나 역전되지 않는다.
-- Actor payload가 Spot callback을 거치지 않고 Actor queue에서 처리된다.
-- Redis capability가 없는 location store로 분산 transfer를 시작하면 startup이 실패한다.
-
-## 9. Bound session route handoff
-
-Bound session이 있는 Actor를 다른 MeshNode로 transfer하면 session identity와 client connection은 유지한다.
-Commit 전 실패는 source binding을 유지하고 target binding을 만들지 않는다. Commit 뒤에는 target Actor가
-session relay authority를 얻은 뒤에만 application packet과 push를 처리한다. Source binding 정리는 target
-activation을 막지 않으며 같은 session의 packet 순서를 바꾸지 않는다.
-
-## 10. In-flight packet handoff
-
-### 10.1 Moving 상태의 admission
-
-Prepare가 source Actor admission을 닫은 뒤 도착한 packet은 source application handler에서 실행하지 않는다.
-Source infrastructure queue는 packet과 arrival sequence를 transfer backlog로 보존한다. Commit 전 abort하면
-backlog를 source Actor queue 앞에 되돌리고, commit하면 target에 전달한다.
-
-### 10.2 Ordering
-
-Transfer는 다음 순서를 보장한다.
-
-1. Moving 구간에 수락한 packet을 유실하거나 중복하지 않는다.
-2. Source backlog의 arrival sequence를 target에서도 유지한다.
-3. Backlog를 target Actor queue에 넣기 전에 새 owner route를 ready로 공개하지 않는다.
-4. 같은 bound session에서 transfer 전후에 보낸 packet은 session FIFO 순서를 유지한다.
-
-### 10.3 Commit과 activation
-
-Target reserve, durable location commit, backlog enqueue, target activation과 route publication 순서를 지킨다.
-Commit 뒤에는 source로 rollback하지 않는다. Target activation을 복구하고 동일 transfer ID의 backlog replay를
-idempotent하게 처리한다.
-
-### 10.4 Straggler forwarding
-
-Commit 뒤 old ActorRef로 도착한 packet은 설정된 forwarding window 안에서 target으로 한 번 전달한다.
-Forwarding entry는 Actor generation과 membership epoch를 함께 검증하며 재이동하면 최신 target으로 갱신한다.
-Window가 끝나면 entry를 제거하고 stale packet을 `ActorLocationStale`로 실패시킨다. Framework는 실패한
-packet을 저장하거나 새 location으로 자동 재전송하지 않는다.
+- Store-less Actor는 same-process operation만 허용하며 hidden Store나 distributed transfer를 만들지 않는다.
+- Actor와 dynamic User Spot은 Creating row를 Ready로 오인하지 않는다.
+- Creation failure가 exact fenced delete로 수렴하고 다음 caller만 새 generation을 발급한다.
+- Active membership이 있는 User Spot Close가 `false`로 실패하고 hidden Actor cleanup을 하지 않는다.
+- Join reject와 stale object·owner fence가 membership을 변경하지 않는다.
+- Actor ObjectGeneration은 create부터 destroy까지 유지되고 이동에서는 AuthorityOwnerGeneration만 바뀐다.
+- Disabled Actor가 남은 Retire는 owner와 admission을 바꾸지 않는다.
+- User Spot member Actor가 남은 Retire는 `Blocked/TransferDisabled`로 끝나고 Entry Spot member만 target Entry
+  membership으로 atomic commit한다.
+- Captured 뒤 journal replay가 operation identity를 보존하고 terminal result를 한 번만 완료한다.
+- Activated, Cleaning과 Completed에서 target admission이 닫혀 있고 route ACK·steady normalization 뒤 열린다.
+- Bound STREAM connection은 이동하지 않으며 AuthorityOwnerGeneration·sequence barrier로 route만 바꾼다.

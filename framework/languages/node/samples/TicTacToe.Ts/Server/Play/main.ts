@@ -13,10 +13,10 @@ async function main(): Promise<void> {
   });
   const config = channelApp.get<TicTacToeSampleConfig>(TICTACTOE_SAMPLE_CONFIG);
   const runtime = channelApp.get(ZLINK_FRAMEWORK_RUNTIME) as unknown as {
-    spotNodeRuntime?: {
-      primaryNode?: {
+        spotNodeRuntime?: {
+          primaryMeshNode?: {
         entrySpot(): { routingId: unknown };
-        status(): { connectedPeerCount?: number };
+            status(): { admittedPeerCount?: number };
         peers(): unknown[];
       };
     };
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   void logSpotPeerReady(runtime);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
-    endpoint: config.playEndpoint,
+    endpoint: config.playSpotEndpoint,
     spotEndpoint: config.playSpotEndpoint,
     streamEndpoint: config.playStreamEndpoint
   })}\n`);
@@ -33,19 +33,19 @@ async function main(): Promise<void> {
 }
 
 async function logSpotPeerReady(runtime: {
-  spotNodeRuntime?: {
-    primaryNode?: {
-      status(): { connectedPeerCount?: number };
+    spotNodeRuntime?: {
+      primaryMeshNode?: {
+      status(): { admittedPeerCount?: number };
     };
   };
 }): Promise<void> {
-  const node = runtime.spotNodeRuntime?.primaryNode;
+  const node = runtime.spotNodeRuntime?.primaryMeshNode;
   if (node === undefined) {
     return;
   }
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
-    if ((node.status().connectedPeerCount ?? 0) > 0) {
+    if ((node.status().admittedPeerCount ?? 0) > 0) {
       process.stdout.write(`${JSON.stringify({ event: 'spotPeerReady' })}\n`);
       return;
     }

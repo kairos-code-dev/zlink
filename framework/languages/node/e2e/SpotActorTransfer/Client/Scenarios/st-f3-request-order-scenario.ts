@@ -1,6 +1,6 @@
 // ST-F3: bound session cross-move order 시나리오를 검증한다.
 import type { ProbeReq } from '../../Shared/messages.js';
-import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, createSpot, createActor, joinActor, waitEvidence, post, assertValuesInOrder, unique, uniqueShort, require } from '../Support/scenario-support';
+import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, createSpot, createActor, joinActor, waitEvidence, post, assertValuesInOrder, unique, uniqueShort, delay, require } from '../Support/scenario-support';
 
 export async function runStF3(): Promise<void> {
   const actorId = uniqueShort('actor-handoff-gate-f3');
@@ -15,6 +15,9 @@ export async function runStF3(): Promise<void> {
       .packetName(SpotActorTransferNames.packetHandoff).submit();
     await connector.send({ scenario: 'ST-F3', marker: 'S2' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();
+    // Give RouteMesh's bound-session relay time to admit both one-way packets
+    // before the transfer gate lets Core snapshot the actor mailbox.
+    await delay(200);
     await post(nodeA, `/transfer-gates/${actorId}/release`, {});
     await connector.send({ scenario: 'ST-F3', marker: 'S3' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();

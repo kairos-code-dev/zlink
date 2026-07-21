@@ -4,9 +4,6 @@
 
 #include "../Support/client_support.hpp"
 
-#include <zlink/http_client.hpp>
-
-#include <chrono>
 #include <iostream>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
@@ -14,52 +11,28 @@ namespace zlink::framework::e2e::runtime_monitoring::client
 
 inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
 {
-    auto service = zlink::http_client::client_t::create ()
-                     .base_url (options.service_url)
-                     .timeout (std::chrono::milliseconds (1000))
-                     .build ();
-    // The stopping timer belongs to a user Spot, so this scenario creates the
-    // public application resource whose failure event it observes.
-    auto created = service.post ("/spot/create").async_raw ().result ();
-    ensure (created && created.value ().status < 400, "MON-A5 spot create call failed");
+    const auto evidence = fetch_evidence (options.service_url);
+    ensure (
+      any_contains (
+        evidence,
+        "identifier=zlink.runtime.location.store_changed")
+        && any_contains (evidence, "reason=degraded")
+        && any_contains (evidence, "reason=ready"),
+      "MON-A5 public location runtime transition evidence is incomplete");
 
-    if (!options.trigger_url.empty ()) {
-        auto trigger = zlink::http_client::client_t::create ()
-                         .base_url (options.trigger_url)
-                         .timeout (std::chrono::milliseconds (3000))
-                         .build ();
-        auto handshake = trigger.post ("/socket/handshake-failure").async_raw ().result ();
-        ensure (handshake && handshake.value ().status < 400,
-                "MON-A5 handshake failure trigger failed");
-    }
-
-    const auto socket_entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-socket|source=monitor.profile|kind=HandshakeFailed",
-      std::chrono::milliseconds (10000));
-    ensure (any_contains (socket_entries, "kind=HandshakeFailed"),
-            "MON-A5 handshake failure evidence missing");
-
-    const auto location_entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-location|source=location-runtime|kind=StatusChanged",
-      std::chrono::milliseconds (10000));
-    ensure (any_contains (location_entries, "kind=StatusChanged"),
-            "MON-A5 location status evidence missing");
-
-    const auto spot_status_entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-spot|source=monitor.spot|node=monitor.spot|kind=StatusChanged",
-      std::chrono::milliseconds (10000));
-    ensure (any_contains (spot_status_entries, "kind=StatusChanged"),
-            "MON-A5 spot status evidence missing");
-
-    const auto service_entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-spot|source=monitor.spot|node=monitor.spot|kind=TimerStoppedAfterUnhandledException",
-      std::chrono::milliseconds (10000));
-    ensure (any_contains (service_entries, "timer=stopping"),
-            "MON-A5 stopped timer evidence missing");
+    const auto snapshot = runtime_snapshot (options.service_url);
+    ensure (snapshot.at ("location").at ("state").get<std::string> ()
+              == "ready",
+            "MON-A5 location runtime did not recover");
+    ensure (
+      snapshot.at ("location").at ("lastSuccessPresent").get<bool> ()
+        && snapshot.at ("location").at ("lastFailurePresent").get<bool> (),
+      "MON-A5 location success/failure timestamps are incomplete");
+    int ready_peers = 0;
+    for (const auto &peer : snapshot.at ("peers"))
+        ready_peers += peer.at ("ready").get<bool> () ? 1 : 0;
+    ensure (ready_peers >= 2,
+            "MON-A5 admitted peers did not survive store-only failure");
     std::cout << "scenario MON-A5 passed\n";
 }
 

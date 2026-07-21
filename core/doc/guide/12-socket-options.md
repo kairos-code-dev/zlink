@@ -20,7 +20,7 @@ Internally, options are classified into three categories:
 |----------|-------------|----------------------|
 | **Core Socket** | Core socket behavior | SNDHWM, RCVHWM, LINGER, SNDTIMEO, RCVTIMEO |
 | **Transport/Network** | Network/transport policies | SNDBUF, RCVBUF, TCP_*, TOS, CONNECT_TIMEOUT |
-| **Protocol/Metadata** | Protocol-level metadata | ZMP_METADATA, HEARTBEAT_* |
+| **Protocol/Metadata** | Protocol-level metadata | ZMP_METADATA |
 
 ---
 
@@ -319,36 +319,7 @@ Only works on systems with `TCP_USER_TIMEOUT` kernel support (Linux 2.6.37+). Us
 
 ---
 
-## 10. ZMP Heartbeat — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
-
-| Option | What it does | Default |
-|--------|-------------|---------|
-| `HEARTBEAT_IVL` | PING message send interval (ms) | `0` (disabled) |
-| `HEARTBEAT_TTL` | TTL transmitted to remote peer (ms; stored internally in 0.1s units) | `0` |
-| `HEARTBEAT_TIMEOUT` | PONG response wait time (ms) | `-1` (uses IVL value) |
-
-**Applied at:** `asio_zmp_engine` — ZMP protocol-level PING/PONG exchange.
-
-**Flow:**
-1. Send PING every `IVL` milliseconds (includes TTL value)
-2. Remote peer closes connection if no message/PONG received within TTL
-3. Locally, disconnection detected if no PONG within TIMEOUT
-
-**vs. TCP Keepalive:** TCP keepalive is OS-level probing; ZMP heartbeat is application-protocol-level. If both are configured, the faster one detects failure first.
-
-```c
-/* PING every 5s, remote TTL 15s, local PONG timeout 10s */
-int hb_ivl = 5000;
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 15000;  /* ms → 15s */
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
-int hb_timeout = 10000;
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
-```
-
----
-
-## 11. Immediate Connect — IMMEDIATE
+## 10. Immediate Connect — IMMEDIATE
 
 | | |
 |---|---|
@@ -362,7 +333,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 12. Keep Latest Only — CONFLATE
+## 11. Keep Latest Only — CONFLATE
 
 | | |
 |---|---|
@@ -375,7 +346,7 @@ When enabled, HWM settings are ignored. Multipart messages cannot be received in
 
 ---
 
-## 13. OS Socket Buffers — SNDBUF / RCVBUF
+## 12. OS Socket Buffers — SNDBUF / RCVBUF
 
 | | |
 |---|---|
@@ -392,7 +363,7 @@ or deployment settings can set smaller explicit values.
 
 ---
 
-## 14. IP Quality of Service — TOS
+## 13. IP Quality of Service — TOS
 
 | | |
 |---|---|
@@ -404,7 +375,7 @@ Used to set traffic priority in networks with QoS policies.
 
 ---
 
-## 15. Connection Queue — BACKLOG
+## 14. Connection Queue — BACKLOG
 
 | | |
 |---|---|
@@ -417,7 +388,7 @@ Used to set traffic priority in networks with QoS policies.
 
 ---
 
-## 16. I/O Thread Affinity — AFFINITY
+## 15. I/O Thread Affinity — AFFINITY
 
 | | |
 |---|---|
@@ -430,7 +401,7 @@ Bit N set to 1 means I/O thread N is available. `0` allows all threads. Useful f
 
 ---
 
-## 17. Maximum Message Size — MAXMSGSIZE
+## 16. Maximum Message Size — MAXMSGSIZE
 
 | | |
 |---|---|
@@ -455,7 +426,7 @@ zlink_set_option(socket, ZLINK_OPT_MAXMSGSIZE,
 
 ---
 
-## 18. IPv6 — IPV6
+## 17. IPv6 — IPV6
 
 | | |
 |---|---|
@@ -467,7 +438,7 @@ Setting to `1` creates a dual-stack socket with `IPV6_V6ONLY=0`.
 
 ---
 
-## 19. Multicast — MULTICAST_HOPS / MULTICAST_MAXTPDU
+## 18. Multicast — MULTICAST_HOPS / MULTICAST_MAXTPDU
 
 | Option | What it does | Default |
 |--------|-------------|---------|
@@ -478,7 +449,7 @@ Only applies to PGM transport. PGM is currently disabled.
 
 ---
 
-## 20. Invert Subscription Matching — INVERT_MATCHING
+## 19. Invert Subscription Matching — INVERT_MATCHING
 
 | | |
 |---|---|
@@ -490,7 +461,7 @@ When set to `1`, messages for non-subscribed topics are delivered, and subscribe
 
 ---
 
-## 21. Network Interface Binding — BINDTODEVICE
+## 20. Network Interface Binding — BINDTODEVICE
 
 | | |
 |---|---|
@@ -502,7 +473,7 @@ Only works on Linux systems with `SO_BINDTODEVICE` support. Used to restrict tra
 
 ---
 
-## 22. Handshake Timeout — HANDSHAKE_IVL
+## 21. Handshake Timeout — HANDSHAKE_IVL
 
 | | |
 |---|---|
@@ -515,7 +486,7 @@ If the handshake is not completed within this time, the connection is closed.
 
 ---
 
-## 23. ZMP Metadata — ZMP_METADATA
+## 22. ZMP Metadata — ZMP_METADATA
 
 | | |
 |---|---|

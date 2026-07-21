@@ -13,7 +13,9 @@ async function bootstrap(): Promise<void> {
     abortOnError: false
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
-  await reportBingoRoutingId(app, 'api', 'bingo.api', [SampleNames.apiChannel]);
+  await reportBingoRoutingId(app, 'api', 'bingo.api', [
+    SampleNames.roomSpotNode
+  ]);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',

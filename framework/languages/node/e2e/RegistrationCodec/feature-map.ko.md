@@ -23,4 +23,4 @@
 
 | Scenario | 판정 | 다음 작업 |
 |----------|------|-----------|
-| `RC-A4` | 구현 | per-dispatch scope evidence는 public dispatch 경로로 통과했다. 현재 설치된 Nest public export는 `ContextIdFactory`, `ModuleRef.resolve(...)`, `registerRequestByContextId(...)`를 제공하지만, `ContextIdFactory.create()`로 만든 request context를 dispatch 뒤 명시 해제하는 API는 제공하지 않는다. 따라서 Node 완료 조건은 scoped id 분리와 singleton 안정성이다. Nest 내부 저장소 삭제나 테스트 전용 adapter는 쓰지 않는다. |
+| 후속 계약 | 구현 | `RC-A4`의 per-dispatch scope evidence는 public dispatch 경로로 통과했다. 현재 설치된 Nest public export는 `ContextIdFactory`, `ModuleRef.resolve(...)`, `registerRequestByContextId(...)`를 제공하지만, `ContextIdFactory.create()`로 만든 request context를 dispatch 뒤 명시 해제하는 API는 제공하지 않는다. 따라서 Node 완료 조건은 scoped id 분리와 singleton 안정성이다. Nest 내부 저장소 삭제나 테스트 전용 adapter는 쓰지 않는다. |

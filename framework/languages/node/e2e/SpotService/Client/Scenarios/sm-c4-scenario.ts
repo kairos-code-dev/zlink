@@ -1,4 +1,4 @@
-// SM-C4: SpotMesh pub/sub publisher capability (local spot 없는 노드의 publish) 시나리오를 검증한다.
+// SM-C4: local Spot이 없는 MeshNode의 Logical Multicast 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

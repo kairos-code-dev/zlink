@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
+using Zlink.Runtime.Service.InstanceSpots;
 
 namespace Systems.Zlink;
 
@@ -126,6 +127,20 @@ public sealed class MeshClaim : IDisposable
         };
         var rc = NativeMethods.zlink_mesh_claim_recv_batch(ref _claim,
             batch.Handle, ref required, (int)flags);
+        if (rc == (int)RecvResult.BufferTooSmall)
+        {
+            batch.Grow(
+                required.MessageCount,
+                required.PartCount,
+                required.ByteCount);
+            required = new ZlinkMeshReceiveRequirements
+            {
+                StructSize = (uint)Marshal.SizeOf<ZlinkMeshReceiveRequirements>(),
+                Version = 1
+            };
+            rc = NativeMethods.zlink_mesh_claim_recv_batch(ref _claim,
+                batch.Handle, ref required, (int)flags);
+        }
         if (rc == (int)RecvResult.NoData)
             return false;
         if (rc != 0)
@@ -169,13 +184,19 @@ public sealed class MeshReceiveBatch : IDisposable
         Marshal.SizeOf<ZlinkMeshReceiveRecord>();
 
     private IntPtr _handle;
+    private nuint _messageCapacity;
+    private nuint _partCapacity;
+    private nuint _byteCapacity;
 
     /// <summary>Creates a receive batch with the given capacities.</summary>
     public MeshReceiveBatch(int messageCapacity = 64, int partCapacity = 256,
         int byteCapacity = 1 << 20)
     {
+        _messageCapacity = checked((nuint)messageCapacity);
+        _partCapacity = checked((nuint)partCapacity);
+        _byteCapacity = checked((nuint)byteCapacity);
         _handle = NativeMethods.zlink_mesh_receive_batch_new(
-            (nuint)messageCapacity, (nuint)partCapacity, (nuint)byteCapacity);
+            _messageCapacity, _partCapacity, _byteCapacity);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
     }
@@ -237,6 +258,34 @@ public sealed class MeshReceiveBatch : IDisposable
             NativeMethods.zlink_mesh_receive_batch_reset(_handle));
     }
 
+    internal void Grow(
+        nuint requiredMessageCount,
+        nuint requiredPartCount,
+        nuint requiredByteCount)
+    {
+        EnsureNotDisposed();
+        var messageCapacity = Math.Max(_messageCapacity, requiredMessageCount);
+        var partCapacity = Math.Max(_partCapacity, requiredPartCount);
+        var byteCapacity = Math.Max(_byteCapacity, requiredByteCount);
+        var replacement = NativeMethods.zlink_mesh_receive_batch_new(
+            messageCapacity, partCapacity, byteCapacity);
+        if (replacement == IntPtr.Zero)
+            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
+
+        var previous = _handle;
+        var rc = NativeMethods.zlink_mesh_receive_batch_destroy(ref previous);
+        if (rc != 0)
+        {
+            NativeMethods.zlink_mesh_receive_batch_destroy(ref replacement);
+            throw ZlinkException.CreateCloseException(NativeMethods.zlink_errno());
+        }
+
+        _handle = replacement;
+        _messageCapacity = messageCapacity;
+        _partCapacity = partCapacity;
+        _byteCapacity = byteCapacity;
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
@@ -288,6 +337,7 @@ public sealed class MeshReceiveBatch : IDisposable
             (MeshReadyDomains)native.Domain,
             RoutingId.FromNative(ref native.SourceNodeRid) ?? default,
             RoutingId.FromNative(ref native.SourceSpotRid) ?? default,
+            native.SourceBindingGeneration,
             ActorInterop.FromNative(ref native.SourceActor),
             new MeshOperationId(native.OperationId.High, native.OperationId.Low),
             (MeshOperationKind)native.OperationKind,
@@ -380,6 +430,15 @@ public sealed class MeshReceiveBatch : IDisposable
                     transfer.FinalSequence,
                     transfer.ResultCode,
                     transfer.FailureErrno));
+
+            case MeshRecordKind.InstanceSpotActivation:
+                if (kindDataSize <
+                    (nuint)Marshal.SizeOf<ZlinkInstanceSpotActivationData>())
+                    return null;
+                var activation =
+                    Marshal.PtrToStructure<ZlinkInstanceSpotActivationData>(
+                        kindData);
+                return InstanceSpotActivation.FromNative(ref activation);
 
             default:
                 return null;

@@ -11,10 +11,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
 import java.nio.file.Path
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -33,7 +31,6 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.server.configuration.BingoMetricsReporter
-import systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy
 import io.micrometer.core.instrument.MeterRegistry
 
 
@@ -57,21 +54,12 @@ class PlayServerApplication {
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
             options.configureLocations()
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient()
-            options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableServer(topology.selectedPlayChannelEndpoint())
-                .enableClient()
-                .addHandlerGroup("play-route")
-                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
-            val node: ZLinkSpotMeshBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
-            node.useDrainPolicy(ZLinkSpotDrainPolicy.DRAIN_NATURAL)
-            node.enableRouter(topology.selectedPlaySpotRouterEndpoint())
-                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
-            node.configureEntrySpot()
-                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
-            node.enablePubSub(topology.selectedPlaySpotEndpoint())
-            node.connectPeerPub(topology.peerPlaySpotEndpoint())
+            val node = options.addRouteMesh(SampleNames.Mesh)
+            node.listen(topology.selectedPlaySpotRouterEndpoint())
+                .useAllocatedRoutingId(2, "play")
+                .setRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
+            node.channelName(SampleNames.ApiChannel).setWeight(0)
+            node.channelName(SampleNames.RoomSpotDiscovery)
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)

@@ -7,6 +7,7 @@ using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
@@ -32,7 +33,9 @@ internal static class ProviderHostFactory
 
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ProfileSocketEventObserver>();
+        builder.Services.AddScoped<
+            IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
+            ProfileMeshEventObserver>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -65,15 +68,6 @@ internal static class ProviderHostFactory
                 profile.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
             }
 
-            if (!string.IsNullOrWhiteSpace(options.ManualClientEndpoint))
-            {
-                var manualMesh = framework.AddRouteMesh("profile.manual")
-                    .Listen("tcp://127.0.0.1:0")
-                    .SetRoutingId(RoutingId.From($"{options.Rid}-manual"));
-                manualMesh.ChannelName("profile.manual").SetWeight(0);
-                manualMesh.PeerConnections.Connect(options.ManualClientEndpoint);
-            }
-
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
                 var route = framework.AddRouteMesh("profile.route")
@@ -87,11 +81,8 @@ internal static class ProviderHostFactory
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {
-            monitor.AddSocketEvents("profile.server", ZLinkSocketEventKind.ConnectionReady);
-            monitor.AddSocketEvents(
-                "profile.client",
-                ZLinkSocketEventKind.ConnectionReady,
-                ZLinkSocketEventKind.Disconnected);
+            if (!string.IsNullOrWhiteSpace(options.ChannelEndpoint))
+                monitor.AddMeshNodeEvents("profile");
         });
 
         var app = builder.Build();

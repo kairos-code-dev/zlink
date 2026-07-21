@@ -99,11 +99,10 @@ int main ()
       "zlink_dealer_request_part",
       "zlink_router_request_part",
       "zlink_router_reply_part",
-      "zlink_spot_publish_part",
-      "zlink_spot_subscribe_part",
-      "zlink_spot_request_channel_part",
-      "zlink_spot_request_spot_part",
-      "zlink_spot_reply_router_part",
+      "submit_borrowed_message_array",
+      "zlink_mesh_node_send_to_node",
+      "zlink_spot_send_to_channel",
+      "zlink_actor_send_to_actor",
     };
     for (const auto &symbol : required_part_symbols)
         assert (all.find (symbol) != std::string::npos);
@@ -117,16 +116,6 @@ int main ()
       "zlink_dealer_request",
       "zlink_router_request",
       "zlink_router_reply",
-      "zlink_spot_send_channel",
-      "zlink_spot_request_channel",
-      "zlink_spot_request_spot",
-      "zlink_spot_request_router",
-      "zlink_spot_publish",
-      "zlink_spot_subscribe",
-      "zlink_spot_send_spot",
-      "zlink_spot_reply_spot",
-      "zlink_spot_reply_router",
-      "zlink_spot_recv",
     };
 
     for (const auto &symbol : aggregate_symbols)

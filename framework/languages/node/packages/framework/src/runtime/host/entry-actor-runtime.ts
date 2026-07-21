@@ -35,7 +35,7 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
 
   async commitActorTransaction(actor: ZLinkActor, onJoined: () => Promise<void>): Promise<void> {
     const state = this.options.actorManager()?.getState(actor.actorId);
-    const entryNode = this.options.spotNodeRuntime()?.primaryNode;
+    const entryNode = this.options.spotNodeRuntime()?.primaryMeshNode;
     if (state === undefined) {
       throw new Error(`Entry Spot actor '${actor.actorId}' state is not available.`);
     }
@@ -43,10 +43,13 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
       throw new Error('Entry Spot actor commit requires a started SPOT node runtime.');
     }
     const actorRef = {
-      nodeRid: entryNode.routingId,
+      // Preserve Core's binary routing identity. Converting the binding value
+      // to its display string would make a later RoutingId.from(...) call
+      // interpret the hexadecimal display as different literal bytes.
+      nodeRid: entryNode.status().routingId,
       actorId: actor.actorId,
       generation: state.nativeActorRef?.generation ?? 0n
-    } as ZLinkBackendActorRef;
+    } as unknown as ZLinkBackendActorRef;
     state.clearJoinedSpot();
     state.setNativeActorRef(actorRef);
     let callbackError: unknown;
@@ -76,7 +79,8 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
     actorId: string,
     parts: readonly Message[],
     returnResponse?: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
   ): Promise<{ readonly handled: boolean; readonly response?: unknown }> {
     const spotManager = this.options.spotManager();
     const spotRid = this.options.actorManager()?.getState(actorId)?.spotRid;
@@ -90,7 +94,8 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
         actorId,
         parts,
         returnResponse,
-        remoteBoundSessionTarget
+        remoteBoundSessionTarget,
+        fallbackActorRef
       )
     };
   }

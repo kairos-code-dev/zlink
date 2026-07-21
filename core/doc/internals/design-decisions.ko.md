@@ -42,7 +42,7 @@
 **근거**:
 - 코어에서 이미 socket_id 기반 자동 생성이 동작 중이다
 - 서비스 유틸(routing_id_utils.hpp)은 override를 적용하거나, override가 없으면 서비스 소켓에 routing_id를 채우는 데 쓴다
-- 계층 위반 방지(services → core 의존 역전 없음)
+- 상위 runtime에서 Core로 향하는 의존 방향을 유지
 
 ---
 

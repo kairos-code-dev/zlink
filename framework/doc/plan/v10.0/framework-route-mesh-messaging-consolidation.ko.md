@@ -27,6 +27,11 @@
 상태를 실행 진행표의 담당 행에만 갱신한다.
 근거와 목표 계약을 설명하고, 실행 진행표는 실제 완료 상태와 검증 증거를 관리한다.
 
+2026-07-21 이후 미완료 실행과 review 정책은
+[11.0 execution ledger](../v11.0/route-mesh-11.0.0-execution-ledger.ko.md)가 소유한다. 아래 frozen scope와 전체
+재리뷰 규칙은 10.0 실행 이력이며 11.0 lane을 차단하지 않는다. Hash는 증거 식별자이고, 변경 영향 판정은
+11.0 ledger의 변경 파일·의존 범위 확인 정책을 따른다.
+
 MeshNode·Spot·Actor service runtime의 dispatch, mailbox, batch, claim, Actor transfer와 timer backend는
 [`MeshNode·Spot·Actor framework 우선 dispatch 설계`](./mesh-node-framework-dispatch-design.ko.md)를 따른다.
 이 문서에 남은 기존 callback·part recv 또는 Actor의 Spot callback 경유 설명과 충돌하면 해당 전용 설계가
@@ -850,7 +855,6 @@ public interface IZLinkMeshNodeBuilder
         int slotCount,
         string routingIdPrefix);
     IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName);
-    IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy);
     IZLinkTransportSocketConfig ConfigureRouterSocket();
     IZLinkRouteConfig ConfigureRouterRouting();
     IZLinkOutboundRouteConfig ConfigurePeerRouting();
@@ -1176,7 +1180,7 @@ target channel 인자를 생략하는 overload는 10.0.0에서 제거하며 defa
 | 각 topology의 `ClientConnections`, Spot `RouterConnections` | MeshNode `IZLinkMeshPeerConnections` | manual peer endpoint 또는 예상 RID와 endpoint 입력으로 통합하고 descriptor는 admission에서 교환 |
 | Spot `ChannelClientConnections` | 없음 | `RouterConnections` 별칭이므로 `IZLinkMeshPeerConnections` 하나로 정리 |
 | `IZLinkSocketConfig.Weight`와 DI singleton `IZLinkChannelRuntimeOptions`의 channel별 weight | startup `ChannelName(name).SetWeight(...)`와 DI singleton `IZLinkRouteMeshRuntimeOptions.Channel(meshName, channelName).Weight` | 여러 ChannelName이 한 socket을 공유하므로 selection weight를 logical membership에 두고 기존 runtime-options interface를 제거 |
-| `ZLinkSpotDrainPolicy` | `ZLinkMeshNodeDrainPolicy` | Node·Spot·Actor와 transfer를 포함한 MeshNode drain 계약으로 확대 |
+| `ZLinkSpotDrainPolicy` | 없음 | MeshNode는 설정 없이 accepted work, Actor handoff, STREAM barrier, local Spot close와 owner cleanup의 고정 drain 순서를 사용한다 |
 | `ConfigureEntrySpot()`, `SetEntrySpotRoutingId(...)` | 같은 멤버를 MeshNode builder로 이동 | entry Spot 공개 설정을 유지한다 |
 | `IZLinkSpotOutbound.Publish(topic, message)` | `Publish(channelName, topic, message)` | 복수 membership에서 target multicast domain을 명시한다 |
 | `IZLinkSpotHandlerRegistry.AddSubscribe(topic)` | `AddSubscribe(channelName, topic)` | local subscription을 channel namespace와 함께 등록한다 |
@@ -1361,13 +1365,16 @@ handler가 없거나 endpoint bundle이 불완전한데 host가 healthy 상태�
 
 1. location store를 사용하는 구성은 draining marker를 게시한다. manual mode는 peer control plane으로
    draining 상태를 알리고 새 local submit을 중단한다.
-2. propagation bound 뒤 channel selection과 Actor·Spot placement 선택에서 제외한다.
-3. 이미 수락한 request와 handoff를 완료한다.
-4. SPOT과 actor owner 상태를 기존 계약에 따라 이동하거나 종료한다.
-5. classic fanout publisher와 STREAM session을 각 전용 drain 계약으로 처리한다.
-6. location store를 사용하는 구성은 MeshNode descriptor를 제거한다. manual mode는 peer admission
+2. propagation bound 뒤 channel selection과 Actor·Spot placement 선택에서 제외하고 신규 application
+   admission을 차단한다.
+3. 이미 수락한 application request와 Spot turn을 완료한다.
+4. Actor handoff와 transfer barrier를 terminal 상태로 만든다.
+5. STREAM binding과 session barrier를 terminal 상태로 만든다. Classic fanout publisher도 전용 drain
+   계약에 따라 처리한다.
+6. 남은 local Spot을 닫고 Spot·Actor location ownership을 정리한다.
+7. location store를 사용하는 구성은 MeshNode descriptor를 제거한다. manual mode는 peer admission
    state를 제거한다.
-7. ROUTER connection과 runtime을 종료한다.
+8. ROUTER connection과 runtime을 종료한다.
 
 ROUTER 종료를 먼저 수행해 이미 수락한 reply와 multicast submit 경로를 제거하지 않는다.
 

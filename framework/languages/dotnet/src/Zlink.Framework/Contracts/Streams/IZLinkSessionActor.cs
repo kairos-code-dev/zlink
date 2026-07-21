@@ -6,7 +6,7 @@ public interface IZLinkSessionActor
 
     ActorRef Ref { get; }
 
-    ValueTask RelayAsync(
+    ValueTask<ZLinkSubmitResult> RelayAsync(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 

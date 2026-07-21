@@ -2,9 +2,9 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string channelName)
+    internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string meshName)
     {
-        return _spots.GetPublisherBundle(GetOrStartState(), channelName);
+        return _spots.GetPublisherBundle(GetOrStartState(), meshName);
     }
 
     public ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(

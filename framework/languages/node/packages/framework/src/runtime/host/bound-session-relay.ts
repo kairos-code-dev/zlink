@@ -1,5 +1,5 @@
 import type { ActorRef } from '../../contracts';
-import type { ZLinkBackendSpotNode } from '../backend';
+import type { ZLinkBackendActorSessionNode } from '../backend';
 import {
   type ZLinkActorRoutedJoinTransport
 } from '../actors';
@@ -25,7 +25,7 @@ export interface ZLinkBoundSessionRelayOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
-  readonly primarySpotNode: () => ZLinkBackendSpotNode;
+  readonly primaryMeshNode: () => ZLinkBackendActorSessionNode;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
   readonly errorSink: () => { reportRuntimeTaskException(taskName: string, error: unknown): void };
   readonly boundSessionFactory: (actorId: string) => DefaultZLinkBoundSession;
@@ -53,7 +53,7 @@ export class ZLinkBoundSessionRelay {
       streamBindingRuntime: options.streamBindingRuntime,
       actorManager: options.actorManager,
       meshRouters: options.meshRouters,
-      primarySpotNode: options.primarySpotNode,
+      primarySpotNode: options.primaryMeshNode,
       destroyedActorRefs: options.destroyedActorRefs,
       boundSessionFactory: options.boundSessionFactory,
       updateRemoteActorPacketTarget: (actorId, value) =>

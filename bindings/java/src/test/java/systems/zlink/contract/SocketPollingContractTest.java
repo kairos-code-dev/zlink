@@ -13,8 +13,6 @@ import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.eventing.ZlinkTimer;
 import java.time.Duration;
 import java.util.List;
@@ -76,17 +74,6 @@ public class SocketPollingContractTest {
             assertEquals(PollSourceKind.TIMER, events.sourceKind(0));
             assertEquals(11L, events.slot(0));
             assertTrue(timer.recv() > 0L);
-        }
-    }
-
-    @Test
-    public void spotRecvRoutedDontWaitReturnsFalseWhenNoRouteMessageIsAvailable() {
-        TestSupport.assumeNative();
-
-        try (Context ctx = Zlink.createContext();
-             SpotNode node = ctx.createSpotNode();
-             Received received = new Received()) {
-            assertFalse(node.entrySpot().recvRouted(received, RecvFlags.DONT_WAIT));
         }
     }
 
@@ -219,34 +206,6 @@ public class SocketPollingContractTest {
 
             assertTrue(sawSocket);
             assertTrue(sawZlinkTimer);
-        }
-    }
-
-    @Test
-    public void pollerTracksSpotPublishReadinessThroughPublicSpotApi() {
-        TestSupport.assumeNative();
-
-        try (Context ctx = Zlink.createContext();
-             SpotNode publisherNode = ctx.createSpotNode();
-             SpotNode subscriberNode = ctx.createSpotNode();
-             Spot publisher = publisherNode.createSpot();
-             Spot subscriber = subscriberNode.createSpot();
-             Poller poller = Zlink.createPoller()) {
-            String endpoint = TestSupport.tcpEndpoint();
-            publisherNode.setPubBind(endpoint);
-            subscriberNode.connectPeer(endpoint);
-            subscriber.setSubscription("pollout-topic");
-            TestSupport.awaitCondition(() -> subscriberNode.status()
-                .connectedPeerCount() > 0);
-
-            poller.add(publisher, 51L, PollEventFlags.POLLOUT);
-
-            PollEvents events = new PollEvents(1);
-            int count = poller.wait(events,
-                Duration.ofMillis(TestSupport.DEFAULT_TIMEOUT_MS));
-            assertEquals(1, count);
-            assertEquals(51L, events.slot(0));
-            assertTrue(events.hasEvent(0, PollEventFlags.POLLOUT));
         }
     }
 

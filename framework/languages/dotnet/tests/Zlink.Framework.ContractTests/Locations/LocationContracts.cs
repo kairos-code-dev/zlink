@@ -22,6 +22,10 @@ public sealed class LocationContracts
         Assert.Contains(
             typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
             static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.ListRoutingIdSlotsAsync));
+
+        Assert.Equal(
+            [nameof(ZLinkRoutingIdSlotAllocationMember.MeshName), nameof(ZLinkRoutingIdSlotAllocationMember.RoutingIdPrefix)],
+            typeof(ZLinkRoutingIdSlotAllocationMember).GetProperties().Select(static property => property.Name));
     }
 
     [Fact]
@@ -144,10 +148,11 @@ public sealed class LocationContracts
 
         // Messaging lookup returns an opaque handle. The framework, not the caller,
         // owns its location snapshot updates and the safe request refresh rule.
-        var spotHandle = await resolver.ResolveSpotHandleAsync(RoutingId.From("spot-1"));
+        var spotHandle = await resolver.ResolveSpotHandleAsync(
+            "play", RoutingId.From("spot-1"));
         Assert.Null(spotHandle);
 
-        var actorSpotHandle = await resolver.ResolveActorSpotHandleAsync("actor-1");
+        var actorSpotHandle = await resolver.ResolveActorSpotHandleAsync("play", "actor-1");
         Assert.Null(actorSpotHandle);
 
         Assert.Empty(typeof(SpotHandle).GetConstructors());
@@ -392,11 +397,13 @@ public sealed class LocationContracts
         }
 
         public ValueTask<SpotHandle?> ResolveSpotHandleAsync(
+            string meshName,
             RoutingId spotRid,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<SpotHandle?>(null);
 
         public ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
+            string meshName,
             string actorId,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<SpotHandle?>(null);

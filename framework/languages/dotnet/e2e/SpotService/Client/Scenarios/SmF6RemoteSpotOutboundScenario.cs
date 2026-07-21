@@ -1,4 +1,5 @@
 // Verifies SM-F6 Remote Spot Outbound behavior.
+using System.Diagnostics;
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
@@ -27,7 +28,7 @@ internal static class SmF6RemoteSpotOutboundScenario
         // (spec 04 §1.1), so poll within a bounded window until the pair
         // admits instead of asserting on the racing first attempt.
         SpotOnlyMeshRes mesh;
-        var admissionDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        var admissionElapsed = Stopwatch.StartNew();
         while (true)
         {
             try
@@ -38,7 +39,7 @@ internal static class SmF6RemoteSpotOutboundScenario
                 break;
             }
             catch (Zlink.Framework.Contracts.Errors.ZLinkFrameworkException)
-                when (DateTimeOffset.UtcNow < admissionDeadline)
+                when (admissionElapsed.Elapsed < TimeSpan.FromSeconds(3))
             {
                 await Task.Delay(200);
             }

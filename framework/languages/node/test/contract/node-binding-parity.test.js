@@ -10,7 +10,7 @@ test('node binding exposes the public API required by framework P2-P8', () => {
     'createRouterSocket',
     'createPubSocket',
     'createSubSocket',
-    'createSpotNode',
+    'createMeshNode',
     'createStreamSocket'
   ]) {
     assert.equal(typeof zlink[name], 'function', `${name} must be public`);
@@ -24,7 +24,7 @@ test('node binding exposes the public API required by framework P2-P8', () => {
   }
 });
 
-test('node binding public API covers monitor and session relay wrappers without discovery registry wrappers', () => {
+test('node binding public API covers formal MeshNode monitor and stream-session wrappers', () => {
   const context = zlink.createContext();
   const closeables = [];
 
@@ -33,33 +33,24 @@ test('node binding public API covers monitor and session relay wrappers without 
     const router = zlink.createRouterSocket(context);
     const publisher = zlink.createPubSocket(context);
     const subscriber = zlink.createSubSocket(context);
-    const spotNode = zlink.createSpotNode(context);
+    const meshNode = zlink.createMeshNode(context, { meshName: 'binding-parity' });
     const stream = zlink.createStreamSocket(context);
     const monitor = dealer.monitorOpen();
 
-    closeables.push(monitor, stream, spotNode, subscriber, publisher, router, dealer);
+    closeables.push(monitor, stream, meshNode, subscriber, publisher, router, dealer);
 
     assert.equal(dealer.attachDiscovery, undefined);
     assert.equal(router.attachDiscovery, undefined);
     assert.equal(publisher.attachDiscovery, undefined);
     assert.equal(subscriber.attachDiscovery, undefined);
-    assert.equal(spotNode.attachDiscovery, undefined);
-    assert.equal(typeof spotNode.createActor, 'function');
+    assert.equal(meshNode.attachDiscovery, undefined);
+    assert.equal(typeof meshNode.createActor, 'function');
+    assert.equal(typeof meshNode.openMonitor, 'function');
+    assert.equal(typeof meshNode.createStreamSessionService, 'function');
     assert.equal(typeof stream.setPacketHandler, 'function');
-    assert.equal(typeof stream.bindActor, 'function');
-    assert.equal(typeof stream.unbindActor, 'function');
-    assert.equal(typeof stream.sendBoundActor, 'function');
-    assert.equal(typeof stream.boundActors, 'function');
     assert.equal(typeof monitor.onEvent, 'function');
     assert.equal(typeof monitor.recv, 'function');
     assert.equal(typeof monitor.status, 'function');
-    const actor = spotNode.createActor('p15-actor');
-    const sessionRid = zlink.RoutingId.from('p15-session');
-    assert.equal(typeof stream.bindActor(sessionRid, actor.ref()).submit, 'function');
-    assert.equal(typeof stream.unbindActor(sessionRid, 'p15-actor').submit, 'function');
-    assert.equal(typeof stream.sendBoundActor(sessionRid, 'p15-actor').submit, 'function');
-    assert.equal(Array.isArray(stream.boundActors(sessionRid)), true);
-    actor.close(0);
   } finally {
     for (const closeable of closeables) {
       closeable.close();

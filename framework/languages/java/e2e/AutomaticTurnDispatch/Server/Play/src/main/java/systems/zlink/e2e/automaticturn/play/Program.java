@@ -20,8 +20,7 @@ import systems.zlink.e2e.automaticturn.shared.AwaitEntrySpot;
 import systems.zlink.e2e.automaticturn.shared.AwaitProbeHandlers;
 import systems.zlink.e2e.automaticturn.shared.AwaitProbeSpot;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
-import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -103,20 +102,19 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(config.logDirectory() + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-atd-" + nodeRid);
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(config.routeEndpoint())
+            ZLinkMeshNodeBuilder mesh = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(config.routeEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            options.configureLocations().setSpotRouterChannel(
-                Contracts.SPOT_MESH, Contracts.ROUTE_CHANNEL);
+            mesh.channelName(Contracts.ROUTE_CHANNEL);
             String routePeerEndpoint = config.routePeerEndpoint();
             if (!routePeerEndpoint.isBlank()) {
-                route.enableClient(routePeerEndpoint);
+                mesh.peerConnections().connect(routePeerEndpoint);
             }
-            route.addRequestHandler(
+            mesh.addRouteRequestHandler(
                 PlayBindActorsHandler.class,
                 Contracts.BindActorsReq.class,
                 Contracts.BindActorsRes.class);
-            route.addRequestHandler(
+            mesh.addRouteRequestHandler(
                 EnsureSpotHandler.Play.class,
                 Contracts.EnsureSpotReq.class,
                 Contracts.EnsureSpotRes.class);
@@ -133,15 +131,9 @@ public final class Program {
                         AwaitProbeHandlers.ObservabilityFanoutHandler.class,
                         Contracts.ObservabilityFanoutEvent.class);
             }
-            ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
-            spot.useDrainPolicy("release".equals(config.spotDrainPolicy())
-                ? systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE
-                : systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.DRAIN_NATURAL);
-            spot.enableRouter(config.spotEndpoint())
-                .setRoutingId(RoutingId.from(nodeRid));
-            spot.addEntrySpot(AwaitEntrySpot.class);
-            spot.addSpotFactory(AwaitProbeSpot.class);
-            spot.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
+            mesh.addEntrySpot(AwaitEntrySpot.class);
+            mesh.addSpotFactory(AwaitProbeSpot.class);
+            mesh.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
         };
     }
 

@@ -17,7 +17,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -81,9 +81,8 @@ public class Program {
                 .enableClient();
             options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-b"))
                 .enableClient();
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.PlayerQuestSpotDiscovery);
-            node.enableRouter(mission.spotRouterEndpoint())
-                .enablePubSub(mission.spotEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.PlayerQuestSpotDiscovery);
+            node.listen(mission.spotRouterEndpoint())
                 .setRoutingId(mission.routingId());
             node.addSpotFactory(PlayerQuestSpot.class);
         };

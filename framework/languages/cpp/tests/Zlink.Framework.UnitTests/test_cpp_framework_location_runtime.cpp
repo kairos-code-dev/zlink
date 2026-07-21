@@ -22,13 +22,20 @@ using zlink::framework::runtime::location_runtime_t;
 
 actor_location_t make_actor (std::string actor_id, std::int64_t generation = 0)
 {
-    return actor_location_t{.actor_id = std::move (actor_id),
+    (void) generation;
+    const auto actor_id_copy = actor_id;
+    return actor_location_t{.mesh_name = "play",
+                            .actor_id = std::move (actor_id),
                             .actor_type = "player",
-                            .actor_ref = std::nullopt,
-                            .node_rid = zlink::routing_id_t::from ("node-a"),
-                            .location_kind = zlink::spot_kind::entry,
-                            .spot_mesh_name = "play",
-                            .generation = generation};
+                            .actor_ref = zlink::framework::actor_ref_t (
+                              zlink::framework::node_rid_t::from_string ("node-a"),
+                              "player", actor_id_copy, 1),
+                            .owner_node_rid = zlink::routing_id_t::from ("node-a"),
+                            .owner_node_generation = 1,
+                            .spot_rid = zlink::routing_id_t::from ("entry-spot"),
+                            .spot_generation = 1,
+                            .spot_kind = zlink::spot_kind::entry,
+                            .membership_epoch = 1};
 }
 
 TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
@@ -49,17 +56,19 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
     EXPECT_EQ (location_write_status_t::stored, write.status);
 
     auto row =
-      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+      store.resolve_actor (
+             actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"})
         .result ()
         .value ();
     ASSERT_TRUE (row.has_value ());
     EXPECT_EQ ("owner-a", row->owner_id);
-    EXPECT_EQ (write.generation, row->generation);
+    EXPECT_EQ ("play", row->mesh_name);
 
     runtime.stop ();
     EXPECT_TRUE (store.list_owner_leases ().result ().value ().leases.empty ());
     EXPECT_FALSE (
-      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+      store.resolve_actor (
+             actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"})
         .result ()
         .value ()
         .has_value ());
@@ -124,12 +133,15 @@ TEST (ZLinkFrameworkLocationRuntime, PerKeyOwnershipLossKeepsOtherClaims)
       location_write_status_t::stored,
       owner_b.write_actor (make_actor ("actor-1"), location_write_intent_t::takeover).status);
 
-    const auto stale = lifecycle_a.renew_actor (actor_location_key_t{.actor_id = "actor-1"});
+    const auto stale = lifecycle_a.renew_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"});
     EXPECT_EQ (location_write_status_t::ignored_stale, stale.status);
     ASSERT_EQ (1u, deactivated.size ());
     EXPECT_EQ ("actor-1", deactivated.front ());
-    EXPECT_FALSE (lifecycle_a.owns_actor (actor_location_key_t{.actor_id = "actor-1"}));
-    EXPECT_TRUE (lifecycle_a.owns_actor (actor_location_key_t{.actor_id = "actor-2"}));
+    EXPECT_FALSE (lifecycle_a.owns_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"}));
+    EXPECT_TRUE (lifecycle_a.owns_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-2"}));
 
     owner_b.stop ();
     owner_a.stop ();
@@ -159,14 +171,21 @@ TEST (ZLinkFrameworkLocationRuntime, StaleReleaseAfterTakeoverDoesNotDeactivate)
       location_write_status_t::stored,
       owner_b.write_actor (make_actor ("actor-1"), location_write_intent_t::takeover).status);
 
-    const auto released = lifecycle_a.release_actor (actor_location_key_t{.actor_id = "actor-1"});
+    const auto released = lifecycle_a.release_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"});
     EXPECT_EQ (location_write_status_t::ignored_stale, released.status);
     EXPECT_TRUE (deactivated.empty ());
-    EXPECT_FALSE (lifecycle_a.owns_actor (actor_location_key_t{.actor_id = "actor-1"}));
-    EXPECT_TRUE (lifecycle_a.owns_actor (actor_location_key_t{.actor_id = "actor-2"}));
+    EXPECT_FALSE (lifecycle_a.owns_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"}));
+    EXPECT_TRUE (lifecycle_a.owns_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "actor-2"}));
 
     // The other owner's row survives the stale release.
-    auto row = store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"}).result ().value ();
+    auto row = store
+                 .resolve_actor (
+                   actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"})
+                 .result ()
+                 .value ();
     ASSERT_TRUE (row.has_value ());
     EXPECT_EQ ("owner-b", row->owner_id);
 

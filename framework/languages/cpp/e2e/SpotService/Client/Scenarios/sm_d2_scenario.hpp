@@ -8,6 +8,7 @@
 #include <zlink/stream_connector.hpp>
 
 #include <chrono>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -50,6 +51,11 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
     if (join_reply.owner_node_rid != "play-b" || join_reply.actor.actor_id != actor_id) {
         throw std::runtime_error ("SM-D2 actor was not created on remote play-b node");
     }
+    std::cout << "sm-d2 actor-ref node=" << join_reply.actor.node_rid
+              << " type=" << join_reply.actor.actor_type
+              << " actor=" << join_reply.actor.actor_id
+              << " generation=" << join_reply.actor.generation
+              << " spot=" << join_reply.spot_rid << '\n';
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;

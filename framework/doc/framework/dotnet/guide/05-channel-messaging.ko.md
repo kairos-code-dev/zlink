@@ -400,10 +400,10 @@ public sealed class PriceService(IZLinkRouteClient client)
         return reply.Price;
     }
 
-    public ValueTask RefreshAsync(string accountId, CancellationToken ct)
-        => client
+    public async ValueTask RefreshAsync(string accountId, CancellationToken ct)
+        => await client
             .SendToChannel("services", "profile", new RefreshCacheCommand(accountId))
-            .Submit(ct);               // send: 응답과 완료 객체를 기다리지 않는다
+            .SubmitAsync(ct);          // send: admission 결과까지만 기다리고 원격 handler 완료는 기다리지 않는다
 }
 ```
 
@@ -433,12 +433,12 @@ await client
 ```csharp
 public sealed class ProfileService(IZLinkFanoutClient publisher)
 {
-    public ValueTask AnnounceAsync(string accountId, CancellationToken ct)
-        => publisher
+    public async ValueTask AnnounceAsync(string accountId, CancellationToken ct)
+        => await publisher
             // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 }
 ```
 
@@ -841,12 +841,12 @@ public sealed class UserHandlers(IZLinkFanoutClient publisher)
         => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
     [ZLinkSend]
-    public ValueTask RefreshAsync(
+    public async ValueTask RefreshAsync(
         RefreshUserCacheCommand command, ZLinkSendContext context, CancellationToken ct)
-        => publisher
+        => await publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 }
 
 [ZLinkHandlerGroup("api.events")]

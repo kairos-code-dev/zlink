@@ -26,36 +26,17 @@ internal sealed class ZLinkSpotNodeCatalog(
     private TaskCompletionSource? _creationsDrained;
     private int _activeCreations;
     private bool _closed;
-    private string? _activeDrainMetricPolicy;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
 
-    internal void BeginDrain(ZLinkSpotDrainPolicy policy)
+    internal async ValueTask<bool> TryDrainAsync(CancellationToken cancellationToken)
     {
-        Volatile.Write(ref _activeDrainMetricPolicy, MetricPolicy(policy));
-    }
-
-    internal async ValueTask<bool> TryDrainAsync(
-        ZLinkSpotDrainPolicy policy,
-        CancellationToken cancellationToken)
-    {
-        BeginDrain(policy);
-        if (policy == ZLinkSpotDrainPolicy.ReleaseAndRecreate)
-        {
-            var activations = SnapshotActivations();
-            foreach (var activation in activations)
-                await CloseAsync(activation.SpotRid, cancellationToken).ConfigureAwait(false);
-        }
+        var activations = SnapshotActivations();
+        foreach (var activation in activations)
+            await CloseAsync(activation.SpotRid, cancellationToken).ConfigureAwait(false);
 
         lock (_gate) return _spots.Count == 0;
     }
-
-    private static string MetricPolicy(ZLinkSpotDrainPolicy policy) => policy switch
-    {
-        ZLinkSpotDrainPolicy.DrainNatural => "drain_natural",
-        ZLinkSpotDrainPolicy.ReleaseAndRecreate => "release_and_recreate",
-        _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "Unknown SPOT drain policy.")
-    };
 
     internal void RequestStop()
     {
@@ -534,23 +515,18 @@ internal sealed class ZLinkSpotNodeCatalog(
                 return false;
             }
 
-            await ReleaseSpotLocationAsync(spotRid).ConfigureAwait(false);
-        }
-        catch (Exception releaseFailure)
-        {
-            lock (_gate) _closing.Remove(spotRid);
-            transaction.TrySetException(releaseFailure);
-            throw;
-        }
-
-        Exception? failure = null;
-        try
-        {
             await activation.DisposeAsync().ConfigureAwait(false);
+            await ReleaseSpotLocationAsync(spotRid).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            failure = failure is null ? exception : new AggregateException(failure, exception);
+            lock (_gate)
+            {
+                _spots.Remove(spotRid);
+                _closing.Remove(spotRid);
+            }
+            transaction.TrySetException(exception);
+            throw;
         }
 
         lock (_gate)
@@ -558,15 +534,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             _spots.Remove(spotRid);
             _closing.Remove(spotRid);
         }
-        if (Volatile.Read(ref _activeDrainMetricPolicy) is { } policy)
-            ZLinkRuntimeMetrics.RecordDrainRoom(policy);
         ZLinkRuntimeMetrics.RecordSpotClosed("user");
-
-        if (failure is not null)
-        {
-            transaction.TrySetException(failure);
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        }
 
         transaction.TrySetResult(true);
         return true;
@@ -591,8 +559,6 @@ internal sealed class ZLinkSpotNodeCatalog(
             _spots.Remove(activation.SpotRid);
             _closing.Remove(activation.SpotRid);
         }
-        if (Volatile.Read(ref _activeDrainMetricPolicy) is { } policy)
-            ZLinkRuntimeMetrics.RecordDrainRoom(policy);
         ZLinkRuntimeMetrics.RecordSpotClosed("user");
         failures.ThrowIfAny();
     }

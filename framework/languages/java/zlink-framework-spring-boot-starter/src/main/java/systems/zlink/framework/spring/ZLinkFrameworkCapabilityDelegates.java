@@ -26,11 +26,19 @@ final class ZLinkFrameworkCapabilityDelegates {
         BeanDefinitionRegistry registry,
         ConfigurableListableBeanFactory beanFactory,
         DefaultZLinkFrameworkOptions options) {
-        boolean hasSpotNode = !options.registration().spotNodes().isEmpty();
+        boolean hasSpotNode = !options.registration().spotNodes().isEmpty()
+            || options.registration().meshNodes().stream().anyMatch(node ->
+                !node.spotFactories().isEmpty()
+                    || !node.entrySpots().isEmpty()
+                    || !node.actorFactories().isEmpty());
         boolean hasActorFactory = options.registration().spotNodes().stream()
-            .anyMatch(node -> !node.actorFactories().isEmpty());
+            .anyMatch(node -> !node.actorFactories().isEmpty())
+            || options.registration().meshNodes().stream()
+                .anyMatch(node -> !node.actorFactories().isEmpty());
         boolean hasSpotPublisherClient = options.registration().spotNodes().stream()
-            .anyMatch(node -> node.pubSubEnabled());
+            .anyMatch(node -> node.pubSubEnabled())
+            || options.registration().meshNodes().stream()
+                .anyMatch(node -> !node.channelNames().isEmpty());
         boolean hasLocationStore = options.registration().locations().enabled();
 
         if (hasSpotNode && !ZLinkSpringBeanDefinitions.hasBean(beanFactory, ZLinkSpotManager.class)) {

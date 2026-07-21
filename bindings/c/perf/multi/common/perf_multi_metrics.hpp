@@ -153,6 +153,48 @@ class bench_latency_sampler_t
     }
 };
 
+inline bool is_echo_pattern (const std::string &pattern)
+{
+    std::string normalized = pattern;
+    if (normalized.compare (0, 6, "MULTI_") == 0)
+        normalized.erase (0, 6);
+    if (normalized == "DEALER_ROUTER")
+        normalized = "DEALER_ROUTER_SENDSEND";
+    else if (normalized == "ROUTER_ROUTER")
+        normalized = "ROUTER_ROUTER_SENDSEND";
+    return normalized == "DEALER_ROUTER_SENDSEND"
+           || normalized == "ROUTER_ROUTER_SENDSEND"
+           || normalized == "DEALER_ROUTER_REQREP"
+           || normalized == "ROUTER_ROUTER_REQREP"
+           || normalized == "SPOT_REQREP"
+           || normalized == "SPOT_SENDSEND"
+           || normalized == "STREAM";
+}
+
+inline double latency_sample_ns (const std::string &pattern, uint64_t elapsed_ns)
+{
+    // Echo patterns measure an estimated one-way latency from a round trip.
+    // One-way patterns already carry a single-leg elapsed time.
+    return static_cast<double> (elapsed_ns) * (is_echo_pattern (pattern) ? 0.5 : 1.0);
+}
+
+inline double throughput_per_second (uint64_t count, double duration_seconds)
+{
+    if (duration_seconds <= 0.0)
+        return 0.0;
+    return static_cast<double> (count) / duration_seconds;
+}
+
+inline double bandwidth_mb_per_second (
+  const std::string &pattern,
+  size_t payload_size,
+  double throughput)
+{
+    const double direction_factor = is_echo_pattern (pattern) ? 2.0 : 1.0;
+    return (throughput * static_cast<double> (payload_size) * direction_factor)
+           / 1000000.0;
+}
+
 inline void print_result (const std::string &lib_type,
                           const std::string &pattern,
                           const std::string &transport,
@@ -170,15 +212,8 @@ inline void print_result (const std::string &lib_type,
     else if (normalized_pattern == "ROUTER_ROUTER")
         normalized_pattern = "ROUTER_ROUTER_SENDSEND";
 
-    const bool is_echo_pattern =
-      normalized_pattern == "DEALER_ROUTER_SENDSEND"
-      || normalized_pattern == "ROUTER_ROUTER_SENDSEND"
-      || normalized_pattern == "DEALER_ROUTER_REQREP"
-      || normalized_pattern == "ROUTER_ROUTER_REQREP" || normalized_pattern == "SPOT_REQREP"
-      || normalized_pattern == "SPOT_SENDSEND" || normalized_pattern == "STREAM";
-    const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
-      (throughput * static_cast<double> (size) * direction_factor) / 1000000.0;
+      bandwidth_mb_per_second (normalized_pattern, size, throughput);
     const double latency_ms = latency_ns / 1000000.0;
     const double latency_p95_ms = latency_p95_ns / 1000000.0;
     const double latency_p99_ms = latency_p99_ns / 1000000.0;

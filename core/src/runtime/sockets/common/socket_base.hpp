@@ -97,6 +97,9 @@ class socket_base_t : public own_t,
 {
     friend class reaper_t;
     friend class socket_callback_scope_t;
+#ifdef ZLINK_BUILD_TESTS
+    friend class session_termination_test_access_t;
+#endif
 
   public:
     //  Returns false if object is not a socket.
@@ -133,13 +136,18 @@ class socket_base_t : public own_t,
     int send_routed_scoped (const zlink_routing_id_t *target_rid_,
                             zlink::msg_t *msg_,
                             int flags_,
-                            socket_public_send_scope_t &scope_);
+                            socket_public_send_scope_t &scope_,
+                            uint64_t *connection_id_out_ = NULL,
+                            uint64_t expected_connection_id_ = 0);
     std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
     int recv (zlink::msg_t *msg_, int flags_);
     int recv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_, int flags_);
-    int recv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_, int flags_);
+    int recv_routed (zlink::msg_t *msg_,
+                     zlink_routing_id_t *source_rid_out_,
+                     int flags_,
+                     uint64_t *connection_id_out_ = NULL);
     int close ();
     int close (int handoff_timeout_ms_);
     int socket_msg_dispatch_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -323,7 +331,10 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that send is not supported.
     virtual bool xhas_out ();
     virtual int xsend (zlink::msg_t *msg_);
-    virtual int xsend_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_);
+    virtual int xsend_routed (const zlink_routing_id_t *target_rid_,
+                              zlink::msg_t *msg_,
+                              uint64_t *connection_id_out_,
+                              uint64_t expected_connection_id_);
     virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_, int err_) const;
     virtual int xrollback ();
 
@@ -331,7 +342,9 @@ class socket_base_t : public own_t,
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
     virtual int xrecv_pipe (zlink::msg_t *msg_, zlink::pipe_t **pipe_out_);
-    virtual int xrecv_routed (zlink::msg_t *msg_, zlink_routing_id_t *source_rid_out_);
+    virtual int xrecv_routed (zlink::msg_t *msg_,
+                              zlink_routing_id_t *source_rid_out_,
+                              uint64_t *connection_id_out_);
     virtual int xterm_peer_rid (const zlink_routing_id_t *peer_rid_);
     virtual int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
     virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
@@ -414,7 +427,9 @@ class socket_base_t : public own_t,
     int send_direct_with_retry (const zlink_routing_id_t *target_rid_,
                                 zlink::msg_t *msg_,
                                 int flags_,
-                                socket_public_send_scope_t &scope_);
+                                socket_public_send_scope_t &scope_,
+                                uint64_t *connection_id_out_ = NULL,
+                                uint64_t expected_connection_id_ = 0);
 
     enum
     {

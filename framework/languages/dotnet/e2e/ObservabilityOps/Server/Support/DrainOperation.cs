@@ -8,6 +8,7 @@ public sealed class DrainOperation
     private readonly object _gate = new();
     private Task<ZLinkDrainResult>? _task;
     private Exception? _error;
+    private int _terminalCount;
 
     public DrainStatus Start(IZLinkDrainControl drain, TimeSpan deadline)
     {
@@ -26,7 +27,8 @@ public sealed class DrainOperation
                 _task?.IsCompleted ?? false,
                 result?.GetType().Name,
                 (result as ForceStopped)?.Reason.ToString(),
-                _error?.Message);
+                _error?.Message,
+                Volatile.Read(ref _terminalCount));
         }
     }
 
@@ -48,6 +50,10 @@ public sealed class DrainOperation
         {
             lock (_gate) _error = exception;
             throw;
+        }
+        finally
+        {
+            Interlocked.Increment(ref _terminalCount);
         }
     }
 }

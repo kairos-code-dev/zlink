@@ -398,10 +398,6 @@ inline void normalize_latency_stats (double lat_sum,
         stats.p95_ns = stats.mean_ns;
     if (stats.p99_ns <= 0.0)
         stats.p99_ns = stats.p95_ns;
-    if (stats.p95_ns < stats.mean_ns)
-        stats.p95_ns = stats.mean_ns;
-    if (stats.p99_ns < stats.p95_ns)
-        stats.p99_ns = stats.p95_ns;
     *latency_out = stats;
 }
 
@@ -770,7 +766,8 @@ inline bool run_echo_window_round_robin (const std::vector<void *> &sockets,
                                          long *recv_total,
                                          double *lat_sum,
                                          long *lat_count,
-                                         bench_latency_stats_t *latency_stats)
+                                         bench_latency_stats_t *latency_stats,
+                                         std::vector<double> *latency_samples_out = NULL)
 {
     if (sockets.empty ())
         return false;
@@ -1003,6 +1000,11 @@ inline bool run_echo_window_round_robin (const std::vector<void *> &sockets,
             *latency_stats = bench_latency_stats_t ();
         else
             normalize_latency_stats (lat_sum_local, lat_count_local, &lat_samples, latency_stats);
+    }
+    if (latency_samples_out) {
+        latency_samples_out->clear ();
+        if (collect_latency)
+            lat_samples.append_samples (latency_samples_out);
     }
 
     return !fatal_error;

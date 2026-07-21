@@ -4,12 +4,26 @@ package systems.zlink.runtime.nativeapi;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.ActorLocation;
+import systems.zlink.contracts.service.spot.ActorControlRecord;
+import systems.zlink.contracts.service.spot.ActorJoinCompletion;
+import systems.zlink.contracts.service.spot.ActorJoinDecision;
+import systems.zlink.contracts.service.spot.ActorLifecycleKind;
 import systems.zlink.contracts.service.spot.ActorRef;
+import systems.zlink.contracts.service.spot.ActorTransferControl;
+import systems.zlink.contracts.service.spot.ActorTransferId;
+import systems.zlink.contracts.service.spot.ActorTransferPhase;
+import systems.zlink.contracts.service.spot.ActorTransferPrepare;
+import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
+import systems.zlink.contracts.service.spot.ActorTransferRole;
+import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.MeshNodeState;
 import systems.zlink.contracts.service.spot.MeshNodeStatus;
+import systems.zlink.contracts.service.spot.MeshDestinationKind;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.MeshPeerSource;
 import systems.zlink.contracts.service.spot.MeshPeerState;
+import systems.zlink.contracts.service.spot.MeshRecordPayload;
+import systems.zlink.contracts.service.spot.MeshSendReadyData;
 import systems.zlink.contracts.service.spot.OperationId;
 import systems.zlink.contracts.service.spot.OperationKind;
 import systems.zlink.contracts.service.spot.OwnerKind;
@@ -81,6 +95,72 @@ public final class ServiceInterop {
         long generation = view.get(ValueLayout.JAVA_LONG_UNALIGNED,
             NativeLayouts.ACTOR_REF_GENERATION_OFFSET);
         return new ActorRef(nodeRid, actorId, generation);
+    }
+
+    public static MemorySegment actorTransferPrepareToNative(
+        Arena arena, ActorTransferPrepare prepare) {
+        MemoryLayout layout = ServiceLayouts.ACTOR_TRANSFER_PREPARE;
+        MemorySegment out = allocStamped(arena, layout);
+        out.set(ValueLayout.JAVA_INT_UNALIGNED, off(layout, "role"),
+            prepare.role().value());
+        writeTransferId(slice(out, layout, "transfer_id",
+            ServiceLayouts.ACTOR_TRANSFER_ID.byteSize()), prepare.transferId());
+        writeActorRef(slice(out, layout, "actor",
+            NativeLayouts.ACTOR_REF_LAYOUT.byteSize()), prepare.actor());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+            off(layout, "expected_membership_epoch"),
+            prepare.expectedMembershipEpoch());
+        NativeRoutingIds.write(slice(out, layout, "peer_node_rid",
+            NativeLayouts.ROUTING_ID_LAYOUT.byteSize()), prepare.peerNodeRid());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED, off(layout, "final_sequence"),
+            prepare.finalSequence());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+            off(layout, "reserve_message_count"), prepare.reserveMessageCount());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+            off(layout, "reserve_byte_count"), prepare.reserveByteCount());
+        return out;
+    }
+
+    public static ActorTransferPrepareResult actorTransferPrepareResultFromNative(
+        MemorySegment value) {
+        MemoryLayout layout = ServiceLayouts.ACTOR_TRANSFER_PREPARE_RESULT;
+        return new ActorTransferPrepareResult(
+            ActorTransferRole.fromValue(i32(value, layout, "role")),
+            transferIdFromNative(slice(value, layout, "transfer_id",
+                ServiceLayouts.ACTOR_TRANSFER_ID.byteSize())),
+            actorRefFromNative(slice(value, layout, "actor",
+                NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+            u64(value, layout, "final_sequence"),
+            u64(value, layout, "reserve_message_count"),
+            u64(value, layout, "reserve_byte_count"));
+    }
+
+    public static ActorTransferToken actorTransferTokenFromNative(MemorySegment value) {
+        byte[] opaque = new byte[(int) ServiceLayouts.ACTOR_TRANSFER_TOKEN.byteSize()];
+        MemorySegment.copy(value, 0, MemorySegment.ofArray(opaque), 0, opaque.length);
+        return ContractAccess.actorTransferTokenCreate(opaque);
+    }
+
+    public static MemorySegment actorTransferTokenToNative(
+        Arena arena, ActorTransferToken token) {
+        MemorySegment out = arena.allocate(ServiceLayouts.ACTOR_TRANSFER_TOKEN);
+        byte[] opaque = ContractAccess.actorTransferTokenOpaque(token);
+        MemorySegment.copy(MemorySegment.ofArray(opaque), 0, out, 0,
+            Math.min(opaque.length, out.byteSize()));
+        return out;
+    }
+
+    private static void writeTransferId(MemorySegment out, ActorTransferId id) {
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+            ServiceLayouts.off(ServiceLayouts.ACTOR_TRANSFER_ID, "high"), id.high());
+        out.set(ValueLayout.JAVA_LONG_UNALIGNED,
+            ServiceLayouts.off(ServiceLayouts.ACTOR_TRANSFER_ID, "low"), id.low());
+    }
+
+    private static ActorTransferId transferIdFromNative(MemorySegment value) {
+        return new ActorTransferId(
+            u64(value, ServiceLayouts.ACTOR_TRANSFER_ID, "high"),
+            u64(value, ServiceLayouts.ACTOR_TRANSFER_ID, "low"));
     }
 
     // --- operation id ---
@@ -222,25 +302,111 @@ public final class ServiceInterop {
         String channelName = readStr(s, l, "channel_name", "channel_name_size");
         String topic = readStr(s, l, "topic", "topic_size");
         byte[] appMeta = readBytes(s, l, "application_metadata", "application_metadata_size");
+        RecordKind kind = RecordKind.fromValue(i32(s, l, "kind"));
+        OperationKind operationKind =
+            OperationKind.fromValue(i32(s, l, "operation_kind"));
+        MeshRecordPayload kindData = meshRecordPayload(
+            kind,
+            operationKind,
+            s.get(ValueLayout.ADDRESS, ServiceLayouts.off(l, "kind_data")),
+            u64(s, l, "kind_data_size"));
         return new ReceiveRecord(
-            RecordKind.fromValue(i32(s, l, "kind")),
+            kind,
             i32(s, l, "domain"),
             NativeRoutingIds.readAllowEmptyValue(slice(s, l, "source_node_rid",
                 NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
             NativeRoutingIds.readAllowEmptyValue(slice(s, l, "source_spot_rid",
                 NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+            u64(s, l, "source_binding_generation"),
             actorRefFromNative(slice(s, l, "source_actor",
                 NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
             opId,
-            OperationKind.fromValue(i32(s, l, "operation_kind")),
+            operationKind,
             replyToken,
             channelName,
             topic,
             appMeta,
+            kindData,
             i32(s, l, "terminal_result"),
             i32(s, l, "failure_errno"),
             (int) u64(s, l, "part_offset"),
             (int) u64(s, l, "part_count"));
+    }
+
+    private static MeshRecordPayload meshRecordPayload(
+        RecordKind kind,
+        OperationKind operationKind,
+        MemorySegment data,
+        long size) {
+        if (data == null || data.address() == 0 || size == 0) {
+            return null;
+        }
+        if (kind == RecordKind.SEND_READY
+            && size >= ServiceLayouts.MESH_SEND_READY_DATA.byteSize()) {
+            MemorySegment value = data.reinterpret(
+                ServiceLayouts.MESH_SEND_READY_DATA.byteSize());
+            MemoryLayout layout = ServiceLayouts.MESH_SEND_READY_DATA;
+            return new MeshSendReadyData(
+                MeshDestinationKind.fromValue(i32(value, layout, "destination_kind")),
+                NativeRoutingIds.readAllowEmptyValue(slice(value, layout, "target_node_rid",
+                    NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+                NativeRoutingIds.readAllowEmptyValue(slice(value, layout, "target_spot_rid",
+                    NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+                actorRefFromNative(slice(value, layout, "target_actor",
+                    NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+                readStr(value, layout, "channel_name", "channel_name_size"));
+        }
+        if (kind == RecordKind.SPOT_CONTROL
+            && size >= ServiceLayouts.ACTOR_CONTROL_RECORD.byteSize()) {
+            MemorySegment value = data.reinterpret(ServiceLayouts.ACTOR_CONTROL_RECORD.byteSize());
+            MemoryLayout layout = ServiceLayouts.ACTOR_CONTROL_RECORD;
+            return new ActorControlRecord(
+                ActorLifecycleKind.fromValue(i32(value, layout, "kind")),
+                actorRefFromNative(slice(value, layout, "previous_actor",
+                    NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+                actorRefFromNative(slice(value, layout, "current_actor",
+                    NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+                NativeRoutingIds.readAllowEmptyValue(slice(value, layout, "previous_spot_rid",
+                    NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+                NativeRoutingIds.readAllowEmptyValue(slice(value, layout, "current_spot_rid",
+                    NativeLayouts.ROUTING_ID_LAYOUT.byteSize())),
+                u64(value, layout, "previous_spot_generation"),
+                u64(value, layout, "current_spot_generation"),
+                u64(value, layout, "previous_membership_epoch"),
+                u64(value, layout, "current_membership_epoch"),
+                i32(value, layout, "result_code"));
+        }
+        if (kind == RecordKind.COMPLETION
+            && operationKind == OperationKind.ACTOR_JOIN
+            && size >= ServiceLayouts.ACTOR_JOIN_COMPLETION.byteSize()) {
+            MemorySegment value = data.reinterpret(ServiceLayouts.ACTOR_JOIN_COMPLETION.byteSize());
+            MemoryLayout layout = ServiceLayouts.ACTOR_JOIN_COMPLETION;
+            MemorySegment location = slice(value, layout, "location",
+                ServiceLayouts.ACTOR_LOCATION.byteSize());
+            return new ActorJoinCompletion(
+                ActorJoinDecision.fromValue(i32(value, layout, "join_result")),
+                actorRefFromNative(slice(value, layout, "actor",
+                    NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+                actorLocationFromNative(location));
+        }
+        if (kind == RecordKind.TRANSFER_CONTROL
+            && size >= ServiceLayouts.ACTOR_TRANSFER_CONTROL.byteSize()) {
+            MemorySegment value = data.reinterpret(
+                ServiceLayouts.ACTOR_TRANSFER_CONTROL.byteSize());
+            MemoryLayout layout = ServiceLayouts.ACTOR_TRANSFER_CONTROL;
+            return new ActorTransferControl(
+                ActorTransferPhase.fromValue(i32(value, layout, "phase")),
+                ActorTransferRole.fromValue(i32(value, layout, "role")),
+                transferIdFromNative(slice(value, layout, "transfer_id",
+                    ServiceLayouts.ACTOR_TRANSFER_ID.byteSize())),
+                actorRefFromNative(slice(value, layout, "actor",
+                    NativeLayouts.ACTOR_REF_LAYOUT.byteSize())),
+                u64(value, layout, "membership_epoch"),
+                u64(value, layout, "final_sequence"),
+                i32(value, layout, "result_code"),
+                i32(value, layout, "failure_errno"));
+        }
+        return null;
     }
 
     public static byte[] replyTokenToBytes(ReplyToken token) {

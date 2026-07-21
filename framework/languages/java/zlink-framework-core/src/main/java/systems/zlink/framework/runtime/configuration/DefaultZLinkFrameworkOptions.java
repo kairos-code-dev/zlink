@@ -134,11 +134,6 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public void useInMemoryLocationStores() {
-        registration.useInMemoryLocationStores();
-    }
-
-    @Override
     public void addLocationStore(ZLinkLocationStore store) {
         registration.setLocationStore(Objects.requireNonNull(store, "store"));
     }

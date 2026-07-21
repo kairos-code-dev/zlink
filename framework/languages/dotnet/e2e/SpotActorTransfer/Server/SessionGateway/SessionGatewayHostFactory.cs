@@ -28,6 +28,7 @@ internal static class SessionGatewayHostFactory
             mesh27.ChannelName(SpotActorTransferNames.Mesh);
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)
+                .EnableActorDispatch(SpotActorTransferNames.Mesh)
                 .AddSession<TransferSession>();
         });
         var app = builder.Build();

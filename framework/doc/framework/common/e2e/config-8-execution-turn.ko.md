@@ -142,7 +142,7 @@ session gateway·stream framing·actor bind/relay 경로를 건너뛰므로 통�
 **검증 질문:** 응답이 와도 즉시 끼어들지 않고, 큐에 들어가 순차로 처리되는가.
 
 - 절차: handler A가 `.Yield(...)`로 대기하는 동안 probe packet 세 개를 연속으로 보낸다. A의 응답은
-  두 번째 probe가 큐에 들어간 뒤 도착하도록 delay를 맞춘다.
+  두 번째 probe가 queue에 추가된 뒤 도착하도록 delay를 맞춘다.
 - 검증: A의 continuation이 **응답 도착 즉시가 아니라 큐 순서대로** 재개된다. 재개 시점에는 줄을 다시
   배타적으로 점유한다(재개 중 다른 callback이 겹치지 않는다).
 - 세부 동작: continuation 재삽입과 순차 재개.

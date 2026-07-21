@@ -16,6 +16,7 @@ export {
   rejectAllocatedRoutingId,
   registerEntrySpot,
   registerSpotFactory,
+  validateActorTransferTimeout,
   validateActorTransferForwardWindow
 } from './contracts/Configuration/RegistrationBuilderPolicy';
 
@@ -31,6 +32,7 @@ import type {
   ZLinkFanoutClient,
   ZLinkProviderResolver,
   ZLinkRouteClient,
+  ZLinkRouteMeshRuntime,
   ZLinkRuntimeEventPublisher,
   ZLinkSpotManager,
   ZLinkSpotOutbound,
@@ -47,6 +49,7 @@ import type {
 } from './contracts/Configuration/RegistrationTypes';
 import {
   DefaultDispatchOptionsBuilder,
+  DefaultLocationOptionsBuilder,
   DefaultStreamCompressionBuilder
 } from './contracts/Configuration/RegistrationBuilders';
 import { RegistrationCodecRegistryBuilder } from './contracts/Configuration/RegistrationCodecRegistry';
@@ -75,6 +78,7 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
+  readonly routeMeshRuntime: ZLinkRouteMeshRuntime;
   waitForReadyAllocation(
     groupName: string,
     signal?: AbortSignal
@@ -82,9 +86,6 @@ export interface ZLinkNestIntegrationRuntimeHost {
   createLocationHandleResolver(): ZLinkSpotHandleResolver | undefined;
   start(): Promise<void>;
   stop(): Promise<void>;
-  drain(deadlineMs?: number, signal?: AbortSignal): Promise<import('./contracts').ZLinkDrainResult>;
-  awaitDrained(signal?: AbortSignal): Promise<import('./contracts').ZLinkDrainResult>;
-  isReady(): boolean;
   onApplicationBootstrap?(): Promise<void> | void;
   onApplicationShutdown?(): Promise<void> | void;
 }
@@ -93,6 +94,12 @@ export function createIntegrationDispatchOptionsBuilder(
   dispatch: ZLinkDispatchOptions
 ): ZLinkDispatchOptionsBuilder {
   return new DefaultDispatchOptionsBuilder(dispatch);
+}
+
+export function createIntegrationLocationOptionsBuilder(
+  options: Partial<import('./contracts').ZLinkLocationOptionValues>
+): import('./contracts').ZLinkLocationOptions {
+  return new DefaultLocationOptionsBuilder(options);
 }
 
 export function createIntegrationStreamCompressionBuilder(
@@ -121,7 +128,7 @@ export function createIntegrationChannelClient(
   registration: ZLinkFrameworkRegistration,
   runtime: ZLinkNestIntegrationRuntimeHost
 ): ZLinkChannelClient {
-  return new DefaultZLinkChannelClient(registration, runtimeHost(runtime).channelTransport);
+  return new DefaultZLinkChannelClient(registration, runtimeHost(runtime).routeTransport);
 }
 
 export function createIntegrationFanoutClient(

@@ -60,7 +60,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 19:
+    while len(sockets) < 9:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -80,22 +80,15 @@ PY
 )"
 
 REDIS_KEY_PREFIX="deliverydispatch:dotnet:${RANDOM}:$$:"
-DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"
-DISPATCH_CHANNEL="tcp://127.0.0.1:${PORTS[3]}"
-DISPATCH_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[4]}"
-TRACKING_CHANNEL="tcp://127.0.0.1:${PORTS[5]}"
-TRACKING_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[6]}"
-TRACKING_SPOT="tcp://127.0.0.1:${PORTS[7]}"
-CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[8]}"
-CUSTOMER_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[9]}"
-CUSTOMER_SPOT="tcp://127.0.0.1:${PORTS[10]}"
-COURIER_STREAM="tcp://127.0.0.1:${PORTS[11]}"
-COURIER_SESSION_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[12]}"
-COURIER_SESSION_SPOT="tcp://127.0.0.1:${PORTS[13]}"
-COURIER_NODE1_ROUTER="tcp://127.0.0.1:${PORTS[14]}"
-COURIER_NODE1="tcp://127.0.0.1:${PORTS[15]}"
-COURIER_NODE2_ROUTER="tcp://127.0.0.1:${PORTS[17]}"
-COURIER_NODE2="tcp://127.0.0.1:${PORTS[18]}"
+DISPATCH_HTTP="http://127.0.0.1:${PORTS[0]}"
+DISPATCH_MESH="tcp://127.0.0.1:${PORTS[1]}"
+TRACKING_MESH="tcp://127.0.0.1:${PORTS[2]}"
+CUSTOMER_STREAM="tcp://127.0.0.1:${PORTS[3]}"
+CUSTOMER_MESH="tcp://127.0.0.1:${PORTS[4]}"
+COURIER_STREAM="tcp://127.0.0.1:${PORTS[5]}"
+COURIER_SESSION_MESH="tcp://127.0.0.1:${PORTS[6]}"
+COURIER_NODE1_MESH="tcp://127.0.0.1:${PORTS[7]}"
+COURIER_NODE2_MESH="tcp://127.0.0.1:${PORTS[8]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -180,6 +173,16 @@ wait_port redis "tcp://${REDIS_ENDPOINT}"
 write_role_config() {
   local role="$1"
   local node_rid="${2:-}"
+  local mesh_endpoint=""
+  case "${role}" in
+    dispatch) mesh_endpoint="${DISPATCH_MESH}" ;;
+    tracking) mesh_endpoint="${TRACKING_MESH}" ;;
+    customer-gateway) mesh_endpoint="${CUSTOMER_MESH}" ;;
+    courier-session) mesh_endpoint="${COURIER_SESSION_MESH}" ;;
+    courier-actor-node1) mesh_endpoint="${COURIER_NODE1_MESH}" ;;
+    courier-actor-node2) mesh_endpoint="${COURIER_NODE2_MESH}" ;;
+    client) mesh_endpoint="unused" ;;
+  esac
   python3 "${SCRIPT_DIR}/write_role_config.py" \
     --output "${CONFIG_DIR}/${role}.json" \
     --role "${role}" \
@@ -189,21 +192,9 @@ write_role_config() {
     --redis-endpoint "${REDIS_ENDPOINT}" \
     --redis-key-prefix "${REDIS_KEY_PREFIX}" \
     --dispatch-http "${DISPATCH_HTTP}" \
-    --dispatch-channel "${DISPATCH_CHANNEL}" \
-    --dispatch-spot-router "${DISPATCH_SPOT_ROUTER}" \
-    --tracking-channel "${TRACKING_CHANNEL}" \
-    --tracking-spot-router "${TRACKING_SPOT_ROUTER}" \
-    --tracking-spot "${TRACKING_SPOT}" \
+    --mesh-endpoint "${mesh_endpoint}" \
     --customer-stream "${CUSTOMER_STREAM}" \
-    --customer-spot-router "${CUSTOMER_SPOT_ROUTER}" \
-    --customer-spot "${CUSTOMER_SPOT}" \
-    --courier-stream "${COURIER_STREAM}" \
-    --courier-session-spot-router "${COURIER_SESSION_SPOT_ROUTER}" \
-    --courier-session-spot "${COURIER_SESSION_SPOT}" \
-    --courier-node1-router "${COURIER_NODE1_ROUTER}" \
-    --courier-node1 "${COURIER_NODE1}" \
-    --courier-node2-router "${COURIER_NODE2_ROUTER}" \
-    --courier-node2 "${COURIER_NODE2}"
+    --courier-stream "${COURIER_STREAM}"
 }
 
 write_role_config tracking
@@ -217,25 +208,24 @@ write_role_config client
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
 start_server tracking "${SCRIPT_DIR}/Server/Tracking/DeliveryDispatch.Server.Tracking.csproj" --config "${CONFIG_DIR}/tracking.json"
-wait_port tracking-channel "${TRACKING_CHANNEL}"
-wait_port tracking-spot-router "${TRACKING_SPOT_ROUTER}"
+wait_port tracking-mesh "${TRACKING_MESH}"
 
 start_server customer-gateway "${SCRIPT_DIR}/Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj" --config "${CONFIG_DIR}/customer-gateway.json"
 wait_port customer-stream "${CUSTOMER_STREAM}"
-wait_port customer-spot-router "${CUSTOMER_SPOT_ROUTER}"
+wait_port customer-mesh "${CUSTOMER_MESH}"
 
 start_server courier-actor-node1 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --config "${CONFIG_DIR}/courier-actor-node1.json"
-wait_port courier-actor-node1-router "${COURIER_NODE1_ROUTER}"
+wait_port courier-actor-node1-mesh "${COURIER_NODE1_MESH}"
 
 start_server courier-actor-node2 "${SCRIPT_DIR}/Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj" --config "${CONFIG_DIR}/courier-actor-node2.json"
-wait_port courier-actor-node2-router "${COURIER_NODE2_ROUTER}"
+wait_port courier-actor-node2-mesh "${COURIER_NODE2_MESH}"
 
 start_server courier-session "${SCRIPT_DIR}/Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj" --config "${CONFIG_DIR}/courier-session.json"
-wait_port courier-session-router "${COURIER_SESSION_SPOT_ROUTER}"
+wait_port courier-session-mesh "${COURIER_SESSION_MESH}"
 wait_port courier-session-stream "${COURIER_STREAM}"
 
 start_server dispatch "${SCRIPT_DIR}/Server/Dispatch/DeliveryDispatch.Server.Dispatch.csproj" --config "${CONFIG_DIR}/dispatch.json"
-wait_port dispatch-spot-router "${DISPATCH_SPOT_ROUTER}"
+wait_port dispatch-mesh "${DISPATCH_MESH}"
 wait_http dispatch "${DISPATCH_HTTP}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \

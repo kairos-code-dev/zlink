@@ -55,7 +55,7 @@ export async function runSmB5(options: ClientOptions): Promise<void> {
     ensure(failed, 'SM-B5 expected missing actor handler request to fail.');
 
     const expectedEvidence = [
-      'dispatch-error|surface=spotActor|kind=actorRequest|reason=handlerMissing|action=replyError|packet=MissingActorReq'
+      'dispatch-error|surface=actor|kind=request|reason=no_handler|action=reply_error|packet=MissingActorReq'
     ];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,

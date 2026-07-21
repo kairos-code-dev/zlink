@@ -48,7 +48,7 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
       `entry-created|rid=play-b|actor=${actorId}`,
       `entry-joined|rid=play-b|actor=${actorId}`
     ];
-    const evidence = await waitForEvidence(options.playBUrl, expectedEvidence, 30000);
+    const evidence = await waitForEvidence(options.playBUrl, expectedEvidence, 3000);
     ensure(
       expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
       'SM-B2 evidence mismatch.'

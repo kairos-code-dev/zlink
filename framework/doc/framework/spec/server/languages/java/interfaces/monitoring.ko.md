@@ -1,0 +1,551 @@
+# Java monitoring 공개 인터페이스
+
+[인터페이스 목차](README.ko.md) · [Runtime monitoring](../../../50-runtime-monitoring.ko.md)
+
+Monitoring DTO는 Framework lifecycle state와 공통 wire 값을 사용한다. Raw monitor handle, native event enum,
+socket address와 connection ID는 bounded diagnostic에 필요한 범위 밖으로 노출하지 않는다.
+
+```java
+public enum ZLinkMeshNodeState {
+    STARTING,
+    SERVING,
+    DRAINING,
+    DRAINED,
+    FORCE_STOPPING,
+    STOPPED,
+    FAULTED
+}
+
+@Deprecated(since = "11.0", forRemoval = false)
+public interface ZLinkDrainControl {
+    CompletionStage<ZLinkTerminationResult> drain();
+    CompletionStage<ZLinkTerminationResult> drain(Duration deadline);
+    CompletionStage<ZLinkTerminationResult> awaitDrained();
+    boolean isReady();
+}
+
+public interface ZLinkRouteMeshRuntime {
+    ZLinkMeshNodeSnapshot snapshot(String meshName);
+    Flow.Publisher<ZLinkMeshRuntimeEvent> observe(
+        String meshName, int capacity);
+    boolean isReady(String meshName);
+}
+
+public interface ZLinkRuntimeErrorSink {
+    CompletionStage<Void> onRuntimeError(ZLinkRuntimeErrorEvent error);
+}
+
+public interface ZLinkMonitoringOptionsCustomizer {
+    void customize(ZLinkMonitoringOptions options);
+}
+```
+
+Orderly disconnect와 service liveness timeout은 다른 reason으로 관측한다. Peer 하나가 실패해도 다른 ready
+peer와 host를 `ERROR`로 바꾸지 않는다.
+
+Host-wide `ZLinkDrainControl`은 deprecated `Shutdown` facade다. `drain(...)`은 host의 shared `shutdown(...)`을
+시작하고 `awaitDrained()`는 같은 operation의 terminal 결과를 기다린다. 별도 host drain result를 만들지 않는다.
+MeshName을 받는 partial termination operation과 component termination result는 제공하지 않는다. 모든 topology의
+종료는 host `Retire` 또는 `Shutdown`이 조정한다.
+
+## Host runtime observation exact source signature
+
+Host runtime observation은 application이 import해 사용하는 Java source 형태로 고정한다. 아래처럼
+package와 import를 먼저 명시하므로 member signature에는 fully-qualified type을 반복하지 않는다.
+Record component는 같은 이름과 타입의 public accessor를 생성하며 accessor를 본문에 반복 선언하지 않는다.
+코드 블록은 같은 package에 있는 선언을 함께 보여 주지만, 각 public top-level type은 별도
+Java source file에 위치한다.
+
+```java
+package systems.zlink.framework.monitoring;
+
+import java.time.Instant;
+import java.util.Optional;
+import java.util.concurrent.Flow;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
+import systems.zlink.framework.runtime.host.ZLinkTerminationIntent;
+import systems.zlink.framework.runtime.host.ZLinkTerminationReason;
+import systems.zlink.framework.runtime.host.ZLinkTerminationResult;
+
+public interface ZLinkRuntimeQuery {
+    ZLinkFrameworkRuntimeState state();
+    ZLinkFrameworkRuntimeSnapshot snapshot();
+    Flow.Publisher<ZLinkFrameworkRuntimeEvent> observe(int capacity);
+}
+
+public record ZLinkFrameworkRuntimeSnapshot(
+    ZLinkFrameworkRuntimeState state,
+    Optional<ZLinkTerminationIntent> effectiveIntent,
+    Optional<Instant> deadline,
+    boolean workSealed,
+    Optional<ZLinkTerminationReason> blockerReason,
+    long pendingRequestCount,
+    long pendingTransferCount,
+    long pendingStreamBarrierCount,
+    Optional<ZLinkTerminationResult> terminalResult,
+    long sequence,
+    Instant observedAt) {}
+
+public record ZLinkFrameworkRuntimeEvent(
+    long sequence,
+    Instant timestamp,
+    ZLinkFrameworkRuntimeSnapshot runtime) implements ZLinkRuntimeEvent {
+    @Override public String sourceName() {
+        return "zlink.runtime.host.termination_changed";
+    }
+}
+```
+
+## Topology runtime observation exact source signature
+
+ClientServer와 automatic fanout은 ChannelName으로 snapshot과 event를 조회한다. Snapshot 조회는 connection이나
+target selection을 바꾸지 않는다. Kotlin도 아래 Java 타입을 그대로 사용한다.
+
+```java
+package systems.zlink.framework.monitoring;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Flow;
+import systems.zlink.contracts.core.RoutingId;
+
+public record ZLinkInstanceSpotTypeSnapshot(
+    String instanceSpotType,
+    long activeCount,
+    long activatingCount,
+    long closingCount,
+    long pendingMessageCount,
+    long pendingByteCount,
+    Optional<String> lastActivationOutcome) {}
+
+public enum ZLinkClientServerRole {
+    CLIENT,
+    SERVER
+}
+
+public enum ZLinkClientServerServerState {
+    CONFIGURED,
+    CONNECTING,
+    READY,
+    DRAINING,
+    DISCONNECTED,
+    REJECTED
+}
+
+public record ZLinkClientServerServerSnapshot(
+    RoutingId serverRid,
+    long lifecycleGeneration,
+    long descriptorRevision,
+    String endpoint,
+    int weight,
+    boolean ready,
+    ZLinkClientServerServerState state,
+    String descriptorSource,
+    Optional<String> lastFailure) {}
+
+public record ZLinkClientServerChannelSnapshot(
+    String channelName,
+    ZLinkClientServerRole localRole,
+    boolean selectable,
+    int readyServerCount,
+    int connectionIntentCount,
+    int pendingRequestCount,
+    long sequence,
+    Instant observedAt,
+    List<ZLinkClientServerServerSnapshot> servers,
+    ZLinkLocationRuntimeSnapshot location) {}
+
+public record ZLinkClientServerRuntimeEvent(
+    String identifier,
+    long sequence,
+    Instant timestamp,
+    String channelName,
+    Optional<RoutingId> serverRid,
+    Optional<Long> lifecycleGeneration,
+    Optional<Long> descriptorRevision,
+    Optional<Integer> weight,
+    Optional<Boolean> ready,
+    Optional<ZLinkClientServerServerState> state,
+    Optional<String> reason) {}
+
+public interface ZLinkClientServerRuntime {
+    ZLinkClientServerChannelSnapshot snapshot(String channelName);
+    Flow.Publisher<ZLinkClientServerRuntimeEvent> observe(
+        String channelName, int capacity);
+    boolean isReady(String channelName);
+}
+
+public enum ZLinkFanoutPublisherConnectionState {
+    CONNECTING,
+    READY,
+    DISCONNECTED,
+    RECONNECTING,
+    EXCLUDED_DRAINING,
+    EXCLUDED_STALE
+}
+
+public record ZLinkFanoutPublisherConnectionSnapshot(
+    RoutingId publisherRid,
+    long lifecycleGeneration,
+    long descriptorRevision,
+    String endpoint,
+    boolean connectionIntent,
+    boolean ready,
+    ZLinkFanoutPublisherConnectionState state,
+    Optional<String> lastFailure) {}
+
+public record ZLinkFanoutChannelSnapshot(
+    String channelName,
+    int connectionIntentCount,
+    int readyConnectionCount,
+    long sequence,
+    Instant observedAt,
+    List<ZLinkFanoutPublisherConnectionSnapshot> publishers,
+    ZLinkLocationRuntimeSnapshot location) {}
+
+public sealed interface ZLinkFanoutRuntimeEvent
+    permits ZLinkFanoutRuntimeEvent.PublisherChanged,
+            ZLinkFanoutRuntimeEvent.LocationChanged {
+    String identifier();
+    long sequence();
+    Instant timestamp();
+    String channelName();
+
+    record PublisherChanged(
+        long sequence,
+        Instant timestamp,
+        String channelName,
+        ZLinkFanoutPublisherConnectionSnapshot entry)
+        implements ZLinkFanoutRuntimeEvent {
+        @Override public String identifier() {
+            return "zlink.runtime.fanout.publisher_changed";
+        }
+    }
+
+    record LocationChanged(
+        long sequence,
+        Instant timestamp,
+        String channelName,
+        ZLinkLocationRuntimeSnapshot location)
+        implements ZLinkFanoutRuntimeEvent {
+        @Override public String identifier() {
+            return "zlink.runtime.location.store_changed";
+        }
+    }
+}
+
+public interface ZLinkFanoutRuntime {
+    ZLinkFanoutChannelSnapshot snapshot(String channelName);
+    Flow.Publisher<ZLinkFanoutRuntimeEvent> observe(
+        String channelName, int capacity);
+}
+```
+
+`ZLinkInstanceSpotTypeSnapshot`은 startup에 등록한 Instance type별 aggregate다. 개별 Spot RID, owner ID,
+`ObjectGeneration`, `AuthorityOwnerGeneration`, `StoreVersion`과 owner lease fence는 포함하지 않는다.
+`lastActivationOutcome`은 `ready`, `rejected`, `conflict`, `timed_out`,
+`shutdown`, `store_failure`, `fenced` 가운데 하나이며 아직 terminal activation이 없으면 비어 있다.
+
+`ZLinkRouteMeshRuntime`, `ZLinkClientServerRuntime`과 `ZLinkFanoutRuntime`은 Spring starter가 singleton bean으로
+제공한다. 각 bean은 `ZLinkFrameworkRuntime`의 대응 accessor가 반환한 객체와 reference identity가 같다. Manual
+fanout subscriber는 endpoint connection 표면을 사용하므로 `ZLinkFanoutRuntime` 조회 대상이 아니다. Observer
+capacity는 0보다 커야 하며 publisher cancellation은 해당 관찰만 끝낸다.
+
+Fanout의 `connectionIntent`는 automatic planner의 endpoint intent다. `ready`와 `readyConnectionCount`는
+publisher 전용 SUB socket의 native-ready와 같은 socket의 첫 valid application record 또는 liveness beacon
+수신을 모두 관찰한 뒤에만 증가한다. Native disconnect 또는 15초 inbound timeout은 해당 publisher entry만
+`DISCONNECTED`로 바꾼다.
+
+위의 host와 topology exact source signature가 11.0 monitoring public type의 정본이다. 배포 package
+검증은 각 source type의 생성된 accessor와 method를 `javap`로 대조하지만, 그 출력을 이 문서에
+반복하지 않는다.
+
+아래 inventory는 위 exact source signature에서 선언하지 않은 나머지 배포 symbol을 `javap`
+signature 형식으로 대조한다. 이 형식은 symbol의 package를 검증해야 하므로 fully-qualified
+name을 유지한다.
+
+## 나머지 배포 symbol `javap` inventory
+
+아래 선언은 위 source signature와 중복되지 않는 Java public type과 member를 고정한다.
+
+```java
+@java.lang.Deprecated(since = "11.0", forRemoval = false)
+public interface systems.zlink.framework.monitoring.ZLinkDrainControl {
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> drain();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> drain(java.time.Duration);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> awaitDrained();
+  public abstract boolean isReady();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshNodeState extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkMeshNodeState> {
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState STARTING;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState SERVING;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState DRAINING;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState DRAINED;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState FORCE_STOPPING;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState STOPPED;
+  public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState FAULTED;
+  public static systems.zlink.framework.monitoring.ZLinkMeshNodeState[] values();
+  public static systems.zlink.framework.monitoring.ZLinkMeshNodeState valueOf(java.lang.String);
+}
+public interface systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime {
+  public abstract systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot snapshot(java.lang.String);
+  public abstract java.util.concurrent.Flow$Publisher<systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent> observe(java.lang.String, int);
+  public abstract boolean isReady(java.lang.String);
+}
+public interface systems.zlink.framework.monitoring.ZLinkRuntimeErrorSink {
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> onRuntimeError(systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent);
+}
+public interface systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer {
+  public abstract void customize(systems.zlink.framework.monitoring.ZLinkMonitoringOptions);
+}
+public final class systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind, systems.zlink.framework.locations.ZLinkLocationRuntimeStatus, java.util.List<systems.zlink.framework.locations.ZLinkLocationTopologyEntry>, java.util.List<systems.zlink.framework.locations.ZLinkLocationServiceSummary>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String sourceName();
+  public java.time.Instant timestamp();
+  public systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind event();
+  public systems.zlink.framework.locations.ZLinkLocationRuntimeStatus status();
+  public java.util.List<systems.zlink.framework.locations.ZLinkLocationTopologyEntry> topology();
+  public java.util.List<systems.zlink.framework.locations.ZLinkLocationServiceSummary> serviceSummary();
+}
+public final class systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot(java.lang.String, java.util.Optional<java.time.Instant>, java.util.Optional<java.time.Instant>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String state();
+  public java.util.Optional<java.time.Instant> lastSuccessAt();
+  public java.util.Optional<java.time.Instant> lastFailureAt();
+}
+public final class systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot(long, long, long, long, long, long, long, long, long);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public long submitted();
+  public long backpressured();
+  public long dropped();
+  public long remoteSnapshotCount();
+  public long remoteAdmittedCount();
+  public long remoteDroppedCount();
+  public long localSnapshotCount();
+  public long localAdmittedCount();
+  public long localDroppedCount();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot(java.lang.String, int, long, boolean);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String channelName();
+  public int localWeight();
+  public long readyMemberCount();
+  public boolean selectable();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot(boolean, long, boolean, long);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public boolean applicationActive();
+  public long pendingApplicationWork();
+  public boolean infrastructureActive();
+  public long pendingInfrastructureWork();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String meshName();
+  public systems.zlink.contracts.core.RoutingId rid();
+  public long lifecycleGeneration();
+  public long descriptorRevision();
+  public java.lang.String endpoint();
+  public systems.zlink.framework.monitoring.ZLinkMeshNodeState state();
+  public long sequence();
+  public java.time.Instant observedAt();
+  public java.util.List<java.lang.String> descriptorSources();
+  public java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot> peers();
+  public java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot> channels();
+  public systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot multicast();
+  public java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot> instanceSpots();
+  public systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot claims();
+  public systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot location();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot(systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.lang.String, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public systems.zlink.contracts.core.RoutingId rid();
+  public long lifecycleGeneration();
+  public long descriptorRevision();
+  public java.lang.String endpoint();
+  public java.lang.String admissionState();
+  public boolean ready();
+  public java.lang.String drainState();
+  public java.util.List<java.lang.String> channelNames();
+  public java.util.Optional<java.lang.String> lastFailure();
+}
+public final class systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent(java.lang.String, long, java.time.Instant, java.lang.String, systems.zlink.contracts.core.RoutingId, java.util.Optional<systems.zlink.contracts.core.RoutingId>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.String>, java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String identifier();
+  public long sequence();
+  public java.time.Instant timestamp();
+  public java.lang.String meshName();
+  public systems.zlink.contracts.core.RoutingId sourceRid();
+  public java.util.Optional<systems.zlink.contracts.core.RoutingId> peerRid();
+  public java.util.Optional<java.lang.Long> lifecycleGeneration();
+  public java.util.Optional<java.lang.Long> descriptorRevision();
+  public java.util.Optional<java.lang.String> channelName();
+  public java.util.Optional<java.lang.String> claimDomain();
+  public java.util.Optional<java.lang.String> messageKind();
+  public java.util.Optional<java.lang.Long> remoteSnapshotCount();
+  public java.util.Optional<java.lang.Long> remoteAdmittedCount();
+  public java.util.Optional<java.lang.Long> remoteDroppedCount();
+  public java.util.Optional<java.lang.Long> localSnapshotCount();
+  public java.util.Optional<java.lang.Long> localAdmittedCount();
+  public java.util.Optional<java.lang.Long> localDroppedCount();
+  public java.util.Optional<java.lang.String> reason();
+  public java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState> state();
+}
+public interface systems.zlink.framework.monitoring.ZLinkMonitoringOptions {
+  public abstract void addSocketEvents(java.lang.String, systems.zlink.framework.monitoring.ZLinkSocketEventKind...);
+  public abstract void addSpotEvents(java.lang.String, java.time.Duration);
+  public abstract void addLocationRuntimeEvents(java.lang.String, java.time.Duration);
+}
+public final class systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind, java.lang.String, java.lang.String, java.util.Optional<java.lang.String>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String sourceName();
+  public java.time.Instant timestamp();
+  public systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind event();
+  public java.lang.String callbackName();
+  public java.lang.String exceptionType();
+  public java.util.Optional<java.lang.String> message();
+}
+public interface systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public abstract java.lang.String sourceName();
+  public abstract java.time.Instant timestamp();
+}
+public interface systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler<TEvent extends systems.zlink.framework.monitoring.ZLinkRuntimeEvent> {
+  public abstract void handle(TEvent);
+}
+public final class systems.zlink.framework.monitoring.ZLinkSocketDiagnostic extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkSocketDiagnostic(int, long);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public int nativeEvent();
+  public long nativeValue();
+}
+public final class systems.zlink.framework.monitoring.ZLinkSocketEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public systems.zlink.framework.monitoring.ZLinkSocketEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkSocketEventKind, java.util.Optional<systems.zlink.contracts.core.RoutingId>, java.lang.String, java.lang.String, java.util.Optional<systems.zlink.framework.monitoring.ZLinkSocketDiagnostic>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String sourceName();
+  public java.time.Instant timestamp();
+  public systems.zlink.framework.monitoring.ZLinkSocketEventKind event();
+  public java.util.Optional<systems.zlink.contracts.core.RoutingId> routingId();
+  public java.lang.String localAddr();
+  public java.lang.String remoteAddr();
+  public java.util.Optional<systems.zlink.framework.monitoring.ZLinkSocketDiagnostic> diagnostic();
+}
+public final class systems.zlink.framework.monitoring.ZLinkSocketEventKind extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkSocketEventKind> {
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind CONNECTED;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind CONNECTION_READY;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind DISCONNECTED;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind HANDSHAKE_FAILED;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind PEER_ADMISSION_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind CLOSED;
+  public static final systems.zlink.framework.monitoring.ZLinkSocketEventKind INTERNAL;
+  public static systems.zlink.framework.monitoring.ZLinkSocketEventKind[] values();
+  public static systems.zlink.framework.monitoring.ZLinkSocketEventKind valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.monitoring.ZLinkSpotEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public systems.zlink.framework.monitoring.ZLinkSpotEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkSpotEventKind, java.util.Optional<systems.zlink.contracts.service.spot.MeshNodeStatus>, java.util.List<systems.zlink.contracts.service.spot.MeshPeerEntry>, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String sourceName();
+  public java.time.Instant timestamp();
+  public systems.zlink.framework.monitoring.ZLinkSpotEventKind event();
+  public java.util.Optional<systems.zlink.contracts.service.spot.MeshNodeStatus> status();
+  public java.util.List<systems.zlink.contracts.service.spot.MeshPeerEntry> peers();
+  public java.util.List<java.lang.String> subjects();
+  public java.util.Optional<java.lang.String> timerDiagnostic();
+}
+```
+
+## Runtime event support public signature
+
+```java
+public final class systems.zlink.framework.monitoring.ZLinkDrainEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
+  public systems.zlink.framework.monitoring.ZLinkDrainEvent(systems.zlink.framework.monitoring.ZLinkDrainState, java.time.Instant);
+  public java.lang.String sourceName();
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public systems.zlink.framework.monitoring.ZLinkDrainState state();
+  public java.time.Instant timestamp();
+}
+public final class systems.zlink.framework.monitoring.ZLinkDrainState extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkDrainState> {
+  public static final systems.zlink.framework.monitoring.ZLinkDrainState SERVING;
+  public static final systems.zlink.framework.monitoring.ZLinkDrainState DRAINING;
+  public static final systems.zlink.framework.monitoring.ZLinkDrainState DRAINED;
+  public static final systems.zlink.framework.monitoring.ZLinkDrainState FORCE_STOPPING;
+  public static systems.zlink.framework.monitoring.ZLinkDrainState[] values();
+  public static systems.zlink.framework.monitoring.ZLinkDrainState valueOf(java.lang.String);
+}
+public final class systems.zlink.framework.monitoring.ZLinkFlowOrigin extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkFlowOrigin> {
+  public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin INBOUND;
+  public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin TIMER;
+  public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin APPLICATION;
+  public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin LIFECYCLE;
+  public static systems.zlink.framework.monitoring.ZLinkFlowOrigin[] values();
+  public static systems.zlink.framework.monitoring.ZLinkFlowOrigin valueOf(java.lang.String);
+}
+public final class systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind> {
+  public static final systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind STATUS_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind TOPOLOGY_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind SERVICE_SUMMARY_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind STORE_FAILURE;
+  public static final systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind STORE_RECOVERED;
+  public static systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind[] values();
+  public static systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind> {
+  public static final systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind MESSAGE_FLOW_OBSERVER_FAILED;
+  public static systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind[] values();
+  public static systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher {
+  public systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher();
+  public synchronized <TEvent extends systems.zlink.framework.monitoring.ZLinkRuntimeEvent> java.lang.AutoCloseable register(java.lang.Class<TEvent>, systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler<TEvent>);
+  public void publish(systems.zlink.framework.monitoring.ZLinkRuntimeEvent);
+  public int handlerFailureCount();
+}
+public final class systems.zlink.framework.monitoring.ZLinkSpotEventKind extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkSpotEventKind> {
+  public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind STATUS_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind PEERS_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind SUBJECTS_CHANGED;
+  public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind TIMER_HANDLER_FAILED;
+  public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION;
+  public static systems.zlink.framework.monitoring.ZLinkSpotEventKind[] values();
+  public static systems.zlink.framework.monitoring.ZLinkSpotEventKind valueOf(java.lang.String);
+  public int value();
+}
+```

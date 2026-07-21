@@ -239,29 +239,3 @@ STREAM's public routing id is the 4-byte connection id assigned by the server
 for each connection. `zlink_disconnect_rid()` interprets that id as a
 `uint32_t`, looks up the pipe in the STREAM route map, and requests
 termination. Any rid that is not 4 bytes fails as an invalid argument.
-
-## 9. Session Actor Relay (session relay)
-
-A STREAM socket can relay client session messages to and from mesh Actors.
-Each client connection's `source_rid` becomes a STREAM session. In 10.1.0 the
-association between the socket and a MeshNode is owned explicitly by the
-STREAM session service: `zlink_stream_session_service_new(stream_socket,
-node)` attaches 1:1:1 to the socket and node, and a socket already attached to
-another node is rejected with `EEXIST`.
-
-The STREAM socket holds none of the relay state itself. The companion APIs are `zlink_stream_session_service_new()` (a
-service handle attached 1:1:1 to the socket and node),
-`zlink_stream_session_bind_actor()` / `zlink_stream_session_unbind_actor()`
-(the binding CAS), `zlink_stream_session_send_to_actor()` /
-`zlink_stream_session_request_to_actor()` (the relay) and
-`zlink_stream_session_bindings()` (enumeration). The wiring, relay paths and
-cleanup rules are documented in
-[Service Layer Internal Design §10](services-internals.md). What matters at
-the STREAM layer is only that the byte pipe per `source_rid` is the transport
-the relay rides on, and that a session disconnect removes that session's
-bindings without changing any bound Actor's joined Spot.
-
-For session-to-Actor delivery, the service mutex keeps binding validation and
-Actor-mailbox admission in one ordering unit. Releasing that mutex between
-the two steps would allow concurrent submits from one session to enter the
-mailbox in reverse order.

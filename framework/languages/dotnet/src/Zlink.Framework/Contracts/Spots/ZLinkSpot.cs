@@ -209,7 +209,7 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
     void AddPacket<THandler>()
         where THandler : class;
 
-    void AddSubscribe<THandler>(string topic)
+    void AddSubscribe<THandler>(string channelName, string topic)
         where THandler : class;
 }
 
@@ -233,7 +233,16 @@ public interface IZLinkSpotOutbound
         SpotHandle target,
         TRequest request);
 
+    IZLinkSendCall SendToSpot<TMessage>(
+        InstanceSpotAddress target,
+        TMessage message);
+
+    IZLinkRequestCall RequestToSpot<TRequest>(
+        InstanceSpotAddress target,
+        TRequest request);
+
     IZLinkPublishCall Publish<TEvent>(
+        string channelName,
         string topic,
         TEvent message);
 
@@ -254,10 +263,20 @@ public interface IZLinkSpotClient
     IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
 
     IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
+
+    IZLinkSendCall SendToSpot<TMessage>(
+        InstanceSpotAddress target,
+        TMessage message);
+
+    IZLinkRequestCall RequestToSpot<TRequest>(
+        InstanceSpotAddress target,
+        TRequest request);
 }
 
 public interface IZLinkSpotCommonContext
 {
+    string MeshName { get; }
+
     RoutingId SpotRid { get; }
 
     RoutingId NodeRid { get; }

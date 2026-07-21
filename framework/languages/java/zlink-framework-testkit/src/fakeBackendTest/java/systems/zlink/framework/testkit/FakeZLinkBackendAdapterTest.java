@@ -23,7 +23,7 @@ final class FakeZLinkBackendAdapterTest {
         ZLinkInternalSpotNode spotNode =
             factory.createSpotAdapter(options).createSpotNode(context, ZLinkBackendSpotNodeMode.ALL);
         ZLinkBackendStreamSocket stream =
-            factory.createStreamAdapter(options).createStreamSocket(context);
+            factory.createStreamAdapter(options).createStreamSocket(context, null);
 
         factory.createMonitoringAdapter(options).openSocketMonitor(stream);
 

@@ -4,7 +4,7 @@
 
 ## 1. 목적
 
-이 문서는 ZLink Framework 10.0.0 공개 계약의 소유권과 검증 규칙을 정의한다. 공개 계약은
+이 문서는 ZLink Framework 11.0.0 공개 계약의 소유권과 검증 규칙을 정의한다. 공개 계약은
 사용자가 호출할 수 있는 타입과 operation뿐 아니라 timeout, 취소, 오류, callback 순서, ownership과
 완료 조건을 포함한다.
 
@@ -16,11 +16,12 @@
 |---|---|
 | 이 디렉토리와 package별 공통 스펙 | 언어와 무관한 기능, 상태, 완료 조건, 오류 의미 |
 | package의 `languages/<lang>/` | 실제 public 타입, 메서드 시그니처, generic·nullable 규칙, 언어별 비동기 표현 |
-| Core 10.0.0 스펙 | MeshNode, Spot, Actor, STREAM session과 raw socket의 하위 계약 |
+| Core 정식 spec | context, message, raw socket, transport, poller와 generic monitoring 계약 |
+| Framework internals | 언어별 service runtime의 배선, 상태 기계, protocol 처리와 thread·executor 구조 |
 
 공통 스펙은 특정 언어의 문법을 표준으로 삼지 않는다. 각 언어는 같은 기능과 관찰 가능한 결과를
 자기 언어의 관례로 표현한다. .NET RouteMesh·MeshNode의 정확한 시그니처는
-[.NET RouteMesh·MeshNode 인터페이스](server/languages/dotnet/05-route-mesh.ko.md)가 소유한다.
+[.NET RouteMesh·MeshNode 인터페이스](server/languages/dotnet/interfaces/03-configuration-topology.ko.md)가 소유한다.
 
 ## 3. 공통 계약의 필수 항목
 
@@ -96,3 +97,36 @@
 
 검증은 source tree만 보지 않는다. 실제 배포 package를 외부 consumer가 참조해 같은 public surface와
 동작을 얻는지 확인한다.
+
+## 8. 11.0 spec-first 정본 규칙
+
+11.0의 Core service 이관과 service runtime 재구성은 정식 spec과 internals를 목표 상태의 정본으로 먼저
+확정한다. 계획 문서, draft, 현재 구현과 다른 언어의 구현은 계약의 출처가 아니다. 구현은 승인된 정본과의
+차이를 채우며, 구현 과정에서 계약을 바꿔야 할 제약이 확인되면 source를 우회하지 않고 영향을 받는 spec과
+internals를 다시 검토해 함께 수정한다.
+
+정식 spec은 사용자가 관찰하는 목표 계약만 설명한다. 현재 언어별 구현 누락, 제거 진행률과 test 상태는
+[implementation gap](90-implementation-gap.ko.md)과 실행 ledger가 소유한다. Internals는 목표 runtime의
+책임 경계, 데이터 흐름과 불변 조건을 설명하며 migration 이력이나 진행표를 포함하지 않는다.
+
+Core 11.0은 raw transport를 소유하고, C++·.NET·JVM·Node.js Framework는 각 언어의 service runtime을
+독립적으로 소유한다. 공통 native Framework runtime, private C SPI와 service C ABI를 만들지 않는다. 다섯
+언어 public contract는 공통 Framework spec을 투영하고, 네 runtime은 공통 protocol schema와 fixture로
+관찰 가능한 결과를 맞춘다. Java와 Kotlin은 public contract는 각각 제공하지만 Java binding과 JVM runtime
+구현을 공유한다.
+
+Core service runtime을 언어별 Framework 내부로 옮기는 작업은 기존 Framework public contract를 바꾸는
+근거가 아니다. Channel·Spot·Actor·STREAM의 기존 public symbol, signature와 완료 의미는 그대로 유지한다.
+11.0에서 공개 변경이 필요한 경우에는 maintenance처럼 새 application 의도나 기존 계약과 직접 충돌하는
+기능 근거를 공통 spec에 별도로 제시해야 한다. 단순한 내부 이관에서 생긴 public rename, wrapper와
+backend 선택 option은 허용하지 않는다.
+
+공통 spec의 개념 이름과 자료형은 언어별 기존 공개 타입을 바꾸라는 지시가 아니다. 같은 의미를 이미
+표현하는 public type, generic, callback 인자와 기본 interface 구현이 있으면 그 표면을 유지한다. 예를 들어
+공통 Actor membership record를 새로 정의했다는 이유로 `.NET`의 typed
+`IZLinkSpotActorLifecycle<TActor>`를 non-generic callback으로 바꾸지 않는다. 공통 의미를 기존 표면으로
+표현할 수 없는 경우에만 별도 기능 근거와 POSD 검토를 거쳐 최소 member를 추가한다.
+
+언어별 정확한 인터페이스는 `languages/<lang>/interfaces/` 아래의 범주별 문서가 소유한다. 파일 분할과
+목차 변경은 API 변경이 아니다. 기존 단일 카탈로그를 분할할 때는 public member를 손실 없이 한 번만
+옮기고, 같은 declaration을 여러 범주에 중복하지 않는다.

@@ -115,6 +115,19 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
         object roleOptions,
         string healthUrl)
     {
+        var projectDirectory = Path.GetDirectoryName(project)
+                               ?? throw new InvalidOperationException(
+                                   $"Project path '{project}' has no directory.");
+        var application = Path.Combine(
+            projectDirectory,
+            "bin",
+            "Debug",
+            "net8.0",
+            $"{Path.GetFileNameWithoutExtension(project)}.dll");
+        if (!File.Exists(application))
+            throw new InvalidOperationException(
+                $"Built E2E application was not found: {application}");
+
         var startInfo = new ProcessStartInfo("setsid")
         {
             RedirectStandardOutput = true,
@@ -122,11 +135,7 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("dotnet");
-        startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add("--no-build");
-        startInfo.ArgumentList.Add("--project");
-        startInfo.ArgumentList.Add(project);
-        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add(application);
         startInfo.ArgumentList.Add("--config");
         startInfo.ArgumentList.Add(E2eConfiguration.Write(options.ConfigDir, name, roleOptions));
 
@@ -188,9 +197,11 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
 
     public async Task WaitReadyAsync()
     {
-        var deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
-        using var http = ZLinkHttpClient.Create(healthUrl).Timeout(ReadinessTimeout).Build();
-        while (DateTimeOffset.UtcNow < deadline)
+        var elapsed = Stopwatch.StartNew();
+        using var http = ZLinkHttpClient.Create(healthUrl)
+            .Timeout(TimeSpan.FromMilliseconds(250))
+            .Build();
+        while (elapsed.Elapsed < ReadinessTimeout)
         {
             if (process.HasExited)
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");

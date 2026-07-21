@@ -11,18 +11,17 @@ internal sealed class CustomerActor(
 
     public IZLinkActorContext Context { get; } = context;
 
-    public ValueTask PushStatusAsync(
+    public async ValueTask PushStatusAsync(
         DeliveryStatusUpdatedMsg status,
         CancellationToken cancellationToken)
     {
-        Context.BoundSession
+        await Context.BoundSession
             .Send(new DeliveryStatusNotify(
                 status.DeliveryId,
                 status.Status,
                 status.CourierId,
                 status.OccurredAt))
-            .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+            .SubmitAsync(cancellationToken);
     }
 }
 

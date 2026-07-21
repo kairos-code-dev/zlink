@@ -55,21 +55,20 @@ public final class TimerScenarioSpot implements ZLinkSpot<ZLinkActor> {
     public CompletionStage<ZLinkSpotCreateResponse> onCreate(ZLinkMessage request) {
         String rid = context.spotRid().toString();
         if (rid.startsWith("timer-overrun-")) {
-            ZLinkTimerOptions options = new ZLinkTimerOptions();
-            if (rid.endsWith("catchup")) {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED);
-                options.setMaxCatchUpTicks(2);
-            } else if (rid.endsWith("delay")) {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK);
-            } else {
-                options.setOverrunPolicy(ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS);
-            }
-            options.setStopOnUnhandledException(false);
+            ZLinkTimerOverrunPolicy overrunPolicy = rid.endsWith("catchup")
+                ? ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED
+                : rid.endsWith("delay")
+                    ? ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK
+                    : ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS;
+            ZLinkTimerOptions options = new ZLinkTimerOptions(
+                overrunPolicy,
+                rid.endsWith("catchup") ? 2 : 1,
+                false);
             context.addTimer("overrun", Duration.ofMillis(50), TimerOverrunHandler.class, options)
                 .thenAccept(timer -> overrunTimer = timer);
             evidence.record("TimerOverrunConfigured", rid, options.overrunPolicy().name());
         } else {
-            context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler.class, new ZLinkTimerOptions());
+            context.addTimer("idle", Duration.ofMillis(250), IdleCloseTimerHandler.class, null);
             evidence.record("IdleTimerConfigured", rid, "idle");
         }
         return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());

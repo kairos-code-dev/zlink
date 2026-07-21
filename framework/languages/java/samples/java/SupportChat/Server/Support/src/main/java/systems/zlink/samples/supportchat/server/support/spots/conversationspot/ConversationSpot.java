@@ -13,7 +13,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkTimer;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
 import systems.zlink.samples.supportchat.server.support.actors.SupportActorDirectory;
@@ -76,7 +75,7 @@ public final class ConversationSpot implements ZLinkSpot<SupportUserActor> {
                 "conversation-idle",
                 Duration.ofMillis(200),
                 ConversationIdleTimerHandler.class,
-                new ZLinkTimerOptions())
+                null)
             .thenAccept(timer -> idleTimer = timer);
     }
 

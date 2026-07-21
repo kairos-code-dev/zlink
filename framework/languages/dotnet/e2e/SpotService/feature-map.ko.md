@@ -26,7 +26,7 @@
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
 | SM-C5 | 구현 | 10.0.0 MeshNode의 play-a Spot이 발행한 Logical Multicast가 play-b 구독 Spot에 도달하는 evidence를 최신 `default-batch` 실행에서 확인했다. |
-| SM-C6 | 전환 필요 | remote ROUTER backpressure를 만들고 blocking publish의 timeout, non-blocking submit의 즉시 backpressure 결과와 앞에서 수락된 target의 전달 유지를 검증해야 한다. 현재 runner에는 이 증거가 없다. |
+| SM-C6 | 구현 | runner가 play-b process group을 정지해 remote ROUTER backpressure를 만들고, non-blocking 즉시 결과와 blocking timeout, target별 부분 수락 개수 및 정확히 한 target의 최종 전달을 검증한다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
@@ -52,7 +52,7 @@
 | SM-F4 | 구현 | missing target spot route request 실패 marker가 있다. malformed relay packet 주입은 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다. |
 | SM-F5 | 구현 | target user Spot을 public manager로 닫은 뒤 해당 Spot 경로만 실패하고 같은 route channel의 일반 request는 계속 성공하는 marker가 있다. |
 | SM-F6 | 구현 | `sm-f6` runner에서 같은 MeshName의 두 MeshNode만 사용한 remote `SpotHandle` request/send와 source Actor의 public join이 target owner Spot에 도달하는 marker를 확인했다. |
-| SM-G1 | core 대기 | play-a crash 뒤 같은 RID replacement가 wire에서 재승인되지 않아 복구 request가 timeout으로 끝난다. core 재승인 결함 수정 뒤 다시 실행한다. |
+| SM-G1 | 구현 | play-a를 강제 종료한 뒤 play-b 요청이 계속 성공하고, 같은 endpoint·RID로 play-a를 재기동한 뒤 gateway와 session request/reply가 모두 복구되는 것을 확인했다. 이어 play-a를 다시 종료하고 play-b가 재배치된 actor 요청을 처리하는 경로까지 통과했다. 증거: `logs/20260720-011511-1678310/`. |
 | SM-G2 | 구현 | node B 추가 뒤 기존 Spot·actor owner 유지와 신규 Spot·actor의 명시적 node B 배치를 `sm-g2` 실행에서 확인했다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |
 | SM-G4 | 구현 | 다수 bound session에 동시에 push를 보내 각 session이 자기 actor push만 받는지 확인한다. |

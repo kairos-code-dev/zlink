@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/channel_outbound_exchange.hpp"
+#include "runtime/messaging/async_submit_runtime.hpp"
 
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/channel_socket_options.hpp"
@@ -303,6 +304,7 @@ class channel_native_client_t
                              channel_runtime_t runtime) :
         _channel_name (std::move (channel_name)), _client (client), _runtime (std::move (runtime))
     {
+        runtime::messaging::activate_submit_owner (this);
         initialize_transport ();
     }
 
@@ -415,71 +417,61 @@ class channel_native_client_t
                          std::chrono::milliseconds timeout)
     {
         std::unique_lock operation_lock (_operation_mutex);
+        runtime::messaging::note_submit_attempt (
+          "channel:" + _channel_name, this, timeout, _runtime.pending_limit ());
         if (_closed.load (std::memory_order_acquire)) {
             return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
                                             "channel native client is closed");
         }
-        const auto deadline = submit_deadline (timeout);
-        for (;;) {
-            if (_closed.load (std::memory_order_acquire)) {
-                return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
-                                                "channel native client is closed");
+        const auto current = endpoints ();
+        if (current.endpoints.empty ()) {
+            return detail::boundary_failure<void> (
+              detail::boundary_error_t::disconnected,
+              "channel client has no connected server endpoint");
+        }
+        try {
+            std::shared_ptr<transport_t> transport;
+            {
+                std::lock_guard lock (_mutex);
+                transport = sync_connections (current);
             }
-            if (submit_deadline_expired (deadline)) {
-                return detail::boundary_failure<void> (detail::boundary_error_t::timed_out,
-                                                "channel send timed out");
+            zlink::message_t send_header = parts[0];
+            zlink::message_t send_body = parts[1];
+            std::lock_guard transport_lock (transport->mutex);
+            const bool sent =
+              transport->socket->send ()
+                .message (send_header)
+                .message (send_body)
+                .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                .submit ();
+            return sent
+                     ? result_t<void>::success ()
+                     : result_t<void>::failure (
+                         framework_error_kind_t::worker_queue_full,
+                         "channel send is backpressured", true);
+        }
+        catch (const zlink::submit_error_t &error) {
+            if (is_channel_readiness_errno (error.internal_errno ())) {
+                return result_t<void>::failure (
+                  framework_error_kind_t::worker_queue_full,
+                  "channel send is backpressured", true);
             }
-            const auto current = endpoints ();
-            if (current.endpoints.empty ()) {
-                sleep_until_next_readiness_poll (deadline);
-                continue;
-            }
-            try {
-                std::shared_ptr<transport_t> transport;
-                {
-                    std::lock_guard lock (_mutex);
-                    transport = sync_connections (current);
-                }
-                zlink::message_t send_header = parts[0];
-                zlink::message_t send_body = parts[1];
-                std::lock_guard transport_lock (transport->mutex);
-                const bool sent =
-                  transport->socket->send ().message (send_header).message (send_body).submit ();
-                if (sent) {
-                    return result_t<void>::success ();
-                }
-                if (submit_deadline_expired (deadline)) {
-                    return detail::boundary_failure<void> (detail::boundary_error_t::timed_out,
-                                                    "channel send timed out");
-                }
-                sleep_until_next_readiness_poll (deadline);
-                continue;
-            }
-            catch (const zlink::submit_error_t &error) {
-                if (is_channel_readiness_errno (error.internal_errno ())) {
-                    if (submit_deadline_expired (deadline)) {
-                        return detail::boundary_failure<void> (detail::boundary_error_t::timed_out,
-                                                        "channel send timed out");
-                    }
-                    sleep_until_next_readiness_poll (deadline);
-                    continue;
-                }
-                const auto mapped = map_native_request_exception (error);
-                return detail::result_access_t::failure<void> (mapped);
-            }
-            catch (const std::exception &error) {
-                return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                                error.what ());
-            }
-            catch (...) {
-                return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                                "channel native send failed");
-            }
+            const auto mapped = map_native_request_exception (error);
+            return detail::result_access_t::failure<void> (mapped);
+        }
+        catch (const std::exception &error) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            error.what ());
+        }
+        catch (...) {
+            return result_t<void>::failure (framework_error_kind_t::request_failed,
+                                            "channel native send failed");
         }
     }
 
     void close () noexcept
     {
+        runtime::messaging::shutdown_submit_owner (this);
         const bool was_closed = _closed.exchange (true, std::memory_order_acq_rel);
         if (was_closed) {
             return;
@@ -660,7 +652,11 @@ class channel_native_client_t
 
     std::shared_ptr<transport_t> make_transport ()
     {
-        return std::make_shared<transport_t> (_channel_name, _client);
+        auto transport = std::make_shared<transport_t> (_channel_name, _client);
+        transport->socket->set_send_ready_handler ([this] {
+            runtime::messaging::notify_submit_ready ("channel:" + _channel_name, this);
+        });
+        return transport;
     }
 
     std::string _channel_name;
@@ -675,9 +671,14 @@ class channel_native_client_t
 class channel_native_publisher_t
 {
   public:
-    explicit channel_native_publisher_t (const channel_capability_snapshot_t &publisher) :
+    channel_native_publisher_t (std::string channel_name,
+                                const channel_capability_snapshot_t &publisher,
+                                std::size_t pending_capacity) :
+        _channel_name (std::move (channel_name)),
+        _pending_capacity (pending_capacity),
         _socket (_context)
     {
+        runtime::messaging::activate_submit_owner (this);
         apply_common_channel_socket_options (_socket, publisher);
         for (const auto &endpoint : publisher.bind_endpoints) {
             _socket.bind (endpoint);
@@ -685,11 +686,18 @@ class channel_native_publisher_t
         for (const auto &endpoint : publisher.connect_endpoints) {
             _socket.connect (endpoint);
         }
+        _socket.set_send_ready_handler ([this] {
+            runtime::messaging::notify_submit_ready (
+              "fanout:" + _channel_name, this);
+        });
     }
 
     result_t<void> publish (const std::string &topic,
-                            const runtime::messaging::message_parts_t &parts)
+                            const runtime::messaging::message_parts_t &parts,
+                            std::chrono::milliseconds timeout)
     {
+        runtime::messaging::note_submit_attempt (
+          "fanout:" + _channel_name, this, timeout, _pending_capacity);
         if (_closed.load (std::memory_order_acquire)) {
             return detail::boundary_failure<void> (detail::boundary_error_t::shutdown,
                                             "channel native publisher is closed");
@@ -699,16 +707,22 @@ class channel_native_publisher_t
         zlink::message_t publish_header = parts[0];
         zlink::message_t publish_body = parts[1];
         const bool sent =
-          _socket.publish (topic).message (publish_header).message (publish_body).submit ();
+          _socket.publish (topic)
+            .message (publish_header)
+            .message (publish_body)
+            .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+            .submit ();
         if (!sent) {
-            return result_t<void>::failure (framework_error_kind_t::request_failed,
-                                            "channel native publish failed");
+            return result_t<void>::failure (
+              framework_error_kind_t::worker_queue_full,
+              "channel native publish is backpressured", true);
         }
         return result_t<void>::success ();
     }
 
     void close () noexcept
     {
+        runtime::messaging::shutdown_submit_owner (this);
         _closed.store (true, std::memory_order_release);
         try {
             _context.shutdown ();
@@ -728,6 +742,8 @@ class channel_native_publisher_t
         }
     }
 
+    std::string _channel_name;
+    std::size_t _pending_capacity;
     zlink::context_t _context;
     zlink::xpub_socket_t _socket;
     std::mutex _mutex;
@@ -1137,11 +1153,13 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                 }
                 auto &stored = _state->native_publishers[channel_name];
                 if (!stored) {
-                    stored = std::make_shared<detail::channel_native_publisher_t> (*publisher);
+                    stored = std::make_shared<detail::channel_native_publisher_t> (
+                      channel_name, *publisher, _state->max_pending);
                 }
                 native_publisher = stored;
             }
-            auto published = native_publisher->publish (topic, parts);
+            auto published = native_publisher->publish (
+              topic, parts, resolve_send_wait_timeout (timeout));
             if (!published) {
                 return published;
             }

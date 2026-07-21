@@ -5,6 +5,7 @@ class OrderWorkflowSpot implements ZLinkSpot {
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
   async onJoinedActor(): Promise<void> {}
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 }
 
 export { OrderWorkflowSpot };

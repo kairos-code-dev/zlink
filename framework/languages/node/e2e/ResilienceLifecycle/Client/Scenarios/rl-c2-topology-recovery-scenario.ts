@@ -1,4 +1,4 @@
-// RL-C2: location store stale row cleanup 시나리오를 검증한다.
+// RL-C2: location store stale descriptor cleanup 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

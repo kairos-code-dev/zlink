@@ -65,17 +65,6 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkSpotPublisherConfig ConfigureSpotPublisher() => registration.SpotPublisherConfig;
 
-    public IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy)
-    {
-        registration.DrainPolicy = policy switch
-        {
-            ZLinkMeshNodeDrainPolicy.DrainNatural => ZLinkSpotDrainPolicy.DrainNatural,
-            ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate => ZLinkSpotDrainPolicy.ReleaseAndRecreate,
-            _ => throw new ZLinkConfigurationException($"Unknown MeshNode drain policy '{policy}'.")
-        };
-        return this;
-    }
-
     public IZLinkMeshPeerConnections PeerConnections =>
         _peerConnections ??= new ZLinkMeshPeerConnections(EnsureRouter());
 
@@ -159,6 +148,38 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
+    public IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
+        string instanceSpotType,
+        ZLinkInstanceSpotFactoryOptions? options = null)
+        where TSpot : class, IZLinkInstanceSpot
+    {
+        if (string.IsNullOrWhiteSpace(instanceSpotType))
+            throw new ZLinkConfigurationException(
+                "Instance Spot type must not be empty.");
+        if (System.Text.Encoding.UTF8.GetByteCount(instanceSpotType) > 255
+            || instanceSpotType.Contains('\0'))
+            throw new ZLinkConfigurationException(
+                "Instance Spot type must be 1 to 255 UTF-8 bytes without NUL.");
+
+        var effective = options ?? new ZLinkInstanceSpotFactoryOptions();
+        if (effective.MaxActiveInstances <= 0)
+            throw new ZLinkConfigurationException(
+                "MaxActiveInstances must be greater than zero.");
+        if (effective.ActivationTimeout <= TimeSpan.Zero)
+            throw new ZLinkConfigurationException(
+                "ActivationTimeout must be greater than zero.");
+        if (!registration.InstanceSpotFactories.TryAdd(
+                instanceSpotType,
+                new ZLinkInstanceSpotFactoryRegistration(
+                    typeof(TSpot),
+                    effective)))
+            throw new ZLinkConfigurationException(
+                $"Duplicate Instance Spot factory '{instanceSpotType}' on "
+                + $"MeshNode '{registration.SpotNodeName}'.");
+
+        return this;
+    }
+
     public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
     {
@@ -211,6 +232,12 @@ internal sealed class ZLinkMeshChannelBuilder(ZLinkMeshChannelMembership members
     public IZLinkMeshChannelBuilder SetWeight(int weight)
     {
         membership.Weight = weight;
+        return this;
+    }
+
+    public IZLinkMeshChannelBuilder AddHandlerGroup(string groupName)
+    {
+        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(membership.HandlerGroups, groupName);
         return this;
     }
 
@@ -287,8 +314,20 @@ internal sealed class ZLinkMeshPeerConnections(ZLinkSpotRouterCapabilityRegistra
             throw new ZLinkConfigurationException("Expected peer routing id must not be empty.");
 
         ValidateEndpoint(endpoint);
-        router.ManualConnections.Connect(endpoint);
+        if (router.PeerRoutingIds.TryGetValue(endpoint, out var previousRid)
+            && previousRid != expectedRoutingId
+            && router.ManualConnections.ListConnections().Contains(endpoint, StringComparer.Ordinal))
+            router.ManualConnections.Disconnect(endpoint);
         router.PeerRoutingIds[endpoint] = expectedRoutingId;
+        try
+        {
+            router.ManualConnections.Connect(endpoint);
+        }
+        catch
+        {
+            router.PeerRoutingIds.Remove(endpoint);
+            throw;
+        }
     }
 
     public void Disconnect(string endpoint)

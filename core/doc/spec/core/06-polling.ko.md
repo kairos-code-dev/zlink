@@ -1,10 +1,10 @@
 [English](06-polling.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Dispatch](service/02-dispatch.ko.md) · [errno map](04-errno-map.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [errno map](04-errno-map.ko.md)
 
 # Poll과 poller
 
-이 문서는 ZLink Core 10.1.0의 readiness 공개 계약을 정의한다. 대상 독자는 raw socket, timer와 MeshNode를
+이 문서는 ZLink Core 11.0의 readiness 공개 계약을 정의한다. 대상 독자는 raw socket, file descriptor와 generic timer를
 하나의 event loop에서 기다리는 C API와 bindings 개발자다. 이 문서는 “각 source의 `POLLIN`과 `POLLOUT`,
 single-consumer receive mode와 lifetime은 무엇인가?”에 답한다.
 
@@ -33,8 +33,7 @@ typedef enum zlink_poller_event_flag_e {
 typedef enum zlink_poller_source_kind_t {
   ZLINK_POLLER_SOURCE_SOCKET    = 1,
   ZLINK_POLLER_SOURCE_FD        = 2,
-  ZLINK_POLLER_SOURCE_TIMER     = 3,
-  ZLINK_POLLER_SOURCE_MESH_NODE = 4
+  ZLINK_POLLER_SOURCE_TIMER     = 3
 } zlink_poller_source_kind_t;
 
 typedef struct zlink_pollitem_t {
@@ -54,8 +53,8 @@ typedef struct zlink_poller_event_t {
 } zlink_poller_event_t;
 ```
 
-MeshNode source는 `socket` field에 MeshNode handle을 반환한다. `FD` source만 `fd`, `TIMER` source만 `timer`가
-유효하다. `user_data`는 등록 시 받은 pointer를 그대로 돌려주는 borrowed value다.
+`SOCKET` source만 `socket`, `FD` source만 `fd`, `TIMER` source만 `timer`가 유효하다. `user_data`는 등록 시
+받은 pointer를 그대로 돌려주는 borrowed value다.
 
 ## 2. 일회성 poll
 
@@ -126,7 +125,6 @@ poller 하나의 add, modify, remove와 wait는 caller가 직렬화한다. 서�
 | raw socket | complete record를 수신할 수 있음 | submit 재시도 가치가 있음 | socket별 receive mode 적용 |
 | timer | fire count를 받을 수 있음 | 미지원 | `zlink_timer_recv()`로 drain |
 | FD | platform readable | platform writable | platform poll 의미 사용 |
-| MeshNode | ready index가 non-empty | backpressured service submit의 재시도 가치가 있음 | `zlink_mesh_node_drain_ready()`로 claim 획득 |
 
 `ZLINK_POLLITEMS_DFLT`는 내부·application stack buffer의 권장 초기 item 수이며 readiness bit가 아니다.
 `ZLINK_HAVE_POLLER == 1`은 이 public poller API가 build에 포함되었음을 뜻한다.
@@ -139,24 +137,7 @@ bit와 OR하지 않고 단독으로 등록한다. request completion signal은 p
 계열은 이 completion을 drain하지 않는다. 다른 source, `zlink_poll()` item 또는 `zlink_poller_modify()`에
 사용하면 `ZLINK_CONFIG_INVALID_ARGUMENT`, `errno == EINVAL`이다.
 
-MeshNode `POLLIN`은 application 또는 infrastructure domain 가운데 하나 이상이 readable임을 뜻한다.
-poll event 자체는 payload, owner나 domain별 claim을 포함하지 않는다. consumer는 ready batch를 drain하고
-각 record에서 domain별 claim을 획득한다.
-
-MeshNode의 `POLLOUT`은 ready handler 또는 `POLLIN` 사용 여부와 독립적이다. readiness는 다음 submit
-성공을 보장하지 않는다.
-
-## 5. MeshNode receive mode 배타성
-
-MeshNode ready handler와 `POLLIN` poller는 같은 ready index의 single consumer다. 한 mode가 등록된 뒤 다른
-mode를 등록하면 `ZLINK_CONFIG_BUSY` 또는 `ZLINK_HANDLER_BUSY`, `errno == EBUSY`다. `POLLIN`을 remove한
-뒤 ready handler를 등록하거나 handler를 해제한 뒤 poller를 등록할 수 있다.
-
-application claim을 보유해도 같은 owner의 infrastructure ready는 독립 record로 나타난다. poller consumer는
-infrastructure claim을 먼저 또는 별도로 drain할 수 있으며 request completion과 send-ready 진행이
-application turn 종료에 의존하지 않는다.
-
-## 6. 오류와 close
+## 5. 오류와 close
 
 잘못된 event bit는 `ZLINK_CONFIG_INVALID_ARGUMENT`/`EINVAL`, source가 지원하지 않는 event는
 `ZLINK_CONFIG_NOT_SUPPORTED`/`ENOTSUP`이다. poller destroy 중 wait가 active이면

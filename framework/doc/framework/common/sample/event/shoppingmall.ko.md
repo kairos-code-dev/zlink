@@ -207,9 +207,10 @@ spot으로 라우팅되면(②) 그 spot은 `Created`까지만 만들고 그 상
 라우팅한다. owner spot이 아직 없으면 첫 명령에서 만들어진다. 그 spot이 상태 전이·이벤트 기록·모듈
 호출·조회 모델 갱신을 전부 소유한다(구현 방식은 spot 자신의 handler가 직접 처리할 수도, spot
 활성화를 보장한 뒤 같은 owner 보장 위에서 동작하는 서비스가 처리할 수도 있다 — 어느 쪽이든
-per-order 직렬화는 owner routing이 보장한다). 서버 위치 발견(`CommerceApi`가 `OrderWorkflow`
-mesh를 찾는 것)은 framework의 location store 계약을 쓴다 — 공유 저장소 구현체(예: Redis)만
-꽂으면 등록·조회·자동 연결은 framework가 알아서 한다.
+per-order 직렬화는 owner routing이 보장한다). `CommerceApi`는 Order ID로
+`InstanceSpotAddress`를 만들며 owner node나 endpoint를 고르지 않는다. Framework는 같은 RouteMesh에서
+`OrderWorkflowSpot` type을 제공하는 serving node를 찾고, Location Store의 원자 claim으로 owner 하나를
+정한다. 공유 Redis location store만 등록하면 descriptor·lease·Instance row 처리는 Framework가 수행한다.
 
 §3의 조각이 왜 사라지는가 — 주문당 순서 처리와 상태 소유를 base system이 대신하기 때문이다.
 
@@ -263,38 +264,54 @@ system의 owner 실행과 이벤트 접기가 대신하기 때문이다.
 
 ## 6. 서버 구성
 
+ShoppingMall의 물리 연결은 [공통 topology 기준](../README.ko.md#channel-역할과-물리-topology-기준)을
+따른다. CommerceApi와 OrderWorkflow node는 `shoppingmall.workflow` RouteMesh 하나를 공유한다.
+CommerceApi는 호출 전용 membership 0개 MeshNode이고, 두 OrderWorkflow node는 stable type
+`shoppingmall.order-workflow`의 actor-free Instance factory를 등록한다. 주문 command 전달을 위한
+ClientServer shard Channel이나 wildcard ChannelName은 사용하지 않는다.
+
+CommerceApi는 Order ID를 Spot RID로 변환해
+`(shoppingmall.workflow, shoppingmall.order-workflow, OrderId RID)` 주소로 명시적인 업무 message를 보낸다.
+Framework는 같은 type을 제공하는 serving node 가운데 owner 후보를 선택하고 target-side location claim으로
+하나를 확정한다. Caller는 local Spot 생성, SpotHandle resolve, owner RID나 endpoint 선택을 수행하지 않는다.
+
+Order command의 one-way 호출은 public async submit만 사용한다. Framework는 row가 없을 때만 cold placement를
+실행하고, `Ready` owner command는 node RID, Spot RID와 Spot generation으로 고정한 기존 exact Spot direct route로
+전달한다. `OrderWorkflowSpot`은 message 없는 actor-free initialize lifecycle에서 event stream 상태를 복구하며
+기존 Spot create callback에 빈 message를 전달하지 않는다.
+
 클라이언트가 마주하는 창구는 `CommerceApi` 하나뿐이다. 클라이언트는 `OrderWorkflow`나 재고·결제
 서버를 직접 알지 못한다. `CommerceApi`는 요청 검증·멱등 키 조회·상태 조회를 맡고, 주문 상태 전이는
 `OrderWorkflow` 서버의 `OrderWorkflowSpot`이 소유한다.
 
 ```mermaid
 graph LR
-    C[웹 클라이언트]
-    API[CommerceApi 서버]
-    OW[OrderWorkflow 서버]
-    INV[재고 모듈]
-    PAY[결제 모듈]
+    C[Web Client]
+    API[CommerceApi]
+    OW[OrderWorkflow Node]
+    INV[Inventory Module]
+    PAY[Payment Module]
     SPOT[OrderWorkflowSpot]
     ES[(OrderEventStore)]
     RS[(OrderReadModelStore)]
     CS[(CommerceStateStore)]
-    LS[("Location Store<br/>공유 저장소 · 예: Redis")]
+    LS[(Redis Location Store)]
 
-    C -->|HTTP 주문 시작| API
-    C -->|HTTP 상태 조회| API
-    API -->|장바구니·주소 읽어 검증| CS
-    API -->|OrderId로 주문 명령 라우팅| OW
-    OW -->|호스팅| SPOT
-    SPOT -->|이벤트 기록| ES
-    SPOT -->|조회 모델 갱신| RS
-    SPOT -->|재고 예약| INV
-    SPOT -->|결제 승인| PAY
-    INV -->|재고 읽기/저장| CS
-    PAY -->|결제 결과 저장| CS
-    API -->|조회 모델 읽기| RS
-    SPOT -->|매핑·상태 읽기/저장| CS
-    API -. 서버 발견 .-> LS
-    OW -. 서버 발견 .-> LS
+    C -->|HTTP Command| API
+    C -->|HTTP Query| API
+    API -->|Validate Input| CS
+    API -->|Instance Address Command| SPOT
+    OW -->|Host Instance| SPOT
+    SPOT -->|Append and Replay| ES
+    SPOT -->|Update Projection| RS
+    SPOT -->|Reserve Inventory| INV
+    SPOT -->|Authorize Payment| PAY
+    INV -->|Read and Write| CS
+    PAY -->|Store Result| CS
+    API -->|Read Projection| RS
+    SPOT -->|Read and Write| CS
+    API -. Resolve Owner .-> LS
+    OW -. Publish Capability .-> LS
 ```
 
 `OrderEventStore`는 주문 상태의 기준이 되는 이벤트 스트림이고, `OrderReadModelStore`는 조회용
@@ -302,12 +319,12 @@ graph LR
 
 | 서버 | 책임 |
 |------|------|
-| `ShoppingMall.CommerceApi` | HTTP API, 장바구니·주소·결제수단 입력 검증, 멱등 키 조회, 조회 모델 조회. `OrderId` owner로 주문 명령 전달. |
-| `ShoppingMall.OrderWorkflow` | `OrderWorkflowSpot` 호스팅, 주문 이벤트 기록, 조회 모델 갱신, 재고/결제 모듈 호출, 재개 처리. |
+| `ShoppingMall.CommerceApi` | HTTP API, 입력 검증, 멱등 키·조회 모델 조회와 Order ID 기반 Instance address command 제출. |
+| `ShoppingMall.OrderWorkflow` | `OrderWorkflowSpot` Instance factory, 주문 이벤트 기록, 조회 모델 갱신, 재고·결제 모듈 호출과 재개 처리. |
 
 | 구성 | 책임 |
 |------|------|
-| `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis). `CommerceApi`·`OrderWorkflow` 서버 발견(자동 연결)과 spot 위치 조회를 담으며, 등록·조회·수명 관리는 framework가 소유. |
+| `Location Store` | Framework location store 계약의 공유 Redis 구현체. MeshNode type capability, owner lease와 Instance Spot claim·Ready·Closing·release를 저장하며 수명 관리는 Framework가 소유. |
 
 저장소는 별도 ZLink 서버가 아니라 여러 서버가 공유하는 의존물로 둔다.
 
@@ -347,15 +364,19 @@ graph LR
     API2 -->|조회 모델 읽기| RS
 ```
 
-`주문 A`의 명령이 어느 `CommerceApi`로 들어와도, owner 라우팅이 항상 같은 `OrderWorkflowSpot`
-owner로 이어 준다.
+`주문 A`의 명령이 어느 `CommerceApi`로 들어와도 같은 Instance address를 사용하므로 하나의
+`OrderWorkflowSpot` owner와 serial queue로 수렴한다.
 
 수평 확장 검증:
 
 - 어느 `CommerceApi`가 `StartOrderReq`를 받아도 같은 계약으로 처리한다.
 - 같은 `OrderId`의 이벤트는 항상 같은 `OrderWorkflowSpot` owner 흐름에서 기록·조회 모델 갱신된다.
 - 서로 다른 주문은 서로 다른 `OrderWorkflow` 서버에서 동시에 처리된다.
-- 특정 `OrderWorkflow`를 재시작해도 owner spot이 `OrderEventStore`를 다시 재생해 복원한다.
+- 특정 `OrderWorkflow` owner를 종료한 뒤 새 주소 호출이 다른 serving node에서 새 generation을 만들고
+  `OrderEventStore`를 재생해 복원한다.
+
+Self-check의 주문 A와 B는 서로 다른 명시적 Order ID를 사용한다. 이 값은 transport endpoint나 owner RID가
+아닌 domain id이며, 두 CommerceApi가 같은 Order ID에서 동일한 Instance address를 만드는지 확인한다.
 
 ## 7. 책임 분리
 
@@ -368,7 +389,7 @@ owner로 이어 준다.
 | 이벤트 스트림(SoR) | `OrderEventStore` | 주문별 도메인 이벤트를 덧붙이기만 하는 저장, 재생 원천. |
 | 조회 모델 | `OrderReadModelStore` | 현재 주문 상태 조회 응답. |
 | 업무·바깥 상태 | `CommerceStateStore` | 장바구니, 재고 예약, 결제 결과, 멱등 키 매핑. |
-| 서버 발견 | location store | `CommerceApi`·`OrderWorkflow` 서버 자동 발견·연결. |
+| 서버 발견·owner claim | location store | Workflow node capability·lease 발견과 Instance row의 원자 claim·Ready·Closing·release. |
 
 `OrderWorkflowSpot`이 한 주문의 처리 전이를 **전부 소유**한다. 여러 주문을 가로지르는 집계(매출
 리포트, 재고 소진 대시보드 등)만 owner 밖으로 나가며, 그건 §14 확장으로 둔다.
@@ -378,7 +399,7 @@ owner로 이어 준다.
 | 대상 | 기준 id | 규칙 |
 |------|---------|------|
 | API 요청 처리 | HTTP 엔드포인트 | 어떤 `CommerceApi`가 받아도 된다. |
-| 주문 명령 전달 | `OrderId` | `CommerceApi`가 `OrderWorkflow` mesh로 주문 명령을 owner 라우팅. |
+| 주문 명령 전달 | `OrderId` | `CommerceApi`가 stable Instance type과 Order ID RID로 같은 논리 주소를 만든다. |
 | 주문 owner | `OrderId` | 같은 `OrderId`는 항상 같은 `OrderWorkflowSpot` owner로 라우팅. |
 | 이벤트 기록 | `OrderId`, 스트림 `Version` | `OrderWorkflowSpot`만 기록하고, 기대 버전 검사로 충돌·재진입을 막는다. |
 | 조회 모델 갱신 | `OrderId`, 스트림 `Version` | 기록된 도메인 이벤트만 조회 모델에 반영. |
@@ -426,9 +447,10 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
 
 - `CommerceApi`는 `OrderWorkflowSpot`을 호스팅하지 않는다.
 - `CommerceApi`는 `OrderAggregate`나 `OrderEventStore` 기록, 조회 모델 재생성을 직접 호출하지 않는다.
-- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 `StartOrderWorkflowReq`를 `OrderWorkflow` mesh로 보낸다.
+- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 `StartOrderWorkflowReq`를 Order ID의 `InstanceSpotAddress`로 보낸다.
 - 주문 시작·재개·조회 모델 재생성은 `OrderWorkflowSpot`으로 보내는 명시적 명령 메시지로 처리한다.
-- `GetOrCreate`의 생성 payload를 주문 시작 명령처럼 쓰지 않는다. 생성 payload에는 spot 식별자나 초기화 정보만 담는다.
+- Caller는 `GetOrCreate`, SpotHandle resolve나 owner node 선택을 수행하지 않는다. 첫 업무 message는 activation
+  payload로 소비하지 않고 Ready 뒤 일반 handler에서 처리한다.
 - `OrderWorkflowSpot.OnCreate`는 업무 상태 전이를 실행하지 않는다. 전이는 명령 handler에서 시작한다.
 - `GetOrderStateReq`는 `OrderReadModelStore` 조회 모델만 읽는다. 조회가 주문을 진행시키거나 이벤트를 기록하면 안 된다.
 - 조회 모델 재생성은 `CommerceApi`가 저장소를 직접 고치지 않고 `OrderWorkflow`로 넘기며, owner spot이 재생으로 처리한다.
@@ -745,8 +767,9 @@ RebuildOrderProjectionReq { OrderId }      # 조회 모델 삭제 후 재생 검
 RebuildOrderProjectionRes { State: OrderState }
 ```
 
-`OrderWorkflow` 서버는 `OrderId`로 owner를 찾아 해당 spot handler에 전달한다.
-`StartOrderWorkflowReq`는 spot 생성 payload가 아니라 명시적인 업무 명령이다.
+`CommerceApi`는 `OrderId`의 Instance address로 message를 보내고, Framework가 owner claim과 activation 뒤
+일반 Spot handler에 전달한다. `CommerceApi`는 SpotHandle, owner node RID나 endpoint를 조립하지 않는다.
+`StartOrderWorkflowReq`는 activation payload가 아니라 Ready 뒤 처리되는 명시적인 업무 명령이다.
 `ContinueOrderWorkflowReq`는 대기 매핑 복구나 비정상 종료 후 재개처럼 기존 주문을 다시 진행할 때
 쓴다. `RebuildOrderProjectionReq`는 조회 모델 재생성 검증용이다.
 
@@ -956,6 +979,10 @@ sequenceDiagram
 
 시나리오:
 
+Runtime state 복구, 없는 주문 거부와 passivation 뒤 재활성화 항목은
+[공통 E2E Config 14](../../e2e/config-14-instance-spot.ko.md#72-shoppingmall)의 ShoppingMall reference sample
+gate와 같은 조건을 사용한다.
+
 - **성공 주문**: `StartOrderReq` → `StartOrderRes`가 `Created`인지 즉시 검증 → `GetOrderStateReq`
   반복 조회로 `Confirmed` 도달 확인 → `ReservationId`·`PaymentId`·`Amount`·`Currency` 검증 →
   서버 쪽에서 `OrderStarted/InventoryReserved/PaymentAuthorized/OrderConfirmed` 기록 검증.
@@ -976,6 +1003,14 @@ sequenceDiagram
   `ContinueOrderWorkflowReq`를 사용해 실제 runner에서 검증한다.
 - **조회 모델 재생성**: 대상 `OrderId` 조회 모델 삭제 → `RebuildOrderProjectionReq` →
   `OrderEventStore` 재생만으로 조회 모델 복원 검증.
+- **runtime state 복구**: 기존 주문의 runtime Instance를 제거 → `ContinueOrderWorkflowReq`와
+  `RebuildOrderProjectionReq`가 새 generation을 활성화 → `OrderEventStore`에서 workflow 상태를 복구한 뒤
+  각각 진행과 projection 재생성을 수행하는지 검증.
+- **없는 주문 거부**: runtime Instance와 domain workflow가 모두 없는 `OrderId`로
+  `ContinueOrderWorkflowReq`와 `RebuildOrderProjectionReq` 호출 → domain not-found로 끝나며 빈 workflow나
+  `OrderStartedEvent`를 만들지 않는지 검증.
+- **passivation 뒤 재활성화**: terminal 또는 idle 조건으로 runtime Instance를 passivation → 그 뒤의 유효한
+  command만 같은 `OrderId`를 새 generation으로 활성화 → 기존 event stream에서 상태를 복구하는지 검증.
 - **조회 지연**: 시작 후 즉시 조회하지 않고 종료까지 둔 뒤 조회 → 반복 조회해도 같은 최종 상태,
   조회 때문에 추가 이벤트가 생기지 않음.
 - **수평 확장**: `CommerceApi x2`·`OrderWorkflow x2`에서 주문 A/주문 B가 다른 owner에서 동시
@@ -986,8 +1021,11 @@ sequenceDiagram
 - 클라이언트는 `CommerceApi` HTTP 엔드포인트만 쓴다.
 - `CommerceApi`는 HTTP API·검증·멱등 키 조회·조회 모델 조회를 맡고 도메인 이벤트를 기록하지 않는다.
 - `OrderWorkflow`는 `OrderWorkflowSpot`을 호스팅하고 상태 전이를 소유한다.
+- `CommerceApi`와 Workflow A/B는 `shoppingmall.workflow` RouteMesh를 공유하고, Workflow node만
+  `shoppingmall.order-workflow` Instance factory를 등록한다.
 - 업무 처리는 `StartOrderWorkflowReq`·`ContinueOrderWorkflowReq`·`RebuildOrderProjectionReq` 명시적 handler로 진입한다.
-- `GetOrCreate` 생성 payload나 `OnCreate`에서 주문 처리를 실행하지 않는다.
+- Caller에 `GetOrCreate`·SpotHandle resolve·owner 선택 코드가 없으며 activation callback에서 주문 처리를
+  실행하지 않는다.
 - `GetOrderStateReq`는 조회 모델 조회만 하고 주문 진행·이벤트 기록을 일으키지 않는다.
 - 같은 `OrderId`의 이벤트는 같은 owner 흐름에서 기록되고 기대 버전 차단을 받는다.
 - `OrderEventStore` 기록은 기대 버전 검사와 `SourceCommandId` 중복 제거를 한다.
@@ -996,6 +1034,10 @@ sequenceDiagram
 - 멱등 매핑은 대기(pending)/확정(started)을 구분하고, 대기 재시도는 같은 `OrderId`에서 복구한다.
 - 결제 실패 후 재고 예약 해제 보상 이벤트가 기록된다.
 - 비정상 종료 뒤 재개는 이벤트 접기로 다음 단계를 판정해 중복 없이 이어진다.
-- 서버 발견은 registry 프로세스 없이 공유 location store를 쓴다.
+- Runtime Instance가 없는 기존 주문의 continue·rebuild는 event stream에서 workflow 상태를 복구한다.
+- Runtime Instance와 domain workflow가 모두 없는 ID의 continue·rebuild는 빈 workflow를 만들지 않고 domain
+  not-found로 끝난다.
+- Terminal 또는 idle passivation 뒤에는 다음 유효한 command만 같은 `OrderId`를 새 generation으로 활성화한다.
+- 서버 capability 발견과 Instance owner claim은 별도 registry 프로세스 없이 공유 Redis location store를 쓴다.
 - 수평 확장 self-check가 `CommerceApi x2`·`OrderWorkflow x2`를 검증한다.
 - `OrderId`·`EventId`·`SourceCommandId`는 명시적 도메인 id이며, 라우팅 id의 hex 값을 클라이언트에 노출하지 않는다.

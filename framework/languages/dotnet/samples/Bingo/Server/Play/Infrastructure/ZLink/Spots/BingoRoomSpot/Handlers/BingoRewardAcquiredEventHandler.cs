@@ -5,7 +5,7 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot.Handlers;
 
-[ZLinkSpotSubscriptionHandler(SampleNames.RewardTopic)]
+[ZLinkSpotSubscriptionHandler(SampleNames.RoomChannel, SampleNames.RewardTopic)]
 internal sealed class
     BingoRewardAcquiredEventHandler : IZLinkSpotSubscriptionHandler<BingoRoom, BingoRewardAcquiredEvent>
 {

@@ -64,12 +64,8 @@ public sealed partial class RegressionTests
             .SelectMany(source =>
             {
                 var violations = new List<string>();
-                if (source.Text.Contains(".ConnectRouter(", StringComparison.Ordinal))
-                    violations.Add("ConnectRouter");
-                if (source.Text.Contains(".ConnectPeerPub(", StringComparison.Ordinal))
-                    violations.Add("ConnectPeerPub");
-                if (Regex.IsMatch(source.Text, @"\.EnableClient\s*\(\s*[^)]"))
-                    violations.Add("EnableClient(endpoint)");
+                if (source.Text.Contains(".PeerConnections.Connect(", StringComparison.Ordinal))
+                    violations.Add("manual MeshNode peer connection");
                 if (source.Path.Contains(
                         $"{Path.DirectorySeparatorChar}Server{Path.DirectorySeparatorChar}",
                         StringComparison.Ordinal)
@@ -259,8 +255,7 @@ public sealed partial class RegressionTests
 
         var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "02-handler-interfaces.ko.md"));
         var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
-        Assert.Contains("`DestroyActorAsync`: Entry Spot", actorSpec, StringComparison.Ordinal);
-        Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
+        Assert.Contains("ValueTask DestroyActorAsync(", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
         Assert.Contains("lifecycle callback을", actorGuide, StringComparison.Ordinal);
         Assert.Contains("호출하지 않고 native actor ref", actorGuide, StringComparison.Ordinal);
@@ -503,9 +498,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("SessionRelayState", allText, StringComparison.Ordinal);
     }
 
-    private static void AssertSessionServerUsesSessionRelay(
-        string sampleRoot,
-        bool allowRouteMeshChannel)
+    private static void AssertSessionServerUsesSessionRelay(string sampleRoot)
     {
         var sessionHostFactory = Directory
             .EnumerateFiles(Path.Combine(sampleRoot, "Server", "Session"), "*HostFactory.cs",
@@ -513,11 +506,9 @@ public sealed partial class RegressionTests
             .Single();
         var text = File.ReadAllText(sessionHostFactory);
 
-        Assert.Contains("AddSpotMesh", text, StringComparison.Ordinal);
-        Assert.True(
-            text.Contains("EnableRouter", StringComparison.Ordinal)
-            || text.Contains("ConfigureRouter", StringComparison.Ordinal));
-        if (!allowRouteMeshChannel) Assert.DoesNotContain("AddRouteMesh", text, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMesh", text, StringComparison.Ordinal);
+        Assert.Contains(".Listen(", text, StringComparison.Ordinal);
+        Assert.Contains(".EnableActorDispatch(", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<IBingoSessionHandler", text, StringComparison.Ordinal);
         Assert.DoesNotContain("AddScoped<ISessionRelayPacketHandler", text, StringComparison.Ordinal);
     }

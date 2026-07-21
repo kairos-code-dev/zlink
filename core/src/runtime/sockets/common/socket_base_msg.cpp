@@ -79,14 +79,18 @@ int zlink::socket_base_t::send_routed (const zlink_routing_id_t *target_rid_,
 int zlink::socket_base_t::send_routed_scoped (const zlink_routing_id_t *target_rid_,
                                               msg_t *msg_,
                                               int flags_,
-                                              socket_public_send_scope_t &send_scope)
+                                              socket_public_send_scope_t &send_scope,
+                                              uint64_t *connection_id_out_,
+                                              uint64_t expected_connection_id_)
 {
     if (unlikely (!target_rid_)) {
         errno = EFAULT;
         return -1;
     }
 
-    return send_direct_with_retry (target_rid_, msg_, flags_, send_scope);
+    return send_direct_with_retry (
+      target_rid_, msg_, flags_, send_scope, connection_id_out_,
+      expected_connection_id_);
 }
 
 std::unique_ptr<zlink::socket_public_send_scope_t>
@@ -120,9 +124,13 @@ bool zlink::socket_base_t::xsubmit_retry_allowed (const zlink_routing_id_t *targ
 int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *target_rid_,
                                                   msg_t *msg_,
                                                   int flags_,
-                                                  socket_public_send_scope_t &send_scope)
+                                                  socket_public_send_scope_t &send_scope,
+                                                  uint64_t *connection_id_out_,
+                                                  uint64_t expected_connection_id_)
 {
     zlink_assert (send_scope.acquired ());
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -150,7 +158,10 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         errno = injected_errno;
     } else
 #endif
-        rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+        rc = target_rid_
+               ? xsend_routed (target_rid_, msg_, connection_id_out_,
+                               expected_connection_id_)
+               : xsend (msg_);
     if (rc == 0) {
         dispatch_runtime ().clear_send_recovery_pending ();
         return 0;
@@ -194,7 +205,10 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
                 errno = injected_errno;
             } else
 #endif
-                rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+                rc = target_rid_
+                       ? xsend_routed (target_rid_, msg_, connection_id_out_,
+                                       expected_connection_id_)
+                       : xsend (msg_);
             if (rc == 0) {
                 dispatch_runtime ().clear_send_recovery_pending ();
                 return 0;
@@ -244,7 +258,10 @@ int zlink::socket_base_t::send_direct_with_retry (const zlink_routing_id_t *targ
         if (!hold_sync_during_retry)
             send_scope.reacquire_sync_after_retry ();
         _auto_hwm_send_attempts.fetch_add (1, std::memory_order_relaxed);
-        rc = target_rid_ ? xsend_routed (target_rid_, msg_) : xsend (msg_);
+        rc = target_rid_
+               ? xsend_routed (target_rid_, msg_, connection_id_out_,
+                               expected_connection_id_)
+               : xsend (msg_);
         if (rc == 0) {
             dispatch_runtime ().clear_send_recovery_pending ();
             break;
@@ -436,10 +453,15 @@ int zlink::socket_base_t::recv_pipe (msg_t *msg_, pipe_t **pipe_out_, int flags_
     return 0;
 }
 
-int zlink::socket_base_t::recv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_, int flags_)
+int zlink::socket_base_t::recv_routed (msg_t *msg_,
+                                      zlink_routing_id_t *source_rid_out_,
+                                      int flags_,
+                                      uint64_t *connection_id_out_)
 {
     if (source_rid_out_)
         source_rid_out_->size = 0;
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -458,7 +480,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_, zlink_routing_id_t *source_r
         command_runtime ().reset_recv_ticks ();
     }
 
-    int rc = xrecv_routed (msg_, source_rid_out_);
+    int rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
     if (unlikely (rc != 0 && errno != EAGAIN))
         return -1;
 
@@ -472,7 +494,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_, zlink_routing_id_t *source_r
             return -1;
         command_runtime ().reset_recv_ticks ();
 
-        rc = xrecv_routed (msg_, source_rid_out_);
+        rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
         if (rc < 0)
             return rc;
         extract_flags (msg_);
@@ -486,7 +508,7 @@ int zlink::socket_base_t::recv_routed (msg_t *msg_, zlink_routing_id_t *source_r
     while (true) {
         if (unlikely (process_commands (block ? timeout : 0, false) != 0))
             return -1;
-        rc = xrecv_routed (msg_, source_rid_out_);
+        rc = xrecv_routed (msg_, source_rid_out_, connection_id_out_);
         if (rc == 0) {
             command_runtime ().reset_recv_ticks ();
             break;

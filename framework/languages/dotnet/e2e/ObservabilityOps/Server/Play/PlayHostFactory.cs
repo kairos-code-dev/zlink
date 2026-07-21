@@ -49,7 +49,6 @@ internal static class PlayHostFactory
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(PlayHostFactory));
             var mesh18 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
-                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
@@ -102,7 +101,10 @@ internal static class PlayHostFactory
             IZLinkSpotHandleResolver spots,
             CancellationToken cancellationToken) =>
         {
-            var entry = await spots.ResolveSpotHandleAsync(RoutingId.From(options.Rid), cancellationToken)
+            var entry = await spots.ResolveSpotHandleAsync(
+                            ObservabilityNames.PlayMesh,
+                            RoutingId.From(options.Rid),
+                            cancellationToken)
                         ?? throw new InvalidOperationException("The local Play entry spot was not found.");
             var response = await routes.RequestToSpot(entry, request)
                 .Async<PlayBoundedOperationRes>(cancellationToken);
@@ -135,7 +137,10 @@ internal static class PlayHostFactory
                 ];
             var spotRows = Array.Empty<SpotRow>();
             if (!string.IsNullOrWhiteSpace(spotRid)
-                && await spots.ResolveSpotHandleAsync(RoutingId.From(spotRid), cancellationToken)
+                && await spots.ResolveSpotHandleAsync(
+                        ObservabilityNames.PlayMesh,
+                        RoutingId.From(spotRid),
+                        cancellationToken)
                     is { } handle)
                 spotRows = [new SpotRow(ObservabilityNames.PlayMesh, options.Rid, handle.SpotRid.ToString(), "spot", 0)];
             return Results.Ok(new EvidenceSnapshot(

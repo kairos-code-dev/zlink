@@ -64,26 +64,31 @@ class bingo_entry_spot_t : public entry_spot_t
         created_actor_ids.push_back (actor.actor.actor_id);
     }
 
-    void on_actor_joined (const player_actor_t &actor)
+    task_t<void> on_actor_joined (const player_actor_t &actor)
     {
         joined_actor_ids.push_back (actor.actor.actor_id);
         if (!actor.destroy_after_entry_spot_join) {
-            return;
+            co_return;
         }
         const auto actor_id = actor.actor.actor_id;
         std::cout << "entry spot: actor destroy requested. actor=" << actor_id << std::endl;
-        (void) _context.destroy_actor (const_cast<player_actor_t &> (actor));
+        co_await _context.destroy_actor (const_cast<player_actor_t &> (actor));
         std::cout << "entry spot: actor destroy completed. actor=" << actor_id << std::endl;
     }
 
-    void on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (const player_actor_t &actor)
     {
         joined_actor_ids.erase (
           std::remove (joined_actor_ids.begin (), joined_actor_ids.end (), actor.actor.actor_id),
           joined_actor_ids.end ());
+        co_return;
     }
 
-    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    task_t<void> on_disconnect_actor (const player_actor_t &actor)
+    {
+        actor.mark_disconnected ();
+        co_return;
+    }
 
     std::vector<std::string> created_actor_ids;
     std::vector<std::string> joined_actor_ids;

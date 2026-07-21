@@ -113,6 +113,15 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
   }
 
   // --- Lifecycle ---------------------------------------------------------
+  setRoutingId(routingId: RoutingId): void {
+    configCall('mesh node routing id set failed', () => {
+      requireNative().handleSetRoutingId(
+        getNativeHandle(this),
+        normalizeRoutingId(routingId, 'routingId')
+      );
+    });
+  }
+
   setBind(endpoint: string): void {
     configCall('mesh node bind failed', () => {
       requireNative().meshNodeSetBind(getNativeHandle(this), endpoint);
@@ -286,7 +295,7 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
       connectionIntentId: entry.connectionIntentId,
       source: entry.source,
       state: entry.state,
-      routingId: RoutingId.from(entry.routingId),
+      routingId: entry.routingId === null ? null : RoutingId.from(entry.routingId),
       lifecycleGeneration: entry.lifecycleGeneration,
       descriptorRevision: entry.descriptorRevision,
       endpoint: entry.endpoint,
@@ -471,10 +480,16 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
     );
   }
 
-  sendActorBoundSession(actor: ActorRef, parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult {
+  sendActorBoundSession(
+    actor: ActorRef,
+    expectedBindingGeneration: bigint,
+    parts: MessageLike | readonly MessageLike[],
+    flags?: number
+  ): SubmitResult {
     return requireNative().meshNodeActorSendBoundSession(
       getNativeHandle(this),
       actorRefToRaw(actor),
+      expectedBindingGeneration,
       normalizeMessageLikePayload(parts),
       flagsOrZero(flags)
     ) as SubmitResult;

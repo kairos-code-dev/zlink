@@ -12,10 +12,10 @@ public sealed class AnnouncementService(IWorldOperationsPort operations)
 {
     private int _sequence;
 
-    public string Publish(string text)
+    public async ValueTask<string> PublishAsync(string text, CancellationToken cancellationToken)
     {
         var announcementId = $"ann-{Interlocked.Increment(ref _sequence):D4}";
-        operations.PublishAnnouncement(announcementId, text);
+        await operations.PublishAnnouncementAsync(announcementId, text, cancellationToken);
         return announcementId;
     }
 }
@@ -36,7 +36,7 @@ public sealed class MaintenanceService(
         CancellationToken cancellationToken)
     {
         await store.WriteAsync(nodeId, enabled, cancellationToken);
-        operations.PublishMaintenanceChange(nodeId, enabled);
+        await operations.PublishMaintenanceChangeAsync(nodeId, enabled, cancellationToken);
 
         var applied = await operations.TryApplyMaintenanceAsync(nodeId, enabled, cancellationToken);
         return applied is null

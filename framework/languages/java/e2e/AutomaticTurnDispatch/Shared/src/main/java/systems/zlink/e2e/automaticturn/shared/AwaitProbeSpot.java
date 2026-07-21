@@ -68,8 +68,10 @@ public final class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
             command.requestId(),
             command.mode(),
             command.delayMillis()));
-        ZLinkTimerOptions options = new ZLinkTimerOptions();
-        options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK);
+        ZLinkTimerOptions options = new ZLinkTimerOptions(
+            ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK,
+            1,
+            true);
         return context.addTimer(
                 command.timerName(),
                 Duration.ofMillis(command.periodMillis()),

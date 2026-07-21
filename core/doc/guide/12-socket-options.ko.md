@@ -19,7 +19,7 @@ API 시그니처만 다루는 [socket API 레퍼런스](../spec/core/socket/READ
 |----------|------|-----------|
 | **Core Socket** | 소켓 핵심 동작 | SNDHWM, RCVHWM, LINGER, SNDTIMEO, RCVTIMEO |
 | **Transport/Network** | 네트워크/transport 정책 | SNDBUF, RCVBUF, TCP_*, TOS, CONNECT_TIMEOUT |
-| **Protocol/Metadata** | 프로토콜 수준 메타데이터 | ZMP_METADATA, HEARTBEAT_* |
+| **Protocol/Metadata** | 프로토콜 수준 메타데이터 | ZMP_METADATA |
 
 ---
 
@@ -316,38 +316,7 @@ Keepalive보다 빠른 dead peer 감지가 필요할 때 사용.
 
 ---
 
-## 10. ZMP 하트비트 — HEARTBEAT_IVL / HEARTBEAT_TTL / HEARTBEAT_TIMEOUT
-
-| 옵션 | 하는 일 | 기본값 |
-|------|---------|--------|
-| `HEARTBEAT_IVL` | PING 메시지 송신 간격 (ms) | `0` (비활성) |
-| `HEARTBEAT_TTL` | 원격 피어에 전달되는 TTL (ms; 내부적으로 0.1초 단위로 저장) | `0` |
-| `HEARTBEAT_TIMEOUT` | PONG 응답 대기 시간 (ms) | `-1` (IVL 값 사용) |
-
-**적용 위치:** `asio_zmp_engine` -- ZMP 프로토콜 수준 PING/PONG 교환.
-
-**동작 흐름:**
-1. `IVL` 간격마다 PING 전송 (TTL 값 포함)
-2. 원격 피어는 TTL 시간 안에 메시지/PONG을 받지 못하면 연결 종료
-3. 로컬에서는 TIMEOUT 시간 안에 PONG을 받지 못하면 연결 끊김 감지
-
-**TCP 킵얼라이브와의 차이:** TCP 킵얼라이브는 OS 수준 프로브이고
-ZMP(zlink 메시징 프로토콜) 하트비트는 애플리케이션 프로토콜 수준이다. 둘 다 설정하면 더 빠른 쪽이
-먼저 감지한다.
-
-```c
-/* PING every 5s, remote TTL 15s, local PONG timeout 10s */
-int hb_ivl = 5000;
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_IVL, &hb_ivl, sizeof(hb_ivl));
-int hb_ttl = 15000;  /* ms → 15s */
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TTL, &hb_ttl, sizeof(hb_ttl));
-int hb_timeout = 10000;
-zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_timeout));
-```
-
----
-
-## 11. 즉시 연결 — IMMEDIATE
+## 10. 즉시 연결 — IMMEDIATE
 
 | 항목 | 설명 |
 |------|------|
@@ -364,7 +333,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 12. 최신 값만 유지 — CONFLATE
+## 11. 최신 값만 유지 — CONFLATE
 
 | 항목 | 설명 |
 |------|------|
@@ -378,7 +347,7 @@ zlink_set_option(socket, ZLINK_OPT_HEARTBEAT_TIMEOUT, &hb_timeout, sizeof(hb_tim
 
 ---
 
-## 13. OS 소켓 버퍼 — SNDBUF / RCVBUF
+## 12. OS 소켓 버퍼 — SNDBUF / RCVBUF
 
 | 항목 | 설명 |
 |------|------|
@@ -396,7 +365,7 @@ mesh처럼 연결 수가 많고 메모리 상한이 중요하면 애플리케이
 
 ---
 
-## 14. IP 서비스 품질 — TOS
+## 13. IP 서비스 품질 — TOS
 
 | 항목 | 설명 |
 |------|------|
@@ -408,7 +377,7 @@ QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 
 
 ---
 
-## 15. 연결 대기열 — BACKLOG
+## 14. 연결 대기열 — BACKLOG
 
 | 항목 | 설명 |
 |------|------|
@@ -421,7 +390,7 @@ QoS 정책이 있는 네트워크에서 트래픽 우선순위를 지정할 때 
 
 ---
 
-## 16. I/O 스레드 어피니티 — AFFINITY
+## 15. I/O 스레드 어피니티 — AFFINITY
 
 | 항목 | 설명 |
 |------|------|
@@ -436,7 +405,7 @@ I/O 스레드가 여러 개(`ZLINK_IO_THREADS > 1`)일 때 특정 소켓을 특�
 
 ---
 
-## 17. 최대 메시지 크기 — MAXMSGSIZE
+## 16. 최대 메시지 크기 — MAXMSGSIZE
 
 | 항목 | 설명 |
 |------|------|
@@ -459,7 +428,7 @@ zlink_set_option(socket, ZLINK_OPT_MAXMSGSIZE,
 
 ---
 
-## 18. IPv6 — IPV6
+## 17. IPv6 — IPV6
 
 | 항목 | 설명 |
 |------|------|
@@ -471,7 +440,7 @@ zlink_set_option(socket, ZLINK_OPT_MAXMSGSIZE,
 
 ---
 
-## 19. 멀티캐스트 — MULTICAST_HOPS / MULTICAST_MAXTPDU
+## 18. 멀티캐스트 — MULTICAST_HOPS / MULTICAST_MAXTPDU
 
 | 옵션 | 하는 일 | 기본값 |
 |------|---------|--------|
@@ -482,7 +451,7 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 
 ---
 
-## 20. 구독 매칭 반전 — INVERT_MATCHING
+## 19. 구독 매칭 반전 — INVERT_MATCHING
 
 | 항목 | 설명 |
 |------|------|
@@ -494,7 +463,7 @@ PGM transport에서만 적용. 현재 PGM은 임시 비활성화 상태.
 
 ---
 
-## 21. 네트워크 인터페이스 바인딩 — BINDTODEVICE
+## 20. 네트워크 인터페이스 바인딩 — BINDTODEVICE
 
 | 항목 | 설명 |
 |------|------|
@@ -507,7 +476,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 
 ---
 
-## 22. 핸드셰이크 타임아웃 — HANDSHAKE_IVL
+## 21. 핸드셰이크 타임아웃 — HANDSHAKE_IVL
 
 | 항목 | 설명 |
 |------|------|
@@ -520,7 +489,7 @@ Linux `SO_BINDTODEVICE` 지원 시스템에서만 동작한다. 멀티호밍 서
 
 ---
 
-## 23. ZMP 메타데이터 — ZMP_METADATA
+## 22. ZMP 메타데이터 — ZMP_METADATA
 
 | 항목 | 설명 |
 |------|------|

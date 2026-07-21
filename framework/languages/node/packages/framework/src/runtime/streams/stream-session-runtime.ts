@@ -5,15 +5,17 @@ import type {
   ZLinkSessionDispatchContext
 } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageFlowOutcome,
   ZLinkSocketNativeEventType
 } from '../../contracts';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import { ZLinkDispatchErrorReporter, ZLinkRouteDisconnectedError } from '../channels';
@@ -25,6 +27,8 @@ import type {
   ZLinkBackendSocketMonitorEvent,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
+import type { ZLinkMeshCompletionTable } from '../backend/mesh-completion-table';
+import type { StreamSessionService } from '@zlink-systems/zlink';
 import {
   decodeStreamHeader,
   messageToBytes,
@@ -41,6 +45,8 @@ import {
 } from './managed-stream';
 import { DefaultZLinkSessionContext } from './session-context';
 import { ZLinkStreamSessionSerialExecutor } from './session-serial-executor';
+import type { ZLinkApplicationWorkClaim } from '../admission';
+import { ZLinkAsyncSubmitter } from '../messaging';
 
 const ZLINK_SEND_DONT_WAIT = 1;
 const ZLINK_STREAM_HEARTBEAT_INTERVAL_MS = 1_000;
@@ -56,6 +62,7 @@ interface ZLinkStreamLivenessClock {
 interface ZLinkStreamLivenessOptions {
   readonly livenessClock?: ZLinkStreamLivenessClock;
   readonly acceptNewSession?: () => boolean;
+  readonly claimApplicationWork?: () => ZLinkApplicationWorkClaim;
 }
 
 const systemLivenessClock: ZLinkStreamLivenessClock = {
@@ -74,6 +81,8 @@ export interface ZLinkStreamSessionContextFactory {
 
 export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
+  readonly nativeSessionService?: StreamSessionService;
+  readonly meshCompletions?: ZLinkMeshCompletionTable;
   readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
   readonly bindingRuntime: ZLinkStreamSessionContextFactory;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -81,6 +90,7 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly metrics?: ZLinkRuntimeMetrics;
+  readonly submitter?: ZLinkAsyncSubmitter;
 }
 
 export interface ZLinkStreamSessionNodeRuntimeOptions extends ZLinkStreamSessionRuntimeOptions {
@@ -117,7 +127,14 @@ export class ZLinkStreamSessionRuntime {
     private readonly removeSession: (sessionId: string, session: ZLinkStreamSessionRuntime) => void = () => {}
   ) {
     this.livenessClock = options.livenessClock ?? systemLivenessClock;
-    this.stream = new ZLinkManagedStream(options.socket, routingId, options.messageSerializers);
+    this.stream = new ZLinkManagedStream(
+      options.socket,
+      routingId,
+      options.messageSerializers,
+      options.nativeSessionService,
+      options.meshCompletions,
+      options.submitter
+    );
     this.context = options.bindingRuntime.createSessionContext(
       this.stream,
       (signal) => this.close(signal),
@@ -168,7 +185,7 @@ export class ZLinkStreamSessionRuntime {
   }
 
   enqueuePacket(header: Message, payload: Message): void {
-    this.enqueue(
+    this.enqueueApplication(
       async () => this.dispatchPacket(header, payload),
       () => {
         header.close();
@@ -218,6 +235,10 @@ export class ZLinkStreamSessionRuntime {
       if (this.disposed) return;
       this.stopLivenessChecks();
       await this.stream.closeForDrain();
+      if (!this.disconnected) {
+        this.disconnected = true;
+        await this.complete(undefined, true);
+      }
     });
   }
 
@@ -484,6 +505,26 @@ export class ZLinkStreamSessionRuntime {
       onRejected?.();
     }
   }
+
+  private enqueueApplication(work: () => Promise<void>, onRejected?: () => void): void {
+    let claim: ZLinkApplicationWorkClaim | undefined;
+    try {
+      claim = this.options.claimApplicationWork?.();
+    } catch {
+      onRejected?.();
+      return;
+    }
+    this.enqueue(async () => {
+      try {
+        await work();
+      } finally {
+        claim?.close();
+      }
+    }, () => {
+      claim?.close();
+      onRejected?.();
+    });
+  }
 }
 
 export class ZLinkStreamSessionNodeRuntime {
@@ -504,10 +545,16 @@ export class ZLinkStreamSessionNodeRuntime {
     | undefined;
   private activityVersion = 0;
   private stopped = false;
+  private readonly submitter: ZLinkAsyncSubmitter;
 
   constructor(
     private readonly options: ZLinkStreamSessionNodeRuntimeOptions & ZLinkStreamLivenessOptions
-  ) {}
+  ) {
+    this.submitter = options.submitter ?? new ZLinkAsyncSubmitter(
+      (handler) => options.socket.onSendReady(handler),
+      { timeoutMs: options.socket.sendTimeoutMs > 0 ? options.socket.sendTimeoutMs : 1000 }
+    );
+  }
 
   start(): void {
     this.options.socket.onFramedPacket((routingId, header, payload) => {
@@ -533,6 +580,7 @@ export class ZLinkStreamSessionNodeRuntime {
 
   async dispose(): Promise<void> {
     this.stopped = true;
+    this.submitter.dispose();
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
     this.unaddressedMonitorSessions.length = 0;
@@ -727,13 +775,15 @@ export class ZLinkStreamSessionNodeRuntime {
       const rejected = new ZLinkManagedStream(
         this.options.socket,
         routingId,
-        this.options.messageSerializers
+        this.options.messageSerializers,
+        this.options.nativeSessionService,
+        this.options.meshCompletions
       );
       void rejected.closeForDrain().catch((error) => this.options.onError?.(error));
       return undefined;
     }
     const created = new ZLinkStreamSessionRuntime(
-      this.options,
+      { ...this.options, submitter: this.submitter },
       routingId,
       (sessionId, session) => {
         if (this.sessions.get(sessionId) === session) {

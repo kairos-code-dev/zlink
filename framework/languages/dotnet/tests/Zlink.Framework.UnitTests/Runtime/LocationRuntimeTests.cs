@@ -32,6 +32,30 @@ public sealed class LocationRuntimeTests
     }
 
     [Fact]
+    public async Task Owner_Lease_Renew_Timeout_Applies_To_Fixed_Routing_Ids()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var hanging = new HangingOwnerLeaseStore(store);
+        var runtime = new ZLinkLocationRuntime(
+            new ZLinkLocationOptions
+            {
+                OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(25)
+            },
+            store,
+            store,
+            store,
+            store,
+            hanging);
+
+        var renewed = await runtime.RenewOwnerLeaseOnceAsync().AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.False(renewed);
+        Assert.False(runtime.GetHealthSnapshot().Healthy);
+        Assert.Contains("timeout", runtime.LastError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Claim_Then_Activate_Race_Gives_One_Winner_Across_Runtimes()
     {
         var time = new ManualTimeProvider();
@@ -363,6 +387,28 @@ public sealed class LocationRuntimeTests
             Fail
                 ? throw new InvalidOperationException("store unreachable")
                 : inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken);
+
+        public ValueTask<bool> RemoveOwnerLeaseAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);
+
+        public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ListOwnerLeasesAsync(cancellationToken);
+    }
+
+    private sealed class HangingOwnerLeaseStore(IZLinkOwnerLeaseStore inner) : IZLinkOwnerLeaseStore
+    {
+        private readonly TaskCompletionSource<ZLinkOwnerLeaseRenewal> renewal =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
+            string ownerId,
+            RoutingId nodeRid,
+            TimeSpan leaseTtl,
+            CancellationToken cancellationToken = default) =>
+            new(renewal.Task);
 
         public ValueTask<bool> RemoveOwnerLeaseAsync(
             string ownerId,

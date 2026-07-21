@@ -297,14 +297,16 @@ inline int submit_message_parts_close_on_failure (std::vector<message_t> &parts_
 //  Service send/request/reply/create carry parts as borrowed/read-only: Core
 //  keeps caller ownership on both success and failure and copies synchronously
 //  what it needs. Unlike the raw-socket move/consume path this adapter never
-//  moves, mutates, or invalidates the caller's messages — it wraps each part's
-//  payload in a non-owning zlink_msg_t (NULL free-fn) that references the same
-//  buffer, hands the view array to Core, then closes only the views. The caller
+//  moves, mutates, or invalidates the caller's messages. Each temporary native
+//  part shares the source message's reference-counted storage, so a Core copy
+//  remains valid after this adapter closes its temporary parts. The caller
 //  messages remain valid in every outcome.
 template <typename BodyFn>
 inline int with_borrowed_native_parts (const std::vector<message_t> &parts_, BodyFn body_)
 {
     const size_t n = parts_.size ();
+    if (n == 0)
+        return body_ (nullptr, 0);
     for (size_t i = 0; i < n; ++i) {
         if (!parts_[i].valid ()) {
             errno = EINVAL;
@@ -316,13 +318,12 @@ inline int with_borrowed_native_parts (const std::vector<message_t> &parts_, Bod
         size_t built = 0;
         for (; built < count_; ++built) {
             const zlink_msg_t *src = detail::native_handle (parts_[built]);
-            const size_t size = zlink_msg_size (src);
-            const int irc =
-              size == 0
-                ? zlink_msg_init (&views_[built])
-                : zlink_msg_init_data (&views_[built],
-                                       zlink_msg_data (const_cast<zlink_msg_t *> (src)), size,
-                                       nullptr, nullptr);
+            int irc = zlink_msg_init (&views_[built]);
+            if (irc == 0
+                && zlink_msg_copy (&views_[built], const_cast<zlink_msg_t *> (src)) != 0) {
+                (void) zlink_msg_close (&views_[built]);
+                irc = -1;
+            }
             if (irc != 0) {
                 errno = EINVAL;
                 break;

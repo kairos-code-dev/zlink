@@ -128,12 +128,12 @@ public final class Program {
             boot("addLocationStore");
             options.addLocationStore(locationStore);
             boot("addLocationStore done");
-            boot("addSpotMesh");
-            var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
-            boot("addSpotMesh done");
-            boot("enableRouter");
-            spotMesh.enableRouter(Env.get("actorSpotEndpoint"));
-            boot("enableRouter done");
+            boot("addRouteMesh");
+            var spotMesh = options.addRouteMesh(Contracts.SPOT_MESH);
+            boot("addRouteMesh done");
+            boot("listen");
+            spotMesh.listen(Env.get("actorSpotEndpoint"));
+            boot("listen done");
             boot("setRoutingId");
             spotMesh.setRoutingId(RoutingId.from(Env.get("actorRid", "actor-a")));
             boot("setRoutingId done");

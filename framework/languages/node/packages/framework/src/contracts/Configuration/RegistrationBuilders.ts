@@ -1,25 +1,30 @@
 import type {
   RoutingId,
   Type,
-  ZLinkClientServerChannelBuilder,
   ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
+  ZLinkMeshChannelBuilder,
+  ZLinkMeshNodeBuilder,
+  ZLinkMeshNodeSocketConfig,
+  ZLinkMeshPeerConnection,
+  ZLinkMeshPeerConnections,
+  ZLinkLocationOptionValues,
+  ZLinkRuntimeErrorSink,
+  ZLinkSpotPublisherConfig,
   ZLinkHandlerFilter,
-  ZLinkRouteMeshChannelBuilder,
   ZLinkSpot,
   ZLinkActorTransferAdapter,
-  ZLinkSpotMeshBuilder,
-  ZLinkSpotNodeBuilder,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec,
   ZLinkStreamNodeBuilder,
   ZLinkSession,
-  ZLinkSessionFactory,
-  ZLinkSocketConfig
+  ZLinkSessionFactory
 } from '../../contracts';
+import type { ZLinkSpotNodeBuilder } from '../Spots/Builders';
+import { readZLinkDecoratorMetadata } from '../../contracts';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type {
   ZLinkDispatchOptions,
@@ -27,7 +32,10 @@ import type {
   ZLinkMessageFlowObserver
 } from '../Dispatch';
 import { ZLinkMessageFlowLogMode, ZLinkUnhandledDispatchAction } from '../Dispatch';
-import { setDispatchObserverType } from './DispatchObserverRegistration';
+import {
+  setDispatchObserverType,
+  setRuntimeErrorSinkType
+} from './DispatchObserverRegistration';
 import { endpointConnections } from './RuntimeEndpointConnections';
 import type { ZLinkEndpointConnections } from './Connections';
 import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
@@ -41,18 +49,9 @@ import {
   normalizeOptionalPositiveInteger,
   typeMapToRecord
 } from './RegistrationNormalizers';
-import {
-  markRouteClientEnabled,
-  markRouteTransportDeclared
-} from './RouteChannelInternalState';
 import type {
   ZLinkChannelPublishHandlerRegistration,
-  ZLinkChannelRequestHandlerRegistration,
-  ZLinkChannelSendHandlerRegistration,
   ZLinkFrameworkRegistrationOptions,
-  ZLinkRouteChannelHandlerOptions,
-  ZLinkRouteChannelRequestHandlerRegistration,
-  ZLinkRouteChannelSendHandlerRegistration,
   ZLinkSpotRouterPeerConnectionOptions,
   ZLinkStreamTlsServerOptions,
   ZLinkWorkerOptions
@@ -66,6 +65,7 @@ import {
   registerActorFactory,
   registerEntrySpot,
   registerSpotFactory,
+  validateActorTransferTimeout,
   validateActorTransferForwardWindow
 } from './RegistrationBuilderPolicy';
 
@@ -82,7 +82,6 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   private readonly options: MutableFrameworkRegistrationOptions = {
     actorTransferAdapters: new Map(),
     channels: {},
-    routeChannels: [],
     streamNodes: {},
     spotNodes: {},
     spotFactories: []
@@ -103,23 +102,14 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultDispatchOptionsBuilder(this.options.dispatch);
   }
 
-  useInMemoryLocationStores(): this {
-    this.options.locations ??= { options: {} };
-    this.options.locations.useInMemoryStores = true;
-    return this;
-  }
-
   addLocationStore(store: ZLinkLocationStore): this {
     this.options.locations ??= { options: {} };
     this.options.locations.storeInstance = store;
     return this;
   }
 
-  addActorTransferAdapter<TActor extends ZLinkActor>(
-    actorType: Type<TActor>,
-    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
-  ): this {
-    registerActorTransferAdapter(this.options.actorTransferAdapters, actorType, adapterType);
+  setActorTransferTimeout(timeoutMs: number): this {
+    this.options.actorTransferTimeoutMs = validateActorTransferTimeout(timeoutMs);
     return this;
   }
 
@@ -131,7 +121,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   configureLocations(): ZLinkLocationOptions {
     this.options.locations ??= { options: {} };
     this.options.locations.options ??= {};
-    return this.options.locations.options;
+    return new DefaultLocationOptionsBuilder(this.options.locations.options);
   }
 
   configureStreamCompression(): ZLinkStreamCompressionBuilder {
@@ -139,36 +129,21 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return new DefaultStreamCompressionBuilder(this.options.streamCompression);
   }
 
-  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
-    this.options.spotFactories.push(spotType);
-    return this;
-  }
-
-  addSpotMesh(channelName: string): ZLinkSpotMeshBuilder {
-    if (channelName.trim().length === 0 || channelName.trim() !== channelName) {
-      throw new ZLinkConfigurationException('SPOT mesh channel name must not be empty or padded.');
+  addRouteMesh(meshName: string): ZLinkMeshNodeBuilder {
+    requireRegistrationName(meshName, 'RouteMesh');
+    if (this.spotMeshes.has(meshName)) {
+      throw new ZLinkConfigurationException(`Duplicate RouteMesh '${meshName}'.`);
     }
-    if (this.spotMeshes.has(channelName)) {
-      throw new ZLinkConfigurationException(`Duplicate SPOT mesh channel '${channelName}'.`);
-    }
-    this.spotMeshes.add(channelName);
-    const spotNode = this.spotNodeOptions(channelName);
-    return new DefaultSpotNodeBuilder(channelName, spotNode);
-  }
-
-  addClientServerChannel(name: string): ZLinkClientServerChannelBuilder {
-    return new DefaultClientServerChannelBuilder(name, this.channel(name));
+    this.spotMeshes.add(meshName);
+    return new DefaultMeshNodeBuilder(
+      meshName,
+      this.spotNodeOptions(meshName),
+      this.options.actorTransferAdapters
+    );
   }
 
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder {
     return new DefaultFanoutChannelBuilder(name, this.channel(name));
-  }
-
-  addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
-    const channel = this.channel(name);
-    channel.routeMesh ??= {};
-    markRouteTransportDeclared(channel.routeMesh);
-    return new DefaultRouteChannelOptionsBuilder(name, channel.routeMesh);
   }
 
   addStreamNode(name: string): ZLinkStreamNodeBuilder {
@@ -188,12 +163,12 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       codecs: this.options.codecs,
       channels: this.options.channels,
       requestTimeoutMs: this.options.requestTimeoutMs,
-      routeChannels: this.options.routeChannels,
       streamNodes: this.options.streamNodes,
       streamCompression: this.options.streamCompression,
       spotNodes: this.options.spotNodes,
       spotFactories: this.options.spotFactories,
       actorTransferAdapters: new Map(this.options.actorTransferAdapters),
+      actorTransferTimeoutMs: this.options.actorTransferTimeoutMs,
       actorTransferForwardWindowMs: this.options.actorTransferForwardWindowMs,
       dispatch: this.options.dispatch,
       worker: this.options.worker,
@@ -227,6 +202,11 @@ export class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilde
     return this;
   }
 
+  setRuntimeErrorSink(sinkType: Type<ZLinkRuntimeErrorSink>): this {
+    setRuntimeErrorSinkType(this.dispatch, sinkType);
+    return this;
+  }
+
   messageFlow(mode: ZLinkMessageFlowLogMode): this {
     this.dispatch.diagnostics.messageFlow = mode;
     return this;
@@ -253,6 +233,40 @@ export class DefaultDispatchOptionsBuilder implements ZLinkDispatchOptionsBuilde
   }
 }
 
+export class DefaultLocationOptionsBuilder implements ZLinkLocationOptions {
+  constructor(private readonly options: MutableLocationOptionValues) {}
+
+  heartbeatIntervalMs(value: number): this {
+    this.options.heartbeatIntervalMs = value;
+    return this;
+  }
+
+  ownerLeaseTtlMs(value: number): this {
+    this.options.ownerLeaseTtlMs = value;
+    return this;
+  }
+
+  pollingIntervalMs(value: number): this {
+    this.options.pollingIntervalMs = value;
+    return this;
+  }
+
+  storeFailureGraceMs(value: number): this {
+    this.options.storeFailureGraceMs = value;
+    return this;
+  }
+
+  routingIdFencingMarginMs(value: number): this {
+    this.options.routingIdFencingMarginMs = value;
+    return this;
+  }
+
+  ownerLeaseRenewTimeoutMs(value: number): this {
+    this.options.ownerLeaseRenewTimeoutMs = value;
+    return this;
+  }
+}
+
 function defaultDispatchOptions(): ZLinkDispatchOptions {
   return {
     unhandled: {
@@ -266,75 +280,6 @@ function defaultDispatchOptions(): ZLinkDispatchOptions {
       includeMessageSizes: false
     }
   };
-}
-
-class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
-  constructor(
-    private readonly name: string,
-    private readonly channel: MutableChannelOptions
-  ) {}
-
-  enableServer(endpoint: string): this {
-    this.channel.server ??= {};
-    this.channel.server.bind = endpoint;
-    return this;
-  }
-
-  routingId(routingId: string): this {
-    rejectAllocatedRoutingId(this.channel.routingIdAllocation, this.name);
-    this.channel.server ??= {};
-    this.channel.server.routingId = routingId;
-    return this;
-  }
-
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    rejectFixedRoutingId(this.channel.server?.routingId, this.name);
-    this.channel.routingIdAllocation = createRoutingIdAllocation(
-      slotCount,
-      routingIdPrefix,
-      this.channel.routingIdAllocation?.groupName
-    );
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.channel.routingIdAllocation = setRoutingIdAllocationGroup(
-      groupName,
-      this.channel.routingIdAllocation,
-      this.name
-    );
-    return this;
-  }
-
-  configureServerSocket(): ZLinkSocketConfig {
-    this.channel.server ??= {};
-    return this.channel.server;
-  }
-
-  configureClientSocket(): ZLinkSocketConfig {
-    this.channel.client ??= { manualConnections: [] };
-    return this.channel.client;
-  }
-
-  enableClient(endpoint?: string): this {
-    this.channel.client ??= { manualConnections: [] };
-    if (endpoint !== undefined) {
-      this.channel.client.manualConnections ??= [];
-      this.channel.client.manualConnections.push(endpoint);
-    }
-    return this;
-  }
-
-  clientConnections(): ZLinkEndpointConnections {
-    this.channel.client ??= { manualConnections: [] };
-    this.channel.client.manualConnections ??= [];
-    return endpointConnections(this.channel.client, this.channel.client.manualConnections);
-  }
-
-  setDefaultRequestTimeout(timeoutMs: number): this {
-    this.channel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
-    return this;
-  }
 }
 
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
@@ -390,73 +335,22 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   }
 }
 
-class DefaultRouteChannelOptionsBuilder<
-  TOptions extends MutableRouteMeshChannelOptions
-> implements ZLinkRouteMeshChannelBuilder {
-  constructor(
-    private readonly name: string,
-    private readonly routeChannel: TOptions
-  ) {}
-
-  enableServer(endpoint: string): this {
-    this.routeChannel.bind = endpoint;
-    return this;
-  }
-
-  routingId(routingId: string): this {
-    rejectAllocatedRoutingId(this.routeChannel.routingIdAllocation, this.name);
-    this.routeChannel.routingId = routingId;
-    return this;
-  }
-
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    rejectFixedRoutingId(this.routeChannel.routingId, this.name);
-    this.routeChannel.routingIdAllocation = createRoutingIdAllocation(
-      slotCount,
-      routingIdPrefix,
-      this.routeChannel.routingIdAllocation?.groupName
-    );
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.routeChannel.routingIdAllocation = setRoutingIdAllocationGroup(
-      groupName,
-      this.routeChannel.routingIdAllocation,
-      this.name
-    );
-    return this;
-  }
-
-  enableClient(endpoint?: string): this {
-    markRouteClientEnabled(this.routeChannel);
-    this.routeChannel.manualConnections ??= [];
-    if (endpoint !== undefined) {
-      this.routeChannel.manualConnections.push(endpoint);
-    }
-    return this;
-  }
-
-  clientConnections(): ZLinkEndpointConnections {
-    this.routeChannel.manualConnections ??= [];
-    return endpointConnections(this.routeChannel, this.routeChannel.manualConnections);
-  }
-
-  configureSocket(): ZLinkSocketConfig {
-    return this.routeChannel;
-  }
-
-  setDefaultRequestTimeout(timeoutMs: number): this {
-    this.routeChannel.requestTimeoutMs = normalizeOptionalPositiveInteger(timeoutMs, 'requestTimeoutMs');
-    return this;
-  }
-}
-
 class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
   constructor(private readonly streamNode: MutableStreamNodeOptions) {}
 
   bind(endpoint: string): this {
     this.streamNode.bind = endpoint;
+    return this;
+  }
+
+  enableActorDispatch(meshName: string): this {
+    if (meshName.trim().length === 0 || meshName.trim() !== meshName) {
+      throw new ZLinkConfigurationException('STREAM actor dispatch MeshName must not be empty or padded.');
+    }
+    if (this.streamNode.actorDispatchMeshName !== undefined) {
+      throw new ZLinkConfigurationException('STREAM node actor dispatch MeshName is already configured.');
+    }
+    this.streamNode.actorDispatchMeshName = meshName;
     return this;
   }
 
@@ -609,9 +503,195 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  useDrainPolicy(policy: import('../Eventing').ZLinkSpotDrainPolicy): this {
-    this.spotNode.drainPolicy = policy;
+}
+
+class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
+  private readonly spot: DefaultSpotNodeBuilder;
+
+  constructor(
+    private readonly name: string,
+    private readonly node: MutableSpotNodeOptions,
+    private readonly actorTransferAdapters: Map<Type, Type>
+  ) {
+    this.spot = new DefaultSpotNodeBuilder(name, node);
+  }
+
+  channelName(channelName: string): ZLinkMeshChannelBuilder {
+    requireRegistrationName(channelName, 'Mesh channel');
+    this.node.meshChannels ??= {};
+    if (Object.prototype.hasOwnProperty.call(this.node.meshChannels, channelName)) {
+      throw new ZLinkConfigurationException(
+        `Duplicate channel '${channelName}' in RouteMesh '${this.name}'.`
+      );
+    }
+    const channel: MutableMeshChannelOptions = {};
+    this.node.meshChannels[channelName] = channel;
+    return new DefaultMeshChannelBuilder(channel);
+  }
+
+  listen(endpoint: string): this {
+    requireRegistrationName(endpoint, 'RouteMesh listen endpoint');
+    this.node.router ??= {};
+    this.node.router.bind = endpoint;
     return this;
+  }
+
+  routingId(routingId: RoutingId): this {
+    this.spot.routingId(routingId);
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    this.spot.useAllocatedRoutingId(slotCount, routingIdPrefix);
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.spot.setRoutingIdAllocationGroup(groupName);
+    return this;
+  }
+
+  configureRouterSocket(): ZLinkMeshNodeSocketConfig {
+    this.node.router ??= {};
+    return this.node.router as ZLinkMeshNodeSocketConfig;
+  }
+
+  configureSpotPublisher(): ZLinkSpotPublisherConfig {
+    this.node.publisherConfig ??= {};
+    return this.node.publisherConfig as ZLinkSpotPublisherConfig;
+  }
+
+  peerConnections(): ZLinkMeshPeerConnections {
+    this.node.router ??= {};
+    return new DefaultMeshPeerConnections(this.node.router);
+  }
+
+  setDefaultRequestTimeout(timeoutMs: number): this {
+    this.node.requestTimeoutMs = normalizeOptionalPositiveInteger(
+      timeoutMs,
+      `RouteMesh '${this.name}' default request timeout`
+    );
+    return this;
+  }
+
+  addRouteSendHandler<TMessage>(handlerType: Type<import('../Handlers').ZLinkRouteSendHandler<TMessage>>): this {
+    this.node.routeSendHandlers ??= [];
+    this.node.routeSendHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+
+  addRouteRequestHandler<TRequest, TReply>(
+    handlerType: Type<import('../Handlers').ZLinkRouteRequestHandler<TRequest, TReply>>
+  ): this {
+    this.node.routeRequestHandlers ??= [];
+    this.node.routeRequestHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+
+  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
+    this.spot.configureEntrySpot(options);
+    return this;
+  }
+
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
+    this.spot.addEntrySpot(entrySpotType);
+    return this;
+  }
+
+  addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this {
+    this.spot.addSpotFactory(spotType);
+    return this;
+  }
+
+  actorFactory(actorType: string, factoryType: Type): this {
+    this.spot.actorFactory(actorType, factoryType);
+    return this;
+  }
+
+  addActorTransferAdapter<TActor extends ZLinkActor>(
+    actorType: string,
+    adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this {
+    const actorFactories = this.node.actorFactories;
+    if (actorFactories === undefined || !Object.hasOwn(actorFactories, actorType)) {
+      throw new ZLinkConfigurationException(
+        `Actor transfer adapter '${actorType}' requires an actor factory on RouteMesh '${this.name}'.`
+      );
+    }
+    registerActorTransferAdapter(
+      this.actorTransferAdapters,
+      actorFactories[actorType] as Type<ZLinkActor>,
+      adapterType
+    );
+    return this;
+  }
+
+}
+
+class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
+  constructor(private readonly channel: MutableMeshChannelOptions) {}
+
+  setWeight(weight: number): this {
+    if (!Number.isSafeInteger(weight) || weight < 0) {
+      throw new ZLinkConfigurationException('Mesh channel weight must be a non-negative safe integer.');
+    }
+    this.channel.weight = weight;
+    return this;
+  }
+
+  addSendHandler<TMessage>(handlerType: Type<import('../Handlers').ZLinkSendHandler<TMessage>>): this {
+    this.channel.sendHandlers ??= [];
+    this.channel.sendHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+
+  addRequestHandler<TRequest, TReply>(
+    handlerType: Type<import('../Handlers').ZLinkRequestHandler<TRequest, TReply>>
+  ): this {
+    this.channel.requestHandlers ??= [];
+    this.channel.requestHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+}
+
+class DefaultMeshPeerConnections implements ZLinkMeshPeerConnections {
+  constructor(private readonly router: MutableSpotRouterCapabilityOptions) {}
+
+  connect(endpoint: string): void;
+  connect(expectedRoutingId: RoutingId, endpoint: string): void;
+  connect(expectedRoutingIdOrEndpoint: RoutingId | string, endpoint?: string): void {
+    if (endpoint === undefined) {
+      requireRegistrationName(expectedRoutingIdOrEndpoint, 'Mesh peer endpoint');
+      this.router.manualConnections ??= [];
+      if (!this.router.manualConnections.includes(expectedRoutingIdOrEndpoint)) {
+        this.router.manualConnections.push(expectedRoutingIdOrEndpoint);
+      }
+      return;
+    }
+    requireRegistrationName(endpoint, 'Mesh peer endpoint');
+    this.router.manualPeerConnections ??= [];
+    if (!this.router.manualPeerConnections.some(
+      (peer) => peer.endpoint === endpoint && peer.peerRid === expectedRoutingIdOrEndpoint
+    )) {
+      this.router.manualPeerConnections.push({ peerRid: expectedRoutingIdOrEndpoint, endpoint });
+    }
+  }
+
+  disconnect(endpoint: string): void {
+    this.router.manualConnections = this.router.manualConnections?.filter((value) => value !== endpoint);
+    this.router.manualPeerConnections = this.router.manualPeerConnections?.filter(
+      (value) => value.endpoint !== endpoint
+    );
+  }
+
+  listConnections(): readonly ZLinkMeshPeerConnection[] {
+    return [
+      ...(this.router.manualConnections ?? []).map((endpoint) => ({ endpoint })),
+      ...(this.router.manualPeerConnections ?? []).map((peer) => ({
+        endpoint: peer.endpoint,
+        expectedRoutingId: peer.peerRid
+      }))
+    ];
   }
 }
 
@@ -621,10 +701,10 @@ function endpointList(endpoint: string | readonly string[]): string[] {
 
 interface MutableFrameworkRegistrationOptions {
   actorTransferAdapters: Map<Type, Type>;
+  actorTransferTimeoutMs?: number;
   actorTransferForwardWindowMs?: number;
   codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
-  routeChannels: MutableRouteChannelOptions[];
   streamNodes: Record<string, MutableStreamNodeOptions>;
   streamCompression?: MutableStreamCompressionOptions;
   spotNodes: Record<string, MutableSpotNodeOptions>;
@@ -639,28 +719,18 @@ interface MutableFrameworkRegistrationOptions {
 interface MutableLocationRegistrationOptions {
   useInMemoryStores?: boolean;
   storeInstance?: ZLinkLocationStore;
-  options?: ZLinkLocationOptions;
+  options?: MutableLocationOptionValues;
 }
+
+type MutableLocationOptionValues = {
+  -readonly [Key in keyof ZLinkLocationOptionValues]?: ZLinkLocationOptionValues[Key];
+};
 
 interface MutableChannelOptions {
   routingId?: string;
   routingIdAllocation?: MutableRoutingIdAllocationOptions;
-  requestTimeoutMs?: number;
-  client?: MutableClientCapabilityOptions;
   publisher?: MutablePublisherCapabilityOptions;
-  routeMesh?: MutableRouteMeshChannelOptions;
   publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
-  requestHandlers?: ZLinkChannelRequestHandlerRegistration[];
-  sendHandlers?: ZLinkChannelSendHandlerRegistration[];
-  server?: {
-    bind?: string;
-    routingId?: string;
-    weight?: number;
-    sendHighWaterMark?: number;
-    receiveHighWaterMark?: number;
-    sendTimeoutMs?: number;
-    maxMessageSize?: number;
-  };
   subscriber?: MutableClientCapabilityOptions;
 }
 
@@ -676,27 +746,9 @@ interface MutablePublisherCapabilityOptions {
   bind?: string;
 }
 
-interface MutableRouteMeshChannelOptions {
-  requestTimeoutMs?: number;
-  bind?: string;
-  manualConnections?: string[];
-  routingId?: string;
-  routingIdAllocation?: MutableRoutingIdAllocationOptions;
-  sendHighWaterMark?: number;
-  receiveHighWaterMark?: number;
-  sendTimeoutMs?: number;
-  maxMessageSize?: number;
-  sendHandlers?: ZLinkRouteChannelSendHandlerRegistration[];
-  requestHandlers?: ZLinkRouteChannelRequestHandlerRegistration[];
-  handlers?: ZLinkRouteChannelHandlerOptions[];
-}
-
-interface MutableRouteChannelOptions extends MutableRouteMeshChannelOptions {
-  routerChannelId: string;
-}
-
 interface MutableStreamNodeOptions {
   bind?: string;
+  actorDispatchMeshName?: string;
   tlsServer?: ZLinkStreamTlsServerOptions;
   session?: Type;
 }
@@ -707,7 +759,6 @@ export interface MutableStreamCompressionOptions {
 }
 
 interface MutableSpotNodeOptions {
-  drainPolicy?: import('../Eventing').ZLinkSpotDrainPolicy;
   routingId?: string;
   routingIdAllocation?: MutableRoutingIdAllocationOptions;
   router?: MutableSpotRouterCapabilityOptions;
@@ -716,6 +767,21 @@ interface MutableSpotNodeOptions {
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
   actorFactories?: Record<string, Type>;
+  meshChannels?: Record<string, MutableMeshChannelOptions>;
+  routeSendHandlers?: Array<{ packetName: string; handlerType: Type }>;
+  routeRequestHandlers?: Array<{ packetName: string; handlerType: Type }>;
+  requestTimeoutMs?: number;
+  publisherConfig?: {
+    sendHighWaterMark?: number;
+    sendTimeoutMs?: number;
+    lingerMs?: number;
+  };
+}
+
+interface MutableMeshChannelOptions {
+  weight?: number;
+  sendHandlers?: Array<{ packetName: string; handlerType: Type }>;
+  requestHandlers?: Array<{ packetName: string; handlerType: Type }>;
 }
 
 interface MutableSpotRouterCapabilityOptions {
@@ -723,6 +789,11 @@ interface MutableSpotRouterCapabilityOptions {
   manualConnections?: string[];
   manualPeerConnections?: ZLinkSpotRouterPeerConnectionOptions[];
   routingId?: string;
+  maxMessageSize?: number;
+  sendHighWaterMark?: number;
+  receiveHighWaterMark?: number;
+  receiveTimeoutMs?: number;
+  sendTimeoutMs?: number;
 }
 
 interface MutableSpotPubSubCapabilityOptions {
@@ -735,4 +806,16 @@ interface MutableRoutingIdAllocationOptions {
   slotCount: number;
   routingIdPrefix: string;
   groupName?: string;
+}
+
+function handlerPacketName(handlerType: Type): string {
+  return readZLinkDecoratorMetadata(handlerType)
+    .find((metadata) => metadata.kind === 'packet' && metadata.packetName !== undefined)
+    ?.packetName ?? handlerType.name;
+}
+
+function requireRegistrationName(value: string, label: string): void {
+  if (value.trim().length === 0 || value.trim() !== value) {
+    throw new ZLinkConfigurationException(`${label} must not be empty or padded.`);
+  }
 }

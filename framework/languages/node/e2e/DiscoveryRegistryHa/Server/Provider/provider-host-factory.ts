@@ -4,11 +4,11 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   type ZLinkChannelRuntimeOptions,
-  type ZLinkDrainControl
+  type ZLinkRouteMeshRuntime
 } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_DRAIN_CONTROL,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
@@ -31,10 +31,10 @@ export async function startProviderHost(): Promise<void> {
   const options = app.get(DISCOVERY_OPTIONS, { strict: false }) as ProviderOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createProviderEndpoints(evidence, runtimeOptions, drain, () => { stopping = true; })
+    createProviderEndpoints(evidence, runtimeOptions, routeMeshRuntime, () => { stopping = true; })
   );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -71,9 +71,10 @@ function createProviderModule(): {
           locationStore = createRedisLocationStore(options);
           builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), storeFailureLocationOptions());
-          builder.addClientServerChannel(ChannelNames.profile)
-            .enableServer(options.channelEndpoint)
-            .routingId(options.rid)
+          const profile = builder.addRouteMesh(ChannelNames.profile)
+            .listen(options.channelEndpoint)
+            .routingId(options.rid);
+          profile.channelName(ChannelNames.profile)
             .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
           return builder.build();
         }

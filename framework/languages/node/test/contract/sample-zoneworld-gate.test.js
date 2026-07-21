@@ -20,21 +20,30 @@ test('ZoneWorld Node sample contains the language server and headless scenario c
   assert.match(read('samples/run_samples.ps1'), /ZoneWorld/);
 });
 
-test('ZoneNode shares one automatic routing id across all three transport members', () => {
-  const module = read('samples/ZoneWorld/Server/ZoneNode/zone-node-module.ts');
-  assert.match(module, /const ZONE_NODE_ALLOCATION_GROUP = 'zoneworld\.zone-node';/);
-  for (const [builderMethod, member] of [
-    ['addSpotMesh', 'zoneMesh'],
-    ['addRouteMeshChannel', 'bridgeMesh'],
-    ['addClientServerChannel', 'reportChannel']
-  ]) {
-    assert.match(module, new RegExp(
-      `${builderMethod}\\(ZoneWorldNames\\.${member}\\)`
-      + `[\\s\\S]*?useAllocatedRoutingId\\(2, 'zn'\\)`
-      + `[\\s\\S]*?setRoutingIdAllocationGroup\\(ZONE_NODE_ALLOCATION_GROUP\\)`
-    ));
+test('ZoneWorld roles use one physical MeshNode with automatic logical handlers', () => {
+  const zoneNode = read('samples/ZoneWorld/Server/ZoneNode/zone-node-module.ts');
+  const gateway = read('samples/ZoneWorld/Server/Gateway/gateway-module.ts');
+  const ops = read('samples/ZoneWorld/Server/Ops/ops-module.ts');
+  const nodeHandlers = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Handlers/node-channel-handlers.ts');
+  const opsHandlers = read('samples/ZoneWorld/Server/Ops/ops-handlers.ts');
+  assert.match(zoneNode, /const ZONE_NODE_ALLOCATION_GROUP = 'zoneworld\.zone-node';/);
+  assert.match(
+    zoneNode,
+    /addRouteMesh\(ZoneWorldNames\.zoneMesh\)[\s\S]*?useAllocatedRoutingId\(2, 'zn'\)[\s\S]*?setRoutingIdAllocationGroup\(ZONE_NODE_ALLOCATION_GROUP\)/
+  );
+  for (const module of [zoneNode, gateway, ops]) {
+    assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   }
-  assert.doesNotMatch(module, /\.routingId\(|enableRouter\([^\n]+,[^\n]+\)/);
+  for (const channel of ['bridgeMesh', 'reportChannel', 'actorsChannel']) {
+    assert.match(zoneNode, new RegExp(`zoneMesh\\.channelName\\(ZoneWorldNames\\.${channel}\\)`));
+  }
+  assert.match(zoneNode, /membership\.addHandlerGroup\('zone-ops'\)/);
+  assert.match(zoneNode, /addHandlerGroup\('zone-actors'\)/);
+  assert.match(ops, /channelName\(ZoneWorldNames\.reportChannel\)\.addHandlerGroup\('ops'\)/);
+  assert.match(nodeHandlers, /@zlinkRequestHandler\('zone-ops', PacketNames\.applyNodeMaintenanceReq\)/);
+  assert.match(nodeHandlers, /@zlinkRequestHandler\('zone-actors', PacketNames\.ensurePlayerActorReq\)/);
+  assert.match(opsHandlers, /@zlinkSendHandler\('ops', PacketNames\.reportNodeStatusMsg\)/);
+  assert.doesNotMatch(zoneNode, /addRouteMesh\(ZoneWorldNames\.(?:bridgeMesh|reportChannel|actorsChannel)\)/);
 });
 
 test('ZoneWorld runner proves the canonical scenario and routing-id gates', () => {
@@ -121,13 +130,15 @@ test('ZoneWorld maintenance rejects only arrivals from outside the maintained no
   assert.equal(state.playerCount(), 0);
 });
 
-test('ZoneWorld human state pushes use the one-way bound-session contract', () => {
+test('ZoneWorld human state pushes cross the ActorRef boundary before the bound session', () => {
   const actor = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Actors/player-actor.ts');
   const spot = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Spots/zone-spot.ts');
   assert.match(actor, /push\(payload: unknown\): void/);
   assert.match(actor, /this\.context\.boundSession\.send\(payload\)\.submit\(\)/);
   assert.doesNotMatch(actor, /await[\s\S]*?boundSession\.send/);
-  assert.match(spot, /actor\.push\(new ZoneStateNotify/);
+  assert.match(spot, /sendToActor\(ZoneWorldNames\.zoneMesh, actor, new DeliverZoneNotification\(payload\)\)/);
+  assert.doesNotMatch(spot, /Map<string, PlayerActor>/);
+  assert.doesNotMatch(spot, /actor\.push\(/);
 });
 
 test('ZoneWorld Ops translates public diagnostics requests to the node channel contract', () => {

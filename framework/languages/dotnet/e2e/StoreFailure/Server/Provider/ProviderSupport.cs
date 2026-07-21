@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace StoreFailure.Server.Provider;
 
@@ -52,7 +53,7 @@ internal sealed class EvidenceStore
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow + timeout;
+        var elapsed = Stopwatch.StartNew();
         while (true)
         {
             var waiter = AddWaiter();
@@ -63,7 +64,7 @@ internal sealed class EvidenceStore
                 return snapshot;
             }
 
-            var remaining = deadline - DateTimeOffset.UtcNow;
+            var remaining = timeout - elapsed.Elapsed;
             if (remaining <= TimeSpan.Zero)
             {
                 RemoveWaiter(waiter);

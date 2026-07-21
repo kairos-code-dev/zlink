@@ -1,6 +1,8 @@
 package systems.zlink.framework.execution;
 
 import java.time.Duration;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -8,6 +10,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -25,6 +28,8 @@ public final class ZLinkWorkerPool implements AutoCloseable {
     private final ElasticTaskQueue queue;
     private final int minThreads;
     private final AtomicInteger inFlightTasks = new AtomicInteger();
+    private final AtomicBoolean shutdownRequested = new AtomicBoolean();
+    private final Set<Runnable> shutdownListeners = ConcurrentHashMap.newKeySet();
     private volatile ScheduledExecutorService timeoutScheduler;
 
     public ZLinkWorkerPool(
@@ -121,8 +126,29 @@ public final class ZLinkWorkerPool implements AutoCloseable {
         return queue.size();
     }
 
+    /**
+     * Registers work that must be notified when shutdown starts.
+     *
+     * @return an idempotent action that removes the listener
+     */
+    public Runnable registerShutdownListener(Runnable listener) {
+        if (shutdownRequested.get()) {
+            listener.run();
+            return () -> { };
+        }
+        shutdownListeners.add(listener);
+        if (shutdownRequested.get() && shutdownListeners.remove(listener)) {
+            listener.run();
+        }
+        return () -> shutdownListeners.remove(listener);
+    }
+
     @Override
     public void close() {
+        if (shutdownRequested.compareAndSet(false, true)) {
+            shutdownListeners.forEach(Runnable::run);
+            shutdownListeners.clear();
+        }
         executor.shutdownNow();
         ScheduledExecutorService scheduler = timeoutScheduler;
         if (scheduler != null) {

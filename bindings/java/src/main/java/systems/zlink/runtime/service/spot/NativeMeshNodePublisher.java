@@ -30,27 +30,41 @@ public final class NativeMeshNodePublisher implements MeshNodePublisher {
     @Override
     public PublishDetail publishDetailed(String channel, String topic, List<Message> parts,
                                          SendFlags flags) {
+        return publishDetailed(channel, topic, new byte[0], parts, flags);
+    }
+
+    @Override
+    public PublishDetail publishDetailed(String channel, String topic, byte[] metadata,
+                                         List<Message> parts, SendFlags flags) {
+        Objects.requireNonNull(metadata, "metadata");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment detail = ServiceInterop.allocStamped(arena,
                 ServiceLayouts.MESH_PUBLISH_DETAIL);
-            publishInternal(channel, topic, parts, flags, detail);
+            publishInternal(channel, topic, metadata, parts, flags, detail, arena);
             return ServiceInterop.publishDetailFromNative(detail);
         }
     }
 
     private void publishInternal(String channel, String topic, List<Message> parts,
                                  SendFlags flags, MemorySegment detail) {
+        try (Arena arena = Arena.ofConfined()) {
+            publishInternal(channel, topic, new byte[0], parts, flags, detail, arena);
+        }
+    }
+
+    private void publishInternal(String channel, String topic, byte[] metadata,
+                                 List<Message> parts, SendFlags flags,
+                                 MemorySegment detail, Arena arena) {
         Objects.requireNonNull(channel, "channel");
         Objects.requireNonNull(topic, "topic");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment name = NativeHelpers.toCString(arena, channel);
-            MemorySegment topicSeg = NativeHelpers.toCString(arena, topic);
-            MemorySegment array = MeshCalls.parts(arena, parts);
-            long n = MeshCalls.count(parts);
-            int rc = NativeServiceSymbols.publisherPublish(handle, name, topicSeg,
-                MemorySegment.NULL, array, n, detail, flags.value());
-            MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_publisher_publish");
-        }
+        MemorySegment name = NativeHelpers.toCString(arena, channel);
+        MemorySegment topicSeg = NativeHelpers.toCString(arena, topic);
+        MemorySegment array = MeshCalls.parts(arena, parts);
+        long n = MeshCalls.count(parts);
+        MemorySegment metadataView = MeshCalls.metadata(arena, metadata);
+        int rc = NativeServiceSymbols.publisherPublish(handle, name, topicSeg,
+            metadataView, array, n, detail, flags.value());
+        MeshCalls.submitOk(rc, array, n, "zlink_mesh_node_publisher_publish");
     }
 
     @Override

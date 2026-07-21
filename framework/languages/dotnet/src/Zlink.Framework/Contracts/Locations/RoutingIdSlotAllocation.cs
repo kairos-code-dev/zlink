@@ -86,5 +86,5 @@ public sealed record ZLinkRoutingIdSlotAllocationSnapshot(
     DateTimeOffset StoreNow);
 
 public sealed record ZLinkRoutingIdSlotAllocationMember(
-    string ChannelName,
+    string MeshName,
     string RoutingIdPrefix);

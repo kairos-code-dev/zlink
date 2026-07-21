@@ -1,4 +1,4 @@
-// MON-A4: replacement, SIGKILL failover, transport weight 제외를 분리해 관측한다.
+// MON-A4: replacement·failover 중 readiness 복원 시나리오를 검증한다.
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

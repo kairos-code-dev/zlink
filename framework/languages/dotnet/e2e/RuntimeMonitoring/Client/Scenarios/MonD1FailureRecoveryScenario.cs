@@ -1,10 +1,10 @@
-// Verifies MON-D1 Failure Recovery behavior.
+// Verifies MON-D1 public validation and repeated failure recovery behavior.
 using System.Diagnostics;
 using System.Net.Sockets;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
-using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
+using Zlink.HttpClient;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -13,83 +13,138 @@ internal static class MonD1FailureRecoveryScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
-            .Timeout(TimeSpan.FromSeconds(35))
+            .Timeout(TimeSpan.FromSeconds(40))
             .Build();
+        var validation =
+            (await observer.Get("/runtime/validate")
+                .Async<RuntimeValidationRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            validation.MissingSnapshotRejected
+            && validation.MissingObserverRejected
+            && validation.ZeroCapacityRejected,
+            "MON-D1 public snapshot or observer validation accepted an invalid call.");
+
         var serviceBUri = new Uri(options.ServiceBUrl);
         var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
         Process? current = Process.GetProcessById(options.ServiceBProcessId);
+        var lastSequence = 0UL;
         try
         {
             for (var cycle = 1; cycle <= 3; cycle++)
             {
-                var downBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+                var readyBefore = await WaitForReadyPeerAsync(observer, "svc-b");
+                var oldPeer = readyBefore.Peers.Single(peer =>
+                    peer.Rid == "svc-b" && peer.Ready);
+                var baseline =
+                    (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+
                 current.Kill(entireProcessTree: true);
-                await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                await current.WaitForExitAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(10));
                 current.Dispose();
                 current = null;
                 await WaitForPortStateAsync(
-                    serviceBUri.Host, serviceBUri.Port, false,
-                    $"MON-D1 cycle {cycle} expected service-b HTTP port to close after SIGKILL.");
-                var removed = (await observer.Post("/evidence/wait")
-                    .Body(new EvidenceWaitReq(
-                        ["kind=TopologyChanged", "removed=svc-b", "kind=ServiceSummaryChanged",
-                            "source=monitor.profile", options.ServiceBChannelEndpoint],
-                        [["kind=Disconnected", "kind=Closed"]],
-                        TimeoutMilliseconds: 30000,
-                        AfterIndex: downBaseline))
-                    .Timeout(TimeSpan.FromSeconds(35))
-                    .Async<string[]>()).Body;
+                    serviceBUri.Host,
+                    serviceBUri.Port,
+                    false,
+                    $"MON-D1 cycle {cycle} expected service-b HTTP port to close.");
+                var unavailable = await WaitUntilNotReadyAsync(
+                    observer,
+                    "svc-b",
+                    oldPeer.LifecycleGeneration);
                 ZlinkStreamAssert.Ensure(
-                    removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
-                    $"MON-D1 cycle {cycle} did not observe svc-b leaving after lease expiry.");
+                    !unavailable.Peers.Any(peer =>
+                        peer.Rid == "svc-b"
+                        && peer.LifecycleGeneration == oldPeer.LifecycleGeneration
+                        && peer.Ready),
+                    $"MON-D1 cycle {cycle} retained the failed generation as ready.");
 
-                var upBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
                 current = StartServiceB(options, cycle);
                 await WaitForPortStateAsync(
-                    serviceBUri.Host, serviceBUri.Port, true,
+                    serviceBUri.Host,
+                    serviceBUri.Port,
+                    true,
                     $"MON-D1 cycle {cycle} expected service-b to restart.");
                 await WaitForPortStateAsync(
-                    serviceBChannelUri.Host, serviceBChannelUri.Port, true,
-                    $"MON-D1 cycle {cycle} expected service-b channel endpoint to restart.");
-                var added = (await observer.Post("/evidence/wait")
-                    .Body(new EvidenceWaitReq(
-                        ["kind=TopologyChanged", "added=svc-b", "kind=ServiceSummaryChanged",
-                            "source=monitor.profile", options.ServiceBChannelEndpoint],
-                        [["kind=Connected", "kind=ConnectionReady"]],
-                        TimeoutMilliseconds: 30000,
-                        AfterIndex: upBaseline))
-                    .Timeout(TimeSpan.FromSeconds(35))
-                    .Async<string[]>()).Body;
+                    serviceBChannelUri.Host,
+                    serviceBChannelUri.Port,
+                    true,
+                    $"MON-D1 cycle {cycle} expected the channel endpoint to restart.");
+                var recovered = await WaitForReadyPeerAsync(observer, "svc-b");
+                var newPeer = recovered.Peers.Single(peer =>
+                    peer.Rid == "svc-b" && peer.Ready);
                 ZlinkStreamAssert.Ensure(
-                    added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
-                    $"MON-D1 cycle {cycle} did not observe svc-b returning with a new owner generation.");
+                    newPeer.LifecycleGeneration != oldPeer.LifecycleGeneration
+                    && newPeer.Endpoint == options.ServiceBChannelEndpoint
+                    && recovered.Channels.Any(channel =>
+                        channel.ChannelName == RuntimeMonitoringNames.Channel
+                        && channel.Selectable),
+                    $"MON-D1 cycle {cycle} snapshot did not resync to the replacement peer.");
+
+                using var activeServiceB =
+                    ZLinkHttpClient.Create(options.ServiceBUrl)
+                        .Timeout(TimeSpan.FromSeconds(35))
+                        .Build();
+                await activeServiceB.Post("/admin/weight/exclude")
+                    .Async<object>();
+                await Task.Delay(150);
+                await activeServiceB.Post("/admin/weight/include")
+                    .Async<object>();
+
+                var cycleEvidence = (await observer.Post("/evidence/wait")
+                    .Body(new EvidenceWaitReq(
+                        [
+                            $"source={RuntimeMonitoringNames.Channel}",
+                            "identifier=zlink.runtime.mesh_node.peer_changed",
+                            "identifier=zlink.runtime.mesh_node.channel_changed",
+                            "routing=svc-b"
+                        ],
+                        [],
+                        TimeoutMilliseconds: 3000,
+                        AfterIndex: baseline))
+                    .Async<string[]>()).Body;
+                var eventLines = cycleEvidence.Where(line =>
+                        line.Contains(
+                            $"source={RuntimeMonitoringNames.Channel}",
+                            StringComparison.Ordinal)
+                        && line.Contains(
+                            "identifier=zlink.runtime.",
+                            StringComparison.Ordinal))
+                    .ToArray();
+                var sequences = eventLines
+                    .Select(ParseSequence)
+                    .Where(static sequence => sequence > 0)
+                    .ToArray();
+                ZlinkStreamAssert.Ensure(
+                    sequences.Length >= 3
+                    && sequences.All(sequence => sequence > lastSequence)
+                    && sequences.Zip(
+                            sequences.Skip(1),
+                            static (left, right) => right > left)
+                        .All(static increasing => increasing),
+                    $"MON-D1 cycle {cycle} event sequence was not strictly increasing.");
+                lastSequence = sequences[^1];
+                ZlinkStreamAssert.Ensure(
+                    eventLines.All(line =>
+                        !line.Contains("mon-d1-payload", StringComparison.Ordinal)
+                        && !line.Contains("profile-request|", StringComparison.Ordinal)
+                        && !line.Contains("|value=", StringComparison.Ordinal)),
+                    $"MON-D1 cycle {cycle} copied application metadata into a runtime event.");
             }
 
-            // Keep the weight transition outside the crash cycles.
-            await observer.Post("/admin/weight/exclude").AsyncRaw();
-            using var activeServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
-                .Timeout(TimeSpan.FromSeconds(35))
-                .Build();
-            var reply = (await activeServiceB.Post("/profile/request")
-                .Body(new ProfileReq("restart", "mon-d1-request"))
+            await observer.Post("/admin/weight/exclude").Async<object>();
+            using var finalServiceB =
+                ZLinkHttpClient.Create(options.ServiceBUrl)
+                    .Timeout(TimeSpan.FromSeconds(35))
+                    .Build();
+            var reply = (await finalServiceB.Post("/profile/request")
+                .Body(new ProfileReq("restart", "mon-d1-payload"))
                 .Async<ProfileRes>()).Body;
             ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "svc-b"
-                && reply.Marker == "mon-d1-request"
+                && reply.Marker == "mon-d1-payload"
                 && reply.Value == "profile:restart",
-                "MON-D1 restarted service did not handle request.");
-
-            var serviceBEvidence = (await activeServiceB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
-                    []))
-                .Async<string[]>()).Body;
-            ZlinkStreamAssert.Ensure(
-                serviceBEvidence.Any(line => line.Contains(
-                    "profile-request|rid=svc-b|marker=mon-d1-request|value=restart",
-                    StringComparison.Ordinal)),
-                "MON-D1 restarted service evidence missing.");
-
+                "MON-D1 messaging did not recover after three failure cycles.");
         }
         finally
         {
@@ -102,11 +157,13 @@ internal static class MonD1FailureRecoveryScenario
             {
                 try
                 {
-                    await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                    await current.WaitForExitAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(5));
                 }
                 catch (TimeoutException)
                 {
-                    if (!current.HasExited) current.Kill(true);
+                    if (!current.HasExited)
+                        current.Kill(true);
                     await current.WaitForExitAsync();
                 }
                 current.Dispose();
@@ -118,8 +175,12 @@ internal static class MonD1FailureRecoveryScenario
 
     private static Process StartServiceB(ClientOptions options, int cycle)
     {
-        var stdout = Path.Combine(options.LogDir, "svc-b-restart.stdout.log");
-        var stderr = Path.Combine(options.LogDir, "svc-b-restart.stderr.log");
+        var stdout = Path.Combine(
+            options.LogDir,
+            $"svc-b-restart-{cycle}.stdout.log");
+        var stderr = Path.Combine(
+            options.LogDir,
+            $"svc-b-restart-{cycle}.stderr.log");
         var startInfo = new ProcessStartInfo("dotnet")
         {
             RedirectStandardOutput = true,
@@ -140,7 +201,9 @@ internal static class MonD1FailureRecoveryScenario
                 options.ServiceBUrl,
                 options.LogDir,
                 "svc-b",
-                Path.Combine(options.LogDir, $"svc-b-restart-{cycle}.evidence.log"),
+                Path.Combine(
+                    options.LogDir,
+                    $"svc-b-restart-{cycle}.evidence.log"),
                 options.RedisEndpoint,
                 options.RedisKeyPrefix,
                 options.ServiceBChannelEndpoint,
@@ -148,13 +211,78 @@ internal static class MonD1FailureRecoveryScenario
                 options.ServiceBSpotPubEndpoint)));
 
         var process = Process.Start(startInfo)
-                      ?? throw new InvalidOperationException("Failed to restart service-b.");
-        _ = Task.Run(async () => await File.WriteAllTextAsync(stdout, await process.StandardOutput.ReadToEndAsync()));
-        _ = Task.Run(async () => await File.WriteAllTextAsync(stderr, await process.StandardError.ReadToEndAsync()));
+                      ?? throw new InvalidOperationException(
+                          "Failed to restart service-b.");
+        _ = Task.Run(async () =>
+            await File.WriteAllTextAsync(
+                stdout,
+                await process.StandardOutput.ReadToEndAsync()));
+        _ = Task.Run(async () =>
+            await File.WriteAllTextAsync(
+                stderr,
+                await process.StandardError.ReadToEndAsync()));
         return process;
     }
 
-    private static async Task PostBestEffortAsync(ZLinkHttpClient http, string path)
+    private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(
+        ZLinkHttpClient service)
+        => (await service.Get(
+                $"/runtime/snapshot/{RuntimeMonitoringNames.Channel}")
+            .Async<MeshRuntimeSnapshotRes>()).Body;
+
+    private static async Task<MeshRuntimeSnapshotRes> WaitForReadyPeerAsync(
+        ZLinkHttpClient service,
+        string rid)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
+                return snapshot;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-D1 peer '{rid}' did not become ready.");
+            await Task.Delay(50);
+        }
+    }
+
+    private static async Task<MeshRuntimeSnapshotRes> WaitUntilNotReadyAsync(
+        ZLinkHttpClient service,
+        string rid,
+        ulong generation)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (!snapshot.Peers.Any(peer =>
+                    peer.Rid == rid
+                    && peer.LifecycleGeneration == generation
+                    && peer.Ready))
+                return snapshot;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-D1 peer '{rid}' generation {generation} remained ready.");
+            await Task.Delay(50);
+        }
+    }
+
+    private static ulong ParseSequence(string line)
+    {
+        const string prefix = "|sequence=";
+        var start = line.IndexOf(prefix, StringComparison.Ordinal);
+        if (start < 0)
+            return 0;
+        start += prefix.Length;
+        var end = line.IndexOf('|', start);
+        var text = end < 0 ? line[start..] : line[start..end];
+        return ulong.TryParse(text, out var value) ? value : 0;
+    }
+
+    private static async Task PostBestEffortAsync(
+        ZLinkHttpClient http,
+        string path)
     {
         try
         {
@@ -171,15 +299,18 @@ internal static class MonD1FailureRecoveryScenario
         }
     }
 
-    private static async Task WaitForPortStateAsync(string host, int port, bool shouldBeOpen, string failureMessage)
+    private static async Task WaitForPortStateAsync(
+        string host,
+        int port,
+        bool shouldBeOpen,
+        string failureMessage)
     {
         for (var attempt = 0; attempt < 30; attempt++)
         {
-            if (await CanConnectAsync(host, port) == shouldBeOpen) return;
-
+            if (await CanConnectAsync(host, port) == shouldBeOpen)
+                return;
             await Task.Delay(100);
         }
-
         throw new InvalidOperationException(failureMessage);
     }
 
@@ -188,7 +319,8 @@ internal static class MonD1FailureRecoveryScenario
         try
         {
             using var client = new TcpClient();
-            await client.ConnectAsync(host, port).WaitAsync(TimeSpan.FromMilliseconds(200));
+            await client.ConnectAsync(host, port)
+                .WaitAsync(TimeSpan.FromMilliseconds(200));
             return true;
         }
         catch (SocketException)
@@ -198,31 +330,6 @@ internal static class MonD1FailureRecoveryScenario
         catch (TimeoutException)
         {
             return false;
-        }
-    }
-
-    private static async Task WaitForProcessExitAsync(int processId, string failureMessage)
-    {
-        Process process;
-        try
-        {
-            process = Process.GetProcessById(processId);
-        }
-        catch (ArgumentException)
-        {
-            return;
-        }
-
-        using (process)
-        {
-            try
-            {
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
-            }
-            catch (TimeoutException exception)
-            {
-                throw new InvalidOperationException(failureMessage, exception);
-            }
         }
     }
 }

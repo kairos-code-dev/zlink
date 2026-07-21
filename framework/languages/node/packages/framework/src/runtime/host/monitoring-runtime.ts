@@ -1,11 +1,11 @@
 import type { ZLinkRuntimeEventPublisher } from '../../contracts';
-import type { ZLinkBackendSocketMonitor, ZLinkBackendSpotNode, ZLinkMonitoringBackendAdapter } from '../backend';
+import type { ZLinkBackendMeshNode, ZLinkBackendSocketMonitor, ZLinkMonitoringBackendAdapter } from '../backend';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import {
   ZLinkLocationRuntimeMonitoringSource,
+  ZLinkMeshMonitoringSource,
   ZLinkSocketMonitoringSource,
-  ZLinkSpotMonitoringSource
 } from '../diagnostics';
 import type { ZLinkFrameworkRuntimeState } from '../execution';
 import type { ZLinkLocationRuntime } from '../locations';
@@ -13,7 +13,7 @@ import type { ZLinkLocationRuntime } from '../locations';
 export interface ZLinkMonitoringRuntimeOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly channelRuntime: ZLinkChannelRuntimeManager;
-  readonly spotNodes: ReadonlyMap<string, ZLinkBackendSpotNode>;
+  readonly meshNodes: ReadonlyMap<string, ZLinkBackendMeshNode>;
   readonly locationRuntime?: ZLinkLocationRuntime;
   readonly monitoringAdapter: ZLinkMonitoringBackendAdapter;
   readonly publisher: ZLinkRuntimeEventPublisher;
@@ -46,11 +46,16 @@ export class ZLinkMonitoringRuntime {
       ));
     }
     for (const registration of monitoring.spot ?? []) {
-      const spotNode = this.options.spotNodes.get(registration.sourceName);
-      if (spotNode === undefined) {
+      const meshNode = this.options.meshNodes.get(registration.sourceName);
+      if (meshNode === undefined) {
         throw new Error(`Monitoring spot source '${registration.sourceName}' is not registered.`);
       }
-      const source = new ZLinkSpotMonitoringSource(registration, spotNode, this.options.publisher);
+      const source = new ZLinkMeshMonitoringSource(
+        registration,
+        meshNode,
+        this.options.publisher,
+        this.options.registration.spotNodes.get(registration.sourceName)
+      );
       state.listenerTasks.push(state.taskRunner.run(
         `monitoring:spot:${registration.sourceName}`,
         (signal) => runPollingMonitoringSource(registration.intervalMs, signal, () => source.pollOnce())

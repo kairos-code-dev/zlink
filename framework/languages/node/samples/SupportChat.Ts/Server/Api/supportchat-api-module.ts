@@ -27,14 +27,14 @@ function createSupportChatApiModule() {
             .traceLogFile(`${config.logDir}/flow-api.log`)
             .traceLabel('api');
           builder.addLocationStore(createSupportChatLocationStore(config));
-          Object.assign(builder.configureLocations(), supportChatLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.apiChannel)
-              .enableServer(config.apiChannelEndpoint)
-              .addHandlerGroup('api')
-            .addClientServerChannel(SampleNames.supportChannel)
-              .enableClient()
-            .build();
+          supportChatLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
+            .listen(config.apiChannelEndpoint)
+            .routingId('api-channel-node');
+          mesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
+          mesh.channelName(SampleNames.supportChannel).setWeight(0);
+          mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);
+          return builder.build();
         }
       })
     ],

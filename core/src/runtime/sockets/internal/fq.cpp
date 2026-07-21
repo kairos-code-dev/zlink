@@ -6,6 +6,22 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
+#ifdef ZLINK_BUILD_TESTS
+#include <atomic>
+
+namespace
+{
+std::atomic<zlink::fq_t::recv_test_hook_fn> recv_test_hook (NULL);
+std::atomic<void *> recv_test_hook_userdata (NULL);
+}
+
+void zlink::fq_t::set_recv_test_hook (recv_test_hook_fn hook_, void *userdata_)
+{
+    recv_test_hook_userdata.store (userdata_, std::memory_order_release);
+    recv_test_hook.store (hook_, std::memory_order_release);
+}
+#endif
+
 zlink::fq_t::fq_t () : _active (0), _current (0), _more (false)
 {
 }
@@ -141,7 +157,19 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
     while (_active > 0) {
         //  Try to fetch new message. If we've already read part of the message
         //  subsequent part should be immediately available.
-        const bool fetched = _pipes[_current]->read (msg_);
+        pipe_t *const current_pipe = _pipes[_current];
+#ifdef ZLINK_BUILD_TESTS
+        recv_test_hook_fn hook = recv_test_hook.load (std::memory_order_acquire);
+        if (hook
+            && !hook (this, current_pipe,
+                      recv_test_hook_userdata.load (std::memory_order_acquire))) {
+            rc = msg_->init ();
+            errno_assert (rc == 0);
+            errno = EAGAIN;
+            return -1;
+        }
+#endif
+        const bool fetched = current_pipe->read (msg_);
 
         //  Note that when message is not fetched, current pipe is deactivated
         //  and replaced by another active pipe. Thus we don't have to increase

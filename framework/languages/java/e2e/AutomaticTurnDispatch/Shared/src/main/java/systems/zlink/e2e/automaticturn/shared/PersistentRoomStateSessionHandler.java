@@ -35,7 +35,6 @@ public final class PersistentRoomStateSessionHandler
         RoutingId spotRid = RoutingId.from(dispatch.metadata().get(Contracts.SPOT_RID_METADATA));
         return spots.resolveSpotHandle(spotRid)
             .thenCompose(handle -> routes.requestToSpot(
-                    Contracts.ROUTE_CHANNEL,
                     handle.orElseThrow(() -> new IllegalStateException("spot not found: " + spotRid)),
                     request)
                 .timeout(Duration.ofSeconds(30))

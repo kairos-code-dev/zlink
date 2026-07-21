@@ -53,6 +53,7 @@ app.MapPost("/actors/{actorId}/destroy", async (
     var actor = await actorManager.FindAsync(actorId, ct)
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     var reply = await actorClient.RequestToActor(
+            "to-actor",
             actor,
             new DestroyActorRequest(actorId, scenario ?? "destroy"))
         .Timeout(TimeSpan.FromSeconds(5))
@@ -72,7 +73,7 @@ app.MapPost("/actors/{actorId}/push", async (
                 ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
     try
     {
-        var reply = await actorClient.RequestToActor(actor, request)
+        var reply = await actorClient.RequestToActor("to-actor", actor, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<BoundPushReply>(ct);
         return Results.Ok(reply);
@@ -226,7 +227,7 @@ namespace ToActorMessaging.Actor
     internal sealed class BoundPushHandler(EvidenceStore evidence)
         : IZLinkEntrySpotActorRequestHandler<TestEntrySpot, TestActor, BoundPushRequest, BoundPushReply>
     {
-        public ValueTask<BoundPushReply> HandleAsync(
+        public async ValueTask<BoundPushReply> HandleAsync(
             TestEntrySpot spot,
             TestActor actor,
             ZLinkSpotActorRequestContext context,
@@ -235,11 +236,11 @@ namespace ToActorMessaging.Actor
         {
             _ = spot;
             _ = context;
-            actor.Context.BoundSession.Send(
+            await actor.Context.BoundSession.Send(
                     new BoundPushNotify(request.Scenario, actor.ActorId, request.Value))
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
             evidence.Append(new ActorEvidence(request.Scenario, actor.ActorId, "bound-push", request.Value));
-            return ValueTask.FromResult(new BoundPushReply(actor.ActorId, request.Value, true));
+            return new BoundPushReply(actor.ActorId, request.Value, true);
         }
     }
 }

@@ -83,7 +83,10 @@ public enum MeshRecordKind
     SendReady = 12,
 
     /// <summary>Actor transfer control.</summary>
-    TransferControl = 13
+    TransferControl = 13,
+
+    /// <summary>A Framework-owned Instance Spot activation record.</summary>
+    InstanceSpotActivation = 14
 }
 
 /// <summary>
@@ -158,7 +161,8 @@ public readonly struct MeshReceiveRecord
     private readonly ZlinkMeshReplyToken _replyToken;
 
     internal MeshReceiveRecord(MeshRecordKind kind, MeshReadyDomains domain,
-        RoutingId sourceNodeRid, RoutingId sourceSpotRid, ActorRef sourceActor,
+        RoutingId sourceNodeRid, RoutingId sourceSpotRid,
+        ulong sourceBindingGeneration, ActorRef sourceActor,
         MeshOperationId operationId, MeshOperationKind operationKind,
         string? channelName, string? topic, byte[]? applicationMetadata,
         int partOffset, int partCount, int terminalResult, int failureErrno,
@@ -168,6 +172,7 @@ public readonly struct MeshReceiveRecord
         Domain = domain;
         SourceNodeRid = sourceNodeRid;
         SourceSpotRid = sourceSpotRid;
+        SourceBindingGeneration = sourceBindingGeneration;
         SourceActor = sourceActor;
         OperationId = operationId;
         OperationKind = operationKind;
@@ -193,6 +198,12 @@ public readonly struct MeshReceiveRecord
 
     /// <summary>Gets the routing id of the source spot.</summary>
     public RoutingId SourceSpotRid { get; }
+
+    /// <summary>
+    ///     Gets the validated binding generation for a bound session source, or
+    ///     zero when the record does not originate from a bound session.
+    /// </summary>
+    public ulong SourceBindingGeneration { get; }
 
     /// <summary>Gets the source actor, when present.</summary>
     public ActorRef SourceActor { get; }
@@ -231,7 +242,9 @@ public readonly struct MeshReceiveRecord
     ///     <see cref="ActorControlRecord" /> for spot-control lifecycle records,
     ///     an <see cref="ActorJoinCompletion" /> for actor-join completions, a
     ///     <see cref="MeshSendReadyData" /> for send-ready records, or an
-    ///     <see cref="ActorTransferControlRecord" /> for transfer-control records.
+    ///     <see cref="ActorTransferControlRecord" /> for transfer-control records,
+    ///     or a Framework driver activation object for Instance Spot activation
+    ///     records.
     /// </summary>
     public MeshRecordPayload? KindData { get; }
 

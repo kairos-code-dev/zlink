@@ -51,7 +51,7 @@ internal static class PlayHostFactory
                 // within the scenario's patience.
                 var locations = framework.ConfigureLocations();
                 locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
@@ -76,16 +76,6 @@ internal static class PlayHostFactory
                 externalMesh.ChannelName(externalSpotChannel);
                 AddPlayRouteHandlers(externalMesh);
             }
-            if (!string.IsNullOrWhiteSpace(options.ExternalClientEndpoint))
-            {
-                var clientMesh = framework.AddRouteMesh(SpotServiceNames.ExternalClientChannel)
-                    .Listen(options.ExternalClientEndpoint)
-                    .SetRoutingId(RoutingId.From(options.Rid));
-                clientMesh.ChannelName(SpotServiceNames.ExternalClientChannel)
-                    .AddRequestHandler<ChannelEchoHandler>()
-                    .AddSendHandler<ChannelNotifyHandler>();
-            }
-
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -95,6 +85,12 @@ internal static class PlayHostFactory
                 .AddSpotFactory<ScenarioUserSpot>()
                 .AddSpotFactory<ScenarioAlternateSpot>();
             spot.ChannelName(SpotServiceNames.SpotChannel);
+            if (string.Equals(options.Rid, "play-a", StringComparison.Ordinal))
+            {
+                spot.ChannelName(SpotServiceNames.ExternalClientChannel)
+                    .AddRequestHandler<ChannelEchoHandler>()
+                    .AddSendHandler<ChannelNotifyHandler>();
+            }
         });
 
         var app = builder.Build();
@@ -102,6 +98,25 @@ internal static class PlayHostFactory
         SpotLifecycleEndpoints.MapSpotLifecycleEndpoints(app);
         SpotFailureEndpoints.MapSpotFailureEndpoints(app);
         SpotInteractionEndpoints.MapSpotInteractionEndpoints(app);
+        app.MapGet("/mesh-snapshot", (IZLinkRouteMeshRuntime meshRuntime) =>
+            Results.Ok(meshRuntime.Snapshot(SpotServiceNames.SpotChannel)));
+        app.MapGet("/entry-self-check", async (
+            IZLinkSpotHandleResolver handles,
+            IZLinkSpotClient spotsClient,
+            CancellationToken cancellationToken) =>
+        {
+            var entry = await handles.ResolveSpotHandleAsync(
+                            SpotServiceNames.SpotChannel,
+                            RoutingId.From(options.Rid),
+                            cancellationToken)
+                        ?? throw new InvalidOperationException(
+                            $"Entry Spot for '{options.Rid}' was not resolved.");
+            var marker = $"self-{Guid.NewGuid():N}";
+            var reply = await spotsClient.RequestToSpot(entry, new EntryReadinessReq(marker))
+                .Timeout(TimeSpan.FromSeconds(2))
+                .Async<EntryReadinessRes>(cancellationToken);
+            return Results.Ok(reply);
+        });
         return app;
     }
 
@@ -147,8 +162,11 @@ internal static class PlayHostFactory
         IZLinkSpotClient routes,
         IZLinkSpotHandleResolver locator,
         string targetSpotRid,
-        object command)
-        => routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).TrySubmit();
+        object command,
+        CancellationToken cancellationToken = default)
+        => await routes.SendToSpot(
+                await locator.ResolveRequiredAsync(targetSpotRid, cancellationToken), command)
+            .SubmitAsync(cancellationToken);
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
         IZLinkSpotClient routes,
@@ -161,12 +179,11 @@ internal static class PlayHostFactory
 
     internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         while (DateTimeOffset.UtcNow < deadline)
         {
             if (condition()) return;
-
-            await Task.Delay(100);
+            await Task.Delay(10);
         }
 
         throw new InvalidOperationException(failureMessage);
@@ -174,7 +191,7 @@ internal static class PlayHostFactory
 
     internal static async Task WaitUntilAsync(Func<Task<bool>> condition, string failureMessage)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -187,7 +204,7 @@ internal static class PlayHostFactory
                 last = ex;
             }
 
-            await Task.Delay(100);
+            await Task.Delay(10);
         }
 
         throw new InvalidOperationException(failureMessage, last);

@@ -1,230 +1,219 @@
-<!-- framework-adapter-nav:start -->
-[스펙 목차](../README.ko.md) | [이전: Location Runtime](40-location-runtime.ko.md) | [다음: 런타임 모니터링](50-runtime-monitoring.ko.md)
-<!-- framework-adapter-nav:end -->
+# Redis Location Store — 공통 스펙
 
+[스펙 목차](../README.ko.md) · [Location runtime](40-location-runtime.ko.md) ·
+[Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)
 
-# Location Store — 공식 Redis Extension
+## 1. 범위
 
-이 문서는 ZLink Framework 10.0.0이 공식 제공하는 **Redis location store extension**의 언어 중립
-공개 계약이다. 이 문서는 “Redis extension이 MeshNode discovery, Spot·Actor location과 Actor transfer
-authority를 어떤 원자성으로 제공하는가?”라는 질문에 답한다. Store, lease와 generation의 의미는
-[location runtime](40-location-runtime.ko.md)이 소유하고, 이 문서는 Redis key, 원자 operation, 변경 감지,
-오류 변환과 연결 수명을 정의한다.
+이 문서는 Framework 11.0 Redis provider가 descriptor, host owner lease, durable object authority, routing ID allocation과
+checkpoint를 저장하는 규칙을 정의한다. Provider는 authority payload와 checkpoint payload를 해석하지 않는다.
+Framework가 schema에 따라 bytes를 encode·decode하고 Redis는 key, generation, StoreVersion, TTL과 atomic CAS만
+관리한다.
 
-Redis extension은 production 분산 구성이 사용하는 공식 기본 구현이지만 framework 본체 dependency는
-아니다. 별도 package로 배포하며 application이 인스턴스와 연결 설정을 명시적으로 등록한다. 자동
-discovery, remote Spot·Actor location 또는 분산 Actor transfer를 구성하고 Redis extension을 등록하지
-않으면 host startup이 실패한다. Process-local in-memory 구현은 한 process의 contract test에서만 사용한다.
+Redis server time이 lease와 checkpoint 만료의 기준이다. Application host의 wall clock은 authority 판단에
+사용하지 않는다.
 
-## 1. 등록과 설정
+## 2. 저장 영역과 수명
 
-아래 코드는 .NET의 등록 지점을 보여 준다. 정확한 .NET interface는
-[.NET Location Store·Redis](languages/dotnet/06-location-store.ko.md)가 소유한다.
+Redis key prefix는 배포 단위에서 설정할 수 있지만 같은 provider transaction domain에서는 다음 논리 영역을
+분리한다.
 
-```csharp
-options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-    .SetConnectionString("redis-host:6379")
-    .SetKeyPrefix("zlink:app")));
-```
+| 영역 | 값 | 수명 |
+|---|---|---|
+| Descriptor | MeshNode, ClientServer server, fanout publisher descriptor와 host owner lease token | host lease에 종속된 ephemeral data |
+| Host owner lease | `(OwnerId, LeaseGeneration, ExpiresAt, StoreNow)` | Redis TTL |
+| Object authority | canonical authority key, opaque payload, StoreVersion, ObjectGeneration, AuthorityOwnerGeneration | 명시적 fenced delete까지 durable, TTL 금지 |
+| Authority index | snapshot scan용 versioned key index와 active scan lease | authority row와 scan lease에 종속 |
+| Routing allocation | group configuration, slot assignment와 host owner lease token | exact host token에 종속 |
+| Checkpoint | immutable data chunk와 root manifest | 24시간 renewable TTL |
+| Global counters | ObjectGeneration, AuthorityOwnerGeneration, StoreRevision, LeaseGeneration | provider transaction domain의 durable counter |
 
-| 설정 | 의미 |
-|------|------|
-| connection string / configuration | Redis 연결 정보. 언어별 Redis client의 관용 표현을 그대로 받는다 |
-| key prefix | 이 배포의 모든 key 앞에 추가하는 격리 접두사. 배포 또는 테스트 실행마다 달라야 한다 |
+Authority row에 lease TTL을 설정하거나 host owner lease 만료 시 자동 삭제하지 않는다. Owner가 만료된 authority는
+recovery coordinator가 exact StoreVersion CAS로 새 owner를 정하거나 명시적으로 삭제한다. 따라서 Redis key
+expiry event를 authority transition으로 해석하지 않는다.
 
-Redis extension 인스턴스는 MeshNode descriptor, Spot location, Actor location, owner lease, Actor transfer
-authority와 routing ID slot allocation을 함께 제공한다. Change stamp도 같은 인스턴스가 제공한다.
-Watch 형태의 변경 event stream은 공개 계약이 아니다. 이 extension은 polling과 change stamp로 변경을 감지한다.
-polling은 주기적으로 store를 다시 읽는 방식이고, change stamp는 row가 바뀔 때 증가하는 번호다. 계약상
-polling만으로도 올바른 연결 상태에 도달해야 하므로 Redis extension이 watch를 제공하지 않아도 충분하다.
+Per-key generation counter, per-key StoreVersion tombstone와 delete 뒤 유지하는 generation key는 만들지 않는다.
+ObjectGeneration, AuthorityOwnerGeneration과 새 StoreVersion을 위한 StoreRevision은 provider transaction domain의
+global durable counter에서 발급한다. Maximum은 `2^63-1`이다. 필요한 increment가 maximum에서 발생하면 closed
+write result `GenerationExhausted`를 반환한다. 이 결과는 non-retriable이고 row, index와 모든 counter의 mutation·
+consumption은 0이며 transport exception과 구분한다.
 
-## 2. Key schema
+## 3. Host owner lease
 
-prefix `P`, kind ∈ {`mesh`, `spot`, `actor`, `route`} 기준. row key는 key 필드들을
-`길이:값` 형태로 이어 붙인 문자열이다. 이렇게 길이를 함께 저장하면 값 안에 구분자가 들어 있어도
-어디까지가 한 필드인지 알 수 있다. `RoutingId`는 hex로 인코딩한다. 임의 바이트 rid와 구분자 충돌을
-피해야 하므로 row key에 raw rid 문자열을 쓰지 않는다.
+한 Framework host process lifecycle은 owner lease token 하나를 claim한다. 같은 host의 모든 descriptor, routing
+allocation과 object authority가 이 token을 공유한다. Token은 Framework가 만든 재사용 불가능한 OwnerId와
+provider가 global counter에서 발급한 non-zero LeaseGeneration의 조합이다.
 
-| key | 타입 | 내용 |
-|-----|------|------|
-| `P:row:{kind}:{rowKey}` | HASH | `owner`, `gen`, `json`(row 직렬화), `updatedAtMs`[, `mesh`] |
-| `P:gen:{kind}:{rowKey}` | STRING | generation counter. **row가 지워져도 삭제하지 않는다**(재claim 시 단조 증가 유지) |
-| `P:keys:{kind}` | SET | 해당 kind의 모든 row key (목록 조회 index) |
-| `P:own:{kind}:{ownerId}` | SET | 한 owner가 소유한 row key (owner 단위 bulk remove index) |
-| `P:lease:{ownerId}` | STRING | `nodeRidHex\|updatedAtMs`, Redis `PX` TTL로 만료 |
-| `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
-| `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
-| `P:transfer:{actorRowKey}:{transferId}` | HASH | participant set, source·target identity, expected Actor generation·membership epoch, state와 recovery lease. `actorRowKey`는 MeshName과 Actor ID를 UTF-8 byte 길이로 encode한 actor row key다 |
-| `P:transfer-by-actor:{actorRowKey}` | STRING | Actor마다 동시에 하나만 허용하는 active transfer ID. `actorRowKey`는 transfer HASH와 같은 length-prefix 값을 사용한다 |
-| `P:ridalloc:{groupName}` | HASH | 정렬된 member·prefix JSON, slot count, identity mode, slot owner·generation과 owner별 slot index |
+Provider는 다음 exact operation만 제공한다.
 
-MeshNode descriptor row key는 `MeshName + RID`를 length-prefix로 연결한 값이다. Endpoint는 descriptor 값에
-포함하며 identity key로 사용하지 않는다. 재기동한 같은 RID는 generation으로 구분한다.
+- Claim과 expired-row Takeover는 OwnerId와 TTL을 받아 새 token, ExpiresAt과 StoreNow를 반환하거나
+  conflict 또는 `GenerationExhausted`로 끝난다. `GenerationExhausted`는 새 LeaseGeneration이 필요한
+  경우에만 가능하며 row, index와 counter를 변경하거나 소비하지 않는다.
+- Read는 OwnerId를 exact key로 읽어 current token, ExpiresAt과 StoreNow를 반환하거나 Missing으로 끝난다.
+- Renew는 exact token과 TTL을 비교해 같은 token의 expiry만 갱신하거나 Stale로 끝난다.
+- Release는 exact token을 비교해 lease와 ephemeral owner index를 제거하거나 Stale로 끝난다.
 
-MeshNode descriptor HASH는 다음 field를 정확히 사용한다.
+Renew와 Release는 새 LeaseGeneration을 발급하지 않으므로 `GenerationExhausted`를 반환하지 않는다.
 
-| field | 값 |
-|---|---|
-| `owner` | descriptor를 claim한 store owner ID |
-| `gen` | store owner token generation의 unsigned 64-bit 10진 ASCII |
-| `json` | 아래 canonical descriptor JSON |
-| `updatedAtMs` | Redis `TIME`으로 얻은 unsigned 64-bit millisecond 10진 ASCII |
-| `mesh` | MeshName UTF-8 문자열 |
+Provider-wide `ListOwnerLeases`는 제공하지 않는다. Routing, resolve와 transfer admission은 항상 필요한 OwnerId를
+exact Read한다. Lease 목록은 권한 판단 근거가 아니다.
 
-descriptor JSON은 `ZLinkMeshNodeDescriptor` target의 PascalCase field 이름을 유지하고 UTF-8, 공백 없음,
-아래 field 순서로 인코딩한다. `ChannelWeights`의 property는 ChannelName의 UTF-8 byte 순으로 정렬하며
-같은 이름은 허용하지 않는다. RID는 소문자 hex, generation과 revision은 선행 0 없는 JSON 정수, weight는
-0..100 정수다. 문자열은 non-ASCII 문자를 UTF-8로 그대로 기록하고 JSON이 요구하는 큰따옴표, 역슬래시와
-U+0000..U+001F만 escape한다. control 문자의 Unicode escape는 `\\u00xx` 형식을 사용하며 hex는 소문자를
-사용한다.
+`RemoveAllByOwner`는 `(OwnerId, LeaseGeneration)` exact token으로 index된 descriptor와 routing allocation만
+제거한다. TTL-free object authority는 제거하지 않는다. Authority 삭제는 expected StoreVersion과 current owner
+fence를 받는 별도 explicit CAS delete만 허용한다.
 
-```json
-{"MeshName":"game","Rid":"67616d652d61","LifecycleGeneration":7,"DescriptorRevision":3,"Endpoint":"tcp://10.0.0.1:7300","ChannelWeights":{"orders":100,"world":50},"Draining":false,"SecurityIdentity":"cluster-a","OwnerId":"mesh-owner-a","UpdatedAt":"2024-07-15T00:00:00+00:00"}
-```
+## 4. Durable authority CAS
 
-descriptor HASH와 JSON의 byte-for-byte fixture는
-[`mesh-node-descriptor-v1.json`](../../../../testdata/location/redis/mesh-node-descriptor-v1.json)이다.
+### 4.1 Canonical key와 read
 
-`descriptorRevision`은 lifecycle마다 1부터 시작한다. `gen`은 store claim의 fencing 값이며 lifecycle
-generation이나 descriptor revision과 다른 값이다. weight 또는 drain state 변경은 row의 `gen`을 바꾸지
-않고 revision, `json`, `updatedAtMs`와 `P:stamp:mesh:{mesh}`를 Lua script 한 번으로 갱신한다. script는 현재
-lifecycle generation과 기존 revision을 확인하고 더 큰 revision만 저장한다.
+Framework는 `service-wire-v1.schema.json`의 `authority-key-v1` 규칙으로 canonical key를 만든다. Redis provider는
+key bytes를 opaque 값으로 취급한다. Direct resolve는 exact key read만 사용한다.
 
-Actor location row의 byte-for-byte fixture는
-[`actor-location-v2.json`](../../../../testdata/location/redis/actor-location-v2.json)이다. 모든 공식 Redis
-extension은 같은 key 문자열, hash field와 row JSON을 만들어야 한다. hash의 `owner`는 public
-`OwnerId`, `gen`은 store owner token generation, `mesh`는 MeshName이다. row JSON은
-`ZLinkActorLocation` target의 PascalCase field 이름을 유지한다.
+Read 결과는 다음 closed union이다.
 
-actor row와 key 형식은 다음 규칙으로 고정한다.
+- `Missing(StoreNow)`: row가 없으며 StoreVersion이나 generation을 만들지 않는다.
+- `Found(Payload, StoreVersion, ObjectGeneration, AuthorityOwnerGeneration, OwnerId,
+  OwnerLeaseGeneration, StoreNow)`: current row snapshot을 반환한다.
 
-- actor row key는 **MeshName과 actor id**를 순서대로 length-prefix encode한다. `ActorType`은 key
-  구성에 포함하지 않으며 row field로만 둔다.
-- row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
-  로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
-  actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
-- row field는 `MeshName`, `ActorId`, `ActorType`, `ActorRef`, `OwnerNodeRid`, `OwnerNodeGeneration`,
-  `SpotRid`, `SpotGeneration`, `SpotKind`, `MembershipEpoch`, `OwnerId`, `UpdatedAt` 순서로 encode한다.
-- 모든 공식 extension은 이 row와 key 형식을 동일하게 사용한다.
+Missing 결과에 `0`, 빈 문자열이나 synthetic StoreVersion을 넣지 않는다.
 
-## 3. 원자성 — write는 전부 Lua script
+### 4.2 Expectation과 mutation
 
-모든 write 결정(NewClaim/Renew/Takeover 판정, generation 발급, owner-guard remove, lease
-renew/remove와 Actor transfer 상태 전이)은 **Lua script 한 번**으로 원자 실행한다. script는:
+모든 authority mutation은 `Missing` 또는 `Found(expected StoreVersion)` expectation을 명시한다. Redis Lua/function은
+expectation을 먼저 검증한 뒤 global counter 소비, row write와 index write를 한 atomic operation으로 처리한다.
 
-- 판정과 갱신을 한 atomic step에서 수행한다 — NewClaim의 "현재 row 없음 또는 row owner의
-  lease 만료" 확인과 새 generation 발급이 분리되지 않는다.
-- **Redis `TIME`을 script 안에서 읽어** `updatedAtMs`와 lease 만료를 기록한다. 호출자의 wall
-  clock은 계약에 들어오지 않는다(스크립트가 기록한 timestamp를 반환값으로 돌려준다).
-- 결과를 `stored | stale | conflict`로 반환하고 extension이
-  `ZLinkLocationWriteResult`로 변환한다.
-- old-owner index 같은 파생 key는 row의 현재 owner를 알아야 계산되므로 ARGV로 prefix를 받아
-  script 내부에서 조립한다.
+| Transition | 허용 expectation | generation 결과 |
+|---|---|---|
+| Preserve | Found | ObjectGeneration과 AuthorityOwnerGeneration 유지, 새 StoreRevision만 발급 |
+| NewOwner | Found | ObjectGeneration 유지, 새 AuthorityOwnerGeneration과 StoreRevision 발급 |
+| NewObject | Missing | 새 non-zero ObjectGeneration, AuthorityOwnerGeneration과 StoreRevision 발급 |
+| Delete | Found | 새 StoreRevision 발급 뒤 row와 current index entry 제거 |
 
-### 3.1 Actor transfer authority
+Authority payload에는 provider generation과 StoreVersion을 중복 encode하지 않는다. Wire fence는 provider metadata와
+opaque StoreVersion을 Framework가 조합한다. Redis script는 payload body를 parse하거나 수정하지 않는다.
 
-Actor transfer는 Actor 하나마다 active transfer 하나만 허용한다. 각 operation은 다음 원자 전이를
-사용한다.
+Instance cold activation은 source coordinator가 target transport에 제출하기 전에 `NewObject` CAS를 수행한다.
+이 CAS가 non-zero ObjectGeneration과 AuthorityOwnerGeneration을 함께 발급한다. Target은 authority를 claim하지 않고
+exact owner lease와 authority를 다시 확인한 뒤 factory, activation barrier와 Ready CAS만 수행한다.
 
-transfer HASH는 다음 field를 정확히 사용한다. 모든 정수는 unsigned 64-bit 10진 ASCII이고 RID는 소문자
-hex다. transfer ID의 값 영역은 UUID 128-bit이며 Redis key와 value에서는 소문자 8-4-4-4-12 형식의
-UTF-8 문자열로 encoding한다. C++의 16-byte 값은 UUID network byte order로 이 문자열과 상호 변환한다.
-`source`와 `target`은 canonical ActorRef JSON이며 `participants`는 RID hex를 UTF-8 byte 순으로 정렬한
-공백 없는 JSON 배열이다.
+## 5. Snapshot-consistent authority scan
 
-| field | 값 |
-|---|---|
-| `state` | `Prepared`, `Committed`, `Activated`, `Aborted` 중 하나 |
-| `source`, `target` | `{nodeRid, actorId, generation}` canonical ActorRef JSON |
-| `expectedActorGeneration`, `expectedMembershipEpoch` | prepare가 검증한 Actor fence |
-| `participants` | 아래 canonical participant-set JSON |
-| `recoveryOwnerId`, `recoveryLeaseExpiresAtMs` | public RecoveryOwnerId와 Redis 시각 기준 만료 |
-| `updatedAtMs` | 마지막 전이의 Redis 시각 |
+Authority recovery scan은 page size 1..1000과 encoded page 최대 4 MiB를 함께 지킨다. 한 row가 authority envelope
+1 MiB를 넘으면 저장 단계에서 거부되므로 page provider가 row를 잘라 반환하지 않는다.
 
-```json
-["67616d652d61","67616d652d62"]
-```
+첫 call은 cursor를 전달하지 않는다. Provider는 snapshot watermark와 scan lease를 내부에 만들고 item과 optional
+`AuthorityScanCursor`를 반환한다. Cursor는 non-empty opaque bytes이며 encoded 크기는 4096 bytes 이하이다.
+Framework는 cursor를 해석, 조합하거나 다른 scan에 섞지 않는다. Expired, replayed 또는 다른 scan의 cursor는
+`ScanExpired` closed result로 끝난다.
 
-`P:transfer-by-actor:{actorRowKey}`의 값은 위 canonical UUID 문자열이다. `actorRowKey`는 actor location row와
-같이 MeshName과 Actor ID를 UTF-8 byte 길이로 encode한다. 따라서 값에 `:`가 있거나 비ASCII 문자가 있어도
-field 경계가 달라지지 않는다. prepare는 이 index와 transfer HASH를 같이 만들고, activate 또는 abort는
-terminal HASH를 보존한 채 active index만 조건부로 지운다. 모든 공식 extension은 위 descriptor와
-participant fixture를 byte-for-byte 동일하게 encode하고 decode해야 한다.
+한 scan은 첫 page watermark에 존재한 row incarnation을 canonical key byte 순서로 정확히 한 번 반환한다.
+Concurrent delete row는 candidate exact read에서 Missing일 수 있고 watermark 뒤 create·recreate는 다음 scan에서
+관찰한다. Provider는 active scan lease가 참조할 수 있는 versioned index entry와 delete tombstone만 유지하고 모든
+older scan lease가 끝나거나 만료되면 GC한다. 이 tombstone은 per-key generation 또는 routing authority가 아니다.
 
-transfer HASH, participant set과 active index의 byte-for-byte fixture는
-[`actor-transfer-v1.json`](../../../../testdata/location/redis/actor-transfer-v1.json)이다.
+Redis `SCAN`, 모든 row를 한 번에 복사하는 Lua와 unbounded materialization은 금지한다. Startup은 등록된 MeshName
+scope의 complete snapshot scan을 끝낸 뒤 stateful serving을 연다. Background recovery도 같은 page 계약을 사용한다.
 
-| 전이 | Redis 원자 조건과 결과 |
-|---|---|
-| prepare | Actor row의 source owner, Actor generation과 membership epoch가 expected 값과 일치하고 active transfer가 없을 때 `Prepared` record와 actor index를 함께 만든다 |
-| commit | 같은 transfer가 `Prepared`이고 recovery lease owner가 일치할 때 Actor row를 target owner와 `expected epoch + 1`로 바꾸고 transfer를 `Committed`로 변경한다 |
-| activate | `Committed` transfer만 `Activated`로 바꾸고 actor index를 정리할 수 있는 terminal 상태로 만든다 |
-| abort | `Prepared` transfer만 `Aborted`로 바꾸며 Actor row의 source owner와 membership epoch를 유지한다 |
-| takeover | recovery lease가 만료된 transfer의 participant set과 현재 Actor row를 확인한 뒤 successor lease owner를 한 번에 바꾼다 |
+## 6. Descriptor enumeration
 
-Redis record는 분산 권한 결정과 복구 상태를 소유한다. Core prepare가 발급하는 sealed transfer token은
-같은 process의 Core handle에만 유효하므로 Redis에 저장하지 않는다. Successor는 Redis authority를
-takeover한 뒤 자신의 Core runtime에서 prepare를 다시 수행해 새 sealed transfer token을 얻는다. Application이
-만든 임의의 token이나 외부 token 검증 callback은 Redis extension과 Core의 공개 계약에 포함하지 않는다.
+Descriptor list는 page size 1..1000과 encoded page 최대 4 MiB를 지킨다. Framework는 scope change stamp를 page
+열거 전후에 읽고 두 값이 같을 때만 전체 page 결과를 desired set으로 적용한다. 값이 다르면 결과를 버리고
+bounded retry한다. Continuation은 provider-issued opaque cursor이며 provider가 unbounded list를 먼저 만들면 안 된다.
 
-**지원 topology는 standalone Redis다.** cluster에 배포하려면 모든 key가 한 slot에 모이도록
-key prefix를 hash-tag(`{...}`)로 구성해야 한다(공식 지원 범위 밖의 운영 선택).
+Host는 startup에서 모든 Channel, type capability와 readable state contract를 포함한 complete descriptor를 먼저
+만든다. Encoded descriptor는 최대 1 MiB, type/stateful capability vector는 각각 최대 1024개, type별 readable
+state-contract set은 최대 1024개다. 하나라도 넘으면 configuration/startup을 atomic하게 실패한다. Descriptor를
+truncate, split하거나 일부만 publish하지 않는다.
 
-## 4. Lease와 stale 판정
+`update`는 current admitted physical connection에만 적용한다. Topology, identity, endpoint connection identity,
+RID, lifecycle generation, normalized max message size, channel membership key, capability와 application version은
+immutable하다. Existing channel weight, runtime state, capacity와 maintenance wave만 더 큰 revision으로 갱신한다.
+같은 revision·같은 bytes는 idempotent이고 lower revision은 stale다. 같은 revision의 다른 bytes나 immutable 변경은
+protocol error이며 connection을 not-ready로 바꾼다.
 
-- lease는 `PX` TTL이 걸린 STRING이다. 만료는 Redis가 수행하므로 lease read가 없어도 만료가
-  성립한다.
-- `ListOwnerLeases`는 lease 목록과 Redis `TIME` 기준 `StoreNow`를 한 script로 함께 반환한다.
-  런타임의 만료 판정(`LeaseExpiresAt - StoreNow` + local monotonic 경과)이 이 snapshot을
-  사용한다.
-- NewClaim의 "row owner lease 만료" 판정은 script 안에서 `P:lease:{owner}` 존재 여부로
-  원자적으로 확인한다.
-- row 물리 삭제는 계약 대상이 아니다. lease가 만료된 owner의 row는 조회 경로(runtime의 lease
-  join)에서 제외되며, `P:row`/`P:keys`/`P:own`의 잔존 항목 정리는 background cleanup 재량이다.
+DescriptorRevision은 Framework caller가 descriptor마다 발급하며 Redis provider counter가 아니다. 값이
+`2^63-1`에 도달해 다음 revision이 필요하면 Framework host는 wrap하지 않고 `Error`로 seal하며
+publish를 시도하지 않는다.
 
-## 5. Change stamp
+## 7. Routing ID allocation
 
-`P:stamp:{kind}[:{mesh}]`는 해당 scope의 write마다 `INCR`되는 단조 counter다. runtime의
-polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목록을 읽는다. stamp는 변경이 없을 때
-전체 목록 조회를 건너뛰기 위한 최적화일 뿐이다. stamp가 유실되거나 실제 row 상태와 잠시 어긋나도,
-다음 polling의 전체 목록 조회로 최종 연결 상태가 맞춰져야 한다.
+Allocation group snapshot은 slot count 1..65535와 member count 1..255의 coherent value다. Group configuration과
+slot assignment를 같은 atomic script에서 비교한다. Page로 나누거나 부분 group을 publish하지 않는다. Assignment는
+host owner lease token을 저장하며 renew와 release는 exact token을 비교한다.
 
-## 6. 오류 변환과 connection lifecycle
+Routing allocation은 별도 owner lease를 만들지 않는다. 같은 host lifecycle token과 local monotonic owner lease
+deadline을 사용한다.
 
-- read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다
-  ([Location Runtime §7](40-location-runtime.ko.md#7-failure와-recovery)).
-- Redis client connection은 extension 인스턴스가 소유한다. 인스턴스는 `IAsyncDisposable`이며
-  framework host가 dispose lifecycle을 관리한다. 재연결 정책은 언어별 Redis client의 표준
-  동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다. fail-static은 마지막으로
-  성공한 연결 판단을 유지하고 새 connect/disconnect 계산을 멈추는 정책이다.
-- Redis 응답 지연/실패가 framework runtime을 블록하면 안 된다 — 조회 실패는 상태
-  (`StoreFailure`)와 이벤트로 강등된다.
+## 8. Checkpoint chunk와 manifest
 
-## 7. 격리와 테스트
+Checkpoint logical stream은 최대 256 GiB다. Provider는 최대 64 MiB data를 가진 immutable chunk와 최대 4096개
+chunk reference를 가진 immutable root manifest를 저장한다. Manifest에는 logical version, total length, total
+CRC32C와 ordered `(reference, length, CRC32C)`가 포함된다. Provider는 chunk, manifest와 application JSON을
+해석하지 않는다.
 
-- 배포별 key prefix 격리가 필수다. E2E와 테스트는 실행마다 전용 prefix(또는 disposable Redis
-  instance)를 사용하고, 실행 후 prefix 하위 key를 정리하거나 인스턴스를 버린다.
-- store 계약 회귀는 Redis extension contract test로 검증한다. Process-local 동작만 필요한 공통 row
-  test는 test-only in-memory 구현에도 실행할 수 있지만, 분산 lease·transfer authority 검증을 in-memory
-  결과로 대신하지 않는다. Redis 자체의 HA/복제(sentinel, cluster)는 이 extension의 검증
-  범위가 아니다.
+Write 순서는 모든 chunk, root manifest, authority reference CAS다. Authority가 참조하지 않은 chunk와 manifest는
+orphan이며 복구 authority가 아니다. 각 tree component의 retention은 24시간이고 renew threshold는 12시간이다.
+Framework는 아직 authority에 연결되지 않은 staged component도 provider ExpiresAt과 StoreNow로 추적한다.
+`Captured`와 `Prepared` CAS 직전에 complete tree의 모든 component가 12시간보다 긴 remaining lifetime을 갖는지
+검증하고 필요하면 tree 전체를 renew한다. Missing 또는 partial renew는 precommit abort이며 root를 authority에
+연결하지 않는다.
 
-## 8. routing id slot 원자성
+Authority가 가리키는 tree의 renew와 delete는 current authority key, StoreVersion과 root reference를 exact 확인한
+뒤 수행한다. Partial renew는 성공으로 처리하지 않는다. Completion append, `replyRelayAck` 또는 exact request-source
+owner lease expiry를 기록할 때는 새 immutable root를 먼저 만든 뒤 expected StoreVersion CAS 한 번으로 root,
+checksum, TerminalCompletionCount와 PendingRelayCount를 함께 교체한다. Conflict loser의 root는 orphan으로 남겨
+expiry 또는 idempotent delete로 정리한다.
 
-slot acquire는 Redis `TIME` 조회, group 구성 확인 또는 최초 고정, 같은 owner의 멱등 claim 확인, 가장
-작은 빈 slot 선택, generation 증가, slot·owner index 기록과 owner lease 갱신을 Lua script 한 번으로
-수행한다. peer row만으로는 fixed owner와 다른 allocation group의 owner를 구분할 수 없으므로 acquire가
-기존 peer row를 fixed RID 충돌로 추측하지 않는다. 같은 runtime에서 fixed 설정과 자동 할당을 함께
-사용하는 구성은 framework 설정 검증에서 거부한다. 여러 runtime이 같은 member에 두 방식을 섞는
-배포는 지원하지 않는다. slot의 유효성은 hash field가 존재하는지가 아니라
-`P:lease:{ownerId}`의 논리 유효성으로 판단한다. list 결과의 만료 시각도 같은 owner lease의 남은
-TTL과 script 안에서 읽은 store 시각으로 계산한다.
+## 9. Store 장애와 recovery
 
-release는 group, slot, owner id와 generation이 모두 일치할 때만 slot과 owner index를 지운다.
-오래된 token은 `IgnoredStale`로 반환해 현재 claim을 유지한다. group metadata는 첫 acquire 뒤
-자동으로 변경하거나 삭제하지 않는다.
+`StoreFailureGrace`는 descriptor discovery reconcile과 새 outbound connect에만 적용한다. 마지막 stable desired set은
+grace 동안 유지할 수 있고 existing transport는 service liveness를 계속 적용한다. Grace가 끝난 뒤 stable page
+snapshot을 다시 얻기 전에는 새 connection을 만들지 않는다.
 
-공식 지원 topology는 기존 location row와 마찬가지로 standalone Redis다. 비동기 replica failover
-뒤 성공 응답을 받은 write가 유실될 수 있는 구성은 strict single-active 보장을 제공하지 않는다.
-Sentinel이나 Cluster를 지원 범위로 확대하려면 성공한 acquire의 failover durability와 모든 관련
-key의 동일 hash slot 배치를 별도로 검증해야 한다.
+Grace는 host owner lease, coordinator lease와 local authority deadline을 연장하지 않는다. 마지막 valid owner lease
+read에서 계산한 monotonic deadline에 도달하면 Actor·Spot·Instance message, timer, factory completion, transfer
+source·target·coordinator CAS와 reservation admission을 seal한다. Store 복구 뒤 exact owner token과 stable page set을
+다시 검증한 다음 diff와 new connect를 적용한다.
+
+Recovery는 authority scan item을 exact Read한 뒤 expected StoreVersion CAS로만 변경한다. Scan item payload,
+descriptor snapshot 또는 expired owner ID만으로 owner를 바꾸지 않는다.
+
+## 10. Atomicity와 오류
+
+Redis implementation은 row, global counter, index와 Redis `TIME`을 읽고 쓰는 operation을 하나의 Lua script 또는
+동등한 server-side atomic function으로 구현한다. Cluster deployment는 한 transaction domain의 관련 key가 같은
+hash slot에 배치되도록 prefix/hash tag를 구성한다. 이를 보장할 수 없으면 provider startup을 실패한다.
+
+Script timeout, failover와 connection loss로 commit 여부가 불명확하면 Framework는 exact Read로 결과를 확인한다.
+같은 expectation을 임의로 새 mutation처럼 재실행하지 않는다. Opaque payload decode failure, counter overflow,
+authority/checkpoint count mismatch와 missing referenced checkpoint는 recovery error이며 Ready/Completed를 publish하지
+않는다.
+
+Provider operation을 시작하기 전 cancellation은 I/O와 commit을 모두 막을 수 있다. Operation을 시작한 뒤 waiter
+cancellation, timeout 또는 provider error는 commit 실패를 뜻하지 않으며 결과가 불명확하다. Authority CAS는 exact
+key와 expected fence를 다시 읽어 reconcile한 뒤에만 retry한다. Content-addressed checkpoint Put은 같은 bytes를
+verify하거나 idempotent하게 retry하고, authority에 연결되지 않은 committed Put은 orphan retention과 cleanup으로
+처리한다. Renew와 delete도 idempotent다.
+
+Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까지 변경되지 않고 유효해야 한다. Provider가
+그 이후 bytes를 보관하려면 복사한다. Provider success result의 bytes는 immutable하고 호출자가 보관할 수 있어야
+한다. Mutable Redis adapter buffer를 사용하면 provider가 반환 전에 defensive snapshot을 만든다.
+
+## 11. 검증 요구
+
+- Missing read가 StoreNow만 반환하고 synthetic StoreVersion과 generation을 만들지 않는다.
+- NewObject와 NewOwner가 global counter와 row/index를 한 operation으로 변경한다.
+- 모든 generation counter가 `2^63-1`에서 `GenerationExhausted`를 stable하게 반환하고 아무 값도 소비하지 않는다.
+- Authority row에 TTL이 없고 host owner lease 만료만으로 row가 삭제되지 않는다.
+- `RemoveAllByOwner`가 exact host token의 ephemeral descriptor·allocation만 제거한다.
+- Authority scan이 1000 item·4 MiB·4096-byte opaque cursor와 snapshot consistency를 지킨다.
+- Descriptor page가 1000 item·4 MiB를 지키고 unstable scope stamp 결과를 적용하지 않는다.
+- Oversize descriptor와 capability vector가 startup을 실패시키며 partial descriptor를 publish하지 않는다.
+- Routing allocation group이 coherent snapshot과 exact host lease fence를 사용한다.
+- Long capture 중 staged checkpoint를 renew하고 pre-link partial renew failure가 authority reference를 만들지 않는다.
+- Completion root와 authority count가 한 CAS로 교체되고 mismatch가 Completed를 막는다.
+- StoreFailureGrace가 discovery만 freeze하고 authority deadline을 연장하지 않는다.
+- Redis failover 뒤 exact read가 uncertain CAS의 실제 결과를 결정한다.
+- Commit 성공 뒤 response loss·waiter cancellation이 rollback으로 오인되지 않고 exact read 또는 idempotent Put으로
+  reconcile된다.
+- Async provider operation 동안 input bytes가 유지되고 result bytes가 immutable snapshot이다.

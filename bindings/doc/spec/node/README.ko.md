@@ -511,6 +511,30 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`, `poller.ts`,
 - operation-start 명명은 위의 함수 이름 규칙을 따른다. 빌더의 종단 메서드는
   Promise 반환 표면에서도 지금처럼 `submit(...)`을 사용한다. `submitAsync` 같은
   별도 종단 이름을 추가하지 않는다.
+- MeshNode의 Logical Multicast publisher는 Core의 한 번의 blocking publish를 Node.js
+  event loop 밖에서 실행해야 하므로 `publishAsync(...)`를 함께 제공한다. 이 이름은
+  이 publisher에만 적용하며 다른 binding operation의 async suffix 규칙을 바꾸지
+  않는다. payload와 metadata는 worker를 queue에 넣기 전에 binding이 소유한
+  storage로 복사한다. `AbortSignal`은 Core 호출이 시작되기 전까지만 operation을
+  취소할 수 있다. Core 호출이 시작된 뒤의 abort는 이미 시작한 publish의 정상 submit
+  result와 detail을 바꾸지 않는다. programming 또는 system failure는 예외로 유지한다.
+  별도 timeout option은 추가하지 않으며 Core의 MeshNode send timeout을 사용한다.
+- `publishAsync(...)`는 `Promise<MeshPublishResult>`를 반환한다. `Ok`,
+  `Backpressured`, `NotFound`, `NotConnected`, `Terminated`, `NotAdmitted`는
+  정상 submit 결과로 반환하며 Core가 채운 detail을 그대로 보존한다. 특히 일부
+  target만 수락한 `Backpressured` 결과의 non-zero detail을 버리지 않는다.
+  `InvalidArgument`, `InvalidHandle`, `InvalidState`, `NotSupported`,
+  `ThreadViolation`, `OutOfMemory`, `SeqExhausted`, `InternalError`는
+  programming 또는 system error이므로 `SubmitError`를 발생시킨다.
+- `publishAsync(...)`가 queue에 들어간 뒤 publisher를 `close()`하면 새 publish는
+  즉시 거부한다. `close()`는 Node.js event loop를 기다리게 하지 않는다. 이미
+  queue에 들어갔거나 Core 호출을 시작한 operation은 native publisher handle을
+  유지하며, 마지막 operation의 Core 호출과 Promise 완료 처리가 끝난 뒤 native
+  handle을 해제한다.
+- MeshNode에서 Actor의 bound session으로 보내는 `sendActorBoundSession(...)`은
+  0보다 큰 `expectedBindingGeneration`을 필수로 받는다. binding이 교체된 뒤 이전
+  generation의 호출을 새 session으로 전달하지 않으며, 0은 current binding을
+  자동 선택하지 않고 Core의 `InvalidArgument` 결과를 보존한다.
 
 ## 공개 엔트리 형태
 

@@ -2,799 +2,1669 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-inventory="$repo_root/framework/doc/contract-inventory/route-mesh-v10-contract-inventory.json"
-dotnet_inventory="$repo_root/framework/doc/contract-inventory/route-mesh-v10-dotnet-contract-inventory.json"
+inventory="$repo_root/framework/doc/contract-inventory/route-mesh-v11-document-contract-inventory.json"
+wire_schema="$repo_root/framework/runtime/protocol/service-wire-v1.schema.json"
+wire_validator="$repo_root/framework/runtime/protocol/validate-service-wire-schema.mjs"
+public_contract_trace_generator="$repo_root/scripts/generate-v11-public-contract-trace.mjs"
 
-node - "$repo_root" "$inventory" "$dotnet_inventory" <<'NODE'
+node "$wire_validator" --self-test "$wire_schema"
+node "$public_contract_trace_generator" --check
+
+node - "$repo_root" "$inventory" <<'NODE'
+'use strict';
+
 const fs = require('fs');
-const crypto = require('crypto');
 const path = require('path');
-
 const root = process.argv[2];
-const inventory = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
-const dotnetInventory = JSON.parse(fs.readFileSync(process.argv[4], 'utf8'));
-const failures = [];
+const inventoryPath = process.argv[3];
+const {
+  codeFenceFailures,
+  duplicateCodeBlockFailures,
+  duplicateDeclarationOwnerFailures,
+  exactInterfaceBlockRole,
+  fencedBlocks,
+  headedFencedBlocks,
+  publicDeclarationNames,
+  readExactContract,
+  relativeMarkdownLinkFailures,
+} = require(path.join(root, 'scripts/lib/framework-contract-documents.cjs'));
 
-const read = relative => {
+const failures = [];
+const fail = message => failures.push(message);
+let javaKotlinSemanticNegativeTestCount = 0;
+let terminationContractNegativeTestCount = 0;
+if (!fs.existsSync(inventoryPath)) fail(`missing v11 document inventory: ${inventoryPath}`);
+const inventory = fs.existsSync(inventoryPath)
+  ? JSON.parse(fs.readFileSync(inventoryPath, 'utf8'))
+  : {};
+const traceConfigPath = path.join(
+  root,
+  'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.config.json');
+if (!fs.existsSync(traceConfigPath)) fail(`missing v11 public-contract trace config: ${traceConfigPath}`);
+const traceConfig = fs.existsSync(traceConfigPath)
+  ? JSON.parse(fs.readFileSync(traceConfigPath, 'utf8'))
+  : {};
+const traceLanguages = new Map(
+  (traceConfig.languages || []).map(language => [language.id, language]));
+
+const expectedLanguages = ['dotnet', 'cpp', 'java', 'kotlin', 'node'];
+if (inventory.schema !== 1 || inventory.version !== '11.0.0') {
+  fail('v11 document inventory must use schema=1 and version=11.0.0');
+}
+if (JSON.stringify(inventory.languages) !== JSON.stringify(expectedLanguages)) {
+  fail(`v11 document inventory language order differs: expected=${expectedLanguages.join(',')}`);
+}
+if (!inventory.exact_interfaces || typeof inventory.exact_interfaces !== 'object') {
+  fail('v11 document inventory exact_interfaces object is missing');
+}
+if (!Array.isArray(inventory.forbidden_public_code_patterns)
+    || inventory.forbidden_public_code_patterns.length === 0) {
+  fail('v11 document inventory forbidden_public_code_patterns must be a non-empty array');
+}
+if (!Array.isArray(inventory.formal_documents) || inventory.formal_documents.length === 0) {
+  fail('v11 document inventory formal_documents must be a non-empty array');
+}
+for (const key of ['required_repository_file_fragments', 'forbidden_repository_file_fragments']) {
+  if (!inventory[key] || typeof inventory[key] !== 'object' || Array.isArray(inventory[key])) {
+    fail(`v11 document inventory ${key} must be an object`);
+  }
+}
+if (!Array.isArray(inventory.target_document_sets)
+    || inventory.target_document_sets.length !== 2) {
+  fail('v11 document inventory must contain target-spec and target-internals document sets');
+} else if (JSON.stringify(inventory.target_document_sets.map(set => set.name))
+           !== JSON.stringify(['target-spec', 'target-internals'])) {
+  fail('v11 target document set order must be target-spec then target-internals');
+}
+if (!inventory.plan_consolidation || typeof inventory.plan_consolidation !== 'object') {
+  fail('v11 document inventory plan_consolidation object is missing');
+}
+const expectedTerminationMembers = ['drain', 'awaitDrained', 'retire', 'shutdown'];
+const expectedTerminationOwners = ['ZLinkFrameworkRuntime', 'ZLinkDrainControl'];
+const expectedTopologyOwners = [
+  'ZLinkRouteMeshRuntime',
+  'ZLinkClientServerRuntime',
+  'ZLinkFanoutRuntime',
+];
+const terminationOwnerPolicy = inventory.java_kotlin_termination_owners || {};
+if (JSON.stringify(terminationOwnerPolicy.members)
+    !== JSON.stringify(expectedTerminationMembers)
+    || JSON.stringify(terminationOwnerPolicy.allowed)
+    !== JSON.stringify(expectedTerminationOwners)
+    || JSON.stringify(terminationOwnerPolicy.forbidden_topologies)
+    !== JSON.stringify(expectedTopologyOwners)) {
+  fail('Java/Kotlin termination owner policy differs from the host-only contract');
+}
+
+const expectedTerminationResultContract = {
+  formal_path: 'framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md',
+  target_path: 'framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md',
+  e2e_path: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
+  outcomes: [
+    { name: 'Stopped', wire_value: 0, reasons: ['None'] },
+    { name: 'Blocked', wire_value: 1, reasons: [
+      'TargetUnavailable', 'StoreUnavailable', 'TransferDisabled', 'StateIncompatible',
+      'DeadlineExceeded', 'RuntimeNotReady',
+    ] },
+    { name: 'ForceStopped', wire_value: 2, reasons: [
+      'DeadlineExceeded', 'TransferFailed', 'TeardownFailed',
+    ] },
+  ],
+  reasons: [
+    { name: 'None', wire_value: 0 },
+    { name: 'TargetUnavailable', wire_value: 1 },
+    { name: 'StoreUnavailable', wire_value: 2 },
+    { name: 'TransferDisabled', wire_value: 3 },
+    { name: 'StateIncompatible', wire_value: 4 },
+    { name: 'DeadlineExceeded', wire_value: 5 },
+    { name: 'TransferFailed', wire_value: 6 },
+    { name: 'TeardownFailed', wire_value: 7 },
+    { name: 'RuntimeNotReady', wire_value: 8 },
+  ],
+  checkpoint_ceiling_pair: 'Blocked/StateIncompatible',
+  forbidden_fragments: ['CheckpointTooLarge', '| `Completed` |', '| `Failed` |'],
+};
+const terminationResultContract = inventory.termination_result_contract || {};
+if (JSON.stringify(terminationResultContract)
+    !== JSON.stringify(expectedTerminationResultContract)) {
+  fail('termination result inventory differs from the closed formal contract');
+}
+
+const parseTerminationOutcomeTable = source => {
+  const lines = source.split(/\r?\n/u);
+  const header = lines.findIndex(line => /^\|\s*값\s*\|\s*Outcome\s*\|\s*허용 reason\s*\|/u.test(line));
+  if (header < 0) return [];
+  const rows = [];
+  for (let index = header + 2; index < lines.length && lines[index].startsWith('|'); index += 1) {
+    const cells = lines[index].split('|').slice(1, -1).map(cell => cell.trim());
+    if (cells.length < 3) continue;
+    const name = /^`([^`]+)`$/u.exec(cells[1])?.[1];
+    const wireValue = /^(0|[1-9][0-9]*)$/u.test(cells[0]) ? Number(cells[0]) : NaN;
+    const reasons = [...cells[2].matchAll(/`([^`]+)`/gu)].map(match => match[1]);
+    rows.push({ name, wire_value: wireValue, reasons });
+  }
+  return rows;
+};
+
+const parseTerminationReasonValues = source => {
+  const start = source.indexOf('Reason wire 값은');
+  if (start < 0) return [];
+  const end = source.indexOf('이다.', start);
+  if (end < 0) return [];
+  return [...source.slice(start, end).matchAll(/`([A-Za-z][A-Za-z0-9]*)=(\d+)`/gu)]
+    .map(match => ({ name: match[1], wire_value: Number(match[2]) }));
+};
+
+const terminationDocumentFailures = (source, label) => {
+  const messages = [];
+  if (JSON.stringify(parseTerminationOutcomeTable(source))
+      !== JSON.stringify(expectedTerminationResultContract.outcomes)) {
+    messages.push(`${label} termination outcome/reason pairs differ`);
+  }
+  if (JSON.stringify(parseTerminationReasonValues(source))
+      !== JSON.stringify(expectedTerminationResultContract.reasons)) {
+    messages.push(`${label} termination reason wire values differ`);
+  }
+  for (const fragment of expectedTerminationResultContract.forbidden_fragments) {
+    if (source.includes(fragment)) messages.push(`${label} contains forbidden ${fragment}`);
+  }
+  return messages;
+};
+
+const terminationSources = new Map();
+for (const [label, relative] of [
+  ['formal', expectedTerminationResultContract.formal_path],
+  ['target', expectedTerminationResultContract.target_path],
+]) {
   const absolute = path.join(root, relative);
   if (!fs.existsSync(absolute)) {
-    failures.push(`missing file: ${relative}`);
-    return undefined;
-  }
-  return fs.readFileSync(absolute, 'utf8');
-};
-
-const digest = value => crypto.createHash('sha256').update(value).digest('hex');
-const languages = ['dotnet', 'cpp', 'java', 'kotlin', 'node'];
-const codeTags = {
-  dotnet: ['csharp'],
-  cpp: ['cpp'],
-  java: ['java'],
-  kotlin: ['kotlin'],
-  node: ['ts', 'typescript']
-};
-
-const declarationNames = (language, source) => {
-  const names = [];
-  const add = pattern => {
-    let match;
-    while ((match = pattern.exec(source)) !== null) names.push(match[1]);
-  };
-  if (language === 'dotnet') {
-    add(/public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|struct|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_]\w*)/g);
-    add(/public\s+delegate\s+[^;(]*?\s+([A-Za-z_]\w*)\s*\(/g);
-  } else if (language === 'cpp') {
-    add(/\b(?:class|struct|enum\s+class|enum)\s+([A-Za-z_]\w*)/g);
-    add(/\busing\s+([A-Za-z_]\w*)\s*=/g);
-  } else if (language === 'java') {
-    add(/public\s+(?:sealed\s+|final\s+|abstract\s+)?(?:class|interface|record|enum|@interface)\s+([A-Za-z_]\w*)/g);
-  } else if (language === 'kotlin') {
-    add(/\b(?:data\s+class|sealed\s+interface|sealed\s+class|enum\s+class|class|interface|object|typealias)\s+([A-Za-z_]\w*)/g);
-    add(/\bfun\s+(?:<[^>]+>\s*)?(?:[A-Za-z_][\w.<>?]*\.)?([A-Za-z_]\w*)\s*\(/g);
-  } else if (language === 'node') {
-    add(/\bexport\s+(?:declare\s+)?(?:interface|class|enum|type|const|function)\s+([A-Za-z_]\w*)/g);
-  }
-  return names;
-};
-if (inventory.schema !== 2 || inventory.version !== '10.0.0') {
-  failures.push('unified inventory must use schema 2 and version 10.0.0');
-}
-if (JSON.stringify(Object.keys(inventory.languages).sort()) !== JSON.stringify([...languages].sort())) {
-  failures.push('unified inventory must contain dotnet, cpp, java, kotlin and node');
-}
-
-const exactDocuments = new Set();
-let codeFixtureCount = 0;
-let declarationCount = 0;
-for (const language of languages) {
-  const projection = inventory.languages[language];
-  if (!projection || !Array.isArray(projection.documents) || projection.documents.length === 0) {
-    failures.push(`missing document projection: ${language}`);
-    continue;
-  }
-  const combined = [];
-  let codeFixtureSource = '';
-  for (const relative of projection.documents) {
-    exactDocuments.add(relative);
-    const source = read(relative);
-    if (source !== undefined) {
-      combined.push(source);
-      const blocks = [];
-      for (const tag of codeTags[language]) {
-        const pattern = new RegExp('```' + tag + '\\n([\\s\\S]*?)```', 'g');
-        for (const match of source.matchAll(pattern)) {
-          blocks.push(match[1].replace(/[ \t]+$/gm, '').trim());
-        }
-      }
-      if (blocks.length > 0) {
-        codeFixtureCount += 1;
-        const normalized = blocks.join('\n---BLOCK---\n');
-        codeFixtureSource += normalized + '\n';
-        const fixture = projection.code_fixtures?.[relative];
-        if (!fixture || fixture.block_count !== blocks.length || fixture.sha256 !== digest(normalized)) {
-          failures.push(`code fixture differs: ${language}: ${relative}`);
-        }
-      } else if (projection.code_fixtures?.[relative]) {
-        failures.push(`declared code fixture has no blocks: ${language}: ${relative}`);
-      }
-    }
-  }
-  const contract = combined.join('\n');
-  for (const fragment of projection.required_fragments || []) {
-    if (!contract.includes(fragment)) failures.push(`missing ${language} required fragment: ${fragment}`);
-  }
-  for (const fragment of inventory.forbidden_exact_fragments?.[language] || []) {
-    if (contract.includes(fragment)) failures.push(`forbidden ${language} exact fragment: ${fragment}`);
-  }
-  for (const relative of Object.keys(projection.code_fixtures || {})) {
-    if (!projection.documents.includes(relative)) failures.push(`code fixture is outside ${language} document set: ${relative}`);
-  }
-  const counts = new Map();
-  for (const name of declarationNames(language, codeFixtureSource)) counts.set(name, (counts.get(name) || 0) + 1);
-  const canonical = [...counts].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-    .map(([name, count]) => `${name}=${count}`).join('\n');
-  if (!projection.declaration_fixture
-      || projection.declaration_fixture.count !== counts.size
-      || projection.declaration_fixture.sha256 !== digest(canonical)) {
-    failures.push(`public declaration inventory differs: ${language}`);
-  }
-  declarationCount += counts.size;
-}
-
-// RouteMesh location/transfer fixtures are part of the cross-language public
-// contract. Hash-lock them and validate the boundary cases that explain the
-// wire format so coordinated edits cannot reintroduce delimiter collisions.
-for (const [relative, expected] of Object.entries(inventory.redis_fixtures || {})) {
-  const source = read(relative);
-  if (source !== undefined && digest(source) !== expected) {
-    failures.push(`Redis contract fixture changed without inventory review: ${relative}`);
-  }
-}
-const meshDescriptorFixtureText = read('framework/testdata/location/redis/mesh-node-descriptor-v1.json');
-const actorLocationFixtureText = read('framework/testdata/location/redis/actor-location-v2.json');
-const actorTransferFixtureText = read('framework/testdata/location/redis/actor-transfer-v1.json');
-if (meshDescriptorFixtureText !== undefined
-    && actorLocationFixtureText !== undefined
-    && actorTransferFixtureText !== undefined) {
-  try {
-    const meshDescriptorFixture = JSON.parse(meshDescriptorFixtureText);
-    const actorLocationFixture = JSON.parse(actorLocationFixtureText);
-    const actorTransferFixture = JSON.parse(actorTransferFixtureText);
-    const meshDescriptorJson = JSON.parse(meshDescriptorFixture.row?.hash?.json || '{}');
-    const actorLocationJson = JSON.parse(actorLocationFixture.row?.hash?.json || '{}');
-    const descriptorHashFields = ['owner', 'gen', 'json', 'updatedAtMs', 'mesh'];
-    const descriptorJsonFields = [
-      'MeshName', 'Rid', 'LifecycleGeneration', 'DescriptorRevision', 'Endpoint',
-      'ChannelWeights', 'Draining', 'SecurityIdentity', 'OwnerId', 'UpdatedAt'
-    ];
-    const descriptorRowKey =
-      `${Buffer.byteLength(meshDescriptorJson.MeshName || '', 'utf8')}:${meshDescriptorJson.MeshName || ''}`
-      + `${Buffer.byteLength(meshDescriptorJson.Rid || '', 'utf8')}:${meshDescriptorJson.Rid || ''}`;
-    if (meshDescriptorFixture.format !== 'mesh-node-descriptor-v1'
-        || JSON.stringify(meshDescriptorFixture.hashFields) !== JSON.stringify(descriptorHashFields)
-        || meshDescriptorFixture.row?.kind !== 'mesh'
-        || meshDescriptorFixture.row?.key !== descriptorRowKey
-        || JSON.stringify(Object.keys(meshDescriptorFixture.row?.hash || {}))
-          !== JSON.stringify(descriptorHashFields)
-        || JSON.stringify(Object.keys(meshDescriptorJson)) !== JSON.stringify(descriptorJsonFields)
-        || meshDescriptorFixture.row?.hash?.json !== JSON.stringify(meshDescriptorJson)
-        || JSON.stringify(Object.keys(meshDescriptorJson.ChannelWeights || {}))
-          !== JSON.stringify(['orders', 'world'])
-        || meshDescriptorJson.MeshName !== 'game'
-        || meshDescriptorJson.Rid !== '67616d652d61'
-        || meshDescriptorJson.LifecycleGeneration !== 7
-        || meshDescriptorJson.DescriptorRevision !== 3
-        || meshDescriptorJson.OwnerId !== meshDescriptorFixture.row?.hash?.owner
-        || meshDescriptorFixture.row?.hash?.mesh !== meshDescriptorJson.MeshName) {
-      failures.push('MeshNode descriptor fixture must preserve the canonical key, hash fields and JSON field order');
-    }
-    if (actorLocationFixture.row?.key !== '4:game7:actor-1'
-        || actorLocationJson.SpotGeneration !== 3) {
-      failures.push('Actor location fixture must preserve the length-prefixed key and SpotGeneration');
-    }
-
-    const actorRowKey = (meshName, actorId) =>
-      `${Buffer.byteLength(meshName, 'utf8')}:${meshName}${Buffer.byteLength(actorId, 'utf8')}:${actorId}`;
-    const canonicalActorRowKey = actorRowKey('game', 'actor-1');
-    const transferId = '01234567-89ab-cdef-0123-456789abcdef';
-    if (actorTransferFixture.key !== `P:transfer:${canonicalActorRowKey}:${transferId}`
-        || actorTransferFixture.activeIndex?.key !== `P:transfer-by-actor:${canonicalActorRowKey}`) {
-      failures.push('Actor transfer fixture must reuse the canonical actor row key');
-    }
-    const boundaryKeys = new Set();
-    for (const boundary of actorTransferFixture.keyBoundaryCases || []) {
-      const expected = actorRowKey(boundary.meshName, boundary.actorId);
-      if (boundary.actorRowKey !== expected) {
-        failures.push(`Actor transfer fixture uses a non-canonical boundary key: ${boundary.meshName}`);
-      }
-      boundaryKeys.add(boundary.actorRowKey);
-    }
-    if ((actorTransferFixture.keyBoundaryCases || []).length < 3 || boundaryKeys.size < 3) {
-      failures.push('Actor transfer fixture must distinguish delimiter and non-ASCII boundary cases');
-    }
-  } catch (error) {
-    failures.push(`Redis contract fixture is invalid JSON: ${error.message}`);
-  }
-} else if (!inventory.redis_fixtures) {
-  failures.push('unified inventory must hash-lock Redis location and transfer fixtures');
-}
-
-const connectorLanguages = ['dotnet', 'cpp', 'java', 'typescript'];
-const connectorInventory = inventory.stream_connector_exact;
-const streamConnectorDocuments = new Set();
-if (!connectorInventory
-    || typeof connectorInventory.common_document !== 'string'
-    || JSON.stringify(Object.keys(connectorInventory.languages || {}).sort())
-      !== JSON.stringify([...connectorLanguages].sort())) {
-  failures.push('stream connector exact inventory must contain common, dotnet, cpp, java and typescript contracts');
-} else {
-  streamConnectorDocuments.add(connectorInventory.common_document);
-  read(connectorInventory.common_document);
-  for (const language of connectorLanguages) {
-    const projection = connectorInventory.languages[language];
-    streamConnectorDocuments.add(projection.document);
-    const source = read(projection.document);
-    if (source === undefined) continue;
-    for (const fragment of projection.required_fragments || []) {
-      if (!source.includes(fragment)) failures.push(`missing ${language} stream connector fragment: ${fragment}`);
-    }
-    for (const fragment of projection.forbidden_fragments || []) {
-      if (source.includes(fragment)) failures.push(`forbidden ${language} stream connector fragment: ${fragment}`);
-    }
-    const blocks = [];
-    for (const tag of projection.code_tags || []) {
-      const pattern = new RegExp('```' + tag + '\\n([\\s\\S]*?)```', 'g');
-      for (const match of source.matchAll(pattern)) {
-        blocks.push(match[1].replace(/[ \t]+$/gm, '').trim());
-      }
-    }
-    const fixture = projection.code_fixture;
-    const normalized = blocks.join('\n---BLOCK---\n');
-    if (!fixture || fixture.block_count !== blocks.length || fixture.sha256 !== digest(normalized)) {
-      failures.push(`stream connector code fixture differs: ${language}: ${projection.document}`);
-    }
-  }
-}
-
-// Handshake failure belongs to socket runtime monitoring, not to a STREAM
-// session error callback. Keep the six-value monitoring surface aligned in
-// every language projection; Kotlin intentionally reuses the Java surface.
-const enumMembers = (relative, type) => {
-  const source = read(relative);
-  if (source === undefined) return undefined;
-  const escaped = type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const declaration = new RegExp(`\\benum(?:\\s+class)?\\s+${escaped}\\b[^\\{]*\\{([\\s\\S]*?)\\}`, 'm').exec(source);
-  if (!declaration) {
-    failures.push(`runtime monitoring enum is absent: ${relative}: ${type}`);
-    return undefined;
-  }
-  return declaration[1]
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '')
-    .split(',')
-    .map(member => /^\s*([A-Za-z_]\w*)/.exec(member)?.[1])
-    .filter(Boolean);
-};
-const runtimeMonitorEnums = [
-  {
-    language: 'dotnet',
-    document: 'framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md',
-    type: 'ZLinkSocketEventKind',
-    members: ['Connected', 'ConnectionReady', 'Disconnected', 'HandshakeFailed', 'PeerAdmissionChanged', 'Closed']
-  },
-  {
-    language: 'cpp',
-    document: 'framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md',
-    type: 'socket_event_kind_t',
-    members: ['connected', 'connection_ready', 'disconnected', 'handshake_failed', 'peer_admission_changed', 'closed']
-  },
-  {
-    language: 'java',
-    document: 'framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md',
-    type: 'ZLinkSocketEventKind',
-    members: ['CONNECTED', 'CONNECTION_READY', 'DISCONNECTED', 'HANDSHAKE_FAILED', 'PEER_ADMISSION_CHANGED', 'CLOSED']
-  },
-  {
-    language: 'node',
-    document: 'framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md',
-    type: 'ZLinkSocketEventKind',
-    members: ['Connected', 'ConnectionReady', 'Disconnected', 'HandshakeFailed', 'PeerAdmissionChanged', 'Closed']
-  }
-];
-for (const surface of runtimeMonitorEnums) {
-  const actual = enumMembers(surface.document, surface.type);
-  if (actual !== undefined && JSON.stringify(actual) !== JSON.stringify(surface.members)) {
-    failures.push(`runtime monitoring surface differs: ${surface.language}.${surface.type}`);
-  }
-}
-const kotlinContract = read('framework/doc/framework/spec/server/languages/kotlin/README.ko.md');
-const kotlinRuntime = read('framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md');
-if (kotlinContract !== undefined && !kotlinContract.includes('Java 공개 계약')) {
-  failures.push('Kotlin exact interface must identify the reused Java public contract');
-}
-if (kotlinRuntime !== undefined
-    && !(kotlinRuntime.includes('Java 공개 계약') && kotlinRuntime.includes('Java 타입을 복사해 다시 정의하지 않는다'))) {
-  failures.push('Kotlin runtime monitoring surface must explicitly reuse Java types');
-}
-
-// S3-F13-A closes six cross-document semantics. Keep the formal owner text,
-// E2E projection and terminal vocabulary aligned instead of accepting a
-// required word that appears in an unrelated section.
-const f13aOwners = [
-  {
-    document: 'framework/doc/framework/spec/server/23-spot-actor.ko.md',
-    required: ['CAS 성공 뒤 source `OnLeaveActor`', 'CAS 실패에서는 source `OnLeaveActor`를 실행하지 않고']
-  },
-  {
-    document: 'framework/doc/framework/spec/server/40-location-runtime.ko.md',
-    required: ['Spot RID, Spot generation과 Spot kind']
-  },
-  {
-    document: 'framework/doc/framework/spec/server/41-location-store-redis.ko.md',
-    required: ['`P:transfer:{actorRowKey}:{transferId}`', '`P:transfer-by-actor:{actorRowKey}`',
-      'MeshName과 Actor ID를 UTF-8 byte 길이로 encode']
-  },
-  {
-    document: 'framework/doc/framework/spec/server/30-stream-session.ko.md',
-    required: ['registry instance는 공유하지 않는다', 'server root별 registry', 'host별 registry',
-      'connector instance별 typed codec option']
-  },
-  {
-    document: 'framework/doc/framework/spec/server/51-runtime-metrics.ko.md',
-    required: ['transfer 시작부터 activation 또는 실패 terminal까지',
-      '`activated|aborted|timed_out|shutdown`'],
-    forbidden: ['`committed|aborted|timed_out|shutdown`']
-  },
-  {
-    document: 'framework/doc/framework/spec/05-framework-api.ko.md',
-    required: ['non-JSON content-type과 일치하는 codec이 registry에 없으면',
-      '`PayloadDecodeFailed`로 완료한다', 'payload를 JSON으로 다시 해석하지 않고']
-  },
-  {
-    document: 'framework/doc/framework/common/e2e/config-4-registration-codec.ko.md',
-    required: ['명시된 non-JSON content-type에 맞는 codec이 없으면 JSON으로 해석하지 않고',
-      '`PayloadDecodeFailed`로 terminal 완료한다']
-  },
-  {
-    document: 'framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md',
-    required: ['`admission -> location_committed -> leave -> joined -> success_reply`',
-      '`admission -> transfer_out -> commit_request -> transfer_in ->\n  location_committed -> leave -> joined -> commit_ack -> success_reply`'],
-    forbidden: ['`admission -> leave -> location_committed',
-      '`admission -> transfer_out -> leave -> commit_request']
-  }
-];
-for (const owner of f13aOwners) {
-  const source = read(owner.document);
-  if (source === undefined) continue;
-  for (const fragment of owner.required) {
-    if (!source.includes(fragment)) failures.push(`S3-F13-A owner fragment is absent: ${owner.document}: ${fragment}`);
-  }
-  for (const fragment of owner.forbidden || []) {
-    if (source.includes(fragment)) failures.push(`S3-F13-A stale fragment remains: ${owner.document}: ${fragment}`);
-  }
-}
-const joinOwner = read('framework/doc/framework/spec/server/23-spot-actor.ko.md');
-if (joinOwner !== undefined
-    && joinOwner.indexOf('membership epoch를 증가시키는 CAS를 commit한다')
-      > joinOwner.indexOf('CAS 성공 뒤 source `OnLeaveActor`')) {
-  failures.push('S3-F13-A join owner must commit the location CAS before source leave');
-}
-
-// Message flow, dispatch failure and observer-failure reporting have one
-// common owner. Lock the closed values and each language's public observer
-// and runtime-error sink projection so an internal helper cannot satisfy the
-// public Config 5 contract.
-const flowOwner = read('framework/doc/framework/spec/server/52-message-flow-tracing.ko.md');
-const requiredFlowOwnerFragments = [
-  'zlink.message_flow', 'zlink.dispatch_error', 'zlink.runtime_error',
-  '`succeeded`, `failed`, `backpressured`, `dropped`, `cancelled`, `shutdown`',
-  '`no_handler`, `decode_error`, `handler_exception`, `invalid_frame`, `reply_path_missing`',
-  '`reply_error`, `fail_caller`, `drop`',
-  '`observer_failed`', '`message_flow_observer`'
-];
-for (const fragment of requiredFlowOwnerFragments) {
-  if (flowOwner !== undefined && !flowOwner.includes(fragment)) {
-    failures.push(`message-flow owner fragment is absent: ${fragment}`);
-  }
-}
-
-const flowExactProjections = [
-  {
-    language: 'dotnet',
-    document: 'framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md',
-    required: ['IZLinkMessageFlowObserver', 'IZLinkRuntimeErrorSink', 'ZLinkRuntimeErrorEvent',
-      'SetRuntimeErrorSink', 'string? Action', 'zlink.runtime_error', 'observer_failed', 'message_flow_observer'],
-    forbidden: []
-  },
-  {
-    language: 'cpp',
-    document: 'framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md',
-    required: ['message_flow_observer_t', 'runtime_error_sink_t', 'runtime_error_event_t',
-      'set_runtime_error_sink', 'std::optional<std::string> action', 'zlink.runtime_error',
-      'observer_failed', 'message_flow_observer'],
-    forbidden: ['message_dispatch_error_event_t', 'std::exception_ptr', 'outcome=error']
-  },
-  {
-    language: 'java',
-    document: 'framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md',
-    required: ['ZLinkMessageFlowObserver', 'ZLinkRuntimeErrorSink', 'ZLinkRuntimeErrorEvent',
-      'setRuntimeErrorSink', 'Optional<String> action', 'zlink.runtime_error',
-      'observer_failed', 'message_flow_observer'],
-    forbidden: ['outcome=ERROR', 'exception()']
-  },
-  {
-    language: 'kotlin',
-    document: 'framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md',
-    required: ['ZLinkRuntimeErrorSink', 'ZLinkRuntimeErrorEvent', 'onRuntimeError',
-      'observer_failed', 'message_flow_observer'],
-    forbidden: []
-  },
-  {
-    language: 'node',
-    document: 'framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md',
-    required: ['ZLinkMessageFlowObserver', 'ZLinkRuntimeErrorSink', 'ZLinkRuntimeErrorEvent',
-      'setRuntimeErrorSink', '"no_handler"', '"reply_error"', '"observer_failed"',
-      '"message_flow_observer"'],
-    forbidden: ['ZLinkDispatchFailure', 'errorReason?:', 'errorAction?:', 'errorType?:', 'errorMessage?:']
-  }
-];
-for (const projection of flowExactProjections) {
-  const source = read(projection.document);
-  if (source === undefined) continue;
-  for (const fragment of projection.required) {
-    if (!source.includes(fragment)) failures.push(`message-flow ${projection.language} fragment is absent: ${fragment}`);
-  }
-  for (const fragment of projection.forbidden) {
-    if (source.includes(fragment)) failures.push(`message-flow ${projection.language} stale fragment remains: ${fragment}`);
-  }
-}
-
-const resilienceDocuments = [
-  'framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md',
-  'framework/languages/dotnet/e2e/ResilienceLifecycle/feature-map.ko.md',
-  'framework/languages/cpp/e2e/ResilienceLifecycle/feature-map.ko.md',
-  'framework/languages/java/e2e/ResilienceLifecycle/feature-map.ko.md',
-  'framework/languages/java/e2e-kotlin/ResilienceLifecycle/feature-map.ko.md',
-  'framework/languages/node/e2e/ResilienceLifecycle/feature-map.ko.md'
-];
-for (const relative of resilienceDocuments) {
-  const source = read(relative);
-  if (source === undefined) continue;
-  for (const fragment of ['zlink.runtime_error', 'observer_failed', 'message_flow_observer', 'no_handler', 'reply_error']) {
-    if (!source.includes(fragment)) failures.push(`ResilienceLifecycle public evidence differs: ${relative}: ${fragment}`);
-  }
-  for (const fragment of ['UnhandledCallbackException', 'reportRuntimeTaskException', 'onRuntimeTaskException']) {
-    if (source.includes(fragment)) failures.push(`ResilienceLifecycle uses an internal runtime-error helper: ${relative}: ${fragment}`);
-  }
-}
-
-for (const [relative, expected] of Object.entries(inventory.source_fixtures || {})) {
-  const source = read(relative);
-  if (source !== undefined && digest(source) !== expected) {
-    failures.push(`transition source fixture changed without inventory review: ${relative}`);
-  }
-}
-
-const actions = new Set(['keep', 'move', 'remove']);
-let transitionMemberCount = 0;
-const stripSourceComments = source => source
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\/\/.*$/gm, '');
-
-const extractTypeMembers = (source, type) => {
-  const clean = stripSourceComments(source);
-  const escaped = type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const declaration = new RegExp(`\\b(?:class|interface)\\s+${escaped}\\b[^\\{]*\\{`, 'm').exec(clean);
-  if (!declaration) return undefined;
-  const open = declaration.index + declaration[0].lastIndexOf('{');
-  let depth = 1;
-  let start = open + 1;
-  const members = new Set();
-  const consume = end => {
-    let statement = clean.slice(start, end).trim();
-    statement = statement.replace(/^(?:public|private|protected|internal)\s*:\s*/, '').trim();
-    if (!statement || /^(?:public|private|protected|internal)\s*:$/.test(statement)) return;
-    const methods = [...statement.matchAll(/([~A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^;{}()]*>)?\s*\(/g)];
-    if (methods.length > 0) {
-      const name = methods[methods.length - 1][1].replace(/^~/, '');
-      if (!['if', 'for', 'while', 'switch', 'return', 'requires'].includes(name)) members.add(name);
-      return;
-    }
-    const property = /([A-Za-z_][A-Za-z0-9_]*)\s*(?:\?|!)?\s*(?::[^;{}]+)?$/.exec(statement);
-    if (property) members.add(property[1]);
-  };
-  for (let index = open + 1; index < clean.length && depth > 0; index += 1) {
-    const char = clean[index];
-    if (char === '{') {
-      if (depth === 1) consume(index);
-      depth += 1;
-    } else if (char === '}') {
-      depth -= 1;
-      if (depth === 1) start = index + 1;
-    } else if (char === ';' && depth === 1) {
-      consume(index);
-      start = index + 1;
-    }
-  }
-  return members;
-};
-
-const extractTopLevelFunctions = source => {
-  const members = new Set();
-  const clean = stripSourceComments(source);
-  const pattern = /\bfun\s+(?:<[^>]+>\s*)?(?:[A-Za-z_][\w.<>?]*\.)?([A-Za-z_]\w*)\s*\(/g;
-  let match;
-  while ((match = pattern.exec(clean)) !== null) members.add(match[1]);
-  return members;
-};
-
-for (const language of languages) {
-  const owners = inventory.transition_owners?.[language];
-  if (!Array.isArray(owners) || owners.length === 0) {
-    failures.push(`missing transition owners: ${language}`);
-    continue;
-  }
-  const ownerTypes = new Set();
-  for (const owner of owners) {
-    if (ownerTypes.has(owner.type)) failures.push(`duplicate transition owner: ${language}.${owner.type}`);
-    ownerTypes.add(owner.type);
-    if (!inventory.source_fixtures[owner.source]) {
-      failures.push(`transition owner source is not hash-locked: ${language}.${owner.type}`);
-    }
-    const ownerSource = read(owner.source);
-    const actualMembers = ownerSource === undefined ? undefined
-      : owner.kind === 'top_level'
-        ? extractTopLevelFunctions(ownerSource)
-        : extractTypeMembers(ownerSource, owner.type);
-    if (actualMembers === undefined) {
-      failures.push(`transition owner type is absent from source: ${language}.${owner.type}`);
-      continue;
-    }
-    transitionMemberCount += actualMembers.size;
-    const rules = owner.rules || [];
-    const defaults = rules.filter(rule => rule.default === true);
-    if (defaults.length !== 1 || rules[rules.length - 1]?.default !== true) {
-      failures.push(`transition owner requires one final default rule: ${language}.${owner.type}`);
-    }
-    const explicit = new Set();
-    for (const rule of rules) {
-      if (!actions.has(rule.action)) failures.push(`invalid transition action: ${language}.${owner.type}`);
-      if (rule.action !== 'remove' && !rule.target) failures.push(`transition target missing: ${language}.${owner.type}`);
-      for (const member of rule.members || []) {
-        if (explicit.has(member)) failures.push(`member mapped more than once: ${language}.${owner.type}.${member}`);
-        explicit.add(member);
-        if (!actualMembers.has(member)) failures.push(`mapped member is absent from source: ${language}.${owner.type}.${member}`);
-      }
-    }
-    const defaultRule = defaults[0];
-    for (const member of actualMembers) {
-      const explicitMatches = rules.filter(rule => (rule.members || []).includes(member));
-      const applied = explicitMatches.length === 1 ? explicitMatches[0] : defaultRule;
-      if (explicitMatches.length > 1 || !applied) {
-        failures.push(`actual member does not have one transition decision: ${language}.${owner.type}.${member}`);
-      }
-    }
-  }
-}
-
-const listMarkdown = directory => fs.readdirSync(path.join(root, directory), {withFileTypes: true})
-  .filter(entry => entry.isFile() && entry.name.endsWith('.md'))
-  .map(entry => `${directory}/${entry.name}`);
-
-const commonDocuments = [
-  ...listMarkdown('framework/doc/framework/spec'),
-  ...listMarkdown('framework/doc/framework/spec/server')
-].filter(relative => !relative.endsWith('/90-implementation-gap.ko.md'));
-
-const formalDocuments = [...new Set([...commonDocuments, ...exactDocuments, ...streamConnectorDocuments])];
-const implementationGapDocument = 'framework/doc/framework/spec/90-implementation-gap.ko.md';
-const checkedDocuments = [...new Set([...formalDocuments, implementationGapDocument])];
-const routeMeshOwnerNames = new Set([
-  'framework/doc/framework/spec/05-framework-api.ko.md',
-  'framework/doc/framework/spec/server/10-channel-topology.ko.md',
-  'framework/doc/framework/spec/server/11-channel-messaging.ko.md',
-  'framework/doc/framework/spec/server/20-spot-messaging.ko.md',
-  'framework/doc/framework/spec/server/21-mesh-node.ko.md',
-  'framework/doc/framework/spec/server/22-actor-model.ko.md',
-  'framework/doc/framework/spec/server/23-spot-actor.ko.md',
-  'framework/doc/framework/spec/server/24-spot-address-messaging.ko.md',
-  'framework/doc/framework/spec/server/40-location-runtime.ko.md',
-  'framework/doc/framework/spec/server/41-location-store-redis.ko.md',
-  'framework/doc/framework/spec/server/50-runtime-monitoring.ko.md',
-  'framework/doc/framework/spec/server/51-runtime-metrics.ko.md',
-  'framework/doc/framework/spec/server/52-message-flow-tracing.ko.md',
-  'framework/doc/framework/spec/server/53-flow-correlation.ko.md',
-  'framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md'
-]);
-const policyDocuments = new Set([...exactDocuments, ...routeMeshOwnerNames]);
-
-const stripCode = text => {
-  let inFence = false;
-  return text.split(/\r?\n/).map(line => {
-    if (/^```/.test(line)) {
-      inFence = !inFence;
-      return '';
-    }
-    return inFence ? '' : line;
-  }).join('\n');
-};
-
-const anchorFor = heading => heading.normalize('NFC').toLowerCase()
-  .replace(/<\/?[^>]*>/g, '')
-  .replace(/`+/g, '')
-  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-  .replace(/\*\*/g, '')
-  .replace(/[^\p{L}\p{N}_\- ]/gu, '')
-  .trim()
-  .replace(/ /g, '-');
-
-const anchorCache = new Map();
-const anchorsFor = relative => {
-  if (anchorCache.has(relative)) return anchorCache.get(relative);
-  const source = read(relative);
-  const anchors = new Set();
-  if (source !== undefined) {
-    for (const line of stripCode(source).split(/\r?\n/)) {
-      const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
-      if (!heading) continue;
-      const baseAnchor = anchorFor(heading[2]);
-      let anchor = baseAnchor;
-      for (let suffix = 1; anchors.has(anchor); suffix += 1) anchor = `${baseAnchor}_${suffix}`;
-      anchors.add(anchor);
-    }
-  }
-  anchorCache.set(relative, anchors);
-  return anchors;
-};
-
-for (const relative of checkedDocuments) {
-  const source = read(relative);
-  if (source === undefined) continue;
-  if ((source.match(/^```/gm) || []).length % 2 !== 0) failures.push(`unbalanced code fence: ${relative}`);
-  if (source.includes('framework/doc/plan/v10.0/')) failures.push(`formal contract references temporary plan: ${relative}`);
-  if (source.includes('gaps/')) failures.push(`document references removed per-language gap path: ${relative}`);
-
-  if (policyDocuments.has(relative)) {
-    for (const symbol of inventory.forbidden_surface) {
-      if (source.includes(symbol)) failures.push(`forbidden 10.0.0 surface ${symbol}: ${relative}`);
-    }
-    for (const marker of inventory.formal_current_history_markers) {
-      if (source.includes(marker)) failures.push(`current/history marker ${marker}: ${relative}`);
-    }
-  }
-
-  const visible = stripCode(source);
-  anchorsFor(relative);
-
-  for (const block of visible.split(/\n(?=[^|])/).filter(part => part.trimStart().startsWith('|'))) {
-    const rows = block.split(/\r?\n/).filter(line => line.trim().startsWith('|'));
-    if (rows.length < 2) continue;
-    const cells = row => row.replace(/\\\|/g, '__ESCAPED_PIPE__').split('|');
-    const separator = cells(rows[1]).slice(1, -1).map(cell => cell.trim());
-    if (!separator.every(cell => /^:?-{3,}:?$/.test(cell))) continue;
-    const width = cells(rows[0]).length;
-    for (const row of rows) {
-      if (cells(row).length !== width) failures.push(`inconsistent Markdown table width: ${relative}: ${row.trim()}`);
-    }
-  }
-
-  const linkPattern = /\[[^\]]*\]\(([^)]+)\)/g;
-  let link;
-  while ((link = linkPattern.exec(visible)) !== null) {
-    const target = link[1].trim();
-    if (!target || /^[a-z]+:/i.test(target)) continue;
-    const [filePart, fragment] = target.split('#', 2);
-    let targetRelative = relative;
-    if (filePart) {
-      const absolute = path.resolve(path.dirname(path.join(root, relative)), decodeURIComponent(filePart));
-      if (!fs.existsSync(absolute)) {
-        failures.push(`broken relative link ${target}: ${relative}`);
-        continue;
-      }
-      if (fs.statSync(absolute).isDirectory()) continue;
-      targetRelative = path.relative(root, absolute).replace(/\\/g, '/');
-    }
-    if (fragment && !anchorsFor(targetRelative).has(decodeURIComponent(fragment).toLowerCase())) {
-      failures.push(`broken heading fragment ${target}: ${relative}`);
-    }
-  }
-}
-
-const featureMapSources = {
-  RegistryMessaging: 'framework/doc/framework/common/e2e/config-1-location-messaging.ko.md',
-  LocationMessaging: 'framework/doc/framework/common/e2e/config-1-location-messaging.ko.md',
-  SpotService: 'framework/doc/framework/common/e2e/config-2-spot-service.ko.md',
-  PubSub: 'framework/doc/framework/common/e2e/config-3-pubsub.ko.md',
-  RegistrationCodec: 'framework/doc/framework/common/e2e/config-4-registration-codec.ko.md',
-  ResilienceLifecycle: 'framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md',
-  DiscoveryRegistryHa: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
-  StoreFailure: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
-  RuntimeMonitoring: 'framework/doc/framework/common/e2e/config-7-monitoring.ko.md',
-  AutomaticTurnDispatch: 'framework/doc/framework/common/e2e/config-8-execution-turn.ko.md',
-  ToActorMessaging: 'framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md',
-  SpotActorTransfer: 'framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md',
-  ObservabilityOps: 'framework/doc/framework/common/e2e/config-11-observability-ops.ko.md'
-};
-
-const walk = directory => fs.readdirSync(directory, {withFileTypes: true}).flatMap(entry => {
-  const absolute = path.join(directory, entry.name);
-  if (entry.isDirectory()) {
-    if (['build', 'node_modules', '.gradle', 'target'].includes(entry.name)) return [];
-    return walk(absolute);
-  }
-  return [absolute];
-});
-
-const featureMaps = walk(path.join(root, 'framework/languages'))
-  .filter(absolute => absolute.endsWith('/feature-map.ko.md')
-    && /\/e2e(?:-kotlin)?\/[A-Za-z0-9]+\/feature-map\.ko\.md$/.test(absolute));
-if (featureMaps.length !== 55) failures.push(`feature-map inventory differs: expected=55 actual=${featureMaps.length}`);
-
-const canonicalIds = new Map();
-for (const relative of new Set(Object.values(featureMapSources))) {
-  const source = read(relative);
-  if (source === undefined) continue;
-  const ids = [...source.matchAll(/^#{3,5}\s+([A-Z]{2,4}-[A-Z][0-9]+)\b/gm)].map(match => match[1]);
-  if (ids.length === 0 || new Set(ids).size !== ids.length) {
-    failures.push(`canonical E2E scenario IDs are absent or duplicated: ${relative}`);
-  }
-  canonicalIds.set(relative, ids);
-}
-
-let featureMapScenarioRows = 0;
-for (const absolute of featureMaps) {
-  const relative = path.relative(root, absolute).replace(/\\/g, '/');
-  const suite = path.basename(path.dirname(absolute));
-  const canonicalRelative = featureMapSources[suite];
-  if (!canonicalRelative) {
-    failures.push(`feature-map suite has no canonical E2E source: ${relative}`);
+    fail(`termination ${label} document is missing: ${relative}`);
     continue;
   }
   const source = fs.readFileSync(absolute, 'utf8');
-  const leadingIds = [];
-  for (const line of source.split(/\r?\n/)) {
-    const match = /^(?:[-*]\s+|\|\s*)`?([A-Z]{2,4}-[A-Z][0-9]+)`?\b/.exec(line);
-    if (match) leadingIds.push(match[1]);
+  terminationSources.set(label, source);
+  for (const message of terminationDocumentFailures(source, label)) fail(message);
+}
+const terminationE2ePath = path.join(root, expectedTerminationResultContract.e2e_path);
+if (!fs.existsSync(terminationE2ePath)) {
+  fail(`termination E2E document is missing: ${expectedTerminationResultContract.e2e_path}`);
+} else {
+  const source = fs.readFileSync(terminationE2ePath, 'utf8');
+  if (!source.includes(`\`${expectedTerminationResultContract.checkpoint_ceiling_pair}\``)) {
+    fail(`termination E2E checkpoint ceiling must use ${expectedTerminationResultContract.checkpoint_ceiling_pair}`);
   }
-  const counts = new Map();
-  for (const id of leadingIds) counts.set(id, (counts.get(id) || 0) + 1);
-  const expectedIds = canonicalIds.get(canonicalRelative) || [];
-  featureMapScenarioRows += expectedIds.length;
-  for (const id of expectedIds) {
-    if ((counts.get(id) || 0) < 1) {
-      failures.push(`feature-map requires a dedicated scenario row: ${relative}: ${id}`);
+  for (const fragment of expectedTerminationResultContract.forbidden_fragments) {
+    if (source.includes(fragment)) fail(`termination E2E contains forbidden ${fragment}`);
+  }
+}
+
+const terminationNegativeFixtures = [
+  ['Blocked deadline omitted', 'formal', source => source.replace(', `DeadlineExceeded`, `RuntimeNotReady`', ', `RuntimeNotReady`')],
+  ['checkpoint reason widened', 'target', source => source.replace('`StateIncompatible`', '`CheckpointTooLarge`')],
+  ['teardown outcome widened', 'target', source => source.replace('| 2 | `ForceStopped` |', '| 2 | `Failed` |')],
+];
+for (const [fixture, label, mutate] of terminationNegativeFixtures) {
+  const source = terminationSources.get(label);
+  if (!source) continue;
+  const candidate = mutate(source);
+  if (candidate === source || terminationDocumentFailures(candidate, `${label}:${fixture}`).length === 0) {
+    fail(`termination contract negative self-test did not reject ${fixture}`);
+  }
+  terminationContractNegativeTestCount += 1;
+}
+
+const filesUnder = relativeDirectory => {
+  const files = [];
+  const visit = current => {
+    const absolute = path.join(root, current);
+    if (!fs.existsSync(absolute)) return;
+    for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
+      const relative = path.posix.join(current, entry.name);
+      if (entry.isDirectory()) visit(relative);
+      else if (entry.isFile() || entry.isSymbolicLink()) files.push(relative);
+    }
+  };
+  visit(relativeDirectory);
+  return files.sort((left, right) => left.localeCompare(right, 'en'));
+};
+const markdownDocumentsUnder = relativeDirectory => filesUnder(relativeDirectory)
+  .filter(relative => relative.endsWith('.ko.md'));
+const maskCodeLiterals = source => {
+  const masked = [...source];
+  const blank = index => {
+    if (masked[index] !== '\n' && masked[index] !== '\r') masked[index] = ' ';
+  };
+  for (let index = 0; index < source.length;) {
+    if (source.startsWith('//', index)) {
+      while (index < source.length && source[index] !== '\n') blank(index++);
+      continue;
+    }
+    if (source.startsWith('/*', index)) {
+      blank(index++);
+      blank(index++);
+      while (index < source.length && !source.startsWith('*/', index)) blank(index++);
+      if (index < source.length) {
+        blank(index++);
+        blank(index++);
+      }
+      continue;
+    }
+    const quote = source[index];
+    const tripleQuote = quote === '"' && source.startsWith('"""', index);
+    if (tripleQuote) {
+      for (let count = 0; count < 3; count += 1) blank(index++);
+      while (index < source.length && !source.startsWith('"""', index)) blank(index++);
+      for (let count = 0; count < 3 && index < source.length; count += 1) blank(index++);
+      continue;
+    }
+    if (quote === '"' || quote === '\'' || quote === '`') {
+      blank(index++);
+      while (index < source.length) {
+        if (source[index] === '\\') {
+          blank(index++);
+          if (index < source.length) blank(index++);
+          continue;
+        }
+        const current = source[index];
+        blank(index++);
+        if (current === quote) break;
+      }
+      continue;
+    }
+    index += 1;
+  }
+  return masked.join('');
+};
+
+const matchingBrace = (masked, open) => {
+  let depth = 0;
+  for (let index = open; index < masked.length; index += 1) {
+    if (masked[index] === '{') depth += 1;
+    else if (masked[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
+
+const declarationSpans = (source, tag) => {
+  const masked = maskCodeLiterals(source);
+  const pattern = tag === 'java'
+    ? /\b(?:(?:public|protected|private|sealed|non-sealed|final|abstract|static)\s+)*(class|interface|record|enum|@interface)\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)/gu
+    : /\b(?:(?:public|protected|private|internal|sealed|data|enum|value|annotation|open|abstract|final|inner)\s+)*(class|interface|object)\s+([A-Za-z_$][\w$]*)/gu;
+  const declarations = [];
+  for (const match of masked.matchAll(pattern)) {
+    const open = masked.indexOf('{', match.index + match[0].length);
+    if (open < 0) continue;
+    const close = matchingBrace(masked, open);
+    if (close < 0) continue;
+    const qualifiedName = match[2];
+    declarations.push({
+      kind: match[1],
+      name: qualifiedName.slice(qualifiedName.lastIndexOf('.') + 1),
+      nameEnd: match.index + match[0].length,
+      start: match.index,
+      open,
+      close,
+    });
+  }
+  return declarations;
+};
+
+const enclosingDeclaration = (declarations, index) => declarations
+  .filter(declaration => declaration.start <= index && index < declaration.close)
+  .sort((left, right) => (left.close - left.start) - (right.close - right.start))[0];
+
+const terminationNameExpression = expectedTerminationMembers.join('|');
+const terminationDeclarations = (source, tag) => {
+  const masked = maskCodeLiterals(source);
+  const declarations = declarationSpans(source, tag);
+  const members = [];
+  if (tag === 'java') {
+    const pattern = new RegExp(
+      `(?:^|[;{}])[ \\t]*(?!(?:return|throw|new)\\b)`
+      + `(?:(?:@[A-Za-z_$][\\w$]*(?:\\([^\\n]*\\))?)[ \\t]+)*`
+      + `(?:(?:public|protected|private|abstract|default|static|final|synchronized|native|strictfp)[ \\t]+)*`
+      + `(?:[A-Za-z_$][^;={}\\n()]*?[ \\t]+)`
+      + `(${terminationNameExpression})[ \\t]*\\(`,
+      'gmu');
+    for (const match of masked.matchAll(pattern)) {
+      const memberIndex = match.index + match[0].lastIndexOf(match[1]);
+      members.push({
+        name: match[1],
+        owner: enclosingDeclaration(declarations, memberIndex)?.name || '<Java top-level>',
+        extension: false,
+      });
+    }
+    return members;
+  }
+
+  const pattern = new RegExp(
+    `^[ \\t]*(?:(?:public|protected|private|internal|override|open|final|abstract|suspend|operator|infix|inline|tailrec|external)[ \\t]+)*`
+    + `fun[ \\t]+(?:<[^>\\n]+>[ \\t]*)?`
+    + `(?:([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*(?:<[^>\\n]+>)?\\??)[ \\t]*\\.[ \\t]*)?`
+    + `(${terminationNameExpression})[ \\t]*\\(`,
+    'gmu');
+  for (const match of masked.matchAll(pattern)) {
+    const memberIndex = match.index + match[0].lastIndexOf(match[2]);
+    const receiver = match[1];
+    members.push({
+      name: match[2],
+      owner: receiver
+        ? `<Kotlin extension:${receiver}>`
+        : enclosingDeclaration(declarations, memberIndex)?.name || '<Kotlin top-level>',
+      extension: receiver !== undefined,
+    });
+  }
+  return members;
+};
+
+const terminationOwnerFailures = (entries, language) => {
+  const allowed = new Set(expectedTerminationOwners);
+  const messages = [];
+  for (const entry of entries) {
+    for (const block of entry.blocks) {
+      if (block.tag !== 'java' && block.tag !== 'kotlin') continue;
+      for (const member of terminationDeclarations(block.source, block.tag)) {
+        if (!allowed.has(member.owner)) {
+          messages.push(
+            `${language}: ${entry.relative}: ${member.owner}.${member.name} is not host-owned`);
+        }
+      }
+    }
+  }
+  return messages;
+};
+
+const frameworkSnapshotFailures = source => {
+  const masked = maskCodeLiterals(source);
+  const records = declarationSpans(source, 'java')
+    .filter(declaration => declaration.kind === 'record'
+      && declaration.name === 'ZLinkFrameworkRuntimeSnapshot');
+  const messages = [];
+  if (records.length !== 1) {
+    messages.push(`snapshot record declaration count differs: actual=${records.length}`);
+    return messages;
+  }
+  const record = records[0];
+  const header = masked.slice(record.nameEnd, record.open);
+  const body = masked.slice(record.open + 1, record.close);
+  const componentCount = [
+    ...header.matchAll(/\bOptional\s*<\s*ZLinkTerminationResult\s*>\s+terminalResult\b/gu),
+  ].length;
+  const nameCount = [...header.matchAll(/\bterminalResult\b/gu)].length;
+  const explicitMemberCount = [...body.matchAll(/\bterminalResult\s*\(/gu)].length;
+  if (componentCount !== 1 || nameCount !== 1) {
+    messages.push(
+      `snapshot terminalResult component count differs: typed=${componentCount} named=${nameCount}`);
+  }
+  if (explicitMemberCount !== 0) {
+    messages.push(
+      `snapshot repeats generated terminalResult accessor: actual=${explicitMemberCount}`);
+  }
+  return messages;
+};
+
+let exactDocumentCount = 0;
+let exactFenceCount = 0;
+let syntaxAndExampleFenceCount = 0;
+let packageDeclarationOwnerCount = 0;
+let blockRoleNegativeMutationCount = 0;
+const exactFenceRoleCounts = new Map([
+  ['package-contract', 0],
+  ['application-example', 0],
+  ['documentation-support', 0],
+]);
+for (const language of expectedLanguages) {
+  const projection = inventory.exact_interfaces?.[language];
+  if (!projection) {
+    fail(`missing exact-interface projection: ${language}`);
+    continue;
+  }
+  for (const key of ['code_tags', 'required_fragments']) {
+    if (!Array.isArray(projection[key]) || projection[key].length === 0) {
+      fail(`${language} ${key} must be a non-empty array`);
+    }
+  }
+  for (const key of ['required_file_fragments', 'forbidden_file_fragments']) {
+    if (projection[key] !== undefined
+        && (!projection[key] || typeof projection[key] !== 'object'
+            || Array.isArray(projection[key]))) {
+      fail(`${language} ${key} must be an object when present`);
+    }
+  }
+  for (const key of ['minimum_documents', 'minimum_code_blocks']) {
+    if (!Number.isInteger(projection[key]) || projection[key] <= 0) {
+      fail(`${language} ${key} must be a positive integer`);
+    }
+  }
+
+  const languageRoleConfig = traceLanguages.get(language);
+  if (!languageRoleConfig) {
+    fail(`${language} public-contract trace language policy is missing`);
+    continue;
+  }
+  if (JSON.stringify(languageRoleConfig.acceptedCodeTags)
+      !== JSON.stringify(projection.code_tags)) {
+    fail(`${language} DOC and TRACE syntax tag policies differ`);
+  }
+  const contract = readExactContract(root, language);
+  contract.entries = contract.entries.map(entry => ({
+    ...entry,
+    blocks: entry.blocks.map(block => ({
+      ...block,
+      ...exactInterfaceBlockRole(traceConfig, languageRoleConfig, entry.relative, block),
+    })),
+  }));
+  contract.code = contract.entries.flatMap(entry => entry.blocks
+    .filter(block => block.role === 'package-contract')
+    .map(block => block.source)).join('\n');
+  exactDocumentCount += contract.documents.length;
+  const blocks = contract.entries.flatMap(entry => entry.blocks);
+  const syntaxAndExampleBlocks = blocks
+    .filter(block => block.role === 'package-contract' || block.role === 'application-example');
+  exactFenceCount += blocks.length;
+  syntaxAndExampleFenceCount += syntaxAndExampleBlocks.length;
+  for (const block of blocks) {
+    if (!exactFenceRoleCounts.has(block.role)) {
+      fail(`${language} exact fence has an unknown role: ${block.role}`);
+      continue;
+    }
+    exactFenceRoleCounts.set(block.role, exactFenceRoleCounts.get(block.role) + 1);
+  }
+  if (contract.documents.length < projection.minimum_documents) {
+    fail(`${language} exact document count is too small: expected>=${projection.minimum_documents} actual=${contract.documents.length}`);
+  }
+  if (!contract.documents.some(relative => relative.endsWith('/README.ko.md'))) {
+    fail(`${language} exact interface README is missing`);
+  }
+  if (syntaxAndExampleBlocks.length < projection.minimum_code_blocks) {
+    fail(`${language} syntax/example fence count is too small: expected>=${projection.minimum_code_blocks} actual=${syntaxAndExampleBlocks.length}`);
+  }
+  for (const fragment of projection.required_fragments || []) {
+    if (!contract.source.includes(fragment)) {
+      fail(`${language} exact contract is missing semantic projection: ${fragment}`);
+    }
+  }
+  const exactDirectory = path.posix.join(
+    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+  for (const [name, fragments] of Object.entries(projection.required_file_fragments || {})) {
+    if (!Array.isArray(fragments) || fragments.length === 0) {
+      fail(`${language} required_file_fragments must contain non-empty arrays: ${name}`);
+      continue;
+    }
+    const relative = path.posix.join(exactDirectory, name);
+    const absolute = path.join(root, relative);
+    if (!fs.existsSync(absolute)) {
+      fail(`${language} exact semantic owner is missing: ${relative}`);
+      continue;
+    }
+    const source = fs.readFileSync(absolute, 'utf8');
+    for (const fragment of fragments) {
+      if (!source.includes(fragment)) {
+        fail(`${language} exact semantic owner is missing ${fragment}: ${relative}`);
+      }
+    }
+  }
+  for (const [name, fragments] of Object.entries(projection.forbidden_file_fragments || {})) {
+    if (!Array.isArray(fragments) || fragments.length === 0) {
+      fail(`${language} forbidden_file_fragments must contain non-empty arrays: ${name}`);
+      continue;
+    }
+    const relative = path.posix.join(exactDirectory, name);
+    const absolute = path.join(root, relative);
+    if (!fs.existsSync(absolute)) {
+      fail(`${language} exact semantic owner is missing: ${relative}`);
+      continue;
+    }
+    const source = fs.readFileSync(absolute, 'utf8');
+    for (const fragment of fragments) {
+      if (source.includes(fragment)) {
+        fail(`${language} exact semantic owner contains forbidden duplicate ${fragment}: ${relative}`);
+      }
+    }
+  }
+  for (const expression of inventory.forbidden_public_code_patterns || []) {
+    let pattern;
+    try {
+      pattern = new RegExp(expression, 'u');
+    } catch (error) {
+      fail(`invalid forbidden public-code pattern ${expression}: ${error.message}`);
+      continue;
+    }
+    if (pattern.test(contract.code)) {
+      fail(`${language} exact public declaration contains forbidden v11 surface: ${expression}`);
+    }
+  }
+  for (const message of codeFenceFailures(root, contract.documents)) {
+    fail(`exact code fence: ${message}`);
+  }
+  for (const message of relativeMarkdownLinkFailures(root, contract.documents)) {
+    fail(`exact link: ${message}`);
+  }
+  const syntaxAndExampleContract = {
+    ...contract,
+    entries: contract.entries.map(entry => ({
+      ...entry,
+      blocks: entry.blocks.filter(block => block.role !== 'documentation-support'),
+    })),
+  };
+  for (const message of duplicateCodeBlockFailures(language, syntaxAndExampleContract)) {
+    fail(`duplicate exact code block: ${message}`);
+  }
+  const duplicateOwners = duplicateDeclarationOwnerFailures(language, contract);
+  for (const message of duplicateOwners) fail(`duplicate exact declaration owner: ${message}`);
+  const ownerNames = new Set();
+  for (const entry of contract.entries) {
+    const code = entry.blocks
+      .filter(block => block.role === 'package-contract')
+      .map(block => block.source)
+      .join('\n');
+    for (const name of publicDeclarationNames(language, code)) ownerNames.add(name);
+  }
+  if (ownerNames.size === 0) fail(`${language} exact public declaration inventory is empty`);
+  packageDeclarationOwnerCount += ownerNames.size;
+}
+
+const applicationExampleMutationSource = [
+  '## Example fixture',
+  '',
+  '```csharp',
+  'public sealed class MustNotBecomePackageOwner {}',
+  '```',
+].join('\n');
+const applicationExampleMutationDocument =
+  'framework/doc/framework/spec/server/languages/dotnet/interfaces/99-examples.ko.md';
+const dotnetRoleConfig = traceLanguages.get('dotnet');
+const applicationExampleMutationBlocks = headedFencedBlocks(applicationExampleMutationSource)
+  .map(block => ({
+    ...block,
+    ...exactInterfaceBlockRole(
+      traceConfig,
+      dotnetRoleConfig,
+      applicationExampleMutationDocument,
+      block),
+  }));
+const applicationExampleMutationOwnerNames = new Set(applicationExampleMutationBlocks
+  .filter(block => block.role === 'package-contract')
+  .flatMap(block => [...publicDeclarationNames('dotnet', block.source)]));
+if (applicationExampleMutationBlocks.length !== 1
+    || applicationExampleMutationBlocks[0].role !== 'application-example'
+    || applicationExampleMutationOwnerNames.size !== 0) {
+  fail('application example declaration entered the package declaration-owner inventory');
+} else {
+  blockRoleNegativeMutationCount += 1;
+}
+
+const javaExactDirectory =
+  'framework/doc/framework/spec/server/languages/java/interfaces';
+const javaMonitoringRelative = path.posix.join(javaExactDirectory, 'monitoring.ko.md');
+const javaMonitoringSource = fs.readFileSync(path.join(root, javaMonitoringRelative), 'utf8');
+const javaSourceHeadings = [
+  'Host runtime observation exact source signature',
+  'Topology runtime observation exact source signature',
+];
+const javaSourceBlocks = new Map();
+for (const heading of javaSourceHeadings) {
+  const sourceBlocks = headedFencedBlocks(javaMonitoringSource)
+    .filter(block => block.tag === 'java' && block.heading === heading);
+  if (sourceBlocks.length !== 1) {
+    fail(`Java exact source heading must own one java block: ${heading}`);
+    continue;
+  }
+  const block = sourceBlocks[0];
+  javaSourceBlocks.set(heading, block);
+  const memberSource = block.source.split(/\r?\n/u)
+    .filter(line => !/^\s*(?:package|import)\s+/u.test(line))
+    .join('\n');
+  const fullyQualifiedType =
+    /\b(?:java|javax|jakarta|org|com|io|systems|kotlin|kotlinx)\.[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+/u;
+  if (fullyQualifiedType.test(memberSource)) {
+    fail(`Java exact source block repeats a fully-qualified type: ${javaMonitoringRelative}:${block.startLine}`);
+  }
+}
+const javaHostObservation = javaSourceBlocks.get(
+  'Host runtime observation exact source signature');
+if (javaHostObservation) {
+  for (const message of frameworkSnapshotFailures(javaHostObservation.source)) {
+    fail(`Java host runtime snapshot contract: ${javaMonitoringRelative}:${javaHostObservation.startLine}: ${message}`);
+  }
+}
+
+const javaCommonRelative = path.posix.join(javaExactDirectory, 'common-runtime.ko.md');
+const javaCommonSource = fs.readFileSync(path.join(root, javaCommonRelative), 'utf8');
+const javaCommonCode = fencedBlocks(javaCommonSource, ['java'])
+  .map(block => block.source).join('\n');
+const javaRuntimeOwnerPattern =
+  /\bpublic\s+final\s+class\s+(?:systems\.zlink\.framework\.runtime\.host\.)?ZLinkFrameworkRuntime\b/gu;
+const javaRuntimeOwnerCount = source => [...source.matchAll(javaRuntimeOwnerPattern)].length;
+if (javaRuntimeOwnerCount(javaCommonCode) !== 1) {
+  fail(`Java runtime must have one canonical exact declaration owner: actual=${javaRuntimeOwnerCount(javaCommonCode)}`);
+}
+for (const accessor of ['routeMeshRuntime', 'clientServerRuntime', 'fanoutRuntime']) {
+  const pattern = new RegExp(`\\b${accessor}\\s*\\(\\s*\\)\\s*;`, 'gu');
+  const count = [...javaCommonCode.matchAll(pattern)].length;
+  if (count !== 1) {
+    fail(`Java runtime topology accessor must have one canonical declaration: ${accessor} actual=${count}`);
+  }
+}
+const javaCommonNormalized = javaCommonCode.replace(/\s+/gu, ' ');
+for (const fragment of [
+  'implements AutoCloseable, ZLinkMessageFlowControl, ZLinkDrainControl, ZLinkRuntimeQuery',
+  'public static final Duration DEFAULT_TERMINATION_DEADLINE = Duration.ofSeconds(30);',
+]) {
+  if (!javaCommonNormalized.includes(fragment)) {
+    fail(`Java canonical runtime declaration is missing: ${fragment}`);
+  }
+}
+if (javaRuntimeOwnerCount(`${javaCommonCode}\npublic final class systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime {}`) !== 2) {
+  fail('Java duplicate runtime owner negative self-test fixture is invalid');
+} else {
+  javaKotlinSemanticNegativeTestCount += 1;
+}
+for (const [label, pattern] of [
+  ['public runtime constructor', /\bpublic\s+ZLinkFrameworkRuntime\s*\(/u],
+  ['public runtime factory', /\bpublic\s+static\s+(?:systems\.zlink\.framework\.runtime\.host\.)?ZLinkFrameworkRuntime\s+\w+\s*\(/u],
+  ['public runtime bootstrap member', /\bpublic\s+[^;{}\n]+\s+(?:bootstrap|start)\s*\(/u],
+]) {
+  if (pattern.test(javaCommonCode)) {
+    fail(`Java runtime exact surface contains forbidden ${label}`);
+  }
+}
+
+const javaConfigurationRelative = path.posix.join(
+  javaExactDirectory, 'configuration-host.ko.md');
+const javaConfigurationSource = fs.readFileSync(
+  path.join(root, javaConfigurationRelative), 'utf8');
+const javaConfigurationCode = fencedBlocks(javaConfigurationSource, ['java'])
+  .map(block => block.source).join('\n');
+for (const [label, pattern] of [
+  ['runtime.internal type', /systems\.zlink\.framework\.runtime\.internal/u],
+  ['auto-configuration implementation', /ZLinkFrameworkAutoConfiguration/u],
+  ['framework lifecycle implementation', /ZLinkFrameworkLifecycle/u],
+  ['monitoring lifecycle implementation', /ZLinkMonitoringLifecycle/u],
+  ['public runtime bean factory', /\bzlinkFrameworkRuntime\s*\(/u],
+]) {
+  if (pattern.test(javaConfigurationCode)) {
+    fail(`Java configuration public contract exposes ${label}`);
+  }
+}
+
+const javaLifecycleRelative =
+  'framework/doc/framework/java/internals/runtime-lifecycle.ko.md';
+const javaLifecycleSource = fs.readFileSync(path.join(root, javaLifecycleRelative), 'utf8');
+if (!/^\| `ZLinkFrameworkAutoConfigurationTest\.exposesSingleRuntimeAndTopologyRuntimeBeans` \| [^\n]*`assertSame`[^\n]*\|$/mu.test(javaLifecycleSource)) {
+  fail('Java singleton topology bean test must compare each facade view by reference identity');
+}
+
+const kotlinSourceContract = readExactContract(root, 'kotlin', ['kotlin']);
+const kotlinAsFlowDeclarations = [];
+const kotlinAsFlowPattern =
+  /\b(?:public\s+)?fun\s*(?:<[^>]+>\s*)?[^(){};=]*?\.asFlow\s*\(\s*\)/gu;
+for (const entry of kotlinSourceContract.entries) {
+  for (const block of entry.blocks) {
+    const normalized = block.source.replace(/\s+/gu, ' ').trim();
+    for (const ignored of normalized.matchAll(kotlinAsFlowPattern)) {
+      kotlinAsFlowDeclarations.push(entry.relative);
+    }
+  }
+}
+const kotlinAsFlowOwner =
+  'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md';
+if (kotlinAsFlowDeclarations.length !== 1
+    || kotlinAsFlowDeclarations[0] !== kotlinAsFlowOwner) {
+  fail(`Kotlin asFlow source declaration must have one owner: actual=${kotlinAsFlowDeclarations.join(',') || 'none'}`);
+}
+const kotlinGeneratedContract = readExactContract(root, 'kotlin', ['java']);
+const kotlinGeneratedAsFlowOwners = [];
+for (const entry of kotlinGeneratedContract.entries) {
+  for (const block of entry.blocks) {
+    for (const ignored of block.source.matchAll(/\basFlow\s*\(/gu)) {
+      kotlinGeneratedAsFlowOwners.push(entry.relative);
+    }
+  }
+}
+if (kotlinGeneratedAsFlowOwners.length !== 1
+    || kotlinGeneratedAsFlowOwners[0] !== kotlinAsFlowOwner) {
+  fail(`Kotlin generated asFlow signature must have one owner: actual=${kotlinGeneratedAsFlowOwners.join(',') || 'none'}`);
+}
+
+const javaTerminationContract = readExactContract(root, 'java', ['java']);
+const kotlinTerminationContract = readExactContract(root, 'kotlin', ['kotlin', 'java']);
+for (const [language, contract] of [
+  ['java', javaTerminationContract],
+  ['kotlin', kotlinTerminationContract],
+]) {
+  for (const message of terminationOwnerFailures(contract.entries, language)) {
+    fail(`host-only termination owner: ${message}`);
+  }
+  const terminationPattern = /\b(?:drain|awaitDrained|retire|shutdown)\s*\(([^)]*)\)/gu;
+  for (const match of contract.code.matchAll(terminationPattern)) {
+    const parameters = match[1];
+    if (/\b(?:java\.lang\.)?String\b|\b[Mm]eshName\b|\btarget\b/u.test(parameters)) {
+      fail(`${language} host termination member contains a topology target parameter: ${match[0]}`);
     }
   }
 }
 
-// Preserve the exact .NET declaration and C# fixture gate while the unified
-// inventory adds the other language projections and transition decisions.
-const dotnetDocs = new Map();
-for (const relative of dotnetInventory.documents) {
-  const source = read(relative);
-  if (source !== undefined) dotnetDocs.set(relative, source);
+const cppTerminationContract = readExactContract(root, 'cpp', ['cpp']);
+const cppDrainReasonMatch = cppTerminationContract.code.match(
+  /enum class drain_force_reason_t\s*\{([\s\S]*?)\};/u);
+if (!cppDrainReasonMatch) {
+  fail('C++ deprecated drain_force_reason_t declaration is missing');
+} else {
+  const actualReasons = cppDrainReasonMatch[1]
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean);
+  const expectedReasons = ['deadline_exceeded', 'transfer_failed', 'teardown_failed'];
+  if (JSON.stringify(actualReasons) !== JSON.stringify(expectedReasons)) {
+    fail(`C++ deprecated drain reasons are not the closed Shutdown mapping: actual=${actualReasons.join(',')}`);
+  }
 }
-const dotnetCombined = [...dotnetDocs.values()].join('\n');
-const declaredCounts = new Map();
-for (const pattern of [
-  /public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|struct|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_][A-Za-z0-9_]*)/g,
-  /public\s+delegate\s+[A-Za-z_][A-Za-z0-9_<>,.?\[\]\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g
+const cppTerminationNormalized = cppTerminationContract.source.replace(/\s+/gu, ' ');
+for (const fragment of [
+  'Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다.',
+  '`stopped/none`은 `drained_t`로 변환한다.',
+  '`force_stopped/deadline_exceeded`, `force_stopped/transfer_failed`, `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
+  '`blocked`는 Shutdown 결과가 아니므로 `drain_result_t`에 추가하지 않는다.',
 ]) {
-  let match;
-  while ((match = pattern.exec(dotnetCombined)) !== null) {
-    declaredCounts.set(match[1], (declaredCounts.get(match[1]) || 0) + 1);
+  if (!cppTerminationNormalized.includes(fragment)) {
+    fail(`C++ deprecated drain facade is missing total Shutdown mapping: ${fragment}`);
   }
 }
-const declared = new Set(declaredCounts.keys());
-const expected = new Set(dotnetInventory.dotnet_public_symbols);
-for (const symbol of expected) if (!declared.has(symbol)) failures.push(`.NET inventory symbol is not declared: ${symbol}`);
-for (const symbol of declared) if (!expected.has(symbol)) failures.push(`.NET public declaration missing from inventory: ${symbol}`);
-for (const [symbol, count] of declaredCounts) {
-  const expectedCount = dotnetInventory.allowed_declaration_counts[symbol] || 1;
-  if (count !== expectedCount) failures.push(`.NET declaration count differs: ${symbol} expected=${expectedCount} actual=${count}`);
+if (/\b(?:drain_state_publish_failed|owner_cleanup_failed)\b/u.test(cppTerminationContract.code)) {
+  fail('C++ deprecated drain facade retains a stale non-isomorphic failure reason');
 }
-for (const [relative, fixture] of Object.entries(dotnetInventory.csharp_fixture_sha256)) {
-  const source = dotnetDocs.get(relative);
-  if (source === undefined) continue;
-  const blocks = [...source.matchAll(/```csharp\n([\s\S]*?)```/g)]
-    .map(match => match[1].replace(/[ \t]+$/gm, '').trim());
-  const actual = digest(blocks.join('\n---BLOCK---\n'));
-  if (blocks.length !== fixture.block_count || actual !== fixture.sha256) {
-    failures.push(`C# exact fixture differs: ${relative}`);
+
+const terminationOwnerNegativeFixtures = [
+  {
+    label: 'Java RouteMesh parameterless shutdown',
+    tag: 'java',
+    source: 'public interface ZLinkRouteMeshRuntime { void shutdown(); }',
+  },
+  {
+    label: 'Kotlin topology extension shutdown',
+    tag: 'kotlin',
+    source: 'fun ZLinkRouteMeshRuntime.shutdown(): Unit = Unit',
+  },
+  {
+    label: 'generated Kotlin extension retire',
+    tag: 'java',
+    source: 'public final class ZLinkRuntimeExtensionsKt { public static java.lang.Object retire(); }',
+  },
+];
+for (const fixture of terminationOwnerNegativeFixtures) {
+  const messages = terminationOwnerFailures([{
+    relative: `<negative:${fixture.label}>`,
+    blocks: [{ tag: fixture.tag, source: fixture.source }],
+  }], 'self-test');
+  if (messages.length !== 1) {
+    fail(`termination owner negative self-test did not reject ${fixture.label}`);
+  } else {
+    javaKotlinSemanticNegativeTestCount += 1;
   }
 }
-for (const symbol of dotnetInventory.required_method_symbols) {
-  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (!new RegExp(`\\b${escaped}\\s*(?:<[^;{()]*>)?\\s*\\(`).test(dotnetCombined)) {
-    failures.push(`.NET required method is not declared: ${symbol}`);
+for (const fixture of [
+  'public final class ZLinkFrameworkRuntime { public void shutdown(); }',
+  'public interface ZLinkDrainControl { void drain(); }',
+]) {
+  const messages = terminationOwnerFailures([{
+    relative: '<allowed:host termination>',
+    blocks: [{ tag: 'java', source: fixture }],
+  }], 'self-test');
+  if (messages.length !== 0) {
+    fail(`termination owner allowed self-test rejected a host owner: ${messages.join(', ')}`);
   }
 }
 
-if (failures.length > 0) {
-  for (const failure of failures) process.stderr.write(`FAIL: ${failure}\n`);
+const validSnapshotFixture = `
+public record ZLinkFrameworkRuntimeSnapshot(
+    Optional<ZLinkTerminationResult> terminalResult,
+    long sequence) {}`;
+const snapshotNegativeFixtures = [
+  validSnapshotFixture.replace(
+    '    Optional<ZLinkTerminationResult> terminalResult,\n', ''),
+  validSnapshotFixture.replace(
+    '    Optional<ZLinkTerminationResult> terminalResult,',
+    '    Optional<ZLinkTerminationResult> terminalResult,\n'
+      + '    Optional<ZLinkTerminationResult> terminalResult,'),
+  validSnapshotFixture.replace('{}',
+    '{ public Optional<ZLinkTerminationResult> terminalResult() { return terminalResult; } }'),
+];
+if (frameworkSnapshotFailures(validSnapshotFixture).length !== 0) {
+  fail('Java host snapshot positive self-test rejected the required record component');
+}
+for (const [index, fixture] of snapshotNegativeFixtures.entries()) {
+  if (frameworkSnapshotFailures(fixture).length === 0) {
+    fail(`Java host snapshot negative self-test did not reject mutation ${index + 1}`);
+  } else {
+    javaKotlinSemanticNegativeTestCount += 1;
+  }
+}
+
+for (const [relative, fragments] of Object.entries(
+  inventory.required_repository_file_fragments || {})) {
+  if (!Array.isArray(fragments) || fragments.length === 0) {
+    fail(`required_repository_file_fragments must contain non-empty arrays: ${relative}`);
+    continue;
+  }
+  const absolute = path.join(root, relative);
+  if (!fs.existsSync(absolute)) {
+    fail(`required repository document is missing: ${relative}`);
+    continue;
+  }
+  const source = fs.readFileSync(absolute, 'utf8');
+  for (const fragment of fragments) {
+    if (!source.includes(fragment)) {
+      fail(`repository document is missing ${fragment}: ${relative}`);
+    }
+  }
+}
+for (const [relative, fragments] of Object.entries(
+  inventory.forbidden_repository_file_fragments || {})) {
+  if (!Array.isArray(fragments) || fragments.length === 0) {
+    fail(`forbidden_repository_file_fragments must contain non-empty arrays: ${relative}`);
+    continue;
+  }
+  const absolute = path.join(root, relative);
+  if (!fs.existsSync(absolute)) {
+    fail(`required repository document is missing: ${relative}`);
+    continue;
+  }
+  const source = fs.readFileSync(absolute, 'utf8');
+  for (const fragment of fragments) {
+    if (source.includes(fragment)) {
+      fail(`repository document contains forbidden fragment ${fragment}: ${relative}`);
+    }
+  }
+}
+
+const formalPaths = [];
+for (const fixture of inventory.formal_documents || []) {
+  if (!fixture || typeof fixture.path !== 'string'
+      || !Array.isArray(fixture.required_fragments)
+      || !Array.isArray(fixture.forbidden_fragments)) {
+    fail('formal document fixture has an invalid schema');
+    continue;
+  }
+  const absolute = path.join(root, fixture.path);
+  if (!fs.existsSync(absolute)) {
+    fail(`missing formal document: ${fixture.path}`);
+    continue;
+  }
+  formalPaths.push(fixture.path);
+  const source = fs.readFileSync(absolute, 'utf8');
+  for (const fragment of fixture.required_fragments) {
+    if (!source.includes(fragment)) fail(`formal document is missing ${fragment}: ${fixture.path}`);
+  }
+  for (const fragment of fixture.forbidden_fragments) {
+    if (source.includes(fragment)) fail(`formal document contains removed contract ${fragment}: ${fixture.path}`);
+  }
+}
+// Every formal Korean spec participates in structural validation. The
+// inventory above selects semantic owners; it intentionally does not freeze
+// prose or code-block hashes.
+const allFormalPaths = markdownDocumentsUnder('framework/doc/framework/spec');
+if (allFormalPaths.length === 0) fail('formal framework spec document set is empty');
+for (const message of codeFenceFailures(root, allFormalPaths)) fail(`formal code fence: ${message}`);
+for (const message of relativeMarkdownLinkFailures(root, allFormalPaths)) fail(`formal link: ${message}`);
+
+let targetDocumentCount = 0;
+for (const set of inventory.target_document_sets || []) {
+  if (!set || typeof set.name !== 'string' || typeof set.directory !== 'string'
+      || !Array.isArray(set.required_documents)
+      || !Array.isArray(set.readme_required_fragments)
+      || !Array.isArray(set.aggregate_required_fragments)
+      || !Array.isArray(set.forbidden_code_patterns)
+      || !set.required_file_fragments
+      || typeof set.required_file_fragments !== 'object') {
+    fail('target document set has an invalid schema');
+    continue;
+  }
+  const documents = markdownDocumentsUnder(set.directory);
+  targetDocumentCount += documents.length;
+  const actualNames = documents.map(relative => path.posix.basename(relative));
+  for (const required of set.required_documents) {
+    if (!actualNames.includes(required)) fail(`${set.name} is missing required document: ${required}`);
+  }
+  const readmeRelative = path.posix.join(set.directory, 'README.ko.md');
+  const readmeAbsolute = path.join(root, readmeRelative);
+  if (!fs.existsSync(readmeAbsolute)) {
+    fail(`${set.name} README is missing`);
+    continue;
+  }
+  const readme = fs.readFileSync(readmeAbsolute, 'utf8');
+  const sources = documents.map(relative => fs.readFileSync(path.join(root, relative), 'utf8'));
+  const aggregate = sources.join('\n');
+  for (const fragment of set.readme_required_fragments) {
+    if (!readme.includes(fragment)) fail(`${set.name} README is missing no-loss semantic: ${fragment}`);
+  }
+  for (const fragment of set.aggregate_required_fragments) {
+    if (!aggregate.includes(fragment)) fail(`${set.name} is missing target semantic: ${fragment}`);
+  }
+  for (const [name, fragments] of Object.entries(set.required_file_fragments)) {
+    if (!Array.isArray(fragments)) {
+      fail(`${set.name} required_file_fragments must contain arrays: ${name}`);
+      continue;
+    }
+    const relative = path.posix.join(set.directory, name);
+    const absolute = path.join(root, relative);
+    if (!fs.existsSync(absolute)) {
+      fail(`${set.name} semantic owner is missing: ${name}`);
+      continue;
+    }
+    const source = fs.readFileSync(absolute, 'utf8');
+    for (const fragment of fragments) {
+      if (!source.includes(fragment)) fail(`${set.name}/${name} is missing semantic: ${fragment}`);
+    }
+  }
+  const code = sources.flatMap(source => fencedBlocks(source).map(block => block.source)).join('\n');
+  for (const expression of set.forbidden_code_patterns) {
+    let pattern;
+    try {
+      pattern = new RegExp(expression, 'u');
+    } catch (error) {
+      fail(`invalid ${set.name} forbidden-code pattern ${expression}: ${error.message}`);
+      continue;
+    }
+    if (pattern.test(code)) fail(`${set.name} contains removed Core service C ABI code: ${expression}`);
+  }
+  for (const message of codeFenceFailures(root, documents)) fail(`${set.name} code fence: ${message}`);
+  for (const message of relativeMarkdownLinkFailures(root, documents)) fail(`${set.name} link: ${message}`);
+}
+
+const consolidation = inventory.plan_consolidation || {};
+let forbiddenLegacyPlanCount = 0;
+let planDocumentCount = 0;
+let consolidatedSemanticCount = 0;
+let ledgerRowCount = 0;
+let ledgerEdgeCount = 0;
+let ledgerProfileCount = 0;
+let ledgerProfileRowCount = 0;
+let parallelReviewRowCount = 0;
+let ledgerExecutionCardCount = 0;
+let ledgerFinalUnreachableCount = 0;
+if (typeof consolidation.directory !== 'string'
+    || !Array.isArray(consolidation.allowed_documents)
+    || !Array.isArray(consolidation.ledger_required_fragments)
+    || !Array.isArray(consolidation.allowed_profiles)
+    || !Array.isArray(consolidation.required_parallel_review_rows)
+    || !Array.isArray(consolidation.forbidden_fragments)
+    || !Array.isArray(consolidation.required_semantic_owners)
+    || !Array.isArray(consolidation.forbidden_legacy_documents)) {
+  fail('v11 plan_consolidation has an invalid schema');
+} else {
+  const allowedDocuments = consolidation.allowed_documents;
+  const allowedSet = new Set(allowedDocuments);
+  if (allowedDocuments.length !== 22 || allowedSet.size !== allowedDocuments.length
+      || allowedDocuments.some(relative => typeof relative !== 'string'
+        || relative.length === 0 || path.posix.isAbsolute(relative)
+        || relative.split('/').includes('..'))) {
+    fail('v11 consolidated plan must declare 22 unique safe relative document paths');
+  }
+  const actualDocuments = filesUnder(consolidation.directory)
+    .map(relative => path.posix.relative(consolidation.directory, relative));
+  planDocumentCount = actualDocuments.length;
+  const actualSet = new Set(actualDocuments);
+  for (const relativeName of allowedDocuments) {
+    if (!actualSet.has(relativeName)) {
+      fail(`v11 consolidated plan document is missing: ${relativeName}`);
+    }
+  }
+  for (const relativeName of actualDocuments) {
+    if (!allowedSet.has(relativeName)) {
+      fail(`v11 consolidated plan contains an unowned document: ${relativeName}`);
+    }
+  }
+  const allowedProfiles = new Set(consolidation.allowed_profiles);
+  if (consolidation.allowed_profiles.length !== 3
+      || allowedProfiles.size !== consolidation.allowed_profiles.length
+      || consolidation.allowed_profiles.some(profile => !/^P-[A-Z]+$/u.test(profile))) {
+    fail('v11 consolidation must declare 3 unique central profile IDs');
+  }
+  const parallelReviewRows = new Set(consolidation.required_parallel_review_rows);
+  if (consolidation.required_parallel_review_rows.length !== 9
+      || parallelReviewRows.size !== consolidation.required_parallel_review_rows.length
+      || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
+    fail('v11 consolidation must declare 9 unique parallel review row IDs');
+  }
+  if (consolidation.forbidden_fragments.length === 0
+      || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
+        || fragment.length === 0)) {
+    fail('v11 consolidation forbidden_fragments must contain non-empty strings');
+  }
+
+  const semanticIds = new Set();
+  if (consolidation.required_semantic_owners.length === 0) {
+    fail('v11 consolidation must declare semantic owners');
+  }
+  for (const owner of consolidation.required_semantic_owners) {
+    if (!owner || typeof owner.id !== 'string' || semanticIds.has(owner.id)
+        || typeof owner.path !== 'string' || !allowedSet.has(owner.path)
+        || !Array.isArray(owner.required_fragments)
+        || owner.required_fragments.length === 0
+        || owner.required_fragments.some(fragment => typeof fragment !== 'string'
+          || fragment.length === 0)) {
+      fail('v11 consolidation semantic owner has an invalid schema');
+      continue;
+    }
+    semanticIds.add(owner.id);
+    const absolute = path.join(root, consolidation.directory, owner.path);
+    if (!fs.existsSync(absolute)) {
+      fail(`v11 consolidation semantic owner is missing: ${owner.id}: ${owner.path}`);
+      continue;
+    }
+    consolidatedSemanticCount += 1;
+    const source = fs.readFileSync(absolute, 'utf8');
+    for (const fragment of owner.required_fragments) {
+      if (!source.includes(fragment)) {
+        fail(`v11 consolidation semantic is missing: ${owner.id}: ${fragment}`);
+      }
+    }
+  }
+
+  const ledgerRelative = path.posix.join(
+    consolidation.directory,
+    'route-mesh-11.0.0-execution-ledger.ko.md');
+  const ledgerAbsolute = path.join(root, ledgerRelative);
+  if (fs.existsSync(ledgerAbsolute)) {
+    const ledger = fs.readFileSync(ledgerAbsolute, 'utf8');
+    for (const fragment of consolidation.ledger_required_fragments) {
+      if (!ledger.includes(fragment)) fail(`v11 execution ledger is missing consolidation semantic: ${fragment}`);
+    }
+    for (const fragment of consolidation.forbidden_fragments) {
+      if (ledger.includes(fragment)) {
+        fail(`v11 execution ledger contains a forbidden model policy fragment: ${fragment}`);
+      }
+    }
+
+    const ledgerLines = ledger.split('\n');
+    const executionCards = new Map();
+    let inExecutionCardCatalog = false;
+    for (const [index, line] of ledgerLines.entries()) {
+      if (line === '### 3.4 ID별 execution card catalog') {
+        inExecutionCardCatalog = true;
+        continue;
+      }
+      if (inExecutionCardCatalog && /^##\s+/u.test(line)) {
+        inExecutionCardCatalog = false;
+      }
+      if (!inExecutionCardCatalog || !line.startsWith('|')) continue;
+      const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+      if (cells.length !== 5) continue;
+      const tokens = [...cells[0].matchAll(/`([^`]+)`/gu)].map(match => match[1]);
+      if (tokens.length === 0) continue;
+      const remainder = cells[0]
+        .replace(/`[^`]+`/gu, '')
+        .replace(/[\s,]/gu, '');
+      if (remainder.length !== 0) {
+        fail(`v11 execution card must contain exact IDs only: line ${index + 1}: ${cells[0]}`);
+      }
+      for (const id of tokens) {
+        if (!/^(?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+)$/u.test(id)) {
+          fail(`v11 execution card ID is not exact: line ${index + 1}: ${id}`);
+          continue;
+        }
+        if (executionCards.has(id)) {
+          fail(`v11 execution ledger contains duplicate execution card ID: ${id}`);
+          continue;
+        }
+        executionCards.set(id, index + 1);
+      }
+    }
+    ledgerExecutionCardCount = executionCards.size;
+
+    const rows = new Map();
+    for (const [index, line] of ledgerLines.entries()) {
+      if (!line.startsWith('|')) continue;
+      const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+      if (cells.length !== 7) continue;
+      const match = cells[0].match(/^`((?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+))`$/u);
+      if (!match) continue;
+      const id = match[1];
+      if (rows.has(id)) {
+        fail(`v11 execution ledger contains duplicate row ID: ${id}`);
+        continue;
+      }
+      rows.set(id, {
+        id,
+        line: index + 1,
+        assignmentCell: cells[2],
+        predecessorCell: cells[3],
+        status: cells[4],
+        predecessors: [],
+      });
+    }
+    ledgerRowCount = rows.size;
+    if (ledgerRowCount === 0) fail('v11 execution ledger contains no executable rows');
+    for (const row of rows.values()) {
+      if (!executionCards.has(row.id)) {
+        fail(`v11 execution ledger row has no execution card: ${row.id}`);
+      }
+    }
+    for (const [id, line] of executionCards) {
+      if (!rows.has(id)) {
+        fail(`v11 execution card points to an undefined row: ${id}: line ${line}`);
+      }
+    }
+
+    const usedProfiles = new Set();
+    for (const row of rows.values()) {
+      const profiles = [...row.assignmentCell.matchAll(/`(P-[A-Z]+)`/gu)]
+        .map(match => match[1]);
+      if (profiles.length !== 1 || !allowedProfiles.has(profiles[0])) {
+        fail(`v11 execution ledger row must select one central profile: ${row.id}: ${row.assignmentCell}`);
+        continue;
+      }
+      if (/gpt-/u.test(row.assignmentCell)) {
+        fail(`v11 execution ledger row repeats a raw Codex model name: ${row.id}`);
+      }
+      usedProfiles.add(profiles[0]);
+      ledgerProfileRowCount += 1;
+    }
+    ledgerProfileCount = usedProfiles.size;
+    for (const profile of allowedProfiles) {
+      if (!usedProfiles.has(profile)) fail(`v11 execution ledger central profile is unused: ${profile}`);
+    }
+    for (const id of parallelReviewRows) {
+      const row = rows.get(id);
+      if (!row) {
+        fail(`v11 execution ledger parallel review row is missing: ${id}`);
+        continue;
+      }
+      if (!row.assignmentCell.includes('`P-DEEP`')
+          || !row.assignmentCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
+        fail(`v11 execution ledger parallel review assignment differs: ${id}`);
+        continue;
+      }
+      parallelReviewRowCount += 1;
+    }
+    const actualReviewRows = new Set(
+      [...rows.keys()].filter(id => /^V11-R[0-9]/u.test(id)));
+    for (const id of actualReviewRows) {
+      if (!parallelReviewRows.has(id)) {
+        fail(`v11 execution ledger review row is not declared for parallel review: ${id}`);
+      }
+    }
+    for (const id of parallelReviewRows) {
+      if (!actualReviewRows.has(id)) {
+        fail(`v11 parallel review declaration does not identify a review row: ${id}`);
+      }
+    }
+    for (const row of rows.values()) {
+      if (!parallelReviewRows.has(row.id)
+          && row.assignmentCell.includes('claude-sonnet-5')) {
+        fail(`v11 execution ledger assigns the parallel reviewer outside a review row: ${row.id}`);
+      }
+    }
+
+    for (const row of rows.values()) {
+      if (row.predecessorCell === '없음') continue;
+      const tokens = [...row.predecessorCell.matchAll(/`([^`]+)`/gu)]
+        .map(match => match[1]);
+      const remainder = row.predecessorCell
+        .replace(/`[^`]+`/gu, '')
+        .replace(/[\s,]/gu, '');
+      if (tokens.length === 0 || remainder.length !== 0) {
+        fail(`v11 execution ledger predecessor must contain exact IDs only: ${row.id}: ${row.predecessorCell}`);
+      }
+      const unique = new Set();
+      for (const predecessor of tokens) {
+        if (!/^(?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+)$/u.test(predecessor)) {
+          fail(`v11 execution ledger predecessor is not an exact ID: ${row.id}: ${predecessor}`);
+          continue;
+        }
+        if (unique.has(predecessor)) {
+          fail(`v11 execution ledger repeats a predecessor: ${row.id}: ${predecessor}`);
+          continue;
+        }
+        unique.add(predecessor);
+        row.predecessors.push(predecessor);
+        ledgerEdgeCount += 1;
+        if (predecessor === row.id) {
+          fail(`v11 execution ledger row depends on itself: ${row.id}`);
+        } else if (!rows.has(predecessor)) {
+          fail(`v11 execution ledger predecessor is undefined: ${row.id}: ${predecessor}`);
+        }
+      }
+    }
+
+    const colors = new Map();
+    const stack = [];
+    const visit = id => {
+      const color = colors.get(id) || 0;
+      if (color === 2) return;
+      if (color === 1) {
+        const start = stack.indexOf(id);
+        const cycle = [...stack.slice(start), id];
+        fail(`v11 execution ledger dependency cycle: ${cycle.join(' -> ')}`);
+        return;
+      }
+      colors.set(id, 1);
+      stack.push(id);
+      for (const predecessor of rows.get(id)?.predecessors || []) {
+        if (rows.has(predecessor)) visit(predecessor);
+      }
+      stack.pop();
+      colors.set(id, 2);
+    };
+    for (const id of rows.keys()) visit(id);
+
+    const finalReviewId = 'V11-R7';
+    if (!rows.has(finalReviewId)) {
+      fail(`v11 execution ledger final review row is missing: ${finalReviewId}`);
+    } else {
+      const reachesFinal = new Set();
+      const collectPredecessors = id => {
+        if (reachesFinal.has(id)) return;
+        reachesFinal.add(id);
+        for (const predecessor of rows.get(id)?.predecessors || []) {
+          if (rows.has(predecessor)) collectPredecessors(predecessor);
+        }
+      };
+      collectPredecessors(finalReviewId);
+      const unreachable = [...rows.keys()].filter(id => !reachesFinal.has(id));
+      ledgerFinalUnreachableCount = unreachable.length;
+      for (const id of unreachable) {
+        fail(`v11 execution ledger row does not reach ${finalReviewId}: ${id}`);
+      }
+    }
+
+    const gatedStatuses = new Set(['검토 준비 완료', '리뷰 중', '완료']);
+    for (const row of rows.values()) {
+      if (!gatedStatuses.has(row.status)) continue;
+      for (const predecessor of row.predecessors) {
+        const predecessorRow = rows.get(predecessor);
+        if (predecessorRow && predecessorRow.status !== '완료') {
+          fail(`v11 execution ledger advances before predecessor completion: ${row.id}: ${predecessor}`);
+        }
+      }
+    }
+  }
+  for (const relativeName of consolidation.forbidden_legacy_documents) {
+    forbiddenLegacyPlanCount += 1;
+    const absolute = path.join(root, consolidation.directory, relativeName);
+    if (fs.existsSync(absolute)) fail(`legacy v11 plan document must not return: ${relativeName}`);
+  }
+}
+
+// Redis fixtures are semantic wire examples. Validate their schema, field
+// order and length-prefixed keys without turning ordinary prose edits into a
+// hash failure.
+const redisFixtures = [
+  ['actor-location-v2.json', 'actor-location-v2'],
+  ['authority-store-v1.json', 'authority-store-v1'],
+  ['client-server-server-descriptor-v1.json', 'client-server-server-descriptor-v1'],
+  ['fanout-publisher-descriptor-v1.json', 'fanout-publisher-descriptor-v1'],
+  ['mesh-node-descriptor-v1.json', 'mesh-node-descriptor-v1'],
+];
+const fixtureDirectory = path.join(root, 'framework/testdata/location/redis');
+for (const obsolete of ['actor-transfer-v1.json', 'instance-spot-location-v1.json']) {
+  if (fs.existsSync(path.join(fixtureDirectory, obsolete))) {
+    fail(`obsolete phase-specific Redis fixture remains: ${obsolete}`);
+  }
+}
+const descriptorKey = (...values) => values
+  .map(value => `${Buffer.byteLength(value, 'utf8')}:${value}`).join('');
+const serviceWireSchema = JSON.parse(fs.readFileSync(path.join(
+  root, 'framework/runtime/protocol/service-wire-v1.schema.json'), 'utf8'));
+const authorityKeyProfile = serviceWireSchema.authorityKeyFormat;
+const unreservedAuthorityByte = byte => (byte >= 0x41 && byte <= 0x5a)
+  || (byte >= 0x61 && byte <= 0x7a)
+  || (byte >= 0x30 && byte <= 0x39)
+  || [0x2d, 0x2e, 0x5f, 0x7e].includes(byte);
+const encodeAuthorityComponent = bytes => `${bytes.length}:` + [...bytes]
+  .map(byte => unreservedAuthorityByte(byte)
+    ? String.fromCharCode(byte)
+    : `%${byte.toString(16).toUpperCase().padStart(2, '0')}`)
+  .join('');
+const canonicalAuthorityKey = keyContract => {
+  const kind = authorityKeyProfile.kindDiscriminators.find(
+    candidate => candidate.objectKind === keyContract?.objectKind);
+  const identityHex = keyContract?.identityHex || '';
+  if (!kind || typeof keyContract?.meshName !== 'string'
+      || !/^(?:[0-9a-fA-F]{2})+$/u.test(identityHex)) return undefined;
+  const mesh = Buffer.from(keyContract.meshName, 'utf8');
+  const identity = Buffer.from(identityHex, 'hex');
+  return [authorityKeyProfile.prefix, kind.wire,
+    encodeAuthorityComponent(mesh), encodeAuthorityComponent(identity)]
+    .join(authorityKeyProfile.separator);
+};
+const validateHashFields = (fixtureName, fixture, hash) => {
+  if (!Array.isArray(fixture.hashFields)
+      || new Set(fixture.hashFields).size !== fixture.hashFields.length
+      || !hash || typeof hash !== 'object'
+      || JSON.stringify(Object.keys(hash)) !== JSON.stringify(fixture.hashFields)) {
+    fail(`Redis fixture hash field schema differs: ${fixtureName}`);
+  }
+};
+const positiveDecimal = value => typeof value === 'string'
+  && /^[1-9]\d*$/u.test(value)
+  && BigInt(value) <= 9223372036854775807n;
+const validateAuthorityHash = (fixtureName, fixture, hash) => {
+  validateHashFields(fixtureName, fixture, hash);
+  if (typeof hash?.payload !== 'string' || hash.payload.length === 0
+      || !positiveDecimal(hash.storeVersion)
+      || !positiveDecimal(hash.objectGeneration)
+      || !positiveDecimal(hash.authorityOwnerGeneration)
+      || typeof hash.ownerId !== 'string' || hash.ownerId.length === 0
+      || !positiveDecimal(hash.ownerLeaseGeneration)
+      || Object.hasOwn(hash, 'leaseExpiresAtMs')) {
+    fail(`Redis authority fixture metadata differs: ${fixtureName}`);
+  }
+};
+const validateHashRow = (fixtureName, row, expectedKey = undefined) => {
+  if (!row || typeof row !== 'object' || !row.hash || typeof row.hash !== 'object') {
+    fail(`Redis fixture row/hash is missing: ${fixtureName}`);
+    return undefined;
+  }
+  if (expectedKey !== undefined && row.key !== expectedKey) {
+    fail(`Redis fixture length-prefixed key differs: ${fixtureName}`);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(row.hash.json);
+  } catch (error) {
+    fail(`Redis fixture embedded JSON is invalid: ${fixtureName}: ${error.message}`);
+    return undefined;
+  }
+  if (row.hash.json !== JSON.stringify(payload)) {
+    fail(`Redis fixture embedded JSON is not canonical compact JSON: ${fixtureName}`);
+  }
+  return payload;
+};
+const descriptorFieldOrder = {
+  'client-server-server-descriptor-v1.json': [
+    'ChannelName', 'ServerRid', 'LifecycleGeneration', 'DescriptorRevision',
+    'NormalizedEffectiveMaxMessageBytes', 'Endpoint', 'Weight', 'State',
+    'SecurityIdentity', 'OwnerId', 'OwnerLeaseGeneration', 'UpdatedAt',
+  ],
+  'fanout-publisher-descriptor-v1.json': [
+    'ChannelName', 'PublisherRid', 'LifecycleGeneration', 'DescriptorRevision',
+    'Endpoint', 'State', 'SecurityIdentity', 'OwnerId', 'OwnerLeaseGeneration',
+    'UpdatedAt',
+  ],
+  'mesh-node-descriptor-v1.json': [
+    'MeshName', 'Rid', 'LifecycleGeneration', 'DescriptorRevision',
+    'NormalizedEffectiveMaxMessageBytes', 'Endpoint', 'ChannelWeights',
+    'ApplicationVersion', 'SpotTypes', 'StatefulCapabilities',
+    'ProtocolCapabilities', 'MaintenanceWave', 'State', 'SecurityIdentity',
+    'OwnerId', 'OwnerLeaseGeneration', 'UpdatedAt',
+  ],
+};
+const runtimeStates = new Set(['Preparing', 'Serving', 'Draining', 'Stopped', 'Error']);
+const compareUtf8 = (left, right) => Buffer.compare(
+  Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
+const isStrictlyUtf8Sorted = values => Array.isArray(values)
+  && values.every((value, index) => typeof value === 'string'
+    && (index === 0 || compareUtf8(values[index - 1], value) < 0));
+const validateDescriptorPayload = (name, payload) => {
+  const expectedFields = descriptorFieldOrder[name];
+  if (!expectedFields) return;
+  if (JSON.stringify(Object.keys(payload)) !== JSON.stringify(expectedFields)) {
+    fail(`Redis descriptor canonical field order differs: ${name}`);
+  }
+  if (!runtimeStates.has(payload.State)) {
+    fail(`Redis descriptor FrameworkRuntimeState differs: ${name}`);
+  }
+  for (const field of ['LifecycleGeneration', 'DescriptorRevision', 'OwnerLeaseGeneration']) {
+    if (!Number.isSafeInteger(payload[field]) || payload[field] <= 0) {
+      fail(`Redis descriptor ${field} must be a positive safe integer: ${name}`);
+    }
+  }
+  if (typeof payload.OwnerId !== 'string' || payload.OwnerId.length === 0) {
+    fail(`Redis descriptor OwnerId is missing: ${name}`);
+  }
+  if (name !== 'fanout-publisher-descriptor-v1.json'
+      && (!Number.isSafeInteger(payload.NormalizedEffectiveMaxMessageBytes)
+        || payload.NormalizedEffectiveMaxMessageBytes <= 0
+        || payload.NormalizedEffectiveMaxMessageBytes > 0xffffffff)) {
+    fail(`Redis descriptor normalized message bound differs: ${name}`);
+  }
+  if (name !== 'mesh-node-descriptor-v1.json') return;
+  const channelNames = Object.keys(payload.ChannelWeights || {});
+  if (!isStrictlyUtf8Sorted(channelNames)) {
+    fail('MeshNode descriptor ChannelWeights must be UTF-8 sorted and unique');
+  }
+  for (const field of ['SpotTypes', 'ProtocolCapabilities']) {
+    if (!isStrictlyUtf8Sorted(payload[field])) {
+      fail(`MeshNode descriptor ${field} must be UTF-8 sorted and unique`);
+    }
+  }
+  if (!payload.ProtocolCapabilities.includes(serviceWireSchema.protocol.requiredCapability)) {
+    fail('MeshNode descriptor is missing the required service protocol capability');
+  }
+  if (!Number.isSafeInteger(payload.ApplicationVersion) || payload.ApplicationVersion < 0) {
+    fail('MeshNode descriptor ApplicationVersion must be a non-negative JSON integer');
+  }
+  if (!(payload.MaintenanceWave === null || typeof payload.MaintenanceWave === 'string')) {
+    fail('MeshNode descriptor MaintenanceWave must be a string or null');
+  }
+  if (!Array.isArray(payload.StatefulCapabilities)
+      || payload.StatefulCapabilities.length > 1024) {
+    fail('MeshNode descriptor StatefulCapabilities count differs');
+    return;
+  }
+  const kindOrder = { actor: 1, instanceSpot: 2 };
+  let previousCapability;
+  for (const capability of payload.StatefulCapabilities) {
+    if (JSON.stringify(Object.keys(capability)) !== JSON.stringify([
+      'ObjectKind', 'Type', 'TransferPolicy', 'ReadableStateContractIds', 'Available'])) {
+      fail('MeshNode descriptor StatefulCapabilities field order differs');
+      continue;
+    }
+    if (kindOrder[capability.ObjectKind] === undefined
+        || typeof capability.Type !== 'string' || capability.Type.length === 0
+        || !['disabled', 'recreate', 'snapshot'].includes(capability.TransferPolicy)
+        || !isStrictlyUtf8Sorted(capability.ReadableStateContractIds)
+        || !Number.isSafeInteger(capability.Available)
+        || capability.Available < 0) {
+      fail('MeshNode descriptor StatefulCapabilities value differs');
+    }
+    if (capability.TransferPolicy === 'snapshot'
+        ? capability.ReadableStateContractIds.length === 0
+        : capability.ReadableStateContractIds.length !== 0) {
+      fail('MeshNode descriptor transfer policy and readable contracts differ');
+    }
+    const current = `${capability.ObjectKind}\u0000${capability.Type}`;
+    if (previousCapability !== undefined) {
+      const [previousKind, previousType] = previousCapability.split('\u0000');
+      if (kindOrder[previousKind] > kindOrder[capability.ObjectKind]
+          || (previousKind === capability.ObjectKind
+            && compareUtf8(previousType, capability.Type) >= 0)) {
+        fail('MeshNode descriptor StatefulCapabilities must be sorted and unique');
+      }
+    }
+    previousCapability = current;
+  }
+};
+let redisFixtureCount = 0;
+for (const [name, format] of redisFixtures) {
+  const absolute = path.join(fixtureDirectory, name);
+  if (!fs.existsSync(absolute)) {
+    fail(`missing Redis semantic fixture: ${name}`);
+    continue;
+  }
+  let fixture;
+  try {
+    fixture = JSON.parse(fs.readFileSync(absolute, 'utf8'));
+  } catch (error) {
+    fail(`invalid Redis semantic fixture JSON: ${name}: ${error.message}`);
+    continue;
+  }
+  redisFixtureCount += 1;
+  if (fixture.format !== format) fail(`Redis fixture format differs: ${name}`);
+  if (name === 'authority-store-v1.json') {
+    const expectedKey = canonicalAuthorityKey(fixture.keyContract);
+    if (!expectedKey || fixture.keyContract?.authorityKey !== expectedKey) {
+      fail('Authority Store fixture key differs from authority-key-v1');
+    }
+    for (const transition of ['newObject', 'preserve', 'newOwner']) {
+      validateAuthorityHash(name, fixture, fixture[transition]?.hash);
+    }
+    const newObjectVersion = BigInt(fixture.newObject?.hash?.storeVersion ?? '-1');
+    const preserveVersion = BigInt(fixture.preserve?.hash?.storeVersion ?? '-1');
+    const newOwnerVersion = BigInt(fixture.newOwner?.hash?.storeVersion ?? '-1');
+    const deleteVersion = BigInt(fixture.delete?.consumedStoreRevision ?? '-1');
+    if (fixture.missing?.kind !== 'Missing'
+        || Object.hasOwn(fixture.missing || {}, 'storeVersion')
+        || fixture.newObject?.expectation !== 'Missing'
+        || fixture.newObject?.result !== 'Stored'
+        || fixture.preserve?.expectation?.kind !== 'Found'
+        || fixture.preserve?.expectation?.storeVersion
+          !== fixture.newObject?.hash?.storeVersion
+        || fixture.newOwner?.expectation?.kind !== 'Found'
+        || fixture.newOwner?.expectation?.storeVersion !== fixture.preserve?.hash?.storeVersion
+        || fixture.delete?.expectation?.kind !== 'Found'
+        || fixture.delete?.expectation?.storeVersion !== fixture.newOwner?.hash?.storeVersion
+        || fixture.delete?.result !== 'Deleted'
+        || Object.hasOwn(fixture.missingAfterDelete || {}, 'storeVersion')
+        || !(newObjectVersion < preserveVersion
+          && preserveVersion < newOwnerVersion && newOwnerVersion < deleteVersion)) {
+      fail('Authority Store fixture CAS version transition differs');
+    }
+    const created = fixture.newObject?.hash || {};
+    const preserved = fixture.preserve?.hash || {};
+    const replaced = fixture.newOwner?.hash || {};
+    if (created.objectGeneration !== preserved.objectGeneration
+        || created.objectGeneration !== replaced.objectGeneration
+        || created.authorityOwnerGeneration !== preserved.authorityOwnerGeneration
+        || BigInt(replaced.authorityOwnerGeneration || '0')
+          <= BigInt(preserved.authorityOwnerGeneration || '0')
+        || fixture.generationExhausted?.counterAtMaximum
+          !== serviceWireSchema.authorityStoreGenerationProfile.generationMaximum
+        || fixture.generationExhausted?.result !== 'GenerationExhausted'
+        || fixture.generationExhausted?.retriable !== false
+        || fixture.generationExhausted?.rowIndexAndCounterMutationCount !== 0) {
+      fail('Authority Store fixture generation transition differs');
+    }
+    continue;
+  }
+  if (name === 'actor-location-v2.json') {
+    const expectedKey = canonicalAuthorityKey(fixture.keyContract);
+    if (!expectedKey || fixture.keyContract?.authorityKey !== expectedKey
+        || fixture.row?.key !== expectedKey) {
+      fail('Actor authority fixture key differs from authority-key-v1');
+    }
+    validateAuthorityHash(name, fixture, fixture.row?.hash);
+    continue;
+  }
+  const payload = validateHashRow(name, fixture.row);
+  if (!payload) continue;
+  validateDescriptorPayload(name, payload);
+  const identityFields = {
+    'actor-location-v2.json': ['MeshName', 'ActorId'],
+    'client-server-server-descriptor-v1.json': ['ChannelName', 'ServerRid'],
+    'fanout-publisher-descriptor-v1.json': ['ChannelName', 'PublisherRid'],
+    'mesh-node-descriptor-v1.json': ['MeshName', 'Rid'],
+  };
+  const fields = identityFields[name];
+  if (!fields || fields.some(field => typeof payload[field] !== 'string')) {
+    fail(`Redis fixture embedded identity is missing: ${name}`);
+  } else if (fixture.row.key !== descriptorKey(...fields.map(field => payload[field]))) {
+    fail(`Redis fixture key differs from embedded identity: ${name}`);
+  }
+  validateHashFields(name, fixture, fixture.row.hash);
+  if (payload.OwnerId !== fixture.row.hash.owner
+      || String(payload.OwnerLeaseGeneration) !== fixture.row.hash.gen) {
+    fail(`Redis descriptor fixture owner lease token differs: ${name}`);
+  }
+}
+
+const exactSemanticFixtures = [
+  ['cpp', ['07-location-maintenance.ko.md', '07-location-store.ko.md'],
+    ['authority_generation_exhausted_t', 'owner_lease_generation_exhausted_t',
+      'asynchronous operation이 끝날 때까지', 'opaque equality token', 'Store가 없는 Actor']],
+  ['dotnet', ['08-authority-checkpoint.ko.md', '08-location-maintenance.ko.md'],
+    ['record GenerationExhausted', 'underlying storage는 asynchronous operation이 끝날 때까지',
+      'Global lease generation counter가 `long.MaxValue`', '`LifecycleGeneration`은 0이 아닌 opaque equality token',
+      'Store 없이 만든 Actor']],
+  ['java', ['location-maintenance.ko.md'],
+    ['ZLinkAuthorityGenerationExhausted', 'ZLinkOwnerLeaseGenerationExhausted',
+      '`byte[]`은 반환된 `CompletionStage`가 완료될 때까지', '`lifecycleGeneration`은 0이 아닌 opaque equality token',
+      'Store 없이 만든 Actor']],
+  ['kotlin', ['location-maintenance.ko.md'],
+    ['ZLinkAuthorityGenerationExhausted', 'ZLinkOwnerLeaseGenerationExhausted',
+      '`byte[]`은 `CompletionStage`가 완료될 때까지', '`lifecycleGeneration`은 0이 아닌 opaque equality token',
+      'Store 없이 만든 Actor']],
+  ['node', ['08-location-maintenance.ko.md'],
+    ['kind: "generationExhausted"', '`Uint8Array`는 반환된 Promise가 settle될 때까지',
+      '`Date` 객체', '`lifecycleGeneration`은 0이 아닌 opaque equality token', 'Store 없이 만든 Actor']],
+];
+for (const [language, files, required] of exactSemanticFixtures) {
+  const directory = path.posix.join(
+    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+  const source = files.map(name => fs.readFileSync(path.join(root, directory, name), 'utf8')).join('\n');
+  for (const fragment of required) {
+    if (!source.includes(fragment)) {
+      fail(`${language} generation/lifetime exact contract is missing: ${fragment}`);
+    }
+  }
+  if (/(?:OwnerLeaseFencingMargin|ownerLeaseFencingMargin|owner_lease_fencing_margin)[^\n]{0,80}(?:1초|FromSeconds\(1\)|1000)/u.test(source)) {
+    fail(`${language} exact contract retains a one-second owner lease fencing margin`);
+  }
+  const allExactSource = markdownDocumentsUnder(directory)
+    .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
+  if (/(?:location generation|activation epoch)/iu.test(allExactSource)) {
+    fail(`${language} exact contract retains a removed location generation or activation epoch name`);
+  }
+}
+
+const lifecycleSemanticFixtures = [
+  ['cpp', '05-actors.ko.md', '04-spots.ko.md', '02-configuration-host.ko.md'],
+  ['dotnet', '06-actors.ko.md', '05-spots.ko.md', '10-topology-monitoring.ko.md'],
+  ['java', 'actors.ko.md', 'spots.ko.md', 'common-runtime.ko.md'],
+  ['kotlin', 'actors.ko.md', 'spots.ko.md', 'common-runtime.ko.md'],
+  ['node', '05-actors.ko.md', '04-spots.ko.md', '03-location-observability.ko.md'],
+];
+for (const [language, actorFile, spotFile, hostFile] of lifecycleSemanticFixtures) {
+  const directory = path.posix.join(
+    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+  const actor = fs.readFileSync(path.join(root, directory, actorFile), 'utf8');
+  const spot = fs.readFileSync(path.join(root, directory, spotFile), 'utf8');
+  const host = fs.readFileSync(path.join(root, directory, hostFile), 'utf8');
+  if (!/connection-bound one-way/iu.test(actor)) {
+    fail(`${language} Actor lifecycle contract is missing connection-bound one-way`);
+  }
+  if (!actor.includes('Entry Spot member')) {
+    fail(`${language} Actor lifecycle contract is missing Entry Spot membership`);
+  }
+  if (!/(?:hidden|숨은)\s+retry/iu.test(actor)) {
+    fail(`${language} Actor lifecycle contract is missing no-hidden-retry semantics`);
+  }
+  for (const fragment of ['active Actor membership', 'Cold Instance factory']) {
+    if (!spot.includes(fragment)) fail(`${language} Spot lifecycle contract is missing: ${fragment}`);
+  }
+  if (!/Blocked\/DeadlineExceeded|blocked\/deadline_exceeded/u.test(host)
+      || !/ForceStopped\/DeadlineExceeded|force_stopped\/deadline_exceeded/u.test(host)) {
+    fail(`${language} Retire deadline phase contract is incomplete`);
+  }
+}
+
+if (failures.length) {
+  process.stderr.write(`${failures.map(message => `FAIL: ${message}`).join('\n')}\n`);
   process.exit(1);
 }
-
 process.stdout.write(
-  `FRAMEWORK DOC CONTRACTS CLEAN languages=${languages.length} exact_documents=${exactDocuments.size} connector_exact=${connectorLanguages.length} formal_documents=${formalDocuments.length} code_fixtures=${codeFixtureCount} declarations=${declarationCount} transition_owners=${languages.reduce((n, language) => n + inventory.transition_owners[language].length, 0)} transition_members=${transitionMemberCount} feature_maps=${featureMaps.length} scenario_rows=${featureMapScenarioRows}\n`);
+  `FRAMEWORK DOC CONTRACTS CLEAN version=${inventory.version} languages=${expectedLanguages.length}`
+  + ` exact_documents=${exactDocumentCount} exact_fences=${exactFenceCount}`
+  + ` package_contract_fences=${exactFenceRoleCounts.get('package-contract')}`
+  + ` application_example_fences=${exactFenceRoleCounts.get('application-example')}`
+  + ` documentation_support_fences=${exactFenceRoleCounts.get('documentation-support')}`
+  + ` syntax_and_example_fences=${syntaxAndExampleFenceCount}`
+  + ` package_declaration_owners=${packageDeclarationOwnerCount}`
+  + ` block_role_negative_mutations=${blockRoleNegativeMutationCount}`
+  + ` formal_documents=${allFormalPaths.length}`
+  + ` semantic_owners=${formalPaths.length} target_documents=${targetDocumentCount}`
+  + ` plan_documents=${planDocumentCount} consolidated_semantics=${consolidatedSemanticCount}`
+  + ` ledger_rows=${ledgerRowCount} ledger_edges=${ledgerEdgeCount}`
+  + ` ledger_profiles=${ledgerProfileCount} ledger_profile_rows=${ledgerProfileRowCount}`
+  + ` parallel_review_rows=${parallelReviewRowCount}`
+  + ` ledger_execution_cards=${ledgerExecutionCardCount}`
+  + ` ledger_final_unreachable=${ledgerFinalUnreachableCount}`
+  + ` java_kotlin_negative_mutations=${javaKotlinSemanticNegativeTestCount}`
+  + ` termination_negative_mutations=${terminationContractNegativeTestCount}`
+  + ` redis_fixtures=${redisFixtureCount} legacy_plan_absent=${forbiddenLegacyPlanCount}\n`);
 NODE

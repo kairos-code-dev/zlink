@@ -36,24 +36,24 @@ export async function startSessionHost(): Promise<void> {
         useFactory: (value: unknown) => {
           const options = value as SessionOptions;
           const builder = zlinkFramework();
-          builder
-            .useInMemoryLocationStores()
-.configureDispatch()
+          builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
             .traceLabel(options.rid);
 
-          builder.addRouteMeshChannel(SpotServiceNames.controlChannel)
-            .enableRouter(options.controlRouterEndpoint)
-            .routingId(options.rid)
-            .connect(options.playControlEndpoints);
-          const spotMesh = builder.addSpotMesh(SpotServiceNames.spotChannel)
-            .enableRouter(options.spotRouterEndpoint)
+          const controlMesh = builder.addRouteMesh(SpotServiceNames.controlChannel)
+            .listen(options.controlRouterEndpoint)
+            .routingId(options.rid);
+          controlMesh.channelName(SpotServiceNames.controlChannel);
+          for (const endpoint of options.playControlEndpoints) controlMesh.peerConnections().connect(endpoint);
+          const spotMesh = builder.addRouteMesh(SpotServiceNames.spotChannel)
+            .listen(options.spotRouterEndpoint)
             .routingId(options.rid)
             .addEntrySpot(ScenarioEntrySpot)
             .actorFactory(SpotServiceNames.actorType, ScenarioActorFactory);
+          spotMesh.channelName(SpotServiceNames.spotChannel);
           for (const [peerRid, endpoint] of options.playSpotRouterEndpoints) {
-            spotMesh.connectRouter(peerRid, endpoint);
+            spotMesh.peerConnections().connect(peerRid, endpoint);
           }
           builder.addStreamNode(SpotServiceNames.streamNode)
             .bind(options.streamEndpoint)

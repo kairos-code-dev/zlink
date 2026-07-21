@@ -80,7 +80,6 @@ class registration_auto_handler_t
         auto reply =
           request_channel_with_retry<echo_auto_res_t> (_channels, echo_auto_req_t{.value = "a1"});
         _channels.send (api_channel, echo_auto_msg_t{.value = "send-a1"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
         return reply;
     }
@@ -109,7 +108,6 @@ class registration_attribute_handler_t
         auto reply = request_channel_with_retry<echo_attr_res_t> (
           _channels, echo_attr_req_t{.value = "a2"});
         _channels.send (api_channel, echo_attr_msg_t{.value = "send-a2"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
         return reply;
     }
@@ -138,7 +136,6 @@ class registration_manual_handler_t
         auto reply = request_channel_with_retry<echo_manual_res_t> (
           _channels, echo_manual_req_t{.value = "manual"});
         _channels.send (api_channel, echo_manual_msg_t{.value = "send-a3"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
         return reply;
     }
@@ -217,19 +214,16 @@ class codec_roundtrip_handler_t
         auto json = request_channel_with_retry<json_roundtrip_res_t> (
           _channels, json_roundtrip_req_t{.value = "b1"});
         _channels.send (api_channel, json_codec_msg_t{.value = "send-b1"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
 
         auto protobuf = request_channel_with_retry<protobuf_roundtrip_res_t> (
           _channels, protobuf_roundtrip_req_t{.value = "b2"});
         _channels.send (api_channel, protobuf_codec_msg_t{.value = "send-b2"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
 
         auto messagepack = request_channel_with_retry<messagepack_roundtrip_res_t> (
           _channels, messagepack_roundtrip_req_t{.value = "b3"});
         _channels.send (api_channel, messagepack_codec_msg_t{.value = "send-b3"})
-          .timeout (std::chrono::seconds (5))
           .submit ();
 
         return {.json = json, .protobuf = protobuf, .messagepack = messagepack};

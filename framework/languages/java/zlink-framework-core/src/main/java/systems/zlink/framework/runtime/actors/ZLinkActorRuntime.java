@@ -9,6 +9,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -98,6 +99,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     // Shared flow tracer (installed by the host); null = no tracing wired.
     private systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private volatile boolean draining;
+    private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
 
     public void beginDrain() {
         draining = true;
@@ -212,6 +214,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public void setMessageFlowTracer(
         systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow) {
         this.flow = flow;
+    }
+
+    public void setMetadataPolicy(
+        Set<String> sessionToActorKeys,
+        Set<String> actorToSessionKeys) {
+        metadataPolicy =
+            new ZLinkRelayMetadataPolicy(sessionToActorKeys, actorToSessionKeys);
     }
 
     public ZLinkActorRuntime(
@@ -439,9 +448,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         String actorType,
         String adapterKey,
         ZLinkMessage transferState) {
+        return materializeTransferredActor(
+            actorId, actorType, adapterKey, transferState, null);
+    }
+
+    public CompletionStage<ZLinkActor> materializeTransferredActor(
+        String actorId,
+        String actorType,
+        String adapterKey,
+        ZLinkMessage transferState,
+        ZLinkBackendActorRef preparedActorRef) {
         requireActorId(actorId);
         Class<? extends ZLinkActorFactory> factoryType = requireFactory(actorType);
-        ZLinkBackendActorRef reentryActorRef = detachForwardingProxyForReentry(actorId);
+        ZLinkBackendActorRef reentryActorRef = preparedActorRef == null
+            ? detachForwardingProxyForReentry(actorId)
+            : preparedActorRef;
         if (actorRegistry.contains(actorId)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "target runtime already owns actor: " + actorId));
@@ -616,6 +637,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                     .thenAccept(parts -> parts.forEach(Message::close));
             })
             .thenRun(context::markLeft);
+    }
+
+    CompletionStage<Void> leaveSourceForCoreRemoteMove(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        return sourceActorLeaver.leave(actor).thenRun(context::markLeft);
     }
 
     void cancelRemoteMove(ZLinkActor actor) {
@@ -816,7 +842,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return locations.findStoredActorRef(actorId);
         }
         try {
-            return CompletableFuture.completedFuture(Optional.of(toPublicActorRef(spotNode.actorLookup(actorId))));
+            ZLinkBackendActorRef nativeActor = spotNode.actorLookup(actorId);
+            if (nativeActor != null) {
+                return CompletableFuture.completedFuture(Optional.of(toPublicActorRef(nativeActor)));
+            }
         } catch (ZlinkConfigException ex) {
             if (ex.getResult() != ConfigResult.NOT_FOUND) {
                 throw ex;
@@ -1164,6 +1193,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                                 target.routerChannelId(),
                                 target.targetNodeRid(),
                                 target.spotRid(),
+                                target.spotGeneration(),
                                 parts,
                                 defaultRequestTimeout)
                             .thenApply(replyParts -> {
@@ -1180,6 +1210,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                             target.routerChannelId(),
                             target.targetNodeRid(),
                             target.spotRid(),
+                            target.spotGeneration(),
                             parts)
                         .thenApply(ignored -> Optional.<Message>empty());
                 } finally {
@@ -1420,7 +1451,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             sourceNodeRid,
             sourceSessionRid,
             defaultRequestTimeout,
-            defaultStreamCodec);
+            defaultStreamCodec,
+            metadataPolicy);
         long bindingToken = bindSession(actor, boundSession, sourceNodeRid, sourceSessionRid);
         boundSession.setBindingToken(bindingToken);
         return bindingToken;
@@ -1443,7 +1475,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             this,
             actor,
             defaultRequestTimeout,
-            defaultStreamCodec);
+            defaultStreamCodec,
+            metadataPolicy);
         long bindingToken = bindSession(actor, boundSession);
         boundSession.setBindingToken(bindingToken);
         return bindingToken;

@@ -16,7 +16,7 @@ import {
   ZLinkConfigurationException
 } from '../configuration';
 import { ZLinkDispatchErrorReporter } from '../channels';
-import { ZLinkSpotActorDispatcher } from '../actors';
+import { createActorMembership, ZLinkSpotActorDispatcher } from '../actors';
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
@@ -25,7 +25,10 @@ import type { ZLinkSpotActivation } from './spot-activation-state';
 import type { ZLinkSpotActorTransferRuntime } from './spot-runtime-ports';
 
 export interface ZLinkSpotActorMembershipOptions {
-  readonly resolveActivation: (spotRid: RoutingId) => ZLinkSpotActivation | undefined;
+  readonly resolveActivation: (
+    spotRid: RoutingId,
+    meshName?: string
+  ) => ZLinkSpotActivation | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
@@ -93,10 +96,11 @@ export class ZLinkSpotActorMembership {
   async leaveActor(
     spotRid: RoutingId,
     actor: ZLinkActor,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    meshName?: string
   ): Promise<void> {
     throwIfAborted(signal);
-    const activation = this.requireActivation(spotRid);
+    const activation = this.requireActivation(spotRid, meshName);
     const localEntryNodeRid =
       this.options.entryNodeRidProvider?.() ??
       this.options.entryNodeRid ??
@@ -110,7 +114,7 @@ export class ZLinkSpotActorMembership {
     if (!remoteEntry) {
       await activation.serial.execute(async () => {
         activation.beginActorTransfer(actor.actorId);
-        await activation.spot.onLeaveActor(actor);
+        await activation.spot.onLeaveActor(createActorMembership(actor));
         activation.commitActorDeparture(actor.actorId);
         this.options.actorTransferRuntime?.clearRoutedActor(actor);
       });
@@ -135,7 +139,7 @@ export class ZLinkSpotActorMembership {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
       activation.beginActorTransfer(actor.actorId);
-      await activation.spot.onLeaveActor(actor);
+      await activation.spot.onLeaveActor(createActorMembership(actor));
       activation.commitActorDeparture(actor.actorId);
     });
   }
@@ -148,7 +152,7 @@ export class ZLinkSpotActorMembership {
   ): Promise<void> {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotRid);
-    await activation.serial.execute(() => activation.spot.onLeaveActor(actor));
+    await activation.serial.execute(() => activation.spot.onLeaveActor(createActorMembership(actor)));
   }
 
   async commitActorLeaveAfterTransfer(spotRid: RoutingId, actorId: string): Promise<void> {
@@ -165,7 +169,7 @@ export class ZLinkSpotActorMembership {
     const activation = this.requireActivation(spotRid);
     await activation.serial.execute(async () => {
       activation.cancelActorTransfer(actor.actorId);
-      await activation.spot.onJoinedActor(actor);
+      await activation.spot.onJoinedActor(createActorMembership(actor));
     });
   }
 
@@ -197,12 +201,13 @@ export class ZLinkSpotActorMembership {
     if (joinedActor === undefined) {
       return false;
     }
-    await activation.serial.execute(() => activation.spot.onDisconnectActor?.(joinedActor));
+    await activation.serial.execute(() =>
+      activation.spot.onDisconnectActor(createActorMembership(joinedActor)));
     return true;
   }
 
-  private requireActivation(spotRid: RoutingId): ZLinkSpotActivation {
-    const activation = this.options.resolveActivation(spotRid);
+  private requireActivation(spotRid: RoutingId, meshName?: string): ZLinkSpotActivation {
+    const activation = this.options.resolveActivation(spotRid, meshName);
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }

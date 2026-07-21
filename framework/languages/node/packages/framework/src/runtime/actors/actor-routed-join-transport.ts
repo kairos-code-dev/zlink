@@ -1,4 +1,5 @@
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkSubmitResult } from '../../contracts';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 
@@ -17,7 +18,7 @@ export interface ZLinkActorRoutedJoinTransport {
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
     options: { readonly packetName?: string; readonly signal?: AbortSignal }
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
   requestRawToSpot?(
     spotRouteTarget: ZLinkSpotRouteTarget,
     request: Message,

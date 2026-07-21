@@ -7,6 +7,7 @@ import type {
   ZLinkActorJoinEntrySpotCall,
   ZLinkActorJoinResult,
   ZLinkActorJoinSpotCall,
+  ZLinkActorHandlerRegistry,
   ZLinkBoundSession,
   ZLinkSpot
 } from '../../contracts';
@@ -31,17 +32,37 @@ import type {
   ZLinkActorJoinCoordinator
 } from './actor-runtime-contracts';
 import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import { ZLinkSpotActorHandlerRegistryRuntime } from './spot-actor-dispatch';
+import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
+import {
+  ZLINK_ACTOR_LIFECYCLE_SNAPSHOT,
+  type ZLinkActorLifecycleSnapshotSource
+} from './actor-lifecycle-snapshot';
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
+  readonly handlers: ZLinkActorHandlerRegistry = new ZLinkSpotActorHandlerRegistryRuntime();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
     private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined,
     boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
-    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+    private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined,
+    private readonly meshNameProvider: ZLinkActorManagerOptions['actorMeshNameProvider'],
+    private readonly leaveSpotRuntime: ZLinkActorManagerOptions['actorLeaveSpot']
   ) {
     this.boundSession = boundSessionFactory?.(state.actorId) ?? new UnboundZLinkSession();
+  }
+
+  get meshName(): string {
+    const actorType = this.state.actorType;
+    const meshName = actorType === undefined ? undefined : this.meshNameProvider?.(actorType);
+    if (meshName === undefined) {
+      throw new ZLinkConfigurationException(
+        `Actor '${this.state.actorId}' does not belong to a registered RouteMesh.`
+      );
+    }
+    return meshName;
   }
 
   get spotRid(): RoutingId | undefined {
@@ -57,6 +78,21 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     return actorRef === undefined
       ? undefined
       : toFrameworkActorRef(actorRef);
+  }
+
+  [ZLINK_ACTOR_LIFECYCLE_SNAPSHOT](): ZLinkActorLifecycleSnapshotSource {
+    const actorRef = this.actorRef;
+    const actorType = this.state.actorType;
+    if (actorRef === undefined || actorType === undefined) {
+      throw new ZLinkConfigurationException(
+        `Actor '${this.state.actorId}' lifecycle identity is not initialized.`
+      );
+    }
+    return {
+      actorRef,
+      actorType,
+      membershipEpoch: this.state.spotMembershipEpoch
+    };
   }
 
   getSpot<TSpot extends ZLinkSpot>(spotType?: Type<TSpot>): ZLinkSpot | TSpot {
@@ -90,6 +126,17 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
       request,
       this.messageSerializers
     );
+  }
+
+  async leaveSpot(signal?: AbortSignal): Promise<void> {
+    const spotRid = this.state.spotRid;
+    if (spotRid === undefined) {
+      throw new ZLinkConfigurationException('Actor has not joined a user SPOT.');
+    }
+    if (this.leaveSpotRuntime === undefined) {
+      throw new ZLinkConfigurationException('Actor Spot lifecycle runtime is not started.');
+    }
+    await this.leaveSpotRuntime(this.meshName, spotRid, this.requireActor(), signal);
   }
 
   private requireActor(): ZLinkActor {
@@ -151,7 +198,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       const reply = decodeJoinReply<TReply>(result.reply, this.messageSerializers) as TReply;
       return result.accepted
         ? { status: 'accepted', actor: result.actor!, reply }
-        : { status: 'rejected', reply };
+        : { status: 'rejected', rejection: reply };
     } finally {
       requestMessage.close();
     }
@@ -203,7 +250,7 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
       const reply = decodeJoinReply<TReply>(result.reply, this.messageSerializers) as TReply;
       return result.accepted
         ? { status: 'accepted', actor: result.actor!, reply }
-        : { status: 'rejected', reply };
+        : { status: 'rejected', rejection: reply };
     } finally {
       requestMessage.close();
     }

@@ -69,14 +69,17 @@ int main (int argc, char **argv)
                          zlink::framework::spot_handle_resolver_t> ();
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        options.add_route_mesh (multi_node_route_channel_for (node_rid))
-          .enable_server (route_client_endpoint)
+        const auto route_name = multi_node_route_channel_for (node_rid);
+        auto route = options.add_route_mesh (route_name);
+        route.listen (route_client_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-" + node_rid))
-          .enable_client ();
-        options.add_spot_mesh ("requester-" + node_rid)
+          .channel_name (route_name);
+        const auto requester_mesh = "requester-" + node_rid;
+        auto spot = options.add_route_mesh (requester_mesh);
+        spot.listen (spot_router_endpoint)
           .set_routing_id (zlink::routing_id_t::from ("requester-spot-" + node_rid))
-          .enable_router (spot_router_endpoint)
-          .add_spot<requester_bridge_spot_t> ("requester-bridge");
+          .channel_name (requester_mesh);
+        spot.add_spot<requester_bridge_spot_t> ("requester-bridge");
         options.http ()
           .listen (http_endpoint)
           .map_health ("/health")

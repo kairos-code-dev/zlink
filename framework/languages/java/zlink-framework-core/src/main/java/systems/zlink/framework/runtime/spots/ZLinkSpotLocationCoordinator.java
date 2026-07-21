@@ -16,11 +16,17 @@ final class ZLinkSpotLocationCoordinator {
     void registerNode(
         String meshName,
         RoutingId nodeRid,
+        long entrySpotGeneration,
         String routeEndpoint,
         boolean publisherEnabled) {
         nodes.put(
             nodeRid,
-            new NodeLocation(meshName, nodeRid, routeEndpoint, publisherEnabled));
+            new NodeLocation(
+                meshName,
+                nodeRid,
+                entrySpotGeneration,
+                routeEndpoint,
+                publisherEnabled));
     }
 
     void setLifecycle(ZLinkLocationLifecycle lifecycle) {
@@ -30,6 +36,11 @@ final class ZLinkSpotLocationCoordinator {
     String publisherChannelName(RoutingId nodeRid) {
         NodeLocation node = nodes.get(nodeRid);
         return node != null && node.publisherEnabled() ? node.meshName() : null;
+    }
+
+    String meshName(RoutingId nodeRid) {
+        NodeLocation node = nodes.get(nodeRid);
+        return node == null ? null : node.meshName();
     }
 
     String meshNameForSpot(
@@ -46,6 +57,7 @@ final class ZLinkSpotLocationCoordinator {
     CompletionStage<ZLinkLocationWriteStatus> claimUserSpotAsync(
         RoutingId primaryNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Class<?> spotType,
         Runnable deactivate) {
         if (lifecycle == null) {
@@ -59,6 +71,7 @@ final class ZLinkSpotLocationCoordinator {
         return lifecycle.claimSpot(
             node.meshName(),
             spotRid,
+            spotGeneration,
             spotType.getName(),
             node.nodeRid(),
             ZLinkSpotKind.USER,
@@ -103,6 +116,7 @@ final class ZLinkSpotLocationCoordinator {
         return lifecycle.claimSpot(
             node.meshName(),
             node.nodeRid(),
+            node.entrySpotGeneration(),
             null,
             node.nodeRid(),
             ZLinkSpotKind.ENTRY,
@@ -113,6 +127,7 @@ final class ZLinkSpotLocationCoordinator {
     private record NodeLocation(
         String meshName,
         RoutingId nodeRid,
+        long entrySpotGeneration,
         String routeEndpoint,
         boolean publisherEnabled) {
 

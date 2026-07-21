@@ -32,7 +32,8 @@ export async function runSample(ctx) {
   const replacement = await verifyPlaySlotHandoff(
     ctx,
     redisKeyPrefix,
-    playA.sample.playSpotEndpoint
+    playA.sample.playSpotEndpoint,
+    playB.sample.playSpotEndpoint
   );
   await ctx.start('session-b', 'dist/Server/Session/main.js', ['--config', sessionB.path]);
   await ctx.waitTcp(sessionB.sample.sessionEndpoint);
@@ -52,11 +53,19 @@ export async function runSample(ctx) {
     'play-b',
     `bingo-room-peer ConnectionReady remote=${sessionA.sample.sessionSpotEndpoint}`
   );
+  await ctx.waitLog('session-b', `bingo-room-peer ConnectionReady remote=${apiA}`);
+  await ctx.waitLog('session-a', `bingo-room-peer ConnectionReady remote=${apiA}`);
+  await ctx.waitLog('api-b', `bingo-room-peer ConnectionReady remote=${playB.sample.playSpotEndpoint}`);
+  await ctx.waitLog('api-a', `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`);
+  await ctx.waitLog('play-b', `bingo-room-peer ConnectionReady remote=${apiA}`);
+  await ctx.waitLog('play-replacement', `bingo-room-peer ConnectionReady remote=${apiA}`);
   ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
     '--redis-endpoint', ctx.redisEndpoint,
     '--key-prefix', `${redisKeyPrefix}location`,
-    '--peer', 'client-server', 'bingo.api', 'router', apiA, apiB,
-    '--peer', 'spot-mesh', 'bingo.room', 'spot', playB.sample.playSpotEndpoint, replacement.sample.playSpotEndpoint
+    '--peer', 'route-mesh', 'bingo.room', 'router',
+      apiA, apiB,
+      playB.sample.playSpotEndpoint, replacement.sample.playSpotEndpoint,
+      sessionA.sample.sessionSpotEndpoint, sessionB.sample.sessionSpotEndpoint
   ]);
   ctx.runBrowser({
     timeoutMs: 90_000,
@@ -111,7 +120,7 @@ async function bingoSessionConfig(ctx, suffix, redisKeyPrefix) {
   return { sample, path: ctx.writeConfig(`session-${suffix}`, sample) };
 }
 
-async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint) {
+async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint, survivingRoomEndpoint) {
   const beforeHandoff = await allocationSnapshot(ctx, redisKeyPrefix, 'bingo.play');
   await waitForPlayPeer(ctx, redisKeyPrefix, oldRoomEndpoint, true);
   const replacement = await bingoPlayConfig(ctx, 'replacement', redisKeyPrefix);
@@ -128,11 +137,9 @@ async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint) {
   await ctx.waitTcp(replacement.sample.playSpotEndpoint);
   await ctx.waitLog('play-replacement', 'bingo routing allocation ready role=play group=bingo.play slot=2');
   await ctx.waitLog(
-    'play-b',
-    `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`
+    'play-replacement',
+    `bingo-room-peer ConnectionReady remote=${survivingRoomEndpoint}`
   );
-  await ctx.waitLog('play-replacement', 'bingo-play-router ConnectionReady clients=2');
-
   const afterHandoff = await allocationSnapshot(ctx, redisKeyPrefix, 'bingo.play');
   const oldGeneration = generationAt(beforeHandoff, 2);
   const replacementGeneration = generationAt(afterHandoff, 2);
@@ -152,9 +159,9 @@ async function waitForPlayPeer(ctx, redisKeyPrefix, endpoint, present) {
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
       const peers = await store.listPeers({
-        autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+        autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
         meshName: 'bingo.room',
-        role: ZLinkLocationRole.Spot
+        role: ZLinkLocationRole.Router
       });
       if (peers.some((peer) => peer.endpoint === endpoint) === present) return;
       await delay(100);

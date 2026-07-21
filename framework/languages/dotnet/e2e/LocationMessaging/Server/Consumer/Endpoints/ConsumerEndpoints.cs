@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 using LocationMessaging.Server.Consumer.Configuration;
@@ -15,6 +16,22 @@ internal static class ConsumerEndpoints
     public static void MapConsumerEndpoints(this WebApplication app)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
+        app.MapGet("/topology/ready", (
+            int count,
+            IZLinkRouteMeshRuntime runtime) =>
+        {
+            var snapshot = runtime.Snapshot("profile");
+            var readyCount = snapshot.Peers.Count(
+                static peer => peer.Ready);
+            return Results.Ok(new
+            {
+                ready = readyCount >= count
+                        && snapshot.Channels.Any(static channel =>
+                            channel.ChannelName == "profile"
+                            && channel.Selectable),
+                readyCount
+            });
+        });
         app.MapPost("/connections/wait", async (
             EvidenceWaitReq request,
             ConnectionEvidence evidence,
@@ -125,12 +142,14 @@ internal static class ConsumerEndpoints
                 new MissingProfileReq(request.Value));
             return Results.Ok(result);
         });
-        app.MapPost("/profile/missing-command", (
+        app.MapPost("/profile/missing-command", async (
             ProfileMsg command,
-            IZLinkRouteClient channel) =>
+            IZLinkRouteClient channel,
+            CancellationToken cancellationToken) =>
         {
-            channel.SendToChannel("profile", "profile",
-                new MissingProfileMsg(command.CommandId)).TrySubmit();
+            await channel.SendToChannel("profile", "profile",
+                    new MissingProfileMsg(command.CommandId))
+                .SubmitAsync(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
@@ -148,11 +167,12 @@ internal static class ConsumerEndpoints
             return Results.Ok(result);
         });
         app.MapPost("/profile/backpressure/reset", () => Results.Ok(new { status = "ready" }));
-        app.MapPost("/profile/backpressure/send", (
+        app.MapPost("/profile/backpressure/send", async (
             ProfileMsg command,
-            IZLinkRouteClient channel) =>
+            IZLinkRouteClient channel,
+            CancellationToken cancellationToken) =>
         {
-            var outcome = SubmitProfileUnderPressure(channel, command);
+            var outcome = await SubmitProfileUnderPressureAsync(channel, command, cancellationToken);
             return Results.Ok(outcome);
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
@@ -233,12 +253,14 @@ internal static class ConsumerEndpoints
         }
     }
 
-    static string SubmitProfileUnderPressure(
+    static async ValueTask<string> SubmitProfileUnderPressureAsync(
         IZLinkRouteClient channel,
-        ProfileMsg command)
+        ProfileMsg command,
+        CancellationToken cancellationToken)
     {
-        channel.SendToChannel("profile", "profile", command).TrySubmit();
-        return "Submitted";
+        var result = await channel.SendToChannel("profile", "profile", command)
+            .SubmitAsync(cancellationToken);
+        return result.Status.ToString();
     }
 
 }

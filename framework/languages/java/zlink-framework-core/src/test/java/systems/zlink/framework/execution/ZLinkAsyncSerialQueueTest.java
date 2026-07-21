@@ -2,6 +2,7 @@ package systems.zlink.framework.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,28 @@ final class ZLinkAsyncSerialQueueTest {
         first.get(3, TimeUnit.SECONDS);
         second.get(3, TimeUnit.SECONDS);
         assertEquals(List.of("first-start", "first-complete", "second-start"), events);
+    }
+
+    @Test
+    void boundedQueueSignalsWhenOnePendingSlotBecomesAvailable() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(false, 1);
+        CompletableFuture<Void> firstGate = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> capacityAvailable = new CompletableFuture<>();
+        queue.onCapacityAvailable(() -> capacityAvailable.complete(null));
+
+        assertTrue(queue.tryEnqueue(() -> {
+            firstStarted.complete(null);
+            return firstGate;
+        }));
+        firstStarted.get(3, TimeUnit.SECONDS);
+        assertTrue(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
+        assertFalse(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
+
+        firstGate.complete(null);
+
+        capacityAvailable.get(3, TimeUnit.SECONDS);
+        assertTrue(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
     }
 
     @Test

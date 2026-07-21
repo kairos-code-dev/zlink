@@ -70,7 +70,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 
         var context = new ZLinkRequestContext(
             meshName,
-            scope.ChannelName,
+            channelName,
             scope.PacketName!,
             scope.ContentType,
             cancellationToken,

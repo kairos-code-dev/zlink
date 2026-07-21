@@ -148,10 +148,6 @@ public final class ZLinkFrameworkRegistration {
         return Set.copyOf(types);
     }
 
-    void useInMemoryLocationStores() {
-        locations.enableInMemoryStores();
-    }
-
     void setLocationStore(ZLinkLocationStore store) {
         locations.setStoreInstance(store);
     }
@@ -182,16 +178,18 @@ public final class ZLinkFrameworkRegistration {
     void validate() {
         dispatchOptions.validate();
         workers.validate();
-        validateLocations();
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(handlerPackageMarkers);
         for (ChannelRegistration channel : channels) {
             channel.validate(locations.enabled(), handlerCatalog);
         }
+        int actorCapableNodes = 0;
         for (MeshNodeRegistration meshNode : meshNodes) {
             meshNode.validate();
+            if (!meshNode.actorFactories().isEmpty()) {
+                actorCapableNodes++;
+            }
         }
-        int actorCapableNodes = 0;
         for (SpotNodeRegistration spotNode : spotNodes) {
             spotNode.validate();
             if (!spotNode.actorFactories().isEmpty()) {
@@ -200,18 +198,10 @@ public final class ZLinkFrameworkRegistration {
         }
         if (actorCapableNodes > 1) {
             throw new ZLinkConfigurationException(
-                "actor factory registration is ambiguous because more than one SpotNode owns actor factories");
+                "actor factory registration is ambiguous because more than one mesh node owns actor factories");
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
-            streamNode.validate(spotNodes);
-        }
-    }
-
-    private void validateLocations() {
-        if (locations.storeInstance() != null && locations.useInMemoryStores()) {
-            throw new ZLinkConfigurationException(
-                "addLocationStore registers every store role at once and cannot be combined with "
-                    + "useInMemoryLocationStores.");
+            streamNode.validate(meshNodes);
         }
     }
 

@@ -35,10 +35,9 @@ public abstract class SpotCommandHandler<TCommand>
         TCommand command) {
         RoutingId targetSpotRid = RoutingId.from(dispatch.metadata()
             .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
-        return spots.resolveSpotHandle(targetSpotRid).thenAccept(handle -> routes.sendToSpot(
-            Contracts.ROUTE_CHANNEL,
+        return spots.resolveSpotHandle(targetSpotRid).thenCompose(handle -> routes.sendToSpot(
             handle.orElseThrow(() -> new IllegalStateException("spot not found: " + targetSpotRid)),
-            command).submit());
+            command).submit().thenApply(ignored -> null));
     }
 
     public static final class WorkerAwait
@@ -86,7 +85,6 @@ public abstract class SpotCommandHandler<TCommand>
                 .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
             return spots.resolveSpotHandle(targetSpotRid)
                 .thenCompose(handle -> routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
                         handle.orElseThrow(() ->
                             new IllegalStateException("spot not found: " + targetSpotRid)),
                         request)

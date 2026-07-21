@@ -1,0 +1,1070 @@
+# C++ channel messaging exact interface
+
+[C++ exact interface 목차](README.ko.md)
+
+## 1. RouteMesh 등록
+
+RouteMesh builder는 물리 mesh 하나와 그 MeshNode를 등록한다. 논리 channel은 같은
+builder에 membership으로 추가하며 별도 socket을 만들지 않는다.
+
+```cpp
+namespace zlink::framework {
+
+struct mesh_peer_connection_t {
+    std::uint64_t intent_id = 0;
+    std::optional<zlink::routing_id_t> expected_routing_id;
+    std::string endpoint;
+};
+
+class mesh_peer_connections_t {
+public:
+    void connect(std::string endpoint);
+    void connect(zlink::routing_id_t expected_routing_id, std::string endpoint);
+    void disconnect(std::string endpoint);
+    std::vector<mesh_peer_connection_t> list_connections() const;
+};
+
+class mesh_channel_server_builder_t;
+class mesh_channel_client_builder_t {};
+
+class mesh_channel_builder_t {
+public:
+    mesh_channel_client_builder_t client();
+    mesh_channel_server_builder_t server();
+};
+
+class mesh_channel_server_builder_t {
+public:
+    mesh_channel_server_builder_t &set_weight(int weight);
+    mesh_channel_server_builder_t &add_handler_group(std::string group_name);
+
+    template <typename THandler, typename TMessage>
+    mesh_channel_server_builder_t &add_send_handler(std::string packet_name = {});
+
+    template <typename THandler, typename TRequest, typename TReply>
+    mesh_channel_server_builder_t &add_request_handler(std::string packet_name = {});
+};
+
+class network_options_t {
+public:
+    std::string bind_host() const;
+    network_options_t &set_bind_host(std::string host);
+    std::optional<std::string> advertise_host() const;
+    network_options_t &set_advertise_host(std::optional<std::string> host);
+};
+
+class client_server_channel_client_builder_t {
+public:
+    client_server_channel_client_builder_t &connect(std::string endpoint);
+};
+
+class client_server_channel_server_builder_t {
+public:
+    client_server_channel_server_builder_t &listen(std::uint16_t port = 0);
+    client_server_channel_server_builder_t &set_bind_host(std::string host);
+    client_server_channel_server_builder_t &set_advertise_host(std::string host);
+    client_server_channel_server_builder_t &set_weight(int weight);
+    client_server_channel_server_builder_t &add_handler_group(std::string group_name);
+
+    template <typename THandler, typename TMessage>
+    client_server_channel_server_builder_t &add_send_handler(
+      std::string packet_name = {});
+
+    template <typename THandler, typename TRequest, typename TReply>
+    client_server_channel_server_builder_t &add_request_handler(
+      std::string packet_name = {});
+};
+
+struct mesh_node_socket_config_t {
+    std::int64_t max_message_size = 0;
+    int send_high_water_mark = 1000;
+    int receive_high_water_mark = 1000;
+    std::uint64_t mailbox_message_budget = 1024;
+    std::uint64_t mailbox_byte_budget = 64 * 1024 * 1024;
+    std::optional<std::chrono::milliseconds> receive_timeout;
+    std::optional<std::chrono::milliseconds> send_timeout;
+};
+
+struct entry_spot_options_t {
+    std::optional<zlink::routing_id_t> routing_id;
+};
+
+struct instance_spot_factory_options_t {
+    std::size_t max_active_instances = 4096;
+    std::chrono::milliseconds activation_timeout{3000};
+};
+
+class mesh_node_builder_t {
+public:
+    mesh_channel_builder_t channel(std::string channel_name);
+    mesh_node_builder_t &listen(std::string endpoint);
+    mesh_node_builder_t &listen(std::uint16_t port = 0);
+    mesh_node_builder_t &set_bind_host(std::string host);
+    mesh_node_builder_t &set_advertise_host(std::string host);
+    mesh_node_builder_t &set_routing_id(zlink::routing_id_t routing_id);
+    mesh_node_builder_t &use_allocated_routing_id(
+      std::size_t slot_count,
+      std::string routing_id_prefix = {});
+    mesh_node_builder_t &set_routing_id_allocation_group(std::string group_name);
+    mesh_node_socket_config_t &configure_router_socket();
+    entry_spot_options_t &configure_entry_spot();
+    mesh_peer_connections_t &peer_connections();
+    mesh_node_builder_t &set_default_request_timeout(std::chrono::milliseconds timeout);
+
+    template <typename THandler, typename TMessage>
+    mesh_node_builder_t &add_route_send_handler(std::string packet_name = {});
+
+    template <typename THandler, typename TRequest, typename TReply>
+    mesh_node_builder_t &add_route_request_handler(std::string packet_name = {});
+
+    template <typename TEntrySpot>
+      requires std::derived_from<
+        TEntrySpot, entry_spot_t<typename TEntrySpot::actor_type>>
+    mesh_node_builder_t &add_entry_spot();
+
+    template <typename TEntrySpot>
+      requires std::derived_from<
+        TEntrySpot, entry_spot_t<typename TEntrySpot::actor_type>>
+    mesh_node_builder_t &add_entry_spot(
+      std::function<std::shared_ptr<TEntrySpot>()> factory);
+
+    template <typename TSpot>
+      requires std::derived_from<
+        TSpot, spot_t<typename TSpot::actor_type>>
+    mesh_node_builder_t &add_spot(std::string spot_name);
+
+    template <typename TSpot>
+      requires std::derived_from<
+        TSpot, spot_t<typename TSpot::actor_type>>
+    mesh_node_builder_t &add_spot(
+      std::string spot_name,
+      std::function<std::shared_ptr<TSpot>()> factory);
+
+    template <typename TSpot>
+      requires std::derived_from<TSpot, instance_spot_t>
+    mesh_node_builder_t &add_instance_spot_factory(
+      std::string instance_spot_type,
+      instance_spot_factory_options_t options = {});
+
+    template <typename TSpot>
+      requires std::derived_from<TSpot, instance_spot_t>
+    mesh_node_builder_t &add_instance_spot_factory(
+      std::string instance_spot_type,
+      instance_spot_factory_options_t options,
+      transfer_policy_t<TSpot> transfer);
+
+    template <typename TActorFactory>
+    mesh_node_builder_t &add_actor_factory(std::string actor_type);
+
+    template <typename TActor, typename TActorFactory>
+    mesh_node_builder_t &add_actor_factory(
+      std::string actor_type,
+      transfer_policy_t<TActor> transfer);
+
+};
+
+enum class mesh_node_state_t {
+    starting,
+    serving,
+    draining,
+    drained,
+    force_stopping,
+    stopped,
+    faulted
+};
+
+struct mesh_peer_snapshot_t {
+    zlink::routing_id_t rid;
+    std::uint64_t lifecycle_generation;
+    std::uint64_t descriptor_revision;
+    std::string endpoint;
+    std::string admission_state;
+    bool ready;
+    std::string drain_state;
+    std::vector<std::string> channel_names;
+    std::optional<std::string> last_failure;
+};
+
+struct mesh_channel_snapshot_t {
+    std::string channel_name;
+    int local_weight;
+    std::uint64_t ready_member_count;
+    bool selectable;
+};
+
+struct logical_multicast_snapshot_t {
+    std::uint64_t submitted;
+    std::uint64_t backpressured;
+    std::uint64_t dropped;
+    std::uint64_t remote_snapshot_count;
+    std::uint64_t remote_admitted_count;
+    std::uint64_t remote_dropped_count;
+    std::uint64_t local_snapshot_count;
+    std::uint64_t local_admitted_count;
+    std::uint64_t local_dropped_count;
+};
+
+struct mesh_claim_snapshot_t {
+    bool application_active;
+    std::uint64_t pending_application_work;
+    bool infrastructure_active;
+    std::uint64_t pending_infrastructure_work;
+};
+
+struct instance_spot_type_snapshot_t {
+    std::string instance_spot_type;
+    std::uint64_t active_count;
+    std::uint64_t activating_count;
+    std::uint64_t closing_count;
+    std::uint64_t pending_message_count;
+    std::uint64_t pending_byte_count;
+    std::optional<std::string> last_activation_outcome;
+};
+
+struct location_runtime_snapshot_t {
+    std::string state;
+    std::optional<std::chrono::system_clock::time_point> last_success_at;
+    std::optional<std::chrono::system_clock::time_point> last_failure_at;
+};
+
+struct mesh_node_snapshot_t {
+    std::string mesh_name;
+    zlink::routing_id_t rid;
+    std::uint64_t lifecycle_generation;
+    std::uint64_t descriptor_revision;
+    std::string endpoint;
+    mesh_node_state_t state;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point observed_at;
+    std::vector<std::string> descriptor_sources;
+    std::vector<mesh_peer_snapshot_t> peers;
+    std::vector<mesh_channel_snapshot_t> channels;
+    logical_multicast_snapshot_t multicast;
+    std::vector<instance_spot_type_snapshot_t> instance_spots;
+    mesh_claim_snapshot_t claims;
+    location_runtime_snapshot_t location;
+};
+
+struct mesh_runtime_event_t {
+    std::string identifier;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point timestamp;
+    std::string mesh_name;
+    zlink::routing_id_t source_rid;
+    std::optional<zlink::routing_id_t> peer_rid;
+    std::optional<std::uint64_t> lifecycle_generation;
+    std::optional<std::uint64_t> descriptor_revision;
+    std::optional<std::string> channel_name;
+    std::optional<std::string> claim_domain;
+    std::optional<std::string> message_kind;
+    std::optional<std::uint64_t> remote_snapshot_count;
+    std::optional<std::uint64_t> remote_admitted_count;
+    std::optional<std::uint64_t> remote_dropped_count;
+    std::optional<std::uint64_t> local_snapshot_count;
+    std::optional<std::uint64_t> local_admitted_count;
+    std::optional<std::uint64_t> local_dropped_count;
+    std::optional<std::string> reason;
+    std::optional<mesh_node_state_t> state;
+};
+
+class mesh_runtime_observation_t {
+public:
+    virtual ~mesh_runtime_observation_t() = default;
+    virtual void close() = 0;
+};
+
+class route_mesh_runtime_t {
+public:
+    virtual mesh_node_snapshot_t snapshot(std::string mesh_name) const = 0;
+    virtual std::unique_ptr<mesh_runtime_observation_t> observe(
+      std::string mesh_name,
+      std::size_t capacity,
+      std::function<void(const mesh_runtime_event_t &)> observer) = 0;
+    virtual bool is_ready(std::string mesh_name) const = 0;
+};
+
+enum class client_server_role_t { client, server };
+
+enum class client_server_server_state_t {
+    configured,
+    connecting,
+    ready,
+    draining,
+    disconnected,
+    rejected
+};
+
+struct client_server_server_snapshot_t {
+    zlink::routing_id_t server_rid;
+    std::uint64_t lifecycle_generation;
+    std::uint64_t descriptor_revision;
+    std::string endpoint;
+    int weight;
+    bool ready;
+    client_server_server_state_t state;
+    std::string descriptor_source;
+    std::optional<std::string> last_failure;
+};
+
+struct client_server_channel_snapshot_t {
+    std::string channel_name;
+    client_server_role_t local_role;
+    bool selectable;
+    int ready_server_count;
+    int connection_intent_count;
+    int pending_request_count;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point observed_at;
+    std::vector<client_server_server_snapshot_t> servers;
+    location_runtime_snapshot_t location;
+};
+
+struct client_server_runtime_event_t {
+    std::string identifier;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point timestamp;
+    std::string channel_name;
+    std::optional<zlink::routing_id_t> server_rid;
+    std::optional<std::uint64_t> lifecycle_generation;
+    std::optional<std::uint64_t> descriptor_revision;
+    std::optional<int> weight;
+    std::optional<bool> ready;
+    std::optional<client_server_server_state_t> state;
+    std::optional<std::string> reason;
+};
+
+class client_server_runtime_t {
+public:
+    virtual client_server_channel_snapshot_t snapshot(
+      std::string channel_name) const = 0;
+    virtual std::unique_ptr<mesh_runtime_observation_t> observe(
+      std::string channel_name,
+      std::size_t capacity,
+      std::function<void(const client_server_runtime_event_t &)> observer) = 0;
+    virtual bool is_ready(std::string channel_name) const = 0;
+};
+
+enum class fanout_publisher_connection_state_t {
+    connecting,
+    ready,
+    disconnected,
+    reconnecting,
+    excluded_draining,
+    excluded_stale
+};
+
+struct fanout_publisher_connection_snapshot_t {
+    zlink::routing_id_t publisher_rid;
+    std::uint64_t lifecycle_generation;
+    std::uint64_t descriptor_revision;
+    std::string endpoint;
+    bool connection_intent;
+    bool ready;
+    fanout_publisher_connection_state_t state;
+    std::optional<std::string> last_failure;
+};
+
+struct fanout_channel_snapshot_t {
+    std::string channel_name;
+    std::size_t connection_intent_count;
+    std::size_t ready_connection_count;
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point observed_at;
+    std::vector<fanout_publisher_connection_snapshot_t> publishers;
+    location_runtime_snapshot_t location;
+};
+
+struct fanout_publisher_changed_event_t {
+    static constexpr std::string_view event_identifier =
+      "zlink.runtime.fanout.publisher_changed";
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point timestamp;
+    std::string channel_name;
+    fanout_publisher_connection_snapshot_t entry;
+
+    constexpr std::string_view identifier() const noexcept {
+        return event_identifier;
+    }
+};
+
+struct fanout_location_changed_event_t {
+    static constexpr std::string_view event_identifier =
+      "zlink.runtime.location.store_changed";
+    std::uint64_t sequence;
+    std::chrono::system_clock::time_point timestamp;
+    std::string channel_name;
+    location_runtime_snapshot_t location;
+
+    constexpr std::string_view identifier() const noexcept {
+        return event_identifier;
+    }
+};
+
+using fanout_runtime_event_t = std::variant<
+  fanout_publisher_changed_event_t,
+  fanout_location_changed_event_t>;
+
+class fanout_runtime_observation_t {
+public:
+    virtual ~fanout_runtime_observation_t() = default;
+    virtual void close() = 0;
+};
+
+class fanout_runtime_t {
+public:
+    virtual fanout_channel_snapshot_t snapshot(std::string channel_name) const = 0;
+    virtual std::unique_ptr<fanout_runtime_observation_t> observe(
+      std::string channel_name,
+      std::size_t capacity,
+      std::function<void(const fanout_runtime_event_t &)> observer) = 0;
+};
+
+class mesh_channel_runtime_options_t {
+public:
+    virtual ~mesh_channel_runtime_options_t() = default;
+    virtual int weight() const = 0;
+    virtual void weight(int value) = 0;
+};
+
+class route_mesh_runtime_options_t {
+public:
+    virtual ~route_mesh_runtime_options_t() = default;
+    virtual mesh_channel_runtime_options_t &channel(std::string channel_name) = 0;
+};
+
+} // namespace zlink::framework
+```
+
+`mailbox_message_budget`와 `mailbox_byte_budget`은 owner별 application mailbox가 보관할 수 있는 메시지 수와
+payload byte 수를 제한한다. 두 값은 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile이
+정한 유한 기본값을 선택한다. Logical Multicast의 local target도 이 용량 제한으로 admission을 판단한다.
+
+`channel(channel_name)` 뒤에는 `client()` 또는 `server()`를 정확히 한 번 호출한다.
+`server()`가 반환한 builder만 weight와 handler를 설정한다. Server membership이 없는
+MeshNode도 시작할 수 있다. `add_client_server_channel(channel_name)`은 단방향
+request 시작 권한을 client에만 두며 server는 수신한 send/request 처리와 reply만 수행한다.
+
+Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가 아닌 BindHost를
+사용하고, wildcard BindHost에서는 AdvertiseHost를 반드시 명시한다. Automatic discovery
+listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을 사용한다.
+Listener별 host 설정은 root 기본값보다 우선한다.
+
+`use_allocated_routing_id(...)`의 slot count는 `1..65535`다. 같은 allocation group에 정규화한 MeshNode와
+fanout publisher member를 합쳐 `1..255`개만 둘 수 있으며 범위를 벗어나면 startup 설정 오류다.
+
+Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
+Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
+contract ID도 최대 1024개다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면
+startup을 실패시키며 collection을 truncate·split하거나 descriptor 일부를 게시하지 않는다.
+
+Topology 등록은 `zlink_framework_options_t`의 `add_route_mesh(...)`,
+`add_client_server_channel(...)`, `add_fanout_channel(...)` 세 진입점만 사용한다. RouteMesh는
+`add_route_mesh(...).channel(...).client()` 또는 `.server()`로 역할을 고른다. 같은 topology를 다시 만드는
+generic channel builder나 node builder를 두지 않는다. Framework 내부는 아래
+binding 타입을 조합한다.
+
+- `zlink::context_t`
+- `zlink::router_socket_t`
+- `zlink::dealer_socket_t`
+- `zlink::pub_socket_t`
+- `zlink::sub_socket_t`
+- MeshNode runtime handle
+- `zlink::stream_socket_t`
+
+## 2. ClientServer·Fanout builder
+
+ClientServer와 Fanout은 ChannelName을 사용하지만 서로 다른 물리 topology를 구성한다.
+ClientServer client는 send/request를 시작하고 server는 handler/reply를 수행한다. Fanout은
+publisher/subscriber 역할을 구성한다.
+
+```cpp
+namespace zlink::framework {
+
+class endpoint_connections_t;
+
+class fanout_channel_builder_t {
+public:
+    fanout_channel_builder_t &enable_publisher(std::string endpoint);
+    fanout_channel_builder_t &enable_publisher(std::uint16_t port = 0);
+    fanout_channel_builder_t &set_bind_host(std::string host);
+    fanout_channel_builder_t &set_advertise_host(std::string host);
+    fanout_channel_builder_t &set_routing_id(
+      zlink::routing_id_t publisher_routing_id);
+    fanout_channel_builder_t &use_allocated_routing_id(
+      std::size_t slot_count,
+      std::string routing_id_prefix = {});
+    fanout_channel_builder_t &set_routing_id_allocation_group(
+      std::string group_name);
+    fanout_channel_builder_t &enable_subscriber();
+    fanout_channel_builder_t &connect(std::string endpoint);
+    endpoint_connections_t subscriber_connections();
+    fanout_channel_builder_t &add_handler_group(std::string group_name);
+};
+
+class client_server_channel_builder_t {
+public:
+    client_server_channel_client_builder_t client();
+    client_server_channel_server_builder_t server();
+};
+
+} // namespace zlink::framework
+```
+
+요청 timeout은 call object의 `.timeout(...)`과 route request fluent 표면에서 설정한다. pending
+queue 상한은 `zlink_framework_options_t::set_max_pending(...)`이 runtime 단위로 소유한다. C++ 공개 계약은
+`.NET` 역할 builder에 없는 per-역할 timeout/pending option을 만들지 않는다.
+
+내부 매핑은 아래와 같다.
+
+| Capability | Binding 구현 기준 |
+|------------|------------------|
+| server | `zlink::router_socket_t` |
+| client | `zlink::dealer_socket_t` |
+| publisher | `zlink::pub_socket_t` |
+| subscriber | `zlink::sub_socket_t` |
+
+ClientServer와 Fanout은 서로 다른 물리 topology이므로 같은 process에서 ChannelName을 공유할 수 없다.
+각 topology의 연결 집합과 descriptor는 서로 분리한다.
+
+Location store를 등록한 fanout publisher는 고정 Publisher RID와 자동 할당 중 하나를 startup 전에
+선택하고 전용 descriptor를 게시한다. Store가 없는 publisher는 listener endpoint를 수동으로 전달하는
+대상으로 사용할 수 있지만 RID allocation과 automatic discovery 등록은 수행하지 않는다. 인자 없는
+`enable_subscriber()`는 같은 ChannelName의 유효한 publisher descriptor를 location store에서 조회해 모두
+연결한다. `connect(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 두 subscriber
+mode를 한 channel에 함께 설정하면 startup이 실패한다. Automatic subscriber는 location store가 필요하며,
+manual publisher와 manual subscriber만 사용하는 host는 다른 location 기능이 없으면 store가 필요하지 않다.
+`subscriber_connections()`는 builder의 `connect(endpoint)`와 같은 manual endpoint 집합을 가리키는
+runtime handle이다. 이 handle은 endpoint 연결, 해제와 현재 목록 조회를 제공하며 automatic discovery
+결과를 변경하지 않는다.
+
+Endpoint 없이 등록한 automatic subscriber는 `fanout_runtime_t`에서 ChannelName별
+`fanout_channel_snapshot_t`를 읽고 `fanout_runtime_event_t`를 관찰한다.
+`fanout_publisher_changed_event_t::entry`는 Publisher RID, lifecycle generation, descriptor revision과
+endpoint를 하나의 immutable identity로 보존한다. `fanout_location_changed_event_t::location`은 publisher가
+0개여도 store degraded·recovered 상태를 전달한다. `std::variant`의 두 대안은 서로의 payload를 optional
+field로 섞지 않는다. 각 variant의 `identifier()`는 `static constexpr event_identifier`를 반환하므로 호출자가
+identifier를 바꿀 수 없다. `state`와 event identifier는
+[Runtime monitoring](../../../50-runtime-monitoring.ko.md)의 lowercase identifier를 그대로 사용한다. 이 runtime은
+읽기 전용이며 `subscriber_connections()`의 manual endpoint 집합을 변경하지 않는다. Manual subscriber로만
+등록한 ChannelName을 조회하면 configuration error다.
+
+`fanout_runtime_observation_t`는 fanout observer 등록의 수명과 `close()`만 소유한다.
+`fanout_runtime_t::observe(...)` callback은 `fanout_runtime_event_t`만 받으므로 RouteMesh·ClientServer event나
+raw socket event와 섞이지 않는다.
+`close()`는 해당 observation 하나의 queue에 새 event를 넣는 작업을 멈추고 아직 소비하지 않은
+event를 폐기한다. 이미 실행 중인 callback은 반환할 수 있지만 `close()`가 반환된 뒤에 새
+callback을 시작하지 않는다. Callback 안에서 자신의 observation을 close해도 deadlock을 만들지
+않는다. Close는 다른 observer, automatic connection과 `subscriber_connections()`의 manual endpoint
+집합을 바꾸지 않는다. `close()`는 여러 번 호출해도 같은 결과를 보장한다. 파생 observation handle의
+destructor는 `close()`와 같은 등록 해제를 수행하므로 명시적 `close()` 없이
+`std::unique_ptr<fanout_runtime_observation_t>`를 파괴해도 observer 등록이 남지 않는다.
+
+`connection_intent=true`는 automatic planner가 endpoint 연결을 요청했다는 뜻이고 transport readiness가
+아니다. `ready=true`, `ready_connection_count`와 publisher changed event의 `ready` state는 publisher 전용
+SUB socket의 native-ready와 같은 socket의 첫 valid application record 또는 liveness beacon 수신을 모두
+반영한다. `disconnected`는 native disconnect 또는 15초 inbound timeout을 반영한다. `connect` 반환,
+native-ready 하나와 내부 active target 수로 이 값을 먼저 바꾸지 않는다.
+
+따라서 `listen`, `connect`, `enable_subscriber` 같은 연결 설정은 generic channel builder가 아니라
+ClientServer server, ClientServer client와 Fanout builder에 둔다.
+
+## 3. Handler Registry
+
+handler registry는 typed payload를 함수 수준에서 처리하게 하는 표면이다.
+
+```cpp
+namespace zlink::framework {
+
+enum class handler_execution_t {
+    inline_on_runtime = 0,
+    offload = 1
+};
+
+struct handler_options_t {
+    std::optional<std::string> packet_name;
+    handler_execution_t execution = handler_execution_t::inline_on_runtime;
+};
+
+class endpoint_connections_t {
+public:
+    void connect(std::string endpoint);
+    void disconnect(std::string endpoint);
+    std::vector<std::string> list_connections() const;
+};
+
+class actor_ref_t {
+public:
+    actor_ref_t(node_rid_t node_rid,
+      std::string actor_id,
+      std::uint64_t generation = 1);
+
+    const node_rid_t &node_rid() const noexcept;
+    std::string_view actor_id() const noexcept;
+    std::uint64_t generation() const noexcept;
+    bool empty() const noexcept;
+};
+
+template <typename TReply>
+struct actor_join_accepted_t {
+    actor_ref_t actor;
+    TReply reply;
+};
+
+template <typename TReply>
+struct actor_join_rejected_t {
+    TReply reply;
+};
+
+template <typename TReply>
+using typed_actor_join_result_t =
+  std::variant<actor_join_accepted_t<TReply>, actor_join_rejected_t<TReply>>;
+
+using actor_join_result_t = typed_actor_join_result_t<message_t>;
+
+class actor_join_call_t {
+public:
+    actor_join_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<actor_join_result_t> async();
+    task_t<actor_join_result_t> yield();
+
+    template <typename TReply>
+    task_t<typed_actor_join_result_t<TReply>> async();
+
+    template <typename TReply>
+    task_t<typed_actor_join_result_t<TReply>> yield();
+};
+
+enum class submit_status_t {
+    submitted,
+    backpressured,
+    timed_out,
+    target_not_found,
+    route_not_connected,
+    shutdown
+};
+
+struct submit_result_t {
+    submit_status_t status;
+};
+
+// 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §13).
+enum class framework_error_kind_t {
+    actor_route_not_found = 0,
+    actor_create_failed = 1,
+    actor_already_exists = 2,
+    actor_type_mismatch = 3,
+    spot_create_failed = 4,
+    spot_route_not_found = 5,
+    spot_type_mismatch = 6,
+    actor_session_not_bound = 7,
+    handler_not_found = 8,
+    route_handler_not_found = 9,
+    actor_dispatch_handler_not_found = 10,
+    payload_decode_failed = 11,
+    route_not_connected = 12,          // retriable
+    request_target_not_found = 13,
+    request_rejected = 14,
+    request_protocol_error = 15,
+    request_failed = 16,
+    worker_queue_full = 17,
+    worker_timed_out = 18,
+    worker_failed = 19,
+    actor_location_stale = 20,         // retriable
+    actor_create_rejected = 21
+};
+
+class framework_exception_t : public std::exception {
+public:
+    framework_error_kind_t kind() const noexcept;
+    bool is_retriable() const noexcept;
+    // 경계 상태(timed_out, shutdown, disconnected, closed, cancelled)는
+    // public enum 값이 아니라 이 error_code로 노출한다(common runtime §7.4).
+    // stale Actor ref는 actor_location_stale error kind로 분류한다.
+    std::error_code code() const noexcept;
+    const char *what() const noexcept override;
+};
+
+template <typename TReply>
+class request_call_t {
+public:
+    request_call_t &timeout(std::chrono::milliseconds timeout);
+    request_call_t &metadata(std::string key, std::string value);
+    task_t<TReply> async();
+    task_t<TReply> yield();
+};
+
+class channel_request_call_t {
+public:
+    channel_request_call_t &timeout(std::chrono::milliseconds timeout);
+    channel_request_call_t &metadata(std::string key, std::string value);
+
+    template <typename TReply>
+    task_t<TReply> async();
+
+    template <typename TReply>
+    task_t<TReply> yield();
+};
+
+class send_call_t {
+public:
+    send_call_t &metadata(std::string key, std::string value);
+    task_t<submit_result_t> submit();
+};
+
+class bound_session_send_call_t {
+public:
+    bound_session_send_call_t &metadata(std::string key, std::string value);
+    task_t<submit_result_t> submit();
+};
+
+class stream_send_call_t {
+public:
+    ~stream_send_call_t();
+    stream_send_call_t(stream_send_call_t &&) noexcept;
+    stream_send_call_t &operator=(stream_send_call_t &&) noexcept;
+    stream_send_call_t(const stream_send_call_t &) = delete;
+    stream_send_call_t &operator=(const stream_send_call_t &) = delete;
+
+    stream_send_call_t &metadata(std::string key, std::string value);
+    stream_send_call_t &packet_name(std::string packet_name);
+    stream_send_call_t &compress();
+    task_t<submit_result_t> submit();
+};
+
+class stream_write_call_t {
+public:
+    using metadata_map_t = std::map<std::string, std::string>;
+
+    ~stream_write_call_t();
+    stream_write_call_t(stream_write_call_t &&) noexcept;
+    stream_write_call_t &operator=(stream_write_call_t &&) noexcept;
+    stream_write_call_t(const stream_write_call_t &) = delete;
+    stream_write_call_t &operator=(const stream_write_call_t &) = delete;
+
+    stream_write_call_t &metadata(std::string key, std::string value);
+    stream_write_call_t &compress();
+    task_t<submit_result_t> submit();
+};
+
+template <typename TActor>
+class bind_actor_call_t {
+public:
+    bind_actor_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<TActor> async();
+};
+
+struct handler_context_t {
+    std::string channel_name;
+    std::string packet_name;
+    std::string content_type;
+};
+
+struct request_context_t : handler_context_t {};
+struct send_context_t : handler_context_t {};
+
+struct publish_context_t : handler_context_t {
+    std::string topic;
+    std::string source;
+};
+
+struct handler_invocation_context_t {
+    handler_descriptor_t descriptor;
+    handler_context_t context;
+    std::shared_ptr<const zlink::message_t> message;
+};
+
+using handler_next_t = std::function<task_t<zlink::message_t>()>;
+
+} // namespace zlink::framework
+```
+
+handler owner 타입은 service collection에서 resolve한다. 일반 application은
+`add_zlink_framework(...)` 안에서 handler와 service를 함께 등록한다.
+
+```cpp
+options.services().add_transient<order_handler_t>();
+
+options.handlers()
+  .group ("orders-api")
+  .add<order_created_handler_t> ();
+```
+
+STREAM application 업무 경로는 header 객체를 직접 받지 않는다. C++ stream session과 actor relay는
+`zlink::message_t` payload 하나를 사용하고, reply와 relay에 필요한 header 값은 runtime 내부
+dispatch state가 보존한다. 별도 `_raw` 이름의 public API는 두지 않는다.
+
+handler dispatch는 binding의 `zlink::message_t`와 `zlink::multipart_t`를 받은 뒤,
+serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한 다음 method를
+호출한다.
+
+handler method는 payload만 받을 수도 있고, payload 뒤에 typed context를 함께 받을 수도
+있다. request handler는 `request_context_t`, send handler는 `send_context_t`, event/publish
+handler는 `publish_context_t`를 받는다. context에는 channel, packet 이름, content type처럼
+사용자가 정책 판단에 쓰는 값만 둔다. raw multipart header나 dispatch table은 public context로
+노출하지 않는다.
+
+handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
+일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
+`invoke(const handler_invocation_context_t &, handler_next_t)`를 제공하며, 계속 처리하려면
+`co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. descriptor
+lookup, serializer 선택, DI resolve 순서와 filter chain 저장 방식은 public API로 노출하지 않는다.
+
+STREAM handler는 일반 request/send/event handler와 분리한다. Framework runtime은 packet
+방식만 지원한다. 내부 wire header는 runtime이 만들고 검증하며, raw stream session과 사용자
+정의 header framing은 Framework public 표면에 넣지 않는다.
+
+stream callback은 framework가 packet을 수신하고 header 검증을 마친 뒤 호출한다. 별도
+실행기로 넘기는 것이 기본은 아니며, 같은 stream session의 packet/lifecycle callback은
+직렬로 처리한다. CPU-bound 또는 blocking 가능성이 있는 stream handler는 offload 실행
+정책을 명시한다.
+
+request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
+반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
+request처럼 결과를 기다려야 하는 호출은 `co_await call.async()` 형태로 사용한다.
+one-way send/push는 `co_await call.submit()`으로 send timeout까지 bounded admission 결과를 받는다.
+즉시 수락되면 준비된 task가 바로 완료될 수 있으며 remote handler 완료는 기다리지 않는다.
+
+Handler coroutine은 blocking wait 없이 `task_t<T>`로 완료된다. 같은 task의 terminal 결과는 한 번만
+확정되며 중복 완료는 먼저 확정된 결과를 바꾸지 않는다. Handler 실행 scheduler와 continuation 배치는 public
+API에 노출하지 않는다.
+
+## 4. Messaging API
+
+사용자 코드에서 raw socket 대신 주입받아 쓰는 messaging 표면은 아래와 같다.
+
+```cpp
+namespace zlink::framework {
+
+struct send_options_t {
+    std::optional<std::string> packet_name;
+};
+
+struct request_options_t {
+    std::optional<std::string> packet_name;
+    std::optional<std::chrono::milliseconds> timeout;
+};
+
+class publisher_t {
+public:
+    template <typename TEvent>
+    fanout_publish_call_t publish(std::string channel_name,
+      TEvent event);
+
+    template <typename TEvent>
+    fanout_publish_call_t publish(std::string channel_name,
+      std::string topic, TEvent event);
+};
+
+class spot_publisher_client_t {
+public:
+    template <typename TEvent>
+    publish_call_t publish(std::string channel_name, std::string topic,
+                           const TEvent &event) const;
+};
+
+class request_client_t {
+public:
+    template <typename TCommand>
+    send_call_t send(std::string_view channel_name, const TCommand &command,
+      send_options_t options = {});
+
+    template <typename TRequest>
+    channel_request_call_t request(std::string_view channel_name,
+      const TRequest &request,
+      request_options_t options = {});
+};
+
+class message_bus_t {
+public:
+    ~message_bus_t();
+    message_bus_t(message_bus_t &&) noexcept;
+    message_bus_t &operator=(message_bus_t &&) noexcept;
+    message_bus_t(const message_bus_t &) = default;
+    message_bus_t &operator=(const message_bus_t &) = default;
+
+    template <typename TRequest>
+    channel_request_call_t request(
+      std::string channel_name,
+      TRequest request);
+
+    template <typename TMessage>
+    send_call_t send(std::string channel_name, TMessage message);
+
+    template <typename TEvent>
+    send_call_t publish(
+      std::string channel_name,
+      std::string topic,
+      TEvent event);
+
+    std::chrono::milliseconds default_request_timeout(
+      const std::string &channel_name) const;
+};
+
+class route_client_t {
+public:
+    ~route_client_t();
+    route_client_t(route_client_t &&) noexcept;
+    route_client_t &operator=(route_client_t &&) noexcept;
+    route_client_t(const route_client_t &) = default;
+    route_client_t &operator=(const route_client_t &) = default;
+
+    // node 대상 — infra 계층과 owner 일관 라우팅용
+    template <typename TMessage>
+    route_send_call_t send_to_node(std::string mesh_name,
+      zlink::routing_id_t target_node_rid,
+      TMessage message);
+
+    template <typename TRequest>
+    channel_request_call_t request_to_node(std::string mesh_name,
+      zlink::routing_id_t target_node_rid,
+      TRequest request);
+
+    template <typename TMessage>
+    route_send_call_t send_to_channel(std::string channel_name,
+      TMessage message);
+
+    template <typename TRequest>
+    channel_request_call_t request_to_channel(std::string channel_name,
+      TRequest request);
+
+    // 이미 존재하는 Spot 대상은 불투명한 handle 하나를 사용한다.
+    // Spot RID와 node RID를 나란히 받는 overload는 두지 않는다(공통 스펙 24 §3).
+    template <typename TMessage>
+    route_send_call_t send_to_spot(spot_handle_t target, TMessage message);
+
+    template <typename TRequest>
+    channel_request_call_t request_to_spot(spot_handle_t target, TRequest request);
+
+    // Instance Spot 대상은 owner 정보가 없는 논리 주소를 사용한다.
+    template <typename TMessage>
+    route_send_call_t send_to_spot(
+      const instance_spot_address_t &target,
+      TMessage message);
+
+    template <typename TRequest>
+    channel_request_call_t request_to_spot(
+      const instance_spot_address_t &target,
+      TRequest request);
+};
+
+class route_send_call_t {
+public:
+    route_send_call_t &metadata(std::string key, std::string value);
+    task_t<submit_result_t> submit();
+};
+
+class fanout_publish_call_t {
+public:
+    task_t<submit_result_t> submit();
+};
+
+struct logical_multicast_detail_t {
+    std::uint64_t snapshot_remote_node_count = 0;
+    std::uint64_t admitted_remote_node_count = 0;
+    std::uint64_t dropped_remote_node_count = 0;
+    std::uint64_t unreachable_remote_node_count = 0;
+    std::uint64_t snapshot_local_spot_count = 0;
+    std::uint64_t admitted_local_spot_count = 0;
+    std::uint64_t dropped_local_spot_count = 0;
+};
+
+struct publish_result_t {
+    submit_status_t status = submit_status_t::submitted;
+    logical_multicast_detail_t detail;
+};
+
+class publish_call_t {
+public:
+    publish_call_t &metadata(std::string key, std::string value);
+    task_t<publish_result_t> submit();
+};
+
+} // namespace zlink::framework
+```
+
+Public API는 transport 종류와 무관하게 channel name과 typed payload를 기준으로 유지한다.
+`publisher_t::publish(...)`는 typed event의 packet name을 topic으로 사용하는 편의 호출과 topic을
+명시하는 호출을 함께 제공한다. 두 호출 모두 classic fanout에 사용하며 Framework가 codec을 결정한다.
+명시한 topic이 내부 liveness용 exact byte `01 5A 4C 46 31`이면 transport를 시작하지 않고
+`framework_exception_t`를 발생시킨다.
+`fanout_publish_call_t`는 local publisher transport의 bounded admission을
+`submit_result_t`로 반환한다. `publish_call_t`와 `publish_result_t`는 Logical Multicast target 집계를
+위한 별도 계약이다. Subscriber가 0개여도 publisher local queue가 event를 수락하면
+`submit_status_t::submitted`다.
+
+모든 server one-way call의 `submit()`과 session Actor `relay(...)`는 local outbound admission 결과를
+`task_t`로 반환한다. 유효한 call은 pending 공간을 확인하기 전에 해당 family가 실제로 사용하는 admission
+primitive를 non-blocking 방식으로 정확히 한 번 호출한다. Remote 경로는 transport submit을 사용하고, local
+경로는 mailbox 또는 relay queue admission을 사용한다. 이 첫 시도가 즉시 성공하면 pending 공간이 차 있어도
+준비된 task가 `submitted`로 바로 완료될 수 있다. Core가 capacity 부족(`EAGAIN`)을 반환하거나 local admission
+capacity가 부족할 때만 해당 operation family의 send timeout까지 기다린다. 첫 시도 뒤 bounded pending 공간도
+가득 차 있으면 `backpressured`, deadline까지 수락되지 않으면 `timed_out`으로 완료한다. Local 경로가 즉시
+수락할 수 있는데 pending 공간만 가득 찼다는 이유로 `backpressured`를 반환하면 안 된다. `submitted`는 remote
+handler나 subscriber가 실행을 마쳤다는 뜻이 아니다. C++ server call에는 별도 cancellation 인자가 없다.
+반환된 task를 보관하지 않거나 파괴해도 operation이 취소된다고 보장하지 않으며 timeout이나 shutdown 뒤에
+같은 operation을 자동으로 다시 제출하지 않는다. 잘못된 argument·handle·state와 중복 submit은
+`submit_status_t`가 아니라 `framework_exception_t`로 완료한다. STREAM reply의 유효한 첫 terminator는
+transport를 시작하기 전에 one-shot reply token을 원자적으로
+claim하고 소비한다. 같은 token에서 만든 두 call이 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고
+`framework_exception_t`로 완료한다. Token을 소비한 call이 timeout 또는 `backpressured`로 끝나도 token을
+다시 사용할 수 없으며 이미 사용한 token도 exceptional completion으로 처리한다. STREAM reply는 client
+request timeout을 전달받지 않으며 해당 STREAM socket의 send timeout만 사용한다.
+
+RouteMesh node·Channel·Spot·Actor는 선택한 MeshNode ROUTER, ClientServer는 client DEALER, classic fanout은
+publisher socket, STREAM send·reply는 해당 STREAM socket의 send timeout을 사용한다. Bound session은
+local·remote Actor route가 바뀌어도 framework socket send timeout 하나를 사용한다. One-way call에는
+per-call `timeout(...)`을 두지 않는다. Socket 또는 MeshNode 설정이 없으면 무한 대기 대신 1초 기본값을
+사용한다. One-way admission에 사용하는 socket·MeshNode `std::chrono::milliseconds` 값은 `1..INT_MAX`
+범위만 허용한다. `0`, 음수와 상한 초과는 설정 시점 또는 늦어도 startup에서 configuration error로
+거부하며 기본값으로 바꾸지 않는다.
+
+Logical Multicast의 `publish_call_t::submit()`은 예외다. Framework는 pending queue 없이 bounded I/O executor에
+direct handoff한다. 즉시 worker slot을 얻지 못하면 raw transport call을 시작하지 않고
+`backpressured`를 반환한다. Slot을 얻으면 raw binding publish를 정확히 한 번 호출한다.
+이 call이 시작된 시점이 operation commit barrier다. Framework RouteMesh runtime은 snapshot의
+remote target마다 MeshNode ROUTER send timeout까지 기다리고 local Spot mailbox는 즉시 판단한다.
+Target별 timeout 뒤에 raw binding이 반환한 capacity
+실패는 `backpressured`와 partial detail로 유지하며 `timed_out`으로 바꾸거나 전체 publish를 다시 실행하지
+않는다. Snapshot target이 모두 0이면 `target_not_found`다. Remote capacity drop이 없고 모든 remote target의
+route가 준비되지 않은 경우에는 `submitted`와 unreachable detail을 반환할 수 있다. Local Spot drop은
+top-level status를 바꾸지 않고 detail에만 반영한다.
+Remote count는 `snapshot_remote_node_count == admitted_remote_node_count + dropped_remote_node_count +
+unreachable_remote_node_count`를 만족한다.
+
+framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성하지 않고 DI에서
+주입받아 사용할 수 있다.
+
+- `message_bus_t`
+- `publisher_t` (classic fanout client)
+- `spot_publisher_client_t` (MeshNode Logical Multicast client)
+- `request_client_t`
+- `route_client_t`
+
+## 5. Channel 표면
+
+```cpp
+struct route_handler_context_t {
+    std::string mesh_name;
+    zlink::routing_id_t source_node_rid;
+    std::string packet_name;
+    std::string content_type;
+};
+class channel_client_t {
+public:
+    template <typename TRequest>
+    channel_request_call_t request_to_channel(
+      std::string channel_name,
+      TRequest request);
+
+    template <typename TMessage>
+    send_call_t send_to_channel(
+      std::string channel_name,
+      TMessage message);
+};
+```
+
+## 6. Handler
+
+```cpp
+enum class handler_kind_t;   // request / send / publish
+```

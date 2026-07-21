@@ -4,6 +4,7 @@ import type {
   Type,
   ZLinkMessageSerializer,
   ZLinkActor,
+  ZLinkActorJoinRequest,
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkProviderResolver,
@@ -13,7 +14,6 @@ import type {
   ZLinkSpotInfo,
   ZLinkSpotManager,
   ZLinkSpotPublisherClient,
-  ZLinkSpotDrainPolicy,
 } from '../../contracts';
 import type {
   ZLinkSpotActorRequestHandlerRegistration,
@@ -23,15 +23,21 @@ import type {
   ZLinkSpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
 export { createSpotHandle, resolveSpotHandle } from './spot-handle';
-import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
+import type { ZLinkSpotRouteResolver, ZLinkSpotRouteTarget } from './spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
 import { awaitWithAbort, throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
+  ZLinkSpotKind,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import {
-  Message as BindingMessage
+  ActorLifecycleKind,
+  Message as BindingMessage,
+  ReceiveKind,
+  SubmitResult,
+  type ReadyRecord,
+  type ReceiveRecord
 } from '@zlink-systems/zlink';
 import {
   ZLinkConfigurationException
@@ -43,11 +49,32 @@ import type {
 
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkWorkerRuntime } from '../workers';
-import type { ZLinkRemoteBoundSessionTarget } from '../actors';
+import { createActorJoinRequest, createActorMembership, type ZLinkRemoteBoundSessionTarget } from '../actors';
 import type { ZLinkLocationLifecycle } from '../locations';
 import {
-  encodeFrameworkPayloadMessage
+  encodeFrameworkPayloadMessage,
+  wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
+import {
+  decodeChannelEnvelope,
+  decodeChannelPayload,
+  encodeChannelErrorReplyParts,
+  encodeChannelReplyParts
+} from '../channels/channel-envelope';
+import {
+  decodeStreamHeader,
+  encodeStreamHeader,
+  ZLinkStreamCodec,
+  ZLinkStreamHeaderFlags,
+  ZLinkStreamMessageKind
+} from '../streams/protocol';
+import {
+  REMOTE_ACTOR_JOIN_PACKET,
+  type ZLinkRemoteActorJoinWirePayload
+} from '../actors/actor-remote-wire';
+import { replayActorHandoffBacklog, type ZLinkActorHandoffPacket } from '../actors/actor-handoff';
+import { decodeHandoffBacklog, decodeRemoteActorRef } from './spot-remote-codec';
+import { decodeRoutingId, routingIdsEqual } from '../routing-id';
 export { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 export {
   ZLinkManagedTimer,
@@ -97,38 +124,56 @@ export interface ZLinkSpotManagerOptions {
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
   readonly nodeRid?: RoutingId;
-  readonly nodeRidProvider?: () => RoutingId | undefined;
+  readonly nodeRidProvider?: (meshName: string) => RoutingId | undefined;
+  readonly nodeGenerationProvider?: (meshName: string) => bigint | undefined;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
   readonly entrySpotCallbacks?: {
-    onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+    onLeaveActor(
+      actor: ZLinkActor,
+      signal?: AbortSignal,
+      actorRef?: ActorRef,
+      membershipEpoch?: bigint
+    ): Promise<void>;
   };
+  readonly dispatchEntryActorPacket?: (
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse?: boolean,
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
+  ) => Promise<unknown>;
   readonly actorCountProvider?: (spotRid: RoutingId) => number;
+  readonly actorDispatchOwnerResolver?: (actorId: string) => {
+    readonly actorRef?: ActorRef;
+    readonly spotRid?: RoutingId;
+  };
+  readonly actorBindingGenerationObserver?: (actorId: string, generation: bigint) => void;
   readonly channelClient?: ZLinkChannelClient;
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly spotPublisherClient?: ZLinkSpotPublisherClient;
   readonly spotRouteResolver?: ZLinkSpotRouteResolver;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
   readonly spotRouterChannelIdForMesh?: (meshName: string) => string;
+  readonly channelMeshNameForChannel?: (channelName: string) => string | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime?: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
-  readonly locationMeshName?: string;
   // Backs each user Spot with a core-native Spot object (registered for join
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
-  readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;
-  readonly nativeSpotNodeProvider?: () => ZLinkBackendSpotNode | undefined;
+  readonly createNativeSpot?: (meshName: string, spotRid: RoutingId) => ZLinkBackendSpot | undefined;
+  readonly nativeSpotNodeProvider?: (meshName: string) => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
+  readonly actorLifecycleResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
-  readonly spotDrainPolicy?: (spotType: Type<ZLinkSpot>) => ZLinkSpotDrainPolicy;
   readonly admission?: ZLinkRuntimeAdmissionGate;
 }
 
@@ -140,6 +185,14 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private readonly routedSpotPackets: ZLinkRoutedSpotPacketDispatch;
   private readonly actorMembership: ZLinkSpotActorMembership;
   private readonly activationLifecycle: ZLinkSpotActivationLifecycle;
+  private readonly formalRemoteTransfers = new Map<string, {
+    readonly actor: ZLinkActor;
+    readonly spotRid: RoutingId;
+    readonly transferId: string;
+    readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
+    readonly sourceLeaveTerminal: Promise<boolean>;
+    readonly resolveSourceLeaveTerminal: (succeeded: boolean) => void;
+  }>();
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.activations = new ZLinkSpotActivationRegistry(options.metrics);
@@ -147,17 +200,19 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.locationClaim = new ZLinkSpotLocationClaim({
       lifecycle: options.locationLifecycle,
-      meshName: options.locationMeshName,
       nodeRid: options.nodeRid,
-      nodeRidProvider: options.nodeRidProvider
+      nodeRidProvider: options.nodeRidProvider,
+      nodeGenerationProvider: options.nodeGenerationProvider
     });
     this.routedSpotPackets = new ZLinkRoutedSpotPacketDispatch({
-      resolveActivation: (spotRid) => this.activations.resolve(spotRid),
+      resolveActivation: (spotRid) => this.activations.resolveUnique(spotRid),
       providerResolver: options.providerResolver,
       dispatchErrors: options.dispatchErrors
     });
     this.actorMembership = new ZLinkSpotActorMembership({
-      resolveActivation: (spotRid) => this.activations.resolve(spotRid),
+      resolveActivation: (spotRid, meshName) => meshName === undefined
+        ? this.activations.resolveUnique(spotRid)
+        : this.activations.resolve(meshName, spotRid),
       providerResolver: options.providerResolver,
       messageSerializers: options.messageSerializers,
       dispatchErrors: options.dispatchErrors,
@@ -195,76 +250,86 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
       boundSessionRuntime: options.boundSessionRuntime,
       actorHandoffRuntime: options.actorHandoffRuntime,
       leaveActor: (spotRid, actor, signal) => this.actorMembership.leaveActor(spotRid, actor, signal),
-      closeSpot: (spotRid, signal) => this.close(spotRid, signal),
+      closeSpot: (meshName, spotRid, signal) => this.close(meshName, spotRid, signal),
       registerActivation: (activation) => this.activations.register(activation),
       metrics: options.metrics
     });
   }
 
   async create<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async create<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     request: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async create<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async create<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     requestOrSignal?: ZLinkMessage | TRequest | AbortSignal,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
+    requireMeshName(meshName);
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
-    this.options.admission?.requireRequest('SPOT create');
-    const spotRid = this.activations.allocateSpotRid();
+    this.options.admission?.requireRequest('SPOT create', meshName);
+    const spotRid = this.activations.allocateSpotRid(meshName);
     const ownedRequest = args.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
       : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
     try {
-      return await this.createActivation(spotType, spotRid, ownedRequest, args.signal);
+      return await this.createActivation(meshName, spotType, spotRid, ownedRequest, args.signal);
     } finally {
       ownedRequest.close();
     }
   }
 
   async getOrCreate<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async getOrCreate<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     request: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async getOrCreate<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   async getOrCreate<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     requestOrSignal?: ZLinkMessage | TRequest | AbortSignal,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
+    requireMeshName(meshName);
     const args = normalizeSpotCreateArgs(requestOrSignal, signal);
     throwIfAborted(args.signal);
-    const operation = this.activations.getOrBegin(spotType, spotRid, async () => {
-      this.options.admission?.requireRequest('SPOT create');
+    const operation = this.activations.getOrBegin(meshName, spotType, spotRid, async () => {
+      this.options.admission?.requireRequest('SPOT create', meshName);
       const ownedRequest = args.request === undefined
         ? BindingMessage.from(Buffer.alloc(0))
         : encodeFrameworkPayloadMessage(args.request, this.options.messageSerializers);
       try {
-        return await this.createActivation(spotType, spotRid, ownedRequest);
+        return await this.createActivation(meshName, spotType, spotRid, ownedRequest);
       } finally {
         ownedRequest.close();
       }
@@ -272,42 +337,38 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     return await awaitWithAbort(operation.ready, args.signal);
   }
 
-  async find(spotRid: RoutingId): Promise<ZLinkSpotInfo | null> {
-    return this.activations.has(spotRid) ? { spotRid } : null;
+  async find(meshName: string, spotRid: RoutingId): Promise<ZLinkSpotInfo | null> {
+    requireMeshName(meshName);
+    return this.activations.has(meshName, spotRid) ? { spotRid } : null;
   }
 
-  async list(): Promise<readonly ZLinkSpotInfo[]> {
-    return this.activations.list();
+  async list(meshName: string): Promise<readonly ZLinkSpotInfo[]> {
+    requireMeshName(meshName);
+    return this.activations.list(meshName);
   }
 
-  async drainForShutdown(signal?: AbortSignal): Promise<void> {
+  async drainForShutdown(meshName: string, signal?: AbortSignal): Promise<void> {
     for (const activation of this.activations.activeActivations()) {
-      const policy = this.options.spotDrainPolicy?.(activation.spotType) ?? 'DrainNatural';
-      if (policy !== 'ReleaseAndRecreate') continue;
+      if (activation.meshName !== meshName) continue;
       activation.requestDrainClose();
     }
-    await this.activations.whenEmpty(signal);
+    await this.activations.whenMeshEmpty(meshName, signal);
   }
 
-  retainsActorDuringDrain(spotRid: RoutingId | undefined): boolean {
-    if (spotRid === undefined) return false;
-    const activation = this.activations.resolve(spotRid);
-    if (activation === undefined) return false;
-    return (this.options.spotDrainPolicy?.(activation.spotType) ?? 'DrainNatural') === 'DrainNatural';
-  }
-
-  async close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {
-    const closing = this.activations.closingOperation(spotRid);
+  async close(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<boolean> {
+    requireMeshName(meshName);
+    const closing = this.activations.closingOperation(meshName, spotRid);
     if (closing !== undefined) {
       await closing.ready;
       return true;
     }
-    const activation = this.activations.resolve(spotRid);
+    const activation = this.activations.resolve(meshName, spotRid);
     if (activation === undefined) {
       return false;
     }
     const currentTurn = activation.serial.isCurrentTurn;
     const beginClose = () => this.activations.startClose(
+      meshName,
       spotRid,
       (target) => target.serial.post(() => this.activationLifecycle.closeInsideSerial(target, signal)),
       (target) => this.activationLifecycle.resourcesReleased(target)
@@ -341,7 +402,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<TResult> {
     throwIfAborted(signal);
-    const activation = this.activations.resolve(spotRid);
+    const activation = this.activations.resolveUnique(spotRid);
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
@@ -352,7 +413,26 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   }
 
   hasActiveSpot(spotRid: RoutingId): boolean {
-    return this.activations.has(spotRid);
+    return this.activations.resolveUnique(spotRid) !== undefined;
+  }
+
+  resolveLocalSpotRoute(spotRid: RoutingId): ZLinkSpotRouteTarget | undefined {
+    const activation = this.activations.resolveUnique(spotRid);
+    const generation = activation?.nativeSpot?.lifecycleGeneration;
+    if (activation === undefined || generation === undefined || generation <= 0n) {
+      return undefined;
+    }
+    const nodeRid = this.options.nodeRidProvider?.(activation.meshName) ?? this.options.nodeRid;
+    if (nodeRid === undefined) {
+      return undefined;
+    }
+    return {
+      routerChannelId: this.options.spotRouterChannelIdForMesh?.(activation.meshName) ?? activation.meshName,
+      targetNodeRid: nodeRid,
+      spotRid: activation.spotRid,
+      spotKind: ZLinkSpotKind.User,
+      targetSpotGeneration: generation
+    };
   }
 
   async admitActorJoin(
@@ -363,7 +443,8 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal,
     leaveSource?: () => Promise<void>
   ): Promise<ZLinkSpotActorJoinResponse> {
-    this.options.admission?.requireRequest('Actor join admission');
+    const meshName = this.activations.resolveUnique(spotRid)?.meshName;
+    this.options.admission?.requireRequest('Actor join admission', meshName);
     return await this.actorMembership.admitActorJoin(
       spotRid,
       actor,
@@ -380,6 +461,16 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     signal?: AbortSignal
   ): Promise<void> {
     await this.actorMembership.leaveActor(spotRid, actor, signal);
+  }
+
+  async leaveActorInMesh(
+    meshName: string,
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    requireMeshName(meshName);
+    await this.actorMembership.leaveActor(spotRid, actor, signal, meshName);
   }
 
   async notifyActorLeftAfterTransfer(
@@ -431,13 +522,21 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     actorId: string,
     parts: readonly Message[],
     returnResponse = false,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
   ): Promise<unknown> {
-    const activation = this.activations.resolve(spotRid);
+    const activation = this.activations.resolveUnique(spotRid);
     if (activation === undefined) {
       throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
     }
-    return this.dispatchActorPacket(activation, actorId, parts, returnResponse, remoteBoundSessionTarget);
+    return this.dispatchActorPacket(
+      activation,
+      actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    );
   }
 
   async dispatchRoutedSpotSend(
@@ -458,14 +557,428 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     return await this.routedSpotPackets.request<TReply>(spotRid, packetName, request, context);
   }
 
+  async dispatchMeshSpot(meshName: string, owner: ReadyRecord, record: ReceiveRecord): Promise<void> {
+    const spotRid = owner.spotRid as unknown as RoutingId | null;
+    if (spotRid === null) {
+      throw new ZLinkConfigurationException('MeshNode Spot record is missing the owner Spot RID.');
+    }
+    if (record.kind === ReceiveKind.SpotMulticast) {
+      const activation = this.activations.resolve(meshName, spotRid);
+      if (activation?.actorDispatch === undefined) {
+        throw new ZLinkConfigurationException(
+          `MeshNode Spot multicast target '${String(spotRid)}' is not active.`
+        );
+      }
+      if (record.topic === null || record.topic.length === 0) {
+        throw new ZLinkConfigurationException('MeshNode Spot multicast record is missing its topic.');
+      }
+      await activation.actorDispatch.dispatchSubscriptionRecord(
+        record.topic,
+        record.parts,
+        record.sourceNodeRid as unknown as RoutingId | null
+      );
+      return;
+    }
+    const envelope = decodeChannelEnvelope(record.parts);
+    const packetName = envelope.packetName;
+    const payload = decodeChannelPayload(
+      envelope,
+      this.options.messageSerializers === undefined
+        ? undefined
+        : { serializers: this.options.messageSerializers }
+    );
+    const context = {
+      channelName: envelope.header.channelName,
+      contentType: envelope.header.contentType
+    };
+    if (record.kind === ReceiveKind.SpotSend) {
+      await this.routedSpotPackets.send(spotRid, packetName, payload, context);
+      return;
+    }
+    if (record.kind !== ReceiveKind.SpotRequest) {
+      throw new ZLinkConfigurationException(`Unsupported MeshNode Spot record kind '${record.kind}'.`);
+    }
+    try {
+      const response = await this.routedSpotPackets.request(spotRid, packetName, payload, context);
+      requireMeshSpotReply(record.reply(encodeChannelReplyParts(envelope.header, response)));
+    } catch (error) {
+      requireMeshSpotReply(record.reply(encodeChannelErrorReplyParts(
+        envelope.header,
+        error instanceof Error ? error.message : String(error)
+      )));
+    }
+  }
+
+  async dispatchMeshActor(meshName: string, owner: ReadyRecord, record: ReceiveRecord): Promise<void> {
+    const spotRid = owner.spotRid as unknown as RoutingId | null;
+    const entrySpotRid = this.options.entryNodeRidProvider?.() ?? this.options.entryNodeRid;
+    const targetsEntrySpot = spotRid === null
+      || (entrySpotRid !== undefined && routingIdsEqual(spotRid, entrySpotRid));
+    const actor = owner.actor;
+    if (actor === null) {
+      throw new ZLinkConfigurationException('MeshNode Actor record is missing its Actor owner.');
+    }
+    const request = record.kind === ReceiveKind.ActorRequest;
+    if (record.sourceBindingGeneration > 0n) {
+      this.options.actorBindingGenerationObserver?.(actor.actorId, record.sourceBindingGeneration);
+    }
+    const resolvedOwner = this.options.actorDispatchOwnerResolver?.(actor.actorId);
+    const resolvedActorRef = resolvedOwner?.actorRef ?? {
+      nodeRid: String(actor.nodeRid),
+      actorId: actor.actorId,
+      generation: actor.generation
+    };
+    const resolvedSpotRid = resolvedOwner?.spotRid ?? spotRid ?? undefined;
+    const ownerActorRef = resolvedSpotRid === undefined
+      ? resolvedActorRef
+      : {
+        ...resolvedActorRef,
+        handoffForwarded: true,
+        handoffTargetSpotRid: String(resolvedSpotRid)
+      } as ActorRef;
+    try {
+      if (this.formalRemoteTransfers.has(actor.actorId)) {
+        throw new Error(
+          `Actor '${actor.actorId}' target transfer reconciliation is not complete.`
+        );
+      }
+      const response = targetsEntrySpot
+        ? await this.options.dispatchEntryActorPacket?.(
+          actor.actorId,
+          record.parts,
+          request,
+          undefined,
+          ownerActorRef
+        )
+        : await this.dispatchMeshActorPacket(
+          meshName,
+          spotRid,
+          actor.actorId,
+          record.parts,
+          request,
+          ownerActorRef
+        );
+      if (targetsEntrySpot && this.options.dispatchEntryActorPacket === undefined) {
+        throw new ZLinkConfigurationException('MeshNode Entry Spot Actor dispatch is not configured.');
+      }
+      if (request) {
+        requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
+          record.parts[0],
+          ZLinkStreamMessageKind.Response,
+          response
+        )));
+      }
+    } catch (error) {
+      if (!request) {
+        throw error;
+      }
+      requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
+        record.parts[0],
+        ZLinkStreamMessageKind.Error,
+        {
+          message: error instanceof Error ? error.message : String(error),
+          kind: 'RequestFailed',
+          isRetriable: false
+        }
+      )));
+    }
+  }
+
+  async dispatchMeshActorJoin(meshName: string, owner: ReadyRecord, record: ReceiveRecord): Promise<void> {
+    const spotRid = owner.spotRid as unknown as RoutingId | null;
+    const control = record.kindData;
+    if (control?.kind !== 'actorControl') {
+      throw new ZLinkConfigurationException('MeshNode Actor join record is missing lifecycle identity data.');
+    }
+    const actorId = control.currentActor?.actorId;
+    if (spotRid === null || actorId === undefined) {
+      throw new ZLinkConfigurationException('MeshNode Actor join record is missing its Spot or Actor owner.');
+    }
+    const activation = this.activations.resolve(meshName, spotRid);
+    const transferRequest = record.parts.length === 0
+      ? undefined
+      : decodeFormalRemoteTransferRequest(record.parts[0]!);
+    const applicationClaim = transferRequest === undefined
+      ? this.options.admission?.claim(meshName, 'Actor join dispatch')
+      : undefined;
+    let actor = this.options.actorResolver?.(actorId);
+    let callbackRequest: BindingMessage | undefined = record.parts.length === 0
+      ? undefined
+      : record.parts[0]!;
+    let ownedCallbackRequest: BindingMessage | undefined;
+    let materialized = false;
+    let reply: Message | undefined;
+    try {
+      if (transferRequest !== undefined) {
+        ownedCallbackRequest = BindingMessage.from(
+          Buffer.from(transferRequest.request, 'base64')
+        );
+        callbackRequest = ownedCallbackRequest;
+      }
+      let accepted = false;
+      if (
+        activation !== undefined
+        && callbackRequest !== undefined
+        && (actor !== undefined || transferRequest !== undefined)
+      ) {
+        const request = callbackRequest;
+        const rawActorRef = transferRequest?.actorRef ?? control.currentActor ?? undefined;
+        if (rawActorRef === undefined) {
+          throw new ZLinkConfigurationException(`Actor '${actorId}' join record has no ActorRef.`);
+        }
+        const actorRef: ActorRef = {
+          nodeRid: rawActorRef.nodeRid as unknown as RoutingId,
+          actorId: rawActorRef.actorId,
+          generation: rawActorRef.generation
+        };
+        const joinRequest: ZLinkActorJoinRequest = actor === undefined
+          ? Object.freeze({
+              actor: Object.freeze({ ...actorRef }),
+              actorType: transferRequest!.actorType,
+              expectedMembershipEpoch: transferRequest!.expectedMembershipEpoch
+            })
+          : createActorJoinRequest(
+              actor,
+              actorRef as ActorRef,
+              transferRequest?.expectedMembershipEpoch ?? control.previousMembershipEpoch
+            );
+        const response: ZLinkSpotActorJoinResponse = await activation.serial.execute(async () =>
+          activation.spot.onActorJoin(
+            joinRequest,
+            wrapFrameworkPayloadMessage(request, this.options.messageSerializers)
+          )
+        );
+        accepted = response.accepted;
+        reply = response.reply === undefined
+          ? undefined
+          : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
+      }
+      requireMeshSpotReply(record.replyActorJoin(accepted ? 0 : 1, reply === undefined ? [] : [reply.data()]));
+      if (
+        accepted
+        && actor === undefined
+        && transferRequest !== undefined
+        && this.options.actorTransferRuntime !== undefined
+      ) {
+        const transferState = BindingMessage.from(
+          Buffer.from(transferRequest.transferState, 'base64')
+        );
+        try {
+          const result = await this.options.actorTransferRuntime.materializeRoutedActor(
+            actorId,
+            transferRequest.actorType,
+            transferRequest.transferAdapterKey,
+            transferState,
+            transferRequest.actorEntryNodeRid,
+            undefined
+          );
+          actor = result.actor;
+          materialized = true;
+        } finally {
+          transferState.close();
+        }
+      }
+      if (accepted && actor !== undefined && transferRequest !== undefined) {
+        const sourceLeave = sourceLeaveTerminal();
+        this.formalRemoteTransfers.set(actorId, {
+          actor,
+          spotRid,
+          transferId: transferRequest.transferId,
+          handoffBacklog: transferRequest.handoffBacklog,
+          sourceLeaveTerminal: sourceLeave.promise,
+          resolveSourceLeaveTerminal: sourceLeave.resolve
+        });
+      }
+    } catch (error) {
+      if (materialized && actor !== undefined) {
+        await this.options.actorTransferRuntime?.rollbackRoutedActor(actor);
+      }
+      throw error;
+    } finally {
+      ownedCallbackRequest?.close();
+      reply?.close();
+      applicationClaim?.close();
+    }
+  }
+
+  async dispatchMeshSpotControl(meshName: string, owner: ReadyRecord, record: ReceiveRecord): Promise<void> {
+    const spotRid = owner.spotRid as unknown as RoutingId | null;
+    const control = record.kindData;
+    if (control?.kind !== 'actorControl') {
+      throw new ZLinkConfigurationException('MeshNode Spot control record is missing actor lifecycle data.');
+    }
+    const actorRef = control.lifecycleKind === ActorLifecycleKind.Left
+      ? control.previousActor
+      : control.currentActor;
+    const actorId = actorRef?.actorId;
+    const pendingTransfer = actorId === undefined
+      ? undefined
+      : this.formalRemoteTransfers.get(actorId);
+    const actor = actorId === undefined
+      ? undefined
+      : pendingTransfer?.actor
+        ?? (spotRid === null ? undefined : this.activations.resolve(meshName, spotRid)?.resolveJoinedActor(actorId))
+        ?? this.options.actorLifecycleResolver?.(actorId)
+        ?? this.options.actorResolver?.(actorId);
+    const entrySpotRid = this.options.entryNodeRidProvider?.() ?? this.options.entryNodeRid;
+    if (actor === undefined) {
+      return;
+    }
+    if (control.lifecycleKind === ActorLifecycleKind.Left
+      && (spotRid === null || (entrySpotRid !== undefined && String(spotRid) === String(entrySpotRid)))) {
+      const callback = async () => {
+        await this.options.entrySpotCallbacks?.onLeaveActor(
+          actor,
+          undefined,
+          actorRef as unknown as ActorRef,
+          control.previousMembershipEpoch
+        );
+      };
+      if (this.options.actorTransferRuntime === undefined) {
+        await callback();
+      } else {
+        await this.options.actorTransferRuntime.notifyCoreSourceLeave(actor, callback);
+      }
+      return;
+    }
+    if (spotRid === null) {
+      return;
+    }
+    const activation = this.activations.resolve(meshName, spotRid);
+    if (activation === undefined) {
+      return;
+    }
+    await activation.serial.execute(async () => {
+      if (control.lifecycleKind === ActorLifecycleKind.Joined) {
+        if (control.currentActor !== null) {
+          this.options.actorTransferRuntime?.bindRoutedActorRef(
+            actor,
+            control.currentActor as unknown as ActorRef
+          );
+        }
+        this.options.actorTransferRuntime?.commitRoutedActor(actor, spotRid, activation.spot);
+        await activation.spot.onJoinedActor(createActorMembership(
+          actor,
+          control.currentActor as unknown as ActorRef,
+          control.currentMembershipEpoch
+        ));
+        const sourceLeaveSucceeded = pendingTransfer === undefined
+          || await pendingTransfer.sourceLeaveTerminal;
+        if (sourceLeaveSucceeded && pendingTransfer !== undefined) {
+          await replayActorHandoffBacklog(
+            pendingTransfer.handoffBacklog,
+            (parts, returnResponse, remoteBoundSessionTarget, _fallbackActorRef) =>
+              this.dispatchActorPacket(
+                activation,
+                actor.actorId,
+                parts,
+                returnResponse,
+                remoteBoundSessionTarget,
+                undefined
+              ),
+            (index) => this.options.runtimeEventPublisher?.publish({
+              sourceName: 'zlink.framework.actor-handoff',
+              timestamp: new Date(),
+              marker: 'backlog_enqueued',
+              actorId: actor.actorId,
+              index
+            })
+          );
+        }
+        await this.options.actorTransferRuntime?.claimRoutedActorLocation(
+          actor,
+          spotRid,
+          meshName,
+          {
+            spotGeneration: control.currentSpotGeneration,
+            membershipEpoch: control.currentMembershipEpoch
+          }
+        );
+        await this.options.actorTransferRuntime?.publishRoutedActorOwnership(actor);
+        if (!sourceLeaveSucceeded) {
+          throw new Error(`Actor '${actor.actorId}' source leave callback failed after target commit.`);
+        }
+        activation.commitActorJoin(actor);
+        this.formalRemoteTransfers.delete(actor.actorId);
+        return;
+      }
+      if (control.lifecycleKind === ActorLifecycleKind.Left) {
+        if (this.options.actorTransferRuntime === undefined) {
+          await activation.spot.onLeaveActor(createActorMembership(
+            actor,
+            control.previousActor as unknown as ActorRef,
+            control.previousMembershipEpoch
+          ));
+        } else {
+          await this.options.actorTransferRuntime.notifyCoreSourceLeave(
+            actor,
+            () => activation.spot.onLeaveActor(createActorMembership(
+              actor,
+              control.previousActor as unknown as ActorRef,
+              control.previousMembershipEpoch
+            ))
+          );
+        }
+        activation.commitActorDeparture(actor.actorId);
+        return;
+      }
+      if (control.lifecycleKind === ActorLifecycleKind.Disconnected) {
+        await activation.spot.onDisconnectActor(createActorMembership(
+          actor,
+          control.currentActor as unknown as ActorRef,
+          control.currentMembershipEpoch
+        ));
+      }
+    });
+  }
+
+  completeFormalSourceLeaveTerminal(
+    actorId: string,
+    transferId: string,
+    succeeded: boolean
+  ): boolean {
+    const pending = this.formalRemoteTransfers.get(actorId);
+    if (pending === undefined || pending.transferId !== transferId) {
+      return false;
+    }
+    pending.resolveSourceLeaveTerminal(succeeded);
+    return true;
+  }
+
+  private encodeMeshActorReply(
+    requestHeaderPart: Message,
+    kind: ZLinkStreamMessageKind.Response | ZLinkStreamMessageKind.Error,
+    payload: unknown
+  ): readonly Buffer[] {
+    const requestHeader = decodeStreamHeader(requestHeaderPart.data());
+    const payloadPart = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
+    try {
+      return [
+        Buffer.from(encodeStreamHeader({
+          kind,
+          codec: ZLinkStreamCodec.Json,
+          flags: ZLinkStreamHeaderFlags.None,
+          requestSeq: requestHeader.requestSeq,
+          name: '',
+          metadata: new Map(),
+          correlationId: requestHeader.correlationId
+        })),
+        Buffer.from(payloadPart.data())
+      ];
+    } finally {
+      payloadPart.close();
+    }
+  }
+
   private async createActivation<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     request: Message,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
     this.requireRegisteredFactory(spotType);
-    return await this.activationLifecycle.create(spotType, spotRid, request, signal);
+    return await this.activationLifecycle.create(meshName, spotType, spotRid, request, signal);
   }
 
   private requireRegisteredFactory(spotType: Type<ZLinkSpot>): void {
@@ -492,6 +1005,103 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
     );
   }
 
+  private async dispatchMeshActorPacket(
+    meshName: string,
+    spotRid: RoutingId,
+    actorId: string,
+    parts: readonly Message[],
+    returnResponse: boolean,
+    fallbackActorRef?: ActorRef
+  ): Promise<unknown> {
+    const activation = this.activations.resolve(meshName, spotRid);
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException(
+        `Spot '${String(spotRid)}' is not active in mesh '${meshName}'.`
+      );
+    }
+    return await this.dispatchActorPacket(
+      activation,
+      actorId,
+      parts,
+      returnResponse,
+      undefined,
+      fallbackActorRef
+    );
+  }
+
+}
+
+interface ZLinkFormalRemoteTransferRequest {
+  readonly actorType: string;
+  readonly transferId: string;
+  readonly transferAdapterKey?: string;
+  readonly transferState: string;
+  readonly request: string;
+  readonly actorEntryNodeRid?: RoutingId;
+  readonly actorRef?: ActorRef;
+  readonly expectedMembershipEpoch: bigint;
+  readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
+}
+
+function decodeFormalRemoteTransferRequest(
+  message: Message
+): ZLinkFormalRemoteTransferRequest | undefined {
+  let payload: ZLinkRemoteActorJoinWirePayload;
+  try {
+    payload = JSON.parse(message.data().toString()) as ZLinkRemoteActorJoinWirePayload;
+  } catch {
+    return undefined;
+  }
+  if (
+    payload.packetName !== REMOTE_ACTOR_JOIN_PACKET
+    || typeof payload.actorType !== 'string'
+    || typeof payload.transferId !== 'string'
+    || typeof payload.transferState !== 'string'
+    || typeof payload.request !== 'string'
+  ) {
+    return undefined;
+  }
+  return {
+    actorType: payload.actorType,
+    transferId: payload.transferId,
+    transferAdapterKey: typeof payload.transferAdapterKey === 'string'
+      ? payload.transferAdapterKey
+      : undefined,
+    transferState: payload.transferState,
+    request: payload.request,
+    actorEntryNodeRid: typeof payload.actorEntryNodeRid === 'string'
+      ? decodeRoutingId(payload.actorEntryNodeRid, payload.actorEntryNodeRidHex)
+      : undefined,
+    actorRef: decodeRemoteActorRef(
+      payload.actorNodeRid,
+      payload.actorNodeRidHex,
+      typeof payload.actorId === 'string' ? payload.actorId : '',
+      payload.actorGeneration
+    ) as ActorRef | undefined,
+    expectedMembershipEpoch: typeof payload.expectedMembershipEpoch === 'string'
+      ? BigInt(payload.expectedMembershipEpoch)
+      : 0n,
+    handoffBacklog: decodeHandoffBacklog(payload.handoffBacklog)
+  };
+}
+
+function sourceLeaveTerminal(): {
+  readonly promise: Promise<boolean>;
+  readonly resolve: (succeeded: boolean) => void;
+} {
+  let resolve!: (succeeded: boolean) => void;
+  const promise = new Promise<boolean>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
+function requireMeshSpotReply(result: number): void {
+  if (result !== SubmitResult.Ok) {
+    throw new ZLinkConfigurationException(
+      `MeshNode reply was not accepted (submit result ${result}).`
+    );
+  }
 }
 
 function normalizeSpotCreateArgs<TRequest>(
@@ -504,6 +1114,11 @@ function normalizeSpotCreateArgs<TRequest>(
   return { request: requestOrSignal, signal };
 }
 
+function requireMeshName(meshName: string): void {
+  if (meshName.length === 0) {
+    throw new ZLinkConfigurationException('Spot operations require a mesh name.');
+  }
+}
 
 function isAbortSignal(value: unknown): value is AbortSignal {
   return typeof value === 'object'

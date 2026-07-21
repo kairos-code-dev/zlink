@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type { RoutingId } from '../core';
-import type { Message } from '../messaging';
+import type { Message, MessageLike } from '../messaging';
 import type { SubmitResult } from '../errors';
 
 /** A 128-bit mesh operation id whose completion arrives through pull dispatch. */
@@ -30,6 +30,15 @@ export interface ActorLocation {
   readonly spotGeneration: bigint;
   readonly membershipEpoch: bigint;
 }
+
+/** Which ready-index domains a drain or ready handler processes. */
+export const ReadyDomain = Object.freeze({
+  None: 0,
+  Application: 1 << 0,
+  Infrastructure: 1 << 1,
+  All: (1 << 0) | (1 << 1)
+} as const);
+export type ReadyDomainValue = typeof ReadyDomain[keyof typeof ReadyDomain];
 
 /** Which kind of subject owns a ready-index entry. */
 export const ReadyOwnerKind = Object.freeze({ Node: 1, Spot: 2, Actor: 3 } as const);
@@ -185,6 +194,8 @@ export interface ReceiveRecord {
   readonly domain: number;
   readonly sourceNodeRid: RoutingId | null;
   readonly sourceSpotRid: RoutingId | null;
+  /** Bound-session generation validated for this application record, or zero. */
+  readonly sourceBindingGeneration: bigint;
   readonly sourceActor: ActorRef | null;
   readonly operationId: MeshOperationId;
   readonly operationKind: number;
@@ -198,9 +209,9 @@ export interface ReceiveRecord {
   /** The received parts; the record owns them until they are consumed. */
   readonly parts: Message[];
   /** Reply to a replyable request record; returns the submit outcome. */
-  reply(parts: Message | readonly Message[], flags?: number): SubmitResult;
+  reply(parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
   /** Reply to an actor-join request record with the join result. */
-  replyActorJoin(joinResult: number, parts: Message | readonly Message[], flags?: number): SubmitResult;
+  replyActorJoin(joinResult: number, parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
 }
 
 /** The outcome of draining the ready index into a {@link ReadyBatch}. */

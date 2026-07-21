@@ -61,6 +61,30 @@ inline void run_rl_c1_client_host_lifecycle_probe (const client_options_t &optio
         ensure (reply.value == "profile:fast", "RL-C1 request failed before cleanup");
     }
 
+    for (int index = 1; index <= 12; ++index) {
+        const auto marker = "rl-c1-route-" + std::to_string (index);
+        const auto reply =
+          consumer.post ("/route/request/recreated-mesh")
+            .body (scenario_route_req_t{.value = marker})
+            .async<scenario_route_res_t> ()
+            .result ()
+            .value ()
+            .body;
+        ensure (reply.value == "route:" + marker,
+                "RL-C1 recreated RouteMesh request failed at cycle "
+                  + std::to_string (index));
+        ensure (reply.target_rid == "api-a",
+                "RL-C1 recreated RouteMesh selected the wrong provider at cycle "
+                  + std::to_string (index));
+        ensure (
+          reply.source_rid == "rl-c1-route-consumer",
+          "RL-C1 recreated RouteMesh used an unstable source RID at cycle "
+            + std::to_string (index));
+        std::cout << "RL-C1 recreated RouteMesh cycle=" << index
+                  << " target=" << reply.target_rid
+                  << " source=" << reply.source_rid << '\n';
+    }
+
     const auto follow_up = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast",
                                                   .marker = "rl-c1-after-cleanup"})

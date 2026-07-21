@@ -13,7 +13,7 @@ import systems.zlink.e2e.spotservice.shared.GatewayHealthHttpServer;
 import systems.zlink.e2e.spotservice.shared.GatewayOperationSpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -44,8 +44,11 @@ public final class Program {
     }
 
     @Bean
-    GatewayHealthHttpServer gatewayHealthHttpServer(ZLinkSpotManager spots, GatewayOptions options) {
-        return new GatewayHealthHttpServer(options.gatewayHttpEndpoint(), spots);
+    GatewayHealthHttpServer gatewayHealthHttpServer(
+        ZLinkSpotManager spots,
+        systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime meshRuntime,
+        GatewayOptions options) {
+        return new GatewayHealthHttpServer(options.gatewayHttpEndpoint(), spots, meshRuntime);
     }
 
     @Bean
@@ -58,21 +61,21 @@ public final class Program {
                 .traceLogFile(logDir + "/gateway-flow.log")
                 .traceLabel("java-sm-gateway");
             boolean spotOnly = gateway.spotOnly();
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(spotOnly ? gateway.spotEndpoint() : gateway.routeEndpoint())
+                .setRoutingId(RoutingId.from(gatewayRid));
+            node.addSpotFactory(GatewayOperationSpot.class);
             if (spotOnly) {
-                System.out.println("[topology] role=gateway route_mesh=disabled");
+                System.out.println("[topology] role=gateway route_mesh=enabled route_channel=disabled");
             } else {
-                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                    .enableServer(gateway.routeEndpoint())
-                    .enableClient(gateway.routeAEndpoint())
-                    .enableClient(gateway.routeBEndpoint())
-                    .setRoutingId(RoutingId.from(gatewayRid));
+                node.channelName(Contracts.ROUTE_CHANNEL);
+                node.peerConnections().connect(
+                    RoutingId.from("play-a"), gateway.routeAEndpoint());
+                node.peerConnections().connect(
+                    RoutingId.from("play-b"), gateway.routeBEndpoint());
             }
             options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
                 .enableClient(gateway.ingressAEndpoint());
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-            node.enableRouter(gateway.spotEndpoint())
-                .setRoutingId(RoutingId.from(gatewayRid));
-            node.addSpotFactory(GatewayOperationSpot.class);
         };
     }
 

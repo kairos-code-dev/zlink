@@ -44,8 +44,8 @@ evidence/admin endpoint, state, dispatch-error observer, request/send handler를
 
 ## public API/harness 대기
 
-- `RL-A1`: Java runtime 오류 정규화와 RuntimeMonitoring socket source identity 수정이 필요하다.
-- `RL-B4`: Java 10.0.0 route-mesh runtime options 구현이 필요하다.
+- 위 `RL-A1`에는 Java runtime 오류 정규화와 RuntimeMonitoring socket source identity 수정이 필요하다.
+- 위 `RL-B4`에는 Java 10.0.0 route-mesh runtime options 구현이 필요하다.
 
 ## 검증 방법
 

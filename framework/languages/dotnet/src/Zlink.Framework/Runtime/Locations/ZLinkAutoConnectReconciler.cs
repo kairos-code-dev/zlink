@@ -208,9 +208,34 @@ internal sealed class ZLinkAutoConnectReconciler
         }
     }
 
+    internal async ValueTask NoteStoreFailureAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnterStoreFailure();
+        }
+        finally
+        {
+            _reconcileGate.Release();
+        }
+    }
+
     private async ValueTask TickCoreAsync(CancellationToken cancellationToken)
     {
         if (_ownerCleanupStarted) return;
+        // A read that began before a store outage can complete after Redis
+        // resumes without ever throwing. The owner heartbeat is the shared
+        // recovery authority: while it is unhealthy, even a successful list
+        // result must not drive a disconnect diff from an incomplete lease
+        // snapshot.
+        if (!_runtime.GetHealthSnapshot().Healthy)
+        {
+            EnterStoreFailure();
+            return;
+        }
+
         var pendingWeight = Volatile.Read(ref _pendingLocalWeight);
         if (_localRow is { } localRow
             && pendingWeight >= 0
@@ -226,9 +251,16 @@ internal sealed class ZLinkAutoConnectReconciler
         IReadOnlyList<ZLinkMeshNodeDescriptor> rows;
         try
         {
-            await PublishLocalAsync(cancellationToken).ConfigureAwait(false);
-            rows = await _peers.ListLiveMeshNodesAsync(_local.MeshName, cancellationToken)
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(_options.OwnerLeaseRenewTimeout);
+            await PublishLocalAsync(deadline.Token).ConfigureAwait(false);
+            rows = await _peers.ListLiveMeshNodesAsync(_local.MeshName, deadline.Token)
                 .ConfigureAwait(false);
+            if (!_runtime.GetHealthSnapshot().Healthy)
+            {
+                EnterStoreFailure();
+                return;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -240,10 +272,7 @@ internal sealed class ZLinkAutoConnectReconciler
             // keep already-ready connections alive. While the store is
             // unreachable the loop cannot accept expanded desired sets, so
             // no new outbound connects are started after the failure.
-            _storeFailureStartedAt ??= _time.GetTimestamp();
-            _storeFailed = true;
-            _localPublished = false;
-            RetryPendingTargetsWithinStoreFailureGrace();
+            EnterStoreFailure();
             return;
         }
 
@@ -341,6 +370,14 @@ internal sealed class ZLinkAutoConnectReconciler
                     _local.AutoConnectType, _local.MeshName, connected, disconnected),
                 cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private void EnterStoreFailure()
+    {
+        _storeFailureStartedAt ??= _time.GetTimestamp();
+        _storeFailed = true;
+        _localPublished = false;
+        RetryPendingTargetsWithinStoreFailureGrace();
     }
 
     private int WeightOf(ZLinkMeshNodeDescriptor row) =>

@@ -22,6 +22,7 @@ class location_lifecycle_t
     {
         location_write_status_t status = location_write_status_t::ignored_stale;
         actor_location_t actor;
+        std::uint64_t store_generation = 0;
         std::chrono::system_clock::time_point updated_at{};
     };
 
@@ -74,18 +75,19 @@ class location_lifecycle_t
             result = _runtime->write_actor (actor, location_write_intent_t::takeover);
         }
         if (result.status != location_write_status_t::stored) {
-            return {result.status, std::move (actor), result.updated_at};
+            return {result.status, std::move (actor), 0, result.updated_at};
         }
 
-        actor.generation = result.generation;
         {
             std::lock_guard lock (_state->gate);
             if (_state->active) {
                 _state->actors[actor_key (actor)] =
-                  actor_claim_t{actor, std::move (deactivate)};
+                  actor_claim_t{actor, static_cast<std::uint64_t> (result.generation),
+                                std::move (deactivate)};
             }
         }
-        return {result.status, std::move (actor), result.updated_at};
+        return {result.status, std::move (actor),
+                static_cast<std::uint64_t> (result.generation), result.updated_at};
     }
 
     location_write_result_t update_actor_location (actor_location_t actor)
@@ -102,14 +104,13 @@ class location_lifecycle_t
         }
 
         actor.owner_id = tracked.actor.owner_id;
-        actor.generation = tracked.actor.generation;
         const auto result = _runtime->write_actor (actor, location_write_intent_t::renew);
         if (result.status == location_write_status_t::stored) {
             std::lock_guard lock (_state->gate);
             const auto found = _state->actors.find (key);
             if (found != _state->actors.end ()) {
-                actor.generation = result.generation;
                 found->second.actor = std::move (actor);
+                found->second.store_generation = result.generation;
             }
             return result;
         }
@@ -183,7 +184,7 @@ class location_lifecycle_t
             std::lock_guard lock (_state->gate);
             const auto found = _state->actors.find (actor_key (key));
             if (found != _state->actors.end ()) {
-                found->second.actor.generation = result.generation;
+                found->second.store_generation = result.generation;
             }
             return result;
         }
@@ -196,20 +197,22 @@ class location_lifecycle_t
 
     location_write_result_t release_actor (actor_location_key_t key)
     {
-        actor_location_t actor;
+        actor_claim_t claim;
         {
             std::lock_guard lock (_state->gate);
             const auto found = _state->actors.find (actor_key (key));
             if (found == _state->actors.end ()) {
                 return {location_write_status_t::ignored_stale, 0, {}};
             }
-            actor = found->second.actor;
+            claim = found->second;
             // Untracked before the write: a stale remove after another owner's
             // takeover is ignored by the store and must not fire deactivation.
             _state->actors.erase (found);
         }
 
-        return _runtime->remove_actor (actor_location_key_t{actor.actor_id}, actor.generation);
+        return _runtime->remove_actor (
+          actor_location_key_t{claim.actor.mesh_name, claim.actor.actor_id},
+          claim.store_generation);
     }
 
     std::size_t tracked_actor_count () const
@@ -222,6 +225,7 @@ class location_lifecycle_t
     struct actor_claim_t
     {
         actor_location_t actor;
+        std::uint64_t store_generation = 0;
         actor_deactivate_callback_t deactivate;
     };
 
@@ -235,8 +239,7 @@ class location_lifecycle_t
 
     static std::string actor_key (const actor_location_t &actor)
     {
-        return actor_key (
-          actor_location_key_t{actor.actor_id});
+        return actor_key (actor_location_key_t{actor.mesh_name, actor.actor_id});
     }
 
     static std::string actor_key (const actor_location_key_t &key)

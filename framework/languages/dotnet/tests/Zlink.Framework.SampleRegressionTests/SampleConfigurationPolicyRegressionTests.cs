@@ -135,7 +135,9 @@ public sealed partial class RegressionTests
                      Path.Combine(e2eRoot, "ResilienceLifecycle", "Client", "Support",
                          "ResilienceProcessManager.cs"),
                      Path.Combine(e2eRoot, "StoreFailure", "Client", "Support",
-                         "StoreFailureProcessManager.cs")
+                         "StoreFailureProcessManager.cs"),
+                     Path.Combine(e2eRoot, "LocationMessaging", "Client", "Support",
+                         "DynamicClusterLauncher.cs")
                  })
         {
             var source = File.ReadAllText(path);
@@ -455,7 +457,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("Task.Delay", scenario, StringComparison.Ordinal);
         Assert.Contains("if (response is not null)", scenario, StringComparison.Ordinal);
         Assert.Contains("!response.Accepted", scenario, StringComparison.Ordinal);
-        Assert.Contains("DrainAsync(context.NodeB)", scenario, StringComparison.Ordinal);
+        Assert.Contains("pending_admission_expired actor={actorId}", scenario, StringComparison.Ordinal);
+        Assert.Contains("WaitRuntimeEvidenceAsync(context.NodeB, 30000", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("DrainAsync(context.NodeB)", scenario, StringComparison.Ordinal);
 
         var clientRoot = Path.Combine(ResolveDotnetRoot(), "e2e", "SpotActorTransfer", "Client");
         var clientSource = string.Join('\n', Directory.EnumerateFiles(clientRoot, "*.cs", SearchOption.AllDirectories)
@@ -586,7 +590,10 @@ public sealed partial class RegressionTests
             "Server", "ZoneNode", "Infrastructure", "ZLink", "Spots", "Handlers",
             "PlayerMoveHandlers.cs"));
 
-        Assert.Contains("RequestToActor(actorRef.Value, new BotTickReq())", spot, StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestToActor(ZoneWorldNames.ActorsChannel, actorRef.Value, new BotTickReq())",
+            spot,
+            StringComparison.Ordinal);
         Assert.Contains(".Yield<BotTickRes>(cancellationToken)", spot, StringComparison.Ordinal);
         Assert.DoesNotContain("SendToActor(actorRef.Value, new BotTick", spot, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, BotTickReq, BotTickRes>",

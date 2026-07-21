@@ -32,8 +32,8 @@ test('location key codec matches the dotnet canonical segment format', () => {
     '4:game12:726f6f6d2d31'
   );
   assert.equal(
-    internal.ZLinkLocationKeyCodec.encodeActorKey({ actorId: 'alice' }),
-    '5:alice'
+    internal.ZLinkLocationKeyCodec.encodeActorKey({ meshName: 'play', actorId: 'alice' }),
+    '4:play5:alice'
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodeRouteKey({

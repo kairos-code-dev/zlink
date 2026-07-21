@@ -45,6 +45,8 @@ Linux 또는 WSL에서 샘플 하나를 실행하려면 해당 runner를 호출�
 ./framework/languages/cpp/samples/run_samples.sh
 ```
 
+DeliveryDispatch 샘플은 현재 Linux 또는 WSL용 `run_sample.sh`로 전체 client/server 흐름을 검증한다.
+
 일부 샘플만 실행할 때는 샘플 이름을 지정한다.
 
 ```bash

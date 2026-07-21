@@ -4,27 +4,35 @@ import type {
   RequestCallback,
   RequestResult,
   SendFlagsValue,
-  SpotNodeModeValue,
-  SpotNodePeerEntry,
-  SpotNodeStatus,
-  SpotNodeSubjectEntry,
+  MeshNode,
+  MeshNodeStatus,
+  MeshPeerEntry,
+  ReadyBatch,
+  ReceiveBatch,
   TopicMessage,
   MonitorEventType,
   MessageLike
 } from '@zlink-systems/zlink';
 import type {
-  RoutingId
+  RoutingId,
+  ZLinkSubmitResult
 } from '../../../contracts';
 import type { Message } from '../../../contracts/Common/Message';
 
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;
-export type ZLinkBackendSpotNodeMode = SpotNodeModeValue;
+export type ZLinkBackendSpotNodeMode = number;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB = 1 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ROUTED = 2 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY = 0x00000001;
 export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND = 0x00000003;
+
+export type ZLinkBackendMeshNode = MeshNode;
+export type ZLinkBackendMeshNodeStatus = MeshNodeStatus;
+export type ZLinkBackendMeshPeerEntry = MeshPeerEntry;
+export type ZLinkBackendReadyBatch = ReadyBatch;
+export type ZLinkBackendReceiveBatch = ReceiveBatch;
 
 export enum ZLinkBackendSpotDispatchEvent {
   SubscribeReadable = 1,
@@ -40,6 +48,21 @@ export interface ZLinkBackendActorRef {
   readonly nodeRid: RoutingId;
   readonly actorId: string;
   readonly generation: bigint;
+}
+
+export interface ZLinkBackendActorSessionNode {
+  sendActorBoundSession(
+    actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
+    parts: readonly Message[],
+    flags: number
+  ): ZLinkSubmitResult;
+  closeActorBoundSession(
+    actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): Promise<void>;
 }
 
 export interface ZLinkBackendActorJoinResult {
@@ -241,6 +264,8 @@ export interface ZLinkBackendReadablePoller {
 }
 
 export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
+  readonly sendTimeoutMs: number;
+  onSendReady(handler: () => void): void;
   setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
   onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;
   send(routingId: RoutingId, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
@@ -301,9 +326,9 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   disconnectPeer(endpoint: string): void;
   createSpot(): ZLinkBackendSpot;
   getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };
-  status(): SpotNodeStatus;
-  peers(): readonly SpotNodePeerEntry[];
-  subjects(): readonly SpotNodeSubjectEntry[];
+  status(): ZLinkBackendMeshNodeStatus;
+  peers(): readonly ZLinkBackendMeshPeerEntry[];
+  subjects(): readonly unknown[];
   createRouteBridge(): ZLinkBackendSpotRouteBridge;
   entrySpot(): ZLinkBackendSpot;
   createActor(actorId: string, request?: Message | readonly Message[]): ZLinkBackendActorRef;
@@ -326,6 +351,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   destroyActor(actor: ZLinkBackendActorRef, timeoutMs: number, signal?: AbortSignal): Promise<void>;
   sendActorBoundSession(
     actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
     parts: readonly Message[],
     flags: ZLinkBackendSendFlags
   ): boolean;
@@ -351,14 +377,21 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
     sourceNodeRid: RoutingId,
     sourceSessionRid: RoutingId
   ): void;
-  closeActorBoundSession(actor: ZLinkBackendActorRef, timeoutMs: number, signal?: AbortSignal): Promise<void>;
+  closeActorBoundSession(
+    actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): Promise<void>;
   dispose(): Promise<void>;
 }
 
 export interface ZLinkBackendSpot extends ZLinkBackendObject {
   readonly routingId: RoutingId;
+  /** Core lifecycle generation when this object adapts a formal RouteMesh Spot. */
+  readonly lifecycleGeneration?: bigint;
   setRoutingId(routingId: RoutingId): void;
-  setSubscription(topic: string): void;
+  setSubscription(channelName: string, topic: string): void;
   subscribe(result: TopicMessage, flags: ZLinkBackendRecvFlags): boolean;
   recvActorLifecycle(flags: ZLinkBackendRecvFlags): unknown | null;
   drainReply(): number;
@@ -407,8 +440,15 @@ export interface ZLinkChannelBackendAdapter {
   createReadablePoller(socket: ZLinkBackendConnectableSocket): ZLinkBackendReadablePoller;
 }
 
-export interface ZLinkSpotBackendAdapter {
-  createSpotNode(context: ZLinkBackendContext, mode: ZLinkBackendSpotNodeMode): ZLinkBackendSpotNode;
+export interface ZLinkMeshBackendAdapter {
+  createMeshNode(
+    context: ZLinkBackendContext,
+    options: {
+      readonly meshName: string;
+      readonly routingId?: RoutingId;
+      readonly trustProfile?: string;
+    }
+  ): ZLinkBackendMeshNode;
 }
 
 export interface ZLinkStreamBackendAdapter {
@@ -421,7 +461,7 @@ export interface ZLinkMonitoringBackendAdapter {
 
 export interface ZLinkBackendAdapterFactory {
   createChannelAdapter(): ZLinkChannelBackendAdapter;
-  createSpotAdapter(): ZLinkSpotBackendAdapter;
+  createMeshAdapter(): ZLinkMeshBackendAdapter;
   createStreamAdapter(): ZLinkStreamBackendAdapter;
   createMonitoringAdapter(): ZLinkMonitoringBackendAdapter;
 }

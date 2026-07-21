@@ -268,7 +268,7 @@ response에만** 들어간다.
 - **pending request 매칭은 `request_seq`가 정본이다.** `Response`와 `Error`에는 **packet name
   필드가 아예 없으므로**(`name_len = 0`) 이름으로 대조할 수도 없다. 어떤 응답인지는 sequence가
   이미 정한다. STREAM session에서 Actor request를 relay할 때도 같은 terminal reply 원칙을 사용한다
-  ([Session Actor Dispatch §5](../server/31-session-actor-dispatch.ko.md#5-request-reply)).
+  ([Session Actor Dispatch §3](../server/31-session-actor-dispatch.ko.md#3-inbound-dispatch와-reply)).
 - **request timeout·close·disconnect가 발생하면 pending request는 모두 실패로 완료하고 map에서
   제거한다.** 재연결 후 자동 재전송하지 않는다(§6).
 

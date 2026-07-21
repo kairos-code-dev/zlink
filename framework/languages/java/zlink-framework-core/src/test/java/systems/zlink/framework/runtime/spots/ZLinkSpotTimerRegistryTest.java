@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -48,6 +49,44 @@ final class ZLinkSpotTimerRegistryTest {
         }
     }
 
+    @Test
+    void replacingTimerNameSuppressesPreviousGeneration() throws Exception {
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        CountDownLatch replacementHandled = new CountDownLatch(1);
+        AtomicBoolean previousHandled = new AtomicBoolean();
+        ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
+            RoutingId.from("spot"),
+            executor,
+            type -> type == PreviousTimerHandler.class
+                ? new PreviousTimerHandler(previousHandled)
+                : new ReplacementTimerHandler(replacementHandled),
+            List.of(),
+            null,
+            "test",
+            operation -> operation.get());
+        registry.setSpot(new TestSpot());
+
+        try {
+            registry.add(
+                "timer",
+                Duration.ofMillis(250),
+                PreviousTimerHandler.class,
+                null);
+            registry.add(
+                "timer",
+                Duration.ofMillis(1),
+                ReplacementTimerHandler.class,
+                null);
+
+            assertTrue(replacementHandled.await(2, TimeUnit.SECONDS));
+            Thread.sleep(300);
+            assertFalse(previousHandled.get());
+        } finally {
+            registry.close();
+            executor.shutdownNow();
+        }
+    }
+
     public static final class TimerHandler {
         private final CountDownLatch handled;
         private final AtomicBoolean enteredDispatch;
@@ -61,6 +100,30 @@ final class ZLinkSpotTimerRegistryTest {
             if (enteredDispatch.get()) {
                 handled.countDown();
             }
+        }
+    }
+
+    public static final class PreviousTimerHandler {
+        private final AtomicBoolean handled;
+
+        PreviousTimerHandler(AtomicBoolean handled) {
+            this.handled = handled;
+        }
+
+        public void handle(ZLinkSpot<?> spot, ZLinkTimerTick tick) {
+            handled.set(true);
+        }
+    }
+
+    public static final class ReplacementTimerHandler {
+        private final CountDownLatch handled;
+
+        ReplacementTimerHandler(CountDownLatch handled) {
+            this.handled = handled;
+        }
+
+        public void handle(ZLinkSpot<?> spot, ZLinkTimerTick tick) {
+            handled.countDown();
         }
     }
 

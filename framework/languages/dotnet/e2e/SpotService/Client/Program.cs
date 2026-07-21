@@ -47,6 +47,13 @@ await (options.OperationGroup switch
     "sm-c3" => SmC3SpotMeshMessagingScenario.RunAsync(playA),
     "sm-c4" => SmC4SpotPublisherClientScenario.RunAsync(playA, gateway),
     "sm-c5" => SmC5RemoteSpotPublishSubscribeScenario.RunAsync(playA, playB),
+    "sm-c6" => SmC6LogicalMulticastBackpressureScenario.RunAsync(
+        gateway,
+        playA,
+        playB,
+        options.SmC6PauseAckFile,
+        options.SmC6ResumeAckFile,
+        options.SmC6BlockingPauseAckFile),
     "sm-d1" => SmD1LocalActorSessionRelayScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
     "sm-d2" => SmD2RemoteActorSessionRelayScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
     "sm-d3" => SmD3EntryAndUserSpotSessionRelayScenario.RunAsync(playA, options.SessionAStreamEndpoint),

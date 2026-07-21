@@ -6,7 +6,7 @@ using Zlink.Framework.Contracts.Timers;
 
 namespace SpotService.Server.Play.Handlers;
 
-[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotMsgTopic)]
+[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotChannel, SpotServiceNames.SpotMsgTopic)]
 internal sealed class SpotMsgHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotMsg>
 {
@@ -17,6 +17,23 @@ internal sealed class SpotMsgHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-msg|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+[ZLinkSpotSubscriptionHandler(SpotServiceNames.SpotChannel, SpotServiceNames.SpotMsgTopic)]
+internal sealed class SpotBackpressureMsgHandler(EvidenceStore evidence)
+    : IZLinkSpotSubscriptionHandler<ScenarioUserSpot, SpotBackpressureMsg>
+{
+    public ValueTask HandleAsync(
+        ScenarioUserSpot spot,
+        SpotBackpressureMsg message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"spot-backpressure|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            + $"|marker={message.Marker}|sequence={message.Sequence}");
         return ValueTask.CompletedTask;
     }
 }

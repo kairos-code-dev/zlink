@@ -105,15 +105,16 @@ final class ZLinkRoutedActorTransferHandler {
         CompletionStage<List<Message>> tail =
             CompletableFuture.completedFuture(new ArrayList<>());
         for (ZLinkActorSpotRoutePackets.WireHandoffPacket packet : backlog) {
-            tail = tail.thenCompose(replies -> host.dispatchLocalSessionActor(
+            tail = tail.thenCompose(replies -> host.dispatchTransferBacklog(
                     actorRef, packet.header(), packet.payload())
-                .thenApply(reply -> appendReply(replies, packet, reply)));
+                .thenApply(reply -> appendReply(replies, actorRef, packet, reply)));
         }
         return tail.thenApply(List::copyOf);
     }
 
     private List<Message> appendReply(
         List<Message> replies,
+        ZLinkBackendActorRef actorRef,
         ZLinkActorSpotRoutePackets.WireHandoffPacket packet,
         java.util.Optional<Message> reply) {
         try {
@@ -123,7 +124,7 @@ final class ZLinkRoutedActorTransferHandler {
                 return replies;
             }
             host.replyTransferredRequestDirect(
-                packet.header(), packet.replyRoute(), reply);
+                actorRef, packet.header(), packet.replyRoute(), reply);
             replies.add(Message.from(new byte[0]));
             return replies;
         } finally {

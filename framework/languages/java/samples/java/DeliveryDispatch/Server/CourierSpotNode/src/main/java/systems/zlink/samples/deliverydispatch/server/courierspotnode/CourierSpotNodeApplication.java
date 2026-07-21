@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -38,12 +38,9 @@ public final class CourierSpotNodeApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(topology.logDirectory() + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
-            ZLinkSpotNodeBuilder spotNode = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
-            spotNode.enableRouter(selected.routerEndpoint())
+            ZLinkMeshNodeBuilder spotNode = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
+            spotNode.listen(selected.routerEndpoint())
                 .setRoutingId(RoutingId.from(selected.nodeRid()));
-            spotNode.configureEntrySpot()
-                .setRoutingId(RoutingId.from(selected.nodeRid()));
-            spotNode.enablePubSub(selected.spotEndpoint());
             spotNode.addEntrySpot(CourierEntrySpot.class);
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);
             // The courier's decision goes back to dispatch as its own one-way message, so this

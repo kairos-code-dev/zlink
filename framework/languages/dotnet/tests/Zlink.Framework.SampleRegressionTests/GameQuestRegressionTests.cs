@@ -5,6 +5,35 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void GameQuest_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    {
+        var sampleRoot = ResolveSampleRoot("GameQuest");
+        var hosts = new[]
+        {
+            Path.Combine(sampleRoot, "Server", "GameApi", "Program.cs"),
+            Path.Combine(sampleRoot, "Server", "QuestMission", "Program.cs")
+        };
+
+        foreach (var host in hosts)
+        {
+            var source = File.ReadAllText(host);
+            Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleNames.GameApiChannel)", source, StringComparison.Ordinal);
+            Assert.Contains("QuestOwnerChannelFor", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleNames.MeshName)", source, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("AddHandlerGroup(SampleNames.GameApiHandlerGroup)", File.ReadAllText(hosts[0]),
+            StringComparison.Ordinal);
+        Assert.Contains("AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup)", File.ReadAllText(hosts[1]),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GameQuest_Runner_Uses_Isolated_Docker_Redis_And_Stream_Actions()
     {
         var sampleRoot = ResolveSampleRoot("GameQuest");
@@ -65,7 +94,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$ports = New-SamplePorts -Count 21 -BasePort 0", powershellRunner,
+        Assert.Contains("$ports = New-SamplePorts -Count 10 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("$GAMEQUEST_REDIS_KEY_PREFIX = \"gamequest:dotnet:${RunId}:\"", powershellRunner,
             StringComparison.Ordinal);
@@ -133,8 +162,6 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("MapPost(\"/feature/unlock\"", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", gameApiProgram, StringComparison.Ordinal);
         Assert.DoesNotContain("AddFanoutChannel", missionProgram, StringComparison.Ordinal);
-        Assert.DoesNotContain("AddRouteMeshChannel", gameApiProgram, StringComparison.Ordinal);
-        Assert.DoesNotContain("AddRouteMeshChannel", missionProgram, StringComparison.Ordinal);
 
         Assert.DoesNotContain("StoreDirectory", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("GAMEQUEST_STORE_DIR", topology, StringComparison.Ordinal);
@@ -150,7 +177,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("File.ReadAllText", questStore, StringComparison.Ordinal);
         Assert.DoesNotContain("File.WriteAllText", questStore, StringComparison.Ordinal);
         Assert.DoesNotContain("MapPost(\"/internal/apply\"", missionProgram, StringComparison.Ordinal);
-        Assert.Contains("AddRouteMesh(ownerChannel)", missionProgram,
+        Assert.Contains("AddRouteMesh(SampleNames.MeshName)", missionProgram,
             StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
         Assert.Contains("IZLinkRouteClient", eventDispatcher, StringComparison.Ordinal);

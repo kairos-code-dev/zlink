@@ -1,12 +1,15 @@
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace AutomaticTurnDispatch.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("HoldReq")]
-internal sealed class HoldHandler(EvidenceStore evidence)
+internal sealed class HoldHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotRequestHandler<AwaitProbeSpot, HoldReq, AutomaticTurnDispatchRes>
 {
     public async ValueTask<AutomaticTurnDispatchRes> HandleAsync(
@@ -16,7 +19,8 @@ internal sealed class HoldHandler(EvidenceStore evidence)
     {
         evidence.Add(
             $"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        await spot.Context.Outbound.RequestToChannel(
+        await routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .Timeout(TimeSpan.FromSeconds(5))
@@ -30,7 +34,9 @@ internal sealed class HoldHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotPacketHandler("HoldMsg")]
-internal sealed class HoldCommandHandler(EvidenceStore evidence)
+internal sealed class HoldCommandHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, HoldMsg>
 {
     public async ValueTask HandleAsync(
@@ -40,7 +46,8 @@ internal sealed class HoldCommandHandler(EvidenceStore evidence)
     {
         evidence.Add(
             $"hold-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-        await spot.Context.Outbound.RequestToChannel(
+        await routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "hold"))
             .Timeout(TimeSpan.FromSeconds(5))
@@ -53,7 +60,9 @@ internal sealed class HoldCommandHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotRequestHandler("AwaitReq")]
-internal sealed class AwaitHandler(EvidenceStore evidence)
+internal sealed class AwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotRequestHandler<AwaitProbeSpot, AwaitReq, AutomaticTurnDispatchRes>
 {
     public async ValueTask<AutomaticTurnDispatchRes> HandleAsync(
@@ -65,7 +74,8 @@ internal sealed class AwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"{prefix}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        var call = spot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "await"))
             .Timeout(TimeSpan.FromSeconds(5));
@@ -85,7 +95,9 @@ internal sealed class AwaitHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotPacketHandler("AwaitMsg")]
-internal sealed class AwaitCommandHandler(EvidenceStore evidence)
+internal sealed class AwaitCommandHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, AwaitMsg>
 {
     public async ValueTask HandleAsync(
@@ -97,7 +109,8 @@ internal sealed class AwaitCommandHandler(EvidenceStore evidence)
         evidence.Add(
             $"{prefix}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
             + $"|correlation={request.CorrelationId}|handler=spot");
-        var call = spot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, "await"))
             .Timeout(TimeSpan.FromSeconds(5));

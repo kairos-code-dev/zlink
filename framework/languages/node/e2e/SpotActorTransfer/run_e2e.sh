@@ -9,7 +9,7 @@ SCENARIO="${1:-all}"
 CHILD_RUN="${2:-}"
 if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
   for child_scenario in all-core ST-F3; do
-    "$0" "$child_scenario" --child-run
+    "$ROOT_DIR/run_e2e.sh" "$child_scenario" --child-run
   done
   echo "spot-actor-transfer e2e result=passed"
   exit 0
@@ -69,11 +69,11 @@ wait_topology() {
     --key-prefix "$REDIS_KEY_PREFIX" \
     --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
     --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
-    --peer spot-mesh spot-actor-transfer spot \
-      "$NODE_A_ROUTER" "$NODE_A_PUBSUB" \
-      "$NODE_B_ROUTER" "$NODE_B_PUBSUB" \
-      "$SESSION_A_ROUTER" "$SESSION_A_PUBSUB" \
-      "$SESSION_B_ROUTER" "$SESSION_B_PUBSUB"
+    --peer route-mesh spot-actor-transfer router \
+      "$NODE_A_ROUTER" \
+      "$NODE_B_ROUTER" \
+      "$SESSION_A_ROUTER" \
+      "$SESSION_B_ROUTER"
 }
 
 pids=()

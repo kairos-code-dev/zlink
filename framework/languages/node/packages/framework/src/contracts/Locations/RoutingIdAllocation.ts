@@ -2,7 +2,7 @@ import type { RoutingId } from '../Common';
 import type { ZLinkLocationOwnerToken } from './Writes';
 
 export interface ZLinkRoutingIdSlotAllocationMember {
-  readonly channelName: string;
+  readonly meshName: string;
   readonly routingIdPrefix: string;
 }
 

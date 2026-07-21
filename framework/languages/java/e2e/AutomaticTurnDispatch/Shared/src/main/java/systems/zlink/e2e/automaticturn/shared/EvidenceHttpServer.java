@@ -231,6 +231,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         if (name.contains("pending_requests.count")) return "{request}";
         if (name.contains("transfers")) return "{transfer}";
         if (name.contains("actors.handed_off")) return "{actor}";
+        if (name.contains("rooms.drained")) return "{room}";
         if (name.contains("fanout")) return "{message}";
         if (name.contains("reconnects")) return "{event}";
         return "{connection}";

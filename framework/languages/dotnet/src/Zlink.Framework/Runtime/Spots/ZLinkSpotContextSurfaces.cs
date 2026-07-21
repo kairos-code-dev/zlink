@@ -4,7 +4,7 @@ internal interface IZLinkSpotHandlerRegistrySink
 {
     void AddPacket<THandler>() where THandler : class;
 
-    void AddSubscribe<THandler>(string topic) where THandler : class;
+    void AddSubscribe<THandler>(string channelName, string topic) where THandler : class;
 
     void AddHandler<THandler>() where THandler : class;
 
@@ -27,9 +27,9 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
         activation.AddPacket<THandler>();
     }
 
-    public void AddSubscribe<THandler>(string topic) where THandler : class
+    public void AddSubscribe<THandler>(string channelName, string topic) where THandler : class
     {
-        activation.AddSubscribe<THandler>(topic);
+        activation.AddSubscribe<THandler>(channelName, topic);
     }
 
     public void AddHandler<THandler>() where THandler : class

@@ -17,7 +17,7 @@
 > [location-runtime](../../40-location-runtime.ko.md),
 > [channel-topology](../../10-channel-topology.ko.md).
 >
-> **public 타입과 시그니처는 [handler-interfaces](02-handler-interfaces.ko.md)가 소유한다.**
+> **public 타입과 시그니처는 [인터페이스 목차](interfaces/README.ko.md)가 범주별로 소유한다.**
 > 이 문서는 Node framework의 시스템 구조와 package 경계만 정의하며 사용 예제와 튜토리얼은 포함하지 않는다.
 > client connector는 [stream-connector](../../../stream-connector/languages/typescript/03-stream-connector.ko.md)가 소유한다.
 
@@ -81,14 +81,15 @@ subpath는 제공하지 않는다. 정확한 계약은
 | 객체 | 등록 | framework가 resolve하는 시점 |
 |---|---|---|
 | channel/fanout/route handler | `providers` + handler 등록 표면 | channel이 그 handler group을 dispatch할 때 |
-| Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | MeshNode·SpotManager가 Spot을 활성화할 때 |
+| Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | MeshNode·SpotManager가 local Spot을 활성화할 때 |
+| Instance Spot | `providers` + `addInstanceSpotFactory(...)` | 논리 주소의 첫 호출이 선택한 MeshNode에서 activation을 시작할 때 |
 | Spot packet·subscribe·actor·timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 그 Spot 실행 문맥에서 처리할 때 |
 | actor factory | `providers` + MeshNode `actorFactory(...)` | ActorManager가 actor를 생성할 때 |
 | stream session(또는 factory) | `providers` + `streams` 설정 | stream 연결을 session으로 활성화할 때 |
 
 ### 4.1 Provider token
 
-**주입에 쓰는 token 심볼은 framework가 export한다.**
+**주입에 쓰는 token 심볼은 `@zlink-systems/nestjs` package root가 export한다.**
 
 **항상 등록되는 provider:**
 
@@ -99,9 +100,8 @@ subpath는 제공하지 않는다. 정확한 계약은
 | `ZLINK_FANOUT_CLIENT` | fanout client |
 | `ZLINK_BOUND_SESSION_FACTORY` | bound session factory |
 | `ZLINK_RUNTIME_EVENT_PUBLISHER` | runtime event publisher |
-| `ZLINK_DRAIN_CONTROL` | graceful drain control |
 | `ZLINK_CHANNEL_RUNTIME_OPTIONS` | channel runtime options |
-| `ZLinkDrainHealthIndicator` | drain readiness와 health indicator |
+| `ZLinkDrainHealthIndicator` | MeshNode readiness와 health indicator |
 | `ZLINK_MESSAGE_METADATA_POLICY` | metadata 정책 |
 | `ZLINK_FRAMEWORK_RUNTIME` · `ZLINK_FRAMEWORK_REGISTRATION` | runtime과 등록 |
 
@@ -115,8 +115,41 @@ subpath는 제공하지 않는다. 정확한 계약은
 | `ZLINK_ACTOR_MANAGER` | actor manager가 활성화됨 |
 | `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | location store가 하나 이상 등록됨 |
 | `ZLINK_LOCATION_RUNTIME_QUERY` | location store가 하나 이상 등록됨 |
+| `ZLINK_ROUTE_MESH_RUNTIME` | RouteMesh MeshNode가 하나 이상 등록됨 |
+| `ZLINK_CLIENT_SERVER_RUNTIME` | ClientServer Channel이 하나 이상 등록됨 |
+| `ZLINK_FANOUT_RUNTIME` | endpoint 없는 automatic fanout subscriber가 하나 이상 등록됨 |
 
 **등록되지 않은 token을 주입하면 NestJS의 미해결 의존성 오류로 실패한다.**
+
+`@zlink-systems/framework` package root는 host 단위 `ZLinkFrameworkRuntime`,
+`ZLinkRouteMeshRuntime`, `ZLinkClientServerRuntime`과
+`ZLinkFanoutRuntime` interface를 export한다. `@zlink-systems/nestjs` package root는 각각에 대응하는
+`ZLINK_ROUTE_MESH_RUNTIME`, `ZLINK_CLIENT_SERVER_RUNTIME`, `ZLINK_FANOUT_RUNTIME` token을 export한다.
+NestJS의 `ZLinkModule`은 위 표의 등록 조건을 만족하는 runtime instance를 해당 token의 provider로 등록하고
+dynamic module 밖에서도 주입할 수 있도록 provider를 export한다.
+
+정적 `forRoot`에서 RouteMesh MeshNode가 없으면 RouteMesh runtime provider를, ClientServer Channel이 없으면
+ClientServer runtime provider를 만들지 않는다. Manual fanout subscriber만 있으면 fanout runtime provider를
+만들지 않는다. `forRootFactory`에서 구성을 동적으로 정하는 경우에는 아래 공통 규칙대로 각 조건부 provider 값이
+`null`일 수 있다. Application은 다음 token으로 public monitoring interface만 주입받는다.
+
+```ts
+class MonitoringProbe {
+    constructor(
+        @Inject(ZLINK_FRAMEWORK_RUNTIME)
+        frameworkRuntime: ZLinkFrameworkRuntime, // host 전체 Retire·Shutdown과 termination 관측 표면이다.
+        @Inject(ZLINK_ROUTE_MESH_RUNTIME)
+        routeMeshRuntime: ZLinkRouteMeshRuntime | null, // 동적 구성에 RouteMesh 역할이 없으면 null이다.
+        @Inject(ZLINK_CLIENT_SERVER_RUNTIME)
+        clientServerRuntime: ZLinkClientServerRuntime | null, // 동적 구성에 ClientServer 역할이 없으면 null이다.
+        @Inject(ZLINK_FANOUT_RUNTIME)
+        fanoutRuntime: ZLinkFanoutRuntime | null, // 동적 구성에 automatic subscriber가 없으면 null이다.
+    ) {}
+}
+```
+
+네 provider는 public runtime interface만 노출하며 내부 socket monitor나 private runtime object를 주입하지
+않는다. Fanout runtime은 manual endpoint mutation handle을 제공하지 않는다.
 
 > **`forRoot`와 `forRootFactory`의 실패 모양이 다르다.** 정적 `forRoot`에서 역할이 없으면
 > **provider 자체가 등록되지 않는다.** `forRootFactory`처럼 동적으로 구성하는 경로에서는 역할이
@@ -138,8 +171,8 @@ NestJS provider lifecycle hook에 runtime을 배선한다.
 | hook | 시점 |
 |---|---|
 | `onModuleInit()` | **모든 provider가 DI에서 resolvable해진 뒤** runtime 시동(bind·connect·discovery) |
-| `onModuleDestroy()` | 별도 shutdown hook을 실행하지 않는면 no-op |
-| `onApplicationShutdown()` | drain을 실행하고 runtime 자원을 정리 |
+| `onModuleDestroy()` | application shutdown hook이 실행되지 않은 경우 `Shutdown`을 시작하고 같은 terminal result를 기다림 |
+| `onApplicationShutdown()` | 진행 중인 host 종료에 합류하거나 `Shutdown`을 시작하고 runtime 자원을 정리 |
 
 **`onModuleInit()`에서 시동하는 이유는 socket bind/connect와 discovery가 시작되려면 handler
 provider가 모두 resolvable해야 하기 때문이다.**
@@ -159,13 +192,15 @@ lifecycle 참여자는 **framework → monitoring** 순서다.
 
 ### 5.2 종료 순서
 
-shutdown은 stop signal을 먼저 전달한 뒤 소유자별로 정리한다.
+NestJS shutdown hook은 host 단위 `Shutdown`을 사용한다. Rolling maintenance에서 continuity가 필요하면
+operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.retire(...)`를 호출한다. Hook이 시작될 때 이미
+`Retire`가 `Draining`을 시작했다면 새 `Shutdown`을 만들지 않고 그 shared operation에 합류한다.
 
-1. monitoring source를 detach한다.
-2. stream, Spot, channel runtime을 순서대로 dispose한다.
-3. location lifecycle과 location runtime을 정리한다.
-4. listener task가 종료되는 것을 기다린다.
-5. runtime state와 backend context를 마지막에 dispose한다.
+1. Framework runtime의 host maintenance barrier에서 신규 application admission을 닫는다.
+2. 이미 수락한 작업과 진행 중인 transfer·STREAM barrier를 deadline까지 처리한다.
+3. Spot·Actor authority, descriptor, listener와 raw transport를 Framework runtime이 정리한다.
+4. terminal result와 event를 완료한 뒤 monitoring observer를 닫는다.
+5. NestJS adapter가 registration과 backend context를 마지막에 정리한다.
 
 ### 5.3 fail-fast
 
@@ -183,8 +218,10 @@ backend 어댑터 포트는
 | 역할 | 의미 | bind |
 |---|---|---|
 | `addRouteMesh(...)` | 물리 MeshName과 MeshNode를 등록한다 | **필요** |
-| `listen(...)` | MeshNode가 공유하는 ROUTER endpoint를 연다 | **필요** |
-| `channelName(...)` | 논리 membership과 handler namespace를 추가한다 | 불필요 |
+| `listen(port?)` | MeshNode가 공유하는 ROUTER listener를 연다. 자동 discovery에서 생략하면 port 0을 사용한다 | 불필요 |
+| `channel(name).server()` | 논리 server membership과 handler namespace를 추가한다 | 불필요 |
+| `channel(name).client()` | server membership 없이 ChannelName 호출 역할을 추가한다 | 불필요 |
+| `addClientServerChannel(name)` | 단방향 request 시작 권한이 구분된 별도 topology를 구성한다 | role에 따름 |
 | `peerConnections()` | endpoint 또는 expected RID가 있는 manual peer intent를 추가한다 | 불필요 |
 | `enablePublisher(...)` | 이 channel로 event를 publish한다 | **필요** |
 | `enableSubscriber(...)` | 이 channel의 event를 받는다 | 불필요 |
@@ -200,12 +237,14 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 
 | builder | 켜는 것 |
 |---|---|
-| `addRouteMesh(meshName).listen(endpoint)` | owner MeshNode와 ROUTER endpoint |
-| `channelName(name)` | Logical Multicast 범위와 handler namespace |
+| `addRouteMesh(meshName).listen(port?)` | owner MeshNode와 ROUTER listener |
+| `channel(name).server()` | Logical Multicast 범위와 handler namespace |
+| `channel(name).client()` | server membership이 없는 outbound ChannelName 호출 |
 | `configureSpotPublisher()` | Logical Multicast의 ROUTER 송신 설정 |
 | `configureEntrySpot({ routingId })` | Entry Spot facade 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |
+| `addInstanceSpotFactory(type, TSpot, options?)` | 이 노드가 activation할 수 있는 actor-free Instance Spot 타입 |
 | MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
 중복 등록과 타입 규칙은
@@ -216,17 +255,39 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 **Entry Spot routing id는 MeshNode가 시작되기 전에 적용해야 한다.** startup 이후 변경은
 잠근다([MeshNode §2](../../21-mesh-node.ko.md)).
 
-1. backend 어댑터가 native Entry Spot facade를 얻는다.
-2. `routingId`가 설정되어 있으면 facade에 적용한다.
-3. MeshNode ROUTER를 bind한다.
-4. discovery, MeshNode route client와 publisher를 구성한다.
-5. Entry Spot activation과 dispatch pump를 시작한다.
+1. 등록된 `routingId`와 MeshNode 구성을 검증한다.
+2. MeshNode listener를 시작한다.
+3. discovery와 outbound route를 구성한다.
+4. Entry Spot과 message dispatch를 활성화한다.
 
-**native facade 호출은 backend 어댑터 내부에서만 일어난다. public surface에 바인딩 객체를 노출하지
-않는다.**
+이 순서는 Framework runtime의 내부 책임이다. Public interface에는 transport 객체나 runtime handle을
+노출하지 않는다.
 
 Route ingress 규칙은 [spot-messaging §6](../../20-spot-messaging.ko.md)이 소유한다. 수동 outbound
 peer는 route mesh builder의 `connect(...)`로 지정한다.
+
+### 7.2 Instance Spot 등록
+
+Instance Spot factory는 배포 사이에도 유지되는 type 이름과 actor-free Spot provider를 함께 등록한다. 같은
+MeshNode에서 같은 type 이름이나 같은 provider class를 User Spot factory와 중복 등록하면 socket bind 전에
+구성 오류로 실패한다. 생략한 option field에는 `maxActiveInstances=4096`과
+`activationTimeoutMs=3000`을 적용한다. 명시한 값은 0보다 커야 하며 `0`을 기본값 sentinel로
+사용하지 않는다.
+
+Instance Spot provider는 direct packet과 timer handler만 등록할 수 있다. Actor handler나 Logical Multicast
+subscription을 등록하면 location을 `Ready`로 바꾸기 전에 activation이 실패한다. Provider scope는 activation이
+실패하거나 Instance Spot이 닫힐 때 한 번만 정리한다.
+
+논리 주소의 `meshName`과 같은 MeshNode Entry Spot이 source가 된다. Framework는 location resolve와 target
+선택, owner claim을 처리한 뒤 target provider를 resolve한다. Application은 target node, owner token,
+generation이나 retry option을 전달하지 않는다. 이 경로에는 root location store가 필요하며, 등록하지 않으면
+startup validation에서 실패한다.
+
+Framework runtime은 location이 없는 cold placement transport를 binding의 public raw socket API로
+구성한다. 이 transport는 Framework public interface로 export하지 않는다.
+`Ready` location은 node RID, Spot RID와 `ObjectGeneration`으로 구성한 정식 `SpotHandle` route를
+재사용한다. `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`과 exact owner lease fence는
+Framework 내부에서만 사용하며 application callback에 전달하지 않는다.
 
 ## 8. STREAM 등록
 
@@ -234,7 +295,7 @@ peer는 route mesh builder의 `connect(...)`로 지정한다.
 - **한 stream node에는 session을 하나만 둔다.**
 - **bind endpoint는 반드시 있어야 한다.**
 raw stream의 `write(...)`, `close(...)` 시그니처는
-[02 인터페이스](02-handler-interfaces.ko.md)가 소유하고, backpressure 의미는
+[Channel과 routing 인터페이스](interfaces/02-channel-messaging.ko.md)가 소유하고, backpressure 의미는
 [stream-session](../../30-stream-session.ko.md)이 소유한다.
 
 ## 9. Session actor dispatch 등록

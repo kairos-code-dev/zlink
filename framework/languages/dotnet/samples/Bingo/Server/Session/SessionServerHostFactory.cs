@@ -42,25 +42,22 @@ public static class SessionServerHostFactory
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
-                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session-api")
-                .SetRoutingIdAllocationGroup("bingo.session.api")
-                .Listen("tcp://127.0.0.1:0");
-            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            var mesh3 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
                 .SetRoutingIdAllocationGroup("bingo.session")
-                .Listen(session.RouterEndpoint);
-            mesh3.ChannelName(SampleNames.RoomSpotDiscovery);
+                .Listen(session.MeshEndpoint);
+            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.PlayChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.RoomChannel).SetWeight(0);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
-                .EnableActorDispatch(SampleNames.RoomSpotDiscovery)
+                .EnableActorDispatch(SampleNames.MeshName)
                 .AddSession<BingoSession>();
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "session",
             "bingo.session",
-            [SampleNames.RoomSpotDiscovery]));
+            [SampleNames.MeshName]));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

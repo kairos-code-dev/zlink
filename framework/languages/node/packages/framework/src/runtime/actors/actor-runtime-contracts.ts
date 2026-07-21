@@ -10,7 +10,7 @@ import type {
   ZLinkProviderResolver
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import type { ZLinkBackendSpotNode } from '../backend/contracts';
+import type { ZLinkBackendMeshNode, ZLinkMeshCompletionTable } from '../backend';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import type { ZLinkActorTransferRegistry } from './actor-transfer-registry';
@@ -25,9 +25,17 @@ export interface ZLinkActorJoinRuntimeResult<TReply> {
 export interface ZLinkActorManagerOptions {
   readonly actorFactories: ReadonlyMap<string, Type | ZLinkActorFactory>;
   readonly joinCoordinator?: ZLinkActorJoinCoordinator;
+  readonly actorMeshNameProvider?: (actorType: string) => string | undefined;
+  readonly actorLeaveSpot?: (
+    meshName: string,
+    spotRid: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ) => Promise<void>;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
-  readonly nativeActorNode?: ZLinkBackendSpotNode;
-  readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
+  readonly nativeActorNode?: ZLinkBackendMeshNode;
+  readonly nativeActorNodeProvider?: () => ZLinkBackendMeshNode | undefined;
+  readonly nativeActorCompletionTableProvider?: () => ZLinkMeshCompletionTable | undefined;
   readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
   readonly actorRefResolver?: ZLinkActorRuntimeLocationLookup;
   readonly actorCreatedNotifier?: (
@@ -47,7 +55,11 @@ export interface ZLinkActorManagerOptions {
 }
 
 export interface ZLinkActorRuntimeLocationLookup {
-  resolveActorRef(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+  resolveActorRef(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ActorRef | undefined>;
 }
 
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;

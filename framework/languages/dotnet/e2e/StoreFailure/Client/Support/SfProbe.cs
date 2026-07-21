@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using StoreFailure.Shared;
 using Zlink.HttpClient;
 
@@ -22,8 +23,10 @@ internal static class SfProbe
         bool? storeHealthy = null,
         bool? ownerLeaseHealthy = null,
         bool requireLastError = false,
-        bool requireLastRefresh = false) =>
-        new(storeHealthy, ownerLeaseHealthy, requireLastError, requireLastRefresh, ToMilliseconds(timeout));
+        bool requireLastRefresh = false,
+        DateTimeOffset? lastRefreshAfter = null) =>
+        new(storeHealthy, ownerLeaseHealthy, requireLastError, requireLastRefresh,
+            ToMilliseconds(timeout), lastRefreshAfter);
 
     public static async Task<RuntimeStatusRes> GetStatusAsync(ZLinkHttpClient node)
     {
@@ -59,6 +62,42 @@ internal static class SfProbe
             throw new InvalidOperationException(failure, error);
         }
     }
+
+    public static async Task<RouteReadyRes> WaitRouteReadyAsync(
+        ZLinkHttpClient node,
+        int minimumReadyMembers,
+        string[]? readyRids,
+        string[]? notReadyRids,
+        TimeSpan timeout,
+        string failure)
+    {
+        try
+        {
+            return (await node.Post("/query/routes/wait")
+                .Body(new RouteReadyWaitReq(
+                    minimumReadyMembers,
+                    readyRids ?? [],
+                    notReadyRids ?? [],
+                    ToMilliseconds(timeout)))
+                .Async<RouteReadyRes>()).Body;
+        }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException(failure, error);
+        }
+    }
+
+    public static Task<RouteReadyRes> WaitProviderRoutesAsync(
+        ZLinkHttpClient node,
+        TimeSpan timeout,
+        string failure) =>
+        WaitRouteReadyAsync(
+            node,
+            minimumReadyMembers: 2,
+            readyRids: ["api-a", "api-b"],
+            notReadyRids: null,
+            timeout: timeout,
+            failure: failure);
 
     public static async Task<RuntimeStatusRes> WaitStatusAsync(
         ZLinkHttpClient node,
@@ -109,9 +148,9 @@ internal static class SfProbe
         string scenario)
     {
         var replies = new List<ProfileRes>();
-        var deadline = DateTimeOffset.UtcNow + window;
+        var elapsed = Stopwatch.StartNew();
         var index = 0;
-        while (DateTimeOffset.UtcNow < deadline)
+        while (elapsed.Elapsed < window)
         {
             var marker = $"{markerPrefix}-{index++}";
             var reply = await RequestAsync(consumer, marker);

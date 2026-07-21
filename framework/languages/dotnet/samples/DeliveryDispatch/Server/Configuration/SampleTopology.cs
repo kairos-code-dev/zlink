@@ -15,35 +15,11 @@ public sealed class SampleTopologyOptions
 
     public string DispatchHttpUrl { get; set; } = string.Empty;
 
-    public string DispatchChannelEndpoint { get; set; } = string.Empty;
-
-    public string DispatchSpotRouterEndpoint { get; set; } = string.Empty;
-
-    public string TrackingChannelEndpoint { get; set; } = string.Empty;
-
-    public string TrackingSpotRouterEndpoint { get; set; } = string.Empty;
-
-    public string TrackingSpotEndpoint { get; set; } = string.Empty;
+    public string MeshEndpoint { get; set; } = string.Empty;
 
     public string CustomerStreamEndpoint { get; set; } = string.Empty;
 
-    public string CustomerSpotRouterEndpoint { get; set; } = string.Empty;
-
-    public string CustomerSpotEndpoint { get; set; } = string.Empty;
-
     public string CourierStreamEndpoint { get; set; } = string.Empty;
-
-    public string CourierSessionSpotRouterEndpoint { get; set; } = string.Empty;
-
-    public string CourierSessionSpotEndpoint { get; set; } = string.Empty;
-
-    public string CourierActorNode1RouterEndpoint { get; set; } = string.Empty;
-
-    public string CourierActorNode1Endpoint { get; set; } = string.Empty;
-
-    public string CourierActorNode2RouterEndpoint { get; set; } = string.Empty;
-
-    public string CourierActorNode2Endpoint { get; set; } = string.Empty;
 
     /// <summary>Turns the file's values into the typed topology, failing on the first one that is
     /// missing. Routing ids are names the sample owns, so they are not configuration.</summary>
@@ -64,24 +40,12 @@ public sealed class SampleTopologyOptions
             Required(RedisEndpoint, nameof(RedisEndpoint)),
             Required(RedisKeyPrefix, nameof(RedisKeyPrefix)),
             Select(dispatch, DispatchHttpUrl, nameof(DispatchHttpUrl)),
-            Select(dispatch, DispatchChannelEndpoint, nameof(DispatchChannelEndpoint)),
-            Select(dispatch, DispatchSpotRouterEndpoint, nameof(DispatchSpotRouterEndpoint)),
-            Select(tracking, TrackingChannelEndpoint, nameof(TrackingChannelEndpoint)),
-            Select(tracking, TrackingSpotRouterEndpoint, nameof(TrackingSpotRouterEndpoint)),
-            Select(tracking, TrackingSpotEndpoint, nameof(TrackingSpotEndpoint)),
+            Required(MeshEndpoint, nameof(MeshEndpoint)),
             Select(customer, CustomerStreamEndpoint, nameof(CustomerStreamEndpoint)),
-            Select(customer, CustomerSpotRouterEndpoint, nameof(CustomerSpotRouterEndpoint)),
-            Select(customer, CustomerSpotEndpoint, nameof(CustomerSpotEndpoint)),
             RoutingId.From(SampleNames.CustomerSpotNode),
             Select(courierSession, CourierStreamEndpoint, nameof(CourierStreamEndpoint)),
-            Select(courierSession, CourierSessionSpotRouterEndpoint, nameof(CourierSessionSpotRouterEndpoint)),
-            Select(courierSession, CourierSessionSpotEndpoint, nameof(CourierSessionSpotEndpoint)),
             RoutingId.From(SampleNames.CourierSessionSpotNode),
-            Select(courierNode1, CourierActorNode1RouterEndpoint, nameof(CourierActorNode1RouterEndpoint)),
-            Select(courierNode1, CourierActorNode1Endpoint, nameof(CourierActorNode1Endpoint)),
             RoutingId.From(SampleNames.CourierActorNode1),
-            Select(courierNode2, CourierActorNode2RouterEndpoint, nameof(CourierActorNode2RouterEndpoint)),
-            Select(courierNode2, CourierActorNode2Endpoint, nameof(CourierActorNode2Endpoint)),
             RoutingId.From(SampleNames.CourierActorNode2));
     }
 
@@ -101,24 +65,12 @@ public sealed record SampleTopology(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string DispatchHttpUrl,
-    string DispatchChannelEndpoint,
-    string DispatchSpotRouterEndpoint,
-    string TrackingChannelEndpoint,
-    string TrackingSpotRouterEndpoint,
-    string TrackingSpotEndpoint,
+    string MeshEndpoint,
     string CustomerStreamEndpoint,
-    string CustomerSpotRouterEndpoint,
-    string CustomerSpotEndpoint,
     RoutingId CustomerSpotNodeRid,
     string CourierStreamEndpoint,
-    string CourierSessionSpotRouterEndpoint,
-    string CourierSessionSpotEndpoint,
     RoutingId CourierSessionSpotNodeRid,
-    string CourierActorNode1RouterEndpoint,
-    string CourierActorNode1Endpoint,
     RoutingId CourierActorNode1Rid,
-    string CourierActorNode2RouterEndpoint,
-    string CourierActorNode2Endpoint,
     RoutingId CourierActorNode2Rid)
 {
     public CourierActorNodePlacement CourierPlacement(string courierId)

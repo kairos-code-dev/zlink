@@ -22,14 +22,8 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
     switch (type) {
       case ZLinkLocationAutoConnectType.RouteMesh:
         return role === ZLinkLocationRole.Router;
-      case ZLinkLocationAutoConnectType.ClientServer:
-        return role === ZLinkLocationRole.Router || role === ZLinkLocationRole.Dealer;
-      case ZLinkLocationAutoConnectType.DealerMesh:
-        return role === ZLinkLocationRole.Dealer;
       case ZLinkLocationAutoConnectType.Fanout:
         return role === ZLinkLocationRole.Pub || role === ZLinkLocationRole.Sub;
-      case ZLinkLocationAutoConnectType.SpotMesh:
-        return role === ZLinkLocationRole.Spot || role === ZLinkLocationRole.Router;
       default:
         return false;
     }
@@ -51,11 +45,6 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
         continue;
       }
 
-      if (local.autoConnectType === ZLinkLocationAutoConnectType.SpotMesh) {
-        if (local.role !== ZLinkLocationRole.Spot || peer.role !== ZLinkLocationRole.Spot) continue;
-        addSpotMeshTargets(desired, local, peer);
-        continue;
-      }
       if (!shouldDialAutoConnectPeer(local, peer)) continue;
 
       const target: ZLinkAutoConnectTarget = {
@@ -76,27 +65,6 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
   }
 });
 
-function addSpotMeshTargets(
-  desired: Map<string, ZLinkAutoConnectTarget>,
-  local: ZLinkAutoConnectLocal,
-  peer: ZLinkPeerLocation
-): void {
-  const baseKey = autoConnectTargetKeyOf(peer);
-  if (localIsPairwiseInitiator(local, peer)) {
-    desired.set(`${baseKey}|router`, {
-      targetKey: `${baseKey}|router`, nodeRid: peer.nodeRid, role: peer.role,
-      endpoint: peer.endpoint, ownerId: peer.ownerId, connectionKind: 'spot-router'
-    });
-  }
-  const pubEndpoint = peer.metadata?.['pub-endpoint'];
-  if (pubEndpoint !== undefined && pubEndpoint.length > 0) {
-    desired.set(`${baseKey}|pub`, {
-      targetKey: `${baseKey}|pub`, role: peer.role, endpoint: pubEndpoint,
-      ownerId: peer.ownerId, connectionKind: 'spot-pub'
-    });
-  }
-}
-
 export function formatAutoConnectDecision(local: ZLinkAutoConnectLocal, peer: ZLinkPeerLocation): string {
   if (peer.autoConnectType !== local.autoConnectType) {
     return `skip:type=${zlinkLocationAutoConnectTypeName(peer.autoConnectType)}`;
@@ -115,17 +83,6 @@ export function formatAutoConnectDecision(local: ZLinkAutoConnectLocal, peer: ZL
   }
   if (isAutoConnectSelf(local, peer)) {
     return 'skip:self';
-  }
-  if (local.autoConnectType === ZLinkLocationAutoConnectType.SpotMesh) {
-    if (local.role !== ZLinkLocationRole.Spot || peer.role !== ZLinkLocationRole.Spot) {
-      return `skip:role=${zlinkLocationRoleName(peer.role)}`;
-    }
-    const router = localIsPairwiseInitiator(local, peer);
-    const pub = (peer.metadata?.['pub-endpoint']?.length ?? 0) > 0;
-    if (router && pub) return 'dial:spot-router+spot-pub';
-    if (router) return 'dial:spot-router';
-    if (pub) return 'dial:spot-pub';
-    return `skip:not-initiator localRid=${formatAutoConnectRid(local.nodeRid)}`;
   }
   if (!shouldDialAutoConnectPeer(local, peer)) {
     return `skip:not-initiator localRid=${formatAutoConnectRid(local.nodeRid)}`;
@@ -155,17 +112,8 @@ function shouldDialAutoConnectPeer(local: ZLinkAutoConnectLocal, peer: ZLinkPeer
       return local.role === ZLinkLocationRole.Router
         && peer.role === ZLinkLocationRole.Router
         && localIsPairwiseInitiator(local, peer);
-    case ZLinkLocationAutoConnectType.ClientServer:
-      return local.role === ZLinkLocationRole.Dealer && peer.role === ZLinkLocationRole.Router;
-    case ZLinkLocationAutoConnectType.DealerMesh:
-      return local.role === ZLinkLocationRole.Dealer
-        && peer.role === ZLinkLocationRole.Dealer
-        && localIsPairwiseInitiator(local, peer);
     case ZLinkLocationAutoConnectType.Fanout:
       return local.role === ZLinkLocationRole.Sub && peer.role === ZLinkLocationRole.Pub;
-    case ZLinkLocationAutoConnectType.SpotMesh:
-      return local.role === ZLinkLocationRole.Spot
-        && peer.role === ZLinkLocationRole.Spot;
     default:
       return false;
   }

@@ -10,7 +10,6 @@
 #include <chrono>
 #include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -121,7 +120,6 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
                                                            : "SM-B6 disconnect stream auth failed");
     }
     (void) disconnect_stream.close ();
-    std::this_thread::sleep_for (std::chrono::milliseconds (300));
 }
 
 } // namespace zlink::framework::e2e::spot_service::client::scenarios

@@ -8,8 +8,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var globalSpotFactories = new HashSet<Type>();
         var globalEntrySpots = new HashSet<Type>();
         var channelHandlerEndpoints = registration.ScannedHandlerCatalog.ChannelEndpoints;
-        var routeHandlerEndpoints = registration.ScannedHandlerCatalog.RouteEndpoints;
-        var handlerExposure = ZLinkHandlerExposureCatalog.Build(channelHandlerEndpoints, routeHandlerEndpoints);
+        var handlerExposure = ZLinkHandlerExposureCatalog.Build(channelHandlerEndpoints);
 
         ValidateDispatchOptions(registration.DispatchOptions);
 
@@ -24,18 +23,13 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         foreach (var streamNode in registration.StreamNodes.Values) ValidateStreamNode(streamNode, registration);
 
-        foreach (var routed in registration.RouteChannels.Values)
-            ValidateRouteChannel(
-                routed,
-                registration.Locations.Enabled,
-                handlerExposure);
-
         foreach (var spotNode in registration.SpotNodes.Values)
             ValidateSpotNode(
                 spotNode,
                 registration,
                 globalSpotFactories,
-                globalEntrySpots);
+                globalEntrySpots,
+                handlerExposure);
 
         var actorCapableNodes = registration.SpotNodes.Values
             .Where(static spotNode => spotNode.ActorFactories.Count > 0)

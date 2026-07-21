@@ -4,8 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   type ActorRef,
-  type ZLinkDrainControl,
-  type ZLinkDrainResult,
+  type ZLinkMeshDrainResult,
+  type ZLinkRouteMeshRuntime,
   type ZLinkMessage,
   type ZLinkSession,
   type ZLinkSessionContext,
@@ -13,7 +13,7 @@ import {
   type ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLINK_DRAIN_CONTROL, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_MESH_RUNTIME, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import {
   ObservabilityOpsNames,
   type BindActorSessionReq,
@@ -120,10 +120,10 @@ Module({
           .messageFlow(options.messageFlowEnabled ? ZLinkMessageFlowLogMode.KeyTransitions : ZLinkMessageFlowLogMode.Off)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
-        builder.addSpotMesh(ObservabilityOpsNames.mesh)
-          .enableRouter(options.routerEndpoint, options.rid)
+        builder.addRouteMesh(ObservabilityOpsNames.mesh)
+          .listen(options.routerEndpoint).routingId(options.rid)
           .configureEntrySpot({ routingId: options.rid })
-          .enablePubSub(options.pubSubEndpoint, options.rid);
+          .channelName(ObservabilityOpsNames.mesh);
         builder.addStreamNode(`${ObservabilityOpsNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
           .registerSession(GatewaySessionFactory);
@@ -136,18 +136,21 @@ Module({
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
-  let drainResult: ZLinkDrainResult | undefined;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  let drainResult: ZLinkMeshDrainResult | undefined;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     createFlowLogRoute(options.logDir, options.rid),
     { method: 'GET', path: '/metrics', handle: () => metrics.snapshot() },
-    { method: 'GET', path: '/drain/status', handle: () => ({ ready: drain.isReady(), result: drainResult }) },
+    { method: 'GET', path: '/drain/status', handle: () => ({
+      ready: routeMeshRuntime.isReady(ObservabilityOpsNames.mesh), result: drainResult
+    }) },
     {
       method: 'POST', path: '/drain', handle: (body) => {
         const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
-        void drain.drain(deadlineMs).then((result) => { drainResult = result; });
+        void routeMeshRuntime.drain(ObservabilityOpsNames.mesh, deadlineMs)
+          .then((result) => { drainResult = result; });
         return { started: true };
       }
     },

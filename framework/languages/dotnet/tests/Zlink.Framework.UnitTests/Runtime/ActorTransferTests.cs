@@ -248,6 +248,8 @@ public sealed class ActorTransferTests
 
     private sealed class TestActorContext : IZLinkActorContext
     {
+        public string MeshName => "play";
+
         public RoutingId? SpotRid => null;
 
         public IZLinkBoundSession BoundSession => throw new NotSupportedException();

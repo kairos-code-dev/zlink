@@ -43,12 +43,12 @@ class SessionApplication {
                 .enableClient()
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableClient()
-            val node = options.addSpotMesh(SampleNames.SupportSpotDiscovery)
-            node.enableRouter(session.routerEndpoint)
+            val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
+            node.listen(session.routerEndpoint)
                 .setRoutingId(session.routingId)
-            node.enablePubSub(session.pubEndpoint)
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint)
+                .enableActorDispatch(SampleNames.SupportSpotDiscovery)
                 .registerSession(SupportChatSession::class.java)
         }
 

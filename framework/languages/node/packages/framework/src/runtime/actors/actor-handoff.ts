@@ -73,6 +73,11 @@ interface ForwardingEntry {
 
 export interface ZLinkActorHandoffCoordinatorOptions {
   readonly routedTransport: ZLinkActorRoutedJoinTransport;
+  readonly forwardActorPacket?: (
+    actorId: string,
+    actor: ActorRef,
+    packet: ZLinkActorHandoffPacket
+  ) => Promise<unknown>;
   readonly forwardWindowMs?: number;
   readonly requestTimeoutMs?: number;
   readonly onMarker?: (marker: string, actorId: string, index?: number) => void;
@@ -90,6 +95,7 @@ export interface ZLinkActorHandoffCoordinatorOptions {
 export class ZLinkActorHandoffCoordinator {
   private readonly active = new Map<string, ActiveHandoff>();
   private readonly forwarding = new Map<string, ForwardingEntry>();
+  private readonly staleGenerations = new Map<string, Set<bigint>>();
   private readonly forwardWindowMs: number;
 
   constructor(private readonly options: ZLinkActorHandoffCoordinatorOptions) {
@@ -147,6 +153,16 @@ export class ZLinkActorHandoffCoordinator {
     }
 
     const forwarding = this.forwarding.get(actorId);
+    const staleGeneration = fallbackActorRef?.generation;
+    if (
+      forwarding === undefined
+      &&
+      staleGeneration !== undefined
+      && this.staleGenerations.get(actorId)?.has(staleGeneration) === true
+    ) {
+      this.options.onMarker?.('stale_fail_fast', actorId);
+      return Promise.reject(actorLocationStale(actorId));
+    }
     if (
       forwarding !== undefined &&
       fallbackActorRef !== undefined &&
@@ -181,6 +197,19 @@ export class ZLinkActorHandoffCoordinator {
     return handoff.pending.map((entry) => entry.packet);
   }
 
+  snapshotCoreBacklog(actorId: string): readonly ZLinkActorHandoffPacket[] {
+    const handoff = this.requireActive(actorId);
+    let snapshotIndex = -1;
+    while (
+      snapshotIndex + 1 < handoff.pending.length
+      && handoff.pending[snapshotIndex + 1].packet.returnResponse === false
+    ) {
+      snapshotIndex++;
+    }
+    handoff.snapshotIndex = snapshotIndex;
+    return handoff.pending.slice(0, snapshotIndex + 1).map((entry) => entry.packet);
+  }
+
   complete(
     actorId: string,
     target: ZLinkSpotRouteTarget,
@@ -213,6 +242,15 @@ export class ZLinkActorHandoffCoordinator {
     return actorId === undefined ? this.forwarding.size : Number(this.forwarding.has(actorId));
   }
 
+  pendingCount(actorId: string): number {
+    return this.active.get(actorId)?.pending.length ?? 0;
+  }
+
+  isKnownStale(actor: ActorRef): boolean {
+    return this.forwarding.has(actor.actorId) === false
+      && this.staleGenerations.get(actor.actorId)?.has(actor.generation) === true;
+  }
+
   recordStaleFailure(actorId: string): void {
     this.options.onMarker?.('stale_fail_fast', actorId);
   }
@@ -238,6 +276,12 @@ export class ZLinkActorHandoffCoordinator {
     target: ZLinkSpotRouteTarget,
     targetActorRef: ActorRef
   ): ForwardingEntry {
+    let stale = this.staleGenerations.get(actorId);
+    if (stale === undefined) {
+      stale = new Set();
+      this.staleGenerations.set(actorId, stale);
+    }
+    stale.add(oldGeneration);
     const previous = this.forwarding.get(actorId);
     if (previous !== undefined) clearTimeout(previous.deadline);
     const expiresAt = Date.now() + this.forwardWindowMs;
@@ -290,6 +334,9 @@ export class ZLinkActorHandoffCoordinator {
     targetActorRef: ActorRef,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
+    if (this.options.forwardActorPacket !== undefined) {
+      return await this.options.forwardActorPacket(actorId, targetActorRef, packet);
+    }
     const payload = encodeForwardedRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,

@@ -26,11 +26,10 @@ export function createProviderEndpoints(
     {
       method: 'POST',
       path: '/fanout/publish',
-      handle: (body) => {
+      handle: async (body) => {
         const event = body as LoadEvent;
-        fanout.publish(
+        await fanout.publish(
           ResilienceNames.fanoutChannel,
-          ResilienceNames.loadTopic,
           new LoadEvent(event.runId, Number(event.sequence))
         ).submit();
         return { status: 'published', sequence: event.sequence };

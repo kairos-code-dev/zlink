@@ -18,13 +18,13 @@ interface ZLinkPendingSubmitOptions {
 
 export class ZLinkAsyncSubmitter {
   private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
-  private queueOffset = 0;
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
   private requestActive = false;
   private readonly timeoutMs: number | undefined;
   private readonly capacity: number;
   private readonly onCommandFailure: ((error: unknown) => void) | undefined;
   private readyRegistered = false;
+  private readyCredit = false;
   private disposed = false;
 
   constructor(
@@ -48,10 +48,28 @@ export class ZLinkAsyncSubmitter {
       undefined,
       onDiscard
     );
-    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
+    this.ensureReadyHandler();
+    if (this.trySubmitPending(pending)) {
+      this.readyCredit = false;
       return pending.promise;
     }
     return this.enqueue(pending);
+  }
+
+  trySubmitCommand(submit: () => boolean, onDiscard?: () => void): boolean {
+    if (this.disposed) {
+      onDiscard?.();
+      return false;
+    }
+    try {
+      const accepted = submit();
+      if (!accepted) {
+        onDiscard?.();
+      }
+      return accepted;
+    } catch (error) {
+      throw discardBeforePending(error, onDiscard);
+    }
   }
 
   submitCommandOneWay(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): void {
@@ -62,7 +80,9 @@ export class ZLinkAsyncSubmitter {
       undefined,
       onDiscard
     );
-    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
+    this.ensureReadyHandler();
+    if (this.trySubmitPending(pending)) {
+      this.readyCredit = false;
       this.finishOneWaySubmission(pending);
       return;
     }
@@ -72,9 +92,8 @@ export class ZLinkAsyncSubmitter {
     if (this.pendingQueueLength() >= this.capacity) {
       this.rejectOneWaySubmission(pending, new ZLinkConfigurationException('ZLink async submit queue is full.'));
     }
-    this.ensureReadyHandler();
     this.queue.push(pending as ZLinkPendingSubmit<unknown>);
-    this.drain();
+    this.consumeReadyCredit();
     this.finishOneWaySubmission(pending);
   }
 
@@ -85,7 +104,9 @@ export class ZLinkAsyncSubmitter {
     onDiscard?: () => void
   ): Promise<TReply> {
     const pending = this.createPending<TReply>(submit, false, signal, timeoutMs, onDiscard);
-    if (this.pendingQueueLength() === 0 && this.trySubmitPending(pending)) {
+    this.ensureReadyHandler();
+    if (!this.requestActive && this.trySubmitPending(pending)) {
+      this.readyCredit = false;
       return pending.promise;
     }
     return this.enqueue(pending);
@@ -96,9 +117,9 @@ export class ZLinkAsyncSubmitter {
       return;
     }
     this.disposed = true;
+    this.readyCredit = false;
     const error = new ZLinkConfigurationException('ZLink async submitter is disposed.');
     this.queue.length = 0;
-    this.queueOffset = 0;
     for (const pending of this.active) {
       pending.reject(error);
     }
@@ -127,20 +148,18 @@ export class ZLinkAsyncSubmitter {
     } catch (error) {
       throw discardBeforePending(error, onDiscard);
     }
-    const pending = new ZLinkPendingSubmit<TReply>(
+    let pending!: ZLinkPendingSubmit<TReply>;
+    pending = new ZLinkPendingSubmit<TReply>(
       submit,
       completeOnAccepted,
       {
         timeoutMs: timeoutMs === -1 ? undefined : timeoutMs ?? this.timeoutMs,
         signal,
         onDiscard
-      }
+      },
+      () => this.completePending(pending as ZLinkPendingSubmit<unknown>)
     );
     this.active.add(pending as ZLinkPendingSubmit<unknown>);
-    pending.promise.then(
-      () => this.active.delete(pending as ZLinkPendingSubmit<unknown>),
-      () => this.active.delete(pending as ZLinkPendingSubmit<unknown>)
-    );
     return pending;
   }
 
@@ -149,14 +168,13 @@ export class ZLinkAsyncSubmitter {
       pending.reject(new ZLinkConfigurationException('ZLink async submitter is disposed.'));
       return pending.promise;
     }
-    if (this.pendingQueueLength() >= this.capacity) {
+    if (this.queue.length >= this.capacity) {
       pending.reject(new ZLinkConfigurationException('ZLink async submit queue is full.'));
       return pending.promise;
     }
 
-    this.ensureReadyHandler();
     this.queue.push(pending as ZLinkPendingSubmit<unknown>);
-    this.drain();
+    this.consumeReadyCredit();
     return pending.promise;
   }
 
@@ -180,21 +198,40 @@ export class ZLinkAsyncSubmitter {
       return;
     }
     this.readyRegistered = true;
-    this.registerSendReady(() => this.drain());
+    this.registerSendReady(() => this.onReady());
   }
 
-  private drain(): void {
+  private onReady(): void {
     if (this.disposed) {
       return;
     }
-    while (this.queueOffset < this.queue.length) {
-      const pending = this.queue[this.queueOffset];
-      if (!this.trySubmitPending(pending)) {
-        return;
-      }
-      this.queueOffset += 1;
+    if (this.queue.length === 0 || (this.queue[0].isRequest && this.requestActive)) {
+      this.readyCredit = true;
+      return;
     }
-    this.compactQueue();
+    this.retryOne();
+  }
+
+  private consumeReadyCredit(): void {
+    if (!this.readyCredit || this.queue.length === 0) {
+      return;
+    }
+    if (this.queue[0].isRequest && this.requestActive) {
+      return;
+    }
+    this.readyCredit = false;
+    this.retryOne();
+  }
+
+  private retryOne(): void {
+    if (this.disposed || this.queue.length === 0) {
+      return;
+    }
+    const pending = this.queue[0];
+    if (!this.trySubmitPending(pending)) {
+      return;
+    }
+    this.removeQueued(pending);
   }
 
   private trySubmitPending<TReply>(pending: ZLinkPendingSubmit<TReply>): boolean {
@@ -221,28 +258,25 @@ export class ZLinkAsyncSubmitter {
 
   private finishRequest(): void {
     this.requestActive = false;
-    this.drain();
+    this.consumeReadyCredit();
   }
 
   private pendingQueueLength(): number {
-    return this.queue.length - this.queueOffset;
+    return this.queue.length;
   }
 
-  private compactQueue(): void {
-    if (this.queueOffset === 0) {
-      return;
-    }
-    if (this.queueOffset === this.queue.length) {
-      this.queue.length = 0;
-      this.queueOffset = 0;
-      return;
-    }
-    if (this.queueOffset >= 64 && this.queueOffset * 2 >= this.queue.length) {
-      this.queue.splice(0, this.queueOffset);
-      this.queueOffset = 0;
-    }
+  private completePending(pending: ZLinkPendingSubmit<unknown>): void {
+    this.active.delete(pending);
+    this.removeQueued(pending);
+  }
+
+  private removeQueued(pending: ZLinkPendingSubmit<unknown>): void {
+    const index = this.queue.indexOf(pending);
+    if (index >= 0) this.queue.splice(index, 1);
   }
 }
+
+export { ZLinkMeshSubmitterRegistry } from './mesh-submitters';
 
 function discardBeforePending(error: unknown, onDiscard: (() => void) | undefined): unknown {
   if (onDiscard === undefined) return error;
@@ -270,7 +304,8 @@ class ZLinkPendingSubmit<TReply> {
   constructor(
     private readonly submit: ZLinkRequestSubmit<TReply>,
     private readonly completeOnAccepted: boolean,
-    private readonly options: ZLinkPendingSubmitOptions
+    private readonly options: ZLinkPendingSubmitOptions,
+    private readonly onSettled: () => void
   ) {
     this.signal = options.signal;
     this.promise = new Promise<TReply>((resolve, reject) => {
@@ -343,6 +378,7 @@ class ZLinkPendingSubmit<TReply> {
     }
     this.completed = true;
     this.cleanup();
+    this.onSettled();
     this.resolvePromise(reply);
   }
 
@@ -364,6 +400,7 @@ class ZLinkPendingSubmit<TReply> {
       }
     }
     this.cleanup();
+    this.onSettled();
     this.rejectPromise(settlementError);
   }
 

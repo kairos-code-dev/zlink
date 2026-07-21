@@ -114,6 +114,17 @@ transfer_state_t *find_transfer_by_id_locked (mesh_node_t *node_,
     return NULL;
 }
 
+void stage_target_owner_fence (owner_state_t &owner_, uint64_t serial_)
+{
+    owner_.fenced_transfer_serial = serial_;
+}
+
+void activate_target_owner_fence (owner_state_t &owner_, uint64_t serial_)
+{
+    if (owner_.fenced_transfer_serial == serial_)
+        owner_.fenced_transfer_serial = 0;
+}
+
 bool peer_admitted_locked (mesh_node_t *node_, const rid_bytes_t &rid_)
 {
     for (size_t i = 0; i < node_->peers.size (); ++i) {
@@ -227,6 +238,69 @@ void send_snapshot_from (mesh_node_t *node_, uint64_t serial_)
     }
 }
 
+void send_actor_ingress_from (mesh_node_t *node_, uint64_t serial_)
+{
+    zlink_actor_transfer_id_t transfer_id;
+    rid_bytes_t peer;
+    const queued_record_t *record = NULL;
+    uint64_t sequence = 0;
+    uint64_t relay_serial = 0;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        transfer_state_t *transfer = find_transfer_locked (node_, serial_);
+        if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE
+            || transfer->phase != ZLINK_ACTOR_TRANSFER_FENCED || !transfer->ready_exchanged)
+            return;
+        std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+          transfer->participants.find (transfer_actor_ingress_participant);
+        if (participant == transfer->participants.end ()
+            || participant->second.acked_high_water >= participant->second.staged.size ())
+            return;
+        sequence = participant->second.acked_high_water + 1;
+        std::map<uint64_t, std::unique_ptr<queued_record_t>>::iterator staged =
+          participant->second.staged.find (sequence);
+        if (staged == participant->second.staged.end ())
+            return;
+        record = staged->second.get ();
+        transfer_id = transfer->transfer_id;
+        peer = transfer->peer_node_rid;
+        if (record->has_reply_token) {
+            mesh_node_t *token_node = NULL;
+            uint64_t reply_serial = 0;
+            zlink_mesh_reply_token_t token = record->reply_token;
+            if (unseal_reply_token (&token, &token_node, &reply_serial) == 0
+                && token_node == node_)
+                relay_serial = reply_serial;
+        }
+    }
+    if (wire_submit_transfer_data (node_, peer, transfer_id,
+                                   transfer_actor_ingress_participant, sequence, *record,
+                                   relay_serial)
+        != ZLINK_SUBMIT_OK) {
+        const int failure_errno = errno;
+        const int32_t failure_result =
+          failure_errno == ENOTCONN
+            ? ZLINK_REQUEST_NOT_CONNECTED
+            : (failure_errno == EAGAIN ? ZLINK_REQUEST_BACKPRESSURED
+                                       : ZLINK_REQUEST_INTERNAL_ERROR);
+        transfer_control_view_t view;
+        bool first_failure = false;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            transfer_state_t *transfer = find_transfer_locked (node_, serial_);
+            if (!transfer)
+                return;
+            first_failure = transfer->data_plane_errno == 0;
+            transfer->data_plane_result = failure_result;
+            transfer->data_plane_errno = failure_errno;
+            view = control_view (*transfer);
+        }
+        if (first_failure)
+            emit_transfer_control (node_, view, ZLINK_ACTOR_TRANSFER_FENCED,
+                                   failure_result, failure_errno);
+    }
+}
+
 bool source_complete_locked (const transfer_state_t &transfer_)
 {
     if (transfer_.role != ZLINK_ACTOR_TRANSFER_SOURCE || !transfer_.seal_requested
@@ -281,10 +355,26 @@ void send_complete_if_ready (mesh_node_t *node_, uint64_t serial_)
 }
 } // namespace
 
+extern "C" int zlink_test_actor_roundtrip_owner_fence ()
+{
+    owner_state_t owner;
+    owner.fenced_transfer_serial = 41;
+    stage_target_owner_fence (owner, 42);
+    if (owner.fenced_transfer_serial != 42)
+        return 1;
+    activate_target_owner_fence (owner, 42);
+    return owner.fenced_transfer_serial == 0 ? 0 : 2;
+}
+
 namespace zlink
 {
 namespace mesh
 {
+void transfer_send_actor_ingress (mesh_node_t *node_, uint64_t transfer_serial_)
+{
+    send_actor_ingress_from (node_, transfer_serial_);
+}
+
 void transfer_handle_ready (mesh_node_t *node_,
                             const rid_bytes_t &source_rid_,
                             const zlink_actor_transfer_id_t &transfer_id_,
@@ -329,13 +419,25 @@ void transfer_handle_ready (mesh_node_t *node_,
 
     if (source_confirm) {
         std::vector<transfer_participant_descriptor_t> negotiated;
+        //  Reserve part of the target's private allowance for ordinary
+        //  Actor ingress. Bound STREAM sessions share the other part.
         stream_sessions_negotiate_actor (node_, actor, serial, transfer_id_, peer,
-                                         offered_messages_, offered_bytes_, &negotiated);
+                                         offered_messages_ / 2, offered_bytes_ / 2,
+                                         &negotiated);
+        const uint64_t actor_ingress_messages =
+          negotiated.empty () ? offered_messages_ : offered_messages_ - offered_messages_ / 2;
+        const uint64_t actor_ingress_bytes =
+          negotiated.empty () ? offered_bytes_ : offered_bytes_ - offered_bytes_ / 2;
         {
             std::lock_guard<std::mutex> lock (node_->mutex);
             transfer_state_t *transfer = find_transfer_locked (node_, serial);
             if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE)
                 return;
+            transfer_participant_state_t actor_ingress;
+            std::map<uint64_t, transfer_participant_state_t>::iterator existing =
+              transfer->participants.find (transfer_actor_ingress_participant);
+            if (existing != transfer->participants.end ())
+                actor_ingress = std::move (existing->second);
             transfer->participants.clear ();
             for (size_t i = 0; i < negotiated.size (); ++i) {
                 transfer_participant_state_t &participant =
@@ -344,12 +446,33 @@ void transfer_handle_ready (mesh_node_t *node_,
                 participant.allowance_messages = negotiated[i].allowance_messages;
                 participant.allowance_bytes = negotiated[i].allowance_bytes;
             }
+            actor_ingress.binding_generation = 1;
+            actor_ingress.allowance_messages = std::min (
+              actor_ingress.allowance_messages, actor_ingress_messages);
+            actor_ingress.allowance_bytes =
+              std::min (actor_ingress.allowance_bytes, actor_ingress_bytes);
+            if (actor_ingress.staged.size () > actor_ingress.allowance_messages
+                || actor_ingress.staged_bytes > actor_ingress.allowance_bytes) {
+                transfer->data_plane_result = ZLINK_REQUEST_BACKPRESSURED;
+                transfer->data_plane_errno = ENOBUFS;
+            }
+            transfer->participants[transfer_actor_ingress_participant] =
+              std::move (actor_ingress);
             transfer->ready_exchanged = true;
             node_->cv.notify_all ();
+        }
+        if (actor_ingress_messages != 0 && actor_ingress_bytes != 0) {
+            transfer_participant_descriptor_t descriptor;
+            descriptor.participant_id = transfer_actor_ingress_participant;
+            descriptor.binding_generation = 1;
+            descriptor.allowance_messages = actor_ingress_messages;
+            descriptor.allowance_bytes = actor_ingress_bytes;
+            negotiated.push_back (descriptor);
         }
         wire_submit_transfer_ready (node_, peer, transfer_id_, actor, expected, final_sequence,
                                     ZLINK_ACTOR_TRANSFER_SOURCE, 0, 0, negotiated);
         send_snapshot_from (node_, serial);
+        send_actor_ingress_from (node_, serial);
         return;
     }
 
@@ -566,7 +689,9 @@ void transfer_handle_ack (mesh_node_t *node_,
         serial = transfer->serial;
         node_->cv.notify_all ();
     }
-    if (participant_ack)
+    if (participant_ack && participant_id_ == transfer_actor_ingress_participant)
+        send_actor_ingress_from (node_, serial);
+    else if (participant_ack)
         stream_sessions_ack_actor (node_, actor, serial, participant_id_, high_water_);
     else
         send_snapshot_from (node_, serial);
@@ -602,6 +727,16 @@ void transfer_handle_seal (
             if (!transfer)
                 return;
             transfer->seal_requested = true;
+            std::map<uint64_t, transfer_participant_state_t>::iterator actor_ingress =
+              transfer->participants.find (transfer_actor_ingress_participant);
+            if (actor_ingress != transfer->participants.end ()) {
+                transfer_participant_terminal_t terminal;
+                terminal.participant_id = transfer_actor_ingress_participant;
+                terminal.high_water = actor_ingress->second.staged.size ();
+                actor_ingress->second.terminal_high_water = terminal.high_water;
+                actor_ingress->second.terminal_sealed = true;
+                sealed.push_back (terminal);
+            }
             for (size_t i = 0; i < sealed.size (); ++i) {
                 std::map<uint64_t, transfer_participant_state_t>::iterator participant =
                   transfer->participants.find (sealed[i].participant_id);
@@ -791,6 +926,13 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
         owner_it->second.fenced_transfer_serial = serial;
         transfer.final_sequence = transfer.snapshot.size ();
         transfer.reserve_messages = transfer.snapshot.size ();
+        transfer_participant_state_t &actor_ingress =
+          transfer.participants[transfer_actor_ingress_participant];
+        actor_ingress.binding_generation = 1;
+        actor_ingress.allowance_messages = std::min<uint64_t> (
+          64, node->effective_message_budget () - transfer.reserve_messages);
+        actor_ingress.allowance_bytes = std::min<uint64_t> (
+          1024 * 1024, node->effective_byte_budget () - transfer.reserve_bytes);
         node->active_transfer_by_actor[actor_id] = serial;
 
         init_versioned (result_out_);
@@ -859,6 +1001,9 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
         offered_participant_messages = transfer.offered_participant_messages;
         offered_participant_bytes = transfer.offered_participant_bytes;
         node->active_transfer_by_actor[actor_id] = serial;
+        //  A chained A->B->A transfer supersedes A's previous source-side
+        //  forwarding route before the new target placeholder is published.
+        node->actor_forward_routes.erase (actor_id);
 
         //  Placeholder actor: owns the staged mailbox and the transfer
         //  control lane; application dispatch starts only at activate.
@@ -870,6 +1015,11 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
         owner_state_t &owner = node->owners[actor_owner (actor_id, actor.generation)];
         owner.id = actor_owner (actor_id, actor.generation);
         owner.actor = transfer.actor;
+        // A->B->A reuses the Actor lifetime's generation and therefore the
+        // same owner key. Replace the source transfer's sealed fence with the
+        // new target reservation; membership epoch, not generation, separates
+        // these memberships.
+        stage_target_owner_fence (owner, serial);
     }
 
     //  Readiness exchange outside the lock: target announces, source
@@ -887,7 +1037,11 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
             if (timeout_ms_ == 0 || now_ms () >= deadline) {
                 //  No token on failure: unwind the reservation.
                 node->active_transfer_by_actor.erase (actor_id);
-                node->owners.erase (actor_owner (actor_id, prepare_->actor.generation));
+                const owner_id_t removed_owner =
+                  actor_owner (actor_id, prepare_->actor.generation);
+                erase_send_ready_interests_for_owner_locked (
+                  node, removed_owner);
+                node->owners.erase (removed_owner);
                 node->actors.erase (actor_id);
                 node->transfers.erase (serial);
                 errno = ETIMEDOUT;
@@ -905,7 +1059,10 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
             const int failure_errno = transfer->data_plane_errno;
             const int32_t result = transfer->data_plane_result;
             node->active_transfer_by_actor.erase (actor_id);
-            node->owners.erase (actor_owner (actor_id, prepare_->actor.generation));
+            const owner_id_t removed_owner =
+              actor_owner (actor_id, prepare_->actor.generation);
+            erase_send_ready_interests_for_owner_locked (node, removed_owner);
+            node->owners.erase (removed_owner);
             node->actors.erase (actor_id);
             node->transfers.erase (serial);
             errno = failure_errno;
@@ -960,6 +1117,10 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
         if (transfer->phase == ZLINK_ACTOR_TRANSFER_ABORTED) {
             errno = EALREADY;
             return ZLINK_CONFIG_INVALID_STATE;
+        }
+        if (transfer->commit_in_progress) {
+            errno = EBUSY;
+            return ZLINK_CONFIG_BUSY;
         }
         //  Idempotent retry of a completed commit with the same epoch.
         if (transfer->committed_epoch != 0) {
@@ -1050,6 +1211,29 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
             std::map<std::string, actor_state_t>::iterator it = node->actors.find (id);
             if (it != node->actors.end ())
                 it->second.membership_epoch = new_membership_epoch_;
+            //  Only an actual STREAM participant proves that the transfer
+            //  source owns a physical binding. Ordinary Actor ingress uses a
+            //  private participant id and must not create a reverse route.
+            uint64_t binding_generation = 0;
+            size_t binding_participant_count = 0;
+            for (std::map<uint64_t, transfer_participant_state_t>::const_iterator
+                   participant = transfer->participants.begin ();
+                 participant != transfer->participants.end (); ++participant) {
+                if (participant->first
+                    == transfer_actor_ingress_participant)
+                    continue;
+                binding_generation =
+                  participant->second.binding_generation;
+                binding_participant_count += 1;
+            }
+            if (binding_participant_count == 1
+                && binding_generation != 0) {
+                bound_session_route_t route;
+                route.actor_generation = transfer->actor.generation;
+                route.binding_generation = binding_generation;
+                route.source_node_rid = transfer->peer_node_rid;
+                node->bound_session_routes[id] = route;
+            }
             control_copy = control_view (*transfer);
         } else {
             if (transfer->phase != ZLINK_ACTOR_TRANSFER_FENCED) {
@@ -1061,32 +1245,87 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
             source_commit = true;
             session_actor = transfer->actor;
             session_target_node = transfer->peer_node_rid;
-            transfer->committed_epoch = new_membership_epoch_;
-            transfer->phase = ZLINK_ACTOR_TRANSFER_COMMITTED;
-            transfer->snapshot.clear ();
-            const std::string id (transfer->actor.actor_id);
-            std::map<std::string, actor_state_t>::iterator it = node->actors.find (id);
-            if (it != node->actors.end () && it->second.generation == transfer->actor.generation) {
-                const std::string spot_key (it->second.spot_rid.begin (),
-                                            it->second.spot_rid.end ());
-                std::map<std::string, spot_state_t>::iterator spot_it =
-                  node->spots.find (spot_key);
-                if (it->second.spot_node_rid.empty () && spot_it != node->spots.end ()
-                    && spot_it->second.active_actor_count > 0) {
-                    spot_it->second.active_actor_count -= 1;
-                    maybe_end_spot_locked (node, spot_key);
-                }
-                node->actors.erase (it);
-            }
-            //  The owner mailbox stays for the framework to drain the
-            //  terminal control record; the fence stays engaged.
-            node->active_transfer_by_actor.erase (id);
-            control_copy = control_view (*transfer);
+            transfer->commit_in_progress = true;
         }
     }
+    if (source_commit) {
+        if (stream_sessions_commit_actor (
+              node, session_actor, serial, session_target_node,
+              new_membership_epoch_)
+            != 0) {
+            const int failure_errno = errno;
+            transfer_control_view_t failure_view;
+            memset (&failure_view, 0, sizeof (failure_view));
+            {
+                std::lock_guard<std::mutex> lock (node->mutex);
+                transfer_state_t *transfer =
+                  find_transfer_locked (node, serial);
+                if (transfer) {
+                    transfer->commit_in_progress = false;
+                    failure_view = control_view (*transfer);
+                }
+            }
+            const int32_t failure_result =
+              failure_errno == ENOTCONN
+                ? ZLINK_REQUEST_NOT_CONNECTED
+                : (failure_errno == ETIMEDOUT
+                     ? ZLINK_REQUEST_TIMED_OUT
+                     : (failure_errno == EAGAIN
+                          ? ZLINK_REQUEST_BACKPRESSURED
+                          : ZLINK_REQUEST_INTERNAL_ERROR));
+            emit_transfer_control (
+              node, failure_view, ZLINK_ACTOR_TRANSFER_FENCED,
+              failure_result, failure_errno);
+            errno = failure_errno;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+
+        //  The binding-owned reverse FIFO is now empty and its barrier has
+        //  moved to the target route. No fallible session operation remains;
+        //  publish the source terminal transition under the node mutex.
+        std::lock_guard<std::mutex> lock (node->mutex);
+        transfer_state_t *transfer = find_transfer_locked (node, serial);
+        if (!transfer || !transfer->commit_in_progress
+            || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE
+            || transfer->phase != ZLINK_ACTOR_TRANSFER_FENCED) {
+            errno = ESTALE;
+            return ZLINK_CONFIG_INVALID_STATE;
+        }
+        transfer->commit_in_progress = false;
+        transfer->committed_epoch = new_membership_epoch_;
+        transfer->phase = ZLINK_ACTOR_TRANSFER_COMMITTED;
+        transfer->snapshot.clear ();
+        const std::string id (transfer->actor.actor_id);
+        actor_forward_route_t forward;
+        forward.actor_generation = transfer->actor.generation;
+        forward.target_node_rid = transfer->peer_node_rid;
+        node->actor_forward_routes[id] = forward;
+        std::map<std::string, actor_state_t>::iterator it =
+          node->actors.find (id);
+        if (it != node->actors.end ()
+            && it->second.generation == transfer->actor.generation) {
+            const std::string spot_key (it->second.spot_rid.begin (),
+                                        it->second.spot_rid.end ());
+            std::map<std::string, spot_state_t>::iterator spot_it =
+              node->spots.find (spot_key);
+            if (it->second.spot_node_rid.empty ()
+                && spot_it != node->spots.end ()
+                && spot_it->second.active_actor_count > 0) {
+                spot_it->second.active_actor_count -= 1;
+                maybe_end_spot_locked (node, spot_key);
+            }
+            node->actors.erase (it);
+        }
+        //  The owner mailbox stays for the framework to drain the terminal
+        //  control record; the fence stays engaged.
+        node->active_transfer_by_actor.erase (id);
+        control_copy = control_view (*transfer);
+    }
     if (source_commit)
-        stream_sessions_commit_actor (node, session_actor, serial, session_target_node,
-                                      new_membership_epoch_);
+        notify_transfer_send_ready (
+          node, actor_owner (session_actor.actor_id,
+                             session_actor.generation),
+          serial);
     emit_transfer_control (node, control_copy, ZLINK_ACTOR_TRANSFER_COMMITTED, ZLINK_REQUEST_OK,
                            0);
     return ZLINK_CONFIG_OK;
@@ -1134,9 +1373,15 @@ zlink_mesh_node_actor_transfer_activate (const zlink_actor_transfer_token_t *tok
             return ZLINK_CONFIG_INVALID_STATE;
         }
         actor_it->second.draining = false;
+        if (transfer->has_pending_bound_session_route) {
+            node->bound_session_routes[id] =
+              transfer->pending_bound_session_route;
+            transfer->has_pending_bound_session_route = false;
+        }
         ready_owner = actor_owner (id, actor_it->second.generation);
         std::map<owner_id_t, owner_state_t>::iterator owner_it = node->owners.find (ready_owner);
         if (owner_it != node->owners.end ()) {
+            activate_target_owner_fence (owner_it->second, serial);
             mailbox_t &mailbox = owner_it->second.domains[domain_application];
             for (std::map<uint64_t, std::unique_ptr<queued_record_t>>::iterator staged =
                    transfer->staged.begin ();
@@ -1169,6 +1414,7 @@ zlink_mesh_node_actor_transfer_activate (const zlink_actor_transfer_token_t *tok
         node->cv.notify_all ();
         control_copy = control_view (*transfer);
     }
+    notify_transfer_send_ready (node, ready_owner, serial);
     if (publish_ready)
         signal_ready (node, ready_owner, domain_application);
     emit_transfer_control (node, control_copy, ZLINK_ACTOR_TRANSFER_ACTIVATED, ZLINK_REQUEST_OK,
@@ -1195,6 +1441,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
     owner_id_t ready_owner;
     bool publish_ready = false;
     bool source_abort = false;
+    owner_id_t transfer_owner;
+    bool notify_transfer = false;
     zlink_actor_ref_t session_actor;
     memset (&session_actor, 0, sizeof (session_actor));
     {
@@ -1206,6 +1454,10 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
         }
         if (transfer->phase == ZLINK_ACTOR_TRANSFER_ABORTED)
             return ZLINK_CONFIG_OK; //  Idempotent retry.
+        if (transfer->commit_in_progress) {
+            errno = EBUSY;
+            return ZLINK_CONFIG_BUSY;
+        }
         if (transfer->phase == ZLINK_ACTOR_TRANSFER_ACTIVATED
             || (transfer->role == ZLINK_ACTOR_TRANSFER_SOURCE
                 && transfer->phase == ZLINK_ACTOR_TRANSFER_COMMITTED)) {
@@ -1214,6 +1466,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
         }
 
         const std::string id (transfer->actor.actor_id);
+        transfer_owner = actor_owner (id, transfer->actor.generation);
+        notify_transfer = true;
         if (transfer->role == ZLINK_ACTOR_TRANSFER_SOURCE) {
             source_abort = true;
             session_actor = transfer->actor;
@@ -1260,6 +1514,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
     }
     if (source_abort)
         stream_sessions_abort_actor (node, session_actor, serial);
+    if (notify_transfer)
+        notify_transfer_send_ready (node, transfer_owner, serial);
     if (publish_ready)
         signal_ready (node, ready_owner, domain_application);
     emit_transfer_control (node, control_copy, ZLINK_ACTOR_TRANSFER_ABORTED, ZLINK_REQUEST_OK, 0);

@@ -10,21 +10,27 @@ internal sealed class WorldOperationsAdapter(
     IZLinkRouteClient channels,
     ILogger<WorldOperationsAdapter> logger) : IWorldOperationsPort
 {
-    public void PublishAnnouncement(string announcementId, string text) =>
-        fanout
+    public async ValueTask PublishAnnouncementAsync(
+        string announcementId,
+        string text,
+        CancellationToken cancellationToken) =>
+        await fanout
             .Publish(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.AnnounceTopic,
                 new WorldAnnounceEvent(announcementId, text))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
 
-    public void PublishMaintenanceChange(string nodeId, bool enabled) =>
-        fanout
+    public async ValueTask PublishMaintenanceChangeAsync(
+        string nodeId,
+        bool enabled,
+        CancellationToken cancellationToken) =>
+        await fanout
             .Publish(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.MaintenanceTopic,
                 new NodeMaintenanceChangedEvent(nodeId, enabled))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
 
     public ValueTask<ApplyNodeMaintenanceRes?> TryApplyMaintenanceAsync(
         string nodeId,
@@ -59,7 +65,7 @@ internal sealed class WorldOperationsAdapter(
         try
         {
             return await channels
-                .RequestToChannel(ZoneWorldNames.OpsChannel(nodeId), ZoneWorldNames.OpsChannel(nodeId),
+                .RequestToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.OpsChannel(nodeId),
                     request)
                 .Timeout(TimeSpan.FromSeconds(3))
                 .Async<TResponse>(cancellationToken);

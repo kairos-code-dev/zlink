@@ -38,12 +38,17 @@ internal static class SfD3StatusTransitionScenario
         var after = await SfProbe.WaitStatusAsync(
             consumer,
             SfProbe.Status(options.HeartbeatInterval * 8,
-                storeHealthy: true, ownerLeaseHealthy: true, requireLastRefresh: true),
+                storeHealthy: true,
+                ownerLeaseHealthy: true,
+                requireLastRefresh: true,
+                lastRefreshAfter: before.LastRefreshAt),
             "SF-D3: status did not return to healthy after recovery.");
 
         ZlinkStreamAssert.Ensure(
             before.LastRefreshAt is not null && after.LastRefreshAt > before.LastRefreshAt,
-            "SF-D3: the post-recovery refresh timestamp did not advance.");
+            $"SF-D3: the post-recovery refresh timestamp did not advance " +
+            $"(before={before.LastRefreshAt:O}, during={during.LastRefreshAt:O}, " +
+            $"after={after.LastRefreshAt:O}).");
         ZlinkStreamAssert.Ensure(
             !during.WatchEnabled && during.LastError is not null,
             "SF-D3: outage status fields (watch/polling, last error) were not observable.");

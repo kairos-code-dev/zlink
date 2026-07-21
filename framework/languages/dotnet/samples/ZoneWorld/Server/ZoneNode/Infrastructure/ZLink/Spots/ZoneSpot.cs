@@ -52,12 +52,14 @@ public sealed class ZoneSpot(
         if (Context.SpotRid.IsEmpty)
         {
             Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
+                ZoneWorldNames.ZoneChannel,
                 ZoneWorldNames.NorthWestToNorthEastBorder);
             return;
         }
 
         foreach (var fromZoneId in World.AdjacentZones(ZoneId))
             Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
+                ZoneWorldNames.ZoneChannel,
                 ZoneWorldNames.BorderTopic(fromZoneId, ZoneId));
     }
 
@@ -117,9 +119,9 @@ public sealed class ZoneSpot(
             ZLinkSpotActorJoinResult.Accept(new EnterZoneRes(ZoneId, NodeId)));
     }
 
-    public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
+    public async ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
     {
-        if (!_pendingJoins.Remove(actor.ActorId, out var enter)) return ValueTask.CompletedTask;
+        if (!_pendingJoins.Remove(actor.ActorId, out var enter)) return;
 
         actor.Restore(enter.X, enter.Y, ZoneId, enter.IsBot, actor.DirX, actor.DirY);
         _residents[enter.PlayerId] = actor;
@@ -131,13 +133,13 @@ public sealed class ZoneSpot(
         // after the handoff commits, making the notification a safe boundary for the client's
         // next command.
         if (!enter.IsBot && enter.FromNodeId is not null)
-            actor.Context.BoundSession
+            await actor.Context.BoundSession
                 .Send(new ZoneChangedNotify(
                     enter.PlayerId,
                     ZoneId,
                     NodeId,
                     Transferred: enter.FromNodeId != NodeId))
-                .Submit();
+                .SubmitAsync(cancellationToken);
 
         logger.LogInformation(
             "zone spot: player entered. zone={ZoneId}, player={PlayerId}, bot={IsBot}, from={FromNodeId}",
@@ -145,7 +147,6 @@ public sealed class ZoneSpot(
             enter.PlayerId,
             enter.IsBot,
             enter.FromNodeId ?? "(new)");
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken cancellationToken)
@@ -212,20 +213,22 @@ public sealed class ZoneSpot(
                 snapshot.FromZoneId);
     }
 
-    internal ValueTask TickAsync(CancellationToken cancellationToken)
+    internal async ValueTask TickAsync(CancellationToken cancellationToken)
     {
         var output = ZoneTickUseCase.Advance(_state);
 
-        PushToClients(output.PushTargets, output.Notify, cancellationToken);
+        await PushToClientsAsync(output.PushTargets, output.Notify, cancellationToken);
 
         foreach (var borderEvent in output.BorderEvents)
         {
-            Context.Outbound
-                .Publish(ZoneWorldNames.BorderTopic(ZoneId, borderEvent.ToZoneId), borderEvent)
-                .TrySubmit();
+            await Context.Outbound
+                .Publish(
+                    ZoneWorldNames.ZoneChannel,
+                    ZoneWorldNames.BorderTopic(ZoneId, borderEvent.ToZoneId),
+                    borderEvent)
+                .SubmitAsync(cancellationToken);
         }
 
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -242,13 +245,13 @@ public sealed class ZoneSpot(
             var actorRef = await ResolveBotAsync(playerId, cancellationToken);
             if (actorRef is null) continue;
             _ = await actors
-                .RequestToActor(actorRef.Value, new BotTickReq())
+                .RequestToActor(ZoneWorldNames.MeshName, actorRef.Value, new BotTickReq())
                 .Yield<BotTickRes>(cancellationToken);
         }
     }
 
     /// <summary>Delivers an announcement to every human in this zone (§8.2).</summary>
-    internal ValueTask DeliverAnnounceAsync(
+    internal async ValueTask DeliverAnnounceAsync(
         DeliverAnnounceMsg announce,
         CancellationToken cancellationToken)
     {
@@ -259,11 +262,10 @@ public sealed class ZoneSpot(
             ZoneId,
             announce.AnnouncementId);
 
-        PushToClients(
+        await PushToClientsAsync(
             ZoneTickUseCase.Humans(_state),
             new WorldAnnounceNotify(announce.AnnouncementId, announce.Text),
             cancellationToken);
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -271,7 +273,7 @@ public sealed class ZoneSpot(
     /// <paramref name="playerIds"/>: they have no bound session, so a push addressed to
     /// one would be a message with nowhere to go (ZW-F3).
     /// </summary>
-    private void PushToClients<TMessage>(
+    private async ValueTask PushToClientsAsync<TMessage>(
         IReadOnlyList<string> playerIds,
         TMessage message,
         CancellationToken cancellationToken)
@@ -282,7 +284,7 @@ public sealed class ZoneSpot(
 
             try
             {
-                actor.Context.BoundSession.Send(message).Submit();
+                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
             }
             catch (Exception error)
             {

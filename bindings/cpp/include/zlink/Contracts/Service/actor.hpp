@@ -171,7 +171,10 @@ class actor_t
                                 mesh_metadata_t metadata_ = {});
 
     // Bound STREAM session.
-    submit_result_t send_bound_session (const std::vector<message_t> &parts_,
+    /// @brief Sends only to the specified nonzero binding generation. A stale
+    ///        generation is rejected instead of selecting a replacement binding.
+    submit_result_t send_bound_session (uint64_t expected_binding_generation_,
+                                        const std::vector<message_t> &parts_,
                                         send_flags_t flags_ = send_flags_t::none);
     submit_result_t close_bound_session (uint64_t expected_binding_generation_,
                                          operation_id_t &operation_id_out_,

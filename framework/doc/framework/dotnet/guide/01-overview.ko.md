@@ -314,7 +314,7 @@ await spots.GetOrCreateAsync<OrderWorkflowSpot>(
     RoutingId.From(request.OrderId), new OrderSpotCreate(request.OrderId), ct);
 
 // actor handler 안 — 재접속해도 같은 actor로 이어진 client에 push(sticky LB 없음).
-actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).Submit(ct);
+await actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).SubmitAsync(ct);
 ```
 
 실행되는 근거 샘플: [SupportChat](../../common/sample/supportchat/README.ko.md) ·
@@ -794,7 +794,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 
 이 가이드가 설명하는 public API는 [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)의 계약
 카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`RequestToChannel`,
-`TrySubmit`, `Bind`, `AddRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
+`SubmitAsync`, `Bind`, `AddRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
 
 ## 10. 이 가이드 읽는 순서

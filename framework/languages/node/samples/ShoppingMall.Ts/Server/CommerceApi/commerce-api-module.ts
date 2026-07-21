@@ -33,11 +33,13 @@ function createShoppingMallCommerceApiModule(role: string): Function {
             .traceLogFile(`${config.logDir}/flow-${role}.log`)
             .traceLabel(role);
           builder.addLocationStore(createShoppingMallLocationStore(config));
-          Object.assign(builder.configureLocations(), shoppingMallLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.orderWorkflowChannel)
-              .enableClient()
-            .build();
+          shoppingMallLocationOptions(builder.configureLocations());
+          const workflowMesh = builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
+            .listen('tcp://127.0.0.1:0')
+            .routingId(`${role}-workflow-client`);
+          workflowMesh.channelName(SampleNames.orderWorkflowChannel).setWeight(0);
+          workflowMesh.channelName(SampleNames.orderWorkflowSpotMesh).setWeight(0);
+          return builder.build();
         }
       })
     ],

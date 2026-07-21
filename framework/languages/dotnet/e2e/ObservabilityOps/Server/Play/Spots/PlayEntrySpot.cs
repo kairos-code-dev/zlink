@@ -23,12 +23,11 @@ internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context, EvidenceStor
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
 
-    public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
+    public async ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
     {
         evidence.Add($"actor-entry-joined|actor={actor.ActorId}|node={Context.NodeRid}|previous-room={actor.Player.RoomRid}");
-        actor.Context.BoundSession.Send(new PlayerMovedNotify(actor.ActorId, Context.NodeRid.ToString()))
-            .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+        await actor.Context.BoundSession.Send(new PlayerMovedNotify(actor.ActorId, Context.NodeRid.ToString()))
+            .SubmitAsync(cancellationToken);
     }
 
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken cancellationToken) =>

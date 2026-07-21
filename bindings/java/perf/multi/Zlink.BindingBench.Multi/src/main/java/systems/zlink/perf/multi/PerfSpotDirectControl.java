@@ -3,13 +3,20 @@
 package systems.zlink.perf.multi;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.Claim;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.MeshNodePublisher;
+import systems.zlink.contracts.service.spot.ReadyBatch;
+import systems.zlink.contracts.service.spot.ReadyDomain;
+import systems.zlink.contracts.service.spot.ReceiveBatch;
+import systems.zlink.contracts.service.spot.ReceiveRecord;
+import systems.zlink.contracts.service.spot.RecordKind;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.messaging.TopicMessage;
+import systems.zlink.contracts.service.spot.SubscriptionKind;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.perf.PerfUtil;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -18,31 +25,40 @@ import java.util.List;
 import java.util.function.Consumer;
 
 final class PerfSpotDirectControl implements AutoCloseable {
+    private static final String CHANNEL = "bench-control";
     private static final String TOPIC = "bench";
 
-    private final SpotNode node;
-    private final Spot pub;
-    private final Spot sub;
+    private final MeshNode node;
+    private final MeshNodePublisher publisher;
+    private final Spot subscriber;
+    private final ReadyBatch ready = ReadyBatch.create(8);
+    private final ReceiveBatch received = ReceiveBatch.create(32, 64, 1 << 16);
 
-    private PerfSpotDirectControl(SpotNode node, Spot pub, Spot sub) {
+    private PerfSpotDirectControl(
+        MeshNode node,
+        MeshNodePublisher publisher,
+        Spot subscriber) {
         this.node = node;
-        this.pub = pub;
-        this.sub = sub;
+        this.publisher = publisher;
+        this.subscriber = subscriber;
     }
 
-    static PerfSpotDirectControl bind(Context ctx, PerfUtil.Config config,
-                                      String endpoint, String label) {
-        SpotNode node = ctx.createSpotNode();
-        Spot pub = node.createSpot();
-        Spot sub = node.createSpot();
+    static PerfSpotDirectControl bind(
+        Context ctx,
+        PerfUtil.Config config,
+        String endpoint,
+        String label) {
+        MeshNode node = ctx.createMeshNode();
         node.setRoutingId(routingId(label + "-control-node"));
-        pub.setRoutingId(routingId(label + "-control-pub"));
-        sub.setRoutingId(routingId(label + "-control-sub"));
-        PerfUtil.configureServerTls(node, config.transport());
-        PerfUtil.configureClientTls(node, config.transport());
-        node.setPubBind(endpoint);
-        sub.setSubscription(TOPIC);
-        return new PerfSpotDirectControl(node, pub, sub);
+        node.setBind(endpoint);
+        node.addChannel(CHANNEL);
+        node.start();
+        Spot subscriber = node.createSpot();
+        subscriber.setSubscription(CHANNEL, TOPIC, SubscriptionKind.EXACT);
+        return new PerfSpotDirectControl(
+            node,
+            node.createPublisher(),
+            subscriber);
     }
 
     void connectPeer(String endpoint) {
@@ -73,11 +89,14 @@ final class PerfSpotDirectControl implements AutoCloseable {
         return waitReady(size, expectedCount, timeoutMs, null);
     }
 
-    ReadyState waitReady(int size, int expectedCount, int timeoutMs,
-                         Consumer<String> dataEndpointHandler) {
+    ReadyState waitReady(
+        int size,
+        int expectedCount,
+        int timeoutMs,
+        Consumer<String> dataEndpointHandler) {
         long deadline = System.nanoTime()
             + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
-        int ready = 0;
+        int readyCount = 0;
         List<String> dataEndpoints = new ArrayList<>();
         while (System.nanoTime() < deadline) {
             String payload = recvPayload();
@@ -93,16 +112,15 @@ final class PerfSpotDirectControl implements AutoCloseable {
                 }
             } else if (payload.startsWith("READY_COUNT,")) {
                 String[] parts = payload.split(",", 3);
-                if (parts.length == 3
-                    && Integer.parseInt(parts[1]) == size) {
-                    ready += Integer.parseInt(parts[2]);
-                    if (ready >= expectedCount) {
+                if (parts.length == 3 && Integer.parseInt(parts[1]) == size) {
+                    readyCount += Integer.parseInt(parts[2]);
+                    if (readyCount >= expectedCount) {
                         return new ReadyState(dataEndpoints);
                     }
                 }
             }
         }
-        throw new IllegalStateException("spot direct ready_count timed out");
+        throw new IllegalStateException("mesh control ready_count timed out");
     }
 
     void waitStart(int size, int timeoutMs) {
@@ -118,26 +136,49 @@ final class PerfSpotDirectControl implements AutoCloseable {
                 sleepQuietly(1);
             }
         }
-        throw new IllegalStateException("spot direct start timed out");
+        throw new IllegalStateException("mesh control start timed out");
     }
 
     private void publish(String payload) {
         try (Message message = Message.from(payload.getBytes(StandardCharsets.UTF_8))) {
-            pub.publish(TOPIC)
-                .message(message)
-                .flags(SendFlags.NONE)
-                .submit();
+            publisher.publish(CHANNEL, TOPIC, List.of(message), SendFlags.NONE);
         }
     }
 
-    private String recvPayload() {
-        try (TopicMessage message = new TopicMessage()) {
-            if (!sub.subscribe(message, RecvFlags.DONT_WAIT)
-                || message.parts().isEmpty()) {
-                return null;
+    private synchronized String recvPayload() {
+        ready.reset();
+        node.drainReady(
+            ReadyDomain.mask(ReadyDomain.APPLICATION),
+            ready,
+            RecvFlags.DONT_WAIT);
+        for (int i = 0; i < ready.count(); i++) {
+            if (!subscriber.routingId().equals(ready.at(i).spotRid())) {
+                continue;
             }
-            return message.firstPart().toUtf8String();
+            try (Claim claim = ready.takeClaim(i)) {
+                while (claim.valid()) {
+                    received.reset();
+                    if (claim.recvBatch(received, RecvFlags.DONT_WAIT).resultCode() != 0) {
+                        break;
+                    }
+                    for (int r = 0; r < received.count(); r++) {
+                        ReceiveRecord record = received.at(r);
+                        if (record.kind() != RecordKind.SPOT_MULTICAST
+                            || !CHANNEL.equals(record.channelName())
+                            || !TOPIC.equals(record.topic())) {
+                            continue;
+                        }
+                        List<Message> parts = received.retainMessage(r);
+                        try {
+                            return parts.isEmpty() ? null : parts.get(0).toUtf8String();
+                        } finally {
+                            parts.forEach(Message::close);
+                        }
+                    }
+                }
+            }
         }
+        return null;
     }
 
     private static void sleepQuietly(int millis) {
@@ -145,15 +186,16 @@ final class PerfSpotDirectControl implements AutoCloseable {
             Thread.sleep(millis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("spot direct control interrupted",
-                ex);
+            throw new IllegalStateException("mesh control interrupted", ex);
         }
     }
 
     @Override
     public void close() {
-        sub.close();
-        pub.close();
+        received.close();
+        ready.close();
+        subscriber.close();
+        publisher.close();
         node.close();
     }
 

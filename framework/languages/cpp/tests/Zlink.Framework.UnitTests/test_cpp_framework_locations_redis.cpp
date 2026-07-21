@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <thread>
 
 namespace
 {
@@ -111,12 +112,45 @@ nlohmann::json read_redis_location_fixture ()
 
 const nlohmann::json &fixture_row (const nlohmann::json &fixture, std::string_view kind)
 {
+    if (fixture.contains ("row")) {
+        const auto &row = fixture.at ("row");
+        if (row.at ("kind").get<std::string> () == kind) {
+            return row;
+        }
+    }
     for (const auto &row : fixture.at ("rows")) {
         if (row.at ("kind").get<std::string> () == kind) {
             return row;
         }
     }
     throw std::runtime_error ("fixture row was not found");
+}
+
+actor_location_t make_actor_location (std::string mesh_name,
+                                      std::string actor_id,
+                                      std::string node_rid,
+                                      std::string spot_rid,
+                                      zlink::spot_kind spot_kind,
+                                      std::string owner_id,
+                                      std::uint64_t actor_generation = 1,
+                                      std::uint64_t owner_node_generation = 1,
+                                      std::uint64_t spot_generation = 1,
+                                      std::uint64_t membership_epoch = 1)
+{
+    const auto actor_type = std::string{"player"};
+    return actor_location_t{
+      .mesh_name = std::move (mesh_name),
+      .actor_id = actor_id,
+      .actor_type = actor_type,
+      .actor_ref = actor_ref_t (node_rid_t::from_string (node_rid), actor_type,
+                                actor_id, actor_generation),
+      .owner_node_rid = zlink::routing_id_t::from (node_rid),
+      .owner_node_generation = owner_node_generation,
+      .spot_rid = zlink::routing_id_t::from (std::move (spot_rid)),
+      .spot_generation = spot_generation,
+      .spot_kind = spot_kind,
+      .membership_epoch = membership_epoch,
+      .owner_id = std::move (owner_id)};
 }
 
 TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
@@ -148,12 +182,8 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
       .connection_string = "tcp://127.0.0.1:1", .key_prefix = "zlink:test"});
 
     auto claim = store.update_actor (
-      actor_location_t{.actor_id = "alice",
-                       .actor_type = "player",
-                       .actor_ref = std::nullopt,
-                       .node_rid = zlink::routing_id_t::from ("node-a"),
-                       .spot_mesh_name = "play",
-                       .owner_id = "owner-a"},
+      make_actor_location ("play", "alice", "node-a", "spot-a",
+                           zlink::spot_kind::user, "owner-a"),
       zlink::framework::location_write_intent_t::new_claim);
     EXPECT_FALSE (claim.result ().has_value ());
     ASSERT_NE (nullptr, claim.result ().error ());
@@ -198,7 +228,8 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     ASSERT_NE (nullptr, route.result ().error ());
     EXPECT_TRUE (route.result ().error ()->is_retriable ());
 
-    auto read = store.resolve_actor (actor_location_key_t{.actor_id = "alice"});
+    auto read = store.resolve_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
     EXPECT_FALSE (read.result ().has_value ());
     ASSERT_NE (nullptr, read.result ().error ());
     EXPECT_TRUE (read.result ().error ()->is_retriable ());
@@ -263,7 +294,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     EXPECT_TRUE (removed_route.result ().error ()->is_retriable ());
 
     auto removed_actor = store.remove_actor (
-      actor_location_key_t{.actor_id = "alice"},
+      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"},
       location_owner_token_t{"owner-a", 0});
     EXPECT_FALSE (removed_actor.result ().has_value ());
     ASSERT_NE (nullptr, removed_actor.result ().error ());
@@ -311,17 +342,17 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
         .value ();
     EXPECT_GT (lease.lease_expires_at, lease.store_now);
 
+    // The location store owns a persistent async connection. An idle interval
+    // between the host lease and the first row claim must not close it.
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+
     const auto before =
       store.get_change_stamp ({.kind = location_kind_t::actor, .mesh_name = std::nullopt})
         .result ()
         .value ();
     auto claim = store.update_actor (
-      actor_location_t{.actor_id = "alice",
-                       .actor_type = "player",
-                       .actor_ref = std::nullopt,
-                       .node_rid = zlink::routing_id_t::from ("node-a"),
-                       .spot_mesh_name = "play",
-                       .owner_id = "owner-a"},
+      make_actor_location ("play", "alice", "node-a", "spot-a",
+                           zlink::spot_kind::user, "owner-a"),
       zlink::framework::location_write_intent_t::new_claim);
     ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
     ASSERT_GT (claim.result ().value ().generation, 0);
@@ -329,11 +360,12 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
     sw::redis::Redis redis (options->connection_string);
     const auto actor_hash_key = redis_location_key_schema_t::row_key (
       options->key_prefix, location_kind_t::actor,
-      redis_location_key_schema_t::encode_actor_key (actor_location_key_t{.actor_id = "alice"}));
+      redis_location_key_schema_t::encode_actor_key (
+        actor_location_key_t{.mesh_name = "play", .actor_id = "alice"}));
     std::vector<std::string> actor_hash_fields;
     redis.hkeys (actor_hash_key, std::back_inserter (actor_hash_fields));
-    EXPECT_EQ (4u, actor_hash_fields.size ());
-    EXPECT_EQ (actor_hash_fields.end (),
+    EXPECT_EQ (5u, actor_hash_fields.size ());
+    EXPECT_NE (actor_hash_fields.end (),
                std::find (actor_hash_fields.begin (), actor_hash_fields.end (), "mesh"));
 
     const auto after =
@@ -342,12 +374,13 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
         .value ();
     EXPECT_GT (after, before);
 
-    auto resolved = store.resolve_actor (actor_location_key_t{.actor_id = "alice"});
+    auto resolved = store.resolve_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
     ASSERT_TRUE (resolved.result ().has_value ());
     ASSERT_TRUE (resolved.result ().value ().has_value ());
     EXPECT_EQ ("alice", resolved.result ().value ()->actor_id);
-    EXPECT_EQ (claim.result ().value ().generation, resolved.result ().value ()->generation);
-    EXPECT_EQ ("node-a", resolved.result ().value ()->node_rid.to_string ());
+    EXPECT_EQ ("play", resolved.result ().value ()->mesh_name);
+    EXPECT_EQ ("node-a", resolved.result ().value ()->owner_node_rid.to_string ());
 
     auto page = store.list_actors (zlink::framework::actor_location_filter_t{.actor_type = "player"},
                                    zlink::framework::location_page_request_t{.page_size = 10});
@@ -390,7 +423,8 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
     auto removed = store.remove_all_by_owner ("owner-a");
     ASSERT_TRUE (removed.result ().has_value ());
     EXPECT_EQ (1, removed.result ().value ());
-    auto missing = store.resolve_actor (actor_location_key_t{.actor_id = "alice"});
+    auto missing = store.resolve_actor (
+      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
     ASSERT_TRUE (missing.result ().has_value ());
     EXPECT_FALSE (missing.result ().value ().has_value ());
     (void) store.remove_all_by_owner ("publisher-owner");
@@ -421,13 +455,14 @@ TEST (ZLinkFrameworkLocationsRedis, PagedActorListUsesOpaqueRedisScanCursor)
         const auto actor_id = "scan-actor-" + std::to_string (index);
         const auto is_player = index % 2 == 0;
         const auto actor_type = is_player ? "player" : "npc";
+        auto actor_row = make_actor_location (
+          "play", actor_id, "scan-node", "scan-spot",
+          zlink::spot_kind::user, "scan-owner");
+        actor_row.actor_type = actor_type;
+        actor_row.actor_ref = actor_ref_t (
+          node_rid_t::from_string ("scan-node"), actor_type, actor_id, 1);
         auto claim = store.update_actor (
-          actor_location_t{.actor_id = actor_id,
-                           .actor_type = actor_type,
-                           .actor_ref = std::nullopt,
-                           .node_rid = zlink::routing_id_t::from ("scan-node"),
-                           .spot_mesh_name = "play",
-                           .owner_id = "scan-owner"},
+          std::move (actor_row),
           zlink::framework::location_write_intent_t::new_claim);
         ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
         if (is_player) {
@@ -514,14 +549,8 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageWritesRowsForDotnetToRead)
                  .status);
     EXPECT_EQ (location_write_status_t::stored,
                store.update_actor (
-                      actor_location_t{.actor_id = "cpp-actor",
-                       .actor_type = "player",
-                                       .actor_ref = std::nullopt,
-                                       .node_rid = zlink::routing_id_t::from ("cpp-node"),
-                                       .location_kind = zlink::spot_kind::user,
-                                       .spot_mesh_name = "mesh",
-                                       .spot_rid = zlink::routing_id_t::from ("cpp-spot"),
-                                       .owner_id = "cpp-owner"},
+                      make_actor_location ("mesh", "cpp-actor", "cpp-node", "cpp-spot",
+                                           zlink::spot_kind::user, "cpp-owner"),
                       zlink::framework::location_write_intent_t::new_claim)
                  .result ()
                  .value ()
@@ -551,15 +580,16 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageReadsDotnetRows)
     }
 
     redis_location_store_t store (*options);
-    auto actor = store.resolve_actor (actor_location_key_t{.actor_id = "dotnet-actor"})
+    auto actor = store.resolve_actor (
+                   actor_location_key_t{.mesh_name = "mesh", .actor_id = "dotnet-actor"})
                    .result ();
     ASSERT_TRUE (actor.has_value ());
     ASSERT_TRUE (actor.value ().has_value ());
-    ASSERT_TRUE (actor.value ()->actor_ref.has_value ());
-    EXPECT_EQ ("dotnet-actor", actor.value ()->actor_ref->actor_id ());
-    EXPECT_EQ ("dotnet-node", actor.value ()->actor_ref->node_rid ().value ());
-    EXPECT_EQ (1u, actor.value ()->actor_ref->generation ());
-    EXPECT_EQ ("dotnet-node", actor.value ()->node_rid.to_string ());
+    EXPECT_FALSE (actor.value ()->actor_ref.empty ());
+    EXPECT_EQ ("dotnet-actor", actor.value ()->actor_ref.actor_id ());
+    EXPECT_EQ ("dotnet-node", actor.value ()->actor_ref.node_rid ().value ());
+    EXPECT_EQ (1u, actor.value ()->actor_ref.generation ());
+    EXPECT_EQ ("dotnet-node", actor.value ()->owner_node_rid.to_string ());
     EXPECT_EQ ("dotnet-owner", actor.value ()->owner_id);
 
     auto spot = store.resolve_spot (spot_location_key_t{
@@ -686,9 +716,9 @@ TEST (ZLinkFrameworkLocationsRedis, RowKeysUseDotnetCanonicalKeyBytes)
                redis_location_key_schema_t::encode_spot_key (
                  spot_location_key_t{.mesh_name = "mesh-main",
                                      .spot_rid = zlink::routing_id_t::from ("spot-a")}));
-    EXPECT_EQ ("7:actor-1",
+    EXPECT_EQ ("4:game7:actor-1",
                redis_location_key_schema_t::encode_actor_key (
-                 actor_location_key_t{.actor_id = "actor-1"}));
+                 actor_location_key_t{.mesh_name = "game", .actor_id = "actor-1"}));
     EXPECT_EQ ("1:113:session:alpha",
                redis_location_key_schema_t::encode_route_key (
                  route_location_key_t{.route_kind = route_kind_t::actor_session,
@@ -700,83 +730,26 @@ TEST (ZLinkFrameworkLocationsRedis, RowCodecMatchesCommonFixtureBytes)
     const auto fixture = read_redis_location_fixture ();
 
     const auto &actor = fixture_row (fixture, "actor");
-    const auto actor_row =
-      actor_location_t{.actor_id = "actor-1",
-                       .actor_type = "player",
-                       .actor_ref = actor_ref_t (node_rid_t::from_string ("node-1"), "player",
-                                                 "actor-1", 1),
-                       .node_rid = zlink::routing_id_t::from ("node-1"),
-                       .location_kind = zlink::spot_kind::entry,
-                       .spot_mesh_name = "play",
-                       .spot_rid = std::nullopt,
-                       .owner_id = "owner-a",
-                       .generation = 0};
+    auto actor_row = make_actor_location (
+      "game", "actor-1", "game-a", "spot-1", zlink::spot_kind::user,
+      "actor-owner-a", 11, 7, 3, 4);
+    actor_row.updated_at = std::chrono::system_clock::time_point{
+      std::chrono::milliseconds{1721001600000}};
     EXPECT_EQ (actor.at ("key").get<std::string> (),
                redis_location_key_schema_t::encode_actor_key (
-                 actor_location_key_t{.actor_id = actor_row.actor_id}));
+                 actor_location_key_t{.mesh_name = actor_row.mesh_name,
+                                      .actor_id = actor_row.actor_id}));
     EXPECT_EQ (actor.at ("hash").at ("json").get<std::string> (),
                redis_location_row_codec_t::encode_actor (actor_row));
     const auto decoded_actor =
       redis_location_row_codec_t::decode_actor (actor.at ("hash").at ("json").get<std::string> ());
-    ASSERT_TRUE (decoded_actor.actor_ref.has_value ());
-    EXPECT_EQ ("node-1", decoded_actor.actor_ref->node_rid ().value ());
-    EXPECT_EQ ("actor-1", decoded_actor.actor_ref->actor_id ());
-    EXPECT_EQ (1u, decoded_actor.actor_ref->generation ());
-
-    const auto &peer = fixture_row (fixture, "peer");
-    const auto peer_row =
-      peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                      .mesh_name = "play",
-                      .node_rid = zlink::routing_id_t::from ("node-1"),
-                      .role = location_role_t::router,
-                      .endpoint = "tcp://127.0.0.1:5001",
-                      .weight = 100,
-                      .value = 7,
-                      .metadata = {{"route-endpoint", "tcp://127.0.0.1:6001"}},
-                      .capabilities = {"router", "route-bridge"},
-                      .owner_id = "owner-a",
-                      .generation = 0};
-    EXPECT_EQ (peer.at ("key").get<std::string> (),
-               redis_location_key_schema_t::encode_peer_key (
-                 peer_location_key_t{.auto_connect_type = peer_row.auto_connect_type,
-                                     .mesh_name = peer_row.mesh_name,
-                                     .role = peer_row.role,
-                                     .node_rid = peer_row.node_rid,
-                                     .endpoint = peer_row.endpoint}));
-    EXPECT_EQ (peer.at ("hash").at ("json").get<std::string> (),
-               redis_location_row_codec_t::encode_peer (peer_row));
-
-    const auto &spot = fixture_row (fixture, "spot");
-    const auto spot_row =
-      spot_location_t{.mesh_name = "play",
-                      .spot_rid = zlink::routing_id_t::from ("spot-1"),
-                      .spot_type = "game",
-                      .node_rid = zlink::routing_id_t::from ("node-1"),
-                      .spot_kind = zlink::spot_kind::user,
-                      .route_endpoint = std::nullopt,
-                      .owner_id = "owner-a",
-                      .generation = 0};
-    EXPECT_EQ (spot.at ("key").get<std::string> (),
-               redis_location_key_schema_t::encode_spot_key (
-                 spot_location_key_t{.mesh_name = spot_row.mesh_name,
-                                     .spot_rid = spot_row.spot_rid}));
-    EXPECT_EQ (spot.at ("hash").at ("json").get<std::string> (),
-               redis_location_row_codec_t::encode_spot (spot_row));
-
-    const auto &route = fixture_row (fixture, "route");
-    const auto route_row =
-      route_location_t{.route_kind = route_kind_t::actor_session,
-                       .route_key = "route-1",
-                       .owner_node_rid = zlink::routing_id_t::from ("node-1"),
-                       .owner_id = "owner-a",
-                       .generation = 0,
-                       .value = {1, 2, 3, 4}};
-    EXPECT_EQ (route.at ("key").get<std::string> (),
-               redis_location_key_schema_t::encode_route_key (
-                 route_location_key_t{.route_kind = route_row.route_kind,
-                                      .route_key = route_row.route_key}));
-    EXPECT_EQ (route.at ("hash").at ("json").get<std::string> (),
-               redis_location_row_codec_t::encode_route (route_row));
+    EXPECT_EQ ("game", decoded_actor.mesh_name);
+    EXPECT_EQ ("game-a", decoded_actor.actor_ref.node_rid ().value ());
+    EXPECT_EQ ("actor-1", decoded_actor.actor_ref.actor_id ());
+    EXPECT_EQ (11u, decoded_actor.actor_ref.generation ());
+    EXPECT_EQ (7u, decoded_actor.owner_node_generation);
+    EXPECT_EQ (3u, decoded_actor.spot_generation);
+    EXPECT_EQ (4u, decoded_actor.membership_epoch);
 }
 
 TEST (ZLinkFrameworkLocationsRedis, PeerRowJsonUsesDotnetFieldSchema)
@@ -846,58 +819,45 @@ TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)
 TEST (ZLinkFrameworkLocationsRedis, ActorRowJsonUsesDotnetFieldSchema)
 {
     const auto encoded = redis_location_row_codec_t::encode_actor (
-      actor_location_t{.actor_id = "alice",
-                       .actor_type = "player",
-                       .actor_ref = std::nullopt,
-                       .node_rid = zlink::routing_id_t::from ("node-a"),
-                       .location_kind = zlink::spot_kind::user,
-                       .spot_mesh_name = "play",
-                       .spot_rid = zlink::routing_id_t::from ("play-spot"),
-                       .owner_id = "owner-a",
-                       .generation = 11});
+      make_actor_location ("play", "alice", "node-a", "play-spot",
+                           zlink::spot_kind::user, "owner-a", 11, 7, 3, 4));
 
     const auto json = nlohmann::json::parse (encoded);
+    EXPECT_EQ ("play", json.at ("MeshName").get<std::string> ());
     EXPECT_EQ ("player", json.at ("ActorType").get<std::string> ());
     EXPECT_EQ ("alice", json.at ("ActorId").get<std::string> ());
-    EXPECT_TRUE (json.at ("ActorRef").is_null ());
+    EXPECT_FALSE (json.at ("ActorRef").is_null ());
     EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
-               json.at ("NodeRid").get<std::string> ());
-    EXPECT_EQ (11, json.at ("Generation").get<int> ());
-    EXPECT_EQ (static_cast<int> (zlink::spot_kind::user), json.at ("LocationKind").get<int> ());
+               json.at ("OwnerNodeRid").get<std::string> ());
+    EXPECT_EQ (7u, json.at ("OwnerNodeGeneration").get<std::uint64_t> ());
     EXPECT_EQ (zlink::routing_id_t::from ("play-spot").to_hex (),
                json.at ("SpotRid").get<std::string> ());
-    EXPECT_EQ ("play", json.at ("SpotMeshName").get<std::string> ());
+    EXPECT_EQ (3u, json.at ("SpotGeneration").get<std::uint64_t> ());
+    EXPECT_EQ (static_cast<int> (zlink::spot_kind::user), json.at ("SpotKind").get<int> ());
+    EXPECT_EQ (4u, json.at ("MembershipEpoch").get<std::uint64_t> ());
     EXPECT_EQ ("owner-a", json.at ("OwnerId").get<std::string> ());
 
     const auto decoded = redis_location_row_codec_t::decode_actor (encoded);
-    ASSERT_TRUE (decoded.actor_type.has_value ());
-    EXPECT_EQ ("player", *decoded.actor_type);
+    EXPECT_EQ ("player", decoded.actor_type);
     EXPECT_EQ ("alice", decoded.actor_id);
-    EXPECT_EQ ("node-a", decoded.node_rid.to_string ());
-    ASSERT_TRUE (decoded.spot_rid.has_value ());
-    EXPECT_EQ ("play-spot", decoded.spot_rid->to_string ());
-    EXPECT_EQ (11, decoded.generation);
+    EXPECT_EQ ("node-a", decoded.owner_node_rid.to_string ());
+    EXPECT_EQ ("play-spot", decoded.spot_rid.to_string ());
+    EXPECT_EQ (11u, decoded.actor_ref.generation ());
 }
 
-TEST (ZLinkFrameworkLocationsRedis, EntryActorRowKeepsNullSpotRid)
+TEST (ZLinkFrameworkLocationsRedis, EntryActorRowKeepsTypedSpotIdentity)
 {
     const auto encoded = redis_location_row_codec_t::encode_actor (
-      actor_location_t{.actor_id = "bob",
-                       .actor_type = "player",
-                       .actor_ref = std::nullopt,
-                       .node_rid = zlink::routing_id_t::from ("node-a"),
-                       .location_kind = zlink::spot_kind::entry,
-                       .spot_mesh_name = "play",
-                       .spot_rid = std::nullopt,
-                       .owner_id = "owner-a",
-                       .generation = 3});
+      make_actor_location ("play", "bob", "node-a", "entry-spot",
+                           zlink::spot_kind::entry, "owner-a", 3));
 
     const auto json = nlohmann::json::parse (encoded);
-    EXPECT_TRUE (json.at ("SpotRid").is_null ());
+    EXPECT_EQ (zlink::routing_id_t::from ("entry-spot").to_hex (),
+               json.at ("SpotRid").get<std::string> ());
 
     const auto decoded = redis_location_row_codec_t::decode_actor (encoded);
-    EXPECT_FALSE (decoded.spot_rid.has_value ());
-    EXPECT_EQ (zlink::spot_kind::entry, decoded.location_kind);
+    EXPECT_EQ ("entry-spot", decoded.spot_rid.to_string ());
+    EXPECT_EQ (zlink::spot_kind::entry, decoded.spot_kind);
 }
 
 TEST (ZLinkFrameworkLocationsRedis, RouteRowJsonUsesBase64Value)

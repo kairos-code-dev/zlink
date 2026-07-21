@@ -29,7 +29,7 @@ class location_key_codec_t
 
     static std::string encode_actor_key (const actor_location_key_t &key)
     {
-        return encode (key.actor_id);
+        return encode (key.mesh_name, key.actor_id);
     }
 
     static std::string encode_route_key (const route_location_key_t &key)

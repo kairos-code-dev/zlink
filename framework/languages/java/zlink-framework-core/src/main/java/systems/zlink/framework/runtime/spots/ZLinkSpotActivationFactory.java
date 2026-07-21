@@ -8,6 +8,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
@@ -116,7 +117,7 @@ final class ZLinkSpotActivationFactory {
             entrySpot,
             backendSpot,
             context);
-        backendSpot.onDispatchEvent(activation::handleDispatchEvent);
+        registerDispatchHandler(backendSpot, activation::handleDispatchEvent);
         return activation;
     }
 
@@ -143,9 +144,23 @@ final class ZLinkSpotActivationFactory {
                     spot,
                     backendSpot,
                     context);
-                backendSpot.onDispatchEvent(activation::handleDispatchEvent);
+                registerDispatchHandler(backendSpot, activation::handleDispatchEvent);
                 return new SpotActivationCreateResult(activation, effectiveResponse);
             });
+    }
+
+    private static void registerDispatchHandler(
+        ZLinkBackendSpot backendSpot,
+        java.util.function.Function<
+            systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo,
+            CompletionStage<Void>> handler) {
+        backendSpot.onDispatchEvent(new ZLinkInternalAsyncSpotDispatchHandler() {
+            @Override
+            public CompletionStage<Void> handleAsync(
+                systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo info) {
+                return handler.apply(info);
+            }
+        });
     }
 
     private ZLinkSpot<?> createSpot(

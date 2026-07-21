@@ -66,8 +66,9 @@ framework channel traffic은 `Server/Trigger` role이 수행한다. `.NET`에 �
 
 ## 남은 gap
 
-현재 Java `RuntimeMonitoring` inventory에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통
-RuntimeMonitoring 문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
+프로젝트와 role inventory는 모두 대응하지만 scenario 계약에는 아직 `MON-A4`, `MON-B1`, `MON-B2`,
+`MON-C1`, `MON-D1`의 세부 gap이 남아 있다. 정확한 범위와 최신 실행 증거는 같은 디렉터리의
+`feature-map.ko.md`를 기준으로 확인한다.
 
 ## 검증
 
@@ -87,3 +88,7 @@ RuntimeMonitoring 문서나 release gate가 바뀌면 이 문서도 같은 기�
   - 결과: `MON-A1`/`MON-A2`/`MON-A3`/`MON-A4`/`MON-A5`/`MON-B1`/`MON-B2`/`MON-C1`/`MON-D1` 통과,
     `monitoring e2e result=passed`
   - 로그: `logs/20260707-221130-3621759/`
+- `ZLINK_LOCAL_PACKAGE_ROOT=/tmp/zlink-java-validation-1784476567 ./run_e2e.sh all`
+  - 결과: `MON-A1`/`MON-A2`/`MON-A3`/`MON-A4`/`MON-A5`/`MON-B1`/`MON-B2`/`MON-C1`/`MON-D1` 통과,
+    `monitoring e2e result=passed`
+  - 로그: `logs/20260720-013848-1763980/`

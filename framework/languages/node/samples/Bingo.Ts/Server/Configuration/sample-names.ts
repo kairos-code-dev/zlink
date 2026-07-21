@@ -8,6 +8,7 @@ const SampleNames = {
   playerActorType: 'bingo.player',
   roomSpotType: 'bingo.room',
   roomSpotNode: 'bingo.room',
+  roomLocationPeerMonitor: 'bingo.room.location-peer',
   sessionStream: 'bingo.session.stream',
   sessionSpotNode: 'bingo.session',
   actorIds: [
@@ -23,7 +24,7 @@ const SampleNames = {
 };
 
 const SampleTimings = {
-  requestTimeout: 20000
+  requestTimeout: 3000
 };
 
 export { SampleNames, SampleTimings };

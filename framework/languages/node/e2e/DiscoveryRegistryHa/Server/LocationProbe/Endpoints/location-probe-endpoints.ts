@@ -20,7 +20,7 @@ export function createLocationProbeEndpoints(
       path: '/location/service-summary',
       handle: async () => {
         const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
           meshName: 'profile',
           role: ZLinkLocationRole.Router
         });
@@ -32,7 +32,7 @@ export function createLocationProbeEndpoints(
       path: '/location/topology',
       handle: async () => {
         const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
           meshName: 'profile',
           role: ZLinkLocationRole.Router
         });
@@ -50,7 +50,7 @@ export function createLocationProbeEndpoints(
       path: '/location/member-peers',
       handle: async () => {
         const rows = await store.listPeers({
-          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
           meshName: 'profile',
           role: ZLinkLocationRole.Router
         });

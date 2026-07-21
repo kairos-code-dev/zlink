@@ -53,7 +53,7 @@ test('ConnectionReady before the first packet keeps the native routing id for re
         return {
           context,
           async onDispatch() {
-            context.client.reply('ready-first').submit();
+            await context.client.reply('ready-first').submit();
             resolve(runtime);
           }
         };
@@ -251,6 +251,43 @@ test('stream session node runtime dispatches framed packets through one session 
     ['dispatch', 'Move', 'two'],
     ['disconnected', 'session-a']
   ]);
+});
+
+test('STREAM application claim remains active through async handler terminal cleanup', async () => {
+  const socket = new FakeStreamSocket();
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  gate.register('game');
+  let entered;
+  const didEnter = new Promise((resolve) => { entered = resolve; });
+  let release;
+  const canFinish = new Promise((resolve) => { release = resolve; });
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    claimApplicationWork: () => gate.claim('game', 'STREAM dispatch'),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch() {
+          entered();
+          await canFinish;
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-a', fakeHeader({ name: 'Work' }), fakeMessage('payload'));
+  await didEnter;
+  gate.seal('game');
+  assert.equal(gate.pending('game'), 1);
+  let zero = false;
+  const drained = gate.awaitZero('game').then(() => { zero = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(zero, false);
+  release();
+  await drained;
+  assert.equal(gate.pending('game'), 0);
+  await runtime.dispose();
 });
 
 test('stream session runtime sends heartbeat ping and consumes pong outside application dispatch', async () => {
@@ -1163,7 +1200,7 @@ test('stream session node runtime receives framed packets from public binding st
               header: header.packetName,
               payload: payload.decode()
             });
-            sessionContext.client.reply('NativeReply').submit();
+            await sessionContext.client.reply('NativeReply').submit();
           }
         };
       }

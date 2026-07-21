@@ -7,15 +7,11 @@ namespace ZoneWorld.Shared.Contracts;
 /// </summary>
 public static class ZoneWorldNames
 {
-    /// <summary>Spot mesh hosting the zone spots and the player actors.</summary>
-    public const string ZoneMesh = "zoneworld.zones";
+    /// <summary>Physical RouteMesh hosting all ZoneWorld MeshNodes.</summary>
+    public const string MeshName = "zoneworld.mesh";
 
-    /// <summary>
-    /// Route mesh registered only so the runtime can build the spot bridge that
-    /// carries a channel handler's message into a zone spot in the same process.
-    /// It is never used to address a node from the application (§1.1).
-    /// </summary>
-    public const string BridgeMesh = "zoneworld.bridge";
+    /// <summary>Logical multicast channel containing the zone Spot owners.</summary>
+    public const string ZoneChannel = "zoneworld.zones";
 
     /// <summary>Fanout channel: Ops publishes, every ZoneNode subscribes.</summary>
     public const string BroadcastChannel = "zoneworld.broadcast";
@@ -54,14 +50,12 @@ public static class ZoneWorldNames
     public const string OpsStreamNode = "zoneworld.ops";
 
     /// <summary>
-    /// Monitoring source names (§8.1). A socket source names a channel and the capability
-    /// on it; a spot source names the SpotNode. They are not free-form labels — the runtime
+    /// Monitoring source names (§8.1). The socket source names the one physical mesh and its
+    /// server capability; a spot source names the MeshNode. They are not free-form labels — the runtime
     /// resolves them against what was actually registered.
     /// </summary>
     public const string OpsLocationSource = "zoneworld.ops.location";
-    public const string OpsSocketSource = ReportChannel + ".server";
-    public static string OpsChannelSocketSource(string nodeId) => OpsChannel(nodeId) + ".client";
-    public const string ZoneSpotSource = ZoneMesh;
+    public const string ZoneSpotSource = MeshName;
 }
 
 public static class HandlerGroups

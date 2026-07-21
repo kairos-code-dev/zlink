@@ -42,12 +42,21 @@ public sealed record PeerRowsWaitReq(
     string[] DrainingRids,
     int TimeoutMilliseconds = 30000);
 
+public sealed record RouteReadyWaitReq(
+    int MinimumReadyMembers,
+    string[] ReadyRids,
+    string[] NotReadyRids,
+    int TimeoutMilliseconds = 10000);
+
+public sealed record RouteReadyRes(int ReadyMemberCount);
+
 public sealed record RuntimeStatusWaitReq(
     bool? StoreHealthy,
     bool? OwnerLeaseHealthy,
     bool RequireLastError = false,
     bool RequireLastRefresh = false,
-    int TimeoutMilliseconds = 30000);
+    int TimeoutMilliseconds = 30000,
+    DateTimeOffset? LastRefreshAfter = null);
 
 public sealed record RuntimeStatusRes(
     bool StoreHealthy,

@@ -45,7 +45,7 @@ export interface MeshPeerEntryRaw {
   connectionIntentId: bigint;
   source: number;
   state: number;
-  routingId: Buffer;
+  routingId: Buffer | null;
   lifecycleGeneration: bigint;
   descriptorRevision: bigint;
   endpoint: string;
@@ -109,6 +109,21 @@ export interface MeshPublishDetailRaw {
   snapshotLocalSpotCount: number;
   admittedLocalSpotCount: number;
   droppedLocalSpotCount: number;
+}
+
+/** Native completion for one asynchronous Mesh publisher call. */
+export interface MeshPublisherPublishAsyncResultRaw {
+  readonly cancelled: boolean;
+  readonly result: number;
+  readonly nativeErrno: number;
+  readonly errorMessage: string;
+  readonly detail: MeshPublishDetailRaw;
+}
+
+/** Private native async-work control; the cancel token is never exported. */
+export interface MeshPublisherPublishAsyncOperationRaw {
+  readonly promise: Promise<MeshPublisherPublishAsyncResultRaw>;
+  readonly cancelToken: NativeServiceHandle;
 }
 
 /** Spot status snapshot (zlink_spot_status_t). */
@@ -221,6 +236,7 @@ export interface MeshReceiveRecordRaw {
   domain: number;
   sourceNodeRid: Buffer;
   sourceSpotRid: Buffer;
+  sourceBindingGeneration: bigint;
   sourceActor: ActorRefRaw;
   operationId: MeshOperationIdRaw;
   operationKind: number;

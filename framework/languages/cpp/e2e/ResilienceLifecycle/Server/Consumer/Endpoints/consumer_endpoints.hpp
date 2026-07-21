@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <set>
@@ -428,6 +429,97 @@ class transient_profile_request_service_t final : public zlink::framework::hoste
     std::shared_ptr<result_state_t> _result;
 };
 
+class transient_route_request_service_t final :
+    public zlink::framework::hosted_service_t
+{
+  public:
+    struct result_state_t
+    {
+        std::optional<scenario_route_res_t> reply;
+        std::optional<std::string> error;
+
+        scenario_route_res_t take_reply () const
+        {
+            if (error)
+                throw std::runtime_error (*error);
+            if (!reply)
+                throw std::runtime_error (
+                  "transient route request produced no reply");
+            return *reply;
+        }
+    };
+
+    transient_route_request_service_t (
+      zlink::framework::app_t &app,
+      scenario_route_req_t request,
+      std::shared_ptr<result_state_t> result) :
+        _app (app), _request (std::move (request)), _result (std::move (result))
+    {
+    }
+
+    void start (zlink::framework::service_provider_t &services) override
+    {
+        try {
+            auto &runtime =
+              services.get_required<zlink::framework::route_mesh_runtime_t> ();
+            const auto deadline =
+              std::chrono::steady_clock::now () + std::chrono::seconds (5);
+            bool ready = false;
+            do {
+                const auto snapshot = runtime.snapshot (route_channel);
+                std::cerr << "RL-C1 route snapshot cycle=" << _request.value
+                          << " localEndpoint=" << snapshot.endpoint
+                          << " localGeneration="
+                          << snapshot.lifecycle_generation;
+                for (const auto &peer : snapshot.peers)
+                {
+                    std::cerr << " peer=" << peer.rid.to_string ()
+                              << ",endpoint=" << peer.endpoint
+                              << ",generation=" << peer.lifecycle_generation
+                              << ",revision=" << peer.descriptor_revision
+                              << ",ready=" << (peer.ready ? "true" : "false")
+                              << ",admission=" << peer.admission_state;
+                    ready = ready
+                            || (peer.rid.to_string () == "api-a"
+                                && peer.ready);
+                }
+                std::cerr << '\n';
+                if (!ready)
+                    std::this_thread::sleep_for (
+                      std::chrono::milliseconds (20));
+            } while (!ready && std::chrono::steady_clock::now () < deadline);
+            if (!ready)
+                throw std::runtime_error (
+                  "transient RouteMesh did not admit api-a within 5 seconds");
+
+            auto &routes =
+              services.get_required<zlink::framework::route_client_t> ();
+            _result->reply =
+              routes
+                .request_to_node (
+                  route_channel, zlink::routing_id_t::from ("api-a"),
+                  _request)
+                .timeout (std::chrono::seconds (5))
+                .async<scenario_route_res_t> ()
+                .result ()
+                .value ();
+        }
+        catch (const std::exception &error) {
+            std::cerr << "RL-C1 transient RouteMesh error cycle="
+                      << _request.value << " error=" << error.what () << '\n';
+            _result->error = error.what ();
+        }
+        _app.stop ();
+    }
+
+    void stop () noexcept override {}
+
+  private:
+    zlink::framework::app_t &_app;
+    scenario_route_req_t _request;
+    std::shared_ptr<result_state_t> _result;
+};
+
 inline profile_res_t request_profile_with_new_client_host (const consumer_options_t &options,
                                                            const profile_req_t &request)
 {
@@ -452,6 +544,36 @@ inline profile_res_t request_profile_with_new_client_host (const consumer_option
     return result->take_reply ();
 }
 
+inline scenario_route_res_t request_route_with_recreated_mesh_host (
+  const consumer_options_t &options,
+  const scenario_route_req_t &request)
+{
+    auto app = zlink::framework::app_t::create ();
+    auto result =
+      std::make_shared<transient_route_request_service_t::result_state_t> ();
+    auto service = std::make_unique<transient_route_request_service_t> (
+      app, request, result);
+    app.add_zlink_framework (
+      [&] (zlink::framework::zlink_framework_options_t &framework) {
+          server::add_redis_location_store (
+            framework, options.redis_endpoint, options.redis_key_prefix);
+          framework.add_route_mesh (route_channel)
+            .listen ("tcp://127.0.0.1:0")
+            .set_routing_id (
+              zlink::routing_id_t::from ("rl-c1-route-consumer"))
+            .channel_name (route_channel);
+      });
+    app.add_hosted_service (std::move (service));
+    std::cerr << "RL-C1 transient RouteMesh run begin cycle="
+              << request.value << '\n';
+    const auto exit_code = app.run (0, nullptr);
+    std::cerr << "RL-C1 transient RouteMesh run end cycle="
+              << request.value << " exit=" << exit_code << '\n';
+    if (exit_code != 0)
+        throw std::runtime_error ("transient RouteMesh host failed");
+    return result->take_reply ();
+}
+
 class new_client_profile_request_handler_t
 {
   public:
@@ -467,6 +589,28 @@ class new_client_profile_request_handler_t
     profile_res_t handle (const profile_req_t &request)
     {
         return request_profile_with_new_client_host (_options, request);
+    }
+
+  private:
+    consumer_options_t &_options;
+};
+
+class recreated_mesh_request_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<consumer_options_t>;
+    using request_type = scenario_route_req_t;
+    using reply_type = scenario_route_res_t;
+
+    explicit recreated_mesh_request_handler_t (consumer_options_t &options) :
+        _options (options)
+    {
+    }
+
+    scenario_route_res_t handle (const scenario_route_req_t &request)
+    {
+        return request_route_with_recreated_mesh_host (_options, request);
     }
 
   private:

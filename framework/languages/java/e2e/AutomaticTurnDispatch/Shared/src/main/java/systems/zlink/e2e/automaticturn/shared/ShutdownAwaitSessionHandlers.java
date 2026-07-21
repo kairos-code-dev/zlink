@@ -45,7 +45,6 @@ public final class ShutdownAwaitSessionHandlers {
             return ensure(routes, playNode, request.spotRid())
                 .thenCompose(ignored -> spots.resolveSpotHandle(spotRid))
                 .thenCompose(handle -> routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
                         requireSpot(handle, spotRid),
                         new Contracts.AwaitReq("ATD-E3", request.requestId(), "shutdown"))
                     .timeout(ROUTE_REQUEST_TIMEOUT)
@@ -108,7 +107,6 @@ public final class ShutdownAwaitSessionHandlers {
         int remaining) {
         return spots.resolveSpotHandle(spotRid)
             .thenCompose(handle -> routes.requestToSpot(
-                    Contracts.ROUTE_CHANNEL,
                     requireSpot(handle, spotRid),
                     new Contracts.ProbeReq(requestId))
                 .timeout(RECOVERY_PROBE_ATTEMPT_TIMEOUT)

@@ -51,10 +51,10 @@ Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 �
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
 Entry Spot에서만 `destroy_actor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
-Entry Spot destroy를 검증한다. `test_cpp_framework_spot_runtime`은 destroy 직전과 직후의 Entry Spot
-leave callback count가 같은지 단언해 추가 `on_leave_actor`가 없음을 확인한다. 같은 gate는 destroy 뒤
-actor lookup에서 사라지는지와 같은 actor id 재생성이
-가능한지도 확인한다. runner는 API, Play, Session 서버를 별도 process로 계속
+Entry Spot destroy를 검증한다. runner는 현재 MeshNode Actor vertical과 ActorGateway 회귀를 먼저 실행해
+Actor 등록과 session 정리 경로를 확인한다. sample self-check는 destroy 전후의 Entry Spot leave callback
+count가 같아 추가 `on_leave_actor`가 없음을 확인하고, destroy 뒤 actor lookup에서 사라지는지와
+같은 actor id 재생성이 가능한지도 확인한다. runner는 API, Play, Session 서버를 별도 process로 계속
 실행한 뒤 public client 실행 파일로 authenticate, match, card submit, server draw, winner
 판단 흐름을 검증한다.
 

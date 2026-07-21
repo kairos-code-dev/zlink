@@ -140,7 +140,7 @@ class multi_node_create_local_handler_t
         return create_spot (request);
     }
 
-    e2e::multi_node_create_spot_res_t handle_route (
+    e2e::multi_node_create_spot_res_t handle (
       const e2e::multi_node_create_spot_req_t &request,
       const zlink::framework::route_handler_context_t &)
     {

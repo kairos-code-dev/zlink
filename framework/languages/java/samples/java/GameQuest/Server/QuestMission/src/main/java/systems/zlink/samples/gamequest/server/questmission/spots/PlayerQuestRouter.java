@@ -29,7 +29,7 @@ public final class PlayerQuestRouter {
     public CompletionStage<Void> send(String playerId, Object message) {
         return ownerHandle(playerId)
             .thenApply(handle -> {
-                routes.sendToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, message).submit();
+                routes.sendToSpot(handle, message).submit();
                 return null;
             });
     }
@@ -46,7 +46,7 @@ public final class PlayerQuestRouter {
     }
 
     private <T> CompletionStage<T> request(SpotHandle handle, Object request, Class<T> responseType) {
-        return routes.requestToSpot(SampleNames.PlayerQuestSpotDiscovery, handle, request)
+        return routes.requestToSpot(handle, request)
             .timeout(SampleTimings.RequestTimeout)
             .submit(responseType);
     }

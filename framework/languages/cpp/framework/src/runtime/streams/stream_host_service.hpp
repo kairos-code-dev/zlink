@@ -8,6 +8,7 @@
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -19,6 +20,7 @@
 namespace zlink::framework::detail
 {
 class monitoring_runtime_state_t;
+class mesh_node_runtime_t;
 } // namespace zlink::framework::detail
 
 namespace zlink::framework::runtime
@@ -30,7 +32,8 @@ class stream_host_service_t final : public hosted_service_t
     stream_host_service_t (
       detail::stream_runtime_t runtime,
       std::vector<stream_snapshot_t> streams,
-      std::map<std::string, detail::stream_session_factory_t> session_factories);
+      std::map<std::string, detail::stream_session_factory_t> session_factories,
+      std::shared_ptr<detail::mesh_node_runtime_t> mesh_node = nullptr);
     ~stream_host_service_t () override;
 
     void start (service_provider_t &services) override;
@@ -63,6 +66,9 @@ class stream_host_service_t final : public hosted_service_t
     void force_close_sessions (stream_close_reason_t reason,
                                std::string_view diagnostic) noexcept;
 
+    bool drain_sessions_until (
+      std::chrono::steady_clock::time_point deadline) noexcept;
+
   private:
     class listener_t;
 
@@ -71,6 +77,7 @@ class stream_host_service_t final : public hosted_service_t
     detail::stream_runtime_t _runtime;
     std::vector<stream_snapshot_t> _streams;
     std::map<std::string, detail::stream_session_factory_t> _session_factories;
+    std::shared_ptr<detail::mesh_node_runtime_t> _mesh_node;
     service_provider_t *_services = nullptr;
     std::atomic_bool _stop{false};
     std::vector<std::unique_ptr<listener_t>> _listeners;

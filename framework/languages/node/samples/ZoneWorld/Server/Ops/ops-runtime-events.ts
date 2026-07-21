@@ -1,19 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import {
   ZLinkLocationRuntimeEventKind,
-  ZLinkSocketEventKind
+  ZLinkSpotEventKind
 } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
 import type {
   ZLinkLocationRuntimeEvent,
   ZLinkRuntimeEventHandler,
-  ZLinkSocketEvent
+  ZLinkSpotEvent
 } from '@zlink-systems/framework';
+import { ZoneWorldNames } from '../../Shared/spec';
 import { NodeRegistry } from './node-registry';
 import { OpsConsoleRegistry } from './ops-console-registry';
 
 const OPS_LOCATION_SOURCE = 'zoneworld.location';
-const OPS_REPORT_SOCKET_SOURCE = 'zoneworld.report.server';
 
 @Injectable()
 @zlinkRuntimeEventHandler()
@@ -30,29 +30,25 @@ class OpsLocationEventHandler implements ZLinkRuntimeEventHandler<ZLinkLocationR
 
 @Injectable()
 @zlinkRuntimeEventHandler()
-class OpsSocketEventHandler implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
-  private readonly routingByRemote = new Map<string, string>();
+class OpsReportMeshEventHandler implements ZLinkRuntimeEventHandler<ZLinkSpotEvent> {
+  private readyRoutingIds = new Set<string>();
 
   constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
-  async handle(event: ZLinkSocketEvent): Promise<void> {
-    if (event.sourceName !== OPS_REPORT_SOCKET_SOURCE) return;
-    const connected = event.event === ZLinkSocketEventKind.Connected
-      || event.event === ZLinkSocketEventKind.ConnectionReady;
-    const disconnected = event.event === ZLinkSocketEventKind.Disconnected
-      || event.event === ZLinkSocketEventKind.Closed;
-    if (!connected && !disconnected) return;
-    if (connected && event.routingId !== undefined) {
-      this.routingByRemote.set(event.remoteAddr, nodeRoutingId(String(event.routingId)));
+  async handle(event: ZLinkSpotEvent): Promise<void> {
+    if (event.sourceName !== ZoneWorldNames.zoneMesh
+      || event.event !== ZLinkSpotEventKind.PeersChanged) return;
+    const current = new Set(event.peers
+      .filter((peer) => peer.ready)
+      .map((peer) => nodeRoutingId(String(peer.rid))));
+    for (const routingId of new Set([...this.readyRoutingIds, ...current])) {
+      const connected = current.has(routingId);
+      if (connected === this.readyRoutingIds.has(routingId)) continue;
+      console.log(`report mesh observed ready=${connected} rid=${routingId}`);
+      const node = this.nodes.applyConnection(routingId, connected);
+      if (node !== undefined) this.consoles.publish(node);
     }
-    const routingId = event.routingId === undefined
-      ? this.routingByRemote.get(event.remoteAddr)
-      : nodeRoutingId(String(event.routingId));
-    console.log(`report socket observed event=${event.event} rid=${routingId ?? '-'} remote=${event.remoteAddr}`);
-    if (routingId === undefined) return;
-    const node = this.nodes.applyConnection(routingId, connected);
-    if (node !== undefined) this.consoles.publish(node);
-    if (disconnected) this.routingByRemote.delete(event.remoteAddr);
+    this.readyRoutingIds = current;
   }
 }
 
@@ -63,7 +59,6 @@ function nodeRoutingId(value: string): string {
 
 export {
   OPS_LOCATION_SOURCE,
-  OPS_REPORT_SOCKET_SOURCE,
   OpsLocationEventHandler,
-  OpsSocketEventHandler
+  OpsReportMeshEventHandler
 };

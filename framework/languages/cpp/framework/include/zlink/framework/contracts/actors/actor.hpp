@@ -86,18 +86,24 @@ class route_client_t;
 class actor_send_call_t
 {
   public:
+    using metadata_map_t = std::map<std::string, std::string>;
+
     actor_send_call_t (actor_client_t &client,
                        actor_ref_t actor_ref,
                        std::string packet_name,
                        message_t message);
 
-    void submit ();
+    actor_send_call_t &metadata (std::string key, std::string value);
+    task_t<submit_result_t> submit ();
 
   private:
     actor_client_t *_client;
     actor_ref_t _actor_ref;
     std::string _packet_name;
     message_t _message;
+    metadata_map_t _metadata;
+    std::shared_ptr<detail::submit_once_t> _submission =
+      std::make_shared<detail::submit_once_t> ();
 };
 
 class actor_request_call_t
@@ -162,7 +168,8 @@ class actor_client_t
   protected:
     virtual task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
                                                std::string packet_name,
-                                               message_t message) = 0;
+                                               message_t message,
+                                               const actor_send_call_t::metadata_map_t &metadata) = 0;
     virtual task_t<message_t> request_to_actor_erased (
       actor_ref_t actor_ref,
       std::string packet_name,
@@ -370,6 +377,7 @@ class bound_session_t
     {
         using message_type = std::remove_cvref_t<TMessage>;
         return send_typed (detail::message_name<message_type> (),
+                           std::type_index (typeid (message_type)),
                            [&message] (serializer_registry_t &serializers) {
                                return serializers.template get<message_type> ().serialize (message);
                            });
@@ -383,18 +391,22 @@ class bound_session_t
     friend class detail::actor_gateway_runtime_t;
 
     explicit bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
-                              actor_ref_t actor_ref);
+                              actor_ref_t actor_ref,
+                              std::uint64_t expected_binding_generation = 0);
 
     bound_session_send_call_t
     send_typed (std::string packet_name,
+                std::type_index message_type,
                 std::function<encoded_payload_t (serializer_registry_t &)> encode_payload);
     bound_session_send_call_t
     send_typed (std::string packet_name, std::type_index message_type, const void *message);
     bound_session_send_call_t send_erased (std::string packet_name,
+                                           stream_codec_t codec,
                                            const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _actor_ref;
+    std::uint64_t _expected_binding_generation = 0;
 };
 
 class actor_context_t
@@ -529,7 +541,8 @@ class actor_context_t
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
     explicit actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state,
-                              actor_ref_t actor_ref);
+                              actor_ref_t actor_ref,
+                              std::uint64_t source_binding_generation = 0);
 
     result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid,
                                                            const zlink::message_t &request);
@@ -538,6 +551,7 @@ class actor_context_t
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     std::shared_ptr<actor_ref_t> _actor_ref;
+    std::uint64_t _source_binding_generation = 0;
 };
 
 class session_actor_t
@@ -555,8 +569,8 @@ class session_actor_t
     std::string_view actor_id () const noexcept;
     actor_context_t context () const;
     bound_session_t bound_session () const;
-    task_t<void> relay (const zlink::message_t &payload);
-    task_t<void> relay (std::string packet_name, const zlink::message_t &payload);
+    task_t<submit_result_t> relay (const zlink::message_t &payload);
+    task_t<submit_result_t> relay (std::string packet_name, const zlink::message_t &payload);
     relay_request_call_t relay_request (const zlink::message_t &payload);
     relay_request_call_t relay_request (std::string packet_name, const zlink::message_t &payload);
     task_t<void> notify_disconnected ();
@@ -567,6 +581,7 @@ class session_actor_t
 
     explicit session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                               actor_ref_t ref);
+    task_t<void> relay_internal (const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     actor_ref_t _ref;

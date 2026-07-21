@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <iostream>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -118,6 +120,18 @@ class live_location_reader_t final
             || now - *_lease_fetched_at >= _polling_interval) {
             const auto snapshot = _store->list_owner_leases ().result ().value ();
             _lease_expirations.clear ();
+            const auto trace_enabled = [] {
+                const char *value = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+                return value != nullptr && *value != '\0';
+            } ();
+            if (trace_enabled) {
+                std::cerr << "zlink owner-lease snapshot"
+                          << " monotonicMs="
+                          << std::chrono::duration_cast<std::chrono::milliseconds> (
+                               now.time_since_epoch ())
+                               .count ()
+                          << " owners=" << snapshot.leases.size ();
+            }
             for (const auto &lease : snapshot.leases) {
                 const auto remaining = lease.lease_expires_at - snapshot.store_now;
                 if (remaining > std::chrono::system_clock::duration::zero ()) {
@@ -125,6 +139,15 @@ class live_location_reader_t final
                       now + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
                               remaining);
                 }
+                if (trace_enabled) {
+                    std::cerr << " owner=" << lease.owner_id
+                              << ",remainingMs="
+                              << std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
+                                   .count ();
+                }
+            }
+            if (trace_enabled) {
+                std::cerr << '\n';
             }
             _lease_fetched_at = now;
         }

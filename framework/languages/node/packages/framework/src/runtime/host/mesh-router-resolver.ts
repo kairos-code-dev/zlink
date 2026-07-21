@@ -11,6 +11,16 @@ export class MeshRouterResolver {
       || this.registration.spotNodes.get(routerChannelId)?.router !== undefined;
   }
 
+  classifyManualNodeTarget(meshName: string, targetNodeRid: RoutingId): boolean | undefined {
+    const router = this.registration.spotNodes.get(meshName)?.router;
+    if (router === undefined) return undefined;
+    const manualConnections = router.manualConnections ?? [];
+    const manualPeers = router.manualPeerConnections ?? [];
+    if (manualConnections.length === 0 && manualPeers.length === 0) return undefined;
+    if (manualPeers.some((peer) => routingIdsEqual(peer.peerRid, targetNodeRid))) return true;
+    return manualConnections.length === 0 ? false : undefined;
+  }
+
   defaultRouterChannelId(): string | undefined {
     const candidates = [
       ...this.registration.routeChannels,
@@ -42,12 +52,22 @@ export class MeshRouterResolver {
     };
   }
 
-  primarySpotMeshName(): string | undefined {
-    const names = [...this.registration.spotNodes.keys()];
-    return names.length === 1 ? names[0] : undefined;
+  primaryMeshName(): string | undefined {
+    const names = [...this.registration.spotNodes.entries()]
+      .filter(([, node]) =>
+        node.entrySpotType !== undefined
+        || (node.spotFactories?.length ?? 0) > 0
+        || (node.actorFactories instanceof Map
+          ? node.actorFactories.size > 0
+          : Object.keys(node.actorFactories ?? {}).length > 0))
+      .map(([name]) => name);
+    if (names.length === 1) return names[0];
+    if (names.length > 1) return undefined;
+    const allMeshNames = [...this.registration.spotNodes.keys()];
+    return allMeshNames.length === 1 ? allMeshNames[0] : undefined;
   }
 
-  actorSpotMeshName(actorType: string): string | undefined {
+  actorMeshName(actorType: string): string | undefined {
     const matches = [...this.registration.spotNodes.entries()]
       .filter(([, node]) => node.actorFactories instanceof Map
         ? node.actorFactories.has(actorType)

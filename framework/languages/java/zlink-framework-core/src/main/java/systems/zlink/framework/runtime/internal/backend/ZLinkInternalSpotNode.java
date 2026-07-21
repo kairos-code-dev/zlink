@@ -6,13 +6,21 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 
 import java.util.List;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.ActorTransferId;
+import systems.zlink.contracts.service.spot.ActorTransferPrepare;
+import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
+import systems.zlink.contracts.service.spot.ActorTransferToken;
+import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
+import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.framework.channels.ZLinkSubmitStatus;
 
 public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     RoutingId routingId();
@@ -35,11 +43,134 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     void disconnectPeer(RoutingId peerRid);
 
+    default void setApplicationReceiver(ZLinkMeshApplicationReceiver receiver) {
+        // Alternate backends may not support process-local Node direct dispatch.
+    }
+
+    default java.util.Optional<ZLinkSubmitStatus> submitLocalNodeSend(
+        RoutingId targetNodeRid,
+        byte[] metadata,
+        List<Message> parts) {
+        return java.util.Optional.empty();
+    }
+
+    default java.util.Optional<ZLinkSubmitStatus> classifyNodeSendTarget(
+        RoutingId targetNodeRid) {
+        return java.util.Optional.empty();
+    }
+
     ZLinkBackendSpotRouteBridge createRouteBridge();
 
     ZLinkBackendSpot createSpot();
 
+    default ZLinkBackendSpot createSpot(RoutingId spotRid) {
+        ZLinkBackendSpot spot = createSpot();
+        spot.setRoutingId(spotRid);
+        return spot;
+    }
+
     ZLinkBackendSpot entrySpot();
+
+    default boolean sendToNode(
+        RoutingId targetNodeRid,
+        List<Message> parts,
+        SendFlags flags) {
+        throw new UnsupportedOperationException("MeshNode node send is unavailable");
+    }
+
+    default boolean sendToNode(
+        RoutingId targetNodeRid,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
+        if (metadata == null || metadata.length == 0) {
+            return sendToNode(targetNodeRid, parts, flags);
+        }
+        throw new UnsupportedOperationException("MeshNode node metadata is unavailable");
+    }
+
+    default boolean requestToNode(
+        RoutingId targetNodeRid,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        throw new UnsupportedOperationException("MeshNode node request is unavailable");
+    }
+
+    default boolean requestToNode(
+        RoutingId targetNodeRid,
+        byte[] metadata,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        if (metadata == null || metadata.length == 0) {
+            return requestToNode(targetNodeRid, parts, callback, flags, timeout);
+        }
+        throw new UnsupportedOperationException("MeshNode node request metadata is unavailable");
+    }
+
+    default boolean sendToChannel(
+        String channelName,
+        List<Message> parts,
+        SendFlags flags) {
+        throw new UnsupportedOperationException("MeshNode channel send is unavailable");
+    }
+
+    default boolean sendToChannel(
+        String channelName,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
+        if (metadata == null || metadata.length == 0) {
+            return sendToChannel(channelName, parts, flags);
+        }
+        throw new UnsupportedOperationException("MeshNode channel metadata is unavailable");
+    }
+
+    default boolean requestToChannel(
+        String channelName,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        throw new UnsupportedOperationException("MeshNode channel request is unavailable");
+    }
+
+    default boolean requestToChannel(
+        String channelName,
+        byte[] metadata,
+        List<Message> parts,
+        ZLinkBackendRequestCallback callback,
+        SendFlags flags,
+        Duration timeout) {
+        if (metadata == null || metadata.length == 0) {
+            return requestToChannel(channelName, parts, callback, flags, timeout);
+        }
+        throw new UnsupportedOperationException(
+            "MeshNode channel request metadata is unavailable");
+    }
+
+    default PublishDetail publishDetailed(
+        String channelName,
+        String topic,
+        List<Message> parts,
+        SendFlags flags) {
+        throw new UnsupportedOperationException("MeshNode publish detail is unavailable");
+    }
+
+    default PublishDetail publishDetailed(
+        String channelName,
+        String topic,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
+        if (metadata == null || metadata.length == 0) {
+            return publishDetailed(channelName, topic, parts, flags);
+        }
+        throw new UnsupportedOperationException("MeshNode publish metadata is unavailable");
+    }
 
     ZLinkBackendActorRef createActor(String actorId, Message createRequest);
 
@@ -51,6 +182,16 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         RoutingId targetSpotRid,
         List<Message> parts,
         Duration timeout);
+
+    default CompletionStage<ZLinkBackendActorJoinResult> joinActor(
+        ZLinkBackendActorRef actor,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        List<Message> parts,
+        Duration timeout) {
+        return joinActor(actor, targetNodeRid, targetSpotRid, parts, timeout);
+    }
 
     CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
         ZLinkBackendActorRef actor,
@@ -66,6 +207,33 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     CompletionStage<Void> destroyActor(
         ZLinkBackendActorRef actor,
         Duration timeout);
+
+    default PrepareActorTransferResult prepareActorTransfer(
+        ActorTransferPrepare prepare, Duration timeout) {
+        throw new UnsupportedOperationException("Core actor transfer is unavailable");
+    }
+
+    default void commitActorTransfer(
+        ActorTransferToken token, long newMembershipEpoch) {
+        throw new UnsupportedOperationException("Core actor transfer is unavailable");
+    }
+
+    default void activateActorTransfer(ActorTransferToken token) {
+        throw new UnsupportedOperationException("Core actor transfer is unavailable");
+    }
+
+    default void abortActorTransfer(ActorTransferToken token) {
+        throw new UnsupportedOperationException("Core actor transfer is unavailable");
+    }
+
+    default long actorMembershipEpoch(String actorId) {
+        return 0L;
+    }
+
+    default void registerTransferredActor(
+        ZLinkBackendActorRef actor, RoutingId spotRid, long membershipEpoch) {
+        throw new UnsupportedOperationException("Core actor transfer is unavailable");
+    }
 
     boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags);
 

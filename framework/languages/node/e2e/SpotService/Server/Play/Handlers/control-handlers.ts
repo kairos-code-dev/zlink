@@ -47,6 +47,7 @@ export class EnsureActorHandler implements ZLinkRouteRequestHandler<EnsureActorR
   async handle(request: EnsureActorReq, context: ZLinkRouteRequestContext): Promise<EnsureActorRes> {
     void context;
     const actorRef = await this.actors.getOrCreate(
+      SpotServiceNames.spotChannel,
       request.actorId,
       SpotServiceNames.actorType,
       request
@@ -75,7 +76,7 @@ export class CrossRoleActorPushHandler
   ): Promise<CrossRoleActorPushRes> {
     void context;
     const reply = await this.actors
-      .requestToActor({
+      .requestToActor(SpotServiceNames.spotChannel, {
         actorId: request.actorId,
         nodeRid: request.nodeRid,
         generation: BigInt(request.generation)
@@ -103,7 +104,11 @@ export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq
 
   async handle(request: CreateSpotReq, context: ZLinkRouteRequestContext): Promise<CreateSpotRes> {
     void context;
-    const created = await this.spots.getOrCreate(ScenarioUserSpot, request.spotRid);
+    const created = await this.spots.getOrCreate(
+      SpotServiceNames.spotChannel,
+      ScenarioUserSpot,
+      request.spotRid
+    );
     const state = typeof created.state === 'string' ? created.state : String(created.state);
     InMemorySpotRouteStore.recordUserSpot(String(created.spotRid), this.evidence.rid);
     this.evidence.add(`create-spot|rid=${this.evidence.rid}|spot=${created.spotRid}|state=${state}`);

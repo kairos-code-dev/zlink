@@ -1,13 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Module } from '@nestjs/common';
+import { Inject, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   ZLinkMessage,
+  type ActorRef,
   type ZLinkActor,
+  type ZLinkActorClient,
   type ZLinkActorContext,
   type ZLinkActorFactory,
+  type ZLinkActorJoinRequest,
+  type ZLinkActorMembership,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
   type ZLinkSpotActorSendContext,
@@ -15,6 +19,7 @@ import {
 } from '@zlink-systems/framework';
 import {
   ZLINK_ACTOR_MANAGER,
+  ZLINK_ACTOR_CLIENT,
   ZLinkModule,
   zlinkEntrySpotActorRequestHandler,
   zlinkEntrySpotActorSendHandler,
@@ -54,31 +59,68 @@ class TestActorFactory implements ZLinkActorFactory {
 }
 
 class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
-  private readonly actors = new Map<string, TestActor>();
+  private readonly actors = new Map<string, ActorRef>();
+  private readonly pendingDestroys = new Map<string, Promise<void>>();
 
-  constructor(readonly context: ZLinkEntrySpotContext) {}
+  constructor(
+    readonly context: ZLinkEntrySpotContext,
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient
+  ) {}
 
-  async onCreateActor(actor: TestActor, _request: ZLinkMessage): Promise<void> {
-    this.actors.set(actor.actorId, actor);
-    evidence.append({ scenario: 'create', actorId: actor.actorId, kind: 'create', value: 'created' });
+  async onCreateActor(actor: ZLinkActorMembership, _request: ZLinkMessage): Promise<void> {
+    this.actors.set(actor.actor.actorId, actor.actor);
+    evidence.append({ scenario: 'create', actorId: actor.actor.actorId, kind: 'create', value: 'created' });
   }
 
-  async onActorJoin(actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
+  async onActorJoin(actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
+    const actorId = actor.actor.actorId;
     evidence.append({ scenario: 'join', actorId, kind: 'join', value: 'joined' });
     return { accepted: true };
   }
 
-  async onJoinedActor(_actor: TestActor): Promise<void> {}
+  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
 
-  async onLeaveActor(_actor: TestActor): Promise<void> {}
+  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 
   async destroy(actorId: string): Promise<void> {
     const actor = this.actors.get(actorId);
     if (actor === undefined) {
       throw new Error(`Actor '${actorId}' is not active.`);
     }
-    await this.context.destroyActor(actor);
+    await this.actorClient
+      .requestToActor('to-actor', actor, new DestroySelfReq())
+      .submit<{ readonly scheduled: boolean }>();
+    await this.pendingDestroys.get(actorId);
+    this.pendingDestroys.delete(actorId);
     this.actors.delete(actorId);
+  }
+
+  scheduleDestroy(actor: TestActor): void {
+    const operation = this.context.runIoWorker(async () => true).async().then(async () => {
+      await this.context.destroyActor(actor);
+    });
+    this.pendingDestroys.set(actor.actorId, operation);
+  }
+}
+
+class DestroySelfReq {}
+
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => TestActor,
+  entrySpot: () => TestEntrySpot,
+  packetName: 'DestroySelfReq'
+})
+class DestroySelfHandler {
+  async handle(
+    spot: TestEntrySpot,
+    actor: TestActor,
+    _context: ZLinkSpotActorRequestContext,
+    _request: DestroySelfReq
+  ): Promise<{ readonly scheduled: boolean }> {
+    spot.scheduleDestroy(actor);
+    return { scheduled: true };
   }
 }
 
@@ -148,17 +190,17 @@ Module({
           .traceLogFile(path.join(options.logDir, 'actor-flow.log'))
           .traceLabel(options.rid);
         builder
-          .addSpotMesh('to-actor')
-          .enableRouter(options.routerEndpoint, options.rid)
+          .addRouteMesh('to-actor')
+          .listen(options.routerEndpoint).routingId(options.rid)
           .configureEntrySpot({ routingId: options.rid })
-          .enablePubSub(options.pubSubEndpoint, options.rid)
           .addEntrySpot(TestEntrySpot)
-          .actorFactory('test-actor', TestActorFactory);
+          .actorFactory('test-actor', TestActorFactory)
+          .channelName('to-actor');
         return builder.build();
       }
     })
   ],
-  providers: [TestActorFactory, TestEntrySpot, NotifyHandler, AskHandler, PushHandler]
+  providers: [TestActorFactory, TestEntrySpot, NotifyHandler, AskHandler, PushHandler, DestroySelfHandler]
 })(ActorModule);
 
 async function main(): Promise<void> {
@@ -172,7 +214,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a1/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-a1', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-a1', 'test-actor');
         return { actorId: 'ta-a1', actor: actorSnapshot(actor) };
       }
     },
@@ -180,7 +222,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a2/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-a2', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-a2', 'test-actor');
         return { actorId: 'ta-a2', actor: actorSnapshot(actor) };
       }
     },
@@ -188,7 +230,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a3/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-a3', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-a3', 'test-actor');
         return { actorId: 'ta-a3', actor: actorSnapshot(actor) };
       }
     },
@@ -196,7 +238,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-a4/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-a4', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-a4', 'test-actor');
         return { actorId: 'ta-a4', actor: actorSnapshot(actor) };
       }
     },
@@ -204,7 +246,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-b1-reference/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-b1-reference', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-b1-reference', 'test-actor');
         return { actorId: 'ta-b1-reference', actor: actorSnapshot(actor) };
       }
     },
@@ -228,7 +270,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-b2/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-b2', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-b2', 'test-actor');
         return { actorId: 'ta-b2', actor: actorSnapshot(actor) };
       }
     },
@@ -244,7 +286,7 @@ async function main(): Promise<void> {
       method: 'POST',
       path: '/actors/ta-b3/ensure',
       handle: async () => {
-        const actor = await actors.getOrCreate('ta-b3', 'test-actor');
+        const actor = await actors.getOrCreate('to-actor', 'ta-b3', 'test-actor');
         return { actorId: 'ta-b3', actor: actorSnapshot(actor) };
       }
     },

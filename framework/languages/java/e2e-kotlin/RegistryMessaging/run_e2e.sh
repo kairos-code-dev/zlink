@@ -8,9 +8,8 @@ cd "${ROOT_DIR}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="${ROOT_DIR}/logs/${RUN_ID}"
 SCENARIO="${1:-all}"
-ROUTE_SETTLE_SECONDS=5
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=200
+LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "${LOG_DIR}"
 echo "log_dir=${LOG_DIR}"
@@ -241,7 +240,6 @@ if uses_common_roles "${SCENARIO}"; then
     --log-dir "${LOG_DIR}"
   wait_health "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" backpressure-consumer
 
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 "${CLIENT_BIN}" \

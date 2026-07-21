@@ -46,15 +46,32 @@ final class ZLinkFrameworkActorSubsystem {
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
         SpotTransportAddressResolver remoteAddressResolver) {
-        var actorNodeRegistration = registration.spotNodes().stream()
+        var legacyActorNode = registration.spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
             .orElse(null);
-        ZLinkActorRuntime actors = spots != null && actorNodeRegistration != null
+        var meshActorNode = registration.meshNodes().stream()
+            .filter(node -> !node.actorFactories().isEmpty())
+            .findFirst()
+            .orElse(null);
+        String actorNodeName = legacyActorNode != null
+            ? legacyActorNode.nodeName()
+            : meshActorNode == null ? null : meshActorNode.meshName();
+        var actorFactories = legacyActorNode != null
+            ? legacyActorNode.actorFactories()
+            : meshActorNode == null ? java.util.Map.<String,
+                Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>>of()
+                : meshActorNode.actorFactories();
+        var transferAdapters = legacyActorNode != null
+            ? legacyActorNode.actorTransferAdapters()
+            : meshActorNode == null ? java.util.Map.<String,
+                Class<? extends systems.zlink.framework.actors.ZLinkActorTransferAdapter<?>>>of()
+                : meshActorNode.actorTransferAdapters();
+        ZLinkActorRuntime actors = spots != null && actorNodeName != null
             ? new ZLinkActorRuntime(
-                spots.node(actorNodeRegistration.nodeName()),
-                actorNodeRegistration.actorFactories(),
-                actorNodeRegistration.actorTransferAdapters(),
+                spots.node(actorNodeName),
+                actorFactories,
+                transferAdapters,
                 registration.defaultRequestTimeout(),
                 registration.actorTransferForwardWindow(),
                 serializer,
@@ -66,6 +83,11 @@ final class ZLinkFrameworkActorSubsystem {
             : spots != null && storeLocationResolvers != null
                 ? new ZLinkStoreActorDirectory(storeLocationResolvers)
                 : null;
+        if (actors != null) {
+            actors.setMetadataPolicy(
+                registration.metadataPolicy().sessionToActorKeys(),
+                registration.metadataPolicy().actorToSessionKeys());
+        }
         ZLinkActorClient actorClient = spots != null && storeLocationResolvers != null
             ? new ZLinkActorClientRuntime(
                 spots::primaryNode,

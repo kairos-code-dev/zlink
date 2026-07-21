@@ -60,7 +60,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 12:
+    while len(sockets) < 8:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -82,14 +82,12 @@ PY
 SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
 SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"
 SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${PORTS[1]}"
-SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
-SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
-SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
-SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
-SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[2]}"
+SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[3]}"
+SHOPPINGMALL_API_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+SHOPPINGMALL_API_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+SHOPPINGMALL_WORKFLOW_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SHOPPINGMALL_WORKFLOW_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -112,7 +110,7 @@ wait_port() {
   local port
   host="$(endpoint_host "${endpoint}")"
   port="$(endpoint_port "${endpoint}")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -125,7 +123,7 @@ wait_port() {
 wait_http() {
   local name="$1"
   local endpoint="$2"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if curl -fsS "${endpoint}/health" >/dev/null 2>&1; then
       return 0
     fi
@@ -177,12 +175,10 @@ settings = {
     "ApiBHttpUrl": "${SHOPPINGMALL_API_B_HTTP_URL}",
     "WorkflowAHttpUrl": "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}",
     "WorkflowBHttpUrl": "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}",
-    "WorkflowAChannelEndpoint": "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}",
-    "WorkflowBChannelEndpoint": "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}",
-    "WorkflowASpotEndpoint": "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}",
-    "WorkflowASpotRouterEndpoint": "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}",
-    "WorkflowBSpotEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}",
-    "WorkflowBSpotRouterEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}",
+    "ApiAMeshEndpoint": "${SHOPPINGMALL_API_A_MESH_ENDPOINT}",
+    "ApiBMeshEndpoint": "${SHOPPINGMALL_API_B_MESH_ENDPOINT}",
+    "WorkflowAMeshEndpoint": "${SHOPPINGMALL_WORKFLOW_A_MESH_ENDPOINT}",
+    "WorkflowBMeshEndpoint": "${SHOPPINGMALL_WORKFLOW_B_MESH_ENDPOINT}",
 }
 common = {
     "LogDirectory": settings["LogDirectory"],
@@ -191,15 +187,13 @@ common = {
 }
 roles = [
     {**common, "InstanceId": "workflow-a", "WorkflowAHttpUrl": settings["WorkflowAHttpUrl"],
-     "WorkflowAChannelEndpoint": settings["WorkflowAChannelEndpoint"],
-     "WorkflowASpotEndpoint": settings["WorkflowASpotEndpoint"],
-     "WorkflowASpotRouterEndpoint": settings["WorkflowASpotRouterEndpoint"]},
+     "WorkflowAMeshEndpoint": settings["WorkflowAMeshEndpoint"]},
     {**common, "InstanceId": "workflow-b", "WorkflowBHttpUrl": settings["WorkflowBHttpUrl"],
-     "WorkflowBChannelEndpoint": settings["WorkflowBChannelEndpoint"],
-     "WorkflowBSpotEndpoint": settings["WorkflowBSpotEndpoint"],
-     "WorkflowBSpotRouterEndpoint": settings["WorkflowBSpotRouterEndpoint"]},
-    {**common, "InstanceId": "api-a", "ApiAHttpUrl": settings["ApiAHttpUrl"]},
-    {**common, "InstanceId": "api-b", "ApiBHttpUrl": settings["ApiBHttpUrl"]},
+     "WorkflowBMeshEndpoint": settings["WorkflowBMeshEndpoint"]},
+    {**common, "InstanceId": "api-a", "ApiAHttpUrl": settings["ApiAHttpUrl"],
+     "ApiAMeshEndpoint": settings["ApiAMeshEndpoint"]},
+    {**common, "InstanceId": "api-b", "ApiBHttpUrl": settings["ApiBHttpUrl"],
+     "ApiBMeshEndpoint": settings["ApiBMeshEndpoint"]},
 ]
 for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
@@ -213,19 +207,19 @@ with open(sys.argv[-1], "w", encoding="utf-8") as output:
 PY
 
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_A_CONFIG_FILE}"
-wait_port workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
-wait_port workflow-a-spot-router "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}"
+wait_port workflow-a-mesh "${SHOPPINGMALL_WORKFLOW_A_MESH_ENDPOINT}"
 wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}"
 
 start_server workflow-b "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_B_CONFIG_FILE}"
-wait_port workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
-wait_port workflow-b-spot-router "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}"
+wait_port workflow-b-mesh "${SHOPPINGMALL_WORKFLOW_B_MESH_ENDPOINT}"
 wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}"
 
 start_server api-a "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --config "${API_A_CONFIG_FILE}"
+wait_port api-a-mesh "${SHOPPINGMALL_API_A_MESH_ENDPOINT}"
 wait_http api-a "${SHOPPINGMALL_API_A_HTTP_URL}"
 
 start_server api-b "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --config "${API_B_CONFIG_FILE}"
+wait_port api-b-mesh "${SHOPPINGMALL_API_B_MESH_ENDPOINT}"
 wait_http api-b "${SHOPPINGMALL_API_B_HTTP_URL}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/ShoppingMall.Client.csproj" -- \

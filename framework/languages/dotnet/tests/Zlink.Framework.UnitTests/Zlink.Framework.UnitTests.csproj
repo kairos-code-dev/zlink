@@ -61,7 +61,6 @@
         <Compile Include="Runtime/DrainCoordinatorTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
-        <Compile Include="Runtime/ExactRequestMessageFlowTests.cs"/>
         <Compile Include="Runtime/EndpointConnectionsTests.cs"/>
         <Compile Include="Runtime/FlowCorrelationTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
@@ -73,9 +72,12 @@
         <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeQueryTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
+        <Compile Include="Runtime/LogicalMulticastSubmitTests.cs"/>
         <Compile Include="Runtime/SharedAsyncDisposalTests.cs"/>
+        <Compile Include="Runtime/SubmitAdmissionRuntimeTests.cs"/>
         <Compile Include="Runtime/OwnerLeaseTrackerTests.cs"/>
         <Compile Include="Runtime/MessageFlowTracerTests.cs"/>
+        <Compile Include="Runtime/MeshNodeRouteDispatcherTests.cs"/>
         <Compile Include="Runtime/PublicContractSnapshotTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
         <Compile Include="Runtime/SessionActorCoordinatorTests.cs"/>

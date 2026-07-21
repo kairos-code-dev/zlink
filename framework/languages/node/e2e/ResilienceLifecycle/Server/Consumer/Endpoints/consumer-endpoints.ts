@@ -32,7 +32,7 @@ export function createConsumerEndpoints(
       path: '/location/peers',
       handle: async () => {
         const rows = await locationQuery.listPeerLocations({
-          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
           meshName: 'profile',
           role: ZLinkLocationRole.Router
         });

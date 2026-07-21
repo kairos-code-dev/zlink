@@ -91,7 +91,6 @@ class DispatchWorker(
         val address = courierAddress(courierId)
         routes
             .sendToSpot(
-                SampleNames.CourierSpotMesh,
                 address,
                 OfferDeliveryMsg(
                     courierId = courierId,
@@ -102,6 +101,7 @@ class DispatchWorker(
                 ),
             )
             .submit()
+            .await()
     }
 
     private suspend fun courierAddress(courierId: String): SpotHandle {

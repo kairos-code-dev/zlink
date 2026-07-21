@@ -19,6 +19,7 @@ struct spot_address_t
     std::string mesh_name;
     zlink::routing_id_t node_rid = zlink::routing_id_t::from (std::uint32_t{0});
     zlink::routing_id_t spot_rid = zlink::routing_id_t::from (std::uint32_t{0});
+    std::uint64_t spot_generation = 0;
 };
 
 class spot_address_resolver_t

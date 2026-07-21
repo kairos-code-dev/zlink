@@ -4,6 +4,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
+const { spawn } = require('node:child_process');
+const path = require('node:path');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
 async function reservePort() {
@@ -14,363 +16,292 @@ async function reservePort() {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     return port;
 }
-async function waitFor(condition, label, timeoutMs = 5000) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        if (condition()) {
-            return;
+function applicationMetadata(key, value) {
+    const keyBytes = Buffer.from(key);
+    const valueBytes = Buffer.from(value);
+    const valueLength = Buffer.alloc(2);
+    valueLength.writeUInt16BE(valueBytes.length);
+    return Buffer.concat([
+        Buffer.from([1, 1, keyBytes.length]),
+        keyBytes,
+        valueLength,
+        valueBytes
+    ]);
+}
+function closeRecordParts(records) {
+    for (const record of records) {
+        for (const part of record.parts) {
+            part.close();
         }
-        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+}
+async function takeMatchingRecord(node, domains, label, predicate, consume) {
+    const ready = node.createReadyBatch(16);
+    const receive = node.createReceiveBatch(16, 64, 1 << 16);
+    const deadline = Date.now() + 5000;
+    try {
+        while (Date.now() < deadline) {
+            ready.reset();
+            const drained = node.drainReady(domains, ready, zlink.RecvFlags.DontWait);
+            if (!drained.ok || drained.records.length === 0) {
+                await new Promise((resolve) => setTimeout(resolve, 10));
+                continue;
+            }
+            for (let index = 0; index < drained.records.length; index += 1) {
+                const claim = ready.takeClaim(index);
+                let outcome;
+                try {
+                    receive.reset();
+                    outcome = claim.recvBatch(receive, zlink.RecvFlags.DontWait);
+                }
+                finally {
+                    claim.release();
+                }
+                if (!outcome.ok) {
+                    continue;
+                }
+                try {
+                    for (const record of outcome.records) {
+                        if (predicate(record)) {
+                            return consume(record);
+                        }
+                    }
+                }
+                finally {
+                    closeRecordParts(outcome.records);
+                }
+            }
+        }
+    }
+    finally {
+        receive.close();
+        ready.close();
     }
     throw new Error(`${label} timed out`);
 }
-test('spot setDispatchHandler permits subscribe drain after async callback delivery', async () => {
+function sameOperation(left, right) {
+    return left.high === right.high && left.low === right.low;
+}
+async function createStartedNode(label) {
+    const meshName = `spot-dispatch-${label}`;
+    const channelName = 'events';
     const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const ctx = zlink.createContext();
-    const publisherNode = zlink.createSpotNode(ctx);
-    const subscriberNode = zlink.createSpotNode(ctx);
-    const publisher = publisherNode.createSpot();
-    const subscriber = subscriberNode.createSpot();
-    let readableEvents = 0;
+    const rid = zlink.RoutingId.from(Buffer.from(`${label}-node`));
+    const context = zlink.createContext();
+    const node = zlink.createMeshNode(context, { meshName });
+    node.setRoutingId(rid);
+    node.setBind(endpoint);
+    node.addChannelName(channelName);
+    node.start();
+    return {
+        channelName,
+        node,
+        context,
+        close() {
+            node.close();
+            context.close();
+        }
+    };
+}
+test('logical multicast is drained through a user spot claim', async () => {
+    const runtime = await createStartedNode('multicast');
+    const publisher = runtime.node.createPublisher();
+    const subscriberRid = zlink.RoutingId.from(Buffer.from('multicast-user-spot'));
+    const { spot: subscriber } = runtime.node.getOrCreateSpot(subscriberRid);
     try {
-        publisherNode.setPubBind(endpoint);
-        subscriber.setSubscription('dispatch-drain');
-        subscriber.setDispatchHandler((info) => {
-            if (info.event === zlink.SpotDispatchEvent.SubscribeReadable) {
-                readableEvents += 1;
-            }
-        });
-        subscriberNode.connectPeer(endpoint);
-        await waitFor(() => subscriberNode.status().connectedPeerCount > 0, 'spot peer connection');
-        const payload = Buffer.from('dispatch-payload');
-        const publishDeadline = Date.now() + 5000;
-        while (readableEvents === 0 && Date.now() < publishDeadline) {
-            publisher.publish('dispatch-drain').message(payload).flags(zlink.SendFlags.DontWait).submit();
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-        assert.notEqual(readableEvents, 0);
-        const received = new zlink.TopicMessage();
-        assert.equal(subscriber.subscribe(received, zlink.RecvFlags.DontWait), true);
-        try {
-            assert.equal(received.topic, 'dispatch-drain');
-            assert.equal(received.parts[0].data().toString(), 'dispatch-payload');
-        }
-        finally {
-            received.close();
-        }
+        subscriber.setSubscription(runtime.channelName, 'dispatch-drain');
+        const detail = publisher.publish(runtime.channelName, 'dispatch-drain', Buffer.from('dispatch-payload'), { flags: zlink.SendFlags.DontWait });
+        assert.equal(detail.admittedLocalSpotCount, 1);
+        const received = await takeMatchingRecord(runtime.node, zlink.ReadyDomain.Application, 'user spot multicast', (record) => record.kind === zlink.ReceiveKind.SpotMulticast, (record) => ({
+            topic: record.topic,
+            parts: record.parts.map((part) => part.data().toString())
+        }));
+        assert.equal(received.topic, 'dispatch-drain');
+        assert.deepEqual(received.parts, ['dispatch-payload']);
     }
     finally {
         subscriber.close();
         publisher.close();
-        subscriberNode.close();
-        publisherNode.close();
-        ctx.close();
+        runtime.close();
     }
 });
-test('entry spot setDispatchHandler permits multipart subscribe drain after peer publish', async () => {
-    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const ctx = zlink.createContext();
-    const publisherNode = zlink.createSpotNode(ctx);
-    const subscriberNode = zlink.createSpotNode(ctx);
-    const publisher = publisherNode.createSpot();
-    const subscriber = subscriberNode.entrySpot();
-    let readableEvents = 0;
+test('async logical multicast owns inputs and permits close while work completes', async () => {
+    const runtime = await createStartedNode('async-multicast');
+    const publisher = runtime.node.createPublisher();
+    const subscriber = runtime.node.entrySpot();
     try {
-        publisherNode.setPubBind(endpoint);
-        subscriber.setSubscription('entry-dispatch-drain');
-        subscriber.setDispatchHandler((info) => {
-            if (info.event === zlink.SpotDispatchEvent.SubscribeReadable) {
-                readableEvents += 1;
-            }
-        });
-        subscriberNode.connectPeer(endpoint);
-        await waitFor(() => subscriberNode.status().connectedPeerCount > 0, 'entry spot peer connection');
-        const received = new zlink.TopicMessage();
-        let receivedReady = false;
-        const publishDeadline = Date.now() + 5000;
-        while (!receivedReady && Date.now() < publishDeadline) {
-            publisher.publish('entry-dispatch-drain')
-                .message(Buffer.from('header'))
-                .message(Buffer.from('payload'))
-                .flags(zlink.SendFlags.DontWait)
-                .submit();
-            try {
-                receivedReady = subscriber.subscribe(received, zlink.RecvFlags.DontWait);
-            }
-            catch (error) {
-                if (!(error instanceof zlink.RecvError)) {
-                    throw error;
-                }
-            }
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-        assert.equal(receivedReady, true);
-        try {
-            assert.equal(received.topic, 'entry-dispatch-drain');
-            assert.deepEqual(received.parts.map((part) => part.data().toString()), ['header', 'payload']);
-        }
-        finally {
-            received.close();
-        }
+        subscriber.setSubscription(runtime.channelName, 'async-dispatch-drain');
+        const payload = Buffer.from('owned-before-worker');
+        const metadata = applicationMetadata('source', 'owned-metadata');
+        const expectedMetadata = Buffer.from(metadata);
+        const pending = publisher.publishAsync(runtime.channelName, 'async-dispatch-drain', payload, { metadata });
+        payload.fill(0);
+        metadata.fill(0);
+        publisher.close();
+        const outcome = await pending;
+        assert.equal(outcome.result, zlink.SubmitResult.Ok);
+        assert.equal(outcome.detail.admittedLocalSpotCount, 1);
+        const received = await takeMatchingRecord(runtime.node, zlink.ReadyDomain.Application, 'async logical multicast', (record) => record.kind === zlink.ReceiveKind.SpotMulticast, (record) => ({
+            sourceBindingGeneration: record.sourceBindingGeneration,
+            metadata: record.applicationMetadata,
+            parts: record.parts.map((part) => part.data().toString())
+        }));
+        assert.equal(received.sourceBindingGeneration, 0n);
+        assert.deepEqual(received.metadata, expectedMetadata);
+        assert.deepEqual(received.parts, ['owned-before-worker']);
     }
     finally {
         subscriber.close();
         publisher.close();
-        subscriberNode.close();
-        publisherNode.close();
-        ctx.close();
+        runtime.close();
     }
 });
-test('spot setDispatchHandler replies to routed spot request origin', async () => {
-    const responderPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderCtx = zlink.createContext();
-    const requesterCtx = zlink.createContext();
-    const responderNode = zlink.createSpotNode(responderCtx);
-    const requesterNode = zlink.createSpotNode(requesterCtx);
-    const responder = responderNode.createSpot();
-    const requester = requesterNode.createSpot();
+test('pre-aborted async logical multicast does not start Core publish', async () => {
+    const runtime = await createStartedNode('async-pre-abort');
+    const publisher = runtime.node.createPublisher();
+    const controller = new AbortController();
+    const reason = new Error('cancel before worker start');
+    controller.abort(reason);
     try {
-        responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-responder-node')));
-        requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-requester-node')));
-        responder.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-responder-spot')));
-        requester.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-requester-spot')));
-        responderNode.setRouterBind(responderRouterEndpoint);
-        responderNode.setPubBind(responderPeerEndpoint);
-        requesterNode.setRouterBind(requesterRouterEndpoint);
-        requesterNode.setPubBind(requesterPeerEndpoint);
-        responderNode.connectPeer(requesterPeerEndpoint);
-        requesterNode.connectPeer(responderPeerEndpoint);
-        await Promise.all([
-            waitFor(() => responderNode.status().connectedPeerCount > 0, 'responder spot peer connection'),
-            waitFor(() => requesterNode.status().connectedPeerCount > 0, 'requester spot peer connection')
-        ]);
-        const handled = new Promise((resolve, reject) => {
-            responder.setDispatchHandler((info) => {
-                if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
-                    return;
-                }
-                try {
-                    assert.notEqual(info.routed, null);
-                    assert.ok(info.routed.routingId);
-                    assert.ok(info.routed.spotRid);
-                    assert.notEqual(info.routed.requestSeq, null);
-                    assert.equal(info.routed.parts.length, 1);
-                    assert.equal(info.routed.parts[0].data().toString(), 'spot-routed-body');
-                    info.routed.reply()
-                        .message(Buffer.from('spot-routed-reply'))
-                        .submit();
-                    resolve();
-                }
-                catch (error) {
-                    reject(error);
-                }
-                finally {
-                    info.routed?.close();
-                }
-            });
-        });
-        const reply = await requester.requestToSpot(responderNode.routingId, responder.routingId)
-            .message(Buffer.from('spot-routed-body'))
-            .timeout(2000)
-            .submit();
-        assert.equal(reply.length, 1);
-        assert.equal(reply[0].data().toString(), 'spot-routed-reply');
-        await handled;
+        await assert.rejects(publisher.publishAsync(runtime.channelName, 'cancelled', Buffer.from('ignored'), undefined, controller.signal), (error) => error === reason);
+        assert.equal(runtime.node.status().pendingApplicationMessages, 0n);
     }
     finally {
-        requester.close();
+        publisher.close();
+        runtime.close();
+    }
+});
+test('async logical multicast returns NotFound as an outcome with Core detail', async () => {
+    const runtime = await createStartedNode('async-not-found');
+    const publisher = runtime.node.createPublisher();
+    try {
+        const outcome = await publisher.publishAsync(runtime.channelName, 'no-subscriber', Buffer.from('not-found'));
+        assert.equal(outcome.result, zlink.SubmitResult.NotFound);
+        assert.deepEqual(outcome.detail, {
+            snapshotRemoteTargetCount: 0,
+            admittedRemoteTargetCount: 0,
+            droppedRemoteTargetCount: 0,
+            unreachableRemoteTargetCount: 0,
+            snapshotLocalSpotCount: 0,
+            admittedLocalSpotCount: 0,
+            droppedLocalSpotCount: 0
+        });
+    }
+    finally {
+        publisher.close();
+        runtime.close();
+    }
+});
+test('async publisher close retains native state without occupying the JS event loop', async () => {
+    const fixture = path.join(__dirname, 'fixtures', 'mesh_publisher_close_gc_child.js');
+    const child = spawn(process.execPath, ['--expose-gc', fixture], {
+        env: { ...process.env, UV_THREADPOOL_SIZE: '1' },
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [code, signal] = await once(child, 'exit');
+    assert.equal(signal, null, stderr);
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /publisher-close-gc-ok/);
+});
+test('queued async logical multicast can abort before its Core call starts', async () => {
+    const fixture = path.join(__dirname, 'fixtures', 'mesh_publisher_cancel_child.js');
+    const child = spawn(process.execPath, [fixture], {
+        env: { ...process.env, UV_THREADPOOL_SIZE: '1' },
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const [code, signal] = await once(child, 'exit');
+    assert.equal(signal, null, stderr);
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /publisher-cancel-ok/);
+});
+test('entry spot drains multipart logical multicast', async () => {
+    const runtime = await createStartedNode('entry-multicast');
+    const publisher = runtime.node.createPublisher();
+    const subscriber = runtime.node.entrySpot();
+    try {
+        subscriber.setSubscription(runtime.channelName, 'entry-dispatch-drain');
+        const detail = publisher.publish(runtime.channelName, 'entry-dispatch-drain', [Buffer.from('header'), Buffer.from('payload')], { flags: zlink.SendFlags.DontWait });
+        assert.equal(detail.admittedLocalSpotCount, 1);
+        const received = await takeMatchingRecord(runtime.node, zlink.ReadyDomain.Application, 'entry spot multicast', (record) => record.kind === zlink.ReceiveKind.SpotMulticast, (record) => ({
+            topic: record.topic,
+            parts: record.parts.map((part) => part.data().toString())
+        }));
+        assert.equal(received.topic, 'entry-dispatch-drain');
+        assert.deepEqual(received.parts, ['header', 'payload']);
+    }
+    finally {
+        subscriber.close();
+        publisher.close();
+        runtime.close();
+    }
+});
+test('spot request is replied through the claimed receive record', async () => {
+    const runtime = await createStartedNode('request');
+    const requester = runtime.node.entrySpot();
+    const responderRid = zlink.RoutingId.from(Buffer.from('request-user-spot'));
+    const { spot: responder } = runtime.node.getOrCreateSpot(responderRid);
+    try {
+        const responderStatus = responder.status();
+        const operation = requester.requestToSpot(runtime.node.status().routingId, responderStatus.routingId, responderStatus.lifecycleGeneration, Buffer.from('spot-routed-body'), { timeoutMs: 2000 });
+        const request = await takeMatchingRecord(runtime.node, zlink.ReadyDomain.Application, 'spot request', (record) => record.kind === zlink.ReceiveKind.SpotRequest, (record) => {
+            const requestParts = record.parts.map((part) => part.data().toString());
+            const submit = record.reply(Buffer.from('spot-routed-reply'));
+            return { requestParts, submit };
+        });
+        assert.deepEqual(request.requestParts, ['spot-routed-body']);
+        assert.equal(request.submit, zlink.SubmitResult.Ok);
+        const completion = await takeMatchingRecord(runtime.node, zlink.ReadyDomain.Infrastructure, 'spot request completion', (record) => record.kind === zlink.ReceiveKind.Completion
+            && sameOperation(record.operationId, operation), (record) => ({
+            terminalResult: record.terminalResult,
+            parts: record.parts.map((part) => part.data().toString())
+        }));
+        assert.equal(completion.terminalResult, zlink.RequestResult.Ok);
+        assert.deepEqual(completion.parts, ['spot-routed-reply']);
+    }
+    finally {
         responder.close();
-        requesterNode.close();
-        responderNode.close();
-        requesterCtx.close();
-        responderCtx.close();
-    }
-});
-test('entry spot setDispatchHandler replies to routed spot request origin', async () => {
-    const responderPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterPeerEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const requesterRouterEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
-    const responderCtx = zlink.createContext();
-    const requesterCtx = zlink.createContext();
-    const responderNode = zlink.createSpotNode(responderCtx);
-    const requesterNode = zlink.createSpotNode(requesterCtx);
-    const responder = responderNode.entrySpot();
-    const requester = requesterNode.createSpot();
-    try {
-        responderNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-responder-node')));
-        requesterNode.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-requester-node')));
-        responder.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-responder-spot')));
-        requester.setRoutingId(zlink.RoutingId.from(Buffer.from('dispatch-entry-requester-spot')));
-        responderNode.setRouterBind(responderRouterEndpoint);
-        responderNode.setPubBind(responderPeerEndpoint);
-        requesterNode.setRouterBind(requesterRouterEndpoint);
-        requesterNode.setPubBind(requesterPeerEndpoint);
-        responderNode.connectPeer(requesterPeerEndpoint);
-        requesterNode.connectPeer(responderPeerEndpoint);
-        await Promise.all([
-            waitFor(() => responderNode.status().connectedPeerCount > 0, 'entry responder spot peer connection'),
-            waitFor(() => requesterNode.status().connectedPeerCount > 0, 'entry requester spot peer connection')
-        ]);
-        const handled = new Promise((resolve, reject) => {
-            responder.setDispatchHandler((info) => {
-                if (info.event !== zlink.SpotDispatchEvent.RoutedReadable) {
-                    return;
-                }
-                try {
-                    assert.notEqual(info.routed, null);
-                    assert.ok(info.routed.routingId);
-                    assert.ok(info.routed.spotRid);
-                    assert.notEqual(info.routed.requestSeq, null);
-                    assert.equal(info.routed.parts.length, 1);
-                    assert.equal(info.routed.parts[0].data().toString(), 'entry-routed-body');
-                    info.routed.reply()
-                        .message(Buffer.from('entry-routed-reply'))
-                        .submit();
-                    resolve();
-                }
-                catch (error) {
-                    reject(error);
-                }
-                finally {
-                    info.routed?.close();
-                }
-            });
-        });
-        const reply = await requester.requestToSpot(responderNode.routingId, responder.routingId)
-            .message(Buffer.from('entry-routed-body'))
-            .timeout(2000)
-            .submit();
-        assert.equal(reply.length, 1);
-        assert.equal(reply[0].data().toString(), 'entry-routed-reply');
-        await handled;
-    }
-    finally {
         requester.close();
-        responderNode.close();
-        requesterNode.close();
-        responderCtx.close();
-        requesterCtx.close();
+        runtime.close();
     }
 });
-async function waitActorJoin(spot, label) {
-    const deadline = Date.now() + 2000;
-    while (Date.now() < deadline) {
-        const request = spot.recvActorJoin(zlink.RecvFlags.DontWait);
-        if (request) {
-            return request;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    throw new Error(`${label} actor join timed out`);
-}
-async function waitActorLifecycle(spot, label) {
-    const deadline = Date.now() + 2000;
-    while (Date.now() < deadline) {
-        const event = spot.recvActorLifecycle(zlink.RecvFlags.DontWait);
-        if (event) {
-            return event;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    throw new Error(`${label} actor lifecycle timed out`);
-}
-test('actor create request payload is exposed on entry spot lifecycle', async () => {
+test('actor creation payload is surfaced as entry-spot control data', async () => {
     const ctx = zlink.createContext();
-    const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.All);
+    const node = zlink.createMeshNode(ctx, { meshName: 'spot-dispatch-actor-create' });
+    const rid = zlink.RoutingId.from(Buffer.from('actor-create-node'));
+    const endpoint = `tcp://127.0.0.1:${await reservePort()}`;
+    node.setRoutingId(rid);
+    node.setBind(endpoint);
+    node.addChannelName('actors');
+    node.start();
     const entrySpot = node.entrySpot();
     try {
-        entrySpot.setDispatchHandler(() => { });
         const actor = node.createActor('node-create-payload', [
             Buffer.from('profile'),
             Buffer.from('display-name')
         ]);
-        const event = await waitActorLifecycle(entrySpot, 'entry spot');
-        assert.equal(event.kind, zlink.SpotActorLifecycleEventKind.Joined);
-        assert.equal(event.info.currentActor.actorId, actor.ref().actorId);
-        assert.equal(event.message.data().toString(), 'profile');
-        assert.deepEqual(event.parts.map((part) => part.data().toString()), ['profile', 'display-name']);
+        const event = await takeMatchingRecord(node, zlink.ReadyDomain.Application, 'entry spot actor create', (record) => record.kind === zlink.ReceiveKind.SpotControl
+            && record.kindData?.kind === 'actorControl', (record) => ({
+            control: record.kindData,
+            parts: record.parts.map((part) => part.data().toString())
+        }));
+        assert.equal(event.control.lifecycleKind, zlink.ActorLifecycleKind.Created);
+        assert.equal(event.control.currentActor.actorId, actor.actorId);
+        assert.deepEqual(event.parts, ['profile', 'display-name']);
     }
     finally {
         entrySpot.close();
-        node.close();
-        ctx.close();
-    }
-});
-test('entry spot join carries request and reply parts', async () => {
-    const ctx = zlink.createContext();
-    const node = zlink.createSpotNode(ctx, zlink.SpotNodeMode.All);
-    const userSpot = node.createSpot();
-    const entrySpot = node.entrySpot();
-    const actor = node.createActor('node-entry-join');
-    try {
-        const userJoin = actor.join(userSpot)
-            .message(Buffer.from('user-join-request'))
-            .timeout(1000)
-            .submit();
-        const userRequest = await waitActorJoin(userSpot, 'user spot');
-        assert.equal(userRequest.message.data().toString(), 'user-join-request');
-        userSpot.replyActorJoin(userRequest, 0)
-            .message(Buffer.from('user-reply'))
-            .submit();
-        const userResult = await userJoin;
-        assert.equal(userResult.result.result, zlink.RequestResult.Ok);
-        const entryJoin = node.joinActorEntrySpot(actor.ref(), node.routingId, Buffer.from('entry-join-request'))
-            .timeout(1000)
-            .submit();
-        const entryRequest = await waitActorJoin(entrySpot, 'entry spot');
-        assert.equal(entryRequest.message.data().toString(), 'entry-join-request');
-        entrySpot.replyActorJoin(entryRequest, 0)
-            .message(Buffer.from('entry-reply'))
-            .submit();
-        const entryResult = await entryJoin;
-        assert.equal(entryResult.result.result, zlink.RequestResult.Ok);
-        assert.equal(entryResult.result.joinResultCode, 0);
-        assert.equal(entryResult.parts.length, 1);
-        assert.equal(entryResult.parts[0].data().toString(), 'entry-reply');
-        const returnedToUser = actor.join(userSpot)
-            .message(Buffer.from('return-to-user'))
-            .timeout(1000)
-            .submit();
-        const returnRequest = await waitActorJoin(userSpot, 'user spot return');
-        userSpot.replyActorJoin(returnRequest, 0)
-            .message(Buffer.from('user-return-reply'))
-            .submit();
-        const returnResult = await returnedToUser;
-        assert.equal(returnResult.result.result, zlink.RequestResult.Ok);
-        const rejectedEntryJoin = node.joinActorEntrySpot(actor.ref(), node.routingId, Buffer.from('entry-reject-request'))
-            .timeout(1000)
-            .submit();
-        const rejectedEntryRequest = await waitActorJoin(entrySpot, 'entry spot reject');
-        assert.equal(rejectedEntryRequest.message.data().toString(), 'entry-reject-request');
-        entrySpot.replyActorJoin(rejectedEntryRequest, 7)
-            .message(Buffer.from('entry-rejected'))
-            .submit();
-        const rejectedEntryResult = await rejectedEntryJoin;
-        assert.equal(rejectedEntryResult.result.result, zlink.RequestResult.Ok);
-        assert.equal(rejectedEntryResult.result.joinResultCode, 7);
-        assert.equal(rejectedEntryResult.parts.length, 1);
-        assert.equal(rejectedEntryResult.parts[0].data().toString(), 'entry-rejected');
-        const userActors = userSpot.actors();
-        assert.equal(userActors.length, 1);
-        assert.equal(userActors[0].actorId, actor.ref().actorId);
-        const cleanupEntryJoin = node.joinActorEntrySpot(actor.ref(), node.routingId, Buffer.from('entry-cleanup-request'))
-            .timeout(1000)
-            .submit();
-        const cleanupEntryRequest = await waitActorJoin(entrySpot, 'entry spot cleanup');
-        entrySpot.replyActorJoin(cleanupEntryRequest, 0)
-            .message(Buffer.from('entry-cleanup'))
-            .submit();
-        const cleanupEntryResult = await cleanupEntryJoin;
-        assert.equal(cleanupEntryResult.result.result, zlink.RequestResult.Ok);
-    }
-    finally {
-        actor.close();
-        entrySpot.close();
-        userSpot.close();
         node.close();
         ctx.close();
     }

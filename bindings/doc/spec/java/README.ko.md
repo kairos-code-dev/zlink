@@ -667,6 +667,17 @@ service 제어/admission receive API는 재사용 가능한 데이터 평면 저
 명확할 때 `Optional`, nullable, typed result-return 형태를 사용할 수 있다. 이
 경우에도 no-data와 하드 수신 실패를 구분해야 한다.
 
+`ReceiveRecord.sourceBindingGeneration()`은 bound STREAM session에서 Actor로
+전달한 record의 검증된 binding generation을 반환한다. 이 경우
+`sourceSpotRid()`은 session routing ID를 반환한다. 다른 record에서는 Core가
+전달한 0을 유지한다.
+
+Mesh dispatch의 `SEND_READY` record는 `MeshSendReadyData`로 decode한다. 이 값은
+Core의 destination kind와 target node RID, target Spot RID, target Actor ref,
+channel name을 그대로 보존한다. 해당 destination kind에 사용하지 않는 필드는
+Core가 전달한 empty value로 유지한다. `ReceiveRecord.sendReady()`는 kind data가
+이 타입일 때만 값을 반환하며 다른 record kind에는 `null`을 반환한다.
+
 ## Handler Registration Naming
 
 Handler 등록 이름은 이벤트 발생이 아니라 등록을 설명한다.

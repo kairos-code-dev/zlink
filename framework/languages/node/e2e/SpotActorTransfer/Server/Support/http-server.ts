@@ -27,6 +27,7 @@ export async function startHttpServer(url: string, routes: readonly HttpRoute[])
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(result ?? {}));
     } catch (error) {
+      console.error(error);
       response.writeHead(500, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }

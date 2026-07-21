@@ -10,7 +10,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <functional>
+#include <iostream>
 #include <mutex>
 #include <random>
 #include <thread>
@@ -187,6 +189,21 @@ class location_runtime_t
             auto result = _store->renew_owner_lease (_owner_id, _node_rid, _options.owner_lease_ttl)
                             .result ()
                             .value ();
+            if (const char *trace = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
+                trace != nullptr && *trace != '\0') {
+                const auto completed_at = std::chrono::steady_clock::now ();
+                std::cerr << "zlink owner-lease renew"
+                          << " monotonicMs="
+                          << std::chrono::duration_cast<std::chrono::milliseconds> (
+                               completed_at.time_since_epoch ())
+                               .count ()
+                          << " durationMs="
+                          << std::chrono::duration_cast<std::chrono::milliseconds> (
+                               completed_at - started_at)
+                               .count ()
+                          << " heartbeatMs=" << _options.heartbeat_interval.count ()
+                          << " ttlMs=" << _options.owner_lease_ttl.count () << '\n';
+            }
             std::lock_guard lock (_state_gate);
             _owner_lease_healthy = true;
             _owner_lease_renewed_at = result.store_now;
@@ -285,7 +302,8 @@ class location_runtime_t
     {
         actor.owner_id = _owner_id;
         auto canonical =
-          location_key_codec_t::encode_actor_key (actor_location_key_t{actor.actor_id});
+          location_key_codec_t::encode_actor_key (
+            actor_location_key_t{actor.mesh_name, actor.actor_id});
         auto result = store_call (
           [&] { return _store->update_actor (std::move (actor), intent).result ().value (); });
         notify_if_stale (result, location_kind_t::actor, canonical);

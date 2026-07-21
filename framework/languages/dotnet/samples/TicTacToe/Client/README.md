@@ -15,7 +15,7 @@ On Windows PowerShell:
 ```
 
 The runner starts `play-a`, `play-b`, `api-a`, and `api-b`, waits for their
-stream, channel, Spot route, Spot pub/sub, HTTP, and Redis endpoints, runs this
+stream, MeshNode, HTTP, and Redis endpoints, runs this
 client, and stops the servers. To run the client against already running roles:
 
 ```bash

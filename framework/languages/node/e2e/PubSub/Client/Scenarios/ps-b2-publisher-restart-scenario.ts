@@ -1,4 +1,4 @@
-// PS-B2: terminal drain과 peer row 교체 뒤 기존 subscription의 첫 event 수신을 검증한다.
+// PS-B2: publisher 재시작 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { getStatus, postJsonWithin, postStatus } from '../../../http-client';

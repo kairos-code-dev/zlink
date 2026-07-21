@@ -6,8 +6,9 @@ export interface ZLinkActorPlacement {
 }
 
 export interface ZLinkActorDirectory {
-  find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+  find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
   ensure(
+    meshName: string,
     actorId: string,
     createRequest: unknown,
     placement?: ZLinkActorPlacement,

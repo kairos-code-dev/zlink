@@ -31,13 +31,13 @@ class BindCourierHandler(
         val placement = directory.choosePlacement(request.courierId)
         val address = address(placement)
         val found = routes
-            .requestToSpot(SampleNames.CourierSpotMesh, address, FindCourierActorReq(request.courierId))
+            .requestToSpot(address, FindCourierActorReq(request.courierId))
             .timeout(SampleTimings.RequestTimeout)
             .submit(FindCourierActorRes::class.java)
             .await()
         val ensured = found.actor?.let { EnsureCourierActorRes(request.courierId, it) }
             ?: routes
-                .requestToSpot(SampleNames.CourierSpotMesh, address, EnsureCourierActorReq(request.courierId))
+                .requestToSpot(address, EnsureCourierActorReq(request.courierId))
                 .timeout(SampleTimings.RequestTimeout)
                 .submit(EnsureCourierActorRes::class.java)
                 .await()

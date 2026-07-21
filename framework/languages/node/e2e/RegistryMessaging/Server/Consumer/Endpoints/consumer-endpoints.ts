@@ -31,7 +31,7 @@ export function createConsumerEndpoints(
       path: '/location/topology',
       handle: async () => {
         const rows = await locationQuery.listPeerLocations({
-          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
           meshName: 'profile',
           role: ZLinkLocationRole.Router
         });
@@ -89,7 +89,7 @@ async function waitForPeer(
   const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 60_000));
   do {
     const rows = await locationQuery.listPeerLocations({
-      autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
       meshName: 'profile',
       role: ZLinkLocationRole.Router
     });

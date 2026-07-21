@@ -243,7 +243,13 @@ public enum RequestResult
     /// <summary>
     ///     The request is not supported.
     /// </summary>
-    NotSupported = 112
+    NotSupported = 112,
+
+    /// <summary>
+    ///     The target could not admit the request because its bounded pending
+    ///     budget was exhausted.
+    /// </summary>
+    Backpressured = 113
 }
 
 /// <summary>

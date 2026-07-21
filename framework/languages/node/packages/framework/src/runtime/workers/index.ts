@@ -256,7 +256,11 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<T> {
+  submit(signal?: AbortSignal): void {
+    void this.begin(signal).catch(() => undefined);
+  }
+
+  async(signal?: AbortSignal): Promise<T> {
     const pending = this.begin(signal);
     return this.turn === undefined ? deliverOnSerial(this.serial, pending) : pending;
   }

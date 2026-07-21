@@ -24,14 +24,14 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
   mailbox 인계 성공을 뜻한다. 실패 분류는 `ActorRouteNotFound`, `ActorLocationStale`,
   `RouteNotConnected`를 참조한다.
 - 계약 근거: Actor direct 메시징은 session binding을 만들거나 바꾸지 않으며, request reply는 bound
-  session이 아니라 caller에게 돌아간다. Actor queue 인계와 request completion은
+  session이 아니라 caller에게 반환된다. Actor queue 인계와 request completion은
   [Actor 모델 §5](../../spec/server/22-actor-model.ko.md#5-메시징)의 공개 계약을 따른다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. actor location row와 owner lease는 framework lifecycle이 관리한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor authority와 owner lease는 framework lifecycle이 관리한다. |
 | actor 노드 | 2 (`actor-a`, `actor-b`) | Entry Spot + actor mailbox host. actor handler는 no-bind send/request 수신 evidence와 reply를 남긴다. actor→bound session push를 발생시키는 endpoint 또는 handler를 제공한다. |
 | session gateway | 2 (`session-a`, `session-b`) | stream session을 받고 actor bind를 만드는 실제 연결 서버. client connector와 actor bound-session push 경로를 검증한다. |
 | 외부 caller 서버 | 1 | session을 만들지 않는 서버 측 caller 역할. app endpoint 안에서 언어별 public actor client로 `SendToActor`와 `RequestToActor` 의미의 호출을 실행한다. |
@@ -121,8 +121,8 @@ actor 제거 후에는 actor 부재 실패로 분류되는가.
 **검증 질문:** 현재 actor와 일치하지 않는 `ActorRef`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `ActorRouteNotFound`로 실패하는가.
 
 - 절차: 알려진 actor node/type/id 형식을 사용하되 live actor와 일치하지 않는 ref로 외부 caller 서버가 request와 send를 시도한다.
-- 검증: request는 caller 서버에서 `ActorRouteNotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 actor 노드에는 해당 actor id의 handler evidence가 없고 actor location row도 새로 만들어지지 않는다. auto-create나 메시지 파킹이 없어야 하며, 호출자가 actor 부재를 확인해야 하는 흐름은 request를 사용한다.
-- 세부 동작: actor row 없음 실패 분류.
+- 검증: request는 caller 서버에서 `ActorRouteNotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 Actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 Actor 노드에는 해당 Actor ID의 handler evidence가 없고 Actor authority도 새로 만들어지지 않는다. Auto-create나 메시지 파킹이 없어야 하며, 호출자가 Actor 부재를 확인해야 하는 흐름은 request를 사용한다.
+- 세부 동작: Actor authority 없음 실패 분류.
 
 #### TA-B2 stale actor ref
 

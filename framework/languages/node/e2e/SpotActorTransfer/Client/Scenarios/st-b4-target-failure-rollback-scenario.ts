@@ -22,8 +22,13 @@ export async function runStB4(): Promise<void> {
     `transfer|${actorId}|domain_state_loaded|${actorId}`,
     `ST-B4|${actorId}|location_committed|node=actor-b|spot=${spotRid}`
   ]);
+  assertOrder(source, actorId, [
+    'transfer_out_empty', 'leave', 'commit_request', 'commit_ack', 'success_reply'
+  ]);
+  assertOrder(target, actorId, [
+    'admission', 'transfer_in_empty', 'joined', 'domain_state_loaded', 'location_committed'
+  ]);
   assertOrder(mergeEvidence(source, target), actorId, [
-    'admission', 'transfer_out_empty', 'leave', 'commit_request', 'transfer_in_empty',
-    'joined', 'domain_state_loaded', 'location_committed', 'commit_ack', 'success_reply'
+    'location_committed', 'commit_ack', 'success_reply'
   ]);
 }

@@ -8,7 +8,6 @@ public final class SampleNames {
     public static final String SpotMesh = "tictactoe";
     public static final String PlayNode = "play";
     public static final String PlayerMilestoneTopic = "tictactoe.player.milestone";
-    public static final String EntrySpotRoutingId = "3201";
     public static final String PlayStream = "play-stream";
     public static final String PlayActor = "play-actor";
     public static final int RequiredLevel = 3;

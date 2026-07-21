@@ -48,15 +48,19 @@ class SupportChatSessionRouter {
   async authenticate(context: ZLinkSessionContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<AuthenticateReq>(Object as never);
     const authenticated = await this.channels
-      .requestToChannel(SampleNames.apiChannel, authenticateUser(request.accessToken))
+      .requestToChannel(SampleNames.conversationSpotMesh, SampleNames.apiChannel, authenticateUser(request.accessToken))
       .timeout(SampleTimings.requestTimeout)
       .submit<AuthenticateUserRes>();
     if (!authenticated.accepted || authenticated.actorId === undefined || authenticated.displayName === undefined || authenticated.role === undefined) {
       throw new Error(authenticated.reason ?? 'SupportChat authentication failed.');
     }
-    const existing = await this.locations.resolveActor({ actorId: authenticated.actorId });
+    const existing = await this.locations.resolveActor({
+      meshName: SampleNames.conversationSpotMesh,
+      actorId: authenticated.actorId
+    });
     const actorRef = existing?.actorRef ?? zlinkActorRefSnapshotToActorRef((await this.channels
       .requestToChannel(
+        SampleNames.conversationSpotMesh,
         SampleNames.supportChannel,
         ensureSupportUserActor(authenticated.actorId, authenticated.displayName, authenticated.role)
       )
@@ -118,9 +122,10 @@ class SupportChatSessionRouter {
     let actorId = identity.conversationActors.get(conversationId);
     if (actorId === undefined && packetName === PacketNames.joinConversationReq) {
       actorId = `${identity.actorId}::${conversationId}`;
-      const existing = await this.locations.resolveActor({ actorId });
+      const existing = await this.locations.resolveActor({ meshName: SampleNames.conversationSpotMesh, actorId });
       const actorRef = existing?.actorRef ?? zlinkActorRefSnapshotToActorRef((await this.channels
         .requestToChannel(
+          SampleNames.conversationSpotMesh,
           SampleNames.supportChannel,
           ensureAgentConversation(identity.actorId, identity.displayName, conversationId)
         )

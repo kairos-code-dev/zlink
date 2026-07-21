@@ -11,13 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
@@ -29,18 +28,60 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 final class ZLinkAsyncSubmitterTest {
     @Test
-    void oneWaySubmitIsSettledByRuntime() throws InterruptedException {
-        BlockingPublishBackend backend = new BlockingPublishBackend();
+    void oneWaySendWaitsUntilTheAdmissionDeadline() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("profile").enableClient("inproc://profile");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new BackpressuredBackend())) {
+            var result = runtime.client()
+                .sendToChannel("profile", "hello")
+                .submit()
+                .toCompletableFuture()
+                .join();
+
+            assertEquals(
+                systems.zlink.framework.channels.ZLinkSubmitStatus.TIMED_OUT,
+                result.status());
+        }
+    }
+
+    @Test
+    void oneWaySubmitUsesOneNonBlockingAdmissionAttempt() {
+        RecordingPublishBackend backend = new RecordingPublishBackend();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addFanoutChannel("events").enablePublisher("inproc://events"); };
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
-            runtime.fanout()
-                .publish("events", "topic", "payload")
+            var submission = runtime.fanout()
+                .publish("events", "payload")
                 .submit();
 
-            assertTrue(backend.entered.await(1, TimeUnit.SECONDS));
-            backend.release.countDown();
+            assertEquals(
+                systems.zlink.framework.channels.ZLinkSubmitStatus.SUBMITTED,
+                submission.toCompletableFuture().join().status());
+            assertEquals(SendFlags.DONT_WAIT, backend.flags);
+        }
+    }
+
+    @Test
+    void submittingTheSameOneWayCallTwiceFailsWithoutASecondBackendAttempt() {
+        RecordingPublishBackend backend = new RecordingPublishBackend();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addFanoutChannel("events").enablePublisher("inproc://events");
+
+        try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
+            var call = runtime.fanout().publish("events", "payload");
+
+            assertEquals(
+                systems.zlink.framework.channels.ZLinkSubmitStatus.SUBMITTED,
+                call.submit().toCompletableFuture().join().status());
+            CompletionException duplicate = assertThrows(
+                CompletionException.class,
+                () -> call.submit().toCompletableFuture().join());
+
+            assertInstanceOf(IllegalStateException.class, duplicate.getCause());
+            assertEquals(1, backend.submissions);
         }
     }
 
@@ -167,13 +208,13 @@ final class ZLinkAsyncSubmitterTest {
         }
     }
 
-    private static final class BlockingPublishBackend extends NoReplyBackend {
-        private final CountDownLatch entered = new CountDownLatch(1);
-        private final CountDownLatch release = new CountDownLatch(1);
+    private static final class RecordingPublishBackend extends NoReplyBackend {
+        private SendFlags flags;
+        private int submissions;
 
         @Override
         public ZLinkBackendPublisherSocket createPublisherSocket(ZLinkBackendContext context) {
-            return new BlockingPublisher(entered, release);
+            return new RecordingPublisher(this);
         }
     }
 
@@ -181,6 +222,20 @@ final class ZLinkAsyncSubmitterTest {
         @Override
         public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
             return new CloseFailureDealer();
+        }
+    }
+
+    private static final class BackpressuredBackend extends NoReplyBackend {
+        @Override
+        public ZLinkBackendDealerSocket createDealerSocket(ZLinkBackendContext context) {
+            return new NoReplyDealer() {
+                @Override public boolean send(List<Message> parts, SendFlags flags) {
+                    return false;
+                }
+                @Override public Duration admissionTimeout() {
+                    return Duration.ofMillis(20);
+                }
+            };
         }
     }
 
@@ -226,13 +281,11 @@ final class ZLinkAsyncSubmitterTest {
         }
     }
 
-    private static final class BlockingPublisher implements ZLinkBackendPublisherSocket {
-        private final CountDownLatch entered;
-        private final CountDownLatch release;
+    private static final class RecordingPublisher implements ZLinkBackendPublisherSocket {
+        private final RecordingPublishBackend owner;
 
-        BlockingPublisher(CountDownLatch entered, CountDownLatch release) {
-            this.entered = entered;
-            this.release = release;
+        RecordingPublisher(RecordingPublishBackend owner) {
+            this.owner = owner;
         }
 
         @Override public String name() { return "publisher"; }
@@ -240,13 +293,9 @@ final class ZLinkAsyncSubmitterTest {
         @Override public void setChannelName(String channelName) { }
         @Override public void setRoutingId(RoutingId routingId) { }
         @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
-            entered.countDown();
-            try {
-                return release.await(1, TimeUnit.SECONDS);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
+            owner.flags = flags;
+            owner.submissions++;
+            return true;
         }
         @Override public void close() { }
     }

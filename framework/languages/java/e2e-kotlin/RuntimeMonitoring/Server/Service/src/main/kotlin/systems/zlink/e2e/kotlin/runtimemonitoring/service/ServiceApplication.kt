@@ -76,10 +76,10 @@ class ServiceApplication {
                     Contracts.WorkRes::class.java,
                     "HandshakeWorkReq",
                 )
-            val node = options.addSpotMesh(Contracts.SPOT_MESH)
-            node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
+            val node = options.addRouteMesh(Contracts.SPOT_MESH)
+            node.listen(Env.get("ZLINK_KOTLIN_E2E_MESH_ENDPOINT"))
                 .setRoutingId(RoutingId.from("svc-a-spot"))
-            node.enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"))
+            node.channelName(Contracts.SPOT_CHANNEL)
             node.addSpotFactory(MonitoringSpot::class.java)
         }
     }

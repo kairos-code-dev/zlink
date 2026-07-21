@@ -115,19 +115,8 @@ internal static class ZLinkRoutingIdAllocationCatalog
                     channel.ChannelName,
                     channel.HasExplicitRoutingId,
                     false,
-                    channel.Server is not null || channel.Client is not null
-                                               || channel.Publisher is not null || channel.Subscriber is not null,
+                    channel.Publisher is not null || channel.Subscriber is not null,
                     routingId => channel.RoutingId = routingId));
-
-        foreach (var route in registration.RouteChannels.Values)
-            if (route.RoutingIdAllocation is { } allocation)
-                members.Add(Create(
-                    allocation,
-                    route.RouterChannelId,
-                    route.HasExplicitRoutingId,
-                    false,
-                    route.ClientEnabled || !string.IsNullOrWhiteSpace(route.BindEndpoint),
-                    routingId => route.RoutingId = routingId));
 
         foreach (var spot in registration.SpotNodes.Values)
             if (spot.RoutingIdAllocation is { } allocation)
@@ -136,7 +125,7 @@ internal static class ZLinkRoutingIdAllocationCatalog
                     spot.SpotNodeName,
                     spot.HasExplicitRoutingId,
                     spot.HasExplicitEntrySpotRoutingId,
-                    spot.Router is not null || spot.PubSub is not null,
+                    spot.Router is not null,
                     routingId =>
                     {
                         spot.RoutingId = routingId;

@@ -7,7 +7,6 @@ source "$ROOT_DIR/../redis-common.sh"
 
 # The ST-F markers (handoff_backlog, straggler_forward, ...) are runtime
 # diagnostics behind this gate; the runner asserts them, so it owns the gate.
-export ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1
 
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
@@ -24,7 +23,7 @@ CONFIG_DIR="$(mktemp -d)"
 SERVER_PROJECT="$ROOT_DIR/Server/ActorNode/SpotActorTransfer.ActorNode.csproj"
 SESSION_GATEWAY_PROJECT="$ROOT_DIR/Server/SessionGateway/SpotActorTransfer.SessionGateway.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/SpotActorTransfer.Client.csproj"
-LOCAL_READINESS_TIMEOUT_SECONDS=15
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 PROCESS_EXIT_TIMEOUT_SECONDS=30
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60

@@ -7,6 +7,7 @@ import type {
   ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
   ZLinkLocationOptions,
+  ZLinkLocationOptionValues,
   ZLinkLocationStore,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
@@ -18,14 +19,15 @@ import type {
   ZLinkRuntimeEventPublisher,
   ZLinkSendContext,
   ZLinkSpot,
-  ZLinkSpotDrainPolicy,
   ZLinkStreamCompressionOptions,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
 
 export interface ZLinkWorkerOptions {
-  readonly maxThreads?: number;
-  readonly maxQueueLength?: number;
+  readonly minThreads: number;
+  readonly maxThreads: number;
+  readonly idleTimeoutMs: number;
+  readonly maxQueueLength: number;
 }
 
 export interface ZLinkNestIntegrationRuntimeHost {
@@ -33,13 +35,11 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly boundSessionFactory: unknown;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: unknown;
+  readonly routeMeshRuntime: import('@zlink-systems/framework').ZLinkRouteMeshRuntime;
   waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<unknown>;
   createLocationHandleResolver(): unknown;
   start(): Promise<void>;
   stop(): Promise<void>;
-  drain(deadlineMs?: number, signal?: AbortSignal): Promise<unknown>;
-  awaitDrained(signal?: AbortSignal): Promise<unknown>;
-  isReady(): boolean;
   onApplicationBootstrap?(): Promise<void> | void;
   onApplicationShutdown?(): Promise<void> | void;
 }
@@ -61,6 +61,7 @@ export interface ZLinkFrameworkRegistration {
   readonly requestTimeoutMs?: number;
   readonly actorFactories: ReadonlyMap<string, Type>;
   readonly actorTransferAdapters: ReadonlyMap<Type, Type>;
+  readonly actorTransferTimeoutMs?: number;
   readonly actorTransferForwardWindowMs: number;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
   readonly channels: ReadonlyMap<string, ZLinkChannelOptions>;
@@ -112,6 +113,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;
+  readonly actorTransferTimeoutMs?: number;
   readonly actorTransferForwardWindowMs?: number;
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
@@ -128,7 +130,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
     readonly storeInstance?: ZLinkLocationStore;
-    readonly options?: ZLinkLocationOptions;
+    readonly options?: Partial<ZLinkLocationOptionValues>;
   };
 }
 
@@ -188,6 +190,7 @@ export interface ZLinkRouteChannelOptions extends ZLinkRouteMeshChannelOptions {
 
 export interface ZLinkStreamNodeOptions {
   readonly bind?: string;
+  readonly actorDispatchMeshName?: string;
   readonly tlsServer?: {
     readonly certificatePath: string;
     readonly keyPath: string;
@@ -201,7 +204,6 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 }
 
 export interface ZLinkSpotNodeOptions {
-  readonly drainPolicy?: ZLinkSpotDrainPolicy;
   readonly routingId?: string;
   readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
@@ -210,6 +212,15 @@ export interface ZLinkSpotNodeOptions {
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
+  readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
+  readonly routeSendHandlers?: readonly ZLinkRouteMeshSendHandlerRegistration[];
+  readonly routeRequestHandlers?: readonly ZLinkRouteMeshRequestHandlerRegistration[];
+  readonly requestTimeoutMs?: number;
+  readonly publisherConfig?: {
+    readonly sendHighWaterMark?: number;
+    readonly sendTimeoutMs?: number;
+    readonly lingerMs?: number;
+  };
   readonly entrySpotTimerHandlers?: readonly ZLinkEntrySpotTimerHandlerRegistration[];
   readonly entrySpotPacketHandlers?: readonly ZLinkEntrySpotPacketHandlerRegistration[];
   readonly entrySpotSubscriptionHandlers?: readonly ZLinkEntrySpotSubscriptionHandlerRegistration[];
@@ -220,6 +231,33 @@ export interface ZLinkSpotNodeOptions {
   readonly spotSubscriptionHandlers?: readonly ZLinkSpotSubscriptionHandlerRegistration[];
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
+}
+
+export interface ZLinkMeshChannelOptions {
+  readonly weight?: number;
+  readonly handlerGroups?: readonly string[];
+  readonly sendHandlers?: readonly ZLinkMeshSendHandlerRegistration[];
+  readonly requestHandlers?: readonly ZLinkMeshRequestHandlerRegistration[];
+}
+
+export interface ZLinkMeshSendHandlerRegistration {
+  readonly packetName: string;
+  readonly handlerType: Type;
+}
+
+export interface ZLinkMeshRequestHandlerRegistration {
+  readonly packetName: string;
+  readonly handlerType: Type;
+}
+
+export interface ZLinkRouteMeshSendHandlerRegistration {
+  readonly packetName: string;
+  readonly handlerType: Type;
+}
+
+export interface ZLinkRouteMeshRequestHandlerRegistration {
+  readonly packetName: string;
+  readonly handlerType: Type;
 }
 
 export interface ZLinkRoutingIdAllocationOptions {
@@ -280,7 +318,8 @@ export interface ZLinkEntrySpotPacketHandlerRegistration {
   readonly entrySpotType: Type<ZLinkEntrySpot>; readonly handlerType: Type; readonly packetName?: string;
 }
 export interface ZLinkEntrySpotSubscriptionHandlerRegistration {
-  readonly entrySpotType: Type<ZLinkEntrySpot>; readonly handlerType: Type; readonly topic: string;
+  readonly entrySpotType: Type<ZLinkEntrySpot>; readonly handlerType: Type;
+  readonly channelName: string; readonly topic: string;
 }
 export interface ZLinkEntrySpotActorSendHandlerRegistration {
   readonly entrySpotType: Type<ZLinkEntrySpot>; readonly actorType: Type<ZLinkActor>;
@@ -295,7 +334,8 @@ export interface ZLinkSpotPacketHandlerRegistration {
   readonly spotType: Type<ZLinkSpot>; readonly handlerType: Type; readonly packetName?: string;
 }
 export interface ZLinkSpotSubscriptionHandlerRegistration {
-  readonly spotType: Type<ZLinkSpot>; readonly handlerType: Type; readonly topic: string;
+  readonly spotType: Type<ZLinkSpot>; readonly handlerType: Type;
+  readonly channelName: string; readonly topic: string;
 }
 export interface ZLinkSpotActorSendHandlerRegistration {
   readonly spotType: Type<ZLinkSpot>; readonly actorType: Type<ZLinkActor>;

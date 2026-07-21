@@ -44,7 +44,6 @@ struct server_options_t
     std::string stream_endpoint;
     std::string log_dir;
     std::string trace_mode;
-    std::string drain_policy;
     bool metrics_enabled;
     bool room_timer_enabled;
 
@@ -61,7 +60,6 @@ struct server_options_t
                 .stream_endpoint = section.get ("streamEndpoint").value_or (""),
                 .log_dir = section.require ("logDir"),
                 .trace_mode = section.get ("traceMode").value_or ("key_transitions"),
-                .drain_policy = section.get ("drainPolicy").value_or ("drain_natural"),
                 .metrics_enabled = section.get ("metrics").value_or ("on") != "off",
                 .room_timer_enabled = section.get ("roomTimer").value_or ("off") == "on"};
     }
@@ -722,12 +720,6 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
             locations.heartbeat_interval = std::chrono::seconds (1);
             locations.owner_lease_ttl = std::chrono::seconds (5);
             locations.polling_interval = std::chrono::milliseconds (250);
-            if (role == host_role_t::order_workflow) {
-                locations.spot_router_channels[obs::workflow_spot_mesh] =
-                  obs::workflow_route_channel;
-            } else {
-                locations.spot_router_channels[obs::spot_mesh] = obs::spot_route_channel;
-            }
         }
         /* OBS-A3(b): an off node must not create flows but still propagates
          * the received pair to the next hop. */
@@ -737,23 +729,11 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
           .trace_log_file (options.log_dir + "/" + options.node_rid + "-flow.log")
           .trace_label ("cpp-obs-" + options.node_rid);
 
-        const auto *route_channel = role == host_role_t::order_workflow
-                                      ? obs::workflow_route_channel
-                                      : obs::spot_route_channel;
-        auto spot_route = framework.add_route_mesh (route_channel);
-        spot_route.enable_server (options.route_endpoint);
-        spot_route.set_routing_id (zlink::routing_id_t::from (options.node_rid));
-        if (!options.peer_route_endpoint.empty ()) {
-            spot_route.enable_client (options.peer_route_endpoint);
-        }
-
         if (role == host_role_t::session) {
-            framework.add_spot_mesh (obs::spot_mesh)
-              .use_drain_policy (fw::spot_drain_policy_t::drain_natural)
-              .set_routing_id (zlink::routing_id_t::from (options.node_rid))
-              .enable_router (options.spot_router_endpoint)
-              .enable_pub_sub (options.spot_pub_endpoint)
-              .accept_route_mesh (route_channel);
+            auto spot = framework.add_route_mesh (obs::spot_mesh);
+            spot.channel_name (obs::spot_mesh);
+            spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
+              .listen (options.spot_router_endpoint);
         } else {
             const auto *mesh_name = role == host_role_t::order_workflow
                                       ? obs::workflow_spot_mesh
@@ -762,12 +742,10 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                                       ? obs::order_workflow_spot
                                       : obs::room_spot;
             if (role == host_role_t::play) {
-                framework.add_spot_mesh (mesh_name)
-                  .use_drain_policy (fw::spot_drain_policy_t::drain_natural)
-                  .set_routing_id (zlink::routing_id_t::from (options.node_rid))
-                  .enable_router (options.spot_router_endpoint)
-                  .enable_pub_sub (options.spot_pub_endpoint)
-                  .accept_route_mesh (route_channel)
+                auto spot = framework.add_route_mesh (mesh_name);
+                spot.channel_name (mesh_name);
+                spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
+                  .listen (options.spot_router_endpoint)
                   .add_entry_spot<obs_entry_spot_t> ()
                   .add_spot<room_spot_t> (
                     spot_type,
@@ -776,12 +754,10 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                     })
                   .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
             } else {
-                framework.add_spot_mesh (mesh_name)
-                  .use_drain_policy (fw::spot_drain_policy_t::release_and_recreate)
-                  .set_routing_id (zlink::routing_id_t::from (options.node_rid))
-                  .enable_router (options.spot_router_endpoint)
-                  .enable_pub_sub (options.spot_pub_endpoint)
-                  .accept_route_mesh (route_channel)
+                auto spot = framework.add_route_mesh (mesh_name);
+                spot.channel_name (mesh_name);
+                spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
+                  .listen (options.spot_router_endpoint)
                   .add_spot<room_spot_t> (
                     spot_type,
                     [timer_enabled = options.room_timer_enabled, workflow_events] {

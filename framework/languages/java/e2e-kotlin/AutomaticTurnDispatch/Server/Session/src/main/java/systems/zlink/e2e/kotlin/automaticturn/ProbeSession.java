@@ -49,7 +49,7 @@ public final class ProbeSession implements ZLinkSession {
         return handlers.tryHandle(context, dispatch, payload)
             .thenCompose(handled -> handled
                 ? CompletableFuture.completedFuture(null)
-                : requireActor(dispatch).relay(dispatch, payload));
+                : requireActor(dispatch).relay(dispatch, payload).thenApply(ignored -> null));
     }
 
     private ZLinkSessionActor requireActor(ZLinkSessionDispatchContext dispatch) {

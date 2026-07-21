@@ -16,7 +16,7 @@ internal sealed class CourierDecisionActorHandler(
     ILogger<CourierDecisionActorHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, CourierDecisionMsg>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
         ZLinkSpotActorSendContext context,
@@ -30,18 +30,18 @@ internal sealed class CourierDecisionActorHandler(
                 "deliverydispatch courier-actor: decision for an unknown offer delivery={DeliveryId} courier={CourierId}",
                 message.DeliveryId,
                 actor.ActorId);
-            return ValueTask.CompletedTask;
+            return;
         }
 
-        channels
-            .SendToChannel(SampleNames.DispatchChannel, SampleNames.DispatchChannel,
+        await channels
+            .SendToChannel(SampleNames.MeshName, SampleNames.DispatchChannel,
                 new OfferDeliveryResultMsg(
                     message.DeliveryId,
                     message.CourierId,
                     attempt.Value,
                     message.Accepted,
                     message.Reason))
-            .TrySubmit();
+            .SubmitAsync(cancellationToken);
 
         logger.LogInformation(
             "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} attempt={Attempt} accepted={Accepted}",
@@ -49,6 +49,5 @@ internal sealed class CourierDecisionActorHandler(
             actor.ActorId,
             attempt.Value,
             message.Accepted);
-        return ValueTask.CompletedTask;
     }
 }

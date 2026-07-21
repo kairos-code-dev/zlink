@@ -181,12 +181,12 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<e2e::session_configuration_t> (
           std::make_unique<e2e::session_configuration_t> (configuration));
         add_redis_location_store (framework, configuration.redis);
-        auto mesh = framework.add_spot_mesh (e2e::spot_mesh_name)
-          .enable_router (configuration.spot_endpoint)
-          .enable_pub_sub (configuration.pub_sub_endpoint)
+        auto mesh = framework.add_route_mesh (e2e::spot_mesh_name)
+          .listen (configuration.spot_endpoint)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid));
-        mesh.connect_router (zlink::routing_id_t::from (configuration.actor_rid),
-                             configuration.actor_spot_endpoint);
+        mesh.peer_connections ().connect (
+          zlink::routing_id_t::from (configuration.actor_rid),
+          configuration.actor_spot_endpoint);
         framework.add_stream_node (std::string (e2e::spot_mesh_name) + "-" + configuration.node_rid)
           .bind (configuration.stream_endpoint)
           .register_session<actor_session_t> ();

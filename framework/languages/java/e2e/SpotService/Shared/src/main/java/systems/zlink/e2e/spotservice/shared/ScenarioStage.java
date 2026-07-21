@@ -2,7 +2,6 @@ package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
-import systems.zlink.framework.spots.ZLinkTimerOptions;
 
 public final class ScenarioStage {
     private final UserSpot spot;
@@ -23,7 +22,7 @@ public final class ScenarioStage {
                     request.name(),
                     Duration.ofMillis(request.periodMilliseconds()),
                     StageTimerHandler.class,
-                    new ZLinkTimerOptions())
+                    null)
                 .toCompletableFuture()
                 .get(5, TimeUnit.SECONDS);
             return new Contracts.StageTimerStartRes(spot.spotRid(), request.name(), true);

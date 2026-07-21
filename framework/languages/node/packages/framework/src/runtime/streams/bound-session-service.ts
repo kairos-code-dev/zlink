@@ -1,14 +1,15 @@
-import { Message as ZLinkBindingMessage, SubmitError, SubmitResult } from '@zlink-systems/zlink';
-import type { ActorRef } from '../../contracts';
+import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
+import type { ActorRef, ZLinkSubmitResult } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
+  ZLinkFrameworkException,
+  ZLinkSubmitStatus
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import type {
   ZLinkBackendActorRef,
-  ZLinkBackendSpotNode
+  ZLinkBackendActorSessionNode
 } from '../backend/contracts';
 import {
   encodeStreamHeader,
@@ -34,14 +35,14 @@ import {
 import {
   ZLinkManagedStream
 } from './managed-stream';
+import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
-const ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS = 10;
 const ZLINK_SEND_DONT_WAIT = 1;
 
 type ZLinkStreamActorSessionRoute = ZLinkActorSessionRoute<DefaultZLinkSessionContext, DefaultZLinkSessionActor>;
 
 export interface ZLinkBoundSessionTransport {
-  send(actorId: string, message: unknown, options: ZLinkBoundSessionSendOptions): Promise<void>;
+  send(actorId: string, message: unknown, options: ZLinkBoundSessionSendOptions): Promise<ZLinkSubmitResult>;
   disconnect(actorId: string, options: ZLinkBoundSessionDisconnectOptions): Promise<void>;
 }
 
@@ -60,14 +61,20 @@ export interface ZLinkBoundSessionDisconnectOptions {
 export interface ZLinkBoundSessionServiceOptions {
   readonly transport?: ZLinkBoundSessionTransport;
   readonly actorBindTimeoutMs?: number;
+  readonly meshSubmitters?: ZLinkMeshSubmitterRegistry;
+  readonly nativeActorMeshNameProvider?: () => string | undefined;
 }
 
 export class ZLinkBoundSessionService {
+  private readonly meshSubmitters: ZLinkMeshSubmitterRegistry;
+
   constructor(
     private readonly routes: ZLinkActorSessionBindingRegistry<DefaultZLinkSessionContext, DefaultZLinkSessionActor>,
     private readonly frameMessages: ZLinkStreamFrameMessageFactory,
     private readonly options: ZLinkBoundSessionServiceOptions = {}
-  ) {}
+  ) {
+    this.meshSubmitters = options.meshSubmitters ?? new ZLinkMeshSubmitterRegistry();
+  }
 
   async sendBoundSession(
     actorId: string,
@@ -75,7 +82,7 @@ export class ZLinkBoundSessionService {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
     const route = this.routes.requireRoute(actorId);
     const frame = this.frameMessages.createJsonFrameMessage(
@@ -87,13 +94,44 @@ export class ZLinkBoundSessionService {
       message
     );
     try {
-      await this.requireTransport().send(actorId, frame, {
+      const result = await this.requireTransport().send(actorId, frame, {
         bindingToken: route.bindingToken,
         packetName,
         metadata,
         signal
       });
       this.routes.requireCurrentToken(actorId, route.bindingToken);
+      return result;
+    } finally {
+      frame.close();
+    }
+  }
+
+  async submitLocalBoundSession(
+    actorId: string,
+    message: unknown,
+    packetName: string | undefined,
+    metadata: ReadonlyMap<string, string>,
+    signal?: AbortSignal
+  ): Promise<ZLinkSubmitResult> {
+    const route = this.routes.route(actorId);
+    if (route === undefined) {
+      return { status: ZLinkSubmitStatus.TargetNotFound };
+    }
+    const frame = this.frameMessages.createJsonFrameMessage(
+      ZLinkStreamMessageKind.Send,
+      resolvePacketName(message, packetName),
+      metadata,
+      false,
+      undefined,
+      message
+    );
+    try {
+      throwIfAborted(signal);
+      if (this.routes.route(actorId)?.bindingToken !== route.bindingToken) {
+        return { status: ZLinkSubmitStatus.TargetNotFound };
+      }
+      return await route.context.stream.submitRaw(frame, signal);
     } finally {
       frame.close();
     }
@@ -172,15 +210,15 @@ export class ZLinkBoundSessionService {
   }
 
   async sendNativeBoundSession(
-    node: ZLinkBackendSpotNode,
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
-    await this.sendNativeBoundSessionPayload(
+    return await this.submitNativeBoundSessionPayload(
       node,
       actorRef,
       ZLinkStreamMessageKind.Send,
@@ -194,7 +232,7 @@ export class ZLinkBoundSessionService {
   }
 
   async sendNativeBoundSessionResponse(
-    node: ZLinkBackendSpotNode,
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     packetName: string,
     requestSeq: bigint,
@@ -218,7 +256,7 @@ export class ZLinkBoundSessionService {
   }
 
   async sendNativeBoundSessionError(
-    node: ZLinkBackendSpotNode,
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     packetName: string,
     requestSeq: bigint,
@@ -241,12 +279,17 @@ export class ZLinkBoundSessionService {
   }
 
   async disconnectNativeBoundSession(
-    node: ZLinkBackendSpotNode,
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     signal?: AbortSignal
   ): Promise<void> {
     throwIfAborted(signal);
-    await node.closeActorBoundSession(actorRef as unknown as ZLinkBackendActorRef, 0, signal);
+    await node.closeActorBoundSession(
+      actorRef as unknown as ZLinkBackendActorRef,
+      requireBoundSessionGeneration(actorRef),
+      0,
+      signal
+    );
   }
 
   async disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void> {
@@ -317,7 +360,7 @@ export class ZLinkBoundSessionService {
   }
 
   private async sendNativeBoundSessionPayload(
-    node: ZLinkBackendSpotNode,
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     kind: ZLinkStreamMessageKind,
     packetName: string,
@@ -327,6 +370,37 @@ export class ZLinkBoundSessionService {
     payload: unknown,
     signal?: AbortSignal
   ): Promise<void> {
+    const result = await this.submitNativeBoundSessionPayload(
+      node,
+      actorRef,
+      kind,
+      packetName,
+      metadata,
+      compressPayload,
+      requestSeq,
+      payload,
+      signal
+    );
+    if (result.status !== ZLinkSubmitStatus.Submitted) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        `Actor '${actorRef.actorId}' bound session route rejected '${result.status}'.`,
+        result.status === ZLinkSubmitStatus.RouteNotConnected
+      );
+    }
+  }
+
+  private async submitNativeBoundSessionPayload(
+    node: ZLinkBackendActorSessionNode,
+    actorRef: ActorRef,
+    kind: ZLinkStreamMessageKind,
+    packetName: string,
+    metadata: ReadonlyMap<string, string>,
+    compressPayload: boolean,
+    requestSeq: bigint | undefined,
+    payload: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkSubmitResult> {
     const frame = this.frameMessages.createJsonFrameMessage(
       kind,
       packetName,
@@ -336,43 +410,27 @@ export class ZLinkBoundSessionService {
       payload
     );
     try {
-      await this.sendNativeBoundSessionFrame(node, actorRef, frame, signal);
+      return await this.submitNativeBoundSessionFrame(node, actorRef, frame, signal);
     } finally {
       frame.close();
     }
   }
 
-  private async sendNativeBoundSessionFrame(
-    node: ZLinkBackendSpotNode,
+  private async submitNativeBoundSessionFrame(
+    node: ZLinkBackendActorSessionNode,
     actorRef: ActorRef,
     frame: Message,
     signal?: AbortSignal
-  ): Promise<void> {
-    const deadline = Date.now() + (this.options.actorBindTimeoutMs ?? 2000);
+  ): Promise<ZLinkSubmitResult> {
     const backendActorRef = toBoundSessionSendActorRef(actorRef);
-    let lastError: unknown;
-    do {
-      throwIfAborted(signal);
-      try {
-        if (node.sendActorBoundSession(backendActorRef, [frame], ZLINK_SEND_DONT_WAIT)) {
-          return;
-        }
-        lastError = undefined;
-      } catch (error) {
-        if (!isNativeBoundSessionSendRetryable(error)) {
-          throw error;
-        }
-        lastError = error;
-      }
-      await delayNativeBoundSessionRetry(deadline, signal);
-    } while (Date.now() <= deadline);
-
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.ActorRouteNotFound,
-      `Actor '${actorRef.actorId}' bound session route is not ready.`,
-      false,
-      lastError
-    );
+    const meshName = this.options.nativeActorMeshNameProvider?.() ?? '__native_bound_session';
+    return await this.meshSubmitters.submit(meshName, () =>
+      node.sendActorBoundSession(
+          backendActorRef,
+          requireBoundSessionGeneration(actorRef),
+          [frame],
+          ZLINK_SEND_DONT_WAIT
+      ), signal);
   }
 
   private requireTransport(): ZLinkBoundSessionTransport {
@@ -387,27 +445,21 @@ export class ZLinkBoundSessionService {
   }
 }
 
+function requireBoundSessionGeneration(actorRef: ActorRef): bigint {
+  const generation = (actorRef as ActorRef & { bindingGeneration?: bigint }).bindingGeneration;
+  if (generation === undefined || generation <= 0n) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RouteNotConnected,
+      `Actor '${actorRef.actorId}' has no current bound-session generation.`
+    );
+  }
+  return generation;
+}
+
 function toBoundSessionSendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: 0n
+    generation: actor.generation
   };
-}
-
-
-async function delayNativeBoundSessionRetry(deadline: number, signal: AbortSignal | undefined): Promise<void> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) {
-    return;
-  }
-  await new Promise<void>((resolve) =>
-    setTimeout(resolve, Math.min(ZLINK_NATIVE_BOUND_SESSION_RETRY_DELAY_MS, remaining))
-  );
-  throwIfAborted(signal);
-}
-
-function isNativeBoundSessionSendRetryable(error: unknown): boolean {
-  return error instanceof SubmitError &&
-    (error.result === SubmitResult.Backpressured || error.result === SubmitResult.NotConnected);
 }

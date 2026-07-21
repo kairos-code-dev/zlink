@@ -1,95 +1,94 @@
-import { Inject } from '@nestjs/common';
-import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  BingoRoomJoinReq,
-  BingoRoomSettingsPayload,
-  ObserveBingoEventsRes
+  ZLINK_ACTOR_CLIENT,
+  zlinkEntrySpotActorSendHandler
+} from '@zlink-systems/nestjs';
+import { SampleNames } from '../../../../../Configuration/sample-names';
+import { PlayerActor } from '../../Actors/player-actor';
+import { PendingBingoActorDestroyRegistry } from '../../Actors/player-actor-lifecycle-handlers';
+import {
+  DestroyBingoActor,
+  EnsurePlayerActorReq as GeneratedEnsurePlayerActorReq
 } from '../../../../../../Shared/Contracts/bingo-messages.generated';
-import { createObserverRoomSettings } from '../../../../Domain/Bingo/bingo-room-models';
-import { BingoRoomSpot } from '../BingoRoomSpot/bingo-room-spot';
 import type {
+  ZLinkActorClient,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
-  ZLinkSpotManager
+  ZLinkSpotActorSendContext
 } from '@zlink-systems/framework';
-import type {
-  BingoRoomJoinRes,
-  EnsurePlayerActorReq,
-  ObserveBingoEventsReq
-} from '../../../../../../Shared/Contracts/messages';
-import type { PlayerActor as PlayerActorType } from '../../Actors/player-actor';
 
-class BingoEntrySpot implements ZLinkEntrySpot<PlayerActorType> {
-  readonly context!: ZLinkEntrySpotContext;
+@Injectable()
+class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
+  readonly context!: ZLinkEntrySpotContext<PlayerActor>;
 
   constructor(
-    private readonly spots: ZLinkSpotManager
+    private readonly pendingDestroys: PendingBingoActorDestroyRegistry,
+    @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient
   ) {}
 
-  async observeEvents(actor: PlayerActorType, request: ObserveBingoEventsReq): Promise<ObserveBingoEventsRes> {
-    const observerRid = this.observerRoomRid(request.roomId);
-    const settings = createObserverRoomSettings(request.roomId, String(this.context.nodeRid));
-    await this.spots.getOrCreate(
-      BingoRoomSpot,
-      observerRid,
-      new BingoRoomSettingsPayload({
-        ...settings,
-        purpose: settings.purpose,
-        observedRoomId: settings.observedRoomId
-      })
-    );
-    const joined = await actor.context
-      .joinSpot(observerRid, new BingoRoomJoinReq({
-        roomId: request.roomId,
-        actorId: actor.actorId,
-        displayName: actor.displayName,
-        observeOnly: true
-      }))
-      .submit<BingoRoomJoinRes>();
-    return new ObserveBingoEventsRes({
-      subscribed: joined.status === 'accepted',
-      observerNodeRid: String(this.context.nodeRid)
-    });
-  }
-
-  private observerRoomRid(roomId: string): string {
-    return `observe:${roomId}:${String(this.context.nodeRid)}`;
-  }
-
-  async onJoinedActor(actor: PlayerActorType): Promise<void> {
-    if (!actor.destroyAfterEntrySpotJoin) {
-      console.error(`bingo-lifecycle entry-joined actor=${actor.actorId} destroy=false`);
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
+    if (!this.pendingDestroys.consume(actor.actor.actorId)) {
+      console.error(`bingo-lifecycle entry-joined actor=${actor.actor.actorId} destroy=false`);
       return;
     }
-    console.error(`bingo-lifecycle entry-destroy-start actor=${actor.actorId}`);
-    await this.context.destroyActor(actor);
-    console.error(`bingo-lifecycle entry-destroy-complete actor=${actor.actorId}`);
+    const submitted = await this.actors
+      .sendToActor(SampleNames.roomSpotNode, actor.actor, new DestroyBingoActor({}))
+      .submit();
+    if (submitted.status !== 'submitted') {
+      throw new Error(`Bingo actor '${actor.actor.actorId}' destroy was not submitted: ${submitted.status}.`);
+    }
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actorId;
-    void request;
+  async onActorJoin(
+    _actor: ZLinkActorJoinRequest,
+    _request: ZLinkMessage
+  ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
-  async onCreateActor(actor: PlayerActorType, createRequest: ZLinkMessage): Promise<void> {
-    const request = createRequest.decode<Partial<EnsurePlayerActorReq>>(Object as never);
+  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+    const request = createRequest.decode<GeneratedEnsurePlayerActorReq>();
     if (typeof request.displayName === 'string') {
-      actor.displayName = request.displayName;
+      await this.actors
+        .sendToActor(SampleNames.roomSpotNode, actor.actor, request)
+        .submit();
     }
   }
 
-  async onLeaveActor(actor: PlayerActorType): Promise<void> {
-    console.error(`bingo-lifecycle entry-leave actor=${actor.actorId}`);
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
+    console.error(`bingo-lifecycle entry-leave actor=${actor.actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: PlayerActorType): Promise<void> {
-    actor.markDisconnected();
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
+
+  scheduleDestroy(actor: PlayerActor): void {
+    void this.context.runIoWorker(async () => true).async().then(async () => {
+      console.error(`bingo-lifecycle entry-destroy-start actor=${actor.actorId}`);
+      await this.context.destroyActor(actor);
+      console.error(`bingo-lifecycle entry-destroy-complete actor=${actor.actorId}`);
+    });
   }
 }
 
-Inject(ZLINK_SPOT_MANAGER)(BingoEntrySpot, undefined, 0);
+@zlinkEntrySpotActorSendHandler({
+  actor: () => PlayerActor,
+  entrySpot: () => BingoEntrySpot,
+  packetName: 'DestroyBingoActor'
+})
+class DestroyBingoActorHandler {
+  constructor(private readonly entrySpot: BingoEntrySpot) {}
 
-export { BingoEntrySpot };
+  async handle(
+    actor: PlayerActor,
+    _context: ZLinkSpotActorSendContext,
+    _message: DestroyBingoActor
+  ): Promise<void> {
+    this.entrySpot.scheduleDestroy(actor);
+  }
+}
+
+export { BingoEntrySpot, DestroyBingoActorHandler };

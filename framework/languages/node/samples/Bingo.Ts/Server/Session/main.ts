@@ -15,7 +15,9 @@ async function bootstrap(): Promise<void> {
     abortOnError: false
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
-  await reportBingoRoutingId(app, 'session', 'bingo.session', [SampleNames.roomSpotNode]);
+  await reportBingoRoutingId(app, 'session', 'bingo.session', [
+    SampleNames.roomSpotNode
+  ]);
 
   process.stdout.write(`${JSON.stringify({
     event: 'ready',

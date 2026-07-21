@@ -5,6 +5,7 @@ class Contracts private constructor() {
         const val CHANNEL: String = "monitoring.api"
         const val HANDSHAKE_CHANNEL: String = "monitoring.handshake"
         const val SPOT_MESH: String = "monitoring.spot.mesh"
+        const val SPOT_CHANNEL: String = "monitoring.spot.runtime"
         const val HANDLER_GROUP: String = "monitoring"
         const val LOCATION_SOURCE: String = "ops-locations"
     }

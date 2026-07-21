@@ -67,11 +67,12 @@ public final class Program {
             options.addLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
                 .setConnectionString(config.redisLocationEndpoint())
                 .setKeyPrefix(config.locationKeyPrefix())));
-            options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(config.sessionSpotEndpoint())
+            options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(config.sessionSpotEndpoint())
                 .setRoutingId(RoutingId.from(rid));
             options.addStreamNode("to-actor-" + rid)
                 .bind(config.sessionStreamEndpoint())
+                .enableActorDispatch(Contracts.SPOT_MESH)
                 .registerSession(ToActorSession.class);
         };
     }

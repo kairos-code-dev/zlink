@@ -5,7 +5,7 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_DRAIN_CONTROL,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_ROUTE_CLIENT,
   ZLinkModule,
   zlinkFramework
@@ -13,7 +13,7 @@ import {
 import type {
   ZLinkChannelClient,
   ZLinkChannelRuntimeOptions,
-  ZLinkDrainControl,
+  ZLinkRouteMeshRuntime,
   ZLinkRouteClient
 } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
@@ -42,10 +42,10 @@ export async function startProviderHost(): Promise<void> {
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createProviderEndpoints(evidence, channel, route, runtimeOptions, drain, () => { stopping = true; })
+    createProviderEndpoints(evidence, channel, route, runtimeOptions, routeMeshRuntime, () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -83,29 +83,30 @@ function createProviderModule(): Function {
             Object.assign(builder.configureLocations(), locationMessagingOptions());
           }
           if (options.channelEndpoint !== undefined) {
-            const profile = builder.addClientServerChannel('profile')
-              .enableServer(options.channelEndpoint)
-              .routingId(options.rid)
-              .enableClient();
-            profile.configureServerSocket().weight = options.weight;
+            const profile = builder.addRouteMesh('profile')
+              .listen(options.channelEndpoint)
+              .routingId(options.rid);
+            profile.peerConnections();
+            profile.channelName('profile').setWeight(options.weight);
             if (options.maxMessageSize > 0) {
-              profile.configureServerSocket().maxMessageSize = options.maxMessageSize;
+              profile.configureRouterSocket().maxMessageSize = options.maxMessageSize;
             }
-            profile
+            profile.channelName('profile')
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
               .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);
           }
           if (options.manualClientEndpoint !== undefined) {
-            builder.addClientServerChannel('profile.manual')
-              .enableClient(options.manualClientEndpoint);
+            builder.addRouteMesh('profile.manual')
+              .peerConnections().connect(options.manualClientEndpoint);
           }
           if (options.routeEndpoint !== undefined) {
-            builder.addRouteMeshChannel('profile.route')
-              .enableRouter(options.routeEndpoint)
+            const routeMesh = builder.addRouteMesh('profile.route')
+              .listen(options.routeEndpoint)
               .routingId(options.rid)
-              .connect(options.routePeers)
               .addRequestHandler(PacketNames.scenarioRouteReq, RoutePingHandler);
+            routeMesh.channelName('profile.route');
+            for (const endpoint of options.routePeers) routeMesh.peerConnections().connect(endpoint);
           }
           return builder.build();
         }

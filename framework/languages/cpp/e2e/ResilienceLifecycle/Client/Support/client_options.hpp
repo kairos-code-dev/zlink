@@ -30,6 +30,8 @@ struct client_options_t
     std::string continue_file;
     std::string drained_file;
     std::string restore_file;
+    std::string second_ready_file;
+    std::string second_continue_file;
     std::string flap_phase;
     std::string flap_cycle;
 };
@@ -74,6 +76,8 @@ inline client_options_t read_client_options (int argc, char **argv)
             .continue_file = value ("continueFile"),
             .drained_file = value ("drainedFile"),
             .restore_file = value ("restoreFile"),
+            .second_ready_file = value ("secondReadyFile"),
+            .second_continue_file = value ("secondContinueFile"),
             .flap_phase = value ("flapPhase"),
             .flap_cycle = value ("flapCycle")};
 }

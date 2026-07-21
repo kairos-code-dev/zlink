@@ -47,8 +47,8 @@ internal sealed class JoinSessionHandler(
             request,
             cancellationToken);
         _ = await context.Actors.BindOrGetAsync(actor, cancellationToken);
-        context.Client.Reply(await joinSessions.ExecuteAsync(request.PlayerId, cancellationToken))
-            .Submit();
+        await context.Client.Reply(await joinSessions.ExecuteAsync(request.PlayerId, cancellationToken))
+            .SubmitAsync(cancellationToken);
     }
 }
 

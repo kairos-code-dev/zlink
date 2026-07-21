@@ -53,16 +53,16 @@ function createConsumerModule(): Function {
               .traceLogFile(`${options.logDir}/${options.traceLabel}-flow.log`)
               .traceLabel(options.traceLabel);
 
-          const profile = builder.addClientServerChannel('profile');
+          const profile = builder.addRouteMesh('profile');
           if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
             builder.addLocationStore(createRedisLocationStore({
               redisEndpoint: options.redisEndpoint,
               redisKeyPrefix: options.redisKeyPrefix
             }));
             Object.assign(builder.configureLocations(), locationMessagingOptions());
-            profile.enableClient();
+            profile.peerConnections();
           } else {
-            profile.enableClient(options.providerEndpoints);
+            for (const endpoint of options.providerEndpoints) profile.peerConnections().connect(endpoint);
           }
           return builder.build();
         }

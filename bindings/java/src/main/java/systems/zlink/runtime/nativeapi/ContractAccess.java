@@ -16,6 +16,7 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.service.spot.ReplyToken;
+import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
@@ -38,6 +39,7 @@ import java.util.function.BiFunction;
 public final class ContractAccess {
     private static volatile PollEventsAccess pollEventsAccess;
     private static volatile ReplyTokenAccess replyTokenAccess;
+    private static volatile ActorTransferTokenAccess actorTransferTokenAccess;
     private static volatile RoutingIdAccess routingIdAccess;
     private static volatile ContextOptionsAccess contextOptionsAccess;
     private static volatile SocketOptionsAccess socketOptionsAccess;
@@ -64,6 +66,12 @@ public final class ContractAccess {
         ReplyToken create(byte[] opaque);
 
         byte[] opaque(ReplyToken token);
+    }
+
+    public interface ActorTransferTokenAccess {
+        ActorTransferToken create(byte[] opaque);
+
+        byte[] opaque(ActorTransferToken token);
     }
 
     public interface RoutingIdAccess {
@@ -353,6 +361,10 @@ public final class ContractAccess {
         replyTokenAccess = Objects.requireNonNull(access, "access");
     }
 
+    public static void register(ActorTransferTokenAccess access) {
+        actorTransferTokenAccess = Objects.requireNonNull(access, "access");
+    }
+
     public static void register(RoutingIdAccess access) {
         routingIdAccess = Objects.requireNonNull(access, "access");
     }
@@ -415,6 +427,14 @@ public final class ContractAccess {
 
     public static byte[] replyTokenOpaque(ReplyToken token) {
         return replyTokenAccess().opaque(token);
+    }
+
+    public static ActorTransferToken actorTransferTokenCreate(byte[] opaque) {
+        return actorTransferTokenAccess().create(opaque);
+    }
+
+    public static byte[] actorTransferTokenOpaque(ActorTransferToken token) {
+        return actorTransferTokenAccess().opaque(token);
     }
 
     public static RoutingId routingIdFromTrusted(byte[] value) {
@@ -948,6 +968,15 @@ public final class ContractAccess {
                 "missing contract access for "
                     + ReplyToken.class.getName());
         return replyTokenAccess;
+    }
+
+    private static ActorTransferTokenAccess actorTransferTokenAccess() {
+        if (actorTransferTokenAccess == null) load(ActorTransferToken.class);
+        if (actorTransferTokenAccess == null)
+            throw new IllegalStateException(
+                "missing contract access for "
+                    + ActorTransferToken.class.getName());
+        return actorTransferTokenAccess;
     }
 
     private static RoutingIdAccess routingIdAccess() {

@@ -148,8 +148,7 @@ when the handler was attached.
 ## Timers
 
 Timers provide nanosecond-resolution periodic or one-shot scheduling. Create
-a standalone timer with `zlink_timer_new`, or a timer associated with a spot
-handle using `zlink_spot_timer_new`. Timers can be consumed synchronously with
+a standalone generic timer with `zlink_timer_new`. Timers can be consumed synchronously with
 `zlink_timer_recv` or driven by a callback with `zlink_timer_handler`. They
 can also be integrated into a poller with `zlink_poller_add_timer`.
 
@@ -168,33 +167,7 @@ Allocates and returns an opaque timer handle. Destroy with
 
 **Thread safety:** Safe to call from any thread.
 
-**See also:** `zlink_spot_timer_new`, `zlink_timer_destroy`
-
----
-
-### zlink_spot_timer_new
-
-Create a timer associated with a spot handle.
-
-```c
-ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
-```
-
-Creates a timer that is bound to the given spot. The timer's lifecycle and
-event delivery are tied to the associated spot.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `spot_` | Spot handle to associate with the timer |
-
-**Returns:** Timer handle on success, or `NULL` on failure (errno is set).
-
-**Thread safety:** Safe to call from any thread unless another operation is
-simultaneously mutating the same timer handle.
-
-**See also:** `zlink_timer_new`, `zlink_timer_destroy`
+**See also:** `zlink_timer_destroy`
 
 ---
 

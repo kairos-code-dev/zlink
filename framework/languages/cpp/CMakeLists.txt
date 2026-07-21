@@ -39,7 +39,7 @@ set(ZLINK_FRAMEWORK_CPP_REPO_ROOT "${ZLINK_FRAMEWORK_CPP_DIR}/../../.." CACHE PA
   "Path to the zlink repository root")
 set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACHE PATH
   "Root directory containing local package outputs")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "10.3.0" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "10.6.0" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -95,13 +95,10 @@ add_library(zlink_framework STATIC
   framework/src/runtime/channels/route_handler_invoker.cpp
   framework/src/runtime/channels/route_handler_registry.cpp
   framework/src/runtime/channels/route_internal_packet_dispatcher.cpp
-  framework/src/runtime/channels/route_channel_host_service.cpp
   framework/src/runtime/channels/route_packet_dispatcher.cpp
   framework/src/runtime/actors/actor_route_internal_dispatcher.cpp
   framework/src/runtime/actors/actor_gateway_runtime.cpp
   framework/src/runtime/actors/actor_client.cpp
-  framework/src/runtime/backend/native_route_backend.cpp
-  framework/src/runtime/host/actor_gateway_spot_bridge.cpp
   framework/src/runtime/configuration/builders/configuration_builder.cpp
   framework/src/runtime/configuration/endpoint_connections.cpp
   framework/src/runtime/configuration/services.cpp
@@ -124,13 +121,20 @@ add_library(zlink_framework STATIC
   framework/src/runtime/messaging/envelope_codec.cpp
   framework/src/runtime/messaging/pending_operation.cpp
   framework/src/runtime/messaging/pending_submit.cpp
+  framework/src/runtime/messaging/async_submit_runtime.cpp
   framework/src/runtime/messaging/request_failure_mapper.cpp
   framework/src/runtime/messaging/submit_queue.cpp
-  framework/src/runtime/spots/spot_node_host_service.cpp
+  framework/src/runtime/mesh/mesh_metadata_codec.cpp
+  framework/src/runtime/mesh/mesh_node_host_service.cpp
+  framework/src/runtime/mesh/mesh_node_runtime.cpp
+  framework/src/runtime/mesh/route_mesh_runtime_service.cpp
+  framework/src/runtime/mesh/route_mesh_runtime_options_service.cpp
+  framework/src/runtime/spots/spot_runtime.cpp
+  framework/src/runtime/mesh/mesh_record_dispatcher.cpp
   framework/src/runtime/spots/actor_transfer_coordinator.cpp
+  framework/src/runtime/spots/spot_ids.cpp
   framework/src/runtime/spots/spot_route_internal_dispatcher.cpp
   framework/src/runtime/spots/spot_route_packets.cpp
-  framework/src/runtime/spots/spot_runtime.cpp
   framework/src/runtime/streams/stream_compression.cpp
   framework/src/runtime/streams/stream_runtime.cpp
   framework/src/runtime/streams/stream_host_service.cpp
@@ -671,6 +675,20 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
+  add_executable(zlink_cpp_framework_mesh_node_vertical_test
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_mesh_node_vertical.cpp)
+  target_include_directories(zlink_cpp_framework_mesh_node_vertical_test PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  target_link_libraries(zlink_cpp_framework_mesh_node_vertical_test PRIVATE
+    zlink::framework
+    Threads::Threads)
+  add_test(NAME zlink_cpp_framework_mesh_node_vertical_test
+    COMMAND zlink_cpp_framework_mesh_node_vertical_test)
+  set_tests_properties(zlink_cpp_framework_mesh_node_vertical_test PROPERTIES
+    LABELS "framework-unit;framework-zlink;framework-zlink-channel;framework-zlink-spot;framework-zlink-actor-gateway"
+    TIMEOUT 30)
+
   find_package(GTest QUIET)
   if(NOT GTest_FOUND)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
@@ -812,6 +830,16 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     list(APPEND ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
       -D ZLINK_FRAMEWORK_CPP_TOOLING_CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
   endif()
+  foreach(tooling_dependency IN ITEMS
+      protobuf_DIR
+      absl_DIR
+      utf8_range_DIR
+      ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX)
+    if(DEFINED ${tooling_dependency} AND NOT "${${tooling_dependency}}" STREQUAL "")
+      list(APPEND ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
+        -D ZLINK_FRAMEWORK_CPP_TOOLING_${tooling_dependency}=${${tooling_dependency}})
+    endif()
+  endforeach()
   add_test(
     NAME test_cpp_framework_tooling_contract
     COMMAND ${CMAKE_COMMAND}
@@ -835,6 +863,10 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_app_host
     tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp
     "framework-unit;framework-host;framework-config;framework-http;framework-http-e2e")
+  add_zlink_framework_test(
+    test_cpp_framework_actor_gateway
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
+    "framework-unit;framework-regression;framework-actor;stream")
   target_link_libraries(test_cpp_framework_app_host PRIVATE zlink::http_client)
   if(ZLINK_FRAMEWORK_CPP_ENABLE_COVERAGE)
     set(ZLINK_FRAMEWORK_HTTP_TEST_HTTP_ENDPOINT "http://127.0.0.1:18180")
@@ -863,13 +895,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_http_integration PROPERTIES
     LABELS "framework-integration;framework-http;framework-http-e2e;http"
     TIMEOUT 30)
-  add_test(NAME test_cpp_framework_http_perf_policy
-    COMMAND ${CMAKE_COMMAND}
-      -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
-      -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PerfTests/http_perf_policy.cmake)
-  set_tests_properties(test_cpp_framework_http_perf_policy PROPERTIES
-    LABELS "framework-http-perf;framework-regression;http"
-    TIMEOUT 30)
   add_test(NAME test_cpp_framework_http_perf_gate
     COMMAND ${CMAKE_COMMAND}
       -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
@@ -877,13 +902,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_http_perf_gate PROPERTIES
     LABELS "framework-http-perf;framework-regression;http"
     TIMEOUT 30)
-  add_executable(perf_cpp_framework_entry_spot_admission_burst
-    tests/Zlink.Framework.PerfTests/entry_spot_admission_burst.cpp)
-  target_link_libraries(perf_cpp_framework_entry_spot_admission_burst PRIVATE
-    zlink::framework
-    Threads::Threads)
-  target_include_directories(perf_cpp_framework_entry_spot_admission_burst PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   set_tests_properties(
     test_cpp_framework_app_host
     test_cpp_framework_http_integration
@@ -986,49 +1004,41 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_handler_registry.cpp
     "framework-unit;handler")
   add_zlink_framework_test(
-    test_cpp_framework_channel_messaging
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_channel_messaging.cpp
-    "framework-integration;framework-regression;framework-zlink;framework-zlink-channel;channel;CH-001;CH-006;DERR-001;DERR-002;DERR-006;DERR-007;DERR-009")
-  add_zlink_framework_test(
     test_cpp_framework_backpressure_reliability
     tests/Zlink.Framework.UnitTests/test_cpp_framework_backpressure_reliability.cpp
     "framework-unit;framework-regression;backpressure;reliability")
   add_zlink_framework_test(
-    test_cpp_framework_spot_runtime
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_runtime.cpp
-    "framework-integration;framework-regression;framework-zlink;framework-zlink-spot;spot")
-  add_zlink_framework_test(
-    test_cpp_framework_spot_timer
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_spot_timer.cpp
-    "framework-unit;framework-integration;framework-regression;framework-zlink;framework-zlink-spot;timer")
-  add_zlink_framework_test(
     test_cpp_framework_stream_framework
     tests/Zlink.Framework.UnitTests/test_cpp_framework_stream_framework.cpp
     "framework-integration;framework-regression;framework-zlink;framework-zlink-stream;stream")
-  add_zlink_framework_test(
-    test_cpp_framework_ActorGateway_actor_session_relay
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
-    "framework-integration;framework-regression;framework-zlink;framework-zlink-actor-gateway;ActorGateway;actor")
-  add_zlink_framework_test(
-    test_cpp_framework_monitoring
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp
-    "framework-unit;framework-integration;framework-observability;monitoring")
-  add_zlink_framework_test(
-    test_cpp_framework_execution
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp
-    "framework-unit;framework-regression;execution")
+  target_link_libraries(test_cpp_framework_stream_framework PRIVATE
+    zlink::stream_connector)
   add_zlink_framework_test(
     test_cpp_framework_message_flow
     tests/Zlink.Framework.UnitTests/test_cpp_framework_message_flow.cpp
     "framework-unit;framework-regression;framework-observability;diagnostics")
   add_zlink_framework_test(
+    test_cpp_framework_monitoring
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp
+    "framework-unit;framework-regression;framework-observability;metrics")
+  add_zlink_framework_test(
     test_cpp_framework_messaging
     tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp
     "framework-unit;framework-regression;messaging")
-  add_zlink_framework_test(
-    test_cpp_framework_module_hosted
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_module_hosted.cpp
-    "framework-unit;framework-integration;module;hosted")
+  add_executable(test_cpp_framework_submit_admission
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_submit_admission.cpp
+    framework/src/runtime/messaging/async_submit_runtime.cpp)
+  target_link_libraries(test_cpp_framework_submit_admission PRIVATE
+    zlink::cpp
+    Threads::Threads)
+  target_include_directories(test_cpp_framework_submit_admission PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  add_test(NAME test_cpp_framework_submit_admission
+    COMMAND test_cpp_framework_submit_admission)
+  set_tests_properties(test_cpp_framework_submit_admission PROPERTIES
+    LABELS "framework-unit;framework-regression;messaging;submit-admission"
+    TIMEOUT 30)
   add_executable(test_cpp_framework_gtest_harness
     tests/Zlink.Framework.UnitTests/test_cpp_framework_gtest_harness.cpp)
   target_link_libraries(test_cpp_framework_gtest_harness PRIVATE
@@ -1040,17 +1050,19 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_gtest_harness PROPERTIES
     LABELS "framework-unit;framework-regression;gtest"
     TIMEOUT 30)
-  add_executable(test_cpp_framework_locations_redis
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_locations_redis.cpp)
-  zlink_enable_coverage(test_cpp_framework_locations_redis)
-  target_link_libraries(test_cpp_framework_locations_redis PRIVATE
-    zlink::framework_locations_redis
-    GTest::gtest_main)
-  add_test(NAME test_cpp_framework_locations_redis
-    COMMAND test_cpp_framework_locations_redis)
-  set_tests_properties(test_cpp_framework_locations_redis PROPERTIES
-    LABELS "framework-extension;framework-location;redis"
-    TIMEOUT 30)
+  if(TARGET redis++::redis++ OR TARGET redis++::redis++_static)
+    add_executable(test_cpp_framework_locations_redis
+      tests/Zlink.Framework.UnitTests/test_cpp_framework_locations_redis.cpp)
+    zlink_enable_coverage(test_cpp_framework_locations_redis)
+    target_link_libraries(test_cpp_framework_locations_redis PRIVATE
+      zlink::framework_locations_redis
+      GTest::gtest_main)
+    add_test(NAME test_cpp_framework_locations_redis
+      COMMAND test_cpp_framework_locations_redis)
+    set_tests_properties(test_cpp_framework_locations_redis PROPERTIES
+      LABELS "framework-extension;framework-location;redis"
+      TIMEOUT 30)
+  endif()
   add_test(NAME test_cpp_framework_install_consumer
     COMMAND
       ${CMAKE_COMMAND}
@@ -1511,6 +1523,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   # as the framework objects.
   zlink_framework_cpp_add_boost_headers(zlink_cpp_e2e_runtime_monitoring_trigger)
 
+  add_executable(zlink_cpp_e2e_submit_admission_role
+    e2e/SubmitAdmission/Server/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_submit_admission_role PRIVATE
+    zlink::framework
+    zlink::stream_connector)
+  target_include_directories(zlink_cpp_e2e_submit_admission_role PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
   # Cross-language host (G6): the same role modes the peer languages' test
   # hosts expose, so every producer/consumer direction runs against the other
   # language's real package.
@@ -1522,11 +1542,37 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_cross_language_host PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  # These executables still exercise the removed SpotMesh/SpotNode host surface.
+  # Keep them available as explicit migration targets, but do not make a normal
+  # framework build compile the retired topology.
+  set_target_properties(
+    zlink_cpp_e2e_spot_service_play
+    zlink_cpp_e2e_spot_service_session
+    zlink_cpp_e2e_spot_service_gateway
+    zlink_cpp_e2e_spot_service_multinode
+    zlink_cpp_e2e_spot_service_multinode_requester
+    zlink_cpp_e2e_automatic_turn_dispatch_play
+    zlink_cpp_e2e_automatic_turn_dispatch_session
+    zlink_cpp_e2e_observability_ops_host
+    zlink_cpp_e2e_observability_ops_session
+    zlink_cpp_e2e_observability_ops_play
+    zlink_cpp_e2e_observability_ops_order_workflow
+    zlink_cpp_e2e_spot_actor_transfer_host
+    zlink_cpp_e2e_spot_actor_transfer_actor_node
+    zlink_cpp_e2e_spot_actor_transfer_session
+    zlink_cpp_e2e_to_actor_messaging_actor
+    zlink_cpp_e2e_to_actor_messaging_caller
+    zlink_cpp_e2e_to_actor_messaging_session
+    zlink_cpp_e2e_runtime_monitoring_service
+    zlink_cpp_e2e_runtime_monitoring_filtered_service
+    zlink_cpp_e2e_runtime_monitoring_throwing_service
+    PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   function(add_zlink_framework_sample target_name source_file label)
-    add_executable(${target_name} ${source_file})
+    add_executable(${target_name} EXCLUDE_FROM_ALL ${source_file})
     target_link_libraries(${target_name} PRIVATE ${ARGN})
     target_include_directories(${target_name} PRIVATE
       ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)

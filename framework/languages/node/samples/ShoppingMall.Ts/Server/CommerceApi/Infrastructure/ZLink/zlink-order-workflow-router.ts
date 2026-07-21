@@ -65,7 +65,7 @@ class ZLinkOrderWorkflowRouter implements OrderWorkflowRouterPort {
 
   private request<TResponse>(payload: object): Promise<TResponse> {
     return this.channels
-      .requestToChannel(SampleNames.orderWorkflowChannel, payload)
+      .requestToChannel(SampleNames.orderWorkflowSpotMesh, SampleNames.orderWorkflowChannel, payload)
       .timeout(SampleNames.requestTimeout)
       .submit<TResponse>();
   }

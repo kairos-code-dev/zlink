@@ -76,7 +76,8 @@ int zlink::recv_msg_internal (void *socket_, zlink_msg_t *msg_, int flags_)
 int zlink::recv_msg_routed_socket (socket_base_t *socket_,
                                    zlink_msg_t *msg_,
                                    zlink_routing_id_t *source_rid_out_,
-                                   int flags_)
+                                   int flags_,
+                                   uint64_t *connection_id_out_)
 {
     if (!socket_ || !msg_) {
         errno = EFAULT;
@@ -88,7 +89,9 @@ int zlink::recv_msg_routed_socket (socket_base_t *socket_,
         return -1;
     }
 
-    const int rc = socket_->recv_routed (reinterpret_cast<msg_t *> (msg_), source_rid_out_, flags_);
+    const int rc = socket_->recv_routed (
+      reinterpret_cast<msg_t *> (msg_), source_rid_out_, flags_,
+      connection_id_out_);
     if (rc < 0)
         return -1;
 
@@ -99,7 +102,8 @@ int zlink::recv_msg_routed_socket (socket_base_t *socket_,
 int zlink::recv_msg_routed_internal (void *socket_,
                                      zlink_msg_t *msg_,
                                      zlink_routing_id_t *source_rid_out_,
-                                     int flags_)
+                                     int flags_,
+                                     uint64_t *connection_id_out_)
 {
     socket_base_t *socket = static_cast<socket_base_t *> (socket_);
     if (!socket || !socket->check_tag ()) {
@@ -113,7 +117,8 @@ int zlink::recv_msg_routed_internal (void *socket_,
         return -1;
     }
 
-    return recv_msg_routed_socket (socket, msg_, source_rid_out_, flags_);
+    return recv_msg_routed_socket (
+      socket, msg_, source_rid_out_, flags_, connection_id_out_);
 }
 
 int zlink::recv_followup_msg_socket (socket_base_t *socket_, zlink_msg_t *msg_)

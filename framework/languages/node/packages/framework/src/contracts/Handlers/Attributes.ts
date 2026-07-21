@@ -5,7 +5,8 @@ export interface ZLinkDecoratorMetadata {
   readonly packetName?: string;
   readonly groupName?: string;
   readonly methodName?: string;
-  readonly spotNodeName?: string;
+  readonly meshName?: string;
+  readonly channelName?: string;
   readonly topic?: string;
 }
 
@@ -33,8 +34,8 @@ export function ZLinkSpotRequest(packetName?: string): MethodDecorator {
   return methodDecorator({ kind: 'spotRequest', packetName });
 }
 
-export function ZLinkSpotSubscription(spotNodeName: string, topic: string): MethodDecorator {
-  return methodDecorator({ kind: 'spotSubscription', spotNodeName, topic });
+export function ZLinkSpotSubscription(channelName: string, topic: string): MethodDecorator {
+  return methodDecorator({ kind: 'spotSubscription', channelName, topic });
 }
 
 export function ZLinkSpotActorSend(packetName?: string): MethodDecorator {

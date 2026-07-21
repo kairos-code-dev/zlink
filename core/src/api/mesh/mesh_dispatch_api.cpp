@@ -12,6 +12,46 @@
 
 using namespace zlink::mesh;
 
+#ifdef ZLINK_BUILD_TESTS
+namespace
+{
+std::atomic<int> g_force_reply_wire_alloc_fault (0);
+std::atomic<int> g_reply_wire_pause_before_send (0);
+std::atomic<int> g_reply_wire_before_send_paused (0);
+std::atomic<int> g_reply_wire_submit_failure (0);
+}
+
+extern "C" void zlink_test_set_mesh_force_reply_wire_alloc_fault (int enabled_)
+{
+    g_force_reply_wire_alloc_fault.store (
+      enabled_ != 0 ? 1 : 0, std::memory_order_release);
+}
+
+extern "C" int zlink_test_mesh_force_reply_wire_alloc_fault_pending ()
+{
+    return g_force_reply_wire_alloc_fault.load (std::memory_order_acquire);
+}
+
+extern "C" void zlink_test_mesh_pause_reply_wire_before_send (int enabled_)
+{
+    g_reply_wire_pause_before_send.store (
+      enabled_ != 0 ? 1 : 0, std::memory_order_release);
+    if (enabled_ == 0)
+        g_reply_wire_before_send_paused.store (0, std::memory_order_release);
+}
+
+extern "C" int zlink_test_mesh_reply_wire_before_send_paused ()
+{
+    return g_reply_wire_before_send_paused.load (std::memory_order_acquire);
+}
+
+extern "C" void zlink_test_mesh_fail_next_reply_wire_submit (int enabled_)
+{
+    g_reply_wire_submit_failure.store (
+      enabled_ != 0 ? 1 : 0, std::memory_order_release);
+}
+#endif
+
 namespace zlink
 {
 namespace mesh
@@ -64,6 +104,31 @@ int unseal_reply_token (const zlink_mesh_reply_token_t *token_,
         return -1;
     }
     *node_out_ = reinterpret_cast<mesh_node_t *> (static_cast<uintptr_t> (token_->opaque[0]));
+    *serial_out_ = token_->opaque[2];
+    return 0;
+}
+
+void seal_instance_token (mesh_node_t *node_,
+                          uint64_t serial_,
+                          zlink_instance_spot_activation_token_t *out_)
+{
+    memset (out_, 0, sizeof (*out_));
+    out_->opaque[0] = reinterpret_cast<uintptr_t> (node_);
+    out_->opaque[1] = node_->lifecycle_generation;
+    out_->opaque[2] = serial_;
+    out_->opaque[3] = 0x49535054; //  'ISPT'
+}
+
+int unseal_instance_token (const zlink_instance_spot_activation_token_t *token_,
+                           mesh_node_t **node_out_,
+                           uint64_t *serial_out_)
+{
+    if (!token_ || token_->opaque[3] != 0x49535054 || token_->opaque[2] == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    *node_out_ = reinterpret_cast<mesh_node_t *> (
+      static_cast<uintptr_t> (token_->opaque[0]));
     *serial_out_ = token_->opaque[2];
     return 0;
 }
@@ -579,7 +644,6 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
         errno = ESTALE;
         return ZLINK_RECV_INVALID_STATE;
     }
-
     std::unique_lock<std::mutex> lock (node->mutex);
     std::map<owner_id_t, owner_state_t>::iterator owner_it = node->owners.find (owner);
     if (owner_it == node->owners.end ()) {
@@ -633,6 +697,7 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
 
     size_t used_parts = 0;
     size_t used_bytes = 0;
+    bool application_capacity_recovered = false;
     while (!mailbox.records.empty () && batch->records.size () < batch->message_capacity) {
         const queued_record_t &head = *mailbox.records.front ();
         if (used_parts + head.parts.size () > batch->part_capacity
@@ -643,6 +708,8 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
         mailbox.records.pop_front ();
         mailbox.pending_messages -= 1;
         mailbox.pending_bytes -= record->byte_size;
+        if (body.domain == domain_application)
+            application_capacity_recovered = true;
 
         zlink_mesh_receive_record_t view;
         memset (&view, 0, sizeof (view));
@@ -653,6 +720,7 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
                                                         : ZLINK_MESH_READY_INFRASTRUCTURE;
         view.source_node_rid = rid_value (record->source_node_rid);
         view.source_spot_rid = rid_value (record->source_spot_rid);
+        view.source_binding_generation = record->source_binding_generation;
         view.source_actor = record->source_actor;
         view.operation_id = record->operation_id;
         view.operation_kind = record->operation_kind;
@@ -693,7 +761,13 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
     if (mailbox.records.empty ())
         node->ready.erase (std::make_pair (owner, static_cast<int> (body.domain)));
 
+    if (application_capacity_recovered)
+        node->cv.notify_all ();
+
     batch->busy.store (false);
+    lock.unlock ();
+    if (application_capacity_recovered)
+        notify_local_send_ready (node, owner);
     return ZLINK_RECV_OK;
 }
 
@@ -736,18 +810,80 @@ namespace zlink
 {
 namespace mesh
 {
-//  Relay delivery for transferred requests: consumes the route serial and
-//  forwards the reply parts to the original requester (local completion or
-//  another wire hop). Takes ownership of parts_ on success.
-int deliver_reply_via_route (mesh_node_t *node_,
-                             uint64_t serial_,
-                             int32_t terminal_result_,
-                             int32_t failure_errno_,
-                             std::vector<zlink_msg_t> *parts_)
+namespace
 {
-    pending_operation_t op;
+int deliver_reply_route_attempt (mesh_node_t *node_,
+                                 uint64_t serial_,
+                                 int32_t terminal_result_,
+                                 int32_t failure_errno_,
+                                 std::vector<zlink_msg_t> *parts_,
+                                 bool reservation_held_,
+                                 bool forced_attempt_);
+
+bool finish_reply_route_attempt (
+  mesh_node_t *node_,
+  uint64_t serial_,
+  bool succeeded_,
+  bool forced_attempt_,
+  int32_t *force_result_out_,
+  int32_t *force_errno_out_)
+{
+    std::lock_guard<std::mutex> lock (node_->mutex);
+    std::unordered_map<uint64_t, reply_route_t>::iterator it =
+      node_->reply_routes.find (serial_);
+    if (it == node_->reply_routes.end ())
+        return false;
+    reply_route_t &route = it->second;
+    if (succeeded_) {
+        route.in_flight = false;
+        route.consumed = true;
+        route.force_terminal_pending = false;
+        return false;
+    }
+    if (forced_attempt_) {
+        //  Keep the terminal durable. ROUTER send-ready advances a retry
+        //  epoch and retries each pending route at most once per edge.
+        route.in_flight = false;
+        return false;
+    }
+    if (!route.force_terminal_pending) {
+        route.in_flight = false;
+        return false;
+    }
+    *force_result_out_ = route.force_terminal_result;
+    *force_errno_out_ = route.force_terminal_errno;
+    route.force_terminal_pending = false;
+    //  Transfer the existing reservation to the forced terminal. Keeping
+    //  in_flight set prevents a retry from entering between the failed reply
+    //  and the terminal attempt.
+    return true;
+}
+
+void deliver_deferred_force_terminal (mesh_node_t *node_,
+                                      uint64_t serial_,
+                                      int32_t terminal_result_,
+                                      int32_t failure_errno_)
+{
+    std::vector<zlink_msg_t> empty;
+    (void) deliver_reply_route_attempt (
+      node_, serial_, terminal_result_, failure_errno_, &empty, true, true);
+}
+
+int deliver_reply_route_attempt (mesh_node_t *node_,
+                                 uint64_t serial_,
+                                 int32_t terminal_result_,
+                                 int32_t failure_errno_,
+                                 std::vector<zlink_msg_t> *parts_,
+                                 bool reservation_held_,
+                                 bool forced_attempt_)
+try
+{
+    zlink_mesh_operation_id_t local_operation_id;
+    memset (&local_operation_id, 0, sizeof (local_operation_id));
     bool remote = false;
+    bool transfer_relay = false;
     rid_bytes_t remote_origin;
+    uint64_t remote_generation = 0;
     uint64_t remote_correlation = 0;
     bool deliver_local = false;
     {
@@ -763,57 +899,327 @@ int deliver_reply_via_route (mesh_node_t *node_,
             errno = EALREADY;
             return -1;
         }
-        if (route.in_flight) {
-            errno = EBUSY;
-            return -1;
+        if (reservation_held_) {
+            if (!route.in_flight) {
+                errno = ESTALE;
+                return -1;
+            }
+        } else {
+            if (route.in_flight) {
+                errno = EBUSY;
+                return -1;
+            }
+            route.in_flight = true;
         }
         if (route.remote_origin) {
             remote = true;
             remote_origin = route.origin_rid;
+            remote_generation = route.origin_generation;
             remote_correlation = route.origin_correlation;
-            route.in_flight = true;
+            transfer_relay =
+              route.kind == reply_route_t::kind_transfer_relay;
         } else {
             std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
               node_->operations.find (route.operation_id.low);
             if (op_it == node_->operations.end ()) {
                 route.in_flight = false;
                 route.consumed = true;
+                route.force_terminal_pending = false;
                 return 0; //  Requester already completed: drop by contract.
             }
-            op = op_it->second;
-            route.in_flight = true;
+            local_operation_id = op_it->second.id;
             deliver_local = true;
         }
     }
     if (remote) {
-        const zlink_submit_result_t rc = wire_submit_reply (
-          node_, remote_origin, remote_correlation, terminal_result_, failure_errno_,
-          parts_->empty () ? NULL : &(*parts_)[0], parts_->size ());
-        std::lock_guard<std::mutex> lock (node_->mutex);
-        std::unordered_map<uint64_t, reply_route_t>::iterator it =
-          node_->reply_routes.find (serial_);
-        if (it != node_->reply_routes.end ()) {
-            it->second.in_flight = false;
-            if (rc == ZLINK_SUBMIT_OK)
-                it->second.consumed = true;
+#ifdef ZLINK_BUILD_TESTS
+        if (forced_attempt_
+            && g_force_reply_wire_alloc_fault.exchange (
+                 0, std::memory_order_acq_rel)
+                 != 0)
+            throw std::bad_alloc ();
+#endif
+        uint64_t expected_connection_id = 0;
+        if (remote_generation != 0
+            && !validate_remote_route_flight (
+              node_, remote_origin, remote_generation,
+              &expected_connection_id)) {
+            int32_t ignored_result = 0;
+            int32_t ignored_errno = 0;
+            (void) finish_reply_route_attempt (
+              node_, serial_, true, forced_attempt_, &ignored_result,
+              &ignored_errno);
+            return 0;
         }
+#ifdef ZLINK_BUILD_TESTS
+        if (!forced_attempt_
+            && g_reply_wire_pause_before_send.load (
+                 std::memory_order_acquire)
+                 != 0) {
+            g_reply_wire_before_send_paused.store (
+              1, std::memory_order_release);
+            while (g_reply_wire_pause_before_send.load (
+                     std::memory_order_acquire)
+                   != 0)
+                std::this_thread::yield ();
+            g_reply_wire_before_send_paused.store (
+              0, std::memory_order_release);
+        }
+        const bool fail_wire_submit =
+          !forced_attempt_
+          && g_reply_wire_submit_failure.exchange (
+               0, std::memory_order_acq_rel)
+               != 0;
+#else
+        const bool fail_wire_submit = false;
+#endif
+        if (fail_wire_submit)
+            errno = ENOTCONN;
+        const zlink_submit_result_t rc =
+          fail_wire_submit
+            ? ZLINK_SUBMIT_NOT_CONNECTED
+          : transfer_relay
+            ? wire_submit_reply_relay (
+                node_, remote_origin, remote_correlation, terminal_result_,
+                failure_errno_, parts_->empty () ? NULL : &(*parts_)[0],
+                parts_->size (), expected_connection_id)
+            : wire_submit_reply (
+                node_, remote_origin, remote_correlation, terminal_result_,
+                failure_errno_, parts_->empty () ? NULL : &(*parts_)[0],
+                parts_->size (), expected_connection_id);
+        int32_t force_result = 0;
+        int32_t force_errno = 0;
+        const bool force = finish_reply_route_attempt (
+          node_, serial_, rc == ZLINK_SUBMIT_OK, forced_attempt_,
+          &force_result, &force_errno);
+        if (force)
+            deliver_deferred_force_terminal (
+              node_, serial_, force_result, force_errno);
         return rc == ZLINK_SUBMIT_OK ? 0 : -1;
     }
     if (deliver_local) {
-        const int rc = complete_pending_operation (
-          node_, op, terminal_result_, failure_errno_, NULL, parts_->empty () ? NULL : parts_);
-        std::lock_guard<std::mutex> lock (node_->mutex);
-        std::unordered_map<uint64_t, reply_route_t>::iterator it =
-          node_->reply_routes.find (serial_);
-        if (it != node_->reply_routes.end ()) {
-            it->second.in_flight = false;
-            if (rc >= 0)
-                it->second.consumed = true;
-        }
-        return rc < 0 ? -1 : 0;
+        errno = 0;
+        const int rc = complete_pending_operation_by_id (
+          node_, local_operation_id, terminal_result_, failure_errno_, NULL,
+          parts_->empty () ? NULL : parts_);
+        const bool completion_busy = rc == 0 && errno == EBUSY;
+        int32_t force_result = 0;
+        int32_t force_errno = 0;
+        const bool force = finish_reply_route_attempt (
+          node_, serial_, rc >= 0 && !completion_busy, forced_attempt_,
+          &force_result, &force_errno);
+        if (force)
+            deliver_deferred_force_terminal (
+              node_, serial_, force_result, force_errno);
+        return rc < 0 || completion_busy ? -1 : 0;
     }
     return 0;
 }
+catch (const std::bad_alloc &) {
+    //  Route reservation is acquired before the remote envelope is
+    //  allocated. Restore the reservation on allocation failure so a
+    //  normal reply remains retryable and a forced terminal remains
+    //  durable for the next send-ready or lifecycle retry.
+    std::lock_guard<std::mutex> lock (node_->mutex);
+    std::unordered_map<uint64_t, reply_route_t>::iterator route =
+      node_->reply_routes.find (serial_);
+    if (route != node_->reply_routes.end () && !route->second.consumed) {
+        route->second.in_flight = false;
+        if (forced_attempt_) {
+            route->second.force_terminal_pending = true;
+            route->second.force_terminal_result = terminal_result_;
+            route->second.force_terminal_errno = failure_errno_;
+        }
+    }
+    errno = ENOMEM;
+    return -1;
+}
+}
+
+//  Relay delivery for transferred requests: consumes the route serial and
+//  forwards the reply parts to the original requester (local completion or
+//  another wire hop). Takes ownership of parts_ on success.
+int deliver_reply_via_route (mesh_node_t *node_,
+                             uint64_t serial_,
+                             int32_t terminal_result_,
+                             int32_t failure_errno_,
+                             std::vector<zlink_msg_t> *parts_)
+{
+    return deliver_reply_route_attempt (
+      node_, serial_, terminal_result_, failure_errno_, parts_, false, false);
+}
+
+int force_reply_via_route (mesh_node_t *node_,
+                           uint64_t serial_,
+                           int32_t terminal_result_,
+                           int32_t failure_errno_)
+{
+    bool deliver_now = false;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator it =
+          node_->reply_routes.find (serial_);
+        if (it == node_->reply_routes.end () || it->second.consumed)
+            return 0;
+        reply_route_t &route = it->second;
+        route.force_terminal_pending = true;
+        route.force_terminal_result = terminal_result_;
+        route.force_terminal_errno = failure_errno_;
+        if (!route.in_flight) {
+            route.in_flight = true;
+            deliver_now = true;
+        }
+    }
+    if (!deliver_now)
+        return 0;
+    std::vector<zlink_msg_t> empty;
+    return deliver_reply_route_attempt (
+      node_, serial_, terminal_result_, failure_errno_, &empty, true, true);
+}
+
+void retry_forced_reply_routes (mesh_node_t *node_)
+{
+    struct retry_scope_t
+    {
+        explicit retry_scope_t (mesh_node_t *node__) :
+            node (node__), armed (true)
+        {
+        }
+        ~retry_scope_t ()
+        {
+            if (!armed)
+                return;
+            std::lock_guard<std::mutex> lock (node->mutex);
+            node->forced_reply_retry_active = false;
+        }
+        mesh_node_t *node;
+        bool armed;
+    };
+
+    uint64_t epoch = 0;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        if (node_->forced_reply_retry_active)
+            return;
+        node_->forced_reply_retry_active = true;
+        epoch = ++node_->force_retry_epoch;
+        if (epoch == 0)
+            epoch = ++node_->force_retry_epoch;
+    }
+    retry_scope_t retry_scope (node_);
+    while (true) {
+        uint64_t serial = 0;
+        int32_t terminal_result = 0;
+        int32_t failure_errno = 0;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            for (std::unordered_map<uint64_t, reply_route_t>::iterator route =
+                   node_->reply_routes.begin ();
+                 route != node_->reply_routes.end (); ++route) {
+                reply_route_t &reply = route->second;
+                if (reply.force_terminal_pending && !reply.in_flight
+                    && reply.force_retry_epoch != epoch) {
+                    reply.force_retry_epoch = epoch;
+                    serial = route->first;
+                    terminal_result = reply.force_terminal_result;
+                    failure_errno = reply.force_terminal_errno;
+                    break;
+                }
+            }
+        }
+        if (serial == 0) {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            node_->forced_reply_retry_active = false;
+            retry_scope.armed = false;
+            return;
+        }
+        try {
+            (void) force_reply_via_route (
+              node_, serial, terminal_result, failure_errno);
+        }
+        catch (const std::bad_alloc &) {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            std::unordered_map<uint64_t, reply_route_t>::iterator route =
+              node_->reply_routes.find (serial);
+            if (route != node_->reply_routes.end ()
+                && !route->second.consumed)
+                route->second.in_flight = false;
+        }
+    }
+}
+
+#ifdef ZLINK_BUILD_TESTS
+extern "C" int zlink_test_mesh_force_reply_token (
+  const zlink_mesh_reply_token_t *token_, int32_t terminal_result_,
+  int32_t failure_errno_)
+{
+    mesh_node_t *raw_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_reply_token (token_, &raw_node, &serial) != 0)
+        return -1;
+    mesh_node_pin_t pin (raw_node);
+    mesh_node_t *node = pin.get ();
+    if (!node)
+        return -1;
+    return force_reply_via_route (
+      node, serial, terminal_result_, failure_errno_);
+}
+
+extern "C" int zlink_test_mesh_deferred_force_reply_token (
+  const zlink_mesh_reply_token_t *token_, int32_t terminal_result_,
+  int32_t failure_errno_)
+{
+    mesh_node_t *raw_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_reply_token (token_, &raw_node, &serial) != 0)
+        return -1;
+    mesh_node_pin_t pin (raw_node);
+    mesh_node_t *node = pin.get ();
+    if (!node)
+        return -1;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator route =
+          node->reply_routes.find (serial);
+        if (route == node->reply_routes.end () || route->second.consumed)
+            return -1;
+        route->second.in_flight = true;
+        route->second.force_terminal_pending = true;
+        route->second.force_terminal_result = terminal_result_;
+        route->second.force_terminal_errno = failure_errno_;
+    }
+    deliver_deferred_force_terminal (
+      node, serial, terminal_result_, failure_errno_);
+    return 0;
+}
+
+extern "C" int zlink_test_mesh_reply_route_state (
+  const zlink_mesh_reply_token_t *token_, int *in_flight_out_,
+  int *force_pending_out_, int *consumed_out_)
+{
+    mesh_node_t *raw_node = NULL;
+    uint64_t serial = 0;
+    if (unseal_reply_token (token_, &raw_node, &serial) != 0)
+        return -1;
+    mesh_node_pin_t pin (raw_node);
+    mesh_node_t *node = pin.get ();
+    if (!node)
+        return -1;
+    std::lock_guard<std::mutex> lock (node->mutex);
+    std::unordered_map<uint64_t, reply_route_t>::const_iterator route =
+      node->reply_routes.find (serial);
+    if (route == node->reply_routes.end ())
+        return -1;
+    if (in_flight_out_)
+        *in_flight_out_ = route->second.in_flight ? 1 : 0;
+    if (force_pending_out_)
+        *force_pending_out_ =
+          route->second.force_terminal_pending ? 1 : 0;
+    if (consumed_out_)
+        *consumed_out_ = route->second.consumed ? 1 : 0;
+    return 0;
+}
+#endif
 }
 }
 
@@ -845,8 +1251,24 @@ try {
     test_maybe_throw_alloc ();
 #endif
     std::vector<zlink_msg_t> reply_parts (part_count_);
+    struct reply_parts_guard_t
+    {
+        explicit reply_parts_guard_t (std::vector<zlink_msg_t> *parts_) :
+            parts (parts_), initialized (0)
+        {
+        }
+        ~reply_parts_guard_t ()
+        {
+            const size_t count = std::min (initialized, parts->size ());
+            for (size_t i = 0; i < count; ++i)
+                zlink_msg_close (&(*parts)[i]);
+        }
+        std::vector<zlink_msg_t> *parts;
+        size_t initialized;
+    } reply_parts_guard (&reply_parts);
     for (size_t i = 0; i < part_count_; ++i) {
         zlink_msg_init (&reply_parts[i]);
+        reply_parts_guard.initialized += 1;
         if (zlink_msg_copy (&reply_parts[i],
                             const_cast<zlink_msg_t *> (&parts_[i]))
             != 0) {
@@ -855,11 +1277,6 @@ try {
         }
     }
 
-    pending_operation_t op;
-    bool remote = false;
-    bool transfer_relay = false;
-    rid_bytes_t remote_origin;
-    uint64_t remote_correlation = 0;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         //  A stopped node has no usable source route left; drains in progress
@@ -879,71 +1296,20 @@ try {
             errno = EINVAL;
             return ZLINK_SUBMIT_INVALID_ARGUMENT;
         }
-        if (route.consumed) {
-            errno = EALREADY;
-            return ZLINK_SUBMIT_INVALID_STATE;
-        }
-        if (route.in_flight) {
-            errno = EBUSY;
-            return ZLINK_SUBMIT_INVALID_STATE;
-        }
         if (route.requester_node_generation != node->lifecycle_generation) {
             errno = ESTALE;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
-        if (route.remote_origin) {
-            remote = true;
-            remote_origin = route.origin_rid;
-            remote_correlation = route.origin_correlation;
-            transfer_relay = route.kind == reply_route_t::kind_transfer_relay;
-            route.in_flight = true;
-        } else {
-            std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
-              node->operations.find (route.operation_id.low);
-            if (op_it == node->operations.end ()) {
-                //  The requester timed out or was shut down: consume the
-                //  token, drop the reply, and do not produce a second
-                //  completion.
-                route.consumed = true;
-                route.in_flight = false;
-                return ZLINK_SUBMIT_OK;
-            }
-            op = op_it->second;
-            route.in_flight = true;
-        }
     }
-
-    if (remote) {
-        const zlink_submit_result_t rc =
-          transfer_relay
-            ? wire_submit_reply_relay (node, remote_origin, remote_correlation,
-                                       ZLINK_REQUEST_OK, 0, parts_, part_count_)
-            : wire_submit_reply (node, remote_origin, remote_correlation, ZLINK_REQUEST_OK, 0,
-                                 parts_, part_count_);
-        std::lock_guard<std::mutex> lock (node->mutex);
-        std::unordered_map<uint64_t, reply_route_t>::iterator it =
-          node->reply_routes.find (serial);
-        if (it != node->reply_routes.end ()) {
-            it->second.in_flight = false;
-            if (rc == ZLINK_SUBMIT_OK)
-                it->second.consumed = true;
-        }
-        return rc;
-    }
-
-    const int completion_rc =
-      complete_pending_operation (node, op, ZLINK_REQUEST_OK, 0, NULL, &reply_parts);
-    {
-        std::lock_guard<std::mutex> lock (node->mutex);
-        std::unordered_map<uint64_t, reply_route_t>::iterator route_it =
-          node->reply_routes.find (serial);
-        if (route_it != node->reply_routes.end ()) {
-            route_it->second.in_flight = false;
-            if (completion_rc >= 0)
-                route_it->second.consumed = true;
-        }
-    }
-    return completion_rc < 0 ? ZLINK_SUBMIT_OUT_OF_MEMORY : ZLINK_SUBMIT_OK;
+    const int delivery_rc = deliver_reply_route_attempt (
+      node, serial, ZLINK_REQUEST_OK, 0, &reply_parts, false, false);
+    if (delivery_rc == 0)
+        return ZLINK_SUBMIT_OK;
+    if (errno == ENOMEM)
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    if (errno == EBUSY || errno == EALREADY || errno == ESTALE)
+        return ZLINK_SUBMIT_INVALID_STATE;
+    return ZLINK_SUBMIT_INTERNAL_ERROR;
 }
 catch (const std::bad_alloc &) {
     return submit_out_of_memory_result ();

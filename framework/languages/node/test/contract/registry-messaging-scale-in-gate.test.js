@@ -12,10 +12,11 @@ test('RM-B2 keeps consumer traffic active while provider B exits', () => {
   ), 'utf8');
 
   assert.match(scenario, /cluster\.startConsumer/);
-  assert.match(scenario, /sendContinuously\(consumer\.httpUrl/);
-  assert.match(scenario, /await cluster\.stop\(providerB\)/);
-  assert.match(scenario, /Promise\.allSettled/);
-  assert.match(scenario, /ZLink async submit timed out\./);
+  assert.match(scenario, /const firstDuring = postJson<ProfileRes>\(consumer\.httpUrl/);
+  assert.match(scenario, /const draining = cluster\.drain\(providerB\)/);
+  assert.match(scenario, /drainResult\.kind === 'drained'/);
+  assert.match(scenario, /during\.every\(\(reply\) => reply\.providerRid === 'api-a' \|\| reply\.providerRid === 'api-b'\)/);
+  assert.match(scenario, /rid: 'api-b', present: false/);
   assert.match(scenario, /cluster\.waitForSingleProvider\('api-a', providerA\.channelEndpoint\)/);
   assert.doesNotMatch(scenario, /postJson<ProfileRes>\(providerA\.httpUrl/);
   assert.doesNotMatch(scenario, /setTimeout\(resolve, 1000\)/);

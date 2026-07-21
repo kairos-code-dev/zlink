@@ -6,28 +6,20 @@ namespace zlink::framework::e2e::observability_ops::client::scenarios
 {
 inline void run_obs_c3_scenario (const verification_input_t &input)
 {
-    const auto natural = read_json (input, "naturalEvidence");
-    require (has_drain_state (natural, "draining") && has_drain_state (natural, "drained"),
-             "OBS-C3 drain-natural did not wait for the room's natural close");
-    const auto natural_rooms = metrics_named (natural, "zlink.drain.rooms.drained");
-    require (natural_rooms.size () == 1
-               && natural_rooms.front ().at ("tags").value ("policy", "")
-                    == "drain_natural"
-               && natural_rooms.front ().at ("value").get<double> () == 1,
-             "OBS-C3 drain-natural room count is not exactly one");
-
+    const auto normal = read_json (input, "normalAction");
+    require (normal.value ("value", -1) >= 0,
+             "OBS-C3 normal request did not complete before drain");
+    require (read_json (input, "rejectedCreate").value ("state", "") == "rejected",
+             "OBS-C3 accepted a new Spot turn after drain admission closed");
     const auto drained = read_json (input, "drainedEvidence");
-    require (has_drain_state (drained, "drained"), "OBS-C3 workflow did not drain");
-    const auto rooms = metrics_named (drained, "zlink.drain.rooms.drained");
-    require (!rooms.empty (), "OBS-C3 rooms.drained instrument is missing");
-    for (const auto &metric : rooms) {
-        require (metric.at ("tags").value ("policy", "") == "release_and_recreate",
-                 "OBS-C3 reported the wrong Spot drain policy");
-    }
+    require (has_drain_state (drained, "draining") && has_drain_state (drained, "drained")
+               && !has_drain_state (drained, "force_stopping"),
+             "OBS-C3 fixed drain did not reach one graceful terminal state");
+    require (read_json (input, "closeAfterDrain").value ("state", "") == "not_closed",
+             "OBS-C3 left a local user Spot open after the terminal barrier");
+    require (read_json (input, "staleAction").value ("accepted", true) == false,
+             "OBS-C3 stale handle triggered hidden remote creation");
     const auto state = read_json (input, "recreate").value ("state", "");
-    require (state == "created", "OBS-C3 peer reused the released owner row");
-    const auto replayed = read_json (input, "replayed");
-    require (replayed.value ("value", -1) == 7,
-             "OBS-C3 recreated workflow did not replay persisted state");
+    require (state == "created", "OBS-C3 explicit local GetOrCreate did not create a new Spot");
 }
 } // namespace zlink::framework::e2e::observability_ops::client::scenarios

@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.channels.ZLinkSubmitResult;
 
 final class JavaTargetContractGapTest {
     @Test
@@ -31,17 +32,22 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
-    void oneWayCallsDoNotExportCompletionOrLegacyTerminators() throws Exception {
+    void oneWayCallsExposeOnlyAsyncAdmissionResults() throws Exception {
         assertClassAbsent("systems.zlink.framework.ZLinkSubmitStage");
         assertClassAbsent("systems.zlink.framework.ZLinkAwait");
         assertClassAbsent("systems.zlink.framework.channels.ZLinkYieldRequestCall");
-        assertPublicMethodReturnsVoid("systems.zlink.framework.channels.ZLinkSendCall", "submit");
-        assertPublicMethodReturnsVoid("systems.zlink.framework.actors.ZLinkActorSendCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkSendCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkFanoutPublishCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.channels.ZLinkPublishCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.actors.ZLinkActorSendCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.actors.ZLinkBoundSessionSendCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.streams.ZLinkSessionSendCall", "submit");
+        assertNamedMethodsReturnStage("systems.zlink.framework.streams.ZLinkSessionReplyCall", "submit");
+        assertPublicMethodReturnsStageOf("systems.zlink.framework.streams.ZLinkSessionActor", "relay", ZLinkSubmitResult.class);
         assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkSendCall", "await");
         assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkRequestCall", "await");
         assertNoPublicMethodNamed("systems.zlink.framework.actors.ZLinkActorSendCall", "await");
         assertNoPublicMethodNamed("systems.zlink.framework.actors.ZLinkActorRequestCall", "await");
-        assertNoPublicMethodNamed("systems.zlink.framework.spots.ZLinkWorkerCall", "yield");
         assertClassAbsent("systems.zlink.framework.actors.ZLinkActorJoinSpotCall");
     }
 
@@ -177,13 +183,20 @@ final class JavaTargetContractGapTest {
         }
     }
 
-    private static void assertPublicMethodReturnsVoid(String className, String methodName) throws Exception {
+    private static void assertPublicMethodReturnsStageOf(
+        String className,
+        String methodName,
+        Class<?> resultType) throws Exception {
         Class<?> type = Class.forName(className);
-        Method method = Arrays.stream(type.getMethods())
+        Method[] methods = Arrays.stream(type.getMethods())
             .filter(candidate -> candidate.getName().equals(methodName))
-            .findFirst()
-            .orElseThrow();
-        assertEquals(void.class, method.getReturnType(), method.toString());
+            .toArray(Method[]::new);
+        assertTrue(methods.length > 0, className + "." + methodName);
+        for (Method method : methods) {
+            assertTrue(CompletionStage.class.isAssignableFrom(method.getReturnType()), method.toString());
+            var generic = method.getGenericReturnType().getTypeName();
+            assertTrue(generic.contains(resultType.getName()), generic);
+        }
     }
 
     private static void assertNoPublicMethodNamed(String className, String methodName) throws Exception {

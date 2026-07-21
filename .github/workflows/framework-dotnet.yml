@@ -9,7 +9,7 @@ on:
       - "framework/doc/**"
       - "framework/languages/dotnet/**"
       - "bindings/dotnet/src/Zlink/**"
-      - "bindings/dotnet/runtimes/**"
+      - "bindings/dotnet/native/**"
   pull_request:
     branches:
       - main
@@ -18,7 +18,7 @@ on:
       - "framework/doc/**"
       - "framework/languages/dotnet/**"
       - "bindings/dotnet/src/Zlink/**"
-      - "bindings/dotnet/runtimes/**"
+      - "bindings/dotnet/native/**"
   workflow_dispatch:
 
 env:

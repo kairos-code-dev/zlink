@@ -77,6 +77,7 @@ struct dispatch_access_t
         out.source_node_rid = zlink::detail::native_routing_id (native_.source_node_rid);
         out.source_spot_rid = zlink::detail::native_routing_id (native_.source_spot_rid);
         out.source_actor = zlink::detail::actor_model_access_t::from_native (native_.source_actor);
+        out.source_binding_generation = native_.source_binding_generation;
         out.operation_id.high = native_.operation_id.high;
         out.operation_id.low = native_.operation_id.low;
         out.operation_kind = static_cast<operation_kind_t> (native_.operation_kind);

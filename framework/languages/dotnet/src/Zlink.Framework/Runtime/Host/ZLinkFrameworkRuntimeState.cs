@@ -40,15 +40,9 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     public ZLinkMessageFlowObserverPump MessageFlowObservers { get; }
 
-    public Dictionary<string, ZLinkChannelRuntimeBundle> ServerBundles { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkChannelRuntimeBundle> SubscriberBundles { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> PublisherBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkChannelRuntimeBundle> ClientBundles { get; } = new(StringComparer.Ordinal);
-
-    public Dictionary<string, ZLinkRouteChannelRuntime> RouteChannels { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
 
@@ -76,6 +70,13 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
         foreach (var node in SpotNodes.Values) node.CancelActiveOperations();
     }
 
+    public void ForceStopStreamSessions()
+    {
+        ZLinkStreamNodeRuntime[] streams;
+        lock (SyncRoot) streams = StreamNodes.Values.ToArray();
+        foreach (var stream in streams) stream.ForceStopSessions();
+    }
+
     public ValueTask DisposeAsync()
     {
         lock (_disposeGate)
@@ -87,12 +88,9 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
             {
                 resources = new RuntimeResources(
                     SpotNodes.Values.ToArray(),
-                    RouteChannels.Values.ToArray(),
                     StreamNodes.Values.ToArray(),
-                    ClientBundles.Values.ToArray(),
                     PublisherBundles.Values.ToArray(),
                     SubscriberBundles.Values.ToArray(),
-                    ServerBundles.Values.ToArray(),
                     ListenerTasks.ToArray());
             }
 
@@ -108,31 +106,24 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
         Capture(StopTokenSource.Cancel);
         foreach (var node in resources.SpotNodes) Capture(node.RequestStop);
-        foreach (var route in resources.RouteChannels) Capture(route.RequestStop);
         foreach (var stream in resources.StreamNodes) Capture(stream.RequestStop);
 
         await CaptureAsync(TaskRunner.StopAsync).ConfigureAwait(false);
         await CaptureAsync(MessageFlowObservers.DisposeAsync).ConfigureAwait(false);
 
-        foreach (var node in resources.SpotNodes)
-            await CaptureAsync(() => DisposeSafelyAsync(node)).ConfigureAwait(false);
-
-        foreach (var routed in resources.RouteChannels)
-            await CaptureAsync(() => DisposeSafelyAsync(routed)).ConfigureAwait(false);
-
         foreach (var stream in resources.StreamNodes)
             await CaptureAsync(() => DisposeSafelyAsync(stream)).ConfigureAwait(false);
 
-        foreach (var bundle in resources.ClientBundles)
-            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
+        // A STREAM node's native session service is created from the shared
+        // MeshNode. Destroy the dependent session service and socket before
+        // destroying the MeshNode that owns their routing plane.
+        foreach (var node in resources.SpotNodes)
+            await CaptureAsync(() => DisposeSafelyAsync(node)).ConfigureAwait(false);
 
         foreach (var bundle in resources.PublisherBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
         foreach (var bundle in resources.SubscriberBundles)
-            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
-
-        foreach (var bundle in resources.ServerBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
         await CaptureAsync(() => WaitForListenerTasksAsync(resources.ListenerTasks)).ConfigureAwait(false);
@@ -192,12 +183,9 @@ internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
 
     private sealed record RuntimeResources(
         ZLinkSpotNodeRuntime[] SpotNodes,
-        ZLinkRouteChannelRuntime[] RouteChannels,
         ZLinkStreamNodeRuntime[] StreamNodes,
-        ZLinkChannelRuntimeBundle[] ClientBundles,
         ZLinkChannelRuntimeBundle[] PublisherBundles,
         ZLinkChannelRuntimeBundle[] SubscriberBundles,
-        ZLinkChannelRuntimeBundle[] ServerBundles,
         Task[] ListenerTasks);
 
     private static async ValueTask DisposeSafelyAsync(IAsyncDisposable disposable)

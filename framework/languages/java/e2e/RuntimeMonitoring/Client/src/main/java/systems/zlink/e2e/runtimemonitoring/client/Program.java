@@ -25,6 +25,13 @@ public final class Program {
         try (MonitoringScenarioContext context = new MonitoringScenarioContext(options)) {
             String scenario = args[3];
             if (!"all".equals(scenario)) {
+                if (!"MON-A1".equals(scenario)) {
+                    context.restartServiceB();
+                    context.waitForPort(
+                        context.serviceBEndpoint(),
+                        true,
+                        scenario + " service-b did not start");
+                }
                 runOne(scenario, context);
                 System.out.println("monitoring e2e result=passed");
                 return;

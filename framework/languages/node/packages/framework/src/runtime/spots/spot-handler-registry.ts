@@ -32,6 +32,7 @@ export interface ZLinkSpotHandlerRegistration {
     | 'spotHandler';
   readonly handlerType: Type;
   readonly packetName?: string;
+  readonly channelName?: string;
   readonly topic?: string;
   readonly actorType?: Type<ZLinkActor>;
 }
@@ -113,16 +114,19 @@ export class DefaultZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkAc
     );
   }
 
-  addSubscribe(handlerType: Type, topic: string): this {
+  addSubscribe(handlerType: Type, channelName: string, topic: string): this {
+    if (channelName.trim().length === 0) {
+      throw new ZLinkConfigurationException('SPOT subscribe channel name must not be empty.');
+    }
     if (topic.trim().length === 0) {
       throw new ZLinkConfigurationException('SPOT subscribe topic must not be empty.');
     }
-    this.entries.push({ kind: 'subscribe', handlerType, topic });
+    this.entries.push({ kind: 'subscribe', handlerType, channelName, topic });
     return this;
   }
 
-  subscribe(topic: string, handlerType: Type): this {
-    return this.addSubscribe(handlerType, topic);
+  subscribe(channelName: string, topic: string, handlerType: Type): this {
+    return this.addSubscribe(handlerType, channelName, topic);
   }
 
   addSpotHandler(handlerType: Type): this {
@@ -181,7 +185,7 @@ export function applyEntrySpotHandlerRegistrations(
   }
   for (const handler of registrations.subscriptionHandlers ?? []) {
     if (handler.entrySpotType === entrySpotType) {
-      registry.addSubscribe(handler.handlerType, handler.topic);
+      registry.addSubscribe(handler.handlerType, handler.channelName, handler.topic);
     }
   }
 }
@@ -218,7 +222,7 @@ export function applySpotHandlerRegistrations(
   }
   for (const handler of registrations.subscriptionHandlers ?? []) {
     if (handler.spotType === spotType) {
-      registry.addSubscribe(handler.handlerType, handler.topic);
+      registry.addSubscribe(handler.handlerType, handler.channelName, handler.topic);
     }
   }
 }

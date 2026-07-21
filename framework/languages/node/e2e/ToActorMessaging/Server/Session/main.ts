@@ -121,10 +121,10 @@ Module({
           .traceLogFile(path.join(options.logDir, 'session-flow.log'))
           .traceLabel(options.rid);
         builder
-          .addSpotMesh('to-actor')
-          .enableRouter(options.routerEndpoint, options.rid)
+          .addRouteMesh('to-actor')
+          .listen(options.routerEndpoint).routingId(options.rid)
           .configureEntrySpot({ routingId: options.rid })
-          .enablePubSub(options.pubSubEndpoint, options.rid);
+          .channelName('to-actor');
         builder
           .addStreamNode('to-actor-session-stream')
           .bind(options.streamEndpoint)

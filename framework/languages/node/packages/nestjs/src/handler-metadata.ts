@@ -58,6 +58,7 @@ export interface ZLinkNestSpotHandlerMetadata {
   readonly kind: ZLinkNestSpotHandlerKind;
   readonly handlerType: Type;
   readonly packetName?: string;
+  readonly channelName?: string;
   readonly topic?: string;
   readonly spot?: ZLinkNestTypeResolver<ZLinkSpot>;
   readonly entrySpot?: ZLinkNestTypeResolver<ZLinkEntrySpot>;

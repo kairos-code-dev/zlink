@@ -16,7 +16,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -76,10 +76,9 @@ public final class Program {
             options.addClientServerChannel(SampleNames.SupportChannel)
                 .enableServer(support.channelEndpoint())
                 .addHandlerGroup(SampleNames.SupportChannel);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SupportActorMesh);
-            node.enableRouter(support.routerEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
+            node.listen(support.routerEndpoint())
                 .setRoutingId(support.routingId());
-            node.configureEntrySpot().setRoutingId(support.routingId());
             node.addEntrySpot(SupportEntrySpot.class);
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
             node.addActorTransferAdapter(

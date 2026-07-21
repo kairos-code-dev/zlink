@@ -2,6 +2,8 @@ namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorContext
 {
+    string MeshName { get; }
+
     RoutingId? SpotRid { get; }
 
     IZLinkBoundSession BoundSession { get; }

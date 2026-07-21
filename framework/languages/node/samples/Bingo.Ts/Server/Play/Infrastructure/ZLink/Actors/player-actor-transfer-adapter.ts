@@ -7,19 +7,14 @@ class PlayerActorTransferAdapter implements ZLinkActorTransferAdapter<PlayerActo
   async transferOut(actor: PlayerActor): Promise<ZLinkMessage> {
     return ZLinkMessage.from(new PlayerActorTransferState({
       displayName: actor.displayName,
-      destroyAfterEntrySpotJoin: actor.destroyAfterEntrySpotJoin,
-      disconnected: actor.disconnected
+      destroyAfterEntrySpotJoin: false,
+      disconnected: false
     }));
   }
 
   async transferIn(actorId: string, state: ZLinkMessage): Promise<PlayerActor> {
     const restored = state.decode<PlayerActorTransferState>();
-    return new PlayerActor(
-      actorId,
-      restored.displayName,
-      restored.destroyAfterEntrySpotJoin,
-      restored.disconnected
-    );
+    return new PlayerActor(actorId, restored.displayName);
   }
 }
 

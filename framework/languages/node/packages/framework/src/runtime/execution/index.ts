@@ -132,7 +132,7 @@ export function isCurrentZLinkSpotSerialTurn(executor: ZLinkSpotSerialExecutorLi
 export type ZLinkRuntimeTaskFailureHandler = (failure: ZLinkRuntimeTaskFailure) => void;
 export type ZLinkRuntimeTaskCallback = (signal: AbortSignal) => Promise<void> | void;
 
-export class ZLinkRuntimeErrorSink {
+export class ZLinkRuntimeTaskErrorSink {
   private readonly handlers = new Set<ZLinkRuntimeTaskFailureHandler>();
 
   onRuntimeTaskException(handler: ZLinkRuntimeTaskFailureHandler): () => void {
@@ -162,7 +162,7 @@ export class ZLinkRuntimeErrorSink {
 
 export class ZLinkRuntimeTaskRunner {
   constructor(
-    readonly errorSink: ZLinkRuntimeErrorSink,
+    readonly errorSink: ZLinkRuntimeTaskErrorSink,
     private readonly shutdownSignal: AbortSignal
   ) {}
 
@@ -188,7 +188,7 @@ export class ZLinkRuntimeTaskRunner {
 
 export class ZLinkFrameworkRuntimeState {
   readonly abortController = new AbortController();
-  readonly errorSink = new ZLinkRuntimeErrorSink();
+  readonly errorSink = new ZLinkRuntimeTaskErrorSink();
   readonly taskRunner = new ZLinkRuntimeTaskRunner(this.errorSink, this.abortController.signal);
   readonly listenerTasks: Promise<void>[] = [];
 

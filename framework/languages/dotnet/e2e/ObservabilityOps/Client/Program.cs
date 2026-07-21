@@ -15,7 +15,7 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["OBS-B4"] = () => ObsB4DisabledMetricsScenario.RunAsync(context),
     ["OBS-C1"] = () => ObsC1DrainingMarkerScenario.RunAsync(context),
     ["OBS-C2"] = () => ObsC2ActorHandoffScenario.RunAsync(context),
-    ["OBS-C3"] = () => ObsC3SpotDrainPoliciesScenario.RunAsync(context),
+    ["OBS-C3"] = () => ObsC3FixedDrainScenario.RunAsync(context),
     ["OBS-C4"] = () => ObsC4ForcedSessionDrainScenario.RunAsync(context),
     ["OBS-C5"] = () => ObsC5RolloutScenario.RunAsync(context)
 };

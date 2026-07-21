@@ -38,13 +38,13 @@ async function main() {
     }
 
     const peers = await store.listPeers({
-      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
       meshName: 'to-actor',
       role: ZLinkLocationRole.Spot,
       nodeRid
     });
     if (peers.length === 0) {
-      throw new Error(`No to-actor SpotMesh peer row exists for '${nodeRid}'.`);
+      throw new Error(`No to-actor RouteMesh peer row exists for '${nodeRid}'.`);
     }
     const snapshot = peers.map((peer) => ({
       ...peer,

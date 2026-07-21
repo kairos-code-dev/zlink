@@ -6,6 +6,7 @@
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_value_codec.hpp"
+#include "runtime/mesh/mesh_node_runtime.hpp"
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 
@@ -34,10 +35,13 @@ class location_auto_connect_host_service_t final : public hosted_service_t
   public:
     location_auto_connect_host_service_t (message_bus_t bus,
                                           std::vector<channel_snapshot_t> channels,
-                                          std::set<std::string> route_mesh_client_channels = {}) :
+                                          std::set<std::string> route_mesh_client_channels = {},
+                                          std::vector<std::shared_ptr<detail::mesh_node_runtime_t>>
+                                            mesh_nodes = {}) :
         _bus (std::move (bus)),
         _channels (std::move (channels)),
-        _route_mesh_client_channels (std::move (route_mesh_client_channels))
+        _route_mesh_client_channels (std::move (route_mesh_client_channels)),
+        _mesh_nodes (std::move (mesh_nodes))
     {
     }
 
@@ -94,21 +98,35 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 add_loop (std::move (local), &bundle);
             }
         }
+        std::set<std::string> route_loop_meshes;
         for (const auto &route_channel_id : manager.route_channel_ids ()) {
             auto &route = manager.get_route_channel (route_channel_id);
+            route_loop_meshes.insert (route.router_channel_id ());
             auto manual = route.manual_connections ();
-            auto connect_route = [&route, manual] (const auto &target) {
+            auto connect_route = [this, &route, manual] (const auto &target) {
                 if (std::find (manual.begin (), manual.end (), target.endpoint) == manual.end ()) {
                     if (target.node_rid) {
                         (void) route.connect (*target.node_rid, target.endpoint);
+                        for (const auto &mesh_node : _mesh_nodes) {
+                            if (mesh_node
+                                && mesh_node->mesh_name () == route.router_channel_id ()) {
+                                mesh_node->connect_peer (*target.node_rid, target.endpoint);
+                            }
+                        }
                     } else {
                         (void) route.connect (target.endpoint);
                     }
                 }
             };
-            auto disconnect_route = [&route, manual] (const auto &target) {
+            auto disconnect_route = [this, &route, manual] (const auto &target) {
                 if (std::find (manual.begin (), manual.end (), target.endpoint) == manual.end ()) {
                     (void) route.disconnect (target.endpoint);
+                    for (const auto &mesh_node : _mesh_nodes) {
+                        if (mesh_node
+                            && mesh_node->mesh_name () == route.router_channel_id ()) {
+                            mesh_node->disconnect_peer (target.endpoint);
+                        }
+                    }
                 }
             };
             const auto route_rid = route.routing_id ();
@@ -125,6 +143,23 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                                   {}, 100},
                           nullptr, connect_route, disconnect_route);
             }
+        }
+        for (const auto &mesh_node : _mesh_nodes) {
+            if (!mesh_node || route_loop_meshes.contains (mesh_node->mesh_name ()))
+                continue;
+            const auto local_rid = mesh_node->routing_id ();
+            const auto local_endpoint = mesh_node->listen_endpoint ();
+            auto connect_mesh = [mesh_node] (const auto &target) {
+                if (target.node_rid)
+                    mesh_node->connect_peer (*target.node_rid, target.endpoint);
+            };
+            auto disconnect_mesh = [mesh_node] (const auto &target) {
+                mesh_node->disconnect_peer (target.endpoint);
+            };
+            add_loop (local_t{location_auto_connect_type_t::route_mesh,
+                              mesh_node->mesh_name (), location_role_t::router, local_rid,
+                              local_endpoint, 100},
+                      nullptr, std::move (connect_mesh), std::move (disconnect_mesh));
         }
 
         _stop.store (false, std::memory_order_release);
@@ -551,12 +586,20 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         return value != nullptr && *value != '\0';
     }
 
+    static long long trace_monotonic_ms ()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds> (
+                 std::chrono::steady_clock::now ().time_since_epoch ())
+          .count ();
+    }
+
     static void trace_scan (const local_t &local, std::size_t rows, std::size_t desired)
     {
         if (!trace_enabled ()) {
             return;
         }
         std::cerr << "zlink auto-connect scan"
+                  << " monotonicMs=" << trace_monotonic_ms ()
                   << " type=" << location_value_codec_t::to_canonical_string (local.type)
                   << " mesh=" << local.mesh_name
                   << " role=" << location_value_codec_t::to_canonical_string (local.role)
@@ -570,6 +613,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             return;
         }
         std::cerr << "zlink auto-connect publish"
+                  << " monotonicMs=" << trace_monotonic_ms ()
                   << " status=" << status
                   << " type=" << location_value_codec_t::to_canonical_string (
                        row.auto_connect_type)
@@ -585,6 +629,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             return;
         }
         std::cerr << "zlink auto-connect dial"
+                  << " monotonicMs=" << trace_monotonic_ms ()
                   << " type=" << location_value_codec_t::to_canonical_string (local.type)
                   << " mesh=" << local.mesh_name
                   << " fromRole=" << location_value_codec_t::to_canonical_string (local.role)
@@ -599,6 +644,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             return;
         }
         std::cerr << "zlink auto-connect error"
+                  << " monotonicMs=" << trace_monotonic_ms ()
                   << " type=" << location_value_codec_t::to_canonical_string (local.type)
                   << " mesh=" << local.mesh_name
                   << " role=" << location_value_codec_t::to_canonical_string (local.role)
@@ -637,6 +683,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     message_bus_t _bus;
     std::vector<channel_snapshot_t> _channels;
     std::set<std::string> _route_mesh_client_channels;
+    std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;
     live_location_reader_t *_store = nullptr;
     std::mutex _peers_gate;

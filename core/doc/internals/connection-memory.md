@@ -75,51 +75,40 @@ connection pipes are a different situation:
   messages at high connection counts, so a 256-slot chunk is 8–16× larger
   than the depth the pipe is even allowed to use.
 
-`pipepair()` therefore takes a `session_pipe_` argument and uses
+`pipepair()` takes a `session_pipe_` argument and uses
 `session_pipe_granularity = 64` (chunk 4,112 B ≈ one page) for session↔socket
-pipes only; inproc pipes keep 256. A pipe remembers which granularity it was
-created with (`pipe_t::_session_pipe`), and `hiccup()` recreates the inpipe
-with the same size on reconnect — without that, reconnected connections would
-silently fall back to 256.
+pipes; inproc pipes use 256. A pipe records its selected granularity in
+`pipe_t::_session_pipe`. On reconnect, `hiccup()` uses this value to recreate
+the inpipe at the same size, so session pipes continue to use 64.
 
-Smaller chunks can increase chunk churn when queues run deep, but the
-yqueue spare-chunk cache absorbs the steady flow. The change was validated
-with tcp/1024 throughput and latency benchmarks before adoption (see the
-study document §6.8 for the record).
+Smaller chunks can increase allocation and release activity when queues run
+deep, but the yqueue spare-chunk cache absorbs the steady flow. The tcp/1024
+throughput and latency conditions are verified by the measurements in study
+document §6.8.
 
 ### 2.2 The handshake read_buffer is small and lazily allocated
 
 The engine's `_pipeline.read_buffer` is a read target only while no decoder
-exists (the protocol handshake window). Once the decoder exists, new reads
-go into the decoder buffer (or the pending buffer pool for a STREAM socket
-under backpressure) and this buffer is never used again. This buffer used to be
-`resize()`d to 8,192 B in the constructor; the zero-fill committed all 8 KB
-per connection even though it was never used again.
-
-Now the first handshake read acquires `handshake_read_buffer_size = 512` B
+exists during the protocol handshake. The first handshake read acquires
+`handshake_read_buffer_size = 512` B
 (`select_handshake_read_buffer()`). ZMP HELLO parsing is incremental (bytes
 are accumulated into the `_hello_recv` buffer), so a small buffer does not
-affect correctness — it can only add a few reads during the handshake. Raw
-engines create their decoder at plug time and never allocate this buffer at
-all.
+affect correctness; it can add a few reads during the handshake. Once the
+decoder exists, new reads go into the decoder buffer, or the pending buffer
+pool for a STREAM socket under backpressure. Raw engines create their decoder
+at plug time and do not allocate a handshake read buffer.
 
-One lifetime caveat: when a data frame arrives coalesced with the handshake
-tail, the residual bytes (`_insize > 0`) keep pointing into this buffer until
-consumed. The current implementation keeps the buffer alive, so this is safe;
-any future change that frees the buffer after the handshake must defer the
-release until the residual input has drained.
+When a data frame arrives with the handshake tail, the residual bytes
+(`_insize > 0`) point into this buffer until they are consumed. The engine
+keeps the buffer alive until all residual input has been consumed.
 
 ## 3. How auto-HWM relates to memory
 
 auto-HWM is a cap, not a preallocation. It does not affect idle memory; it
-only limits how many messages a pipe may queue under load. On the
-MeshNode-owned ROUTER socket, growing connection counts shrink the per-pipe
-budget through buckets (BALANCED: 256 → … → 16) to bend the total-exposure
-slope, with hysteresis on bucket transitions (a margin band that prevents
-rapid back-and-forth switching). Regular sockets keep the plain profile
-value. For the full policy see
-[Service Layer Internal Design](services-internals.md) and
-[socket option defaults](socket-option-defaults.md).
+only limits how many messages a pipe may queue under load. Growing connection
+counts shrink the per-pipe budget through buckets to limit total exposure,
+with hysteresis on bucket transitions. See
+[socket option defaults](socket-option-defaults.md) for the full policy.
 
 Two known limits remain as follow-up design items: enforcement is
 message-count based, so messages larger than the message unit (4 KiB) can

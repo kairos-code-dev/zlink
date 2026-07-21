@@ -14,6 +14,9 @@ namespace zlink
 {
 class ctx_t;
 class io_thread_t;
+#ifdef ZLINK_BUILD_TESTS
+class session_termination_test_access_t;
+#endif
 
 //  Base class for objects forming a part of ownership hierarchy.
 //  It handles initialisation and destruction of such objects.
@@ -21,6 +24,9 @@ class io_thread_t;
 class own_t : public object_t
 {
     template <typename T> friend void release_heap_owned (T *);
+#ifdef ZLINK_BUILD_TESTS
+    friend class session_termination_test_access_t;
+#endif
 
   public:
     //  Note that the owner is unspecified in the constructor.

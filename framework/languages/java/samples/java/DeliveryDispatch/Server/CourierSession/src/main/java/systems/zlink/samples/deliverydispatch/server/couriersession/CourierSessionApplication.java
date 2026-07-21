@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -38,12 +38,12 @@ public final class CourierSessionApplication {
                 .traceLabel("courier-session");
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.CourierSpotDiscovery);
-            node.enableRouter(topology.courierSessionSpotRouterEndpoint())
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
+            node.listen(topology.courierSessionSpotRouterEndpoint())
                 .setRoutingId(RoutingId.from(topology.courierSessionSpotNodeRid()));
-            node.enablePubSub(topology.courierSessionSpotEndpoint());
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(topology.courierStreamEndpoint())
+                .enableActorDispatch(SampleNames.CourierSpotDiscovery)
                 .registerSession(CourierSession.class);
         };
     }

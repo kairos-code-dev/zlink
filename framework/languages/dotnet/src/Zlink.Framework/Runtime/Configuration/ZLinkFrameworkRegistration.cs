@@ -36,18 +36,11 @@ internal sealed class ZLinkFrameworkRegistration
 
     public Dictionary<string, ZLinkChannelRegistration> Channels { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkRouteChannelRegistration> RouteChannels { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkStreamNodeRegistration> StreamNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkSpotNodeRegistration> SpotNodes { get; } = new(StringComparer.Ordinal);
 
     public ZLinkActorCatalog ActorCatalog { get; } = new();
-
-    public Dictionary<string, ZLinkSpotMeshChannelRegistration> SpotMeshChannels { get; } = new(StringComparer.Ordinal);
-
-    public ZLinkSpotMeshChannelRegistration? SpotDiscovery
-        => SpotMeshChannels.Count == 1 ? SpotMeshChannels.Values.Single() : null;
 
     public TimeSpan ResolveChannelRequestTimeout(string channelName)
     {
@@ -56,10 +49,10 @@ internal sealed class ZLinkFrameworkRegistration
             : DefaultRequestTimeout;
     }
 
-    public TimeSpan ResolveRouteRequestTimeout(string routerChannelId)
+    public TimeSpan ResolveMeshRequestTimeout(string meshName)
     {
-        return RouteChannels.TryGetValue(routerChannelId, out var channel)
-            ? channel.DefaultRequestTimeout ?? DefaultRequestTimeout
+        return SpotNodes.TryGetValue(meshName, out var node)
+            ? node.DefaultRequestTimeout ?? DefaultRequestTimeout
             : DefaultRequestTimeout;
     }
 
@@ -79,6 +72,9 @@ internal sealed class ZLinkFrameworkRegistration
             if (spotNode.EntrySpotType is not null) assemblies.Add(spotNode.EntrySpotType.Assembly);
 
             foreach (var spotType in spotNode.SpotFactories) assemblies.Add(spotType.Assembly);
+
+            foreach (var instanceSpot in spotNode.InstanceSpotFactories.Values)
+                assemblies.Add(instanceSpot.SpotType.Assembly);
 
             foreach (var actorFactoryType in spotNode.ActorFactories.Values) assemblies.Add(actorFactoryType.Assembly);
 
@@ -109,13 +105,6 @@ internal sealed class ZLinkFrameworkRegistration
             foreach (var handler in channel.PublishHandlers) assemblies.Add(handler.HandlerType.Assembly);
         }
 
-        foreach (var routeChannel in RouteChannels.Values)
-        {
-            foreach (var handler in routeChannel.SendHandlers) assemblies.Add(handler.HandlerType.Assembly);
-
-            foreach (var handler in routeChannel.RequestHandlers) assemblies.Add(handler.HandlerType.Assembly);
-        }
-
         return assemblies;
     }
 
@@ -140,7 +129,6 @@ internal sealed class ZLinkFrameworkRegistration
 
 internal sealed record ZLinkScannedHandlerCatalog(
     IReadOnlyList<ZLinkHandlerEndpointDescriptor> ChannelEndpoints,
-    IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> RouteEndpoints,
     IReadOnlyList<ZLinkScannedSpotHandler> SpotHandlers,
     IReadOnlyList<ZLinkScannedSessionHandler> SessionHandlers)
 {
@@ -149,20 +137,17 @@ internal sealed record ZLinkScannedHandlerCatalog(
         IReadOnlySet<Type> sessionTypes)
     {
         var channelEndpoints = new List<ZLinkHandlerEndpointDescriptor>();
-        var routeEndpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
         var spotHandlers = new List<ZLinkScannedSpotHandler>();
         var sessionHandlers = new List<ZLinkScannedSessionHandler>();
         foreach (var assembly in assemblies)
         {
             channelEndpoints.AddRange(ZLinkHandlerScanner.Scan(assembly));
-            routeEndpoints.AddRange(ZLinkHandlerScanner.ScanRoute(assembly));
             spotHandlers.AddRange(ZLinkScannedSpotHandlerScanner.Scan(assembly));
             sessionHandlers.AddRange(ZLinkScannedSessionHandlerScanner.Scan(assembly, sessionTypes));
         }
 
         return new ZLinkScannedHandlerCatalog(
             Array.AsReadOnly(channelEndpoints.ToArray()),
-            Array.AsReadOnly(routeEndpoints.ToArray()),
             Array.AsReadOnly(spotHandlers.ToArray()),
             Array.AsReadOnly(sessionHandlers.ToArray()));
     }
@@ -178,22 +163,13 @@ internal sealed class ZLinkMetadataPolicyRegistration
 // Mesh channel marker: AddRouteMesh(meshName) registers the mesh discovery
 // name and the MeshNode references it through SpotMeshChannelName. Peer
 // acquisition is owned by location-store auto-connect or manual wiring.
-internal sealed class ZLinkSpotMeshChannelRegistration
-{
-    public required string ChannelName { get; init; }
-}
-
 internal sealed class ZLinkChannelRegistration
 {
     public required string ChannelName { get; init; }
 
     public TimeSpan? DefaultRequestTimeout { get; set; }
 
-    public ZLinkAutoConnectType AutoConnectType { get; set; }
-
-    public ZLinkChannelServerCapabilityRegistration? Server { get; set; }
-
-    public ZLinkChannelClientCapabilityRegistration? Client { get; set; }
+    public ZLinkLocationAutoConnectType AutoConnectType { get; set; }
 
     public ZLinkChannelPublisherCapabilityRegistration? Publisher { get; set; }
 
@@ -212,28 +188,6 @@ internal sealed class ZLinkChannelRegistration
     public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
 
     public List<ZLinkChannelHandlerRegistration> PublishHandlers { get; } = [];
-}
-
-internal sealed class ZLinkChannelServerCapabilityRegistration
-{
-    public string? BindEndpoint { get; set; }
-
-    public ZLinkSocketConfig SocketConfig { get; } = new();
-
-    public ZLinkRouteConfig RoutingConfig { get; } = new();
-}
-
-internal sealed class ZLinkChannelClientCapabilityRegistration
-{
-    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
-
-    public string? BindEndpoint { get; set; }
-
-    public ZLinkSocketConfig SocketConfig { get; } = new();
-
-    public ZLinkOutboundRouteConfig RoutingConfig { get; } = new();
-
-    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }
 
 internal sealed class ZLinkChannelPublisherCapabilityRegistration
@@ -273,37 +227,6 @@ internal sealed record ZLinkStreamTlsServerRegistration(
     string KeyPath,
     bool RequireClientCert);
 
-internal sealed class ZLinkRouteChannelRegistration
-{
-    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
-
-    public required string RouterChannelId { get; init; }
-
-    public TimeSpan? DefaultRequestTimeout { get; set; }
-
-    public string? BindEndpoint { get; set; }
-
-    public bool ClientEnabled { get; set; }
-
-    public ZLinkSocketConfig SocketConfig { get; } = new();
-
-    public ZLinkRouteConfig RoutingConfig { get; } = new();
-
-    public RoutingId RoutingId { get; set; }
-
-    public bool HasExplicitRoutingId { get; set; }
-
-    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
-
-    public ZLinkEndpointConnections ManualConnections { get; } = new();
-
-    public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
-
-    public List<ZLinkRouteHandlerRegistration> RequestHandlers { get; } = [];
-
-    public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
-}
-
 internal sealed record ZLinkRouteHandlerRegistration(
     Type HandlerType,
     Type MessageType,
@@ -339,6 +262,8 @@ internal sealed class ZLinkMeshChannelMembership
     public List<ZLinkChannelHandlerRegistration> SendHandlers { get; } = [];
 
     public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
+
+    public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 }
 
 internal sealed class ZLinkSpotNodeRegistration
@@ -347,11 +272,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public string? SpotMeshChannelName { get; set; }
 
-    public ZLinkSpotDrainPolicy DrainPolicy { get; set; } = ZLinkSpotDrainPolicy.DrainNatural;
-
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
-
-    public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }
 
     // MeshNode-level default for RID-direct route requests handled by this node
     // (spec 05-route-mesh §2 IZLinkMeshNodeBuilder.SetDefaultRequestTimeout). Null
@@ -374,6 +295,9 @@ internal sealed class ZLinkSpotNodeRegistration
     public List<ZLinkRouteHandlerRegistration> RouteRequestHandlers { get; } = [];
 
     public HashSet<Type> SpotFactories { get; } = [];
+
+    public Dictionary<string, ZLinkInstanceSpotFactoryRegistration>
+        InstanceSpotFactories { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 
@@ -405,6 +329,10 @@ internal sealed record ZLinkActorTransferRegistration(
     Type ActorType,
     Type AdapterType,
     IZLinkActorTransferInvoker Invoker);
+
+internal sealed record ZLinkInstanceSpotFactoryRegistration(
+    Type SpotType,
+    ZLinkInstanceSpotFactoryOptions Options);
 
 internal sealed class ZLinkActorCatalog
 {
@@ -470,17 +398,4 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
     public ZLinkEndpointConnections ManualConnections { get; } = new();
 
     public Dictionary<string, RoutingId> PeerRoutingIds { get; } = new(StringComparer.Ordinal);
-}
-
-internal sealed class ZLinkSpotPubSubCapabilityRegistration
-{
-    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
-
-    public string? BindEndpoint { get; set; }
-
-    public ZLinkSpotPublisherConfig PublisherConfig { get; } = new();
-
-    public ZLinkSpotSubscriberConfig SubscriberConfig { get; } = new();
-
-    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }

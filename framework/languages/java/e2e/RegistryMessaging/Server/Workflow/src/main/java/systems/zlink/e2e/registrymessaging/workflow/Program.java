@@ -86,14 +86,14 @@ public final class Program {
 
             String routeEndpoint = server.routeEndpoint();
             if (!routeEndpoint.isBlank()) {
-                options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                    .enableServer(routeEndpoint)
-                    .setRoutingId(RoutingId.from(state.providerRid()))
-                    .addRequestHandler(
-                        RouteReqHandler.class,
-                        Contracts.RouteReq.class,
-                        Contracts.RouteRes.class,
-                        Contracts.ROUTE_PACKET);
+                var route = options.addRouteMesh(Contracts.ROUTE_CHANNEL)
+                    .listen(routeEndpoint)
+                    .setRoutingId(RoutingId.from(state.providerRid()));
+                route.channelName(Contracts.ROUTE_CHANNEL);
+                route.addRouteRequestHandler(
+                    RouteReqHandler.class,
+                    Contracts.RouteReq.class,
+                    Contracts.RouteRes.class);
             }
         };
     }

@@ -1,0 +1,311 @@
+using System.Diagnostics;
+using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ResilienceLifecycle.Shared;
+using Systems.Zlink;
+using Zlink.Framework;
+using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Locations.Redis;
+
+namespace ResilienceLifecycle.Client.Support;
+
+internal sealed class StormClientProcessFleet : IAsyncDisposable
+{
+    private const int ClientCount = 100;
+    private readonly StormProcess[] _workers;
+
+    private StormClientProcessFleet(StormProcess[] workers)
+    {
+        _workers = workers;
+    }
+
+    public static async Task<StormClientProcessFleet> StartAsync(
+        ClientOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var assemblyPath = Assembly.GetExecutingAssembly().Location;
+        var workers = Enumerable.Range(0, ClientCount)
+            .Select(index => StormProcess.Start(
+                assemblyPath,
+                options.RedisEndpoint,
+                options.RedisKeyPrefix,
+                options.LogDir,
+                index))
+            .ToArray();
+        var fleet = new StormClientProcessFleet(workers);
+        try
+        {
+            await Task.WhenAll(workers.Select(worker =>
+                worker.WaitStartedAsync(cancellationToken)));
+            return fleet;
+        }
+        catch
+        {
+            await fleet.DisposeAsync();
+            throw;
+        }
+    }
+
+    public async Task<ProfileRes[]> RequestAllAsync(
+        string markerPrefix,
+        CancellationToken cancellationToken = default)
+    {
+        return await Task.WhenAll(_workers.Select((worker, index) =>
+            worker.RequestAsync($"{markerPrefix}-{index}", cancellationToken)));
+    }
+
+    public Task WaitReadyAfterRestartAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.WhenAll(_workers.Select(worker =>
+            worker.WaitReadyAfterRestartAsync(cancellationToken)));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Task.WhenAll(_workers.Select(static worker => worker.DisposeAsync().AsTask()));
+    }
+
+    private sealed class StormProcess : IAsyncDisposable
+    {
+        private readonly int _index;
+        private readonly Process _process;
+        private readonly Task<string> _stderr;
+        private readonly string _stderrLogPath;
+        private ulong _initialProviderGeneration;
+
+        private StormProcess(int index, Process process, string stderrLogPath)
+        {
+            _index = index;
+            _process = process;
+            _stderr = process.StandardError.ReadToEndAsync();
+            _stderrLogPath = stderrLogPath;
+        }
+
+        public static StormProcess Start(
+            string assemblyPath,
+            string redisEndpoint,
+            string redisKeyPrefix,
+            string logDir,
+            int index)
+        {
+            var start = new ProcessStartInfo("dotnet")
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            start.ArgumentList.Add(assemblyPath);
+            start.ArgumentList.Add("--storm-worker");
+            start.ArgumentList.Add(redisEndpoint);
+            start.ArgumentList.Add(redisKeyPrefix);
+            start.ArgumentList.Add(logDir);
+            start.ArgumentList.Add(index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            start.Environment["ZLINK_ROUTER_DEBUG"] = "1";
+            var process = Process.Start(start)
+                          ?? throw new InvalidOperationException($"Unable to start storm client {index}.");
+            return new StormProcess(
+                index,
+                process,
+                Path.Combine(logDir, $"storm-{index}-core.log"));
+        }
+
+        public async Task WaitStartedAsync(CancellationToken cancellationToken)
+        {
+            var line = await ReadLineAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            var parts = line.Split('\t');
+            if (parts is not ["READY", var generation]
+                || !ulong.TryParse(generation, out _initialProviderGeneration))
+                throw new InvalidOperationException(
+                    $"Storm client {_index} returned an invalid startup line '{line}'.");
+        }
+
+        public async Task<ProfileRes> RequestAsync(
+            string marker,
+            CancellationToken cancellationToken)
+        {
+            await WriteLineAsync($"REQUEST\t{marker}", cancellationToken);
+            string line;
+            try
+            {
+                line = await ReadLineAsync(TimeSpan.FromSeconds(15), cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                throw new InvalidOperationException(
+                    $"Storm client {_index} request '{marker}' failed.",
+                    exception);
+            }
+            var parts = line.Split('\t');
+            if (parts is not ["REPLY", var value, var providerRid, var replyMarker])
+                throw new InvalidOperationException(
+                    $"Storm client {_index} returned an invalid reply line '{line}'.");
+            return new ProfileRes(value, providerRid, replyMarker);
+        }
+
+        public async Task WaitReadyAfterRestartAsync(CancellationToken cancellationToken)
+        {
+            await WriteLineAsync(
+                $"WAIT-READY-AFTER\t{_initialProviderGeneration}",
+                cancellationToken);
+            var line = await ReadLineAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            var parts = line.Split('\t');
+            if (parts is not ["READY", var generation]
+                || !ulong.TryParse(generation, out var parsed)
+                || parsed == _initialProviderGeneration)
+                throw new InvalidOperationException(
+                    $"Storm client {_index} did not observe a new provider generation: '{line}'.");
+            _initialProviderGeneration = parsed;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (!_process.HasExited)
+            {
+                try
+                {
+                    await WriteLineAsync("EXIT", CancellationToken.None);
+                    await _process.WaitForExitAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch
+                {
+                    if (!_process.HasExited)
+                        _process.Kill(entireProcessTree: true);
+                }
+            }
+
+            if (!_process.HasExited)
+                await _process.WaitForExitAsync();
+            var stderr = await _stderr;
+            if (!string.IsNullOrEmpty(stderr))
+                await File.WriteAllTextAsync(_stderrLogPath, stderr);
+            _process.Dispose();
+        }
+
+        private async Task WriteLineAsync(string line, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _process.StandardInput.WriteLineAsync(line);
+            await _process.StandardInput.FlushAsync();
+        }
+
+        private async Task<string> ReadLineAsync(
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            var line = await _process.StandardOutput.ReadLineAsync(cancellationToken)
+                .AsTask()
+                .WaitAsync(timeout, cancellationToken);
+            if (line is not null)
+                return line;
+
+            var stderr = await _stderr.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken);
+            throw new InvalidOperationException(
+                $"Storm client {_index} exited before replying: {stderr}");
+        }
+    }
+}
+
+internal static class StormClientWorker
+{
+    public static async Task RunAsync(string[] args)
+    {
+        if (args.Length != 4 || !int.TryParse(args[3], out var index))
+            throw new ArgumentException(
+                "Storm worker requires redis endpoint, key prefix, log directory and index.");
+
+        var redisEndpoint = args[0];
+        var redisKeyPrefix = args[1];
+        var logDir = args[2];
+        using var host = Host.CreateDefaultBuilder()
+            .ConfigureAppConfiguration(static configuration =>
+                configuration.Sources.Clear())
+            .ConfigureLogging(static logging => logging.ClearProviders())
+            .ConfigureServices(services =>
+            {
+                services.AddZLinkFramework(framework =>
+                {
+                    framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+                        .SetConnectionString(redisEndpoint)
+                        .SetKeyPrefix(redisKeyPrefix)));
+                    framework.ConfigureDispatch()
+                        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                        .TraceLogFile(Path.Combine(logDir, $"storm-{index}-flow.log"))
+                        .TraceLabel($"storm-{index}");
+                    var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
+                        .Listen("tcp://127.0.0.1:0")
+                        .UseAllocatedRoutingId(256, "storm")
+                        .SetRoutingIdAllocationGroup("resilience.storm");
+                    mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
+                });
+            })
+            .Build();
+
+        await host.StartAsync();
+        var runtime = host.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
+        var client = host.Services.GetRequiredService<IZLinkRouteClient>();
+        var initialGeneration = await WaitForProviderAsync(runtime, null);
+        Console.WriteLine($"READY\t{initialGeneration}");
+
+        while (await Console.In.ReadLineAsync() is { } command)
+        {
+            var parts = command.Split('\t');
+            switch (parts)
+            {
+                case ["REQUEST", var marker]:
+                {
+                    var reply = await client.RequestToChannel(
+                            ResilienceLifecycleNames.Channel,
+                            ResilienceLifecycleNames.Channel,
+                            new ProfileReq("fast", marker))
+                        .Timeout(TimeSpan.FromSeconds(10))
+                        .Async<ProfileRes>();
+                    Console.WriteLine(
+                        $"REPLY\t{reply.Value}\t{reply.ProviderRid}\t{reply.Marker}");
+                    break;
+                }
+                case ["WAIT-READY-AFTER", var generation]
+                    when ulong.TryParse(generation, out var previousGeneration):
+                {
+                    var readyGeneration =
+                        await WaitForProviderAsync(runtime, previousGeneration);
+                    Console.WriteLine($"READY\t{readyGeneration}");
+                    break;
+                }
+                case ["EXIT"]:
+                    await host.StopAsync();
+                    return;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unsupported storm worker command '{command}'.");
+            }
+        }
+    }
+
+    private static async Task<ulong> WaitForProviderAsync(
+        IZLinkRouteMeshRuntime runtime,
+        ulong? previousGeneration)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var peer = runtime.Snapshot(ResilienceLifecycleNames.Channel).Peers
+                .FirstOrDefault(candidate =>
+                    candidate.Ready
+                    && candidate.Rid == RoutingId.From("api-b")
+                    && (previousGeneration is null
+                        || candidate.LifecycleGeneration != previousGeneration.Value));
+            if (peer is not null)
+                return peer.LifecycleGeneration;
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException("Storm worker did not observe provider api-b ready.");
+    }
+}

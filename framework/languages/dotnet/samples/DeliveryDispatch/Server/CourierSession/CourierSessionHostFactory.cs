@@ -35,13 +35,15 @@ public static class CourierSessionHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
-            var mesh8 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
-                .Listen(topology.CourierSessionSpotRouterEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.MeshEndpoint)
                 .SetRoutingId(topology.CourierSessionSpotNodeRid);
-            mesh8.ChannelName(SampleNames.CourierActorDiscovery);
+            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
+            mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
-                .EnableActorDispatch(SampleNames.CourierActorDiscovery)
+                .EnableActorDispatch(SampleNames.MeshName)
                 .AddSession<CourierSession>();
         });
 

@@ -33,7 +33,6 @@ public final class RemoteSpotAwaitSessionHandler
             .getOrDefault(Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT));
         return spots.resolveSpotHandle(targetSpotRid)
             .thenCompose(handle -> routes.requestToSpot(
-                    Contracts.ROUTE_CHANNEL,
                     handle.orElseThrow(() -> new IllegalStateException("spot not found: " + targetSpotRid)),
                     request)
                 .timeout(Duration.ofSeconds(30))

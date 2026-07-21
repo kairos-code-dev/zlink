@@ -215,6 +215,7 @@ internal sealed class SpotOnlyUserSpot(
         {
             var command = request.Decode<SpotOnlyMeshReq>();
             var target = await spots.ResolveSpotHandleAsync(
+                             Context.MeshName,
                              RoutingId.From(command.TargetSpotRid),
                              cancellationToken)
                          ?? throw new InvalidOperationException(
@@ -222,8 +223,8 @@ internal sealed class SpotOnlyUserSpot(
             var reply = await Context.Outbound
                 .RequestToSpot(target, new StateReq("add", 7))
                 .Async<StateRes>(cancellationToken);
-            Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
-                .TrySubmit();
+            await Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
+                .SubmitAsync(cancellationToken);
             evidence.Add(
                 $"spot-only-request|rid={evidence.Rid}|source={Context.SpotRid}"
                 + $"|target={command.TargetSpotRid}|value={reply.Value}|marker={command.Marker}");

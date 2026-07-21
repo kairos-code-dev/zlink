@@ -32,7 +32,7 @@ internal sealed class HttpGameApiSnapshotClient(GameQuestTopology topology) : IG
 
 internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : IQuestProgressNotifier
 {
-    public ValueTask<QuestProgressNotifyResult> NotifyAsync(
+    public async ValueTask<QuestProgressNotifyResult> NotifyAsync(
         string playerId,
         IReadOnlyList<QuestProgressState> projection,
         string? completedQuestId,
@@ -42,23 +42,23 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : I
         {
             var contracts = projection.Select(QuestContractMapper.ToContract).ToArray();
             foreach (var progress in contracts)
-                channels.SendToChannel(SampleNames.GameApiChannel, SampleNames.GameApiChannel,
+                await channels.SendToChannel(SampleNames.MeshName, SampleNames.GameApiChannel,
                         new QuestProgressNotify(playerId, progress))
-                    .TrySubmit();
+                    .SubmitAsync(cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(completedQuestId))
             {
                 var completed = contracts.First(progress => progress.QuestId == completedQuestId);
-                channels.SendToChannel(SampleNames.GameApiChannel, SampleNames.GameApiChannel,
+                await channels.SendToChannel(SampleNames.MeshName, SampleNames.GameApiChannel,
                         new QuestCompletedNotify(playerId, completed, true))
-                    .TrySubmit();
+                    .SubmitAsync(cancellationToken);
             }
 
-            return ValueTask.FromResult(new QuestProgressNotifyResult(true, null, null));
+            return new QuestProgressNotifyResult(true, null, null);
         }
         catch (ZLinkFrameworkException error)
         {
-            return ValueTask.FromResult(new QuestProgressNotifyResult(false, null, error));
+            return new QuestProgressNotifyResult(false, null, error);
         }
     }
 }

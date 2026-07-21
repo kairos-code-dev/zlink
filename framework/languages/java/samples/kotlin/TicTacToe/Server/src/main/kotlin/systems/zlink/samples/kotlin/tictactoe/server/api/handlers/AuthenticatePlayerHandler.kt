@@ -1,15 +1,21 @@
 package systems.zlink.samples.kotlin.tictactoe.server.api.handlers
 
+import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerReq
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
 
 @ZLinkHandlerGroup("api")
-class AuthenticatePlayerHandler {
+class AuthenticatePlayerHandler :
+    ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes> {
     @ZLinkRequest
-    suspend fun handle(request: AuthenticatePlayerReq): AuthenticatePlayerRes {
+    override suspend fun handle(
+        request: AuthenticatePlayerReq,
+        context: ZLinkRequestContext,
+    ): AuthenticatePlayerRes {
         val actorId = request.accessToken.trim()
         require(actorId.isNotBlank()) { "authentication token is empty" }
         return AuthenticatePlayerRes(

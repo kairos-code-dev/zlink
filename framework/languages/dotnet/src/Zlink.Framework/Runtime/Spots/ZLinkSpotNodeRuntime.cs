@@ -51,7 +51,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _nodeSubmitter = new ZLinkAsyncSubmitter(
             node.OnSendReady,
             frameworkRegistration.DefaultSocketSendTimeout,
-            _stopSource.Token);
+            _stopSource.Token,
+            ZLinkAsyncSubmitter.ResolvePendingCapacity(
+                registration.Router?.SocketConfig.SendHighWaterMark ?? 0));
         _bundles = new ZLinkSpotNodeBundleRegistry(
             frameworkRegistration,
             node,
@@ -74,6 +76,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal ZLinkSpotNodeRegistration Registration { get; }
 
+    internal bool UsesManualRouterAcquisition =>
+        Registration.Router?.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual;
+
     internal bool IsExplicitManualRouterRouteDisconnected(RoutingId targetNodeRid)
     {
         if (Registration.Router is not
@@ -90,6 +95,37 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
         var configuredEndpoints = router.ManualConnections.ListConnections();
         return targetEndpoints.All(endpoint => !configuredEndpoints.Contains(endpoint, StringComparer.Ordinal));
+    }
+
+    internal bool TryClassifyManualRouterTarget(
+        RoutingId targetNodeRid,
+        out bool connected)
+    {
+        connected = false;
+        if (Registration.Router is not
+            {
+                AcquisitionMode: ZLinkPeerAcquisitionMode.Manual
+            } router)
+            return false;
+
+        var matchingEndpoints = router.PeerRoutingIds
+            .Where(pair => pair.Value == targetNodeRid)
+            .Select(pair => pair.Key)
+            .ToArray();
+        if (matchingEndpoints.Length == 0)
+        {
+            if (_peerConnections.HasRetainedManualPeer(targetNodeRid)) return true;
+            var peer = Node.MeshPeers().FirstOrDefault(candidate =>
+                candidate.RoutingId == targetNodeRid);
+            if (peer is null) return false;
+            connected = peer.State == MeshPeerState.Admitted;
+            return true;
+        }
+
+        var configuredEndpoints = router.ManualConnections.ListConnections();
+        connected = matchingEndpoints.Any(endpoint =>
+            configuredEndpoints.Contains(endpoint, StringComparer.Ordinal));
+        return true;
     }
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => _spots.Spots;
@@ -109,17 +145,68 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             $"node '{targetNodeRid}'");
     }
 
-    internal ValueTask SendToNodeAsync(
+    internal ValueTask<ZLinkSubmitResult> SendToNodeAsync(
         RoutingId targetNodeRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
-        return _nodeSubmitter.Async(
+        if (targetNodeRid == Node.RoutingId)
+            return SubmitToLocalNodeAsync(parts, cancellationToken, metadata);
+
+        return _nodeSubmitter.SubmitAsync(
             parts,
             pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
                 Node.SendToNode(targetNodeRid, pending, SendFlags.DontWait, metadata),
                 $"node '{targetNodeRid}'"),
+            cancellationToken);
+    }
+
+    private ValueTask<ZLinkSubmitResult> SubmitToLocalNodeAsync(
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_stopSource.IsCancellationRequested)
+                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown));
+            if (_nodeRouteDispatcher is null)
+                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.TargetNotFound));
+            if (!ZLinkMeshMetadataCodec.TryDecode(metadata.Span, out var decodedMetadata))
+                throw new ArgumentException("Application metadata is malformed.", nameof(metadata));
+
+            var received = new ZLinkBackendRouteReceived(
+                parts,
+                Node.RoutingId,
+                spotRid: null,
+                requestSeq: null,
+                reply: null,
+                metadata: decodedMetadata);
+            if (_nodeRouteDispatcher.TryDispatch(received))
+                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
+
+            received.Dispose();
+            return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown));
+        }
+        catch
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            throw;
+        }
+    }
+
+    internal ValueTask<ZLinkSubmitResult> SendToActorAsync(
+        ZLinkBackendActorRef actor,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken)
+    {
+        return _nodeSubmitter.SubmitAsync(
+            parts,
+            pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+                Node.SendToActor(actor, pending, SendFlags.DontWait),
+                $"actor '{actor.ActorId}'"),
             cancellationToken);
     }
 
@@ -340,26 +427,20 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     }
 
     internal ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken) =>
-        _spots.TryDrainAsync(Registration.DrainPolicy, cancellationToken);
+        _spots.TryDrainAsync(cancellationToken);
 
-    internal void BeginDrain() => _spots.BeginDrain(Registration.DrainPolicy);
-
-    public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
+    public ValueTask<bool> ConnectPeerAsync(string endpoint, CancellationToken cancellationToken)
     {
-        return _peerConnector.ConnectRouterAsync(endpoint, cancellationToken);
+        return _peerConnector.ConnectPeerAsync(endpoint, cancellationToken);
     }
 
-    public ValueTask<bool> ConnectRouterAsync(
+    public ValueTask<bool> ConnectPeerAsync(
         RoutingId peerRid,
         string endpoint,
         CancellationToken cancellationToken)
     {
-        return _peerConnector.ConnectRouterAsync(peerRid, endpoint, cancellationToken);
-    }
-
-    public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
-    {
-        return _peerConnector.ConnectPubSubAsync(endpoint, cancellationToken);
+        _peerConnections.RetainManualPeerRid(endpoint, peerRid);
+        return _peerConnector.ConnectPeerAsync(peerRid, endpoint, cancellationToken);
     }
 
     public void DisconnectPeer(string endpoint)
@@ -367,26 +448,23 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         _peerConnector.Disconnect(endpoint);
     }
 
-    public void DisconnectRouterManual(string endpoint)
-        => _peerConnector.DisconnectRouterManual(endpoint);
+    public void DisconnectPeerManual(string endpoint)
+        => _peerConnector.DisconnectPeerManual(endpoint);
 
-    public void DisconnectPubSubManual(string endpoint)
-        => _peerConnector.DisconnectPubSubManual(endpoint);
+    public void DisconnectPeerManual(string endpoint, RoutingId peerRid)
+    {
+        _peerConnections.RetainManualPeerRid(endpoint, peerRid);
+        _peerConnector.DisconnectPeerManual(endpoint);
+    }
 
-    public bool ConnectRouterAuto(RoutingId? peerRid, string endpoint)
-        => _peerConnector.ConnectRouterAuto(peerRid, endpoint);
+    public bool ConnectPeerAuto(RoutingId? peerRid, string endpoint)
+        => _peerConnector.ConnectPeerAuto(peerRid, endpoint);
 
     public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration)
         => Node.DisconnectPeerLifetime(peerRid, lifecycleGeneration);
 
-    public bool ConnectPubSubAuto(string endpoint)
-        => _peerConnector.ConnectPubSubAuto(endpoint);
-
-    public bool DisconnectRouterAuto(string endpoint)
-        => _peerConnector.DisconnectRouterAuto(endpoint);
-
-    public bool DisconnectPubSubAuto(string endpoint)
-        => _peerConnector.DisconnectPubSubAuto(endpoint);
+    public bool DisconnectPeerAuto(string endpoint)
+        => _peerConnector.DisconnectPeerAuto(endpoint);
 
     private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(
         IZLinkBackendSpot entrySpot)
@@ -405,7 +483,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 Registration.EntrySpotType,
                 Node.RoutingId,
                 Registration.SpotNodeName,
-                _frameworkRegistration.SpotDiscovery?.ChannelName ?? Registration.SpotNodeName,
+                Registration.SpotMeshChannelName ?? Registration.SpotNodeName,
                 _frameworkRegistration.DefaultRequestTimeout,
                 EntryOutbound);
             activation.InitializeRuntimeResources();

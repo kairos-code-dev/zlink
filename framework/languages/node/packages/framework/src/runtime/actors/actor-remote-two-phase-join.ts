@@ -94,6 +94,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       actorId: actor.actorId,
       actorType,
       actorRef,
+      expectedMembershipEpoch: state.spotMembershipEpoch,
       actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       actorCreateRequest: state.createRequestPayload,
       request,
@@ -131,6 +132,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       actorId: actor.actorId,
       actorType,
       actorRef,
+      expectedMembershipEpoch: state.spotMembershipEpoch,
       actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       request,
       targetSpotRid: target.spotRid,
@@ -182,9 +184,6 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     if (result.accepted) {
       state.clearJoinedSpot();
       state.setRemoteActorPacketTarget(undefined);
-      if (state.actorType !== undefined) {
-        this.options.postCommitLocation?.leftEventually(state.actorType, actor.actorId);
-      }
     }
     return result;
   }

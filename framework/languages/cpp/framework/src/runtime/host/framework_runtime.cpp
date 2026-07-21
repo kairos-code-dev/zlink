@@ -48,14 +48,6 @@ zlink::stream_socket_t &framework_runtime_t::stream_socket ()
     return *_stream;
 }
 
-zlink::service::spot_node_t &framework_runtime_t::add_spot_node ()
-{
-    if (!_spot_node) {
-        _spot_node = std::make_unique<zlink::service::spot_node_t> (*_context);
-    }
-    return *_spot_node;
-}
-
 void framework_runtime_t::drain ()
 {
     if (_context) {
@@ -87,7 +79,6 @@ void framework_runtime_t::drain ()
         }
     }
     _offload.drain ();
-    _spot_node.reset ();
     _stream.reset ();
     _dealer.reset ();
     _router.reset ();

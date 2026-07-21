@@ -2,45 +2,35 @@
 
 #pragma once
 
-#include "../Support/client_support.hpp"
+#include "mon_a1_socket_events_scenario.hpp"
 
-#include <chrono>
 #include <iostream>
+#include <set>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline bool contains_nonzero_location_event (const std::vector<std::string> &entries,
-                                             const std::string &kind,
-                                             const std::string &zero_marker)
-{
-    for (const auto &entry : entries) {
-        if (contains (entry, kind) && !contains (entry, zero_marker)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 inline void run_mon_a2_location_events_scenario (const client_options_t &options)
 {
-    const auto entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-location|source=location-runtime|kind=TopologyChanged|nodes=svc-a,svc-b",
-      std::chrono::milliseconds (10000));
-    ensure (contains_nonzero_location_event (entries, "kind=TopologyChanged", "topology=0")
-              && any_contains (entries, "kind=TopologyChanged|nodes=svc-a,svc-b"),
-            "MON-A2 svc-b topology change evidence missing");
-    ensure (contains_nonzero_location_event (entries, "kind=ServiceSummaryChanged", "summary=0"),
-            "MON-A2 location service summary evidence missing");
-    const auto topology_count = count_contains (entries, "kind=TopologyChanged");
-    const auto summary_count = count_contains (entries, "kind=ServiceSummaryChanged");
-    std::this_thread::sleep_for (std::chrono::milliseconds (500));
-    const auto stable_entries = fetch_evidence (options.service_url);
-    ensure (count_contains (stable_entries, "kind=TopologyChanged") == topology_count,
-            "MON-A2 emitted duplicate topology events without a location change");
-    ensure (count_contains (stable_entries, "kind=ServiceSummaryChanged") == summary_count,
-            "MON-A2 emitted duplicate service summary events without a location change");
+    const auto snapshot = runtime_snapshot (options.service_url);
+    ensure (!snapshot.at ("peers").empty (),
+            "MON-A2 admitted peer snapshot missing");
+    std::set<std::string> peer_ids;
+    for (const auto &peer : snapshot.at ("peers")) {
+        ensure (peer.at ("generation").get<std::uint64_t> () > 0,
+                "MON-A2 peer generation missing");
+        ensure (peer.at ("revision").get<std::uint64_t> () > 0,
+                "MON-A2 peer descriptor revision missing");
+        ensure (!peer.at ("endpoint").get<std::string> ().empty (),
+                "MON-A2 peer endpoint missing");
+        ensure (peer.at ("ready").get<bool> (),
+                "MON-A2 peer is not ready");
+        ensure (peer.at ("admissionState") == "ready",
+                "MON-A2 admission state mismatch");
+        peer_ids.insert (peer.at ("rid").get<std::string> ());
+    }
+    ensure (peer_ids.size () == snapshot.at ("peers").size (),
+            "MON-A2 duplicate peer identity remained in snapshot");
     std::cout << "scenario MON-A2 passed\n";
 }
 

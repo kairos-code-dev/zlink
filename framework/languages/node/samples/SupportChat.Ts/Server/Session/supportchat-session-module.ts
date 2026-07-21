@@ -37,15 +37,13 @@ function createSupportChatSessionModule() {
             .traceLogFile(`${config.logDir}/flow-session.log`)
             .traceLabel('session');
           builder.addLocationStore(locationStore);
-          Object.assign(builder.configureLocations(), supportChatLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.apiChannel)
-              .enableClient()
-            .addClientServerChannel(SampleNames.supportChannel)
-              .enableClient()
-            .addSpotMesh(SampleNames.conversationSpotMesh)
-              .enableRouter(config.sessionSpotEndpoint, 'session-node')
-            .addStreamNode(SampleNames.sessionStreamNode)
+          supportChatLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
+            .listen(config.sessionSpotEndpoint).routingId('session-node');
+          mesh.channelName(SampleNames.apiChannel).setWeight(0);
+          mesh.channelName(SampleNames.supportChannel).setWeight(0);
+          mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);
+          return builder.addStreamNode(SampleNames.sessionStreamNode)
               .bind(config.sessionStreamEndpoint)
               .registerSession(SupportChatSessionFactory as never)
             .build();

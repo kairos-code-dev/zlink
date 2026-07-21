@@ -1,12 +1,17 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/streams/stream_host_service.hpp"
+#include "runtime/messaging/async_submit_runtime.hpp"
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/mesh/mesh_node_runtime.hpp"
 
 #include <nlohmann/json.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
+#include <zlink/Contracts/Service/stream_session.hpp>
+#include <zlink/Contracts/Sockets/stream_socket.hpp>
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/post.hpp>
@@ -302,7 +307,8 @@ class stream_host_service_t::listener_t
                 service_provider_t &services,
                 std::atomic_bool &stop,
                 std::shared_ptr<std::atomic_bool> drain_flag,
-                std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring) :
+                std::shared_ptr<framework::detail::monitoring_runtime_state_t> monitoring,
+                std::shared_ptr<detail::mesh_node_runtime_t> mesh_node) :
         _runtime (std::move (runtime)),
         _stream (std::move (stream)),
         _session_factory (std::move (session_factory)),
@@ -310,6 +316,7 @@ class stream_host_service_t::listener_t
         _stop (&stop),
         _drain_flag (std::move (drain_flag)),
         _monitoring (std::move (monitoring)),
+        _mesh_node (std::move (mesh_node)),
         _acceptor (_io)
     {
     }
@@ -421,6 +428,19 @@ class stream_host_service_t::listener_t
                 break;
             }
         }
+    }
+
+    std::size_t active_session_count ()
+    {
+        std::scoped_lock lock (_active_streams_mutex, _core_sessions_mutex);
+        return _active_streams.size () + _core_sessions.size ();
+    }
+
+    void begin_drain_sessions ()
+    {
+        force_close_sessions (stream_close_reason_t::server_drain, "server drain");
+        close_core_sessions ("server_drain", stream_close_reason_t::server_drain,
+                             "server drain");
     }
 
     void notify_sessions_closing (stream_close_reason_t reason, std::string_view diagnostic)
@@ -571,6 +591,10 @@ class stream_host_service_t::listener_t
 
     void run ()
     {
+        if (_mesh_node && !stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
+            run_core_stream ();
+            return;
+        }
         if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
             run_tcp_native_accept ();
             return;
@@ -686,6 +710,319 @@ class stream_host_service_t::listener_t
     }
 
   private:
+    struct core_session_t
+    {
+        service_scope_t scope;
+        packet_stream_session_t *session;
+        session_actor_manager_t *actors;
+        stream_t stream;
+        std::mutex gate;
+        bool connected = false;
+
+        core_session_t (service_scope_t scope_,
+                        packet_stream_session_t &session_,
+                        session_actor_manager_t &actors_,
+                        stream_t stream_) :
+            scope (std::move (scope_)),
+            session (&session_),
+            actors (&actors_),
+            stream (std::move (stream_))
+        {
+        }
+    };
+
+    static std::string core_session_key (const zlink::routing_id_t &rid)
+    {
+        return rid.to_hex ();
+    }
+
+    void run_core_stream ()
+    {
+        try {
+            _core_socket =
+              std::make_unique<zlink::stream_socket_t> (_mesh_node->native_context ());
+            runtime::messaging::activate_submit_owner (_core_socket.get ());
+            _core_socket->set_send_ready_handler ([this] {
+                runtime::messaging::notify_submit_ready (_core_socket.get ());
+            });
+            _core_monitor = std::make_unique<zlink::socket_monitor_t> (
+              _core_socket->monitor_open (zlink::monitor_event::disconnected));
+            _core_monitor->on_event ([this] (const zlink::monitor_event_t &event) {
+                if (event.event == zlink::monitor_event::disconnected && event.routing_id)
+                    close_core_session (*event.routing_id, "client_close");
+            });
+            _core_socket->set_packet_handler (
+              [this] (const zlink::routing_id_t &rid,
+                      zlink::message_t &&header_message,
+                      zlink::message_t &&payload) {
+                  dispatch_core_packet (rid, std::move (header_message),
+                                        std::move (payload));
+              });
+            _core_socket->bind (_stream.bind_endpoint);
+            _core_session_service =
+              std::make_unique<zlink::service::stream_session_service_t> (
+                _mesh_node->native_node (), *_core_socket);
+            _core_session_service->start ();
+            mark_started ();
+            while (!_stop->load (std::memory_order_acquire)) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (20));
+            }
+        }
+        catch (const std::exception &error) {
+            mark_start_failed (error.what ());
+        }
+        close_core_sessions ();
+        if (_core_monitor) {
+            _core_monitor->close ();
+            _core_monitor.reset ();
+        }
+        if (_core_session_service) {
+            (void) _core_session_service->shutdown (std::chrono::seconds (5));
+            (void) _core_session_service->close ();
+            _core_session_service.reset ();
+        }
+        if (_core_socket) {
+            runtime::messaging::shutdown_submit_owner (_core_socket.get ());
+            (void) _core_socket->close ();
+            _core_socket.reset ();
+        }
+    }
+
+    std::shared_ptr<core_session_t>
+    get_or_create_core_session (const zlink::routing_id_t &rid)
+    {
+        const auto key = core_session_key (rid);
+        std::lock_guard lock (_core_sessions_mutex);
+        if (const auto found = _core_sessions.find (key); found != _core_sessions.end ())
+            return found->second;
+        if (draining ()) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_rejected,
+              "STREAM node is draining and rejects a new session");
+        }
+
+        auto scope = _services->create_scope (service_scope_kind_t::stream_session);
+        auto &session = _session_factory (scope.provider ());
+        auto &actors = scope.provider ().get_required<session_actor_manager_t> ();
+        auto stream = _runtime.open_session (_stream.name);
+        detail::session_actor_manager_access_t::attach (actors, stream);
+        detail::session_actor_manager_access_t::bind_native (
+          actors, [this, rid] (const actor_ref_t &actor) {
+              if (!_mesh_node) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::actor_session_not_bound,
+                    "STREAM Actor dispatch MeshNode is not started");
+              }
+              const auto local_node = _mesh_node->routing_id ();
+              if (!local_node) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::actor_session_not_bound,
+                    "STREAM Actor dispatch MeshNode has no routing id");
+              }
+              if (local_node->to_hex ()
+                  != zlink::routing_id_t::from (
+                       std::string (actor.node_rid ().value ())).to_hex ()) {
+                  return _mesh_node->bind_application_actor_session (
+                    actor, node_rid_t::from_string (local_node->to_string ()),
+                    std::chrono::seconds (5));
+              }
+              if (!_core_session_service) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::actor_session_not_bound,
+                    "Core STREAM session service is not started");
+              }
+              const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
+                zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
+                std::string (actor.actor_id ()), actor.generation ());
+              const auto deadline =
+                std::chrono::steady_clock::now () + std::chrono::seconds (5);
+              zlink::service::operation_id_t operation;
+              zlink::submit_result_t submitted;
+              do {
+                  submitted = _core_session_service->bind_actor (
+                    rid, native_actor, operation, std::chrono::seconds (5));
+                  if (submitted != zlink::submit_result_t::not_connected)
+                      break;
+                  std::this_thread::sleep_for (std::chrono::milliseconds (10));
+              } while (std::chrono::steady_clock::now () < deadline);
+              if (submitted != zlink::submit_result_t::ok) {
+                  return result_t<void>::failure (
+                    framework_error_kind_t::actor_session_not_bound,
+                    "Core rejected STREAM actor binding");
+              }
+              auto completion =
+                _mesh_node->wait_for_completion (operation, std::chrono::seconds (5));
+              if (!completion) {
+                  return result_t<void>::failure (
+                    completion.error_kind (),
+                    completion.error () ? completion.error ()->what ()
+                                        : "Core STREAM actor binding did not complete");
+              }
+              return result_t<void>::success ();
+          });
+        _runtime.attach_transport_writer (
+          stream, [this, rid] (const stream_header_t &header,
+                              const zlink::message_t &payload) -> result_t<void> {
+              if (!_core_socket) {
+                  return detail::boundary_failure<void> (
+                    detail::boundary_error_t::disconnected,
+                    "Core STREAM socket is stopped");
+              }
+              auto encoded = _runtime.encode_header (header);
+              if (!encoded) {
+                  return result_t<void>::failure (
+                    encoded.error_kind (),
+                    encoded.error () ? encoded.error ()->what ()
+                                     : "STREAM header encode failed");
+              }
+              const auto payload_bytes = payload.to_bytes ();
+              const auto header_size = encoded.value ().size ();
+              std::vector<std::uint8_t> bytes;
+              bytes.reserve (6 + header_size + payload_bytes.size ());
+              bytes.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+              bytes.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+              bytes.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+              bytes.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+              bytes.push_back (
+                static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+              bytes.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+              bytes.insert (bytes.end (), encoded.value ().begin (), encoded.value ().end ());
+              bytes.insert (bytes.end (), payload_bytes.begin (), payload_bytes.end ());
+              auto frame = zlink::message_t::from (bytes);
+              runtime::messaging::note_submit_attempt (
+                "stream:" + rid.to_hex (), _core_socket.get (),
+                std::chrono::seconds (1), _runtime.pending_limit ());
+              const bool sent =
+                _core_socket->send (rid)
+                  .message (frame)
+                  .flags (static_cast<int> (zlink::send_flags_t::dontwait))
+                  .submit ();
+              return sent ? result_t<void>::success ()
+                          : result_t<void>::failure (
+                              framework_error_kind_t::worker_queue_full,
+                              "Core STREAM packet send is backpressured", true);
+          });
+        auto created = std::make_shared<core_session_t> (
+          std::move (scope), session, actors, std::move (stream));
+        auto connected = _runtime.dispatch_connected_async (
+          *created->session, created->stream,
+          [this, created, rid] (const result_t<void> &result) {
+              if (!result) {
+                  close_core_session (rid, "connected_dispatch_error");
+              }
+          });
+        if (!connected) {
+            throw framework_exception_t (
+              connected.error_kind (),
+              connected.error () ? connected.error ()->what ()
+                                  : "STREAM connected dispatch failed");
+        }
+        created->connected = true;
+        record_connection_opened ();
+        _core_sessions.emplace (key, created);
+        return created;
+    }
+
+    void close_core_session (const zlink::routing_id_t &rid,
+                             const char *close_reason) noexcept
+    {
+        std::shared_ptr<core_session_t> current;
+        {
+            std::lock_guard lock (_core_sessions_mutex);
+            const auto found = _core_sessions.find (core_session_key (rid));
+            if (found == _core_sessions.end ())
+                return;
+            current = std::move (found->second);
+            _core_sessions.erase (found);
+        }
+        if (!current)
+            return;
+
+        std::lock_guard session_lock (current->gate);
+        if (current->connected) {
+            _runtime.mark_disconnected (current->stream);
+            auto finalize = [current] (const result_t<void> &) {
+                detail::session_actor_manager_access_t::disconnect (*current->actors);
+                current->scope.close ();
+            };
+            auto submitted = _runtime.dispatch_disconnected_async (
+              *current->session, current->stream, finalize);
+            if (!submitted) {
+                finalize (submitted);
+            }
+            current->connected = false;
+            record_connection_closed (close_reason);
+            return;
+        }
+        detail::session_actor_manager_access_t::disconnect (*current->actors);
+        current->scope.close ();
+    }
+
+    void dispatch_core_packet (const zlink::routing_id_t &rid,
+                               zlink::message_t header_message,
+                               zlink::message_t payload)
+    {
+        try {
+            auto current = get_or_create_core_session (rid);
+            std::lock_guard session_lock (current->gate);
+            auto decoded = _runtime.decode_header (header_message.to_bytes ());
+            if (!decoded) {
+                return;
+            }
+            detail::session_actor_manager_access_t::set_codec (
+              *current->actors, decoded.value ().codec ());
+            auto header = decoded.value ();
+            if (header.kind () == stream_message_kind_t::control) {
+                if (header.packet_name () == "$zlink.heartbeat.ping") {
+                    _runtime.send_heartbeat_pong (current->stream);
+                }
+                return;
+            }
+            auto dispatched = _runtime.dispatch_packet_async (
+              *current->session, current->stream, header, payload,
+              [this, current, header] (const result_t<void> &result) {
+                  if (!result) {
+                      report_packet_dispatch_error (header, result);
+                  }
+              });
+            if (!dispatched) {
+                report_packet_dispatch_error (header, dispatched);
+            }
+        }
+        catch (const std::exception &) {
+        }
+    }
+
+    void close_core_sessions (
+      const char *close_reason = "server_stop",
+      std::optional<stream_close_reason_t> notify_reason = std::nullopt,
+      std::string_view diagnostic = {}) noexcept
+    {
+        std::map<std::string, std::shared_ptr<core_session_t>> sessions;
+        {
+            std::lock_guard lock (_core_sessions_mutex);
+            sessions.swap (_core_sessions);
+        }
+        for (auto &[_, current] : sessions) {
+            if (!current)
+                continue;
+            std::lock_guard session_lock (current->gate);
+            if (notify_reason)
+                _runtime.send_session_closing (current->stream, *notify_reason, diagnostic);
+            _runtime.drain_async_dispatch (current->stream);
+            if (current->connected) {
+                _runtime.mark_disconnected (current->stream);
+                (void) _runtime.dispatch_disconnected (*current->session, current->stream);
+                current->connected = false;
+                record_connection_closed (close_reason);
+            }
+            detail::session_actor_manager_access_t::disconnect (*current->actors);
+            current->scope.close ();
+        }
+    }
+
     struct tcp_connection_t
     {
         asio::io_context io;
@@ -1597,6 +1934,7 @@ class stream_host_service_t::listener_t
     std::atomic_bool *_stop;
     std::shared_ptr<std::atomic_bool> _drain_flag;
     std::shared_ptr<framework::detail::monitoring_runtime_state_t> _monitoring;
+    std::shared_ptr<detail::mesh_node_runtime_t> _mesh_node;
     std::mutex _active_streams_mutex;
     std::vector<active_session_t> _active_streams;
     asio::io_context _io;
@@ -1610,6 +1948,11 @@ class stream_host_service_t::listener_t
     std::mutex _sockets_mutex;
     std::unordered_set<tcp::socket *> _sockets;
     std::vector<std::weak_ptr<native_tcp_connection_t>> _native_connections;
+    std::unique_ptr<zlink::stream_socket_t> _core_socket;
+    std::unique_ptr<zlink::socket_monitor_t> _core_monitor;
+    std::unique_ptr<zlink::service::stream_session_service_t> _core_session_service;
+    std::mutex _core_sessions_mutex;
+    std::map<std::string, std::shared_ptr<core_session_t>> _core_sessions;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _ready_mutex;
@@ -1622,10 +1965,12 @@ class stream_host_service_t::listener_t
 stream_host_service_t::stream_host_service_t (
   detail::stream_runtime_t runtime,
   std::vector<stream_snapshot_t> streams,
-  std::map<std::string, detail::stream_session_factory_t> session_factories) :
+  std::map<std::string, detail::stream_session_factory_t> session_factories,
+  std::shared_ptr<detail::mesh_node_runtime_t> mesh_node) :
     _runtime (std::move (runtime)),
     _streams (std::move (streams)),
-    _session_factories (std::move (session_factories))
+    _session_factories (std::move (session_factories)),
+    _mesh_node (std::move (mesh_node))
 {
 }
 
@@ -1642,7 +1987,7 @@ void stream_host_service_t::start (service_provider_t &services)
         }
         auto listener =
           std::make_unique<listener_t> (_runtime, stream, factory->second, services, _stop,
-                                        _drain_flag, _monitoring);
+                                        _drain_flag, _monitoring, _mesh_node);
         auto *raw = listener.get ();
         _listeners.push_back (std::move (listener));
         _threads.emplace_back ([raw] { raw->run (); });
@@ -1697,6 +2042,36 @@ void stream_host_service_t::force_close_sessions (stream_close_reason_t reason,
             }
         }
     }
+}
+
+bool stream_host_service_t::drain_sessions_until (
+  std::chrono::steady_clock::time_point deadline) noexcept
+{
+    for (const auto &listener : _listeners) {
+        if (!listener)
+            continue;
+        try {
+            listener->begin_drain_sessions ();
+        }
+        catch (...) {
+            return false;
+        }
+    }
+    while (std::chrono::steady_clock::now () < deadline) {
+        bool drained = true;
+        for (const auto &listener : _listeners) {
+            if (listener && listener->active_session_count () != 0) {
+                drained = false;
+                break;
+            }
+        }
+        if (drained)
+            return true;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+    }
+    return std::all_of (_listeners.begin (), _listeners.end (), [] (const auto &listener) {
+        return !listener || listener->active_session_count () == 0;
+    });
 }
 
 void stream_host_service_t::request_stop () noexcept

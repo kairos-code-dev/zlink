@@ -95,10 +95,11 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
         RoutingId nodeRid = RoutingId.from("spot-node");
         RoutingId spotRid = RoutingId.from("room-1");
-        options.addSpotMesh("game")
+        var mesh = options.addRouteMesh("location-game")
             .setRoutingId(nodeRid)
-            .enableRouter("inproc://location-user-spot")
-            .addSpotFactory(LocationSpot.class);
+            .listen("inproc://location-user-spot");
+        mesh.channelName("location-game");
+        mesh.addSpotFactory(LocationSpot.class);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -109,7 +110,7 @@ class ZLinkFrameworkLocationRuntimeTest {
 
             ZLinkLocationPage<ZLinkSpotLocation> rows = store.listSpotLocations(
                     new ZLinkSpotLocationFilter(
-                        "game",
+                        "location-game",
                         LocationSpot.class.getName(),
                         nodeRid,
                         ZLinkSpotKind.USER),
@@ -138,10 +139,11 @@ class ZLinkFrameworkLocationRuntimeTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(store);
         RoutingId nodeRid = RoutingId.from("actor-node");
-        options.addSpotMesh("actors")
+        var mesh = options.addRouteMesh("actors")
             .setRoutingId(nodeRid)
-            .enableRouter("inproc://location-actor-create")
-            .addActorFactory("player", LocationActorFactory.class);
+            .listen("inproc://location-actor-create");
+        mesh.channelName("actors");
+        mesh.addActorFactory("player", LocationActorFactory.class);
 
         ZLinkFrameworkRuntime runtime =
             ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory());
@@ -194,10 +196,11 @@ class ZLinkFrameworkLocationRuntimeTest {
 
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(store);
-        options.addSpotMesh("actors")
+        var mesh = options.addRouteMesh("actors-conflict")
             .setRoutingId(RoutingId.from("actor-node"))
-            .enableRouter("inproc://location-actor-conflict")
-            .addActorFactory("player", LocationActorFactory.class);
+            .listen("inproc://location-actor-conflict");
+        mesh.channelName("actors-conflict");
+        mesh.addActorFactory("player", LocationActorFactory.class);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
@@ -222,11 +225,12 @@ class ZLinkFrameworkLocationRuntimeTest {
         RoutingId spotRid = RoutingId.from("join-room");
         LocationActorFactory.last.set(null);
         LocationSpot.last.set(null);
-        options.addSpotMesh("rooms")
+        var mesh = options.addRouteMesh("rooms")
             .setRoutingId(nodeRid)
-            .enableRouter("inproc://location-actor-join")
-            .addActorFactory("player", LocationActorFactory.class)
-            .addSpotFactory(LocationSpot.class);
+            .listen("inproc://location-actor-join");
+        mesh.channelName("rooms");
+        mesh.addActorFactory("player", LocationActorFactory.class);
+        mesh.addSpotFactory(LocationSpot.class);
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {

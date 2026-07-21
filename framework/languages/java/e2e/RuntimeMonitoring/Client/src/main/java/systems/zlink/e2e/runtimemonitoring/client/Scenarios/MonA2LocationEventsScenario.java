@@ -1,39 +1,62 @@
 package systems.zlink.e2e.runtimemonitoring.client.Scenarios;
 
-import java.util.Set;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
+import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 
+/** Verifies peer admission, readiness, and lifecycle generation after restart. */
 public final class MonA2LocationEventsScenario {
     private MonA2LocationEventsScenario() {
     }
 
     public static void run(MonitoringScenarioContext context) {
-        String service = context.serviceEndpoint();
-        String serviceB = context.serviceBEndpoint();
-        MonitoringScenarioContext.ensure(!serviceB.isBlank(), "MON-A2 requires service-b HTTP endpoint");
-        int topologyBefore = context.latestEvidenceCount(
-            service, "location", "TOPOLOGY_CHANGED", "topology");
-        int entriesBefore = context.evidenceEntryCount(service);
-        context.shutdownServiceB("MON-A2 expected service-b to stop");
-        context.waitForEvidenceCountAfter(
-            service, "location", "TOPOLOGY_CHANGED", "topology", entriesBefore,
-            count -> count < topologyBefore,
-            "MON-A2 location topology did not decrease from " + topologyBefore);
+        Contracts.RuntimePeer first = context.awaitRuntimeSnapshot(
+                context.serviceEndpoint(),
+                snapshot -> snapshot.peers().stream().anyMatch(Contracts.RuntimePeer::ready),
+                "MON-A2 initial peer was not ready")
+            .peers().stream()
+            .filter(Contracts.RuntimePeer::ready)
+            .findFirst()
+            .orElseThrow();
+        int evidenceBaseline = context.evidenceEntryCount(context.serviceEndpoint());
 
-        int restoreEntries = context.evidenceEntryCount(service);
+        context.shutdownServiceB("MON-A2 service-b did not stop");
+        context.awaitRuntimeSnapshot(
+            context.serviceEndpoint(),
+            snapshot -> snapshot.peers().stream().noneMatch(Contracts.RuntimePeer::ready),
+            "MON-A2 stopped peer remained ready");
+
         context.restartServiceB();
-        try {
-            context.waitForPort(serviceB, true, "MON-A2 expected service-b to restart");
-            context.waitForEvidenceCountAfter(
-                service, "location", "TOPOLOGY_CHANGED", "topology", restoreEntries,
-                count -> count >= topologyBefore,
-                "MON-A2 location topology did not return to " + topologyBefore);
-        } catch (RuntimeException error) {
-            context.stopRestartedServiceB();
-            throw error;
-        }
-        context.waitForEvent(service, "location", Set.of(
-            "STATUS_CHANGED", "TOPOLOGY_CHANGED", "SERVICE_SUMMARY_CHANGED"));
+        context.waitForPort(
+            context.serviceBEndpoint(),
+            true,
+            "MON-A2 service-b did not restart");
+        Contracts.RuntimePeer restarted = context.awaitRuntimeSnapshot(
+                context.serviceEndpoint(),
+                snapshot -> snapshot.peers().stream().anyMatch(peer ->
+                    peer.ready()
+                        && peer.lifecycleGeneration() != first.lifecycleGeneration()),
+                "MON-A2 restarted peer generation did not change")
+            .peers().stream()
+            .filter(peer ->
+                peer.ready()
+                    && peer.lifecycleGeneration() != first.lifecycleGeneration())
+            .findFirst()
+            .orElseThrow();
+
+        MonitoringScenarioContext.ensure(
+            restarted.rid().equals(first.rid()),
+            "MON-A2 restarted peer RID changed");
+        MonitoringScenarioContext.ensure(
+            restarted.descriptorRevision() > 0
+                && !restarted.endpoint().isBlank()
+                && restarted.lastFailure() != null,
+            "MON-A2 peer diagnostics are incomplete");
+        context.waitForEvidenceAfter(
+            context.serviceEndpoint(),
+            evidenceBaseline,
+            "route-mesh-runtime",
+            "zlink.runtime.mesh_node.peer_changed");
+
         System.out.println("scenario MON-A2 passed");
     }
 }

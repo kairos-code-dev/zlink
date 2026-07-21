@@ -87,7 +87,7 @@ class tictactoe_game_spot_t : public spot_t
                      const spot_actor_send_context_t &,
                      const leave_game_req_t &request);
 
-    void on_actor_joined (const player_actor_t &actor)
+    task_t<void> on_actor_joined (const player_actor_t &actor)
     {
         const auto pending = _pending_joins.find (actor.actor_id);
         if (pending == _pending_joins.end ()) {
@@ -112,15 +112,21 @@ class tictactoe_game_spot_t : public spot_t
 
         game_state_notify_t state_notify{state.room_id, state.next_turn, state};
         publisher.publish (state_notify, actor.actor_id);
+        co_return;
     }
 
-    void on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (const player_actor_t &actor)
     {
         actors.erase (actor.actor_id);
         players.erase (actor.actor_id);
+        co_return;
     }
 
-    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    task_t<void> on_disconnect_actor (const player_actor_t &actor)
+    {
+        actor.mark_disconnected ();
+        co_return;
+    }
 
   private:
     friend class tictactoe_game_timer_handler_t;

@@ -1,6 +1,7 @@
 package systems.zlink.e2e.spotservice.play;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -27,7 +28,7 @@ import systems.zlink.e2e.spotservice.shared.UserSpot;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -71,6 +72,8 @@ public final class Program {
         ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         systems.zlink.framework.spots.SpotHandleResolver spotHandles,
+        systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime meshRuntime,
+        ZLinkRedisLocationStore locationStore,
         PlayOptions options) {
         return new EvidenceHttpServer(
             state,
@@ -78,7 +81,9 @@ public final class Program {
             options.httpEndpoint(),
             spots,
             routes,
-            spotHandles);
+            spotHandles,
+            meshRuntime,
+            locationStore);
     }
 
     @Bean
@@ -86,6 +91,10 @@ public final class Program {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = play.logDir();
+            options.configureLocations().setHeartbeatInterval(
+                Duration.ofMillis(play.locationHeartbeatMillis()));
+            options.configureLocations().setOwnerLeaseTtl(
+                Duration.ofMillis(play.locationLeaseTtlMillis()));
             options.addHandlersFromPackageOf(ActorAuthHandler.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -101,16 +110,20 @@ public final class Program {
                         error.errorReason() + "/" + error.errorAction() + "/" + error.packetName());
                     return java.util.concurrent.CompletableFuture.completedFuture(null);
                 });
-            options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(play.routeEndpoint())
-                .enableClient(play.routeAEndpoint())
-                .enableClient(play.routeBEndpoint())
-                .setRoutingId(RoutingId.from(nodeRid))
-                .addRequestHandler(
-                    RouteReqHandler.class,
-                    Contracts.RouteReq.class,
-                    Contracts.RouteRes.class,
-                    Contracts.ROUTE_PACKET);
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(play.routeEndpoint())
+                .setRoutingId(RoutingId.from(nodeRid));
+            node.channelName(Contracts.ROUTE_CHANNEL);
+            node.addRouteRequestHandler(
+                RouteReqHandler.class,
+                Contracts.RouteReq.class,
+                Contracts.RouteRes.class);
+            if (!"play-a".equals(nodeRid)) {
+                node.peerConnections().connect(RoutingId.from("play-a"), play.routeAEndpoint());
+            }
+            if (!"play-b".equals(nodeRid)) {
+                node.peerConnections().connect(RoutingId.from("play-b"), play.routeBEndpoint());
+            }
             String peerIngress = "play-a".equals(nodeRid)
                 ? play.ingressBEndpoint()
                 : play.ingressAEndpoint();
@@ -127,10 +140,6 @@ public final class Program {
                 Contracts.StateReq.class,
                 String.class,
                 "StateReq");
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-            node.enableRouter(play.spotEndpoint())
-                .enablePubSub(play.spotPubEndpoint())
-                .setRoutingId(RoutingId.from(nodeRid));
             node.addEntrySpot(ScenarioEntrySpot.class);
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
@@ -149,6 +158,7 @@ public final class Program {
                             play.tlsCertificatePath(),
                             play.tlsKeyPath());
                 }
+                stream.enableActorDispatch(Contracts.SPOT_MESH);
                 stream.registerSession(ScenarioSession.class);
             }
         };

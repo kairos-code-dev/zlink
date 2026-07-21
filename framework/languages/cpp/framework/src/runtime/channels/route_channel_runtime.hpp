@@ -15,11 +15,6 @@
 #include <string>
 #include <vector>
 
-namespace zlink::framework::detail::backend
-{
-class native_route_backend_t;
-} // namespace zlink::framework::detail::backend
-
 namespace zlink::framework::detail
 {
 
@@ -122,8 +117,6 @@ class route_channel_runtime_t
     result_t<void> complete_request (std::uint64_t request_seq);
     void set_send_backend (send_backend_t backend);
     void set_request_backend (request_backend_t backend);
-    void attach_native_backend (backend::native_route_backend_t &backend);
-
     const std::vector<route_outbound_packet_t> &outbound_packets () const noexcept;
     std::size_t pending_request_count () const noexcept;
     result_t<void> wait_until_connected (std::chrono::milliseconds timeout) const;

@@ -26,6 +26,12 @@ const unsigned char wire_magic_0 = 'Z';
 const unsigned char wire_magic_1 = 'M';
 const unsigned char wire_version = 1;
 const unsigned char wire_flag_metadata = 0x01;
+const unsigned char wire_flag_bound_session = 0x02;
+//  The actor envelope carries source_spot_rid after the target ActorRef.
+//  Keeping this optional under a flag lets version-1 peers accept both the
+//  legacy bound-session frame and the extended frame.
+const unsigned char wire_flag_source_spot_rid = 0x04;
+const unsigned char wire_instance_placement_version = 1;
 const int ingress_poll_ms = 20;
 
 //  Bounds-checked big-endian reader over one received frame.
@@ -113,6 +119,10 @@ void put_actor_ref (std::vector<unsigned char> &out_, const zlink_actor_ref_t &r
 zlink_actor_ref_t read_actor_ref (wire_reader_t &reader_, const rid_bytes_t &node_rid_);
 void put_blob16 (std::vector<unsigned char> &out_, const std::vector<unsigned char> &blob_);
 std::vector<unsigned char> read_blob16 (wire_reader_t &reader_);
+bool encode_instance_placement (std::vector<unsigned char> &out_,
+                             const instance_placement_value_t &target_);
+bool decode_instance_placement (wire_reader_t &reader_,
+                             instance_placement_value_t *target_);
 void put_record_header (std::vector<unsigned char> &out_,
                         const queued_record_t &record_,
                         uint64_t relay_serial_);
@@ -133,20 +143,28 @@ int send_frame (mesh_node_t *node_,
 int send_control (mesh_node_t *node_,
                   const zlink_routing_id_t &target_,
                   const std::vector<unsigned char> &frame_);
+int send_control_exact (mesh_node_t *node_,
+                        const zlink_routing_id_t &target_,
+                        const std::vector<unsigned char> &frame_,
+                        uint64_t expected_connection_id_);
 zlink_submit_result_t send_data_message (mesh_node_t *node_,
                                          const zlink_routing_id_t &target_,
                                          const std::vector<unsigned char> &envelope_,
                                          const std::vector<unsigned char> *metadata_,
                                          const zlink_msg_t *parts_,
                                          size_t part_count_,
-                                         zlink_send_flags_t flags_);
+                                         zlink_send_flags_t flags_,
+                                         uint64_t *connection_id_out_ = NULL,
+                                         uint64_t expected_connection_id_ = 0);
 zlink_submit_result_t send_data_message_unlocked (mesh_node_t *node_,
                                                   const zlink_routing_id_t &target_,
                                                   const std::vector<unsigned char> &envelope_,
                                                   const std::vector<unsigned char> *metadata_,
                                                   const zlink_msg_t *parts_,
                                                   size_t part_count_,
-                                                  zlink_send_flags_t flags_);
+                                                  zlink_send_flags_t flags_,
+                                                  uint64_t *connection_id_out_ = NULL,
+                                                  uint64_t expected_connection_id_ = 0);
 
 //  --- peer admission state machine (mesh_wire_admission.cpp) ----------------
 
@@ -156,11 +174,14 @@ bool apply_transport_ready_locked (peer_state_t *peer_, uint64_t connection_id_)
 void emit_peer_event (mesh_node_t *node_,
                       zlink_mesh_monitor_event_kind_t kind_,
                       const rid_bytes_t &rid_,
-                      int32_t error_);
+                      int32_t error_,
+                      uint64_t lifecycle_generation_ = 0,
+                      uint64_t descriptor_revision_ = 0);
 void handle_hello_or_admit (mesh_node_t *node_,
                             const rid_bytes_t &source_rid_,
                             const wire_descriptor_t &descriptor_,
-                            bool is_hello_);
+                            bool is_hello_,
+                            uint64_t connection_id_);
 void handle_reject (mesh_node_t *node_, const rid_bytes_t &source_rid_, uint32_t reason_);
 void handle_update (mesh_node_t *node_,
                     const rid_bytes_t &source_rid_,
@@ -173,10 +194,12 @@ void handle_peer_down (mesh_node_t *node_,
 
 bool recv_wire_message (mesh_node_t *node_,
                         rid_bytes_t *source_out_,
+                        uint64_t *connection_id_out_,
                         std::vector<zlink_msg_t> *frames_out_);
 void close_frames (std::vector<zlink_msg_t> *frames_);
 void dispatch_wire_message (mesh_node_t *node_,
                             const rid_bytes_t &source_rid_,
+                            uint64_t connection_id_,
                             std::vector<zlink_msg_t> *frames_);
 void drain_monitor (mesh_node_t *node_);
 void run_ingress_loop (mesh_node_t *node_);

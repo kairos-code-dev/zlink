@@ -197,6 +197,7 @@ internal static class MultiNodeHostFactory
                 new ScenarioActorCreateReq($"spot-only-{request.ActorId}"),
                 cancellationToken);
             var result = await actorClient.RequestToActor(
+                    ResolveSpotMeshName(options),
                     actor,
                     request)
                 .Timeout(TimeSpan.FromSeconds(10))
@@ -222,6 +223,7 @@ internal static class MultiNodeHostFactory
             var result = await MultiNodeScenario.RequestStateAsync(
                 spotsClient,
                 locator,
+                node.Rid,
                 request.SpotRid,
                 request.Delta,
                 cancellationToken);

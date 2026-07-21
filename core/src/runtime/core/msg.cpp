@@ -117,6 +117,7 @@ int zlink::msg_t::init ()
     _u.vsm.group.sgroup.group[0] = '\0';
     _u.vsm.group.type = group_type_short;
     _u.vsm.routing_id = 0;
+    _u.vsm.transport_connection_id = 0;
     return 0;
 }
 
@@ -129,12 +130,14 @@ int zlink::msg_t::init_size (size_t size_)
         _u.vsm.group.sgroup.group[0] = '\0';
         _u.vsm.group.type = group_type_short;
         _u.vsm.routing_id = 0;
+        _u.vsm.transport_connection_id = 0;
     } else {
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
         _u.lmsg.group.sgroup.group[0] = '\0';
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
+        _u.lmsg.transport_connection_id = 0;
         _u.lmsg.content = NULL;
         if (sizeof (content_t) + size_ > size_)
             _u.lmsg.content = static_cast<content_t *> (malloc (sizeof (content_t) + size_));
@@ -293,6 +296,7 @@ int zlink::msg_t::init_external_storage (
     _u.zclmsg.group.sgroup.group[0] = '\0';
     _u.zclmsg.group.type = group_type_short;
     _u.zclmsg.routing_id = 0;
+    _u.zclmsg.transport_connection_id = 0;
 
     _u.zclmsg.content = content_;
     _u.zclmsg.content->data = data_;
@@ -319,12 +323,14 @@ int zlink::msg_t::init_data (void *data_, size_t size_, msg_free_fn *ffn_, void 
         _u.cmsg.group.sgroup.group[0] = '\0';
         _u.cmsg.group.type = group_type_short;
         _u.cmsg.routing_id = 0;
+        _u.cmsg.transport_connection_id = 0;
     } else {
         _u.lmsg.type = type_lmsg;
         _u.lmsg.flags = 0;
         _u.lmsg.group.sgroup.group[0] = '\0';
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
+        _u.lmsg.transport_connection_id = 0;
         _u.lmsg.content = static_cast<content_t *> (malloc (sizeof (content_t)));
         if (!_u.lmsg.content) {
             errno = ENOMEM;
@@ -347,6 +353,7 @@ int zlink::msg_t::init_delimiter ()
     _u.delimiter.group.sgroup.group[0] = '\0';
     _u.delimiter.group.type = group_type_short;
     _u.delimiter.routing_id = 0;
+    _u.delimiter.transport_connection_id = 0;
     return 0;
 }
 
@@ -357,6 +364,7 @@ int zlink::msg_t::init_join ()
     _u.base.group.sgroup.group[0] = '\0';
     _u.base.group.type = group_type_short;
     _u.base.routing_id = 0;
+    _u.base.transport_connection_id = 0;
     return 0;
 }
 
@@ -367,6 +375,7 @@ int zlink::msg_t::init_leave ()
     _u.base.group.sgroup.group[0] = '\0';
     _u.base.group.type = group_type_short;
     _u.base.routing_id = 0;
+    _u.base.transport_connection_id = 0;
     return 0;
 }
 
@@ -764,6 +773,16 @@ int zlink::msg_t::reset_routing_id ()
 {
     _u.base.routing_id = 0;
     return 0;
+}
+
+uint64_t zlink::msg_t::transport_connection_id () const
+{
+    return _u.base.transport_connection_id;
+}
+
+void zlink::msg_t::set_transport_connection_id (uint64_t connection_id_)
+{
+    _u.base.transport_connection_id = connection_id_;
 }
 
 const char *zlink::msg_t::group () const

@@ -19,7 +19,7 @@ internal static class MonitoringProtocolTrigger
         await stream.WriteAsync(invalidGreeting);
         await stream.FlushAsync();
         client.Client.Shutdown(SocketShutdown.Send);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         var response = new byte[1];
         try
         {

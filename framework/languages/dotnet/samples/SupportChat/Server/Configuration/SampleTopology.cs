@@ -6,23 +6,14 @@ namespace SupportChat.Server.Configuration;
 public sealed record SampleTopology(
     string RedisEndpoint,
     string RedisKeyPrefix,
-    string ApiChannelEndpoint,
-    string SupportChannelEndpoint,
-    string SessionSpotEndpoint,
-    string SessionRouterEndpoint,
-    string SupportEntrySpotEndpoint,
-    string SupportEntrySpotRouterEndpoint,
+    string MeshEndpoint,
     string StreamEndpoint,
-    RoutingId SessionRouterRid,
-    RoutingId SessionPubRid,
-    RoutingId SupportEntryRid)
+    RoutingId MeshRoutingId)
 {
     public SampleSessionNode PrimarySession => new(
-        SessionSpotEndpoint,
-        SessionRouterEndpoint,
+        MeshEndpoint,
         StreamEndpoint,
-        SessionRouterRid,
-        SessionPubRid);
+        MeshRoutingId);
 
     public static SampleRuntimeConfiguration LoadApi(string[] args) => Load(args, "api");
 
@@ -44,16 +35,15 @@ public sealed record SampleTopology(
         var topology = new SampleTopology(
             settings.RedisEndpoint,
             settings.RedisKeyPrefix,
-            settings.ApiChannelEndpoint,
-            settings.SupportChannelEndpoint,
-            settings.SessionSpotEndpoint,
-            settings.SessionRouterEndpoint,
-            settings.SupportEntrySpotEndpoint,
-            settings.SupportEntrySpotRouterEndpoint,
+            settings.MeshEndpoint,
             settings.StreamEndpoint,
-            RoutingId.From("3101"),
-            RoutingId.From("3102"),
-            RoutingId.From("4201"));
+            RoutingId.From(role switch
+            {
+                "api" => "supportchat-api",
+                "support" => "supportchat-support",
+                "session" => "supportchat-session",
+                _ => throw new InvalidOperationException($"Unknown SupportChat role '{role}'.")
+            }));
         return new SampleRuntimeConfiguration(topology, settings.LogDirectory);
     }
 }
@@ -65,12 +55,7 @@ public sealed class SampleConfiguration
     public string LogDirectory { get; init; } = "";
     public string RedisEndpoint { get; init; } = "";
     public string RedisKeyPrefix { get; init; } = "";
-    public string ApiChannelEndpoint { get; init; } = "";
-    public string SupportChannelEndpoint { get; init; } = "";
-    public string SessionSpotEndpoint { get; init; } = "";
-    public string SessionRouterEndpoint { get; init; } = "";
-    public string SupportEntrySpotEndpoint { get; init; } = "";
-    public string SupportEntrySpotRouterEndpoint { get; init; } = "";
+    public string MeshEndpoint { get; init; } = "";
     public string StreamEndpoint { get; init; } = "";
 
     public void Validate(string role)
@@ -78,19 +63,14 @@ public sealed class SampleConfiguration
         Require(LogDirectory, nameof(LogDirectory));
         Require(RedisEndpoint, nameof(RedisEndpoint));
         Require(RedisKeyPrefix, nameof(RedisKeyPrefix));
+        Require(MeshEndpoint, nameof(MeshEndpoint));
         switch (role)
         {
             case "api":
-                Require(ApiChannelEndpoint, nameof(ApiChannelEndpoint));
                 break;
             case "support":
-                Require(SupportChannelEndpoint, nameof(SupportChannelEndpoint));
-                Require(SupportEntrySpotEndpoint, nameof(SupportEntrySpotEndpoint));
-                Require(SupportEntrySpotRouterEndpoint, nameof(SupportEntrySpotRouterEndpoint));
                 break;
             case "session":
-                Require(SessionSpotEndpoint, nameof(SessionSpotEndpoint));
-                Require(SessionRouterEndpoint, nameof(SessionRouterEndpoint));
                 Require(StreamEndpoint, nameof(StreamEndpoint));
                 break;
             default:
@@ -106,8 +86,6 @@ public sealed class SampleConfiguration
 }
 
 public sealed record SampleSessionNode(
-    string PubEndpoint,
-    string RouterEndpoint,
+    string MeshEndpoint,
     string StreamEndpoint,
-    RoutingId RoutingId,
-    RoutingId PublisherRoutingId);
+    RoutingId RoutingId);

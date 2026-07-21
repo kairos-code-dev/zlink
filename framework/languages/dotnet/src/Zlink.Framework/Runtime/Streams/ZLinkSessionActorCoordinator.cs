@@ -6,10 +6,16 @@ using Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkSessionActorCoordinator(
     ZLinkFrameworkRuntime runtime,
-    IZLinkStream stream)
+    IZLinkStream stream,
+    string? actorDispatchMeshName)
 {
-    private readonly ZLinkSessionActorBindingRegistry _bindings = new(runtime);
+    private readonly ZLinkSessionActorBindingRegistry _bindings =
+        new(runtime, actorDispatchMeshName);
     private readonly ZLinkBoundActorRelaySender _relaySender = new(runtime.Registration.DefaultRequestTimeout);
+
+    private string ActorDispatchMeshName => actorDispatchMeshName
+        ?? throw new ZLinkConfigurationException(
+            "STREAM Actor dispatch requires EnableActorDispatch(meshName).");
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
@@ -24,10 +30,10 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             var actorRef = ResolveActorRefForBinding(actor);
             await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
-            return await _bindings.BindAsync(
-                context,
-                actorRef.ToNative(),
-                cancellationToken).ConfigureAwait(false);
+                return await _bindings.BindAsync(
+                    context,
+                    actorRef.ToNative(),
+                    cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -87,7 +93,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                 return await _bindings.BindAsync(
                     context,
                     actor,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    remoteBindingConfirmed: runtime.IsStarted && !nativeBound).ConfigureAwait(false);
             }
             catch (Exception bindingFailure)
             {
@@ -114,7 +121,7 @@ internal sealed class ZLinkSessionActorCoordinator(
     private bool IsLocalActorRef(ActorRef actor)
     {
         if (!runtime.IsStarted) return true;
-        return actor.NodeRid == runtime.GetActorClientSpotNode().RoutingId;
+        return actor.NodeRid == runtime.GetMeshNodeRuntime(ActorDispatchMeshName).Node.RoutingId;
     }
 
     private async ValueTask ConfirmRemoteBindingAsync(
@@ -127,7 +134,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (!runtime.IsStarted) return;
         if (context.RoutingId is not { } sessionRid)
             throw new InvalidOperationException("Actor session binding requires a stream routing id.");
-        var sessionNodeRid = runtime.GetActorClientSpotNode().RoutingId;
+        var sessionNodeRid = runtime.GetMeshNodeRuntime(ActorDispatchMeshName).Node.RoutingId;
         if (actor.NodeRid == sessionNodeRid) return;
         // The bind confirm can race auto-discovery admission of the actor's
         // node at startup; retriable route failures retry within the request
@@ -139,7 +146,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             try
             {
                 response = await new ZLinkActorClient(runtime)
-                    .RequestToActor(actor, new ZLinkRemoteSessionBindRequest(
+                    .RequestToActor(ActorDispatchMeshName, actor, new ZLinkRemoteSessionBindRequest(
                         sessionNodeRid.ToBytes().ToArray(),
                         sessionRid.ToBytes().ToArray()))
                     .Timeout(runtime.Registration.DefaultRequestTimeout)
@@ -193,18 +200,22 @@ internal sealed class ZLinkSessionActorCoordinator(
                 : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
                     .ConfigureAwait(false), false);
 
-            if (current is null && !rowPresent)
+            if (current is null && !rowPresent && !actorRef.AwaitingLocationObservation)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"Actor '{actorRef.ActorId}' is no longer available.");
 
-            if (current is { } resolved && !ActorRefsEqual(resolved, actorRef.Ref))
+            if (current is { } resolved)
             {
-                actorRef = (ZLinkSessionActor)await BindOrGetActorAsync(
-                        actorRef.Context,
-                        resolved,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                actorRef.MarkLocationObserved();
+                if (!ActorRefsEqual(resolved, actorRef.Ref))
+                {
+                    actorRef = (ZLinkSessionActor)await BindOrGetActorAsync(
+                            actorRef.Context,
+                            resolved,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
         }
 
@@ -238,7 +249,7 @@ internal sealed class ZLinkSessionActorCoordinator(
     {
         if (actorRef.Context.RoutingId is not { } sessionRid)
             throw new InvalidOperationException("Actor session relay requires a stream routing id.");
-        var sessionNodeRid = runtime.GetActorClientSpotNode().RoutingId;
+        var sessionNodeRid = runtime.GetMeshNodeRuntime(ActorDispatchMeshName).Node.RoutingId;
         var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
         var bodyBytes = payload.ToArray();
         var target = actorRef.Ref.ToBackend();
@@ -247,10 +258,12 @@ internal sealed class ZLinkSessionActorCoordinator(
                 {
                     using var headerPart = Message.From(headerBytes);
                     if (!runtime.ForwardActorBoundSessionPart(
+                            ActorDispatchMeshName,
                             target, sessionNodeRid, sessionRid, headerPart, true, SendFlags.DontWait))
                         return false;
                     using var bodyPart = Message.From(bodyBytes);
                     return runtime.ForwardActorBoundSessionPart(
+                        ActorDispatchMeshName,
                         target, sessionNodeRid, sessionRid, bodyPart, false, SendFlags.DontWait);
                 },
                 runtime.Registration.DefaultRequestTimeout,
@@ -267,6 +280,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
         return runtime.NotifyActorDisconnectedAsync(
+            actorDispatchMeshName,
             actorRef.Ref,
             actorRef.BindingToken,
             cancellationToken);

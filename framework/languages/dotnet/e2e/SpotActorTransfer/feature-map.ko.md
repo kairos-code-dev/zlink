@@ -20,10 +20,15 @@
 | ST-E2 | 구현 | 실패한 transfer가 기존 bound session route를 바꾸지 않음을 검증한다. |
 | ST-F1 | 구현 | handoff 중 도착한 packet의 순서와 target replay를 검증한다. |
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
-| ST-F3 | core 대기 | bound session frame이 core의 `SendBoundActor`에서 actor record로 나타나는 구간에서 순서가 간헐적으로 뒤집힌다. core 수정 뒤 다시 실행한다. |
-| ST-F4 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
-| ST-F5 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
-| ST-F6 | 재검 대기 | 최신 전체 실행이 ST-F3에서 중단되어 현재 source로 통과를 확인하지 못했다. |
+| ST-F3 | 구현 | 같은 session의 `S1,S2,S3,S4` 순서와 다른 session 진행 격리를 묶음 반복 `logs/20260720-042454-2074240`, `logs/20260720-042515-2075011`, `logs/20260720-042523-2076425`에서 검증했다. |
+| ST-F4 | 구현 | forwarding window 안의 `straggler_forward`와 window 뒤 `stale_fail_fast`/`ActorLocationStale`를 같은 세 실행에서 검증했다. |
+| ST-F5 | 구현 | node별 단일 next-hop mapping, 축출, stale ref 거부와 최종 target 전달을 같은 세 실행에서 검증했다. |
+| ST-F6 | 구현 | handoff 중 request의 원래 caller completion 상관관계와 늦은 reply timeout 격리를 같은 세 실행에서 검증했다. |
+
+최신 전체 실행 `logs/20260720-044205-2109114`에서 기본 17개 시나리오와
+별도 process generation을 사용하는 `ST-B2`, `ST-C2`, `ST-C1`이 모두 통과했다.
+`ST-C1`은 공통 스펙에 따라 target의 `pending_admission_expired` marker를
+30초 이내에서 기다리며, 전체 runtime drain을 admission 정리 증거로 대신 사용하지 않는다.
 
 `run_e2e.sh all`은 모든 행을 실행한다. process 종료가 필요한 `ST-B2`, `ST-C1`, `ST-C2`는
 각각 별도 server generation을 시작하며, 나머지 행도 client selector와 evidence marker를 통해

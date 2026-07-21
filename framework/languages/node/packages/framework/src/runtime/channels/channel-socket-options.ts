@@ -1,15 +1,14 @@
+import type { ZLinkSocketConfig } from '../../contracts';
 import type {
-  ZLinkChannelRuntimeOptions,
-  ZLinkClientServerChannelRuntimeOptions,
-  ZLinkRouteMeshChannelRuntimeOptions,
-  ZLinkSocketConfig
-} from '../../contracts';
+  ZLinkSocketConfig as ZLinkRuntimeSocketConfig
+} from '../../contracts/Configuration';
 import {
   ZLinkConfigurationException
 } from '../configuration';
 import type {
   ZLinkBackendRouterSocket
 } from '../backend/contracts';
+import { requireValidSendTimeoutMs } from '../../contracts/Configuration/SendTimeoutValidation';
 
 interface ZLinkChannelSocketOptionsRuntime {
   clientServerServerSocket(channelName: string): ZLinkBackendRouterSocket;
@@ -65,7 +64,7 @@ class ZLinkLiveSocketConfig implements ZLinkSocketConfig {
   }
 }
 
-class ZLinkClientServerRuntimeOptions implements ZLinkClientServerChannelRuntimeOptions {
+class ZLinkServerRuntimeOptions {
   constructor(private readonly serverSocket: ZLinkSocketConfig) {}
 
   configureServerSocket(): ZLinkSocketConfig {
@@ -73,7 +72,7 @@ class ZLinkClientServerRuntimeOptions implements ZLinkClientServerChannelRuntime
   }
 }
 
-class ZLinkRouteMeshRuntimeOptions implements ZLinkRouteMeshChannelRuntimeOptions {
+class ZLinkRouteRuntimeOptions {
   constructor(private readonly socket: ZLinkSocketConfig) {}
 
   configureSocket(): ZLinkSocketConfig {
@@ -81,21 +80,21 @@ class ZLinkRouteMeshRuntimeOptions implements ZLinkRouteMeshChannelRuntimeOption
   }
 }
 
-export class DefaultZLinkChannelRuntimeOptions implements ZLinkChannelRuntimeOptions {
+export class DefaultZLinkChannelRuntimeOptions {
   constructor(private readonly manager: () => ZLinkChannelSocketOptionsRuntime | undefined) {}
 
-  clientServerChannel(channelName: string): ZLinkClientServerChannelRuntimeOptions {
+  serverChannel(channelName: string): ZLinkRuntimeSocketConfig {
     requireChannelName(channelName);
-    return new ZLinkClientServerRuntimeOptions(
+    return new ZLinkServerRuntimeOptions(
       new ZLinkLiveSocketConfig(this.requireManager().clientServerServerSocket(channelName))
-    );
+    ).configureServerSocket();
   }
 
-  routeMeshChannel(channelName: string): ZLinkRouteMeshChannelRuntimeOptions {
+  routeChannel(channelName: string): ZLinkRuntimeSocketConfig {
     requireChannelName(channelName);
-    return new ZLinkRouteMeshRuntimeOptions(
+    return new ZLinkRouteRuntimeOptions(
       new ZLinkLiveSocketConfig(this.requireManager().routeMeshSocket(channelName))
-    );
+    ).configureSocket();
   }
 
   private requireManager(): ZLinkChannelSocketOptionsRuntime {
@@ -126,9 +125,7 @@ function validateHighWaterMark(value: number, label: string): void {
 }
 
 function validateSendTimeout(value: number): void {
-  if (!Number.isInteger(value) || value < -1) {
-    throw new ZLinkConfigurationException('sendTimeoutMs must be -1 or a non-negative integer.');
-  }
+  requireValidSendTimeoutMs('sendTimeoutMs', value);
 }
 
 function validateMaxMessageSize(value: number): void {

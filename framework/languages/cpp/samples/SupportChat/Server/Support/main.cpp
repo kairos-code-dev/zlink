@@ -322,13 +322,14 @@ class conversation_spot_t : public spot_t
         return spot_actor_join_response_t::accept (join_conversation_res_t{admission_state});
     }
 
-    void on_actor_joined (support_user_actor_t &actor)
+    task_t<void> on_actor_joined (support_user_actor_t &actor)
     {
         if (_pending_actor_joins.erase (actor.actor_id) == 0) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "accepted support actor admission is missing");
         }
         (void) join_actor (actor);
+        co_return;
     }
 
     join_conversation_res_t join (support_user_actor_t &actor,
@@ -529,7 +530,7 @@ class support_entry_spot_t : public entry_spot_t
         apply_actor_profile (actor, request.decode<ensure_support_user_actor_req_t> ());
     }
 
-    void on_actor_joined (support_user_actor_t &actor)
+    task_t<void> on_actor_joined (support_user_actor_t &actor)
     {
         const auto pending = _pending_profiles.find (actor.actor_id);
         if (pending != _pending_profiles.end ()) {
@@ -540,6 +541,7 @@ class support_entry_spot_t : public entry_spot_t
             _actors[actor.actor_id] = &actor;
             _runtime.remember_live_actor (actor);
         }
+        co_return;
     }
 
     set_agent_available_res_t set_available (support_user_actor_t &actor,
@@ -921,15 +923,14 @@ int main (int argc, char **argv)
           .listen (topology.support_http_url)
           .map_health ("/health")
           .map_post<supportchat_assert_handler_t> ("/self-check/assert");
-        options.add_route_mesh ("supportchat.session.actor.route")
-          .enable_server (topology.support_actor_route_endpoint)
-          .enable_client ()
-          .set_routing_id (zlink::routing_id_t::from ("supportchat-support"));
-        options.add_spot_mesh ("supportchat.support.spot")
-          .accept_route_mesh ("supportchat.session.actor.route")
-          .set_routing_id (zlink::routing_id_t::from (supportchat_support_node))
-          .enable_router (topology.support_spot_router_endpoint)
-          .enable_pub_sub (topology.support_spot_endpoint)
+        auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
+        actor_route.listen (topology.support_actor_route_endpoint)
+          .set_routing_id (zlink::routing_id_t::from ("supportchat-support"))
+          .channel_name ("supportchat.session.actor.route");
+        auto support_spot = options.add_route_mesh ("supportchat.support.spot");
+        support_spot.channel_name ("supportchat.session.actor.route");
+        support_spot.set_routing_id (zlink::routing_id_t::from (supportchat_support_node))
+          .listen (topology.support_spot_router_endpoint)
           .add_entry_spot<support_entry_spot_t> (
             [runtime_ptr] { return std::make_shared<support_entry_spot_t> (*runtime_ptr); })
           .add_spot<conversation_spot_t> (

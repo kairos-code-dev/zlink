@@ -37,6 +37,14 @@ export class RedisStoreKeys {
     return `${this.keyPrefix}:ridalloc:${groupName}`;
   }
 
+  actorTransfer(actorRowKey: string, transferId: string): string {
+    return `${this.keyPrefix}:transfer:${actorRowKey}:${transferId}`;
+  }
+
+  actorTransferByActor(actorRowKey: string): string {
+    return `${this.keyPrefix}:transfer-by-actor:${actorRowKey}`;
+  }
+
   stamp(tag: string, meshName: string | undefined): string {
     return meshName === undefined
       ? `${this.keyPrefix}:stamp:${tag}`

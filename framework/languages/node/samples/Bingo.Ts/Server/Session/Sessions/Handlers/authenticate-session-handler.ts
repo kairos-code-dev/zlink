@@ -48,7 +48,11 @@ class SessionAuthenticator {
     const request = payload.decode<AuthenticateReq>(Object as never);
     console.log(`session-auth request api actor=${request.accessToken}`);
     const authenticated = await this.zlinkClient
-        .requestToChannel(SampleNames.apiChannel, new AuthenticatePlayerReq({ accessToken: request.accessToken }))
+        .requestToChannel(
+          SampleNames.roomSpotNode,
+          SampleNames.apiChannel,
+          new AuthenticatePlayerReq({ accessToken: request.accessToken })
+        )
         .timeout(500)
         .submit<AuthenticatePlayerRes>();
     console.log(`session-auth api accepted=${authenticated.accepted} actor=${authenticated.actorId ?? '-'}`);
@@ -71,7 +75,10 @@ class SessionAuthenticator {
       displayName: authenticated.displayName,
       preferredActorNodeRid: preferredPlayNodeRid
     });
-    const playEntrySpot = await this.spotHandles.resolveSpotHandle(preferredPlayNodeRid);
+    const playEntrySpot = await this.spotHandles.resolveSpotHandle(
+      SampleNames.roomSpotNode,
+      preferredPlayNodeRid
+    );
     if (playEntrySpot === undefined) {
       throw new Error(`Play entry spot '${preferredPlayNodeRid}' was not found.`);
     }

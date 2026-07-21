@@ -1,5 +1,7 @@
 package systems.zlink.framework.configuration;
 
 public interface ZLinkMetadataPolicyBuilder {
-    void addForwardedMetadataKey(String key);
+    ZLinkMetadataPolicyBuilder allowSessionToActor(String key);
+
+    ZLinkMetadataPolicyBuilder allowActorToSession(String key);
 }

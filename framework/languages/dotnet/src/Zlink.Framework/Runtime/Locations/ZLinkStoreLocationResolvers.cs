@@ -69,14 +69,17 @@ internal sealed class ZLinkStoreLocationResolvers :
             "ZLinkSpotLocation-resolver-read",
             cancellationToken,
             storeToken => _spotStore.ResolveSpotAsync(key, storeToken)).ConfigureAwait(false);
-        // A confirmed store miss ends the identity's observed lifecycle: a
-        // re-created spot restarts its generation axis and must resolve.
-        if (raw is null) _observed.ForgetSpot(key);
-        var row = await _liveRows.ResolveAsync(
+        var (row, liveRowPresent) = await _liveRows.ResolveWithPresenceAsync(
             raw,
             static row => row.OwnerId,
             row => _observed.AcceptSpot(row),
             cancellationToken).ConfigureAwait(false);
+        // A missing row and a row whose owner lease expired both end the
+        // incarnation. Storage can retain the expired row until a successor
+        // claims it, so raw presence alone must not preserve the old floor.
+        // A live but older replica row still reports LiveRowPresent=true and
+        // therefore cannot reset the floor.
+        if (!liveRowPresent) _observed.ForgetSpot(key);
         if (row is null)
         {
             await _events.SpotResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
@@ -108,9 +111,6 @@ internal sealed class ZLinkStoreLocationResolvers :
             "ZLinkActorLocation-resolver-read",
             cancellationToken,
             storeToken => _actorStore.ResolveActorAsync(key, storeToken)).ConfigureAwait(false);
-        // A confirmed store miss ends the identity's observed lifecycle: a
-        // re-created actor restarts its generation axes and must resolve.
-        if (raw is null) _observed.ForgetActor(key);
         var (row, liveRowPresent) = await _liveRows.ResolveWithPresenceAsync(
             raw,
             static row => row.OwnerId,
@@ -119,6 +119,11 @@ internal sealed class ZLinkStoreLocationResolvers :
             // resolvable reference (40-location-runtime §6).
             row => row.ActorRef.Generation > 0 && _observed.AcceptActor(row),
             cancellationToken).ConfigureAwait(false);
+        // An expired owner ends the incarnation even when its stale row remains
+        // in storage. Forget the old membership/generation floor so the next
+        // owner can publish its fresh per-instance axes. Do not forget for a
+        // live lagging replica row: LiveRowPresent remains true in that case.
+        if (!liveRowPresent) _observed.ForgetActor(key);
         if (row is null)
         {
             await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);

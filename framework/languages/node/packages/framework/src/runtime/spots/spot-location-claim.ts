@@ -10,9 +10,9 @@ import type { ZLinkLocationLifecycle } from '../locations';
 
 interface ZLinkSpotLocationClaimOptions {
   readonly lifecycle?: ZLinkLocationLifecycle;
-  readonly meshName?: string;
   readonly nodeRid?: RoutingId;
-  readonly nodeRidProvider?: () => RoutingId | undefined;
+  readonly nodeRidProvider?: (meshName: string) => RoutingId | undefined;
+  readonly nodeGenerationProvider?: (meshName: string) => bigint | undefined;
 }
 
 export type ZLinkSpotLocationClaimResult =
@@ -23,19 +23,23 @@ export class ZLinkSpotLocationClaim {
   constructor(private readonly options: ZLinkSpotLocationClaimOptions) {}
 
   async claimUserSpot(
+    meshName: string,
     spotRid: RoutingId,
-    spotTypeName: string
+    spotTypeName: string,
+    spotGeneration: bigint
   ): Promise<ZLinkSpotLocationClaimResult> {
     if (this.options.lifecycle === undefined) {
       return { claimed: true, meshName: '' };
     }
-    const meshName = this.requireMeshName();
+    requireMeshName(meshName);
     const status = await this.options.lifecycle.claimSpot(
       meshName,
       spotRid,
       spotTypeName,
-      this.requireNodeRid(),
-      ZLinkSpotKind.User
+      this.requireNodeRid(meshName),
+      ZLinkSpotKind.User,
+      requirePositiveGeneration(spotGeneration, 'Spot'),
+      requirePositiveGeneration(this.options.nodeGenerationProvider?.(meshName), 'MeshNode')
     );
     if (status === ZLinkLocationWriteStatus.RejectedConflict) {
       return { claimed: false, state: 'existing', meshName };
@@ -49,6 +53,10 @@ export class ZLinkSpotLocationClaim {
     return { claimed: true, meshName };
   }
 
+  get enabled(): boolean {
+    return this.options.lifecycle !== undefined;
+  }
+
   async release(meshName: string, spotRid: RoutingId): Promise<void> {
     if (this.options.lifecycle === undefined) {
       return;
@@ -56,23 +64,24 @@ export class ZLinkSpotLocationClaim {
     await this.options.lifecycle.releaseSpot(meshName, spotRid);
   }
 
-  meshNameForRelease(): string {
-    return this.options.lifecycle === undefined ? '' : this.requireMeshName();
-  }
-
-  private requireMeshName(): string {
-    const meshName = this.options.meshName;
-    if (meshName === undefined || meshName.length === 0) {
-      throw new ZLinkConfigurationException('Location spot claim requires a mesh name.');
-    }
-    return meshName;
-  }
-
-  private requireNodeRid(): RoutingId {
-    const nodeRid = this.options.nodeRidProvider?.() ?? this.options.nodeRid;
+  private requireNodeRid(meshName: string): RoutingId {
+    const nodeRid = this.options.nodeRidProvider?.(meshName) ?? this.options.nodeRid;
     if (nodeRid === undefined) {
       throw new ZLinkConfigurationException('Location spot claim requires a node routing id.');
     }
     return nodeRid;
   }
+}
+
+function requireMeshName(meshName: string): void {
+  if (meshName.length === 0) {
+    throw new ZLinkConfigurationException('Location spot claim requires a mesh name.');
+  }
+}
+
+function requirePositiveGeneration(generation: bigint | undefined, owner: string): bigint {
+  if (generation === undefined || generation <= 0n) {
+    throw new ZLinkConfigurationException(`${owner} lifecycle generation is not available.`);
+  }
+  return generation;
 }

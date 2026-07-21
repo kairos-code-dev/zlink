@@ -37,6 +37,8 @@ struct endpoint_uri_pair_t
 endpoint_uri_pair_t make_unconnected_connect_endpoint_pair (const std::string &endpoint_);
 
 endpoint_uri_pair_t make_unconnected_bind_endpoint_pair (const std::string &endpoint_);
+
+uint64_t allocate_connection_id ();
 }
 
 #endif

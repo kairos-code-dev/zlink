@@ -6,6 +6,7 @@ export interface ZLinkHandlerContext {
   readonly packetName?: string;
   readonly contentType?: string;
   readonly connectionAborted?: AbortSignal;
+  readonly metadata: ZLinkMessageMetadata;
 }
 
 export interface ZLinkRequestContext extends ZLinkHandlerContext {}

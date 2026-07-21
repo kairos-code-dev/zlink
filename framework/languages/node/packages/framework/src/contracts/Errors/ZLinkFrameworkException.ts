@@ -7,9 +7,11 @@ export class ZLinkFrameworkException extends Error {
   ) {
     super(message, { cause });
     this.name = 'ZLinkFrameworkException';
+    this.code = ZLINK_FRAMEWORK_ERROR_KIND_VALUES[kind];
     this.isRetriable = isRetriable ?? isZLinkFrameworkErrorRetriableByDefault(kind);
   }
 
+  public readonly code: number;
   public readonly isRetriable: boolean;
 }
 

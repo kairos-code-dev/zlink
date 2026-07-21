@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[스펙 목차](README.ko.md) | [이전: C++ framework 인터페이스](02-framework-interfaces.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ exact interface](interfaces/README.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [스펙 목차](../../../../common/README.ko.md)
@@ -29,7 +29,7 @@ DI handler
     create_game_http_req_t request)
       |
       v
-request_client_t.request(mesh_name, play_channel, ...).async<create_game_res_t>()
+request_client_t.request(play_channel, ...).async<create_game_res_t>()
       |
       v
 HTTP JSON response
@@ -68,11 +68,12 @@ auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([&](auto &options) {
     auto mesh = options.add_route_mesh(sample_names_t::application_mesh)
-      .listen(topology.api_channel_endpoint)
+      .listen(7300)
       .set_routing_id(topology.application_rid);
-    mesh.channel_name(sample_names_t::api_channel)
-      .use_handler_group("api");
-    mesh.channel_name(sample_names_t::play_channel);
+    mesh.channel(sample_names_t::api_channel)
+      .server()
+      .add_handler_group("api");
+    mesh.channel(sample_names_t::play_channel).client();
 
     options.http()
       .listen(topology.api_http_endpoint)
@@ -134,8 +135,7 @@ task_t<create_game_http_res_t>
 create_game_http_handler_t::handle(const create_game_http_req_t &request)
 {
     auto room = co_await _client
-      .request (sample_names_t::application_mesh,
-                sample_names_t::play_channel,
+      .request (sample_names_t::play_channel,
                 create_game_req_t{request.game_name})
       .async<create_game_res_t> ();
     co_return create_game_http_res_t {room.room_id,
@@ -596,13 +596,13 @@ framework의 `http_request_t`, `http_response_t`와 `http_context_t`만 사용�
   DTO binding, DI handler 실행, JSON response, status mapping을 검증한다
 - handler shape matrix: DTO, DTO+context, DTO+request, response 반환, raw request의 sync/async
   shape를 모두 호출한다
-- raw HTTP request: `http_request_t`에 method, target, header, route/query, body가 들어간다
+- raw HTTP request: `http_request_t`가 method, target, header, route/query, body를 포함한다
 - raw HTTP response: `http_response_t`의 status, header, content type, body가 그대로 반환된다
 - ambiguous handler shape: 모호한 `handle(...)` 조합은 static assertion 또는 startup validation 실패
 - response precedence: `http_response_t`, `json_response`, context header/status, DTO 기본 응답
   우선순위를 고정한다
-- route parameter binding: `/games/{gameId}`가 DTO field로 들어간다
-- query string binding: `?page=1`이 DTO field로 들어간다
+- route parameter binding: `/games/{gameId}`를 DTO field에 할당한다
+- query string binding: `?page=1`을 DTO field에 할당한다
 - body/route/query merge 우선순위 고정
 - JSON binding: request body를 DTO로 변환하고 reply DTO를 JSON으로 반환
 - DI: HTTP handler가 `request_client_t`를 생성자 주입으로 받는다
@@ -635,5 +635,5 @@ Handler shape regression matrix:
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[스펙 목차](README.ko.md) | [이전: C++ framework 인터페이스](02-framework-interfaces.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
+[스펙 목차](README.ko.md) | [이전: C++ exact interface](interfaces/README.ko.md) | [다음: C++ 내장 HTTP 서버](61-embedded-http-server.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

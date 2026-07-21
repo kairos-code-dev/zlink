@@ -182,6 +182,21 @@ request_result_t mesh_node_t::shutdown (std::chrono::milliseconds timeout_)
       zlink_mesh_node_shutdown (_impl->handle, zlink::detail::native_timeout_ms (timeout_)));
 }
 
+submit_result_t mesh_node_t::send_bound_session (const actor_ref_t &actor_,
+                                                 uint64_t expected_binding_generation_,
+                                                 const std::vector<message_t> &parts_,
+                                                 send_flags_t flags_)
+{
+    const int rc = zlink::detail::submit_borrowed_message_array (
+      parts_, [&] (zlink_msg_t *native_, size_t count_) {
+          return zlink_mesh_node_actor_send_bound_session (
+            _impl->handle, zlink::detail::actor_ref_native (actor_),
+            expected_binding_generation_, native_, count_,
+            static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
+      });
+    return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
+}
+
 close_result_t mesh_node_t::close ()
 {
     if (!(_impl && _impl->handle))
@@ -573,6 +588,24 @@ int32_t mesh_node_t::router_hwm () const
     return value;
 }
 
+void mesh_node_t::set_max_message_size (int64_t max_message_size_)
+{
+    zlink::detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_set_option (
+        _impl->handle, ZLINK_OPT_MAXMSGSIZE, &max_message_size_,
+        sizeof (max_message_size_))));
+}
+
+int64_t mesh_node_t::max_message_size () const
+{
+    int64_t value = -1;
+    size_t size = sizeof (value);
+    zlink::detail::throw_if_failed<config_error_t> (
+      static_cast<config_result_t> (zlink_get_option (
+        _impl->handle, ZLINK_OPT_MAXMSGSIZE, &value, &size)));
+    return value;
+}
+
 void mesh_node_t::set_mailbox_message_budget (uint64_t budget_)
 {
     zlink::detail::throw_if_failed<config_error_t> (static_cast<config_result_t> (
@@ -839,8 +872,7 @@ submit_result_t mesh_node_publisher_t::publish (const std::string &channel_name_
             _impl->handle, channel_name_.c_str (), topic_.c_str (), meta_ptr, native_, count_,
             &native_detail, static_cast<zlink_send_flags_t> (static_cast<int> (flags_)));
       });
-    if (rc == ZLINK_SUBMIT_OK)
-        detail::store_publish_detail (detail_out_, native_detail);
+    detail::store_publish_detail (detail_out_, native_detail);
     return static_cast<submit_result_t> (rc == -1 ? ZLINK_SUBMIT_INVALID_ARGUMENT : rc);
 }
 

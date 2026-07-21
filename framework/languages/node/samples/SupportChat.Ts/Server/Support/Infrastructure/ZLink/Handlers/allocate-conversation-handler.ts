@@ -4,6 +4,7 @@ import {
   zlinkRequestHandler
 } from '@zlink-systems/nestjs';
 import { ConversationStatuses, PacketNames } from '../../../../../Shared/Contracts/messages';
+import { SampleNames } from '../../../../Configuration/sample-names';
 import { SupportConversationAllocator } from '../../../Application/ConversationAssignment/support-conversation-allocator';
 import { ConversationSpot } from '../Spots/ConversationSpot/conversation-spot';
 import type { ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
@@ -20,7 +21,7 @@ class AllocateConversationHandler implements ZLinkRequestHandler<AllocateConvers
   async handle(request: AllocateConversationReq): Promise<AllocateConversationRes> {
     const conversation = this.allocator.allocate(request.customerActorId, request.customerDisplayName, request.subject);
     const initial = conversation.snapshot();
-    await this.spots.getOrCreate(ConversationSpot, initial.conversationId, {
+    await this.spots.getOrCreate(SampleNames.conversationSpotMesh, ConversationSpot, initial.conversationId, {
       conversationId: initial.conversationId,
       customerActorId: initial.customerActorId,
       customerDisplayName: request.customerDisplayName,

@@ -46,9 +46,6 @@
 | `ZLINK_OPT_CONFLATE` | `0` | 비활성 |
 | `ZLINK_OPT_INVERT_MATCHING` | `0` | 비활성 |
 | `ZLINK_STREAM_OPT_NOTIFY` | `0` | 비활성 |
-| `ZLINK_OPT_HEARTBEAT_IVL` | `0` | 비활성 |
-| `ZLINK_OPT_HEARTBEAT_TTL` | `0` | 비활성 |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | `-1` | heartbeat 활성 시 interval fallback |
 | `ZLINK_OPT_TCP_KEEPALIVE` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_KEEPALIVE_CNT` | `-1` | OS 기본값 |
 | `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | `-1` | OS 기본값 |

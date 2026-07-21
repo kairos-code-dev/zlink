@@ -5,7 +5,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 10.0.0의 public Spot 계약 위에 room·stage·zone 같은 상위 실행 모델을 만드는
+이 문서는 ZLink Framework 11.0.0의 public Spot 계약 위에 room·stage·zone 같은 상위 실행 모델을 만드는
 공통 계약을 정의한다. 이 문서는 “Stage wrapper가 Spot 소유 상태를 한 turn에서 안전하게 유지하면서
 Actor의 독립 실행 경계를 어떻게 보존하는가?”라는 질문에 답한다.
 
@@ -110,7 +110,7 @@ Stage wrapper는 [03 메시지 모델](../03-message-model.ko.md)의 immutable m
 - Spot direct, Logical Multicast, timer와 explicit Stage operation이 같은 Spot turn을 보존한다.
 - Actor payload가 Stage Spot callback이나 Spot application queue를 거치지 않는다.
 - Actor handler가 Stage state를 바꿀 때 명시적인 Spot 호출을 사용한다.
-- join·leave와 lifecycle control만 Spot control claim에 들어간다.
+- Spot control claim에는 join·leave와 lifecycle control만 포함한다.
 - request continuation이 transport thread에서 Stage state를 직접 변경하지 않는다.
 - Stage wrapper가 Framework의 public Spot·Actor·timer·location 표면만 사용한다.
 - Spot 종료 뒤 신규 timer와 message callback이 실행되지 않는다.

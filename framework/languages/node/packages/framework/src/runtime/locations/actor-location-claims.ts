@@ -23,11 +23,13 @@ export interface ZLinkActorClaimResult {
   readonly status: ZLinkActorClaimStatus;
   readonly existing?: ZLinkActorLocation;
   readonly claimed?: ZLinkActorLocation;
+  readonly generation?: bigint;
 }
 
 export interface ZLinkActorClaimActivation<TActor> {
   readonly activated?: TActor;
   readonly existingLocation?: ZLinkActorLocation;
+  readonly generation?: bigint;
 }
 
 export class ZLinkActorLocationClaims {
@@ -36,7 +38,7 @@ export class ZLinkActorLocationClaims {
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     private readonly actorStore: ZLinkActorLocationStore,
-    private readonly entrySpotMeshName: string
+    private readonly entryMeshName: string
   ) {}
 
   async executeClaimThenActivate<TActor>(
@@ -54,7 +56,7 @@ export class ZLinkActorLocationClaims {
       return { existingLocation: claim.existing };
     }
     try {
-      return { activated: await activate() };
+      return { activated: await activate(), generation: claim.generation };
     } catch (error) {
       await this.release(actorType, actorId);
       throw error;
@@ -68,37 +70,39 @@ export class ZLinkActorLocationClaims {
     deactivate?: () => Promise<void>
   ): Promise<ZLinkActorClaimResult> {
     const normalizedType = ZLinkLocationKeyCodec.normalizeActorType(actorType);
-    const key = { actorId };
+    const key = { meshName: this.entryMeshName, actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     if (this.actors.has(canonical)) {
       return { status: ZLinkActorClaimStatus.AlreadyOwned };
     }
 
     const row: ZLinkActorLocation = {
+      meshName: this.entryMeshName,
       actorType: normalizedType,
       actorId,
-      actorRef: undefined,
-      nodeRid,
-      generation: 0n,
-      locationKind: ZLinkSpotKind.Entry,
-      spotMeshName: this.entrySpotMeshName,
-      spotRid: undefined,
+      actorRef: { nodeRid, actorId, generation: 0n },
+      ownerNodeRid: nodeRid,
+      ownerNodeGeneration: 0n,
+      spotKind: ZLinkSpotKind.Entry,
+      spotRid: nodeRid,
+      spotGeneration: 0n,
+      membershipEpoch: 0n,
       ownerId: '',
       updatedAt: new Date(0)
     };
     const result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.NewClaim);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      const claimed = {
+      const claimed: ZLinkActorLocation = {
         ...row,
-        generation: result.generation,
         ownerId: this.runtime.ownerId,
         updatedAt: result.updatedAt
       };
       this.actors.set(canonical, {
         row: claimed,
+        generation: result.generation,
         deactivate
       });
-      return { status: ZLinkActorClaimStatus.Claimed, claimed };
+      return { status: ZLinkActorClaimStatus.Claimed, claimed, generation: result.generation };
     }
 
     if (result.status === ZLinkLocationWriteStatus.RejectedConflict) {
@@ -111,8 +115,20 @@ export class ZLinkActorLocationClaims {
     return { status: ZLinkActorClaimStatus.Conflict };
   }
 
-  async setRef(actorType: string, actorId: string, actorRef: ActorRef): Promise<void> {
-    await this.renew(actorType, actorId, (row) => ({ ...row, actorRef }));
+  async setRef(
+    actorType: string,
+    actorId: string,
+    actorRef: ActorRef,
+    ownerNodeGeneration: bigint
+  ): Promise<void> {
+    await this.renew(actorType, actorId, (row) => ({
+      ...row,
+      actorRef,
+      ownerNodeRid: actorRef.nodeRid,
+      ownerNodeGeneration,
+      spotRid: row.spotKind === ZLinkSpotKind.Entry ? actorRef.nodeRid : row.spotRid,
+      spotGeneration: row.spotKind === ZLinkSpotKind.Entry ? ownerNodeGeneration : row.spotGeneration
+    }));
   }
 
   async takeoverJoinedSpot(
@@ -121,69 +137,99 @@ export class ZLinkActorLocationClaims {
     actorRef: ActorRef,
     spotMeshName: string,
     spotRid: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint,
     deactivate?: () => Promise<void>
   ): Promise<ZLinkActorClaimResult> {
     const normalizedType = ZLinkLocationKeyCodec.normalizeActorType(actorType);
-    const key = { actorId };
+    const key = { meshName: spotMeshName, actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     const row: ZLinkActorLocation = {
+      meshName: spotMeshName,
       actorType: normalizedType,
       actorId,
       actorRef,
-      nodeRid: actorRef.nodeRid,
-      generation: 0n,
-      locationKind: ZLinkSpotKind.User,
-      spotMeshName,
+      ownerNodeRid: actorRef.nodeRid,
+      ownerNodeGeneration,
+      spotKind: ZLinkSpotKind.User,
       spotRid,
+      spotGeneration,
+      membershipEpoch,
       ownerId: '',
       updatedAt: new Date(0)
     };
-    const result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.Takeover);
+    let result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.Takeover);
+    if (result.status !== ZLinkLocationWriteStatus.Stored) {
+      const existing = await this.actorStore.resolveActor(key);
+      if (existing === undefined) {
+        result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.NewClaim);
+      }
+    }
     if (result.status !== ZLinkLocationWriteStatus.Stored) {
       return {
         status: ZLinkActorClaimStatus.Conflict,
         existing: await this.actorStore.resolveActor(key)
       };
     }
-    const claimed = {
+    const claimed: ZLinkActorLocation = {
       ...row,
-      generation: result.generation,
       ownerId: this.runtime.ownerId,
       updatedAt: result.updatedAt
     };
     this.actors.set(canonical, {
       row: claimed,
+      generation: result.generation,
       deactivate
     });
-    return { status: ZLinkActorClaimStatus.Claimed, claimed };
+    return { status: ZLinkActorClaimStatus.Claimed, claimed, generation: result.generation };
   }
 
-  async notifyJoinedSpot(actorType: string, actorId: string, spotMeshName: string, spotRid: RoutingId): Promise<void> {
+  async notifyJoinedSpot(
+    actorType: string,
+    actorId: string,
+    _spotMeshName: string,
+    spotRid: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): Promise<void> {
     await this.renew(actorType, actorId, (row) => ({
       ...row,
-      locationKind: ZLinkSpotKind.User,
-      spotMeshName,
-      spotRid
+      spotKind: ZLinkSpotKind.User,
+      spotRid,
+      spotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
     }));
   }
 
-  async notifyLeftSpot(actorType: string, actorId: string): Promise<void> {
+  async notifyLeftSpot(
+    actorType: string,
+    actorId: string,
+    entrySpotRid: RoutingId,
+    entrySpotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): Promise<void> {
     await this.renew(actorType, actorId, (row) => ({
       ...row,
-      locationKind: ZLinkSpotKind.Entry,
-      spotMeshName: this.entrySpotMeshName,
-      spotRid: undefined
+      spotKind: ZLinkSpotKind.Entry,
+      spotRid: entrySpotRid,
+      spotGeneration: entrySpotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
     }));
   }
 
   async release(_actorType: string, actorId: string): Promise<void> {
-    const key = { actorId };
+    const key = { meshName: this.entryMeshName, actorId };
     const canonical = ZLinkLocationKeyCodec.encodeActorKey(key);
     const tracked = this.actors.get(canonical);
     if (tracked === undefined) {
       return;
     }
-    await this.runtime.removeActor(key, tracked.row.generation);
+    await this.runtime.removeActor(key, tracked.generation);
     if (this.actors.get(canonical) === tracked) {
       this.actors.delete(canonical);
     }
@@ -191,12 +237,16 @@ export class ZLinkActorLocationClaims {
 
   owns(_actorType: string, actorId: string): boolean {
     return this.actors.has(ZLinkLocationKeyCodec.encodeActorKey({
+      meshName: this.entryMeshName,
       actorId
     }));
   }
 
   snapshot(actorId: string): ZLinkActorLocation | undefined {
-    const tracked = this.actors.get(ZLinkLocationKeyCodec.encodeActorKey({ actorId }));
+    const tracked = this.actors.get(ZLinkLocationKeyCodec.encodeActorKey({
+      meshName: this.entryMeshName,
+      actorId
+    }));
     return tracked === undefined ? undefined : { ...tracked.row };
   }
 
@@ -217,6 +267,7 @@ export class ZLinkActorLocationClaims {
     mutate: (row: ZLinkActorLocation) => ZLinkActorLocation
   ): Promise<void> {
     const canonical = ZLinkLocationKeyCodec.encodeActorKey({
+      meshName: this.entryMeshName,
       actorId
     });
     const tracked = this.actors.get(canonical);
@@ -226,7 +277,8 @@ export class ZLinkActorLocationClaims {
     const candidate = mutate(tracked.row);
     const result = await this.runtime.writeActor(candidate, ZLinkLocationWriteIntent.Renew);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      tracked.row = { ...candidate, generation: result.generation, updatedAt: result.updatedAt };
+      tracked.row = { ...candidate, updatedAt: result.updatedAt };
+      tracked.generation = result.generation;
       return;
     }
     throw new Error(`Actor location renewal for '${actorId}' was rejected with status ${result.status}.`);
@@ -235,5 +287,6 @@ export class ZLinkActorLocationClaims {
 
 interface TrackedActor {
   row: ZLinkActorLocation;
+  generation: bigint;
   readonly deactivate?: () => Promise<void>;
 }

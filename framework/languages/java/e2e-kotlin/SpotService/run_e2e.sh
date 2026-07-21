@@ -39,12 +39,11 @@ fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/SpotService}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/SpotService-gradle-cache}"
 export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-spot-service:${run_id}}"
-LOCAL_READINESS_TIMEOUT_SECONDS=30
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=300
+LOCAL_READINESS_ATTEMPTS=30
 PROCESS_STOP_TIMEOUT_SECONDS=5
 PROCESS_STOP_ATTEMPTS=50
-ROUTE_SETTLE_SECONDS=5
 MODE_RETRY_SETTLE_SECONDS=1
 
 if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
@@ -382,8 +381,6 @@ start_play() {
     "$(role_bin play)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
-  wait_port "${rid}-spot" "${spot}"
-  wait_port "${rid}-spot-pub" "${spot_pub}"
   if [[ -n "${stream}" ]]; then
     wait_port "${rid}-stream" "${stream}"
   fi
@@ -504,8 +501,9 @@ start_multi_nodes() {
   pids+=("$!")
   if [[ "${spot_only}" != "true" ]]; then
     wait_port multi-node-a-route "${MULTI_ROUTE_A}"
+  else
+    wait_port multi-node-a-spot "${MULTI_SPOT_A}"
   fi
-  wait_port multi-node-a-spot "${MULTI_SPOT_A}"
   wait_port multi-node-a-http "${MULTI_HTTP_A}"
 
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
@@ -523,8 +521,9 @@ start_multi_nodes() {
   pids+=("$!")
   if [[ "${spot_only}" != "true" ]]; then
     wait_port multi-node-b-route "${MULTI_ROUTE_B}"
+  else
+    wait_port multi-node-b-spot "${MULTI_SPOT_B}"
   fi
-  wait_port multi-node-b-spot "${MULTI_SPOT_B}"
   wait_port multi-node-b-http "${MULTI_HTTP_B}"
 }
 
@@ -688,7 +687,6 @@ start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PU
 PLAY_A_PID="${pids[$((${#pids[@]} - 1))]}"
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}" ""
 PLAY_B_PID="${pids[$((${#pids[@]} - 1))]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 run_client_mode() {
   local mode="$1"
@@ -796,13 +794,11 @@ for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
     create_timer_spot "${HTTP_A}" idle-active
-    sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "timer-overrun" ]]; then
     create_timer_spot "${HTTP_A}" timer-overrun-skip
     create_timer_spot "${HTTP_A}" timer-overrun-catchup
     create_timer_spot "${HTTP_A}" timer-overrun-delay
-    sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   if [[ "${mode}" == "actor-session" || "${mode}" == "session-transfer" ]]; then
     if [[ -z "${SESSION_A_PID}" ]]; then
@@ -836,7 +832,6 @@ for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     close_spot "${HTTP_A}" idle-active
   fi
-  sleep "${ROUTE_SETTLE_SECONDS}"
 done
 if [[ -n "${ZLINK_KOTLIN_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}" != "default-batch" ) ]]; then
   cat "${log_dir}/client.stdout.log"

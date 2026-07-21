@@ -43,6 +43,7 @@ internal static class SessionHostFactory
             mesh17.ChannelName(ObservabilityNames.PlayMesh);
             framework.AddStreamNode(ObservabilityNames.StreamNode)
                 .Bind(options.StreamEndpoint)
+                .EnableActorDispatch(ObservabilityNames.PlayMesh)
                 .AddSession<ObservabilitySession>();
         });
         var app = builder.Build();

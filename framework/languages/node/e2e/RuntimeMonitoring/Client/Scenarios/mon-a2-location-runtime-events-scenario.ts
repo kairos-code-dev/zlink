@@ -1,4 +1,4 @@
-// MON-A2: location runtime 이벤트 관찰 시나리오를 검증한다.
+// MON-A2: peer admission과 ready 전이 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
 import { type ManagedProcess, startServiceB, waitForPortState } from '../Support/managed-service';

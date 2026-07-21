@@ -9,7 +9,7 @@ namespace Zlink.Framework.UnitTests;
 public sealed class SessionActorCoordinatorTests
 {
     [Fact]
-    public void Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller()
+    public async Task Session_Send_Submit_Reports_Nonblocking_Transport_Backpressure()
     {
         var runtime = CreateRuntime();
         var stream = new TestStream(RoutingId.From("session-node"), acceptsWrites: false);
@@ -20,11 +20,43 @@ public sealed class SessionActorCoordinatorTests
             static () => ValueTask.CompletedTask,
             static _ => ValueTask.CompletedTask);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
-            context.Client.Send(new SessionPush("value")).Submit());
+        var result = await context.Client.Send(new SessionPush("value")).SubmitAsync();
 
-        Assert.Contains("Client stream send failed", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(ZLinkSubmitStatus.Backpressured, result.Status);
         Assert.Equal(SendFlags.DontWait, stream.LastWriteFlags);
+    }
+
+    [Fact]
+    public async Task Session_Reply_PreCancellation_Claims_The_Reply_Token_Before_Admission()
+    {
+        var runtime = CreateRuntime();
+        var stream = new TestStream(RoutingId.From("session-node"));
+        var context = new ZLinkSessionContext(
+            runtime,
+            stream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        _ = context.EnterDispatch(new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(1),
+            "SessionRequest",
+            ZlinkStreamMetadata.Empty));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            context.Client.Reply(new SessionPush("cancelled"))
+                .SubmitAsync(cancellation.Token)
+                .AsTask());
+        Assert.Empty(stream.Writes);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            context.Client.Reply(new SessionPush("duplicate"))
+                .SubmitAsync()
+                .AsTask());
     }
 
     [Fact]

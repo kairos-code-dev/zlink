@@ -22,7 +22,7 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         var registry = new ZLinkSpotSubscriptionRegistry();
         var nativeSpot = new CapturingSpot { SubscriptionFailuresRemaining = 2 };
-        registry.Add("events", typeof(TestSubscriptionHandler));
+        registry.Add("events", "events", typeof(TestSubscriptionHandler));
 
         await registry.BindAsync(
             new TestSubscriptionSpot(),
@@ -101,8 +101,8 @@ public sealed partial class UnhandledDispatchPolicyTests
         var applicationProbe = new TestSubscriptionProbe();
         var owner = new TestSubscriptionSpot(true, applicationProbe);
         var nonOwner = new TestSubscriptionSpot(false, applicationProbe);
-        registryA.Add("events.child", typeof(TestSubscriptionHandler));
-        registryB.Add("events.child", typeof(TestSubscriptionHandler));
+        registryA.Add("events", "events.child", typeof(TestSubscriptionHandler));
+        registryB.Add("events", "events.child", typeof(TestSubscriptionHandler));
         registryA.Bind(owner, spotA);
         registryB.Bind(nonOwner, spotB);
 
@@ -387,185 +387,6 @@ public sealed partial class UnhandledDispatchPolicyTests
             activity.OperationName == "zlink.actor.dispatch"
             && activity.Tags.Any(tag =>
                 tag.Key == "zlink.reason" && tag.Value == "no-join-handler"));
-    }
-
-    [Fact]
-    public async Task ChannelRequestPayloadDecodeFailure_RepliesError()
-    {
-        var registration = new ZLinkFrameworkRegistration();
-        var services = new ServiceCollection().BuildServiceProvider();
-        var registry = new ZLinkHandlerRegistry([
-            new ZLinkHandlerEndpointDescriptor(
-                ZLinkMessageKind.Request,
-                "BrokenReq",
-                typeof(NeverInvokedHandler),
-                static (_, _, _, _, _, _) => null,
-                [],
-                typeof(TestRequest),
-                typeof(TestReply),
-                typeof(ZLinkRequestContext),
-                false,
-                new HashSet<string>(StringComparer.Ordinal),
-                "play")
-        ]);
-        var dispatcher = new ZLinkChannelPacketDispatcher(
-            registry,
-            new ZLinkHandlerDispatcher(
-                services.GetRequiredService<IServiceScopeFactory>(),
-                registration),
-            registration,
-            null!);
-        var endpoint = GetTcpEndpoint();
-        await using var context = Systems.Zlink.Zlink.CreateContext();
-        await using var routerSocket = context.CreateRouterSocket();
-        await using var dealerSocket = context.CreateDealerSocket();
-        routerSocket.Options.Linger = TimeSpan.Zero;
-        dealerSocket.Options.Linger = TimeSpan.Zero;
-        routerSocket.Bind(endpoint);
-        dealerSocket.Connect(endpoint);
-        var router = new ZLinkBackendRouterSocketWrapper(routerSocket);
-        var requestParts = ZLinkEnvelopeCodec.EncodeParts(
-            new ZLinkEnvelopeHeader(
-                ZLinkMessageKind.Request,
-                "play",
-                "BrokenReq",
-                ZLinkEnvelopeCodec.DefaultContentType,
-                "corr",
-                null,
-                null,
-                null,
-                null),
-            new { Broken = "payload" },
-            typeof(object),
-            null);
-        requestParts[1].Dispose();
-        requestParts = [requestParts[0], Message.From("{")];
-
-        var requestTask = dealerSocket.Request()
-            .Message(requestParts[0])
-            .Message(requestParts[1])
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async();
-        ZLinkMessageParts.DisposeAll(requestParts);
-
-        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
-        await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
-
-        var reply = await requestTask.WaitAsync(TimeSpan.FromSeconds(2));
-        try
-        {
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
-            Assert.Equal(nameof(ZLinkFrameworkErrorKind.PayloadDecodeFailed), replyHeader.ErrorCode);
-            Assert.Contains("PayloadDecodeFailed", replyHeader.ErrorMessage);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-        }
-    }
-
-    [Fact]
-    public async Task Invalid_Envelope_Marker_Replies_RequestProtocolError()
-    {
-        var registration = new ZLinkFrameworkRegistration();
-        var services = new ServiceCollection().BuildServiceProvider();
-        var dispatcher = new ZLinkChannelPacketDispatcher(
-            new ZLinkHandlerRegistry([]),
-            new ZLinkHandlerDispatcher(
-                services.GetRequiredService<IServiceScopeFactory>(),
-                registration),
-            registration,
-            null);
-        var endpoint = GetTcpEndpoint();
-        await using var context = Systems.Zlink.Zlink.CreateContext();
-        await using var routerSocket = context.CreateRouterSocket();
-        await using var dealerSocket = context.CreateDealerSocket();
-        routerSocket.Options.Linger = TimeSpan.Zero;
-        dealerSocket.Options.Linger = TimeSpan.Zero;
-        routerSocket.Bind(endpoint);
-        dealerSocket.Connect(endpoint);
-        var router = new ZLinkBackendRouterSocketWrapper(routerSocket);
-        var invalidHeader = new ZLinkEnvelopeHeader(
-            ZLinkMessageKind.Request,
-            "play",
-            "BrokenReq",
-            ZLinkEnvelopeCodec.DefaultContentType,
-            "corr",
-            null,
-            null,
-            null,
-            null)
-        {
-            FlowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d",
-            FlowOrigin = ZLinkFlowOrigin.Application
-        };
-        using var invalidHeaderPart = Message.From(
-            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
-                invalidHeader,
-                ZLinkJsonSerializerOptions.Default));
-        using var body = Message.From("{}");
-
-        var requestTask = dealerSocket.Request()
-            .Message(invalidHeaderPart)
-            .Message(body)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async();
-        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
-        await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
-
-        var reply = await requestTask.WaitAsync(TimeSpan.FromSeconds(2));
-        try
-        {
-            var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
-            Assert.Equal(ZLinkMessageKind.Error, replyHeader.Kind);
-            Assert.Equal(
-                nameof(ZLinkFrameworkErrorKind.RequestProtocolError),
-                replyHeader.ErrorCode);
-            Assert.Contains("format marker", replyHeader.ErrorMessage);
-            Assert.Equal(invalidHeader.FlowId, replyHeader.FlowId);
-            Assert.Equal(invalidHeader.FlowOrigin, replyHeader.FlowOrigin);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-        }
-    }
-
-    [Fact]
-    public async Task Invalid_Json_Envelope_Without_Correlation_Is_Dropped()
-    {
-        var registration = new ZLinkFrameworkRegistration();
-        var services = new ServiceCollection().BuildServiceProvider();
-        var dispatcher = new ZLinkChannelPacketDispatcher(
-            new ZLinkHandlerRegistry([]),
-            new ZLinkHandlerDispatcher(
-                services.GetRequiredService<IServiceScopeFactory>(),
-                registration),
-            registration,
-            null);
-        var endpoint = GetTcpEndpoint();
-        await using var context = Systems.Zlink.Zlink.CreateContext();
-        await using var routerSocket = context.CreateRouterSocket();
-        await using var dealerSocket = context.CreateDealerSocket();
-        routerSocket.Options.Linger = TimeSpan.Zero;
-        dealerSocket.Options.Linger = TimeSpan.Zero;
-        routerSocket.Bind(endpoint);
-        dealerSocket.Connect(endpoint);
-        var router = new ZLinkBackendRouterSocketWrapper(routerSocket);
-        using var invalidHeader = Message.From("{");
-        using var body = Message.From("{}");
-
-        var requestTask = dealerSocket.Request()
-            .Message(invalidHeader)
-            .Message(body)
-            .Timeout(TimeSpan.FromMilliseconds(100))
-            .Async();
-        using var received = await ReceiveAsync(router, TimeSpan.FromSeconds(2));
-        await dispatcher.DispatchServerMessageAsync("play", router, received, CancellationToken.None);
-
-        await Assert.ThrowsAsync<ZlinkRequestException>(async () =>
-            await requestTask.WaitAsync(TimeSpan.FromSeconds(2)));
     }
 
     [Fact]
@@ -903,7 +724,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         var logger = new CapturingLogger<ZLinkSpotSubscriptionRegistry>();
         var registry = new ZLinkSpotSubscriptionRegistry();
         var nativeSpot = new CapturingSpot();
-        registry.Add("events", typeof(TestSubscriptionHandler));
+        registry.Add("events", "events", typeof(TestSubscriptionHandler));
         await registry.BindAsync(
             new TestSubscriptionSpot(),
             nativeSpot,
@@ -1223,7 +1044,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         {
         }
 
-        public void SetSubscription(string topic)
+        public void SetSubscription(string channelName, string topic)
         {
             SubscriptionAttempts++;
             if (SubscriptionAttempts <= SubscriptionFailuresRemaining)
@@ -1240,7 +1061,7 @@ public sealed partial class UnhandledDispatchPolicyTests
                 var parts = topicMessage.Parts
                     .Select(static part => Message.From(part.AsReadOnlySpan()))
                     .ToArray();
-                return new ZLinkBackendSubscribeMessage(topicMessage.Topic, parts);
+                return new ZLinkBackendSubscribeMessage("events", topicMessage.Topic, parts);
             }
             finally
             {
@@ -1294,20 +1115,22 @@ public sealed partial class UnhandledDispatchPolicyTests
             return SubmitResult.Backpressured;
         }
 
-        public MeshPublishDetail Publish(
-            string topic, Message message, SendFlags flags,
+        public MeshPublishResult Publish(
+            string channelName, string topic, Message message, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
-            throw new ZlinkSubmitException(
-                ZlinkSubmitException.ErrorCode.Backpressured);
+            return new MeshPublishResult(
+                SubmitResult.Backpressured,
+                new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
         }
 
-        public MeshPublishDetail Publish(
-            string topic, IReadOnlyList<Message> parts, SendFlags flags,
+        public MeshPublishResult Publish(
+            string channelName, string topic, IReadOnlyList<Message> parts, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
-            throw new ZlinkSubmitException(
-                ZlinkSubmitException.ErrorCode.Backpressured);
+            return new MeshPublishResult(
+                SubmitResult.Backpressured,
+                new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
         }
 
         public SubmitResult SendToSpot(

@@ -6,19 +6,19 @@ internal sealed class ZLinkSpotPeerConnector(
 {
     private readonly object _gate = new();
 
-    public ValueTask<bool> ConnectRouterAsync(string endpoint, CancellationToken cancellationToken)
+    public ValueTask<bool> ConnectPeerAsync(string endpoint, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
+            if (!connections.TryAddPeerManual(endpoint)) return ValueTask.FromResult(false);
             try { ConnectPeer(endpoint); }
-            catch { connections.RollbackRouterManual(endpoint); throw; }
+            catch { connections.RollbackPeerManual(endpoint); throw; }
             return ValueTask.FromResult(true);
         }
     }
 
-    public ValueTask<bool> ConnectRouterAsync(
+    public ValueTask<bool> ConnectPeerAsync(
         RoutingId peerRid,
         string endpoint,
         CancellationToken cancellationToken)
@@ -26,59 +26,36 @@ internal sealed class ZLinkSpotPeerConnector(
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (!connections.TryAddRouterManual(endpoint)) return ValueTask.FromResult(false);
+            if (!connections.TryAddPeerManual(endpoint)) return ValueTask.FromResult(false);
             try { ConnectPeer(peerRid, endpoint); }
-            catch { connections.RollbackRouterManual(endpoint); throw; }
-            return ValueTask.FromResult(true);
-        }
-    }
-
-    public ValueTask<bool> ConnectPubSubAsync(string endpoint, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            if (!connections.TryAddPubSubManual(endpoint)) return ValueTask.FromResult(false);
-            try { ConnectPeer(endpoint); }
-            catch { connections.RollbackPubSubManual(endpoint); throw; }
+            catch { connections.RollbackPeerManual(endpoint); throw; }
             return ValueTask.FromResult(true);
         }
     }
 
     public void Disconnect(string endpoint)
     {
-        DisconnectRouterManual(endpoint);
-        DisconnectPubSubManual(endpoint);
+        DisconnectPeerManual(endpoint);
     }
 
-    public void DisconnectRouterManual(string endpoint)
+    public void DisconnectPeerManual(string endpoint)
     {
         lock (_gate)
         {
-            if (!connections.RemoveRouterManual(endpoint)) return;
+            if (!connections.RemovePeerManual(endpoint)) return;
             try { node.DisconnectPeer(endpoint); }
-            catch { _ = connections.TryAddRouterManual(endpoint); throw; }
+            catch { _ = connections.TryAddPeerManual(endpoint); throw; }
         }
     }
 
-    public void DisconnectPubSubManual(string endpoint)
-    {
-        lock (_gate)
-        {
-            if (!connections.RemovePubSubManual(endpoint)) return;
-            try { node.DisconnectPeer(endpoint); }
-            catch { _ = connections.TryAddPubSubManual(endpoint); throw; }
-        }
-    }
-
-    public bool ConnectRouterAuto(RoutingId? peerRid, string endpoint)
+    public bool ConnectPeerAuto(RoutingId? peerRid, string endpoint)
     {
         lock (_gate)
         {
             return ConnectAuto(
                 endpoint,
-                connections.TryAddRouterAuto,
-                connections.RollbackRouterAuto,
+                connections.TryAddPeerAuto,
+                connections.RollbackPeerAuto,
                 () =>
                 {
                     if (peerRid is { Size: > 0 } rid) ConnectPeer(rid, endpoint);
@@ -87,31 +64,11 @@ internal sealed class ZLinkSpotPeerConnector(
         }
     }
 
-    public bool ConnectPubSubAuto(string endpoint)
+    public bool DisconnectPeerAuto(string endpoint)
     {
         lock (_gate)
         {
-            return ConnectAuto(
-                endpoint,
-                connections.TryAddPubSubAuto,
-                connections.RollbackPubSubAuto,
-                () => ConnectPeer(endpoint));
-        }
-    }
-
-    public bool DisconnectRouterAuto(string endpoint)
-    {
-        lock (_gate)
-        {
-            return DisconnectAuto(endpoint, connections.RemoveRouterAuto, connections.TryAddRouterAuto);
-        }
-    }
-
-    public bool DisconnectPubSubAuto(string endpoint)
-    {
-        lock (_gate)
-        {
-            return DisconnectAuto(endpoint, connections.RemovePubSubAuto, connections.TryAddPubSubAuto);
+            return DisconnectAuto(endpoint, connections.RemovePeerAuto, connections.TryAddPeerAuto);
         }
     }
 

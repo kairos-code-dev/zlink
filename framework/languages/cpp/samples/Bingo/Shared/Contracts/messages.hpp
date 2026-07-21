@@ -111,6 +111,37 @@ struct authenticate_player_res_t
     std::string reason;
 };
 
+struct get_player_record_req_t
+{
+    static constexpr const char *packet_name = "GetPlayerRecordReq";
+    std::string actor_id;
+};
+
+struct get_player_record_res_t
+{
+    static constexpr const char *packet_name = "GetPlayerRecordRes";
+    std::string actor_id;
+    int wins = 0;
+    int losses = 0;
+};
+
+struct report_bingo_result_req_t
+{
+    static constexpr const char *packet_name = "ReportBingoResultReq";
+    std::string room_id;
+    std::string actor_id;
+    bool won = false;
+    int final_draw_seq = 0;
+};
+
+struct report_bingo_result_res_t
+{
+    static constexpr const char *packet_name = "ReportBingoResultRes";
+    std::string actor_id;
+    int wins = 0;
+    int losses = 0;
+};
+
 struct ensure_player_actor_req_t
 {
     static constexpr const char *packet_name = "EnsurePlayerActorReq";
@@ -184,6 +215,8 @@ struct bingo_player_state_t
     std::vector<int> card;
     std::vector<bool> marks;
     int completed_lines = 0;
+    int wins = 0;
+    int losses = 0;
 };
 
 struct bingo_room_state_t
@@ -352,6 +385,56 @@ inline void from_json (const nlohmann::json &json, authenticate_player_res_t &va
     value.reason = json.value ("reason", "");
 }
 
+inline void to_json (nlohmann::json &json, const get_player_record_req_t &value)
+{
+    json = {{"actorId", value.actor_id}};
+}
+
+inline void from_json (const nlohmann::json &json, get_player_record_req_t &value)
+{
+    value.actor_id = json_string (json, "actorId", "actor_id");
+}
+
+inline void to_json (nlohmann::json &json, const get_player_record_res_t &value)
+{
+    json = {{"actorId", value.actor_id}, {"wins", value.wins}, {"losses", value.losses}};
+}
+
+inline void from_json (const nlohmann::json &json, get_player_record_res_t &value)
+{
+    value.actor_id = json_string (json, "actorId", "actor_id");
+    value.wins = json.value ("wins", 0);
+    value.losses = json.value ("losses", 0);
+}
+
+inline void to_json (nlohmann::json &json, const report_bingo_result_req_t &value)
+{
+    json = {{"roomId", value.room_id},
+            {"actorId", value.actor_id},
+            {"won", value.won},
+            {"finalDrawSeq", value.final_draw_seq}};
+}
+
+inline void from_json (const nlohmann::json &json, report_bingo_result_req_t &value)
+{
+    value.room_id = json_string (json, "roomId", "room_id");
+    value.actor_id = json_string (json, "actorId", "actor_id");
+    value.won = json.value ("won", false);
+    value.final_draw_seq = json_value (json, "finalDrawSeq", "final_draw_seq", 0);
+}
+
+inline void to_json (nlohmann::json &json, const report_bingo_result_res_t &value)
+{
+    json = {{"actorId", value.actor_id}, {"wins", value.wins}, {"losses", value.losses}};
+}
+
+inline void from_json (const nlohmann::json &json, report_bingo_result_res_t &value)
+{
+    value.actor_id = json_string (json, "actorId", "actor_id");
+    value.wins = json.value ("wins", 0);
+    value.losses = json.value ("losses", 0);
+}
+
 inline void to_json (nlohmann::json &json, const ensure_player_actor_req_t &value)
 {
     json = {{"actorId", value.actor_id},
@@ -499,7 +582,9 @@ inline void to_json (nlohmann::json &json, const bingo_player_state_t &value)
             {"isHost", value.is_host},
             {"card", value.card},
             {"marks", value.marks},
-            {"completedLines", value.completed_lines}};
+            {"completedLines", value.completed_lines},
+            {"wins", value.wins},
+            {"losses", value.losses}};
 }
 
 inline void from_json (const nlohmann::json &json, bingo_player_state_t &value)
@@ -511,6 +596,8 @@ inline void from_json (const nlohmann::json &json, bingo_player_state_t &value)
     value.card = json.value ("card", std::vector<int>{});
     value.marks = json.value ("marks", std::vector<bool>{});
     value.completed_lines = json_value (json, "completedLines", "completed_lines", 0);
+    value.wins = json.value ("wins", 0);
+    value.losses = json.value ("losses", 0);
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_state_t &value)

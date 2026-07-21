@@ -1,3 +1,5 @@
+import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
+import type { ZLinkRequestHandler, ZLinkSendHandler } from '../../contracts/Handlers';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
@@ -16,7 +18,8 @@ import {
   type ZLinkLocationEventSink,
   type ZLinkLocationRuntimeStores
 } from '../locations';
-import type { ZLinkLocationOptions } from '../../contracts';
+import type { Message, ReceiveRecord } from '@zlink-systems/zlink';
+import type { RoutingId } from '../../contracts';
 import {
   buildChannelAutoConnectCapabilities,
   createChannelLocationAutoConnectContext,
@@ -60,6 +63,8 @@ export class ZLinkChannelRuntimeLifecycle {
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: Array<{ stop(): Promise<void> }> = [];
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
+  private readonly meshChannelDispatchers = new Map<string, ZLinkChannelRequestDispatcher>();
+  private readonly meshRouteDispatchers = new Map<string, ZLinkRoutePacketDispatcher>();
   private locationAutoConnect?: ZLinkChannelLocationAutoConnectContext;
 
   constructor(private readonly options: ZLinkChannelRuntimeLifecycleOptions) {}
@@ -67,7 +72,7 @@ export class ZLinkChannelRuntimeLifecycle {
   configureLocationAutoConnect(
     runtime: ZLinkLocationRuntime,
     stores: ZLinkLocationRuntimeStores,
-    options: ZLinkLocationOptions,
+    options: ZLinkLocationOptionOverrides,
     events?: ZLinkLocationEventSink
   ): void {
     this.locationAutoConnect = createChannelLocationAutoConnectContext(runtime, stores, options, events);
@@ -119,6 +124,7 @@ export class ZLinkChannelRuntimeLifecycle {
   }
 
   start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
+    this.prepareMeshDispatch(taskRunner);
     this.openOutboundSockets();
     const tasks = [
       ...this.startChannelReceivers(taskRunner),
@@ -126,6 +132,103 @@ export class ZLinkChannelRuntimeLifecycle {
       ...this.startRouteReceivers(taskRunner)
     ];
     return tasks;
+  }
+
+  prepareMeshDispatch(taskRunner?: ZLinkRuntimeTaskRunner): void {
+    if (this.meshChannelDispatchers.size > 0) {
+      return;
+    }
+    if (taskRunner === undefined) {
+      throw new ZLinkConfigurationException('MeshNode channel dispatch requires a runtime task runner.');
+    }
+    for (const [meshName, mesh] of this.options.registration.spotNodes) {
+      const routeHandlers: ZLinkRouteHandlerRegistration[] = [
+        ...(mesh.routeSendHandlers ?? []).map((registration) => ({
+          kind: 'send' as const,
+          packetName: registration.packetName,
+          handler: this.options.dispatchServices.routeSendHandler(registration.handlerType)
+        })),
+        ...(mesh.routeRequestHandlers ?? []).map((registration) => ({
+          kind: 'request' as const,
+          packetName: registration.packetName,
+          handler: this.options.dispatchServices.routeRequestHandler(registration.handlerType)
+        }))
+      ];
+      if (routeHandlers.length > 0) {
+        this.meshRouteDispatchers.set(meshName, new ZLinkRoutePacketDispatcher({
+          routerChannelId: meshName,
+          codecs: this.options.codecs,
+          dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
+          handlers: routeHandlers,
+          filters: this.options.dispatchServices.handlerFilters(),
+          unhandled: this.options.registration.dispatch?.unhandled
+        }));
+      }
+      for (const [channelName, channel] of Object.entries(mesh.meshChannels ?? {})) {
+        if ((channel.requestHandlers ?? []).length === 0 && (channel.sendHandlers ?? []).length === 0) {
+          continue;
+        }
+        this.meshChannelDispatchers.set(meshChannelKey(meshName, channelName), new ZLinkChannelRequestDispatcher({
+          channelName,
+          codecs: this.options.codecs,
+          dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
+          handlers: new Map(channel.requestHandlers?.map((handler) => [
+            handler.packetName,
+            (handler as typeof handler & { readonly handler?: ZLinkRequestHandler<unknown, unknown> }).handler
+              ?? this.options.dispatchServices.channelRequestHandler(handler.handlerType)
+          ])),
+          sendHandlers: new Map(channel.sendHandlers?.map((handler) => [
+            handler.packetName,
+            (handler as typeof handler & { readonly handler?: ZLinkSendHandler<unknown> }).handler
+              ?? this.options.dispatchServices.channelSendHandler(handler.handlerType)
+          ])),
+          filters: this.options.dispatchServices.handlerFilters(),
+          unhandled: this.options.registration.dispatch?.unhandled
+        }));
+      }
+    }
+  }
+
+  dispatchMeshChannel(meshName: string, record: ReceiveRecord, signal?: AbortSignal): Promise<void> {
+    const channelName = record.channelName;
+    if (channelName === null) {
+      throw new ZLinkConfigurationException('MeshNode channel record is missing channelName.');
+    }
+    const dispatcher = this.meshChannelDispatchers.get(meshChannelKey(meshName, channelName));
+    if (dispatcher === undefined) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${meshName}' channel '${channelName}' has no registered handlers.`
+      );
+    }
+    return dispatcher.dispatchMesh(record, signal);
+  }
+
+  dispatchMeshRoute(meshName: string, record: ReceiveRecord): Promise<void> {
+    const dispatcher = this.meshRouteDispatchers.get(meshName);
+    if (dispatcher === undefined) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${meshName}' has no registered node-direct handlers.`
+      );
+    }
+    return dispatcher.dispatchMesh(record);
+  }
+
+  dispatchLocalMeshRoute(
+    meshName: string,
+    sourceNodeRid: RoutingId,
+    parts: readonly Message[]
+  ): Promise<void> {
+    const dispatcher = this.meshRouteDispatchers.get(meshName);
+    if (dispatcher === undefined) {
+      throw new ZLinkConfigurationException(
+        `RouteMesh '${meshName}' has no registered node-direct handlers.`
+      );
+    }
+    return dispatcher.dispatchLocalCommand(parts, sourceNodeRid);
+  }
+
+  canDispatchLocalMeshRoute(meshName: string): boolean {
+    return this.meshRouteDispatchers.has(meshName);
   }
 
   async dispose(signal?: AbortSignal): Promise<void> {
@@ -138,6 +241,8 @@ export class ZLinkChannelRuntimeLifecycle {
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
     this.autoConnectLoops.length = 0;
+    this.meshChannelDispatchers.clear();
+    this.meshRouteDispatchers.clear();
     this.options.spotRouteBridges.clear();
     const loopStops = [
       ...channelLoops.map((loop) => loop.stop()),
@@ -288,4 +393,8 @@ export class ZLinkChannelRuntimeLifecycle {
     this.options.spotRouteBridges.set(channelName, bridge);
     return bridge;
   }
+}
+
+function meshChannelKey(meshName: string, channelName: string): string {
+  return `${meshName}\u0000${channelName}`;
 }

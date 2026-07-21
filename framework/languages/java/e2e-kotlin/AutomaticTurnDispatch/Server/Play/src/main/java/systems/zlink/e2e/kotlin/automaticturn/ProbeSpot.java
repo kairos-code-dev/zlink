@@ -94,7 +94,7 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
     CompletionStage<Contracts.ProbeRes> handle(Contracts.ProbeReq request) {
         sequence++;
         if (request.op().equals("worker")) {
-            return context.runCpuWorker(() -> {
+            return context.runCpuWorker(cancellation -> {
                     Thread.sleep(request.millis());
                     return "worker:" + request.op();
                 })
@@ -130,8 +130,10 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
             command.requestId(),
             command.mode(),
             command.delayMillis()));
-        ZLinkTimerOptions options = new ZLinkTimerOptions();
-        options.setOverrunPolicy(ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK);
+        ZLinkTimerOptions options = new ZLinkTimerOptions(
+            ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK,
+            1,
+            true);
         ZLinkTimer timer = context.addTimer(
                 command.timerName(),
                 Duration.ofMillis(command.periodMillis()),

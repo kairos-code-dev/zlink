@@ -57,40 +57,6 @@ internal static class ZLinkHandlerScanner
         return endpoints;
     }
 
-    public static IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> ScanRoute(Assembly assembly)
-    {
-        var endpoints = new List<ZLinkRouteHandlerEndpointDescriptor>();
-
-        foreach (var type in assembly.GetTypes())
-        {
-            if (type.IsAbstract || type.IsInterface) continue;
-
-            var groups = ResolveGroups(type);
-            foreach (var iface in type.GetInterfaces())
-            {
-                if (!iface.IsGenericType) continue;
-
-                var def = iface.GetGenericTypeDefinition();
-                if (def == typeof(IZLinkRouteRequestHandler<,>))
-                    endpoints.Add(CreateRouteInterfaceDescriptor(
-                        type,
-                        iface,
-                        ZLinkMessageKind.Request,
-                        groups,
-                        null));
-                else if (def == typeof(IZLinkRouteSendHandler<>))
-                    endpoints.Add(CreateRouteInterfaceDescriptor(
-                        type,
-                        iface,
-                        ZLinkMessageKind.Command,
-                        groups,
-                        null));
-            }
-        }
-
-        return endpoints;
-    }
-
     public static ZLinkHandlerEndpointDescriptor CreateExplicitInterfaceDescriptor(
         Type declaringType,
         Type handlerInterface,

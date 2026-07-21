@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, type ZLinkDrainControl, type ZLinkFanoutClient } from '@zlink-systems/framework';
-import { ZLINK_DRAIN_CONTROL, ZLINK_FANOUT_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
+import { ZLinkMessageFlowLogMode, type ZLinkFanoutClient } from '@zlink-systems/framework';
+import { ZLINK_FANOUT_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { PubSubNames } from '../../Shared/messages';
 import { validatePublisherOptions, type PublisherOptions } from './Configuration/publisher-options';
 import { PUBSUB_OPTIONS, createPubSubConfigurationModule } from '../../configuration';
@@ -33,8 +32,6 @@ export async function startPublisherHost(): Promise<void> {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addLocationStore(createRedisLocationStore(options));
-          Object.assign(builder.configureLocations(), locationMessagingOptions());
           builder.addFanoutChannel(PubSubNames.channel)
             .enablePublisher(options.publisherEndpoint)
             .routingId(options.rid);
@@ -59,10 +56,9 @@ export async function startPublisherHost(): Promise<void> {
   const options = app.get(PUBSUB_OPTIONS, { strict: false }) as PublisherOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const fanout = app.get(ZLINK_FANOUT_CLIENT, { strict: false }) as ZLinkFanoutClient;
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
   const server = await startHttpServer(
     options.httpUrl,
-    createPublisherEndpoints(fanout, evidence, drain, () => { stopping = true; })
+    createPublisherEndpoints(fanout, evidence, () => { stopping = true; })
   );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));

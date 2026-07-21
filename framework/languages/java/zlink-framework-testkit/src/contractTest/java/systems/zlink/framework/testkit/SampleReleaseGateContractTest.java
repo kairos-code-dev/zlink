@@ -1,5 +1,6 @@
 package systems.zlink.framework.testkit;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -431,6 +432,58 @@ final class SampleReleaseGateContractTest {
                 + offenders);
     }
 
+    @Test
+    void kotlinTicTacToeUsesManualHandlerRegistration() throws IOException {
+        String apiSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/api/ApiServer.kt");
+        String playSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/PlayServer.kt");
+        String entrySpotSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/entryspot/PlayEntrySpot.kt");
+        String gameSpotSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/spots/tictactoegamespot/TicTacToeGame.kt");
+        String authHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/api/handlers/AuthenticatePlayerHandler.kt");
+        String createHandlerSource = sampleKotlinSource(
+            "TicTacToe",
+            "Server/src/main/kotlin",
+            "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt");
+
+        assertAll(
+            () -> assertFalse(apiSource.contains("addHandlersFromPackageOf")),
+            () -> assertTrue(apiSource.contains("AuthenticatePlayerHandler::class.java")),
+            () -> assertTrue(apiSource.contains("addRequestHandler(")),
+            () -> assertFalse(playSource.contains("addHandlersFromPackageOf")),
+            () -> assertTrue(playSource.contains("CreateGameHandler::class.java")),
+            () -> assertTrue(playSource.contains("addRequestHandler(")),
+            () -> assertTrue(playSource.contains("addRouteMesh(SampleNames.SpotMesh)")),
+            () -> assertFalse(playSource.contains("addSpotMesh(")),
+            () -> assertTrue(playSource.contains("node.listen(routeEndpoint)")),
+            () -> assertTrue(playSource.contains("node.channelName(SampleNames.PlayNode)")),
+            () -> assertTrue(playSource.contains("node.peerConnections().connect(")),
+            () -> assertFalse(playSource.contains("configureEntrySpot()")),
+            () -> assertTrue(playSource.contains(".enableActorDispatch(SampleNames.SpotMesh)")),
+            () -> assertTrue(entrySpotSource.contains("addHandler<PlayActorJoinGameHandler>()")),
+            () -> assertTrue(entrySpotSource.contains("addHandler<PlayActorObserveMilestoneHandler>()")),
+            () -> assertTrue(entrySpotSource.contains("addHandler<PlayerWinMilestoneMsgHandler>()")),
+            () -> assertTrue(gameSpotSource.contains("addHandler<PlayActorLeaveGameHandler>()")),
+            () -> assertTrue(gameSpotSource.contains("addHandler<PlayActorPlaceMarkHandler>()")),
+            () -> assertTrue(authHandlerSource.contains(
+                "ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")),
+            () -> assertTrue(createHandlerSource.contains(
+                "ZLinkSuspendingRequestHandler<CreateGameReq, CreateGameRes>")));
+    }
+
 
     @Test
     void officialDocsKeepActorDestroyEntryOwned() throws IOException {
@@ -464,20 +517,13 @@ final class SampleReleaseGateContractTest {
 
         String handlerSpec = Files.readString(frameworkJavaRoot()
             .resolve("../../doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md"));
-        String actorGuide = Files.readString(frameworkJavaRoot()
-            .resolve("../../doc/framework/java/guide/06-actor-session.ko.md"));
         assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
             "handler spec must keep destroyActor on Entry Spot context");
         assertTrue(handlerSpec.contains("user Spot context에는"),
             "handler spec must say user Spot context has no destroy API");
-        assertTrue(handlerSpec.contains("lifecycle callback을 호출하지 않고"),
+        assertTrue(handlerSpec.contains("`onLeaveActor(...)`를 다시 호출하지 않고")
+                && handlerSpec.contains("native actor ref와 framework registry를 정리한다"),
             "handler spec must document destroy callback isolation");
-        assertTrue(actorGuide.contains("`ZLinkEntrySpotContext.destroyActor(actor)`"),
-            "actor guide must document Java Entry Spot destroy API");
-        assertTrue(actorGuide.contains("lifecycle callback을"),
-            "actor guide must mention lifecycle callback isolation");
-        assertTrue(actorGuide.contains("호출하지 않고 native actor ref"),
-            "actor guide must mention cleanup without lifecycle callback");
         assertTrue(offenders.isEmpty(), "actor destroy documentation offenders: " + offenders);
     }
 
@@ -811,8 +857,9 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),
             "TicTacToe direct Api handlers must use explicit framework registration and HTTP create-game mapping");
-        assertTrue(playSource.contains(".addSpotMesh("),
-            "TicTacToe direct sample must expose the Play Spot role");
+        assertTrue(playSource.contains(".addRouteMesh(")
+                && !playSource.contains(".addSpotMesh("),
+            "TicTacToe direct sample must expose the Play Spot role through RouteMesh");
         assertTrue(playSource.contains("playChannel.addRequestHandler(")
                 && playSource.contains("CreateGameHandler.class")
                 && playSource.contains("settings.apiChannelEndpoint()")
@@ -1115,7 +1162,9 @@ final class SampleReleaseGateContractTest {
             "Kotlin TicTacToe direct client must create games through the HTTP API path");
         assertTrue(playAuthHandlerSource.contains("AuthenticatePlayerReq(request.accessToken)")
                 && playAuthHandlerSource.contains(".submit(AuthenticatePlayerRes::class.java)")
-                && authHandlerSource.contains("suspend fun handle(request: AuthenticatePlayerReq): AuthenticatePlayerRes"),
+                && authHandlerSource.contains("ZLinkSuspendingRequestHandler<AuthenticatePlayerReq, AuthenticatePlayerRes>")
+                && authHandlerSource.contains("override suspend fun handle(")
+                && authHandlerSource.contains("): AuthenticatePlayerRes"),
             "Kotlin TicTacToe direct Play session AuthenticatePlayer path must use typed request and response contracts");
         assertTrue(createGameHandlerSource.contains("@RestController")
                 && createGameHandlerSource.contains("@PostMapping(\"/games\")")
@@ -1140,7 +1189,7 @@ final class SampleReleaseGateContractTest {
                 && !clientSource.contains(".submit(JoinGameRes::class.java)")
                 && !clientSource.contains(".submit(PlaceMarkRes::class.java)"),
             "Kotlin TicTacToe client scenario must use coroutine connector wrappers for request calls");
-        assertTrue(clientSource.contains(".request(AuthenticateReq(options.xActorId)).await<AuthenticateRes>()")
+        assertTrue(clientSource.contains(".request(AuthenticateReq(options.xActorId)).awaitReply<AuthenticateRes>()")
                 && clientSource.contains("AuthenticateReq(options.xActorId)")
                 && clientSource.contains("JoinGameReq(game.roomId)")
                 && clientSource.contains("PlaceMarkReq(3)")
@@ -1178,10 +1227,11 @@ final class SampleReleaseGateContractTest {
         assertTrue(apiSource.contains(".addClientServerChannel(")
                 && apiSource.contains("settings.apiChannelEndpoint")
                 && apiSource.contains("settings.playChannelEndpoint")
-                && apiSource.contains("addHandlersFromPackageOf")
-                && apiSource.contains("addHandlerGroup(\"api\")")
-                && !apiSource.contains("addRequestHandler"),
-            "Kotlin TicTacToe direct sample must expose the Api server role through annotation-discovered handlers");
+                && apiSource.contains("addRequestHandler(")
+                && apiSource.contains("AuthenticatePlayerHandler::class.java")
+                && !apiSource.contains("addHandlersFromPackageOf")
+                && !apiSource.contains("addHandlerGroup(\"api\")"),
+            "Kotlin TicTacToe direct sample must register its Api request handler explicitly");
         assertTrue(authHandlerSource.contains("@ZLinkHandlerGroup(\"api\")")
                 && authHandlerSource.contains("@ZLinkRequest")
                 && !authHandlerSource.contains("@ZLinkRequest(packetName = \"AuthenticatePlayerReq\")")
@@ -1189,21 +1239,26 @@ final class SampleReleaseGateContractTest {
                 && createGameHandlerSource.contains("CreateGameHttpReq")
                 && createGameHandlerSource.contains("CreateGameHttpRes"),
             "Kotlin TicTacToe direct Api handlers must use annotation-based auth and HTTP create-game mapping");
-        assertTrue(playSource.contains(".addSpotMesh("),
-            "Kotlin TicTacToe direct sample must expose the Play Spot role");
-        assertTrue(playSource.contains("addHandlersFromPackageOf")
+        assertTrue(playSource.contains(".addRouteMesh(")
+                && !playSource.contains(".addSpotMesh("),
+            "Kotlin TicTacToe direct sample must expose the Play Spot role through RouteMesh");
+        assertTrue(playSource.contains("addRequestHandler(")
+                && playSource.contains("CreateGameHandler::class.java")
+                && !playSource.contains("addHandlersFromPackageOf")
                 && playSource.contains("settings.apiChannelEndpoint")
                 && playSource.contains("settings.playChannelEndpoint")
                 && playSource.contains("settings.routeEndpoint")
-                && playSource.contains("settings.spotEndpoint")
                 && playSource.contains("settings.playEndpoint")
-                && playSource.contains("addHandlerGroup(SampleNames.PlayHandlerGroup)"),
-            "Kotlin TicTacToe Play role must expose annotation-discovered play channel handlers");
+                && playSource.contains("node.listen(routeEndpoint)")
+                && playSource.contains("node.channelName(SampleNames.PlayNode)")
+                && playSource.contains("node.peerConnections().connect(")
+                && !playSource.contains("addHandlerGroup(SampleNames.PlayHandlerGroup)"),
+            "Kotlin TicTacToe Play role must register its channel handler explicitly");
         String playCreateGameHandlerSource = sampleKotlinSource(
             "TicTacToe",
             "Server/src/main/kotlin",
             "systems/zlink/samples/kotlin/tictactoe/server/play/infrastructure/zlink/handlers/CreateGameHandler.kt");
-        assertTrue(playCreateGameHandlerSource.contains("suspend fun create(request: CreateGameReq): CreateGameRes")
+        assertTrue(playCreateGameHandlerSource.contains("override suspend fun handle(")
                 && playCreateGameHandlerSource.contains("ZLinkSpotManager")
                 && playCreateGameHandlerSource.contains("settings: SampleSettings")
                 && playCreateGameHandlerSource.contains("@ZLinkHandlerGroup(SampleNames.PlayHandlerGroup)")
@@ -1438,7 +1493,8 @@ final class SampleReleaseGateContractTest {
                 && sharedProtoSource.contains("message AuthenticateReq")
                 && sharedProtoSource.contains("message MatchBingoReq")
                 && sharedProtoSource.contains("message SubmitBingoCardReq")
-                && sharedProtoSource.contains("message BingoWinnerMsg")
+                && sharedProtoSource.contains("message BingoGameEndedNotify")
+                && sharedProtoSource.contains("message BingoRewardAnnouncedNotify")
                 && sharedProtoSource.contains("message BingoRoomState")
                 && sharedProtoSource.contains("message BingoPlayerState"),
             "Java Bingo protobuf schema must declare the common Bingo payload messages");
@@ -1486,19 +1542,28 @@ final class SampleReleaseGateContractTest {
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
-                && playHostSource.contains("addHandlerGroup(\"play-route\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Bingo Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(apiHostSource.contains("useAllocatedRoutingId(2, \"api\")")
+                && playHostSource.contains("useAllocatedRoutingId(2, \"play\")")
+                && sessionHostSource.contains("useAllocatedRoutingId(2, \"session\")")
+                && !apiHostSource.contains("setRoutingId(")
+                && !playHostSource.contains("setRoutingId(")
+                && !sessionHostSource.contains("setRoutingId(")
+                && !apiHostSource.contains("configureEntrySpot")
+                && !playHostSource.contains("configureEntrySpot")
+                && !sessionHostSource.contains("configureEntrySpot"),
+            "Java Bingo roles must allocate routing IDs before bind without entry Spot overrides");
         assertTrue(apiHostSource.contains("@SpringBootApplication")
-                && apiHostSource.contains("SpringApplicationBuilder")
+                && apiHostSource.contains("SampleApplication.start")
                 && apiHostSource.contains("ZLinkFrameworkConfigurer")
                 && !apiHostSource.contains("ZLinkFramework.start")
                 && playHostSource.contains("@SpringBootApplication")
-                && playHostSource.contains("SpringApplicationBuilder")
+                && playHostSource.contains("SampleApplication.start")
                 && playHostSource.contains("ZLinkFrameworkConfigurer")
                 && !playHostSource.contains("ZLinkFramework.start")
                 && sessionHostSource.contains("@SpringBootApplication")
-                && sessionHostSource.contains("SpringApplicationBuilder")
+                && sessionHostSource.contains("SampleApplication.start")
                 && sessionHostSource.contains("ZLinkFrameworkConfigurer")
                 && !sessionHostSource.contains("ZLinkFramework.start"),
             "Bingo server roles must run ZLink through Spring Boot lifecycle beans");
@@ -1508,9 +1573,9 @@ final class SampleReleaseGateContractTest {
             "Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(locationStoreSource.contains("ZLinkRedisLocationStore")
                 && locationStoreSource.contains("ZLinkRedisLocationOptions")
-                && apiHostSource.contains("ZLinkRedisLocationStore locationStore()")
-                && playHostSource.contains("ZLinkRedisLocationStore locationStore()")
-                && sessionHostSource.contains("ZLinkRedisLocationStore locationStore()")
+                && apiHostSource.contains("ZLinkRedisLocationStore locationStore(")
+                && playHostSource.contains("ZLinkRedisLocationStore locationStore(")
+                && sessionHostSource.contains("ZLinkRedisLocationStore locationStore(")
                 && playHostSource.contains("configureLocations()")
                 && sessionHostSource.contains("configureLocations()")
                 && !apiHostSource.contains("ZLinkEmbeddedRegistryOptions")
@@ -1662,7 +1727,8 @@ final class SampleReleaseGateContractTest {
                 && sharedProtoSource.contains("message AuthenticateReq")
                 && sharedProtoSource.contains("message MatchBingoReq")
                 && sharedProtoSource.contains("message SubmitBingoCardReq")
-                && sharedProtoSource.contains("message BingoWinnerMsg")
+                && sharedProtoSource.contains("message BingoGameEndedNotify")
+                && sharedProtoSource.contains("message BingoRewardAnnouncedNotify")
                 && sharedProtoSource.contains("message BingoRoomState")
                 && sharedProtoSource.contains("message BingoPlayerState"),
             "Kotlin Bingo protobuf schema must declare the common Bingo payload messages");
@@ -1697,7 +1763,7 @@ final class SampleReleaseGateContractTest {
                 && clientAppSource.contains(".where { message -> message.payload().drawSeq == expectedDrawSeq }")
                 && clientAppSource.contains("client1Draws.drop(drawnNumbers.size).forEach { wait -> wait.cancel() }")
                 && clientAppSource.contains(".request(AuthenticateReq")
-                && clientAppSource.contains(".await<AuthenticateRes>()")
+                && clientAppSource.contains(".awaitReply<AuthenticateRes>()")
                 && !clientAppSource.contains(".submit()")
                 && !clientAppSource.contains("ZLinkProtobufCodec.")
                 && clientAppSource.contains("listOf(1, 2, 3, 4, 0, 6, 7, 8, 9)")
@@ -1714,9 +1780,18 @@ final class SampleReleaseGateContractTest {
                 && apiHostSource.contains("addHandlerGroup(\"api\")")
                 && !apiHostSource.contains("addRequestHandler")
                 && playHostSource.contains("addHandlersFromPackageOf")
-                && playHostSource.contains("addHandlerGroup(\"play-route\")")
                 && !playHostSource.contains("addRequestHandler"),
             "Kotlin Bingo Api/Play roles must use annotation-discovered handler groups");
+        assertTrue(apiHostSource.contains("useAllocatedRoutingId(2, \"api\")")
+                && playHostSource.contains("useAllocatedRoutingId(2, \"play\")")
+                && sessionHostSource.contains("useAllocatedRoutingId(2, \"session\")")
+                && !apiHostSource.contains("setRoutingId(")
+                && !playHostSource.contains("setRoutingId(")
+                && !sessionHostSource.contains("setRoutingId(")
+                && !apiHostSource.contains("configureEntrySpot")
+                && !playHostSource.contains("configureEntrySpot")
+                && !sessionHostSource.contains("configureEntrySpot"),
+            "Kotlin Bingo roles must allocate routing IDs before bind without entry Spot overrides");
         assertTrue(apiHostSource.contains("@SpringBootApplication")
                 && apiHostSource.contains("SpringApplicationBuilder")
                 && apiHostSource.contains("ZLinkFrameworkConfigurer")
@@ -1736,9 +1811,12 @@ final class SampleReleaseGateContractTest {
             "Kotlin Bingo role entry points must not keep direct ZLink starts alive with CountDownLatch");
         assertTrue(locationStoreSource.contains("ZLinkRedisLocationStore")
                 && locationStoreSource.contains("ZLinkRedisLocationOptions")
-                && apiHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
-                && playHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
-                && sessionHostSource.contains("fun locationStore(): ZLinkRedisLocationStore")
+                && apiHostSource.contains("fun locationStore(")
+                && apiHostSource.contains("): ZLinkRedisLocationStore")
+                && playHostSource.contains("fun locationStore(")
+                && playHostSource.contains("): ZLinkRedisLocationStore")
+                && sessionHostSource.contains("fun locationStore(")
+                && sessionHostSource.contains("): ZLinkRedisLocationStore")
                 && !apiHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !playHostSource.contains("ZLinkEmbeddedRegistryOptions")
                 && !sessionHostSource.contains("ZLinkEmbeddedRegistryOptions"),

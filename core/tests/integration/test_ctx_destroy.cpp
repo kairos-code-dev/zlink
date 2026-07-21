@@ -4,6 +4,11 @@
 #include "testutil_unity.hpp"
 
 #include "core/ctx.hpp"
+#include "core/io_thread.hpp"
+#include "core/msg.hpp"
+#include "core/pipe.hpp"
+#include "core/session_base.hpp"
+#include "sockets/common/socket_base.hpp"
 
 #include <unity.h>
 
@@ -17,6 +22,128 @@ class ctx_termination_test_access_t
         scoped_lock_t lock (ctx_->_slot_sync);
         ctx_->_terminating = terminating_;
     }
+};
+
+class session_termination_test_access_t
+{
+  public:
+    struct own_snapshot_t
+    {
+        uint64_t sent;
+        uint64_t processed;
+        int term_acks;
+        bool terminating;
+    };
+
+    static void attach_socket_pipe (socket_base_t *socket_, pipe_t *pipe_)
+    {
+        socket_->attach_pipe (pipe_);
+    }
+
+    static bool waiting_for_delimiter (pipe_t *pipe_)
+    {
+        scoped_fast_lock_t lock (pipe_->_out_sync);
+        return pipe_->_state == pipe_t::waiting_for_delimiter;
+    }
+
+    static own_snapshot_t own_snapshot (own_t *object_)
+    {
+        own_snapshot_t out;
+        out.sent = object_->_sent_seqnum.get ();
+        out.processed = object_->_processed_seqnum;
+        out.term_acks = object_->_term_acks;
+        out.terminating = object_->_terminating;
+        return out;
+    }
+
+    static void begin_socket_term (socket_base_t *socket_)
+    {
+        socket_->process_term (0);
+    }
+
+    static void begin_session_term (session_base_t *session_, int linger_)
+    {
+        session_->process_term (linger_);
+    }
+
+    static void process_socket_commands (socket_base_t *socket_)
+    {
+        (void) socket_->process_commands (0, false);
+    }
+
+    static void prepare_reciprocal_pipe_ack (pipe_t *local_, pipe_t *peer_)
+    {
+        {
+            scoped_fast_lock_t lock (local_->_out_sync);
+            local_->_state = pipe_t::term_req_sent1;
+        }
+        {
+            scoped_fast_lock_t lock (peer_->_out_sync);
+            peer_->_state = pipe_t::term_ack_sent;
+            peer_->_out_pipe = NULL;
+        }
+    }
+
+    static void process_pipe_term_ack (pipe_t *pipe_)
+    {
+        pipe_->process_pipe_term_ack ();
+    }
+
+    static int command_refs (pipe_t *pipe_)
+    {
+        return pipe_->_command_refs.load (std::memory_order_acquire);
+    }
+
+    static bool socket_destroyed (socket_base_t *socket_)
+    {
+        return socket_->lifecycle_coordinator ().is_destroyed ();
+    }
+};
+}
+
+namespace
+{
+class pipe_completion_order_sink_t : public zlink::i_pipe_events
+{
+  public:
+    explicit pipe_completion_order_sink_t (zlink::pipe_t *peer_) :
+        _peer (peer_),
+        peer_command_refs_at_completion (-1)
+    {
+    }
+
+    void read_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void write_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void hiccuped (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_peer_terminated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+
+    void pipe_terminated (zlink::pipe_t *) ZLINK_OVERRIDE
+    {
+        peer_command_refs_at_completion =
+          zlink::session_termination_test_access_t::command_refs (_peer);
+    }
+
+    int peer_command_refs_at_completion;
+
+  private:
+    zlink::pipe_t *_peer;
+};
+
+class passive_pipe_sink_t : public zlink::i_pipe_events
+{
+  public:
+    passive_pipe_sink_t () : completion_count (0) {}
+
+    void read_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void write_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void hiccuped (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_peer_terminated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_terminated (zlink::pipe_t *) ZLINK_OVERRIDE
+    {
+        ++completion_count;
+    }
+
+    int completion_count;
 };
 }
 
@@ -156,6 +283,117 @@ void test_pending_inproc_disconnect_releases_socket_before_context_term ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_engine_less_session_releases_socket_term_ack_with_pending_message ()
+{
+    void *ctx_handle = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx_handle);
+    void *socket_handle = zlink_socket (ctx_handle, ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (socket_handle);
+
+    zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_handle);
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (socket_handle);
+    zlink::io_thread_t *io_thread = ctx->choose_io_thread (0);
+    TEST_ASSERT_NOT_NULL (io_thread);
+
+    zlink::options_t options;
+    options.type = ZLINK_CORE_SOCKET_PAIR;
+    zlink::session_base_t *session =
+      zlink::session_base_t::create (io_thread, false, socket, options, NULL);
+    TEST_ASSERT_NOT_NULL (session);
+
+    zlink::object_t *parents[2] = {session, socket};
+    zlink::pipe_t *pipes[2] = {NULL, NULL};
+    const int hwms[2] = {16, 16};
+    const bool conflates[2] = {false, false};
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflates, true));
+    session->attach_pipe (pipes[0]);
+    zlink::session_termination_test_access_t::attach_socket_pipe (
+      socket, pipes[1]);
+
+    //  Leave one complete outbound message ahead of the delimiter. The
+    //  engine-less session cannot deliver it, which reproduces the exact
+    //  waiting-for-delimiter state that retained the ROUTER owner's final
+    //  termination ack during RL-C1 teardown.
+    zlink::msg_t message;
+    TEST_ASSERT_SUCCESS_ERRNO (message.init_size (1));
+    *static_cast<unsigned char *> (message.data ()) = 0x2a;
+    TEST_ASSERT_TRUE (pipes[1]->write_and_flush (&message));
+    TEST_ASSERT_SUCCESS_ERRNO (message.close ());
+    pipes[1]->terminate (false);
+
+    bool waiting = false;
+    for (int attempt = 0; attempt < 100 && !waiting; ++attempt) {
+        waiting = zlink::session_termination_test_access_t::waiting_for_delimiter (
+          pipes[0]);
+        if (!waiting)
+            msleep (1);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      waiting, "session pipe did not enter waiting-for-delimiter");
+
+    zlink::session_termination_test_access_t::begin_socket_term (socket);
+    const zlink::session_termination_test_access_t::own_snapshot_t blocked =
+      zlink::session_termination_test_access_t::own_snapshot (socket);
+    TEST_ASSERT_TRUE (blocked.terminating);
+    TEST_ASSERT_EQUAL_UINT64 (blocked.sent, blocked.processed);
+    TEST_ASSERT_EQUAL_INT (1, blocked.term_acks);
+
+    //  Infinite linger cannot retain data after the engine has disappeared.
+    //  The session must force the pipe handshake to complete and return the
+    //  exact ack observed above to its socket owner.
+    zlink::session_termination_test_access_t::begin_session_term (session, -1);
+    zlink::session_termination_test_access_t::process_socket_commands (socket);
+    const zlink::session_termination_test_access_t::own_snapshot_t completed =
+      zlink::session_termination_test_access_t::own_snapshot (socket);
+    TEST_ASSERT_EQUAL_UINT64 (completed.sent, completed.processed);
+    TEST_ASSERT_EQUAL_INT (0, completed.term_acks);
+    TEST_ASSERT_TRUE (
+      zlink::session_termination_test_access_t::socket_destroyed (socket));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_handle));
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->wait_for_socket_count_at_most (0, 1000));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_handle));
+}
+
+void test_reciprocal_pipe_ack_is_queued_before_local_completion ()
+{
+    void *ctx_handle = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx_handle);
+    void *socket_handle = zlink_socket (ctx_handle, ZLINK_SOCKET_PAIR);
+    TEST_ASSERT_NOT_NULL (socket_handle);
+    zlink::socket_base_t *socket =
+      static_cast<zlink::socket_base_t *> (socket_handle);
+
+    zlink::object_t *parents[2] = {socket, socket};
+    zlink::pipe_t *pipes[2] = {NULL, NULL};
+    const int hwms[2] = {1, 1};
+    const bool conflates[2] = {false, false};
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflates, true));
+
+    pipe_completion_order_sink_t completion_sink (pipes[1]);
+    passive_pipe_sink_t passive_sink;
+    pipes[0]->set_event_sink (&completion_sink);
+    pipes[1]->set_event_sink (&passive_sink);
+    zlink::session_termination_test_access_t::prepare_reciprocal_pipe_ack (
+      pipes[0], pipes[1]);
+
+    //  This transition owes a final reciprocal acknowledgement. Its command
+    //  reference must already protect the peer when local completion is
+    //  reported, because that callback may cascade into owner teardown.
+    zlink::session_termination_test_access_t::process_pipe_term_ack (pipes[0]);
+    const int refs_at_completion =
+      completion_sink.peer_command_refs_at_completion;
+    zlink::session_termination_test_access_t::process_socket_commands (socket);
+    TEST_ASSERT_EQUAL_INT (1, refs_at_completion);
+    TEST_ASSERT_EQUAL_INT (1, passive_sink.completion_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_handle));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx_handle));
+}
+
 void test_zlink_ctx_term_null_fails ()
 {
     int rc = zlink_ctx_term (NULL);
@@ -188,6 +426,8 @@ int main (void)
     RUN_TEST (test_ctx_shutdown_only_socket_opened_after);
     RUN_TEST (test_ctx_term_rearms_reaper_when_last_socket_closes_during_restart);
     RUN_TEST (test_pending_inproc_disconnect_releases_socket_before_context_term);
+    RUN_TEST (test_engine_less_session_releases_socket_term_ack_with_pending_message);
+    RUN_TEST (test_reciprocal_pipe_ack_is_queued_before_local_completion);
     RUN_TEST (test_zlink_ctx_term_null_fails);
     RUN_TEST (test_zlink_term_null_fails);
     RUN_TEST (test_zlink_ctx_shutdown_null_fails);

@@ -157,6 +157,48 @@ public sealed class AutoConnectLoopTests
         Assert.Single(reconciler.ActiveTargets);
     }
 
+    [Fact]
+    public async Task Failed_Stamp_Preflight_Defers_Disconnect_From_The_Recovery_List()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions
+        {
+            PollingInterval = TimeSpan.Zero,
+            HeartbeatInterval = TimeSpan.FromSeconds(1)
+        };
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        await runtime.RenewOwnerLeaseOnceAsync();
+        var peer = InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1");
+        var resolver = new SwitchablePeerResolver([peer]);
+        var executor = new RecordingExecutor();
+        var local = new ZLinkAutoConnectLocal(
+            ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
+            NodeRid: null, Endpoint: string.Empty);
+        var reconciler = new ZLinkAutoConnectReconciler(
+            local, null, runtime, resolver, executor, options, time);
+        var stamps = new FailingStampStore();
+        var loop = new ZLinkAutoConnectLoop(
+            reconciler, local, options, stampStore: stamps, timeProvider: time);
+
+        await loop.TickAsync();
+        Assert.Single(reconciler.ActiveTargets);
+
+        // The optimization read observes the outage, but the fallback list
+        // succeeds just after recovery with a temporarily incomplete view.
+        // That list must not immediately tear down the admitted transport.
+        stamps.FailNext = true;
+        resolver.Rows = [];
+        await loop.TickAsync();
+
+        Assert.Empty(executor.Disconnected);
+        Assert.Single(reconciler.ActiveTargets);
+
+        time.Advance(options.HeartbeatInterval + TimeSpan.FromMilliseconds(1));
+        await loop.TickAsync();
+        Assert.Single(executor.Disconnected);
+    }
+
     private sealed class RecordingExecutor : IZLinkAutoConnectExecutor
     {
         public List<ZLinkAutoConnectTarget> Connected { get; } = [];
@@ -179,6 +221,31 @@ public sealed class AutoConnectLoopTests
         {
             ListCalls++;
             return inner.ListLiveMeshNodesAsync(meshName, cancellationToken);
+        }
+    }
+
+    private sealed class SwitchablePeerResolver(IReadOnlyList<ZLinkMeshNodeDescriptor> rows)
+        : IZLinkMeshNodeLocationResolver
+    {
+        public IReadOnlyList<ZLinkMeshNodeDescriptor> Rows { get; set; } = rows;
+
+        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+            string meshName,
+            CancellationToken cancellationToken = default) => ValueTask.FromResult(Rows);
+    }
+
+    private sealed class FailingStampStore : IZLinkLocationChangeStampStore
+    {
+        public bool FailNext { get; set; }
+
+        public ValueTask<ulong> GetChangeStampAsync(
+            ZLinkLocationChangeStampScope scope,
+            CancellationToken cancellationToken = default)
+        {
+            if (!FailNext) return ValueTask.FromResult<ulong>(1);
+
+            FailNext = false;
+            return ValueTask.FromException<ulong>(new InvalidOperationException("stamp unavailable"));
         }
     }
 

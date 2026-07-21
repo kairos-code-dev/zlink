@@ -35,6 +35,7 @@ export interface ZLinkDecodedRemoteActorJoinRequest {
   readonly actorId: string;
   readonly actorType: string;
   readonly actorRef?: ZLinkBackendActorRef;
+  readonly expectedMembershipEpoch: bigint;
   readonly actorEntryNodeRid?: RoutingId;
   readonly remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget;
   readonly actorCreateRequest?: Message;
@@ -100,6 +101,9 @@ export function decodeRemoteActorJoinPayload(
       payload.actorId,
       payload.actorGeneration
     ),
+    expectedMembershipEpoch: typeof payload.expectedMembershipEpoch === 'string'
+      ? BigInt(payload.expectedMembershipEpoch)
+      : 0n,
     actorEntryNodeRid: typeof payload.actorEntryNodeRid === 'string'
       ? decodeWireRoutingId(payload.actorEntryNodeRid, payload.actorEntryNodeRidHex)
       : undefined,
@@ -138,7 +142,7 @@ export function decodeRemoteActorJoinPayload(
   };
 }
 
-function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoffPacket[] {
+export function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoffPacket[] {
   if (!Array.isArray(value)) return [];
   return value.map((entry, expectedIndex) => {
     if (

@@ -753,18 +753,30 @@ do_start_play() {
   if [[ "$rid" == "play-b" ]]; then
     peer_pubsub="$PUB_A"
   fi
+  local route_peers="$ROUTE_B,$ROUTE_SESSION_A,$ROUTE_SESSION_B"
+  local spot_peers="$SPOT_B,$SPOT_SESSION_A,$SPOT_SESSION_B"
+  if [[ "$rid" == "play-b" ]]; then
+    route_peers="$ROUTE_A,$ROUTE_SESSION_A,$ROUTE_SESSION_B"
+    spot_peers="$SPOT_A,$SPOT_SESSION_A,$SPOT_SESSION_B"
+  fi
+  if [[ "$route_mesh_enabled" == "false" ]]; then
+    spot_peers=""
+  fi
   release_port_guards "$route" "$spot" "$pubsub" "$http" "$api_server" "$API_CLIENT" \
     "$PUBLISHER_CLIENT"
   local config_path="$CONFIG_DIR/$rid.json"
-  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$peer_pubsub" "$API_CLIENT" \
+  python3 - "$config_path" "$rid" "$route" "$route_peers" "$spot" "$spot_peers" \
+    "$pubsub" "$peer_pubsub" "$API_CLIENT" \
     "$api_server" "$PUBLISHER_CLIENT" "$http" "$HTTP_A" "$HTTP_B" \
     "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" "$route_mesh_enabled" <<'PY'
 import json, os, stat, sys
-(path, rid, route, spot, pubsub, peer_pubsub, api_peer, api, publisher, http, play_a_http,
- play_b_http, redis_endpoint, redis_key_prefix, log_dir, route_mesh_enabled) = sys.argv[1:]
+(path, rid, route, route_peers, spot, spot_peers, pubsub, peer_pubsub, api_peer, api,
+ publisher, http, play_a_http, play_b_http, redis_endpoint, redis_key_prefix, log_dir,
+ route_mesh_enabled) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
-        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "routePeerEndpoints": route_peers, "spotRouterEndpoint": spot,
+        "spotPeerEndpoints": spot_peers, "pubsubEndpoint": pubsub,
         "peerPubsubEndpoints": peer_pubsub,
         "apiPeerEndpoint": api_peer, "apiEndpoint": api,
         "publisherEndpoint": publisher, "httpEndpoint": http,
@@ -804,17 +816,28 @@ do_start_session() {
   if [[ "$stream" == "__none__" ]]; then
     stream=""
   fi
+  local route_peers="$ROUTE_A,$ROUTE_B,$ROUTE_SESSION_B"
+  local spot_peers="$SPOT_A,$SPOT_B,$SPOT_SESSION_B"
+  if [[ "$rid" == "session-b" ]]; then
+    route_peers="$ROUTE_A,$ROUTE_B,$ROUTE_SESSION_A"
+    spot_peers="$SPOT_A,$SPOT_B,$SPOT_SESSION_A"
+  fi
+  if [[ "$route_mesh_enabled" == "false" ]]; then
+    spot_peers=""
+  fi
   release_port_guards "$route" "$spot" "$pubsub" "$stream" "$http" "$tls_stream"
   local config_path="$CONFIG_DIR/$rid.json"
-  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$stream" \
+  python3 - "$config_path" "$rid" "$route" "$route_peers" "$spot" "$spot_peers" \
+    "$pubsub" "$stream" \
     "$tls_stream" "$tls_cert" "$tls_key" "$http" "$REDIS_ENDPOINT" \
     "$REDIS_KEY_PREFIX" "$LOG_DIR" "$route_mesh_enabled" <<'PY'
 import json, os, stat, sys
-(path, rid, route, spot, pubsub, stream, tls_stream, tls_cert, tls_key, http,
- redis_endpoint, redis_key_prefix, log_dir, route_mesh_enabled) = sys.argv[1:]
+(path, rid, route, route_peers, spot, spot_peers, pubsub, stream, tls_stream, tls_cert,
+ tls_key, http, redis_endpoint, redis_key_prefix, log_dir, route_mesh_enabled) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
-        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "routePeerEndpoints": route_peers, "spotRouterEndpoint": spot,
+        "spotPeerEndpoints": spot_peers, "pubsubEndpoint": pubsub,
         "streamEndpoint": stream, "tls": {"streamEndpoint": tls_stream,
         "certPath": tls_cert, "keyPath": tls_key}, "httpEndpoint": http,
         "routeMeshEnabled": route_mesh_enabled,
@@ -1045,6 +1068,34 @@ with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
 PY
 }
 
+wait_evidence() {
+  ensure_servers_started_and_ready
+  local name="$1"
+  local http="$2"
+  shift 2
+  python3 - "$http/evidence/wait" "$HTTP_PROBE_TIMEOUT_SECONDS" "$@" \
+    >"$LOG_DIR/$name-evidence-wait.json" 2>"$LOG_DIR/$name-evidence-wait.stderr.log" <<'PY'
+import json
+import sys
+import urllib.request
+
+url = sys.argv[1]
+timeout_seconds = float(sys.argv[2])
+payload = json.dumps({
+    "contains_all": sys.argv[3:],
+    "timeout_milliseconds": int(timeout_seconds * 1000),
+}).encode("utf-8")
+request = urllib.request.Request(
+    url,
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=timeout_seconds + 1) as response:
+    sys.stdout.write(response.read().decode("utf-8"))
+PY
+}
+
 run_control_ping() {
   ensure_servers_started_and_ready
   local output="$1"
@@ -1052,7 +1103,8 @@ run_control_ping() {
   local target="$3"
   local value="$4"
   local path="${5:-/channel/control-ping}"
-  python3 - "$http$path" "$target" "$value" "$HTTP_PROBE_TIMEOUT_SECONDS" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" <<'PY'
+  local mesh_name="${6:-}"
+  python3 - "$http$path" "$target" "$value" "$mesh_name" "$HTTP_PROBE_TIMEOUT_SECONDS" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" <<'PY'
 import json
 import sys
 import urllib.error
@@ -1061,8 +1113,13 @@ import urllib.request
 url = sys.argv[1]
 target = sys.argv[2]
 value = sys.argv[3]
-timeout_seconds = float(sys.argv[4])
-body = json.dumps({"target_node_rid": target, "value": value}).encode("utf-8")
+mesh_name = sys.argv[4]
+timeout_seconds = float(sys.argv[5])
+body = json.dumps({
+    "target_node_rid": target,
+    "value": value,
+    "mesh_name": mesh_name,
+}).encode("utf-8")
 request = urllib.request.Request(
     url,
     data=body,
@@ -1088,6 +1145,7 @@ wait_control_ping() {
   local target="$3"
   local value="$4"
   local path="${5:-/channel/control-ping}"
+  local mesh_name="${6:-}"
   local deadline
   deadline="$(python3 - "$CONTROL_PING_READINESS_TIMEOUT_SECONDS" <<'PY'
 import sys
@@ -1097,7 +1155,7 @@ PY
 )"
   local status=1
   while true; do
-    if run_control_ping "$output" "$http" "$target" "$value" "$path"; then
+    if run_control_ping "$output" "$http" "$target" "$value" "$path" "$mesh_name"; then
       status=0
       break
     fi
@@ -1951,13 +2009,18 @@ if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
     logDir="$LOG_DIR" \
      >"$LOG_DIR/client-sm-b6.stdout.log" 2>"$LOG_DIR/client-sm-b6.stderr.log" || status=$?
   cat "$LOG_DIR/client-sm-b6.stdout.log"
-  fetch_evidence play-a-sm-b6 "$HTTP_A"
-  fetch_evidence play-b-sm-b6 "$HTTP_B"
-  fetch_evidence session-a-sm-b6 "$HTTP_SESSION_A"
   if [[ "${status:-0}" -ne 0 ]]; then
     cat "$LOG_DIR/client-sm-b6.stderr.log" >&2
     exit "$status"
   fi
+  wait_evidence session-a-sm-b6 "$HTTP_SESSION_A" \
+    StreamDisconnectNotified sm-b6-disconnect-d5-notified \
+    StreamUnbound sm-b6-left
+  wait_evidence play-a-sm-b6 "$HTTP_A" \
+    ActorDisconnected sm-b6-disconnect-d5-notified
+  fetch_evidence play-a-sm-b6 "$HTTP_A"
+  fetch_evidence play-b-sm-b6 "$HTTP_B"
+  fetch_evidence session-a-sm-b6 "$HTTP_SESSION_A"
   python3 - "$LOG_DIR/play-a-sm-b6-evidence.json" "$LOG_DIR/play-b-sm-b6-evidence.json" "$LOG_DIR/session-a-sm-b6-evidence.json" <<'PY'
 import json
 import sys
@@ -2662,6 +2725,8 @@ if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" \
     "$STREAM_A" "$HTTP_SESSION_A" "routeMeshEnabled=$routeMeshEnabled"
   ensure_servers_started_and_ready
+  wait_control_ping sm-d2-session-a-play-b-ready "$HTTP_SESSION_A" play-b \
+    "sm-d2-session-a-play-b-ready" "/channel/control-ping" "spot.service.mesh"
   run_client_from_options \
     routeEndpoint="$ROUTE_CLIENT" \
     routeAEndpoint="$ROUTE_A" \

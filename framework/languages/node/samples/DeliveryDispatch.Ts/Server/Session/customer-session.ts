@@ -41,19 +41,22 @@ class SubscribeDeliverySessionHandler {
   constructor(
     @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     private readonly directory: CustomerActorDirectory,
-    @Inject('DELIVERYDISPATCH_CUSTOMER_SPOT_RID') private readonly spotRid: string,
     @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
   ) {}
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<SubscribeDeliveryReq>(Object as never);
     console.error(`deliverydispatch session: find customer delivery=${request.deliveryId}`);
-    let resolved = await this.locations.resolveActor({ actorId: CustomerId });
+    let resolved = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: CustomerId });
     if (resolved === undefined) {
-      await this.actors.getOrCreate(CustomerId, SampleNames.customerActorType, { customerId: CustomerId });
-      const created = this.directory.require(CustomerId);
-      await created.ensureJoined(this.spotRid, payload);
-      resolved = await this.locations.resolveActor({ actorId: CustomerId });
+      await this.actors.getOrCreate(
+        SampleNames.routeMesh,
+        CustomerId,
+        SampleNames.customerActorType,
+        { customerId: CustomerId }
+      );
+      this.directory.require(CustomerId);
+      resolved = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: CustomerId });
     } else {
       console.error(`deliverydispatch session: found existing customer=${CustomerId}`);
     }

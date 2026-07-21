@@ -6,12 +6,44 @@ import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from './actor-h
 import { decodeRoutingId, routingIdWireHex } from '../routing-id';
 
 export const ZLINK_REMOTE_ACTOR_JOIN_PACKET = '__zlink.actor.join_spot.request';
+export const ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL =
+  '__zlink.actor.source_leave.terminal';
 export const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
 export const REMOTE_ACTOR_JOIN_ADMISSION = 'admission';
 export const REMOTE_ACTOR_JOIN_COMMIT = 'commit';
 export type ZLinkRemoteActorJoinPhase =
   | typeof REMOTE_ACTOR_JOIN_ADMISSION
   | typeof REMOTE_ACTOR_JOIN_COMMIT;
+
+export interface ZLinkRemoteActorSourceLeaveTerminal {
+  readonly packetName: typeof ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL;
+  readonly transferId: string;
+  readonly actorId: string;
+  readonly succeeded: boolean;
+}
+
+export function decodeRemoteActorSourceLeaveTerminal(
+  payload: Buffer
+): ZLinkRemoteActorSourceLeaveTerminal | undefined {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(payload.toString());
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof decoded !== 'object'
+    || decoded === null
+    || (decoded as { packetName?: unknown }).packetName
+      !== ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL
+    || typeof (decoded as { transferId?: unknown }).transferId !== 'string'
+    || typeof (decoded as { actorId?: unknown }).actorId !== 'string'
+    || typeof (decoded as { succeeded?: unknown }).succeeded !== 'boolean'
+  ) {
+    return undefined;
+  }
+  return decoded as ZLinkRemoteActorSourceLeaveTerminal;
+}
 export interface ZLinkRemoteActorJoinWirePayload {
   readonly packetName?: unknown;
   readonly spotRid?: unknown;
@@ -21,6 +53,7 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
+  readonly expectedMembershipEpoch?: unknown;
   readonly actorEntryNodeRid?: unknown;
   readonly actorEntryNodeRidHex?: unknown;
   readonly actorCreateRequest?: unknown;
@@ -51,6 +84,7 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly actorNodeRid: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
+  readonly expectedMembershipEpoch: string;
   readonly actorEntryNodeRid?: string;
   readonly actorEntryNodeRidHex?: string;
   readonly actorCreateRequest?: string;
@@ -82,6 +116,7 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
+  readonly expectedMembershipEpoch?: string;
   readonly actorEntryNodeRid?: string;
   readonly actorEntryNodeRidHex?: string;
   readonly actorCreateRequest?: string;
@@ -109,6 +144,7 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly actorId?: string;
   readonly actorType: string;
   readonly actorRef?: ZLinkBackendActorRef;
+  readonly expectedMembershipEpoch?: bigint;
   readonly actorEntryNodeRid?: RoutingId;
   readonly actorCreateRequest?: Buffer;
   readonly request?: Message;
@@ -147,6 +183,7 @@ export function buildRemoteActorJoinRequestPayload(
     actorNodeRid: actorRef === undefined ? undefined : String(actorRef.nodeRid),
     actorNodeRidHex: actorRef === undefined ? undefined : encodeRoutingIdHex(actorRef.nodeRid),
     actorGeneration: actorRef === undefined ? undefined : actorRef.generation.toString(),
+    expectedMembershipEpoch: options.expectedMembershipEpoch?.toString(),
     actorEntryNodeRid: options.actorEntryNodeRid === undefined ? undefined : String(options.actorEntryNodeRid),
     actorEntryNodeRidHex: options.actorEntryNodeRid === undefined ? undefined : encodeRoutingIdHex(options.actorEntryNodeRid),
     actorCreateRequest: options.actorCreateRequest?.toString('base64'),

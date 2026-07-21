@@ -171,7 +171,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
         // BindAsync: 인증된 actor handle을 이 session에 묶는다. 이후 packet은 RelayAsync로 이 actor에 간다.
         await context.Actors.BindAsync(
             actor, ct);
-        context.Client.Reply(new AuthRep(ok: true)).Submit();
+        await context.Client.Reply(new AuthRep(ok: true)).SubmitAsync(ct);
     }
 }
 ```
@@ -232,10 +232,10 @@ public sealed class JoinMatchActorHandler
         JoinMatchReq request,
         CancellationToken ct)
     {
-        // 같은 actor에 묶인 client로 push — Submit은 전송 수락까지만 동기
-        actor.Context.BoundSession
+        // 같은 actor에 묶인 client로 push — 원격 handler 완료가 아니라 admission 결과까지만 기다린다.
+        await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
-            .Submit(ct);
+            .SubmitAsync(ct);
 
         // 응답 frame의 metadata/compression 옵션. 응답 body는 반환값이다.
         context.Reply
@@ -255,7 +255,7 @@ client는 제공하지 않는다.
 public sealed class PlayerNotifyHandler
     : IZLinkSpotActorSendHandler<MatchSpot, PlayerActor, GameStateNotify>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         MatchSpot spot,
         PlayerActor actor,
         ZLinkSpotActorSendContext context,
@@ -263,15 +263,14 @@ public sealed class PlayerNotifyHandler
         CancellationToken ct)
     {
         // 다른 actor가 이 actor 앞으로 보낸 메시지를 받아, 자기 BoundSession으로 client에 push 하는 끝점.
-        actor.Context.BoundSession.Send(message).Submit(ct);
-        return ValueTask.CompletedTask;
+        await actor.Context.BoundSession.Send(message).SubmitAsync(ct);
     }
 }
 ```
 
 - `IZLinkBoundSession`의 표면은 **`Send<TMessage>(message)`** 와 **`DisconnectAsync(...)`** 둘뿐이다.
-  client로의 push는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).Submit(...)`은
-  호출자가 응답이나 송신 수락 완료를 기다리지 않는 push 호출이다.
+  client로의 push는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).SubmitAsync(...)`는
+  admission 결과를 반환하지만 원격 handler 실행 완료는 기다리지 않는다.
 - `DisconnectAsync(...)`는 어플리케이션이 거는 것이라 session의 `OnDisconnectedAsync`를 다시 일으키지
   않는다(stream만 닫고 binding 정리).
 
@@ -308,8 +307,8 @@ public ValueTask OnDisconnectedAsync(CancellationToken ct)
 ```csharp
 if (sessions.TryGet(playerId, out var session))
 {
-    session.Client.Send(new QuestProgressNotify(playerId, progress))    // client가 이 이름으로 받는다
-        .Submit();
+    await session.Client.Send(new QuestProgressNotify(playerId, progress)) // client가 이 이름으로 받는다
+        .SubmitAsync(ct);
 }
 ```
 
@@ -343,7 +342,7 @@ public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory session
 
 session relay는 actor id/type logical handle과 core SessionRelay를 사용한다. actor가 어느
 spot에 있는지 조회하고 싶으면 `IZLinkActorSpotHandleResolver.ResolveActorSpotHandleAsync(
-actorId)`를 쓴다. location store를 읽어 actor가 존재하는 spot의 논리적
+meshName, actorId)`를 쓴다. location store를 읽어 지정한 MeshName에서 actor가 존재하는 spot의 논리적
 `SpotHandle`을 돌려준다(재연결 시 "있으면 re-bind, 없으면 생성" 판단이 대표 사용처,
 [10-location §4](10-location.ko.md)). 반면 **actor↔session binding은 framework 내부 상태**라
 조회용 public 표면이 없다 — actor가 client로 push 할 때는 `Context.BoundSession`을 쓰면 된다.

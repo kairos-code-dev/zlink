@@ -11,13 +11,13 @@ test('TicTacToe uses a distinct internal room join response contract', () => {
     root,
     'samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot.ts'
   ), 'utf8');
-  const entry = fs.readFileSync(path.join(
+  const joinHandler = fs.readFileSync(path.join(
     root,
-    'samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/play-entry-spot.ts'
+    'samples/TicTacToe.Ts/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler.ts'
   ), 'utf8');
 
   assert.match(messages, /interface TicTacToeGameJoinRes \{[\s\S]*?state: GameState;/);
   assert.match(room, /private admit\([^)]*\): TicTacToeGameJoinRes/);
-  assert.match(entry, /submit<Partial<TicTacToeGameJoinRes/);
-  assert.match(entry, /return joinGameRes\(reply\.state\)/);
+  assert.match(joinHandler, /submit<Partial<TicTacToeGameJoinRes/);
+  assert.match(joinHandler, /return joinGameRes\(joined\.reply\.state\)/);
 });

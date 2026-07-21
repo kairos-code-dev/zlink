@@ -13,6 +13,7 @@ test('drain keeps the marker observable for one configured polling interval', as
   const pollingIntervalMs = 30;
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
+      spotNodes: [{ name: 'game', router: { bind: 'tcp://127.0.0.1:1' } }],
       locations: { options: { pollingIntervalMs } }
     })
   });
@@ -29,7 +30,7 @@ test('drain keeps the marker observable for one configured polling interval', as
   };
   host.stop = async () => {};
 
-  assert.deepEqual(await host.drain(500), { kind: 'drained' });
+  assert.deepEqual(await host.routeMeshRuntime.drain('game', 500), { kind: 'drained' });
   assert.notEqual(markerPublishedAt, undefined);
   assert.notEqual(cleanupStartedAt, undefined);
   assert(
@@ -46,7 +47,7 @@ test('SF-C2 uses public weight drain and verifies marker, terminal result, and c
   const runner = read('e2e/DiscoveryRegistryHa/run_e2e.sh');
 
   assert.match(provider, /configureServerSocket\(\)\.weight\s*=\s*0/);
-  assert.match(provider, /drain\.drain\(/);
+  assert.match(provider, /routeMeshRuntime\.drain\(/);
   assert.match(scenario, /draining/);
   assert.match(scenario, /kind\s*===\s*'drained'/);
   assert.match(scenario, /providerRid\s*===\s*'api-a'/);

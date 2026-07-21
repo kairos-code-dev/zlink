@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -15,6 +16,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 
 abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoCloseable {
     final ZLinkSpotRuntime host;
@@ -150,6 +152,25 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
     final CompletionStage<Void> dispatchSpotRouteHandler(
         ZLinkBackendReceived received,
         ParsedPacket packet) {
+        Map<String, String> metadata;
+        try {
+            metadata = ZLinkApplicationMetadata.decode(
+                received.applicationMetadata());
+        } catch (IllegalArgumentException error) {
+            if (received.requestSeq().isPresent()) {
+                host.replySpotRouteDispatchError(
+                    received,
+                    packet.packetName(),
+                    context.spotRid(),
+                    ZLinkDispatchErrorReason.INVALID_FRAME,
+                    error);
+            } else {
+                host.reportSpotRouteSendDropped(
+                    received, packet.packetName(), context.spotRid());
+            }
+            closeRouteReceived(received);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
         SpotPacketHandlerRegistration handler =
             context.handlerCatalog().packetHandler(packet.packetName());
         if (handler == null) {
@@ -183,7 +204,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 () ->
                 systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(
                     host.runWithOutbound(context.dispatchOutbound(), () ->
-                        handlerInvoker.invokeRequest(handler, spotSurface, payloadCopy))
+                        handlerInvoker.invokeRequest(
+                            handler, spotSurface, payloadCopy, metadata))
                         .thenAccept(reply -> received.reply(List.of(reply))))
                     .whenComplete((ignored, error) -> {
                         if (error != null && !host.isClosing()) {
@@ -223,7 +245,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             java.util.concurrent.CompletableFuture.completedFuture(null),
             () ->
             host.runWithOutbound(context.dispatchOutbound(), () ->
-                handlerInvoker.invokePacket(handler, spotSurface, payloadCopy))
+                handlerInvoker.invokePacket(
+                    handler, spotSurface, payloadCopy, metadata))
                 .whenComplete((ignored, error) -> {
                     payloadCopy.close();
                     if (error == null) {
@@ -278,7 +301,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         return host.dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
             .thenApply(reply -> {
                 Optional<Message> completed = host.replyTransferredRequestDirect(
-                    packet.header(), packet.replyRoute(), reply);
+                    packet.actorRef(), packet.header(), packet.replyRoute(), reply);
                 return packet.replyRoute() == null
                     ? completed
                     : Optional.of(ZLinkActorSpotRoutePackets.createHandoffDirectReplyAck());
@@ -289,6 +312,9 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
     final CompletionStage<Void> dispatchSpotSubscription(
         ZLinkBackendTopicMessage received) {
         try {
+            if (host.isDraining()) {
+                return CompletableFuture.completedFuture(null);
+            }
             if (received.parts().isEmpty()) {
                 host.reportSpotSubscriptionDropped(
                     received.topic(),
@@ -298,6 +324,18 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
             ParsedPacket packet = host.parsePacket(received.parts());
+            Map<String, String> metadata;
+            try {
+                metadata = ZLinkApplicationMetadata.decode(
+                    received.applicationMetadata());
+            } catch (IllegalArgumentException error) {
+                host.reportSpotSubscriptionDropped(
+                    received.topic(),
+                    null,
+                    context.spotRid(),
+                    ZLinkDispatchErrorReason.INVALID_FRAME);
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
             host.traceMessageFlow(
                 ZLinkMessageFlowOutcome.RECEIVED,
                 ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
@@ -322,7 +360,14 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 tail = appendSpotHandler(
                     tail,
                     () -> host.runWithOutbound(context.dispatchOutbound(), () ->
-                        handlerInvoker.invokeSubscription(handler, spotSurface, payloadCopy))
+                        handlerInvoker.invokeSubscription(
+                            handler,
+                            spotSurface,
+                            received.channelName(),
+                            received.topic(),
+                            received.routingId().map(Object::toString),
+                            payloadCopy,
+                            metadata))
                         .whenComplete((ignored, error) -> payloadCopy.close()));
             }
             if (dispatched) {

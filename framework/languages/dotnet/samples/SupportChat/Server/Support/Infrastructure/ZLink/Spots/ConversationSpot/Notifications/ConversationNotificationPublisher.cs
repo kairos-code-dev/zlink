@@ -20,16 +20,15 @@ internal sealed class ConversationNotificationPublisher
 
     // Sent when a conversation is assigned to an agent, before the agent joins. It goes
     // to the agent's roster actor so the agent client knows which conversation to join.
-    public ValueTask PublishAssignedToRosterAsync(
+    public async ValueTask PublishAssignedToRosterAsync(
         SupportUserActor roster,
         ConversationSnapshot snapshot,
         CancellationToken cancellationToken)
     {
         var state = ConversationContracts.ToState(snapshot);
-        roster.Context.BoundSession
+        await roster.Context.BoundSession
             .Send(new ConversationAssignedNotify(state.ConversationId, state))
-            .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+            .SubmitAsync(cancellationToken);
     }
 
     private async ValueTask PublishAsync(
@@ -44,37 +43,43 @@ internal sealed class ConversationNotificationPublisher
                 await PublishParticipantJoinedAsync(conversationEvent, state, actors, cancellationToken);
                 break;
             case ConversationEventKind.MessageAppended:
-                PublishMessageAsync(conversationEvent, state, actors, cancellationToken);
+                await PublishMessageAsync(conversationEvent, state, actors, cancellationToken);
                 break;
             case ConversationEventKind.TypingChanged:
-                PublishTypingAsync(conversationEvent, state, actors, cancellationToken);
+                await PublishTypingAsync(conversationEvent, state, actors, cancellationToken);
                 break;
             case ConversationEventKind.Idle:
-                PublishAll(
+                await PublishAllAsync(
                     actors,
-                    actor => actor.Context.BoundSession
-                        .Send(new ConversationIdleNotify(state.ConversationId, state))
-                        .Submit(cancellationToken));
+                    async actor =>
+                    {
+                        await actor.Context.BoundSession
+                            .Send(new ConversationIdleNotify(state.ConversationId, state))
+                            .SubmitAsync(cancellationToken);
+                    });
                 break;
             case ConversationEventKind.Closed:
                 // An explicit close carries the requester's participant id: that client
                 // already gets the closed state in CloseConversationRes, so only the
                 // other participant is notified. An auto-close (idle grace) has no
                 // requester, so both participants are notified.
-                PublishAll(
+                await PublishAllAsync(
                     conversationEvent.ActorId is null
                         ? actors
                         : Exclude(actors, conversationEvent.ActorId),
-                    actor => actor.Context.BoundSession
-                        .Send(new ConversationClosedNotify(state.ConversationId, state))
-                        .Submit(cancellationToken));
+                    async actor =>
+                    {
+                        await actor.Context.BoundSession
+                            .Send(new ConversationClosedNotify(state.ConversationId, state))
+                            .SubmitAsync(cancellationToken);
+                    });
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported conversation event {conversationEvent.Kind}.");
         }
     }
 
-    private static ValueTask PublishParticipantJoinedAsync(
+    private static async ValueTask PublishParticipantJoinedAsync(
         ConversationEvent conversationEvent,
         ConversationState state,
         IReadOnlyDictionary<string, SupportUserActor> actors,
@@ -86,17 +91,16 @@ internal sealed class ConversationNotificationPublisher
         // Tell the customer that the agent joined (the joining participant is excluded).
         if (actors.TryGetValue(state.CustomerActorId, out var customer)
             && !string.Equals(customer.ParticipantId, conversationEvent.ActorId, StringComparison.Ordinal))
-            customer.Context.BoundSession
+            await customer.Context.BoundSession
                 .Send(new ParticipantJoinedNotify(
                     state.ConversationId,
                     conversationEvent.ActorId,
                     ConversationContracts.ToRole(conversationEvent.Role.Value),
                     state))
-                .Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+                .SubmitAsync(cancellationToken);
     }
 
-    private static void PublishMessageAsync(
+    private static async ValueTask PublishMessageAsync(
         ConversationEvent conversationEvent,
         ConversationState state,
         IReadOnlyDictionary<string, SupportUserActor> actors,
@@ -105,14 +109,17 @@ internal sealed class ConversationNotificationPublisher
         var message = conversationEvent.Message
                       ?? throw new InvalidOperationException("Message event requires a chat message.");
         var chatMessage = ConversationContracts.ToMessage(message);
-        PublishAll(
+        await PublishAllAsync(
             Exclude(actors, message.SenderActorId),
-            actor => actor.Context.BoundSession
-                .Send(new ChatMessageNotify(state.ConversationId, chatMessage, state))
-                .Submit(cancellationToken));
+            async actor =>
+            {
+                await actor.Context.BoundSession
+                    .Send(new ChatMessageNotify(state.ConversationId, chatMessage, state))
+                    .SubmitAsync(cancellationToken);
+            });
     }
 
-    private static void PublishTypingAsync(
+    private static async ValueTask PublishTypingAsync(
         ConversationEvent conversationEvent,
         ConversationState state,
         IReadOnlyDictionary<string, SupportUserActor> actors,
@@ -121,15 +128,18 @@ internal sealed class ConversationNotificationPublisher
         if (conversationEvent.ActorId is null || conversationEvent.IsTyping is null)
             throw new InvalidOperationException("Typing event requires actor id and typing state.");
 
-        PublishAll(
+        await PublishAllAsync(
             Exclude(actors, conversationEvent.ActorId),
-            actor => actor.Context.BoundSession
-                .Send(new TypingChangedNotify(
-                    state.ConversationId,
-                    conversationEvent.ActorId,
-                    conversationEvent.IsTyping.Value,
-                    state))
-                .Submit(cancellationToken));
+            async actor =>
+            {
+                await actor.Context.BoundSession
+                    .Send(new TypingChangedNotify(
+                        state.ConversationId,
+                        conversationEvent.ActorId,
+                        conversationEvent.IsTyping.Value,
+                        state))
+                    .SubmitAsync(cancellationToken);
+            });
     }
 
     private static IReadOnlyDictionary<string, SupportUserActor> Exclude(
@@ -141,10 +151,10 @@ internal sealed class ConversationNotificationPublisher
             .ToDictionary(static actor => actor.Key, static actor => actor.Value, StringComparer.Ordinal);
     }
 
-    private static void PublishAll(
+    private static async ValueTask PublishAllAsync(
         IReadOnlyDictionary<string, SupportUserActor> actors,
-        Action<SupportUserActor> publish)
+        Func<SupportUserActor, ValueTask> publish)
     {
-        foreach (var actor in actors.Values) publish(actor);
+        foreach (var actor in actors.Values) await publish(actor);
     }
 }

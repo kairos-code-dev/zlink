@@ -233,7 +233,7 @@ final class ZLinkChannelSocketRegistry {
                 channel.name(),
                 ZLinkLocationRole.ROUTER,
                 channel.routeRoutingId(),
-                endpoint,
+                advertisedEndpoint(endpoint, router),
                 router.peerWeight(),
                 router,
                 channel.routeManualEndpoints()));
@@ -249,6 +249,18 @@ final class ZLinkChannelSocketRegistry {
                 router,
                 channel.routeManualEndpoints()));
         }
+    }
+
+    private static String advertisedEndpoint(
+        String configuredEndpoint,
+        ZLinkBackendRouterSocket router) {
+        if (!configuredEndpoint.endsWith(":0")) {
+            return configuredEndpoint;
+        }
+        String boundEndpoint = router.lastEndpoint();
+        return boundEndpoint == null || boundEndpoint.isBlank()
+            ? configuredEndpoint
+            : boundEndpoint;
     }
 
     private static void closeAll(

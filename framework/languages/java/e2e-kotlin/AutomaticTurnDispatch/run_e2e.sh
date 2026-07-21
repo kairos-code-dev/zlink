@@ -26,7 +26,6 @@ chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 PLAY_B_START_DELAY_SECONDS="${ZLINK_KOTLIN_E2E_PLAY_B_START_DELAY_SECONDS:-0}"
 PROCESS_STOP_ATTEMPTS=600
 
@@ -139,9 +138,8 @@ gradle_run() {
 static_checks() {
   local tmp
   if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
-     || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-     || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
-    echo "AutomaticTurnDispatch must use 3s readiness and 5s route settle limits" >&2
+     || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+    echo "AutomaticTurnDispatch must use a 3s readiness limit" >&2
     return 1
   fi
   tmp="$(mktemp)"
@@ -238,13 +236,12 @@ start_delay() {
 
 start_play() {
   local node_rid="$1"
-  local spot_endpoint="$2"
-  local play_route_endpoint="$3"
-  local log_name="$4"
+  local play_route_endpoint="$2"
+  local log_name="$3"
   local config_path="${config_dir}/${log_name}.properties"
   write_config "${config_path}" \
     "nodeRid=${node_rid}" "delayEndpoint=${DELAY}" \
-    "spotEndpoint=${spot_endpoint}" "playRouteEndpoint=${play_route_endpoint}" \
+    "playRouteEndpoint=${play_route_endpoint}" \
     "sessionRouteEndpoint=${SESSION_ROUTE}"
   "$(play_bin)" --config "${config_path}" \
     >"${log_dir}/${log_name}.stdout.log" 2>"${log_dir}/${log_name}.stderr.log" &
@@ -252,7 +249,6 @@ start_play() {
   if [[ "${log_name}" == "play" ]]; then
     play_a_pid="$!"
   fi
-  wait_port "${log_name}-spot" "${spot_endpoint}"
   wait_port "${log_name}-route" "${play_route_endpoint}"
 }
 
@@ -282,13 +278,12 @@ stop_recorded_pid() {
 start_session() {
   local config_path="${config_dir}/session.properties"
   write_config "${config_path}" \
-    "nodeRid=session-a" "sessionSpotEndpoint=${SESSION_SPOT}" \
+    "nodeRid=session-a" \
     "playRouteEndpoint=${PLAY_ROUTE}" "playBRouteEndpoint=${PLAY_B_ROUTE}" \
     "sessionRouteEndpoint=${SESSION_ROUTE}" "streamEndpoint=${STREAM}"
   "$(session_bin)" --config "${config_path}" \
     >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
   pids+=("$!")
-  wait_port session-spot "${SESSION_SPOT}"
   wait_port session-route "${SESSION_ROUTE}"
   wait_port stream "${STREAM}"
 }
@@ -332,8 +327,7 @@ run_e3_client() {
   fi
 
   stop_recorded_pid "${play_a_pid}"
-  start_play play-a "${SPOT}" "${PLAY_ROUTE}" play-restarted
-  sleep "${ROUTE_SETTLE_SECONDS}"
+  start_play play-a "${PLAY_ROUTE}" play-restarted
   touch "${restarted_file}"
   wait "${client_e3_pid}"
 }
@@ -380,23 +374,20 @@ with zipfile.ZipFile(path) as jar:
         raise SystemExit(f"bad installed jar entry in {path}: {bad}")
 PY
 done
-read -r DELAY SPOT SESSION_SPOT PLAY_ROUTE SESSION_ROUTE STREAM SPOT_B PLAY_B_ROUTE <<<"$(reserve_ports)"
+read -r DELAY UNUSED_SPOT UNUSED_SESSION_SPOT PLAY_ROUTE SESSION_ROUTE STREAM UNUSED_SPOT_B PLAY_B_ROUTE <<<"$(reserve_ports)"
 start_delay
-start_play play-a "${SPOT}" "${PLAY_ROUTE}" play
+start_play play-a "${PLAY_ROUTE}" play
 start_session
-sleep "${ROUTE_SETTLE_SECONDS}"
 case "${SCENARIO}" in
   all)
     run_client
-    start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
-    sleep "${ROUTE_SETTLE_SECONDS}"
+    start_play play-b "${PLAY_B_ROUTE}" play-b
     run_d2_client
     run_e3_client
     ;;
   ATD-D2|ATD-D3|d2)
     sleep "${PLAY_B_START_DELAY_SECONDS}"
-    start_play play-b "${SPOT_B}" "${PLAY_B_ROUTE}" play-b
-    sleep "${ROUTE_SETTLE_SECONDS}"
+    start_play play-b "${PLAY_B_ROUTE}" play-b
     run_d2_client
     ;;
   ATD-E3)

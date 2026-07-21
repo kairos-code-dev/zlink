@@ -27,7 +27,7 @@ export const ZLinkLocationKeyCodec = Object.freeze({
   },
 
   encodeActorKey(key: ZLinkActorLocationKey): string {
-    return encodeSegments(key.actorId);
+    return encodeSegments(key.meshName, key.actorId);
   },
 
   encodeRouteKey(key: ZLinkRouteLocationKey): string {

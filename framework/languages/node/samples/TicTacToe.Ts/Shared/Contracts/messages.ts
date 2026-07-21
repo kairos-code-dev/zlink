@@ -212,20 +212,7 @@ export interface TicTacToeActor {
   level: number;
   wins: number;
   roomId?: string;
-  attachClient(client: TicTacToeActorClient): void;
-  detachClient(client: TicTacToeActorClient): void;
-  markDisconnected(): void;
-  markForDestroyAfterRoomLeave(): void;
-  destroyAfterEntrySpotJoin: boolean;
   push(payload: PlayerJoinedNotify | GameStateNotify | WinMilestoneNotify): Promise<void>;
-}
-
-export interface TicTacToeActorClient {
-  send(message: unknown): {
-    metadata(key: string, value: string): {
-      submit(): Promise<void>;
-    };
-  };
 }
 
 function actorDisplayName(actorId: string): string {

@@ -24,7 +24,9 @@ import {
 export interface ZLinkSessionActorCoordinatorOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
-  readonly nativeActorNodeProvider?: () => { readonly routingId: ActorRef['nodeRid'] } | undefined;
+  readonly nativeActorNodeProvider?: () => {
+    status(): { readonly routingId: unknown };
+  } | undefined;
   readonly confirmRemoteActorSessionBinding?: (
     actor: ActorRef,
     sessionRid: ActorRef['nodeRid'],
@@ -109,8 +111,6 @@ export class ZLinkSessionActorCoordinator {
           this.actorBindingRoutingId(context),
           signal
         );
-      } else {
-        this.relayRemoteBoundSessionBind(context, actorRef);
       }
     } catch (error) {
       const rollbackErrors: unknown[] = [];
@@ -296,7 +296,7 @@ export class ZLinkSessionActorCoordinator {
       return;
     }
     const localNode = this.options.nativeActorNodeProvider?.();
-    if (localNode !== undefined && routingIdsEqual(localNode.routingId, actorRef.nodeRid)) {
+    if (localNode !== undefined && routingIdsEqual(String(localNode.status().routingId), actorRef.nodeRid)) {
       return;
     }
     this.remoteBoundSessions.relayRemoteBoundSessionBind(context.stream, actorRef);

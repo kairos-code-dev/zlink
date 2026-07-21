@@ -104,9 +104,6 @@ public sealed class test_socket_options
 
         stream.Options.Notify = true;
         Assert.True(stream.Options.Notify);
-        RoutingId streamRid = CoreTestSupport.RoutingIdUtf8("STRM");
-        stream.SetRoutingId(streamRid);
-        Assert.Equal(streamRid, stream.GetRoutingId());
 
         xpub.Options.Verbose = true;
         xpub.Options.Verboser = true;
@@ -168,75 +165,12 @@ public sealed class test_socket_options
 
         using var ctx = Zlink.CreateContext();
         using var sub = ctx.CreateSubSocket();
-        using var node = ctx.CreateSpotNode();
-        using var spot = node.CreateSpot();
 
         Assert.Null(sub.SubscriptionAt(0));
-        Assert.Null(spot.SubscriptionAt(0));
 
         sub.SetSubscription("prices");
-        spot.SetSubscription("prices");
 
         Assert.Equal("prices", sub.SubscriptionAt(0)?.Filter);
-        Assert.Equal("prices", spot.SubscriptionAt(0)?.Filter);
-    }
-
-    [Fact]
-    public void spot_node_dispatch_workers_validate_min_max_contract()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-
-        Assert.True(node.DispatchWorkersMin >= 1);
-        Assert.True(node.DispatchWorkersMax >= node.DispatchWorkersMin);
-
-        node.DispatchWorkersMin = 1;
-        node.DispatchWorkersMax = 1;
-        Assert.Equal(1, node.DispatchWorkersMin);
-        Assert.Equal(1, node.DispatchWorkersMax);
-
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            node.DispatchWorkersMin = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            node.DispatchWorkersMax = 0);
-        node.DispatchWorkersMin = 2;
-        Assert.True(node.DispatchWorkersMax >= node.DispatchWorkersMin);
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            node.DispatchWorkersMax = 1);
-    }
-
-    [Fact]
-    public void spot_lookup_returns_null_when_spot_is_absent()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-
-        Assert.Null(node.SpotLookup(CoreTestSupport.RoutingIdUtf8("missing")));
-    }
-
-    [Fact]
-    public void spot_node_get_or_create_spot_reuses_logical_spot()
-    {
-        if (!CoreTestSupport.IsNativeAvailable())
-            return;
-
-        using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
-        var spotRid = CoreTestSupport.RoutingIdUtf8("managed-room");
-
-        using var first = node.GetOrCreateSpot(spotRid, out var firstCreated);
-        using var second = node.GetOrCreateSpot(spotRid, out var secondCreated);
-
-        Assert.True(firstCreated);
-        Assert.False(secondCreated);
-        Assert.Equal(spotRid, first.RoutingId);
-        Assert.Equal(spotRid, second.RoutingId);
     }
 
 }

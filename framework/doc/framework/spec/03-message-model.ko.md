@@ -3,9 +3,10 @@
 [스펙 목차](README.ko.md) · [상호작용 모델](02-interaction-model.ko.md) ·
 [비동기 실행](04-async-execution-policy.ko.md)
 
-이 문서는 ZLink Framework 10.0.0의 typed 메시지, application metadata, 응답과 오류 계약을 정의한다.
-대상 독자는 framework 공개 계약과 언어별 bindings를 구현하는 개발자다. 내부 multipart encoding과
-transport envelope는 Core가 처리하며 framework 사용자에게 노출하지 않는다.
+이 문서는 ZLink Framework 11.0.0의 typed 메시지, application metadata, 응답과 오류 계약을 정의한다.
+대상 독자는 framework 공개 계약과 언어별 service runtime을 구현하는 개발자다. Framework envelope와 내부
+multipart encoding은 모든 언어가 같은 wire schema와 golden fixture를 사용하고, 각 언어 service runtime이
+raw transport 위에서 처리한다. Application에는 이 형식을 노출하지 않는다.
 
 ## 1. Typed 메시지
 
@@ -24,12 +25,19 @@ host 단위 정책이며 업무 handler나 개별 send/request 호출에 반복�
 | Send | 대상 handler에 한 번 전달하는 one-way 메시지 | submit 결과만 반환하며 원격 handler 완료를 기다리지 않는다 |
 | Request | 대상 handler가 reply 또는 오류를 반환하는 메시지 | reply, 오류, timeout 또는 cancellation로 한 번 완료된다 |
 | Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | target별 ROUTER·local queue 제출을 집계한 submit 결과를 반환한다 |
-| Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | fanout socket의 전달 정책을 따른다 |
+| Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | local publisher transport의 bounded admission 결과를 반환하며 subscriber 수신은 확인하지 않는다 |
 | STREAM send/request | 연결된 session에 보내는 one-way 메시지 또는 reply를 요구하는 메시지 | session sequence와 lifecycle 계약을 따른다 |
 
 Request의 reply 상관관계는 transport가 발급한 operation ID 또는 session sequence가 소유한다. packet name이나
 application metadata를 reply matching key로 사용하지 않는다. reply는 성공 payload와 framework 오류 중 하나로
 완료되며 같은 request를 두 번 완료할 수 없다.
+
+InstanceSpotAddress 호출도 Send 또는 Request message kind를 사용한다. Cold placement에서
+Framework service runtime은 typed packet name과 원래 operation이 send인지 request인지를 activation operation에
+보존하지만, 첫 업무 payload를 activation callback 인자로 바꾸거나 별도 message type으로 소비하지 않는다.
+Location `Ready` commit과 Framework activation barrier가 끝나면 원래 message를 확정된 generation의 일반 Spot
+direct handler에 한 번 전달한다. ObjectGeneration, AuthorityOwnerGeneration과 owner lease token은 Store
+fencing에만 사용하며 application payload나 handler context에 포함하지 않는다.
 
 ## 3. Application metadata
 
@@ -54,7 +62,7 @@ Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Frame
 | 경로 | metadata 전달 |
 |---|---|
 | Node direct와 ChannelName | source snapshot을 선택된 MeshNode의 handler context에 전달한다 |
-| Spot direct | target Spot의 application claim에 전달한다 |
+| Spot direct와 Instance Spot direct | target Spot의 application claim에 전달한다. Instance activation 전에는 handler에 노출하지 않는다 |
 | Logical Multicast | 같은 publish snapshot을 각 matching Spot handler에 전달한다 |
 | Actor | Actor handler context에 전달하며 Spot callback을 거치지 않는다 |
 | STREAM session | session send/request context에 전달한다 |
@@ -70,6 +78,10 @@ metadata를 명시적으로 넘긴 경우에만 새 outbound snapshot에 포함�
 submit 호출이 반환되기 전까지 outbound builder와 payload는 호출자가 소유한다. Framework가 submit을
 수락하면 필요한 payload와 metadata reference 또는 복사본을 operation lifetime 동안 유지한다. 호출자가
 transport buffer, native message pointer 또는 multipart part의 lifetime을 관리하게 하지 않는다.
+
+Instance activation이 pending인 동안에도 같은 ownership 규칙이 적용된다. Location Store I/O와 factory가
+caller의 payload object나 native buffer 수명에 의존하지 않도록 Framework service runtime이 필요한 immutable
+snapshot을 보유한다. Redirect나 activation 실패 뒤에는 예약한 payload storage를 한 번 해제한다.
 
 payload 최대 크기는 대상 transport의 `MaxMessageSize`를 따른다. 전체 message가 제한을 넘으면 일부 part를
 전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 target별 제출과 결과 집계는

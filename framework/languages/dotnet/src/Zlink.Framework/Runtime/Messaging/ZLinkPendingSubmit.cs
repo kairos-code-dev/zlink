@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Messaging;
 internal sealed class PendingSubmit : IDisposable
 {
     private readonly IPendingSubmitCompletion _completion;
-    private readonly Action _wake;
+    private readonly object _admissionGate;
+    private readonly Action<PendingSubmit> _wake;
     private CancellationTokenRegistration _callerCancellationRegistration;
     private int _completed;
     private Timer? _deadlineTimer;
@@ -14,16 +15,20 @@ internal sealed class PendingSubmit : IDisposable
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
-        Action wake,
+        object admissionGate,
+        Action<PendingSubmit> wake,
         IPendingSubmitCompletion completion,
-        bool completeOnAccepted)
+        bool completeOnAccepted,
+        string operationId)
     {
         Parts = parts;
         TrySubmit = trySubmit;
         Deadline = deadline;
+        _admissionGate = admissionGate;
         _wake = wake;
         _completion = completion;
         CompleteOnAccepted = completeOnAccepted;
+        OperationId = operationId;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -33,6 +38,8 @@ internal sealed class PendingSubmit : IDisposable
     public DateTimeOffset? Deadline { get; }
 
     public bool CompleteOnAccepted { get; }
+
+    public string OperationId { get; }
 
     public Task Task => _completion.Task;
 
@@ -50,32 +57,40 @@ internal sealed class PendingSubmit : IDisposable
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
-        Action wake)
+        object admissionGate,
+        Action<PendingSubmit> wake,
+        string operationId)
     {
         return new PendingSubmit(
             parts,
             trySubmit,
             deadline,
+            admissionGate,
             wake,
             new ObjectPendingSubmitCompletion(
                 new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously)),
-            true);
+            true,
+            operationId);
     }
 
     public static PendingSubmit CreateRequest<T>(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         DateTimeOffset? deadline,
-        Action wake,
-        ZLinkRequestCompletion<T> completion)
+        object admissionGate,
+        Action<PendingSubmit> wake,
+        ZLinkRequestCompletion<T> completion,
+        string operationId)
     {
         return new PendingSubmit(
             parts,
             trySubmit,
             deadline,
+            admissionGate,
             wake,
             new RequestPendingSubmitCompletion<T>(completion),
-            false);
+            false,
+            operationId);
     }
 
     public void Activate(CancellationToken cancellationToken, CancellationToken stopToken)
@@ -86,25 +101,41 @@ internal sealed class PendingSubmit : IDisposable
 
     public void TryComplete(object? result)
     {
-        if (Interlocked.Exchange(ref _completed, 1) == 0) _completion.TrySetResult(result);
+        lock (_admissionGate)
+        {
+            if (Interlocked.Exchange(ref _completed, 1) == 0) _completion.TrySetResult(result);
+        }
     }
 
     public void TryCancel(CancellationToken cancellationToken)
     {
-        if (Interlocked.Exchange(ref _completed, 1) == 0)
+        var completed = false;
+        lock (_admissionGate)
         {
-            _completion.TrySetCanceled(cancellationToken);
-            _wake();
+            if (Interlocked.Exchange(ref _completed, 1) == 0)
+            {
+                _completion.TrySetCanceled(cancellationToken);
+                completed = true;
+            }
         }
+
+        if (completed) _wake(this);
     }
 
     public void TryFail(Exception exception)
     {
-        if (Interlocked.Exchange(ref _completed, 1) == 0)
+        var completed = false;
+        lock (_admissionGate)
         {
-            _completion.TrySetException(exception);
-            _wake();
+            if (Interlocked.Exchange(ref _completed, 1) == 0)
+            {
+                _completion.TrySetException(exception);
+                completed = true;
+            }
         }
+
+
+        if (completed) _wake(this);
     }
 
     public void RecordSubmitFailure(Exception exception)
@@ -148,7 +179,21 @@ internal sealed class PendingSubmit : IDisposable
     private void RegisterCancellation(CancellationToken cancellationToken, CancellationToken stopToken)
     {
         _callerCancellationRegistration = RegisterCancellation(cancellationToken);
-        _stopCancellationRegistration = RegisterCancellation(stopToken);
+        _stopCancellationRegistration = RegisterStop(stopToken);
+    }
+
+    private CancellationTokenRegistration RegisterStop(CancellationToken token)
+    {
+        if (token.IsCancellationRequested)
+        {
+            TryFail(new ZLinkSubmitShutdownException());
+            return default;
+        }
+
+        return token.Register(static state =>
+        {
+            ((PendingSubmit)state!).TryFail(new ZLinkSubmitShutdownException());
+        }, this);
     }
 
     private CancellationTokenRegistration RegisterCancellation(CancellationToken token)
@@ -220,4 +265,20 @@ internal sealed class PendingSubmit : IDisposable
     }
 
     private sealed record CancellationState(PendingSubmit Submit, CancellationToken Token);
+}
+
+internal sealed class ZLinkPendingAdmissionFullException : Exception
+{
+    public ZLinkPendingAdmissionFullException()
+        : base("ZLink async submit pending admission capacity is full.")
+    {
+    }
+}
+
+internal sealed class ZLinkSubmitShutdownException : Exception
+{
+    public ZLinkSubmitShutdownException()
+        : base("ZLink async submit admission is closed.")
+    {
+    }
 }

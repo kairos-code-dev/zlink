@@ -6,7 +6,6 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.monitoring.ZLinkMeshNodeDrainPolicy;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -26,8 +25,6 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeSocketConfig configureRouterSocket();
 
     ZLinkSpotPublisherConfig configureSpotPublisher();
-
-    ZLinkMeshNodeBuilder useDrainPolicy(ZLinkMeshNodeDrainPolicy policy);
 
     ZLinkMeshPeerConnections peerConnections();
 

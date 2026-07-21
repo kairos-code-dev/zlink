@@ -1,19 +1,21 @@
 import type {
-  ZLinkDispatchErrorSurface,
   ZLinkHandlerContext,
   ZLinkHandlerFilter,
   ZLinkUnhandledDispatchOptions,
   ZLinkFlowOrigin
 } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
-  ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageFlowOutcome,
   ZLinkUnhandledDispatchAction
 } from '../../contracts';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
+  ZLinkDispatchMessageKind,
+  type ZLinkDispatchErrorSurface
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import { invokeZLinkHandlerFilters } from '../handlers';
 import {
   decodeChannelPayload,

@@ -5,6 +5,7 @@ export interface ResolvedSpotHandle {
   readonly nodeRid: RoutingId;
   readonly spotRid: RoutingId;
   readonly spotKind?: ZLinkSpotKind;
+  readonly spotGeneration?: bigint;
 }
 
 type SpotHandleResolver = (signal?: AbortSignal) => Promise<ResolvedSpotHandle | undefined>;
@@ -28,7 +29,11 @@ export function createSpotHandle(
   initialOrRefresh: ResolvedSpotHandle | SpotHandleResolver,
   refresh?: SpotHandleResolver
 ): SpotHandle {
-  const handle = Object.freeze({ spotRid }) as SpotHandle;
+  const initial = typeof initialOrRefresh === 'function' ? undefined : initialOrRefresh;
+  const handle = Object.freeze({
+    meshName: initial?.meshName ?? '',
+    spotRid
+  }) as SpotHandle;
   handleStates.set(handle, typeof initialOrRefresh === 'function'
     ? { current: undefined, refresh: initialOrRefresh }
     : { current: initialOrRefresh, refresh: refresh! });

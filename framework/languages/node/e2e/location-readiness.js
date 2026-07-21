@@ -8,23 +8,18 @@ const pubEndpointMetadataKey = 'pub-endpoint';
 
 const autoConnectTypes = new Map([
   ['route-mesh', framework.ZLinkLocationAutoConnectType.RouteMesh],
-  ['client-server', framework.ZLinkLocationAutoConnectType.ClientServer],
-  ['dealer-mesh', framework.ZLinkLocationAutoConnectType.DealerMesh],
-  ['fanout', framework.ZLinkLocationAutoConnectType.Fanout],
-  ['spot-mesh', framework.ZLinkLocationAutoConnectType.SpotMesh]
+  ['fanout', framework.ZLinkLocationAutoConnectType.Fanout]
 ]);
 
 const roles = new Map([
-  ['spot', framework.ZLinkLocationRole.Spot],
   ['router', framework.ZLinkLocationRole.Router],
-  ['dealer', framework.ZLinkLocationRole.Dealer],
   ['pub', framework.ZLinkLocationRole.Pub],
   ['sub', framework.ZLinkLocationRole.Sub]
 ]);
 
 function parseArgs(argv) {
   const options = {
-    timeoutMs: 10000,
+    timeoutMs: 3000,
     intervalMs: 100,
     peers: []
   };

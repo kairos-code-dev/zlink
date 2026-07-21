@@ -8,10 +8,6 @@ import type { SpotHandle } from './SpotHandle';
 
 export interface ZLinkActorHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>): this;
-  addActorPacket<THandler, TActor extends ZLinkActor>(
-    handlerType: Type<THandler>,
-    actorType: Type<TActor>
-  ): this;
 }
 
 export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
@@ -19,14 +15,15 @@ export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
   transferIn(actorId: string, state: ZLinkMessage): Promise<TActor>;
 }
 
-export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+export interface ZLinkSpotHandlerRegistry {
   addPacket<THandler>(handlerType: Type<THandler>): this;
-  addSubscribe<THandler>(handlerType: Type<THandler>, topic: string): this;
+  addSubscribe<THandler>(handlerType: Type<THandler>, channelName: string, topic: string): this;
 }
 
 export interface ZLinkWorkerCall<T> {
   timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
-  submit(signal?: AbortSignal): Promise<T>;
+  submit(signal?: AbortSignal): void;
+  async(signal?: AbortSignal): Promise<T>;
   yield(signal?: AbortSignal): Promise<T>;
 }
 
@@ -34,6 +31,7 @@ export interface ZLinkSpotCommonContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot = ZLinkSpot<TActor>
 > {
+  readonly meshName: string;
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
@@ -60,7 +58,6 @@ export interface ZLinkSpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TSpot> {
-  leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
 }
 
@@ -72,14 +69,13 @@ export interface ZLinkEntrySpotContext<
 }
 
 export interface ZLinkSpotActorReplyOptions {
-  metadata(key: string, value: string): this;
   compress(enabled?: boolean): this;
 }
 
 export interface ZLinkSpotOutbound {
   sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
   requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
-  publish(topic: string, event: unknown): ZLinkPublishCall;
+  publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
 }
@@ -102,37 +98,43 @@ export interface ZLinkSpotInfo {
 
 export interface ZLinkSpotManager {
   create<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   create<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     request: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   create<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     request: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
   getOrCreate<TSpot extends ZLinkSpot, TRequest>(
+    meshName: string,
     spotType: Type<TSpot>,
     spotRid: RoutingId,
     request: TRequest,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult>;
-  find(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
-  list(signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
-  close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
+  find(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
+  list(meshName: string, signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
+  close(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
 }

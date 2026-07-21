@@ -161,7 +161,7 @@ class workflow_route_handlers_t
     {
     }
 
-    ok_res_t ensure (const ensure_order_workflow_spot_req_t &request,
+    ok_res_t handle (const ensure_order_workflow_spot_req_t &request,
                      const route_handler_context_t &)
     {
         ensure_spot (request.order_id);
@@ -210,21 +210,24 @@ int main (int argc, char **argv)
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (configuration.flow_log_path ())
           .trace_label (instance.instance_id);
-        options.add_route_mesh (order_workflow_channel_for (instance.instance_id))
-          .enable_server (instance.route_endpoint)
+        const auto workflow_channel = order_workflow_channel_for (instance.instance_id);
+        auto workflow_route = options.add_route_mesh (workflow_channel);
+        workflow_route.listen (instance.route_endpoint)
           .set_routing_id (instance.route_rid)
-          .add_request_handler<workflow_route_handlers_t,
-                               ensure_order_workflow_spot_req_t,
-                               ok_res_t> (
-            ensure_order_workflow_spot_req_t::packet_name, &workflow_route_handlers_t::ensure);
-        options.add_route_mesh (sample_names_t::order_spot_route)
-          .enable_server (instance.spot_route_endpoint)
-          .set_routing_id (instance.spot_rid);
-        options.add_spot_mesh (sample_names_t::order_spot_discovery)
-          .enable_router (instance.spot_router_endpoint)
+          .channel_name (workflow_channel);
+        workflow_route
+          .add_route_request_handler<workflow_route_handlers_t,
+                                      ensure_order_workflow_spot_req_t,
+                                      ok_res_t> (
+            ensure_order_workflow_spot_req_t::packet_name);
+        auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
+        spot_route.listen (instance.spot_route_endpoint)
           .set_routing_id (instance.spot_rid)
-          .enable_pub_sub (instance.spot_endpoint)
-          .accept_route_mesh (sample_names_t::order_spot_route)
+          .channel_name (sample_names_t::order_spot_route);
+        auto order_spot = options.add_route_mesh (sample_names_t::order_spot_discovery);
+        order_spot.channel_name (sample_names_t::order_spot_route);
+        order_spot.listen (instance.spot_router_endpoint)
+          .set_routing_id (instance.spot_rid)
           .add_spot<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
             [topology] { return std::make_shared<order_workflow_spot_t> (topology); });

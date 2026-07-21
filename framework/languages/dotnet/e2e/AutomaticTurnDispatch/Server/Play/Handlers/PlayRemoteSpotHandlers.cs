@@ -24,7 +24,9 @@ internal sealed class RemoteSpotAwaitHandler(
         // Resolve one opaque handle for this request. The framework owns its
         // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         spot.Context.MeshName,
+                         RoutingId.From(request.TargetSpotRid),
+                         cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var call = spot.Context.Outbound.RequestToSpot(
@@ -62,7 +64,9 @@ internal sealed class RemoteSpotAwaitCommandHandler(
         // Resolve one opaque handle for this request. The framework owns its
         // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
-                         RoutingId.From(request.TargetSpotRid), cancellationToken)
+                         spot.Context.MeshName,
+                         RoutingId.From(request.TargetSpotRid),
+                         cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var call = spot.Context.Outbound.RequestToSpot(

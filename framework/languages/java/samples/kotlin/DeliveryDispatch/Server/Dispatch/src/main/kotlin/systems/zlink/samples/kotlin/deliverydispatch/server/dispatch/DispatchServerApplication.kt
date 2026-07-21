@@ -49,15 +49,15 @@ class DispatchServerApplication {
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableClient()
                 .setRoutingId(RoutingId.from("delivery-dispatch-tracking-client"))
-            val courierRoutes = options.addSpotMesh(SampleNames.CourierSpotMesh)
+            val courierRoutes = options.addRouteMesh(SampleNames.CourierSpotMesh)
             courierRoutes
-                .enableRouter("inproc://deliverydispatch-dispatch-courier-client")
+                .listen("inproc://deliverydispatch-dispatch-courier-client")
                 .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"))
-            courierRoutes.connectRouter(
+            courierRoutes.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode1Rid),
                 SampleTopology.CourierActorNode1RouterEndpoint,
             )
-            courierRoutes.connectRouter(
+            courierRoutes.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode2Rid),
                 SampleTopology.CourierActorNode2RouterEndpoint,
             )

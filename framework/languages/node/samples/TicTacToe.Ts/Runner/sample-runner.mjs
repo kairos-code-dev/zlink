@@ -7,10 +7,8 @@ export async function runSample(ctx) {
   const endpoints = {
     apiHttp: [`http://127.0.0.1:${await ctx.port()}`, `http://127.0.0.1:${await ctx.port()}`],
     api: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
-    playChannel: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
     playStream: [`ws://127.0.0.1:${await ctx.port()}`, `ws://127.0.0.1:${await ctx.port()}`],
-    playSpot: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
-    playPub: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`]
+    playSpot: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`]
   };
   const redisKeyPrefix = `tictactoe:node:${process.pid}:`;
   const config = (instanceName, apiIndex, playIndex, peerPlayIndex) => ({
@@ -20,21 +18,16 @@ export async function runSample(ctx) {
     apiHttpEndpoint: endpoints.apiHttp[apiIndex],
     apiEndpoints: endpoints.api,
     apiHttpEndpoints: endpoints.apiHttp,
-    playEndpoint: endpoints.playChannel[playIndex],
-    playChannelEndpoints: endpoints.playChannel,
     playEndpoints: endpoints.playStream,
     playSpotEndpoint: endpoints.playSpot[playIndex],
     playSpotEndpoints: endpoints.playSpot,
-    playSpotPubSubEndpoint: endpoints.playPub[playIndex],
-    playSpotPubSubEndpoints: endpoints.playPub,
     playStreamEndpoint: endpoints.playStream[playIndex],
     redisEndpoint: ctx.redisEndpoint,
     redisKeyPrefix,
     logDir: path.join(ctx.logDir, 'flow'),
     playSpotNodeRid: `play-node-${playIndex + 1}`,
     peerPlaySpotNodeRid: `play-node-${peerPlayIndex + 1}`,
-    peerPlaySpotEndpoint: endpoints.playSpot[peerPlayIndex],
-    peerPlaySpotPubEndpoint: endpoints.playPub[peerPlayIndex]
+    peerPlaySpotEndpoint: endpoints.playSpot[peerPlayIndex]
   });
   const roleConfig = (name, value, keys) => ctx.writeConfig(name,
     Object.fromEntries(keys.map((key) => [key, value[key]])));
@@ -43,11 +36,11 @@ export async function runSample(ctx) {
   const apiA = config('api-a', 0, 0, 1);
   const apiB = config('api-b', 1, 0, 1);
   const playKeys = [
-    'apiEndpoints', 'playEndpoint', 'playSpotEndpoint', 'playSpotPubSubEndpoint', 'playStreamEndpoint', 'playEndpoints',
+    'apiEndpoints', 'playSpotEndpoint', 'playStreamEndpoint', 'playEndpoints',
     'redisEndpoint', 'redisKeyPrefix', 'playSpotNodeRid', 'peerPlaySpotNodeRid', 'peerPlaySpotEndpoint',
-    'peerPlaySpotPubEndpoint', 'logDir'
+    'logDir'
   ];
-  const apiKeys = ['apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playChannelEndpoints', 'logDir'];
+  const apiKeys = ['apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'logDir'];
   const configs = {
     playA: roleConfig('play-a', playA, playKeys),
     playB: roleConfig('play-b', playB, playKeys),

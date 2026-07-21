@@ -1,4 +1,5 @@
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import type { ZLinkLocationOptions } from '@zlink-systems/framework';
 import type { ShoppingMallServerConfig } from './sample-config';
 
 function createShoppingMallLocationStore(
@@ -10,16 +11,11 @@ function createShoppingMallLocationStore(
   });
 }
 
-function shoppingMallLocationOptions(): {
-  pollingIntervalMs: number;
-  heartbeatIntervalMs: number;
-  ownerLeaseTtlMs: number;
-} {
-  return {
-    pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1000,
-    ownerLeaseTtlMs: 5000
-  };
+function shoppingMallLocationOptions(options: ZLinkLocationOptions): void {
+  options
+    .pollingIntervalMs(100)
+    .heartbeatIntervalMs(1000)
+    .ownerLeaseTtlMs(5000);
 }
 
 export { createShoppingMallLocationStore, shoppingMallLocationOptions };

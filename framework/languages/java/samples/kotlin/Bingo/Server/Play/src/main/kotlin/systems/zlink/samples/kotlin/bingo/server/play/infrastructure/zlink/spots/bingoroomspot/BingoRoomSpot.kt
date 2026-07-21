@@ -9,7 +9,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
-import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
@@ -130,7 +129,7 @@ class BingoRoomSpot(
             "bingo-draw",
             Duration.ofMillis(settings.drawPeriodMillis),
             BingoRoomTimerHandler::class.java,
-            ZLinkTimerOptions(),
+            null,
         ).await()
     }
 
@@ -268,6 +267,7 @@ class BingoRoomSpot(
         val winner = state.winners.first()
         context.outbound()
             .publish(
+                SampleNames.RoomSpotDiscovery,
                 SampleNames.WinnerTopic,
                 BingoRewardAcquiredEvent(
                     state.roomId,

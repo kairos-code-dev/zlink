@@ -1,230 +1,71 @@
-<!-- framework-adapter-nav:start -->
-[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Backend Policy](backend-dependency-policy.ko.md)
-<!-- framework-adapter-nav:end -->
+# JVM service runtime regression test matrix
 
-# Java Regression Test Matrix
+[Java 문서](../README.ko.md) · [Kotlin 문서](../../kotlin/README.ko.md) ·
+[Runtime lifecycle](runtime-lifecycle.ko.md)
 
-## 1. 테스트 계층
+Java와 Kotlin은 JVM service runtime 하나를 검증한다. Java public ABI와 Kotlin metadata·extension ABI는
+각각 검사하지만 protocol state machine과 runtime E2E를 중복 구현하지 않는다.
 
-| 계층 | 목적 |
-|------|------|
-| unit | option validation, scanner, packet name resolver, DI 노출 정책 |
-| contract | public interface, annotation, exception, codec 계약 |
-| fake backend | submit queue, reply correlation, session serial dispatch |
-| integration-single-process | 한 JVM 안의 channel, registry, spot, stream smoke |
-| integration-multi-process | registry discovery, reconnect, remote actor/session relay |
-| sample regression | 실제 sample 실행과 self-check |
+## 1. Contract와 module 경계
 
-JUnit 테스트 이름과 gate 의미는 Java 구현에 고정된 현재 이름을 기준으로 한다.
+- Java/Kotlin exact interface와 artifact ABI가 일치한다.
+- JVM runtime은 Java binding의 exported public raw socket API만 호출한다.
+- `runtime.nativeapi`, package-private member, reflection, JNI symbol과 Core private symbol 직접 호출은 0건이다.
+- Core MeshNode, Spot, Actor, dispatch record와 STREAM session service type은 public ABI와 runtime dependency에 없다.
+- 공통 protocol schema와 golden fixture hash가 C++·.NET·JVM·Node.js에서 같다.
 
-아래 표의 항목은 현재 Java 구현에서 실제 JUnit 이름과 gate 의미를 함께 고정한다.
-새 항목을 "필수 예정 gate"로 추가할 때는 sample release gate를 완료했다고 판단하기
-전에 실제 구현과 테스트 이름을 확정해야 한다.
+## 2. Lifecycle과 maintenance
 
-## 2. Channel regression
+- `ApplicationVersion`은 non-negative Java/Kotlin `long`이며 target eligibility 비교가 공통 계약과 같다.
+- `Retire`와 `Shutdown`의 effective intent, outcome과 reason wire 값이 공통 fixture와 같다.
+- `Preparing`·`Error`의 `Retire`는 `Blocked/RuntimeNotReady`이며 admission을 바꾸지 않는다.
+- User Spot 또는 `Disabled` object가 남은 `Retire`는 `Blocked/TransferDisabled`다.
+- `Recreate`와 `Snapshot`은 같은 authority CAS와 Checkpoint Store를 사용한다.
+- `Snapshot` adapter는 typed application state만 받고 owner token, checkpoint reference와 phase를 받지 않는다.
+- Instance Spot public local-only create와 existing-only resolve는 hidden remote `GetOrCreate`를 시작하지 않는다.
+- Deadline, disconnect, reply와 shutdown 경쟁에서 terminal completion은 하나다.
 
-`ChannelMessagingTest.discoveryClientServer_requestReplySucceeds`는 embedded registry,
-server runtime, client runtime을 나누어 시작한 뒤 `useDiscovery().addRegistryEndpoint(...)`로 registry에
-붙은 DEALER client가 ROUTER server를 찾아 request/reply 하는 경로를 검증한다.
+## 3. Location과 recovery
 
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| duplicate channel name | unit | `DefaultZLinkFrameworkOptionsTest.addClientServerChannelRejectsDuplicateChannelName` | startup validation 오류 |
-| handler duplicate mapping | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelRejectsDuplicateRequestHandlerPacketName` | 같은 channel의 `kind + packetName` 중복 차단 |
-| client without peer acquisition | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelClientWithoutPeerAcquisitionPathIsRejected` | startup validation 오류 |
-| client manual connections override global discovery | unit | `DefaultZLinkFrameworkOptionsTest.clientServerChannelClientManualConnectionsOverrideGlobalDiscovery` | global discovery가 있어도 client별 manual connection을 명시하면 startup validation 통과 |
-| fanout publisher without bind | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelPublisherWithoutBindIsRejected` | startup validation 오류 |
-| fanout subscriber without peer acquisition | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelSubscriberWithoutPeerAcquisitionPathIsRejected` | startup validation 오류 |
-| fanout manual connections override global discovery | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelSubscriberManualConnectionsOverrideGlobalDiscovery` | global discovery가 있어도 subscriber별 manual connection을 명시하면 startup validation 통과 |
-| fanout duplicate mapping | unit | `DefaultZLinkFrameworkOptionsTest.fanoutChannelRejectsDuplicatePublishHandlerPacketName` | 같은 fanout channel의 `packetName` 중복 차단 |
-| manual client/server request | integration-single-process | `ChannelMessagingTest.manualClientServer_requestReplySucceeds` | request/reply 성공 |
-| discovery client/server request | integration-single-process | `ChannelMessagingTest.discoveryClientServer_requestReplySucceeds` | registry discovery 기반 request/reply 성공 |
-| fanout publish/subscribe | integration-single-process | `ChannelMessagingTest.publisherAndSubscriber_workAcrossHosts` | publish 수신 |
-| route mesh request | integration-single-process | `ChannelMessagingTest.routeMesh_requestByRoutingIdSucceeds` | `configureRouting(...)`으로 지정한 target `RoutingId` request 성공 |
-| implicit Spot route without RouteMesh server | unit | `DefaultZLinkFrameworkOptionsTest.implicitSpotRouteRequiresRouteMeshServerCapability` | 같은 프로세스에 SpotNode와 RouteMesh server 역할이 있어야 자동 route bridge를 시작할 수 있음 |
-| route shared packet reply correlation | integration-single-process | `ChannelMessagingTest.routeMesh_matchesRepliesByRequestSequenceWhenPacketNameIsShared` | 같은 packet 이름의 동시 route request가 request sequence로 자기 reply를 받음 |
-| annotation handler dispatch | integration-single-process | `ChannelMessagingTest.scannedMethodHandlerGroup_requestAndSendDispatch` / `scannedMethodHandlerGroup_publishDispatches` | `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` method handler가 scanner와 runtime dispatch에 연결됨 |
-| send/publish async submit | unit | `ZLinkAsyncSubmitterTest.submit_drainsPendingItemFromReadyCallback` | ready 전 caller thread를 막지 않음 |
-| pending request cleanup | unit | `ZLinkAsyncSubmitterTest.submit_failsPendingItemWhenSendTimeoutExpires` / `close_failsPendingItems` | timeout, cancellation, stop에서 pending 제거 |
+- Authority Store read와 compare-exchange는 store version, lease와 store time을 한 결과로 반환한다.
+- Owner와 transfer는 같은 authority row의 9개 phase를 사용하고 별도 transfer row를 만들지 않는다.
+- Stale owner, coordinator와 lifecycle generation은 message, reply, timer와 phase write를 통과하지 못한다.
+- Checkpoint `missing`과 idempotent delete가 닫힌 결과로 처리된다.
+- 24시간 retention orphan이 active authority로 오인되지 않는다.
 
-## 2.1 Dispatch Error Observer Regression
+## 4. Transport liveness
 
-| ID | 계층 | JUnit 테스트 | 통과 기준 |
-|----|------|--------------|-----------|
-| DERR-001, DERR-007, DERR-011, DERR-014 | unit | `DefaultZLinkFrameworkOptionsTest.configureDispatchRegistersMessageDispatchErrorObserver`, `dispatchErrorReporterIsolatesObserverFailures` | 전역 observer 등록 표면과 observer 실패 격리가 유지되고 channel dispatch event payload가 손실되지 않음 |
-| DERR-002, DERR-008 | integration-single-process | `ChannelMessagingTest` route mesh missing-handler dispatch 항목 | route request handler 없음은 error reply, route send handler 없음은 drop과 observer event로 끝남 |
-| DERR-003, DERR-004, DERR-009, DERR-010, DERR-016 | fake backend, integration-single-process | `SpotRuntimeFakeBackendTest`, `ActorRuntimeFakeBackendTest`, `SpotManagerTest` dispatch error 항목 | SPOT route, subscription, actor dispatch 실패가 request면 error reply 또는 caller-visible error, one-way면 drop과 observer event로 끝남 |
-| DERR-005, DERR-006, DERR-013, DERR-015 | unit, integration-single-process | `ChannelMessagingTest`, `SpotRuntimeFakeBackendTest` dispatch error 항목 | decode 실패와 handler 예외는 error reply 또는 관측 가능한 drop으로 끝나며, observer 미등록 시에도 기본 로그와 counter가 남음 |
+- JVM runtime은 RouteMesh·ClientServer에 idle probe 5초와 inbound deadline 15초의 probe·ACK을 적용한다.
+- Fanout publisher마다 전용 SUB socket과 receive loop를 사용하고, first valid receive에서 ready가 되며, idle
+  publisher의 exact two-frame beacon은 application handler에 전달하지 않는다.
+- Orderly disconnect는 timeout을 기다리지 않고 ready index에서 제거된다.
+- Half-open peer는 15초 안에 not-ready가 되며 다른 ready peer와 host를 `Error`로 바꾸지 않는다.
+- Reconnect는 admission을 다시 수행하고 이전 connection completion과 binding state를 재사용하지 않는다.
+- Location owner lease와 service·fanout liveness를 같은 option이나 signal로 사용하지 않는다.
 
-## 3. Spot/Actor regression
+## 5. Java/Kotlin public entrypoint
 
-`RemoteSessionRelayTest`, `ActorSessionStateTest`, `BoundSessionTest`는 testkit
-fake backend에서 session relay, bind/unbind, bound push backend operation을
-관찰해 session relay의 내부 계약을 고정한다. native backend 경로는
-`SessionActorsRuntimeIntegrationTest`가 단일 JVM 안에서 확인하고, 실제 client stream에
-도착하는 bound push는 Java/Kotlin sample e2e가 확인한다. 따라서 아래 표는 fake
-backend, integration-single-process, sample regression 증거를 분리해 기록한다.
+- Java `CompletionStage`와 Kotlin `await()`가 같은 shared operation과 terminal result를 관찰한다.
+- Coroutine cancellation은 waiter만 끝내고 runtime operation을 취소하지 않는다.
+- Kotlin에 별도 lifecycle enum, termination wrapper, runtime facade와 transfer registry가 없다.
+- Actor factory와 Snapshot state·adapter type mismatch는 socket bind 전 startup validation으로 끝난다.
 
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| duplicate Spot factory | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenSpotFactoryTypeIsDuplicatedAcrossNodes` | startup validation 오류 |
-| duplicate Entry Spot | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenSpotNodeRegistersMultipleEntrySpots` | startup validation 오류 |
-| actor factory without SpotNode | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenActorFactoryWithoutSpotNode` | startup validation 오류 |
-| actor manager runtime 노출 | unit | `NodesAndServicesTest.addZLinkFramework_registersActorManager_whenSpotNodeAndActorFactoryExist` | SpotNode + actor factory 시 runtime manager 등록 |
-| Spring Spot/Actor DI 노출 | unit | `ZLinkFrameworkAutoConfigurationTest.spotAndActorManagersAreNotBeansWithoutSpotNode` / `spotManagerIsBeanWhenSpotNodeExists` / `actorManagerIsBeanWhenSpotNodeAndActorFactoryExist` | SpotNode와 actor factory 역할에 맞춰 Spring bean 등록/미등록, SpotNode가 있을 때 `ZLinkSpotOutbound` 등록 |
-| local-only SpotNode | unit | `NodesAndServicesTest.addZLinkFramework_allowsStandaloneLocalSpotNode` | discovery 없이 local Spot 생성 option registration |
-| Spot create/get/list/close | integration-single-process | `SpotManagerTest.spotManager_createListCloseAndPublish_workThroughFrameworkRuntime` | lifecycle callback과 조회 일관 |
-| ambient Spot outbound | fake backend | `SpotRuntimeFakeBackendTest.ambientSpotOutboundWorksInsideSpotCallback` | DI-style `ZLinkSpotOutbound`가 active Spot callback 안에서 current Spot backend를 사용 |
-| Spot outbound send/request to Spot | fake backend | `SpotRuntimeFakeBackendTest.spotOutboundSpotCallsUseBackendSpotRouteOperations` | `ZLinkSpotOutbound.sendToSpot(...)` / `requestToSpot(...)`가 실패 stub 없이 backend Spot route send/request operation으로 이어짐 |
-| routed Spot egress relay | fake backend | `SpotRuntimeFakeBackendTest.spotOutboundUsesConfiguredClientServerEgressChannel` / `spotOutboundUsesConfiguredRouteMeshEgressChannel` / `routeMeshSpotEgressUsesDiscoveryMemberPeerRoutingIdBeforeRegistryQuery` / `routeMeshSpotEgressUsesRegistryQueryRoutingId` / `routeMeshSpotEgressRequiresTargetRoutePeerRoutingId` / `spotOutboundRejectsAmbiguousEgressChannels` | egress channel이 하나로 명확한 구성에서 Spot outbound가 reserved relay packet을 만들고 client/server dealer 또는 route mesh router를 통해 전송함. ingress는 backend router의 public `sendToSpot` / `requestToSpot` port로 이어짐. route mesh egress는 target route channel의 명시적 routing id, local discovery member peer routing id, registry query topology routing id 순서로 peer id를 찾는다. 모두 없으면 configuration error를 내고, egress channel이 여러 개면 local route로 숨기지 않는다 |
-| registry-backed Spot remote ref resolver | unit/fake backend | `DefaultZLinkFrameworkOptionsTest.registrySpotRemoteRefsRejectsCustomResolverDuplicate` / `registrySpotRemoteRefsRequiresDiscoveryEndpoint` / `registrySpotRemoteRefsRequiresRouterChannelWhenAmbiguous` / `SpotRuntimeFakeBackendTest.registrySpotRemoteRefResolverReturnsRouteModelFromSpotDiscovery` | registry-backed Spot remote ref 설정이 custom resolver 중복, discovery 누락, route mesh ambiguity를 validation에서 거부하고, resolver는 Spot discovery의 owner node rid, spot rid, spot kind, router channel id를 `SpotRemoteRef`로 반환 |
-| Spot publisher client | fake backend | `SpotRuntimeFakeBackendTest.spotPublisherClientPublishesThroughAttachedPublisherSpot` / `spotPublisherClientRejectsUnattachedChannel` | SpotNode publisher handle 역할이 있는 channel만 lazy publisher Spot으로 publish하고, 미등록 channel은 configuration error |
-| Spot router/pubsub manual peers | fake backend | `SpotRuntimeFakeBackendTest.spotRouterAndPubSubManualPeersConnectThroughBackendNode` | router/pubsub endpoint 인자가 registration에 남고 backend SpotNode peer 연결로 이어짐 |
-| SpotNode routing id | unit / fake backend | `DefaultZLinkFrameworkOptionsTest.spotNodeRejectsConflictingSpotRoutingIds` / `SpotRuntimeFakeBackendTest.spotManualPeersConnectThroughBackendNode` | router/pubsub `setRoutingId(...)`가 단일 SpotNode routing id로 검증되고 backend SpotNode에 적용됨 |
-| Entry Spot activation lifecycle | unit / fake backend | `DefaultZLinkFrameworkOptionsTest.entrySpotRoutingIdMutatesRegistrationModel` / `SpotRuntimeFakeBackendTest.entrySpotRoutingIdAppliesToBackendEntrySpotBeforeBind` / `registeredEntrySpotIsActivatedAndClosedWithBackendEntrySpot` | `configureEntrySpot(...)` routing id가 backend Entry Spot에 bind 전 적용되고, 등록된 Entry Spot은 startup에서 `configure()`와 `onInitialize()`를 실행하며 shutdown에서 `onClosing()`와 native Entry Spot close를 수행 |
-| Entry Spot dispatch backend port | fake backend | `SpotRuntimeFakeBackendTest.registeredEntrySpotIsActivatedAndClosedWithBackendEntrySpot` / `entrySpotDispatchReadableDrainsUnhandledActorJoinWithRejectReply` / `entrySpotActorJoinReadableCommitsAndInvokesMemberCallback` / `entrySpotActorJoinRejectDoesNotInvokeMemberCallback` | 등록된 Entry Spot activation이 backend Entry Spot의 dispatch handler를 연결한다. framework backend port는 binding public `Spot.setDispatchHandler(...)`, `recvActorJoin(...)`, `replyActorJoin(...)`만 감싸며 binding internal/private API를 호출하지 않는다. actor join readable event는 요청을 drain하고 handler가 없는 join을 reject reply로 닫아 대기 상태로 남기지 않는다. Entry Spot join은 `onActorJoin(...)` admission callback에서 accept/reject되고, accept commit 이후에만 `onJoinedActor` member callback이 실행된다 |
-| Entry Spot actor packet dispatch | fake backend | `EntrySpotActorDispatchTest.entrySpotActorDispatch_usesActorMailboxWithoutEntrySpotWideSerialLine` / `entrySpotActorDispatch_yieldCallFailsImmediatelyInsideActorHandler` / `SpotRuntimeFakeBackendTest.entrySpotActorReadableInvokesRegisteredActorSendHandlerOnActorQueue` / `entrySpotActorReadableInvokesRegisteredActorRequestHandlerAndRepliesBoundSession` | backend actor readable event의 actor frame을 packet/body로 읽고, local actor를 찾은 뒤 대상 actor mailbox에서 등록된 `@ZLinkSpotActorSend` 또는 `@ZLinkSpotActorRequest` handler를 실행한다. 같은 actor packet 순서는 보존하지만 서로 다른 actor는 Entry Spot 전체 queue 때문에 대기하지 않는다. Entry Spot actor handler 내부 `yield(...)` 호출은 시간 초과가 아니라 즉시 계약 오류로 실패한다. STREAM header에 request sequence가 있는 frame은 request handler 응답을 actor bound-session 송신 경로로 보낸다 |
-| Spot actor left lifecycle | fake backend | `SpotRuntimeFakeBackendTest.spotContextLeaveActorMarksActorLeftAndInvokesMemberCallback` | `ZLinkSpotContext.leaveActor(...)`가 no-op이 아니라 actor context의 joined 상태를 해제하고, commit 이후 user Spot `onLeaveActor` member callback을 실행한다 |
-| Entry Spot actor lifecycle readable | fake backend | `SpotRuntimeFakeBackendTest.entrySpotActorLifecycleReadableDrainsLeftEventAndInvokesMemberCallback` | backend `ACTOR_LIFECYCLE_READABLE` event가 무시되지 않고 `recvActorLifecycle(DONT_WAIT)`로 drain된다. native lifecycle `LEFT` event는 managed actor 상태를 left로 전환하고 Entry Spot `onLeaveActor` member callback을 실행한다 |
-| Actor context joined user Spot surface | fake backend | `SpotRuntimeFakeBackendTest.entrySpotActorLifecycleJoinedBindsActorContextToUserSpot` | native lifecycle `JOINED` event가 user Spot `spotRid`를 포함하면 actor context의 `spotRid()`, `getSpot()`, `getSpot(Class)`가 해당 runtime Spot 인스턴스를 가리킨다. Entry Spot 단계처럼 user Spot이 없는 상태에서 `getSpot()`은 성공으로 가장하지 않는다 |
-| Spot actor disconnected lifecycle | fake backend | `ActorSessionStateTest.actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream` | session actor `notifyDisconnected()`가 backend unbind 뒤 current binding이 실제로 해제된 경우에만 Spot 또는 Entry Spot의 actor disconnected callback을 actor serial queue에서 실행한다. stale binding disconnect는 현재 bound session과 disconnected lifecycle을 건드리지 않는다 |
-| user Spot serial dispatch | fake backend | `SpotRuntimeFakeBackendTest.userSpotDispatchesRouteHandlersOnSingleSpotSerialQueue` / `userSpotActorJoinWaitsOnSingleSpotSerialQueue` | user Spot route handler나 actor join member callback이 아직 끝나지 않았으면 같은 Spot의 다음 dispatch가 먼저 시작되지 않는다. user Spot의 route, subscription, actor join, actor message, managed timer dispatch는 같은 Spot serial queue를 사용한다 |
-| Bound session disconnect | fake backend | `BoundSessionTest.boundSessionDisconnect_unbindsCurrentActorSession` | `ZLinkBoundSession.disconnect()`가 no-op이 아니라 backend `unbindActor(...)`를 호출하고 actor context의 current bound session을 해제한다. 이 경로는 server가 client session을 닫는 의미이므로 actor disconnected lifecycle을 대신 발생시키지 않는다 |
-| Session actor relay | fake backend | `BoundSessionTest.sessionActorRelay_sendsPacketThroughBoundActorBackendRoute` | `ZLinkSessionActor.relay(...)`가 no-op이 아니라 framework backend stream의 bound-actor route로 header와 payload copy를 보낸다. 호출자가 넘긴 payload 소유권은 relay 호출이 가져가지 않는다 |
-| Spot route channel bridge | fake backend | `SpotRuntimeFakeBackendTest.spotChannelClientManualConnectionUsesRouteBridge` / `spotChannelClientDiscoveryUsesRouteBridge` | channel client 설정은 backend route bridge가 channel runtime 소유 socket을 참조하는 경로로 이어진다 |
-| Spot route acceptance | unit / fake backend | `DefaultZLinkFrameworkOptionsTest.acceptedSpotRouteChannelManualConnectionsMutateRegistrationModel` / `acceptedSpotRouteChannelRequiresRouterCapability` / `acceptedSpotRouteChannelRejectsMissingOrWrongChannelKind` / `acceptedSpotRouteChannelRequiresDiscoveryOrManualConnection` / `acceptedSpotRouteChannelRejectsDuplicateRegistration` / `SpotRuntimeFakeBackendTest.acceptedSpotRouteChannelManualConnectionsAttachRouterChannelPeers` / `acceptedSpotRouteChannelDiscoveryAttachesRouteDiscovery` | Spot route acceptance 설정이 router 역할, channel kind, peer acquisition을 검증하고 backend route bridge의 router channel endpoint 설정으로 이어짐 |
-| Spot getOrCreate 1회 생성 | integration-single-process | `SpotManagerTest.spotManager_getOrCreate_createsOnceAndReusesExistingSpot` | 첫 호출은 생성하고 같은 rid의 두 번째 호출은 기존 Spot 재사용 |
-| Spot timer/publish/close | integration-single-process | `SpotManagerTest.spot_publishTimerAndClose_stopCallbacksWork` | timer/publish/close 의미 유지 |
-| actor manager factory | integration-single-process | `ActorManagerTest.actorManager_createGetOrCreateFind_work` | create/getOrCreate/find 동작 |
-| actor Entry Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinEntrySpotUsesBackendSpotNodeJoinOperation` | `ZLinkActorContext.joinEntrySpot(..., request).submit(replyType)`가 framework backend port를 통해 binding public `SpotNode.joinActorEntrySpot(..., request)` 의미로 이어지고, request와 reply를 전달한 뒤 결과의 actor ref를 actor context에 반영 |
-| actor user Spot join call | fake backend | `ActorRuntimeFakeBackendTest.actorContextJoinSpotUsesBackendSpotNodeJoinOperationAndUpdatesContext` | `ZLinkActorContext.joinSpot(...).submit(replyType)`가 framework backend port를 통해 binding public `SpotNode.joinActor(...)` 의미로 이어지고, join 성공 즉시 actor context의 joined 상태, `spotRid()`, `getSpot(Class)`를 user Spot 인스턴스로 갱신한 뒤 reply payload를 deserialize한다. 이후 Entry Spot join은 이전 user Spot 참조를 비운다 |
-| actor Entry Spot route join handler | fake backend | `ActorRuntimeFakeBackendTest.actorEntrySpotRouteJoinHandlerCreatesLocalActorAndReturnsActorRefReply` | reserved route packet `__zlink.actor.joinEntrySpot` 처리 경로가 actor runtime에서 local actor를 생성하고 target node rid와 actor generation을 reply로 반환 |
-| framework가 소유하는 session context | fake backend / sample regression / contract | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `./framework/languages/java/samples/run_samples.sh` | STREAM session type은 framework가 소유하는 `ZLinkSessionContext` constructor를 받을 수 있고, context의 `client()`와 `actors()`는 backend stream send와 actor bind로 이어진다. sample은 `SampleSessionContext`, `SampleSessionActors`, `SampleBoundSession` 같은 local stand-in 없이 public framework session context를 사용한다 |
-| session packet dispatcher | fake backend / sample regression | `ZLinkFrameworkAutoConfigurationTest.springLifecycleAutoDiscoversSessionPacketHandlersForSessionDispatcher` / `StreamSessionTest.sessionPacketDispatcher_handlesRegisteredPacketsAndLetsSessionRelayUnhandledPackets` / `./framework/languages/java/samples/run_samples.sh` | Spring 안에서 구동되는 STREAM session type은 framework가 소유하는 `ZLinkSessionPacketDispatcher<ZLinkSessionContext>` constructor를 받을 수 있다. Spring auto-configuration은 같은 context type의 `ZLinkSessionPacketHandler`를 찾아 등록하고, 등록된 handler는 packet 이름으로 찾아 실행된다. 미등록 packet은 session이 actor relay, reject, ignore 같은 결정을 직접 내리도록 `false`를 반환한다 |
-| remote SessionRelay session actor bind | integration-single-process | `SessionActorsRuntimeIntegrationTest.bindAsyncUsesStreamSessionRelayBindingPath` | native backend 위에서 remote session relay binding path가 동작 |
-| session actor relay | fake backend / integration-single-process | `RemoteSessionRelayTest.sessionAndPlayServers_relaySucceeds` / `SessionActorsRuntimeIntegrationTest.sessionAndPlayServers_relaySucceeds` | fake backend는 bound-actor relay backend operation을 관찰하고, native integration은 gateway-attached remote stream binding을 단일 JVM에서 검증 |
-| stale binding token guard | fake backend | `ActorSessionStateTest.actorSessionState_filtersStaleDisconnect_andOnlyDisconnectsCurrentStream` | 이전 binding이 새 binding을 지우지 않음 |
-| bound session push | fake backend / integration-single-process / sample regression | `BoundSessionTest.playActorPush_arrivesAtClientStream` / `SessionActorsRuntimeIntegrationTest.playActorPush_withoutLiveClientStreamFailsNativeSend` / `./framework/languages/java/samples/run_samples.sh` | fake backend는 actor push가 session stream send operation으로 이어지는지 확인하고, live client stream이 없는 native integration은 실패를 숨기지 않으며, Java/Kotlin sample e2e는 실제 client가 `GameStateNotify`와 `PlayerJoinedNotify`를 받는지 확인 |
+## 6. E2E와 sample
 
-## 4. STREAM/Connector regression
+- C++·.NET·JVM·Node.js의 `4 x 4` caller/server 조합이 공통 Channel, Spot, Actor, STREAM scenario를 통과한다.
+- JVM lane은 Java와 Kotlin public entrypoint를 각각 compile하고 같은 runtime E2E에 연결한다.
+- Sample은 public API만 사용하며 internal adapter나 raw frame 우회 코드를 포함하지 않는다.
 
-connector 테스트 이름은 Java connector 테스트에 고정된 현재 이름을 쓴다.
+## 7. Performance smoke
 
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| stream node duplicate session | unit | `NodesAndServicesTest.addZLinkFramework_throws_whenStreamNodeRegistersMultipleSessions` | startup validation 오류 |
-| session connected/dispatch/reply | fake backend | `StreamSessionTest.headerSession_connectedDispatchReply_succeeds` | header session callback 성공 |
-| session reply correlation | fake backend | `StreamSessionTest.constructorSessionContextExposesClientAndActorsFromFrameworkRuntime` / `sessionReply_failsOutsideRequestPacket` | session `client().reply(...)`는 현재 dispatch header의 request sequence가 있을 때만 response로 전송된다. plain send packet 처리 중에는 `.NET`과 같이 실패하고, request packet 처리 중에는 backend reply port에 원래 request sequence와 packet name을 유지한다 |
-| session serial dispatch | fake backend | `StreamSessionTest.sameSessionCallbacks_runSerially` | 같은 session callback 순서 보장 |
-| payload borrowed lifetime | unit | `StreamPayloadTest.responsePayload_requiresCopyOutsideTransportBuffer` | 실제 TCP response frame에서 받은 payload를 transport buffer 밖에서 안전하게 copy해 읽음 |
-| connector TCP send frame | unit/integration-single-process | `ZLinkStreamConnectorTest.requestWritesFrameAndCorrelatesResponse` | connector가 loopback TCP server에 STREAM request frame을 쓰고 같은 request sequence의 response frame으로 pending request를 완료함 |
-| connector WebSocket binary frame | unit/integration-single-process | `ZLinkStreamConnectorTest.webSocketRequestUsesBinaryFrameAndCorrelatesResponse` | connector가 `ws://` endpoint에 연결해 STREAM request frame을 binary WebSocket message로 보내고 같은 request sequence의 response binary message로 pending request를 완료함 |
-| connector TLS raw stream | unit/integration-single-process | `ZLinkStreamConnectorTest.tlsRequestUsesEncryptedFrameAndSkippedCertificateValidation` | connector가 `tls://` endpoint에 연결해 self-signed server certificate 검증 우회 옵션으로 TLS handshake를 마치고 STREAM request/response frame을 주고받음 |
-| connector WSS binary frame | unit/integration-single-process | `ZLinkStreamConnectorTest.wssRequestUsesBinaryFrameAndSkippedCertificateValidation` | connector가 `wss://` endpoint에 연결해 self-signed server certificate 검증 우회 옵션으로 WebSocket TLS handshake를 마치고 binary STREAM request/response frame을 주고받음 |
-| connector TLS/WSS option parity | unit | `ZLinkStreamConnectorTest.skipServerCertificateValidationDefaultsToFalseAndCanBeEnabled` | `.NET`의 `SkipServerCertificateValidation`에 대응하는 Java public option 기본값과 명시 설정을 고정 |
-| connector transport inference | unit | `ZLinkStreamConnectorTest.uriSchemeAndTransportMismatchIsRejected` | unsupported scheme 차단 |
-| connector manual dispatch | unit/integration-single-process | `ConnectorDispatchTest.dispatch_invokesCallback` | loopback TCP server가 보낸 SEND frame을 manual queue에 넣고 `dispatch().submit()` 호출 시 callback 실행 |
-| connector request timeout | unit/integration-single-process | `LifecycleTest.requestTimeoutFailsPendingRequestsWithTimeoutCause` / `ZLinkStreamConnectorTest.requestWithoutReplyFailsWithTimeoutCause` | 실제 TCP 연결 위에서 response가 오지 않는 pending request를 timeout으로 정리 |
-| connector error event | unit/integration-single-process | `ZLinkStreamConnectorTest.errorReceivedObservesInvalidHeaderAfterManualDispatch` / `errorReceivedObservesRemoteErrorPacket` / `errorReceivedObservesUserCallbackFailure` | `.NET`의 `ErrorReceived`에 대응하는 `onErrorReceived`가 invalid frame decode 실패, remote ERROR frame, user callback 실패를 error code와 함께 관찰 가능하게 유지 |
-| connector heartbeat | unit/integration-single-process | `LifecycleTest.heartbeatSendsReservedControlPing` / `inboundHeartbeatPingReceivesPongWhenHeartbeatDisabled` / `heartbeatTimeoutFailsPendingRequestsWithTimeoutCause` | reserved control ping/pong frame과 heartbeat timeout pending failure 의미 유지 |
-| connector reconnect | unit/integration-single-process | `LifecycleTest.reconnectRestoresConnectionAfterTransportClose` / `reconnectFailsAfterMaxAttemptsWhenEndpointUnavailable` / `reconnectUnlimitedAttemptsRestoresLateServer` / `reconnectEnabledRejectsZeroMaxAttempts` / `closeWhileReconnectingKeepsConnectorClosed` | 같은 endpoint로 TCP reconnect 상태 전환 성공, unavailable endpoint에서는 max attempts 뒤 DISCONNECTED로 전환, `.NET`의 `MaxAttempts = null`에 해당하는 무제한 재시도와 enabled 상태의 zero attempts 거부를 유지, reconnect 지연 중 close는 CLOSED 상태를 유지 |
-| reserved packet name 거부 | unit | `ZLinkStreamConnectorTest.reservedPacketNamesAreRejectedForUserHandlers` | 예약 packet 이름 거부 |
-| stream wire protocol golden vector | unit | `ZLinkStreamWireProtocolTest.headerProtocol_matchesDotnetAndNodeGoldenVector` / `frameProtocol_matchesDotnetAndNodePrefixLayout` | `.NET`/Node와 같은 STREAM header/frame byte layout |
-| Java/Node stream interop | unit | `JavaNodeStreamInteropTest.nodeConnector_decodesJavaRequestFrame_andJavaDecodesNodeResponse` | Java가 만든 STREAM request frame을 Node connector가 decode하고 Node response frame을 Java가 decode |
-| connector codec helper | contract | `ConnectorCodecContractTest.jsonMsgpackProtobufTypedHelperRoundtrip` | JSON/MessagePack/Protobuf typed helper roundtrip |
-| Kotlin connector wrapper | unit | `KotlinConnectorWrapperTest.suspendWrapperPreservesConnectorSemantics` / `connectorMessagesFlowUsesJavaManualDispatchSemantics` / `connectorErrorsFlowUsesJavaManualDispatchSemantics` / `coroutineRuntimeMapsSuspendStreamErrorHandlerToCompletionStage` | suspend wrapper와 connector `Flow` wrapper가 Java connector lifecycle, manual dispatch, request/reply/error event 의미를 바꾸지 않음 |
-| Kotlin suspend annotation channel handler | integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers` / `springCreatedKotlinSuspendHandlerRunsThroughMethodInvoker` / `springLifecycleDiscoversKotlinSuspendAnnotationBeanType` / `kotlinSuspendAnnotationRunsInsideFrameworkCoroutineContext` | Spring DI 안의 Kotlin `suspend fun` `@ZLinkRequest`, `@ZLinkSend`, `@ZLinkPublish` handler가 Java method handler와 같은 catalog에 등록되고 framework method invoker로 실행됨. continuation parameter는 handler parameter로 보이지 않으며, Kotlin provider가 있으면 framework가 소유하는 coroutine context에서 실행됨 |
-| Kotlin suspend annotation Spot/actor handler | fake backend / integration-single-process | `KotlinSuspendAnnotationHandlerTest.scannerTreatsKotlinSuspendSpotActorAnnotationsLikeJavaMethodHandlers` / `kotlinSuspendSpotActorMethodRunsThroughMethodInvoker` | Kotlin `suspend fun` `@ZLinkSpotActorRequest`, `@ZLinkSpotActorSend` handler가 Java Spot/actor handler와 같은 registration과 method invoker 경로로 실행된다. timer는 annotation 표면이 아니라 `ZLinkSpotTimerHandler` interface wrapper 표면으로 검증한다. actor join/left lifecycle은 Spot member callback 표면으로 검증한다 |
-| Spot actor interface handler | contract / fake backend | `HandlerContractTest.spotHandlerRegistryMatchesDotnetRegistrationSurface` / `ZLinkHandlerScannerTest.scansSpotActorInterfaceHandlersLikeDotnet` / `SpotRuntimeFakeBackendTest.entrySpotActorReadableInvokesInterfaceActorRequestHandler` / `SpotRuntimeFakeBackendTest.userSpotActorJoinReadableInvokesMemberJoinAndLifecycleCallbacks` | Entry Spot actor request와 user Spot actor request/send public interface가 scanner catalog와 Spot runtime registration에 들어간다. actor join/left lifecycle은 Spot member callback으로 실행된다. interface handler와 annotation handler는 같은 packet name registry를 공유하므로 중복 mapping을 별도 registry key로 우회하지 않는다 |
-| Kotlin/Java duplicate annotation validation | contract | `KotlinSuspendAnnotationHandlerTest.duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision` | Java annotation handler와 Kotlin suspend annotation handler가 같은 channel packet mapping을 등록하면 기존 duplicate registration validation으로 startup 실패 |
-| Kotlin suspend annotation failure/cancellation | unit | `KotlinSuspendAnnotationHandlerTest.kotlinSuspendAnnotationExceptionCompletesJavaStageExceptionally` / `kotlinSuspendAnnotationCancellationCompletesJavaStageExceptionally` | Kotlin suspend annotation handler의 exception/cancellation이 Java runtime 내부 completion의 exceptional/cancel 상태로 모임 |
+이 단계의 performance test는 runner와 package 연결이 실행 가능한지만 확인하는 smoke gate다. 수치를 사용한
+성능 판정, baseline 비교, hotspot 분석과 tuning은 별도 performance 개선 작업에서 수행한다.
 
-## 5. Registry/Monitoring regression
-
-monitoring은 discovery source를 노출하지 않는다(discovery 상태는 registry
-snapshot/query로만 관찰). 따라서 "socket/registry/spot" event만 둔다.
-embedded registry의 router endpoint에 remote query client가 연결해 topology
-snapshot API를 호출하는 native integration gate다. 현재 channel discovery 등록은
-별도 행에서 닫기 전이므로 snapshot 내용은 비어 있을 수 있지만, query client 연결과
-filter 전달은 실제 binding public API 경로로 검증한다.
-
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| registry pub endpoint missing | unit | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenPubEndpointIsMissing` | startup validation 오류 |
-| registry router endpoint missing | unit | `RegistryAndMonitoringTest.addZLinkRegistry_throws_whenRouterEndpointIsMissing` | startup validation 오류 |
-| monitoring source validation | unit | `RegistryAndMonitoringTest.addZLinkMonitoring_throws_whenSocketSourceIsUnknownOnStartup` | source 이름 불일치 차단 |
-| socket event | unit | `MonitoringEventsTest.socketMonitoring_emitsConnectedEvent` | typed event handler 호출 |
-| registry/spot snapshot diff | unit | `MonitoringEventsTest.registryMonitoring_emitsStatusChanged_forEmbeddedRegistry` / `spotMonitoring_emitsSubjectsChanged_whenSpotIsCreated` | 명시 `pollSnapshots()`가 변경분만 typed event handler로 발행 |
-| handler failure policy | unit | `MonitoringRunnerTest.handlerFailure_recordsDiagnostic_withoutStopping` | monitoring runner 중단 없이 diagnostic 기록 |
-
-## 5.1 Lifecycle regression
-
-`StreamSessionTest.onError_reportsTransportError_forRemoteDisconnect`는
-이미 생성된 session에 매칭되는 transport error만 `onError(...)`로 전달하고,
-session이 없는 transport error나 application dispatch 오류는 session error로
-올리지 않는 정책을 fake backend로 고정한다. 실제 remote disconnect를 native
-integration에서 닫으려면 Java binding `StreamSocket`에 session-correlatable
-transport error callback public API가 추가되어야 한다.
-
-| 항목 | 계층 | JUnit 테스트 | 통과 기준 |
-|------|------|--------------|-----------|
-| host start/stop | unit | `HostTest.host_startsAndStops_frameworkRuntimeContext` | `SmartLifecycle` 시작·종료에 맞춰 runtime context 생성·정리 |
-| Spring multi-target clients | unit | `ZLinkFrameworkAutoConfigurationTest.autoConfigurationStartsFrameworkLifecycleAndExposesClientBean` / `enableZLinkFrameworkImportsFrameworkAutoConfiguration` / `multiTargetClientsThrowConfigurationExceptionWhenChannelIsMissing` | `@EnableZLinkFramework` import 기반 auto-configuration, channel/fanout/route client bean 노출과 missing channel configuration error |
-| Spring Spot publisher DI 노출 | unit | `ZLinkFrameworkAutoConfigurationTest.spotPublisherClientIsBeanOnlyWhenPublisherCapabilityExists` | attached Spot publisher 역할이 있을 때만 `ZLinkSpotPublisherClient` bean 등록 |
-| Spring handler constructor injection | unit | `ZLinkFrameworkAutoConfigurationTest.handlerFactoryCreatesHandlersWithSpringConstructorInjection` | Spring `BeanFactory` 기반 handler 생성으로 constructor dependency 주입 |
-| Spring runtime event dispatcher | unit | `ZLinkFrameworkAutoConfigurationTest.runtimeEventDispatcherIsAlwaysRegistered` / `autoConfigurationKeepsUserRuntimeEventDispatcher` | framework runtime과 함께 dispatcher bean 등록, 사용자 제공 bean 유지 |
-| stream transport error scope | fake backend | `StreamSessionTest.onError_reportsTransportError_forRemoteDisconnect` | remote disconnect만 session `onError`로 보고 |
-
-## 6. Spot yield dispatch regression
-
-| 항목 | 계층 | 테스트 또는 명령 | 통과 기준 |
-|------|------|------------------|-----------|
-| Java serial queue yield | unit | `ZLinkAsyncSerialQueueTest.yield_releasesGateUntilOperationCompletes` | `yield(...)`가 current turn을 반납하고 completion 뒤 continuation을 재개한다. |
-| Java exceptional yield resume | unit | `ZLinkAsyncSerialQueueTest.yield_reentersQueueWhenOperationFails` | 실패한 yield completion도 원래 serial queue resume permit을 거친 뒤 handler continuation으로 돌아온다. |
-| Java worker yield | unit | `DefaultZLinkWorkerCallTest.yieldAllowsOtherSpotQueueWorkWhileWorkerRuns` | worker completion을 기다리는 동안 다른 Spot 작업이 실행될 수 있다. |
-| Java cancellation-aware worker yield | unit | `DefaultZLinkWorkerCallTest.cancellationAwareYieldReleasesQueueAndDropsLateWorkerResult` | cancellation-aware `yield(...)`가 Spot queue를 반납하고, 취소 뒤 늦은 worker result로 handler 후속 작업을 재개하지 않는다. |
-| actor join yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | actor `JoinSpot`/`JoinEntrySpot` call object가 `yield(...)`를 public contract로 제공한다. |
-| cancellation-aware yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | request, actor join, worker call object가 `CancellationToken`을 받는 `yield(...)` overload를 public contract로 제공한다. |
-| bound session yield public surface | contract | `HandlerContractTest.actorJoinContractsSupportDtoAndNoReplyJoins` | bound session send call object가 `yield()`를 public contract로 제공한다. |
-| excluded route request surface | contract | `HandlerContractTest` route request 항목 | route request에는 `yield(...)`가 노출되지 않는다. |
-| Bingo Java/Kotlin sample compile | sample build | `:java:Bingo:Server:Play:compileJava`, `:kotlin:Bingo:Server:Play:compileKotlin` | Java sample은 member `yield(...)`, Kotlin sample은 top-level `yield(call, ...)` helper로 compile된다. |
-
-## 7. Sample release gate
-
-| Sample | 확인 기준 |
-|--------|-----------|
-| `TicTacToe` | direct STREAM + Spot + channel 흐름 성공 |
-| `Bingo` | 4 connector client, matching, timer, bound push 성공 |
-
-sample release gate runner(`run_samples.sh`)는 `TicTacToe`, `Bingo`, `SupportChat`,
-`DeliveryDispatch`, `ShoppingMall` 을 모두 실행한다. 위 표의 `TicTacToe`/`Bingo` 는 상세
-parity 설명 대상이고, 전체 gate 목록은 이 다섯 sample이다. 이들은 `samples/java/*`와
-`samples/kotlin/*` 양쪽에 있어야 한다. sample source와 runner 구조는
-`SampleReleaseGateContractTest.requiredSamplesExposeExecutableEntryPoints`,
-`sampleSourcesUseOnlyPublicFrameworkAndConnectorApi`,
-`bingoMirrorsFourClientMatchingTimerAndBoundPushGate`,
-`bingoKotlinSampleMirrorsJavaRoleLayout`가 고정한다. Kotlin mirror gate도
-파일 존재만 보지 않고 framework facade, registry-backed remote ref, public
-session actor binding, connector manual dispatch 사용을 검사한다. 실제 실행
-self-check는 아래 release gate command가 담당한다.
-
-`TicTacToe`, `Bingo`의 sample release gate는 단일 entry
-file만 확인하지 않는다. Java/Kotlin 양쪽에서 `.NET` sample의 역할 package, handler,
-model, player-client 파일이 존재하는지 함께 검사한다. 이렇게 해야 sample이 smoke
-check로 축소되는 회귀를 막을 수 있다.
-
-샘플 handler 스타일도 `.NET` sample의 의도를 따른다. `Bingo`는 interface 기반 handler
-발견과 dispatch를 보여 주는 sample이고, `TicTacToe`는 annotation 기반 handler 발견과
-dispatch를 보여 주는 sample이다. Kotlin `Bingo`는 interface 표면을 사용하되 내부
-비동기 흐름은 framework가 소유하는 coroutine wrapper로 실행한다.
-
-release gate command:
-
-```bash
-./framework/languages/java/samples/run_samples.sh
-```
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../README.ko.md) | [Runtime Lifecycle](runtime-lifecycle.ko.md) | [Backend Policy](backend-dependency-policy.ko.md)
-<!-- framework-adapter-nav:bottom:end -->
+- 공통 perf runner와 JVM consumer가 clean build되고 현재 Framework·binding package와 Core runtime을 사용해
+  시작하고 정상 종료한다.
+- publish, request/reply와 양방향 send의 최소 workload가 각각 한 번 이상 성공한다.
+- crash, hang, timeout과 terminal completion 중복이 없다.
+- 결과에는 runtime/package version, artifact 절대 경로와 SHA-256, source revision, protocol·fixture revision,
+  build mode와 성공·실패 수를 남긴다.
+- 종료 뒤 process, thread·event-loop handle, timer, pending operation과 endpoint resource가 남지 않는다.
+- smoke 수치를 release 성능 목표 충족 증거로 사용하지 않는다.

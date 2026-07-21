@@ -167,6 +167,52 @@ const zlink_mesh_receive_record_t *recv_one_record (zlink_mesh_claim_t *claim_, 
     TEST_ASSERT_TRUE (zlink_mesh_receive_batch_count (recv_batch_) >= 1);
     return zlink_mesh_receive_batch_data (recv_batch_);
 }
+
+struct inline_retry_state_t
+{
+    inline_retry_state_t () :
+        node (NULL), callback_count (0), fill_result (ZLINK_SUBMIT_INTERNAL_ERROR),
+        retry_result (ZLINK_SUBMIT_INTERNAL_ERROR), retry_errno (0)
+    {
+    }
+
+    void *node;
+    int callback_count;
+    zlink_submit_result_t fill_result;
+    zlink_submit_result_t retry_result;
+    int retry_errno;
+};
+
+//  Reproduces the strongest ready-handler re-entry allowed by the public
+//  contract: consume the wakeup synchronously, let another send take the
+//  recovered slot, then retry the original destination before Core returns
+//  from committing the SEND_READY record.
+zlink_mesh_ready_domain_mask_t inline_retry_ready_handler (
+  void *, zlink_mesh_ready_domain_mask_t domains_, void *userdata_)
+{
+    inline_retry_state_t *state = static_cast<inline_retry_state_t *> (userdata_);
+    if (!state || (domains_ & ZLINK_MESH_READY_INFRASTRUCTURE) == 0
+        || state->callback_count != 0)
+        return 0;
+
+    ++state->callback_count;
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, 1) != ZLINK_CONFIG_OK)
+        return ZLINK_MESH_READY_INFRASTRUCTURE;
+    *static_cast<unsigned char *> (zlink_msg_data (&part)) = 0x41;
+    state->fill_result = zlink_mesh_node_send_to_channel (
+      state->node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    zlink_msg_close (&part);
+
+    if (zlink_msg_init_size (&part, 1) != ZLINK_CONFIG_OK)
+        return ZLINK_MESH_READY_INFRASTRUCTURE;
+    *static_cast<unsigned char *> (zlink_msg_data (&part)) = 0x42;
+    state->retry_result = zlink_mesh_node_send_to_channel (
+      state->node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+    state->retry_errno = zlink_errno ();
+    zlink_msg_close (&part);
+    return ZLINK_MESH_READY_INFRASTRUCTURE;
+}
 }
 
 //  A TCP client that cannot complete the socket protocol has no peer RID, but
@@ -408,6 +454,61 @@ void test_monitor_event_mask_filters_kinds ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+//  Monitor status counters belong to the MeshNode lifecycle, not to one
+//  monitor handle. Work completed before a monitor is opened, and work
+//  observed by a monitor that is later replaced, must remain visible.
+void test_monitor_counters_cover_lifecycle_before_open_and_after_reopen ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_configured_node (ctx, "late-monitor", "orders", 1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+
+    zlink_msg_t part;
+    make_payload (&part, "order-1");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_send_to_channel (node, "orders", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    make_payload (&part, "order-2");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED,
+                           zlink_mesh_node_send_to_channel (node, "orders", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+
+    void *monitor = open_monitor (node, 0);
+    zlink_mesh_monitor_status_t status;
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = 1;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_monitor_status (monitor, &status));
+    TEST_ASSERT_EQUAL_UINT64 (1, status.submitted_messages);
+    TEST_ASSERT_EQUAL_UINT64 (1, status.backpressured_submits);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_monitor_close (&monitor));
+
+    monitor = open_monitor (node, 0);
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = 1;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_monitor_status (monitor, &status));
+    TEST_ASSERT_EQUAL_UINT64 (1, status.submitted_messages);
+    TEST_ASSERT_EQUAL_UINT64 (1, status.backpressured_submits);
+
+    zlink_mesh_claim_t claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION, &claim);
+    void *recv_batch = zlink_mesh_receive_batch_new (4, 16, 1 << 20);
+    TEST_ASSERT_NOT_NULL (recv_batch);
+    recv_one_record (&claim, recv_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    void *batch_handle = recv_batch;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch_handle));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_monitor_close (&monitor));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 //  Mailbox budget rejection surfaces BACKPRESSURED with the owner kind, and
 //  the infrastructure domain keeps progressing while an application claim is
 //  held: a request submitted during the turn completes (times out) on the
@@ -431,6 +532,16 @@ void test_backpressure_event_and_in_turn_infrastructure_progress ()
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED,
                            zlink_mesh_node_send_to_channel (node, "orders", NULL, &part, 1,
                                                             ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&part);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_msg_init_size (&part, 4096));
+    memset (zlink_msg_data (&part), 0x5A, zlink_msg_size (&part));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
     zlink_msg_close (&part);
 
@@ -462,7 +573,10 @@ void test_backpressure_event_and_in_turn_infrastructure_progress ()
     take_ready_claim (node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE, &infra_claim);
     void *infra_batch = zlink_mesh_receive_batch_new (8, 32, 1 << 20);
     TEST_ASSERT_NOT_NULL (infra_batch);
-    const zlink_mesh_receive_record_t *record = recv_one_record (&infra_claim, infra_batch);
+    const zlink_mesh_receive_record_t *record =
+      recv_one_record (&infra_claim, infra_batch);
+    if (record->kind == ZLINK_MESH_RECORD_SEND_READY)
+        record = recv_one_record (&infra_claim, infra_batch);
     TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_COMPLETION, record->kind);
     TEST_ASSERT_EQUAL_UINT64 (op_id.low, record->operation_id.low);
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TIMED_OUT, record->terminal_result);
@@ -483,6 +597,291 @@ void test_backpressure_event_and_in_turn_infrastructure_progress ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch_handle));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_monitor_close (&monitor));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  A rejected local Channel send registers one destination-specific waiter.
+//  Moving the head record into a receive batch returns mailbox capacity and
+//  emits one SEND_READY record on the source Node infrastructure claim.
+void test_local_mailbox_capacity_emits_one_channel_send_ready ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_configured_node (ctx, "local-ready-mesh", "orders", 1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+
+    zlink_msg_t part;
+    make_payload (&part, "order-1");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+
+    make_payload (&part, "order-2");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&part);
+
+    zlink_mesh_claim_t application_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION,
+      &application_claim);
+    void *application_batch = zlink_mesh_receive_batch_new (4, 8, 1 << 20);
+    TEST_ASSERT_NOT_NULL (application_batch);
+    const zlink_mesh_receive_record_t *application_record =
+      recv_one_record (&application_claim, application_batch);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_MESH_RECORD_CHANNEL_SEND, application_record->kind);
+
+    zlink_mesh_claim_t infrastructure_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE,
+      &infrastructure_claim);
+    void *infrastructure_batch = zlink_mesh_receive_batch_new (4, 8, 1 << 20);
+    TEST_ASSERT_NOT_NULL (infrastructure_batch);
+    const zlink_mesh_receive_record_t *ready_record =
+      recv_one_record (&infrastructure_claim, infrastructure_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SEND_READY, ready_record->kind);
+    TEST_ASSERT_EQUAL_UINT (sizeof (zlink_mesh_send_ready_data_t),
+                            ready_record->kind_data_size);
+    const zlink_mesh_send_ready_data_t *ready =
+      static_cast<const zlink_mesh_send_ready_data_t *> (ready_record->kind_data);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_DESTINATION_CHANNEL,
+                           ready->destination_kind);
+    TEST_ASSERT_EQUAL_UINT (strlen ("orders"), ready->channel_name_size);
+    TEST_ASSERT_EQUAL_MEMORY ("orders", ready->channel_name,
+                              ready->channel_name_size);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&infrastructure_claim));
+
+    void *duplicate_batch = zlink_mesh_ready_batch_new (4);
+    TEST_ASSERT_NOT_NULL (duplicate_batch);
+    uint32_t residue = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_mesh_node_drain_ready (
+        node, ZLINK_MESH_READY_INFRASTRUCTURE, duplicate_batch, &residue,
+        ZLINK_RECV_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_ready_batch_destroy (&duplicate_batch));
+
+    //  A successful retry may fill the mailbox again. A following EAGAIN
+    //  registers a fresh interest, and the next dequeue emits exactly one new
+    //  SEND_READY record.
+    make_payload (&part, "order-2");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    make_payload (&part, "order-3");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&part);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&application_claim));
+
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION,
+      &application_claim);
+    application_record = recv_one_record (&application_claim, application_batch);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_MESH_RECORD_CHANNEL_SEND, application_record->kind);
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE,
+      &infrastructure_claim);
+    ready_record = recv_one_record (&infrastructure_claim, infrastructure_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SEND_READY, ready_record->kind);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&infrastructure_claim));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&application_claim));
+
+    void *batch_handle = infrastructure_batch;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch_handle));
+    batch_handle = application_batch;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch_handle));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                           zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  A SEND_READY record can invoke the registered ready handler before Core
+//  returns from record admission. An EAGAIN retry made in that callback is a
+//  new interest and must survive completion of the notification in progress.
+void test_inline_ready_handler_retry_preserves_new_interest ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_configured_node (
+      ctx, "inline-retry-mesh", "orders", 1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+
+    zlink_msg_t part;
+    make_payload (&part, "A");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    make_payload (&part, "B");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&part);
+
+    zlink_mesh_claim_t application_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION,
+      &application_claim);
+
+    inline_retry_state_t state;
+    state.node = node;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK,
+      zlink_mesh_node_set_ready_handler (
+        node, inline_retry_ready_handler, &state));
+
+    void *application_batch = zlink_mesh_receive_batch_new (4, 8, 1024);
+    TEST_ASSERT_NOT_NULL (application_batch);
+    recv_one_record (&application_claim, application_batch);
+    TEST_ASSERT_EQUAL_INT (1, state.callback_count);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, state.fill_result);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, state.retry_result);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, state.retry_errno);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_HANDLER_OK, zlink_mesh_node_set_ready_handler (node, NULL, NULL));
+
+    //  Consume the first wakeup that caused the inline callback.
+    zlink_mesh_claim_t infrastructure_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE,
+      &infrastructure_claim);
+    void *infrastructure_batch =
+      zlink_mesh_receive_batch_new (4, 8, 64 * 1024);
+    TEST_ASSERT_NOT_NULL (infrastructure_batch);
+    const zlink_mesh_receive_record_t *ready_record =
+      recv_one_record (&infrastructure_claim, infrastructure_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SEND_READY, ready_record->kind);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&infrastructure_claim));
+
+    //  The callback's filler still occupies the mailbox. Removing it is the
+    //  next real recovery edge and must expose the retry interest exactly once.
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&application_claim));
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION,
+      &application_claim);
+    recv_one_record (&application_claim, application_batch);
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE,
+      &infrastructure_claim);
+    ready_record = recv_one_record (&infrastructure_claim, infrastructure_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SEND_READY, ready_record->kind);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&infrastructure_claim));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&application_claim));
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK,
+      zlink_mesh_receive_batch_destroy (&infrastructure_batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&application_batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  Byte budget recovery is independent of message-count recovery. With spare
+//  message slots but no remaining bytes, dequeueing the head record must emit
+//  one destination-specific SEND_READY record.
+void test_local_byte_capacity_recovery_emits_send_ready ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_configured_node (
+      ctx, "byte-ready-mesh", "orders", 8);
+    const uint64_t byte_budget = 8;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_set_mesh_node_option (
+        node, ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET, &byte_budget,
+        sizeof (byte_budget)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+
+    zlink_msg_t part;
+    make_payload (&part, "12345678");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+    make_payload (&part, "x");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_BACKPRESSURED,
+      zlink_mesh_node_send_to_channel (
+        node, "orders", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&part);
+
+    zlink_mesh_claim_t application_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION,
+      &application_claim);
+    void *application_batch = zlink_mesh_receive_batch_new (4, 8, 1024);
+    TEST_ASSERT_NOT_NULL (application_batch);
+    recv_one_record (&application_claim, application_batch);
+
+    zlink_mesh_claim_t infrastructure_claim;
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE,
+      &infrastructure_claim);
+    void *infrastructure_batch =
+      zlink_mesh_receive_batch_new (4, 8, 64 * 1024);
+    TEST_ASSERT_NOT_NULL (infrastructure_batch);
+    const zlink_mesh_receive_record_t *ready_record =
+      recv_one_record (&infrastructure_claim, infrastructure_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SEND_READY, ready_record->kind);
+    TEST_ASSERT_EQUAL_UINT (sizeof (zlink_mesh_send_ready_data_t),
+                            ready_record->kind_data_size);
+    const zlink_mesh_send_ready_data_t *ready =
+      static_cast<const zlink_mesh_send_ready_data_t *> (
+        ready_record->kind_data);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_MESH_DESTINATION_CHANNEL, ready->destination_kind);
+    TEST_ASSERT_EQUAL_UINT (strlen ("orders"), ready->channel_name_size);
+    TEST_ASSERT_EQUAL_MEMORY (
+      "orders", ready->channel_name, ready->channel_name_size);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&infrastructure_claim));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_claim_release (&application_claim));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK,
+      zlink_mesh_receive_batch_destroy (&infrastructure_batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&application_batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
@@ -656,7 +1055,11 @@ int main ()
     RUN_TEST (test_raw_handshake_failure_emits_peer_rejected);
     RUN_TEST (test_monitor_event_matrix_and_child_reference);
     RUN_TEST (test_monitor_event_mask_filters_kinds);
+    RUN_TEST (test_monitor_counters_cover_lifecycle_before_open_and_after_reopen);
     RUN_TEST (test_backpressure_event_and_in_turn_infrastructure_progress);
+    RUN_TEST (test_local_mailbox_capacity_emits_one_channel_send_ready);
+    RUN_TEST (test_inline_ready_handler_retry_preserves_new_interest);
+    RUN_TEST (test_local_byte_capacity_recovery_emits_send_ready);
     RUN_TEST (test_shutdown_deadline_revokes_outstanding_claims);
     RUN_TEST (test_peer_intent_merge_remove_and_disconnect_errors);
     RUN_TEST (test_reply_after_stop_is_eshutdown);

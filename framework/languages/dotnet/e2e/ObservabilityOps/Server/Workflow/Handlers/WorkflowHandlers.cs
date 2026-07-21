@@ -26,6 +26,19 @@ internal sealed class ReadWorkflowHandler
     }
 }
 
+internal sealed class WorkflowSignalHandler(WorkflowEvidenceStore evidence)
+    : IZLinkSpotPacketHandler<WorkflowSpot, WorkflowSignalReq>
+{
+    public ValueTask HandleAsync(WorkflowSpot spot, WorkflowSignalReq message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add($"workflow-signal|rid={spot.Context.SpotRid}|marker={message.Marker}"
+                     + $"|node={spot.Context.NodeRid}");
+        return ValueTask.CompletedTask;
+    }
+}
+
 internal sealed class PublishProjectionHandler
     : IZLinkSpotRequestHandler<WorkflowSpot, PublishProjectionReq, PublishProjectionRes>
 {

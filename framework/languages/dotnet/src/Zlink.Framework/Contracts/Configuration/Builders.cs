@@ -43,10 +43,8 @@ public interface IZLinkFanoutChannelBuilder
         where THandler : class, IZLinkFanoutHandler<TEvent>;
 }
 
-// The 10.0.0 unified MeshNode registration surface (IZLinkMeshNodeBuilder,
-// IZLinkMeshChannelBuilder and supporting types) lives in MeshNodeBuilders.cs.
-// It replaces the pre-10.0.0 IZLinkSpotNodeBuilder/IZLinkSpotMeshBuilder cluster
-// removed here per spec 05-route-mesh + gap 90 §12.33.
+// The unified MeshNode registration surface and supporting types live in
+// MeshNodeBuilders.cs.
 
 public interface IZLinkFrameworkOptions
 {

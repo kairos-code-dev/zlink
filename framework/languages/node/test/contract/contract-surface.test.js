@@ -77,14 +77,14 @@ test('stream connector public root does not expose raw frame or header codecs', 
   assert.deepEqual(exposed, []);
 });
 
-test('worker options expose only scheduler limits that the Node runtime applies', () => {
+test('worker options expose the formal scheduler limits', () => {
   const declarations = readTree(declarationsRoot);
   const workerOptions = declarationBody(declarations, 'ZLinkWorkerOptions');
 
   assert.equal(workerOptions.includes('maxThreads'), true);
   assert.equal(workerOptions.includes('maxQueueLength'), true);
-  assert.equal(workerOptions.includes('minThreads'), false);
-  assert.equal(workerOptions.includes('idleTimeoutMs'), false);
+  assert.equal(workerOptions.includes('minThreads'), true);
+  assert.equal(workerOptions.includes('idleTimeoutMs'), true);
 });
 
 test('diagnostics options do not expose inert native diagnostics configuration', () => {
@@ -242,7 +242,7 @@ test('actor join and one-way calls expose only their target terminators', () => 
   assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorJoinCall'), true);
   assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorJoinCall'), true);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
-  assert.match(boundSessionSendCall, /submit\(\): void/);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
@@ -250,12 +250,12 @@ test('spot manager create surface exposes ZLinkMessage and typed request overloa
   const declarations = readTree(declarationsRoot);
   const spotManager = declarationBody(declarations, 'ZLinkSpotManager');
 
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /create<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
+  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
   const oldOptionalAnyRequest = ['request?:', 'unknown'].join(' ');
   assert.equal(spotManager.includes(oldOptionalAnyRequest), false);
   assert.equal(spotManager.includes(`${oldOptionalAnyRequest} | ZLinkMessage`), false);
@@ -267,10 +267,7 @@ test('location wire enums retain numeric values while Node-facing result enums u
     ZLinkLocationAutoConnectType: {
       Invalid: 0,
       RouteMesh: 1,
-      ClientServer: 2,
-      DealerMesh: 3,
-      Fanout: 4,
-      SpotMesh: 5
+      Fanout: 2
     },
     ZLinkLocationRole: {
       Invalid: 0,
@@ -326,9 +323,31 @@ test('location wire enums retain numeric values while Node-facing result enums u
   for (const [enumName, expected] of Object.entries(expectedLocationEnums)) {
     assert.deepEqual(pickEnumValues(framework[enumName], Object.keys(expected)), expected, enumName);
   }
+  assert.deepEqual(
+    Object.keys(framework.ZLinkLocationAutoConnectType)
+      .filter((name) => Number.isNaN(Number(name)))
+      .sort(),
+    Object.keys(expectedLocationEnums.ZLinkLocationAutoConnectType).sort()
+  );
 
   assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
   assert.equal(framework.zlinkLocationRoleName, undefined);
+});
+
+test('formal RouteMesh declarations exclude removed topology builders', () => {
+  const frameworkDeclarations = readTree(declarationsRoot);
+  const nestDeclarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
+  const removedNames = [
+    'ZLinkClientServerChannelBuilder',
+    'ZLinkRouteMeshChannelBuilder',
+    'ZLinkNestClientServerChannelBuilder',
+    'addClientServerChannel'
+  ];
+
+  for (const name of removedNames) {
+    assert.equal(frameworkDeclarations.includes(name), false, `framework declaration retained ${name}`);
+    assert.equal(nestDeclarations.includes(name), false, `Nest declaration retained ${name}`);
+  }
 });
 
 test('framework error kind values and retriable defaults match the shared table', () => {
@@ -370,19 +389,21 @@ test('framework error kind values and retriable defaults match the shared table'
 test('location contract declarations fix store resolver runtime query watch and row shapes', () => {
   const declarations = readTree(declarationsRoot);
   const locationStore = declarationBody(declarations, 'ZLinkLocationStore');
+  const spotLocation = declarationBody(declarations, 'ZLinkSpotLocation');
   const actorLocation = declarationBody(declarations, 'ZLinkActorLocation');
   const actorKey = declarationBody(declarations, 'ZLinkActorLocationKey');
   const actorFilter = declarationBody(declarations, 'ZLinkActorLocationFilter');
   const changed = declarationBody(declarations, 'ZLinkLocationChanged');
   const runtimeQuery = declarationBody(declarations, 'ZLinkLocationRuntimeQuery');
 
-  assert.match(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends\s+ZLinkPeerLocationStore,\s*ZLinkSpotLocationStore,\s*ZLinkActorLocationStore,\s*ZLinkRouteLocationStore,\s*ZLinkOwnerLeaseStore/);
-  assert.match(locationStore, /removeAllByOwner\(ownerId: string, signal\?: AbortSignal\): Promise<number>/);
+  assert.match(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends\s+ZLinkMeshNodeLocationStore,\s*ZLinkSpotLocationStore,\s*ZLinkActorLocationStore,\s*ZLinkOwnerLeaseStore,\s*ZLinkActorTransferStore/);
+  assert.doesNotMatch(interfaceHeader(declarations, 'ZLinkLocationStore'), /ZLink(?:Peer|Route)LocationStore/);
+  assert.match(locationStore, /removeAllByOwner\(ownerId: string, signal\?: AbortSignal\): Promise<bigint>/);
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
   assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.match(declarationBody(declarations, 'ZLinkSpotHandleResolver'), /resolveSpotHandle\(spotRid: RoutingId, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
-  assert.match(declarationBody(declarations, 'ZLinkActorSpotHandleResolver'), /resolveActorSpotHandle\(actorId: string, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
+  assert.match(declarationBody(declarations, 'ZLinkSpotHandleResolver'), /resolveSpotHandle\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
+  assert.match(declarationBody(declarations, 'ZLinkActorSpotHandleResolver'), /resolveActorSpotHandle\(meshName: string, actorId: string, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
   assert.equal(declarations.includes('interface SpotRef'), false);
   assert.equal(declarations.includes('IZLink' + 'SpotAddressResolver'), false);
   assert.equal(declarations.includes('ZLink' + 'SpotAddress'), false);
@@ -395,17 +416,32 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.match(runtimeQuery, /listRouteLocations\(\s*filter: ZLinkRouteLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkRouteLocation>>/);
   assert.equal(/\blist(?:Peers|Spots|Actors|Routes)\(/.test(runtimeQuery), false);
 
+  for (const field of [
+    'meshName', 'spotRid', 'spotGeneration', 'ownerNodeRid',
+    'ownerNodeGeneration', 'spotKind', 'spotType', 'ownerId', 'updatedAt'
+  ]) {
+    assert.match(spotLocation, new RegExp(`readonly ${field}:`));
+  }
+  assert.doesNotMatch(spotLocation, /readonly (?:nodeRid|routeEndpoint|generation):/);
+
   assert.match(changed, /readonly key: ZLinkLocationKey/);
   assert.equal(changed.includes('locationKey'), false);
   assert.equal(changed.includes('string'), false);
   assert.match(declarations, /export type ZLinkLocationKey = \{\s*readonly kind: ZLinkLocationKind\.Peer;\s*readonly key: ZLinkPeerLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Spot;\s*readonly key: ZLinkSpotLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Actor;\s*readonly key: ZLinkActorLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Route;\s*readonly key: ZLinkRouteLocationKey;\s*\};/);
 
   assert.match(actorLocation, /readonly actorId: string/);
-  assert.match(actorLocation, /readonly actorType\?: string/);
-  assert.match(actorLocation, /readonly actorRef\?: ActorRef/);
-  assert.match(actorLocation, /readonly locationKind: ZLinkSpotKind/);
-  assert.match(actorLocation, /readonly spotMeshName: string/);
-  assert.equal(actorLocation.includes('readonly spotKind'), false);
+  assert.match(actorLocation, /readonly meshName: string/);
+  assert.match(actorLocation, /readonly actorType: string/);
+  assert.match(actorLocation, /readonly actorRef: ActorRef/);
+  assert.match(actorLocation, /readonly ownerNodeRid: RoutingId/);
+  assert.match(actorLocation, /readonly ownerNodeGeneration: bigint/);
+  assert.match(actorLocation, /readonly spotRid: RoutingId/);
+  assert.match(actorLocation, /readonly spotGeneration: bigint/);
+  assert.match(actorLocation, /readonly spotKind: ZLinkSpotKind/);
+  assert.match(actorLocation, /readonly membershipEpoch: bigint/);
+  assert.doesNotMatch(actorLocation, /readonly (?:nodeRid|locationKind|spotMeshName|generation):/);
+  assert.equal(/readonly (?:actorType|actorRef|ownerNodeRid|ownerNodeGeneration|spotRid|spotGeneration|spotKind|membershipEpoch)\?:/.test(actorLocation), false);
+  assert.match(actorKey, /readonly meshName: string/);
   assert.match(actorKey, /readonly actorId: string/);
   assert.equal(actorKey.includes('actorType'), false);
   assert.match(actorFilter, /readonly locationKind\?: ZLinkSpotKind/);
@@ -421,19 +457,19 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
   const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
 
-  assert.match(actorClient, /sendToActor\(actor: ActorRef, message: unknown\): ZLinkActorSendCall/);
-  assert.match(actorClient, /requestToActor\(actor: ActorRef, request: unknown\): ZLinkActorRequestCall/);
+  assert.match(actorClient, /sendToActor\(meshName: string, actor: ActorRef, message: unknown\): ZLinkActorSendCall/);
+  assert.match(actorClient, /requestToActor\(meshName: string, actor: ActorRef, request: unknown\): ZLinkActorRequestCall/);
   assert.equal(actorClient.includes('actorId: string'), false);
   assert.match(actorSendCall, /metadata\(key: string, value: string\): this/);
-  assert.match(actorSendCall, /submit\(\): void/);
+  assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
   assert.equal(actorSendCall.includes('packetName('), false);
   assert.match(actorRequestCall, /metadata\(key: string, value: string\): this/);
   assert.equal(actorRequestCall.includes('packetName('), false);
   assert.match(actorRequestCall, /timeout\(timeoutMs: number\): this/);
   assert.match(actorRequestCall, /submit<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
   assert.match(actorRequestCall, /yield<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
-  assert.match(directory, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
-  assert.match(directory, /ensure\(\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
+  assert.match(directory, /find\(meshName: string, actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
+  assert.match(directory, /ensure\(\s*meshName: string,\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
   assert.match(placement, /readonly preferredNodeRid\?: RoutingId/);
   assert.match(placement, /readonly routeMesh\?: string/);
   assert.match(snapshot, /readonly nodeRid: RoutingId/);
@@ -444,12 +480,38 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   assert.match(sessionActors, /bindOrGet\(actor: ActorRef, signal\?: AbortSignal\): Promise<ZLinkSessionActor>/);
 });
 
-test('route client surface exposes node and SpotHandle routing', () => {
+test('one-way call declarations expose async admission results only', () => {
+  const declarations = readTree(declarationsRoot);
+  const sendCall = declarationBody(declarations, 'ZLinkSendCall');
+  const fanoutPublishCall = declarationBody(declarations, 'ZLinkFanoutPublishCall');
+  const publishCall = declarationBody(declarations, 'ZLinkPublishCall');
+  const actorSendCall = declarationBody(declarations, 'ZLinkActorSendCall');
+  const boundSessionSendCall = declarationBody(declarations, 'ZLinkBoundSessionSendCall');
+  const sessionSendCall = declarationBody(declarations, 'ZLinkSessionSendCall');
+  const sessionReplyCall = declarationBody(declarations, 'ZLinkSessionReplyCall');
+  const sessionActor = declarationBody(declarations, 'ZLinkSessionActor');
+
+  assert.match(sendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(fanoutPublishCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(publishCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkPublishResult>/);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(sessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(sessionReplyCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(sessionActor, /relay\(payload: ZLinkMessage, signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  for (const call of [sendCall, fanoutPublishCall, publishCall, actorSendCall,
+    boundSessionSendCall, sessionSendCall, sessionReplyCall]) {
+    assert.doesNotMatch(call, new RegExp(['try', 'Submit'].join('')));
+  }
+});
+
+test('route client surface exposes MeshName-scoped node, channel, and SpotHandle routing', () => {
   const declarations = readTree(declarationsRoot);
   const routeClient = declarationBody(declarations, 'ZLinkRouteClient');
 
-  assert.match(routeClient, /sendToNode\(routerChannelId: string, targetNodeRid: RoutingId, message: unknown\): ZLinkSendCall/);
-  assert.match(routeClient, /requestToNode\(routerChannelId: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
+  assert.match(routeClient, /sendToNode\(meshName: string, targetNodeRid: RoutingId, message: unknown\): ZLinkSendCall/);
+  assert.match(routeClient, /requestToNode\(meshName: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
+  assert.match(routeClient, /sendToChannel\(meshName: string, channelName: string, message: unknown\): ZLinkSendCall/);
+  assert.match(routeClient, /requestToChannel\(meshName: string, channelName: string, request: unknown\): ZLinkRequestCall/);
   assert.match(routeClient, /sendToSpot\(spot: SpotHandle, message: unknown\): ZLinkSendCall/);
   assert.match(routeClient, /requestToSpot\(spot: SpotHandle, request: unknown\): ZLinkRequestCall/);
 });

@@ -238,14 +238,14 @@ inline int run_gateway_server (int argc, char **argv)
                          zlink::framework::actor_directory_t> ();
         configure_gateway_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
-        options.add_route_mesh (e2e::route_channel)
-          .enable_server (route_endpoint)
+        auto route = options.add_route_mesh (e2e::route_channel);
+        route.listen (route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_client ();
-        options.add_spot_mesh (e2e::spot_mesh)
+          .channel_name (e2e::route_channel);
+        auto spot = options.add_route_mesh (e2e::spot_mesh);
+        spot.listen (spot_router_endpoint)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_router (spot_router_endpoint)
-          .enable_pub_sub (pubsub_endpoint);
+          .channel_name (e2e::spot_mesh);
         options.http ()
           .listen (http_endpoint)
           .map_health ("/health")

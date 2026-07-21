@@ -117,7 +117,8 @@ public interface IZLinkSpotManager
 
 public interface IZLinkSpotPublisherClient
 {
-    IZLinkPublishCall PublishSpot<TEvent>(
+    IZLinkPublishCall Publish<TEvent>(
+        string meshName,
         string channelName,
         string topic,
         TEvent message);

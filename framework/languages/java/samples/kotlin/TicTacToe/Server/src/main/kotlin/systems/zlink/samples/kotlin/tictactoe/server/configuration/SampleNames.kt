@@ -8,7 +8,6 @@ object SampleNames {
     const val PlayHandlerGroup: String = "play"
     const val SpotMesh: String = "tictactoe"
     const val PlayNode: String = "play"
-    const val EntrySpotRoutingId: String = "3201"
     const val PlayStream: String = "play-stream"
     const val PlayActor: String = "play-actor"
     const val PlayerMilestoneTopic: String = "tictactoe.player.milestone"

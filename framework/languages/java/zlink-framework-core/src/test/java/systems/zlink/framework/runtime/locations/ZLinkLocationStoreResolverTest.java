@@ -51,7 +51,7 @@ class ZLinkLocationStoreResolverTest {
     @Test
     void inMemoryRegistrationUsesOneStoreForAllRolesAndOptionalStampStore() {
         ZLinkLocationRegistration registration = new ZLinkLocationRegistration();
-        registration.enableInMemoryStores();
+        registration.setStoreInstance(new ZLinkInMemoryLocationStore());
 
         ZLinkRegisteredLocationStores stores = ZLinkLocationStoreResolver.resolve(
             registration,

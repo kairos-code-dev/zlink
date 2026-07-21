@@ -6,13 +6,12 @@
 
 > Note:
 > This document covers message creation and multipart handling.
-> Request-reply and service routing are defined by their formal socket and
-> service specifications. The public message API exposes neither request-reply
-> nor service-routing state.
+> Request-reply and routing are defined by the formal socket specifications.
+> The public message API exposes neither request-reply nor socket-routing state.
 
-The Message API provides functions for creating, accessing, owning, and
-managing multipart zlink messages. Messages are the fundamental unit of data
-exchange between sockets and can carry arbitrary binary payloads, support
+This document defines the ZLink Core 11.0.0 contract for creating, accessing,
+owning, and managing multipart messages. Messages are the fundamental unit of
+data exchange between sockets and can carry arbitrary binary payloads, support
 zero-copy semantics, and form multipart sequences.
 
 ### Terms
@@ -66,10 +65,8 @@ data buffer is no longer needed.
 | `ZLINK_MSG_METADATA_KEY_USER_MIN` | `0x0100` | Lowest user-defined metadata key |
 | `ZLINK_MSG_METADATA_VALUE_MAX` | `65535` | Maximum metadata value size in bytes |
 
-These constants define the key and value ranges of the metadata codec used by
-service wire envelopes. They do not add metadata accessors to a generic
-`zlink_msg_t` payload part. Each service specification owns the MeshNode and
-Spot functions that accept metadata and the corresponding wire format.
+These constants define the user-defined key and value ranges of the raw ZMP
+metadata codec. A generic `zlink_msg_t` payload part has no metadata accessor.
 
 ## Functions
 
@@ -343,10 +340,9 @@ message stored as a contiguous array of `zlink_msg_t` structures.
 
 The public message API is a payload-part container. It does not expose
 message-level request-reply functions or per-message metadata functions.
-Request-reply and peer details belong to their respective public socket and
-service contracts rather than the message API.
+Request-reply and peer details belong to the public socket contracts rather
+than the message API.
 
 See these documents for the adjacent contracts:
 
 - request-reply public API: [socket/README.md](socket/README.md)
-- SPOT direct and request-reply public API: [service/03-spot.md](service/03-spot.md)

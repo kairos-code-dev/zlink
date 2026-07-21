@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
+#include <zlink/stream_connector.hpp>
 
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/streams/stream_host_service.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
@@ -50,11 +52,55 @@ class sample_session_t final : public zlink::framework::packet_stream_session_t
     {
         events.push_back ("packet:" + std::string (dispatch.packet_name ()) + ":"
                           + payload.to_string ());
-        stream.reply_packet (payload).submit ();
+        stream.reply_packet (payload).submit ().result ().value ();
         return zlink::framework::task_t<void> (zlink::framework::result_t<void>::success ());
     }
 
     std::vector<std::string> events;
+};
+
+class duplicate_reply_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_error_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_packet (
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_dispatch_context_t &,
+      const zlink::message_t &payload) override
+    {
+        auto winner = stream.reply_packet (payload);
+        auto loser = stream.reply_packet (payload);
+        winner_status = (co_await winner.submit ()).status;
+        try {
+            (void) co_await loser.submit ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            loser_rejected =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::request_protocol_error;
+        }
+        co_return;
+    }
+
+    zlink::framework::submit_status_t winner_status =
+      zlink::framework::submit_status_t::shutdown;
+    bool loser_rejected = false;
 };
 
 class throwing_packet_session_t final : public zlink::framework::packet_stream_session_t
@@ -128,7 +174,7 @@ class delayed_reply_session_t final : public zlink::framework::packet_stream_ses
         _entered.set_value ();
         co_await _resume.task ();
         try {
-            stream.reply_packet (payload).submit ();
+            (void) co_await stream.reply_packet (payload).submit ();
             reply_result = zlink::framework::result_t<void>::success ();
         }
         catch (const zlink::framework::framework_exception_t &error) {
@@ -236,16 +282,21 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
     }
 
     zlink::framework::task_t<void> on_packet (
-      zlink::framework::stream_t &,
-      const zlink::framework::stream_dispatch_context_t &,
-      const zlink::message_t &) override
+      zlink::framework::stream_t &stream,
+      const zlink::framework::stream_dispatch_context_t &dispatch,
+      const zlink::message_t &payload) override
     {
+        record (_packets);
+        if (dispatch.can_reply ()) {
+            (void) co_await stream.reply_packet (payload).submit ();
+        }
         co_return;
     }
 
     bool wait_connected (int count) { return wait_for (_connected, count); }
     bool wait_disconnected (int count) { return wait_for (_disconnected, count); }
     bool wait_errors (int count) { return wait_for (_errors, count); }
+    bool wait_packets (int count) { return wait_for (_packets, count); }
 
     int errors () const
     {
@@ -287,6 +338,7 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
     int _connected = 0;
     int _disconnected = 0;
     int _errors = 0;
+    int _packets = 0;
     zlink::framework::stream_session_error_t _last_error =
       zlink::framework::stream_session_error_t::internal;
     int _last_native_code = 0;
@@ -581,6 +633,29 @@ int main ()
         return 15;
     }
 
+    auto duplicate_reply_stream = runtime.open_session ("client-stream");
+    duplicate_reply_session_t duplicate_reply_session;
+    if (!runtime.dispatch_packet (
+          duplicate_reply_session, duplicate_reply_stream, request_header,
+          zlink::message_t::from (std::string ("duplicate-reply")))
+        || duplicate_reply_session.winner_status
+             != zlink::framework::submit_status_t::submitted
+        || !duplicate_reply_session.loser_rejected
+        || runtime.written_headers (duplicate_reply_stream).size () != 1) {
+        return 236;
+    }
+
+    auto heartbeat_stream = runtime.open_session ("client-stream");
+    runtime.send_heartbeat_pong (heartbeat_stream);
+    const auto heartbeat_headers = runtime.written_headers (heartbeat_stream);
+    if (heartbeat_headers.size () != 1
+        || heartbeat_headers[0].kind () != stream_message_kind_t::control
+        || heartbeat_headers[0].codec () != stream_codec_t::raw
+        || heartbeat_headers[0].request_seq ()
+        || heartbeat_headers[0].packet_name () != "$zlink.heartbeat.pong") {
+        return 235;
+    }
+
     auto delayed_stream = runtime.open_session ("client-stream");
     delayed_reply_session_t delayed_session;
     std::optional<zlink::framework::result_t<void>> delayed_dispatch;
@@ -600,6 +675,55 @@ int main ()
         return 29;
     }
 
+    /* Native Core callbacks must return after enqueueing. The suspended packet
+     * keeps the per-session turn, so disconnect cannot overtake it and close
+     * the stream before its reply is written. */
+    auto async_stream = runtime.open_session ("client-stream");
+    delayed_reply_session_t async_session;
+    std::promise<zlink::framework::result_t<void>> packet_completion_source;
+    auto packet_completion = packet_completion_source.get_future ();
+    const auto async_submitted = runtime.dispatch_packet_async (
+      async_session, async_stream, request_header,
+      zlink::message_t::from (std::string ("async-payload")),
+      [&packet_completion_source] (const zlink::framework::result_t<void> &result) {
+          packet_completion_source.set_value (result);
+      });
+    if (!async_submitted) {
+        return 230;
+    }
+    async_session.wait_until_suspended ();
+    if (packet_completion.wait_for (std::chrono::milliseconds::zero ())
+        == std::future_status::ready) {
+        return 231;
+    }
+    std::promise<zlink::framework::result_t<void>> disconnect_completion_source;
+    auto disconnect_completion = disconnect_completion_source.get_future ();
+    const auto disconnect_submitted = runtime.dispatch_disconnected_async (
+      async_session, async_stream,
+      [&disconnect_completion_source] (const zlink::framework::result_t<void> &result) {
+          disconnect_completion_source.set_value (result);
+      });
+    if (!disconnect_submitted
+        || disconnect_completion.wait_for (std::chrono::milliseconds::zero ())
+             == std::future_status::ready) {
+        return 232;
+    }
+    async_session.resume ();
+    if (packet_completion.wait_for (std::chrono::seconds (2))
+          != std::future_status::ready
+        || !packet_completion.get ()
+        || disconnect_completion.wait_for (std::chrono::seconds (2))
+             != std::future_status::ready
+        || !disconnect_completion.get ()) {
+        return 233;
+    }
+    runtime.drain_async_dispatch (async_stream);
+    if (!async_session.reply_result || !*async_session.reply_result
+        || runtime.written_payloads (async_stream).size () != 1
+        || runtime.written_payloads (async_stream)[0].to_string () != "async-payload") {
+        return 234;
+    }
+
     auto fluent_stream = runtime.open_session ("client-stream");
     auto send_call =
       fluent_stream.write_packet (zlink::message_t::from (std::string ("send-payload")));
@@ -607,8 +731,23 @@ int main ()
     if (!runtime.written_headers (fluent_stream).empty ()) {
         return 17;
     }
-    send_call.metadata ("trace", "send-trace").packet_name ("renamed").compress ().submit ();
+    send_call.metadata ("trace", "send-trace")
+      .packet_name ("renamed")
+      .compress ()
+      .submit ()
+      .result ()
+      .value ();
+    bool duplicate_send_rejected = false;
+    try {
+        (void) send_call.submit ().result ().value ();
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        duplicate_send_rejected =
+          error.kind ()
+          == zlink::framework::framework_error_kind_t::request_protocol_error;
+    }
     if (runtime.written_headers (fluent_stream).size () != 1
+        || !duplicate_send_rejected
         || runtime.written_headers (fluent_stream)[0].packet_name () != "renamed"
         || runtime.written_headers (fluent_stream)[0].metadata ("trace") != "send-trace"
         || (runtime.written_headers (fluent_stream)[0].flags ()
@@ -623,16 +762,17 @@ int main ()
     const auto close_result = fluent_stream.close ().result ();
     const auto write_rejected_disconnected = [] (auto &&write_fn) {
         try {
-            write_fn ();
-            return false;
+            return write_fn ().status
+                   == zlink::framework::submit_status_t::route_not_connected;
         }
-        catch (const zlink::framework::framework_exception_t &error) {
-            return zlink::framework::detail::boundary_state (error) == zlink::framework::detail::boundary_error_t::disconnected;
+        catch (const zlink::framework::framework_exception_t &) {
+            return false;
         }
     };
     if (!write_rejected_disconnected ([&] {
-            fluent_stream.write_packet (zlink::message_t::from (std::string ("after-close")))
-              .submit ();
+            return fluent_stream
+              .write_packet (zlink::message_t::from (std::string ("after-close")))
+              .submit ().result ().value ();
         })) {
         return 24;
     }
@@ -640,8 +780,9 @@ int main ()
         return 19;
     }
     if (!write_rejected_disconnected ([&] {
-            stream.write_packet (zlink::message_t::from (std::string ("after-disconnect")))
-              .submit ();
+            return stream
+              .write_packet (zlink::message_t::from (std::string ("after-disconnect")))
+              .submit ().result ().value ();
         })) {
         return 25;
     }
@@ -698,7 +839,7 @@ int main ()
     auto custom_stream = custom_runtime.open_session ("custom-stream");
     custom_stream.write_packet (zlink::message_t::from (std::string ("custom-outbound")))
       .compress ()
-      .submit ();
+      .submit ().result ().value ();
     if (custom_runtime.written_payloads (custom_stream).size () != 1
         || custom_runtime.written_payloads (custom_stream)[0].to_string ()
              != "custom-stream:custom-outbound") {
@@ -732,7 +873,7 @@ int main ()
     try {
         disabled_stream.write_packet (zlink::message_t::from (std::string ("disabled")))
           .compress ()
-          .submit ();
+          .submit ().result ().value ();
     }
     catch (const zlink::framework::framework_exception_t &) {
         disabled_compress_rejected = true;
@@ -782,6 +923,13 @@ int main ()
     zlink::framework::serializer_registry_t transport_serializers;
     zlink::framework::zlink_builder_t transport_zlink;
     zlink::framework::monitoring_builder_t transport_monitoring;
+    transport_services.add_singleton<zlink::framework::detail::actor_gateway_runtime_t> ();
+    transport_services.add_factory<zlink::framework::session_actor_manager_t> (
+      [] (zlink::framework::service_provider_t &provider) {
+          return std::make_unique<zlink::framework::session_actor_manager_t> (
+            provider.get_required<zlink::framework::detail::actor_gateway_runtime_t> ().manager ());
+      },
+      zlink::framework::service_lifetime_t::scoped);
     zlink::framework::zlink_framework_options_t transport_options (
       transport_services, transport_handlers, transport_serializers, transport_zlink,
       transport_monitoring);
@@ -822,13 +970,38 @@ int main ()
     ::close (failed_client);
     const bool transport_failure_reported = transport_session.wait_errors (1);
     const bool transport_disconnect_reported = transport_session.wait_disconnected (2);
-    transport_host.stop ();
     if (!transport_failure_reported || !transport_disconnect_reported
         || transport_session.last_error ()
              != zlink::framework::stream_session_error_t::transport_error
         || transport_session.last_native_code () == 0) {
+        transport_host.stop ();
         return 32;
     }
 
+    zlink::stream_connector::connector_options_t connector_options;
+    connector_options.endpoint = transport_endpoint;
+    connector_options.connect_timeout = std::chrono::seconds (2);
+    auto connector =
+      zlink::stream_connector::connector_factory_t::create (connector_options);
+    if (!connector.connect () || !transport_session.wait_connected (3)) {
+        transport_host.stop ();
+        return 36;
+    }
+    auto connector_reply =
+      connector
+        .request (zlink::stream_connector::packet_t{
+          .name = "connector-probe",
+          .payload = zlink::message_t::from ("connector-payload")})
+        .timeout (std::chrono::seconds (2))
+        .submit<zlink::message_t> ();
+    if (!connector_reply
+        || connector_reply.value ().to_string () != "connector-payload"
+        || !transport_session.wait_packets (1) || !connector.close ()
+        || !transport_session.wait_disconnected (3)) {
+        transport_host.stop ();
+        return 36;
+    }
+
+    transport_host.stop ();
     return 0;
 }

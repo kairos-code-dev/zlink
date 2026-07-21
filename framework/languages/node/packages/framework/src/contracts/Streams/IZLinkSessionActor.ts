@@ -1,5 +1,6 @@
 import type { ActorRef, ZLinkMessage } from '../Common';
 import type { ZLinkActor } from '../Actors';
+import type { ZLinkSubmitResult } from '../RouteMesh';
 
 export interface ZLinkSessionActors {
   readonly bound: readonly ZLinkSessionActor[];
@@ -11,6 +12,6 @@ export interface ZLinkSessionActors {
 export interface ZLinkSessionActor {
   readonly actorId: string;
   readonly ref: ActorRef;
-  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
+  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
   notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }

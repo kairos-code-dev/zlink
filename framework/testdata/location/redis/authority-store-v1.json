@@ -1,0 +1,86 @@
+{
+  "notice": "All official Redis extensions must match this fixture. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
+  "format": "authority-store-v1",
+  "keyContract": {
+    "objectKind": "spot",
+    "meshName": "game",
+    "identityHex": "73",
+    "authorityKey": "zla1:s:4:game:1:s"
+  },
+  "globalCounters": {
+    "objectGeneration": "P:counter:object-generation",
+    "authorityOwnerGeneration": "P:counter:authority-owner-generation",
+    "storeRevision": "P:counter:store-revision",
+    "maximum": "9223372036854775807"
+  },
+  "hashFields": [
+    "payload",
+    "storeVersion",
+    "objectGeneration",
+    "authorityOwnerGeneration",
+    "ownerId",
+    "ownerLeaseGeneration"
+  ],
+  "missing": {
+    "kind": "Missing",
+    "storeNowMs": "1721001600000"
+  },
+  "newObject": {
+    "expectation": "Missing",
+    "result": "Stored",
+    "hash": {
+      "payload": "opaque-payload-v1",
+      "storeVersion": "101",
+      "objectGeneration": "11",
+      "authorityOwnerGeneration": "21",
+      "ownerId": "owner-a",
+      "ownerLeaseGeneration": "31"
+    },
+    "storeNowMs": "1721001600000"
+  },
+  "preserve": {
+    "expectation": { "kind": "Found", "storeVersion": "101" },
+    "result": "Stored",
+    "hash": {
+      "payload": "opaque-payload-v2",
+      "storeVersion": "102",
+      "objectGeneration": "11",
+      "authorityOwnerGeneration": "21",
+      "ownerId": "owner-a",
+      "ownerLeaseGeneration": "31"
+    }
+  },
+  "newOwner": {
+    "expectation": { "kind": "Found", "storeVersion": "102" },
+    "result": "Stored",
+    "hash": {
+      "payload": "opaque-payload-v3",
+      "storeVersion": "103",
+      "objectGeneration": "11",
+      "authorityOwnerGeneration": "22",
+      "ownerId": "owner-b",
+      "ownerLeaseGeneration": "32"
+    }
+  },
+  "delete": {
+    "expectation": { "kind": "Found", "storeVersion": "103" },
+    "result": "Deleted",
+    "consumedStoreRevision": "104"
+  },
+  "missingAfterDelete": {
+    "kind": "Missing",
+    "storeNowMs": "1721001601000"
+  },
+  "generationExhausted": {
+    "counterAtMaximum": "9223372036854775807",
+    "result": "GenerationExhausted",
+    "retriable": false,
+    "rowIndexAndCounterMutationCount": 0
+  },
+  "forbidden": [
+    "authority-row-ttl",
+    "synthetic-missing-store-version",
+    "per-key-generation-counter",
+    "per-key-version-tombstone"
+  ]
+}

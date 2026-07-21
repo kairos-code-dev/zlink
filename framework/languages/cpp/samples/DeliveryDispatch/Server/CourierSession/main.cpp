@@ -143,10 +143,10 @@ int main (int argc, char **argv)
           .trace_label ("deliverydispatch-courier-session");
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
-        options.add_spot_mesh (sample_names_t::courier_actor_discovery)
+        options.add_route_mesh (sample_names_t::courier_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node))
-          .enable_router (topology.courier_session_spot_router_endpoint)
-          .enable_pub_sub (topology.courier_session_spot_endpoint);
+          .listen (topology.courier_session_spot_router_endpoint)
+          .channel_name (sample_names_t::courier_actor_discovery);
         options.add_stream_node (sample_names_t::courier_stream_node)
           .bind (topology.courier_stream_endpoint)
           .register_session<courier_session_t> ();

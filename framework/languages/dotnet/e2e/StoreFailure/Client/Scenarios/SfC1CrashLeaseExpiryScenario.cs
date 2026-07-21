@@ -16,18 +16,30 @@ internal static class SfC1CrashLeaseExpiryScenario
         StoreFailureProcessManager processes,
         ManagedProcess providerB)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-C1: provider routes were not ready before api-b crashed.");
+
         await providerB.KillAsync();
 
         await SfProbe.WaitPeersAsync(
             consumer,
             SfProbe.PeerRows(options.OwnerLeaseTtl * 2 + options.PollingInterval * 4,
+                present: ["api-a"],
                 absent: ["api-b"]),
             "SF-C1: the crashed provider's row was not excluded after its lease expired.");
 
-        // Give the consumer's reconcile a tick to drop the dead target,
-        // then verify traffic lands on the survivor only — and fast (no
-        // repeated timeouts against the dead endpoint).
-        await Task.Delay(options.PollingInterval * 4);
+        await SfProbe.WaitRouteReadyAsync(
+            consumer,
+            minimumReadyMembers: 1,
+            readyRids: ["api-a"],
+            notReadyRids: ["api-b"],
+            timeout: options.PollingInterval * 4,
+            failure: "SF-C1: the surviving provider did not become selectable after the crashed row expired.");
+
+        // Verify traffic lands on the survivor only — and fast (no repeated
+        // timeouts against the dead endpoint).
         var stopwatch = Stopwatch.StartNew();
         for (var i = 0; i < 12; i++)
         {

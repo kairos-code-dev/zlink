@@ -11,8 +11,10 @@ import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
+import systems.zlink.framework.channels.ZLinkFanoutPublishCall
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.channels.ZLinkSendCall
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder
 import systems.zlink.framework.locations.ZLinkLocationReadiness
@@ -122,12 +124,10 @@ inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply(): ZLinkAc
 suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T =
     awaitFrameworkStage(yield())
 
-fun ZLinkClient.send(
+fun <TMessage> ZLinkClient.send(
     channelName: String,
-    message: Message,
-) {
-    sendToChannel(channelName, message).submit()
-}
+    message: TMessage,
+): ZLinkSendCall = sendToChannel(channelName, message)
 
 suspend inline fun <reified TReply> ZLinkClient.request(
     channelName: String,
@@ -135,21 +135,21 @@ suspend inline fun <reified TReply> ZLinkClient.request(
 ): TReply =
     requestToChannel(channelName, message).awaitReply()
 
-fun ZLinkFanoutClient.publishToTopic(
+fun <TEvent> ZLinkFanoutClient.publishToTopic(
     channelName: String,
-    topic: String,
-    message: Message,
-) {
-    publish(channelName, topic, message).submit()
-}
+    message: TEvent,
+): ZLinkFanoutPublishCall = publish(channelName, message)
 
-fun ZLinkRouteClient.send(
-    channelName: String,
+fun <TMessage> ZLinkRouteClient.send(
+    meshName: String,
     target: RoutingId,
-    message: Message,
-) {
-    sendToNode(channelName, target, message).submit()
-}
+    message: TMessage,
+): ZLinkSendCall = sendToNode(meshName, target, message)
+
+fun <TMessage> ZLinkRouteClient.send(
+    channelName: String,
+    message: TMessage,
+): ZLinkSendCall = sendToChannel(channelName, message)
 
 suspend inline fun <reified TReply> ZLinkRouteClient.request(
     channelName: String,
@@ -158,20 +158,16 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
 ): TReply =
     requestToNode(channelName, target, message).awaitReply()
 
-fun ZLinkRouteClient.send(
-    channelName: String,
-    spotRef: SpotHandle,
-    message: Message,
-) {
-    sendToSpot(channelName, spotRef, message).submit()
-}
+fun <TMessage> ZLinkRouteClient.send(
+    target: SpotHandle,
+    message: TMessage,
+): ZLinkSendCall = sendToSpot(target, message)
 
 suspend inline fun <reified TReply> ZLinkRouteClient.request(
-    channelName: String,
-    spotRef: SpotHandle,
+    target: SpotHandle,
     message: Message,
 ): TReply =
-    requestToSpot(channelName, spotRef, message).awaitReply()
+    requestToSpot(target, message).awaitReply()
 
 suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(): ZLinkSpotCreateResult =
     awaitFrameworkStage(create(TSpot::class.java))

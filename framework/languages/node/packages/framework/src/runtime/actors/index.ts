@@ -23,6 +23,7 @@ import type {
 
 export {
   DefaultZLinkActorClient,
+  forwardEncodedActorPacket,
   type ZLinkActorClientOptions
 } from './actor-client';
 
@@ -81,10 +82,12 @@ import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 import { ZLinkTransferredActorRollbackCoordinator } from './transferred-actor-rollback';
 export {
   ZLinkActorTransferRegistry,
-  type ZLinkActorTransferState
+  type ZLinkActorTransferPayloadState
 } from './actor-transfer-registry';
 export {
-  ZLINK_REMOTE_ACTOR_JOIN_PACKET
+  ZLINK_REMOTE_ACTOR_JOIN_PACKET,
+  ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL,
+  decodeRemoteActorSourceLeaveTerminal
 } from './actor-remote-wire';
 export {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
@@ -96,9 +99,16 @@ export {
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from './bound-session-wire';
+export {
+  createActorJoinRequest,
+  createActorMembership,
+  ZLINK_ACTOR_LIFECYCLE_SNAPSHOT,
+  type ZLinkActorLifecycleSnapshotSource
+} from './actor-lifecycle-snapshot';
 
 export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
+  private readonly actorMeshNames = new Map<string, string>();
   private readonly creation: ZLinkActorCreationCoordinator;
   private readonly transferredActorRollback: ZLinkTransferredActorRollbackCoordinator;
 
@@ -107,23 +117,93 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     this.transferredActorRollback = new ZLinkTransferredActorRollbackCoordinator(this.states, options);
   }
 
-  async create(actorId: string, actorType: string, signalOrRequest?: AbortSignal | unknown, signal?: AbortSignal): Promise<ActorRef> {
-    const args = normalizeCreateRequestArgs(signalOrRequest, signal);
+  create(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
+  create(
+    meshName: string,
+    actorId: string,
+    actorType: string,
+    createRequest: unknown,
+    signal?: AbortSignal
+  ): Promise<ActorRef>;
+  async create(
+    meshNameOrActorId: string,
+    actorIdOrActorType: string,
+    actorTypeOrRequest?: string | AbortSignal | unknown,
+    requestOrSignal?: AbortSignal | unknown,
+    signal?: AbortSignal
+  ): Promise<ActorRef> {
+    const legacy = typeof actorTypeOrRequest !== 'string';
+    const actorId = legacy ? meshNameOrActorId : actorIdOrActorType;
+    const actorType = legacy ? actorIdOrActorType : actorTypeOrRequest;
+    const meshName = legacy
+      ? this.options.actorMeshNameProvider?.(actorType) ?? 'legacy-actor-mesh'
+      : meshNameOrActorId;
+    const signalOrRequest = legacy ? actorTypeOrRequest : requestOrSignal;
+    const finalSignal = legacy ? requestOrSignal as AbortSignal | undefined : signal;
+    requireActorMeshName(meshName);
+    this.ensureActorTypeBelongsToMesh(meshName, actorType);
+    this.rememberActorMesh(actorId, meshName);
+    const args = normalizeCreateRequestArgs(signalOrRequest, finalSignal);
     const result = await this.createOrGet(actorId, actorType, true, args.request, args.signal);
     return result.actorRef;
   }
 
-  async find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
-    throwIfAborted(signal);
-    const state = this.states.get(actorId);
-    if (state?.actor === undefined) {
-      return await this.options.actorRefResolver?.resolveActorRef(actorId, signal);
-    }
-    return this.actorRefForState(state);
+  find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+  async find(
+    meshNameOrActorId: string,
+    actorIdOrSignal?: string | AbortSignal,
+    signal?: AbortSignal
+  ): Promise<ActorRef | undefined> {
+    const legacy = typeof actorIdOrSignal !== 'string';
+    const actorId = legacy ? meshNameOrActorId : actorIdOrSignal;
+    const meshName = legacy
+      ? this.actorMeshNames.get(actorId) ?? 'legacy-actor-mesh'
+      : meshNameOrActorId;
+    const finalSignal = legacy ? actorIdOrSignal : signal;
+    requireActorMeshName(meshName);
+    return await this.findInMesh(meshName, actorId, finalSignal);
   }
 
-  async getOrCreate(actorId: string, actorType: string, signalOrRequest?: AbortSignal | unknown, signal?: AbortSignal): Promise<ActorRef> {
-    const args = normalizeCreateRequestArgs(signalOrRequest, signal);
+  async findInMesh(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ActorRef | undefined> {
+    throwIfAborted(signal);
+    const state = this.states.get(actorId);
+    if (state?.actor !== undefined && this.stateBelongsToMesh(state, meshName)) {
+      return this.actorRefForState(state);
+    }
+    return await this.options.actorRefResolver?.resolveActorRef(meshName, actorId, signal);
+  }
+
+  getOrCreate(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
+  getOrCreate(
+    meshName: string,
+    actorId: string,
+    actorType: string,
+    createRequest: unknown,
+    signal?: AbortSignal
+  ): Promise<ActorRef>;
+  async getOrCreate(
+    meshNameOrActorId: string,
+    actorIdOrActorType: string,
+    actorTypeOrRequest?: string | AbortSignal | unknown,
+    requestOrSignal?: AbortSignal | unknown,
+    signal?: AbortSignal
+  ): Promise<ActorRef> {
+    const legacy = typeof actorTypeOrRequest !== 'string';
+    const actorId = legacy ? meshNameOrActorId : actorIdOrActorType;
+    const actorType = legacy ? actorIdOrActorType : actorTypeOrRequest;
+    const meshName = legacy
+      ? this.options.actorMeshNameProvider?.(actorType) ?? 'legacy-actor-mesh'
+      : meshNameOrActorId;
+    const signalOrRequest = legacy ? actorTypeOrRequest : requestOrSignal;
+    const finalSignal = legacy ? requestOrSignal as AbortSignal | undefined : signal;
+    requireActorMeshName(meshName);
+    this.ensureActorTypeBelongsToMesh(meshName, actorType);
+    this.rememberActorMesh(actorId, meshName);
+    const args = normalizeCreateRequestArgs(signalOrRequest, finalSignal);
     const result = await this.createOrGet(actorId, actorType, false, args.request, args.signal);
     return result.actorRef;
   }
@@ -137,6 +217,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   ): Promise<{ readonly actor: ZLinkActor; readonly actorRef: ActorRef }> {
     throwIfAborted(signal);
     const state = this.getOrCreateState(actorId);
+    this.rememberActorMeshFromType(actorId, actorType);
     state.prepareForRemoteReentry();
     const operation = state.getOrStartCreation(
       actorType,
@@ -170,17 +251,21 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   }
 
   async ensure(
+    meshName: string,
     actorId: string,
     createRequest: unknown,
     placement?: ZLinkActorPlacement,
     signal?: AbortSignal
   ): Promise<ActorRef> {
-    const existing = await this.find(actorId, signal);
+    requireActorMeshName(meshName);
+    const existing = await this.findInMesh(meshName, actorId, signal);
     if (existing !== undefined) {
       return existing;
     }
     this.ensurePlacementCanBeHostedHere(placement);
     const actorType = actorTypeFromCreateRequest(createRequest);
+    this.ensureActorTypeBelongsToMesh(meshName, actorType);
+    this.rememberActorMesh(actorId, meshName);
     try {
       const result = await this.createOrGet(actorId, actorType, false, createRequest, signal);
       return result.actorRef;
@@ -189,7 +274,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
         error instanceof ZLinkFrameworkException &&
         error.kind === ZLinkFrameworkErrorKind.ActorCreateFailed
       ) {
-        const raced = await this.find(actorId, signal);
+        const raced = await this.findInMesh(meshName, actorId, signal);
         if (raced !== undefined) {
           return raced;
         }
@@ -201,6 +286,41 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
         );
       }
       throw error;
+    }
+  }
+
+  private stateBelongsToMesh(state: ZLinkActorRuntimeState, meshName: string): boolean {
+    const rememberedMesh = this.actorMeshNames.get(state.actorId);
+    if (rememberedMesh !== undefined) return rememberedMesh === meshName;
+    const actorType = state.actorType;
+    if (actorType === undefined) return false;
+    const registeredMesh = this.options.actorMeshNameProvider?.(actorType);
+    return registeredMesh === undefined ? meshName.length === 0 : registeredMesh === meshName;
+  }
+
+  private ensureActorTypeBelongsToMesh(meshName: string, actorType: string): void {
+    const registeredMesh = this.options.actorMeshNameProvider?.(actorType);
+    if (registeredMesh !== undefined && registeredMesh !== meshName) {
+      throw new ZLinkConfigurationException(
+        `Actor type '${actorType}' belongs to RouteMesh '${registeredMesh}', not '${meshName}'.`
+      );
+    }
+  }
+
+  private rememberActorMesh(actorId: string, meshName: string): void {
+    const existing = this.actorMeshNames.get(actorId);
+    if (existing !== undefined && existing !== meshName) {
+      throw new ZLinkConfigurationException(
+        `Actor '${actorId}' belongs to RouteMesh '${existing}', not '${meshName}'.`
+      );
+    }
+    this.actorMeshNames.set(actorId, meshName);
+  }
+
+  private rememberActorMeshFromType(actorId: string, actorType: string): void {
+    const meshName = this.options.actorMeshNameProvider?.(actorType);
+    if (meshName !== undefined) {
+      this.rememberActorMesh(actorId, meshName);
     }
   }
 
@@ -222,6 +342,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   }
 
   async getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
+    this.rememberActorMeshFromType(actorId, actorType);
     const result = await this.createOrGet(actorId, actorType, false, undefined, signal);
     return result.actor;
   }
@@ -233,6 +354,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     createRequest?: unknown,
     signal?: AbortSignal
   ): Promise<ZLinkActor> {
+    this.rememberActorMeshFromType(actorId, actorType);
     const state = this.getOrCreateState(actorId);
     state.setNativeActorRef(actorRef);
     const result = await this.createOrGet(actorId, actorType, false, createRequest, signal, false);
@@ -277,6 +399,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
       state.clearAfterDestroy();
       if (this.states.get(actor.actorId) === state) {
         this.states.delete(actor.actorId);
+        this.actorMeshNames.delete(actor.actorId);
       }
       this.options.metrics?.change('zlink.actor.count', -1);
     });
@@ -300,7 +423,10 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     throwIfAborted(signal);
     const existingState = this.states.get(actorId);
     if (existingState?.hasActorOrCreation !== true) {
-      this.options.admission?.requireActorCreate(actorId);
+      this.options.admission?.requireActorCreate(
+        actorId,
+        this.options.actorMeshNameProvider?.(actorType)
+      );
     }
     const state = existingState ?? this.getOrCreateState(actorId);
     const createRequest = this.createRequestMessage(request);
@@ -400,4 +526,12 @@ function actorTypeFromCreateRequest(createRequest: unknown): string {
   throw new ZLinkConfigurationException(
     'Actor directory ensure requires createRequest.actorType so actor type is supplied only for creation.'
   );
+}
+
+function requireActorMeshName(meshName: string): void {
+  if (meshName.length === 0 || meshName !== meshName.trim()) {
+    throw new ZLinkConfigurationException(
+      'Actor directory RouteMesh name must not be empty or padded.'
+    );
+  }
 }

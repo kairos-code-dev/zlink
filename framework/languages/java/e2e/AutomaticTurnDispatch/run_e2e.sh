@@ -31,7 +31,6 @@ chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Client/src/main/java --glob '*.java'; then
   echo "AutomaticTurnDispatch client must use ZLinkHttpClient" >&2
   exit 1
@@ -339,9 +338,8 @@ terminate_gracefully() {
 static_checks() {
   local tmp
   if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
-     || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-     || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
-    echo "AutomaticTurnDispatch must use 3s readiness and 5s route settle limits" >&2
+     || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+    echo "AutomaticTurnDispatch must use a 3s readiness limit" >&2
     return 1
   fi
   tmp="$(mktemp)"
@@ -395,18 +393,15 @@ session_bin() {
   echo "${e2e_build_dir}/Server-Session/install/automatic-turn-dispatch-session/bin/automatic-turn-dispatch-session"
 }
 
-read -r DELAY_PORT ROUTE_A_PORT SPOT_A_PORT ROUTE_B_PORT SPOT_B_PORT STREAM_PORT PLAY_A_HTTP_PORT PLAY_B_HTTP_PORT SESSION_HTTP_PORT SESSION_ROUTE_PORT SESSION_SPOT_PORT _ _ <<<"$(reserve_ports)"
+read -r DELAY_PORT ROUTE_A_PORT UNUSED_SPOT_A_PORT ROUTE_B_PORT UNUSED_SPOT_B_PORT STREAM_PORT PLAY_A_HTTP_PORT PLAY_B_HTTP_PORT SESSION_HTTP_PORT SESSION_ROUTE_PORT UNUSED_SESSION_SPOT_PORT _ _ <<<"$(reserve_ports)"
 DELAY_ENDPOINT="$(tcp "${DELAY_PORT}")"
 ROUTE_A_ENDPOINT="$(tcp "${ROUTE_A_PORT}")"
-SPOT_A_ENDPOINT="$(tcp "${SPOT_A_PORT}")"
 ROUTE_B_ENDPOINT="$(tcp "${ROUTE_B_PORT}")"
-SPOT_B_ENDPOINT="$(tcp "${SPOT_B_PORT}")"
 STREAM_ENDPOINT="$(tcp "${STREAM_PORT}")"
 PLAY_A_HTTP="$(http "${PLAY_A_HTTP_PORT}")"
 PLAY_B_HTTP="$(http "${PLAY_B_HTTP_PORT}")"
 SESSION_HTTP="$(http "${SESSION_HTTP_PORT}")"
 SESSION_ROUTE_ENDPOINT="$(tcp "${SESSION_ROUTE_PORT}")"
-SESSION_SPOT_ENDPOINT="$(tcp "${SESSION_SPOT_PORT}")"
 
 write_config() {
   local path="$1"
@@ -453,16 +448,15 @@ client_config="${config_dir}/client.properties"
 write_role_config "${delay_config}" "delay-endpoint=${DELAY_ENDPOINT}"
 write_role_config "${play_a_config}" \
   "node-rid=play-a" "route-endpoint=${ROUTE_A_ENDPOINT}" \
-  "route-peer-endpoint=${ROUTE_B_ENDPOINT}" "spot-endpoint=${SPOT_A_ENDPOINT}" \
+  "route-peer-endpoint=${ROUTE_B_ENDPOINT}" \
   "delay-endpoint=${DELAY_ENDPOINT}" "http-endpoint=${PLAY_A_HTTP}"
 write_role_config "${play_b_config}" \
   "node-rid=play-b" "route-endpoint=${ROUTE_B_ENDPOINT}" \
-  "route-peer-endpoint=${ROUTE_A_ENDPOINT}" "spot-endpoint=${SPOT_B_ENDPOINT}" \
+  "route-peer-endpoint=${ROUTE_A_ENDPOINT}" \
   "delay-endpoint=${DELAY_ENDPOINT}" "http-endpoint=${PLAY_B_HTTP}"
 write_role_config "${session_config}" \
   "route-endpoint=${ROUTE_A_ENDPOINT}" "route-b-endpoint=${ROUTE_B_ENDPOINT}" \
   "session-route-endpoint=${SESSION_ROUTE_ENDPOINT}" \
-  "session-spot-endpoint=${SESSION_SPOT_ENDPOINT}" \
   "delay-endpoint=${DELAY_ENDPOINT}" "stream-endpoint=${STREAM_ENDPOINT}" \
   "http-endpoint=${SESSION_HTTP}"
 write_client_config "${client_config}"
@@ -496,17 +490,14 @@ wait_initial_role() {
       ;;
     play-a)
       wait_port play-a-route "${ROUTE_A_ENDPOINT}"
-      wait_port play-a-spot "${SPOT_A_ENDPOINT}"
       wait_http play-a-http "${PLAY_A_HTTP}"
       ;;
     play-b)
       wait_port play-b-route "${ROUTE_B_ENDPOINT}"
-      wait_port play-b-spot "${SPOT_B_ENDPOINT}"
       wait_http play-b-http "${PLAY_B_HTTP}"
       ;;
     session)
       wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
-      wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
       wait_port session-stream "${STREAM_ENDPOINT}"
       wait_http session-http "${SESSION_HTTP}"
       ;;
@@ -521,7 +512,6 @@ for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_initial_role "${role}"
   wait_initial_role "${role}"
 done
-sleep "${ROUTE_SETTLE_SECONDS}"
 assert_readiness
 
 timeout -k 5s 90s "$(client_bin)" --config "${client_config}" "${SCENARIO}" \
@@ -580,9 +570,7 @@ if [[ "${SCENARIO}" == "all" ]]; then
     >"${log_dir}/play-a-restart.stdout.log" 2>"${log_dir}/play-a-restart.stderr.log" &
   pids+=("$!")
   wait_port play-a-route "${ROUTE_A_ENDPOINT}"
-  wait_port play-a-spot "${SPOT_A_ENDPOINT}"
   wait_http play-a-http "${PLAY_A_HTTP}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
   assert_readiness
 
   timeout -k 5s 90s "$(client_bin)" \

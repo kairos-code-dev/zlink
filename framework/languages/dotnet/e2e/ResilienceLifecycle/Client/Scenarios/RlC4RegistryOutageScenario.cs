@@ -10,6 +10,7 @@ namespace ResilienceLifecycle.Client.Scenarios;
 internal static class RlC4RegistryOutageScenario
 {
     public static async Task RunAsync(
+        ClientOptions options,
         ZLinkHttpClient consumer,
         ZLinkHttpClient registry,
         ResilienceProcessManager processes,
@@ -71,9 +72,9 @@ internal static class RlC4RegistryOutageScenario
             .Body(new TopologyWaitReq("api-a", "Ready", 1))
             .Async<TopologyEntryRes[]>();
 
-        var after = (await consumer.Post("/profile/request/new-client")
-            .Body(new ProfileReq("fast", "rl-c4-after-restart"))
-            .Async<ProfileRes>()).Body;
+        var after = await EphemeralRouteClient.RequestAsync(
+            options,
+            new ProfileReq("fast", "rl-c4-after-restart"));
         ZlinkStreamAssert.Ensure(after.Value == "profile:fast", "RL-C4 follow-up request failed after store recovery.");
 
         {

@@ -156,6 +156,21 @@ bool zlink::lb_t::contains (pipe_t *pipe_) const
     return false;
 }
 
+void zlink::lb_t::deactivate (pipe_t *pipe_)
+{
+    const pipes_t::size_type index = _pipes.index (pipe_);
+    if (index >= _active)
+        return;
+
+    _active--;
+    _pipes.swap (index, _active);
+    if (_current == _active)
+        _current = 0;
+    else if (_current > index && _current <= _active)
+        --_current;
+    mark_weighted_dirty ();
+}
+
 void zlink::lb_t::mark_weighted_dirty ()
 {
     _weighted_dirty = true;
@@ -285,7 +300,10 @@ int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
                 return 0;
             }
 
-            set_weight (pipe, 0);
+            // A failed write changes current writability, not the peer's
+            // advertised routing policy. Preserve the configured weight so
+            // write activation can restore this pipe.
+            deactivate (pipe);
             rebuild_weighted_schedule ();
         }
 

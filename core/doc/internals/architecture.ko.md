@@ -764,7 +764,7 @@ STREAM 소켓과 외부 클라이언트 연동용 프로토콜이다. 별도 프
 | 플래그        | 값   | 설명                                |
 |--------------|------|-------------------------------------|
 | `more`       | 0x01 | 멀티파트 메시지의 중간 프레임        |
-| `command`    | 0x02 | 제어 프레임 (핸드셰이크, 하트비트)  |
+| `command`    | 0x02 | protocol control frame              |
 | `routing_id` | 0x40 | 라우팅 ID 포함                      |
 | `shared`     | 0x80 | 공유 버퍼 (참조 카운팅)             |
 
@@ -1215,20 +1215,6 @@ core/
 |   |       +-- ssl_context_helper.cpp/hpp
 |   |       +-- wss_address.cpp/hpp
 |   |
-|   +-- services/                    # High-level services
-|   |   +-- common/                  # Common service utilities
-|   |   |   +-- advertise_endpoint.hpp   # Endpoint resolution for service registration
-|   |   |   +-- monitor_decode.hpp       # Monitor event decoding
-|   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
-|   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
-|   |   +-- mesh/                    # Mesh service runtime
-|   |       +-- mesh_runtime.cpp/hpp # Object model: mailboxes, ready index, claims, budgets, monitor
-|   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER lifecycle + outbound submits
-|   |       +-- mesh_wire_codec.cpp  # Wire envelope/record encode + decode
-|   |       +-- mesh_wire_admission.cpp # Peer admission handshake + generation replace
-|   |       +-- mesh_wire_ingress.cpp   # Ingress thread: inbound dispatch, peer down
-|   |       +-- mesh_wire_internal.hpp  # Shared wire-module contract
-|   |
 |   +-- utils/                       # Utilities
 |       +-- ypipe.hpp                # Lock-free pipe
 |       +-- yqueue.hpp               # Lock-free queue
@@ -1271,8 +1257,8 @@ zlink에서 이 원칙은 여러 수준에서 적용된다:
 - **Socket runtime**은 endpoint registry, peer state 추적, monitor bridge,
   dispatch bridge, lifecycle quiesce를 흡수하여 — `send`/`recv` 기능,
   `bind`/`connect`/`term` 의미, readiness hook만 노출한다.
-- **Engine pipeline**은 speculative I/O, gather write, buffer growth 전략,
-  handshake 상태 머신, heartbeat를 흡수하여 — ingress frame delivery,
+- **Engine pipeline**은 speculative I/O, gather write, buffer growth 전략과
+  handshake 상태 머신을 흡수하여 — ingress frame delivery,
   egress frame submission, connection state transition만 노출한다.
 - **Transport adapter**는 URI 파싱, connect/listen 전략,
   TLS/WS/WSS handshake 상세를 흡수하여 — `client_endpoint`,
@@ -1375,12 +1361,11 @@ Structure-based: Close authority is bound to a type — other actors cannot call
 아키텍처가 방어해야 할 성장 패턴:
 
 - **새 transport 추가** → engine이나 socket 코드에 새 분기가 늘지 않음
-- **새 service 추가** → service runtime base에 특수 경로가 늘지 않음
 - **새 socket family 추가** → `socket_base_t`를 수정하지 않음
 
 설계 목표: *같은 종류의 기능 추가가 허브 타입을 건드리지 않는 구조.*
 
-이 속성이 유지되면 transport, service, socket family 수가 늘어도 구조의
+이 속성이 유지되면 transport와 socket family 수가 늘어도 구조의
 복잡도는 제한된다. 유지되지 않으면 추가할 때마다 허브 타입이 이해하기 어렵고
 수정하기 취약해진다.
 

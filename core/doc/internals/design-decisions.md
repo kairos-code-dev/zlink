@@ -37,12 +37,12 @@ This document records the rationale and alternative analyses for key design deci
 
 ### 1.4 Default Routing ID Generation Location
 
-**Decision**: Generated in core/src/runtime/sockets/common/socket_base.cpp (core, not service layer).
+**Decision**: Generated in `core/src/runtime/sockets/common/socket_base.cpp`.
 
 **Rationale**:
 - Core already has socket_id-based auto-generation behavior
-- Service utility (routing_id_utils.hpp) applies an override, or fills in a routing_id for service sockets when none is given
-- Prevents layer violation (no services → core dependency inversion)
+- A higher runtime may apply an explicit routing-ID override through the public socket API.
+- Keeps the dependency direction from higher runtimes into Core.
 
 ---
 

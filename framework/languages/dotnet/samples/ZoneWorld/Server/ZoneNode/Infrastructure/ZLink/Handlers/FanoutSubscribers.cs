@@ -45,6 +45,7 @@ internal sealed class WorldAnnounceSubscriber(
             try
             {
                 var handle = await spotHandles.ResolveSpotHandleAsync(
+                    ZoneWorldNames.MeshName,
                     RoutingId.From(zoneId),
                     cancellationToken);
                 if (handle is null)
@@ -55,14 +56,11 @@ internal sealed class WorldAnnounceSubscriber(
                     continue;
                 }
 
-                // Submitted without the handler's token on purpose. The send is one-way, so it
-                // outlives this handler — and the handler's token is done the moment the handler
-                // returns. Passing it here cancels the send that has not left yet, which loses
-                // the announcement for a whole node with no error anywhere: no send is logged,
-                // nothing is dropped, the subscriber just reports success.
-                routes
+                // SubmitAsync waits only for transport admission, not handler execution. Awaiting
+                // it keeps an admission failure visible without extending the remote handler turn.
+                await routes
                     .SendToSpot(handle, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
-                    .TrySubmit();
+                    .SubmitAsync(cancellationToken);
             }
             catch (Exception error)
             {

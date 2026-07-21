@@ -20,6 +20,9 @@ struct address_t;
 
 class session_base_t : public own_t, public io_object_t, public i_pipe_events
 {
+#ifdef ZLINK_BUILD_TESTS
+    friend class session_termination_test_access_t;
+#endif
   public:
     //  Create a session of the particular type.
     static session_base_t *create (zlink::io_thread_t *io_thread_,
@@ -98,6 +101,9 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  This flag is true if the remainder of the message being processed
     //  is still in the in pipe.
     bool _incomplete_in;
+    //  A ROUTER multipart message stamped for a retired transport is dropped
+    //  through its final frame before a reconnecting engine can send again.
+    bool _dropping_stale_transport_message;
 
     //  True if termination have been suspended to push the pending
     //  messages to the network.

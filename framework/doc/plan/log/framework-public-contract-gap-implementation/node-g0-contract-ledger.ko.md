@@ -21,52 +21,52 @@ snapshot을 함께 갱신해야 한다.
 
 | 범위 | 파일 | SHA-256 |
 |------|------|---------|
-| . | `00-public-contract-governance.ko.md` | `883e767f3c2b673c9dabc4083fa42a7fc29799d25ef9ad04761d9cbdbc5cb245` |
-| . | `01-overview.ko.md` | `136b4b2378c404b4728a4e526f985da6303456c294c06e9e425a39abb99d816b` |
-| . | `02-interaction-model.ko.md` | `df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0` |
-| . | `03-message-model.ko.md` | `a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914` |
-| . | `04-async-execution-policy.ko.md` | `6614f5efd549442f95ac4f67f8ff1e10bba9c7061ee63a7608ffd91f43fea4bd` |
-| . | `05-framework-api.ko.md` | `06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6` |
-| server | `10-channel-topology.ko.md` | `3db7422c17d4a9ca1b24fa741ceb2fb88e975feda3829a133242f322332ab278` |
-| server | `11-channel-messaging.ko.md` | `7a1a32c29bc2cfc642ce465f71e5f405741a2a8c23b95d0426b132947fdd0202` |
-| server | `20-spot-messaging.ko.md` | `d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108` |
-| server | `21-spot-node.ko.md` | `ab578a47597159198b5ed4f37ef96d1fd0b94190a0b0014fbb29061e139572ef` |
-| server | `22-actor-model.ko.md` | `8cf0cac1e46c6086de082d8ad4aeae51f339245d05da1b7bc6175f9b622ec79e` |
-| server | `23-spot-actor.ko.md` | `ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998` |
-| server | `24-spot-address-messaging.ko.md` | `45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d` |
-| server | `25-stage-wrapper-on-spot.ko.md` | `54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c` |
-| server | `30-stream-session.ko.md` | `623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0` |
-| server | `31-session-actor-dispatch.ko.md` | `a780a2e75f7e18f3efa27d8fc783555d47b2e4c012e6f9ff4a66b2d49058ded7` |
-| stream-connector | `32-stream-connector.ko.md` | `700c8504cfa71315b2598349eb2cc38c6cb52fb813b5b80650f46268412cae6c` |
-| server | `40-location-runtime.ko.md` | `ce511f3396de7853d8e746f973aacdf1d28b3654560726135ef608697b990e11` |
-| server | `41-location-store-redis.ko.md` | `76320eb54586db883dd436c481ff3427b8df7e9d2948f0c95ad9e9dcb6b4e02f` |
-| server | `50-runtime-monitoring.ko.md` | `d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99` |
-| server | `51-runtime-metrics.ko.md` | `d34e9b26860a2ee285b340c5234bb27fc4c82438bbdf375e697f1350a0c1ef1f` |
-| server | `52-message-flow-tracing.ko.md` | `0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108` |
-| server | `53-flow-correlation.ko.md` | `077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c` |
-| server | `54-graceful-drain-handoff.ko.md` | `822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f` |
-| . | `90-implementation-gap.ko.md` | `98b6cb5eb517b4e1168444814a7f54d57cb32c256e095e4ca7a9805d4384e8b6` |
-| . | `README.ko.md` | `8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595` |
-| server/languages/node | `01-system-structure.ko.md` | `5a9134273d25fb8f8ca7ef503e7a4dc06139852cd0e559564c06f93cda55231a` |
-| server/languages/node | `02-handler-interfaces.ko.md` | `5b4305f9bb48e7884ed58bdddbc19051badef3debcb9aa51f80543274bd3d3ad` |
-| server/languages/node | `03-routing-id-allocation.ko.md` | `4b5641f524aa95f285c91e27e485fb73b4e9705c92f770259b16bc17e1591baa` |
+| . | `00-public-contract-governance.ko.md` | `3538efc2f99956660089ef35470501418c811bf79dbd12537f9d6053a6d6f194` |
+| . | `01-overview.ko.md` | `01ec9efd421441dcb5e90d547a5d2841c071aa5c85c71b3c3b0723a465b083eb` |
+| . | `02-interaction-model.ko.md` | `3b8a593352da512749f4bbf2a3be915fec0a9027955a25c20ecdf71f5909b74e` |
+| . | `03-message-model.ko.md` | `5bec94bb16aaed48e5346c29b9f41af8c85b6d6058d402aae7c13ca662965182` |
+| . | `04-async-execution-policy.ko.md` | `53f2daabe02d16576577c5c80cfc1b3a1a911bd4df7635d12a317c4f6849f750` |
+| . | `05-framework-api.ko.md` | `145c42fdd5ed3fb0d07afc8923c1ea0b61857dbbad2c9efbcb7f56921cd57b16` |
+| server | `10-channel-topology.ko.md` | `fb9042b2da236685a8d333a5f6b5cc86555a4f1068a6b134fa3c32dadc288fdd` |
+| server | `11-channel-messaging.ko.md` | `39a003be40b2c513985cfbe357079dc935f44040ff9bb5b0d5e964703e22143c` |
+| server | `20-spot-messaging.ko.md` | `01a76b96ec7e4a77413e7ca4376d372e302b755e73fd7e1e408a8e4990622678` |
+| server | `21-mesh-node.ko.md` | `2f48cb256c74e8c1de47d899237c472db615ddd177473f91c27aa4c28d2a7bc2` |
+| server | `22-actor-model.ko.md` | `e85257bf576d4e59efa75807a2b8b4a730a9a119efa1216e38e1c08d9553c798` |
+| server | `23-spot-actor.ko.md` | `9783fa31ddce92cc82c36cda6947a5e3702812a6b0bfe10f0c3e7b43b29c7c86` |
+| server | `24-spot-address-messaging.ko.md` | `bc9314ecbb5a02bbbfea3355195aec878143989e2d0c204e1b0a73a755f74b8e` |
+| server | `25-stage-wrapper-on-spot.ko.md` | `c227e228b91f5887d94539be2c9954b33d1ee411d8d7e6f2bd5be9427f02dd53` |
+| server | `30-stream-session.ko.md` | `5f516c76cf255f20693c04ec76199261623daba73aa8e0c010f42ae9fbec24f5` |
+| server | `31-session-actor-dispatch.ko.md` | `90b10fbe258905a1e8483689aca6499e8eb2141ba434f02547df6d134a24321e` |
+| stream-connector | `32-stream-connector.ko.md` | `a33b6c5683b6af15025c9e74ee73719d8ddea68fbefd2c6455471482a7c523e9` |
+| server | `40-location-runtime.ko.md` | `e62cd34ad7fc3ba3ed48c604b086a9bda42433d61d2fcf8742ce49b584032c92` |
+| server | `41-location-store-redis.ko.md` | `100f2ae2bb9cac87a0be80b9551a4c3934a42bec4ebdda260c345a57fe8b30a7` |
+| server | `50-runtime-monitoring.ko.md` | `f0291df0c535ea1e334c0eba46bb78508dbefab0ad02565a13ba436673ab11ae` |
+| server | `51-runtime-metrics.ko.md` | `003489d9bc188efa7532a6e0e50c0154c31a6146eed86c7dcd2534121ccc2313` |
+| server | `52-message-flow-tracing.ko.md` | `76b9547c7ca67c81e9577e135f783680b416263fafd2391c10b6472fbaf92177` |
+| server | `53-flow-correlation.ko.md` | `89b668fcd8ccc710323cd3a3548d8f19626f7b288b790fc4dc01987f66e4c0c4` |
+| server | `54-graceful-drain-handoff.ko.md` | `bf1d47d7e9b80a675b8f8e21014116f335d38ea40cbe901b9cc236cbf094b426` |
+| . | `90-implementation-gap.ko.md` | `94d8f4dd5a1352648ed6a90039d1afffbd12869382a3ea0bcb94bea4372f804c` |
+| . | `README.ko.md` | `40bbce9a6a54e06bc8592e97177923909c27187e0cf52bc1bc4cf120e2d9a9a3` |
+| server/languages/node | `01-system-structure.ko.md` | `2ea619ddf4388708439917a7b30768ab9f926b0bf61b00abbd239937bb5f50a6` |
+| server/languages/node | `02-handler-interfaces.ko.md` | `b60ff122098454d12ad2db7876db1b2ddf67cc09fa4ce41a16d6cb6a283e7315` |
+| server/languages/node | `03-routing-id-allocation.ko.md` | `05bc00540846219e043fe265c38d5264a913df2e96198116fdc22ef199f643e9` |
 | stream-connector/languages/typescript | `README.ko.md` | `aa714dbe2a429a5244722a1ad1ba6e409715677f8cd9960f0f1c2b7a7900bfde` |
-| stream-connector/languages/typescript | `03-stream-connector.ko.md` | `c70d521cd993055dda63b67bafaf56b1111cfd0c88c746d7963b387601879e20` |
+| stream-connector/languages/typescript | `03-stream-connector.ko.md` | `1590131d1296193a23432634c59e9579d594e5833991bfaa51b8b3cf0e2413bd` |
 
 공통 `02-handler-interfaces.ko.md`는 정식 Node.js 언어 interface 2개 분모에서는 제외한다. 다만
 공통 spec 26개 분모에는 포함해 G0 hash를 고정했으며, G7 문서 정합성 검토 대상으로도 유지한다.
 
-bindings 기준은 `@zlink-systems/zlink` 9.0.4이며, package의 public `version()`이 보고하는 core
-runtime도 9.0.4이다.
+bindings 기준은 `@zlink-systems/zlink` 10.6.0이며, package의 public `version()`이 보고하는 core
+runtime도 10.6.0이다.
 G0에서 고정한 실제 artifact 증거는 다음과 같다.
 
 | 항목 | 값 |
 |------|----|
-| 중앙 pin | `framework/languages/node/package.json`의 `file:../../../.artifacts/wsl/npm/zlink-systems-zlink-9.0.4.tgz` |
-| archive 절대경로 | `/home/hep7/project/kairos/zlink/.artifacts/wsl/npm/zlink-systems-zlink-9.0.4.tgz` |
-| archive SHA-256 | `d99bbeb743173b9c98f5fac44dee4be4a2722c540399c3a0302bc804db79242a` |
+| 중앙 pin | `framework/languages/node/package.json`의 `file:../../../.artifacts/wsl/npm/zlink-systems-zlink-10.6.0.tgz` |
+| archive 절대경로 | `/home/hep7/project/kairos/zlink/.artifacts/wsl/npm/zlink-systems-zlink-10.6.0.tgz` |
+| archive SHA-256 | `f51421b7188ef8146b3316f6058f0903195b5768a0c039528bb512fff123835a` |
 | 설치 package 절대경로 | `/home/hep7/project/kairos/zlink/framework/languages/node/node_modules/@zlink-systems/zlink/package.json` |
-| lock integrity | `sha512-31Pu7XBKp4wDjrOrFWhVAX2Tu8ke0jgJPE6sPCanr9LWBZExJP0QfPk6fEz35dh1trYMJApX7HYWsUdDKaUAow==` |
+| lock integrity | `sha512-qS7dJyuHAwBVAVlTMoL/bwouvOkaMFDEU5s5XaV9Y/NP345Kejgg/kXRstdL9eoGSwvWvRROkY1eytfAxtlZUA==` |
 | 공개 API 검증 | `node-binding-parity.test.js`, `backend-public-api-only.test.js`, `verify:abi-matrix` |
 
 package export와 배포 산출물은 `contract-surface.test.js`와

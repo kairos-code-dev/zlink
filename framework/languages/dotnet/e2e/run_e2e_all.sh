@@ -16,6 +16,7 @@ CONFIGS=(
   ToActorMessaging
   AutomaticTurnDispatch
   ObservabilityOps
+  SubmitAdmission
 )
 
 cleanup_done=0

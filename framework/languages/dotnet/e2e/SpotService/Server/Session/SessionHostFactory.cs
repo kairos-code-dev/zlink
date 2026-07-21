@@ -46,7 +46,7 @@ internal static class SessionHostFactory
                 // within the scenario's patience.
                 var locations = framework.ConfigureLocations();
                 locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+                locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
@@ -73,10 +73,12 @@ internal static class SessionHostFactory
             mesh22.ChannelName(SpotServiceNames.SpotChannel);
             framework.AddStreamNode(SpotServiceNames.StreamNode)
                 .Bind(Require(options.StreamEndpoint, "StreamEndpoint"))
+                .EnableActorDispatch(SpotServiceNames.SpotChannel)
                 .AddSession<ScenarioSession>();
             if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
                 framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
                     .Bind(options.TlsStreamEndpoint)
+                    .EnableActorDispatch(SpotServiceNames.SpotChannel)
                     .SetTlsServer(
                         Require(options.TlsCertPath, "TlsCertPath"),
                         Require(options.TlsKeyPath, "TlsKeyPath"))

@@ -1,3 +1,5 @@
+import type { ZLinkSubmitResult } from '../RouteMesh';
+
 export interface ZLinkBoundSession {
   send(message: unknown): ZLinkBoundSessionSendCall;
   disconnect(signal?: AbortSignal): Promise<void>;
@@ -5,5 +7,5 @@ export interface ZLinkBoundSession {
 
 export interface ZLinkBoundSessionSendCall {
   metadata(key: string, value: string): this;
-  submit(): void;
+  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }

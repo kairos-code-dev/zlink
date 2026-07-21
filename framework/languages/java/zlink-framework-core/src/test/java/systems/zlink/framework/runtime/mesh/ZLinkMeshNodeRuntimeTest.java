@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.MeshNodeState;
@@ -12,6 +13,7 @@ import systems.zlink.contracts.service.spot.MeshNodeStatus;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
 class ZLinkMeshNodeRuntimeTest {
@@ -38,11 +40,31 @@ class ZLinkMeshNodeRuntimeTest {
                 "bind:inproc://game-1",
                 "channel:orders",
                 "weight:orders:2",
+                "spot-node",
                 "start",
                 "peer:game-2:inproc://game-2"), node.calls);
         }
 
         assertEquals("close", node.calls.getLast());
+    }
+
+    @Test
+    void startRoutesRouterAdmissionSettingsToTheMeshBackend() {
+        MeshNodeRegistration registration = new MeshNodeRegistration("game");
+        registration.listen("inproc://game-1");
+        registration.configureRouterSocket().setSendHighWaterMark(7);
+        registration.configureRouterSocket().setSendTimeout(Duration.ofMillis(23));
+        registration.configureSpotPublisher().setSendHighWaterMark(91);
+
+        RecordingMeshNode node = new RecordingMeshNode();
+        try (ZLinkMeshNodeRuntime ignored = ZLinkMeshNodeRuntime.start(
+            registration,
+            (context, meshName) -> node,
+            new RecordingContext())) {
+            assertEquals(7, node.routerHighWaterMark);
+            assertEquals(7, node.pendingAdmissionCapacity);
+            assertEquals(Duration.ofMillis(23), node.routerSendTimeout);
+        }
     }
 
     private static final class RecordingContext implements ZLinkBackendContext {
@@ -53,6 +75,9 @@ class ZLinkMeshNodeRuntimeTest {
 
     private static final class RecordingMeshNode implements ZLinkInternalMeshNode {
         private final List<String> calls = new ArrayList<>();
+        private int routerHighWaterMark;
+        private int pendingAdmissionCapacity;
+        private Duration routerSendTimeout;
 
         @Override public String name() { return "mesh-node"; }
         @Override public void setBind(String endpoint) { calls.add("bind:" + endpoint); }
@@ -62,8 +87,21 @@ class ZLinkMeshNodeRuntimeTest {
         @Override public void setChannelWeight(String channelName, int weight) {
             calls.add("weight:" + channelName + ":" + weight);
         }
+        @Override public void setRouterHighWaterMark(int value) {
+            routerHighWaterMark = value;
+        }
+        @Override public void setRouterPendingAdmissionCapacity(int value) {
+            pendingAdmissionCapacity = value;
+        }
+        @Override public void setRouterSendTimeout(Duration value) {
+            routerSendTimeout = value;
+        }
         @Override public void setRoutingId(RoutingId routingId) {
             calls.add("routing-id:" + routingId);
+        }
+        @Override public ZLinkInternalSpotNode spotNode() {
+            calls.add("spot-node");
+            return null;
         }
         @Override public void start() { calls.add("start"); }
         @Override public long connectPeer(String endpoint) {

@@ -6,12 +6,13 @@ import type {
   ZLinkSpotPacketHandler,
   ZLinkSpotRequestHandler
 } from '../../contracts';
+import { zlinkMessageMetadata } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
-} from '../../contracts';
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkConfigurationException } from '../configuration';
 import { createProviderInstance } from './spot-provider';
@@ -96,7 +97,8 @@ export class ZLinkRoutedSpotPacketDispatch {
           response = await handler.handle(activation.spot, payload, {
             channelName: context.channelName,
             contentType: context.contentType,
-            packetName
+            packetName,
+            metadata: zlinkMessageMetadata({})
           });
         }
       });

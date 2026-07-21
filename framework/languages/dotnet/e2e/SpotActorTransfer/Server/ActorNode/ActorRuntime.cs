@@ -369,7 +369,7 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class EntryBoundPushHandler(EvidenceStore evidence)
         : IZLinkEntrySpotActorRequestHandler<TransferEntrySpot, TransferActor, BoundPushReq, BoundPushRes>
     {
-        public ValueTask<BoundPushRes> HandleAsync(
+        public async ValueTask<BoundPushRes> HandleAsync(
             TransferEntrySpot entrySpot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
@@ -378,22 +378,22 @@ namespace SpotActorTransfer.ActorNode
         {
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
-            actor.Context.BoundSession.Send(new BoundPushNotify(
+            await actor.Context.BoundSession.Send(new BoundPushNotify(
                     request.Scenario,
                     actor.ActorId,
                     entrySpot.Context.SpotRid.ToString(),
                     entrySpot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
-            return ValueTask.FromResult(new BoundPushRes(
+            return new BoundPushRes(
                 request.Scenario,
                 actor.ActorId,
                 entrySpot.Context.SpotRid.ToString(),
                 entrySpot.Context.NodeRid.ToString(),
                 request.Marker,
-                actor.StateVersion));
+                actor.StateVersion);
         }
     }
 
@@ -401,7 +401,7 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class BoundPushHandler(EvidenceStore evidence)
         : IZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, BoundPushReq, BoundPushRes>
     {
-        public ValueTask<BoundPushRes> HandleAsync(
+        public async ValueTask<BoundPushRes> HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkSpotActorRequestContext context,
@@ -410,22 +410,22 @@ namespace SpotActorTransfer.ActorNode
         {
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
-            actor.Context.BoundSession.Send(new BoundPushNotify(
+            await actor.Context.BoundSession.Send(new BoundPushNotify(
                     request.Scenario,
                     actor.ActorId,
                     spot.Context.SpotRid.ToString(),
                     spot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
-            return ValueTask.FromResult(new BoundPushRes(
+            return new BoundPushRes(
                 request.Scenario,
                 actor.ActorId,
                 spot.Context.SpotRid.ToString(),
                 spot.Context.NodeRid.ToString(),
                 request.Marker,
-                actor.StateVersion));
+                actor.StateVersion);
         }
     }
 }

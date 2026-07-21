@@ -1,10 +1,10 @@
+import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type { RoutingId } from '../../contracts';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationWatchStore,
-  type ZLinkLocationOptions,
   type ZLinkPeerLocation
 } from '../../contracts';
 import type {
@@ -20,8 +20,7 @@ import {
   ZLinkStoreLocationResolvers
 } from '../locations';
 import type {
-  ZLinkBackendConnectableSocket,
-  ZLinkBackendRouterSocket
+  ZLinkBackendConnectableSocket
 } from '../backend/contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
@@ -29,7 +28,7 @@ import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 export interface ZLinkChannelLocationAutoConnectContext {
   readonly runtime: ZLinkLocationRuntime;
   readonly stores: ZLinkLocationRuntimeStores;
-  readonly options: ZLinkLocationOptions;
+  readonly options: ZLinkLocationOptionOverrides;
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly resolver: ZLinkStoreLocationResolvers;
   readonly events?: ZLinkLocationEventSink;
@@ -47,7 +46,7 @@ export interface ZLinkChannelAutoConnectCapability {
 export function createChannelLocationAutoConnectContext(
   runtime: ZLinkLocationRuntime,
   stores: ZLinkLocationRuntimeStores,
-  options: ZLinkLocationOptions,
+  options: ZLinkLocationOptionOverrides,
   events?: ZLinkLocationEventSink
 ): ZLinkChannelLocationAutoConnectContext {
   const leaseTracker = new ZLinkOwnerLeaseTracker({
@@ -76,47 +75,6 @@ export function buildChannelAutoConnectCapabilities(
 ): ZLinkChannelAutoConnectCapability[] {
   const capabilities: ZLinkChannelAutoConnectCapability[] = [];
   for (const [channelName, channel] of registration.channels.entries()) {
-    if (channel.server !== undefined) {
-      const endpoint = channel.server.bind ?? '';
-      const local = autoConnectLocal(
-        ZLinkLocationAutoConnectType.ClientServer,
-        channelName,
-        ZLinkLocationRole.Router,
-        channel.server.routingId,
-        endpoint
-      );
-      capabilities.push({
-        local,
-        localRow: endpoint.length === 0 ? undefined : peerLocation(local, channel.server.weight),
-        executor: new ZLinkSocketAutoConnectExecutor(
-          sockets.channelRouter(channelName),
-          new Set()
-        )
-      });
-    }
-    if (
-      channel.client !== undefined
-      && (channel.client.manualConnections?.length ?? 0) === 0
-    ) {
-      const socket = sockets.clientDealer(channelName);
-      const local = autoConnectLocal(
-        ZLinkLocationAutoConnectType.ClientServer,
-        channelName,
-        ZLinkLocationRole.Dealer,
-        undefined,
-        ''
-      );
-      capabilities.push({
-        local,
-        executor: new ZLinkSocketAutoConnectExecutor(
-          socket,
-          new Set(channel.client.manualConnections ?? []),
-          {
-            monitorDisconnected: (handler) => sockets.monitorDisconnects(socket, handler)
-          }
-        )
-      });
-    }
     if (channel.publisher !== undefined) {
       const endpoint = channel.publisher.bind ?? '';
       if (endpoint.length > 0) {
@@ -160,32 +118,6 @@ export function buildChannelAutoConnectCapabilities(
     }
   }
 
-  for (const routeChannel of registration.routeChannelOptions.values()) {
-    const endpoint = routeChannel.bind ?? '';
-    const hasManualConnections = (routeChannel.manualConnections?.length ?? 0) > 0;
-    if (hasManualConnections && endpoint.length === 0) {
-      continue;
-    }
-    const local = autoConnectLocal(
-      ZLinkLocationAutoConnectType.RouteMesh,
-      routeChannel.routerChannelId,
-      ZLinkLocationRole.Router,
-      routeChannel.routingId,
-      endpoint
-    );
-    capabilities.push({
-      local,
-      localRow: routeChannel.bind === undefined ? undefined : peerLocation(local, routeChannel.weight),
-      executor: hasManualConnections
-        ? ZLinkNoopAutoConnectExecutor.instance
-        : new ZLinkSocketAutoConnectExecutor(
-            sockets.routeRouter(routeChannel.routerChannelId),
-            new Set(),
-            { routerInitiatorDial: true }
-          ),
-      reconcilePeers: !hasManualConnections
-    });
-  }
   return capabilities;
 }
 
@@ -198,8 +130,7 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
     private readonly manualEndpoints: ReadonlySet<string>,
-    private readonly options: {
-      readonly routerInitiatorDial?: boolean;
+    options: {
       readonly monitorDisconnected?: (handler: (endpoint: string) => void) => void;
     } = {}
   ) {
@@ -213,9 +144,6 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   connect(target: ZLinkAutoConnectTarget): boolean {
     if (this.manualEndpoints.has(target.endpoint)) {
       return false;
-    }
-    if (this.options.routerInitiatorDial === true) {
-      configureRouterInitiatorDial(this.socket, target);
     }
     if (this.recentlyDisconnected.delete(target.endpoint)) {
       const pending = setImmediate(() => {
@@ -263,19 +191,6 @@ class ZLinkNoopAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   connect(): boolean { return false; }
 
   disconnect(): void {}
-}
-
-function configureRouterInitiatorDial(socket: ZLinkBackendConnectableSocket, target: ZLinkAutoConnectTarget): void {
-  const options = (socket as ZLinkBackendRouterSocket).options;
-  if (options === undefined) {
-    return;
-  }
-  if (target.nodeRid !== undefined) {
-    options.setConnectRoutingId?.(target.nodeRid);
-  }
-  if ('probe' in options) {
-    options.probe = true;
-  }
 }
 
 function autoConnectLocal(

@@ -8,26 +8,14 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class SpotPeerConnectorTests
 {
     [Fact]
-    public void Auto_PubSub_Connect_Retries_After_Busy()
-    {
-        var node = DispatchProxy.Create<IZLinkBackendSpotNode, BusyOnceSpotNode>();
-        var proxy = (BusyOnceSpotNode)(object)node;
-        var connector = new ZLinkSpotPeerConnector(node, new ZLinkSpotPeerConnectionSet());
-
-        Assert.False(connector.ConnectPubSubAuto("tcp://peer:1"));
-        Assert.True(connector.ConnectPubSubAuto("tcp://peer:1"));
-        Assert.Equal(2, proxy.ConnectAttempts);
-    }
-
-    [Fact]
     public void Auto_Router_Connect_Retries_After_Busy()
     {
         var node = DispatchProxy.Create<IZLinkBackendSpotNode, BusyOnceSpotNode>();
         var proxy = (BusyOnceSpotNode)(object)node;
         var connector = new ZLinkSpotPeerConnector(node, new ZLinkSpotPeerConnectionSet());
 
-        Assert.False(connector.ConnectRouterAuto(RoutingId.From("peer"), "tcp://peer:1"));
-        Assert.True(connector.ConnectRouterAuto(RoutingId.From("peer"), "tcp://peer:1"));
+        Assert.False(connector.ConnectPeerAuto(RoutingId.From("peer"), "tcp://peer:1"));
+        Assert.True(connector.ConnectPeerAuto(RoutingId.From("peer"), "tcp://peer:1"));
         Assert.Equal(2, proxy.ConnectAttempts);
     }
 

@@ -783,7 +783,19 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _actorSessionManager.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
     }
 
+    internal ValueTask NotifyActorDisconnectedAsync(
+        ActorRef actor,
+        string bindingToken,
+        CancellationToken cancellationToken = default)
+    {
+        var nodeRuntime = GetActorClientSpotNodeRuntime();
+        var meshName = nodeRuntime.Registration.SpotMeshChannelName
+                       ?? nodeRuntime.Registration.SpotNodeName;
+        return NotifyActorDisconnectedAsync(meshName, actor, bindingToken, cancellationToken);
+    }
+
     internal async ValueTask NotifyActorDisconnectedAsync(
+        string? meshName,
         ActorRef actor,
         string bindingToken,
         CancellationToken cancellationToken = default)
@@ -808,7 +820,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        var node = GetActorClientSpotNode();
+        var node = GetMeshNodeRuntime(
+            meshName
+            ?? throw new ZLinkConfigurationException(
+                "STREAM Actor dispatch requires EnableActorDispatch(meshName).")).Node;
 
         await _actorBoundSessionCoordinator.NotifyRemoteDisconnectedAsync(
                 state,
@@ -936,15 +951,18 @@ internal sealed partial class ZLinkFrameworkRuntime
     /// another node: wraps the stream frame in the internal node-addressed
     /// actor-frame packet.</summary>
     private bool RelayRemoteActorFrame(
+        string? meshName,
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         byte[] header,
         byte[] body)
     {
-        var nodeRuntime = GetActorClientSpotNodeRuntime();
-        var meshName = nodeRuntime.Registration.SpotMeshChannelName
-                       ?? nodeRuntime.Registration.SpotNodeName;
+        var nodeRuntime = meshName is null
+            ? GetActorClientSpotNodeRuntime()
+            : GetMeshNodeRuntime(meshName);
+        meshName = nodeRuntime.Registration.SpotMeshChannelName
+                   ?? nodeRuntime.Registration.SpotNodeName;
         // A locally relayed frame carries no source node rid (the session is
         // on this node); the receiver needs the concrete session node for the
         // reply route, so substitute the local node rid.
@@ -1122,11 +1140,86 @@ internal sealed partial class ZLinkFrameworkRuntime
         uint flags,
         IReadOnlyList<Message> parts)
     {
-        _actorBoundSessionCoordinator.ReplyNoBind(
-            actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
+        var nodeRuntime = GetActorClientSpotNodeRuntime();
+        if (_actorBoundSessionCoordinator.ReplyNoBind(
+                actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts))
+            return;
+
+        if (!sourceNodeRid.IsEmpty
+            && !sourceNodeRid.Equals(nodeRuntime.Node.RoutingId))
+        {
+            var frameLength = parts.Sum(static part => checked((int)part.Size));
+            var frame = new byte[frameLength];
+            var offset = 0;
+            foreach (var part in parts)
+            {
+                part.AsReadOnlySpan().CopyTo(frame.AsSpan(offset));
+                offset += checked((int)part.Size);
+            }
+
+            var meshName = nodeRuntime.Registration.SpotMeshChannelName
+                           ?? nodeRuntime.Registration.SpotNodeName;
+            var relay = new ZLinkRemoteActorReplyRelay(
+                actor.ActorId,
+                requestId,
+                flags,
+                frame);
+            var envelope = ZLinkClientCallCodec.CreateEnvelope(
+                ZLinkMessageKind.Command,
+                meshName,
+                ZLinkRemoteActorReplyProtocol.PacketName);
+            var relayParts = ZLinkEnvelopeCodec.EncodeParts(
+                envelope,
+                relay,
+                typeof(ZLinkRemoteActorReplyRelay),
+                Registration.Codecs);
+            var submit = nodeRuntime.Node.SendToNode(
+                sourceNodeRid,
+                relayParts,
+                SendFlags.DontWait);
+            ZLinkMessageParts.DisposeAll(relayParts);
+            if (submit != SubmitResult.Ok)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RouteNotConnected,
+                    $"Actor reply relay to node '{sourceNodeRid}' was not admitted.",
+                    true);
+            return;
+        }
+
+        ZLinkMessageParts.DisposeAll(parts);
+    }
+
+    internal void DeliverRemoteActorReply(
+        string actorId,
+        ulong requestId,
+        uint flags,
+        byte[] frame)
+    {
+        var message = Message.From(frame);
+        if (!_actorBoundSessionCoordinator.ReplyNoBind(
+                new ZLinkBackendActorRef(default, actorId, 0),
+                default,
+                default,
+                requestId,
+                flags,
+                [message]))
+            message.Dispose();
     }
 
     internal bool ForwardActorBoundSessionPart(
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message message,
+        bool hasMore,
+        SendFlags flags)
+    {
+        return _actorBoundSessionCoordinator.ForwardPart(
+            actorRef, sourceNodeRid, sourceSessionRid, message, hasMore, flags);
+    }
+
+    internal bool ForwardActorBoundSessionPart(
+        string meshName,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -1140,7 +1233,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             sourceSessionRid,
             message,
             hasMore,
-            flags);
+            flags,
+            meshName,
+            GetMeshNodeRuntime(meshName).Node);
     }
 
     internal ValueTask CloseActorBoundSessionAsync(

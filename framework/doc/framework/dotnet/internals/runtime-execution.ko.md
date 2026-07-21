@@ -2,7 +2,8 @@
 [문서 목록](../../../README.ko.md) | [이전: Runtime Lifecycle](runtime-lifecycle.ko.md) | [다음: Regression Test Matrix](regression-test-matrix.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[.NET 묶음](../README.ko.md) | [Session Actor Dispatch 계약](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
+[.NET 묶음](../README.ko.md) |
+[Session Actor Dispatch 계약](../../spec/server/languages/dotnet/interfaces/07-stream-session.ko.md)
 
 # ZLink Framework .NET Runtime Execution
 
@@ -33,13 +34,30 @@ queue 항목은 실행 callback과 completion을 함께 가진다. request는 ha
 해제할 수 있다. 호출자가 completion을 기다리지 않는 handler 예외도 runtime error
 sink가 관찰해야 하며 unobserved task exception으로 남겨서는 안 된다.
 
-runtime stop token이 취소되면 새 항목을 받지 않고, 아직 실행하지 않은 항목을
-cancellation 또는 dispose 실패로 완료한다. queue drain을 기다리기 위해 transport
-callback thread나 호출자 thread를 점유하지 않는다.
+Host admission seal 뒤에는 새 application 항목을 받지 않는다. Seal 전에 수락한 항목은 accepted journal
+boundary에 포함하며 request terminal completion과 infrastructure work는 deadline까지 계속 진행한다. Queue
+정리를 기다리기 위해 raw socket callback thread나 호출자 thread를 점유하지 않는다.
 
-## 4. 정보 은닉
+## 4. Transfer execution
 
-queue 구현 타입, channel 자료구조, drain gate와 task scheduling 방식은 internal이다.
+Actor와 Instance Spot transfer coordinator는 `Preparing`, `Captured`, `Prepared`, `Committed`, `Activating`,
+`Activated`, `Cleaning`, `Completed`, `Aborted` phase를 내부 state machine으로 처리한다. Owner와 phase는
+`IZLinkAuthorityStore.CompareExchangeAuthorityAsync(...)` 한 호출로 바꾸고, `Committed` 뒤에는 source owner로
+rollback하지 않는다.
+
+`Recreate`와 `Snapshot`은 accepted journal envelope을 Checkpoint Store에 기록한다. Snapshot만 typed adapter가
+capture한 application state를 추가한다. Runtime은 `TimeSpan.FromHours(24)` retention을 넘기고 current authority가
+가리키는 reference만 읽는다. `Get/Missing`은 authority를 다시 읽어 stale reference와 checkpoint loss를
+구분하고 `Delete/Missing`은 idempotent cleanup으로 끝낸다.
+
+Target lease가 commit 전에 만료되면 reservation과 target을 CAS로 교체한다. Commit 뒤 activation 전에
+만료되면 recovery coordinator가 authority revision, old target generation과 transaction generation을 모두
+비교해 successor를 고른다. Application callback은 CAS, checkpoint reference, journal cursor와 phase를 받지
+않는다.
+
+## 5. 정보 은닉
+
+queue 구현 타입, channel 자료구조, maintenance barrier와 task scheduling 방식은 internal이다.
 spec과 application 예제는 이러한 타입 이름을 사용하지 않고 다음 공개 의미만
 설명한다.
 
@@ -47,8 +65,9 @@ spec과 application 예제는 이러한 타입 이름을 사용하지 않고 다
 - actor와 user Spot의 실행 직렬성
 - handler cancellation과 오류 관측
 - actor 이동 뒤 현재 위치에서 dispatch되는 의미
+- typed state capture·restore와 terminal transfer 결과
 
-## 5. 회귀 테스트
+## 6. 회귀 테스트
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
@@ -56,6 +75,9 @@ spec과 application 예제는 이러한 타입 이름을 사용하지 않고 다
 | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering` | Entry Spot 전체를 하나의 queue로 묶지 않고 actor별 mailbox를 사용한다. |
 | `SerialExecutorTests.SerialExecutionQueue_Wait_Cancellation_Does_Not_Remove_Queued_Work` | 기다리는 호출이 취소돼도 이미 등록한 작업을 임의로 제거하지 않는다. |
 | `SerialExecutorTests.StreamSessionSerialExecutor_Continues_After_Work_Exception` | session 작업 오류를 관찰하고 다음 작업을 계속 실행한다. |
+| `AuthorityTransferTests.Owner_And_Phase_Use_One_ExpectedVersion_Cas` | owner와 phase가 한 opaque CAS payload로 바뀐다. |
+| `CheckpointStoreTests.Missing_Delete_Is_Idempotent_And_Retention_Is_24Hours` | missing 결과와 fixed retention을 검증한다. |
+| `TransferRecoveryTests.Replaces_Target_With_All_Fences` | recovery target replacement가 authority·node·transaction generation을 모두 비교한다. |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

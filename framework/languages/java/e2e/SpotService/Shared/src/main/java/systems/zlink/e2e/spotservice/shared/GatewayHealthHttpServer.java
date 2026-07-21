@@ -9,17 +9,23 @@ import java.util.UUID;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 
 public final class GatewayHealthHttpServer implements SmartLifecycle {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final String endpoint;
     private final ZLinkSpotManager spots;
+    private final ZLinkRouteMeshRuntime meshRuntime;
     private HttpServer server;
     private boolean running;
 
-    public GatewayHealthHttpServer(String endpoint, ZLinkSpotManager spots) {
+    public GatewayHealthHttpServer(
+        String endpoint,
+        ZLinkSpotManager spots,
+        ZLinkRouteMeshRuntime meshRuntime) {
         this.endpoint = endpoint;
         this.spots = spots;
+        this.meshRuntime = meshRuntime;
     }
 
     @Override
@@ -35,6 +41,13 @@ public final class GatewayHealthHttpServer implements SmartLifecycle {
             URI uri = URI.create(endpoint);
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
             server.createContext("/health", exchange -> write(exchange, 200, "ok\n"));
+            server.createContext("/topology/ready", exchange -> {
+                int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
+                long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
+                    .filter(peer -> peer.ready())
+                    .count();
+                write(exchange, ready >= expected ? 200 : 503, ready + "\n");
+            });
             operation("/operations/spot/state-request", Contracts.SpotStateOperation.class,
                 operations::requestState);
             operation("/operations/spot/slow-request", Contracts.SpotStateOperation.class,
@@ -81,6 +94,20 @@ public final class GatewayHealthHttpServer implements SmartLifecycle {
         exchange.sendResponseHeaders(status, body.length);
         exchange.getResponseBody().write(body);
         exchange.close();
+    }
+
+    private static String queryValue(URI uri, String key) {
+        String query = uri.getRawQuery();
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        for (String part : query.split("&")) {
+            String[] fields = part.split("=", 2);
+            if (fields.length == 2 && key.equals(fields[0])) {
+                return fields[1];
+            }
+        }
+        return "";
     }
 
     @Override

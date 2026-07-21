@@ -47,9 +47,6 @@ For detailed behavior and scope of each option, see the
 | `ZLINK_OPT_CONFLATE` | `0` | Disabled |
 | `ZLINK_OPT_INVERT_MATCHING` | `0` | Disabled |
 | `ZLINK_STREAM_OPT_NOTIFY` | `0` | Disabled |
-| `ZLINK_OPT_HEARTBEAT_IVL` | `0` | Disabled |
-| `ZLINK_OPT_HEARTBEAT_TTL` | `0` | Disabled |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | `-1` | Engine treats `-1` as interval-based fallback when heartbeat is enabled |
 | `ZLINK_OPT_TCP_KEEPALIVE` | `-1` | OS default |
 | `ZLINK_OPT_TCP_KEEPALIVE_CNT` | `-1` | OS default |
 | `ZLINK_OPT_TCP_KEEPALIVE_IDLE` | `-1` | OS default |

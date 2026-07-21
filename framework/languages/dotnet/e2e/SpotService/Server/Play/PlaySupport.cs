@@ -3,6 +3,7 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.E2E.Configuration;
 
 namespace SpotService.Server.Play;
@@ -36,7 +37,9 @@ internal sealed class ApplicationJoinCoordinator(
         catch (Exception error)
         {
             evidence.Add(
-                $"application-join-failed|actor={request.ActorId}|error={error.GetType().Name}");
+                $"application-join-failed|actor={request.ActorId}|error={error.GetType().Name}"
+                + $"|kind={(error as ZLinkFrameworkException)?.Kind.ToString() ?? "<none>"}"
+                + $"|message={error.Message.ReplaceLineEndings(" ")}");
         }
         finally
         {
@@ -151,7 +154,6 @@ internal sealed record ServerOptions(
     string? ControlEndpoint = null,
     string? SpotRouterEndpoint = null,
     string? SpotPubEndpoint = null,
-    string? ExternalClientEndpoint = null,
     string? ExternalSpotEndpoint = null,
     string? ClientSpotPubEndpoint = null,
     string? StreamEndpoint = null,

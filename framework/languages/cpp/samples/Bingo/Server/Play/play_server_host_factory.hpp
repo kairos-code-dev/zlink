@@ -60,14 +60,13 @@ class play_server_host_factory_t
               .enable_client ()
               .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
-            /* Bingo §17.3: short match rooms end on their own, so the room
-             * mesh declares the drain-natural policy and the automatic drain
-             * handles the rest (new placement blocked, actors handed off). */
-            options.add_spot_mesh (sample_names_t::room_spot_mesh)
-              .use_drain_policy (spot_drain_policy_t::drain_natural)
-              .set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_router (topology.selected_play_spot_router_endpoint ())
-              .enable_pub_sub (topology.selected_play_spot_endpoint ())
+            auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
+            room_mesh.channel_name (sample_names_t::room_spot_mesh);
+            room_mesh.peer_connections ().connect (
+              routing_id_t::from (topology.peer_play_node_rid ()),
+              topology.peer_play_spot_router_endpoint ());
+            room_mesh.set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
+              .listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> (
                 [topology, services] {
                     return std::make_shared<bingo_entry_spot_t> (topology, services);

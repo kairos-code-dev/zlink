@@ -2,11 +2,9 @@ namespace DeliveryDispatch.Server.Configuration;
 
 public static class SampleNames
 {
+    public const string MeshName = "deliverydispatch";
     public const string DispatchChannel = "deliverydispatch.dispatch";
-    public const string CourierActorNodeRouteChannel = "delivery-couriers.route";
     public const string TrackingRouteChannel = "deliverydispatch.tracking";
-    public const string CustomerActorDiscovery = "delivery-customers";
-    public const string CourierActorDiscovery = "delivery-couriers";
     public const string CustomerSpotNode = "delivery-customer-node";
     public const string CourierSessionSpotNode = "delivery-courier-session-node";
     public const string CourierActorNode1 = "delivery-courier-node-1";

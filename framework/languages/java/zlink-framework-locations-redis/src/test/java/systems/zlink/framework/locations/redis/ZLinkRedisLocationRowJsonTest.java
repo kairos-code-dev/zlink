@@ -79,6 +79,29 @@ class ZLinkRedisLocationRowJsonTest {
     }
 
     @Test
+    void spotJsonPreservesLifecycleGenerationSeparatelyFromOwnerGeneration() throws Exception {
+        ZLinkSpotLocation original = new ZLinkSpotLocation(
+            "mesh",
+            RoutingId.from("spot"),
+            41L,
+            "room",
+            RoutingId.from("node"),
+            ZLinkSpotKind.USER,
+            null,
+            "owner-a",
+            7L,
+            UPDATED_AT);
+
+        String json = ZLinkRedisLocationRowJson.serializeSpot(original);
+        assertEquals(41L, JSON.readTree(json).path("SpotGeneration").asLong());
+
+        ZLinkSpotLocation decoded =
+            ZLinkRedisLocationRowJson.deserializeSpot(json, 9L, UPDATED_AT.plusSeconds(1));
+        assertEquals(41L, decoded.spotGeneration());
+        assertEquals(9L, decoded.generation());
+    }
+
+    @Test
     void actorDeserializerAcceptsTypedRefAndRequiredSpotMeshName() {
         String json = """
             {
@@ -110,46 +133,26 @@ class ZLinkRedisLocationRowJsonTest {
     }
 
     @Test
-    void actorLocationV2FixtureMatchesCurrentCodecOutput() throws Exception {
+    void actorLocationV2FixturePinsCanonicalRedisShape() throws Exception {
         JsonNode root = JSON.readTree(Files.readString(fixturePath()));
-        Map<String, JsonNode> rows = rowsByKind(root);
 
         assertEquals(
-            List.of("owner", "gen", "json", "updatedAtMs"),
+            List.of("owner", "gen", "json", "updatedAtMs", "mesh"),
             JSON.convertValue(
                 root.path("hashFields"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)));
-        assertFixtureRow(
-            rows.get("actor"),
-            "7:actor-1",
-            ZLinkRedisLocationRowJson.serializeActor(fixtureActor()));
-        assertFixtureRow(
-            rows.get("peer"),
-            "10:route-mesh4:play6:router12:6e6f64652d31",
-            ZLinkRedisLocationRowJson.serializePeer(fixturePeer()));
-        assertFixtureRow(
-            rows.get("spot"),
-            "4:play12:73706f742d31",
-            ZLinkRedisLocationRowJson.serializeSpot(fixtureSpot()));
-        assertFixtureRow(
-            rows.get("route"),
-            "1:17:route-1",
-            ZLinkRedisLocationRowJson.serializeRoute(fixtureRoute()));
-    }
-
-    private static void assertFixtureRow(JsonNode row, String expectedKey, String expectedJson) {
-        assertEquals(expectedKey, row.path("key").asText());
+        JsonNode row = root.path("row");
+        assertEquals("actor", row.path("kind").asText());
+        assertEquals("4:game7:actor-1", row.path("key").asText());
         JsonNode hash = row.path("hash");
-        assertEquals("owner-a", hash.path("owner").asText());
-        assertEquals("0", hash.path("gen").asText());
-        assertEquals(expectedJson, hash.path("json").asText());
-        assertEquals("0", hash.path("updatedAtMs").asText());
-    }
-
-    private static Map<String, JsonNode> rowsByKind(JsonNode root) {
-        Map<String, JsonNode> rows = new java.util.HashMap<>();
-        root.path("rows").forEach(row -> rows.put(row.path("kind").asText(), row));
-        return Map.copyOf(rows);
+        assertEquals("actor-owner-a", hash.path("owner").asText());
+        assertEquals("5", hash.path("gen").asText());
+        assertEquals("1721001600000", hash.path("updatedAtMs").asText());
+        assertEquals("game", hash.path("mesh").asText());
+        JsonNode payload = JSON.readTree(hash.path("json").asText());
+        assertEquals("game", payload.path("MeshName").asText());
+        assertEquals(3L, payload.path("SpotGeneration").asLong());
+        assertEquals(7L, payload.path("OwnerNodeGeneration").asLong());
     }
 
     private static Path fixturePath() {

@@ -1,4 +1,4 @@
-// MON-A1: socket 이벤트 관찰 시나리오를 검증한다.
+// MON-A1: 일관된 MeshNode snapshot 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

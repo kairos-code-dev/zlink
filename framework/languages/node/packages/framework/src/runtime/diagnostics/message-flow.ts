@@ -3,19 +3,29 @@ import { dirname } from 'node:path';
 import type { ZLinkProviderResolver } from '../../contracts';
 import {
   MESSAGE_FLOW_MODE_RANK,
-  ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowOutcome
+  ZLinkMessageFlowLogMode
 } from '../../contracts';
 import type {
   ZLinkDiagnosticsOptions,
-  ZLinkDispatchFailure,
   ZLinkMessageFlowEvent,
   ZLinkMessageFlowObserver,
+  ZLinkRuntimeErrorSink,
   Type
 } from '../../contracts';
+import {
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind,
+  ZLinkMessageFlowPhase,
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  type ZLinkDispatchFailure,
+  type ZLinkRuntimeMessageFlowEvent
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { ZLinkDispatchErrorSink } from '../channels';
 import { currentOrCreateFlow } from './flow-context';
-import { getDispatchObserverType } from '../../contracts/Configuration/DispatchObserverRegistration';
+import {
+  getDispatchObserverType,
+  getRuntimeErrorSinkType
+} from '../../contracts/Configuration/DispatchObserverRegistration';
 import type { ZLinkRuntimeMetrics } from './runtime-metrics';
 
 /** Shared, runtime-mutable message-flow mode cell (the C++ live_mode). */
@@ -32,6 +42,7 @@ export interface ZLinkDiagnosticsContext {
   readonly diagnostics: ZLinkDiagnosticsOptions;
   readonly liveMode: ZLinkMessageFlowModeCell;
   readonly messageFlowObserverType?: Type<ZLinkMessageFlowObserver>;
+  readonly runtimeErrorSinkType?: Type<ZLinkRuntimeErrorSink>;
   readonly providerResolver?: ZLinkProviderResolver;
 }
 
@@ -66,6 +77,9 @@ export function createDiagnosticsContext(
     diagnostics: dispatch?.diagnostics ?? DEFAULT_ZLINK_DIAGNOSTICS,
     liveMode,
     messageFlowObserverType: getDispatchObserverType(dispatch as import('../../contracts').ZLinkDispatchOptions | undefined),
+    runtimeErrorSinkType: getRuntimeErrorSinkType(
+      dispatch as import('../../contracts').ZLinkDispatchOptions | undefined
+    ),
     providerResolver
   };
 }
@@ -75,13 +89,6 @@ function requiredMode(outcome: ZLinkMessageFlowOutcome): ZLinkMessageFlowLogMode
     || outcome === ZLinkMessageFlowOutcome.Error
     ? ZLinkMessageFlowLogMode.ErrorsOnly
     : ZLinkMessageFlowLogMode.KeyTransitions;
-}
-
-function observerFailureTaskName(outcome: ZLinkMessageFlowOutcome): string {
-  return outcome === ZLinkMessageFlowOutcome.Dropped
-    || outcome === ZLinkMessageFlowOutcome.Error
-    ? 'dispatch-error-observer'
-    : 'message-flow-observer';
 }
 
 /**
@@ -128,7 +135,7 @@ export class ZLinkMessageFlowTracer {
     return effectiveMessageFlow(this.ctx) !== ZLinkMessageFlowLogMode.Off;
   }
 
-  trace(flowInput: Omit<ZLinkMessageFlowEvent, 'effectiveMode' | 'flowId' | 'flowOrigin'> & {
+  trace(flowInput: Omit<ZLinkRuntimeMessageFlowEvent, 'effectiveMode' | 'flowId' | 'flowOrigin'> & {
     readonly effectiveMode?: ZLinkMessageFlowLogMode;
     readonly flowId?: string;
     readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
@@ -140,7 +147,7 @@ export class ZLinkMessageFlowTracer {
     const root = flowInput.flowId !== undefined && flowInput.flowOrigin !== undefined
       ? { flowId: flowInput.flowId, flowOrigin: flowInput.flowOrigin }
       : currentOrCreateFlow();
-    const flow: ZLinkMessageFlowEvent = {
+    const flow: ZLinkRuntimeMessageFlowEvent = {
       ...flowInput,
       ...root,
       effectiveMode: flowInput.effectiveMode ?? effectiveMessageFlow(this.ctx)
@@ -169,13 +176,13 @@ export class ZLinkMessageFlowTracer {
     return this.observerFailures;
   }
 
-  private enqueueObserver(flow: ZLinkMessageFlowEvent): void {
+  private enqueueObserver(flow: ZLinkRuntimeMessageFlowEvent): void {
     if (this.ctx.messageFlowObserverType === undefined) return;
     if (this.observerRunning && this.observerQueue.length >= this.observerQueueCapacity) {
       this.metrics?.count('zlink.observability.observer.overflow', 1, { event: flow.outcome });
       return;
     }
-    this.observerQueue.push(flow);
+    this.observerQueue.push(toPublicMessageFlowEvent(flow));
     if (this.observerRunning) return;
     this.observerRunning = true;
     queueMicrotask(() => { void this.drainObserverQueue(); });
@@ -195,7 +202,7 @@ export class ZLinkMessageFlowTracer {
         await observer.onMessageFlow(flow);
       } catch (error) {
         this.observerFailures += 1;
-        this.errorSink.reportRuntimeTaskException(observerFailureTaskName(flow.outcome), error);
+        await this.reportObserverFailure(error);
       }
     }
     this.observerRunning = false;
@@ -212,7 +219,7 @@ export class ZLinkMessageFlowTracer {
     return hashFlowId(flowId) / 0x1_0000_0000 < rate;
   }
 
-  private logDefault(flow: ZLinkMessageFlowEvent, level: 'error' | 'warn' | 'debug'): void {
+  private logDefault(flow: ZLinkRuntimeMessageFlowEvent, level: 'error' | 'warn' | 'debug'): void {
     const d = this.ctx.diagnostics;
     const includeSize =
       flow.messageSize !== undefined &&
@@ -239,6 +246,121 @@ export class ZLinkMessageFlowTracer {
     }
     return new observerType();
   }
+
+  private async reportObserverFailure(error: unknown): Promise<void> {
+    const sinkType = this.ctx.runtimeErrorSinkType;
+    if (sinkType === undefined) {
+      this.errorSink.reportRuntimeTaskException('message-flow-observer', error);
+      return;
+    }
+    try {
+      const existing = this.ctx.providerResolver?.get?.(sinkType);
+      const created = existing ?? await this.ctx.providerResolver?.create?.(sinkType);
+      const sink = created ?? new sinkType();
+      await sink.onRuntimeError({
+        eventId: 'zlink.runtime_error',
+        timestamp: new Date(),
+        kind: 'observer_failed',
+        source: 'message_flow_observer',
+        reason: boundedErrorReason(error)
+      });
+    } catch (sinkError) {
+      this.errorSink.reportRuntimeTaskException('runtime-error-sink', sinkError);
+    }
+  }
+}
+
+function boundedErrorReason(error: unknown): string {
+  const name = error instanceof Error ? error.name : 'Error';
+  const message = error instanceof Error ? error.message : String(error);
+  return `${name}: ${message}`.slice(0, 512);
+}
+
+function toPublicMessageFlowEvent(flow: ZLinkRuntimeMessageFlowEvent): ZLinkMessageFlowEvent {
+  const failed = flow.outcome === ZLinkMessageFlowOutcome.Error;
+  return {
+    eventId: failed ? 'zlink.dispatch_error' : 'zlink.message_flow',
+    timestamp: new Date(),
+    phase: messageFlowPhase(flow.outcome),
+    outcome: messageFlowOutcome(flow.outcome),
+    surface: messageFlowSurface(flow.surface),
+    messageKind: messageFlowKind(flow.messageKind),
+    reason: flow.errorReason,
+    action: flow.errorAction,
+    packetName: flow.packetName,
+    channelName: flow.channelName,
+    topic: flow.topic,
+    correlationId: flow.correlationId,
+    sourceRid: flow.sourceRid,
+    flowId: flow.flowId,
+    flowOrigin: flow.flowOrigin,
+    spotRid: flow.spotRid,
+    actorId: flow.actorId,
+    messageSizeBytes: flow.messageSize
+  };
+}
+
+function messageFlowPhase(outcome: ZLinkMessageFlowOutcome): ZLinkMessageFlowPhase | undefined {
+  switch (outcome) {
+    case ZLinkMessageFlowOutcome.Received:
+      return ZLinkMessageFlowPhase.Received;
+    case ZLinkMessageFlowOutcome.Dispatched:
+      return ZLinkMessageFlowPhase.Dispatched;
+    case ZLinkMessageFlowOutcome.Replied:
+      return ZLinkMessageFlowPhase.Replied;
+    case ZLinkMessageFlowOutcome.Dropped:
+      return ZLinkMessageFlowPhase.Dropped;
+    case ZLinkMessageFlowOutcome.Sent:
+      return ZLinkMessageFlowPhase.Sent;
+    case ZLinkMessageFlowOutcome.ReplyReceived:
+      return ZLinkMessageFlowPhase.ReplyReceived;
+    case ZLinkMessageFlowOutcome.Error:
+      return undefined;
+  }
+}
+
+function messageFlowOutcome(
+  outcome: ZLinkMessageFlowOutcome
+): ZLinkMessageFlowEvent['outcome'] {
+  if (outcome === ZLinkMessageFlowOutcome.Error) return 'failed';
+  if (outcome === ZLinkMessageFlowOutcome.Dropped) return 'dropped';
+  return 'succeeded';
+}
+
+function messageFlowSurface(
+  surface: ZLinkDispatchErrorSurface
+): ZLinkMessageFlowEvent['surface'] {
+  switch (surface) {
+    case ZLinkDispatchErrorSurface.Channel:
+    case ZLinkDispatchErrorSurface.RouteMeshChannel:
+      return 'channel';
+    case ZLinkDispatchErrorSurface.SpotRoute:
+    case ZLinkDispatchErrorSurface.SpotSubscription:
+      return 'spot';
+    case ZLinkDispatchErrorSurface.SpotActor:
+      return 'actor';
+    case ZLinkDispatchErrorSurface.StreamSession:
+      return 'stream';
+  }
+}
+
+function messageFlowKind(
+  kind: ZLinkDispatchMessageKind
+): ZLinkMessageFlowEvent['messageKind'] {
+  switch (kind) {
+    case ZLinkDispatchMessageKind.Request:
+    case ZLinkDispatchMessageKind.ActorRequest:
+      return 'request';
+    case ZLinkDispatchMessageKind.Send:
+    case ZLinkDispatchMessageKind.ActorSend:
+      return 'send';
+    case ZLinkDispatchMessageKind.Publish:
+      return 'publish';
+    case ZLinkDispatchMessageKind.Response:
+      return 'response';
+    case ZLinkDispatchMessageKind.Error:
+      return 'error';
+  }
 }
 
 function hashFlowId(flowId: string): number {
@@ -254,7 +376,11 @@ function field(name: string, value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : `${name}=${value}`;
 }
 
-export function flowLine(flow: ZLinkMessageFlowEvent, label: string | undefined, size: number | undefined): string {
+export function flowLine(
+  flow: ZLinkRuntimeMessageFlowEvent,
+  label: string | undefined,
+  size: number | undefined
+): string {
   return [
     'message flow',
     `phase=${flow.outcome}`,

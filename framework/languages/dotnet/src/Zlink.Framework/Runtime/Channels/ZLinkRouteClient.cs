@@ -73,46 +73,14 @@ internal sealed class ZLinkMeshChannelSendCall<TMessage>(
         return this;
     }
 
-    // One-shot non-blocking submit: a single DontWait attempt whose routine
-    // failures map to statuses. Blocking admission stays on SubmitAsync.
-    public ZLinkSubmitResult TrySubmit()
-    {
-        var parts = Encode();
-        try
-        {
-            var accepted = runtime.GetMeshNodeRuntime(meshName).EntryOutbound
-                .TrySendToChannelOnce(channelName, parts, _metadata.Encode());
-            return new ZLinkSubmitResult(
-                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            return failed;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = Encode();
-        try
-        {
-            await runtime.GetMeshNodeRuntime(meshName).EntryOutbound
+        return await runtime.GetMeshNodeRuntime(meshName).EntryOutbound
                 .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
                 .ConfigureAwait(false);
-        }
-        catch (TimeoutException)
-        {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
-        }
-
-        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 
     private IReadOnlyList<Message> Encode()
@@ -196,6 +164,7 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
     TMessage message) : IZLinkSendCall
 {
     private readonly ZLinkCallMetadata _metadata = new();
+    private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
     public IZLinkSendCall Metadata(string key, string value)
     {
@@ -209,52 +178,46 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
         return this;
     }
 
-    public ZLinkSubmitResult TrySubmit()
-    {
-        var parts = Encode();
-        try
-        {
-            var accepted = runtime.GetMeshNodeRuntime(meshName)
-                .TrySendToNodeOnce(targetNodeRid, parts, _metadata.Encode());
-            return new ZLinkSubmitResult(
-                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            return failed;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
         var parts = Encode();
+        var handedOff = false;
         try
         {
-            await runtime.GetMeshNodeRuntime(meshName)
+            runtime.EnsureKnownRouteMeshPeer(
+                meshName,
+                targetNodeRid,
+                $"packet '{_messageName}'");
+            handedOff = true;
+            return await nodeRuntime
                 .SendToNodeAsync(targetNodeRid, parts, cancellationToken, _metadata.Encode())
                 .ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            if (!handedOff) DisposeBeforeHandoff(parts);
+            return failed;
         }
-
-        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+        catch
+        {
+            if (!handedOff) DisposeBeforeHandoff(parts);
+            throw;
+        }
     }
+
+    internal static void DisposeBeforeHandoff(IReadOnlyList<Message> parts) =>
+        ZLinkMessageParts.DisposeAll(parts);
 
     private IReadOnlyList<Message> Encode()
     {
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             meshName,
-            ZLinkMessageNameResolver.ResolveFromMessage(message));
+            _messageName);
         return ZLinkClientCallCodec.EncodeEnvelopeParts(
             header,
             message,
@@ -309,6 +272,7 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
         var timeout = _timeout ?? nodeRuntime.Registration.DefaultRequestTimeout
             ?? runtime.Registration.DefaultRequestTimeout;
         var packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
+        runtime.EnsureKnownRouteMeshPeer(meshName, targetNodeRid, $"packet '{packetName}'");
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             meshName,
@@ -353,39 +317,6 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
         return this;
     }
 
-    // One-shot non-blocking submit: a single DontWait attempt whose routine
-    // failures map to statuses. Blocking admission stays on SubmitAsync.
-    public ZLinkSubmitResult TrySubmit()
-    {
-        var snapshot = target.Snapshot;
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            snapshot.RouterChannelId,
-            ZLinkMessageNameResolver.ResolveFromMessage(message));
-        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
-        try
-        {
-            var accepted = runtime.TrySendToSpotViaRouterChannelOnce(
-                snapshot.RouterChannelId,
-                snapshot.NodeRid,
-                snapshot.SpotRid,
-                (ulong)snapshot.Generation,
-                parts,
-                _metadata.Encode());
-            return new ZLinkSubmitResult(
-                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            return failed;
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(parts);
-        }
-    }
-
     public async ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default)
     {
@@ -398,7 +329,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
         try
         {
-            await runtime.SendToSpotViaRouterChannelAsync(
+            return await runtime.SendToSpotViaRouterChannelAsync(
                     snapshot.RouterChannelId,
                     snapshot.NodeRid,
                     snapshot.SpotRid,
@@ -408,12 +339,11 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
                     _metadata.Encode())
                 .ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            return failed;
         }
-
-        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -465,7 +395,7 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
                 snapshot =>
                 {
                     var timeout = _timeout ??
-                        runtime.Registration.ResolveRouteRequestTimeout(snapshot.RouterChannelId);
+                        runtime.Registration.ResolveMeshRequestTimeout(snapshot.RouterChannelId);
                     var header = ZLinkClientCallCodec.CreateEnvelope(
                         ZLinkMessageKind.Request,
                         snapshot.RouterChannelId,

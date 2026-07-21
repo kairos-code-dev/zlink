@@ -5,7 +5,11 @@ import type {
   ZLinkProviderResolver,
   ZLinkMessage
 } from '../../contracts';
-import type { ZLinkBackendSpotNode } from '../backend';
+import {
+  meshActorSessionNodeAdapter,
+  type ZLinkBackendMeshNode,
+  type ZLinkMeshCompletionTable
+} from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { DefaultZLinkActorManager } from '../actors';
 import type { DefaultZLinkSpotManager } from '../spots';
@@ -18,7 +22,6 @@ import {
 } from '../actors';
 import type { ZLinkActorHandoffCoordinator } from '../actors';
 import { type ZLinkActorRoutedJoinTransport } from '../actors';
-import { ZLinkLocalFirstActorJoinCoordinator } from '../actors/local-first-actor-join-coordinator';
 import type { ZLinkLocationLifecycle, ZLinkStoreLocationResolvers } from '../locations';
 import type {
   ZLinkNativeFallbackBoundSessionPort,
@@ -28,6 +31,7 @@ import { ZLinkNativeFallbackBoundSession } from '../streams/native-fallback-boun
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 import type { ZLinkRuntimeAdmissionGate } from '../admission';
 import type { ZLinkRemoteActorPacketTarget } from '../actors';
+import type { ZLinkMeshSubmitterRegistry } from '../messaging';
 
 export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -36,8 +40,11 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
-  readonly primarySpotNode: () => ZLinkBackendSpotNode;
-  readonly primarySpotNodeOrUndefined: () => ZLinkBackendSpotNode | undefined;
+  readonly primaryMeshNode: () => ZLinkBackendMeshNode;
+  readonly primaryMeshNodeOrUndefined: () => ZLinkBackendMeshNode | undefined;
+  readonly primaryMeshCompletions: () => ZLinkMeshCompletionTable | undefined;
+  readonly meshNode: (meshName: string) => ZLinkBackendMeshNode | undefined;
+  readonly meshCompletions: (meshName: string) => ZLinkMeshCompletionTable | undefined;
   readonly notifyEntrySpotActorCreated: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
@@ -45,7 +52,8 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
     signal?: AbortSignal
   ) => Promise<void>;
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
-  readonly primarySpotMeshName: () => string | undefined;
+  readonly primaryMeshName: () => string | undefined;
+  readonly actorMeshName: (actorType: string) => string | undefined;
   readonly createLocationSpotRouteResolver: () => ZLinkSpotRouteResolver | undefined;
   readonly createActorLocationResolver: () => ZLinkStoreLocationResolvers | undefined;
   readonly forgetDestroyedActorRef: (actorId: string) => void;
@@ -61,17 +69,21 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly flowCreationEnabled?: () => boolean;
   readonly admission: ZLinkRuntimeAdmissionGate;
   readonly actorPacketTargetForState: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly meshSubmitters: ZLinkMeshSubmitterRegistry;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
   constructor(private readonly options: ZLinkActorRuntimeOptionsFactoryOptions) {}
 
-  createActorManagerOptions(spotRouteResolver?: ZLinkSpotRouteResolver): Pick<
+  createActorManagerOptions(_spotRouteResolver?: ZLinkSpotRouteResolver): Pick<
     ZLinkActorManagerOptions,
     | 'joinCoordinator'
+    | 'actorMeshNameProvider'
+    | 'actorLeaveSpot'
     | 'messageSerializers'
     | 'nativeActorNode'
     | 'nativeActorNodeProvider'
+    | 'nativeActorCompletionTableProvider'
     | 'actorCreatedNodeRidProvider'
     | 'actorRefResolver'
     | 'actorCreatedNotifier'
@@ -85,47 +97,58 @@ export class ZLinkActorRuntimeOptionsFactory {
   > {
     const actorTransferRegistry = this.options.actorTransferRegistry;
     return {
-      joinCoordinator: new ZLinkLocalFirstActorJoinCoordinator({
-        localSpotManager: this.options.spotManager,
-        nativeNode: this.options.primarySpotNode,
-        actorBinder: (actorRef, signal, force) => force === true
+      actorMeshNameProvider: this.options.actorMeshName,
+      actorLeaveSpot: (meshName, spotRid, actor, signal) => {
+        const spotManager = this.options.spotManager();
+        if (spotManager === undefined) {
+          throw new Error('Actor Spot lifecycle runtime is not started.');
+        }
+        return spotManager.leaveActorInMesh(meshName, spotRid, actor, signal);
+      },
+      joinCoordinator: new ZLinkActorNativeJoinCoordinator({
+        node: this.options.primaryMeshNode,
+        completionTableProvider: this.options.primaryMeshCompletions,
+        spotRouteResolver: this.options.createLocationSpotRouteResolver(),
+        locationLifecycle: this.options.locationLifecycle(),
+        postCommitErrorReporter: this.options.reportPostCommitError,
+        sourceTransfer: this.options.actorTransferRuntime,
+        actorLocationResolver: this.options.createActorLocationResolver,
+        remoteActorBinder: (actorRef, signal, force) => force === true
           ? this.options.streamBindingRuntime.refreshActor(actorRef, signal)
           : this.options.streamBindingRuntime.rebindActor(actorRef, signal),
-        postCommitErrorReporter: this.options.reportPostCommitError,
-        locationLifecycle: this.options.locationLifecycle,
-        localSpotMeshName: this.options.primarySpotMeshName,
-        actorTransferRuntime: this.options.actorTransferRuntime,
-        native: new ZLinkActorNativeJoinCoordinator({
-          node: this.options.primarySpotNode,
-          spotRouteResolver: spotRouteResolver ?? this.options.createLocationSpotRouteResolver(),
-          routedTransport: this.options.routeTransport,
-          remoteActorBinder: (actorRef, signal, force) => force === true
-            ? this.options.streamBindingRuntime.refreshActor(actorRef, signal)
-            : this.options.streamBindingRuntime.rebindActor(actorRef, signal),
-          postCommitErrorReporter: this.options.reportPostCommitError,
-          locationLifecycle: this.options.locationLifecycle(),
-          sourceTransfer: this.options.actorTransferRuntime,
-          messageSerializers: this.options.registration.messageSerializers,
-          shutdownSignal: this.options.shutdownSignal()
-        })
+        routedTransport: this.options.routeTransport,
+        messageSerializers: this.options.registration.messageSerializers,
+        actorTransferTimeoutMs: this.options.registration.actorTransferTimeoutMs,
+        shutdownSignal: this.options.shutdownSignal()
       }),
       messageSerializers: this.options.registration.messageSerializers,
       actorTransferRegistry,
       shutdownSignal: this.options.shutdownSignal(),
       metrics: this.options.metrics,
       admission: this.options.admission,
-      nativeActorNodeProvider: this.options.primarySpotNodeOrUndefined,
+      nativeActorNodeProvider: this.options.primaryMeshNodeOrUndefined,
+      nativeActorCompletionTableProvider: this.options.primaryMeshCompletions,
       locationLifecycle: this.options.locationLifecycle(),
       boundSessionFactory: (actorId) => new ZLinkNativeFallbackBoundSession({
         runtime: this.options.streamBindingRuntime,
         routedTransport: this.options.routeTransport,
-        nodeProvider: this.options.primarySpotNode,
         actorRefProvider: () => {
           const state = this.options.actorManager()?.getState(actorId);
           const actorRef = state?.nativeActorRef as ActorRef | undefined;
           return actorRef === undefined
             ? undefined
-            : { ...actorRef, ownershipGeneration: state?.locationGeneration } as ActorRef;
+            : {
+                ...actorRef,
+                ownershipGeneration: state?.locationGeneration,
+                bindingGeneration: state?.boundSessionBindingGeneration
+              } as ActorRef;
+        },
+        nativeActorNodeProvider: () => {
+          const node = this.options.primaryMeshNodeOrUndefined();
+          const completions = this.options.primaryMeshCompletions();
+          return node === undefined
+            ? undefined
+            : meshActorSessionNodeAdapter(node, completions);
         },
         localActorProvider: () => this.options.actorManager()?.getState(actorId)?.actor !== undefined,
         remoteBoundSessionTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteBoundSessionTarget,
@@ -136,8 +159,17 @@ export class ZLinkActorRuntimeOptionsFactory {
         reportError: this.options.reportBoundSessionSendError,
         flowCreationEnabled: this.options.flowCreationEnabled
       }),
-      actorCreatedNodeRidProvider: () => this.options.primarySpotNodeOrUndefined()?.routingId,
-      actorRefResolver: this.options.createActorLocationResolver(),
+      actorCreatedNodeRidProvider: () => {
+        const node = this.options.primaryMeshNodeOrUndefined();
+        return node === undefined ? undefined : String(node.status().routingId);
+      },
+      actorRefResolver: {
+        resolveActorRef: async (meshName, actorId, signal) =>
+          (await this.options.createActorLocationResolver()?.resolveActorRow({
+            meshName,
+            actorId
+          }, signal))?.actorRef
+      },
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {
         this.options.forgetDestroyedActorRef(actor.actorId);
         return this.options.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal);
@@ -154,13 +186,41 @@ export class ZLinkActorRuntimeOptionsFactory {
 
   createActorClientOptions(): ConstructorParameters<typeof DefaultZLinkActorClient>[0] {
     return {
-      nodeProvider: this.options.primarySpotNodeOrUndefined,
+      nodeProvider: this.options.meshNode,
+      completionTableProvider: this.options.meshCompletions,
       locationResolver: this.options.createActorLocationResolver,
       messageSerializers: this.options.registration.messageSerializers,
       defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs,
-      staleActorRefReporter: (actorId) => this.options.actorHandoff.recordStaleFailure(actorId),
-      sendErrorReporter: this.options.reportPostCommitError
+      staleActorRefReporter: (_meshName, actorId) => this.options.actorHandoff.recordStaleFailure(actorId),
+      staleActorRefPredicate: (meshName, actor) =>
+        this.actorBelongsToMesh(meshName, actor.actorId)
+        && this.options.actorHandoff.isKnownStale(actor),
+      handoffCapture: (meshName, actorId, parts, returnResponse, actor) =>
+        this.actorBelongsToMesh(meshName, actorId)
+          ? this.options.actorHandoff.capture(
+          actorId,
+          parts,
+          returnResponse,
+          undefined,
+          actor
+          )
+          : undefined,
+      sendErrorReporter: this.options.reportPostCommitError,
+      meshSubmitters: this.options.meshSubmitters
     };
+  }
+
+  private actorBelongsToMesh(meshName: string, actorId: string): boolean {
+    const actorType = this.options.actorManager()?.getState(actorId)?.actorType;
+    if (actorType !== undefined) {
+      return this.options.actorMeshName(actorType) === meshName;
+    }
+    const actorMeshes = [...this.options.registration.spotNodes.entries()]
+      .filter(([, node]) => node.actorFactories instanceof Map
+        ? node.actorFactories.size > 0
+        : Object.keys(node.actorFactories ?? {}).length > 0)
+      .map(([name]) => name);
+    return actorMeshes.length === 1 && actorMeshes[0] === meshName;
   }
 
 }

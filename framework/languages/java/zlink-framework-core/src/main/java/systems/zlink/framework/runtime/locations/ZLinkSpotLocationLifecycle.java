@@ -24,13 +24,23 @@ final class ZLinkSpotLocationLifecycle {
     CompletionStage<ZLinkLocationWriteStatus> claim(
         String meshName,
         RoutingId spotRid,
+        long spotGeneration,
         String spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
         String routeEndpoint,
         Runnable deactivate) {
         ZLinkSpotLocation row = new ZLinkSpotLocation(
-            meshName, spotRid, spotType, nodeRid, spotKind, routeEndpoint, "", 0, Instant.EPOCH);
+            meshName,
+            spotRid,
+            spotGeneration,
+            spotType,
+            nodeRid,
+            spotKind,
+            routeEndpoint,
+            "",
+            0,
+            Instant.EPOCH);
         return runtime.writeSpot(row, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenApply(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {

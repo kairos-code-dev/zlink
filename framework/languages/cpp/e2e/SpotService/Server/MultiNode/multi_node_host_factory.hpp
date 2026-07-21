@@ -84,36 +84,35 @@ inline int run_multi_node_server (int argc, char **argv)
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
         if (!disable_route_mesh) {
-            options.add_route_mesh (multi_node_route_channel_for (node_rid))
-              .enable_server (route_endpoint)
+            const auto route_name =
+              multi_node_route_channel_for (node_rid);
+            auto route = options.add_route_mesh (route_name);
+            route.listen (route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (node_rid))
-              .enable_client ()
-              .add_request_handler<multi_node_route_ping_handler_t,
-                                   e2e::channel_control_ping_req_t,
-                                   e2e::channel_control_ping_res_t> (
-                "MultiNodeRoutePing",
-                &multi_node_route_ping_handler_t::handle)
-              .add_request_handler<multi_node_create_local_handler_t,
-                                   e2e::multi_node_create_spot_req_t,
-                                   e2e::multi_node_create_spot_res_t> (
-                "MultiNodeCreateSpotReq",
-                &multi_node_create_local_handler_t::handle_route)
-              .add_request_handler<multi_node_state_member_handler_t,
-                                   e2e::multi_node_state_route_req_t,
-                                   e2e::state_res_t> (
-                e2e::multi_node_state_route_req_t::packet_name,
-                &multi_node_state_member_handler_t::handle);
+              .channel_name (route_name);
+            route
+              .add_route_request_handler<multi_node_route_ping_handler_t,
+                                          e2e::channel_control_ping_req_t,
+                                          e2e::channel_control_ping_res_t> (
+                "MultiNodeRoutePing")
+              .add_route_request_handler<multi_node_create_local_handler_t,
+                                          e2e::multi_node_create_spot_req_t,
+                                          e2e::multi_node_create_spot_res_t> (
+                "MultiNodeCreateSpotReq")
+              .add_route_request_handler<multi_node_state_member_handler_t,
+                                          e2e::multi_node_state_route_req_t,
+                                          e2e::state_res_t> (
+                e2e::multi_node_state_route_req_t::packet_name);
         }
-        auto spot = options.add_spot_mesh (disable_route_mesh ? e2e::spot_only_mesh
-                                                              : e2e::spot_mesh)
-                      .set_routing_id (zlink::routing_id_t::from (node_rid))
-                      .enable_router (spot_router_endpoint)
-                      .enable_pub_sub (pubsub_endpoint)
-                      .add_entry_spot<multi_node_entry_spot_t> (
-                        [state_ptr] {
-                            return std::make_shared<multi_node_entry_spot_t> (*state_ptr);
-                      })
-                      .add_actor_factory<multi_node_actor_factory_t> (e2e::actor_type);
+        const auto spot_name =
+          disable_route_mesh ? e2e::spot_only_mesh : e2e::spot_mesh;
+        auto spot = options.add_route_mesh (spot_name);
+        spot.listen (spot_router_endpoint)
+          .set_routing_id (zlink::routing_id_t::from (node_rid))
+          .channel_name (spot_name);
+        spot.add_entry_spot<multi_node_entry_spot_t> (
+          [state_ptr] { return std::make_shared<multi_node_entry_spot_t> (*state_ptr); })
+          .add_actor_factory<multi_node_actor_factory_t> (e2e::actor_type);
         if (node_rid == multi_node_a_name) {
             spot.add_spot<multi_node_spot_a_t> (
               e2e::multi_spot_a,

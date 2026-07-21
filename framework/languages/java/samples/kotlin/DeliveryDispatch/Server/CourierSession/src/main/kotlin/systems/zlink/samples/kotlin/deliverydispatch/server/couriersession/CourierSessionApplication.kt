@@ -36,20 +36,20 @@ class CourierSessionApplication {
                 .traceLabel("courier-session")
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient()
-            val node = options.addSpotMesh(SampleNames.CourierSpotMesh)
-            node.enableRouter(SampleTopology.CourierSessionSpotRouterEndpoint)
+            val node = options.addRouteMesh(SampleNames.CourierSpotMesh)
+            node.listen(SampleTopology.CourierSessionSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CourierSessionSpotNodeRid))
-            node.connectRouter(
+            node.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode1Rid),
                 SampleTopology.CourierActorNode1RouterEndpoint,
             )
-            node.connectRouter(
+            node.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode2Rid),
                 SampleTopology.CourierActorNode2RouterEndpoint,
             )
-            node.enablePubSub(SampleTopology.CourierSessionSpotEndpoint)
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(SampleTopology.CourierStreamEndpoint)
+                .enableActorDispatch(SampleNames.CourierSpotMesh)
                 .registerSession(CourierSession::class.java)
         }
 

@@ -20,7 +20,6 @@ export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -176,7 +175,6 @@ if [[ "${run_main_scenarios}" == "true" ]]; then
   pids+=("$!")
   wait_port server "${SERVER_ENDPOINT}"
   wait_port evidence "${HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 
   "${CLIENT_BIN}" \
     --http-endpoint "${HTTP_ENDPOINT}" \
@@ -222,7 +220,6 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
   pids+=("$!")
   wait_port mismatch-server "${MISMATCH_ENDPOINT}"
   wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 
   "${CODEC_REQUESTER_BIN}" \
     --server-endpoint "${MISMATCH_ENDPOINT}" \
@@ -231,7 +228,6 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
     >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
   pids+=("$!")
   wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 
   "${CLIENT_BIN}" \
     --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \

@@ -227,6 +227,7 @@ class stream_t
 
     std::shared_ptr<detail::stream_state_t> _state;
     std::optional<detail::stream_header_t> _reply_header;
+    std::shared_ptr<detail::submit_once_t> _reply_submission;
 };
 
 /* Typed session packet handler contract: the serializer registry decodes the

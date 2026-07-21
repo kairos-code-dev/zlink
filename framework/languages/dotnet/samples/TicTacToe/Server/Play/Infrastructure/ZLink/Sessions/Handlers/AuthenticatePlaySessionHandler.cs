@@ -27,7 +27,7 @@ internal sealed class AuthenticatePlaySessionHandler(
             throw new InvalidOperationException("Authentication token is empty.");
 
         var authenticated = await channels.RequestToChannel(
-                SampleChannels.Api,
+                SampleNodes.Mesh,
                 SampleChannels.Api,
                 new AuthenticatePlayerReq(accessToken))
             .Async<AuthenticatePlayerRes>(cancellationToken);
@@ -42,8 +42,8 @@ internal sealed class AuthenticatePlaySessionHandler(
             authenticated.Player,
             cancellationToken);
 
-        context.Client.Reply(new AuthenticateRes(authenticated.Player))
-            .Submit();
+        await context.Client.Reply(new AuthenticateRes(authenticated.Player))
+            .SubmitAsync(cancellationToken);
     }
 
     private async ValueTask EnsureActorBoundAsync(

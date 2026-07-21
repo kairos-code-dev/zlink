@@ -18,5 +18,8 @@ record ZLinkJavaPublisherSocket(PubSocket socket)
     @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
         return ZLinkJavaSocketSupport.submit(socket.publish(topic), parts, flags);
     }
-    @Override public void close() { socket.close(); }
+    @Override public void close() {
+        notifyAdmissionShutdown();
+        socket.close();
+    }
 }

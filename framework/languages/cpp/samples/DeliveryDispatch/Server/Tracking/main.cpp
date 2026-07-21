@@ -29,10 +29,10 @@ int main (int argc, char **argv)
           .enable_server (topology.tracking_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_route_node))
           .use_handler_group ("tracking");
-        options.add_spot_mesh (sample_names_t::customer_actor_discovery)
+        options.add_route_mesh (sample_names_t::customer_actor_discovery)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_spot_node))
-          .enable_router (topology.tracking_spot_router_endpoint)
-          .enable_pub_sub (topology.tracking_spot_endpoint);
+          .listen (topology.tracking_spot_router_endpoint)
+          .channel_name (sample_names_t::customer_actor_discovery);
         options.handlers ().group ("tracking").add<delivery_status_changed_handler_t> ();
     });
     return app.run (argc, argv);

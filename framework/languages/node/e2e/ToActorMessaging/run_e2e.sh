@@ -57,7 +57,7 @@ wait_topology() {
     --key-prefix "$REDIS_KEY_PREFIX" \
     --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
     --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
-    --peer spot-mesh to-actor spot \
+    --peer route-mesh to-actor router \
       "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
       "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
       "tcp://127.0.0.1:$SESSION_ROUTER_PORT" \

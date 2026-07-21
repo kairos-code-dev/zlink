@@ -1,5 +1,5 @@
-using System.Text;
 using Systems.Zlink;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Locations;
 using ZoneWorld.Server.Configuration;
@@ -19,24 +19,23 @@ internal sealed class LocationEventHandler(
     ILogger<LocationEventHandler> logger)
     : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
 {
-    public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
     {
         if (@event is not ZLinkLocationRuntimeEvent.TopologyChanged topology)
-            return ValueTask.CompletedTask;
+            return;
 
         var live = topology.Topology
-            .Where(entry => entry.MeshName == ZoneWorldNames.ZoneMesh
+            .Where(entry => entry.MeshName == ZoneWorldNames.MeshName
                             && entry.State == ZLinkLocationTopologyState.Ready)
             .Select(entry => entry.NodeRid.ToString())
             .ToHashSet(StringComparer.Ordinal);
 
-        nodes.ApplyLiveRoutingIds(live);
+        await nodes.ApplyLiveRoutingIdsAsync(live, cancellationToken);
 
         logger.LogDebug(
             "location topology observed. entries={Count}, live={Live}",
             topology.Topology.Count,
             string.Join(',', live));
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -47,64 +46,29 @@ internal sealed class LocationEventHandler(
 internal sealed class SocketEventHandler(
     NodeRegistry nodes,
     ILogger<SocketEventHandler> logger)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
 {
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken cancellationToken)
     {
-        var opsNodeId = ZoneTopology.ZoneNodes.FirstOrDefault(nodeId =>
-            string.Equals(
-                @event.SourceName,
-                ZoneWorldNames.OpsChannelSocketSource(nodeId),
-                StringComparison.Ordinal));
-        if (opsNodeId is not null)
+        if (@event.PeerRid is not { } peer) return;
+
+        var nodeId = nodes.NodeIdOf(peer.ToString());
+        if (nodeId is null) return;
+
+        var connected = @event.Reason switch
         {
-            var opsConnected = @event.Event switch
-            {
-                ZLinkSocketEventKind.Connected or ZLinkSocketEventKind.ConnectionReady => true,
-                ZLinkSocketEventKind.Disconnected or ZLinkSocketEventKind.Closed => false,
-                _ => (bool?)null
-            };
-            if (opsConnected is null) return ValueTask.CompletedTask;
-            logger.LogInformation(
-                "ops channel observed. node={NodeId}, connected={Connected}, kind={Kind}",
-                opsNodeId,
-                opsConnected.Value,
-                @event.Event);
-            return ValueTask.CompletedTask;
-        }
-
-        if (@event.RoutingId is not { } peer) return ValueTask.CompletedTask;
-
-        var nodeId = nodes.NodeIdOf(BaseRidOf(peer));
-        if (nodeId is null) return ValueTask.CompletedTask;
-
-        var connected = @event.Event switch
-        {
-            ZLinkSocketEventKind.Connected or ZLinkSocketEventKind.ConnectionReady => true,
-            ZLinkSocketEventKind.Disconnected or ZLinkSocketEventKind.Closed => false,
+            "ready" => true,
+            "disconnected" => false,
             _ => (bool?)null
         };
-        if (connected is null) return ValueTask.CompletedTask;
+        if (connected is null) return;
 
-        nodes.ApplyConnection(nodeId, connected.Value);
+        await nodes.ApplyConnectionAsync(nodeId, connected.Value, cancellationToken);
         logger.LogInformation(
             "node connection observed. node={NodeId}, connected={Connected}, kind={Kind}",
             nodeId,
             connected.Value,
-            @event.Event);
-        return ValueTask.CompletedTask;
-    }
-
-    /// <summary>
-    /// A channel's client and server sockets share the node's routing id, so the framework tells
-    /// them apart by deriving one as <c>&lt;rid&gt;\0&lt;role&gt;</c>. The socket event carries the
-    /// derived id; the node is named by the part before the separator.
-    /// </summary>
-    private static string BaseRidOf(RoutingId peer)
-    {
-        ReadOnlySpan<byte> bytes = peer.ToBytes();
-        var end = bytes.IndexOf((byte)0);
-        return Encoding.UTF8.GetString(end < 0 ? bytes : bytes[..end]);
+            @event.Reason);
     }
 }
 
@@ -124,12 +88,12 @@ internal sealed class NodeStatusBroadcaster(NodeRegistry nodes, OpsConsoleRegist
         return Task.CompletedTask;
     }
 
-    private void Push(NodeView node) =>
-        consoles.Broadcast(new NodeStatusNotify(
+    private async ValueTask Push(NodeView node, CancellationToken cancellationToken) =>
+        await consoles.BroadcastAsync(new NodeStatusNotify(
             node.NodeId,
             node.Registered,
             node.Connected,
             node.Maintenance,
             node.Zones,
-            node.PlayerCount));
+            node.PlayerCount), cancellationToken);
 }

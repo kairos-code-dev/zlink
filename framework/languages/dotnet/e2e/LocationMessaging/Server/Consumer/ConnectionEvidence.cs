@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Eventing;
 
 namespace LocationMessaging.Server.Consumer;
@@ -55,18 +56,47 @@ internal sealed class ConnectionEvidence
     }
 }
 
-internal sealed class ConnectionEventObserver(
+internal sealed class MeshConnectionEventObserver(
     ConnectionEvidence evidence,
-    ILogger<ConnectionEventObserver> logger)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+    IZLinkRouteMeshRuntime meshRuntime,
+    ILogger<MeshConnectionEventObserver> logger)
+    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
 {
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
+    private static readonly ConcurrentDictionary<string, string> LastKnownEndpoints =
+        new(StringComparer.Ordinal);
+
+    public ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var peer = @event.PeerRid?.ToString() ?? string.Empty;
+        var endpoint = string.Empty;
+        if (peer.Length > 0)
+        {
+            try
+            {
+                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
+                    .FirstOrDefault(candidate => candidate.Rid.ToString() == peer)?.Endpoint
+                    ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                // Shutdown can close the mesh before the final event is
+                // dispatched. The last ready snapshot still names the peer.
+            }
+
+            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
+            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
+        }
+
+        var kind = @event.Reason switch
+        {
+            "ready" => "ConnectionReady",
+            "disconnected" => "Disconnected",
+            _ => @event.Reason ?? @event.Identifier
+        };
         var entry =
-            $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}"
-            + $"|value={@event.Diagnostic?.NativeValue}";
+            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
+            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}";
         evidence.Add(entry);
         logger.LogInformation("location connection evidence: {Entry}", entry);
         return ValueTask.CompletedTask;

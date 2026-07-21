@@ -68,7 +68,6 @@ public final class ScenarioReqHandler
         Object spotRequest,
         Contracts.ScenarioReq request) {
         CompletionStage<Contracts.ScenarioRes> scenario = routes.requestToSpot(
-                Contracts.ROUTE_CHANNEL,
                 handle,
                 spotRequest)
             .timeout(ROUTE_REQUEST_TIMEOUT)
@@ -80,7 +79,6 @@ public final class ScenarioReqHandler
         }
         CompletionStage<Contracts.ProbeRes> probe = delayed(500)
             .thenCompose(ignored -> routes.requestToSpot(
-                    Contracts.ROUTE_CHANNEL,
                     handle,
                     new Contracts.ProbeReq(request.requestId()))
                 .timeout(ROUTE_REQUEST_TIMEOUT)

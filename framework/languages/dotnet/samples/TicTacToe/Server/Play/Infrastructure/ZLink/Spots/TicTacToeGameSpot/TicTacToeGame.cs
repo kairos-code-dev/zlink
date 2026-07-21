@@ -181,7 +181,7 @@ internal sealed class TicTacToeGame(
         await Context.LeaveActorAsync(actor, cancellationToken);
     }
 
-    private ValueTask BroadcastAsync(
+    private async ValueTask BroadcastAsync(
         GameState state,
         string? excludedActorId,
         CancellationToken cancellationToken)
@@ -190,13 +190,15 @@ internal sealed class TicTacToeGame(
         var recipients = _actors.Values
             .Where(actor => !string.Equals(actor.ActorId, excludedActorId, StringComparison.Ordinal))
             .ToArray();
-        SendSessionPush(
+        await SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
-        return ValueTask.CompletedTask;
+            async actor =>
+            {
+                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
+            });
     }
 
-    private ValueTask NotifyPlayerJoinedAsync(
+    private async ValueTask NotifyPlayerJoinedAsync(
         PlayActor joinedActor,
         string mark,
         GameState state,
@@ -214,10 +216,12 @@ internal sealed class TicTacToeGame(
         var recipients = _actors.Values
             .Where(actor => !string.Equals(actor.ActorId, joinedActor.ActorId, StringComparison.Ordinal))
             .ToArray();
-        SendSessionPush(
+        await SendSessionPushAsync(
             recipients,
-            actor => actor.Context.BoundSession.Send(message).Submit(cancellationToken));
-        return ValueTask.CompletedTask;
+            async actor =>
+            {
+                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
+            });
     }
 
     private ValueTask PublishWinMilestoneAsync(
@@ -240,23 +244,40 @@ internal sealed class TicTacToeGame(
             player.ActorId,
             after.RoomId,
             wins);
-        return ContinueWithoutResultCore(
+        return VerifyWinMilestonePublishAsync(
             Context.Outbound.Publish(
+                    SampleTopics.PlayerMilestoneChannel,
                     SampleTopics.PlayerMilestone,
                     new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
                 .SubmitAsync(cancellationToken));
     }
 
-    private static async ValueTask ContinueWithoutResultCore(ValueTask<ZLinkPublishResult> submit)
+    private async ValueTask VerifyWinMilestonePublishAsync(ValueTask<ZLinkPublishResult> submit)
     {
-        _ = await submit.ConfigureAwait(false);
+        var result = await submit.ConfigureAwait(false);
+        logger.LogInformation(
+            "game spot: milestone publish completed. status={Status}, remoteSnapshot={RemoteSnapshot}, remoteAdmitted={RemoteAdmitted}, localSnapshot={LocalSnapshot}, localAdmitted={LocalAdmitted}",
+            result.Status,
+            result.Detail.SnapshotRemoteNodeCount,
+            result.Detail.AdmittedRemoteNodeCount,
+            result.Detail.SnapshotLocalSpotCount,
+            result.Detail.AdmittedLocalSpotCount);
+        if (result.Status != ZLinkSubmitStatus.Submitted
+            || result.Detail.AdmittedRemoteNodeCount != 1
+            || result.Detail.AdmittedLocalSpotCount != 1)
+            throw new InvalidOperationException(
+                $"Milestone publish did not reach the two Play nodes. status={result.Status}, " +
+                $"remoteSnapshot={result.Detail.SnapshotRemoteNodeCount}, " +
+                $"remoteAdmitted={result.Detail.AdmittedRemoteNodeCount}, " +
+                $"localSnapshot={result.Detail.SnapshotLocalSpotCount}, " +
+                $"localAdmitted={result.Detail.AdmittedLocalSpotCount}.");
     }
 
-    private static void SendSessionPush(
+    private static async ValueTask SendSessionPushAsync(
         IReadOnlyList<PlayActor> recipients,
-        Action<PlayActor> send)
+        Func<PlayActor, ValueTask> send)
     {
-        foreach (var recipient in recipients) send(recipient);
+        foreach (var recipient in recipients) await send(recipient);
     }
 
     private static bool IsTerminal(GameState state)

@@ -24,8 +24,7 @@ import systems.zlink.e2e.automaticturn.shared.AwaitProbeHandlers;
 import systems.zlink.e2e.automaticturn.shared.AwaitProbeSpot;
 import systems.zlink.e2e.automaticturn.shared.AwaitSession;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
-import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
@@ -102,22 +101,20 @@ public final class Program {
                 dispatch.traceLogFile(config.logDirectory() + "/session-flow.log")
                     .traceLabel("java-atd-session");
             }
-            RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(config.sessionRouteEndpoint())
-                .enableClient(config.routeEndpoint())
+            ZLinkMeshNodeBuilder mesh = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(config.sessionRouteEndpoint())
                 .setRoutingId(RoutingId.from("session-a"));
+            mesh.channelName(Contracts.ROUTE_CHANNEL);
+            mesh.peerConnections().connect(config.routeEndpoint());
             String routeBEndpoint = config.routeBEndpoint();
             if (!routeBEndpoint.isBlank()) {
-                route.enableClient(routeBEndpoint);
+                mesh.peerConnections().connect(routeBEndpoint);
             }
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
                 .enableClient(config.delayEndpoint());
-            ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
-            spot.enableRouter(config.sessionSpotEndpoint())
-                .setRoutingId(RoutingId.from("session-a"));
-            spot.addEntrySpot(AwaitEntrySpot.class);
-            spot.addSpotFactory(AwaitProbeSpot.class);
-            spot.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
+            mesh.addEntrySpot(AwaitEntrySpot.class);
+            mesh.addSpotFactory(AwaitProbeSpot.class);
+            mesh.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
             options.addStreamNode("session")
                 .bind(config.streamEndpoint())
                 .registerSession(AwaitSession.class);

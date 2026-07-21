@@ -83,44 +83,38 @@ builder.Services.AddZLinkFramework(options =>
     // after it, and when that spot is on another node the join is the transfer — which is
     // why the transfer adapter is not optional (§2.6).
     const string allocationGroup = "zoneworld.zone-node";
-    var mesh13 = options.AddRouteMesh(ZoneWorldNames.ZoneMesh)
+    var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
         .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
         .SetRoutingIdAllocationGroup(allocationGroup)
-        .Listen(node.SpotRouterEndpoint)
+        .Listen(node.MeshEndpoint)
         .AddEntrySpot<ZoneEntrySpot>()
         .AddActorFactory<PlayerActorFactory>(ZoneWorldNames.PlayerActorType)
         .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ZoneWorldNames.PlayerActorType)
         .AddSpotFactory<ZoneSpot>();
-    mesh13.ChannelName(ZoneWorldNames.ZoneMesh);
+    mesh.ChannelName(ZoneWorldNames.ZoneChannel);
 
     // The node's own channel. Ops calls the channel named after the node, so a call
     // reaches this node and no other (§8.4).
     var opsChannelName = ZoneWorldNames.OpsChannel(nodeId);
-    var opsMesh = options.AddRouteMesh(opsChannelName)
-        .Listen(node.OpsChannelEndpoint)
-        // Discovery clients dial this server through its descriptor row, which
-        // needs a concrete routing id to be advertised; the id comes from the
-        // per-node allocation group, never from configuration (ZW-G5, §11.2).
-        .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "ops")
-        .SetRoutingIdAllocationGroup(opsChannelName);
-    opsMesh.ChannelName(opsChannelName)
-        .AddRequestHandler<ApplyNodeMaintenanceHandler>()
-        .AddRequestHandler<GetNodeDiagnosticsHandler>();
+    foreach (var configuredNodeId in ZoneTopology.ZoneNodes)
+    {
+        var configuredChannel = ZoneWorldNames.OpsChannel(configuredNodeId);
+        var membership = mesh.ChannelName(configuredChannel);
+        if (string.Equals(configuredChannel, opsChannelName, StringComparison.Ordinal))
+            membership.AddHandlerGroup(HandlerGroups.ZoneOps);
+        else
+            membership.SetWeight(0);
+    }
 
     // Only the node hosting the spawn zone serves this: it is the authority for the
     // maintenance admission check on a new entry (§2.3).
     if (ZoneTopology.SpawnNode == nodeId)
     {
-        var actorsMesh = options.AddRouteMesh(ZoneWorldNames.ActorsChannel)
-            .Listen(node.ActorsChannelEndpoint)
-            // Discovery clients dial this server through its descriptor row, which
-            // needs a concrete routing id to be advertised; the id comes from an
-            // allocation group, never from configuration (ZW-G5, §11.2).
-            .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "actors")
-            .SetRoutingIdAllocationGroup(ZoneWorldNames.ActorsChannel);
-        actorsMesh.ChannelName(ZoneWorldNames.ActorsChannel)
-            .AddRequestHandler<EnsurePlayerActorHandler>();
+        mesh.ChannelName(ZoneWorldNames.ActorsChannel)
+            .AddHandlerGroup(HandlerGroups.ZoneActors);
     }
+    else
+        mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
         .ConnectSubscriber(shared.BroadcastEndpoint)
@@ -129,11 +123,7 @@ builder.Services.AddZLinkFramework(options =>
 
     // The report channel carries this node's identity: Ops reads the socket events on its
     // server side and needs to know *which node* connected or went away (§8.1).
-    var reportMesh = options.AddRouteMesh(ZoneWorldNames.ReportChannel)
-        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
-        .SetRoutingIdAllocationGroup(allocationGroup)
-        .Listen("tcp://127.0.0.1:0");
-    reportMesh.ChannelName(ZoneWorldNames.ReportChannel).SetWeight(0);
+    mesh.ChannelName(ZoneWorldNames.ReportChannel).SetWeight(0);
 });
 
 if (hostsZones)

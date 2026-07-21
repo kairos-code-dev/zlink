@@ -62,13 +62,13 @@ class play_server_host_factory_t
             for (const auto &endpoint : topology.all_api_endpoints ()) {
                 api_peers.enable_client (endpoint);
             }
-            options.add_spot_mesh (sample_names_t::game_spot_node)
+            auto game_spot = options.add_route_mesh (sample_names_t::game_spot_node);
+            game_spot.peer_connections ().connect (
+              zlink::routing_id_t::from (topology.peer_play_node_rid ()),
+              topology.peer_play_spot_router_endpoint ());
+            game_spot
               .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
-              .enable_router (topology.selected_play_spot_router_endpoint ())
-              .connect_router (zlink::routing_id_t::from (topology.peer_play_node_rid ()),
-                                topology.peer_play_spot_router_endpoint ())
-              .enable_pub_sub (topology.selected_play_spot_endpoint ())
-              .connect_peer_pub (topology.peer_play_spot_endpoint ())
+              .listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<tictactoe_entry_spot_t> ()
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type)

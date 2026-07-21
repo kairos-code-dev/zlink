@@ -6,6 +6,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -44,11 +45,12 @@ inline std::string dispatch_action_name (zlink::framework::dispatch_error_action
 
 inline void configure_evidence_dispatch_error_observer (
   zlink::framework::zlink_framework_options_t &framework,
-  evidence_store_t *evidence,
-  fault_state_t *fault_state)
+  std::shared_ptr<evidence_store_t> evidence,
+  std::shared_ptr<fault_state_t> fault_state)
 {
     framework.configure_dispatch ().set_message_flow_observer (
-      [evidence, fault_state] (const zlink::framework::message_flow_event_t &event) {
+      [evidence = std::move (evidence),
+       fault_state = std::move (fault_state)] (const zlink::framework::message_flow_event_t &event) {
           if (event.outcome != zlink::framework::message_flow_outcome_t::error
               || !event.error_reason || !event.error_action) {
               return;

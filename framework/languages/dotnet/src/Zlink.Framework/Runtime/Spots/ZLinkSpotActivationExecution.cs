@@ -105,7 +105,7 @@ internal sealed partial class ZLinkSpotActivation
             typeof(THandler),
             Spot.GetType(),
             StopToken,
-            (descriptor, tick, ct) => ExecuteSerializedAsync(
+            (descriptor, tick, ct) => ExecuteApplicationSerializedAsync(
                 async static (activation, state, innerCt) =>
                 {
                     await activation.InvokeTimerAsync(state.Descriptor, state.Tick, innerCt);
@@ -158,12 +158,31 @@ internal sealed partial class ZLinkSpotActivation
                     }
 
                     foreach (var received in receivedMessages)
-                        QueueSerialized(
+                    {
+                        if (ZLinkSpotActivationDispatcher.IsInfrastructureRoute(received))
+                        {
+                            QueueSerialized(
+                                static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
+                                received,
+                                received.Dispose);
+                            continue;
+                        }
+
+                        QueueApplicationSerialized(
                             static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
-                            received);
+                            received,
+                            received.CanReply,
+                            () => ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
+                                received,
+                                ChannelName));
+                    }
                 },
                 drain => drain?.Invoke(),
-                () => QueueSerialized(static (activation, ct) => activation.DispatchSubscriptionsAsync(ct)),
+                () => QueueApplicationSerialized(
+                    static (activation, ct) => activation.DispatchSubscriptionsAsync(ct),
+                    countAsRequest: false,
+                    () => QueueSerialized(
+                        static (activation, ct) => activation._dispatcher.DiscardSubscriptionsAsync(ct))),
                 () => QueueSerialized(static (activation, ct) =>
                     activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
                 () => QueueSerialized(static (activation, ct) =>
@@ -177,9 +196,10 @@ internal sealed partial class ZLinkSpotActivation
                         return;
                     }
 
-                    if (!QueueSerialized(
+                    if (!QueueApplicationSerialized(
                         static (activation, state, ct) => activation._dispatcher.DispatchActorFramesAsync(state, ct),
                         dispatchable,
+                        countAsRequest: false,
                         dispatchable.Dispose))
                         dispatchable.Dispose();
                 });
@@ -268,6 +288,19 @@ internal sealed partial class ZLinkSpotActivation
         return _serial.ExecuteAsync(operation, state, cancellationToken);
     }
 
+    private async ValueTask ExecuteApplicationSerializedAsync<TState>(
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        CancellationToken cancellationToken)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out var lease))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                "SPOT application admission is sealed for drain.");
+        using (lease)
+            await _serial.ExecuteAsync(operation, state, cancellationToken).ConfigureAwait(false);
+    }
+
     private bool QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
     {
         return _serial.Queue(operation);
@@ -284,6 +317,61 @@ internal sealed partial class ZLinkSpotActivation
             (activation, ct) => capturedOp(activation, capturedState, ct),
             onSkipped);
     }
+
+    private bool QueueApplicationSerialized(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        bool countAsRequest,
+        Action? onRejected = null)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
+        {
+            onRejected?.Invoke();
+            return false;
+        }
+
+        var queued = _serial.Queue(
+            async (activation, ct) =>
+            {
+                using (lease)
+                    await operation(activation, ct).ConfigureAwait(false);
+            },
+            () =>
+            {
+                lease.Dispose();
+                onRejected?.Invoke();
+            });
+        if (!queued) lease.Dispose();
+        return queued;
+    }
+
+    private bool QueueApplicationSerialized<TState>(
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        bool countAsRequest,
+        Action? onRejected = null)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
+        {
+            onRejected?.Invoke();
+            return false;
+        }
+
+        var queued = QueueSerialized(
+            async (activation, captured, ct) =>
+            {
+                using (lease)
+                    await operation(activation, captured, ct).ConfigureAwait(false);
+            },
+            state,
+            () =>
+            {
+                lease.Dispose();
+                onRejected?.Invoke();
+            });
+        if (!queued) lease.Dispose();
+        return queued;
+    }
+
 
     private async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {

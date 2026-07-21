@@ -1,6 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.time.Duration;
@@ -23,6 +24,11 @@ import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted;
+import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 class ZLinkRedisLocationStoreTest {
@@ -96,6 +102,42 @@ class ZLinkRedisLocationStoreTest {
         assertEquals(List.of("alpha", "beta"), spotTypes.stream().sorted().toList());
 
         store.close();
+    }
+
+    @Test
+    void redisRoutingIdSlotsAreAtomicIdempotentAndFenced() throws Exception {
+        String endpoint = System.getenv("ZLINK_REDIS_LOCATION_ENDPOINT");
+        assumeTrue(endpoint != null && !endpoint.isBlank(),
+            "ZLINK_REDIS_LOCATION_ENDPOINT is not set");
+        try (ZLinkRedisLocationStore store = new ZLinkRedisLocationStore(
+            new ZLinkRedisLocationOptions()
+                .setConnectionString(endpoint)
+                .setKeyPrefix("zlink:test:" + UUID.randomUUID()))) {
+            List<ZLinkRoutingIdSlotAllocationMember> members = List.of(
+                new ZLinkRoutingIdSlotAllocationMember("mesh", "node"));
+            var first = assertInstanceOf(ZLinkRoutingIdSlotAcquired.class,
+                store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
+                    "group", members, 1, "owner-a", Duration.ofSeconds(30)))
+                    .toCompletableFuture().get());
+            var retried = assertInstanceOf(ZLinkRoutingIdSlotAcquired.class,
+                store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
+                    "group", members, 1, "owner-a", Duration.ofSeconds(30)))
+                    .toCompletableFuture().get());
+            assertInstanceOf(ZLinkRoutingIdSlotGroupExhausted.class,
+                store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
+                    "group", members, 1, "owner-b", Duration.ofSeconds(30)))
+                    .toCompletableFuture().get());
+
+            assertEquals(first.allocation().owner(), retried.allocation().owner());
+            assertEquals(ZLinkRoutingIdSlotReleaseResult.RELEASED,
+                store.releaseRoutingIdSlot("group", 1, first.allocation().owner())
+                    .toCompletableFuture().get());
+            assertEquals(ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE,
+                store.releaseRoutingIdSlot("group", 1, first.allocation().owner())
+                    .toCompletableFuture().get());
+            assertEquals(List.of(), store.listRoutingIdSlots("group")
+                .toCompletableFuture().get().allocations());
+        }
     }
 
     private static ZLinkPeerLocation peer(String ownerId, RoutingId nodeRid, long generation) {

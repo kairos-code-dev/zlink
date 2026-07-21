@@ -88,6 +88,23 @@ public sealed class BackendAdapterFactoryTests
         Assert.IsType<ZLinkBackendSpotNodeWrapper>(spotNode);
     }
 
+    [Fact]
+    public async Task SpotNode_Router_Send_Config_RoundTrips_Through_Binding()
+    {
+        var factory = new ZLinkDotNetBackendAdapterFactory();
+        var channelAdapter = factory.CreateChannelAdapter();
+        var spotAdapter = factory.CreateSpotAdapter();
+        await using var context = channelAdapter.CreateContext();
+        await using var backend = spotAdapter.CreateSpotNode(context, "router-config-mesh");
+        var spotNode = Assert.IsType<ZLinkBackendSpotNodeWrapper>(backend);
+
+        spotNode.SetRouterHighWaterMark(1);
+        spotNode.SetRouterSendTimeout(TimeSpan.FromMilliseconds(37));
+
+        Assert.Equal(1, spotNode.NativeNode.RouterHighWaterMark);
+        Assert.Equal(TimeSpan.FromMilliseconds(37), spotNode.NativeNode.SendTimeout);
+    }
+
     private static async Task AssertStreamBackendAsync(
         IZLinkChannelBackendAdapter channelAdapter,
         IZLinkStreamBackendAdapter streamAdapter)

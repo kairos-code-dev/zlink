@@ -5,7 +5,11 @@ import java.util.Optional
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -24,6 +28,8 @@ import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
+import systems.zlink.framework.channels.ZLinkSubmitResult
+import systems.zlink.framework.channels.ZLinkSubmitStatus
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
 import systems.zlink.framework.messaging.ZLinkMessage
@@ -35,6 +41,36 @@ import systems.zlink.framework.spots.ZLinkSpotInfo
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class KotlinFrameworkExtensionsContractTest {
+    @Test
+    fun `coroutine cancellation projects to completion stage cancel false`() = runBlocking {
+        val stage = RecordingCancellationFuture<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            awaitFrameworkStage(stage)
+        }
+
+        job.cancelAndJoin()
+
+        assertTrue(stage.isCancelled)
+        assertFalse(stage.mayInterruptIfRunning)
+        assertEquals(1, stage.cancellations)
+    }
+
+    @Test
+    fun `coroutine cancellation does not discard a stage that already rejected cancellation`() = runBlocking {
+        val stage = CommittedResultFuture<String>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            awaitFrameworkStage(stage)
+        }
+
+        job.cancelAndJoin()
+        stage.complete("committed")
+
+        assertTrue(job.isCancelled)
+        assertEquals(1, stage.cancellations)
+        assertFalse(stage.isCancelled)
+        assertEquals("committed", stage.join())
+    }
+
     @Test
     fun `directory object ensure extension delegates to Java ensure overload`() = runBlocking {
         val directory = RecordingActorDirectory(ACTOR_REF)
@@ -131,6 +167,26 @@ class KotlinFrameworkExtensionsContractTest {
 
     private data class ActorReply(val value: String)
 
+    private class RecordingCancellationFuture<T> : CompletableFuture<T>() {
+        var cancellations = 0
+        var mayInterruptIfRunning = true
+
+        override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
+            cancellations++
+            this.mayInterruptIfRunning = mayInterruptIfRunning
+            return super.cancel(mayInterruptIfRunning)
+        }
+    }
+
+    private class CommittedResultFuture<T> : CompletableFuture<T>() {
+        var cancellations = 0
+
+        override fun cancel(mayInterruptIfRunning: Boolean): Boolean {
+            cancellations++
+            return false
+        }
+    }
+
     private class RecordingActorDirectory(
         private val actorRef: ActorRef,
     ) : ZLinkActorDirectory {
@@ -168,7 +224,8 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class RecordingSendCall : ZLinkSendCall {
-        override fun submit() = Unit
+        override fun submit(): CompletionStage<ZLinkSubmitResult> =
+            CompletableFuture.completedFuture(ZLinkSubmitResult(ZLinkSubmitStatus.SUBMITTED))
     }
 
     private class RecordingRequestCall<TReply>(
@@ -202,7 +259,8 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class RecordingActorSendCall : ZLinkActorSendCall {
-        override fun submit() = Unit
+        override fun submit(): CompletionStage<ZLinkSubmitResult> =
+            CompletableFuture.completedFuture(ZLinkSubmitResult(ZLinkSubmitStatus.SUBMITTED))
     }
 
     private class RecordingActorRequestCall<TReply>(

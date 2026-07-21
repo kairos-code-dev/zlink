@@ -1,11 +1,5 @@
 namespace Zlink.Framework.Contracts.Configuration;
 
-public enum ZLinkSpotDrainPolicy
-{
-    DrainNatural = 0,
-    ReleaseAndRecreate = 1
-}
-
 public enum ZLinkDrainForceReason
 {
     DeadlineExceeded = 0,

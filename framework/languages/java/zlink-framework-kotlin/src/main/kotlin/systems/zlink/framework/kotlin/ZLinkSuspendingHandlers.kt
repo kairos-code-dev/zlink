@@ -50,14 +50,29 @@ interface ZLinkSuspendingRouteSendHandler<TMessage> {
 
 interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(spot: TSpot, message: TMessage)
+
+    suspend fun handle(spot: TSpot, message: TMessage, context: ZLinkSendContext) =
+        handle(spot, message)
 }
 
 interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(spot: TSpot, request: TRequest): TReply
+
+    suspend fun handle(
+        spot: TSpot,
+        request: TRequest,
+        context: ZLinkRequestContext,
+    ): TReply = handle(spot, request)
 }
 
 interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(spot: TSpot, event: TEvent)
+
+    suspend fun handle(
+        spot: TSpot,
+        event: TEvent,
+        context: ZLinkPublishContext,
+    ) = handle(spot, event)
 }
 
 interface ZLinkSuspendingSpotTimerHandler<TSpot : ZLinkSpot<*>> {

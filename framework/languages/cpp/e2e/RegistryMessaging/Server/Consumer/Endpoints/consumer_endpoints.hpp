@@ -245,7 +245,7 @@ class backpressure_send_handler_t
 
     backpressure_send_res_t handle (const profile_msg_t &command)
     {
-        _channels.send (api_channel, command).timeout (std::chrono::milliseconds (500)).submit ();
+        _channels.send (api_channel, command).submit ();
         return {.outcome = "Submitted"};
     }
 

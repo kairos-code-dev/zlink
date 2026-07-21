@@ -35,8 +35,8 @@ test('SupportChat closes a conversation Spot after the close grace deadline', as
         })
       });
       spot.assignAgent('agent-1', 'Agent');
-      spot.join({
-        actorId: 'agent-1',
+      await joinConversationActor(spot, {
+        actorId: 'agent-conversation-1',
         participantId: 'agent-1',
         role: 'Agent',
         displayName: 'Agent'
@@ -84,11 +84,12 @@ test('SupportChat explicit close preserves the Spot long enough to reject duplic
         role: 'Customer',
         displayName: 'Customer'
       };
+      await joinConversationActor(spot, customer);
 
-      await spot.close(customer);
+      await spot.close(customer.actorId);
 
       assert.equal(closeCalls, 0);
-      await assert.rejects(async () => spot.close(customer), /duplicate close/);
+      await assert.rejects(async () => spot.close(customer.actorId), /duplicate close/);
     }
   );
 });
@@ -102,7 +103,9 @@ test('TicTacToe closes a terminal room Spot after every actor leaves', async () 
         outputRoot,
         'Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot.js'
       ));
-      const spot = new TicTacToeGameSpot();
+      const spot = new TicTacToeGameSpot({
+        sendToActor: () => ({ submit: async () => ({ status: 'submitted' }) })
+      });
       let closeCalls = 0;
       spot.context = {
         spotRid: 'room-1',
@@ -113,22 +116,27 @@ test('TicTacToe closes a terminal room Spot after every actor leaves', async () 
       const player2 = player('player-2', 'Player 2');
       await joinPlayer(spot, player1);
       await joinPlayer(spot, player2);
-      await spot.placeMark(player1, 0);
-      await spot.placeMark(player2, 3);
-      await spot.placeMark(player1, 1);
-      await spot.placeMark(player2, 4);
-      await spot.placeMark(player1, 2);
+      await spot.placeMark(player1.actorId, 0);
+      await spot.placeMark(player2.actorId, 3);
+      await spot.placeMark(player1.actorId, 1);
+      await spot.placeMark(player2.actorId, 4);
+      await spot.placeMark(player1.actorId, 2);
 
-      await spot.onLeaveActor(player1);
+      await spot.onLeaveActor(membership(player1.actorId));
       assert.equal(closeCalls, 0);
-      await spot.onLeaveActor(player2);
+      await spot.onLeaveActor(membership(player2.actorId));
       assert.equal(closeCalls, 1);
     }
   );
 });
 
 async function joinPlayer(spot, actor) {
-  const response = await spot.onActorJoin(actor.actorId, {
+  const actorMembership = membership(actor.actorId);
+  const response = await spot.onActorJoin({
+    actor: actorMembership.actor,
+    actorType: actorMembership.actorType,
+    expectedMembershipEpoch: 0n
+  }, {
     decode: () => ({
       roomId: 'room-1',
       player: {
@@ -140,7 +148,32 @@ async function joinPlayer(spot, actor) {
     })
   });
   assert.equal(response.accepted, true);
-  await spot.onJoinedActor(actor);
+  await spot.onJoinedActor(actorMembership);
+}
+
+async function joinConversationActor(spot, actor) {
+  const actorMembership = membership(actor.actorId);
+  const response = await spot.onActorJoin({
+    actor: actorMembership.actor,
+    actorType: actorMembership.actorType,
+    expectedMembershipEpoch: 0n
+  }, {
+    decode: () => ({
+      participantId: actor.participantId,
+      role: actor.role,
+      displayName: actor.displayName
+    })
+  });
+  assert.equal(response.accepted, true);
+  await spot.onJoinedActor(actorMembership);
+}
+
+function membership(actorId) {
+  return {
+    actor: { nodeRid: 'node-1', actorId, generation: 1n },
+    actorType: 'sample.actor',
+    membershipEpoch: 1n
+  };
 }
 
 function player(actorId, displayName) {
@@ -149,9 +182,7 @@ function player(actorId, displayName) {
     displayName,
     level: 10,
     wins: 0,
-    push: async () => undefined,
-    markDisconnected: () => undefined,
-    markForDestroyAfterRoomLeave: () => undefined
+    push: async () => undefined
   };
 }
 

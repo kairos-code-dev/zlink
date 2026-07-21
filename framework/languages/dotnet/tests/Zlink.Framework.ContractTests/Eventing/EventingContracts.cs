@@ -62,9 +62,6 @@ public sealed class EventingContracts
             new[] { "Application", "Inbound", "Lifecycle", "Timer" },
             Enum.GetNames<ZLinkFlowOrigin>().Order(StringComparer.Ordinal).ToArray());
         Assert.Equal(
-            new[] { "DrainNatural", "ReleaseAndRecreate" },
-            Enum.GetNames<ZLinkSpotDrainPolicy>());
-        Assert.Equal(
             new[] { "DeadlineExceeded", "DrainingStatePublishFailed", "OwnerCleanupFailed", "TeardownFailed" },
             Enum.GetNames<ZLinkDrainForceReason>());
         AssertEnumValues<ZLinkMessageFlowOutcome>(

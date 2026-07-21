@@ -39,35 +39,46 @@ export class ZLinkSpotActivationRegistry {
   private readonly closing = new Map<string, ZLinkSpotCloseOperation>();
   private readonly failedClose = new Set<string>();
   private readonly emptyWaiters = new Set<() => void>();
+  private readonly meshEmptyWaiters = new Map<string, Set<() => void>>();
   private readonly lifecycleMetrics: ZLinkSpotLifecycleMetrics;
 
   constructor(metrics?: import('../diagnostics').ZLinkRuntimeMetrics) {
     this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(metrics);
   }
 
-  allocateSpotRid(): RoutingId {
+  allocateSpotRid(meshName: string): RoutingId {
     let spotRid: RoutingId;
     do {
       spotRid = `spot-${this.nextId}`;
       this.nextId += 1;
-    } while (this.activations.has(spotActivationKey(spotRid)));
+    } while (this.activations.has(spotActivationKey(meshName, spotRid)));
     return spotRid;
   }
 
-  resolve(spotRid: RoutingId): ZLinkSpotActivation | undefined {
-    const key = spotActivationKey(spotRid);
+  resolve(meshName: string, spotRid: RoutingId): ZLinkSpotActivation | undefined {
+    const key = spotActivationKey(meshName, spotRid);
     return this.closing.has(key) || this.failedClose.has(key) ? undefined : this.activations.get(key);
   }
 
-  has(spotRid: RoutingId): boolean {
-    const key = spotActivationKey(spotRid);
+  resolveUnique(spotRid: RoutingId): ZLinkSpotActivation | undefined {
+    const matches = [...this.activations.values()]
+      .filter((activation) =>
+        String(activation.spotRid) === String(spotRid)
+        && !this.closing.has(spotActivationKey(activation.meshName, activation.spotRid))
+        && !this.failedClose.has(spotActivationKey(activation.meshName, activation.spotRid)));
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  has(meshName: string, spotRid: RoutingId): boolean {
+    const key = spotActivationKey(meshName, spotRid);
     return !this.closing.has(key) && !this.failedClose.has(key) && this.activations.has(key);
   }
 
-  list(): readonly ZLinkSpotInfo[] {
+  list(meshName: string): readonly ZLinkSpotInfo[] {
     return [...this.activations.values()]
       .filter((activation) => {
-        const key = spotActivationKey(activation.spotRid);
+        if (activation.meshName !== meshName) return false;
+        const key = spotActivationKey(activation.meshName, activation.spotRid);
         return !this.closing.has(key) && !this.failedClose.has(key);
       })
       .map((activation) => String(activation.spotRid))
@@ -79,8 +90,8 @@ export class ZLinkSpotActivationRegistry {
     return [...this.activations.values()];
   }
 
-  closingOperation(spotRid: RoutingId): ZLinkSpotCloseOperation | undefined {
-    return this.closing.get(spotActivationKey(spotRid));
+  closingOperation(meshName: string, spotRid: RoutingId): ZLinkSpotCloseOperation | undefined {
+    return this.closing.get(spotActivationKey(meshName, spotRid));
   }
 
   whenEmpty(signal?: AbortSignal): Promise<void> {
@@ -100,8 +111,27 @@ export class ZLinkSpotActivationRegistry {
     });
   }
 
+  whenMeshEmpty(meshName: string, signal?: AbortSignal): Promise<void> {
+    if (!this.hasMeshWork(meshName)) return Promise.resolve();
+    if (signal?.aborted === true) return Promise.reject(createAbortError());
+    return new Promise<void>((resolve, reject) => {
+      const waiters = this.meshEmptyWaiters.get(meshName) ?? new Set<() => void>();
+      this.meshEmptyWaiters.set(meshName, waiters);
+      const complete = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
+        waiters.delete(complete);
+        reject(createAbortError());
+      };
+      waiters.add(complete);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+  }
+
   register(activation: ZLinkSpotActivation): void {
-    const key = spotActivationKey(activation.spotRid);
+    const key = spotActivationKey(activation.meshName, activation.spotRid);
     if (this.activations.has(key)) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotTypeMismatch,
@@ -113,11 +143,12 @@ export class ZLinkSpotActivationRegistry {
   }
 
   startClose(
+    meshName: string,
     spotRid: RoutingId,
     close: (activation: ZLinkSpotActivation) => Promise<void>,
     resourcesReleased: (activation: ZLinkSpotActivation) => boolean
   ): ZLinkSpotCloseOperation | undefined {
-    const key = spotActivationKey(spotRid);
+    const key = spotActivationKey(meshName, spotRid);
     const closing = this.closing.get(key);
     if (closing !== undefined) {
       return { ...closing, started: false };
@@ -142,6 +173,7 @@ export class ZLinkSpotActivationRegistry {
             this.failedClose.add(key);
           }
           this.resolveEmptyWaiters();
+          this.resolveMeshEmptyWaiters(meshName);
         }
       });
     Object.assign(operation, { activation, ready, started: true });
@@ -150,18 +182,19 @@ export class ZLinkSpotActivationRegistry {
   }
 
   getOrBegin(
+    meshName: string,
     spotType: Type<ZLinkSpot>,
     spotRid: RoutingId,
     create: () => Promise<ZLinkSpotCreateResult>
   ): ZLinkSpotActivationOperation {
-    const key = spotActivationKey(spotRid);
+    const key = spotActivationKey(meshName, spotRid);
     const closing = this.closing.get(key);
     if (closing !== undefined) {
       return {
         owner: false,
         ready: closing.ready
           .catch(() => undefined)
-          .then(() => this.getOrBegin(spotType, spotRid, create).ready)
+          .then(() => this.getOrBegin(meshName, spotType, spotRid, create).ready)
       };
     }
     if (this.failedClose.has(key)) {
@@ -195,6 +228,7 @@ export class ZLinkSpotActivationRegistry {
         if (this.pending.get(key) === pending) {
           this.pending.delete(key);
           this.resolveEmptyWaiters();
+          this.resolveMeshEmptyWaiters(meshName);
         }
       });
       return { owner: true, ready: tracked };
@@ -222,8 +256,22 @@ export class ZLinkSpotActivationRegistry {
     for (const resolve of this.emptyWaiters) resolve();
     this.emptyWaiters.clear();
   }
+
+  private hasMeshWork(meshName: string): boolean {
+    const prefix = `${meshName}\0`;
+    return [...this.activations.keys(), ...this.pending.keys(), ...this.closing.keys()]
+      .some((key) => key.startsWith(prefix));
+  }
+
+  private resolveMeshEmptyWaiters(meshName: string): void {
+    if (this.hasMeshWork(meshName)) return;
+    const waiters = this.meshEmptyWaiters.get(meshName);
+    if (waiters === undefined) return;
+    this.meshEmptyWaiters.delete(meshName);
+    for (const resolve of waiters) resolve();
+  }
 }
 
-function spotActivationKey(spotRid: RoutingId): string {
-  return String(spotRid);
+function spotActivationKey(meshName: string, spotRid: RoutingId): string {
+  return `${meshName}\0${String(spotRid)}`;
 }

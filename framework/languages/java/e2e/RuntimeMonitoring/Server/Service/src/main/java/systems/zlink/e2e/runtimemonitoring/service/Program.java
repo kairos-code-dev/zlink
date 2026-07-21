@@ -14,17 +14,21 @@ import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
+import systems.zlink.e2e.runtimemonitoring.service.handlers.MulticastGate;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
+import systems.zlink.e2e.runtimemonitoring.service.support.ObserverIsolationProbe;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
+import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
+import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -70,6 +74,12 @@ public final class Program {
         EvidenceState state,
         ObjectMapper json,
         systems.zlink.framework.channels.ZLinkChannelRuntimeOptions runtimeOptions,
+        systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions meshRuntimeOptions,
+        systems.zlink.framework.channels.ZLinkRouteClient routeClient,
+        ObjectProvider<systems.zlink.framework.spots.ZLinkSpotPublisherClient> publisher,
+        MulticastGate multicastGate,
+        ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime,
+        ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
         org.springframework.context.ConfigurableApplicationContext applicationContext,
         ServiceOptions config) {
@@ -77,6 +87,12 @@ public final class Program {
             state,
             json,
             runtimeOptions,
+            meshRuntimeOptions,
+            routeClient,
+            publisher,
+            multicastGate,
+            meshRuntime,
+            observerIsolation,
             spots,
             applicationContext,
             config.httpEndpoint());
@@ -111,10 +127,22 @@ public final class Program {
                         "HandshakeWorkReq");
             }
             if (config.enableSpot()) {
-                ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-                node.enableRouter(config.spotEndpoint())
+                ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
+                    .listen(config.meshEndpoint())
                     .setRoutingId(RoutingId.from(config.routingId() + "-spot"));
-                node.enablePubSub(config.spotPubEndpoint());
+                node.configureRouterSocket().setReceiveHighWaterMark(1);
+                node.configureSpotPublisher().setSendHighWaterMark(1);
+                node.configureSpotPublisher().setSendTimeout(Duration.ofMillis(10));
+                node.channelName(Contracts.SPOT_CHANNEL)
+                    .addRequestHandler(
+                        WorkReqHandler.class,
+                        Contracts.WorkReq.class,
+                        Contracts.WorkRes.class);
+                if (!config.meshPeerEndpoint().isBlank()) {
+                    node.peerConnections().connect(
+                        RoutingId.from("svc-a-spot"),
+                        config.meshPeerEndpoint());
+                }
                 node.addSpotFactory(MonitoringSpot.class);
                 node.addSpotFactory(TriggeredMonitoringSpot.class);
             }
@@ -132,15 +160,17 @@ public final class Program {
             if (config.enableHandshake()) {
                 options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             }
-            if (config.enableSpot()) {
-                options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
-            }
         };
     }
 
     @Bean
     WorkReqHandler workRequestHandler(EvidenceState state, ServiceOptions config) {
         return new WorkReqHandler(state, config.routingId());
+    }
+
+    @Bean
+    MulticastGate multicastGate() {
+        return new MulticastGate();
     }
 
     @Bean
@@ -163,7 +193,7 @@ public final class Program {
             }
             manager.getOrCreate(
                 MonitoringSpot.class,
-                RoutingId.from("monitoring-room"),
+                RoutingId.from("monitoring-room-" + config.routingId()),
                 ZLinkMessage.of("bootstrap"))
                 .whenComplete((ignoredResult, error) -> {
                     if (error != null) {
@@ -185,8 +215,63 @@ public final class Program {
     }
 
     @Bean
+    ApplicationRunner recordRouteMeshRuntimeEvents(
+        ObjectProvider<ZLinkRouteMeshRuntime> runtimeProvider,
+        EvidenceState state,
+        ServiceOptions config) {
+        return ignored -> {
+            if (!config.enableSpot()) {
+                return;
+            }
+            ZLinkRouteMeshRuntime runtime = runtimeProvider.getIfAvailable();
+            if (runtime == null) {
+                throw new IllegalStateException("RouteMesh runtime is required");
+            }
+            runtime.observe(Contracts.SPOT_MESH, 32).subscribe(
+                new java.util.concurrent.Flow.Subscriber<ZLinkMeshRuntimeEvent>() {
+                    @Override
+                    public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
+                        subscription.request(Long.MAX_VALUE);
+                    }
+
+                    @Override
+                    public void onNext(ZLinkMeshRuntimeEvent event) {
+                        state.record(
+                            "route-mesh-runtime",
+                            event.meshName(),
+                            event.identifier(),
+                            "sequence=" + event.sequence()
+                                + "|sourceRid=" + event.sourceRid().toHex()
+                                + "|peerRid=" + event.peerRid()
+                                    .map(RoutingId::toHex).orElse("")
+                                + "|channel=" + event.channelName().orElse("")
+                                + "|reason=" + event.reason().orElse(""));
+                    }
+
+                    @Override
+                    public void onError(Throwable error) {
+                        state.record(
+                            "route-mesh-runtime",
+                            Contracts.SPOT_MESH,
+                            "observer-error",
+                            error.getClass().getName() + ": " + error.getMessage());
+                    }
+
+                    @Override
+                    public void onComplete() {
+                    }
+                });
+        };
+    }
+
+    @Bean
     MonitoringEventHandlers.SocketRecorder socketRecorder(EvidenceState state) {
         return new MonitoringEventHandlers.SocketRecorder(state);
+    }
+
+    @Bean
+    ObserverIsolationProbe observerIsolationProbe() {
+        return new ObserverIsolationProbe();
     }
 
     @Bean

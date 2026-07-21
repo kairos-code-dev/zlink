@@ -14,17 +14,42 @@ export class ZLinkPostCommitActorLocation {
 
   constructor(private readonly options: ZLinkPostCommitActorLocationOptions) {}
 
-  joinedEventually(actorType: string, actorId: string, meshName: string, spotRid: RoutingId): void {
+  joinedEventually(
+    actorType: string,
+    actorId: string,
+    meshName: string,
+    spotRid: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): void {
     this.enqueue(actorId, () => this.options.lifecycle.notifyActorJoinedSpot(
       actorType,
       actorId,
       meshName,
-      spotRid
+      spotRid,
+      spotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
     ));
   }
 
-  leftEventually(actorType: string, actorId: string): void {
-    this.enqueue(actorId, () => this.options.lifecycle.notifyActorLeftSpot(actorType, actorId));
+  leftEventually(
+    actorType: string,
+    actorId: string,
+    entrySpotRid: RoutingId,
+    entrySpotGeneration: bigint,
+    membershipEpoch: bigint,
+    ownerNodeGeneration: bigint
+  ): void {
+    this.enqueue(actorId, () => this.options.lifecycle.notifyActorLeftSpot(
+      actorType,
+      actorId,
+      entrySpotRid,
+      entrySpotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
+    ));
   }
 
   private enqueue(actorId: string, operation: () => Promise<void>): void {

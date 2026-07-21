@@ -1,10 +1,24 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
-import { ZLinkMessageFlowLogMode, ZLinkSocketEventKind } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
-import { PlayerActor } from './Infrastructure/ZLink/Actors/player-actor';
+import {
+  BingoGameEndedNotificationHandler,
+  BingoGameStartedNotificationHandler,
+  BingoNumberDrawnNotificationHandler,
+  BingoRewardAnnouncedNotificationHandler,
+  PlayerJoinedNotificationHandler,
+  InitializePlayerActorHandler
+} from './Infrastructure/ZLink/Actors/player-actor';
+import {
+  LeaveFinishedBingoRoomHandler,
+  PendingBingoActorDestroyRegistry
+} from './Infrastructure/ZLink/Actors/player-actor-lifecycle-handlers';
 import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
-import { BingoEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot';
+import {
+  BingoEntrySpot,
+  DestroyBingoActorHandler
+} from './Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot';
 import { BingoRoomSpot } from './Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot';
 import {
   AllocateBingoRoomHandler,
@@ -18,6 +32,10 @@ import { StopObservingBingoEventsHandler } from './Infrastructure/ZLink/Spots/Bi
 import { SubmitBingoCardHandler } from './Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/submit-bingo-card-handler';
 import { BingoRoomTimerHandler } from './Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-room-timer-handler';
 import { BingoRewardAcquiredEventHandler } from './Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-reward-acquired-event-handler';
+import {
+  SubmitBingoCardAtSpotHandler,
+  VerifyStopObservingAtSpotHandler
+} from './Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/bingo-room-operation-handlers';
 import { RedisBingoMatchQueue } from './Infrastructure/ZLink/Matchmaking/redis-bingo-match-queue';
 import { BingoRoomAllocator } from './Application/RoomAllocation/bingo-room-allocator';
 import { BINGO_MATCH_QUEUE } from './Application/RoomAllocation/bingo-match-queue';
@@ -26,14 +44,10 @@ import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configur
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
-import {
-  PlayRouterReadinessHandler
-} from './Infrastructure/ZLink/Handlers/room-router-readiness-handler';
 import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 function createBingoPlayModule() {
   class BingoPlayModule {}
   const configuration = createBingoConfigurationModule([
-    'playEndpoint',
     'playSpotEndpoint',
     'playSpotPubSubEndpoint',
     'redisEndpoint',
@@ -52,11 +66,8 @@ function createBingoPlayModule() {
           builder.options({
             metrics: { meterProvider: bingoMeterProvider },
             monitoring: {
-              socket: [{
-                sourceName: `${SampleNames.playChannel}.server`,
-                events: [ZLinkSocketEventKind.ConnectionReady]
-              }],
-              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }]
+              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }],
+              locationPeer: [{ sourceName: SampleNames.roomLocationPeerMonitor }]
             }
           });
           builder.configureDispatch()
@@ -64,29 +75,21 @@ function createBingoPlayModule() {
             .traceLogFile(`${config.logDir}/flow-play.log`)
             .traceLabel('play');
           builder.addLocationStore(createBingoLocationStore(config));
-          Object.assign(builder.configureLocations(), bingoLocationOptions());
-          return builder
-          .codecs()
-            .use(bingoFrameworkProtobuf)
-          .addClientServerChannel(SampleNames.playChannel)
+          bingoLocationOptions(builder.configureLocations());
+          builder.codecs().use(bingoFrameworkProtobuf);
+          const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)
             .useAllocatedRoutingId(2, 'play')
             .setRoutingIdAllocationGroup('bingo.play')
-            .enableServer(config.playEndpoint)
-            .enableClient()
-            .addHandlerGroup('play')
-          .addClientServerChannel(SampleNames.apiChannel)
-            .enableClient()
-          .addActorTransferAdapter(PlayerActor, PlayerActorTransferAdapter)
-          .addSpotMesh(SampleNames.roomSpotNode)
-            .useAllocatedRoutingId(2, 'play')
-            .setRoutingIdAllocationGroup('bingo.play')
-            .enableRouter(config.playSpotEndpoint)
-            .enablePubSub(config.playSpotPubSubEndpoint)
+            .listen(config.playSpotEndpoint)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
             .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
-            .useDrainPolicy('DrainNatural')
-          .build();
+            .addActorTransferAdapter(SampleNames.playerActorType, PlayerActorTransferAdapter);
+          mesh.channelName(SampleNames.playChannel).addHandlerGroup('play');
+          mesh.channelName(SampleNames.apiChannel).setWeight(0);
+          mesh.channelName(SampleNames.roomSpotNode);
+          mesh.channelName(SampleNames.roomRewardChannel);
+          return builder.build();
         }
       })
     ],
@@ -103,15 +106,25 @@ function createBingoPlayModule() {
       EnsurePlayerActorHandler,
       PlayerActorFactory,
       PlayerActorTransferAdapter,
+      BingoGameEndedNotificationHandler,
+      BingoGameStartedNotificationHandler,
+      BingoNumberDrawnNotificationHandler,
+      BingoRewardAnnouncedNotificationHandler,
+      PlayerJoinedNotificationHandler,
+      InitializePlayerActorHandler,
+      LeaveFinishedBingoRoomHandler,
+      PendingBingoActorDestroyRegistry,
       BingoRoomAllocator,
       BingoEntrySpot,
+      DestroyBingoActorHandler,
       MatchBingoActorHandler,
       ObserveBingoEventsHandler,
       StopObservingBingoEventsHandler,
       SubmitBingoCardHandler,
       BingoRoomTimerHandler,
       BingoRewardAcquiredEventHandler,
-      PlayRouterReadinessHandler,
+      SubmitBingoCardAtSpotHandler,
+      VerifyStopObservingAtSpotHandler,
       RoomRouterReadinessHandler
     ]
   })(BingoPlayModule);

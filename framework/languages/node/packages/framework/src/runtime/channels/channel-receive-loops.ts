@@ -172,7 +172,7 @@ export class ZLinkSubscriberReceiveLoop {
 
   private async runLoop(signal?: AbortSignal): Promise<void> {
     while (!this.stopped && signal?.aborted !== true) {
-      if (!this.poller.wait(10)) {
+      if (!this.poller.wait(0)) {
         await waitReceiveLoopIdle();
         continue;
       }

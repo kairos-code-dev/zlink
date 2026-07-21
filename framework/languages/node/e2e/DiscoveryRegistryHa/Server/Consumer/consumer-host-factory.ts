@@ -46,7 +46,7 @@ function createConsumerModule(): Function {
               .traceLabel(options.traceLabel);
           builder.addLocationStore(createRedisLocationStore(options));
           Object.assign(builder.configureLocations(), storeFailureLocationOptions());
-          builder.addClientServerChannel(ChannelNames.profile).enableClient();
+          builder.addRouteMesh(ChannelNames.profile).peerConnections();
           return builder.build();
         }
       })

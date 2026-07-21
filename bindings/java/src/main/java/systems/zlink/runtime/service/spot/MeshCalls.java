@@ -19,6 +19,7 @@ import systems.zlink.runtime.nativeapi.ServiceInterop;
 import systems.zlink.runtime.nativeapi.ServiceLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -63,6 +64,25 @@ final class MeshCalls {
 
     static MemorySegment newOperationId(Arena arena) {
         return arena.allocate(ServiceLayouts.OPERATION_ID);
+    }
+
+    static MemorySegment metadata(Arena arena, byte[] metadata) {
+        Objects.requireNonNull(metadata, "metadata");
+        if (metadata.length == 0) {
+            return MemorySegment.NULL;
+        }
+        MemorySegment bytes = arena.allocate(metadata.length);
+        bytes.copyFrom(MemorySegment.ofArray(metadata));
+        MemorySegment view = arena.allocate(ServiceLayouts.MESH_METADATA_VIEW);
+        view.set(
+            ValueLayout.ADDRESS,
+            ServiceLayouts.off(ServiceLayouts.MESH_METADATA_VIEW, "data"),
+            bytes);
+        view.set(
+            ValueLayout.JAVA_LONG_UNALIGNED,
+            ServiceLayouts.off(ServiceLayouts.MESH_METADATA_VIEW, "size"),
+            metadata.length);
+        return view;
     }
 
     /** Verifies a submit result; on failure frees the native parts and throws. */

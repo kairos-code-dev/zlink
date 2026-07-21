@@ -1,9 +1,8 @@
 import type {
-  Type,
-  ZLinkRuntimeEventPublisher,
-  ZLinkSpot,
-  ZLinkSpotDrainPolicy
+  ActorRef,
+  ZLinkRuntimeEventPublisher
 } from '../../contracts';
+import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
   DefaultZLinkActorManager,
   ZLinkActorHandoffCoordinator
@@ -13,13 +12,17 @@ import {
   DefaultZLinkFanoutClient,
   DefaultZLinkSpotPublisherClient,
   type ZLinkChannelClientTransport,
+  type ZLinkRouteClientTransport,
   type ZLinkDispatchErrorSink,
   type ZLinkSpotPublisherClientTransport
 } from '../channels';
 import type { ZLinkDispatchErrorReporter } from '../channels';
-import type { ZLinkFrameworkRegistration } from '../configuration';
+import {
+  ZLinkConfigurationException,
+  type ZLinkFrameworkRegistration
+} from '../configuration';
 import type { ZLinkLocationLifecycle } from '../locations';
-import type { ZLinkBackendSpotNode } from '../backend';
+import type { ZLinkBackendMeshNode } from '../backend';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import type {
   ZLinkDetachedTaskRunner,
@@ -35,7 +38,7 @@ import type { ZLinkRuntimeAdmissionGate } from '../admission';
 export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly channelTransport: ZLinkChannelClientTransport;
-  readonly routeTransport: ZLinkSpotRoutedTransport;
+  readonly routeTransport: ZLinkRouteClientTransport & ZLinkSpotRoutedTransport;
   readonly spotPublisherTransport: ZLinkSpotPublisherClientTransport;
   readonly meshRouters: MeshRouterResolver;
   readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
@@ -58,14 +61,40 @@ export class ZLinkSpotRuntimeOptionsFactory {
   create(actorTransferRuntime: ZLinkActorTransferRuntime): Partial<ZLinkSpotManagerOptions> {
     return {
       nodeRid: undefined,
-      nodeRidProvider: () => this.primaryNode()?.routingId,
+      nodeRidProvider: (meshName) => this.meshNodeRoutingId(meshName),
+      nodeGenerationProvider: (meshName) =>
+        this.options.spotNodeRuntime()?.meshNode(meshName)?.status().lifecycleGeneration,
       entryNodeRid: undefined,
-      entryNodeRidProvider: () => this.primaryNode()?.routingId,
+      entryNodeRidProvider: () => this.primaryNodeRoutingId(),
       entrySpotCallbacks: {
-        onLeaveActor: (actor, signal) =>
-          this.options.spotNodeRuntime()?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve()
+        onLeaveActor: (actor, signal, actorRef, membershipEpoch) =>
+          this.options.spotNodeRuntime()?.notifyPrimaryEntrySpotActorLeft(
+            actor,
+            signal,
+            actorRef,
+            membershipEpoch
+          ) ?? Promise.resolve()
       },
-      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),
+      dispatchEntryActorPacket: (
+        actorId,
+        parts,
+        returnResponse,
+        remoteBoundSessionTarget,
+        fallbackActorRef
+      ) => {
+        const runtime = this.options.spotNodeRuntime();
+        if (runtime === undefined) {
+          throw new ZLinkConfigurationException('Entry Spot actor packet dispatch requires the MeshNode runtime.');
+        }
+        return runtime.dispatchEntryActorPacket(
+          actorId,
+          parts,
+          returnResponse,
+          remoteBoundSessionTarget,
+          fallbackActorRef
+        );
+      },
+      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.routeTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.options.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(
         this.options.registration,
@@ -73,45 +102,83 @@ export class ZLinkSpotRuntimeOptionsFactory {
       ),
       routedTransport: this.options.routeTransport,
       spotRouterChannelIdForMesh: this.options.meshRouters.spotRouterChannelIdByMesh(),
+      channelMeshNameForChannel: (channelName) => {
+        const matches = [...this.options.registration.spotNodes.entries()]
+          .filter(([, node]) => Object.prototype.hasOwnProperty.call(node.meshChannels ?? {}, channelName))
+          .map(([meshName]) => meshName);
+        return matches.length === 1 ? matches[0] : undefined;
+      },
       messageSerializers: this.options.registration.messageSerializers,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
-      locationMeshName: this.options.meshRouters.primarySpotMeshName(),
+      createNativeSpot: (meshName, spotRid) => {
+        const node = this.options.spotNodeRuntime()?.meshNode(meshName);
+        if (node === undefined) {
+          return undefined;
+        }
+        const result = node.getOrCreateSpot(BindingRoutingId.from(String(spotRid)));
+        return {
+          routingId: spotRid,
+          lifecycleGeneration: result.spot.status().lifecycleGeneration,
+          setSubscription: (channelName: string, topic: string) =>
+            result.spot.setSubscription(channelName, topic),
+          dispose: () => {
+            if (result.created) result.spot.close();
+          }
+        } as never;
+      },
+      nativeSpotNodeProvider: (meshName) =>
+        this.options.spotNodeRuntime()?.meshNode(meshName) as never,
       spotRouteResolver: this.options.createLocationSpotRouteResolver(),
-      createNativeSpot: (spotRid) => this.primaryNode()?.getOrCreateSpot(spotRid).spot,
-      nativeSpotNodeProvider: () => this.primaryNode(),
       actorResolver: (actorId) => {
         const state = this.options.actorManager()?.getState(actorId);
         return state?.isMoving === true ? undefined : state?.actor;
       },
+      actorLifecycleResolver: (actorId) =>
+        this.options.actorManager()?.getState(actorId)?.actor,
+      actorDispatchOwnerResolver: (actorId) => {
+        const state = this.options.actorManager()?.getState(actorId);
+        const actorRef = state?.nativeActorRef as ActorRef | undefined;
+        const localNodeRid = this.primaryNodeRoutingId();
+        if (
+          state?.actor === undefined
+          || state.spot === undefined
+          || state.remoteActorPacketTarget !== undefined
+          || actorRef === undefined
+          || localNodeRid === undefined
+          || String(actorRef.nodeRid) !== localNodeRid
+        ) {
+          return {};
+        }
+        return {
+          actorRef,
+          spotRid: state.spotRid
+        };
+      },
+      actorBindingGenerationObserver: (actorId, generation) =>
+        this.options.actorManager()?.getState(actorId)?.setBoundSessionBindingGeneration(generation),
       actorTransferRuntime,
       boundSessionRuntime: this.options.boundSessionRelay.boundSessions,
       actorHandoffRuntime: this.options.actorHandoff,
-      spotDrainPolicy: this.spotDrainPolicyResolver(),
       metrics: this.options.metrics,
       admission: this.options.admission,
       dispatchErrors: this.options.dispatchErrorReporter(this.options.runtimeOrPreStartErrorSink)
     };
   }
 
-  private primaryNode(): ZLinkBackendSpotNode | undefined {
-    return this.options.spotNodeRuntime()?.primaryNode;
+  private primaryNode(): ZLinkBackendMeshNode | undefined {
+    return this.options.spotNodeRuntime()?.primaryMeshNode;
   }
 
-  private spotDrainPolicyResolver(): (spotType: Type<ZLinkSpot>) => ZLinkSpotDrainPolicy {
-    const policies = new Map<Type<ZLinkSpot>, ZLinkSpotDrainPolicy[]>();
-    for (const node of this.options.registration.spotNodes.values()) {
-      for (const spotType of node.spotFactories ?? []) {
-        const registered = policies.get(spotType) ?? [];
-        registered.push(node.drainPolicy ?? 'DrainNatural');
-        policies.set(spotType, registered);
-      }
-    }
-    return (spotType) => {
-      const registered = policies.get(spotType);
-      if (registered === undefined || registered.includes('DrainNatural')) return 'DrainNatural';
-      return 'ReleaseAndRecreate';
-    };
+  private primaryNodeRoutingId(): string | undefined {
+    const node = this.primaryNode();
+    return node === undefined ? undefined : String(node.status().routingId);
   }
+
+  private meshNodeRoutingId(meshName: string): string | undefined {
+    const node = this.options.spotNodeRuntime()?.meshNode(meshName);
+    return node === undefined ? undefined : String(node.status().routingId);
+  }
+
 }

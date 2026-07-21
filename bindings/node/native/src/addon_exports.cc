@@ -151,6 +151,8 @@ void define_spot_exports (napi_env env, napi_value exports)
       // Publisher
       ZLINK_METHOD ("meshNodePublisherNew", mesh_node_publisher_new),
       ZLINK_METHOD ("meshNodePublisherPublish", mesh_node_publisher_publish),
+      ZLINK_METHOD ("meshNodePublisherPublishAsync", mesh_node_publisher_publish_async),
+      ZLINK_METHOD ("meshNodePublisherPublishCancel", mesh_node_publisher_publish_cancel),
       ZLINK_METHOD ("meshNodePublisherDestroy", mesh_node_publisher_destroy),
       // Pull dispatch
       ZLINK_METHOD ("meshNodeSetReadyHandler", mesh_node_set_ready_handler),

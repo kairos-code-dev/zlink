@@ -159,6 +159,8 @@ internal interface IZLinkBackendStreamSocket : IZLinkBackendSocket
 {
     void SetTlsServer(string certPath, string keyPath, bool requireClientCert);
 
+    void OnSendReady(Action handler);
+
     void OnFramedPacket(Action<RoutingId, Message, Message> handler);
 
     bool Send(

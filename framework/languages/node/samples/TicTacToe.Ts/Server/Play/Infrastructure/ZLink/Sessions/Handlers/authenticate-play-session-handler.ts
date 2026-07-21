@@ -27,9 +27,14 @@ class AuthenticatePlaySessionHandler {
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
     const request = payload.decode<AuthenticateReq>(Object as never);
     const authenticated = await this.api
-      .requestToChannel(SampleNames.apiChannel, authenticatePlayerReq(request.accessToken))
+      .requestToChannel(
+        SampleNames.playSpotNode,
+        SampleNames.apiChannel,
+        authenticatePlayerReq(request.accessToken)
+      )
       .submit<AuthenticatePlayerRes>();
     const actorRef = await this.actors.getOrCreate(
+      SampleNames.playSpotNode,
       authenticated.player.actorId,
       SampleNames.playerActorType,
       authenticated.player

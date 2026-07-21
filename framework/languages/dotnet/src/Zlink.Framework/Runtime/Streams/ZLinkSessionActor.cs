@@ -4,9 +4,12 @@ internal sealed class ZLinkSessionActor(
     ZLinkSessionContext context,
     ActorRef actorRef,
     RoutingId sessionRid,
-    string bindingToken)
+    string bindingToken,
+    bool remoteBindingConfirmed)
     : IZLinkSessionActor
 {
+    private int _awaitingLocationObservation = remoteBindingConfirmed ? 1 : 0;
+
     internal ZLinkSessionContext Context { get; } = context;
 
     internal RoutingId SessionRid { get; } = sessionRid;
@@ -16,7 +19,13 @@ internal sealed class ZLinkSessionActor(
 
     public ActorRef Ref { get; } = actorRef;
 
-    public ValueTask RelayAsync(
+    internal bool AwaitingLocationObservation =>
+        Volatile.Read(ref _awaitingLocationObservation) != 0;
+
+    internal void MarkLocationObserved() =>
+        Interlocked.Exchange(ref _awaitingLocationObservation, 0);
+
+    public ValueTask<ZLinkSubmitResult> RelayAsync(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default)
     {

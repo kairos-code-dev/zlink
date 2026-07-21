@@ -4,7 +4,6 @@ import { ZONEWORLD_CONFIG, createZoneWorldConfigurationModule } from '../Configu
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
 import { NodeIds, ZoneWorldNames } from '../../Shared/spec';
-import { PacketNames } from '../../Shared/contracts';
 import { NodeRegistry } from './node-registry';
 import {
   AnnounceWorldHandler,
@@ -19,9 +18,8 @@ import { OpsConsoleRegistry } from './ops-console-registry';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
 import {
   OPS_LOCATION_SOURCE,
-  OPS_REPORT_SOCKET_SOURCE,
   OpsLocationEventHandler,
-  OpsSocketEventHandler
+  OpsReportMeshEventHandler
 } from './ops-runtime-events';
 
 function createOpsModule() {
@@ -37,24 +35,28 @@ function createOpsModule() {
         if (ops === undefined) throw new Error('Ops configuration is required.');
         const builder = zlinkFramework();
         builder.addLocationStore(createZoneWorldLocationStore(config.shared));
-        Object.assign(builder.configureLocations(), zoneWorldLocationOptions());
+        zoneWorldLocationOptions(builder.configureLocations());
         builder.configureDispatch().messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly).traceLabel('ops');
         builder.addStreamNode(ZoneWorldNames.opsStreamNode)
           .bind(ops.streamEndpoint)
           .registerSession(OpsSessionFactory);
         builder.addFanoutChannel(ZoneWorldNames.broadcastChannel).enablePublisher(ops.broadcastEndpoint);
-        builder.addClientServerChannel(ZoneWorldNames.reportChannel)
-          .enableServer(ops.reportEndpoint)
-          .addSendHandler(PacketNames.reportNodeStatusMsg, ReportNodeStatusHandler)
-          .addSendHandler(PacketNames.reportSpotEventMsg, ReportSpotEventHandler);
+        const mesh = builder.addRouteMesh(ZoneWorldNames.zoneMesh)
+          .listen(ops.reportEndpoint)
+          .routingId('zoneworld-ops-report');
+        mesh.channelName(ZoneWorldNames.reportChannel).addHandlerGroup('ops');
+        mesh.channelName(ZoneWorldNames.zoneMesh).setWeight(0);
+        mesh.channelName(ZoneWorldNames.bridgeMesh).setWeight(0);
+        mesh.channelName(ZoneWorldNames.actorsChannel).setWeight(0);
         for (const nodeId of [NodeIds.west, NodeIds.east]) {
-          builder.addClientServerChannel(ZoneWorldNames.opsChannel(nodeId)).enableClient();
+          const channelName = ZoneWorldNames.opsChannel(nodeId);
+          mesh.channelName(channelName).setWeight(0);
         }
         return {
           ...builder.build(),
           monitoring: {
             locationRuntime: [{ sourceName: OPS_LOCATION_SOURCE, intervalMs: 100 }],
-            socket: [{ sourceName: OPS_REPORT_SOCKET_SOURCE }]
+            spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 100 }]
           }
         };
       }
@@ -63,7 +65,7 @@ function createOpsModule() {
       NodeRegistry,
       MaintenanceStore,
       OpsLocationEventHandler,
-      OpsSocketEventHandler,
+      OpsReportMeshEventHandler,
       OpsConsoleRegistry,
       OpsSessionFactory,
       AnnounceWorldHandler,

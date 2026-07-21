@@ -91,22 +91,13 @@ internal static class ProviderEndpoints
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(reply);
         });
-        app.MapPost("/profile/manual", async (
-            ProfileReq request,
-            IZLinkRouteClient channel,
-            CancellationToken cancellationToken) =>
-        {
-            var reply = await channel.RequestToChannel("profile.manual", "profile.manual", request)
-                .Timeout(TimeSpan.FromSeconds(5))
-                .Async<ProfileRes>(cancellationToken);
-            return Results.Ok(reply);
-        });
-        app.MapPost("/profile/command", (
+        app.MapPost("/profile/command", async (
             ProfileMsg command,
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            channel.SendToChannel("profile", "profile", command).TrySubmit();
+            await channel.SendToChannel("profile", "profile", command)
+                .SubmitAsync(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/route/request", async (

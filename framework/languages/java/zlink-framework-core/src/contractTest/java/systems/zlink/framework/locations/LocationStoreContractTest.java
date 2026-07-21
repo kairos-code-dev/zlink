@@ -296,6 +296,7 @@ final class LocationStoreContractTest {
         return new ZLinkSpotLocation(
             "play",
             spotRid,
+            1,
             "game",
             NODE_A,
             ZLinkSpotKind.USER,

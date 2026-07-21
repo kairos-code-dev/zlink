@@ -4,7 +4,7 @@ import type { ZLinkActorContext } from './ZLinkActorContext';
 
 export type ZLinkActorJoinResult<TReply = unknown> =
   | { readonly status: 'accepted'; readonly actor: ActorRef; readonly reply: TReply }
-  | { readonly status: 'rejected'; readonly reply: TReply };
+  | { readonly status: 'rejected'; readonly rejection: TReply };
 
 export interface ZLinkActorJoinCall<TSelf> {
   timeout(timeoutMs: number): TSelf;

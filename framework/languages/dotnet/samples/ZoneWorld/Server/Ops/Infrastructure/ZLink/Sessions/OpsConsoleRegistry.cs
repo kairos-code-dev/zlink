@@ -23,7 +23,9 @@ public sealed class OpsConsoleRegistry
     /// same gate also protects node broadcasts: a session added before a state change receives
     /// that change, while a session added afterwards receives the cached result.
     /// </summary>
-    public void Add(IZLinkSessionContext context)
+    public async ValueTask AddAsync(
+        IZLinkSessionContext context,
+        CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -36,7 +38,7 @@ public sealed class OpsConsoleRegistry
             }
 
             foreach (var node in snapshot)
-                Send(context, node);
+                await SendAsync(context, node, cancellationToken);
 
             lock (_nodeGate)
             {
@@ -54,13 +56,15 @@ public sealed class OpsConsoleRegistry
     /// not wait for an operator to be at the screen, and an alert nobody ever sees is an alert
     /// that, to the operator, did not happen.
     /// </summary>
-    public void ReplayAlerts(IZLinkSessionContext context)
+    public async ValueTask ReplayAlertsAsync(
+        IZLinkSessionContext context,
+        CancellationToken cancellationToken)
     {
         NodeAlertNotify[] backlog;
         lock (_recentAlerts) backlog = _recentAlerts.ToArray();
 
         foreach (var alert in backlog)
-            Send(context, alert);
+            await SendAsync(context, alert, cancellationToken);
     }
 
     public void RecordAlert(NodeAlertNotify alert)
@@ -76,7 +80,9 @@ public sealed class OpsConsoleRegistry
         ((ICollection<KeyValuePair<string, IZLinkSessionContext>>)_consoles).Remove(
             new KeyValuePair<string, IZLinkSessionContext>(context.SessionId, context));
 
-    public void Broadcast(NodeStatusNotify message)
+    public async ValueTask BroadcastAsync(
+        NodeStatusNotify message,
+        CancellationToken cancellationToken)
     {
         IZLinkSessionContext[] consoles;
         lock (_nodeGate)
@@ -86,24 +92,27 @@ public sealed class OpsConsoleRegistry
             consoles = _consoles.Values.ToArray();
         }
 
-        SendAll(consoles, message);
+        await SendAllAsync(consoles, message, cancellationToken);
     }
 
-    public void Broadcast<TMessage>(TMessage message)
+    public ValueTask BroadcastAsync<TMessage>(
+        TMessage message,
+        CancellationToken cancellationToken)
     {
-        SendAll(_consoles.Values.ToArray(), message);
+        return SendAllAsync(_consoles.Values.ToArray(), message, cancellationToken);
     }
 
-    private void SendAll<TMessage>(
+    private async ValueTask SendAllAsync<TMessage>(
         IReadOnlyList<IZLinkSessionContext> consoles,
-        TMessage message)
+        TMessage message,
+        CancellationToken cancellationToken)
     {
         List<Exception>? failures = null;
         foreach (var console in consoles)
         {
             try
             {
-                Send(console, message);
+                await SendAsync(console, message, cancellationToken);
             }
             catch (Exception error)
             {
@@ -116,6 +125,9 @@ public sealed class OpsConsoleRegistry
             throw new AggregateException("One or more ops console pushes failed.", failures);
     }
 
-    private static void Send<TMessage>(IZLinkSessionContext context, TMessage message) =>
-        context.Client.Send(message).Submit();
+    private static async ValueTask SendAsync<TMessage>(
+        IZLinkSessionContext context,
+        TMessage message,
+        CancellationToken cancellationToken) =>
+        await context.Client.Send(message).SubmitAsync(cancellationToken);
 }

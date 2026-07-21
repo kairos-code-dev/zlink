@@ -35,6 +35,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private int _streamMetricActive;
     private int _terminalSucceeded = 1;
     private int _suppressTerminalCallbacks;
+    private int _serverDrainClosingSent;
 
     public static async ValueTask<ZLinkStreamSessionRuntime> CreateAsync(
         IServiceProvider services,
@@ -43,7 +44,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Type? headerSessionType,
         Action<string> removeSession,
         string transport,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        string? actorDispatchMeshName = null,
+        ZLinkAsyncSubmitter? sendSubmitter = null)
     {
         AsyncServiceScope scope = default;
         var scopeCreated = false;
@@ -58,7 +61,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 routingId,
                 removeSession,
                 transport,
-                timeProvider);
+                timeProvider,
+                actorDispatchMeshName,
+                sendSubmitter);
             session.Initialize(headerSessionType);
             return session;
         }
@@ -80,7 +85,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         RoutingId routingId,
         Action<string> removeSession,
         string transport,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        string? actorDispatchMeshName,
+        ZLinkAsyncSubmitter? sendSubmitter)
     {
         _scope = scope;
         _socket = socket;
@@ -100,7 +107,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             Stream,
             handlers,
             CloseAsync,
-            CloseByProxyAsync);
+            CloseByProxyAsync,
+            actorDispatchMeshName,
+            sendSubmitter);
         Handlers = handlers;
         _serial = new ZLinkStreamSessionSerialExecutor(_runtime.ExecutionOwner, _runtime.ErrorSink);
     }
@@ -309,19 +318,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         var transportClosed = false;
         try
         {
-            try
-            {
-                var payload = ZLinkStreamSessionClosingCodec.EncodeServerDrain();
-                ZLinkStreamFrameWriter.Write(
-                    Stream,
-                    ZLinkStreamSessionClosingCodec.CreateHeader(),
-                    payload.AsMemory(),
-                    "Could not submit the session-closing control packet.");
-            }
-            catch
-            {
-                MarkTerminalFailed();
-            }
+            SubmitServerDrainClosing();
 
             transportClosed = await TryCloseTransportAsync().ConfigureAwait(false);
         }
@@ -329,6 +326,35 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         {
             _transportClosed.TrySetResult(transportClosed);
             await CompleteSessionAsync(null, true).ConfigureAwait(false);
+        }
+    }
+
+    internal void RequestForceStopForDrain()
+    {
+        SubmitServerDrainClosing();
+        ClaimCloseForDisposal();
+        Volatile.Write(ref _suppressTerminalCallbacks, 1);
+        RequestTerminalCallbackStop();
+        _serial.ForceStop();
+        MarkTerminalFailed();
+        _completion.TrySetResult(false);
+    }
+
+    private void SubmitServerDrainClosing()
+    {
+        if (Interlocked.Exchange(ref _serverDrainClosingSent, 1) != 0) return;
+        try
+        {
+            var payload = ZLinkStreamSessionClosingCodec.EncodeServerDrain();
+            ZLinkStreamFrameWriter.Write(
+                Stream,
+                ZLinkStreamSessionClosingCodec.CreateHeader(),
+                payload.AsMemory(),
+                "Could not submit the session-closing control packet.");
+        }
+        catch
+        {
+            MarkTerminalFailed();
         }
     }
 

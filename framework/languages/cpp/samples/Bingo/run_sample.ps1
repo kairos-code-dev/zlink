@@ -180,7 +180,7 @@ $Status = 1
 try {
     Invoke-Checked $CTestBin @(
         "--test-dir", $BuildDir,
-        "-R", "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay",
+        "-R", "test_cpp_framework_sample_parity|zlink_cpp_framework_mesh_node_vertical_test|test_cpp_framework_actor_gateway",
         "--output-on-failure"
     )
 

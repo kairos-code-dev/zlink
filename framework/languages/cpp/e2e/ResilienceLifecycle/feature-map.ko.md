@@ -21,7 +21,7 @@
 | `RL-B4` | 구현 | `rl_b4_runtime_drain_scenario.hpp`가 provider B의 `/admin/drain`, `/admin/restore`, `/admin/weight/wait` 경로를 사용해 신규 request가 A로만 가는지, drained provider evidence가 늘지 않는지 검증한다. restore 뒤 이름 있는 첫 request를 재시도 없이 한 번 보내 즉시 성공을 단언하고, 이어서 provider B의 부하 복귀를 확인한다. |
 | `RL-B5` | 구현 | `rl_b5_drain_inflight_scenario.hpp`가 Consumer HTTP slow request를 열고 실제 slow provider를 evidence file로 찾은 뒤 해당 provider를 `/admin/drain`한다. 신규 request가 healthy provider로 가는지, in-flight reply가 drained provider에서 끝나는지, drained provider evidence가 새 request를 받지 않는지, restore 뒤 evidence가 회복되는지 `.NET`처럼 검증한다. |
 | `RL-B6` | 구현 | provider B의 gray fault mode를 켠 뒤 gray request의 `RequestFailed`와 healthy provider 성공을 함께 관찰하고, fault mode 해제 뒤 follow-up request가 정상화되는지 검증한다. |
-| `RL-C1` | 구현 | `rl_c1_client_host_lifecycle_scenario.hpp`가 Consumer HTTP `/profile/request/new-client`로 `.NET`처럼 요청마다 새 client host를 만들고, 반복 request와 cleanup follow-up marker가 provider evidence에 남는지 검증한다. |
+| `RL-C1` | 구현 | `rl_c1_client_host_lifecycle_scenario.hpp`가 Consumer HTTP `/profile/request/new-client`로 요청마다 새 client host를 만들고, 반복 request와 cleanup follow-up marker가 provider evidence에 남는지 검증한다. 이어서 같은 MeshName과 RID를 유지한 RouteMesh host를 12번 순차 재생성한다. 각 host는 `tcp://127.0.0.1:0`에서 새 실제 endpoint와 generation을 얻고, Redis reciprocal auto-connect로 기존 `api-a`를 ready peer로 확인한 뒤 공개 targeted request를 완료한다. 최신 일반 실행은 12회 요청과 전체 cleanup이 통과했다(`logs/20260720-022259-1836671`). |
 | `RL-C2` | 구현 | provider B의 `/admin/crash`를 호출한 뒤 Consumer `/topology/wait`가 `api-b` Ready 0개로 수렴하는지 확인하고, Consumer HTTP `/profile/request/new-client`가 정상 provider `api-a`로 수렴하는지 확인한다. provider B 재기동 뒤 일반 request가 `api-b` evidence까지 회복되는지도 검증한다. |
 | `RL-C3` | 구현 | `rl_c3_node_pause_recovery_scenario.hpp`가 provider B `/shutdown`, Consumer HTTP `/profile/request`의 `api-a` 수렴, provider B 재기동 뒤 Consumer `/topology/wait` Ready 1, recovered request evidence를 `.NET`처럼 검증한다. |
 | `RL-C4` | 구현 | `rl_c4_location_store_outage_scenario.hpp`가 Redis location store outage 전 Consumer `/profile/request/manual`을 호출하고, runner가 Redis container를 pause한 상태에서도 Consumer role의 established manual channel request가 성공하고 provider evidence가 남는지 검증한다. Redis 복구와 provider A 재기동 뒤 Consumer `/profile/request/new-client`가 `rl-c4-after-restart` request와 provider evidence를 성공시키는지 확인한다. |
@@ -40,6 +40,6 @@
   runner가 loopback container로 시작하며 외부 Redis endpoint를 공유하지 않는다.
 - Consumer host는 Redis location store를 조회해 topology endpoint를 제공한다. Profile request/reply/send
   DTO의 marker가 비어 있으면 value 또는 command id를 evidence marker로 사용한다.
-- RL-D4는 client scenario와 raw envelope unit gate를 함께 사용한다. RL-D5는 공통 계약의 지속 부하
+- 위 RL-D4 검증은 client scenario와 raw envelope unit gate를 함께 사용한다. RL-D5는 공통 계약의 지속 부하
   harness가 마련될 때까지 `deferred`다. `/profile/request/new-client`는 요청마다 transient client host를
   만들고 별도 `storm-...-flow.log`를 남긴다.

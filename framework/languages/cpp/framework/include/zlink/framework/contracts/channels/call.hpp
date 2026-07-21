@@ -5,6 +5,9 @@
 #include <zlink/framework/contracts/codecs/serializer.hpp>
 
 #include <chrono>
+#include <atomic>
+#include <cstdint>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -28,11 +31,17 @@ namespace detail
 class stream_write_call_state_t;
 class stream_header_t;
 
-inline void submit_one_way_task (task_t<void> task)
+class submit_once_t
 {
-    auto observed = std::make_shared<task_t<void>> (std::move (task));
-    detail::observe_task_completion (*observed, [observed] (const result_t<void> &) {});
-}
+  public:
+    bool try_claim () noexcept
+    {
+        return !_claimed.exchange (true, std::memory_order_acq_rel);
+    }
+
+  private:
+    std::atomic_bool _claimed{false};
+};
 } // namespace detail
 
 template <typename TReply> class request_call_t
@@ -235,12 +244,88 @@ class channel_request_call_t
 };
 
 
+enum class submit_status_t
+{
+    submitted,
+    backpressured,
+    timed_out,
+    target_not_found,
+    route_not_connected,
+    shutdown
+};
+
+struct submit_result_t
+{
+    submit_status_t status = submit_status_t::submitted;
+};
+
+struct publish_result_t;
+
+namespace detail
+{
+inline result_t<submit_result_t> one_way_submit_result (const result_t<void> &result)
+{
+    if (result) {
+        return result_t<submit_result_t>::success ({submit_status_t::submitted});
+    }
+
+    const auto *error = result.error ();
+    if (error == nullptr) {
+        return result_t<submit_result_t>::failure (
+          framework_error_kind_t::request_failed, "one-way submit failed");
+    }
+    switch (boundary_state (*error)) {
+        case boundary_error_t::timed_out:
+            return result_t<submit_result_t>::success ({submit_status_t::timed_out});
+        case boundary_error_t::shutdown:
+        case boundary_error_t::closed:
+        case boundary_error_t::cancelled:
+            return result_t<submit_result_t>::success ({submit_status_t::shutdown});
+        case boundary_error_t::disconnected:
+            return result_t<submit_result_t>::success ({submit_status_t::route_not_connected});
+        case boundary_error_t::none:
+        case boundary_error_t::stale_generation:
+            break;
+    }
+    switch (error->kind ()) {
+        case framework_error_kind_t::worker_queue_full:
+            return result_t<submit_result_t>::success ({submit_status_t::backpressured});
+        case framework_error_kind_t::route_not_connected:
+            return result_t<submit_result_t>::success ({submit_status_t::route_not_connected});
+        case framework_error_kind_t::actor_route_not_found:
+        case framework_error_kind_t::spot_route_not_found:
+        case framework_error_kind_t::request_target_not_found:
+            return result_t<submit_result_t>::success ({submit_status_t::target_not_found});
+        default:
+            return result_access_t::failure<submit_result_t> (*error);
+    }
+}
+
+task_t<submit_result_t>
+submit_one_way_task (std::function<result_t<void> ()> submit);
+
+task_t<publish_result_t>
+submit_logical_multicast_task (std::function<publish_result_t ()> submit);
+
+inline task_t<submit_result_t> map_one_way_task (task_t<void> task)
+{
+    auto source = std::make_shared<task_completion_source_t<submit_result_t>> ();
+    auto output = source->task ();
+    auto observed = std::make_shared<task_t<void>> (std::move (task));
+    detail::observe_task_completion (
+      *observed, [source, observed] (const result_t<void> &result) {
+          source->complete (one_way_submit_result (result));
+      });
+    return output;
+}
+} // namespace detail
+
 class send_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<result_t<void> (
-      const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
+    using submit_fn_t =
+      std::function<result_t<void> (const std::string &, const metadata_map_t &)>;
 
     explicit send_call_t (result_t<void> result) : _immediate (std::move (result)) {}
 
@@ -249,19 +334,31 @@ class send_call_t
     {
     }
 
-    send_call_t &timeout (std::chrono::milliseconds timeout)
-    {
-        _timeout = timeout;
-        return *this;
-    }
-
     send_call_t &metadata (std::string key, std::string value)
     {
         _metadata[std::move (key)] = std::move (value);
         return *this;
     }
 
-    void submit () { submit_now ().value (); }
+    task_t<submit_result_t> submit ()
+    {
+        if (!_submission->try_claim ()) {
+            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "one-way call has already been submitted"));
+        }
+        if (_immediate) {
+            return task_t<submit_result_t> (detail::one_way_submit_result (*_immediate));
+        }
+        if (!_submit) {
+            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "send call is not bound to a channel client"));
+        }
+        return detail::submit_one_way_task (
+          [packet_name = _packet_name, metadata = _metadata,
+           submit = _submit] () { return submit (packet_name, metadata); });
+    }
 
   private:
     result_t<void> submit_now ()
@@ -273,14 +370,81 @@ class send_call_t
             return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                             "send call is not bound to a channel client");
         }
-        return _submit (_packet_name, _timeout, _metadata);
+        return _submit (_packet_name, _metadata);
     }
 
     std::optional<result_t<void>> _immediate;
     std::string _packet_name;
-    std::chrono::milliseconds _timeout{0};
     metadata_map_t _metadata;
     submit_fn_t _submit;
+    std::shared_ptr<detail::submit_once_t> _submission =
+      std::make_shared<detail::submit_once_t> ();
+};
+
+struct logical_multicast_detail_t
+{
+    std::uint64_t snapshot_remote_node_count = 0;
+    std::uint64_t admitted_remote_node_count = 0;
+    std::uint64_t dropped_remote_node_count = 0;
+    std::uint64_t unreachable_remote_node_count = 0;
+    std::uint64_t snapshot_local_spot_count = 0;
+    std::uint64_t admitted_local_spot_count = 0;
+    std::uint64_t dropped_local_spot_count = 0;
+};
+
+struct publish_result_t
+{
+    submit_status_t status = submit_status_t::submitted;
+    logical_multicast_detail_t detail;
+};
+
+class publish_call_t
+{
+  public:
+    using metadata_map_t = std::map<std::string, std::string>;
+    using submit_fn_t = std::function<publish_result_t (const metadata_map_t &)>;
+
+    explicit publish_call_t (publish_result_t result) :
+        _immediate (std::move (result))
+    {
+    }
+
+    explicit publish_call_t (submit_fn_t submit) : _submit (std::move (submit)) {}
+
+    publish_call_t &metadata (std::string key, std::string value)
+    {
+        _metadata[std::move (key)] = std::move (value);
+        return *this;
+    }
+
+    task_t<publish_result_t> submit ()
+    {
+        if (!_submission->try_claim ()) {
+            return task_t<publish_result_t> (result_t<publish_result_t>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "logical multicast call has already been submitted"));
+        }
+        if (_immediate) {
+            return task_t<publish_result_t> (
+              result_t<publish_result_t>::success (*_immediate));
+        }
+        return detail::submit_logical_multicast_task (
+          [submit = _submit, metadata = _metadata] () mutable {
+              if (!submit) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_protocol_error,
+                    "logical multicast call is not bound to a publisher");
+              }
+              return submit (metadata);
+          });
+    }
+
+  private:
+    std::optional<publish_result_t> _immediate;
+    metadata_map_t _metadata;
+    submit_fn_t _submit;
+    std::shared_ptr<detail::submit_once_t> _submission =
+      std::make_shared<detail::submit_once_t> ();
 };
 
 class bound_session_send_call_t
@@ -288,35 +452,27 @@ class bound_session_send_call_t
   public:
     explicit bound_session_send_call_t (send_call_t call) : _call (std::move (call)) {}
 
-    bound_session_send_call_t &timeout (std::chrono::milliseconds timeout)
-    {
-        _call.timeout (timeout);
-        return *this;
-    }
-
     bound_session_send_call_t &metadata (std::string key, std::string value)
     {
         _call.metadata (std::move (key), std::move (value));
         return *this;
     }
 
-    void submit () { _call.submit (); }
+    task_t<submit_result_t> submit () { return _call.submit (); }
 
   private:
     send_call_t _call;
 };
 
-class relay_call_t : private detail::call_facade_t<relay_call_t, void>
+class fanout_publish_call_t
 {
-  private:
-    using base_t = detail::call_facade_t<relay_call_t, void>;
-
   public:
-    explicit relay_call_t (result_t<void> result) : base_t (std::move (result)) {}
+    explicit fanout_publish_call_t (send_call_t call) : _call (std::move (call)) {}
 
-    using base_t::timeout;
+    task_t<submit_result_t> submit () { return _call.submit (); }
 
-    void submit () { detail::submit_one_way_task (base_t::async ()); }
+  private:
+    send_call_t _call;
 };
 
 class stream_write_call_t
@@ -334,7 +490,7 @@ class stream_write_call_t
 
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &compress ();
-    void submit ();
+    task_t<submit_result_t> submit ();
 
   private:
     using submit_fn_t =
@@ -367,7 +523,7 @@ class stream_send_call_t
     stream_send_call_t &metadata (std::string key, std::string value);
     stream_send_call_t &packet_name (std::string packet_name);
     stream_send_call_t &compress ();
-    void submit ();
+    task_t<submit_result_t> submit ();
 
   private:
     using submit_fn_t =

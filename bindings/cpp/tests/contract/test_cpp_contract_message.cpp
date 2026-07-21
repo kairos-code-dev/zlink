@@ -129,7 +129,6 @@ void test_diagnostic_surface_uses_canonical_names ()
     zlink::message_t msg = zlink::message_t::from ("diagnostic");
     assert (msg.valid ());
     assert (msg.ref_count () >= 1);
-    assert (!msg.property ("missing").has_value ());
 }
 
 void test_routing_id_hex_and_display_policy ()

@@ -8,6 +8,10 @@ import { AgentAvailabilityDirectory } from './Application/ConversationAssignment
 import { SupportConversationAllocator } from './Application/ConversationAssignment/support-conversation-allocator';
 import { SupportActorDirectory } from './Infrastructure/ZLink/Actors/support-actor-directory';
 import { SupportUserActorFactory } from './Infrastructure/ZLink/Actors/support-user-actor-factory';
+import {
+  DeliverSupportNotificationHandler,
+  JoinSupportConversationHandler
+} from './Infrastructure/ZLink/Actors/support-user-actor';
 import { AllocateConversationHandler } from './Infrastructure/ZLink/Handlers/allocate-conversation-handler';
 import { EnsureAgentConversationHandler } from './Infrastructure/ZLink/Handlers/ensure-agent-conversation-handler';
 import { EnsureSupportUserActorHandler } from './Infrastructure/ZLink/Handlers/ensure-support-user-actor-handler';
@@ -18,6 +22,12 @@ import {
   SendChatMessageHandler,
   SetTypingHandler
 } from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-actor-handlers';
+import {
+  CloseConversationAtSpotHandler,
+  JoinConversationAtSpotHandler,
+  SendChatMessageAtSpotHandler,
+  SetTypingAtSpotHandler
+} from './Infrastructure/ZLink/Spots/ConversationSpot/Handlers/conversation-operation-handlers';
 import { ConversationSpot } from './Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot';
 import { SupportNotificationPublisher } from './Infrastructure/ZLink/Spots/ConversationSpot/Notifications/support-notification-publisher';
 import {
@@ -31,7 +41,6 @@ import type { SupportChatServerConfig } from '../Configuration/sample-config';
 function createSupportChatSupportModule() {
   class SupportChatSupportModule {}
   const configuration = createSupportChatConfigurationModule([
-    'supportChannelEndpoint',
     'supportSpotEndpoint',
     'redisEndpoint',
     'redisKeyPrefix',
@@ -51,19 +60,16 @@ function createSupportChatSupportModule() {
             .traceLogFile(`${config.logDir}/flow-support.log`)
             .traceLabel('support');
           builder.addLocationStore(createSupportChatLocationStore(config));
-          Object.assign(builder.configureLocations(), supportChatLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.apiChannel)
-              .enableClient()
-            .addClientServerChannel(SampleNames.supportChannel)
-              .enableServer(config.supportChannelEndpoint)
-              .addHandlerGroup('support')
-            .addSpotMesh(SampleNames.conversationSpotMesh)
-              .enableRouter(config.supportSpotEndpoint, 'support-node')
+          supportChatLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
+              .listen(config.supportSpotEndpoint).routingId('support-node')
               .addEntrySpot(SupportEntrySpot)
               .addSpotFactory(ConversationSpot)
-              .actorFactory('support.user', SupportUserActorFactory)
-            .build();
+              .actorFactory('support.user', SupportUserActorFactory);
+          mesh.channelName(SampleNames.apiChannel).setWeight(0);
+          mesh.channelName(SampleNames.supportChannel).addHandlerGroup('support');
+          mesh.channelName(SampleNames.conversationSpotMesh);
+          return builder.build();
         }
       })
     ],
@@ -73,6 +79,8 @@ function createSupportChatSupportModule() {
       SupportConversationAllocator,
       SupportActorDirectory,
       SupportUserActorFactory,
+      DeliverSupportNotificationHandler,
+      JoinSupportConversationHandler,
       ConversationSpot,
       SupportEntrySpot,
       EnsureSupportUserActorHandler,
@@ -84,6 +92,10 @@ function createSupportChatSupportModule() {
       SendChatMessageHandler,
       SetTypingHandler,
       CloseConversationHandler,
+      CloseConversationAtSpotHandler,
+      JoinConversationAtSpotHandler,
+      SendChatMessageAtSpotHandler,
+      SetTypingAtSpotHandler,
       ConversationIdleTimerHandler,
       SupportNotificationPublisher
     ]

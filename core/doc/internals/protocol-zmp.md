@@ -59,7 +59,7 @@ decode them on the dedicated receive path.
 
 Request-reply envelope parts are not ZMP `CONTROL` frames; they
 are ordinary multipart data frames (with the `MORE` flag). The ZMP `CONTROL` bit
-is used only for protocol control frames such as HELLO/READY/heartbeat, and the
+is used only for protocol control frames such as HELLO/READY, and the
 decoder rejects a frame that sets both `CONTROL` and `MORE`.
 
 ## 3. Handshake
@@ -123,11 +123,10 @@ sequenceDiagram
     D->>D: match pending[seq=N] → invoke reply_handler
 ```
 
-## 5. Boundary Between ZMP and Mesh Wire
+## 5. ZMP Scope
 
-Service messages between MeshNodes do not use ZMP; they use the mesh wire
-envelope (`'Z' 'M'` magic) described in
-[Service Layer Internal Design §5](services-internals.md).
+ZMP defines only raw-socket handshake, request-reply, and connection control
+frames. It contains no application service topology or stateful-object protocol.
 
 ## 6. Encode and Decode Flow
 

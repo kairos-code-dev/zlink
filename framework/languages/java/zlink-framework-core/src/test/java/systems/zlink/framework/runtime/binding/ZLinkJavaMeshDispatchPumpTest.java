@@ -6,10 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
@@ -22,7 +25,10 @@ class ZLinkJavaMeshDispatchPumpTest {
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
         try (ZLinkJavaMeshDispatchPump pump =
-                 new ZLinkJavaMeshDispatchPump(source, ignored -> drained.countDown(), executor)) {
+                 new ZLinkJavaMeshDispatchPump(source, ignored -> {
+                     drained.countDown();
+                     return CompletableFuture.completedFuture(null);
+                 }, executor)) {
             assertEquals(3, source.readyHandler.applyAsInt(3));
             assertTrue(drained.await(2, TimeUnit.SECONDS));
             assertEquals(List.of(3, 3), source.domains);
@@ -30,6 +36,34 @@ class ZLinkJavaMeshDispatchPumpTest {
         }
 
         assertTrue(source.closed);
+    }
+
+    @Test
+    void callbacksQueuedBeforeThePumpRunsAreCoalescedByDomain() throws Exception {
+        RecordingSource source = new RecordingSource();
+        source.first = false;
+        CountDownLatch releaseExecutor = new CountDownLatch(1);
+        CountDownLatch drained = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.execute(() -> {
+            try {
+                releaseExecutor.await();
+            } catch (InterruptedException interruption) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        try (ZLinkJavaMeshDispatchPump pump =
+                 new ZLinkJavaMeshDispatchPump(source, ignored -> {
+                     drained.countDown();
+                     return CompletableFuture.completedFuture(null);
+                 }, executor)) {
+            assertEquals(1, source.readyHandler.applyAsInt(1));
+            assertEquals(2, source.readyHandler.applyAsInt(2));
+            releaseExecutor.countDown();
+            assertTrue(drained.await(2, TimeUnit.SECONDS));
+            assertEquals(List.of(3), source.domains);
+        }
     }
 
     private static final class RecordingSource implements ZLinkJavaMeshDispatchPump.Source {
@@ -48,12 +82,13 @@ class ZLinkJavaMeshDispatchPumpTest {
         @Override
         public synchronized boolean drain(
             int readyDomains,
-            Consumer<ZLinkMeshDispatchRecord> receiver) {
+            Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
+            IntConsumer released) {
             activeDrains++;
             maxConcurrentDrains = Math.max(maxConcurrentDrains, activeDrains);
             try {
                 domains.add(readyDomains);
-                receiver.accept(null);
+                receiver.apply(null);
                 if (first) {
                     first = false;
                     return true;

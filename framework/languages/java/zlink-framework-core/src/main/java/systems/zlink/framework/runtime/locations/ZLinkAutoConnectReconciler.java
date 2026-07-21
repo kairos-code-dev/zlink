@@ -121,7 +121,10 @@ final class ZLinkAutoConnectReconciler {
         if (storeFailed) {
             storeFailed = false;
             storeFailureStartedNanos = -1;
-            recoveryDeferUntilNanos = nanoTime.getAsLong() + options.heartbeatInterval().toNanos();
+            recoveryDeferUntilNanos = nanoTime.getAsLong()
+                + Math.max(
+                    options.heartbeatInterval().toNanos(),
+                    options.ownerLeaseTtl().toNanos());
         }
 
         Map<String, ZLinkAutoConnectPlanner.Target> desired =

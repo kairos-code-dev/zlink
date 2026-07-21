@@ -12,7 +12,8 @@ internal sealed class ZLinkRouteHandlerInvoker(
         RoutingId sourceRid,
         ZLinkEnvelopeHeader header,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkMessageMetadata? metadata = null)
     {
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
@@ -23,7 +24,8 @@ internal sealed class ZLinkRouteHandlerInvoker(
             sourceRid,
             header.MessageName!,
             header.ContentType,
-            cancellationToken);
+            cancellationToken,
+            metadata);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,
@@ -44,7 +46,8 @@ internal sealed class ZLinkRouteHandlerInvoker(
         RoutingId sourceRid,
         ZLinkEnvelopeHeader header,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkMessageMetadata? metadata = null)
     {
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
@@ -55,7 +58,8 @@ internal sealed class ZLinkRouteHandlerInvoker(
             sourceRid,
             header.MessageName!,
             header.ContentType,
-            cancellationToken);
+            cancellationToken,
+            metadata);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,

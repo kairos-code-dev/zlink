@@ -1,13 +1,15 @@
 import {
-  zlinkDefaultLocationOptions,
+  zlinkRuntimeDefaultLocationOptions,
+  type ZLinkLocationOptionOverrides
+} from '../../contracts/Locations/Options';
+import {
   type ZLinkOwnerLeaseStore,
   type ZLinkOwnerLease
 } from '../../contracts/Locations';
-import type { ZLinkLocationOptions } from '../../contracts/Locations';
 
 export interface ZLinkOwnerLeaseTrackerOptions {
   readonly store: ZLinkOwnerLeaseStore;
-  readonly options?: ZLinkLocationOptions;
+  readonly options?: ZLinkLocationOptionOverrides;
   readonly monotonicNowMs?: () => number;
 }
 
@@ -19,7 +21,7 @@ interface OwnerLeaseTrackerSnapshot {
 
 export class ZLinkOwnerLeaseTracker {
   private readonly store: ZLinkOwnerLeaseStore;
-  private readonly options: Required<ZLinkLocationOptions>;
+  private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly monotonicNowMs: () => number;
   private snapshot?: OwnerLeaseTrackerSnapshot;
   private refresh?: Promise<OwnerLeaseTrackerSnapshot>;
@@ -28,15 +30,19 @@ export class ZLinkOwnerLeaseTracker {
 
   constructor(options: ZLinkOwnerLeaseTrackerOptions) {
     this.store = options.store;
-    this.options = { ...zlinkDefaultLocationOptions, ...options.options };
+    this.options = { ...zlinkRuntimeDefaultLocationOptions, ...options.options };
     this.monotonicNowMs = options.monotonicNowMs ?? (() => performance.now());
   }
 
   async isOwnerLive(ownerId: string, signal?: AbortSignal): Promise<boolean> {
-    const snapshot = await this.getSnapshot(signal);
-    const lease = snapshot.leases.get(ownerId);
-    if (lease === undefined) {
-      return false;
+    let snapshot = await this.getSnapshot(signal);
+    let lease = snapshot.leases.get(ownerId);
+    if (lease === undefined || this.remainingLeaseMs(lease, snapshot) <= 0) {
+      snapshot = await this.refreshAfterOwnerMissOrExpiry(snapshot, signal);
+      lease = snapshot.leases.get(ownerId);
+      if (lease === undefined) {
+        return false;
+      }
     }
     return this.remainingLeaseMs(lease, snapshot) > 0;
   }
@@ -61,6 +67,26 @@ export class ZLinkOwnerLeaseTracker {
       return current;
     }
 
+    if (this.refresh !== undefined) {
+      return this.refresh;
+    }
+
+    this.refresh = this.refreshSnapshot(signal);
+    try {
+      return await this.refresh;
+    } finally {
+      this.refresh = undefined;
+    }
+  }
+
+  private async refreshAfterOwnerMissOrExpiry(
+    observed: OwnerLeaseTrackerSnapshot,
+    signal?: AbortSignal
+  ): Promise<OwnerLeaseTrackerSnapshot> {
+    const current = this.snapshot;
+    if (current !== undefined && current !== observed) {
+      return current;
+    }
     if (this.refresh !== undefined) {
       return this.refresh;
     }

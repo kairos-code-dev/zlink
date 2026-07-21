@@ -274,6 +274,7 @@ struct receive_record_t
         source_node_rid (zlink::detail::unchecked_empty_routing_id ()),
         source_spot_rid (zlink::detail::unchecked_empty_routing_id ()),
         source_actor (),
+        source_binding_generation (0),
         operation_id (),
         operation_kind (operation_kind_t::none),
         reply_token (),
@@ -292,6 +293,7 @@ struct receive_record_t
     routing_id_t source_node_rid;
     routing_id_t source_spot_rid;
     actor_ref_t source_actor;
+    uint64_t source_binding_generation;
     operation_id_t operation_id;
     operation_kind_t operation_kind;
     reply_token_t reply_token;

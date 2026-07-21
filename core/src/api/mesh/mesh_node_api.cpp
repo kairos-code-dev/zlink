@@ -4,6 +4,7 @@
 
 #include "api/mesh/mesh_c_internal.hpp"
 #include "services/mesh/mesh_wire.hpp"
+#include "services/mesh/mesh_wire_internal.hpp"
 #include "api/mesh/mesh_api_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 
@@ -15,9 +16,24 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <thread>
 
 using namespace zlink::mesh;
+
+#ifdef ZLINK_BUILD_TESTS
+namespace
+{
+std::atomic<int> g_register_operation_alloc_fault (0);
+}
+
+extern "C" void
+zlink_test_set_mesh_register_operation_alloc_fault (int enabled_)
+{
+    g_register_operation_alloc_fault.store (
+      enabled_ != 0 ? 1 : 0, std::memory_order_release);
+}
+#endif
 
 namespace zlink
 {
@@ -73,10 +89,21 @@ register_operation (mesh_node_t *node_,
 {
     std::lock_guard<std::mutex> lock (node_->mutex);
 #ifdef ZLINK_BUILD_TESTS
+    if (g_register_operation_alloc_fault.exchange (
+          0, std::memory_order_acq_rel)
+        != 0)
+        throw std::bad_alloc ();
     test_maybe_throw_alloc ();
 #endif
     pending_operation_t op;
     memset (&op.join_actor, 0, sizeof (op.join_actor));
+    op.stream_bind_validation = false;
+    op.stream_bind_service = NULL;
+    op.instance_remote_route = false;
+    op.instance_remote_route_committed = false;
+    op.instance_target_connection_id = 0;
+    memset (&op.stream_bind_actor, 0, sizeof (op.stream_bind_actor));
+    op.stream_bind_generation = 0;
     op.completion = std::make_shared<completion_reservation_t> ();
     std::unique_ptr<queued_record_t> completion_record (new queued_record_t ());
     op.completion->records.push_back (std::move (completion_record));
@@ -84,6 +111,10 @@ register_operation (mesh_node_t *node_,
     op.id.low = node_->next_operation_serial++;
     op.kind = kind_;
     op.requester = requester_;
+    op.completion->ready_owner = requester_;
+    op.completion->ready_node.insert (std::make_pair (
+      op.completion->ready_owner,
+      static_cast<int> (domain_infrastructure)));
     node_->operations.insert (std::make_pair (op.id.low, op));
     return op.id;
 }
@@ -161,6 +192,216 @@ bool operation_submission_t::add_reply_route (reply_route_t route_,
         errno = ENOMEM;
         return false;
     }
+}
+
+bool operation_submission_t::set_instance_remote_route (
+  const rid_bytes_t &target_node_rid_)
+{
+    if (!_active || !_valid || target_node_rid_.empty ()) {
+        errno = EINVAL;
+        return false;
+    }
+    try {
+        std::lock_guard<std::mutex> lock (_node->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator operation =
+          _node->operations.find (_operation_id.low);
+        if (operation == _node->operations.end ()) {
+            errno = ESTALE;
+            return false;
+        }
+        operation->second.instance_target_node_rid = target_node_rid_;
+        operation->second.instance_remote_route = true;
+        return true;
+    }
+    catch (const std::bad_alloc &) {
+        _valid = false;
+        errno = ENOMEM;
+        return false;
+    }
+}
+
+bool begin_remote_route_flight (mesh_node_t *node_)
+{
+    std::lock_guard<std::mutex> lock (node_->peer_connection_mutex);
+    if (node_->remote_route_flights == std::numeric_limits<size_t>::max ()) {
+        errno = EOVERFLOW;
+        return false;
+    }
+    ++node_->remote_route_flights;
+    return true;
+}
+
+namespace
+{
+bool finish_remote_route_flight_locked (
+  mesh_node_t *node_, const rid_bytes_t &rid_, uint64_t connection_id_)
+{
+    remote_route_key_t key;
+    key.rid.size = static_cast<uint8_t> (rid_.size ());
+    if (!rid_.empty ())
+        memcpy (key.rid.data, rid_.data (), rid_.size ());
+    key.connection_id = connection_id_;
+    const bool disconnected = connection_id_ == 0
+                              || node_->remote_route_disconnect_overflow
+                              || node_->remote_route_disconnects.find (key)
+                                   != node_->remote_route_disconnects.end ();
+    zlink_assert (node_->remote_route_flights > 0);
+    --node_->remote_route_flights;
+    if (node_->remote_route_flights == 0) {
+        node_->remote_route_disconnects.clear ();
+        node_->remote_route_disconnect_overflow = false;
+    }
+    return disconnected;
+}
+}
+
+void cancel_remote_route_flight (mesh_node_t *node_)
+{
+    std::lock_guard<std::mutex> lock (node_->peer_connection_mutex);
+    zlink_assert (node_->remote_route_flights > 0);
+    --node_->remote_route_flights;
+    if (node_->remote_route_flights == 0) {
+        node_->remote_route_disconnects.clear ();
+        node_->remote_route_disconnect_overflow = false;
+    }
+}
+
+bool validate_remote_route_flight (mesh_node_t *node_,
+                                   const rid_bytes_t &target_rid_,
+                                   uint64_t target_generation_,
+                                   uint64_t *connection_id_out_)
+{
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
+    std::lock_guard<std::mutex> connection_lock (
+      node_->peer_connection_mutex);
+    std::lock_guard<std::mutex> lock (node_->mutex);
+    const std::map<rid_bytes_t, peer_transport_t>::const_iterator current =
+      node_->current_peer_transports.find (target_rid_);
+    if (current == node_->current_peer_transports.end ()) {
+        errno = ENOTCONN;
+        return false;
+    }
+    for (size_t i = 0; i < node_->peers.size (); ++i) {
+        const peer_state_t &peer = node_->peers[i];
+        if (peer.rid == target_rid_
+            && peer.lifecycle_generation == target_generation_
+            && peer.state == ZLINK_MESH_PEER_ADMITTED
+            && peer.transport.matches (current->second.connection_id)) {
+            if (connection_id_out_)
+                *connection_id_out_ = current->second.connection_id;
+            return true;
+        }
+    }
+    errno = ENOTCONN;
+    return false;
+}
+
+bool commit_remote_operation_route (
+  mesh_node_t *node_, const zlink_mesh_operation_id_t &operation_id_,
+  uint64_t connection_id_)
+{
+    bool found = false;
+    bool disconnected = false;
+    std::unique_lock<std::mutex> connection_lock (
+      node_->peer_connection_mutex);
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator operation =
+          node_->operations.find (operation_id_.low);
+        if (operation != node_->operations.end ()
+            && operation->second.id.high == operation_id_.high
+            && operation->second.instance_remote_route) {
+            pending_operation_t &pending = operation->second;
+            pending.instance_target_connection_id = connection_id_;
+            pending.instance_remote_route_committed = true;
+            disconnected = finish_remote_route_flight_locked (
+              node_, pending.instance_target_node_rid, connection_id_);
+            found = true;
+        } else {
+            //  A timeout may consume the operation while the send is in
+            //  progress. The flight still has to release its tombstones.
+            zlink_assert (node_->remote_route_flights > 0);
+            --node_->remote_route_flights;
+            if (node_->remote_route_flights == 0) {
+                node_->remote_route_disconnects.clear ();
+                node_->remote_route_disconnect_overflow = false;
+            }
+        }
+    }
+    connection_lock.unlock ();
+    if (found && disconnected)
+        (void) complete_pending_operation_by_id (
+          node_, operation_id_, ZLINK_REQUEST_NOT_CONNECTED, ENOTCONN);
+    return found;
+}
+
+bool prepare_remote_reply_route (mesh_node_t *node_,
+                                 uint64_t reply_serial_,
+                                 const rid_bytes_t &target_rid_)
+{
+    try {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator route =
+          node_->reply_routes.find (reply_serial_);
+        if (route == node_->reply_routes.end () || route->second.consumed) {
+            errno = ESTALE;
+            return false;
+        }
+        route->second.instance_downstream_rid = target_rid_;
+        route->second.instance_downstream_connection_id = 0;
+        route->second.instance_downstream_route = false;
+        return true;
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return false;
+    }
+}
+
+bool commit_remote_reply_route (mesh_node_t *node_,
+                                uint64_t reply_serial_,
+                                uint64_t connection_id_)
+{
+    bool found = false;
+    bool disconnected = false;
+    std::unique_lock<std::mutex> connection_lock (
+      node_->peer_connection_mutex);
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator route =
+          node_->reply_routes.find (reply_serial_);
+        if (route != node_->reply_routes.end () && !route->second.consumed) {
+            route->second.instance_downstream_connection_id = connection_id_;
+            route->second.instance_downstream_route = true;
+            disconnected = finish_remote_route_flight_locked (
+              node_, route->second.instance_downstream_rid, connection_id_);
+            found = true;
+        } else {
+            zlink_assert (node_->remote_route_flights > 0);
+            --node_->remote_route_flights;
+            if (node_->remote_route_flights == 0) {
+                node_->remote_route_disconnects.clear ();
+                node_->remote_route_disconnect_overflow = false;
+            }
+        }
+    }
+    connection_lock.unlock ();
+    if (found && disconnected)
+        (void) force_reply_via_route (
+          node_, reply_serial_, ZLINK_REQUEST_NOT_CONNECTED, ENOTCONN);
+    return found;
+}
+
+void operation_submission_t::commit_instance_remote_route (
+  uint64_t connection_id_)
+{
+    if (!_active || !_valid || _committed)
+        return;
+    _timeout->commit ();
+    (void) commit_remote_operation_route (
+      _node, _operation_id, connection_id_);
+    _committed = true;
 }
 
 void operation_submission_t::commit ()
@@ -372,7 +613,7 @@ zlink_config_result_t zlink_mesh_node_start (void *mesh_node_)
             errno = EBUSY;
             return ZLINK_CONFIG_INVALID_STATE;
         }
-        if (node->routing_id.empty () || node->bind_endpoint.empty () || node->channels.empty ()) {
+        if (node->routing_id.empty () || node->bind_endpoint.empty ()) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_STATE;
         }
@@ -428,6 +669,27 @@ extern "C" void zlink_test_mesh_request_bookkeeping (void *node_,
         *operations_out_ = node->operations.size ();
     if (reply_routes_out_)
         *reply_routes_out_ = node->reply_routes.size ();
+}
+
+extern "C" size_t zlink_test_mesh_remote_route_flights (void *node_)
+{
+    mesh_node_pin_t node_pin (node_);
+    mesh_node_t *node = node_pin.get ();
+    if (!node)
+        return 0;
+    std::lock_guard<std::mutex> lock (node->peer_connection_mutex);
+    return node->remote_route_flights;
+}
+
+extern "C" int
+zlink_test_mesh_remote_route_disconnect_overflow_observed (void *node_)
+{
+    mesh_node_pin_t node_pin (node_);
+    mesh_node_t *node = node_pin.get ();
+    if (!node)
+        return 0;
+    std::lock_guard<std::mutex> lock (node->peer_connection_mutex);
+    return node->remote_route_disconnect_overflow ? 1 : 0;
 }
 #endif
 
@@ -492,7 +754,27 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
                 active_claims = true;
         }
         const bool operations_pending = !node->operations.empty ();
-        if (!active_claims && !operations_pending) {
+        bool instance_pending = !node->instance_tokens.empty ();
+        for (std::map<std::string, instance_activation_state_t>::iterator it =
+               node->instance_activations.begin ();
+             !instance_pending && it != node->instance_activations.end ();
+             ++it) {
+            if (it->second.state == ZLINK_SPOT_ACTIVATION_ACTIVATING
+                || it->second.pending_messages != 0) {
+                instance_pending = true;
+                break;
+            }
+            const owner_id_t owner =
+              spot_owner (it->second.spot_rid, it->second.spot_generation);
+            std::map<owner_id_t, owner_state_t>::iterator owner_it =
+              node->owners.find (owner);
+            if (owner_it != node->owners.end ()
+                && (owner_it->second.domains[domain_application].pending_messages
+                      != 0
+                    || owner_it->second.timer_turn_active))
+                instance_pending = true;
+        }
+        if (!active_claims && !operations_pending && !instance_pending) {
             drained = true;
             break;
         }
@@ -503,52 +785,71 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
     }
 
     if (!drained) {
-        //  Revoke outstanding claims: release stays safe, recv fails.
-        std::vector<zlink_mesh_monitor_event_t> revoked_events;
-        for (std::map<owner_id_t, owner_state_t>::iterator it = node->owners.begin ();
-             it != node->owners.end (); ++it) {
-            for (int d = 0; d < 2; ++d) {
-                if (it->second.domains[d].claimed) {
-                    it->second.domains[d].revoked = true;
-                    zlink_mesh_monitor_event_t event;
-                    memset (&event, 0, sizeof (event));
-                    event.kind = ZLINK_MESH_MONITOR_CLAIM_REVOKED;
-                    event.mesh_lifecycle_generation = node->lifecycle_generation;
-                    event.owner_kind =
-                      static_cast<zlink_mesh_owner_kind_t> (it->second.id.kind);
-                    event.spot_rid = it->second.spot_rid;
-                    event.actor = it->second.actor;
-                    revoked_events.push_back (event);
-                }
-            }
-        }
-        //  Detach every outstanding operation into its exactly-once ESHUTDOWN
-        //  terminal completion: operations without a timeout must not outlive
-        //  the shutdown deadline. A late reply still consumes its token and is
-        //  discarded (the same rule as a requester timeout).
-        std::vector<pending_operation_t> detached;
-        detached.reserve (node->operations.size ());
-        for (std::unordered_map<uint64_t, pending_operation_t>::iterator it =
-               node->operations.begin ();
-             it != node->operations.end (); ++it)
-            detached.push_back (it->second);
+        //  Accepted activations run until the drain deadline. Only the
+        //  deadline-first branch seals them and completes their requests.
+        lock.unlock ();
+        terminate_instance_activations (
+          node, ZLINK_REQUEST_TERMINATED, ESHUTDOWN);
+        lock.lock ();
         //  shutdown_active stays set until this thread is completely done
         //  with the node: it is the flag a concurrent destroy checks, so it
         //  must cover the unlocked emit/completion tail below, not just the
         //  drain wait.
-        lock.unlock ();
-        for (size_t i = 0; i < revoked_events.size (); ++i)
-            emit_monitor_event (node, revoked_events[i]);
-        for (size_t i = 0; i < detached.size (); ++i)
-            (void) complete_pending_operation (
-              node, detached[i], ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL, NULL);
-        lock.lock ();
+        while (true) {
+            bool found = false;
+            zlink_mesh_monitor_event_t event;
+            memset (&event, 0, sizeof (event));
+            for (std::map<owner_id_t, owner_state_t>::iterator it =
+                   node->owners.begin ();
+                 !found && it != node->owners.end (); ++it) {
+                for (int d = 0; d < 2; ++d) {
+                    if (!it->second.domains[d].claimed
+                        || it->second.domains[d].revoked)
+                        continue;
+                    it->second.domains[d].revoked = true;
+                    event.kind = ZLINK_MESH_MONITOR_CLAIM_REVOKED;
+                    event.mesh_lifecycle_generation =
+                      node->lifecycle_generation;
+                    event.owner_kind =
+                      static_cast<zlink_mesh_owner_kind_t> (
+                        it->second.id.kind);
+                    event.spot_rid = it->second.spot_rid;
+                    event.actor = it->second.actor;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                break;
+            lock.unlock ();
+            emit_monitor_event (node, event);
+            lock.lock ();
+        }
+
+        //  Complete each operation by its fixed-size identity. This force
+        //  path must remain available when allocation has already failed.
+        while (!node->operations.empty ()) {
+            const std::shared_ptr<completion_reservation_t> completion =
+              node->operations.begin ()->second.completion;
+            if (completion)
+                completion->committing = false;
+            const zlink_mesh_operation_id_t operation_id =
+              node->operations.begin ()->second.id;
+            lock.unlock ();
+            (void) complete_pending_operation_by_id (
+              node, operation_id, ZLINK_REQUEST_TERMINATED, ESHUTDOWN);
+            lock.lock ();
+        }
         node->shutdown_active = false;
         lock.unlock ();
         errno = ETIMEDOUT;
         return ZLINK_REQUEST_TIMED_OUT;
     }
 
+    lock.unlock ();
+    terminate_instance_activations (
+      node, ZLINK_REQUEST_TERMINATED, ESHUTDOWN);
+    lock.lock ();
     node->state = ZLINK_MESH_NODE_STOPPED;
     node->last_changed_ms = now_ms ();
     lock.unlock ();
@@ -802,7 +1103,9 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
     }
     const rid_bytes_t rid = rid_bytes (*peer_rid_);
     bool closed = false;
+    bool same_rid = false;
     bool inbound = false;
+    uint64_t connection_id = 0;
     std::string endpoint;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
@@ -812,14 +1115,14 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
                 continue;
             if (peer.rid != rid)
                 continue;
-            if (peer.lifecycle_generation != lifecycle_generation_) {
-                errno = ESTALE;
-                return ZLINK_CONNECT_CONFLICT;
-            }
+            same_rid = true;
+            if (peer.lifecycle_generation != lifecycle_generation_)
+                continue;
             peer.state = ZLINK_MESH_PEER_CLOSED;
             peer.last_changed_ms = now_ms ();
             inbound = peer.inbound;
             endpoint = peer.endpoint;
+            connection_id = peer.transport.connection_id;
             recompute_readiness_locked (node);
             closed = true;
         }
@@ -830,22 +1133,34 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
             disconnect_rc = wire_disconnect_endpoint (node, endpoint);
         else
             disconnect_rc = wire_disconnect_peer (node, rid);
-        if (disconnect_rc != 0 && errno != ENOENT && errno != ENOTCONN)
-            return ZLINK_CONNECT_INTERNAL_ERROR;
+        const int disconnect_errno = disconnect_rc == 0 ? 0 : errno;
+        const bool disconnect_failed =
+          disconnect_rc != 0 && disconnect_errno != ENOENT
+          && disconnect_errno != ENOTCONN;
 
         //  Monitor callbacks are outside the peer transition critical section
         //  so normal peer API re-entry cannot deadlock.
         connection_lock.unlock ();
+        //  Public disconnect has already made the peer unavailable even when
+        //  the asynchronous socket monitor has not delivered transport-down
+        //  yet. Apply the exact physical lifetime now; a later monitor event
+        //  is idempotent because terminal completion consumes the operation.
+        if (connection_id != 0)
+            handle_peer_down (node, rid, connection_id);
         zlink_mesh_monitor_event_t event;
         memset (&event, 0, sizeof (event));
         event.kind = ZLINK_MESH_MONITOR_PEER_CLOSED;
         event.peer_rid = *peer_rid_;
         event.peer_lifecycle_generation = lifecycle_generation_;
         emit_monitor_event (node, event);
+        if (disconnect_failed) {
+            errno = disconnect_errno;
+            return ZLINK_CONNECT_INTERNAL_ERROR;
+        }
         return ZLINK_CONNECT_OK;
     }
-    errno = ENOENT;
-    return ZLINK_CONNECT_NOT_FOUND;
+    errno = same_rid ? ESTALE : ENOENT;
+    return same_rid ? ZLINK_CONNECT_CONFLICT : ZLINK_CONNECT_NOT_FOUND;
 }
 
 //  --- options -----------------------------------------------------------------
@@ -894,7 +1209,10 @@ zlink_config_result_t zlink_set_mesh_node_option (void *mesh_node_,
             return ZLINK_CONFIG_OK;
         }
         case ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET:
-        case ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET: {
+        case ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_MESSAGE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_BYTE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_TIMEOUT_MS: {
             if (!optval_ || optvallen_ != sizeof (uint64_t)) {
                 errno = EMSGSIZE;
                 return ZLINK_CONFIG_INVALID_ARGUMENT;
@@ -902,8 +1220,14 @@ zlink_config_result_t zlink_set_mesh_node_option (void *mesh_node_,
             const uint64_t value = *static_cast<const uint64_t *> (optval_);
             if (option_ == ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET)
                 node->mailbox_message_budget = value;
-            else
+            else if (option_ == ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET)
                 node->mailbox_byte_budget = value;
+            else if (option_ == ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_MESSAGE_BUDGET)
+                node->instance_activation_message_budget = value;
+            else if (option_ == ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_BYTE_BUDGET)
+                node->instance_activation_byte_budget = value;
+            else
+                node->instance_activation_timeout_ms = value;
             return ZLINK_CONFIG_OK;
         }
         default:
@@ -943,15 +1267,27 @@ zlink_config_result_t zlink_get_mesh_node_option (void *mesh_node_,
             return ZLINK_CONFIG_OK;
         }
         case ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET:
-        case ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET: {
+        case ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_MESSAGE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_BYTE_BUDGET:
+        case ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_TIMEOUT_MS: {
             if (*optvallen_ < sizeof (uint64_t)) {
                 *optvallen_ = sizeof (uint64_t);
                 errno = ENOBUFS;
                 return ZLINK_CONFIG_BUFFER_TOO_SMALL;
             }
-            *static_cast<uint64_t *> (optval_) =
-              option_ == ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET ? node->mailbox_message_budget
-                                                                    : node->mailbox_byte_budget;
+            uint64_t value = 0;
+            if (option_ == ZLINK_MESH_NODE_OPT_MAILBOX_MESSAGE_BUDGET)
+                value = node->mailbox_message_budget;
+            else if (option_ == ZLINK_MESH_NODE_OPT_MAILBOX_BYTE_BUDGET)
+                value = node->mailbox_byte_budget;
+            else if (option_ == ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_MESSAGE_BUDGET)
+                value = node->instance_activation_message_budget;
+            else if (option_ == ZLINK_MESH_NODE_OPT_INSTANCE_ACTIVATION_BYTE_BUDGET)
+                value = node->instance_activation_byte_budget;
+            else
+                value = node->instance_activation_timeout_ms;
+            *static_cast<uint64_t *> (optval_) = value;
             *optvallen_ = sizeof (uint64_t);
             return ZLINK_CONFIG_OK;
         }
@@ -1003,10 +1339,9 @@ zlink_config_result_t zlink_mesh_node_status (void *mesh_node_, zlink_mesh_node_
         out.pending_infrastructure_messages += it->second.domains[1].pending_messages;
         out.pending_bytes += it->second.domains[0].pending_bytes + it->second.domains[1].pending_bytes;
     }
-    if (node->monitor) {
-        out.multicast_submitted = node->monitor->counters.multicast_messages;
-        out.multicast_dropped_targets = node->monitor->counters.multicast_dropped_targets;
-    }
+    out.multicast_submitted = node->monitor_counters.multicast_messages;
+    out.multicast_dropped_targets =
+      node->monitor_counters.multicast_dropped_targets;
     out.last_error = node->last_error;
     out.last_changed_ms = node->last_changed_ms;
     *status_out_ = out;
@@ -1243,6 +1578,10 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
         errno = EFAULT;
         return ZLINK_CLOSE_INVALID_HANDLE;
     }
+    if (!facade->caller_owned) {
+        errno = EFAULT;
+        return ZLINK_CLOSE_INVALID_HANDLE;
+    }
     mesh_node_t *node = facade->node;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
@@ -1267,8 +1606,16 @@ zlink_config_result_t zlink_spot_status (void *spot_, zlink_spot_status_t *statu
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
     }
-    if (check_versioned (status_out_) != 0)
+    if (!status_out_
+        || (status_out_->version != 1 && status_out_->version != 2)
+        || (status_out_->version == 1
+              && status_out_->struct_size
+                   < offsetof (zlink_spot_status_t, activation_state))
+        || (status_out_->version == 2
+              && status_out_->struct_size < sizeof (zlink_spot_status_t))) {
+        errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
     mesh_node_t *node = facade->node;
     std::lock_guard<std::mutex> lock (node->mutex);
     const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
@@ -1278,7 +1625,11 @@ zlink_config_result_t zlink_spot_status (void *spot_, zlink_spot_status_t *statu
         return ZLINK_CONFIG_INVALID_STATE;
     }
     zlink_spot_status_t out;
-    init_versioned (&out);
+    memset (&out, 0, sizeof (out));
+    out.struct_size = status_out_->version == 1
+                        ? offsetof (zlink_spot_status_t, activation_state)
+                        : sizeof (out);
+    out.version = status_out_->version;
     out.spot_rid = rid_value (it->second.rid);
     out.spot_kind = it->second.kind;
     out.lifecycle_generation = it->second.generation;
@@ -1290,11 +1641,21 @@ zlink_config_result_t zlink_spot_status (void *spot_, zlink_spot_status_t *statu
         out.pending_bytes =
           owner_it->second.domains[0].pending_bytes + owner_it->second.domains[1].pending_bytes;
     }
+    if (it->second.kind == ZLINK_SPOT_KIND_INSTANCE) {
+        std::map<std::string, instance_activation_state_t>::const_iterator
+          activation = node->instance_activations.find (key);
+        if (activation != node->instance_activations.end ()) {
+            out.pending_application_messages +=
+              activation->second.pending_messages;
+            out.pending_bytes += activation->second.pending_bytes;
+        }
+    }
     out.active_actor_count = it->second.active_actor_count;
     out.draining = it->second.draining ? 1 : 0;
     out.last_error = it->second.last_error;
     out.last_changed_ms = it->second.last_changed_ms;
-    *status_out_ = out;
+    out.activation_state = it->second.activation_state;
+    memcpy (status_out_, &out, out.struct_size);
     return ZLINK_CONFIG_OK;
 }
 

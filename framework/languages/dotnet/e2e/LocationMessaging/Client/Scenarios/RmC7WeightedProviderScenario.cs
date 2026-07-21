@@ -32,10 +32,10 @@ internal static class RmC7WeightedProviderScenario
         await WaitForProviderRowAsync(requester, "api-b");
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerA.ChannelEndpoint}");
+            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerA.ChannelEndpoint}");
         await WaitConnectionEvidenceAsync(
             requester,
-            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
+            $"monitor-mesh|source=profile|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
         var first = (await requester.Post("/profile/request")
             .Body(new ProfileReq("rm-c7-first-after-rows"))
             .Async<ProfileRes>()).Body;

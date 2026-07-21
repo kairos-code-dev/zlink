@@ -244,15 +244,57 @@ void test_socket_common_and_router_options ()
     assert (routing_id.to_bytes () == std::vector<uint8_t> (rid_text.begin (), rid_text.end ()));
 }
 
-void test_spot_options ()
+void test_mesh_node_options ()
 {
     zlink::context_t ctx;
-    zlink::service::spot_node_t node (ctx);
-    zlink::service::spot_t spot = node.create_spot ();
-    assert (spot.valid ());
+    zlink::service::mesh_node_t node (
+      ctx, zlink::service::mesh_node_options_t{.mesh_name = "contract-options"});
+    node.set_router_hwm (25);
+    assert (node.router_hwm () == 25);
+    node.set_bind ("inproc://contract-options");
+    node.set_routing_id (zlink::routing_id_t::from (std::string ("contract-options")));
+    node.add_channel_name ("contract-options");
+    node.start ();
+    node.set_max_message_size (4096);
+    assert (node.max_message_size () == 4096);
+    node.set_max_message_size (-1);
+    assert (node.max_message_size () == -1);
+    assert (node.shutdown (std::chrono::seconds (1)) == zlink::request_result_t::ok);
+    assert (node.close () == zlink::close_result_t::ok);
+}
 
-    spot.request_timeout (std::chrono::milliseconds (25));
-    assert (spot.request_timeout () == std::chrono::milliseconds (25));
+void test_mesh_node_zero_membership_lifecycle ()
+{
+    zlink::context_t ctx;
+    zlink::service::mesh_node_t node (
+      ctx, zlink::service::mesh_node_options_t{.mesh_name = "contract-zero-membership"});
+    node.set_bind (zlink_cpp_contract::unique_inproc ("contract-zero-membership"));
+    node.set_routing_id (zlink::routing_id_t::from (std::string ("zero-node")));
+
+    //  No add_channel_name() call: a caller-only Node is a complete setup.
+    node.start ();
+    const zlink::mesh_node_status_t ready = node.status ();
+    assert (ready.state () == zlink::mesh_node_state_t::ready);
+    assert (ready.channel_count () == 0);
+
+    const std::string missing_endpoint =
+      zlink_cpp_contract::unique_inproc ("contract-zero-peer");
+    const uint64_t intent = node.connect_peer (missing_endpoint);
+    assert (intent != 0);
+    const std::vector<zlink::mesh_peer_entry_t> peers = node.peers ();
+    assert (peers.size () == 1);
+    assert (peers[0].connection_intent_id () == intent);
+    assert (peers[0].channel_count () == 0);
+
+    const zlink::routing_id_t missing_rid =
+      zlink::routing_id_t::from (std::string ("missing-node"));
+    std::vector<zlink::message_t> parts;
+    parts.push_back (zlink_cpp_contract::make_message ("zero-direct"));
+    assert (node.send_to_node (missing_rid, parts)
+            == zlink::submit_result_t::not_connected);
+
+    assert (node.shutdown (std::chrono::seconds (1)) == zlink::request_result_t::ok);
+    assert (node.close () == zlink::close_result_t::ok);
 }
 
 } // namespace
@@ -261,6 +303,7 @@ int main ()
 {
     test_context_options ();
     test_socket_common_and_router_options ();
-    test_spot_options ();
+    test_mesh_node_options ();
+    test_mesh_node_zero_membership_lifecycle ();
     return 0;
 }

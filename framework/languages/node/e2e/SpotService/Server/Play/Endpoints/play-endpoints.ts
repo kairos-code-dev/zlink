@@ -99,7 +99,11 @@ export function createPlayEndpoints(
       path: '/spot/create',
       handle: async (body) => {
         const request = body as CreateSpotReq;
-        const created = await spotManager.getOrCreate(ScenarioUserSpot, request.spotRid);
+        const created = await spotManager.getOrCreate(
+          SpotServiceNames.spotChannel,
+          ScenarioUserSpot,
+          request.spotRid
+        );
         const state = typeof created.state === 'string' ? created.state : String(created.state);
         InMemorySpotRouteStore.recordUserSpot(String(created.spotRid), evidence.rid);
         evidence.add(`create-spot|rid=${evidence.rid}|spot=${created.spotRid}|state=${state}`);
@@ -111,7 +115,7 @@ export function createPlayEndpoints(
       path: '/spot/close',
       handle: async (body) => {
         const request = body as CloseSpotReq;
-        const closed = await spotManager.close(request.spotRid);
+        const closed = await spotManager.close(SpotServiceNames.spotChannel, request.spotRid);
         evidence.add(`close-spot|rid=${evidence.rid}|spot=${request.spotRid}|closed=${closed}`);
         if (closed) {
           await evidence.waitUntil((entries) =>
@@ -125,9 +129,17 @@ export function createPlayEndpoints(
       path: '/spot/type-mismatch',
       handle: async (body) => {
         const request = body as SpotTypeMismatchReq;
-        const first = await spotManager.getOrCreate(ScenarioUserSpot, request.spotRid);
+        const first = await spotManager.getOrCreate(
+          SpotServiceNames.spotChannel,
+          ScenarioUserSpot,
+          request.spotRid
+        );
         try {
-          await spotManager.getOrCreate(ScenarioAlternateSpot, request.spotRid);
+          await spotManager.getOrCreate(
+            SpotServiceNames.spotChannel,
+            ScenarioAlternateSpot,
+            request.spotRid
+          );
         } catch (error) {
           if (error instanceof ZLinkFrameworkException && error.kind === ZLinkFrameworkErrorKind.SpotTypeMismatch) {
             evidence.add(`spot-type-mismatch|rid=${evidence.rid}|spot=${request.spotRid}|kind=SpotTypeMismatch`);
@@ -149,7 +161,11 @@ export function createPlayEndpoints(
       path: '/spot/create-alternate',
       handle: async (body) => {
         const request = body as CreateSpotReq;
-        const created = await spotManager.getOrCreate(ScenarioAlternateSpot, request.spotRid);
+        const created = await spotManager.getOrCreate(
+          SpotServiceNames.spotChannel,
+          ScenarioAlternateSpot,
+          request.spotRid
+        );
         const state = typeof created.state === 'string' ? created.state : String(created.state);
         InMemorySpotRouteStore.recordUserSpot(String(created.spotRid), evidence.rid);
         evidence.add(`create-alternate-spot|rid=${evidence.rid}|spot=${created.spotRid}|state=${state}`);
@@ -273,8 +289,8 @@ export function createPlayEndpoints(
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
           countNew(entries, before, `spot-outbound-negative|rid=${evidence.rid}|spot=${request.spotRid}|requestFailed=True`) >= 1
-          && countNew(entries, before, 'dispatch-error|surface=channel|kind=request|reason=handlerMissing|action=replyError|packet=MissingChannelReq') >= 1
-          && countNew(entries, before, 'dispatch-error|surface=channel|kind=send|reason=handlerMissing|action=drop|packet=MissingChannelNotify') >= 1,
+          && countNew(entries, before, 'dispatch-error|surface=channel|kind=request|reason=no_handler|action=reply_error|packet=MissingChannelReq') >= 1
+          && countNew(entries, before, 'dispatch-error|surface=channel|kind=send|reason=no_handler|action=drop|packet=MissingChannelNotify') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -434,7 +450,7 @@ export function createPlayEndpoints(
             .submit<StateRes>();
         });
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=request|reason=handlerMissing|action=failCaller|packet=MissingSpotReq') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spot|kind=request|reason=no_handler|action=fail_caller|packet=MissingSpotReq') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -464,7 +480,7 @@ export function createPlayEndpoints(
           clearTimeout(timeout);
         }
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=MissingSpotMsg') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spot|kind=send|reason=no_handler|action=drop|packet=MissingSpotMsg') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -505,7 +521,7 @@ export function createPlayEndpoints(
           .sendToSpot(spot, spotServicePacket(StateMsg, { marker: request.marker }))
           .submit();
         const snapshot = await evidence.waitUntil((entries) =>
-          countNew(entries, before, 'dispatch-error|surface=spotRoute|kind=send|reason=handlerMissing|action=drop|packet=StateMsg') >= 1,
+          countNew(entries, before, 'dispatch-error|surface=spot|kind=send|reason=no_handler|action=drop|packet=StateMsg') >= 1,
           10000);
         return {
           spotRid: request.spotRid,
@@ -651,7 +667,7 @@ async function submitSpotAdmin(
 }
 
 async function requireSpotRef(spotRefs: ZLinkSpotHandleResolver, spotRid: string) {
-  const spot = await spotRefs.resolveSpotHandle(spotRid);
+  const spot = await spotRefs.resolveSpotHandle(SpotServiceNames.spotChannel, spotRid);
   if (spot === undefined) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotRouteNotFound,

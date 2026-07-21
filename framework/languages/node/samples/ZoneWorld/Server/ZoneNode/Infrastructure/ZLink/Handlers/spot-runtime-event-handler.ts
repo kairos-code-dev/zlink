@@ -25,12 +25,16 @@ class SpotRuntimeEventHandler implements ZLinkRuntimeEventHandler<ZLinkSpotEvent
     }
     if (event.event !== ZLinkSpotEventKind.TimerHandlerFailed) return;
     if (!zonesOf(nodeId).some((zoneId) => zoneId === String(event.timerDiagnostic.spotRid))) return;
-    this.channels.sendToChannel(ZoneWorldNames.reportChannel, new ReportSpotEventMsg(
-      nodeId,
-      NodeAlertKinds.timerHandlerFailed,
-      `${event.timerDiagnostic.timerName}: ${event.timerDiagnostic.exceptionMessage}`,
-      event.timestamp.toISOString()
-    )).submit();
+    await this.channels.sendToChannel(
+      ZoneWorldNames.zoneMesh,
+      ZoneWorldNames.reportChannel,
+      new ReportSpotEventMsg(
+        nodeId,
+        NodeAlertKinds.timerHandlerFailed,
+        `${event.timerDiagnostic.timerName}: ${event.timerDiagnostic.exceptionMessage}`,
+        event.timestamp.toISOString()
+      )
+    ).submit();
     console.log(
       `spot event reported node=${nodeId} kind=${NodeAlertKinds.timerHandlerFailed}`
       + ` timer=${event.timerDiagnostic.timerName} error=${event.timerDiagnostic.exceptionMessage}`

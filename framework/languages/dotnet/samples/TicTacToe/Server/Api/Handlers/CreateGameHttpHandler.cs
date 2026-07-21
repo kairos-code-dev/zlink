@@ -28,7 +28,7 @@ internal static class CreateGameHttpHandler
             ownerIndex);
 
         var reply = await client.RequestToChannel(
-                ownerChannel,
+                SampleNodes.Mesh,
                 ownerChannel,
                 new CreateGameReq(gameName))
             .Async<CreateGameRes>(cancellationToken);

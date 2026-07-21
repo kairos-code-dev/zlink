@@ -1,3 +1,4 @@
+import { Inject } from '@nestjs/common';
 import type {
   ActorPushReq,
   ComplexActorReq,
@@ -15,19 +16,22 @@ import type {
   SnapshotRes,
   SnapshotReq
 } from '../../../Shared/messages';
-import { ActorPushNotify } from '../../../Shared/messages';
+import { ActorPushNotify, SpotServiceNames } from '../../../Shared/messages';
 import type {
   ZLinkActor,
+  ZLinkActorClient,
   ZLinkActorContext,
   ZLinkActorFactory,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
-  ZLinkEntrySpotActorRequestHandler,
   ZLinkEntrySpotContext,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestContext
 } from '@zlink-systems/framework';
-import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
+import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
+import { ZLINK_ACTOR_CLIENT, zlinkEntrySpotActorRequestHandler } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import { InMemoryActorSpotStore } from '../Infrastructure/actor-spot-store';
 
@@ -37,6 +41,30 @@ export class ScenarioActor implements ZLinkActor {
 
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {
     this.displayName = actorId;
+  }
+
+  configure(): void {
+    this.context.handlers.addHandler(EntryActorPingHandler);
+    this.context.handlers.addHandler(EntrySlowActorPingHandler);
+    this.context.handlers.addHandler(ActorPushHandler);
+    this.context.handlers.addHandler(EntryUserActorPingHandler);
+    this.context.handlers.addHandler(EntryUserActorPushHandler);
+    this.context.handlers.addHandler(ComplexActorHandler);
+    this.context.handlers.addHandler(EntryUserSpotActorJoinHandler);
+    this.context.handlers.addHandler(EntryActorLeaveHandler);
+    this.context.handlers.addHandler(EntryActorSnapshotHandler);
+    this.context.handlers.addHandler(InitializeScenarioActorHandler);
+  }
+}
+
+class InitializeScenarioActor {
+  constructor(readonly displayName: string) {}
+}
+
+export class InitializeScenarioActorHandler {
+  @ZLinkSpotActorSend('InitializeScenarioActor')
+  async handle(actor: ScenarioActor, _context: unknown, message: InitializeScenarioActor): Promise<void> {
+    actor.displayName = message.displayName;
   }
 }
 
@@ -50,50 +78,56 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   private static evidence?: EvidenceStore;
   readonly context!: ZLinkEntrySpotContext<ScenarioActor>;
 
+  constructor(@Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient) {}
+
   static useEvidence(evidence: EvidenceStore): void {
     this.evidence = evidence;
   }
 
-  configure(): void {
-    this.context.handlers.addActorPacket(EntryActorPingHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntrySlowActorPingHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(ActorPushHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryUserActorPingHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryUserActorPushHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(ComplexActorHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryUserSpotActorJoinHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryActorLeaveHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryActorSnapshotHandler, ScenarioActor);
-    this.context.handlers.addActorPacket(EntryActorDestroyHandler, ScenarioActor);
-  }
-
-  async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
     const request = createRequest.decode<Partial<EnsureActorReq>>(Object as never);
     if (typeof request.displayName === 'string') {
-      actor.displayName = request.displayName;
+      await this.actors
+        .sendToActor(SpotServiceNames.spotChannel, actor.actor, new InitializeScenarioActor(request.displayName))
+        .submit();
     }
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actorId;
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actor;
     return { accepted: true, reply: request.decode() };
   }
 
-  async onJoinedActor(actor: ScenarioActor): Promise<void> {
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onLeaveActor(actor: ScenarioActor): Promise<void> {
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+  }
+
+  scheduleDestroy(actor: ScenarioActor): void {
+    const evidence = ScenarioEntrySpot.requireEvidence();
+    void this.context.runIoWorker(async () => true).async().then(async () => {
+      try {
+        await this.context.destroyActor(actor);
+        evidence.add(`actor-destroyed|rid=${evidence.rid}|actor=${actor.actorId}`);
+      } catch (error) {
+        evidence.add(
+          `actor-destroy-failed|rid=${evidence.rid}|actor=${actor.actorId}`
+          + `|error=${error instanceof Error ? error.name : String(error)}`
+        );
+      }
+    });
   }
 
   addEvidence(entry: string): void {
@@ -109,7 +143,7 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
 }
 
 export class EntryActorPingHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPingReq, ActorPingRes> {
+{
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -118,7 +152,6 @@ export class EntryActorPingHandler
 
   @ZLinkSpotActorRequest('ActorPingReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPingReq
@@ -127,13 +160,13 @@ export class EntryActorPingHandler
     const evidence = EntryActorPingHandler.requireEvidence();
     actor.seen += 1;
     evidence.add(
-      `actor-pingMsg|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
-      + `|spot=${entrySpot.context.spotRid}|value=${request.value}|seen=${actor.seen}`
+      `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
+      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
-      nodeRid: String(entrySpot.context.nodeRid),
-      spotRid: String(entrySpot.context.spotRid),
+      nodeRid: evidence.rid,
+      spotRid: String(actor.context.spotRid ?? evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -148,7 +181,7 @@ export class EntryActorPingHandler
 }
 
 export class EntrySlowActorPingHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SlowActorPingReq, ActorPingRes> {
+{
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -157,7 +190,6 @@ export class EntrySlowActorPingHandler
 
   @ZLinkSpotActorRequest('SlowActorPingReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: SlowActorPingReq
@@ -165,19 +197,19 @@ export class EntrySlowActorPingHandler
     void context;
     const evidence = EntrySlowActorPingHandler.requireEvidence();
     evidence.add(
-      `actor-slow-ping-start|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
-      + `|spot=${entrySpot.context.spotRid}|value=${request.value}`
+      `actor-slow-ping-start|rid=${evidence.rid}|actor=${actor.actorId}`
+      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}`
     );
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, request.delayMs)));
     actor.seen += 1;
     evidence.add(
-      `actor-slow-pingMsg|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
-      + `|spot=${entrySpot.context.spotRid}|value=${request.value}|seen=${actor.seen}`
+      `actor-slow-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
+      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
-      nodeRid: String(entrySpot.context.nodeRid),
-      spotRid: String(entrySpot.context.spotRid),
+      nodeRid: evidence.rid,
+      spotRid: String(actor.context.spotRid ?? evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -192,7 +224,7 @@ export class EntrySlowActorPingHandler
 }
 
 export class EntryUserActorPingHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPingReq, ActorPingRes> {
+{
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -201,7 +233,6 @@ export class EntryUserActorPingHandler
 
   @ZLinkSpotActorRequest('UserActorPingReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPingReq
@@ -211,12 +242,12 @@ export class EntryUserActorPingHandler
     actor.seen += 1;
     const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
     evidence.add(
-      `actor-pingMsg|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
+      `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
       + `|spot=${spotRid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
-      nodeRid: String(entrySpot.context.nodeRid),
+      nodeRid: evidence.rid,
       spotRid,
       value: request.value,
       seen: actor.seen
@@ -232,10 +263,11 @@ export class EntryUserActorPingHandler
 }
 
 export class ActorPushHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+{
+  constructor(private readonly evidence: EvidenceStore) {}
+
   @ZLinkSpotActorRequest('ActorPushReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushReq
@@ -247,8 +279,8 @@ export class ActorPushHandler
       .submit();
     return {
       actorId: actor.actorId,
-      nodeRid: String(entrySpot.context.nodeRid),
-      spotRid: String(entrySpot.context.spotRid),
+      nodeRid: this.evidence.rid,
+      spotRid: String(actor.context.spotRid ?? this.evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -256,10 +288,11 @@ export class ActorPushHandler
 }
 
 export class EntryUserActorPushHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ActorPushReq, ActorPingRes> {
+{
+  constructor(private readonly evidence: EvidenceStore) {}
+
   @ZLinkSpotActorRequest('UserActorPushReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushReq
@@ -272,7 +305,7 @@ export class EntryUserActorPushHandler
       .submit();
     return {
       actorId: actor.actorId,
-      nodeRid: String(entrySpot.context.nodeRid),
+      nodeRid: this.evidence.rid,
       spotRid,
       value: request.value,
       seen: actor.seen
@@ -281,7 +314,7 @@ export class EntryUserActorPushHandler
 }
 
 export class ComplexActorHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, ComplexActorReq, ComplexActorRes> {
+{
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -290,12 +323,10 @@ export class ComplexActorHandler
 
   @ZLinkSpotActorRequest('ComplexActorReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ComplexActorReq
   ): Promise<ComplexActorRes> {
-    void entrySpot;
     void context;
     const evidence = ComplexActorHandler.requireEvidence();
     actor.displayName = request.displayName;
@@ -325,7 +356,7 @@ export class ComplexActorHandler
 }
 
 export class EntryActorLeaveHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, LeaveReq, LeaveRes> {
+{
   private static evidence?: EvidenceStore;
 
   static useEvidence(evidence: EvidenceStore): void {
@@ -334,7 +365,6 @@ export class EntryActorLeaveHandler
 
   @ZLinkSpotActorRequest('LeaveReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: LeaveReq
@@ -343,12 +373,12 @@ export class EntryActorLeaveHandler
     if (request.actorId !== actor.actorId) {
       throw new Error('Leave request actor does not match dispatched actor.');
     }
-    void entrySpot;
     const evidence = EntryActorLeaveHandler.requireEvidence();
     const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
     evidence.add(
-      `spot-actor-left|rid=${entrySpot.context.nodeRid}|spot=${spotRid}|actor=${actor.actorId}`
+      `spot-actor-left|rid=${evidence.rid}|spot=${spotRid}|actor=${actor.actorId}`
     );
+    await actor.context.leaveSpot(context.connectionAborted);
     return {
       actorId: actor.actorId,
       accepted: true
@@ -364,20 +394,13 @@ export class EntryActorLeaveHandler
 }
 
 export class EntryUserSpotActorJoinHandler
-  implements ZLinkEntrySpotActorRequestHandler<
-    ScenarioEntrySpot,
-    ScenarioActor,
-    JoinUserSpotActorReq,
-    JoinUserSpotActorRes
-  > {
+{
   @ZLinkSpotActorRequest('JoinUserSpotActorReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: JoinUserSpotActorReq
   ): Promise<JoinUserSpotActorRes> {
-    void entrySpot;
     if (request.actorId !== actor.actorId) {
       throw new Error('Join request actor does not match dispatched actor.');
     }
@@ -404,15 +427,13 @@ export class EntryUserSpotActorJoinHandler
 }
 
 export class EntryActorSnapshotHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SnapshotReq, SnapshotRes> {
+{
   @ZLinkSpotActorRequest('SnapshotReq')
   async handle(
-    entrySpot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: SnapshotReq
   ): Promise<SnapshotRes> {
-    void entrySpot;
     void context;
     if (request.actorId !== actor.actorId) {
       throw new Error('Snapshot request actor does not match dispatched actor.');
@@ -424,17 +445,15 @@ export class EntryActorSnapshotHandler
   }
 }
 
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => ScenarioActor,
+  entrySpot: () => ScenarioEntrySpot,
+  packetName: 'DestroyActorReq'
+})
 export class EntryActorDestroyHandler
-  implements ZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, DestroyActorReq, DestroyActorRes> {
-  private static evidence?: EvidenceStore;
-
-  static useEvidence(evidence: EvidenceStore): void {
-    this.evidence = evidence;
-  }
-
-  @ZLinkSpotActorRequest('DestroyActorReq')
+{
   async handle(
-    entrySpot: ScenarioEntrySpot,
+    spot: ScenarioEntrySpot,
     actor: ScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: DestroyActorReq
@@ -443,28 +462,10 @@ export class EntryActorDestroyHandler
     if (request.actorId !== actor.actorId) {
       throw new Error('Destroy request actor does not match dispatched actor.');
     }
-    const evidence = EntryActorDestroyHandler.requireEvidence();
-    void entrySpot.context.runIoWorker(async () => true).submit().then(async () => {
-      try {
-        await entrySpot.context.destroyActor(actor);
-        evidence.add(`actor-destroyed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`);
-      } catch (error) {
-        evidence.add(
-          `actor-destroy-failed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`
-          + `|error=${error instanceof Error ? error.name : String(error)}`
-        );
-      }
-    });
+    spot.scheduleDestroy(actor);
     return {
       actorId: actor.actorId,
       destroyed: true
     };
-  }
-
-  private static requireEvidence(): EvidenceStore {
-    if (this.evidence === undefined) {
-      throw new Error('EntryActorDestroyHandler evidence store is not configured.');
-    }
-    return this.evidence;
   }
 }

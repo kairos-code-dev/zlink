@@ -28,6 +28,7 @@ record ZLinkJavaRouterSocket(RouterSocket socket)
     @Override public void setMaxMessageSize(long value) { socket.options().maxMessageSize(value == 0 ? -1 : value); }
     @Override public int peerWeight() { return socket.options().peerWeight(); }
     @Override public void setPeerWeight(int weight) { socket.options().peerWeight(weight); }
+    @Override public String lastEndpoint() { return socket.options().lastEndpoint(); }
 
     @Override
     public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
@@ -64,5 +65,8 @@ record ZLinkJavaRouterSocket(RouterSocket socket)
         ZLinkJavaSocketSupport.submitReply(socket.reply(routingId, requestSeq), parts);
     }
 
-    @Override public void close() { socket.close(); }
+    @Override public void close() {
+        notifyAdmissionShutdown();
+        socket.close();
+    }
 }

@@ -10,8 +10,8 @@ This document explains Actor creation, Spot join/leave, messaging,
 termination, STREAM session binding and the transfer flow. For MeshNode setup
 and the claim consumption flow see the [SPOT guide](07-3-spot.md). The exact
 function contracts are owned by the
-[Actor spec](../spec/core/service/04-actor.md) and the
-[STREAM session spec](../spec/core/service/05-stream-session.md).
+[Actor spec](../../../framework/doc/framework/spec/server/23-spot-actor.ko.md) and the
+[STREAM session spec](../../../framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md).
 
 > For **what an Actor is and when** to use one (session-to-processing
 > binding, reconnect continuity, difference from a plain Spot), start with
@@ -89,7 +89,7 @@ socket. The session-to-Actor association is owned by the STREAM session
 service.
 
 ```c
-void *svc = zlink_stream_session_service_new(stream_socket, node);
+void *svc = zlink_stream_session_service_new(node, stream_socket);
 zlink_stream_session_service_start(svc);
 
 /* Session routing id ↔ Actor binding (generation CAS, idempotent). */
@@ -99,11 +99,16 @@ zlink_stream_session_bind_actor(svc, &session_rid, &player, &bind_op, 2000);
 /* Relay session bytes to the Actor. */
 zlink_stream_session_send_to_actor(svc, &session_rid, &player, NULL, &part, 1, 0);
 
-/* Answer back to the bound session from the Actor side. */
-zlink_mesh_node_actor_send_bound_session(node, &player, &part, 1, 0);
+/* Reply only to the binding generation carried by the Actor record. */
+zlink_mesh_node_actor_send_bound_session(
+  node, &player, actor_record->source_binding_generation, &part, 1, 0);
 ```
 
 - One session may bind several Actors; the binding CAS validates generations.
+- The Actor handler reads the session routing ID and binding generation from
+  `source_spot_rid` and `source_binding_generation` in the received record. A
+  record from an earlier binding is rejected with `ESTALE` after unbind and
+  rebind.
 - A session disconnect removes only that session's bindings and never changes
   an Actor's joined Spot — bind the reconnected session to the same Actor and
   the entity continues (reconnect continuity).

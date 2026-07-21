@@ -102,6 +102,8 @@ internal sealed partial class ZLinkSpotActivation :
 
     public string ChannelName { get; }
 
+    public string MeshName => ChannelName;
+
     public TimeSpan DefaultRequestTimeout { get; }
 
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;

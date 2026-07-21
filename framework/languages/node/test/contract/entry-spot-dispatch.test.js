@@ -58,12 +58,10 @@ test('Entry Spot native actor request dispatches to registered handler and repli
   class EntrySpot {}
 
   class MatchHandler {
-    async handle(spot, actor, context, request) {
-      assert.equal(spot instanceof EntrySpot, true);
+    async handle(actor, context, request) {
       assert.equal(actor.actorId, 'player-1');
       assert.equal(context.packetName, 'Match');
       assert.deepEqual(request, { value: 'ping' });
-      context.reply.metadata('reply-trace-id', 'reply:player-1');
       context.reply.compress();
       calls.push('handler');
       return { value: 'pong' };
@@ -155,7 +153,7 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     packetName: 'Match',
     requestSeq: 7n,
     payload: { value: 'pong' },
-    metadata: [['reply-trace-id', 'reply:player-1']],
+    metadata: [],
     compressPayload: true
   });
 });

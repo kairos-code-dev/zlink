@@ -13,6 +13,16 @@ internal static class ActorNodeEndpoints
     public static void Map(WebApplication app, ServerOptions options)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok", options.Rid }));
+        app.MapGet("/mesh/ready", (IZLinkRouteMeshRuntime meshRuntime) =>
+        {
+            var snapshot = meshRuntime.Snapshot(SpotActorTransferNames.Mesh);
+            return Results.Ok(new MeshReadyRes(
+                options.Rid,
+                snapshot.Peers
+                    .Where(static peer => peer.Ready)
+                    .Select(static peer => peer.Rid.ToString())
+                    .ToArray()));
+        });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (EvidenceWaitReq request, EvidenceStore evidence,
             CancellationToken cancellationToken) =>
@@ -90,7 +100,7 @@ internal static class ActorNodeEndpoints
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             try
             {
-                var result = await actorClient.RequestToActor(actor, request)
+                var result = await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
                     .Timeout(TimeSpan.FromSeconds(10)).Async<JoinTargetRes>(cancellationToken);
                 evidence.Add(request.Scenario, actorId,
                     result.Accepted ? "success_reply" : "reject_reply", request.TargetSpotRid);
@@ -111,7 +121,7 @@ internal static class ActorNodeEndpoints
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             evidence.Add(request.Scenario, actorId, "probe_submitted", request.Marker);
-            return Results.Ok(await actorClient.RequestToActor(actor, request)
+            return Results.Ok(await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
                 .Timeout(TimeSpan.FromSeconds(10)).Async<ProbeRes>(cancellationToken));
         });
         app.MapPost("/actors/{actorId}/probe-ref", async (string actorId, ActorRefProbeReq request,
@@ -121,7 +131,9 @@ internal static class ActorNodeEndpoints
             {
                 var actor = ToActorRef(actorId, request);
                 var response = await actorClient.RequestToActor(
-                        actor, new ProbeReq(request.Scenario, request.Marker))
+                        SpotActorTransferNames.Mesh,
+                        actor,
+                        new ProbeReq(request.Scenario, request.Marker))
                     .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
                     .Async<ProbeRes>(cancellationToken);
                 return Results.Ok(new ActorRefProbeRes(true, response, null));
@@ -135,19 +147,19 @@ internal static class ActorNodeEndpoints
                 return Results.Ok(new ActorRefProbeRes(false, null, error.GetType().Name));
             }
         });
-        app.MapPost("/actors/{actorId}/send-ref", (string actorId, ActorRefProbeReq request,
+        app.MapPost("/actors/{actorId}/send-ref", async (string actorId, ActorRefProbeReq request,
             IZLinkActorClient actorClient, CancellationToken cancellationToken) =>
         {
-            actorClient.SendToActor(ToActorRef(actorId, request),
+            await actorClient.SendToActor(SpotActorTransferNames.Mesh, ToActorRef(actorId, request),
                     new HandoffPacket(request.Scenario, request.Marker))
-                .Submit(cancellationToken);
+                .SubmitAsync(cancellationToken);
             return Results.Ok();
         });
         app.MapPost("/actors/{actorId}/bound-push", async (string actorId, BoundPushReq request,
             IZLinkActorManager actors, IZLinkActorClient actorClient, CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
-            return Results.Ok(await actorClient.RequestToActor(actor, request)
+            return Results.Ok(await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
                 .Timeout(TimeSpan.FromSeconds(10)).Async<BoundPushRes>(cancellationToken));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>

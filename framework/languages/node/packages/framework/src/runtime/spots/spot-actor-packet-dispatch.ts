@@ -6,15 +6,17 @@ import type {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageFlowOutcome,
   zlinkMessageMetadata
 } from '../../contracts';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import { flowIfEnabled } from '../diagnostics';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
@@ -49,7 +51,8 @@ interface ZLinkSpotActorPacketDispatchOptions {
     actorId: string,
     parts: readonly Message[],
     returnResponse: boolean,
-    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget
+    remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+    fallbackActorRef?: ActorRef
   ) => Promise<{ readonly handled: boolean; readonly response?: unknown } | undefined> |
     { readonly handled: boolean; readonly response?: unknown } |
     undefined;
@@ -128,7 +131,8 @@ export class ZLinkSpotActorPacketDispatch {
         actorId,
         parts,
         returnResponse,
-        remoteBoundSessionTarget
+        remoteBoundSessionTarget,
+        fallbackActorRef
       );
       if (routed?.handled === true) {
         return routed.response;

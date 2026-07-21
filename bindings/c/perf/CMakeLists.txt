@@ -114,6 +114,8 @@ endfunction()
                            multi/src/perf_multi_router_router_server.cpp)
     add_current_bench_multi(comp_src_router_router_reqrep_server
                            multi/src/perf_multi_router_router_reqrep_server.cpp)
+    add_current_bench_multi(comp_src_router_router_oneway_server
+                           multi/src/perf_multi_router_router_oneway_server.cpp)
     add_current_bench_multi(comp_src_pubsub_server
                            multi/src/perf_multi_pubsub_server.cpp)
     add_current_bench_multi(comp_src_dealer_dealer_client
@@ -126,8 +128,27 @@ endfunction()
                            multi/src/perf_multi_router_router_client.cpp)
     add_current_bench_multi(comp_src_router_router_reqrep_client
                            multi/src/perf_multi_router_router_reqrep_client.cpp)
+    foreach(matched_pattern IN ITEMS router_router_reqrep router_router_sendsend)
+        string(TOUPPER "${matched_pattern}" matched_pattern_upper)
+        add_current_bench_multi(
+            comp_src_${matched_pattern}_matched_client
+            multi/src/perf_multi_router_router_matched_client.cpp)
+        target_compile_definitions(
+            comp_src_${matched_pattern}_matched_client
+            PRIVATE PERF_MATCHED_PATTERN_NAME="MULTI_${matched_pattern_upper}")
+    endforeach()
+    add_current_bench_multi(comp_src_router_router_oneway_client
+                           multi/src/perf_multi_router_router_oneway_client.cpp)
     add_current_bench_multi(comp_src_pubsub_client
                            multi/src/perf_multi_pubsub_client.cpp)
+    add_current_bench_multi(perf_multi_metrics_test
+                           multi/tests/test_perf_multi_metrics.cpp)
+    if(ZLINK_C_REGISTER_CTEST)
+        add_test(NAME perf_multi_metrics_test COMMAND perf_multi_metrics_test)
+        set_tests_properties(perf_multi_metrics_test PROPERTIES
+            LABELS "perf-metric"
+            TIMEOUT 30)
+    endif()
     foreach(spot_pattern IN ITEMS spot_pubsub spot_reqrep spot_sendsend)
         string(TOUPPER "${spot_pattern}" spot_pattern_upper)
         add_current_bench_multi(

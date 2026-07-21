@@ -34,6 +34,7 @@ export function createMultiNodeEndpoints(
   actors: ZLinkActorManager,
   actorClient: ZLinkActorClient,
   locations: ZLinkLocationRuntimeQuery,
+  actorMeshName: string,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -69,7 +70,11 @@ export function createMultiNodeEndpoints(
       path: '/spot/create-user-local',
       handle: async (body) => {
         const request = body as CreateSpotReq;
-        const created = await spots.getOrCreate(SpotOnlyUserSpot, request.spotRid);
+        const created = await spots.getOrCreate(
+          SpotServiceNames.spotOnlyMesh,
+          SpotOnlyUserSpot,
+          request.spotRid
+        );
         evidence.add(`create-user-spot|rid=${evidence.rid}|spot=${created.spotRid}|state=${created.state}`);
         return {
           spotRid: String(created.spotRid),
@@ -83,7 +88,12 @@ export function createMultiNodeEndpoints(
       path: '/spot/spot-only/request-send',
       handle: async (body) => {
         const request = body as SpotOnlyMeshReq;
-        await spots.getOrCreate(SpotOnlyUserSpot, request.sourceSpotRid, request);
+        await spots.getOrCreate(
+          SpotServiceNames.spotOnlyMesh,
+          SpotOnlyUserSpot,
+          request.sourceSpotRid,
+          request
+        );
         const snapshot = await evidence.waitUntil((entries) =>
           entries.some((entry) =>
             entry.includes(`spot-only-request|rid=${evidence.rid}|source=${request.sourceSpotRid}|target=${request.targetSpotRid}`)
@@ -106,9 +116,14 @@ export function createMultiNodeEndpoints(
           bodyRequest.actorId,
           bodyRequest.marker
         );
-        const actor = await actors.getOrCreate(request.actorId, SpotServiceNames.actorType, { displayName: `spot-only-${request.actorId}` });
+        const actor = await actors.getOrCreate(
+          actorMeshName,
+          request.actorId,
+          SpotServiceNames.actorType,
+          { displayName: `spot-only-${request.actorId}` }
+        );
         const result = await actorClient
-          .requestToActor(actor, request)
+          .requestToActor(actorMeshName, actor, request)
           .timeout(10000)
           .submit<SpotOnlyJoinRes>();
         await evidence.waitUntil((entries) =>
@@ -124,12 +139,13 @@ export function createMultiNodeEndpoints(
       handle: async (body) => {
         const request = body as ScaleOutActorProbeReq;
         const actor = await actors.getOrCreate(
+          actorMeshName,
           request.actorId,
           SpotServiceNames.actorType,
           { displayName: `scale-out-${request.actorId}` }
         );
         return await actorClient
-          .requestToActor(actor, spotServicePacket(ScaleOutActorProbeReq, request))
+          .requestToActor(actorMeshName, actor, spotServicePacket(ScaleOutActorProbeReq, request))
           .timeout(10_000)
           .submit<ScaleOutActorProbeRes>();
       }
@@ -139,7 +155,13 @@ export function createMultiNodeEndpoints(
       path: '/spot/state/request',
       handle: (body) => {
         const request = body as MultiNodeStateRouteReq;
-        return requestStateViaSpotOutbound(outbound, spotRefs, request.spotRid, request.delta);
+        return requestStateViaSpotOutbound(
+          outbound,
+          spotRefs,
+          actorMeshName,
+          request.spotRid,
+          request.delta
+        );
       }
     },
     {
@@ -169,13 +191,16 @@ async function waitForScaleOutReadiness(
   const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 30_000));
   do {
     const rows = await locations.listPeerLocations({
-      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
       meshName: SpotServiceNames.spotOnlyMesh,
       role: ZLinkLocationRole.Spot
     });
     const peer = rows.find((row) => String(row.nodeRid) === request.nodeRid);
     const capabilities = peer?.capabilities ?? [];
-    const entrySpotReady = await spotRefs.resolveSpotHandle(request.nodeRid) !== undefined;
+    const entrySpotReady = await spotRefs.resolveSpotHandle(
+      SpotServiceNames.spotOnlyMesh,
+      request.nodeRid
+    ) !== undefined;
     if (peer !== undefined
       && capabilities.includes(`actor:${SpotServiceNames.actorType}`)
       && entrySpotReady) {

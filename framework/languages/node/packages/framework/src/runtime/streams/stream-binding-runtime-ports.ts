@@ -1,5 +1,5 @@
-import type { ActorRef, ZLinkSessionActor } from '../../contracts';
-import type { ZLinkBackendSpotNode } from '../backend';
+import type { ActorRef, ZLinkSessionActor, ZLinkSubmitResult } from '../../contracts';
+import type { ZLinkBackendActorSessionNode } from '../backend';
 import type { DefaultZLinkSessionActor } from './session-context';
 import type { ZLinkBoundSessionResponseTarget } from './bound-session-response-target';
 
@@ -39,29 +39,33 @@ export interface ZLinkRemoteBoundSessionPort extends ZLinkStreamActorLifecyclePo
     metadata: ReadonlyMap<string, string>
   ): boolean;
   sendNativeBoundSessionResponse(
-    node: ZLinkBackendSpotNode, actorRef: ActorRef, packetName: string, requestSeq: bigint,
+    node: ZLinkBackendActorSessionNode, actorRef: ActorRef, packetName: string, requestSeq: bigint,
     message: unknown, metadata: ReadonlyMap<string, string>, compressPayload: boolean,
     signal?: AbortSignal
   ): Promise<void>;
   sendNativeBoundSessionError(
-    node: ZLinkBackendSpotNode, actorRef: ActorRef, packetName: string, requestSeq: bigint,
+    node: ZLinkBackendActorSessionNode, actorRef: ActorRef, packetName: string, requestSeq: bigint,
     error: unknown, metadata: ReadonlyMap<string, string>, signal?: AbortSignal
   ): Promise<void>;
 }
 
 export interface ZLinkNativeFallbackBoundSessionPort {
-  disconnectNativeBoundSession(node: ZLinkBackendSpotNode, actorRef: ActorRef, signal?: AbortSignal): Promise<void>;
+  disconnectNativeBoundSession(node: ZLinkBackendActorSessionNode, actorRef: ActorRef, signal?: AbortSignal): Promise<void>;
   disconnectBoundSession(actorId: string, signal?: AbortSignal): Promise<void>;
   sendLocalBoundSession(
     actorId: string, message: unknown, packetName: string | undefined,
     metadata: ReadonlyMap<string, string>
   ): boolean;
-  sendNativeBoundSession(
-    node: ZLinkBackendSpotNode, actorRef: ActorRef, message: unknown, packetName: string | undefined,
+  submitLocalBoundSession(
+    actorId: string, message: unknown, packetName: string | undefined,
     metadata: ReadonlyMap<string, string>, signal?: AbortSignal
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
+  sendNativeBoundSession(
+    node: ZLinkBackendActorSessionNode, actorRef: ActorRef, message: unknown, packetName: string | undefined,
+    metadata: ReadonlyMap<string, string>, signal?: AbortSignal
+  ): Promise<ZLinkSubmitResult>;
   sendBoundSession(
     actorId: string, message: unknown, packetName: string | undefined,
     metadata: ReadonlyMap<string, string>, signal?: AbortSignal
-  ): Promise<void>;
+  ): Promise<ZLinkSubmitResult>;
 }

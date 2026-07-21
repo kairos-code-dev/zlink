@@ -15,6 +15,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class MultiNodeHttpServer implements SmartLifecycle {
@@ -26,6 +27,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
     private final ZLinkActorManager actors;
     private final ZLinkActorClient actorClient;
     private final SpotHandleResolver spotHandles;
+    private final ZLinkRouteMeshRuntime meshRuntime;
     private HttpServer server;
     private boolean running;
 
@@ -37,7 +39,8 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         ZLinkRouteClient routes,
         ZLinkActorManager actors,
         ZLinkActorClient actorClient,
-        SpotHandleResolver spotHandles) {
+        SpotHandleResolver spotHandles,
+        ZLinkRouteMeshRuntime meshRuntime) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
@@ -46,6 +49,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         this.actors = actors;
         this.actorClient = actorClient;
         this.spotHandles = spotHandles;
+        this.meshRuntime = meshRuntime;
     }
 
     @Override
@@ -57,6 +61,17 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
             URI uri = URI.create(endpoint);
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
             server.createContext("/health", exchange -> handle(exchange, () -> writeJson(exchange, new Health("ready", state.nodeRid()))));
+            server.createContext("/topology/ready", exchange -> {
+                int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
+                long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
+                    .filter(peer -> peer.ready())
+                    .count();
+                if (ready < expected) {
+                    writeText(exchange, 503, ready + "\n");
+                    return;
+                }
+                writeJson(exchange, java.util.Map.of("ready", ready));
+            });
             server.createContext("/evidence", exchange -> handle(exchange, () -> writeJson(exchange, state.snapshot())));
             server.createContext("/evidence/wait", exchange -> handle(exchange, () -> {
                 Contracts.EvidenceWaitReq request = json.readValue(
@@ -251,6 +266,21 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
 
     private record Health(String status, String rid) {
     }
+
+    private static String queryValue(URI uri, String key) {
+        String query = uri.getRawQuery();
+        if (query == null || query.isBlank()) {
+            return "";
+        }
+        for (String part : query.split("&")) {
+            String[] fields = part.split("=", 2);
+            if (fields.length == 2 && key.equals(fields[0])) {
+                return fields[1];
+            }
+        }
+        return "";
+    }
+
 
     @FunctionalInterface
     private interface ThrowingRunnable {

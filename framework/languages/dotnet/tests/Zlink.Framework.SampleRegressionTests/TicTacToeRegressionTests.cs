@@ -28,6 +28,56 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void TicTacToe_Uses_One_Physical_Mesh_With_The_Same_Channel_Set()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var apiServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Api", "ApiServer.cs"));
+        var playServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
+        var createGame = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Api", "Handlers", "CreateGameHttpHandler.cs"));
+        var authenticate = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Play", "Infrastructure", "ZLink", "Sessions", "Handlers",
+            "AuthenticatePlaySessionHandler.cs"));
+        var settings = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Configuration", "SampleSettings.cs"));
+        var shellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.ps1"));
+
+        Assert.Equal(1, apiServer.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, playServer.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+        Assert.Contains("AddRouteMesh(SampleNodes.Mesh)", apiServer, StringComparison.Ordinal);
+        Assert.Contains("AddRouteMesh(SampleNodes.Mesh)", playServer, StringComparison.Ordinal);
+
+        foreach (var source in new[] { apiServer, playServer })
+        {
+            Assert.Contains("ChannelName(SampleChannels.Api)", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleChannels.Play(0))", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleChannels.Play(1))", source, StringComparison.Ordinal);
+            Assert.Contains("ChannelName(SampleNodes.Mesh)", source, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("EnableActorDispatch(SampleNodes.Mesh)", playServer, StringComparison.Ordinal);
+        Assert.Contains("RequestToChannel(\n                SampleNodes.Mesh,", createGame, StringComparison.Ordinal);
+        Assert.Contains("RequestToChannel(\n                SampleNodes.Mesh,", authenticate, StringComparison.Ordinal);
+        var game = File.ReadAllText(Path.Combine(
+            sampleRoot, "Server", "Play", "Infrastructure", "ZLink", "Spots", "TicTacToeGameSpot",
+            "TicTacToeGame.cs"));
+        Assert.Contains("result.Detail.AdmittedRemoteNodeCount != 1", game, StringComparison.Ordinal);
+        Assert.Contains("result.Detail.AdmittedLocalSpotCount != 1", game, StringComparison.Ordinal);
+        Assert.Contains("string MeshEndpoint", settings, StringComparison.Ordinal);
+        Assert.Contains("IReadOnlyList<string> PeerMeshEndpoints", settings, StringComparison.Ordinal);
+        Assert.Contains("while len(sockets) < 8", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("$ports = New-SamplePorts -Count 8 -BasePort 0", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("SpotPubSubEndpoint", settings + shellRunner + powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("PlayChannelEndpoint", settings + shellRunner + powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("SpotPubSubEndpoint", apiServer + playServer, StringComparison.Ordinal);
+        Assert.DoesNotContain("SampleNodes.PlaySpot", apiServer + playServer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TicTacToe_Server_Assemblies_Preserve_Role_Boundaries()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
@@ -133,7 +183,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("docker run", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$ports = New-SamplePorts -Count 13 -BasePort 0", powershellRunner,
+        Assert.Contains("$ports = New-SamplePorts -Count 8 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("if (-not $TICTACTOE_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when TICTACTOE_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
@@ -290,10 +340,10 @@ public sealed partial class RegressionTests
         Assert.Contains("LeaveGameReq", clientReadme, StringComparison.Ordinal);
         Assert.DoesNotContain("opens two STREAM connections", clientReadme, StringComparison.Ordinal);
 
-        Assert.Contains("two API roles", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Two API roles", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("two Play roles", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("manual endpoint", samplesReadme, StringComparison.Ordinal);
-        Assert.Contains("Redis room routes", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Manual MeshNode peers", samplesReadme, StringComparison.Ordinal);
+        Assert.Contains("Redis room route store", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("Server.Play -- --config ./appsettings.play-a.json", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("Server.Play -- --config ./appsettings.play-b.json", samplesReadme, StringComparison.Ordinal);
         Assert.Contains("Server.Api -- --config ./appsettings.api-a.json", samplesReadme, StringComparison.Ordinal);

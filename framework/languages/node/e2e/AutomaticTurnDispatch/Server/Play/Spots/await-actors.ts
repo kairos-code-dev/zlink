@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
 import { DelayReq } from '../../../Shared/messages';
 import type {
   ActorJoinAwaitReq,
@@ -14,11 +15,11 @@ import type {
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
+  ZLinkChannelClient,
   ZLinkEntrySpot,
-  ZLinkEntrySpotActorRequestHandler,
-  ZLinkEntrySpotActorSendHandler,
   ZLinkEntrySpotContext,
-  ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorRequestContext,
@@ -27,10 +28,17 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
 import { EvidenceStore } from '../Support/evidence-store';
-import type { AwaitProbeSpot } from './await-probe-spot';
 
 export class AwaitActor implements ZLinkActor {
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
+
+  configure(): void {
+    this.context.handlers.addHandler(EntryActorAwaitHandler);
+    this.context.handlers.addHandler(EntryActorFastSendHandler);
+    this.context.handlers.addHandler(EntryActorFastHandler);
+    this.context.handlers.addHandler(EntryActorJoinAwaitHandler);
+    this.context.handlers.addHandler(EntryActorPushAwaitHandler);
+  }
 }
 
 @Injectable()
@@ -44,208 +52,221 @@ export class AwaitActorFactory implements ZLinkActorFactory {
 export class AwaitEntrySpot implements ZLinkEntrySpot<AwaitActor> {
   readonly context!: ZLinkEntrySpotContext<AwaitActor>;
 
-  configure(): void {
-    this.context.handlers.addActorPacket(EntryActorAwaitHandler, AwaitActor);
-    this.context.handlers.addActorPacket(EntryActorFastSendHandler, AwaitActor);
-    this.context.handlers.addActorPacket(EntryActorFastHandler, AwaitActor);
-    this.context.handlers.addActorPacket(EntryActorJoinAwaitHandler, AwaitActor);
-    this.context.handlers.addActorPacket(EntryActorPushAwaitHandler, AwaitActor);
-  }
-
-  async onActorJoin(actorId: string): Promise<ZLinkSpotActorJoinResponse> {
-    void actorId;
+  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<ZLinkSpotActorJoinResponse> {
+    void actor;
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: AwaitActor): Promise<void> { void actor; }
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
 
-  async onLeaveActor(actor: AwaitActor): Promise<void> { void actor; }
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
 }
 
 @Injectable()
 export class EntryActorAwaitHandler
-  implements ZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorAwaitReq, ActorAwaitRes> {
-  constructor(private readonly evidence: EvidenceStore) {}
+{
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+  ) {}
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
   async handle(
-    entrySpot: AwaitEntrySpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorAwaitEvidence(this.evidence, entrySpot, actor, request);
-    return actorReply('TD-D', request.requestId, actor, entrySpot, 'actor-await-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorAwaitEvidence(this.evidence, this.channels, target, actor, request);
+    return actorReply('TD-D', request.requestId, actor, target, 'actor-await-completed');
   }
 }
 
 @Injectable()
 export class SpotActorAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorAwaitReq, ActorAwaitRes> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorAwaitReq, ActorAwaitRes> {
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+  ) {}
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
   async handle(
-    spot: AwaitProbeSpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorAwaitEvidence(this.evidence, spot, actor, request);
-    return actorReply('TD-D', request.requestId, actor, spot, 'actor-await-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorAwaitEvidence(this.evidence, this.channels, target, actor, request);
+    return actorReply('TD-D', request.requestId, actor, target, 'actor-await-completed');
   }
 }
 
 @Injectable()
 export class EntryActorFastHandler
-  implements ZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorFastReq, ActorAwaitRes> {
+{
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorFastReq')
   async handle(
-    entrySpot: AwaitEntrySpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorFastReq
   ): Promise<ActorAwaitRes> {
     void context;
-    recordActorFastEvidence(this.evidence, entrySpot, actor, request);
-    return actorReply('TD-D', request.requestId, actor, entrySpot, request.marker);
+    const target = actorEvidenceTarget(this.evidence, actor);
+    recordActorFastEvidence(this.evidence, target, actor, request);
+    return actorReply('TD-D', request.requestId, actor, target, request.marker);
   }
 }
 
 @Injectable()
 export class EntryActorFastSendHandler
-  implements ZLinkEntrySpotActorSendHandler<AwaitEntrySpot, AwaitActor, ActorFastMsg> {
+{
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorSend('ActorFastMsg')
   async handle(
-    entrySpot: AwaitEntrySpot,
     actor: AwaitActor,
     context: ZLinkSpotActorSendContext,
     request: ActorFastMsg
   ): Promise<void> {
     void context;
-    recordActorFastEvidence(this.evidence, entrySpot, actor, request);
+    recordActorFastEvidence(this.evidence, actorEvidenceTarget(this.evidence, actor), actor, request);
   }
 }
 
 @Injectable()
 export class SpotActorFastHandler
-  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorFastReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorFastReq, ActorAwaitRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorFastReq')
   async handle(
-    spot: AwaitProbeSpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorFastReq
   ): Promise<ActorAwaitRes> {
     void context;
-    recordActorFastEvidence(this.evidence, spot, actor, request);
-    return actorReply('TD-D', request.requestId, actor, spot, request.marker);
+    const target = actorEvidenceTarget(this.evidence, actor);
+    recordActorFastEvidence(this.evidence, target, actor, request);
+    return actorReply('TD-D', request.requestId, actor, target, request.marker);
   }
 }
 
 @Injectable()
 export class SpotActorFastSendHandler
-  implements ZLinkSpotActorSendHandler<AwaitProbeSpot, AwaitActor, ActorFastMsg> {
+  implements ZLinkSpotActorSendHandler<AwaitActor, ActorFastMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorSend('ActorFastMsg')
   async handle(
-    spot: AwaitProbeSpot,
     actor: AwaitActor,
     context: ZLinkSpotActorSendContext,
     request: ActorFastMsg
   ): Promise<void> {
     void context;
-    recordActorFastEvidence(this.evidence, spot, actor, request);
+    recordActorFastEvidence(this.evidence, actorEvidenceTarget(this.evidence, actor), actor, request);
   }
 }
 
 @Injectable()
 export class EntryActorPushAwaitHandler
-  implements ZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
-  constructor(private readonly evidence: EvidenceStore) {}
+{
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+  ) {}
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
   async handle(
-    entrySpot: AwaitEntrySpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorPushAwaitEvidence(this.evidence, entrySpot, actor, request, false);
-    return actorReply('TD-F3', request.requestId, actor, entrySpot, 'actor-push-await-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorPushAwaitEvidence(this.evidence, this.channels, target, actor, request, false);
+    return actorReply('TD-F3', request.requestId, actor, target, 'actor-push-await-completed');
   }
 }
 
 @Injectable()
 export class SpotActorPushAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+  ) {}
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
   async handle(
-    spot: AwaitProbeSpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorPushAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorPushAwaitEvidence(this.evidence, spot, actor, request, true);
-    return actorReply('TD-F3', request.requestId, actor, spot, 'actor-push-await-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorPushAwaitEvidence(this.evidence, this.channels, target, actor, request, true);
+    return actorReply('TD-F3', request.requestId, actor, target, 'actor-push-await-completed');
   }
 }
 
 @Injectable()
 export class EntryActorJoinAwaitHandler
-  implements ZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
+{
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorJoinAwaitReq')
   async handle(
-    entrySpot: AwaitEntrySpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorJoinAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorJoinEvidence(this.evidence, entrySpot, actor, request, 'actor-join-await-completed');
-    return actorReply('TD-E1', request.requestId, actor, entrySpot, 'actor-join-await-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorJoinEvidence(this.evidence, target, actor, request, 'actor-join-await-completed');
+    return actorReply('TD-E1', request.requestId, actor, target, 'actor-join-await-completed');
   }
 }
 
 @Injectable()
 export class SpotActorJoinAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorJoinAwaitReq')
   async handle(
-    spot: AwaitProbeSpot,
     actor: AwaitActor,
     context: ZLinkSpotActorRequestContext,
     request: ActorJoinAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorJoinEvidence(this.evidence, spot, actor, request, 'actor-join-completed');
-    return actorReply('TD-E', request.requestId, actor, spot, 'actor-join-completed');
+    const target = actorEvidenceTarget(this.evidence, actor);
+    await recordActorJoinEvidence(this.evidence, target, actor, request, 'actor-join-completed');
+    return actorReply('TD-E', request.requestId, actor, target, 'actor-join-completed');
   }
 }
 
-type ActorEvidenceTarget = (ZLinkEntrySpot<AwaitActor> | ZLinkSpot<AwaitActor>) & {
-  readonly context: NonNullable<ZLinkEntrySpot<AwaitActor>['context']> | NonNullable<ZLinkSpot<AwaitActor>['context']>;
-};
+interface ActorEvidenceTarget {
+  readonly spotRid: unknown;
+  readonly nodeRid: unknown;
+}
+
+function actorEvidenceTarget(evidence: EvidenceStore, actor: AwaitActor): ActorEvidenceTarget {
+  return {
+    spotRid: actor.context.spotRid ?? evidence.rid,
+    nodeRid: evidence.rid
+  };
+}
 
 async function recordActorAwaitEvidence(
   evidence: EvidenceStore,
+  channels: ZLinkChannelClient,
   target: ActorEvidenceTarget,
   actor: AwaitActor,
   request: ActorAwaitReq
@@ -253,15 +274,15 @@ async function recordActorAwaitEvidence(
   const terminator = request.terminator ?? 'async';
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-await-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-await-started|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  const call = target.context.outbound
+  const call = channels
     .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
       new DelayReq(request.requestId, request.delayMs, `actor-${actor.actorId}`))
     .timeout(5000);
   evidence.add(
-    `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (terminator === 'yield') {
@@ -270,11 +291,11 @@ async function recordActorAwaitEvidence(
     await call.submit<DelayRes>();
   }
   evidence.add(
-    `actor-await-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-await-resumed|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   evidence.add(
-    `actor-await-completed|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-await-completed|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
 }
@@ -288,14 +309,14 @@ async function recordActorJoinEvidence(
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-join-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-join-started|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
   );
   const joined = await actor.context
     .joinSpot(request.targetSpotRid, new DelayReq(request.requestId, 0, 'join'))
     .submit<DelayRes>();
   evidence.add(
-    `${completedMarker}|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `${completedMarker}|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
     + `|target=${request.targetSpotRid}|accepted=${joined.status === 'accepted'}`
   );
@@ -303,6 +324,7 @@ async function recordActorJoinEvidence(
 
 async function recordActorPushAwaitEvidence(
   evidence: EvidenceStore,
+  channels: ZLinkChannelClient,
   target: ActorEvidenceTarget,
   actor: AwaitActor,
   request: ActorPushAwaitReq,
@@ -310,15 +332,15 @@ async function recordActorPushAwaitEvidence(
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-push-await-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-push-await-started|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  const call = target.context.outbound
+  const call = channels
     .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
       new DelayReq(request.requestId, request.delayMs, `actor-push-${actor.actorId}`))
     .timeout(5000);
   evidence.add(
-    `actor-push-await-released|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-push-await-released|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (useAwait) {
@@ -327,7 +349,7 @@ async function recordActorPushAwaitEvidence(
     await call.submit<DelayRes>();
   }
   evidence.add(
-    `actor-push-await-resumed|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-push-await-resumed|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   actor.context.boundSession
@@ -335,11 +357,11 @@ async function recordActorPushAwaitEvidence(
       actor.actorId,
       request.requestId,
       request.value,
-      String(target.context.nodeRid)
+      String(target.nodeRid)
     ))
     .submit();
   evidence.add(
-    `actor-push-await-completed|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-push-await-completed|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
 }
@@ -352,12 +374,12 @@ function recordActorFastEvidence(
 ): void {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-fast-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-fast-started|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
     + `|marker=${request.marker}|handler=actor`
   );
   evidence.add(
-    `actor-fast-completed|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-fast-completed|rid=${evidence.rid}|spot=${target.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
     + `|marker=${request.marker}|handler=actor`
   );
@@ -374,8 +396,8 @@ function actorReply(
     scenarioId,
     requestId,
     actorId: actor.actorId,
-    spotRid: String(target.context.spotRid),
-    nodeRid: String(target.context.nodeRid),
+    spotRid: String(target.spotRid),
+    nodeRid: String(target.nodeRid),
     marker
   };
 }

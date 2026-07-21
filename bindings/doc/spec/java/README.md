@@ -689,6 +689,18 @@ Service control/admission receive APIs may use `Optional`, nullable, or typed
 result-return forms when those are clearer than reusable data-plane storage.
 They still must distinguish no-data from hard receive failure.
 
+`ReceiveRecord.sourceBindingGeneration()` returns the validated binding
+generation for a record sent from a bound STREAM session to an Actor. For that
+record, `sourceSpotRid()` returns the session routing ID. Other records preserve
+the zero value supplied by Core.
+
+The binding decodes a Mesh dispatch `SEND_READY` record as
+`MeshSendReadyData`. This value preserves Core's destination kind, target node
+RID, target Spot RID, target Actor ref, and channel name. Fields that do not
+apply to the destination kind retain the empty value supplied by Core.
+`ReceiveRecord.sendReady()` returns this value only when the kind data has that
+type and returns `null` for other record kinds.
+
 ## Handler Registration Naming
 
 Handler registration names describe registration, not event occurrence.

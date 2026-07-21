@@ -3,9 +3,8 @@ package systems.zlink.samples.bingo.server.session;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
@@ -43,14 +42,15 @@ public final class SessionServerApplication {
                 .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.configureLocations();
-            options.addClientServerChannel(SampleNames.ApiChannel)
-                .enableClient();
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
-            node.enableRouter(topology.selectedSessionRouterEndpoint())
-                .setRoutingId(RoutingId.from(topology.selectedSessionRouterRid()));
-            node.enablePubSub(topology.selectedSessionSpotEndpoint());
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.Mesh);
+            node.listen(topology.selectedSessionRouterEndpoint())
+                .useAllocatedRoutingId(2, "session")
+                .setRoutingIdAllocationGroup("bingo.session");
+            node.channelName(SampleNames.ApiChannel).setWeight(0);
+            node.channelName(SampleNames.RoomSpotDiscovery);
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(topology.selectedStreamEndpoint())
+                .enableActorDispatch(SampleNames.Mesh)
                 .registerSession(BingoSession.class);
         };
     }

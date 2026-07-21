@@ -16,6 +16,7 @@ DEFAULT_CONFIGS=(
   ObservabilityOps
   ToActorMessaging
   SpotActorTransfer
+  SubmitAdmission
 )
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 
@@ -77,7 +78,12 @@ run_config_with_retry() {
   local attempt output status started_at ended_at
   output="$(mktemp)"
 
-  for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
+  local max_attempts="$MAX_ATTEMPTS"
+  if [[ "$config" == "SubmitAdmission" ]]; then
+    max_attempts=1
+  fi
+
+  for attempt in $(seq 1 "${max_attempts}"); do
     : >"${output}"
     started_at="$(date +%s)"
     set +e
@@ -105,7 +111,7 @@ run_config_with_retry() {
       return "${status}"
     fi
 
-    if [[ "${attempt}" == "${MAX_ATTEMPTS}" ]]; then
+    if [[ "${attempt}" == "${max_attempts}" ]]; then
       rm -f "${output}"
       return "${status}"
     fi

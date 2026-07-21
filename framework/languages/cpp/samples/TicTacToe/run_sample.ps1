@@ -145,7 +145,7 @@ function Cleanup([int]$Status) {
 }
 
 & $CTestBin --test-dir $BuildDir `
-    -R "test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_tictactoe_(play|api)" `
+    -R "test_cpp_framework_sample_parity|zlink_cpp_framework_mesh_node_vertical_test|test_cpp_framework_actor_gateway|sample_smoke_sample_cpp_framework_tictactoe_(play|api)" `
     --output-on-failure
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

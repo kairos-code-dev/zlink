@@ -97,7 +97,7 @@ public sealed class SpotAutoRegistrationScannerTests
             AutoActorRequest request,
             CancellationToken cancellationToken) => ValueTask.FromResult(new AutoActorReply());
 
-        [ZLinkSpotSubscription("room-node", "room.attribute.events")]
+        [ZLinkSpotSubscription("room-node", "room-events", "room.attribute.events")]
         public ValueTask OnEventAsync(AutoRoomEvent message) => ValueTask.CompletedTask;
     }
 
@@ -150,7 +150,7 @@ public sealed class SpotAutoRegistrationScannerTests
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    [ZLinkSpotSubscriptionHandler("room.events")]
+    [ZLinkSpotSubscriptionHandler("room-events", "room.events")]
     private sealed class AutoRoomSubscriptionHandler : IZLinkSpotSubscriptionHandler<AutoRoomSpot, AutoRoomEvent>
     {
         public ValueTask HandleAsync(

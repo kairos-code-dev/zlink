@@ -14,6 +14,11 @@ internal static class SfB1FailStaticScenario
         ZLinkHttpClient consumer,
         StoreFailureProcessManager processes)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-B1: provider routes were not ready before the store outage.");
+
         await processes.PauseStoreAsync();
         try
         {

@@ -14,10 +14,10 @@ test('Bingo roles declare the common automatic routing-id groups', () => {
   const play = read('samples/Bingo.Ts/Server/Play/bingo-play-module.ts');
   const session = read('samples/Bingo.Ts/Server/Session/bingo-session-module.ts');
 
-  assert.match(api, /addClientServerChannel\(SampleNames\.apiChannel\)[\s\S]*useAllocatedRoutingId\(2, 'api'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.api'\)/);
-  assert.match(play, /addClientServerChannel\(SampleNames\.playChannel\)[\s\S]*useAllocatedRoutingId\(2, 'play'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.play'\)/);
-  assert.match(play, /addSpotMesh\(SampleNames\.roomSpotNode\)[\s\S]*useAllocatedRoutingId\(2, 'play'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.play'\)/);
-  assert.match(session, /addSpotMesh\(SampleNames\.roomSpotNode\)[\s\S]*useAllocatedRoutingId\(2, 'session'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.session'\)/);
+  assert.match(api, /addRouteMesh\(SampleNames\.apiChannel\)[\s\S]*useAllocatedRoutingId\(2, 'api'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.api'\)/);
+  assert.match(play, /addRouteMesh\(SampleNames\.playChannel\)[\s\S]*useAllocatedRoutingId\(2, 'play'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.play'\)/);
+  assert.match(play, /addRouteMesh\(SampleNames\.roomSpotNode\)[\s\S]*useAllocatedRoutingId\(2, 'play'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.play'\)/);
+  assert.match(session, /addRouteMesh\(SampleNames\.roomSpotNode\)[\s\S]*useAllocatedRoutingId\(2, 'session'\)[\s\S]*setRoutingIdAllocationGroup\('bingo\.session'\)/);
 });
 
 test('Bingo topology has no fixed or preferred routing-id configuration', () => {

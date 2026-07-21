@@ -100,6 +100,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_stream_session_request_to_actor(
 ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_actor_send_bound_session(
   void *mesh_node,
   const zlink_actor_ref_t *actor,
+  uint64_t expected_binding_generation,
   const zlink_msg_t *parts,
   size_t part_count,
   zlink_send_flags_t flags);

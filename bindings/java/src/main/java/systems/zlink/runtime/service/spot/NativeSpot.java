@@ -63,12 +63,22 @@ public final class NativeSpot implements Spot {
 
     @Override
     public void sendToChannel(String channel, List<Message> parts, SendFlags flags) {
+        sendToChannel(channel, new byte[0], parts, flags);
+    }
+
+    @Override
+    public void sendToChannel(
+        String channel,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(channel, "channel");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment name = NativeHelpers.toCString(arena, channel);
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
-            int rc = NativeServiceSymbols.spotSendToChannel(handle, name, MemorySegment.NULL,
+            int rc = NativeServiceSymbols.spotSendToChannel(
+                handle, name, MeshCalls.metadata(arena, metadata),
                 array, n, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_spot_send_to_channel");
         }
@@ -77,13 +87,24 @@ public final class NativeSpot implements Spot {
     @Override
     public OperationId requestToChannel(String channel, List<Message> parts, SendFlags flags,
                                         Duration timeout) {
+        return requestToChannel(channel, new byte[0], parts, flags, timeout);
+    }
+
+    @Override
+    public OperationId requestToChannel(
+        String channel,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags,
+        Duration timeout) {
         Objects.requireNonNull(channel, "channel");
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment name = NativeHelpers.toCString(arena, channel);
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
             MemorySegment opid = MeshCalls.newOperationId(arena);
-            int rc = NativeServiceSymbols.spotRequestToChannel(handle, name, MemorySegment.NULL,
+            int rc = NativeServiceSymbols.spotRequestToChannel(
+                handle, name, MeshCalls.metadata(arena, metadata),
                 array, n, opid, flags.value(), MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, array, n, "zlink_spot_request_to_channel");
             return MeshCalls.operationId(opid);
@@ -93,6 +114,23 @@ public final class NativeSpot implements Spot {
     @Override
     public void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
                            long targetSpotGeneration, List<Message> parts, SendFlags flags) {
+        sendToSpot(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            new byte[0],
+            parts,
+            flags);
+    }
+
+    @Override
+    public void sendToSpot(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(targetNodeRid, "targetNodeRid");
         Objects.requireNonNull(targetSpotRid, "targetSpotRid");
         try (Arena arena = Arena.ofConfined()) {
@@ -101,7 +139,8 @@ public final class NativeSpot implements Spot {
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
             int rc = NativeServiceSymbols.spotSendToSpot(handle, nodeRid, spotRid,
-                targetSpotGeneration, MemorySegment.NULL, array, n, flags.value());
+                targetSpotGeneration, MeshCalls.metadata(arena, metadata),
+                array, n, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_spot_send_to_spot");
         }
     }
@@ -110,6 +149,25 @@ public final class NativeSpot implements Spot {
     public OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
                                      long targetSpotGeneration, List<Message> parts,
                                      SendFlags flags, Duration timeout) {
+        return requestToSpot(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            new byte[0],
+            parts,
+            flags,
+            timeout);
+    }
+
+    @Override
+    public OperationId requestToSpot(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        long targetSpotGeneration,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags,
+        Duration timeout) {
         Objects.requireNonNull(targetNodeRid, "targetNodeRid");
         Objects.requireNonNull(targetSpotRid, "targetSpotRid");
         try (Arena arena = Arena.ofConfined()) {
@@ -119,7 +177,8 @@ public final class NativeSpot implements Spot {
             long n = MeshCalls.count(parts);
             MemorySegment opid = MeshCalls.newOperationId(arena);
             int rc = NativeServiceSymbols.spotRequestToSpot(handle, nodeRid, spotRid,
-                targetSpotGeneration, MemorySegment.NULL, array, n, opid, flags.value(),
+                targetSpotGeneration, MeshCalls.metadata(arena, metadata),
+                array, n, opid, flags.value(),
                 MeshCalls.timeout(timeout));
             MeshCalls.submitOk(rc, array, n, "zlink_spot_request_to_spot");
             return MeshCalls.operationId(opid);
@@ -128,6 +187,16 @@ public final class NativeSpot implements Spot {
 
     @Override
     public void publish(String channel, String topic, List<Message> parts, SendFlags flags) {
+        publish(channel, topic, new byte[0], parts, flags);
+    }
+
+    @Override
+    public void publish(
+        String channel,
+        String topic,
+        byte[] metadata,
+        List<Message> parts,
+        SendFlags flags) {
         Objects.requireNonNull(channel, "channel");
         Objects.requireNonNull(topic, "topic");
         try (Arena arena = Arena.ofConfined()) {
@@ -135,7 +204,8 @@ public final class NativeSpot implements Spot {
             MemorySegment topicSeg = NativeHelpers.toCString(arena, topic);
             MemorySegment array = MeshCalls.parts(arena, parts);
             long n = MeshCalls.count(parts);
-            int rc = NativeServiceSymbols.spotPublish(handle, name, topicSeg, MemorySegment.NULL,
+            int rc = NativeServiceSymbols.spotPublish(
+                handle, name, topicSeg, MeshCalls.metadata(arena, metadata),
                 array, n, MemorySegment.NULL, flags.value());
             MeshCalls.submitOk(rc, array, n, "zlink_spot_publish");
         }

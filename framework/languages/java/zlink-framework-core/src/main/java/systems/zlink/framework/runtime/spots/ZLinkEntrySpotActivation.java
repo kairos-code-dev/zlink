@@ -160,9 +160,9 @@ final class EntrySpotActivation
         return transition == null ? tail : context.enqueueDispatch(transition);
     }
 
-    void handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
+    CompletionStage<Void> handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
         if (host.isClosing()) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
             drainRoutes();
@@ -182,6 +182,7 @@ final class EntrySpotActivation
         for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
             actorMessage.close();
         }
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private void drainRoutes() {
@@ -269,6 +270,21 @@ final class EntrySpotActivation
             }
             return;
         }
+        if (host.isDraining()
+            && ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
+            if (received.requestSeq().isPresent()) {
+                host.replySpotRouteDispatchError(
+                    received,
+                    packet.packetName(),
+                    backendSpot.routingId(),
+                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        "Actor application admission is sealed"));
+            }
+            closeRouteReceived(received);
+            return;
+        }
         if (ZLinkActorSpotRoutePackets.ACTOR_PACKET_NAME.equals(packet.packetName())) {
             handleRoutedActorPacketParts(received.parts())
                 .thenAccept(reply -> {
@@ -279,6 +295,20 @@ final class EntrySpotActivation
                     }
                 })
                 .whenComplete((ignored, error) -> closeRouteReceived(received));
+            return;
+        }
+        if (host.isDraining()) {
+            if (received.requestSeq().isPresent()) {
+                host.replySpotRouteDispatchError(
+                    received,
+                    packet.packetName(),
+                    backendSpot.routingId(),
+                    ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        "SPOT application admission is sealed"));
+            }
+            closeRouteReceived(received);
             return;
         }
         dispatchSpotRouteHandler(received, packet);
@@ -389,6 +419,29 @@ final class EntrySpotActivation
             packetHeader.requestSeq(),
             packetHeader.packetName(),
             Map.of());
+        if (ZLinkSpotRuntime.isNoBindActorPacket(headerPart)
+            || headerPart.sourceSessionRid().toBytes().length == 0) {
+            return host.dispatchLocalSessionActor(targetActor, header, payload)
+                .thenAccept(reply -> {
+                    if (reply.isEmpty()) {
+                        return;
+                    }
+                    try (Message replyPayload = reply.get();
+                         Message frame = ActorPacketFrames.encodeReply(packetHeader, replyPayload)) {
+                        host.primaryNode().replyActorNoBind(
+                            headerPart.actor(),
+                            headerPart.sourceNodeRid(),
+                            headerPart.sourceSessionRid(),
+                            headerPart.requestId(),
+                            headerPart.flags(),
+                            List.of(frame));
+                    }
+                })
+                .whenComplete((ignored, error) -> {
+                    payload.close();
+                    headerPart.close();
+                });
+        }
         try (Message headerPartMessage = Message.from(ZLinkStreamHeaderCodec.encode(header));
              Message body = Message.from(payload)) {
             boolean forwarded = host.primaryNode().forwardActorBoundSession(

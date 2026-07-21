@@ -1,5 +1,7 @@
 export function createAbortError(): Error {
-  return new Error('The operation was aborted.');
+  const error = new Error('The operation was aborted.');
+  error.name = 'AbortError';
+  return error;
 }
 
 export function throwIfAborted(signal: AbortSignal | undefined): void {

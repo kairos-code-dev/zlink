@@ -253,6 +253,16 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         while (current.getCause() != null) {
             current = current.getCause();
         }
+        if (current instanceof systems.zlink.contracts.errors.ZlinkRequestException request) {
+            return request.getClass().getName()
+                + ": result=" + request.getResult()
+                + ", errno=" + request.getNativeErrno();
+        }
+        if (current instanceof systems.zlink.contracts.errors.ZlinkSubmitException submit) {
+            return submit.getClass().getName()
+                + ": result=" + submit.getResult()
+                + ", errno=" + submit.getNativeErrno();
+        }
         return current.toString();
     }
 

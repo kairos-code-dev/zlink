@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import { SampleNames } from '../../Shared/Configuration/sample-names';
+import { questMissionInstanceChannel, SampleNames } from '../../Shared/Configuration/sample-names';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
 import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
@@ -66,18 +66,19 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
             .traceLogFile(`${config.logDir}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
           builder.addLocationStore(createGameQuestLocationStore(config));
-          Object.assign(builder.configureLocations(), gameQuestLocationOptions());
-          return builder
-            .addRouteMeshChannel(SampleNames.questMissionRouteChannel)
-              .enableClient()
-            .addStreamNode(SampleNames.playerStreamNode)
-              .bind(config[streamEndpointKey])
-              .registerSession(GameQuestSessionFactory)
-            .addSpotMesh(SampleNames.playerQuestSpotMesh)
-              .enableRouter(config[actorSpotEndpointKey], apiRid)
-              .addEntrySpot(GameQuestEntrySpot)
-              .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory)
-            .build();
+          gameQuestLocationOptions(builder.configureLocations());
+          builder.addStreamNode(SampleNames.playerStreamNode)
+            .bind(config[streamEndpointKey])
+            .registerSession(GameQuestSessionFactory);
+          const mesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
+            .listen(config[actorSpotEndpointKey])
+            .routingId(apiRid)
+            .addEntrySpot(GameQuestEntrySpot)
+            .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory);
+          mesh.channelName(questMissionInstanceChannel('mission-a')).setWeight(0);
+          mesh.channelName(questMissionInstanceChannel('mission-b')).setWeight(0);
+          mesh.channelName(SampleNames.playerQuestSpotMesh);
+          return builder.build();
         }
       })
     ],

@@ -42,7 +42,7 @@ ZMP(zlink Message Protocol)는 zlink가 wire 위에서 쓰는 프레이밍 프�
 | 비트 | 이름 | 값 | 의미 |
 |------|------|-----|------|
 | 0 | MORE | `0x01` | 멀티파트 — 뒤에 프레임이 더 있음 |
-| 1 | CONTROL | `0x02` | control part(핸드셰이크·하트비트 등) |
+| 1 | CONTROL | `0x02` | control part(핸드셰이크·프로토콜 오류 등) |
 | 2 | IDENTITY | `0x04` | routing id 관련 프레임(ROUTER) |
 | 3 | SUBSCRIBE | `0x08` | 구독 요청(PUB/SUB) |
 | 4 | CANCEL | `0x10` | 구독 취소 |
@@ -63,8 +63,8 @@ Client ──── HELLO ────▶ Server
        ═══ 데이터 교환 시작 ═══
 ```
 
-control part 타입: `HELLO`(인사) · `READY`(메타데이터 교환) · `HEARTBEAT` /
-`HEARTBEAT_ACK` · `ERROR`. HELLO는 socket type과 routing id를 싣는다. READY는
+control part 타입은 `HELLO`(인사), `READY`(메타데이터 교환)와 `ERROR`다. HELLO는 socket type과 routing id를
+싣는다. READY는
 기본적으로 control type만 보내고, `ZLINK_OPT_ZMP_METADATA`가 켜진 경우에만
 `Socket-Type`/`Routing-Id` 속성을 싣는다(기본값 off). 정확한 payload 레이아웃은 internals를 본다.
 

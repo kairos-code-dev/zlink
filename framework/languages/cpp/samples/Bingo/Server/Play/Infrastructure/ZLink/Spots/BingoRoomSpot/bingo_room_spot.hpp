@@ -8,6 +8,7 @@
 #include <zlink/framework.hpp>
 
 #include <chrono>
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <vector>
@@ -92,7 +93,7 @@ class bingo_room_spot_t : public spot_t
       const spot_actor_request_context_t &context,
       const observe_bingo_events_req_t &request);
 
-    stop_observing_bingo_events_res_t stop_observing_events (
+    task_t<stop_observing_bingo_events_res_t> stop_observing_events (
       const player_actor_t &actor,
       const spot_actor_request_context_t &context,
       const stop_observing_bingo_events_req_t &request);
@@ -102,43 +103,96 @@ class bingo_room_spot_t : public spot_t
       const spot_actor_request_context_t &context,
       const submit_bingo_card_req_t &request);
 
-    void on_actor_joined (const player_actor_t &actor)
+    task_t<void> on_actor_joined (const player_actor_t &actor)
     {
         const auto pending = _pending_joins.find (actor.actor.actor_id);
         if (pending == _pending_joins.end ()) {
             throw std::runtime_error ("accepted bingo actor admission is missing");
         }
         const auto request = pending->second;
-        _pending_joins.erase (pending);
         _game.set_room_id_if_empty (request.room_id);
         if (request.observe_only) {
+            _pending_joins.erase (pending);
             observers[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
         } else {
+            get_player_record_res_t record;
+            try {
+                record = co_await _context.outbound ()
+                           .request (sample_names_t::api_channel,
+                                     get_player_record_req_t{actor.actor.actor_id})
+                           .yield<get_player_record_res_t> ();
+            }
+            catch (...) {
+                _pending_joins.erase (actor.actor.actor_id);
+                throw;
+            }
+            const auto resumed = _pending_joins.find (actor.actor.actor_id);
+            if (resumed == _pending_joins.end () || resumed->second.room_id != request.room_id
+                || !_game.can_accept_player ()) {
+                _pending_joins.erase (actor.actor.actor_id);
+                (void) co_await _context.leave_actor (
+                  actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+                co_return;
+            }
+            _pending_joins.erase (resumed);
             const auto display_name = actor.display_name.empty () ? request.display_name
                                                                   : actor.display_name;
-            const auto joined = _game.join (actor.actor.actor_id, display_name);
+            actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+            const auto joined = _game.join (actor.actor.actor_id, display_name,
+                                            record.wins, record.losses);
             send_to_players (joined.player_joined, actor.actor.actor_id);
             if (joined.game_started) {
                 send_to_players (*joined.game_started, actor.actor.actor_id);
                 actor.push (*joined.game_started);
             }
+            std::cout << "bingo player record loaded actor=" << record.actor_id
+                      << " wins=" << record.wins << " losses=" << record.losses << '\n';
         }
-        actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
+        co_return;
     }
 
-    void on_leave_actor (const player_actor_t &actor)
+    task_t<void> on_leave_actor (const player_actor_t &actor)
     {
+        const auto player = actors.find (actor.actor.actor_id);
+        if (player != actors.end ()) {
+            const auto final_state = _game.snapshot ();
+            const auto won = std::find (final_state.winners.begin (), final_state.winners.end (),
+                                        actor.actor.actor_id)
+                             != final_state.winners.end ();
+            auto report_pending =
+              _context.outbound ()
+                .request (sample_names_t::api_channel,
+                          report_bingo_result_req_t{final_state.room_id,
+                                                    actor.actor.actor_id,
+                                                    won,
+                                                    final_state.draw_seq})
+                .yield<report_bingo_result_res_t> ();
+            const auto record = co_await report_pending;
+            std::cout << "bingo result reported room=" << final_state.room_id
+                      << " actor=" << record.actor_id << " won=" << (won ? "true" : "false")
+                      << " wins=" << record.wins << " losses=" << record.losses << '\n';
+        }
         actors.erase (actor.actor.actor_id);
         observers.erase (actor.actor.actor_id);
         _game.leave (actor.actor.actor_id);
         if (actors.empty () && observers.empty ()) {
-            (void) _context.close ();
+            (void) co_await _context.close ();
         }
+        co_return;
     }
 
-    void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
+    task_t<void> on_disconnect_actor (const player_actor_t &actor)
+    {
+        actor.mark_disconnected ();
+        co_return;
+    }
 
     const bingo_room_state_t &snapshot () const noexcept { return _game.snapshot (); }
+
+    void record_observer_returned_to_entry_spot (const player_actor_t &actor) const
+    {
+        std::cout << "observer returned to entry spot actor=" << actor.actor.actor_id << '\n';
+    }
 
   private:
     friend class bingo_room_draw_timer_handler_t;

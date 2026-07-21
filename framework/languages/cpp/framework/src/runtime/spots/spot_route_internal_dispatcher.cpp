@@ -225,7 +225,10 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               detail::encoded_payload_from_raw (body.value ()));
             trace_actor_transfer_target ("commit-received", request.actor_id, request.transfer_id);
             auto actor_ref = actor_ref_from_spot_route (request);
-            auto actor_gateway = bind_actor_route (actor_ref, header, received);
+            auto actor_gateway =
+              request.core_transfer
+                ? _actor_gateway
+                : bind_actor_route (actor_ref, header, received);
             trace_actor_transfer_target ("commit-route-bound", request.actor_id,
                                          request.transfer_id);
             auto runtime = _runtime;
@@ -237,17 +240,82 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   std::move (packet.content_type), std::move (packet.metadata),
                   packet.is_request});
             }
+            if (request.finalize && request.core_transfer) {
+                auto native = runtime.native_node ();
+                if (!native) {
+                    return result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed,
+                      "target Core MeshNode is unavailable");
+                }
+                zlink::service::actor_transfer_prepare_t core_prepare;
+                core_prepare.role = zlink::service::actor_transfer_role_t::target;
+                core_prepare.transfer_id.high = request.core_transfer_id_high;
+                core_prepare.transfer_id.low = request.core_transfer_id_low;
+                core_prepare.actor =
+                  zlink::service::mesh_node_t::remote_actor_ref (
+                    zlink::routing_id_t::from (request.actor_node_rid),
+                    request.actor_id, request.actor_generation);
+                core_prepare.expected_membership_epoch = request.core_membership_epoch;
+                core_prepare.peer_node_rid =
+                  zlink::routing_id_t::from (request.actor_node_rid);
+                core_prepare.final_sequence = request.core_final_sequence;
+                core_prepare.reserve_message_count = request.core_reserve_message_count;
+                core_prepare.reserve_byte_count = request.core_reserve_byte_count;
+                zlink::service::actor_transfer_token_t core_token;
+                zlink::service::actor_transfer_prepare_result_t core_result;
+                if (zlink::service::actor_transfer_prepare (
+                      *native, core_prepare, std::chrono::seconds (30),
+                      core_token, core_result)
+                    != zlink::request_result_t::ok) {
+                    return result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed,
+                      "target Core Actor transfer prepare failed (errno "
+                        + std::to_string (errno) + ")");
+                }
+                const auto next_membership_epoch = request.core_membership_epoch + 1;
+                if (core_token.commit (next_membership_epoch)
+                      != zlink::config_result_t::ok
+                    || core_token.activate () != zlink::config_result_t::ok) {
+                    return result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed,
+                      "target Core Actor transfer activation failed");
+                }
+                runtime.record_core_actor_transfer_activation (
+                  request.actor_id, next_membership_epoch);
+            }
+            if (request.finalize && !request.bound_session_node_rid.empty ()) {
+                const auto target_actor_ref = actor_ref_t (
+                  runtime.node_rid (), std::string (actor_ref.actor_type ()),
+                  std::string (actor_ref.actor_id ()), actor_ref.generation ());
+                const auto actor_ref_updated =
+                  actor_gateway.update_actor_ref (target_actor_ref);
+                if (!actor_ref_updated) {
+                    return result_t<zlink::message_t>::failure (
+                      actor_ref_updated.error_kind (),
+                      actor_ref_updated.error () ? actor_ref_updated.error ()->what ()
+                                                 : "remote actor ref update failed");
+                }
+                bind_actor_session_route (
+                  actor_gateway, target_actor_ref,
+                  _runtime.actor_route_transport_name ().value_or (header.channel_name),
+                  zlink::routing_id_t::from (request.bound_session_node_rid),
+                  request.bound_session_rid.empty ()
+                    ? std::nullopt
+                    : std::make_optional (
+                        zlink::routing_id_t::from (request.bound_session_rid)),
+                  true);
+            }
             auto committed = request.finalize
                                ? runtime.finalize_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
                                    spot_rid_t::from_string (request.target_spot_rid),
-                                   std::move (handoff_backlog), services)
+                                   std::move (handoff_backlog), services, &actor_gateway)
                              : request.prepare
                                ? runtime.prepare_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
                                    spot_rid_t::from_string (request.target_spot_rid),
                                    zlink::message_t::from (request.transfer_state),
-                                   actor_gateway.actor_context (actor_ref))
+                                   actor_gateway.actor_context (actor_ref), true)
                                : runtime.commit_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
                                    spot_rid_t::from_string (request.target_spot_rid),

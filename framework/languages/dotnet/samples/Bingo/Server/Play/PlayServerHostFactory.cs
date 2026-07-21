@@ -59,27 +59,22 @@ public static class PlayServerHostFactory
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
-            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
-                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play-api")
-                .SetRoutingIdAllocationGroup("bingo.play.api")
-                .Listen("tcp://127.0.0.1:0");
-            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-
-            var mesh4 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
-                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
                 .SetRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
-                .Listen(node.SpotRouterEndpoint)
+                .Listen(node.MeshEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();
-            mesh4.ChannelName(SampleNames.RoomSpotDiscovery);
+            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.PlayChannel);
+            mesh.ChannelName(SampleNames.RoomChannel);
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "play",
             SampleNames.PlayAllocationGroup,
-            [SampleNames.RoomSpotDiscovery]));
+            [SampleNames.MeshName]));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

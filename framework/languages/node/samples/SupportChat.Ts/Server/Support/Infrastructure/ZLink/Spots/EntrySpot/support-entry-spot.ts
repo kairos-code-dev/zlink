@@ -1,35 +1,49 @@
 import { Injectable } from '@nestjs/common';
 import { AgentAvailabilityDirectory } from '../../../../Application/ConversationAssignment/agent-availability-directory';
+import { SupportActorDirectory } from '../../Actors/support-actor-directory';
+import { SupportUserActor } from '../../Actors/support-user-actor';
 import type { EnsureSupportUserActorReq } from '../../../../../../Shared/Contracts/messages';
 import type {
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse
 } from '@zlink-systems/framework';
-import type { SupportUserActor } from '../../Actors/support-user-actor';
 
 @Injectable()
 class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
   readonly context!: ZLinkEntrySpotContext<SupportUserActor, SupportEntrySpot>;
 
-  constructor(private readonly availability: AgentAvailabilityDirectory) {}
+  constructor(
+    private readonly availability: AgentAvailabilityDirectory,
+    private readonly directory: SupportActorDirectory
+  ) {}
 
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(
+    _actor: ZLinkActorJoinRequest,
+    _request: ZLinkMessage
+  ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 
-  async onCreateActor(actor: SupportUserActor, request: ZLinkMessage): Promise<void> {
+  async onCreateActor(actor: ZLinkActorMembership, request: ZLinkMessage): Promise<void> {
     const value = request.decode<EnsureSupportUserActorReq>(Object as never);
-    actor.initializeIdentity(value.displayName, value.role, value.participantId);
+    this.directory.bind(actor, {
+      displayName: value.displayName,
+      role: value.role,
+      participantId: value.participantId
+    });
   }
 
-  async onJoinedActor(_actor: SupportUserActor): Promise<void> {}
-  async onLeaveActor(_actor: SupportUserActor): Promise<void> {}
+  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
+  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
 
-  async onDisconnectActor(actor: SupportUserActor): Promise<void> {
-    if (actor.role === 'Agent' && actor.actorId === actor.participantId) {
-      this.availability.setAvailable(actor.actorId, false);
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
+    const identity = this.directory.get(actor.actor.actorId);
+    if (identity?.role === 'Agent' && identity.actorId === identity.participantId) {
+      this.availability.setAvailable(identity.actorId, false);
     }
   }
 }

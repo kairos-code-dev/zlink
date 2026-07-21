@@ -1,4 +1,4 @@
-// PS-A3: ConnectionReady 전 event를 replay하지 않고 준비 뒤 첫 event를 받는지 검증한다.
+// PS-A3: late subscriber 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { getJson } from '../../../http-client';

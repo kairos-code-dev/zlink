@@ -11,6 +11,7 @@
     <Compile Include="../Service/Support/ServiceEvidenceStore.cs" Link="Support/ServiceEvidenceStore.cs" />
     <Compile Include="../Service/Support/ServiceOptions.cs" Link="Support/ServiceOptions.cs" />
     <Compile Include="../Service/Support/ChannelMonitoringRoleHost.cs" Link="Support/ChannelMonitoringRoleHost.cs" />
+    <Compile Include="../Service/Support/ApplicationDispatchGate.cs" Link="Support/ApplicationDispatchGate.cs" />
   </ItemGroup>
 
   <ItemGroup>

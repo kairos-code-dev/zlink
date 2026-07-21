@@ -172,6 +172,7 @@ void zlink::router_t::xread_activated (pipe_t *pipe_)
 
 int zlink::router_t::xrecv (msg_t *msg_)
 {
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
     if (_prefetched) {
         if (!_routing_id_sent) {
             const int rc = msg_->move (_prefetched_id);
@@ -231,11 +232,19 @@ int zlink::router_t::xrecv (msg_t *msg_)
     return 0;
 }
 
-int zlink::router_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_)
+int zlink::router_t::xrecv_routed (msg_t *msg_,
+                                  zlink_routing_id_t *source_rid_out_,
+                                  uint64_t *connection_id_out_)
 {
+    socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
     if (_prefetched) {
         if (source_rid_out_)
             copy_router_pipe_source_rid (_current_in, source_rid_out_);
+        if (connection_id_out_ && _current_in)
+            *connection_id_out_ =
+              _prefetched_msg.transport_connection_id ();
 
         const int rc = msg_->move (_prefetched_msg);
         errno_assert (rc == 0);
@@ -271,6 +280,9 @@ int zlink::router_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_o
         _routing_id_sent = true;
     } else if (_current_in && source_rid_out_) {
         copy_router_pipe_source_rid (_current_in, source_rid_out_);
+    }
+    if (connection_id_out_) {
+        *connection_id_out_ = msg_->transport_connection_id ();
     }
 
     _more_in = (msg_->flags () & msg_t::more) != 0;

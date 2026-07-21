@@ -184,7 +184,6 @@ routing id is only populated for SPOT-originated traffic.
 > For the ZMP request-reply envelope wire format, see
 > [ZMP Protocol](../internals/protocol-zmp.md).
 > For ROUTER dispatch internals, see
-> [Services Internals](../internals/services-internals.md).
 
 #### Server: Receive Requests and Reply
 

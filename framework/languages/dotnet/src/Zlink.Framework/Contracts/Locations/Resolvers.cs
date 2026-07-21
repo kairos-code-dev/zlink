@@ -26,12 +26,15 @@ public abstract class SpotHandle
     {
     }
 
+    public abstract string MeshName { get; }
+
     public abstract RoutingId SpotRid { get; }
 }
 
 public interface IZLinkSpotHandleResolver
 {
     ValueTask<SpotHandle?> ResolveSpotHandleAsync(
+        string meshName,
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
 }
@@ -44,6 +47,7 @@ public interface IZLinkSpotHandleResolver
 public interface IZLinkActorSpotHandleResolver
 {
     ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
+        string meshName,
         string actorId,
         CancellationToken cancellationToken = default);
 }

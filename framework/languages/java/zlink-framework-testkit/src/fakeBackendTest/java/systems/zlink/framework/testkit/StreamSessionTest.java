@@ -42,7 +42,9 @@ final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredSessionRelaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://stream-relay-play-node");
+                node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(GameSession.class); };
@@ -53,7 +55,7 @@ final class StreamSessionTest {
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
         }
 
-        RuntimeTestSupport.awaitClosed(backendFactory, 2);
+        RuntimeTestSupport.awaitClosed(backendFactory);
 
         assertEquals(
             List.of(
@@ -63,15 +65,16 @@ final class StreamSessionTest {
                 "factory.spot",
                 "create.spotNode",
                 "spotNode.setRoutingId",
-                "factory.channel",
+                "spotNode.setRouterBind.inproc://stream-relay-play-node",
+                "spotNode.entrySpot",
+                "create.entrySpot",
                 "factory.stream",
-                "create.context",
                 "create.stream",
                 "stream.bind.inproc://gateway",
                 "stream.onPacket",
                 "stream.onTransportError",
+                "stream.startSessionService",
                 "close.stream",
-                "close.context",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -337,7 +340,9 @@ final class StreamSessionTest {
     void constructorSessionContextExposesClientAndActorsFromFrameworkRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://stream-context-play-node");
+                node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class);
                 node.addActorFactory("player", ActorRuntimeFakeBackendTest.PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
@@ -427,7 +432,7 @@ final class StreamSessionTest {
     }
 
     @Test
-    void sessionSendAndReplyApplyMetadataAndCompression() {
+    void sessionSendAppliesMetadataAndRepliesDoNotCopyIt() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
             stream.registerSession(CompressedSession.class); };
@@ -446,7 +451,7 @@ final class StreamSessionTest {
         awaitCondition(() -> backendFactory.calls().stream()
             .anyMatch(call -> call.startsWith("stream.reply.fake-session.91.String.")
                 && call.contains("PAYLOAD_COMPRESSED")
-                && call.contains("trace=reply-trace")));
+                && !call.contains("trace=")));
     }
 
     @Test
@@ -1100,7 +1105,7 @@ final class StreamSessionTest {
             context.client().send("notify")
                 .metadata("trace", "send-trace").compress().submit();
             context.client().reply("reply")
-                .metadata("trace", "reply-trace").compress().submit();
+                .compress().submit();
             return CompletableFuture.completedFuture(null);
         }
     }

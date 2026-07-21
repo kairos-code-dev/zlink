@@ -172,8 +172,12 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
             }
             catch (Exception)
             {
-                // Stamp read failure falls through to a full tick, which
-                // applies the fail-static policy itself.
+                // The stamp is only an optimization, so still perform the
+                // full correctness read. Record the failed preflight first:
+                // if the store recovers between the two reads, an incomplete
+                // recovery snapshot must get the same disconnect deferral as
+                // any other first successful read after an outage.
+                await _reconciler.NoteStoreFailureAsync(cancellationToken).ConfigureAwait(false);
             }
         }
 

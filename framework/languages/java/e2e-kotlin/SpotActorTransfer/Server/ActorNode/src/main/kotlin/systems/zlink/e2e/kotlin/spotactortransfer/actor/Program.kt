@@ -63,13 +63,14 @@ class Application {
             .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
             .traceLogFile("$logDir/$nodeRid-flow.log")
             .traceLabel("kotlin-spot-transfer-$nodeRid")
-        val node = options.addSpotMesh(Contracts.MESH)
-        node.enableRouter(Env.require("ZLINK_JAVA_E2E_ROUTER_ENDPOINT"))
+        val node = options.addRouteMesh(Contracts.MESH)
+        node.listen(Env.require("ZLINK_JAVA_E2E_MESH_ENDPOINT"))
             .setRoutingId(RoutingId.from(nodeRid))
-        Env.require("ZLINK_JAVA_E2E_ROUTER_PEERS").split(',').forEach { peer ->
+        node.channelName(Contracts.MESH)
+        Env.require("ZLINK_JAVA_E2E_MESH_PEERS").split(',').forEach { peer ->
             val fields = peer.split('=', limit = 2)
             if (fields.size == 2 && fields[0] != nodeRid) {
-                node.connectRouter(RoutingId.from(fields[0]), fields[1])
+                node.peerConnections().connect(RoutingId.from(fields[0]), fields[1])
             }
         }
         node.configureEntrySpot().setRoutingId(RoutingId.from(Contracts.ENTRY_SPOT_RID))
@@ -83,11 +84,12 @@ class Application {
         node.addSpotFactory(TransferUserSpot::class.java)
         options.addStreamNode("spot-transfer-session-$nodeRid")
             .bind(Env.require("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
+            .enableActorDispatch(Contracts.MESH)
             .registerSession(TransferSession::class.java)
     }
 
     private fun registerActor(
-        node: systems.zlink.framework.configuration.ZLinkSpotNodeBuilder,
+        node: systems.zlink.framework.configuration.ZLinkMeshNodeBuilder,
         actorType: String,
         adapter: Boolean,
     ) {

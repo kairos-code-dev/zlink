@@ -8,7 +8,6 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.Playe
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
-import systems.zlink.samples.bingo.server.configuration.SampleTopology;
 import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
@@ -18,12 +17,6 @@ public final class MatchBingoActorHandler
         PlayerActor,
         Messages.MatchBingoReq,
         Messages.MatchBingoRes> {
-    private final String playNodeRid;
-
-    public MatchBingoActorHandler(SampleTopology topology) {
-        playNodeRid = topology.selectedPlayNodeRid();
-    }
-
     @Override
     public java.util.concurrent.CompletionStage<Messages.MatchBingoRes> handle(
         BingoEntrySpot entrySpot,
@@ -36,7 +29,7 @@ public final class MatchBingoActorHandler
                     actor.actorId(),
                     actor.displayName(),
                     request.getMode(),
-                    playNodeRid))
+                    entrySpot.context().nodeRid().toString()))
             .timeout(SampleTimings.RequestTimeout)
             .submit(Messages.MatchBingoApiRes.class)
             .thenCompose(matched -> actor.context().joinSpot(

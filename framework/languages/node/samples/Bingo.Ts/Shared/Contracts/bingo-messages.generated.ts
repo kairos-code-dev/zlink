@@ -197,6 +197,13 @@ export class BingoRoomState {
   }
 }
 
+export class DestroyBingoActor {
+
+  constructor(values: MessageValues<DestroyBingoActor>) {
+    Object.assign(this, values);
+  }
+}
+
 export class EnsurePlayerActorReq {
   actorId!: string;
   displayName!: string;
@@ -231,6 +238,13 @@ export class GetPlayerRecordRes {
   losses!: number;
 
   constructor(values: MessageValues<GetPlayerRecordRes>) {
+    Object.assign(this, values);
+  }
+}
+
+export class LeaveFinishedBingoRoom {
+
+  constructor(values: MessageValues<LeaveFinishedBingoRoom>) {
     Object.assign(this, values);
   }
 }
@@ -387,10 +401,12 @@ export const BingoGeneratedMessageConstructors = {
   BingoRoomJoinRes,
   BingoRoomSettingsPayload,
   BingoRoomState,
+  DestroyBingoActor,
   EnsurePlayerActorReq,
   EnsurePlayerActorRes,
   GetPlayerRecordReq,
   GetPlayerRecordRes,
+  LeaveFinishedBingoRoom,
   MatchBingoApiReq,
   MatchBingoApiRes,
   MatchBingoReq,
@@ -921,6 +937,7 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "optional": false
     }
   ],
+  "DestroyBingoActor": [],
   "EnsurePlayerActorReq": [
     {
       "number": 1,
@@ -999,6 +1016,7 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "optional": false
     }
   ],
+  "LeaveFinishedBingoRoom": [],
   "MatchBingoApiReq": [
     {
       "number": 1,

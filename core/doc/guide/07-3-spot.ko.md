@@ -8,9 +8,9 @@
 
 이 문서는 애플리케이션 개발자가 10.1.0 MeshNode 위에서 Spot을 어떻게 쓰는지
 설명한다. 정확한 함수 계약은
-[MeshNode spec](../spec/core/service/01-mesh-node.ko.md),
-[Dispatch spec](../spec/core/service/02-dispatch.ko.md),
-[Spot spec](../spec/core/service/03-spot.ko.md)이 소유한다.
+[MeshNode spec](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md),
+[Dispatch spec](../../../framework/doc/framework/spec/server/11-channel-messaging.ko.md),
+[Spot spec](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md)이 소유한다.
 
 > Spot을 **언제·왜** 쓰는지(raw 소켓·Actor와의 관계, 실행 직렬성)는
 > [서비스 개요 §멘탈 모델](07-0-services.ko.md#12-멘탈-모델--어느-층을-언제-쓰나)에서
@@ -255,7 +255,7 @@ zlink_timer_destroy(&timer);
 
 tick은 해당 Spot의 dispatch 흐름과 상호 배제되어 전달되고, Spot generation이
 끝나면(파괴/이동) 더 이상 전달되지 않는다. 세부 계약은
-[Spot spec §9](../spec/core/service/03-spot.ko.md)와
+[Spot spec §9](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md)와
 [utilities spec](../spec/core/08-utilities.ko.md)을 본다.
 
 ## 8. 자주 틀리는 부분

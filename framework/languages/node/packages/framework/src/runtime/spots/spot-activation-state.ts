@@ -12,6 +12,7 @@ import type { ZLinkSpotTimerRegistry } from './spot-timer';
 import type { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
 
 export interface ZLinkSpotActivationOptions {
+  readonly meshName: string;
   readonly spotRid: RoutingId;
   readonly spotType: Type<ZLinkSpot>;
   readonly spot: ZLinkSpot;
@@ -26,6 +27,7 @@ export interface ZLinkSpotActivationOptions {
 }
 
 export class ZLinkSpotActivation {
+  readonly meshName: string;
   readonly spotRid: RoutingId;
   readonly spotType: Type<ZLinkSpot>;
   readonly spot: ZLinkSpot;
@@ -44,6 +46,7 @@ export class ZLinkSpotActivation {
   private drainCloseRequested = false;
 
   constructor(options: ZLinkSpotActivationOptions) {
+    this.meshName = options.meshName;
     this.spotRid = options.spotRid;
     this.spotType = options.spotType;
     this.spot = options.spot;

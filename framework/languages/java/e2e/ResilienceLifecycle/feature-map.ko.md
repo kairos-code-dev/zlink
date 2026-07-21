@@ -71,8 +71,8 @@ snapshot을 사용한다. 10.0.0에서는 `ZLinkRouteMeshRuntimeOptions.channel(
 
 ## 남은 항목
 
-- `RL-A1`은 runtime 오류 정규화와 RuntimeMonitoring의 socket source identity 수정이 선행되어야 한다.
-- `RL-B4`는 10.0.0 route-mesh runtime options 구현이 선행되어야 한다.
+- 위 `RL-A1`은 runtime 오류 정규화와 RuntimeMonitoring의 socket source identity 수정이 선행되어야 한다.
+- 위 `RL-B4`는 10.0.0 route-mesh runtime options 구현이 선행되어야 한다.
 
 ## 검증 방법
 

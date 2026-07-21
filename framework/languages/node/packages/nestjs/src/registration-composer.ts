@@ -3,7 +3,7 @@ import type { Type } from '@zlink-systems/framework';
 import type {
   ZLinkChannelOptions,
   ZLinkFrameworkRegistrationOptions,
-  ZLinkRouteChannelOptions,
+  ZLinkMeshChannelOptions
 } from './framework-integration-contracts';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
@@ -24,32 +24,17 @@ import {
   createDiscoveredPublishHandlers,
   createDiscoveredRequestHandlers,
   createDiscoveredSendHandlers,
-  createManualPublishHandlers,
-  createManualRequestHandlers,
-  createManualRouteRequestHandlers,
-  createManualRouteSendHandlers,
-  createManualSendHandlers
+  createManualPublishHandlers
 } from './handler-adapters';
 import { framework } from './framework-loader';
-import { copyRouteInternalState } from './options-builder';
 import { SpotNodeHandlerRegistry } from './spot-node-handler-registry';
 
 
 export function hasNestHandlerDiscovery(options: ZLinkNestModuleRegistrationOptions): boolean {
   return hasConfiguredSpotNodes(options.spotNodes)
-    || Object.values(options.clientServerChannels ?? {}).some(
-      (channel) => (channel.handlerGroups ?? []).length > 0
-        || (channel.requestHandlerTypes ?? []).length > 0
-        || (channel.sendHandlerTypes ?? []).length > 0
-    )
     || Object.values(options.fanoutChannels ?? {}).some(
       (channel) => (channel.handlerGroups ?? []).length > 0
         || (channel.publishHandlerTypes ?? []).length > 0
-    )
-    || Object.values(options.routerMeshes ?? {}).some(
-      (channel) => (channel.handlerGroups ?? []).length > 0
-        || (channel.requestHandlerTypes ?? []).length > 0
-        || (channel.sendHandlerTypes ?? []).length > 0
     );
 }
 
@@ -68,49 +53,15 @@ export function createDiscoveredOptions(
 ): ZLinkFrameworkRegistrationOptions {
   const registrationOptions = createRegistrationOptions(options);
   const channels: Record<string, ZLinkChannelOptions> = { ...(registrationOptions.channels ?? {}) };
-  const routerMeshes = new Map<string, ZLinkRouteChannelOptions>();
   const providerRefs = discoverProviderRefs(discovery, moduleRef);
   const spotActorProviderRefs = discoverSpotActorProviderRefs(discovery, moduleRef);
   const spotProviderRefs = discoverSpotProviderRefs(discovery, moduleRef);
   const spotTimerProviderRefs = discoverSpotTimerProviderRefs(discovery, moduleRef);
-  const spotNodes = createDiscoveredSpotNodeOptions(
+  const spotNodes = createDiscoveredMeshChannelOptions(createDiscoveredSpotNodeOptions(
     registrationOptions.spotNodes,
     spotActorProviderRefs,
     spotProviderRefs,
-    spotTimerProviderRefs);
-
-  for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
-    const existingChannel = channels[channelName] as ZLinkChannelOptions | undefined;
-    const requestHandlers = createDiscoveredRequestHandlers(
-      providerRefs,
-      channel.handlerGroups,
-      moduleRef
-    );
-    const sendHandlers = createDiscoveredSendHandlers(
-      providerRefs,
-      channel.handlerGroups,
-      moduleRef
-    );
-    const manualRequestHandlers = createManualRequestHandlers(channel.requestHandlerTypes, moduleRef);
-    const manualSendHandlers = createManualSendHandlers(channel.sendHandlerTypes, moduleRef);
-    channels[channelName] = {
-      ...existingChannel,
-      requestHandlers: channel.server === undefined
-        ? existingChannel?.requestHandlers
-        : [
-            ...(existingChannel?.requestHandlers ?? []),
-            ...manualRequestHandlers,
-            ...requestHandlers
-          ],
-      sendHandlers: channel.server === undefined
-        ? existingChannel?.sendHandlers
-        : [
-            ...(existingChannel?.sendHandlers ?? []),
-            ...manualSendHandlers,
-            ...sendHandlers
-          ]
-    };
-  }
+    spotTimerProviderRefs), providerRefs, moduleRef);
 
   for (const [channelName, channel] of Object.entries(options.fanoutChannels ?? {})) {
     const existingChannel = channels[channelName] as ZLinkChannelOptions | undefined;
@@ -126,60 +77,37 @@ export function createDiscoveredOptions(
     };
   }
 
-  for (const routeChannel of registrationOptions.routeChannels ?? []) {
-    const normalized = typeof routeChannel === 'string'
-      ? { routerChannelId: routeChannel }
-      : { ...routeChannel };
-    if (typeof routeChannel !== 'string') {
-      copyRouteInternalState(routeChannel, normalized);
-    }
-    routerMeshes.set(normalized.routerChannelId, normalized);
-  }
-  for (const [routerMeshName, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
-    const existing = routerMeshes.get(routerMeshName) ?? { routerChannelId: routerMeshName };
-    const {
-      handlerGroups: _handlerGroups,
-      requestHandlerTypes: _requestHandlerTypes,
-      sendHandlerTypes: _sendHandlerTypes,
-      ...routeTransportOptions
-    } = routerMesh;
-    const requestHandlers = createDiscoveredRequestHandlers(
-      providerRefs,
-      routerMesh.handlerGroups,
-      moduleRef
-    );
-    const sendHandlers = createDiscoveredSendHandlers(
-      providerRefs,
-      routerMesh.handlerGroups,
-      moduleRef
-    );
-    const manualRequestHandlers = createManualRouteRequestHandlers(routerMesh.requestHandlerTypes, moduleRef);
-    const manualSendHandlers = createManualRouteSendHandlers(routerMesh.sendHandlerTypes, moduleRef);
-    const normalized = {
-      ...existing,
-      ...routeTransportOptions,
-      requestHandlers: [
-        ...(existing.requestHandlers ?? []),
-        ...manualRequestHandlers,
-        ...requestHandlers
-      ],
-      sendHandlers: [
-        ...(existing.sendHandlers ?? []),
-        ...manualSendHandlers,
-        ...sendHandlers
-      ]
-    };
-    copyRouteInternalState(existing, normalized);
-    copyRouteInternalState(routerMesh, normalized);
-    routerMeshes.set(routerMeshName, normalized);
-  }
-
   return {
     ...registrationOptions,
     channels,
-    routeChannels: [...routerMeshes.values()],
     spotNodes
   };
+}
+
+function createDiscoveredMeshChannelOptions(
+  value: ZLinkFrameworkRegistrationOptions['spotNodes'],
+  providerRefs: ReturnType<typeof discoverProviderRefs>,
+  moduleRef: ModuleRef
+): ZLinkFrameworkRegistrationOptions['spotNodes'] {
+  if (value === undefined || Array.isArray(value)) {
+    return value;
+  }
+  return Object.fromEntries(Object.entries(value).map(([meshName, mesh]) => [meshName, {
+    ...mesh,
+    meshChannels: mesh.meshChannels === undefined
+      ? undefined
+      : Object.fromEntries((Object.entries(mesh.meshChannels) as Array<[string, ZLinkMeshChannelOptions]>).map(([channelName, channel]) => [channelName, {
+        ...channel,
+        requestHandlers: [
+          ...(channel.requestHandlers ?? []),
+          ...createDiscoveredRequestHandlers(providerRefs, channel.handlerGroups, moduleRef) as never
+        ],
+        sendHandlers: [
+          ...(channel.sendHandlers ?? []),
+          ...createDiscoveredSendHandlers(providerRefs, channel.handlerGroups, moduleRef) as never
+        ]
+      }]))
+  }]));
 }
 
 function createDiscoveredSpotNodeOptions(
@@ -263,6 +191,7 @@ function addDiscoveredSpotHandlers(
           registry.addEntrySpotSubscription(spotNode, {
             entrySpotType,
             handlerType: ref.handlerKey,
+            channelName: requireSpotSubscriptionChannelName(ref),
             topic: requireSpotSubscriptionTopic(ref)
           });
         }
@@ -284,6 +213,7 @@ function addDiscoveredSpotHandlers(
         });
       } else {
         registry.addSpotSubscription(spotNode, {
+          channelName: requireSpotSubscriptionChannelName(ref),
           handlerType: ref.handlerKey,
           spotType,
           topic: requireSpotSubscriptionTopic(ref)
@@ -370,21 +300,18 @@ function requireSpotSubscriptionTopic(ref: DiscoveredNestSpotProvider): string {
   return topic;
 }
 
+function requireSpotSubscriptionChannelName(ref: DiscoveredNestSpotProvider): string {
+  const channelName = ref.metadata.channelName;
+  if (channelName === undefined || channelName.trim().length === 0) {
+    throw new framework.ZLinkConfigurationException(
+      `ZLink SPOT subscription handler '${ref.handlerName}' requires a channelName.`
+    );
+  }
+  return channelName;
+}
+
 export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions): ZLinkFrameworkRegistrationOptions {
   const channels: Record<string, ZLinkChannelOptions> = {};
-  const routeChannels: ZLinkRouteChannelOptions[] = [];
-
-  for (const [name, channel] of Object.entries(options.clientServerChannels ?? {})) {
-    assertChannelNameAvailable(channels, name, 'ClientServerChannel');
-    channels[name] = {
-      routingId: channel.routingId,
-      routingIdAllocation: channel.routingIdAllocation,
-      client: channel.client,
-      requestHandlers: channel.requestHandlers,
-      sendHandlers: channel.sendHandlers,
-      server: channel.server
-    };
-  }
 
   for (const [name, channel] of Object.entries(options.fanoutChannels ?? {})) {
     assertChannelNameAvailable(channels, name, 'FanoutChannel');
@@ -397,18 +324,9 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
     };
   }
 
-  for (const [name, routerMesh] of Object.entries(options.routerMeshes ?? {})) {
-    const { handlerGroups: _handlerGroups, ...routeChannel } = routerMesh;
-    const normalized = {
-      routerChannelId: name,
-      ...routeChannel
-    };
-    copyRouteInternalState(routerMesh, normalized);
-    routeChannels.push(normalized);
-  }
-
   return {
     actorTransferAdapters: options.actorTransferAdapters,
+    actorTransferTimeoutMs: options.actorTransferTimeoutMs,
     actorTransferForwardWindowMs: options.actorTransferForwardWindowMs,
     channels,
     codecs: options.codecs,
@@ -418,7 +336,6 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
     metrics: options.metrics,
     monitoring: options.monitoring,
     requestTimeoutMs: options.requestTimeoutMs,
-    routeChannels,
     spotFactories: options.spotFactories,
     spotNodes: options.spotNodes,
     spotPublisherClients: options.spotPublisherClients,

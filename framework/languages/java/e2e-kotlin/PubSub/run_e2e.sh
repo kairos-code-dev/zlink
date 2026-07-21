@@ -22,11 +22,10 @@ export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.
 ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT=""
 export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin:pubsub:${run_id}}"
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=200
+LOCAL_READINESS_ATTEMPTS=30
 HTTP_PROBE_TIMEOUT_SECONDS=3
 SCENARIO_MARKER_ATTEMPTS=200
 SCENARIO_MARKER_INTERVAL=0.1
-ROUTE_SETTLE_SECONDS=5
 
 print_logs() {
   local status="$1"
@@ -225,7 +224,6 @@ case "${SCENARIO}" in
     start_subscriber sub-1 alpha "${SUB1_HTTP}"
     start_subscriber sub-2 beta "${SUB2_HTTP}"
     start_subscriber sub-3 gamma "${SUB3_HTTP}"
-    sleep "${ROUTE_SETTLE_SECONDS}"
     run_client_mode "${SCENARIO}" "${SCENARIO}"
     grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
     grep -Rq "message flow" "${log_dir}"/*-flow.log
@@ -255,11 +253,9 @@ case "${SCENARIO}" in
     wait_marker "${PUBLISHER_READY}"
     start_subscriber sub-1 alpha "${SUB1_HTTP}"
     start_subscriber sub-2 beta "${SUB2_HTTP}"
-    sleep "${ROUTE_SETTLE_SECONDS}"
     touch "${PRELATE_CONTINUE}"
     wait_marker "${LATE_READY}"
     start_subscriber sub-3 gamma "${SUB3_HTTP}"
-    sleep "${ROUTE_SETTLE_SECONDS}"
     touch "${LATE_CONTINUE}"
     wait "${CLIENT_PID}"
     cat "${log_dir}/client-PS-A3.stdout.log"
@@ -279,7 +275,6 @@ case "${SCENARIO}" in
     start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
     start_subscriber sub-2 beta "${SUB2_HTTP}"
     start_subscriber sub-3 gamma "${SUB3_HTTP}"
-    sleep "${ROUTE_SETTLE_SECONDS}"
     run_client_mode "${SCENARIO}" "${SCENARIO}"
     grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
     grep -Rq "message flow" "${log_dir}"/*-flow.log
@@ -328,13 +323,11 @@ start_subscriber sub-1 alpha "${SUB1_HTTP}"
 SUB1_PID="${LAST_PID}"
 start_subscriber sub-2 beta "${SUB2_HTTP}"
 SUB2_PID="${LAST_PID}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${PRELATE_CONTINUE}"
 
 wait_marker "${LATE_READY}"
 start_subscriber sub-3 gamma "${SUB3_HTTP}"
 SUB3_PID="${LAST_PID}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${LATE_CONTINUE}"
 
 wait "${CLIENT_PID}"
@@ -345,7 +338,6 @@ run_client_mode subscriber-restarted ps-a4
 stop_pid "${SUB1_PID}"
 start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
 SUB1_PID="${LAST_PID}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 run_client_mode slow-subscriber ps-b1
 
 run_client_mode publisher-restarted ps-b2

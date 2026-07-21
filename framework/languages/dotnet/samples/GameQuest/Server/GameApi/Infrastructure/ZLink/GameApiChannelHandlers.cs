@@ -7,7 +7,7 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace GameQuest.GameApi.Infrastructure.ZLink;
 
-[ZLinkHandlerGroup("game-api")]
+[ZLinkHandlerGroup(SampleNames.GameApiHandlerGroup)]
 internal sealed class QuestProgressNotifyHandler(
     IZLinkActorDirectory actors,
     IZLinkActorClient actorClient)
@@ -21,11 +21,12 @@ internal sealed class QuestProgressNotifyHandler(
         var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
         if (actor is null) return;
 
-        actorClient.SendToActor(actor.Value, request).Submit(cancellationToken);
+        await actorClient.SendToActor(
+            SampleNames.MeshName, actor.Value, request).SubmitAsync(cancellationToken);
     }
 }
 
-[ZLinkHandlerGroup("game-api")]
+[ZLinkHandlerGroup(SampleNames.GameApiHandlerGroup)]
 internal sealed class QuestCompletedNotifyHandler(
     IZLinkActorDirectory actors,
     IZLinkActorClient actorClient)
@@ -39,6 +40,7 @@ internal sealed class QuestCompletedNotifyHandler(
         var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
         if (actor is null) return;
 
-        actorClient.SendToActor(actor.Value, request).Submit(cancellationToken);
+        await actorClient.SendToActor(
+            SampleNames.MeshName, actor.Value, request).SubmitAsync(cancellationToken);
     }
 }

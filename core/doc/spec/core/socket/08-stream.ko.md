@@ -1,10 +1,10 @@
 [English](08-stream.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [STREAM session service](../service/05-stream-session.ko.md) · [errno map](../04-errno-map.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [errno map](../04-errno-map.ko.md)
 
 # 소켓 — STREAM
 
-이 문서는 ZLink Core 10.1.0의 범용 raw STREAM 공개 계약을 정의합니다.
+이 문서는 ZLink Core 11.0.0의 범용 raw STREAM 공개 계약을 정의합니다.
 TCP/WS 연결의 byte record 또는 고정 framing packet을 routing ID로 송수신하는
 C API와 bindings 개발자를 대상으로 합니다.
 
@@ -15,9 +15,7 @@ raw socket입니다. `zlink_connect()`는 지원하지 않습니다. application
 routing ID로 client를 선택해 전송하고 수신 결과에서 source routing ID를
 확인합니다.
 
-STREAM은 MeshNode, Spot, ActorRef와 Actor mailbox를 알지 않습니다.
-session–Actor binding과 Actor 이동 barrier는 별도
-[STREAM session service](../service/05-stream-session.ko.md)가 소유합니다.
+STREAM은 application payload와 상위 protocol 의미를 해석하지 않습니다.
 
 ## 2. 생성, bind와 option
 

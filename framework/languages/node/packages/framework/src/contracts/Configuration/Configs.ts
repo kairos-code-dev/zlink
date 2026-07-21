@@ -22,7 +22,9 @@ export interface ZLinkOutboundRouteConfig {
 }
 
 export interface ZLinkSpotPublisherConfig {
-  topic: string;
+  sendHighWaterMark: number;
+  sendTimeoutMs?: number;
+  lingerMs?: number;
 }
 
 export interface ZLinkSpotSubscriberConfig {

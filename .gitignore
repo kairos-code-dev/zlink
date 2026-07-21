@@ -56,6 +56,8 @@ core/builds/android/prefix
 ## other results-like folders
 bin/
 lib/
+!scripts/lib/
+!scripts/lib/framework-contract-documents.cjs
 !core/bench/benchwithzlink/baseline/zlink_dist/**/lib/
 !core/bench/benchwithzlink/baseline/zlink_dist/**/lib/libzlink*
 !core/bench/benchwithzmq/libzmq/libzmq_dist/**/lib/
@@ -175,6 +177,7 @@ benchmark_result.txt
 !/test_*.cpp
 tmp/
 !core/builds/
+core/builds/instance-asan/
 
 # bindings (language wrappers)
 ## Node.js

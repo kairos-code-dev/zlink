@@ -17,9 +17,8 @@ import type {
   packetName: PacketNames.questProgressNotify
 })
 class QuestProgressNotificationHandler
-  implements ZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, GameQuestPlayerActor, QuestProgressNotify> {
+  implements ZLinkEntrySpotActorSendHandler<GameQuestPlayerActor, QuestProgressNotify> {
   async handle(
-    _spot: GameQuestEntrySpot,
     actor: GameQuestPlayerActor,
     _context: ZLinkSpotActorSendContext,
     message: QuestProgressNotify
@@ -34,9 +33,8 @@ class QuestProgressNotificationHandler
   packetName: PacketNames.questCompletedNotify
 })
 class QuestCompletedNotificationHandler
-  implements ZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, GameQuestPlayerActor, QuestCompletedNotify> {
+  implements ZLinkEntrySpotActorSendHandler<GameQuestPlayerActor, QuestCompletedNotify> {
   async handle(
-    _spot: GameQuestEntrySpot,
     actor: GameQuestPlayerActor,
     _context: ZLinkSpotActorSendContext,
     message: QuestCompletedNotify

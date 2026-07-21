@@ -29,12 +29,13 @@ internal static class SampleDefaults
 
 internal static class SampleNodes
 {
+    public const string Mesh = "tictactoe";
     public const string ClientStream = "client-stream";
-    public const string PlaySpot = "play-node";
 }
 
 internal static class SampleTopics
 {
+    public const string PlayerMilestoneChannel = "tictactoe.player.milestone.channel";
     public const string PlayerMilestone = "tictactoe.player.milestone";
 }
 

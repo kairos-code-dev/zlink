@@ -10,6 +10,8 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorJoinGameHandler
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorObserveMilestoneHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayerWinMilestoneMsgHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.ObserveMilestoneRes
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayerInfo
@@ -25,6 +27,8 @@ class PlayEntrySpot(
     override fun context(): ZLinkEntrySpotContext = context
 
     override fun configure() {
+        context.handlers().addHandler<PlayActorJoinGameHandler>()
+        context.handlers().addHandler<PlayActorObserveMilestoneHandler>()
         context.handlers().addHandler<PlayerWinMilestoneMsgHandler>()
     }
 

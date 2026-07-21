@@ -42,6 +42,8 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private final Supplier<CompletionStage<Void>> closeAction;
     private final ConcurrentHashMap<String, ZLinkStreamHeader> requestHeadersByFlow =
         new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<ZLinkStreamHeader, Boolean> claimedReplyHeaders =
+        new ConcurrentHashMap<>();
 
     ZLinkStreamSessionContextState(
         String streamNodeName,
@@ -190,11 +192,16 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         return Optional.empty();
     }
 
+    boolean claimReplyHeader(ZLinkStreamHeader header) {
+        return claimedReplyHeaders.putIfAbsent(header, Boolean.TRUE) == null;
+    }
+
     private void completeDispatch(
         ZLinkStreamHeader header,
         Throwable error,
         CompletableFuture<Void> result) {
         requestHeadersByFlow.entrySet().removeIf(entry -> entry.getValue() == header);
+        claimedReplyHeaders.remove(header);
         if (error != null) {
             completeDispatchError(header, error, result);
             return;

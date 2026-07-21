@@ -32,15 +32,14 @@ public sealed class StreamContracts
             ZLinkMessage.From(new PlayerJoined("player-1")));
         await actorRef.NotifyDisconnectedAsync();
 
-        context.Client.Send(new PlayerJoined("player-1"))
+        var sent = await context.Client.Send(new PlayerJoined("player-1"))
             .Metadata("trace-id", "abc")
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
-        context.Client.Reply(new AuthenticateReply("player-1"))
-            .Metadata("trace-id", "abc")
+        var replied = await context.Client.Reply(new AuthenticateReply("player-1"))
             .Compress()
-            .Submit();
+            .SubmitAsync();
 
         await context.CloseAsync();
 
@@ -54,6 +53,8 @@ public sealed class StreamContracts
         Assert.Same(actorRef, boundActor);
         Assert.True(context.IsClosed);
         Assert.True(context.StreamClosed);
+        Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
+        Assert.Equal(ZLinkSubmitStatus.Submitted, replied.Status);
     }
 
     [Fact]
@@ -89,12 +90,12 @@ public sealed class StreamContracts
     {
         var boundSession = new ExampleBoundSession();
 
-        boundSession.Send(new PlayerJoined("player-1"))
+        var first = await boundSession.Send(new PlayerJoined("player-1"))
             .Metadata("trace-id", "abc")
-            .Submit();
+            .SubmitAsync();
 
-        boundSession.Send(new PlayerJoined("player-2"))
-            .Submit();
+        var second = await boundSession.Send(new PlayerJoined("player-2"))
+            .SubmitAsync();
 
         await boundSession.DisconnectAsync();
 
@@ -106,6 +107,8 @@ public sealed class StreamContracts
         });
 
         Assert.True(boundSession.IsDisconnected);
+        Assert.Equal(ZLinkSubmitStatus.Submitted, first.Status);
+        Assert.Equal(ZLinkSubmitStatus.Submitted, second.Status);
         Assert.True(policy.CanForward("trace-id"));
         Assert.False(policy.CanForward("internal-key"));
         Assert.Equal("abc", metadata.Find("trace-id"));
@@ -324,11 +327,11 @@ public sealed class StreamContracts
 
         public Systems.Zlink.ActorRef Ref { get; } = actor;
 
-        public ValueTask RelayAsync(
+        public ValueTask<ZLinkSubmitResult> RelayAsync(
             ZLinkMessage payload,
             CancellationToken cancellationToken = default)
         {
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
         }
 
         public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)
@@ -343,10 +346,8 @@ public sealed class StreamContracts
 
         public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
 
-        public ZLinkSubmitResult TrySubmit() => new(ZLinkSubmitStatus.Submitted);
-
         public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(TrySubmit());
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
@@ -378,31 +379,31 @@ public sealed class StreamContracts
             return this;
         }
 
+        public IZLinkSessionSendCall Metadata(ZLinkMessageMetadata metadata)
+        {
+            return this;
+        }
+
         public IZLinkSessionSendCall Compress()
         {
             return this;
         }
 
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class SessionReplyCall : IZLinkSessionReplyCall
     {
-        public IZLinkSessionReplyCall Metadata(string key, string value)
-        {
-            return this;
-        }
-
         public IZLinkSessionReplyCall Compress()
         {
             return this;
         }
 
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class BoundSessionSendCall : IZLinkBoundSessionSendCall
@@ -412,9 +413,14 @@ public sealed class StreamContracts
             return this;
         }
 
-        public void Submit(CancellationToken cancellationToken = default)
+        public IZLinkBoundSessionSendCall Metadata(ZLinkMessageMetadata metadata)
         {
+            return this;
         }
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class MetadataPolicy(IReadOnlySet<string> forwardedKeys) : IZLinkMessageMetadataPolicy

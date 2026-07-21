@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.spots;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
@@ -16,6 +17,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 
 final class ZLinkSpotRoutedOutbound {
     private final ZLinkChannelRuntime channels;
@@ -41,6 +44,7 @@ final class ZLinkSpotRoutedOutbound {
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName) {
         return new ZLinkSpotRoutedSendCall(
@@ -48,6 +52,7 @@ final class ZLinkSpotRoutedOutbound {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName);
     }
@@ -56,6 +61,7 @@ final class ZLinkSpotRoutedOutbound {
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
@@ -64,17 +70,20 @@ final class ZLinkSpotRoutedOutbound {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
             timeout);
     }
 
-    void submitSend(
+    CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submitSend(
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
-        Optional<String> packetName) {
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         trace(
             ZLinkMessageFlowOutcome.SENT,
             ZLinkDispatchMessageKind.SEND,
@@ -83,27 +92,34 @@ final class ZLinkSpotRoutedOutbound {
             spotRid);
         ZLinkInternalSpotNode routerNode = localRouterNode.apply(routerChannelId);
         if (routerNode != null) {
-            directOutbound.send(
+            return directOutbound.send(
                 routerNode.entrySpot(),
                 targetNodeRid,
                 spotRid,
+                spotGeneration,
                 payload,
-                packetName).submit();
-            return;
+                packetName)
+                .metadata(metadata.values())
+                .submit();
+        }
+        if (!metadata.values().isEmpty()) {
+            throw new UnsupportedOperationException(
+                "legacy routed Spot transport does not support application metadata");
         }
         List<Message> parts = messages.encode(packetName, payload);
         try {
-            channels.sendToSpotViaRouterChannel(
+            return ZLinkSubmitResults.fromVoidStage(channels.sendToSpotViaRouterChannel(
                 routerChannelId,
                 targetNodeRid,
                 spotRid,
+                spotGeneration,
                 parts).whenComplete((ignored, error) -> {
                     parts.forEach(Message::close);
                     if (error != null) {
                         java.util.logging.Logger.getLogger(ZLinkSpotRoutedOutbound.class.getName())
                             .log(java.util.logging.Level.SEVERE, "one-way routed SPOT submission failed", error);
                     }
-                });
+                }));
         } catch (RuntimeException error) {
             parts.forEach(Message::close);
             throw error;
@@ -114,8 +130,10 @@ final class ZLinkSpotRoutedOutbound {
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
+        ZLinkApplicationMetadata metadata,
         Duration timeout,
         Class<TReply> replyType) {
         trace(
@@ -130,16 +148,24 @@ final class ZLinkSpotRoutedOutbound {
                 routerNode.entrySpot(),
                 targetNodeRid,
                 spotRid,
+                spotGeneration,
                 payload,
                 packetName,
-                timeout).submit(replyType);
+                timeout)
+                .metadata(metadata.values())
+                .submit(replyType);
+        }
+        if (!metadata.values().isEmpty()) {
+            throw new UnsupportedOperationException(
+                "legacy routed Spot transport does not support application metadata");
         }
         List<Message> parts = messages.encode(packetName, payload);
         try {
-            return channels.requestToSpotViaRouterChannel(
+                return channels.requestToSpotViaRouterChannel(
                     routerChannelId,
                     targetNodeRid,
                     spotRid,
+                    spotGeneration,
                     parts,
                     timeout)
                 .thenApply(replyParts -> {
@@ -181,26 +207,53 @@ final class ZLinkSpotRoutedOutbound {
 }
 
 final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkSpotRoutedOutbound outbound;
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
     private final RoutingId spotRid;
+    private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
+    private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotRoutedSendCall(
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName) {
+        this(
+            outbound,
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    private ZLinkSpotRoutedSendCall(
+        ZLinkSpotRoutedOutbound outbound,
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.routerChannelId = routerChannelId;
         this.targetNodeRid = targetNodeRid;
         this.spotRid = spotRid;
+        this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
+        this.metadata = metadata;
     }
 
     public ZLinkSendCall packetName(String packetName) {
@@ -209,18 +262,53 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
-            Optional.of(packetName));
+            Optional.of(packetName),
+            metadata);
     }
 
     @Override
-    public void submit() {
-        outbound.submitSend(
+    public ZLinkSendCall metadata(String key, String value) {
+        return new ZLinkSpotRoutedSendCall(
+            outbound,
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
-            packetName);
+            packetName,
+            metadata.with(key, value));
+    }
+
+    @Override
+    public ZLinkSendCall metadata(Map<String, String> values) {
+        return new ZLinkSpotRoutedSendCall(
+            outbound,
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            metadata.withAll(values));
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
+        return outbound.submitSend(
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            metadata);
     }
 }
 
@@ -229,25 +317,52 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
     private final RoutingId spotRid;
+    private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
+    private final ZLinkApplicationMetadata metadata;
 
     ZLinkSpotRoutedRequestCall(
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
         RoutingId spotRid,
+        long spotGeneration,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
+        this(
+            outbound,
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            ZLinkApplicationMetadata.empty());
+    }
+
+    private ZLinkSpotRoutedRequestCall(
+        ZLinkSpotRoutedOutbound outbound,
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        Message payload,
+        Optional<String> packetName,
+        Duration timeout,
+        ZLinkApplicationMetadata metadata) {
         this.outbound = outbound;
         this.routerChannelId = routerChannelId;
         this.targetNodeRid = targetNodeRid;
         this.spotRid = spotRid;
+        this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
         this.timeout = timeout;
+        this.metadata = metadata;
     }
 
     public ZLinkRequestCall packetName(String packetName) {
@@ -256,9 +371,39 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             Optional.of(packetName),
-            timeout);
+            timeout,
+            metadata);
+    }
+
+    @Override
+    public ZLinkRequestCall metadata(String key, String value) {
+        return new ZLinkSpotRoutedRequestCall(
+            outbound,
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            metadata.with(key, value));
+    }
+
+    @Override
+    public ZLinkRequestCall metadata(Map<String, String> values) {
+        return new ZLinkSpotRoutedRequestCall(
+            outbound,
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            payload,
+            packetName,
+            timeout,
+            metadata.withAll(values));
     }
 
     @Override
@@ -268,9 +413,11 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
-            timeout);
+            timeout,
+            metadata);
     }
 
     @Override
@@ -280,8 +427,10 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             routerChannelId,
             targetNodeRid,
             spotRid,
+            spotGeneration,
             payload,
             packetName,
+            metadata,
             timeout,
             replyType));
     }

@@ -492,7 +492,7 @@ final class ZLinkAutoConnectReconcilerTest {
     }
 
     @Test
-    void storeFailureKeepsExistingConnectionAndRecoveryDefersDisconnectDiff() throws Exception {
+    void storeFailureKeepsExistingConnectionUntilOwnersCanRepublishAfterRecovery() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
         store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
@@ -510,6 +510,9 @@ final class ZLinkAutoConnectReconcilerTest {
         RecordingExecutor executor = new RecordingExecutor();
         FlakyPeerResolver resolver = new FlakyPeerResolver(store);
         ZLinkLocationOptions options = options();
+        options.setHeartbeatInterval(Duration.ofSeconds(1));
+        options.setOwnerLeaseTtl(Duration.ofSeconds(3));
+        AtomicLong now = new AtomicLong();
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
             new ZLinkAutoConnectPlanner.Local(
                 ZLinkLocationAutoConnectType.CLIENT_SERVER,
@@ -521,7 +524,8 @@ final class ZLinkAutoConnectReconcilerTest {
             runtime,
             resolver,
             executor,
-            options);
+            options,
+            now::get);
 
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of("inproc://remote"), executor.connected);
@@ -545,7 +549,11 @@ final class ZLinkAutoConnectReconcilerTest {
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
 
-        Thread.sleep(options.heartbeatInterval().toMillis() + 10);
+        now.set(options.heartbeatInterval().plusMillis(1).toNanos());
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(List.of(), executor.disconnected);
+
+        now.set(options.ownerLeaseTtl().plusMillis(1).toNanos());
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of("inproc://remote"), executor.disconnected);
         runtime.close();

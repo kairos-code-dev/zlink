@@ -59,7 +59,10 @@ async function runRemoteSpotAwait(
     `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
-  const targetSpot = request.targetSpot ?? await spotHandles.resolveSpotHandle(request.targetSpotRid);
+  const targetSpot = request.targetSpot ?? await spotHandles.resolveSpotHandle(
+    spot.context.meshName,
+    request.targetSpotRid
+  );
   if (targetSpot === undefined) {
     throw new Error(`Remote spot target ref is required for '${request.targetSpotRid}'.`);
   }

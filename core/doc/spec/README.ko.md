@@ -24,9 +24,9 @@ internals가 소유한다. 계약 검토자는 이 목차와 공개 header를 �
 | [Context](core/01-context.ko.md) | Context lifecycle과 option |
 | [Message](core/02-message.ko.md) | message와 routing ID의 저장소·ownership |
 | [Socket](core/socket/README.ko.md) | 범용 socket type과 send·receive 계약 |
-| [Service](core/service/README.ko.md) | MeshNode, Spot, Actor와 STREAM session 계약 |
 | [Polling](core/06-polling.ko.md) | poll item, poller와 readiness |
-| [Monitoring](core/07-monitoring.ko.md) | socket·MeshNode monitor와 snapshot |
+| [Monitoring](core/07-monitoring.ko.md) | raw socket monitor와 snapshot |
+| [Runtime 경계](core/09-runtime-boundary.ko.md) | Core raw C ABI와 Framework service 책임 경계 |
 | [Events](core/05-events.ko.md) | 공개 event와 상태 전이 의미 |
 | [Errors](core/03-errors.ko.md) | result enum, errno와 10.0.0 version ABI |
 | [Errno map](core/04-errno-map.ko.md) | 함수별 result와 errno 대응 |

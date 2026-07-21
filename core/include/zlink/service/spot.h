@@ -15,13 +15,21 @@ extern "C" {
    Contract: core/doc/spec/core/service/03-spot.md
    zlink_spot_timer_new() is declared in zlink/eventing/api.h. */
 
-#define ZLINK_SPOT_ABI_VERSION 1u
+#define ZLINK_SPOT_ABI_VERSION 2u
 
 typedef enum zlink_spot_kind_t {
   ZLINK_SPOT_KIND_INVALID = 0,
-  ZLINK_SPOT_KIND_ENTRY   = 1,
-  ZLINK_SPOT_KIND_USER    = 2
+  ZLINK_SPOT_KIND_ENTRY    = 1,
+  ZLINK_SPOT_KIND_USER     = 2,
+  ZLINK_SPOT_KIND_INSTANCE = 3
 } zlink_spot_kind_t;
+
+typedef enum zlink_spot_activation_state_t {
+  ZLINK_SPOT_ACTIVATION_INVALID    = 0,
+  ZLINK_SPOT_ACTIVATION_ACTIVATING = 1,
+  ZLINK_SPOT_ACTIVATION_READY      = 2,
+  ZLINK_SPOT_ACTIVATION_CLOSING    = 3
+} zlink_spot_activation_state_t;
 
 typedef enum zlink_spot_subscription_kind_t {
   ZLINK_SPOT_SUBSCRIPTION_EXACT  = 1,
@@ -41,6 +49,7 @@ typedef struct zlink_spot_status_t {
   uint32_t draining;
   int32_t last_error;
   uint64_t last_changed_ms;
+  zlink_spot_activation_state_t activation_state;
 } zlink_spot_status_t;
 
 ZLINK_EXPORT void *zlink_spot_new(void *mesh_node);

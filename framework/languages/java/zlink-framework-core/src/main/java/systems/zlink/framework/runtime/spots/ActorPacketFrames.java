@@ -45,7 +45,7 @@ final class ActorPacketFrames {
             ZLinkStreamCodec.fromValue(packetHeader.codec()),
             EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
             packetHeader.packetName(),
-            packetHeader.metadata());
+            Map.of());
         return Message.from(ZLinkStreamFrameCodec.encode(replyHeader, payload.toByteArray()));
     }
 

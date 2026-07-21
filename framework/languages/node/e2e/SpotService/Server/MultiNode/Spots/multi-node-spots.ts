@@ -3,15 +3,15 @@ import type {
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
-  ZLinkEntrySpotActorRequestHandler,
   ZLinkEntrySpotContext,
   ZLinkHandlerContext,
   ZLinkMessage,
   ZLinkRouteClient,
   ZLinkRouteRequestHandler,
   ZLinkSpot,
-  ZLinkSpotActorRequestHandler,
   ZLinkSpotActorRequestContext,
   ZLinkSpotContext,
   ZLinkSpotManager,
@@ -57,6 +57,7 @@ export class MultiNodeSpotA implements ZLinkSpot {
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
   async onJoinedActor(): Promise<void> {}
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 
   add(delta: number): number {
     this.value += delta;
@@ -92,6 +93,7 @@ export class MultiNodeSpotB implements ZLinkSpot {
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
   async onJoinedActor(): Promise<void> {}
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 
   add(delta: number): number {
     this.value += delta;
@@ -108,6 +110,11 @@ export class MultiNodeSpotB implements ZLinkSpot {
 
 export class MultiNodeScenarioActor implements ZLinkActor {
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
+
+  configure(): void {
+    this.context.handlers.addHandler(MultiNodeSpotOnlyJoinHandler);
+    this.context.handlers.addHandler(ScaleOutActorProbeHandler);
+  }
 }
 
 export class MultiNodeScenarioActorFactory implements ZLinkActorFactory {
@@ -124,26 +131,23 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
     this.evidence = evidence;
   }
 
-  configure(): void {
-    this.context.handlers.addActorPacket(MultiNodeSpotOnlyJoinHandler, MultiNodeScenarioActor);
-  }
-
-  async onCreateActor(actor: MultiNodeScenarioActor): Promise<void> {
+  async onCreateActor(actor: ZLinkActorMembership): Promise<void> {
     MultiNodeEntrySpot.requireEvidence()
-      .add(`entry-created|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actorId}`);
+      .add(`entry-created|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onActorJoin(actorId: string): Promise<{ accepted: boolean }> {
-    void actorId;
+  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<{ accepted: boolean }> {
+    void actor;
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: MultiNodeScenarioActor): Promise<void> {
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     MultiNodeEntrySpot.requireEvidence()
-      .add(`entry-joined|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actorId}`);
+      .add(`entry-joined|rid=${MultiNodeEntrySpot.requireEvidence().rid}|actor=${actor.actor.actorId}`);
   }
 
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 
   static requireEvidence(): EvidenceStore {
     if (this.evidence === undefined) {
@@ -167,7 +171,6 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   configure(): void {
     this.context.handlers.addPacket(SpotOnlyStateReqHandler);
     this.context.handlers.addPacket(SpotOnlyStateMsgHandler);
-    this.context.handlers.addActorPacket(ScaleOutActorProbeHandler, MultiNodeScenarioActor);
   }
 
   async onInitialize(): Promise<void> {
@@ -186,7 +189,10 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   }
 
   async requestSend(request: SpotOnlyMeshReq): Promise<StateRes> {
-    const target = await SpotOnlyUserSpot.requireRefs().resolveSpotHandle(request.targetSpotRid);
+    const target = await SpotOnlyUserSpot.requireRefs().resolveSpotHandle(
+      SpotServiceNames.spotOnlyMesh,
+      request.targetSpotRid
+    );
     const reply = await requestSpotOnlyState(
       this.context.outbound,
       target,
@@ -204,18 +210,19 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
     return reply;
   }
 
-  async onActorJoin(actorId: string): Promise<{ accepted: boolean }> {
+  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<{ accepted: boolean }> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-actor-admitted|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actorId}`);
+      .add(`spot-actor-admitted|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: MultiNodeScenarioActor): Promise<void> {
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
+      .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
   }
 
   async onLeaveActor(): Promise<void> {}
+  async onDisconnectActor(): Promise<void> {}
 
   add(delta: number): number {
     this.value += delta;
@@ -239,19 +246,18 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
 
 @Injectable()
 export class ScaleOutActorProbeHandler
-  implements ZLinkSpotActorRequestHandler<SpotOnlyUserSpot, MultiNodeScenarioActor, ScaleOutActorProbeReq, ScaleOutActorProbeRes> {
+{
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ScaleOutActorProbeReq')
   async handle(
-    spot: SpotOnlyUserSpot,
     actor: MultiNodeScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: ScaleOutActorProbeReq
   ): Promise<ScaleOutActorProbeRes> {
     void context;
     this.evidence.add(
-      `scale-out-actor-probe|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `scale-out-actor-probe|rid=${this.evidence.rid}|spot=${actor.context.spotRid ?? this.evidence.rid}`
       + `|actor=${actor.actorId}|marker=${request.marker}`
     );
     return { actorId: actor.actorId, nodeRid: this.evidence.rid, marker: request.marker };
@@ -296,7 +302,11 @@ export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<Mul
   ) {}
 
   async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotRes> {
-    const result = await this.spots.getOrCreate(MultiNodeSpotA, request.spotRid);
+    const result = await this.spots.getOrCreate(
+      SpotServiceNames.multiSpotNodeA,
+      MultiNodeSpotA,
+      request.spotRid
+    );
     const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelA, request.spotRid, request.delta);
     this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeA}|spot=${result.spotRid}|state=${result.state}`);
     return {
@@ -319,7 +329,11 @@ export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<Mul
   ) {}
 
   async handle(request: MultiNodeCreateSpotReq): Promise<MultiNodeCreateSpotRes> {
-    const result = await this.spots.getOrCreate(MultiNodeSpotB, request.spotRid);
+    const result = await this.spots.getOrCreate(
+      SpotServiceNames.multiSpotNodeB,
+      MultiNodeSpotB,
+      request.spotRid
+    );
     const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelB, request.spotRid, request.delta);
     this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeB}|spot=${result.spotRid}|state=${result.state}`);
     return {
@@ -395,17 +409,15 @@ export class SpotOnlyStateMsgHandler implements ZLinkSpotPacketHandler<SpotOnlyU
 
 @Injectable()
 export class MultiNodeSpotOnlyJoinHandler
-  implements ZLinkEntrySpotActorRequestHandler<MultiNodeEntrySpot, MultiNodeScenarioActor, SpotOnlyJoinReq, SpotOnlyJoinRes> {
+{
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('SpotOnlyJoinReq')
   async handle(
-    entrySpot: MultiNodeEntrySpot,
     actor: MultiNodeScenarioActor,
     context: ZLinkSpotActorRequestContext,
     request: SpotOnlyJoinReq
   ): Promise<SpotOnlyJoinRes> {
-    void entrySpot;
     void context;
     const joined = await actor.context
       .joinSpot(request.targetSpotRid, {})
@@ -431,8 +443,8 @@ export async function createLocalMultiNodeSpot(
   spotRid: string
 ): Promise<MultiNodeCreateSpotRes> {
   const created = nodeRid === SpotServiceNames.multiSpotNodeA
-    ? await spots.getOrCreate(MultiNodeSpotA, spotRid)
-    : await spots.getOrCreate(MultiNodeSpotB, spotRid);
+    ? await spots.getOrCreate(nodeRid, MultiNodeSpotA, spotRid)
+    : await spots.getOrCreate(nodeRid, MultiNodeSpotB, spotRid);
   evidence.add(`multi-create-spot|node=${nodeRid}|spot=${created.spotRid}|state=${created.state}`);
   return {
     spotRid: String(created.spotRid),
@@ -457,10 +469,11 @@ export async function requestState(
 export async function requestStateViaSpotOutbound(
   outbound: ZLinkSpotOutbound,
   spotRefs: ZLinkSpotHandleResolver,
+  meshName: string,
   spotRid: string,
   delta: number
 ): Promise<StateRes> {
-  const spot = await spotRefs.resolveSpotHandle(spotRid);
+  const spot = await spotRefs.resolveSpotHandle(meshName, spotRid);
   if (spot === undefined) {
     throw new Error(`SpotRef '${spotRid}' was not found.`);
   }

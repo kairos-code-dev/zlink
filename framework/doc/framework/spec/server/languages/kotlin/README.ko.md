@@ -4,15 +4,27 @@
 public contract를 소유한다. 그대로 사용하는 Java 타입과 메서드는
 [Java 공개 계약](../java/README.ko.md)을 따르고 여기서 복사해 다시 정의하지 않는다.
 
-Kotlin suspending handler와 adapter 시그니처는
-[handler-interfaces](02-handler-interfaces.ko.md)를 기준으로 한다. Java API를 기다리는
-server extension도 이 디렉토리의 정식 계약에 포함한다. Kotlin source와 contract test는 이 계약을
+Kotlin coroutine과 DSL 시그니처는 [기능별 interfaces](interfaces/README.ko.md)를 기준으로 한다.
+Java API를 기다리는 server extension도 이 디렉토리의 정식 계약에 포함한다. Kotlin source와 contract test는 이 계약을
 따라야 한다. Client Stream Connector의 coroutine wrapper와 `Flow` 표면은 별도
 [Java/Kotlin Stream Connector 계약](../../../stream-connector/languages/java/03-stream-connector.ko.md)이
 소유한다.
 
+ChannelName 단일 호출, RouteMesh·ClientServer role builder, listener network identity, handler context와
+전용 descriptor·runtime은 Java 정본 타입을 재사용하고 Kotlin DSL만 관용적으로 투영한다.
+
+Instance Spot의 address, message create callback이 없는 actor-free 4지점 lifecycle, factory option·builder와
+Location provider의 opaque authority capability도 Java 정본 타입을
+재사용한다. Kotlin은 Instance direct call에 `send`와 `request` extension만 추가하며 Java member와 충돌하는
+suspend `requestToSpot`을 선언하지 않는다. 정확한 extension과 store type 재사용은
+[기능별 interfaces](interfaces/README.ko.md)가 고정한다.
+
+공유 JVM runtime은 Java binding의 public raw socket API로 cold placement와 activation barrier를 구현한다.
+Core service driver, private binding 진입점과 별도 Kotlin runtime은 사용하지 않는다. Ready owner 호출은
+기존 exact `SpotHandle` route를 사용한다.
+
 공식 Redis location extension의 Kotlin 호출 경계와 Java type 재사용 규칙은
-[Location Store·Redis](03-location-store.ko.md)가 고정한다.
+[Location과 maintenance](interfaces/location-maintenance.ko.md)가 고정한다.
 
 ## 취소 인자
 

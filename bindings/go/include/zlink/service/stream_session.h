@@ -59,6 +59,10 @@ ZLINK_EXPORT zlink_config_result_t zlink_stream_session_service_status(
   void *service,
   zlink_stream_session_status_t *status_out);
 
+/* A remote Actor binding is committed only after the Actor owner validates
+   the current Actor generation and membership epoch and installs the reverse
+   route. Timeout, peer loss, or stale authority completes the returned
+   operation exactly once without creating the source binding. */
 ZLINK_EXPORT zlink_submit_result_t zlink_stream_session_bind_actor(
   void *service,
   const zlink_routing_id_t *session_rid,
@@ -97,9 +101,14 @@ ZLINK_EXPORT zlink_submit_result_t zlink_stream_session_request_to_actor(
   zlink_send_flags_t flags,
   uint32_t timeout_ms);
 
+/* Admits only to the nonzero expected binding generation. Zero returns
+   INVALID_ARGUMENT/EINVAL. A locally known stale generation returns
+   INVALID_STATE/ESTALE before transport; a remote session owner revalidates
+   the same generation before its session FIFO admission. */
 ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_actor_send_bound_session(
   void *mesh_node,
   const zlink_actor_ref_t *actor,
+  uint64_t expected_binding_generation,
   const zlink_msg_t *parts,
   size_t part_count,
   zlink_send_flags_t flags);

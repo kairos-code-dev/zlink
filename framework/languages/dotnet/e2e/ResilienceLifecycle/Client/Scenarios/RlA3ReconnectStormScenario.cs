@@ -9,18 +9,16 @@ namespace ResilienceLifecycle.Client.Scenarios;
 internal static class RlA3ReconnectStormScenario
 {
     public static async Task RunAsync(
-        ZLinkHttpClient consumer,
+        ClientOptions options,
         ZLinkHttpClient registry,
         ResilienceProcessManager processes,
-        ZLinkHttpClient providerA,
-        ZLinkHttpClient providerB)
+        ZLinkHttpClient providerA)
     {
         await providerA.Post("/admin/weight/exclude").AsyncRaw();
         await providerA.Post("/admin/weight/wait").Body(new WeightWaitReq(0)).AsyncRaw();
 
-        var baseline = (await consumer.Post("/storm/start")
-            .Body(new ProfileReq("fast", "rl-a3-before"))
-            .Async<ProfileRes[]>()).Body;
+        await using var fleet = await StormClientProcessFleet.StartAsync(options);
+        var baseline = await fleet.RequestAllAsync("rl-a3-before");
         EnsureBatch(baseline, "rl-a3-before", "RL-A3 baseline");
 
         await processes.StopProviderBWithSigtermAsync();
@@ -28,18 +26,13 @@ internal static class RlA3ReconnectStormScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
 
-        var connectionCount = (await consumer.Get("/storm/connections/count").Async<int>()).Body;
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>();
-        await consumer.Post("/storm/wait-ready")
-            .Body(new ConnectionWaitReq([], connectionCount))
-            .Async<string[]>();
+        await fleet.WaitReadyAfterRestartAsync();
 
-        var recovered = (await consumer.Post("/storm/request-all")
-            .Body(new ProfileReq("fast", "rl-a3-after"))
-            .Async<ProfileRes[]>()).Body;
+        var recovered = await fleet.RequestAllAsync("rl-a3-after");
         EnsureBatch(recovered, "rl-a3-after", "RL-A3 recovered");
 
         await providerA.Post("/admin/weight/include").AsyncRaw();

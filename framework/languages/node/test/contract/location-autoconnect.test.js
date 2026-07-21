@@ -3,6 +3,95 @@ const test = require('node:test');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist');
 const internal = require('../../packages/framework/dist/internal');
+const routingIdRuntime = require('../../packages/framework/dist/runtime/routing-id');
+const spotNodeAutoConnect = require('../../packages/framework/dist/runtime/spots/spot-node-autoconnect');
+
+test('binding routing-id conversion preserves opaque ids from another package instance', () => {
+  const expected = zlink.RoutingId.from('node-remote');
+  const foreignRoutingId = {
+    toBytes() {
+      return expected.toBytes();
+    },
+    toHex() {
+      return expected.toHex();
+    },
+    toString() {
+      return 'node-remote';
+    }
+  };
+
+  assert.equal(
+    routingIdRuntime.toBindingRoutingId(foreignRoutingId).toHex(),
+    expected.toHex()
+  );
+});
+
+test('spot auto-connect removes a pending intent without disconnecting a peer that has no routing identity', () => {
+  const calls = [];
+  const node = {
+    status() {
+      return {
+        routingId: zlink.RoutingId.from('node-local'),
+        localEndpoint: 'tcp://local'
+      };
+    },
+    connectPeer() {
+      calls.push('connect');
+      return 7n;
+    },
+    removePeerConnection(intentId) {
+      calls.push(`remove:${intentId}`);
+    },
+    peers() {
+      return [{
+        endpoint: 'tcp://remote',
+        routingId: null,
+        lifecycleGeneration: 0n,
+        state: 2
+      }];
+    },
+    disconnectPeer() {
+      calls.push('disconnect');
+    }
+  };
+  const capability = spotNodeAutoConnect.spotNodeAutoConnectCapability(
+    'zoneworld.zones',
+    { router: { bind: 'tcp://local' } },
+    node
+  );
+  const target = {
+    targetKey: 'remote',
+    endpoint: 'tcp://remote',
+    role: framework.ZLinkLocationRole.Spot,
+    connectionKind: 'spot-router'
+  };
+
+  assert.equal(capability.executor.connect(target), true);
+  capability.executor.disconnect(target);
+
+  assert.deepEqual(calls, ['connect', 'remove:7']);
+  assert.equal(capability.executor.isDisconnected(target), true);
+});
+
+test('spot auto-connect publishes the concrete endpoint resolved by the started MeshNode', () => {
+  const node = {
+    status() {
+      return {
+        routingId: zlink.RoutingId.from('node-local'),
+        localEndpoint: 'tcp://127.0.0.1:43127'
+      };
+    }
+  };
+
+  const capability = spotNodeAutoConnect.spotNodeAutoConnectCapability(
+    'zoneworld.actors',
+    { router: { bind: 'tcp://127.0.0.1:0' } },
+    node
+  );
+
+  assert.equal(capability.local.endpoint, 'tcp://127.0.0.1:43127');
+  assert.equal(capability.localRow.endpoint, 'tcp://127.0.0.1:43127');
+});
 
 test('auto-connect planner applies role policy pairwise initiator and dial-only exception', () => {
   const routeLocal = local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a');
@@ -66,6 +155,77 @@ test('store peer resolver reads store each time and joins owner liveness', async
 
   nowMs += 1001;
   assert.deepEqual(await resolver.listLivePeers({ meshName: 'play' }), []);
+});
+
+test('store resolver refreshes a cached owner miss when a newly observed row names that owner', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore(
+    () => new Date(Date.UTC(2026, 6, 3, 0, 0, 0))
+  );
+  const tracker = new internal.ZLinkOwnerLeaseTracker({
+    store,
+    options: { pollingIntervalMs: 10_000 },
+    monotonicNowMs: () => 0
+  });
+  const resolver = new internal.ZLinkStoreLocationResolvers({
+    stores: stores(store),
+    leaseTracker: tracker
+  });
+
+  assert.equal(await tracker.getLiveOwnerSetVersion(), 1);
+  assert.deepEqual(await resolver.listLivePeers({ meshName: 'play' }), []);
+
+  await store.renewOwnerLease('owner-new', rid('node-new'), 30_000);
+  await store.updatePeer(
+    peer(
+      'owner-new',
+      framework.ZLinkLocationAutoConnectType.RouteMesh,
+      framework.ZLinkLocationRole.Router,
+      'node-new',
+      'tcp://new'
+    ),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+
+  assert.deepEqual(
+    (await resolver.listLivePeers({ meshName: 'play' })).map((row) => row.endpoint),
+    ['tcp://new']
+  );
+});
+
+test('store resolver refreshes a cached expired lease when the same owner renews before a row read', async () => {
+  let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
+  let monotonicMs = 0;
+  const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
+  await store.renewOwnerLease('owner-renewed', rid('node-renewed'), 100);
+  const tracker = new internal.ZLinkOwnerLeaseTracker({
+    store,
+    options: { pollingIntervalMs: 10_000 },
+    monotonicNowMs: () => monotonicMs
+  });
+  const resolver = new internal.ZLinkStoreLocationResolvers({
+    stores: stores(store),
+    leaseTracker: tracker
+  });
+
+  assert.equal(await tracker.isOwnerLive('owner-renewed'), true);
+  nowMs += 101;
+  monotonicMs += 101;
+  await store.renewOwnerLease('owner-renewed', rid('node-renewed'), 30_000);
+  await store.updatePeer(
+    peer(
+      'owner-renewed',
+      framework.ZLinkLocationAutoConnectType.RouteMesh,
+      framework.ZLinkLocationRole.Router,
+      'node-renewed',
+      'tcp://renewed'
+    ),
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+
+  assert.deepEqual(
+    (await resolver.listLivePeers({ meshName: 'play' })).map((row) => row.endpoint),
+    ['tcp://renewed']
+  );
 });
 
 test('auto-connect reconciler publishes local row diffs handover and stays fail-static on store failure', async () => {
@@ -178,16 +338,16 @@ test('auto-connect reconciler waits for an old peer disconnect before reusing it
   let disconnected = false;
   let rows = [peer(
     'owner-old',
-    framework.ZLinkLocationAutoConnectType.SpotMesh,
-    framework.ZLinkLocationRole.Spot,
+    framework.ZLinkLocationAutoConnectType.RouteMesh,
+    framework.ZLinkLocationRole.Router,
     'node-z',
     'tcp://old'
   )];
   const calls = [];
   const reconciler = new internal.ZLinkAutoConnectReconciler({
     local: local(
-      framework.ZLinkLocationAutoConnectType.SpotMesh,
-      framework.ZLinkLocationRole.Spot,
+      framework.ZLinkLocationAutoConnectType.RouteMesh,
+      framework.ZLinkLocationRole.Router,
       'node-a',
       'tcp://local'
     ),
@@ -210,8 +370,8 @@ test('auto-connect reconciler waits for an old peer disconnect before reusing it
   await reconciler.tick();
   rows = [peer(
     'owner-new',
-    framework.ZLinkLocationAutoConnectType.SpotMesh,
-    framework.ZLinkLocationRole.Spot,
+    framework.ZLinkLocationAutoConnectType.RouteMesh,
+    framework.ZLinkLocationRole.Router,
     'node-z',
     'tcp://new'
   )];

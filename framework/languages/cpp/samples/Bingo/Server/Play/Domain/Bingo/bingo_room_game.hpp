@@ -25,7 +25,10 @@ class bingo_room_game_t
 
     explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)} {}
 
-    bingo_room_join_result_t join (std::string actor_id, std::string display_name)
+    bingo_room_join_result_t join (std::string actor_id,
+                                   std::string display_name,
+                                   int wins = 0,
+                                   int losses = 0)
     {
         if (_state.players.size () >= 2) {
             throw std::runtime_error ("bingo room is full");
@@ -39,7 +42,8 @@ class bingo_room_game_t
         if (is_host) {
             _state.host_actor_id = actor_id;
         }
-        _state.players.push_back ({actor_id, display_name, seat, is_host, {}, {}, 0});
+        _state.players.push_back (
+          {actor_id, display_name, seat, is_host, {}, {}, 0, wins, losses});
         _state.can_start = _state.players.size () == 2;
         if (_state.can_start) {
             _state.status = bingo_room_status_t::running;
@@ -63,6 +67,8 @@ class bingo_room_game_t
     }
 
     bool should_draw () const noexcept { return _game.all_cards_submitted (_state.players); }
+
+    bool can_accept_player () const noexcept { return _state.players.size () < 2; }
 
     void set_room_id_if_empty (std::string room_id)
     {

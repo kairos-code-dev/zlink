@@ -8,7 +8,7 @@ import type {
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
 
-export interface ZLinkActorTransferState {
+export interface ZLinkActorTransferPayloadState {
   readonly adapterKey?: string;
   readonly state: ZLinkMessage;
 }
@@ -20,7 +20,8 @@ export class ZLinkActorTransferRegistry {
   constructor(
     registrations: ReadonlyMap<Type, Type>,
     private readonly providerResolver?: ZLinkProviderResolver,
-    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>
+    private readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>,
+    private readonly actorFactories: ReadonlyMap<string, Type> = new Map()
   ) {
     for (const [actorType, adapterType] of registrations) {
       const key = actorTransferKey(actorType);
@@ -32,10 +33,16 @@ export class ZLinkActorTransferRegistry {
     }
   }
 
-  async transferOut(actor: ZLinkActor, signal?: AbortSignal): Promise<ZLinkActorTransferState> {
+  async transferOut(
+    actor: ZLinkActor,
+    actorType: string | undefined,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorTransferPayloadState> {
     throwIfAborted(signal);
-    const actorType = actor.constructor as Type;
-    const adapterType = this.byActorType.get(actorType);
+    const registeredType = actorType === undefined
+      ? actor.constructor as Type
+      : this.actorFactories.get(actorType) ?? actor.constructor as Type;
+    const adapterType = this.byActorType.get(registeredType);
     if (adapterType === undefined) {
       return { state: emptyTransferState(this.messageSerializers) };
     }
@@ -44,7 +51,7 @@ export class ZLinkActorTransferRegistry {
     if (!(state instanceof ZLinkMessage)) {
       throw new Error(`Actor transfer adapter '${adapterType.name}' returned an invalid state message.`);
     }
-    return { adapterKey: actorTransferKey(actorType), state };
+    return { adapterKey: actorTransferKey(registeredType), state };
   }
 
   async transferIn(

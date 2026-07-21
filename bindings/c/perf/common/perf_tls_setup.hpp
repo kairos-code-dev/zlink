@@ -19,6 +19,10 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#if !defined(_WIN32)
+#include <unistd.h>
+#include <vector>
+#endif
 
 namespace perf_tls_certs
 {
@@ -106,12 +110,46 @@ static const char *server_key_pem =
 inline std::string write_temp_cert (const char *content, const std::string &suffix)
 {
     std::string path = "/tmp/bench_" + suffix + ".pem";
+#if defined(_WIN32)
     std::ofstream ofs (path.c_str ());
     if (ofs) {
         ofs << content;
         ofs.close ();
     }
     return path;
+#else
+    // Fork-based benchmarks prepare the same certificate in many child
+    // processes. Publish a complete file atomically so a peer never reads a
+    // path while another child has truncated it and is still writing.
+    std::string pending_pattern = path + ".XXXXXX";
+    std::vector<char> pending_path (pending_pattern.begin (), pending_pattern.end ());
+    pending_path.push_back ('\0');
+    const int fd = mkstemp (&pending_path[0]);
+    if (fd < 0)
+        return std::string ();
+
+    const char *cursor = content;
+    size_t remaining = std::strlen (content);
+    bool complete = true;
+    while (remaining > 0) {
+        const ssize_t written = write (fd, cursor, remaining);
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0) {
+            complete = false;
+            break;
+        }
+        cursor += written;
+        remaining -= static_cast<size_t> (written);
+    }
+    if (close (fd) != 0)
+        complete = false;
+    if (!complete || std::rename (&pending_path[0], path.c_str ()) != 0) {
+        std::remove (&pending_path[0]);
+        return std::string ();
+    }
+    return path;
+#endif
 }
 
 inline bool set_tls_path_option (void *socket,

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="$CPP_DIR/build"
+BUILD_DIR="${BUILD_DIR:-$CPP_DIR/build}"
 SCENARIO="${*:-all}"
 SCENARIO="${SCENARIO// /,}"
 
@@ -181,12 +181,17 @@ terminate_pid() {
   fi
   kill "$pid" >/dev/null 2>&1 || true
   for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
-    state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}')"
+    state="$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print $1}' || true)"
     if [[ -z "$state" || "$state" == Z* ]]; then
       wait_pid_status "$pid" "$label" 0 130 143
       return $?
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "$label did not stop within ${LOCAL_READINESS_TIMEOUT_SECONDS}s; thread wait states:" >&2
+  for task in "/proc/$pid/task"/*; do
+    [[ -e "$task" ]] || continue
+    echo "  tid=${task##*/} comm=$(cat "$task/comm" 2>/dev/null || true) wchan=$(cat "$task/wchan" 2>/dev/null || true)" >&2
   done
   kill -9 "$pid" >/dev/null 2>&1 || true
   wait_pid_status "$pid" "$label" 0 130 143
@@ -305,8 +310,7 @@ stop_pid() {
     return 0
   fi
   if kill -0 "$pid" >/dev/null 2>&1; then
-    kill "$pid" >/dev/null 2>&1 || true
-    wait_pid_status "$pid" "stopped process $pid" 0 130 143
+    terminate_pid "$pid" "stopped process $pid"
     forget_pid "$pid"
   fi
 }
@@ -760,7 +764,8 @@ configuration = {"scenario": scenario, "logDir": log_dir,
 for override in overrides:
     key, separator, value = override.partition("=")
     if not separator or key not in {"readyFile", "continueFile", "drainedFile",
-                                    "restoreFile", "flapPhase", "flapCycle"}:
+                                    "restoreFile", "secondReadyFile",
+                                    "secondContinueFile", "flapPhase", "flapCycle"}:
         raise SystemExit(f"unknown client configuration override: {override}")
     configuration[key] = value
 with open(path, "w", encoding="utf-8") as file:
@@ -955,8 +960,11 @@ if should_run RL-B2 rl-b2 RL-C2 rl-c2; then
     CONTINUE="$LOG_DIR/rl-b2-continue"
     DRAINED="$LOG_DIR/rl-b2-after-crash"
     RESTORE="$LOG_DIR/rl-b2-restart"
+    SECOND_READY="$LOG_DIR/rl-b2-second-crash-ready"
+    SECOND_CONTINUE="$LOG_DIR/rl-b2-second-crash-continue"
     run_client inflight-crash rl-b2 readyFile="$READY" continueFile="$CONTINUE" \
-      drainedFile="$DRAINED" restoreFile="$RESTORE" &
+      drainedFile="$DRAINED" restoreFile="$RESTORE" \
+      secondReadyFile="$SECOND_READY" secondContinueFile="$SECOND_CONTINUE" &
     B2_CLIENT_PID="$!"
     wait_marker "$READY"
     kill_pid "$API_B_PID"
@@ -965,9 +973,17 @@ if should_run RL-B2 rl-b2 RL-C2 rl-c2; then
     start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
     API_B_PID="$LAST_PID"
     touch "$RESTORE"
+    wait_marker "$SECOND_READY"
+    kill_pid "$API_B_PID"
+    touch "$SECOND_CONTINUE"
     wait "$B2_CLIENT_PID"
+    grep -q "scenario RL-B2 second-crash alternate passed" \
+      "$LOG_DIR/client-rl-b2.stdout.log"
     grep -q "scenario RL-B2 passed" "$LOG_DIR/client-rl-b2.stdout.log"
     echo "scenario RL-B2 passed"
+    start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
+    API_B_PID="$LAST_PID"
+    wait_location_topology api-b Ready 1
   fi
   if should_run RL-C2 rl-c2; then
     crash_provider "$HTTP_B" "$API_B_PID"

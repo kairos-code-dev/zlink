@@ -144,6 +144,7 @@ zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _terminate_current_in (false),
     _more_in (false),
     _current_out (NULL),
+    _current_out_connection_id (0),
     _more_out (false),
     _next_integral_routing_id (generate_random ()),
     _mandatory (true),
@@ -250,6 +251,28 @@ int zlink::router_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_
 void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 {
     socket_msg_dispatch_lock_t dispatch_lock = lock_socket_msg_dispatch ();
+    const blob_t &terminated_routing_id =
+      pipe_->get_routing_id ();
+    const bool was_standby =
+      _standby_pipes.erase (pipe_) != 0;
+    pipe_t *standby_to_promote = NULL;
+    blob_t standby_routing_id;
+    if (!was_standby) {
+        for (std::map<pipe_t *, blob_t>::iterator standby =
+               _standby_pipes.begin ();
+             standby != _standby_pipes.end (); ++standby) {
+            const bool same_routing_id =
+              !(standby->second < terminated_routing_id)
+              && !(terminated_routing_id < standby->second);
+            if (!same_routing_id)
+                continue;
+            standby_to_promote = standby->first;
+            standby_routing_id =
+              blob_t (standby->second.data (), standby->second.size ());
+            _standby_pipes.erase (standby);
+            break;
+        }
+    }
     if (router_debug_enabled ()) {
         char rid_text[160];
         format_blob_routing_id_debug (pipe_->get_routing_id (), rid_text, sizeof (rid_text));
@@ -268,8 +291,22 @@ void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
         }
         _fq.pipe_terminated (pipe_);
         pipe_->rollback ();
-        if (pipe_ == _current_out)
+        if (pipe_ == _current_out) {
             _current_out = NULL;
+            _current_out_connection_id = 0;
+        }
+    }
+    if (standby_to_promote) {
+        const out_pipe_t *const standby_out =
+          lookup_out_pipe (standby_to_promote->get_routing_id ());
+        zlink_assert (standby_out);
+        const bool locally_initiated =
+          standby_out->locally_initiated;
+        erase_out_pipe (standby_to_promote);
+        standby_to_promote->set_router_socket_routing_id (
+          standby_routing_id);
+        add_out_pipe (ZLINK_MOVE (standby_routing_id),
+                      standby_to_promote, locally_initiated);
     }
 }
 
@@ -373,6 +410,7 @@ int zlink::router_t::xrollback ()
     if (_current_out) {
         _current_out->rollback ();
         _current_out = NULL;
+        _current_out_connection_id = 0;
     }
     _more_out = false;
     return 0;

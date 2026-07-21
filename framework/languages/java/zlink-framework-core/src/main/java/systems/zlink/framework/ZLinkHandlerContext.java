@@ -1,5 +1,6 @@
 package systems.zlink.framework;
 
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -12,4 +13,5 @@ public interface ZLinkHandlerContext {
 
     Optional<String> contentType();
 
+    Map<String, String> metadata();
 }

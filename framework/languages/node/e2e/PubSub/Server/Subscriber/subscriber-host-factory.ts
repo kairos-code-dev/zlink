@@ -4,7 +4,6 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import type { ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
-import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
 import { validateSubscriberOptions, SUBSCRIBER_OPTIONS, type SubscriberOptions } from './Configuration/subscriber-options';
 import { PUBSUB_OPTIONS, createPubSubConfigurationModule } from '../../configuration';
@@ -51,8 +50,6 @@ function createSubscriberModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addLocationStore(createRedisLocationStore(options));
-          Object.assign(builder.configureLocations(), locationMessagingOptions());
           builder.addFanoutChannel(PubSubNames.channel)
             .enableSubscriber(options.publisherEndpoint)
             .routingId(options.rid)

@@ -8,11 +8,12 @@ import java.util.Properties;
 public record ClientOptions(
     String triggerHttpEndpoint, String serviceHttpEndpoint, String serviceBHttpEndpoint,
     String handshakeEndpoint, String filteredServiceBinary,
-    String filteredServiceConfigPath, String logDirectory) {
+    String filteredServiceConfigPath, String redisContainer, String logDirectory) {
     public ClientOptions {
         required(triggerHttpEndpoint, "triggerHttpEndpoint"); required(serviceHttpEndpoint, "serviceHttpEndpoint");
         required(serviceBHttpEndpoint, "serviceBHttpEndpoint"); required(handshakeEndpoint, "handshakeEndpoint");
         required(filteredServiceBinary, "filteredServiceBinary"); required(filteredServiceConfigPath, "filteredServiceConfigPath");
+        required(redisContainer, "redisContainer");
         required(logDirectory, "logDirectory");
     }
     public static ClientOptions load(String path) {
@@ -22,6 +23,7 @@ public record ClientOptions(
         return new ClientOptions(required(values, "triggerHttpEndpoint"), required(values, "serviceHttpEndpoint"),
             required(values, "serviceBHttpEndpoint"), required(values, "handshakeEndpoint"),
             required(values, "filteredServiceBinary"), required(values, "filteredServiceConfigPath"),
+            required(values, "redisContainer"),
             required(values, "logDirectory"));
     }
     private static String required(Properties values, String name) { String value = values.getProperty(name); required(value, name); return value; }

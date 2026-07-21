@@ -4,6 +4,7 @@ namespace SupportChat.Server.Configuration;
 
 public static class SampleNames
 {
+    public const string MeshName = "supportchat";
     public const string ApiChannel = "supportchat.api";
     public const string SupportChannel = "supportchat.support";
     public const string SupportActorType = "supportchat.user";
@@ -11,7 +12,6 @@ public static class SampleNames
     public const string SessionSpotNode = "supportchat.session.node";
     public const string SupportEntrySpotNode = "supportchat.entry.node";
     public const string SupportConversationSpotNode = "supportchat.conversation.node";
-    public const string SupportSpotDiscovery = "supportchat.support.spots";
     public const string StreamNode = "supportchat.stream";
 
     // One agent handles up to this many conversations concurrently (§9).

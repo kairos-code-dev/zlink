@@ -22,11 +22,10 @@ export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.
 export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-resilience-lifecycle:${run_id}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=100
+LOCAL_READINESS_ATTEMPTS=30
 PROCESS_STOP_ATTEMPTS=200
 SCENARIO_SIGNAL_ATTEMPTS=300
 POLL_INTERVAL=0.1
-ROUTE_SETTLE_SECONDS=5
 FLAP_SETTLE_SECONDS=2
 
 print_logs() {
@@ -276,7 +275,6 @@ start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
 start_consumer
 CONSUMER_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 control_dir="${log_dir}/control"
 mkdir -p "${control_dir}"
@@ -302,7 +300,6 @@ start_provider api-a "${API_A}" "${HTTP_A}"
 PROVIDER_A_PID="${pids[-1]}"
 CURRENT_API_A="${API_A}"
 CURRENT_HTTP_A="${HTTP_A}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a1-up"
 wait "${restart_client_pid}"
 fi
@@ -329,7 +326,6 @@ start_provider api-a "${API_A_REPLACEMENT}" "${HTTP_A_REPLACEMENT}"
 PROVIDER_A_PID="${pids[-1]}"
 CURRENT_API_A="${API_A_REPLACEMENT}"
 CURRENT_HTTP_A="${HTTP_A_REPLACEMENT}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a2-up"
 wait "${reschedule_client_pid}"
 fi
@@ -353,7 +349,6 @@ stop_pid "${PROVIDER_B_PID}"
 wait_port_down api-b "${API_B}"
 start_provider api-b "${API_B_GREEN}" "${HTTP_B_GREEN}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a4-green-up"
 wait_file "${control_dir}/a4-green-served"
 stop_pid "${PROVIDER_B_PID}"
@@ -362,7 +357,6 @@ touch "${control_dir}/a4-green-down"
 wait_file "${control_dir}/a4-restore"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/a4-restored"
 wait "${a4_client_pid}"
 fi
@@ -388,7 +382,6 @@ for _ in $(seq 1 3); do
   PROVIDER_A_PID="${pids[-1]}"
   CURRENT_API_A="${API_A_REPLACEMENT}"
   CURRENT_HTTP_A="${HTTP_A_REPLACEMENT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 done
 touch "${control_dir}/a5-stop"
 wait "${flapping_client_pid}"
@@ -412,7 +405,6 @@ touch "${control_dir}/b2-crashed"
 wait_file "${control_dir}/b2-restart"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/b2-restarted"
 wait "${b2_client_pid}"
 fi
@@ -435,12 +427,10 @@ stop_pid "${CONSUMER_PID}"
 wait_port_down consumer-http "${CONSUMER_HTTP}"
 start_consumer
 CONSUMER_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/c2-crashed"
 wait_file "${control_dir}/c2-restart"
 start_provider api-b "${API_B}" "${HTTP_B}"
 PROVIDER_B_PID="${pids[-1]}"
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/c2-restarted"
 wait "${c2_client_pid}"
 fi
@@ -461,7 +451,6 @@ pause_redis_container
 touch "${control_dir}/c4-store-paused"
 wait_file "${control_dir}/c4-unpause-store"
 unpause_redis_container
-sleep "${ROUTE_SETTLE_SECONDS}"
 touch "${control_dir}/c4-store-unpaused"
 wait "${c4_client_pid}"
 fi
@@ -479,7 +468,6 @@ if [[ "${SCENARIO}" == "all" ]]; then
   wait_port_down api-b "${API_B}"
   start_provider api-b "${API_B}" "${HTTP_B}"
   PROVIDER_B_PID="${pids[-1]}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 if should_run RL-A3 || should_run RL-D1; then

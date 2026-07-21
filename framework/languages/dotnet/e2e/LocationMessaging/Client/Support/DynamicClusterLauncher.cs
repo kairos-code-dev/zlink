@@ -220,10 +220,10 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
     public async Task WaitReadyAsync()
     {
         using var client = ZLinkHttpClient.Create(HttpUrl)
-            .Timeout(TimeSpan.FromSeconds(3))
+            .Timeout(TimeSpan.FromMilliseconds(250))
             .Build();
-        var deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < ReadinessTimeout)
         {
             if (process.HasExited)
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");

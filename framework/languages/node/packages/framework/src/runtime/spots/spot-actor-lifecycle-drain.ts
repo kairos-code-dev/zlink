@@ -1,15 +1,16 @@
-import type { ZLinkActor } from '../../contracts';
+import type { ZLinkActor, ZLinkActorMembership } from '../../contracts';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
+import { createActorMembership } from '../actors/actor-lifecycle-snapshot';
 
 interface ZLinkSpotActorLifecycleTarget {
-  onJoinedActor?(actor: ZLinkActor): Promise<void> | void;
-  onLeaveActor?(actor: ZLinkActor): Promise<void> | void;
-  onDisconnectActor?(actor: ZLinkActor): Promise<void> | void;
+  onJoinedActor?(actor: ZLinkActorMembership): Promise<void> | void;
+  onLeaveActor?(actor: ZLinkActorMembership): Promise<void> | void;
+  onDisconnectActor?(actor: ZLinkActorMembership): Promise<void> | void;
 }
 
 interface ZLinkSpotActorLifecycleDrainOptions {
@@ -30,6 +31,8 @@ interface ZLinkSpotActorLifecycleEvent {
   readonly info: {
     readonly previousActor?: ZLinkBackendActorRef | null;
     readonly currentActor?: ZLinkBackendActorRef | null;
+    readonly previousMembershipEpoch?: bigint;
+    readonly currentMembershipEpoch?: bigint;
   };
 }
 
@@ -58,16 +61,24 @@ export class ZLinkSpotActorLifecycleDrain {
           return undefined;
         }
         const target = this.options.getTarget();
+        const membershipEpoch = event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT
+          ? event.info.previousMembershipEpoch
+          : event.info.currentMembershipEpoch;
+        const membership = createActorMembership(
+          actor,
+          actorRef as ZLinkBackendActorRef,
+          membershipEpoch
+        );
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
-          return target.onJoinedActor?.(actor);
+          return target.onJoinedActor?.(membership);
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_LEFT) {
-          return Promise.resolve(target.onLeaveActor?.(actor)).then(() => {
+          return Promise.resolve(target.onLeaveActor?.(membership)).then(() => {
             this.options.commitActorDeparture?.(actorId);
           });
         }
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_DISCONNECTED) {
-          return target.onDisconnectActor?.(actor);
+          return target.onDisconnectActor?.(membership);
         }
         return undefined;
       });

@@ -283,7 +283,7 @@ boundaries normalize those values into this public contract.
 | `ZLINK_SUBMIT_OK` | 0 | Message was sent successfully |
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | Send queue is full (HWM reached) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | Target path or peer is not connected |
-| `ZLINK_SUBMIT_NOT_FOUND` | 3 | Target peer, spot, or routed destination was not found |
+| `ZLINK_SUBMIT_NOT_FOUND` | 3 | Target peer or routed destination was not found |
 | `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow result. The target route was identified, but admission policy such as handshake state or new-outbound weight rejects the submit |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | Context was terminated |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | Handle is NULL or invalid |
@@ -329,17 +329,17 @@ Used as the canonical normalized completion outcome for
 | `ZLINK_REQUEST_OK` | 0 | Reply payload was received successfully |
 | `ZLINK_REQUEST_TIMED_OUT` | 101 | Reply did not arrive within the configured timeout |
 | `ZLINK_REQUEST_NOT_FOUND` | 102 | The target could not be found and an error reply completed the request |
-| `ZLINK_REQUEST_TERMINATED` | 103 | Context or service-owner lifecycle ended before the terminal reply (`ETERM` or `ESHUTDOWN`) |
+| `ZLINK_REQUEST_TERMINATED` | 103 | Context or socket ended before the terminal reply (`ETERM` or `ESHUTDOWN`) |
 | `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | Reply envelope or error reply payload was malformed |
 | `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | Request completion failed without a finer public bucket |
-| `ZLINK_REQUEST_REJECTED` | 106 | The target explicitly rejected the request (e.g. actor join denied) |
-| `ZLINK_REQUEST_CONFLICT` | 107 | The request conflicts with existing state (e.g. actor already exists) |
+| `ZLINK_REQUEST_REJECTED` | 106 | The target explicitly rejected the request |
+| `ZLINK_REQUEST_CONFLICT` | 107 | The request conflicts with current routing or operation state |
 | `ZLINK_REQUEST_BUSY` | 108 | The target is busy and cannot accept the request at this time |
 | `ZLINK_REQUEST_NOT_CONNECTED` | 109 | No active connection to the target |
 | `ZLINK_REQUEST_INVALID_ARGUMENT` | 110 | The request carried an invalid argument |
 | `ZLINK_REQUEST_INVALID_STATE` | 111 | The target is in a state that rejects this request |
 | `ZLINK_REQUEST_NOT_SUPPORTED` | 112 | The operation is not supported by the target |
-| `ZLINK_REQUEST_BACKPRESSURED` | 113 | Non-blocking mailbox admission or an atomic whole-capacity reservation failed |
+| `ZLINK_REQUEST_BACKPRESSURED` | 113 | Non-blocking outbound admission failed because capacity was unavailable |
 
 ### Security Mechanisms
 
@@ -396,9 +396,6 @@ typedef enum zlink_option_t {
   ZLINK_OPT_HANDSHAKE_IVL             = 0x301D,
   ZLINK_OPT_BLOCKY                    = 0x301E,
   ZLINK_OPT_INVERT_MATCHING           = 0x3020,
-  ZLINK_OPT_HEARTBEAT_IVL             = 0x3021,
-  ZLINK_OPT_HEARTBEAT_TTL             = 0x3022,
-  ZLINK_OPT_HEARTBEAT_TIMEOUT         = 0x3023,
   ZLINK_OPT_CONNECT_TIMEOUT           = 0x3024,
   ZLINK_OPT_TCP_MAXRT                 = 0x3025,
   ZLINK_OPT_MULTICAST_MAXTPDU         = 0x3026,
@@ -423,10 +420,7 @@ typedef enum zlink_option_t {
 ```
 
 Used with `zlink_set_option()` / `zlink_get_option()`.
-They apply to raw sockets and discovery. A MeshNode supports only `SNDHWM`,
-`RCVHWM`, `SNDTIMEO`, `RCVTIMEO`, and `MAXMSGSIZE`; every other
-`zlink_option_t` returns `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`
-on a MeshNode.
+They apply to raw sockets and discovery.
 
 ##### Transport/Buffer
 
@@ -472,14 +466,6 @@ request submit has already succeeded.
 | `ZLINK_OPT_TCP_KEEPALIVE_INTVL` | Override TCP_KEEPINTVL in seconds (`int`; -1 = OS default) |
 | `ZLINK_OPT_TCP_MAXRT` | Maximum TCP retransmit timeout in milliseconds (`int`) |
 | `ZLINK_OPT_TCP_NODELAY` | Enable TCP_NODELAY (`int`; 0 or 1) |
-
-##### Heartbeat
-
-| Constant | Description |
-|---|---|
-| `ZLINK_OPT_HEARTBEAT_IVL` | ZMTP heartbeat interval in milliseconds (`int`; 0 = disabled) |
-| `ZLINK_OPT_HEARTBEAT_TTL` | ZMTP heartbeat TTL in milliseconds (`int`) |
-| `ZLINK_OPT_HEARTBEAT_TIMEOUT` | ZMTP heartbeat timeout in milliseconds (`int`) |
 
 ##### Network
 
@@ -656,16 +642,11 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
                       size_t optvallen_);
 ```
 
-Configures a common option. `handle_` may be a raw socket, discovery, or a
-MeshNode. The [MeshNode option-support table](../service/01-mesh-node.md#9-options-and-handle-support)
-defines the options accepted by a MeshNode. The `option_` parameter identifies
+Configures a common option. `handle_` may be a raw socket or discovery. The `option_` parameter identifies
 the option (e.g. `ZLINK_OPT_SNDHWM`, `ZLINK_OPT_LINGER`). The `optval_`
 pointer supplies the value and `optvallen_` specifies its size in bytes.
 
-MeshNode options are normally set before `start`. As an exception,
-`ZLINK_OPT_MAXMSGSIZE` may be changed while running and applies to newly
-received complete messages. Configuration timing for raw sockets and discovery
-follows each option contract.
+Configuration timing for raw sockets and discovery follows each option contract.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -687,9 +668,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                       size_t *optvallen_);
 ```
 
-Retrieves the current value of a common option. `handle_` may be a raw socket,
-discovery, or a MeshNode, and a MeshNode has the same support set as the setter.
-The getter may be called in every valid MeshNode lifecycle state.
+Retrieves the current value of a common option. `handle_` may be a raw socket or
+discovery.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -707,9 +687,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                            size_t size_);
 ```
 
-Sets the routing ID of a raw socket or MeshNode. Its length is 1..255 bytes and
-the value is binary-safe. Set it before bind or connect on a raw socket and
-before `start` on a MeshNode. Other handle kinds return
+Sets the routing ID of a raw socket. Its length is 1..255 bytes and the value is
+binary-safe. Set it before bind or connect. Other handle kinds return
 `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
@@ -727,54 +706,12 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
-Copies the routing ID of a raw socket or MeshNode into the caller-owned
+Copies the routing ID of a raw socket into the caller-owned
 `zlink_routing_id_t` supplied in `out_`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
 **See also:** `zlink_set_routing_id`
-
----
-
-### zlink_socket_set_channel_name
-
-Set channel-name metadata on a raw socket.
-
-```c
-ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
-                                                                  const char *channel_name_);
-```
-
-`channel_name_` must be a NUL-terminated string of 1..255 bytes. The function
-copies the string into socket-owned storage, so the caller need not retain the
-input string after return. An invalid name returns
-`ZLINK_CONFIG_INVALID_ARGUMENT`; a change after the channel name is locked
-returns `ZLINK_CONFIG_INVALID_STATE`; and an invalid socket returns
-`ZLINK_CONFIG_INVALID_HANDLE`.
-
----
-
-### zlink_socket_get_channel_name
-
-Get channel-name metadata from a raw socket.
-
-```c
-ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
-                                                                  char *channel_name_buf_,
-                                                                  size_t channel_name_capacity_,
-                                                                  size_t *channel_name_len_out_);
-```
-
-`channel_name_len_out_` is required and receives the required byte length.
-When `channel_name_buf_ == NULL`, the function queries only the length and
-succeeds. With a buffer, it copies exactly that many bytes and does not append
-a NUL byte. The caller owns the output buffer and the copied bytes. If the
-buffer is too small, the function records the required length, leaves the
-buffer unchanged, and returns `ZLINK_CONFIG_BUFFER_TOO_SMALL` with
-`errno == ENOBUFS`. It writes no partial data and does not change the stored
-channel name, so the caller can retry the same query with a buffer of the
-reported length. An unset name returns `ZLINK_CONFIG_NOT_FOUND`; an invalid socket or a NULL
-`channel_name_len_out_` returns `ZLINK_CONFIG_INVALID_HANDLE`.
 
 ---
 
@@ -793,9 +730,7 @@ Configures TLS server mode on the socket. `cert_` and `key_` are paths to
 PEM-encoded certificate and private key files. Set `require_client_cert_`
 to 1 to require client certificate authentication.
 
-This function applies to raw server sockets and MeshNodes. On a MeshNode it
-configures server TLS for peers accepted by the bind endpoint and must be
-called before `start`. Unsupported raw socket types and other handle kinds
+This function applies to raw server sockets that support TLS. Unsupported raw socket types and other handle kinds
 return `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
@@ -820,9 +755,7 @@ PEM-encoded CA certificate bundle. `hostname_` sets the expected hostname
 for SNI and certificate verification. Set `trust_system_` to 1 to also
 trust the system CA certificate store.
 
-This function applies to raw client sockets and MeshNodes. On a MeshNode it
-configures client TLS for every outbound peer connection and must be called
-before `start`. Unsupported raw socket types and other handle kinds return
+This function applies to raw client sockets that support TLS. Unsupported raw socket types and other handle kinds return
 `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.

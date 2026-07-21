@@ -5,7 +5,9 @@
 #include <zlink/framework.hpp>
 
 #include <stdexcept>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
@@ -22,9 +24,18 @@ struct service_options_t
     std::string evidence_file;
     std::string monitor_profile;
     std::string log_dir;
+    std::string mesh_endpoint;
+    std::vector<std::string> mesh_peer_endpoints;
 
     static service_options_t bind (const configuration_section_t &section)
     {
+        std::vector<std::string> mesh_peers;
+        std::stringstream peers (
+          section.get ("meshPeerEndpoints").value_or (""));
+        for (std::string endpoint; std::getline (peers, endpoint, ',');) {
+            if (!endpoint.empty ())
+                mesh_peers.push_back (std::move (endpoint));
+        }
         return {.rid = section.require ("rid"),
                 .http_endpoint = section.require ("httpEndpoint"),
                 .redis_endpoint = section.require ("redis.endpoint"),
@@ -34,7 +45,9 @@ struct service_options_t
                 .spot_pub_endpoint = section.require ("spotPubEndpoint"),
                 .evidence_file = section.require ("evidenceFile"),
                 .monitor_profile = section.require ("monitorProfile"),
-                .log_dir = section.require ("logDir")};
+                .log_dir = section.require ("logDir"),
+                .mesh_endpoint = section.require ("meshEndpoint"),
+                .mesh_peer_endpoints = std::move (mesh_peers)};
     }
 };
 

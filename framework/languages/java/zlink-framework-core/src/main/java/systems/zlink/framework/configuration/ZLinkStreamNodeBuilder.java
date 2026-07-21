@@ -14,5 +14,7 @@ public interface ZLinkStreamNodeBuilder {
 
     ZLinkStreamNodeBuilder registerSession(Class<? extends ZLinkSession> sessionType);
 
+    ZLinkStreamNodeBuilder enableActorDispatch(String meshName);
+
     ZLinkStreamNodeBuilder addSessionPacketHandler(Class<?> handlerType);
 }

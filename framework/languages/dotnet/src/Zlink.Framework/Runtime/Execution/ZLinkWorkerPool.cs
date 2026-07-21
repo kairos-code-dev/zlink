@@ -12,6 +12,7 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
     private readonly TimeSpan _idleTimeout;
     private readonly int _maxQueueLength;
     private readonly int _minThreads;
+    private readonly Queue<WorkerItem> _directQueue = new();
     private readonly Queue<WorkerItem> _queue = new();
     private readonly CancellationTokenSource _shutdownSource = new();
     private readonly object _sync = new();
@@ -62,7 +63,7 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
         {
             lock (_sync)
             {
-                return _queue.Count;
+                return _directQueue.Count + _queue.Count;
             }
         }
     }
@@ -86,7 +87,8 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
             if (!_disposed)
             {
                 _disposed = true;
-                abandoned = _queue.ToArray();
+                abandoned = _directQueue.Concat(_queue).ToArray();
+                _directQueue.Clear();
                 _queue.Clear();
                 Monitor.PulseAll(_sync);
                 cancel = true;
@@ -116,7 +118,8 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
             if (!_disposed)
             {
                 _disposed = true;
-                abandoned = _queue.ToArray();
+                abandoned = _directQueue.Concat(_queue).ToArray();
+                _directQueue.Clear();
                 _queue.Clear();
                 Monitor.PulseAll(_sync);
                 cancel = true;
@@ -155,6 +158,35 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
         }
     }
 
+    internal ZLinkWorkerSubmitResult TrySubmitDirect(
+        Action<CancellationToken> work,
+        Action? cancelBeforeStart = null)
+    {
+        lock (_sync)
+        {
+            if (_disposed) return ZLinkWorkerSubmitResult.Stopped;
+
+            var availableReservations = _idleThreads
+                                        + (MaxThreads - _threadCount)
+                                        - _directQueue.Count;
+            if (availableReservations <= 0) return ZLinkWorkerSubmitResult.Full;
+
+            var reservedIdleThread = _idleThreads > _directQueue.Count;
+            _directQueue.Enqueue(new WorkerItem(work, cancelBeforeStart));
+            if (reservedIdleThread)
+            {
+                Monitor.Pulse(_sync);
+            }
+            else
+            {
+                _threadCount++;
+                StartWorkerThread();
+            }
+
+            return ZLinkWorkerSubmitResult.Accepted;
+        }
+    }
+
     private void StartWorkerThread()
     {
         var thread = new Thread(WorkerLoop)
@@ -175,18 +207,23 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
                 WorkerItem item;
                 lock (_sync)
                 {
-                    while (_queue.Count == 0)
+                    while (_directQueue.Count == 0 && _queue.Count == 0)
                     {
                         if (_disposed) return;
 
                         _idleThreads++;
                         var signaled = Monitor.Wait(_sync, _idleTimeout);
                         _idleThreads--;
-                        if (!signaled && _queue.Count == 0 && _threadCount > _minThreads)
+                        if (!signaled
+                            && _directQueue.Count == 0
+                            && _queue.Count == 0
+                            && _threadCount > _minThreads)
                             return;
                     }
 
-                    item = _queue.Dequeue();
+                    item = _directQueue.Count > 0
+                        ? _directQueue.Dequeue()
+                        : _queue.Dequeue();
                 }
 
                 try

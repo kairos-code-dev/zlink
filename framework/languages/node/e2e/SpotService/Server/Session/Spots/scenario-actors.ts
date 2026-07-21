@@ -1,8 +1,9 @@
-import type { EnsureActorReq } from '../../../Shared/messages';
 import type {
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
@@ -32,33 +33,30 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
     this.evidence = evidence;
   }
 
-  async onCreateActor(actor: ScenarioActor, createRequest: ZLinkMessage): Promise<void> {
-    const request = createRequest.decode<Partial<EnsureActorReq>>(Object as never);
-    if (typeof request.displayName === 'string') {
-      actor.displayName = request.displayName;
-    }
+  async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
+    void createRequest;
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-created|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actorId;
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actor;
     return { accepted: true, reply: request.decode() };
   }
 
-  async onJoinedActor(actor: ScenarioActor): Promise<void> {
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-joined|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onLeaveActor(actor: ScenarioActor): Promise<void> {
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-left|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: ScenarioActor): Promise<void> {
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actorId}`);
+    evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
   }
 
   private static requireEvidence(): EvidenceStore {

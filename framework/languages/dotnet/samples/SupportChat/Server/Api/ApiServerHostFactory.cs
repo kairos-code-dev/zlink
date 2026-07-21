@@ -32,18 +32,15 @@ public static class ApiServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "api"))
                 .TraceLabel("api");
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
-            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
-                .Listen(topology.ApiChannelEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.MeshEndpoint)
                 // Discovery clients dial this server through its descriptor
                 // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(RoutingId.From("1101"));
-            apiMesh.ChannelName(SampleNames.ApiChannel)
-                .AddRequestHandler<AuthenticateUserHandler>()
-                .AddRequestHandler<OpenConversationHandler>();
-            var supportMesh = options.AddRouteMesh(SampleNames.SupportChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From("1102"));
-            supportMesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
+                .SetRoutingId(topology.MeshRoutingId);
+            mesh.ChannelName(SampleNames.ApiChannel)
+                .AddHandlerGroup("api");
+            mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
         });
 
         return builder.Build();

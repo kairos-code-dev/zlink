@@ -3,7 +3,6 @@ package systems.zlink.e2e.kotlin.spotservice.play.spots
 import java.time.Duration
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.play.handlers.StageTimerHandler
-import systems.zlink.framework.spots.ZLinkTimerOptions
 
 internal class ScenarioStage(
     private val spot: UserSpot,
@@ -23,7 +22,7 @@ internal class ScenarioStage(
             command.name,
             Duration.ofMillis(command.periodMilliseconds.coerceAtLeast(1).toLong()),
             StageTimerHandler::class.java,
-            ZLinkTimerOptions()
+            null
         )
     }
 }

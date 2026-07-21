@@ -1,4 +1,8 @@
 import type { ActorRef, RoutingId } from '../../contracts/Common';
+import type {
+  ZLinkPeerLocationStore,
+  ZLinkRouteLocationStore
+} from '../../contracts/Locations/Stores';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationKind,
@@ -8,8 +12,6 @@ import {
   type ZLinkLocationReadiness,
   type ZLinkLocationRuntimeQuery,
   type ZLinkPeerLocationResolver,
-  type ZLinkPeerLocationStore,
-  type ZLinkRouteLocationStore,
   type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationKey,
@@ -91,9 +93,9 @@ export class ZLinkStoreLocationResolvers implements
   ): Promise<RoutingId | undefined> {
     const capability = `actor:${actorType}`;
     const peers = await this.listLivePeers({
-      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
       meshName,
-      role: ZLinkLocationRole.Spot
+      role: ZLinkLocationRole.Router
     }, signal);
     const candidates = peers.filter((peer) =>
       !peer.draining
@@ -120,18 +122,28 @@ export class ZLinkStoreLocationResolvers implements
     return row;
   }
 
-  async resolveSpotRef(spotRid: RoutingId, signal?: AbortSignal): Promise<ResolvedSpotHandle | undefined> {
-    const meshNames = this.options.spotMeshNames ?? [];
-    const row = await this.resolveSpotRowInMeshes(spotRid, meshNames, signal);
+  async resolveSpotRef(
+    meshName: string,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<ResolvedSpotHandle | undefined> {
+    const row = await this.resolveSpotRow({ meshName, spotRid }, signal);
     if (row !== undefined) {
+      if (row.spotGeneration <= 0n) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          `SPOT '${spotRid}' location row has no valid Core lifecycle generation.`
+        );
+      }
       return {
         meshName: row.meshName,
-        nodeRid: String(row.nodeRid),
+        nodeRid: String(row.ownerNodeRid),
         spotRid: String(row.spotRid),
-        spotKind: row.spotKind
+        spotKind: row.spotKind,
+        spotGeneration: row.spotGeneration
       };
     }
-    const entrySpot = await resolveEntrySpotPeerInMeshes(this, spotRid, meshNames, signal);
+    const entrySpot = await resolveEntrySpotPeerInMeshes(this, spotRid, [meshName], signal);
     if (entrySpot !== undefined) {
       return {
         meshName: entrySpot.meshName,
@@ -143,46 +155,56 @@ export class ZLinkStoreLocationResolvers implements
     return undefined;
   }
 
-  async resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined> {
-    const initial = await this.resolveSpotRef(spotRid, signal);
+  async resolveSpotHandle(
+    meshName: string,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<SpotHandle | undefined> {
+    const initial = await this.resolveSpotRef(meshName, spotRid, signal);
     if (initial === undefined) return undefined;
     return createSpotHandle(
       String(spotRid),
       initial,
-      (refreshSignal) => this.resolveSpotRef(spotRid, refreshSignal)
+      (refreshSignal) => this.resolveSpotRef(meshName, spotRid, refreshSignal)
     );
   }
 
   async resolveActorSpotRef(
+    meshName: string,
     actorId: string,
     signal?: AbortSignal
   ): Promise<ResolvedSpotHandle | undefined> {
-    const row = await this.resolveActorRow({ actorId }, signal);
+    const row = await this.resolveActorRow({ meshName, actorId }, signal);
     if (row === undefined) {
       return undefined;
     }
-    const spotRid = row.locationKind === ZLinkSpotKind.Entry || row.spotRid === undefined
-      ? row.nodeRid
+    const spotRid = row.spotKind === ZLinkSpotKind.Entry
+      ? row.ownerNodeRid
       : row.spotRid;
     return {
-      meshName: row.spotMeshName,
-      nodeRid: String(row.nodeRid),
+      meshName: row.meshName,
+      nodeRid: String(row.ownerNodeRid),
       spotRid: String(spotRid),
-      spotKind: row.locationKind
+      spotKind: row.spotKind,
+      spotGeneration: row.spotGeneration
     };
   }
 
   async resolveActorRef(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
-    return (await this.resolveActorRow({ actorId }, signal))?.actorRef;
+    return (await this.resolveActorRow({ meshName: '', actorId }, signal))?.actorRef;
   }
 
-  async resolveActorSpotHandle(actorId: string, signal?: AbortSignal): Promise<SpotHandle | undefined> {
-    const initial = await this.resolveActorSpotRef(actorId, signal);
+  async resolveActorSpotHandle(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<SpotHandle | undefined> {
+    const initial = await this.resolveActorSpotRef(meshName, actorId, signal);
     if (initial === undefined) return undefined;
     return createSpotHandle(
       initial.spotRid,
       initial,
-      (refreshSignal) => this.resolveActorSpotRef(actorId, refreshSignal)
+      (refreshSignal) => this.resolveActorSpotRef(meshName, actorId, refreshSignal)
     );
   }
 
@@ -220,15 +242,46 @@ export class ZLinkStoreLocationResolvers implements
     key: ZLinkActorLocationKey,
     signal?: AbortSignal
   ): Promise<ZLinkActorLocation | undefined> {
+    const meshNames = key.meshName.length === 0
+      ? this.options.spotMeshNames ?? []
+      : [key.meshName];
+    let stored: ZLinkActorLocation | undefined;
+    for (const meshName of meshNames) {
+      stored = await this.options.stores.actorStore.resolveActor({
+        meshName,
+        actorId: key.actorId
+      }, signal);
+      if (stored !== undefined) break;
+    }
     const row = await this.liveRows.resolve(
-      await this.options.stores.actorStore.resolveActor({ actorId: key.actorId }, signal),
+      stored,
       (candidate) => candidate.ownerId,
       signal,
-      (candidate) => candidate.actorRef !== undefined
+      (candidate) =>
+        candidate.actorRef.generation > 0n
+        && candidate.ownerNodeGeneration > 0n
+        && candidate.membershipEpoch > 0n
     );
     if (row === undefined) {
-      this.options.events?.actorResolveMiss({ actorId: key.actorId });
+      this.options.events?.actorResolveMiss(key);
       return undefined;
+    }
+    if (row.spotKind === ZLinkSpotKind.User) {
+      const currentSpot = await this.resolveSpotRow({
+        meshName: row.meshName,
+        spotRid: row.spotRid
+      }, signal);
+      if (
+        currentSpot === undefined
+        || row.spotGeneration <= 0n
+        || row.membershipEpoch <= 0n
+        || row.spotGeneration !== currentSpot.spotGeneration
+        || row.ownerNodeGeneration !== currentSpot.ownerNodeGeneration
+        || !routingIdsEqual(row.ownerNodeRid, currentSpot.ownerNodeRid)
+      ) {
+        this.options.events?.actorResolveMiss(key);
+        return undefined;
+      }
     }
     return row;
   }
@@ -262,18 +315,30 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
   constructor(
     private readonly rows: ZLinkStoreLocationResolvers,
     private readonly meshNames: readonly string[],
-    private readonly routerChannelIdForMesh: (meshName: string) => string = (meshName) => meshName
+    private readonly routerChannelIdForMesh: (meshName: string) => string = (meshName) => meshName,
+    private readonly resolveLocalSpot?: (spotRid: RoutingId) => ZLinkSpotRouteTarget | undefined
   ) {}
 
   async resolve(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget> {
     const row = await this.rows.resolveSpotRowInMeshes(spotRid, this.meshNames, signal);
     if (row !== undefined) {
+      if (row.spotGeneration <= 0n) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.SpotRouteNotFound,
+          `SPOT '${spotRid}' location row has no valid Core lifecycle generation.`
+        );
+      }
       return {
         routerChannelId: this.routerChannelIdForMesh(row.meshName),
-        targetNodeRid: row.nodeRid,
+        targetNodeRid: row.ownerNodeRid,
         spotRid: row.spotRid,
-        spotKind: row.spotKind
+        spotKind: row.spotKind,
+        targetSpotGeneration: row.spotGeneration
       };
+    }
+    const local = this.resolveLocalSpot?.(spotRid);
+    if (local !== undefined) {
+      return local;
     }
     const entrySpot = await resolveEntrySpotPeerInMeshes(this.rows, spotRid, this.meshNames, signal);
     if (entrySpot !== undefined) {
@@ -299,10 +364,10 @@ async function resolveEntrySpotPeerInMeshes(
 ): Promise<{ readonly meshName: string; readonly nodeRid: RoutingId } | undefined> {
   for (const meshName of meshNames) {
     const peers = await rows.listLivePeers({
-      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
       meshName,
       nodeRid: spotRid,
-      role: ZLinkLocationRole.Spot
+      role: ZLinkLocationRole.Router
     }, signal);
     const peer = peers.find((candidate) =>
       candidate.nodeRid !== undefined && routingIdsEqual(candidate.nodeRid, spotRid)

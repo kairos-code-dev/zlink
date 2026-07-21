@@ -17,7 +17,7 @@ import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ClientServerChannelBuilder
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
@@ -79,18 +79,29 @@ class PlayApplication {
                     )
                     CompletableFuture.completedFuture(null)
                 }
-            val route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"))
+            val node: ZLinkMeshNodeBuilder = options.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
                 .setRoutingId(RoutingId.from(nodeRid))
-            route.addRequestHandler(
+            node.channelName(Contracts.ROUTE_CHANNEL)
+            if (nodeRid != "play-a") {
+                node.peerConnections().connect(
+                    RoutingId.from("play-a"),
+                    Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"),
+                )
+            }
+            if (nodeRid != "play-b") {
+                node.peerConnections().connect(
+                    RoutingId.from("play-b"),
+                    Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"),
+                )
+            }
+            node.addRouteRequestHandler(
                 RoutePingHandler::class.java,
                 Contracts.RoutePingReq::class.java,
                 Contracts.RoutePingRes::class.java,
                 Contracts.ROUTE_PACKET
             )
-            route.addRequestHandler(
+            node.addRouteRequestHandler(
                 EnsureActorHandler::class.java,
                 Contracts.EnsureActorReq::class.java,
                 Contracts.EnsureActorRes::class.java,
@@ -110,10 +121,6 @@ class PlayApplication {
                 Contracts.OutboundMsg::class.java
             )
             ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java)
-            val node: ZLinkSpotNodeBuilder = options.addSpotMesh(Contracts.SPOT_MESH)
-            node.enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
-                .enablePubSub(Env.get("ZLINK_KOTLIN_E2E_SPOT_PUB_ENDPOINT"))
-                .setRoutingId(RoutingId.from(nodeRid))
             node.addEntrySpot(ScenarioEntrySpot::class.java)
             node.addSpotFactory(UserSpot::class.java)
             node.addSpotFactory(MismatchedSpot::class.java)
@@ -133,6 +140,7 @@ class PlayApplication {
                             Env.get("ZLINK_KOTLIN_E2E_TLS_KEY_PATH")
                         )
                 }
+                stream.enableActorDispatch(Contracts.SPOT_MESH)
                 stream.registerSession(ScenarioSession::class.java)
                     .addSessionPacketHandler(ActorAuthHandler::class.java)
             }

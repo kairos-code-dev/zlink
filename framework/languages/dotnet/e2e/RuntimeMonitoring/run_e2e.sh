@@ -10,11 +10,19 @@ else
   SCENARIO="$*"
   SCENARIO="${SCENARIO// /,}"
 fi
+if [[ "$SCENARIO" == "all" ]]; then
+  for scenario in \
+    MON-A1 MON-A2 MON-A3 MON-A4 MON-A5 MON-B1 MON-B2 MON-C1 MON-D1; do
+    "$0" "$scenario"
+  done
+  echo "runtime-monitoring all scenarios passed"
+  exit 0
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
-LOCAL_READINESS_TIMEOUT_SECONDS=10
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -88,6 +96,7 @@ cleanup() {
   done
   wait "${pids[@]:-}" 2>/dev/null || true
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
+    docker unpause "$REDIS_CONTAINER" >/dev/null 2>&1 || true
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
   if [[ "$code" -ne 0 ]]; then
@@ -190,18 +199,21 @@ start_service svc-a "$SERVICE_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_URL" svc-a
 
-start_service svc-b "$SERVICE_PROJECT" \
-  --rid svc-b \
-  --http-url "$SVC_B_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$CHANNEL_B_ENDPOINT" \
-  --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
-  --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
-  --evidence-file "$LOG_DIR/svc-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-SERVICE_B_PID="${pids[-1]}"
-wait_health "$SVC_B_URL" svc-b
+SERVICE_B_PID=0
+if [[ "$SCENARIO" != "MON-A1" && "$SCENARIO" != "MON-A2" ]]; then
+  start_service svc-b "$SERVICE_PROJECT" \
+    --rid svc-b \
+    --http-url "$SVC_B_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "$CHANNEL_B_ENDPOINT" \
+    --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
+    --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/svc-b.evidence.log" \
+    --log-dir "$LOG_DIR"
+  SERVICE_B_PID="${pids[-1]}"
+  wait_health "$SVC_B_URL" svc-b
+fi
 
 start_service svc-filtered "$FILTERED_SERVICE_PROJECT" \
   --rid svc-filtered \
@@ -223,6 +235,7 @@ python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --redis-container "$REDIS_CONTAINER" \
   --service-url "$SVC_URL" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-url "$SVC_B_URL" \

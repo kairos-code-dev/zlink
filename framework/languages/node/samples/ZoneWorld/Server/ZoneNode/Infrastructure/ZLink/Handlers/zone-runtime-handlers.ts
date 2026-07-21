@@ -61,10 +61,24 @@ class DeliverAnnounceHandler implements ZLinkSpotPacketHandler<ZoneSpot, Deliver
   }
 }
 
+class UpdateZonePositionMsg {
+  constructor(readonly actorId: string, readonly x: number, readonly y: number) {}
+}
+
+@Injectable()
+@ZLinkPacket('UpdateZonePositionMsg')
+class UpdateZonePositionHandler implements ZLinkSpotPacketHandler<ZoneSpot, UpdateZonePositionMsg> {
+  async handle(spot: ZoneSpot, message: UpdateZonePositionMsg, _context: ZLinkHandlerContext): Promise<void> {
+    spot.updatePosition(message.actorId, message.x, message.y);
+  }
+}
+
 export {
   BotTickHandler,
   DeliverAnnounceHandler,
   FirstBorderSubscriptionHandler,
   SecondBorderSubscriptionHandler,
+  UpdateZonePositionHandler,
+  UpdateZonePositionMsg,
   ZoneTickHandler
 };

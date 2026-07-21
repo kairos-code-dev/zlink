@@ -71,7 +71,7 @@ internal sealed class PlayerMovement(
         switch (moves.Decide(actor.Position, toX, toY))
         {
             case MoveDecision.Rejected rejected:
-                Reject(actor, rejected.Reason, cancellationToken);
+                await RejectAsync(actor, rejected.Reason, cancellationToken);
                 return;
 
             case MoveDecision.Accepted { ZoneChanged: false } stayed:
@@ -110,7 +110,7 @@ internal sealed class PlayerMovement(
                 actor.ActorId,
                 to.ZoneId,
                 reply.Error);
-            Reject(actor, reply.Error ?? MoveRejectReasons.ZoneMaintenance, cancellationToken);
+            await RejectAsync(actor, reply.Error ?? MoveRejectReasons.ZoneMaintenance, cancellationToken);
             return;
         }
 
@@ -123,7 +123,10 @@ internal sealed class PlayerMovement(
     /// A refused move leaves the coordinate untouched (§2.2). A human is told why; a bot
     /// has no client to tell, so it turns around and walks back (§2.7).
     /// </summary>
-    private void Reject(PlayerActor actor, string reason, CancellationToken cancellationToken)
+    private async ValueTask RejectAsync(
+        PlayerActor actor,
+        string reason,
+        CancellationToken cancellationToken)
     {
         if (actor.IsBot)
         {
@@ -131,8 +134,8 @@ internal sealed class PlayerMovement(
             return;
         }
 
-        actor.Context.BoundSession
+        await actor.Context.BoundSession
             .Send(new MoveRejectedNotify(reason, actor.Position.X, actor.Position.Y))
-            .Submit();
+            .SubmitAsync(cancellationToken);
     }
 }

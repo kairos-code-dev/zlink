@@ -37,6 +37,12 @@ if [[ "$BINDING_SPEC" != file:* ]]; then
   exit 1
 fi
 BINDING_TGZ="$(realpath "$ROOT_DIR/${BINDING_SPEC#file:}")"
+HTTP_CLIENT_SPEC="$(node -p "require('./package.json').dependencies['@zlink-systems/http-client']")"
+if [[ "$HTTP_CLIENT_SPEC" != file:* ]]; then
+  echo "Node HTTP client dependency must use the central local-package file pin" >&2
+  exit 1
+fi
+HTTP_CLIENT_TGZ="$(realpath "$ROOT_DIR/${HTTP_CLIENT_SPEC#file:}")"
 npm run build
 for package_dir in "${packages[@]}"; do
   npm pack --silent "./packages/$package_dir" --pack-destination "$PACK_DIR" >/dev/null
@@ -131,7 +137,7 @@ NODE
 
 cd "$SERVER_DIR"
 npm init -y >/dev/null
-npm install --ignore-scripts "$BINDING_TGZ" "$PACK_DIR"/*.tgz >/dev/null
+npm install --ignore-scripts "$BINDING_TGZ" "$HTTP_CLIENT_TGZ" "$PACK_DIR"/*.tgz >/dev/null
 npm ls --all >/dev/null
 cat > index.cjs <<'JS'
 const { zlinkFramework } = require('@zlink-systems/nestjs');

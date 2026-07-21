@@ -37,15 +37,15 @@ class CourierGatewayApplication {
                 .enableServer(SampleTopology.CourierGatewayChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-courier-gateway-server"))
                 .addHandlerGroup("courier-gateway")
-            val courierRoutes = options.addSpotMesh(SampleNames.CourierSpotMesh)
+            val courierRoutes = options.addRouteMesh(SampleNames.CourierSpotMesh)
             courierRoutes
-                .enableRouter("inproc://deliverydispatch-courier-gateway-courier-client")
+                .listen("inproc://deliverydispatch-courier-gateway-courier-client")
                 .setRoutingId(RoutingId.from("deliverydispatch-courier-gateway-courier-client"))
-            courierRoutes.connectRouter(
+            courierRoutes.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode1Rid),
                 SampleTopology.CourierActorNode1RouterEndpoint,
             )
-            courierRoutes.connectRouter(
+            courierRoutes.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierActorNode2Rid),
                 SampleTopology.CourierActorNode2RouterEndpoint,
             )

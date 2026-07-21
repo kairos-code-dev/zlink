@@ -1,6 +1,10 @@
-export * from './Builders';
+export type { ZLinkEntrySpotOptions } from './Builders';
 export * from './Contracts';
-export * from './MonitoringModels';
+export {
+  ZLinkSpotPeerKind,
+  ZLinkSpotPeerSource,
+  ZLinkSpotPeerState
+} from './MonitoringModels';
 export * from './SpotKind';
 export * from './SpotHandle';
 export * from './ZLinkSpot';

@@ -64,7 +64,7 @@ import socket
 sockets = []
 try:
     chosen = set()
-    while len(sockets) < 7:
+    while len(sockets) < 4:
         port = random.randint(48000, 60999)
         if port in chosen:
             continue
@@ -83,13 +83,10 @@ finally:
 PY
 )"
 
-SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
-SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
-SUPPORTCHAT_SESSION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
-SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
-SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
-SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SUPPORTCHAT_SUPPORT_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
+SUPPORTCHAT_API_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+SUPPORTCHAT_SESSION_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -166,12 +163,6 @@ settings = {
     "LogDirectory": "${SUPPORTCHAT_LOG_DIR}",
     "RedisEndpoint": "${SUPPORTCHAT_REDIS_ENDPOINT}",
     "RedisKeyPrefix": "${SUPPORTCHAT_REDIS_KEY_PREFIX}",
-    "ApiChannelEndpoint": "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}",
-    "SupportChannelEndpoint": "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}",
-    "SessionSpotEndpoint": "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}",
-    "SessionRouterEndpoint": "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}",
-    "SupportEntrySpotEndpoint": "${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT}",
-    "SupportEntrySpotRouterEndpoint": "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}",
     "StreamEndpoint": "${SUPPORTCHAT_STREAM_ENDPOINT}",
 }
 server_settings = {
@@ -181,18 +172,15 @@ server_settings = {
 }
 with open(sys.argv[1], "w", encoding="utf-8") as output:
     json.dump({"Sample": {**server_settings,
-        "SupportChannelEndpoint": settings["SupportChannelEndpoint"],
-        "SupportEntrySpotEndpoint": settings["SupportEntrySpotEndpoint"],
-        "SupportEntrySpotRouterEndpoint": settings["SupportEntrySpotRouterEndpoint"],
+        "MeshEndpoint": "${SUPPORTCHAT_SUPPORT_MESH_ENDPOINT}",
     }}, output, indent=2)
 with open(sys.argv[2], "w", encoding="utf-8") as output:
     json.dump({"Sample": {**server_settings,
-        "ApiChannelEndpoint": settings["ApiChannelEndpoint"],
+        "MeshEndpoint": "${SUPPORTCHAT_API_MESH_ENDPOINT}",
     }}, output, indent=2)
 with open(sys.argv[3], "w", encoding="utf-8") as output:
     json.dump({"Sample": {**server_settings,
-        "SessionSpotEndpoint": settings["SessionSpotEndpoint"],
-        "SessionRouterEndpoint": settings["SessionRouterEndpoint"],
+        "MeshEndpoint": "${SUPPORTCHAT_SESSION_MESH_ENDPOINT}",
         "StreamEndpoint": settings["StreamEndpoint"],
     }}, output, indent=2)
 with open(sys.argv[4], "w", encoding="utf-8") as output:
@@ -205,14 +193,13 @@ PY
 dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 
 start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj" --config "${SUPPORT_CONFIG_FILE}"
-wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"
-wait_port support-spot-router "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}"
+wait_port support-mesh "${SUPPORTCHAT_SUPPORT_MESH_ENDPOINT}"
 
 start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --config "${API_CONFIG_FILE}"
-wait_port api "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}"
+wait_port api-mesh "${SUPPORTCHAT_API_MESH_ENDPOINT}"
 
 start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj" --config "${SESSION_CONFIG_FILE}"
-wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
+wait_port session-mesh "${SUPPORTCHAT_SESSION_MESH_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj" -- \

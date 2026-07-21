@@ -26,6 +26,7 @@ export class SpotAdminHandler implements ZLinkSpotRequestHandler<ScenarioUserSpo
     switch (request.operation) {
       case 'publish':
         spot.context.outbound.publish(
+          SpotServiceNames.spotChannel,
           SpotServiceNames.spotEventTopic,
           spotServicePacket(SpotMsg, { marker: request.marker ?? '' })
         ).submit();

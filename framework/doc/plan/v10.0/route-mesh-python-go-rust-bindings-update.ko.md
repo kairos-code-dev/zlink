@@ -1,5 +1,9 @@
 # RouteMesh Python·Go·Rust bindings 최신화 계획
 
+> **폐기된 계획:** 2026-07-21 사용자 결정에 따라 이 계획은 실행하지 않는다. 기존 source와 조사 기록은
+> Core 10.x 조합의 이력으로 보존하지만 새 package, review와 11.x 전환 작업을 만들지 않는다. 현재 실행
+> 범위는 [RouteMesh 11.0.0 통합 execution ledger](../v11.0/route-mesh-11.0.0-execution-ledger.ko.md)가 소유한다.
+
 ## 1. 목적과 문서 책임
 
 이 문서는 RouteMesh 전환에서 보류한 Python, Go와 Rust bindings를 최신 Core 공개 계약에 맞추기

@@ -3,8 +3,9 @@ package systems.zlink.framework.runtime.spots;
 import java.lang.reflect.InvocationTargetException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -35,7 +36,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
     private final String sourceName;
     private final Dispatch dispatch;
-    private final List<ManagedTimer> timers = new ArrayList<>();
+    private final Map<String, ManagedTimer> timers = new LinkedHashMap<>();
     private ZLinkSpot<?> spot;
 
     ZLinkSpotTimerRegistry(
@@ -59,7 +60,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         this.spot = spot;
     }
 
-    CompletionStage<ZLinkTimer> add(
+    synchronized CompletionStage<ZLinkTimer> add(
         String name,
         Duration period,
         Class<?> handlerType,
@@ -70,7 +71,12 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         if (period == null || period.isNegative() || period.isZero()) {
             throw new ZLinkConfigurationException("timer period must be positive");
         }
-        ZLinkTimerOptions timerOptions = options == null ? new ZLinkTimerOptions() : options;
+        ZLinkTimerOptions timerOptions = options == null
+            ? new ZLinkTimerOptions(
+                ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS,
+                1,
+                true)
+            : options;
         if (timerOptions.overrunPolicy() == null) {
             throw new ZLinkConfigurationException("timer overrun policy is required");
         }
@@ -80,15 +86,22 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
                 "timer maxCatchUpTicks must be greater than zero");
         }
         ManagedTimer timer = new ManagedTimer(name, period, handlerType, timerOptions);
-        timers.add(timer);
+        ManagedTimer previous = timers.put(name, timer);
+        if (previous != null) {
+            previous.close();
+        }
         timer.start();
         return CompletableFuture.completedFuture(timer);
     }
 
     @Override
-    public void close() {
-        timers.forEach(ManagedTimer::close);
+    public synchronized void close() {
+        timers.values().forEach(ManagedTimer::close);
         timers.clear();
+    }
+
+    private synchronized void removeTimer(String name, ManagedTimer timer) {
+        timers.remove(name, timer);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -220,6 +233,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         @Override
         public CompletionStage<Void> cancel() {
             close();
+            removeTimer(name, this);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 

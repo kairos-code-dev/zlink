@@ -2,12 +2,12 @@
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 
+#include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
-#include "runtime/spots/spot_runtime.hpp"
-#include "runtime/spots/spot_route_packets.hpp"
 
-#include <zlink/Contracts/Service/spot_node.hpp>
+#include <zlink/Contracts/Service/mesh_node.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <atomic>
@@ -33,10 +33,30 @@ actor_send_call_t::actor_send_call_t (actor_client_t &client,
 {
 }
 
-void actor_send_call_t::submit ()
+actor_send_call_t &actor_send_call_t::metadata (std::string key, std::string value)
 {
-    detail::submit_one_way_task (_client->send_to_actor_erased (
-      std::move (_actor_ref), std::move (_packet_name), std::move (_message)));
+    _metadata[std::move (key)] = std::move (value);
+    return *this;
+}
+
+task_t<submit_result_t> actor_send_call_t::submit ()
+{
+    if (!_submission->try_claim ()) {
+        return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor send call has already been submitted"));
+    }
+    if (_client == nullptr) {
+        return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "actor send call is not bound to an actor client"));
+    }
+    return detail::submit_one_way_task (
+      [client = _client, actor_ref = _actor_ref, packet_name = _packet_name,
+       message = _message, metadata = _metadata] () mutable {
+          return client->send_to_actor_erased (actor_ref, packet_name, message, metadata)
+            .result ();
+      });
 }
 
 actor_request_call_t::actor_request_call_t (actor_client_t &client,
@@ -87,16 +107,45 @@ serializer_registry_t &actor_request_call_t::serializers () const
 namespace zlink::framework::runtime
 {
 
+namespace
+{
+
+result_t<messaging::message_parts_t> wait_for_actor_completion (
+  detail::mesh_node_runtime_t &node,
+  const zlink::service::operation_id_t &operation_id,
+  std::chrono::milliseconds timeout)
+{
+    auto completion = node.wait_for_completion (operation_id, timeout);
+    if (!completion) {
+        return result_t<messaging::message_parts_t>::failure (
+          completion.error_kind (),
+          completion.error () ? completion.error ()->what () : "actor request timed out",
+          true);
+    }
+    if (completion.value ().record.terminal_result != 0) {
+        return result_t<messaging::message_parts_t>::failure (
+          framework_error_kind_t::request_failed,
+          "actor request completed with terminal result "
+            + std::to_string (completion.value ().record.terminal_result)
+            + " (errno "
+            + std::to_string (completion.value ().record.failure_errno) + ")");
+    }
+    return result_t<messaging::message_parts_t>::success (
+      messaging::message_parts_t (std::move (completion.value ().parts)));
+}
+
+} // namespace
+
 class actor_client_impl_t final : public actor_client_t
 {
   public:
     actor_client_impl_t (live_location_reader_t &store,
                          serializer_registry_t &serializers,
-                         std::vector<detail::spot_node_runtime_t> spot_nodes,
+                         std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes,
                          std::shared_ptr<actor_location_observer_t> actor_locations) :
         _store (&store),
         _serializers (&serializers),
-        _spot_nodes (std::move (spot_nodes)),
+        _mesh_nodes (std::move (mesh_nodes)),
         _actor_locations (std::move (actor_locations))
     {
     }
@@ -104,9 +153,31 @@ class actor_client_impl_t final : public actor_client_t
   protected:
     task_t<void> send_to_actor_erased (actor_ref_t actor_ref,
                                        std::string packet_name,
-                                       message_t message) override
+                                       message_t message,
+                                       const actor_send_call_t::metadata_map_t &metadata) override
     {
+        auto runtime = first_mesh_node ();
+        if (!runtime) {
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::route_not_connected,
+              "actor send requires a running MeshNode", true));
+        }
         auto actor = resolve_explicit_actor (actor_ref);
+        auto current = resolve_actor (
+          std::string (actor_ref.actor_id ()), stale_policy_t::route_not_found);
+        if (current
+            && (current.value ().framework_ref.node_rid ().value ()
+                  != actor_ref.node_rid ().value ()
+                || current.value ().framework_ref.generation ()
+                     != actor_ref.generation ())) {
+            const auto forwarded = runtime->forward_straggler_actor (actor_ref);
+            if (!forwarded) {
+                return task_t<void> (result_t<void>::failure (
+                  framework_error_kind_t::actor_location_stale,
+                  "actor ref is outside the forwarding window"));
+            }
+            actor = resolve_explicit_actor (*forwarded);
+        }
         if (!actor) {
             return task_t<void> (result_t<void>::failure (
               actor.error_kind (),
@@ -114,7 +185,7 @@ class actor_client_impl_t final : public actor_client_t
               actor.error () && actor.error ()->is_retriable ()));
         }
         return task_t<void> (
-          submit_send (actor.value (), std::move (packet_name), std::move (message)));
+          submit_send (actor.value (), std::move (packet_name), std::move (message), metadata));
     }
 
     task_t<message_t> request_to_actor_erased (
@@ -204,16 +275,7 @@ class actor_client_impl_t final : public actor_client_t
                 const auto remaining =
                   std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
                 last = submit_request (actor.value (), packet_name, request, remaining, request_id);
-                // Native SPOT transport can collapse a remote framework error
-                // to request_failed before the envelope reaches this client.
-                // Consult the local source runtime only for the actor whose
-                // supplied ref was current; this preserves the moving retry
-                // without turning ordinary handler failures into retries.
-                const bool collapsed_moving_failure =
-                  !last && ref_was_current
-                  && last.error_kind () == framework_error_kind_t::request_failed
-                  && actor_transfer_in_progress (actor.value ().framework_ref);
-                if (!is_moving_stale (last) && !collapsed_moving_failure) {
+                if (!is_moving_stale (last)) {
                     co_return last;
                 }
             } else if (!actor.error () || !actor.error ()->is_retriable ()) {
@@ -254,9 +316,9 @@ class actor_client_impl_t final : public actor_client_t
               framework_error_kind_t::actor_route_not_found,
               "actor send requires a non-empty actor ref and node rid");
         }
-        auto native = zlink::service::spot_node_t::remote_actor_ref (
+        auto native = zlink::service::mesh_node_t::remote_actor_ref (
           zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
-          std::string (actor_ref.actor_id ()));
+          std::string (actor_ref.actor_id ()), actor_ref.generation ());
         return result_t<resolved_actor_t>::success (
           resolved_actor_t{
             actor_ref, std::move (native), actor_ref.node_rid (),
@@ -265,7 +327,14 @@ class actor_client_impl_t final : public actor_client_t
 
     result_t<resolved_actor_t> resolve_actor (const std::string &actor_id, stale_policy_t policy)
     {
-        auto row = _store->resolve_actor (actor_location_key_t{actor_id}).result ();
+        const auto runtime = first_mesh_node ();
+        if (!runtime) {
+            return result_t<resolved_actor_t>::failure (
+              framework_error_kind_t::route_not_connected,
+              "actor lookup requires a running MeshNode", true);
+        }
+        auto row =
+          _store->resolve_actor (actor_location_key_t{runtime->mesh_name (), actor_id}).result ();
         if (!row) {
             return result_t<resolved_actor_t>::failure (
               framework_error_kind_t::request_failed,
@@ -281,7 +350,7 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor location became stale",
               policy == stale_policy_t::location_stale);
         }
-        if (!row.value ()->spot_rid) {
+        if (row.value ()->spot_rid.to_string ().empty ()) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::actor_route_not_found
@@ -290,29 +359,32 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor SPOT location became stale",
               policy == stale_policy_t::location_stale);
         }
-        auto native = zlink::service::spot_node_t::remote_actor_ref (
-          zlink::routing_id_t::from (std::string (row.value ()->actor_ref->node_rid ().value ())),
-          std::string (row.value ()->actor_ref->actor_id ()));
+        auto native = zlink::service::mesh_node_t::remote_actor_ref (
+          zlink::routing_id_t::from (std::string (row.value ()->actor_ref.node_rid ().value ())),
+          std::string (row.value ()->actor_ref.actor_id ()),
+          row.value ()->actor_ref.generation ());
         return result_t<resolved_actor_t>::success (
-          resolved_actor_t{*row.value ()->actor_ref, std::move (native),
+          resolved_actor_t{row.value ()->actor_ref, std::move (native),
                            node_rid_t::from_string (
-                             row.value ()->node_rid.to_string ()),
+                             row.value ()->owner_node_rid.to_string ()),
                            spot_rid_t::from_string (
-                             row.value ()->spot_rid->to_string ())});
+                             row.value ()->spot_rid.to_string ())});
     }
 
     result_t<void> submit_send (const resolved_actor_t &actor,
                                 std::string packet_name,
-                                message_t message)
+                                message_t message,
+                                const actor_send_call_t::metadata_map_t &metadata)
     {
-        auto runtime = first_spot_node ();
+        auto runtime = first_mesh_node ();
         if (!runtime) {
             return result_t<void>::failure (framework_error_kind_t::route_not_connected,
-                                            "actor send requires a running SPOT node", true);
+                                            "actor send requires a running MeshNode", true);
         }
-        auto relayed = relay_actor_packet (*runtime, actor, runtime::messaging::message_kind_t::command,
+        auto relayed = relay_actor_packet (*runtime, actor,
+                                           runtime::messaging::message_kind_t::command,
                                            std::move (packet_name), std::move (message),
-                                           std::chrono::milliseconds (0));
+                                           std::chrono::milliseconds (0), {}, metadata);
         if (!relayed) {
             return result_t<void>::failure (
               relayed.error_kind (),
@@ -328,13 +400,14 @@ class actor_client_impl_t final : public actor_client_t
                                         std::chrono::milliseconds timeout,
                                         const std::string &request_id)
     {
-        auto runtime = first_spot_node ();
+        auto runtime = first_mesh_node ();
         if (!runtime) {
             return result_t<message_t>::failure (framework_error_kind_t::route_not_connected,
-                                                 "actor request requires a running SPOT node",
+                                                 "actor request requires a running MeshNode",
                                                  true);
         }
-        auto relayed = relay_actor_packet (*runtime, actor, runtime::messaging::message_kind_t::request,
+        auto relayed = relay_actor_packet (*runtime, actor,
+                                           runtime::messaging::message_kind_t::request,
                                            std::move (packet_name), std::move (request), timeout,
                                            request_id);
         if (!relayed) {
@@ -352,73 +425,92 @@ class actor_client_impl_t final : public actor_client_t
     }
 
     result_t<std::optional<zlink::message_t>>
-    relay_actor_packet (detail::spot_node_runtime_t &runtime,
+    relay_actor_packet (detail::mesh_node_runtime_t &runtime,
                         const resolved_actor_t &actor,
                         runtime::messaging::message_kind_t kind,
                         std::string packet_name,
                         message_t message,
                         std::chrono::milliseconds timeout,
-                        const std::string &request_id = {})
+                        const std::string &request_id = {},
+                        const actor_send_call_t::metadata_map_t &metadata = {})
     {
-        auto native_node = runtime.native_node ();
-        if (!native_node) {
-            return result_t<std::optional<zlink::message_t>>::failure (
-              framework_error_kind_t::route_not_connected, "actor request requires a running SPOT node",
-              true);
-        }
+        (void) request_id;
         runtime::messaging::client_call_codec_t codec;
-        auto route_header = codec.create_envelope (
-          runtime::messaging::message_kind_t::request, "spot",
-          std::string (detail::spot_actor_packet_route_request_t::packet_name), timeout);
-        spot_actor_message_metadata_t metadata;
-        metadata.values["__zlink.actorBindSessionRoute"] = "false";
-        if (kind == runtime::messaging::message_kind_t::command) {
-            metadata.values["__zlink.actorRelayKind"] = "send";
-        }
-        // A stable id lets the target dispatch a preserved-then-retried request
-        // exactly once (§10.2-1): every retry and the commit replay carry the
-        // same id, so the target de-duplicates them to a single dispatch.
-        if (!request_id.empty ()) {
-            metadata.values["__zlink.actorRequestId"] = request_id;
-        }
-        auto request = detail::make_spot_actor_packet_route_request (
-          actor.framework_ref, actor.spot_rid, packet_name,
-          detail::message_to_raw (message, *_serializers), metadata);
-        auto parts = codec.encode_envelope_parts (route_header, request, *_serializers);
+        auto header = codec.create_envelope (kind, "actor", packet_name, timeout);
+        header.metadata = metadata;
+        auto parts = runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (
+          header, detail::message_to_raw (message, *_serializers));
         try {
             auto copied = parts.items ();
-            auto origin_spot =
-              native_node
-                ->get_or_create_spot (zlink::routing_id_t::from (
-                  std::string (runtime.node_rid ().value ()) + ":__zlink-actor-client-origin"))
-                .first;
-            auto iterator = copied.begin ();
-            auto submit = origin_spot
-                            .request_to_spot (
-                              zlink::routing_id_t::from (std::string (actor.node_rid.value ())),
-                              zlink::routing_id_t::from (std::string (actor.spot_rid.value ())))
-                            .message (*iterator);
-            ++iterator;
-            for (; iterator != copied.end (); ++iterator) {
-                submit = std::move (submit).message (*iterator);
+            if (kind == runtime::messaging::message_kind_t::command) {
+                const auto submit = runtime.send_to_actor (actor.native_ref, copied);
+                if (submit != zlink::submit_result_t::ok) {
+                    if (submit == zlink::submit_result_t::backpressured) {
+                        return result_t<std::optional<zlink::message_t>>::failure (
+                          framework_error_kind_t::worker_queue_full,
+                          "actor send is backpressured", true);
+                    }
+                    if (submit == zlink::submit_result_t::not_connected) {
+                        return result_t<std::optional<zlink::message_t>>::failure (
+                          framework_error_kind_t::route_not_connected,
+                          "actor route is not connected", true);
+                    }
+                    if (submit == zlink::submit_result_t::not_found
+                        || submit == zlink::submit_result_t::not_admitted) {
+                        return result_t<std::optional<zlink::message_t>>::failure (
+                          framework_error_kind_t::actor_route_not_found,
+                          "actor route was not found");
+                    }
+                    return result_t<std::optional<zlink::message_t>>::failure (
+                      framework_error_kind_t::request_failed,
+                      "actor send was not accepted (result "
+                        + std::to_string (static_cast<int> (submit)) + ", errno "
+                        + std::to_string (errno) + ")");
+                }
+                return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
             }
-            auto reply = std::move (submit).timeout (timeout).async ().get ();
-            auto decoded = codec.decode_envelope_reply<detail::spot_actor_packet_route_reply_t> (
-              runtime::messaging::message_parts_t (std::move (reply)), *_serializers,
-              "actor mesh reply is empty", "actor mesh reply decode failed", packet_name);
-            if (!decoded) {
-                const auto message =
-                  decoded.error () ? decoded.error ()->what () : "actor mesh request failed";
-                const auto mapped = map_actor_route_reply_error (decoded.error_kind (), message);
+            zlink::service::operation_id_t operation_id;
+            const auto submit =
+              runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout);
+            if (submit != zlink::submit_result_t::ok) {
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  mapped,
-                  message,
-                  decoded.error () && decoded.error ()->is_retriable ());
+                  framework_error_kind_t::request_failed,
+                      "actor request was not accepted");
             }
+            auto reply = wait_for_actor_completion (runtime, operation_id, timeout);
+            if (!reply) {
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  reply.error_kind (),
+                  std::string ("actor request completion failed for node/generation '")
+                    + actor.native_ref.node_rid ().to_string () + "/"
+                    + std::to_string (actor.native_ref.generation ()) + "': "
+                    + (reply.error () ? reply.error ()->what () : "unknown failure"),
+                  reply.error () && reply.error ()->is_retriable ());
+            }
+            runtime::messaging::envelope_codec_t reply_codec;
+            auto reply_header = reply_codec.decode_header (reply.value ());
+            if (!reply_header) {
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  reply_header.error_kind (),
+                  reply_header.error () ? reply_header.error ()->what ()
+                                         : "actor mesh reply header decode failed");
+            }
+            if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+                const auto message =
+                  reply_header.value ().error_message.value_or ("actor mesh request failed");
+                runtime::messaging::request_failure_mapper_t failure_mapper;
+                const auto mapped = failure_mapper.error_header_exception (
+                  reply_header.value ().error_code.value_or ("request_failed"), message,
+                  "actor mesh request");
+                return result_t<std::optional<zlink::message_t>>::failure (
+                  map_actor_route_reply_error (mapped.kind (), message), message,
+                  mapped.is_retriable ());
+            }
+            auto body = reply_codec.decode_body (reply.value ());
+            if (!body)
+                return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
             return result_t<std::optional<zlink::message_t>>::success (
-              decoded.value ().has_reply
-                ? std::make_optional (zlink::message_t::from (decoded.value ().payload))
-                : std::nullopt);
+              std::make_optional (std::move (body.value ())));
         }
         catch (const std::exception &error) {
             return map_native_exception<std::optional<zlink::message_t>> (
@@ -427,59 +519,12 @@ class actor_client_impl_t final : public actor_client_t
         }
     }
 
-    runtime::messaging::message_parts_t create_parts (runtime::messaging::message_kind_t kind,
-                                                      std::string packet_name,
-                                                      message_t message,
-                                                      std::chrono::milliseconds timeout)
+    std::shared_ptr<detail::mesh_node_runtime_t> first_mesh_node () const
     {
-        runtime::messaging::client_call_codec_t codec;
-        auto header = codec.create_envelope (kind, "actor", std::move (packet_name), timeout);
-        return runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (
-          header, detail::message_to_raw (message, *_serializers));
-    }
-
-    result_t<message_t> decode_reply (runtime::messaging::message_parts_t reply)
-    {
-        runtime::messaging::envelope_codec_t codec;
-        auto header = codec.decode_header (reply);
-        if (!header) {
-            return result_t<message_t>::failure (
-              header.error_kind (), header.error () ? header.error ()->what ()
-                                                    : "actor reply header decode failed");
-        }
-        if (header.value ().kind == runtime::messaging::message_kind_t::error) {
-            return result_t<message_t>::failure (
-              framework_error_kind_t::request_failed,
-              header.value ().error_message.value_or ("actor request failed"));
-        }
-        auto body = codec.decode_body (reply);
-        if (!body) {
-            return result_t<message_t>::failure (
-              body.error_kind (), body.error () ? body.error ()->what ()
-                                                : "actor request reply body is missing");
-        }
-        return result_t<message_t>::success (message_t::from_raw (body.value (), _serializers));
-    }
-
-    std::optional<detail::spot_node_runtime_t> first_spot_node () const
-    {
-        for (const auto &spot_node : _spot_nodes) {
-            if (auto native = spot_node.native_node ()) {
-                (void) native;
-                return spot_node;
-            }
-        }
-        return std::nullopt;
-    }
-
-    bool actor_transfer_in_progress (const actor_ref_t &actor_ref) const
-    {
-        for (const auto &spot_node : _spot_nodes) {
-            if (spot_node.node_rid ().value () == actor_ref.node_rid ().value ()) {
-                return spot_node.actor_transfer_in_progress (actor_ref);
-            }
-        }
-        return false;
+        for (const auto &mesh_node : _mesh_nodes)
+            if (mesh_node)
+                return mesh_node;
+        return {};
     }
 
     static bool is_stale_actor_error (framework_error_kind_t kind)
@@ -536,7 +581,7 @@ class actor_client_impl_t final : public actor_client_t
 
     live_location_reader_t *_store;
     serializer_registry_t *_serializers;
-    std::vector<detail::spot_node_runtime_t> _spot_nodes;
+    std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     std::shared_ptr<actor_location_observer_t> _actor_locations;
     std::chrono::milliseconds _default_timeout{std::chrono::seconds (30)};
     const std::string _request_id_prefix =
@@ -547,11 +592,11 @@ class actor_client_impl_t final : public actor_client_t
 std::shared_ptr<actor_client_t>
 make_actor_client (live_location_reader_t &store,
                    serializer_registry_t &serializers,
-                   std::vector<detail::spot_node_runtime_t> spot_nodes,
+                   std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes,
                    std::shared_ptr<actor_location_observer_t> actor_locations)
 {
     return std::make_shared<actor_client_impl_t> (
-      store, serializers, std::move (spot_nodes), std::move (actor_locations));
+      store, serializers, std::move (mesh_nodes), std::move (actor_locations));
 }
 
 } // namespace zlink::framework::runtime

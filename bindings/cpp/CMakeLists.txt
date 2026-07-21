@@ -187,7 +187,9 @@ target_include_directories(zlink_cpp
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
 )
-target_link_libraries(zlink_cpp PUBLIC ${ZLINK_CPP_CORE_TARGET})
+target_link_libraries(zlink_cpp PUBLIC
+  $<BUILD_INTERFACE:${ZLINK_CPP_CORE_TARGET}>
+  $<INSTALL_INTERFACE:zlink-native>)
 target_compile_features(zlink_cpp PUBLIC cxx_std_20)
 set_target_properties(zlink_cpp PROPERTIES
   EXPORT_NAME cpp
@@ -401,6 +403,7 @@ if(ZLINK_CPP_BUILD_TESTS)
     test_cpp_contract_actor_header.cpp
     test_cpp_contract_layout_headers.cpp
     test_cpp_contract_behavior.cpp
+    test_cpp_contract_borrowed_service_parts.cpp
     test_cpp_contract_optimization_guard.cpp
   )
   foreach(test_source IN LISTS ZLINK_CPP_CONTRACT_TEST_SOURCES)
@@ -411,6 +414,9 @@ if(ZLINK_CPP_BUILD_TESTS)
     )
   endforeach()
   target_include_directories(test_cpp_contract_request_reply PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/src
+  )
+  target_include_directories(test_cpp_contract_borrowed_service_parts PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
   )
 

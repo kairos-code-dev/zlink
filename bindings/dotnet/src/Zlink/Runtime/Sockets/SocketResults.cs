@@ -66,7 +66,8 @@ internal enum RecvResult
     Terminated = 203,
     InvalidHandle = 204,
     NotSupported = 205,
-    InternalError = 206
+    InternalError = 206,
+    BufferTooSmall = 207
 }
 
 internal enum HandlerResult

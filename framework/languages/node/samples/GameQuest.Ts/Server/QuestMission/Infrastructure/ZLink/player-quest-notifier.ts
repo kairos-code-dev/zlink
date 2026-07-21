@@ -4,6 +4,7 @@ import {
   QuestCompletedNotify,
   QuestProgressNotify
 } from '../../../../Shared/Contracts/messages';
+import { SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { GAMEQUEST_LOCATION_STORE } from '../../../Configuration/tokens';
 import type {
   ZLinkActorClient,
@@ -19,15 +20,23 @@ class PlayerQuestNotifier {
 
   async notify(playerId: string, progress: QuestProgress[], completedQuestIds: string[]): Promise<void> {
     if (progress.length === 0) return;
-    const actor = (await this.locations.resolveActor({ actorId: playerId }))?.actorRef;
+    const actor = (await this.locations.resolveActor({
+      meshName: SampleNames.playerQuestSpotMesh,
+      actorId: playerId
+    }))?.actorRef;
     if (actor === undefined) {
       console.error(`gamequest notification skipped: no bound actor location player=${playerId}`);
       return;
     }
     for (const changed of progress) {
-      this.actors.sendToActor(actor, new QuestProgressNotify(playerId, changed)).submit();
+      await this.actors.sendToActor(
+        SampleNames.playerQuestSpotMesh,
+        actor,
+        new QuestProgressNotify(playerId, changed)
+      ).submit();
       if (completedQuestIds.includes(changed.questId)) {
-        this.actors.sendToActor(
+        await this.actors.sendToActor(
+          SampleNames.playerQuestSpotMesh,
           actor,
           new QuestCompletedNotify(playerId, changed, true)
         ).submit();

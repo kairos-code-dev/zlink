@@ -2,8 +2,8 @@ package systems.zlink.samples.tictactoe.server.play;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
@@ -38,22 +38,23 @@ public final class PlayServer {
                 CreateGameHandler.class,
                 CreateGameReq.class,
                 CreateGameRes.class);
-            ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.SpotMesh);
+            ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SpotMesh);
             String routeEndpoint = settings.routeEndpoint().isBlank()
                 ? settings.spotEndpoint()
                 : settings.routeEndpoint();
-            node.enableRouter(routeEndpoint)
+            node.listen(routeEndpoint)
                 .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
-            node.connectRouter(RoutingId.from(settings.peerPlaySpotNodeRid()), settings.peerSpotEndpoint());
-            node.enablePubSub(settings.spotPubSubEndpoint());
-            node.connectPeerPub(settings.peerSpotPubSubEndpoint());
-            node.configureEntrySpot().setRoutingId(RoutingId.from(SampleNames.EntrySpotRoutingId));
+            node.channelName(SampleNames.PlayNode);
+            node.peerConnections().connect(
+                RoutingId.from(settings.peerPlaySpotNodeRid()),
+                settings.peerSpotEndpoint());
             node.addEntrySpot(PlayEntrySpot.class);
             node.addSpotFactory(TicTacToeGame.class);
             node.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);
             node.addActorTransferAdapter(SampleNames.PlayActor, PlayActorTransferAdapter.class);
             options.addStreamNode(SampleNames.PlayStream)
                 .bind(settings.playEndpoint())
+                .enableActorDispatch(SampleNames.SpotMesh)
                 .registerSession(PlaySession.class)
                 .addSessionPacketHandler(AuthenticatePlaySessionHandler.class);
         };

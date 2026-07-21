@@ -20,13 +20,17 @@ internal sealed class AuthenticateHandler(
         AuthenticateReq request, CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var entry = await spots.ResolveSpotHandleAsync(RoutingId.From(options.PreferredPlayRid), cancellationToken)
+        var entry = await spots.ResolveSpotHandleAsync(
+                        ObservabilityNames.PlayMesh,
+                        RoutingId.From(options.PreferredPlayRid),
+                        cancellationToken)
                     ?? throw new InvalidOperationException("Preferred Play entry spot was not found.");
         var ensured = await routes.RequestToSpot(entry, new EnsurePlayerReq(request.ActorId))
             .Async<EnsurePlayerRes>(cancellationToken);
         await context.Actors.BindOrGetAsync(new ActorRef(RoutingId.From(ensured.NodeRid),
             ensured.ActorId, ensured.Generation), cancellationToken);
-        context.Client.Reply(new AuthenticateRes(ensured.ActorId, ensured.NodeRid, ensured.Generation)).Submit();
+        await context.Client.Reply(new AuthenticateRes(ensured.ActorId, ensured.NodeRid, ensured.Generation))
+            .SubmitAsync(cancellationToken);
     }
 }
 
@@ -41,6 +45,7 @@ internal sealed class SessionBoundedOperationHandler(BoundedOperationGate gate)
     {
         _ = context;
         await gate.EnterAsync(cancellationToken);
-        context.Client.Reply(new SessionBoundedOperationRes(request.Marker)).Submit();
+        await context.Client.Reply(new SessionBoundedOperationRes(request.Marker))
+            .SubmitAsync(cancellationToken);
     }
 }

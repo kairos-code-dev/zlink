@@ -6,6 +6,7 @@ import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configur
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
+import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 import { BingoPlayerRecordStore } from './Handlers/player-record-handlers';
 function createBingoApiModule() {
   class BingoApiModule {}
@@ -24,28 +25,31 @@ function createBingoApiModule() {
         inject: [BINGO_SAMPLE_CONFIG],
         useFactory: (config: BingoSampleConfig) => {
           const builder = zlinkFramework();
-          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
+          builder.options({
+            metrics: { meterProvider: bingoMeterProvider },
+            monitoring: {
+              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }]
+            }
+          });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${config.logDir}/flow-api.log`)
             .traceLabel('api');
           builder.addLocationStore(createBingoLocationStore(config));
-          Object.assign(builder.configureLocations(), bingoLocationOptions());
-          return builder
-            .codecs()
-              .use(bingoFrameworkProtobuf)
-            .addClientServerChannel(SampleNames.apiChannel)
-              .useAllocatedRoutingId(2, 'api')
-              .setRoutingIdAllocationGroup('bingo.api')
-              .enableServer(config.apiEndpoint)
-              .addHandlerGroup('api')
-            .addClientServerChannel(SampleNames.playChannel)
-              .enableClient()
-            .build();
+          bingoLocationOptions(builder.configureLocations());
+          builder.codecs().use(bingoFrameworkProtobuf);
+          const apiMesh = builder.addRouteMesh(SampleNames.roomSpotNode)
+            .useAllocatedRoutingId(2, 'api')
+            .setRoutingIdAllocationGroup('bingo.api')
+            .listen(config.apiEndpoint);
+          apiMesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
+          apiMesh.channelName(SampleNames.playChannel).setWeight(0);
+          apiMesh.channelName(SampleNames.roomSpotNode).setWeight(0);
+          return builder.build();
         }
       })
     ],
-    providers: [BingoPlayerRecordStore]
+    providers: [BingoPlayerRecordStore, RoomRouterReadinessHandler]
   })(BingoApiModule);
 
   return BingoApiModule;

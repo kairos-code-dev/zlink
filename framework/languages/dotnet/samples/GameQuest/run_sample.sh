@@ -72,7 +72,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 21:
+    while len(sockets) < 10:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -92,26 +92,18 @@ PY
 )"
 
 GAMEQUEST_REDIS_KEY_PREFIX="gamequest:dotnet:${RUN_ID}:"
-GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="http://127.0.0.1:${PORTS[3]}"
-GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL="http://127.0.0.1:${PORTS[4]}"
-GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[3]}/quest/ws"
-GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[4]}/quest/ws"
-GAMEQUEST_API_A_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
-GAMEQUEST_API_B_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-GAMEQUEST_MISSION_A_HTTP_URL="http://127.0.0.1:${PORTS[7]}"
-GAMEQUEST_MISSION_B_HTTP_URL="http://127.0.0.1:${PORTS[8]}"
-GAMEQUEST_MISSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
-GAMEQUEST_MISSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
-GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
-GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
-GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
-GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
-GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
-GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
-GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
-GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
-GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[20]}"
+GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL="http://127.0.0.1:${PORTS[0]}"
+GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL="http://127.0.0.1:${PORTS[1]}"
+GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[0]}/quest/ws"
+GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT="ws://127.0.0.1:${PORTS[1]}/quest/ws"
+GAMEQUEST_API_A_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+GAMEQUEST_API_B_STREAM_BIND_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+GAMEQUEST_MISSION_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
+GAMEQUEST_MISSION_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
+GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+GAMEQUEST_MISSION_A_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+GAMEQUEST_MISSION_B_MESH_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -134,7 +126,7 @@ wait_port() {
   local port
   host="$(endpoint_host "${endpoint}")"
   port="$(endpoint_port "${endpoint}")"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
@@ -147,7 +139,7 @@ wait_port() {
 wait_http() {
   local name="$1"
   local endpoint="$2"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 30); do
     if curl -fsS "${endpoint}/health" >/dev/null 2>&1; then
       return 0
     fi
@@ -189,22 +181,12 @@ settings = {
     "GameApiBHttpBaseUrl": "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}",
     "MissionAHttpBaseUrl": "${GAMEQUEST_MISSION_A_HTTP_URL}",
     "MissionBHttpBaseUrl": "${GAMEQUEST_MISSION_B_HTTP_URL}",
-    "GameApiAStreamEndpoint": "${GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT}",
-    "GameApiBStreamEndpoint": "${GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT}",
     "GameApiAStreamBindEndpoint": "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}",
     "GameApiBStreamBindEndpoint": "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}",
-    "GameApiAChannelEndpoint": "${GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT}",
-    "GameApiBChannelEndpoint": "${GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT}",
-    "MissionAChannelEndpoint": "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}",
-    "MissionBChannelEndpoint": "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}",
-    "MissionASpotEndpoint": "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}",
-    "MissionASpotRouterEndpoint": "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}",
-    "MissionBSpotEndpoint": "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}",
-    "MissionBSpotRouterEndpoint": "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}",
-    "GameApiASpotEndpoint": "${GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT}",
-    "GameApiASpotRouterEndpoint": "${GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT}",
-    "GameApiBSpotEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT}",
-    "GameApiBSpotRouterEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}",
+    "GameApiAMeshEndpoint": "${GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT}",
+    "GameApiBMeshEndpoint": "${GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT}",
+    "MissionAMeshEndpoint": "${GAMEQUEST_MISSION_A_MESH_ENDPOINT}",
+    "MissionBMeshEndpoint": "${GAMEQUEST_MISSION_B_MESH_ENDPOINT}",
 }
 common = {
     "LogDirectory": settings["LogDirectory"],
@@ -214,24 +196,16 @@ common = {
 roles = [
     {**common, "InstanceName": "mission-a", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
      "MissionAHttpBaseUrl": settings["MissionAHttpBaseUrl"],
-     "MissionAChannelEndpoint": settings["MissionAChannelEndpoint"],
-     "MissionASpotEndpoint": settings["MissionASpotEndpoint"],
-     "MissionASpotRouterEndpoint": settings["MissionASpotRouterEndpoint"]},
+     "MissionAMeshEndpoint": settings["MissionAMeshEndpoint"]},
     {**common, "InstanceName": "mission-b", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
      "MissionBHttpBaseUrl": settings["MissionBHttpBaseUrl"],
-     "MissionBChannelEndpoint": settings["MissionBChannelEndpoint"],
-     "MissionBSpotEndpoint": settings["MissionBSpotEndpoint"],
-     "MissionBSpotRouterEndpoint": settings["MissionBSpotRouterEndpoint"]},
+     "MissionBMeshEndpoint": settings["MissionBMeshEndpoint"]},
     {**common, "InstanceName": "api-a", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
      "GameApiAStreamBindEndpoint": settings["GameApiAStreamBindEndpoint"],
-     "GameApiAChannelEndpoint": settings["GameApiAChannelEndpoint"],
-     "GameApiASpotEndpoint": settings["GameApiASpotEndpoint"],
-     "GameApiASpotRouterEndpoint": settings["GameApiASpotRouterEndpoint"]},
+     "GameApiAMeshEndpoint": settings["GameApiAMeshEndpoint"]},
     {**common, "InstanceName": "api-b", "GameApiBHttpBaseUrl": settings["GameApiBHttpBaseUrl"],
      "GameApiBStreamBindEndpoint": settings["GameApiBStreamBindEndpoint"],
-     "GameApiBChannelEndpoint": settings["GameApiBChannelEndpoint"],
-     "GameApiBSpotEndpoint": settings["GameApiBSpotEndpoint"],
-     "GameApiBSpotRouterEndpoint": settings["GameApiBSpotRouterEndpoint"]},
+     "GameApiBMeshEndpoint": settings["GameApiBMeshEndpoint"]},
 ]
 for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
@@ -248,25 +222,21 @@ with open(sys.argv[-1], "w", encoding="utf-8") as output:
 PY
 
 start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_A_CONFIG_FILE}"
-wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
-wait_port mission-a-channel "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}"
+wait_port mission-a-mesh "${GAMEQUEST_MISSION_A_MESH_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
 start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_B_CONFIG_FILE}"
-wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
-wait_port mission-b-channel "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}"
+wait_port mission-b-mesh "${GAMEQUEST_MISSION_B_MESH_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 
 start_server api-a "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a-stream "${GAMEQUEST_API_A_STREAM_BIND_ENDPOINT}"
-wait_port api-a-channel "${GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT}"
-wait_port api-a-spot-router "${GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT}"
+wait_port api-a-mesh "${GAMEQUEST_GAMEAPI_A_MESH_ENDPOINT}"
 wait_http api-a "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}"
 
 start_server api-b "${SCRIPT_DIR}/Server/GameApi/GameQuest.GameApi.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b-stream "${GAMEQUEST_API_B_STREAM_BIND_ENDPOINT}"
-wait_port api-b-channel "${GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT}"
-wait_port api-b-spot-router "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}"
+wait_port api-b-mesh "${GAMEQUEST_GAMEAPI_B_MESH_ENDPOINT}"
 wait_http api-b "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/GameQuest.Client.csproj" -- \

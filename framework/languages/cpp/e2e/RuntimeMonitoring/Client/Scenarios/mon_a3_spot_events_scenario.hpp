@@ -2,46 +2,63 @@
 
 #pragma once
 
-#include "../Support/client_support.hpp"
+#include "mon_a1_socket_events_scenario.hpp"
 
-#include <algorithm>
+#include <zlink/http_client.hpp>
+
 #include <chrono>
 #include <iostream>
+#include <thread>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
+inline nlohmann::json channel_snapshot (const nlohmann::json &snapshot)
+{
+    for (const auto &channel : snapshot.at ("channels")) {
+        if (channel.at ("name") == route_mesh_channel)
+            return channel;
+    }
+    throw std::runtime_error ("RouteMesh channel snapshot is missing");
+}
+
+inline nlohmann::json wait_channel_weight (const std::string &base_url,
+                                           int expected_weight)
+{
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    do {
+        const auto channel = channel_snapshot (runtime_snapshot (base_url));
+        if (channel.at ("localWeight").get<int> () == expected_weight)
+            return channel;
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    } while (std::chrono::steady_clock::now () < deadline);
+    throw std::runtime_error ("MON-A3 channel weight did not converge");
+}
+
 inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
 {
-    auto http = zlink::http_client::client_t::create ()
-                  .base_url (options.service_url)
-                  .timeout (std::chrono::milliseconds (1000))
-                  .build ();
+    auto filtered = zlink::http_client::client_t::create ()
+                      .base_url (options.filtered_service_url)
+                      .timeout (std::chrono::milliseconds (3000))
+                      .build ();
+    auto changed =
+      filtered.post ("/admin/mesh-weight?weight=0").async_raw ().result ();
+    ensure (changed && changed.value ().status < 400,
+            "MON-A3 weight 0 public runtime-options call failed");
+    const auto zero = wait_channel_weight (options.filtered_service_url, 0);
+    ensure (!zero.at ("selectable").get<bool> ()
+              || zero.at ("readyMemberCount").get<std::uint64_t> () > 0,
+            "MON-A3 local weight 0 readiness is inconsistent");
 
-    auto created = http.post ("/spot/create").async_raw ().result ();
-    ensure (created && created.value ().status < 400, "MON-A3 spot create call failed");
-
-    const auto peer_entries = wait_evidence_contains (
-      options.service_url,
-      "monitor-spot|source=monitor.spot|node=monitor.spot|kind=PeersChanged",
-      std::chrono::milliseconds (10000));
-    ensure (std::any_of (peer_entries.begin (), peer_entries.end (), [] (const auto &entry) {
-                return contains (entry, "kind=PeersChanged") && !contains (entry, "peers=0");
-            }),
-            "MON-A3 spot peer count evidence missing");
-
-    auto timer_entries =
-      wait_evidence_contains (options.service_url,
-                              "monitor-spot|source=monitor.spot|node=monitor.spot|kind=TimerHandlerFailed",
-                              std::chrono::milliseconds (10000));
-    ensure (any_contains (
-              timer_entries,
-              "monitor-spot|source=monitor.spot|node=monitor.spot|kind=SubjectsChanged"),
-            "MON-A3 spot subject evidence missing");
-    ensure (any_contains (timer_entries, "subjects=1"),
-            "MON-A3 spot subject count evidence missing");
-    ensure (any_contains (timer_entries, "timer=failing"),
-            "MON-A3 spot timer failure evidence missing");
+    changed =
+      filtered.post ("/admin/mesh-weight?weight=100").async_raw ().result ();
+    ensure (changed && changed.value ().status < 400,
+            "MON-A3 weight restore public runtime-options call failed");
+    const auto restored =
+      wait_channel_weight (options.filtered_service_url, 100);
+    ensure (restored.at ("selectable").get<bool> (),
+            "MON-A3 restored channel is not selectable");
     std::cout << "scenario MON-A3 passed\n";
 }
 

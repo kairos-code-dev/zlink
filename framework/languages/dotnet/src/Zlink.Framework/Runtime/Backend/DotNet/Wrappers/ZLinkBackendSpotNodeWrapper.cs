@@ -22,8 +22,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
     // First registered mesh channel; spot wrappers publish/subscribe on it
-    // (spot pub/sub is logical multicast on the router plane).
-    private string? _primaryChannelName;
+    // (Spot logical multicast uses the router plane).
     private bool _bound;
     private bool _started;
     private bool _disposed;
@@ -83,13 +82,33 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     // (spec 21 §4); a positive weight is a runtime descriptor-revision bump.
     public void AddChannel(string channelName)
     {
-        _primaryChannelName ??= channelName;
         _node.AddChannel(channelName);
     }
 
     public void SetChannelWeight(string channelName, uint weight)
     {
         _node.SetChannelWeight(channelName, weight);
+    }
+
+    public void SetMaxMessageSize(long value)
+    {
+        _node.MaxMessageSize = value == 0 ? -1 : value;
+    }
+
+    public void SetRouterHighWaterMark(int value)
+    {
+        _node.RouterHighWaterMark = value;
+    }
+
+    public void SetRouterSendTimeout(TimeSpan? value)
+    {
+        _node.SendTimeout = value;
+    }
+
+    public void SetMailboxBudgets(ulong messageBudget, ulong byteBudget)
+    {
+        _node.MailboxMessageBudget = messageBudget;
+        _node.MailboxByteBudget = byteBudget;
     }
 
     // Explicit host-startup Start (spec 21 §3): the runtime calls this after
@@ -105,7 +124,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber)
     {
-        // MeshNode carries no per-role HWM/linger/timeout knobs; follow-up.
+        _ = publisher;
+        _ = subscriber;
     }
 
     public void OnSendReady(Action handler)
@@ -172,8 +192,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, _node.CreateSpot(), _pump, _completions,
-            () => _primaryChannelName, _subscriptions);
+            _node, _node.CreateSpot(), _pump, _completions, _subscriptions);
     }
 
     public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
@@ -181,7 +200,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
             _node, _node.GetOrCreateSpot(spotRid, out created),
-            _pump, _completions, () => _primaryChannelName, _subscriptions);
+            _pump, _completions, _subscriptions);
     }
 
     public ZLinkSpotNodeStatus Status()
@@ -202,6 +221,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     public IReadOnlyList<MeshNodePeer> MeshPeers()
     {
         return _node.Peers();
+    }
+
+    public IReadOnlyList<MeshPeerChannel> MeshPeerChannels(
+        RoutingId peerRid,
+        ulong lifecycleGeneration)
+    {
+        return _node.PeerChannels(peerRid, lifecycleGeneration);
     }
 
     public IMeshNodeMonitor OpenMeshMonitor(
@@ -225,8 +251,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         {
             EnsureStarted();
             return _entrySpot ??= new ZLinkBackendSpotWrapper(
-                _node, _node.EntrySpot(), _pump, _completions,
-                () => _primaryChannelName, _subscriptions);
+                _node, _node.EntrySpot(), _pump, _completions, _subscriptions);
         }
     }
 
@@ -408,12 +433,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         return _completions.RegisterRequest(operationId, callback);
     }
 
-    public bool SendToActor(
+    public SubmitResult SendToActor(
         ZLinkBackendActorRef actor,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return _node.SendToActor(actor.ToNative(), parts, flags) == SubmitResult.Ok;
+        return _node.SendToActor(actor.ToNative(), parts, flags);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToActorAsync(
@@ -456,7 +481,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     // 10.0.0 request replies flow through MeshOperationId completion correlation,
     // not a no-bind reply channel, so a no-bind reply is intentionally dropped.
     // Documented deviation, not a stub gap.
-    public void ReplyActorNoBind(
+    public bool ReplyActorNoBind(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -468,9 +493,12 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         // reply token (registered by the dispatch pump); there is no session
         // binding to carry the reply. A missing token means the requester is
         // gone or the record was evicted — the reply is dropped by contract.
-        var found = _pump.TryTakeActorReply(requestId, out var reply);
-        var submit = found ? reply(parts, SendFlags.DontWait) : default;
+        if (!_pump.TryTakeActorReply(requestId, out var reply))
+            return false;
+
+        _ = reply(parts, SendFlags.DontWait);
         ZLinkMessageParts.DisposeAll(parts);
+        return true;
     }
 
     // Forwards a straggler bound-session frame to the actor's currently bound

@@ -201,7 +201,7 @@ start_role() {
     session-a) start_session session-a "$SESSION_A_RID" "$SESSION_A_URL" "$SESSION_A_ROUTER_PORT" "$SESSION_A_PUBSUB_PORT" "$SESSION_A_STREAM_PORT" "$LOG_DIR/session-a.evidence.log" ;;
     session-b) start_session session-b "$SESSION_B_RID" "$SESSION_B_URL" "$SESSION_B_ROUTER_PORT" "$SESSION_B_PUBSUB_PORT" "$SESSION_B_STREAM_PORT" "$LOG_DIR/session-b.evidence.log" ;;
     caller) start_caller caller "$CALLER_RID" "$CALLER_URL" "$CALLER_ROUTER_PORT" "$CALLER_PUBSUB_PORT" true "$REDIS_KEY_PREFIX" ;;
-    caller-no-route) start_caller caller-no-route "$NO_ROUTE_CALLER_RID" "$NO_ROUTE_CALLER_URL" "$NO_ROUTE_CALLER_ROUTER_PORT" "$NO_ROUTE_CALLER_PUBSUB_PORT" true "${REDIS_KEY_PREFIX}:no-route:" ;;
+    caller-no-route) start_caller caller-no-route "$NO_ROUTE_CALLER_RID" "$NO_ROUTE_CALLER_URL" "$NO_ROUTE_CALLER_ROUTER_PORT" "$NO_ROUTE_CALLER_PUBSUB_PORT" true "$REDIS_KEY_PREFIX" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }

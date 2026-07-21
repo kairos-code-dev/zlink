@@ -37,14 +37,13 @@ function createTrackingModule() {
             .traceLogFile(`${config.logDir}/flow-tracking.log`)
             .traceLabel('tracking');
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
-          Object.assign(builder.configureLocations(), deliveryDispatchLocationOptions());
-          return builder
-            .addClientServerChannel(SampleNames.trackingChannel)
-              .enableServer(config.trackingEndpoint)
-              .addHandlerGroup('tracking')
-            .addSpotMesh(SampleNames.customerActorSpotMesh)
-              .enableRouter(config.trackingSpotEndpoint, 'tracking-customer-relay')
-            .build();
+          deliveryDispatchLocationOptions(builder.configureLocations());
+          const mesh = builder.addRouteMesh(SampleNames.routeMesh)
+            .listen(config.trackingSpotEndpoint)
+            .routingId('deliverydispatch-tracking');
+          mesh.channelName(SampleNames.trackingChannel).addHandlerGroup('tracking');
+          mesh.channelName(SampleNames.routeMesh).setWeight(0);
+          return builder.build();
         }
       })
     ],

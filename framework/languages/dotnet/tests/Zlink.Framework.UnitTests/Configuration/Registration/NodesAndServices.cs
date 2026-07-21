@@ -86,7 +86,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Single(registration.SpotNodes);
-        Assert.NotNull(registration.SpotDiscovery);
     }
 
     [Fact]
@@ -127,8 +126,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
         Assert.Equal(new[] { "play-node", "session-node" }, registration.SpotNodes.Keys);
-        Assert.Equal(new[] { "play-node", "session-node" }, registration.SpotMeshChannels.Keys);
-        Assert.Null(registration.SpotDiscovery);
         Assert.Equal("play-node", registration.SpotNodes["play-node"].SpotMeshChannelName);
         Assert.Equal("session-node", registration.SpotNodes["session-node"].SpotMeshChannelName);
     }
@@ -445,7 +442,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
 
         Assert.Single(registration.StreamNodes);
-        Assert.Empty(registration.RouteChannels);
+        Assert.Single(registration.SpotNodes);
     }
 
     [Fact]
@@ -1118,8 +1115,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         public void Configure()
         {
-            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-topic");
-            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-topic");
+            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-channel", "duplicate-topic");
+            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-channel", "duplicate-topic");
         }
     }
 

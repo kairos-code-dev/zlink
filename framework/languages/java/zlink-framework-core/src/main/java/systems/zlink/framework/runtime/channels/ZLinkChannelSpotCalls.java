@@ -84,8 +84,11 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 
 final class RouteSpotSendCall implements ZLinkSendCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
     private final SpotTransportAddressResolver resolver;
@@ -119,20 +122,27 @@ final class RouteSpotSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public void submit() {
-        runtime.settleOneWay(SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
+        return ZLinkSubmitResults.fromVoidStage(
+            SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
             List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             try {
                 return runtime.sendToSpot(
-                    channelName,
+                    address.routerChannelId(),
                     address.targetNodeRid(),
                     address.spotRid(),
+                    address.spotGeneration(),
                     sendParts).whenComplete((ignored, error) -> sendParts.forEach(Message::close));
             } catch (RuntimeException error) {
                 sendParts.forEach(Message::close);
                 throw error;
             }
-        }).toCompletableFuture());
+        }));
     }
 }
 
@@ -190,9 +200,10 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
         CompletionStage<TReply> stage = SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
             List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             return runtime.requestToSpot(
-                channelName,
+                address.routerChannelId(),
                 address.targetNodeRid(),
                 address.spotRid(),
+                address.spotGeneration(),
                 requestParts,
                 timeout)
                 .thenApply(replyParts -> {
@@ -222,6 +233,8 @@ final class SpotCallAddresses {
         return resolver.resolve(target).thenCompose(address -> address
             .map(CompletableFuture::completedFuture)
             .orElseGet(() -> CompletableFuture.failedFuture(
-                new ZLinkConfigurationException("SpotHandle cannot be resolved"))));
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND,
+                    "SpotHandle route is stale or unavailable"))));
     }
 }

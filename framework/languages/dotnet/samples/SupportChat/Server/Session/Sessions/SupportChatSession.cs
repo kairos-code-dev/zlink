@@ -62,7 +62,7 @@ internal sealed class SupportChatSession(
     private async ValueTask AuthenticateAsync(ZLinkMessage payload, CancellationToken cancellationToken)
     {
         var request = payload.Decode<AuthenticateReq>();
-        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel, SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.ApiChannel,
                 new AuthenticateUserReq(request.AccessToken))
             .Async<AuthenticateUserRes>(cancellationToken);
 
@@ -73,7 +73,7 @@ internal sealed class SupportChatSession(
             throw new InvalidOperationException(authenticated.Reason ?? "SupportChat authentication failed.");
 
         // The identity actor's ParticipantId is its own ActorId (customer id or roster id).
-        var ensured = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
+        var ensured = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.SupportChannel,
                 new EnsureSupportUserActorReq(
                     authenticated.ActorId,
                     authenticated.DisplayName,
@@ -88,11 +88,11 @@ internal sealed class SupportChatSession(
         _identityDisplayName = authenticated.DisplayName;
         _identityRole = authenticated.Role;
 
-        Context.Client.Reply(new AuthenticateRes(
+        await Context.Client.Reply(new AuthenticateRes(
                 authenticated.ActorId,
                 authenticated.DisplayName,
                 authenticated.Role))
-            .Submit();
+            .SubmitAsync(cancellationToken);
     }
 
     private async ValueTask JoinConversationAsync(
@@ -118,7 +118,7 @@ internal sealed class SupportChatSession(
         // An agent joins each conversation through its own per-conversation actor. Ask
         // the Support server to create it and join it into the ConversationSpot, then
         // bind it onto this session so the agent client receives that room's pushes.
-        var ensured = await channels.RequestToChannel(SampleNames.SupportChannel, SampleNames.SupportChannel,
+        var ensured = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.SupportChannel,
                 new EnsureAgentConversationReq(_identityActorId, _identityDisplayName, conversationId))
             .Async<EnsureAgentConversationRes>(cancellationToken);
 
@@ -129,7 +129,8 @@ internal sealed class SupportChatSession(
             "session: agent joined conversation. roster={RosterActorId}, conversation={ConversationId}",
             _identityActorId,
             conversationId);
-        Context.Client.Reply(new JoinConversationRes(ensured.State)).Submit();
+        await Context.Client.Reply(new JoinConversationRes(ensured.State))
+            .SubmitAsync(cancellationToken);
     }
 
     private async ValueTask RelayConversationPacketAsync(

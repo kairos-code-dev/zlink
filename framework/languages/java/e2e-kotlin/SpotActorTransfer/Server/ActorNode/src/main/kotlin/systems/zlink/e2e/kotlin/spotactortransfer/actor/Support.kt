@@ -26,7 +26,9 @@ class EvidenceStore(
             kind,
             value ?: "",
             nodeRid,
-            System.nanoTime(),
+            "",
+            "",
+            "",
         )
         entries += evidence
         Files.writeString(

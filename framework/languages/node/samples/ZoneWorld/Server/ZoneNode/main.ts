@@ -44,12 +44,12 @@ async function bootstrap(): Promise<void> {
     state.restore(await maintenance.readAll());
     console.log(`maintenance restored node=${node.nodeId} enabled=${state.ownMaintenance()}`);
     const allocation = await reportRoutingAllocation(app, node.nodeId, ZONE_NODE_ALLOCATION_GROUP, [
-      ZoneWorldNames.zoneMesh,
-      ZoneWorldNames.bridgeMesh,
-      ZoneWorldNames.reportChannel
+      ZoneWorldNames.zoneMesh
     ]);
     const spots = app.get<ZLinkSpotManager>(ZLINK_SPOT_MANAGER, { strict: false });
-    for (const zoneId of zones) await spots.getOrCreate(ZoneSpot, zoneId);
+    for (const zoneId of zones) {
+      await spots.getOrCreate(ZoneWorldNames.zoneMesh, ZoneSpot, zoneId);
+    }
     if (node.disableBots !== true) {
       await spawnBots(app, zones);
       console.log(`bot-start=ready node=${node.nodeId}`);
@@ -57,13 +57,14 @@ async function bootstrap(): Promise<void> {
     }
     state.enableBotTicks();
     const channels = app.get<ZLinkChannelClient>(ZLINK_CHANNEL_CLIENT, { strict: false });
-    const report = () => {
+    const report = async () => {
       try {
-        channels.sendToChannel(
+        await channels.sendToChannel(
+          ZoneWorldNames.zoneMesh,
           ZoneWorldNames.reportChannel,
           new ReportNodeStatusMsg(
             node.nodeId,
-            String(allocation.memberRoutingIds.get(ZoneWorldNames.reportChannel)),
+            String(allocation.memberRoutingIds.get(ZoneWorldNames.zoneMesh)),
             [...zones],
             state.playerCount(),
             state.ownMaintenance()
@@ -74,8 +75,8 @@ async function bootstrap(): Promise<void> {
         // Ops may start after this node; the periodic report retries through the public channel.
       }
     };
-    statusTimer = setInterval(report, 1_000);
-    report();
+    statusTimer = setInterval(() => { void report(); }, 1_000);
+    await report();
   }
   console.log(`topology=ready node=${node.nodeId} zones=${zones.join(',')}`);
   try {
@@ -102,9 +103,14 @@ async function spawnBots(app: { get<T>(token: unknown, options?: { strict: boole
   const manager = app.get<ZLinkActorManager>(ZLINK_ACTOR_MANAGER, { strict: false });
   const client = app.get<ZLinkActorClient>(ZLINK_ACTOR_CLIENT, { strict: false });
   for (const route of botRoutes.filter((candidate) => zones.includes(candidate.zoneId))) {
-    if (await manager.find(route.playerId) !== undefined) continue;
-    const actor = await manager.getOrCreate(route.playerId, ZoneWorldNames.playerActorType);
+    if (await manager.find(ZoneWorldNames.zoneMesh, route.playerId) !== undefined) continue;
+    const actor = await manager.getOrCreate(
+      ZoneWorldNames.zoneMesh,
+      route.playerId,
+      ZoneWorldNames.playerActorType
+    );
     const entered = await client.requestToActor(
+      ZoneWorldNames.zoneMesh,
       actor,
       new EnterWorldReq(route.x, route.y, true, route.dirX, route.dirY)
     ).timeout(10_000).submit<{ error: string | null }>();

@@ -152,8 +152,15 @@ final class ZLinkFrameworkLocationSubsystem {
     }
 
     private static java.util.List<String> spotMeshNames(ZLinkFrameworkRegistration registration) {
-        return registration.spotNodes().stream()
-            .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName)
+        return java.util.stream.Stream.concat(
+                registration.spotNodes().stream()
+                    .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName),
+                registration.meshNodes().stream()
+                    .filter(node -> !node.spotFactories().isEmpty()
+                        || !node.entrySpots().isEmpty()
+                        || !node.actorFactories().isEmpty()
+                        || !node.channelNames().isEmpty())
+                    .map(systems.zlink.framework.runtime.mesh.MeshNodeRegistration::meshName))
             .distinct()
             .toList();
     }

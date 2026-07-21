@@ -5,6 +5,7 @@ import {
 } from '@zlink-systems/nestjs';
 import { DeliveryStatusChangedReq, DeliveryStatusUpdatedMsg, PacketNames } from '../../../Shared/Contracts/messages';
 import { EvidenceStore } from '../../Configuration/evidence-store';
+import { SampleNames } from '../../../Shared/Configuration/sample-names';
 import type {
   ZLinkActorClient,
   ZLinkRequestContext,
@@ -24,11 +25,14 @@ class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatus
   async handle(request: DeliveryStatusChangedReq, context: ZLinkRequestContext): Promise<DeliveryStatusChangedRes> {
     void context;
     this.evidence.append(request);
-    const customerActor = (await this.locations.resolveActor({ actorId: request.customerId }))?.actorRef;
+    const customerActor = (await this.locations.resolveActor({
+      meshName: SampleNames.routeMesh,
+      actorId: request.customerId
+    }))?.actorRef;
     if (customerActor === undefined) {
       throw new Error(`Customer actor '${request.customerId}' was not registered in the location store.`);
     }
-    this.actors.sendToActor(customerActor, new DeliveryStatusUpdatedMsg(
+    await this.actors.sendToActor(SampleNames.routeMesh, customerActor, new DeliveryStatusUpdatedMsg(
       request.deliveryId,
       request.customerId,
       request.status,

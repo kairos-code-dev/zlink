@@ -5,6 +5,30 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void SupportChat_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var hosts = new[]
+        {
+            Path.Combine(sampleRoot, "Server", "Api", "ApiServerHostFactory.cs"),
+            Path.Combine(sampleRoot, "Server", "Support", "SupportServerHostFactory.cs"),
+            Path.Combine(sampleRoot, "Server", "Session", "SessionServerHostFactory.cs")
+        };
+
+        foreach (var host in hosts)
+        {
+            var source = File.ReadAllText(host);
+            Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
+            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("AddHandlerGroup(\"api\")", File.ReadAllText(hosts[0]), StringComparison.Ordinal);
+        Assert.Contains("AddHandlerGroup(\"support\")", File.ReadAllText(hosts[1]), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SupportChat_Client_Gate_Exercises_All_Required_Rejections()
     {
         var sampleRoot = ResolveSampleRoot("SupportChat");
@@ -110,7 +134,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$SampleLogDir = Join-Path $RunDir \"sample-logs\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$ports = New-SamplePorts -Count 7 -BasePort 0", powershellRunner,
+        Assert.Contains("$ports = New-SamplePorts -Count 4 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("$SUPPORTCHAT_REDIS_KEY_PREFIX = \"supportchat:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
@@ -179,7 +203,7 @@ public sealed partial class RegressionTests
         Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("실행별 key prefix를 역할들이 읽는 임시 config 파일에 기록한다", readme,
             StringComparison.Ordinal);
-        Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
+        Assert.Contains("동시에 실행되는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("message-flow evidence", readme, StringComparison.Ordinal);
     }
 }

@@ -149,6 +149,30 @@ status 전용 메서드는 두지 않는다. status는 payload 필드이므로 �
 `wait_for<T>().where(...)`, 순서 관측은 `wait_for_sequence<T>().expect(...)`로 표현한다.
 도메인 REST polling은 HTTP client의 책임이며 connector 인터페이스에 포함하지 않는다.
 
+### 4.2 테스트 assertion helper
+
+공통 E2E와 애플리케이션 테스트는 다음 namespace의 helper를 사용할 수 있다. 이 helper는 connector의
+오류 결과를 검사할 때 반복되는 분기와 진단 생성을 한곳에서 처리한다.
+
+```cpp
+namespace zlink::stream_connector::assertions
+{
+void ensure(bool condition, std::string_view message);
+
+template <typename TAction>
+error_t expect_failure(
+  TAction&& action,
+  std::optional<error_code_t> expected_kind = std::nullopt);
+
+template <typename TAction>
+error_t expect_timeout(TAction&& action);
+}
+```
+
+`ensure`는 조건이 거짓이면 전달받은 진단 메시지로 실패한다. 빈 진단 메시지는 허용하지 않는다.
+`expect_failure`는 action의 실패 결과를 반환하며, 오류 종류를 지정하면 같은 종류인지도 검사한다.
+`expect_timeout`은 request 또는 connect timeout만 반환하고 다른 실패는 그대로 전달한다.
+
 ## 5. 결과와 오류
 
 `error_code_t`는 다음 닫힌 값 집합이다. 각 값의 의미와 operation·연결에 미치는 영향은

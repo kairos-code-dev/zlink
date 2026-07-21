@@ -85,6 +85,27 @@ final class ZLinkActorSessionCoordinator {
         Message payload,
         Predicate<RoutingId> isLocalSpot,
         Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch) {
+        return dispatchLocalSession(
+            actorRef, header, payload, isLocalSpot, localDispatch, true);
+    }
+
+    CompletionStage<Optional<Message>> dispatchTransferBacklog(
+        ZLinkBackendActorRef actorRef,
+        ZLinkStreamHeader header,
+        Message payload,
+        Predicate<RoutingId> isLocalSpot,
+        Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch) {
+        return dispatchLocalSession(
+            actorRef, header, payload, isLocalSpot, localDispatch, false);
+    }
+
+    private CompletionStage<Optional<Message>> dispatchLocalSession(
+        ZLinkBackendActorRef actorRef,
+        ZLinkStreamHeader header,
+        Message payload,
+        Predicate<RoutingId> isLocalSpot,
+        Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch,
+        boolean captureMovingPacket) {
         ZLinkActorRuntime runtime = requireActors();
         Optional<ZLinkActor> localActor = runtime.localActor(actorRef.actorId());
         if (localActor.isEmpty()) {
@@ -92,7 +113,7 @@ final class ZLinkActorSessionCoordinator {
                 "local actor is not available: " + actorRef.actorId()));
         }
         ZLinkActor actor = localActor.get();
-        if (runtime.isMoving(actor)) {
+        if (captureMovingPacket && runtime.isMoving(actor)) {
             CompletionStage<Optional<Message>> captured =
                 runtime.captureMovingPacket(actor, header, payload);
             if (captured != null) {
@@ -116,6 +137,12 @@ final class ZLinkActorSessionCoordinator {
                 joinedSpotRid.get(),
                 header,
                 payload);
+        }
+        if (!captureMovingPacket) {
+            // Transfer commit already owns the actor's serialized turn. Queuing
+            // replay behind that turn would wait on the commit that is waiting
+            // for this replay to finish.
+            return localDispatch.apply(new LocalDispatch(actor, joinedSpotRid));
         }
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
         return runtime.submitActorDispatch(

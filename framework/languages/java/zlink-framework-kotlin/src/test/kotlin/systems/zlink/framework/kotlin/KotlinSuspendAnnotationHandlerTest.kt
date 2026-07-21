@@ -473,6 +473,7 @@ final class KotlinSuspendAnnotationHandlerTest {
             override fun channelName() = java.util.Optional.of(channelName)
             override fun packetName() = java.util.Optional.of("ProfileRequest")
             override fun contentType() = java.util.Optional.empty<String>()
+            override fun metadata() = emptyMap<String, String>()
         }
 }
 

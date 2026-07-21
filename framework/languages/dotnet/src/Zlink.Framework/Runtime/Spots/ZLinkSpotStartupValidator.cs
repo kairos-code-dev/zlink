@@ -14,7 +14,8 @@ internal static class ZLinkSpotStartupValidator
             await using var scope = services.CreateAsyncScope();
             var context = new StartupConfigurationContext(
                 spotType,
-                spotNode.SpotNodeName);
+                spotNode.SpotNodeName,
+                spotNode.SpotMeshChannelName ?? spotNode.SpotNodeName);
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 scope.ServiceProvider,
                 spotType,
@@ -40,14 +41,20 @@ internal static class ZLinkSpotStartupValidator
         private readonly string _spotNodeName;
         private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
 
-        public StartupConfigurationContext(Type spotType, string spotNodeName)
+        public StartupConfigurationContext(
+            Type spotType,
+            string spotNodeName,
+            string meshName)
         {
             _actorHandlers = new ZLinkSpotActorHandlerRegistry(
                 ZLinkSpotActorHandlerSurface.UserSpot,
                 spotType);
             _spotNodeName = spotNodeName;
+            MeshName = meshName;
             Handlers = new ZLinkSpotHandlerRegistrySurface(this);
         }
+
+        public string MeshName { get; }
 
         public IZLinkSpotHandlerRegistry Handlers { get; }
 
@@ -80,9 +87,9 @@ internal static class ZLinkSpotStartupValidator
         public void AddPacket<THandler>() where THandler : class =>
             _packets.Add(typeof(THandler));
 
-        public void AddSubscribe<THandler>(string topic) where THandler : class
+        public void AddSubscribe<THandler>(string channelName, string topic) where THandler : class
         {
-            _subscriptions.Add(topic, typeof(THandler));
+            _subscriptions.Add(channelName, topic, typeof(THandler));
         }
 
         public void AddHandler<THandler>() where THandler : class
@@ -130,10 +137,13 @@ internal static class ZLinkSpotStartupValidator
                     var topic = handler.Topic
                                 ?? throw new ZLinkConfigurationException(
                                     "Scanned SPOT subscription requires a topic.");
+                    var channelName = handler.ChannelName
+                                      ?? throw new ZLinkConfigurationException(
+                                          "Scanned SPOT subscription requires a channel name.");
                     if (handler.Method is { } subscriptionMethod)
-                        _subscriptions.Add(topic, handler.HandlerType, subscriptionMethod);
+                        _subscriptions.Add(channelName, topic, handler.HandlerType, subscriptionMethod);
                     else
-                        _subscriptions.Add(topic, handler.HandlerType);
+                        _subscriptions.Add(channelName, topic, handler.HandlerType);
                     break;
                 case ZLinkScannedSpotHandlerKind.ActorSend:
                 case ZLinkScannedSpotHandlerKind.ActorRequest:

@@ -5,6 +5,7 @@
 #include <boost/asio.hpp>
 #include <zlink.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <future>
 #include <mutex>
 #include <sstream>
@@ -247,6 +249,7 @@ struct mesh_record_t
 {
     zlink::service::receive_record_t record;
     std::vector<zlink::message_t> parts;
+    zlink::service::claim_t claim;
 
     std::string first_text () const
     {
@@ -257,9 +260,8 @@ struct mesh_record_t
 //  One dispatch turn over a single claimed ready owner. It drains the *whole*
 //  receive batch — every record, not just record 0 — retaining an owned copy of
 //  each record's parts while the claim is still held so reply tokens stay valid,
-//  and only then releases the claim to rearm the owner's remaining mailbox work.
-//  This keeps record/reply-token lifetime and multi-record preservation in one
-//  place instead of leaking those rules into each caller.
+//  The selected record retains the claim until its caller has handled any
+//  reply token. This keeps the token lifetime rule in one place.
 inline bool mesh_drain_claim (zlink::service::claim_t &claim_,
                               zlink::service::receive_batch_t &batch_,
                               std::vector<mesh_record_t> &out_records_)
@@ -285,8 +287,8 @@ inline bool mesh_drain_claim (zlink::service::claim_t &claim_,
 //  Drives the pull loop until a record whose owner is @p want_owner and whose
 //  domain intersects @p want_domain arrives, then returns the first such record.
 //  Every record in a claimed batch is drained and preserved during the turn (so
-//  sibling application records and completions are never dropped); the claim is
-//  released only after the whole batch has been captured. Returns false on
+//  the whole batch is removed from the claim); the selected record retains the
+//  claim until the caller finishes handling it. Returns false on
 //  timeout. Application traffic (requests, sends, multicast) lands on the
 //  application domain; completions of the caller's own requests land on the
 //  infrastructure domain.
@@ -294,7 +296,8 @@ inline bool mesh_pull_one (zlink::service::mesh_node_t &node_,
                            zlink::service::owner_kind_t want_owner_,
                            zlink::service::ready_domain_t want_domain_,
                            mesh_record_t &out_,
-                           int timeout_ms_ = 3000)
+                           int timeout_ms_ = 3000,
+                           std::function<bool (const mesh_record_t &)> accept_ = {})
 {
     using namespace zlink::service;
     ready_batch_t ready (16);
@@ -321,12 +324,18 @@ inline bool mesh_pull_one (zlink::service::mesh_node_t &node_,
             claim_t claim = ready.take_claim (i);
             std::vector<mesh_record_t> drained;
             const bool ok = mesh_drain_claim (claim, batch, drained);
-            // Release rearms the owner only after every record + reply token in
-            // the batch has been captured above.
-            claim.release ();
             if (!ok || drained.empty ())
                 continue;
-            out_ = std::move (drained.front ());
+            auto selected = accept_
+                              ? std::find_if (drained.begin (), drained.end (), accept_)
+                              : drained.begin ();
+            if (selected == drained.end ())
+                continue;
+            // A reply token remains valid only while its claim is retained.
+            // Transfer the claim with the selected record so a caller can
+            // submit its reply before the record goes out of scope.
+            selected->claim = std::move (claim);
+            out_ = std::move (*selected);
             return true;
         }
     }

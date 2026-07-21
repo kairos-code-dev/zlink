@@ -100,7 +100,7 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
-            assertEquals(Map.of("trace-id", "trace-1"), frame.header().metadata());
+            assertEquals(Map.of(), frame.header().metadata());
             assertFalse(frame.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
             assertEquals("ok:actor-a", deserializeReply(frame).value());
         }
@@ -493,9 +493,9 @@ final class EntrySpotActorDispatchTests {
         @Override public void setSubscription(String topic) { }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return null; }
-        @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
-        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public boolean publish(String channelName, String topic, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
+        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler) { this.handler = handler; }
         @Override public ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode) { return null; }
         @Override public void replyActorJoin(ZLinkBackendActorJoinRequest request, int joinResultCode, List<Message> parts) { throw new UnsupportedOperationException(); }

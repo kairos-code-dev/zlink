@@ -8,6 +8,7 @@
 #include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "core/signaler.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -85,6 +86,7 @@ struct queued_record_t
     zlink_mesh_record_kind_t kind;
     rid_bytes_t source_node_rid;
     rid_bytes_t source_spot_rid;
+    uint64_t source_binding_generation;
     zlink_actor_ref_t source_actor;
     zlink_mesh_operation_id_t operation_id;
     zlink_mesh_operation_kind_t operation_kind;
@@ -96,6 +98,17 @@ struct queued_record_t
     bool has_metadata;
     int32_t terminal_result;
     int32_t failure_errno;
+    //  Instance request admission deadline in the target process monotonic
+    //  clock domain. Zero means no call-specific deadline.
+    uint64_t deadline_ns;
+    //  Target-local ordering assigned before an Instance record can enter a
+    //  placement token or activation group. It makes FIFO independent of
+    //  which concurrent activation token wins leader authorization.
+    uint64_t instance_admission_sequence;
+    //  Removes an Instance request from the activation barrier when its
+    //  call-specific deadline expires. Ready mailbox records do not retain
+    //  this task because crossing the barrier is target admission.
+    std::shared_ptr<zlink::request_timeout::task_t> instance_deadline_task;
     //  kind_data payload for COMPLETION / SPOT_CONTROL / TRANSFER_CONTROL /
     //  SEND_READY records, already laid out as the public view struct.
     std::vector<unsigned char> kind_data;
@@ -128,6 +141,44 @@ struct owner_id_t
     {
         return kind == o_.kind && key == o_.key && generation == o_.generation;
     }
+};
+
+//  One coalesced retry interest created by a service submit that returned
+//  EAGAIN. The public destination payload is retained separately from the
+//  capacity source so recovery can notify the original source owner without
+//  exposing ROUTER pipe or mailbox details.
+struct send_ready_interest_t
+{
+    send_ready_interest_t ();
+
+    owner_id_t source_owner;
+    zlink_mesh_destination_kind_t destination_kind;
+    rid_bytes_t target_node_rid;
+    rid_bytes_t target_spot_rid;
+    zlink_actor_ref_t target_actor;
+    std::string channel_name;
+
+    bool remote_capacity;
+    owner_id_t local_target_owner;
+    size_t required_bytes;
+
+    bool operator< (const send_ready_interest_t &other_) const;
+};
+
+struct send_ready_interest_state_t
+{
+    send_ready_interest_state_t () :
+        min_required_bytes (0), transfer_serial (0)
+    {
+    }
+    explicit send_ready_interest_state_t (size_t required_bytes_) :
+        min_required_bytes (required_bytes_),
+        transfer_serial (0)
+    {
+    }
+
+    size_t min_required_bytes;
+    uint64_t transfer_serial;
 };
 
 //  One owner x domain mailbox with message/byte budgets.
@@ -187,6 +238,11 @@ struct completion_reservation_t
     completion_reservation_t () : prepared (false), committing (false) {}
 
     std::list<std::unique_ptr<queued_record_t>> records;
+    owner_id_t ready_owner;
+    //  Registration preallocates the ready-index node. Peer-down terminal
+    //  completion can then merge it without copying the operation or
+    //  allocating after a remote request was already accepted by transport.
+    std::set<std::pair<owner_id_t, int>> ready_node;
     bool prepared;
     //  A two-phase terminal path has reserved this operation. Timeout and
     //  shutdown completion attempts leave it to that path until commit or
@@ -205,18 +261,42 @@ struct pending_operation_t
     //  destroy cancel it, so a committed timer can never outlive the
     //  operation and fire against a recycled node/serial (ABA).
     std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
+    //  Remote Instance requests retain the physical ROUTER pipe selected for
+    //  their first frame. A reused RID or lifecycle generation does not extend
+    //  the lifetime of an operation sent through an older connection.
+    bool instance_remote_route;
+    bool instance_remote_route_committed;
+    rid_bytes_t instance_target_node_rid;
+    uint64_t instance_target_connection_id;
     //  Remote actor join: the source-side commit on the wire reply needs the
     //  joining actor's identity.
     zlink_actor_ref_t join_actor;
+    //  Remote STREAM bind validation. The service pointer is only a registry
+    //  key; reply handling reacquires its shared owner before dereferencing.
+    bool stream_bind_validation;
+    void *stream_bind_service;
+    rid_bytes_t stream_bind_session_rid;
+    zlink_actor_ref_t stream_bind_actor;
+    uint64_t stream_bind_generation;
+    rid_bytes_t stream_bind_owner_rid;
 };
 
 //  --- peers ----------------------------------------------------------------
 
 struct peer_transport_t
 {
-    peer_transport_t () : connection_id (0) {}
+    peer_transport_t () :
+        connection_id (0), locally_initiated (false), direction_known (false)
+    {
+    }
     explicit peer_transport_t (uint64_t connection_id_) :
-        connection_id (connection_id_)
+        connection_id (connection_id_), locally_initiated (false),
+        direction_known (false)
+    {
+    }
+    peer_transport_t (uint64_t connection_id_, bool locally_initiated_) :
+        connection_id (connection_id_),
+        locally_initiated (locally_initiated_), direction_known (true)
     {
     }
 
@@ -227,6 +307,31 @@ struct peer_transport_t
     }
 
     uint64_t connection_id;
+    bool locally_initiated;
+    bool direction_known;
+};
+
+struct remote_route_key_t
+{
+    remote_route_key_t () : connection_id (0) { memset (&rid, 0, sizeof (rid)); }
+
+    zlink_routing_id_t rid;
+    uint64_t connection_id;
+};
+
+struct remote_route_key_less_t
+{
+    bool operator() (const remote_route_key_t &left_,
+                     const remote_route_key_t &right_) const
+    {
+        const size_t common = std::min<size_t> (left_.rid.size, right_.rid.size);
+        const int compared = memcmp (left_.rid.data, right_.rid.data, common);
+        if (compared != 0)
+            return compared < 0;
+        if (left_.rid.size != right_.rid.size)
+            return left_.rid.size < right_.rid.size;
+        return left_.connection_id < right_.connection_id;
+    }
 };
 
 struct peer_state_t
@@ -287,6 +392,7 @@ struct spot_state_t
     std::set<subscription_key_t> subscriptions;
     int32_t last_error;
     uint64_t last_changed_ms;
+    zlink_spot_activation_state_t activation_state;
 };
 
 //  Caller-owned facade over a logical Spot.
@@ -299,6 +405,80 @@ struct spot_facade_t
     mesh_node_t *node;
     rid_bytes_t spot_rid;
     uint64_t generation;
+    //  Instance activation returns a Core-owned borrowed facade. It remains
+    //  valid until close cleanup and cannot be destroyed by the caller.
+    bool caller_owned;
+    spot_facade_t *retired_next;
+};
+
+//  A copied public Instance target. Public pointer fields never cross the
+//  submit call boundary.
+struct instance_placement_value_t
+{
+    instance_placement_value_t () : node_generation (0)
+    {
+    }
+
+    rid_bytes_t node_rid;
+    uint64_t node_generation;
+    rid_bytes_t spot_rid;
+    std::string instance_spot_type;
+    std::string message_contract_id;
+};
+
+enum instance_token_phase_t
+{
+    instance_token_placement = 1,
+    instance_token_authorized_leader = 2,
+    instance_token_redirecting = 3
+};
+
+struct instance_token_state_t
+{
+    instance_token_state_t () :
+        serial (0),
+        phase (instance_token_placement),
+        activation_deadline_ns (0),
+        watchdog_expired (false),
+        request_deadline_expired (false)
+    {
+    }
+
+    uint64_t serial;
+    instance_token_phase_t phase;
+    uint64_t activation_deadline_ns;
+    instance_placement_value_t target;
+    std::unique_ptr<queued_record_t> pending_record;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
+    bool watchdog_expired;
+    bool request_deadline_expired;
+};
+
+struct instance_activation_state_t
+{
+    instance_activation_state_t () :
+        spot_generation (0),
+        state (ZLINK_SPOT_ACTIVATION_ACTIVATING),
+        pending_messages (0),
+        pending_bytes (0),
+        owner_deadline_ns (0),
+        leader_token_serial (0),
+        borrowed_facade (NULL)
+    {
+    }
+
+    std::string instance_spot_type;
+    rid_bytes_t spot_rid;
+    uint64_t spot_generation;
+    std::string owner_id;
+    zlink_spot_activation_state_t state;
+    std::list<std::unique_ptr<queued_record_t> > pending;
+    uint64_t pending_messages;
+    uint64_t pending_bytes;
+    uint64_t owner_deadline_ns;
+    uint64_t leader_token_serial;
+    spot_facade_t *borrowed_facade;
+    std::shared_ptr<zlink::request_timeout::task_t> watchdog;
 };
 
 //  --- Actors ----------------------------------------------------------------
@@ -316,6 +496,23 @@ struct actor_state_t
     uint64_t spot_generation;
     rid_bytes_t spot_node_rid;
     bool draining;
+};
+
+struct bound_session_route_t
+{
+    bound_session_route_t () : actor_generation (0), binding_generation (0) {}
+
+    uint64_t actor_generation;
+    uint64_t binding_generation;
+    rid_bytes_t source_node_rid;
+};
+
+struct actor_forward_route_t
+{
+    actor_forward_route_t () : actor_generation (0) {}
+
+    uint64_t actor_generation;
+    rid_bytes_t target_node_rid;
 };
 
 //  --- actor transfer ---------------------------------------------------------
@@ -367,6 +564,10 @@ struct transfer_participant_state_t
     std::map<uint64_t, std::unique_ptr<queued_record_t>> staged;
 };
 
+//  Core-private participant used for ordinary Actor traffic admitted after
+//  the source mailbox barrier. STREAM bindings use their own participant IDs.
+const uint64_t transfer_actor_ingress_participant = UINT64_MAX;
+
 //  One in-flight transfer on this node, keyed by the sealed token serial.
 //  The source keeps the authoritative frozen snapshot until its commit; the
 //  target stages the mailbox and each private participant independently.
@@ -388,6 +589,9 @@ struct transfer_state_t
     uint64_t reserve_bytes;
     uint64_t deadline_ms; //  target: sealed prepare deadline (0 = none)
     bool ready_exchanged;
+    //  Source commit releases STREAM transfer barriers outside the node
+    //  mutex. This flag serializes commit and abort across that flush.
+    bool commit_in_progress;
     int32_t data_plane_result;
     int32_t data_plane_errno;
     //  source: frozen mailbox in original FIFO order (1-based sequences)
@@ -401,6 +605,11 @@ struct transfer_state_t
     bool seal_requested;
     bool source_complete;
     bool complete_sent;
+    //  A binding may be created after transfer readiness has already
+    //  negotiated its participant set. The target retains that validated
+    //  reverse route inside the reservation and publishes it only at activate.
+    bool has_pending_bound_session_route;
+    bound_session_route_t pending_bound_session_route;
 };
 
 //  --- monitor ----------------------------------------------------------------
@@ -422,7 +631,6 @@ struct monitor_state_t
     //  rejects re-entrant deregistration/close with EDEADLK.
     int handler_active;
     bool closed;
-    zlink_mesh_monitor_status_t counters;
 };
 
 //  --- publisher ---------------------------------------------------------------
@@ -488,6 +696,13 @@ struct reply_route_t
         operation_kind (static_cast<zlink_mesh_operation_kind_t> (0)),
         consumed (false),
         in_flight (false),
+        instance_request (false),
+        force_terminal_pending (false),
+        force_terminal_result (0),
+        force_terminal_errno (0),
+        force_retry_epoch (0),
+        instance_downstream_route (false),
+        instance_downstream_connection_id (0),
         remote_origin (false),
         origin_generation (0),
         origin_correlation (0),
@@ -509,6 +724,23 @@ struct reply_route_t
     //  runs. Failure clears the reservation; only a successful commit sets
     //  consumed, so callers can retry without duplicate delivery.
     bool in_flight;
+    //  Marks a reply route created for Instance Spot admission so forced
+    //  activation close can terminal-complete it even after a handler claim
+    //  has moved the record out of the owner mailbox.
+    bool instance_request;
+    //  A force drain that overlaps an in-flight handler reply records its
+    //  terminal here. Reply success wins; reply failure hands the route to
+    //  this terminal attempt exactly once.
+    bool force_terminal_pending;
+    int32_t force_terminal_result;
+    int32_t force_terminal_errno;
+    uint64_t force_retry_epoch;
+    //  A redirected Instance request keeps its relay route on this node.
+    //  Bind that route to the winner transport so loss can force a terminal
+    //  reply to the original requester even when the request has no timeout.
+    bool instance_downstream_route;
+    rid_bytes_t instance_downstream_rid;
+    uint64_t instance_downstream_connection_id;
     //  Remote-origin requests: the reply travels back over the wire to this
     //  admitted peer with the requester-side correlation serial.
     bool remote_origin;
@@ -538,12 +770,26 @@ struct mesh_node_t
     //  changes one ordered operation without holding the node state mutex
     //  across socket calls.
     std::mutex peer_connection_mutex;
+    //  Send runs without peer_connection_mutex to avoid a lock convoy. A
+    //  disconnect observed while a routed first frame is in progress remains
+    //  as a tombstone until every flight has committed or canceled.
+    size_t remote_route_flights;
+    std::set<remote_route_key_t, remote_route_key_less_t>
+      remote_route_disconnects;
+    bool remote_route_disconnect_overflow;
+    bool forced_reply_retry_active;
 
     //  identity / configuration (immutable after start)
     std::string mesh_name;
     std::string trust_profile;
     rid_bytes_t routing_id;
     std::string bind_endpoint;
+    std::string tls_server_cert;
+    std::string tls_server_key;
+    int tls_require_client_cert;
+    std::string tls_client_ca;
+    std::string tls_client_hostname;
+    int tls_trust_system;
     std::map<std::string, uint32_t> channels; //  name -> weight (0..100)
 
     zlink_mesh_node_state_t state;
@@ -557,6 +803,9 @@ struct mesh_node_t
     int router_hwm_override;
     uint64_t mailbox_message_budget; //  0 = profile default
     uint64_t mailbox_byte_budget;
+    uint64_t instance_activation_message_budget;
+    uint64_t instance_activation_byte_budget;
+    uint64_t instance_activation_timeout_ms;
     int64_t max_msg_size; //  -1 unlimited
     int sndtimeo_ms;
     int rcvtimeo_ms;
@@ -565,13 +814,19 @@ struct mesh_node_t
     uint64_t next_intent_id;
     std::vector<peer_state_t> peers;
     std::map<rid_bytes_t, peer_transport_t> current_peer_transports;
-    std::map<std::string, size_t> rr_cursor; //  channel -> cursor
+    //  Smooth weighted round-robin credit by channel and target identity.
+    //  Target keys are internal local/remote-prefixed byte strings.
+    std::map<std::string, std::map<std::string, int64_t> > weighted_rr_current;
 
     //  owners & dispatch
     std::map<owner_id_t, owner_state_t> owners;
     //  Level-triggered readable set; guarded by mutex, signalled via cv and
     //  the registered ready handler / poller notification.
     std::set<std::pair<owner_id_t, int>> ready;
+    //  Destination-specific EAGAIN interests. The bool is true while a
+    //  recovery callback is committing the corresponding SEND_READY record.
+    std::map<send_ready_interest_t, send_ready_interest_state_t>
+      send_ready_interests;
     zlink_mesh_ready_handler_fn ready_handler;
     void *ready_handler_userdata;
     int ready_handler_depth;
@@ -591,6 +846,7 @@ struct mesh_node_t
     std::unordered_map<uint64_t, pending_operation_t> operations; //  key: op.low
     uint64_t next_reply_serial;
     std::unordered_map<uint64_t, reply_route_t> reply_routes;
+    uint64_t force_retry_epoch;
     //  True while one shutdown call is inside its drain wait; a concurrent
     //  shutdown/destroy on the same handle is re-entry (EDEADLK). A
     //  sequential shutdown after a TIMED_OUT drain is legal and waits again.
@@ -605,8 +861,22 @@ struct mesh_node_t
     //  spots & actors
     std::map<std::string, spot_state_t> spots;   //  key: rid bytes as string
     std::map<std::string, actor_state_t> actors; //  key: actor id
+    //  Placement tokens are independent until authorize joins them to the
+    //  activation for the same local Spot key.
+    std::unordered_map<uint64_t, instance_token_state_t> instance_tokens;
+    std::map<std::string, instance_activation_state_t> instance_activations;
+    spot_facade_t *retired_instance_facades;
+    uint64_t next_instance_token_serial;
+    uint64_t next_instance_admission_sequence;
+    //  Source-side routes retained after transfer commit until the framework
+    //  retires its configured stale-ActorRef forwarding window.
+    std::map<std::string, actor_forward_route_t> actor_forward_routes;
+    //  Target-side reverse routes for STREAM bindings that remain physically
+    //  owned by the transfer source node.
+    std::map<std::string, bound_session_route_t> bound_session_routes;
     uint64_t next_spot_generation;
     uint64_t next_actor_generation;
+    std::atomic<uint64_t> next_stream_binding_generation;
 
     //  transfers (token serial -> state); one active transfer per actor id
     std::unordered_map<uint64_t, transfer_state_t> transfers;
@@ -621,6 +891,9 @@ struct mesh_node_t
     int monitor_emit_refs;
     uint32_t stream_session_count;
     monitor_state_t *monitor; //  single monitor handle (owned by caller)
+    //  Monitor status counters belong to this MeshNode lifecycle. Opening,
+    //  closing or replacing the single consumer monitor must not reset them.
+    zlink_mesh_monitor_status_t monitor_counters;
 
     //  wire: the node-owned ROUTER, its monitor and the ingress thread.
     void *router_socket;
@@ -628,12 +901,16 @@ struct mesh_node_t
     std::thread io_thread;
     std::atomic<bool> io_stop;
     //  Serializes outbound multipart frame groups so concurrent wire submits
-    //  cannot interleave. Locked after the node mutex when both are needed.
+    //  cannot interleave. Application sends acquire this and the node mutex
+    //  together without retaining either one while waiting for the other.
     std::mutex wire_send_mutex;
 
     //  Effective budgets resolved from options/profile at start.
     uint64_t effective_message_budget () const;
     uint64_t effective_byte_budget () const;
+    uint64_t effective_instance_activation_message_budget () const;
+    uint64_t effective_instance_activation_byte_budget () const;
+    uint32_t effective_instance_activation_timeout_ms () const;
 };
 
 //  --- registry ----------------------------------------------------------------
@@ -746,6 +1023,42 @@ int admit_multicast_record (mesh_node_t *node_,
                             const owner_id_t &owner_,
                             std::unique_ptr<queued_record_t> &record_);
 
+send_ready_interest_t make_node_send_ready_interest (
+  const owner_id_t &source_owner_, const rid_bytes_t &target_node_rid_);
+send_ready_interest_t make_channel_send_ready_interest (
+  const owner_id_t &source_owner_, const std::string &channel_name_);
+send_ready_interest_t make_spot_send_ready_interest (
+  const owner_id_t &source_owner_, const rid_bytes_t &target_node_rid_,
+  const rid_bytes_t &target_spot_rid_);
+send_ready_interest_t make_actor_send_ready_interest (
+  const owner_id_t &source_owner_, const zlink_actor_ref_t &target_actor_);
+
+//  Registers one EAGAIN interest. Local registration performs an immediate
+//  capacity recheck so a dequeue racing the failed submit cannot lose wakeup.
+void register_local_send_ready_interest (
+  mesh_node_t *node_, send_ready_interest_t interest_,
+  const owner_id_t &target_owner_, size_t required_bytes_,
+  uint64_t transfer_serial_hint_ = 0);
+void register_remote_send_ready_interest (
+  mesh_node_t *node_, send_ready_interest_t interest_);
+
+//  Commits at most one SEND_READY record per coalesced interest. A later
+//  EAGAIN registers a new interest and therefore requires a new recovery.
+void notify_local_send_ready (mesh_node_t *node_,
+                              const owner_id_t &target_owner_);
+void notify_transfer_send_ready (mesh_node_t *node_,
+                                 const owner_id_t &target_owner_,
+                                 uint64_t transfer_serial_);
+void notify_remote_send_ready (mesh_node_t *node_);
+void retry_forced_reply_routes (mesh_node_t *node_);
+void erase_send_ready_interests_for_owner_locked (
+  mesh_node_t *node_, const owner_id_t &owner_);
+void clear_send_ready_interests_locked (mesh_node_t *node_);
+
+//  Continues the private Actor-ingress transfer participant after admission
+//  or ACK. The source retains the authoritative record until source commit.
+void transfer_send_actor_ingress (mesh_node_t *node_, uint64_t transfer_serial_);
+
 //  Marks an owner/domain readable and wakes the registered consumer.
 void signal_ready (mesh_node_t *node_, const owner_id_t &owner_, domain_t domain_);
 
@@ -776,6 +1089,18 @@ int complete_pending_operation (mesh_node_t *node_,
                                 int32_t failure_errno_,
                                 std::vector<unsigned char> *kind_data_,
                                 std::vector<zlink_msg_t> *reply_parts_);
+int complete_pending_operation_by_id (
+  mesh_node_t *node_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  int32_t terminal_result_,
+  int32_t failure_errno_);
+int complete_pending_operation_by_id (
+  mesh_node_t *node_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  int32_t terminal_result_,
+  int32_t failure_errno_,
+  std::vector<unsigned char> *kind_data_,
+  std::vector<zlink_msg_t> *reply_parts_);
 
 //  Variant for state transitions that must commit under the same node lock
 //  as terminal mailbox admission. commit_locked_ must not allocate or throw.

@@ -52,6 +52,29 @@ export function encodeRoutingIdStorageHex(routingId: RoutingId): string {
   return Buffer.from(routingId, 'utf8').toString('hex');
 }
 
+export function toBindingRoutingId(routingId: unknown): BindingRoutingId {
+  if (routingId instanceof BindingRoutingId) {
+    return routingId;
+  }
+
+  if (typeof routingId === 'string') {
+    return BindingRoutingId.from(routingId);
+  }
+
+  const value = routingId as unknown as {
+    toBytes?: () => Uint8Array;
+    toHex?: () => string;
+  };
+  if (typeof value.toBytes === 'function') {
+    return BindingRoutingId.from(value.toBytes.call(routingId));
+  }
+  if (typeof value.toHex === 'function') {
+    return BindingRoutingId.fromHex(value.toHex.call(routingId));
+  }
+
+  throw new TypeError('RoutingId must be a string or expose toBytes() or toHex().');
+}
+
 export function routingIdsEqual(
   left: RoutingId | undefined,
   right: RoutingId | undefined

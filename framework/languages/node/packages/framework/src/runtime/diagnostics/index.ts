@@ -27,11 +27,9 @@ import type {
   ZLinkSocketNativeEventType,
   ZLinkSpotLocation,
   ZLinkSpotLocationKey,
+  ZLinkMeshNodeSnapshot,
+  ZLinkMeshPeerSnapshot,
   ZLinkSpotEvent,
-  ZLinkSpotEventKind,
-  ZLinkSpotNodeStatus,
-  ZLinkSpotNodePeerEntry,
-  ZLinkSpotNodeSubjectEntry
 } from '../../contracts';
 import {
   ZLinkLocationActorEventKind as ActorLocationEventKind,
@@ -41,13 +39,15 @@ import {
   ZLinkLocationSpotEventKind as SpotLocationEventKind,
   ZLinkSocketEventKind as SocketEventKind,
   ZLinkSocketNativeEventType as SocketNativeEventType,
+  ZLinkMeshNodeState,
   ZLinkSpotEventKind as SpotEventKind
 } from '../../contracts';
 import type {
-  ZLinkBackendSpotNode,
+  ZLinkBackendMeshNode,
   ZLinkBackendSocketMonitor,
   ZLinkBackendSocketMonitorEvent
 } from '../backend';
+import type { ZLinkSpotNodeOptions } from '../configuration';
 import { normalizeOpaqueRoutingId } from '../routing-id';
 
 const ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3;
@@ -93,6 +93,9 @@ export class ZLinkSocketMonitoringSource {
 
   publish(raw: ZLinkBackendSocketMonitorEvent): Promise<void> {
     const event = toSocketEvent(this.registration.sourceName, raw);
+    if (event === undefined) {
+      return Promise.resolve();
+    }
     if (this.enabledEvents !== undefined && !this.enabledEvents.has(event.event)) {
       return Promise.resolve();
     }
@@ -279,54 +282,140 @@ export class ZLinkLocationMonitoringEventEmitter {
   }
 }
 
-export class ZLinkSpotMonitoringSource {
+export class ZLinkMeshMonitoringSource {
   private previousStatus?: string;
   private previousPeers?: string;
-  private previousSubjects?: string;
 
   constructor(
     private readonly registration: ZLinkPollingMonitoringRegistration,
-    private readonly spotNode: ZLinkBackendSpotNode,
-    private readonly publisher: ZLinkRuntimeEventPublisherContract
+    private readonly meshNode: ZLinkBackendMeshNode,
+    private readonly publisher: ZLinkRuntimeEventPublisherContract,
+    private readonly meshOptions?: ZLinkSpotNodeOptions
   ) {
     validateSourceName(registration.sourceName);
-    validatePollingInterval('Spot', registration.intervalMs);
+    validatePollingInterval('Mesh', registration.intervalMs);
   }
 
   async pollOnce(): Promise<void> {
-    const status = this.spotNode.status();
-    const peers = this.spotNode.peers();
-    const subjects = this.spotNode.subjects();
+    const status = this.meshNode.status();
+    const backendPeers = this.meshNode.peers();
+    const channels = backendPeers.map((peer) => peer.routingId === null
+      ? { peerRid: '', generation: peer.lifecycleGeneration, names: [], weights: [] }
+      : {
+          peerRid: String(peer.routingId),
+          generation: peer.lifecycleGeneration,
+          ...this.meshNode.peerChannels(peer.routingId, peer.lifecycleGeneration)
+        });
+    const peers = backendPeers.map((peer, index): ZLinkMeshPeerSnapshot => ({
+      rid: peer.routingId === null ? '' : String(peer.routingId),
+      lifecycleGeneration: peer.lifecycleGeneration,
+      descriptorRevision: peer.descriptorRevision,
+      endpoint: peer.endpoint,
+      admissionState: meshPeerStateName(peer.state),
+      ready: peer.state === 3 && peer.routingId !== null,
+      drainState: peer.state === 4 ? 'draining' : 'active',
+      channelNames: [...(channels[index]?.names ?? [])],
+      lastFailure: peer.lastError === 0 ? undefined : String(peer.lastError)
+    }));
+    const localChannels = Object.entries(this.meshOptions?.meshChannels ?? {}).map(([channelName, channel]) => {
+      const readyMemberCount = BigInt(channels.filter((entry, index) =>
+        peers[index]?.ready === true
+        && entry.names.some((name, channelIndex) =>
+          name === channelName && (entry.weights[channelIndex] ?? 0) > 0)
+      ).length);
+      const localWeight = channel.weight ?? 1;
+      return {
+        channelName,
+        localWeight,
+        readyMemberCount,
+        selectable: localWeight > 0 || readyMemberCount > 0n
+      };
+    });
+    const snapshot: ZLinkMeshNodeSnapshot = {
+      meshName: status.meshName,
+      rid: String(status.routingId),
+      lifecycleGeneration: status.lifecycleGeneration,
+      descriptorRevision: status.descriptorRevision,
+      endpoint: status.localEndpoint,
+      state: meshNodeState(status.state),
+      sequence: status.lastChangedMs,
+      observedAt: new Date(),
+      descriptorSources: [],
+      peers,
+      channels: localChannels,
+      multicast: {
+        submitted: status.multicastSubmitted,
+        backpressured: 0n,
+        dropped: status.multicastDroppedTargets,
+        remoteSnapshotCount: 0n,
+        remoteAdmittedCount: 0n,
+        remoteDroppedCount: status.multicastDroppedTargets,
+        localSnapshotCount: 0n,
+        localAdmittedCount: 0n,
+        localDroppedCount: 0n
+      },
+      claims: {
+        applicationActive: status.pendingApplicationMessages > 0n,
+        pendingApplicationWork: status.pendingApplicationMessages,
+        infrastructureActive: status.pendingInfrastructureMessages > 0n,
+        pendingInfrastructureWork: status.pendingInfrastructureMessages
+      },
+      location: { state: 'unknown' },
+      drain: {
+        state: meshNodeState(status.state),
+        workSealed: status.state >= 5,
+        pendingRequestCount: 0n,
+        pendingTransferCount: 0n,
+        pendingStreamBarrierCount: 0n
+      }
+    };
 
-    this.previousStatus = await publishSpotIfChanged(
+    this.previousStatus = await publishMeshStatusIfChanged(
       this.publisher,
       this.registration.sourceName,
-      SpotEventKind.StatusChanged,
       this.previousStatus,
-      status
+      snapshot
     );
-    this.previousPeers = await publishSpotIfChanged(
+    this.previousPeers = await publishMeshPeersIfChanged(
       this.publisher,
       this.registration.sourceName,
-      SpotEventKind.PeersChanged,
       this.previousPeers,
-      peers
-    );
-    this.previousSubjects = await publishSpotIfChanged(
-      this.publisher,
-      this.registration.sourceName,
-      SpotEventKind.SubjectsChanged,
-      this.previousSubjects,
-      subjects
+      snapshot.peers
     );
   }
 }
 
-function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent): ZLinkSocketEvent {
+function meshPeerStateName(state: number): string {
+  switch (state) {
+    case 1: return 'configured';
+    case 2: return 'connecting';
+    case 3: return 'ready';
+    case 4: return 'draining';
+    default: return 'closed';
+  }
+}
+
+function meshNodeState(state: number): ZLinkMeshNodeState {
+  switch (state) {
+    case 1: return ZLinkMeshNodeState.Starting;
+    case 2:
+    case 3:
+    case 4: return ZLinkMeshNodeState.Serving;
+    case 5: return ZLinkMeshNodeState.Draining;
+    case 6: return ZLinkMeshNodeState.Stopped;
+    default: return ZLinkMeshNodeState.Faulted;
+  }
+}
+
+function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent): ZLinkSocketEvent | undefined {
+  const event = mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType, raw.value);
+  if (event === undefined) {
+    return undefined;
+  }
   return {
     sourceName,
     timestamp: new Date(),
-    event: mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType, raw.value),
+    event,
     routingId: raw.routingId === undefined ? undefined : normalizeOpaqueRoutingId(raw.routingId),
     localAddr: raw.localAddr,
     remoteAddr: raw.remoteAddr,
@@ -337,7 +426,10 @@ function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent):
   };
 }
 
-function mapSocketEvent(nativeEvent: ZLinkSocketNativeEventType, nativeValue: number): ZLinkSocketEventKind {
+function mapSocketEvent(
+  nativeEvent: ZLinkSocketNativeEventType,
+  nativeValue: number
+): ZLinkSocketEventKind | undefined {
   switch (nativeEvent) {
     case SocketNativeEventType.Connected:
     case SocketNativeEventType.Accepted:
@@ -359,28 +451,45 @@ function mapSocketEvent(nativeEvent: ZLinkSocketNativeEventType, nativeValue: nu
     case SocketNativeEventType.MonitorStopped:
       return SocketEventKind.Closed;
     default:
-      return SocketEventKind.Internal;
+      return undefined;
   }
 }
 
-async function publishSpotIfChanged<T>(
+async function publishMeshStatusIfChanged(
   publisher: ZLinkRuntimeEventPublisherContract,
   sourceName: string,
-  event: ZLinkSpotEventKind,
   previous: string | undefined,
-  snapshot: T
+  snapshot: ZLinkMeshNodeSnapshot
 ): Promise<string> {
   const current = stableSnapshot(snapshot);
   if (current === previous) {
     return previous;
   }
-  const base = { sourceName, timestamp: new Date() };
-  const runtimeEvent: ZLinkSpotEvent = event === SpotEventKind.StatusChanged
-    ? { ...base, event, status: snapshot as ZLinkSpotNodeStatus }
-    : event === SpotEventKind.PeersChanged
-      ? { ...base, event, peers: snapshot as readonly ZLinkSpotNodePeerEntry[] }
-      : { ...base, event: SpotEventKind.SubjectsChanged, subjects: snapshot as readonly ZLinkSpotNodeSubjectEntry[] };
-  await publisher.publish(runtimeEvent);
+  await publisher.publish<ZLinkSpotEvent>({
+    sourceName,
+    timestamp: new Date(),
+    event: SpotEventKind.StatusChanged,
+    status: snapshot
+  });
+  return current;
+}
+
+async function publishMeshPeersIfChanged(
+  publisher: ZLinkRuntimeEventPublisherContract,
+  sourceName: string,
+  previous: string | undefined,
+  peers: readonly ZLinkMeshPeerSnapshot[]
+): Promise<string> {
+  const current = stableSnapshot(peers);
+  if (current === previous) {
+    return previous;
+  }
+  await publisher.publish<ZLinkSpotEvent>({
+    sourceName,
+    timestamp: new Date(),
+    event: SpotEventKind.PeersChanged,
+    peers
+  });
   return current;
 }
 

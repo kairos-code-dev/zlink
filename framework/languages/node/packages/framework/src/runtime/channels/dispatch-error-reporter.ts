@@ -1,12 +1,15 @@
-import type { ZLinkDispatchFailure, ZLinkProviderResolver } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchErrorReason,
-  ZLinkDispatchMessageKind,
-  ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowOutcome
+  ZLinkMessageFlowLogMode
 } from '../../contracts';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind,
+  type ZLinkDispatchFailure
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { ZLinkRuntimeMetrics } from '../diagnostics';
 import {
   ZLinkMessageFlowTracer,

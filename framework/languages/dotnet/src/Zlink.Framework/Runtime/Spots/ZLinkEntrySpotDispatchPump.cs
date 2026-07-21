@@ -73,10 +73,37 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                     if (info.RoutedMessages is { Count: > 0 } routedMessages)
                     {
                         foreach (var received in routedMessages)
+                        {
+                            if (ZLinkSpotActivationDispatcher.IsInfrastructureRoute(received))
+                            {
+                                if (!taskRunner.TryRunDetached(
+                                        "entry-spot-route-dispatch",
+                                        ct => activation.DispatchRouteAsync(received, ct)))
+                                    received.Dispose();
+                                continue;
+                            }
+
+                            if (!runtime.TryEnterInboundOperation(received.CanReply, out var operation))
+                            {
+                                ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
+                                    received,
+                                    activation.ChannelName);
+                                continue;
+                            }
+
                             if (!taskRunner.TryRunDetached(
                                     "entry-spot-route-dispatch",
-                                    ct => activation.DispatchRouteAsync(received, ct)))
+                                    async ct =>
+                                    {
+                                        using (operation)
+                                            await activation.DispatchRouteAsync(received, ct)
+                                                .ConfigureAwait(false);
+                                    }))
+                            {
+                                operation.Dispose();
                                 received.Dispose();
+                            }
+                        }
                     }
                     else
                     {
@@ -90,9 +117,22 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                     info.DrainChannelReply?.Invoke();
                     return;
                 case ZLinkBackendSpotDispatchEvent.SubscribeReadable:
+                    if (!runtime.TryEnterInboundOperation(
+                            countAsRequest: false,
+                            out var subscriptionOperation))
+                    {
+                        taskRunner.RunDetached(
+                            "entry-spot-subscription-discard",
+                            ct => activation.DiscardSubscriptionsAsync(ct));
+                        return;
+                    }
                     taskRunner.RunDetached(
                         "entry-spot-subscription-dispatch",
-                        ct => activation.DispatchSubscriptionsAsync(ct));
+                        async ct =>
+                        {
+                            using (subscriptionOperation)
+                                await activation.DispatchSubscriptionsAsync(ct).ConfigureAwait(false);
+                        });
                     return;
                 case ZLinkBackendSpotDispatchEvent.ActorJoinReadable:
                     taskRunner.RunDetached(
@@ -113,8 +153,17 @@ internal sealed class ZLinkEntrySpotDispatchPump(
         var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(runtime, actorParts);
         if (dispatchable.Count == 0) return;
 
-        if (!_actorDispatch.Writer.TryWrite(dispatchable))
+        if (!runtime.TryEnterInboundOperation(countAsRequest: false, out var actorOperation))
+        {
             dispatchable.Dispose();
+            return;
+        }
+
+        if (!_actorDispatch.Writer.TryWrite(dispatchable.WithCompletion(actorOperation.Dispose)))
+        {
+            actorOperation.Dispose();
+            dispatchable.Dispose();
+        }
     }
 
     private async ValueTask StartActorDispatchesAsync(CancellationToken cancellationToken)

@@ -6,15 +6,6 @@
 namespace zlink::framework
 {
 
-/* Graceful drain contract (graceful-drain-handoff §5.1/§6). The terminal
- * result is shared by every caller: drain() is idempotent and the first
- * call fixes the shared deadline. */
-enum class spot_drain_policy_t
-{
-    drain_natural,
-    release_and_recreate
-};
-
 enum class drain_force_reason_t
 {
     deadline_exceeded,

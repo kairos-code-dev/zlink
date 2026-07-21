@@ -11,7 +11,9 @@
 #include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
+#include <zlink/framework/contracts/configuration/mesh_node.hpp>
 #include <zlink/framework/contracts/configuration/module.hpp>
+#include <zlink/framework/contracts/configuration/route_mesh_runtime_options.hpp>
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/configuration/transport.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
@@ -29,6 +31,7 @@
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
+#include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>

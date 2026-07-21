@@ -4,6 +4,7 @@ namespace RuntimeMonitoring.Client.Support;
 internal sealed record ClientOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
+    string RedisContainer,
     string ServiceUrl,
     string ServiceChannelEndpoint,
     string ServiceBUrl,

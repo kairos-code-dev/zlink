@@ -166,8 +166,29 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
   fallback은 outbound에서 명시적 non-JSON content-type을 선택하지 않은 미지원 타입에만 적용한다.
 - 세부 동작: peer 간 codec registry 불일치의 `PayloadDecodeFailed` 분류와 정상 JSON 격리.
 
+#### RC-B6 framework JSON v1 언어 간 의미 일치
+
+우선순위: `P0`
+
+**검증 질문:** C++·.NET·Java·Kotlin·Node.js가 같은 DTO 계약으로 일반 typed message와 Snapshot state를
+교환할 때 serializer 구현이 달라도 같은 application 값을 복원하는가.
+
+- 절차: 방향이 있는 언어 조합마다 exact property name과 대소문자, string enum, signed 64-bit decimal
+  string, standard padded Base64 bytes, 32-bit JSON number, 유한 floating-point 값과 nullable field를 포함한
+  golden payload를 request/reply하고, 같은 값과 state contract ID로 Snapshot capture·restore도 수행한다.
+  Unknown field, duplicate field와 required field 누락 fixture를 두 경로에 각각 전달한다.
+- 검증: 일반 handler와 같은 `stateContractId`를 지원한다고 게시한 Snapshot target은 source 값을 같은 typed
+  DTO 의미로 복원한다.
+  Unknown field는 무시하지만 duplicate field와 required field 누락은 restore 전에 안정된 decode failure로
+  끝난다. Application JSON의 whitespace와 object member order가 다른 것은 허용하며 decode 뒤 다시 encode한
+  byte sequence의 일치를 요구하지 않는다. Checkpoint manifest·chunk와 Framework envelope fixture만 exact
+  canonical bytes를 요구한다.
+- 세부 동작: `framework-json-v1`의 언어 간 의미 호환성과 application payload·Framework 내부 canonical
+  format의 경계.
+
 ## 5. 완료 기준
 
-- Track A·B의 `P0` 시나리오가 모두 통과한다.
+- Track A·B의 `P0` 시나리오가 모두 통과한다. `RC-B6`은 다섯 public 언어의 방향이 있는 조합을 모두
+  실행한다.
 - public contract만 직접 호출하고 `ensure`로 단언한다.
 - 변주(등록·codec)가 달라도 같은 reply·evidence 의미가 나오고, codec은 content-type으로 실제 선택을 확인한다.

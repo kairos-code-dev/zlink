@@ -4,6 +4,13 @@
 #include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
+#include "core/ctx.hpp"
+#include "core/msg.hpp"
+#include "core/pipe.hpp"
+#include "sockets/common/socket_base.hpp"
+#include "sockets/internal/fq.hpp"
+#include "sockets/router/router.hpp"
+
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
@@ -13,6 +20,28 @@
 #include <vector>
 
 SETUP_TEARDOWN_TESTCONTEXT
+
+namespace zlink
+{
+class session_termination_test_access_t
+{
+  public:
+    static void attach_socket_pipe (socket_base_t *socket_, pipe_t *pipe_)
+    {
+        socket_->attach_pipe (pipe_);
+    }
+
+    static bool dispatch_mutex_is_held_by_another_thread (socket_base_t *socket_)
+    {
+        std::recursive_mutex &sync =
+          socket_->dispatch_runtime ().socket_msg_dispatch_sync;
+        if (!sync.try_lock ())
+            return true;
+        sync.unlock ();
+        return false;
+    }
+};
+}
 
 namespace
 {
@@ -52,6 +81,82 @@ struct ready_monitor_t
     void *monitor;
     ready_monitor_state_t *state;
 };
+
+struct fq_recv_termination_gate_t
+{
+    fq_recv_termination_gate_t () :
+        target_pipe (NULL),
+        observed_fq (NULL),
+        recv_paused (false),
+        release_recv (false),
+        cancel_recv (false),
+        termination_started (false),
+        termination_done (false),
+        dispatch_mutex_held (false)
+    {
+    }
+
+    std::mutex sync;
+    std::condition_variable cv;
+    zlink::pipe_t *target_pipe;
+    zlink::fq_t *observed_fq;
+    bool recv_paused;
+    bool release_recv;
+    bool cancel_recv;
+    bool termination_started;
+    bool termination_done;
+    bool dispatch_mutex_held;
+};
+
+struct direct_recv_result_t
+{
+    direct_recv_result_t () : rc (-1), errno_value (0), flags (0), source_rid (), payload () {}
+
+    int rc;
+    int errno_value;
+    unsigned char flags;
+    zlink_routing_id_t source_rid;
+    std::string payload;
+};
+
+class passive_pipe_sink_t : public zlink::i_pipe_events
+{
+  public:
+    void read_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void write_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void hiccuped (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_peer_terminated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_terminated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+};
+
+bool pause_selected_fq_recv (zlink::fq_t *fq_, zlink::pipe_t *pipe_, void *userdata_)
+{
+    fq_recv_termination_gate_t *gate =
+      static_cast<fq_recv_termination_gate_t *> (userdata_);
+    if (!gate || pipe_ != gate->target_pipe)
+        return true;
+
+    std::unique_lock<std::mutex> lock (gate->sync);
+    gate->observed_fq = fq_;
+    gate->recv_paused = true;
+    gate->cv.notify_all ();
+    gate->cv.wait (lock, [gate] { return gate->release_recv; });
+    return !gate->cancel_recv;
+}
+
+void write_internal_pipe_message (zlink::pipe_t *pipe_,
+                                  const char *payload_,
+                                  bool routing_id_)
+{
+    zlink::msg_t msg;
+    const size_t size = std::strlen (payload_);
+    TEST_ASSERT_SUCCESS_ERRNO (msg.init_size (size));
+    memcpy (msg.data (), payload_, size);
+    if (routing_id_)
+        msg.set_flags (zlink::msg_t::routing_id);
+    TEST_ASSERT_TRUE (pipe_->write_and_flush (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (msg.close ());
+}
 
 void set_socket_timeouts (void *socket_)
 {
@@ -479,6 +584,148 @@ void test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe ()
     close_zero_linger (router);
 }
 
+void run_router_recv_serializes_fq_with_pipe_termination (bool routed_recv_)
+{
+    void *router_handle =
+      zlink_socket (get_test_context (), ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_NOT_NULL (router_handle);
+
+    zlink::router_t *router = static_cast<zlink::router_t *> (router_handle);
+    zlink::object_t *parents[2] = {router, router};
+    zlink::pipe_t *pipes[2] = {NULL, NULL};
+    const int hwms[2] = {4, 4};
+    const bool conflates[2] = {false, false};
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::pipepair (parents, pipes, hwms, conflates, true));
+
+    passive_pipe_sink_t peer_sink;
+    pipes[1]->set_event_sink (&peer_sink);
+
+    // Queue admission and payload before attaching. Router admission consumes
+    // the routing-id frame and leaves the payload active in the fair queue.
+    write_internal_pipe_message (pipes[1], "peer-A", true);
+    write_internal_pipe_message (pipes[1], "payload", false);
+    zlink::session_termination_test_access_t::attach_socket_pipe (
+      router, pipes[0]);
+
+    fq_recv_termination_gate_t gate;
+    gate.target_pipe = pipes[0];
+    zlink::fq_t::set_recv_test_hook (&pause_selected_fq_recv, &gate);
+
+    direct_recv_result_t recv_result;
+    std::thread recv_thread ([router, routed_recv_, &recv_result] {
+        zlink::msg_t msg;
+        if (msg.init () != 0) {
+            recv_result.errno_value = errno;
+            return;
+        }
+
+        recv_result.rc = routed_recv_
+                           ? router->xrecv_routed (
+                               &msg, &recv_result.source_rid, NULL)
+                           : router->xrecv (&msg);
+        recv_result.errno_value = recv_result.rc == 0 ? 0 : errno;
+        if (recv_result.rc == 0) {
+            recv_result.flags = msg.flags ();
+            recv_result.payload.assign (
+              static_cast<const char *> (msg.data ()), msg.size ());
+        }
+        const int close_rc = msg.close ();
+        if (close_rc != 0 && recv_result.errno_value == 0)
+            recv_result.errno_value = errno;
+    });
+
+    {
+        std::unique_lock<std::mutex> lock (gate.sync);
+        gate.cv.wait (lock, [&gate] { return gate.recv_paused; });
+    }
+
+    std::thread termination_thread ([router, &gate, pipe = pipes[0]] {
+        const bool dispatch_mutex_held =
+          zlink::session_termination_test_access_t::
+            dispatch_mutex_is_held_by_another_thread (router);
+        {
+            std::lock_guard<std::mutex> lock (gate.sync);
+            gate.dispatch_mutex_held = dispatch_mutex_held;
+            gate.termination_started = true;
+        }
+        gate.cv.notify_all ();
+
+        router->xpipe_terminated (pipe);
+
+        {
+            std::lock_guard<std::mutex> lock (gate.sync);
+            gate.termination_done = true;
+        }
+        gate.cv.notify_all ();
+    });
+
+    bool dispatch_mutex_held = false;
+    {
+        std::unique_lock<std::mutex> lock (gate.sync);
+        gate.cv.wait (lock, [&gate] { return gate.termination_started; });
+        dispatch_mutex_held = gate.dispatch_mutex_held;
+
+        // On the old unlocked recv path, termination can complete while recv
+        // is paused inside fq_t. Cancel that recv after observing the forbidden
+        // overlap so the RED result is an assertion rather than use-after-free.
+        if (!dispatch_mutex_held) {
+            gate.cv.wait (lock, [&gate] { return gate.termination_done; });
+            gate.cancel_recv = true;
+        }
+        gate.release_recv = true;
+    }
+    gate.cv.notify_all ();
+
+    recv_thread.join ();
+    termination_thread.join ();
+    zlink::fq_t::set_recv_test_hook (NULL, NULL);
+
+    if (dispatch_mutex_held) {
+        TEST_ASSERT_EQUAL_INT (0, recv_result.rc);
+        TEST_ASSERT_EQUAL_INT (0, recv_result.errno_value);
+        if (routed_recv_) {
+            TEST_ASSERT_EQUAL_STRING ("payload", recv_result.payload.c_str ());
+            TEST_ASSERT_EQUAL_UINT (6, recv_result.source_rid.size);
+            TEST_ASSERT_EQUAL_MEMORY ("peer-A", recv_result.source_rid.data,
+                                      recv_result.source_rid.size);
+        } else {
+            TEST_ASSERT_EQUAL_STRING ("peer-A", recv_result.payload.c_str ());
+            TEST_ASSERT_TRUE ((recv_result.flags & zlink::msg_t::more) != 0);
+
+            // xrecv exposes the routing-id envelope first. Consume the
+            // prefetched payload so no receive state retains the test pipe.
+            zlink::msg_t payload;
+            TEST_ASSERT_SUCCESS_ERRNO (payload.init ());
+            TEST_ASSERT_SUCCESS_ERRNO (router->xrecv (&payload));
+            TEST_ASSERT_EQUAL_UINT (7, payload.size ());
+            TEST_ASSERT_EQUAL_MEMORY ("payload", payload.data (),
+                                      payload.size ());
+            TEST_ASSERT_SUCCESS_ERRNO (payload.close ());
+        }
+    }
+    TEST_ASSERT_NOT_NULL (gate.observed_fq);
+    TEST_ASSERT_EQUAL_UINT (0, gate.observed_fq->test_pipe_count ());
+
+    close_zero_linger (router_handle);
+    zlink::ctx_t *ctx =
+      static_cast<zlink::ctx_t *> (get_test_context ());
+    TEST_ASSERT_SUCCESS_ERRNO (ctx->wait_for_socket_count_at_most (0, 5000));
+    TEST_ASSERT_TRUE_MESSAGE (
+      dispatch_mutex_held,
+      "ROUTER recv did not hold the FQ termination lock domain");
+}
+
+void test_router_recv_serializes_fq_with_pipe_termination ()
+{
+    run_router_recv_serializes_fq_with_pipe_termination (false);
+}
+
+void test_router_routed_recv_serializes_fq_with_pipe_termination ()
+{
+    run_router_recv_serializes_fq_with_pipe_termination (true);
+}
+
 int main ()
 {
     setup_test_environment ();
@@ -486,5 +733,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_router_router_concurrent_echo_does_not_corrupt_recv_queue);
     RUN_TEST (test_router_routed_send_during_peer_close_does_not_touch_destroyed_pipe);
+    RUN_TEST (test_router_recv_serializes_fq_with_pipe_termination);
+    RUN_TEST (test_router_routed_recv_serializes_fq_with_pipe_termination);
     return UNITY_END ();
 }

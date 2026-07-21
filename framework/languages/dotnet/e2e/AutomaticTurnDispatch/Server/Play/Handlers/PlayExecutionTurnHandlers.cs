@@ -1,6 +1,7 @@
 using AutomaticTurnDispatch.Server.Play.Spots;
 using AutomaticTurnDispatch.Shared;
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.HttpClient;
@@ -24,7 +25,9 @@ internal sealed class CounterResetHandler(EvidenceStore evidence)
 }
 
 [ZLinkSpotPacketHandler("CounterAwaitMsg")]
-internal sealed class CounterAwaitHandler(EvidenceStore evidence)
+internal sealed class CounterAwaitHandler(
+    EvidenceStore evidence,
+    IZLinkRouteClient routeClient)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, CounterAwaitMsg>
 {
     public async ValueTask HandleAsync(
@@ -36,7 +39,8 @@ internal sealed class CounterAwaitHandler(EvidenceStore evidence)
         evidence.Add(
             $"counter-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|request={request.RequestId}|operation={request.OperationId}|observed={observed}");
-        var call = spot.Context.Outbound.RequestToChannel(
+        var call = routeClient.RequestToChannel(
+                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, request.OperationId))
             .Timeout(TimeSpan.FromSeconds(5));

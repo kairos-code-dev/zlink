@@ -1,15 +1,17 @@
 import type {
   ZLinkActor,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
 import {
-  ZLinkDispatchErrorAction,
-  ZLinkDispatchErrorReason,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
-} from '../../contracts';
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type {
@@ -23,10 +25,11 @@ import {
 } from '../messaging/payload-codec';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
+import { createActorJoinRequest } from '../actors/actor-lifecycle-snapshot';
 
 interface ZLinkNativeActorJoinAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
 }
 
 interface ZLinkSpotNativeActorJoinAdmissionOptions {
@@ -61,7 +64,10 @@ export class ZLinkSpotNativeActorJoinAdmission {
         const response: ZLinkSpotActorJoinResponse = await this.options.serial.execute(async () =>
           target.onActorJoin === undefined
             ? { accepted: this.options.defaultAccept }
-            : target.onActorJoin(actor.actorId, joinPayload)
+            : target.onActorJoin(
+              createActorJoinRequest(actor, request.info.targetActor, request.info.joinEpoch),
+              joinPayload
+            )
         );
         accepted = response.accepted;
         reply = response.reply === undefined
@@ -94,9 +100,9 @@ export class ZLinkSpotNativeActorJoinAdmission {
     }
     if (acceptedActor !== undefined) {
       try {
-        // The native reply commits the actor's return to the Entry Spot. Run
-        // onJoinedActor only after that commit so lifecycle code may destroy
-        // the actor without nesting destroy inside the active join operation.
+        // The native reply commits the actor's return to the Entry Spot. Publish
+        // the immutable membership callback only after that commit so observers
+        // never see an accepted membership before Core does.
         await this.options.commitAcceptedActor?.(acceptedActor);
       } catch (error) {
         this.reportHandlerException(actorId, error);

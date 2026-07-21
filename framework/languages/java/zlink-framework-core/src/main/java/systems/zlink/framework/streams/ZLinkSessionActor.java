@@ -2,6 +2,7 @@ package systems.zlink.framework.streams;
 
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.channels.ZLinkSubmitResult;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
 public interface ZLinkSessionActor {
@@ -9,9 +10,9 @@ public interface ZLinkSessionActor {
 
     ActorRef ref();
 
-    CompletionStage<Void> relay(ZLinkMessage payload);
+    CompletionStage<ZLinkSubmitResult> relay(ZLinkMessage payload);
 
-    default CompletionStage<Void> relay(
+    default CompletionStage<ZLinkSubmitResult> relay(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if (dispatch == null) {

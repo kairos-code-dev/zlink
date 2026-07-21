@@ -51,6 +51,8 @@ final class SpotActorTransferContractTest {
     private static final List<String> EVENTS = new CopyOnWriteArrayList<>();
     private static final ConcurrentHashMap<String, ContractActor> ACTORS =
         new ConcurrentHashMap<>();
+    private static final java.util.concurrent.atomic.AtomicLong MESH_SEQUENCE =
+        new java.util.concurrent.atomic.AtomicLong();
 
     @BeforeEach
     void reset() {
@@ -562,10 +564,11 @@ final class SpotActorTransferContractTest {
 
         static Harness start(boolean remote) throws IOException {
             ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
+            String meshName = "contract-mesh-" + MESH_SEQUENCE.incrementAndGet();
             List<String> endpoints = tcpEndpoints(remote ? 4 : 1);
             String sourceSpotEndpoint = endpoints.get(0);
             DefaultZLinkFrameworkOptions sourceOptions = options(
-                SOURCE_NODE, sourceSpotEndpoint, true, locations);
+                meshName, SOURCE_NODE, sourceSpotEndpoint, null, true, locations);
             if (!remote) {
                 return new Harness(
                     RuntimeTestSupport.startFramework(
@@ -577,17 +580,10 @@ final class SpotActorTransferContractTest {
             String targetSpotEndpoint = endpoints.get(1);
             String sourceRouteEndpoint = endpoints.get(2);
             String targetRouteEndpoint = endpoints.get(3);
-            var sourceRoute = sourceOptions.addRouteMeshChannel("contract-mesh");
-            sourceRoute.enableServer(sourceRouteEndpoint);
-            sourceRoute.enableClient(targetRouteEndpoint);
-            sourceRoute.setRoutingId(SOURCE_NODE);
-
             DefaultZLinkFrameworkOptions targetOptions = options(
-                TARGET_NODE, targetSpotEndpoint, false, locations);
-            var targetRoute = targetOptions.addRouteMeshChannel("contract-mesh");
-            targetRoute.enableServer(targetRouteEndpoint);
-            targetRoute.enableClient(sourceRouteEndpoint);
-            targetRoute.setRoutingId(TARGET_NODE);
+                meshName, TARGET_NODE, targetRouteEndpoint, sourceRouteEndpoint, false, locations);
+            sourceOptions = options(
+                meshName, SOURCE_NODE, sourceRouteEndpoint, targetRouteEndpoint, true, locations);
 
             ZLinkFrameworkRuntime source = RuntimeTestSupport.startFramework(
                 sourceOptions,
@@ -607,16 +603,22 @@ final class SpotActorTransferContractTest {
         }
 
         private static DefaultZLinkFrameworkOptions options(
+            String meshName,
             RoutingId nodeRid,
             String spotEndpoint,
+            String peerEndpoint,
             boolean sourceNode,
             ZLinkInMemoryLocationStore locations) {
             DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
             options.addLocationStore(locations);
             options.configureLocations().setSpotRouterChannel(
-                "contract-mesh", "contract-mesh");
-            var node = options.addSpotMesh("contract-mesh");
-            node.enableRouter(spotEndpoint).setRoutingId(nodeRid);
+                meshName, meshName);
+            var node = options.addRouteMesh(meshName);
+            node.listen(spotEndpoint).setRoutingId(nodeRid);
+            node.channelName(meshName);
+            if (peerEndpoint != null) {
+                node.peerConnections().connect(peerEndpoint);
+            }
             node.addActorFactory("stateful", ContractActorFactory.class);
             node.addActorTransferAdapter("stateful", StatefulAdapter.class);
             node.addActorFactory("empty", ContractActorFactory.class);
@@ -625,8 +627,6 @@ final class SpotActorTransferContractTest {
             node.addEntrySpot(ContractEntrySpot.class);
             node.addSpotFactory(ContractTargetSpot.class);
             if (sourceNode) {
-                node.useDrainPolicy(
-                    systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE);
                 node.addSpotFactory(ContractSourceSpot.class);
             }
             return options;

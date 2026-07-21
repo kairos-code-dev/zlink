@@ -95,6 +95,7 @@ internal sealed class ZoneNodeBootstrap(
 
         var entered = await actors
             .RequestToActor(
+                ZoneWorldNames.MeshName,
                 actorRef,
                 new EnterWorldReq(route.X, route.Y, IsBot: true, route.DirX, route.DirY))
             .Async<EnterWorldRes>(cancellationToken);

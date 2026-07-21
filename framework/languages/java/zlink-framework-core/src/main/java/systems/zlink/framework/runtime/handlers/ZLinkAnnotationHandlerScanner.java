@@ -100,6 +100,7 @@ final class ZLinkAnnotationHandlerScanner {
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
+                ZLinkRequestContext.class,
                 "SPOT request handler method must have spot and request parameters: ");
             Class<?> replyType = resolveReplyType(candidate, method);
             handlers.add(new ZLinkScannedHandler(
@@ -123,6 +124,7 @@ final class ZLinkAnnotationHandlerScanner {
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
+                ZLinkPublishContext.class,
                 "SPOT subscription handler method must have spot and event parameters: ");
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.SPOT,
@@ -194,9 +196,14 @@ final class ZLinkAnnotationHandlerScanner {
     private static SpotMethodShape requireSpotMethodShape(
         Class<?> handlerType,
         Method method,
+        Class<? extends ZLinkHandlerContext> contextType,
         String failurePrefix) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
+            return new SpotMethodShape(parameters[0], parameters[1]);
+        }
+        if (parameters.length == 3
+            && parameters[2].isAssignableFrom(contextType)) {
             return new SpotMethodShape(parameters[0], parameters[1]);
         }
         throw new ZLinkConfigurationException(

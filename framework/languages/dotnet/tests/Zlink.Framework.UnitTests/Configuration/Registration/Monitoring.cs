@@ -142,7 +142,8 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             TimeSpan.FromSeconds(3),
             registration.SpotNodes["route"].DefaultRequestTimeout);
         Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveChannelRequestTimeout("missing"));
-        Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveRouteRequestTimeout("missing"));
+        Assert.Equal(TimeSpan.FromSeconds(3), registration.ResolveMeshRequestTimeout("route"));
+        Assert.Equal(TimeSpan.FromSeconds(30), registration.ResolveMeshRequestTimeout("missing"));
     }
 
     [Fact]

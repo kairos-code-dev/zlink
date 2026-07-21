@@ -6,34 +6,24 @@ const framework = require('../../packages/framework/dist/internal');
 const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
 const nestjs = require('../../packages/nestjs/dist');
 
-test('framework and NestJS builders register in-memory and integrated location stores', async () => {
+test('framework and NestJS builders register one explicit location store', async () => {
   const store = new framework.ZLinkInMemoryLocationStore();
 
   const options = framework.createFrameworkOptions((builder) => {
-    builder.useInMemoryLocationStores();
-    const locationOptions = builder.configureLocations();
-    locationOptions.heartbeatIntervalMs = 123;
+    builder.addLocationStore(store);
+    builder.configureLocations().heartbeatIntervalMs(123);
   });
   const registration = framework.createFrameworkRegistration(options);
-  assert.equal(registration.locations.useInMemoryStores, true);
+  assert.equal(registration.locations.storeInstance, store);
   assert.equal(registration.locations.options.heartbeatIntervalMs, 123);
 
   const nestBuilder = nestjs.zlinkFramework().addLocationStore(store);
-  nestBuilder.configureLocations().ownerLeaseTtlMs = 456;
+  nestBuilder.configureLocations().ownerLeaseTtlMs(456);
   const nestModule = nestjs.ZLinkModule.forRoot(nestBuilder.build());
   const nestRegistration = await resolveFrameworkRegistration(nestModule);
   assert.equal(nestRegistration.locations.storeInstance, store);
   assert.equal(nestRegistration.locations.options.ownerLeaseTtlMs, 456);
 
-  assert.throws(
-    () => framework.createFrameworkRegistration({
-      locations: {
-        useInMemoryStores: true,
-        storeInstance: store
-      }
-    }),
-    /In-memory location stores cannot be combined/
-  );
 });
 
 test('framework runtime host uses one explicit location store for every runtime role', () => {
@@ -90,18 +80,27 @@ test('framework runtime host starts location runtime and injects lifecycle into 
 
   const leases = await store.listOwnerLeases();
   assert.equal(leases.leases.length, 1);
-  assert.equal(leases.leases[0].nodeRid.toHex(), nodeRid.toHex());
+  assert.equal(leases.leases[0].nodeRid, 'node-a');
 
   const actorOptions = runtime.createActorManagerOptions();
   const spotOptions = runtime.createSpotManagerOptions();
   assert.equal(actorOptions.locationLifecycle, preStartActorOptions.locationLifecycle);
   assert.equal(spotOptions.locationLifecycle, actorOptions.locationLifecycle);
-  assert.equal(spotOptions.locationMeshName, 'play');
+  assert.equal(String(spotOptions.nodeRidProvider('play')), 'node-a');
+  assert.equal(typeof spotOptions.nodeGenerationProvider('play'), 'bigint');
   assert.equal(typeof spotOptions.spotRouteResolver?.resolve, 'function');
 
   await actorOptions.locationLifecycle.claimActor('player', 'actor-1', nodeRid);
-  await spotOptions.locationLifecycle.claimSpot('play', rid('spot-1'), 'StageSpot', nodeRid, framework.ZLinkSpotKind.User);
-  assert.notEqual(await store.resolveActor({ actorType: 'player', actorId: 'actor-1' }), undefined);
+  await spotOptions.locationLifecycle.claimSpot(
+    'play',
+    rid('spot-1'),
+    'StageSpot',
+    nodeRid,
+    framework.ZLinkSpotKind.User,
+    7n,
+    3n
+  );
+  assert.notEqual(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
   assert.notEqual(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
   const routeTarget = await spotOptions.spotRouteResolver.resolve(rid('spot-1'));
   assert.equal(routeTarget.routerChannelId, 'play');
@@ -110,7 +109,7 @@ test('framework runtime host starts location runtime and injects lifecycle into 
   await runtime.stop();
 
   assert.equal((await store.listOwnerLeases()).leases.length, 0);
-  assert.equal(await store.resolveActor({ actorType: 'player', actorId: 'actor-1' }), undefined);
+  assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
   assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
   assert.deepEqual(calls, [
     'spot:dispose',
@@ -272,7 +271,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
   );
 });
 
-test('manual SPOT roles keep location lookup without store-driven peer connections', async () => {
+test('manual Mesh router connection suppresses only the matching store-driven route', async () => {
   const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const calls = [];
   const nodeRid = rid('node-a');
@@ -309,8 +308,7 @@ test('manual SPOT roles keep location lookup without store-driven peer connectio
           },
           pubSub: {
             bind: 'tcp://local-pub',
-            routingId: 'node-a',
-            manualConnections: ['tcp://manual-pub']
+            routingId: 'node-a'
           }
         }
       }
@@ -323,19 +321,15 @@ test('manual SPOT roles keep location lookup without store-driven peer connectio
     await runtime.start();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls.some((call) => call.includes('tcp://remote-spot')), false);
-    assert.equal(calls.some((call) => call.includes('tcp://remote-pub')), false);
+    assert.ok(calls.includes('spot:connectPeer:tcp://remote-pub'));
     assert.equal(calls.some((call) => call.includes('tcp://lower-spot')), false);
     assert.equal(calls.some((call) => call.includes('tcp://lower-pub')), false);
     assert.ok(calls.includes('spot:connectPeer:tcp://manual-spot'));
-    assert.ok(calls.includes('spot:connectPeer:tcp://manual-pub'));
   } finally {
     await runtime.stop();
   }
 
-  assert.equal(calls.some((call) => call.includes('disconnectPeerRid')), false);
-  assert.equal(calls.some((call) => call === 'spot:disconnectPeer:tcp://remote-pub'), false);
   assert.equal(calls.filter((call) => call === 'spot:disconnectPeer:tcp://manual-spot').length, 0);
-  assert.equal(calls.filter((call) => call === 'spot:disconnectPeer:tcp://manual-pub').length, 0);
 });
 
 async function resolveFrameworkRegistration(module) {
@@ -402,56 +396,37 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
         }
       };
     },
-    createSpotAdapter() {
+    createMeshAdapter() {
       return {
-        createSpotNode() {
+        createMeshNode(_context, options) {
+          let routingId = options.routingId === undefined ? nodeRid : rid(options.routingId);
+          let nextConnectionIntent = 1n;
           return {
             nativeInstance: {},
-            routingId: nodeRid,
-            setRoutingId() {},
-            setPublisherRoutingId() {},
-            setSubscriberRoutingId() {},
-            setRouterBind() {},
-            setPubBind() {},
-            attachDiscovery() {},
-            connectPeer(endpoint) { calls.push(`spot:connectPeer:${endpoint}`); },
-            connectPeerRid(peerRid, endpoint) { calls.push(`spot:connectPeerRid:${peerRid.toHex()}:${endpoint}`); },
-            disconnectPeerRid(peerRid) { calls.push(`spot:disconnectPeerRid:${peerRid.toHex()}`); },
-            disconnectPeer(endpoint) { calls.push(`spot:disconnectPeer:${endpoint}`); },
-            createRouteBridge() {
-              return fakeSpotRouteBridge();
+            setRoutingId(value) { routingId = value; },
+            setBind() {},
+            addChannelName() {},
+            setChannelWeight() {},
+            start() {},
+            setReadyHandler() {},
+            createReadyBatch() { return fakeReadyBatch(); },
+            createReceiveBatch() { return fakeReceiveBatch(); },
+            drainReady() { return { ok: false, hasResidue: false, records: [] }; },
+            connectPeer({ endpoint, expectedRid }) {
+              calls.push(`spot:connectPeer:${endpoint}`);
+              if (expectedRid !== undefined) {
+                calls.push(`spot:connectPeerRid:${expectedRid.toHex()}:${endpoint}`);
+              }
+              return nextConnectionIntent++;
             },
-            createSpot() {
-              return {
-                nativeInstance: {},
-                onSendReady() {},
-                publish() { return true; },
-                async dispose() {}
-              };
+            removePeerConnection(connectionIntent) {
+              calls.push(`spot:removePeerConnection:${connectionIntent}`);
             },
-            getOrCreateSpot() { throw new Error('not used'); },
-            status() { return {}; },
+            disconnectPeer(peerRid) { calls.push(`spot:disconnectPeerRid:${peerRid.toHex()}`); },
+            status() { return { routingId, lifecycleGeneration: 3n }; },
             peers() { return []; },
-            subjects() { return []; },
-            entrySpot() {
-              return {
-                nativeInstance: {},
-                setRoutingId() {},
-                setDispatchHandler() {},
-                recvActorJoin() {},
-                recvRoute() { return false; },
-                recv() { return null; },
-                async dispose() {}
-              };
-            },
-            createActor() { throw new Error('not used'); },
-            actorLookup() { return undefined; },
-            joinActor() { throw new Error('not used'); },
-            joinActorEntrySpot() { throw new Error('not used'); },
-            async destroyActor() {},
-            sendActorBoundSession() { return true; },
-            async closeActorBoundSession() {},
-            async dispose() {
+            shutdown() {},
+            close() {
               calls.push('spot:dispose');
             }
           };
@@ -481,13 +456,18 @@ function fakeBackendAdapterFactory(calls, nodeRid) {
   };
 }
 
-function fakeSpotRouteBridge() {
+function fakeReadyBatch() {
   return {
-    attachRouterChannel() {},
-    send() { return { message() { return this; }, submit() { return true; } }; },
-    request() { return { message() { return this; }, timeout() { return this; }, submit() { return true; } }; },
-    handleRouterReceived() { return false; },
-    async dispose() {}
+    reset() {},
+    takeClaim() { throw new Error('no ready records'); },
+    close() {}
+  };
+}
+
+function fakeReceiveBatch() {
+  return {
+    reset() {},
+    close() {}
   };
 }
 

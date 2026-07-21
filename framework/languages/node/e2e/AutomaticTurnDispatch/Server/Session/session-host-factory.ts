@@ -3,7 +3,8 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
-  type ZLinkActor,
+  type ZLinkActorJoinRequest,
+  type ZLinkActorMembership,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
   type ZLinkMessage,
@@ -22,15 +23,17 @@ import { AwaitSessionFactory } from './Handlers/await-session';
 class AwaitSessionEntrySpot implements ZLinkEntrySpot {
   readonly context!: ZLinkEntrySpotContext;
 
-  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    void actorId;
+  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+    void actor;
     void request;
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActor): Promise<void> { void actor; }
+  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
 
-  async onLeaveActor(actor: ZLinkActor): Promise<void> { void actor; }
+  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+
+  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
 }
 
 export async function startSessionHost(): Promise<void> {
@@ -59,19 +62,22 @@ export async function startSessionHost(): Promise<void> {
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
 
-          builder.addRouteMeshChannel(AutomaticTurnDispatchNames.controlChannel)
-            .enableRouter(options.controlRouterEndpoint)
+          const controlMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.controlChannel)
+            .listen(options.controlRouterEndpoint)
+            .routingId(options.rid);
+          controlMesh.channelName(AutomaticTurnDispatchNames.controlChannel);
+          for (const endpoint of options.playControlEndpoints) controlMesh.peerConnections().connect(endpoint);
+          const routeMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotRouteChannel)
+            .listen(options.spotRouteEndpoint)
+            .routingId(options.rid);
+          routeMesh.channelName(AutomaticTurnDispatchNames.spotRouteChannel);
+          for (const endpoint of options.playSpotRouteEndpoints) routeMesh.peerConnections().connect(endpoint);
+          const spotMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.spotChannel)
             .routingId(options.rid)
-            .connect(options.playControlEndpoints);
-          builder.addRouteMeshChannel(AutomaticTurnDispatchNames.spotRouteChannel)
-            .enableRouter(options.spotRouteEndpoint)
-            .routingId(options.rid)
-            .connect(options.playSpotRouteEndpoints);
-          const spotMesh = builder.addSpotMesh(AutomaticTurnDispatchNames.spotChannel)
-            .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
+            .listen(options.spotRouterEndpoint)
             .addEntrySpot(AwaitSessionEntrySpot);
-          for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
+          spotMesh.channelName(AutomaticTurnDispatchNames.spotChannel);
+          for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
           builder.addStreamNode(AutomaticTurnDispatchNames.streamNode)
             .bind(options.streamEndpoint)
             .registerSession(AwaitSessionFactory);

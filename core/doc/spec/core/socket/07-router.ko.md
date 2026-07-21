@@ -61,7 +61,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_router_option(
 | `ZLINK_ROUTER_OPT_WEIGHT` | `int`, `0..100` | 연결된 peer에 알리는 이 ROUTER의 가중치다. 기본값은 `100`이다 |
 
 `zlink_get_router_option()`을 호출할 때 `*optvallen_`은 `optval_`의 입력 용량이다. 성공하면 실제로
-쓴 byte 수로 갱신된다. ROUTER 전용이 아닌 HWM, reconnect, heartbeat와 timeout option은
+쓴 byte 수로 갱신된다. ROUTER 전용이 아닌 HWM, reconnect와 timeout option은
 `zlink_set_option()`과 `zlink_get_option()`을 사용한다.
 
 ## 3. Raw receive record 구분

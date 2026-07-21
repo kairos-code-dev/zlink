@@ -36,17 +36,7 @@ final class OptimizationGuardContractTest {
         "zlink_router_recv",
         "zlink_dealer_request",
         "zlink_router_request",
-        "zlink_router_reply",
-        "zlink_spot_send_channel",
-        "zlink_spot_request_channel",
-        "zlink_spot_request_spot",
-        "zlink_spot_request_router",
-        "zlink_spot_publish",
-        "zlink_spot_subscribe",
-        "zlink_spot_send_spot",
-        "zlink_spot_reply_spot",
-        "zlink_spot_reply_router",
-        "zlink_spot_recv"
+        "zlink_router_reply"
     };
 
     private static final String[] REQUIRED_PART_SYMBOLS = {
@@ -57,12 +47,7 @@ final class OptimizationGuardContractTest {
         "zlink_router_recv_part",
         "zlink_dealer_request_part",
         "zlink_router_request_part",
-        "zlink_router_reply_part",
-        "zlink_spot_publish_part",
-        "zlink_spot_subscribe_part",
-        "zlink_spot_request_channel_part",
-        "zlink_spot_request_spot_part",
-        "zlink_spot_reply_router_part"
+        "zlink_router_reply_part"
     };
 
     @Test

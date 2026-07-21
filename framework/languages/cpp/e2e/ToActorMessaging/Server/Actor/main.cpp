@@ -84,9 +84,10 @@ class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
         _evidence.append ({"create", actor.actor_id (), "create", "created"});
     }
 
-    void on_actor_joined (to_actor_e2e_actor_t &actor)
+    zlink::framework::task_t<void> on_actor_joined (to_actor_e2e_actor_t &actor)
     {
         _evidence.append ({"join", actor.actor_id (), "join", "joined"});
+        co_return;
     }
 
     void on_notify (to_actor_e2e_actor_t &actor,
@@ -235,16 +236,16 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<e2e::actor_configuration_t> (
           std::make_unique<e2e::actor_configuration_t> (configuration));
         add_redis_location_store (framework, configuration.redis);
-        auto mesh = framework.add_spot_mesh (e2e::spot_mesh_name)
-          .enable_router (configuration.spot_endpoint)
-          .enable_pub_sub (configuration.pub_sub_endpoint)
+        auto mesh = framework.add_route_mesh (e2e::spot_mesh_name)
+          .listen (configuration.spot_endpoint)
           .set_routing_id (zlink::routing_id_t::from (configuration.node_rid))
           .add_entry_spot<to_actor_e2e_spot_t> (
             [evidence_ptr] { return std::make_shared<to_actor_e2e_spot_t> (*evidence_ptr); })
           .add_actor_factory<to_actor_e2e_actor_t> (e2e::actor_type_name);
         if (!configuration.caller_spot_endpoint.empty ()) {
-            mesh.connect_router (zlink::routing_id_t::from (configuration.caller_rid),
-                                 configuration.caller_spot_endpoint);
+            mesh.peer_connections ().connect (
+              zlink::routing_id_t::from (configuration.caller_rid),
+              configuration.caller_spot_endpoint);
         }
         framework.http ()
           .listen (configuration.http_endpoint)

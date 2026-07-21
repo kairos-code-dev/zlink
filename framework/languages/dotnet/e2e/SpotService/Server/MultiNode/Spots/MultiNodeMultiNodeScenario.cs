@@ -27,6 +27,7 @@ internal sealed class MultiNodeCreateSpotAHandler(
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
+            SpotServiceNames.MultiSpotNodeA,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -59,6 +60,7 @@ internal sealed class MultiNodeCreateSpotBHandler(
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
+            SpotServiceNames.MultiSpotNodeB,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -77,10 +79,11 @@ internal static class MultiNodeScenario
     public static async Task<StateRes> RequestStateAsync(
         IZLinkSpotClient routes,
         IZLinkSpotHandleResolver locator,
+        string meshName,
         string spotRid,
         int delta,
         CancellationToken cancellationToken)
-        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(spotRid, cancellationToken),
+        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(meshName, spotRid, cancellationToken),
                 new StateReq("add", delta))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<StateRes>(cancellationToken);

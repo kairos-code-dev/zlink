@@ -121,13 +121,13 @@ public sealed class StreamFlowEndToEndTests
             ZLinkStreamError error,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
-        public ValueTask OnDispatchAsync(
+        public async ValueTask OnDispatchAsync(
             ZLinkSessionDispatchContext dispatch,
             ZLinkMessage payload,
             CancellationToken cancellationToken)
         {
-            Context.Client.Reply(new FlowReply("reply")).Submit(cancellationToken);
-            return ValueTask.CompletedTask;
+            await Context.Client.Reply(new FlowReply("reply"))
+                .SubmitAsync(cancellationToken);
         }
     }
 }

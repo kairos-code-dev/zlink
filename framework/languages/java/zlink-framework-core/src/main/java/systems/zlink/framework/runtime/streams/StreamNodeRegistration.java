@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime.streams;
 import java.util.List;
 import java.util.ArrayList;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
+import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.streams.ZLinkSession;
 
 public final class StreamNodeRegistration {
@@ -11,6 +11,7 @@ public final class StreamNodeRegistration {
     private final List<String> bindEndpoints = new ArrayList<>();
     private TlsServerRegistration tlsServer;
     private Class<? extends ZLinkSession> sessionType;
+    private String actorDispatchMeshName;
     private final List<Class<?>> sessionPacketHandlers =
         new ArrayList<>();
 
@@ -40,6 +41,10 @@ public final class StreamNodeRegistration {
 
     public List<Class<?>> sessionPacketHandlers() {
         return List.copyOf(sessionPacketHandlers);
+    }
+
+    public String actorDispatchMeshName() {
+        return actorDispatchMeshName;
     }
 
     public List<Class<?>> applicationTypes() {
@@ -85,6 +90,13 @@ public final class StreamNodeRegistration {
         sessionType = type;
     }
 
+    void enableActorDispatch(String meshName) {
+        if (meshName == null || meshName.isBlank()) {
+            throw new ZLinkConfigurationException("actor dispatch MeshName is required: " + name);
+        }
+        actorDispatchMeshName = meshName;
+    }
+
     public void addSessionPacketHandler(Class<?> handlerType) {
         if (handlerType == null) {
             throw new ZLinkConfigurationException(
@@ -96,12 +108,19 @@ public final class StreamNodeRegistration {
         sessionPacketHandlers.add(handlerType);
     }
 
-    public void validate(List<SpotNodeRegistration> spotNodes) {
+    public void validate(List<MeshNodeRegistration> meshNodes) {
         if (bindEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException("stream node bind endpoint is required: " + name);
         }
         if (sessionType == null) {
             throw new ZLinkConfigurationException("stream node session type is required: " + name);
+        }
+        if (actorDispatchMeshName != null
+            && meshNodes.stream().noneMatch(
+                mesh -> mesh.meshName().equals(actorDispatchMeshName))) {
+            throw new ZLinkConfigurationException(
+                "stream actor dispatch RouteMesh is not configured: "
+                    + actorDispatchMeshName);
         }
     }
 

@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 SYNC_SCRIPT="${SCRIPT_DIR}/fetch-release-binaries.sh"
+TAG_SCRIPT="${SCRIPT_DIR}/release-tag.sh"
+# shellcheck source=release-tag.sh
+source "${TAG_SCRIPT}"
 
 usage() {
   cat <<'USAGE'
@@ -11,7 +14,7 @@ Usage:
   scripts/local-package/native/update-zlink-libs.sh <release-url-or-tag> [--repo owner/repo] [--expect-version X.Y.Z]
 
 Examples:
-  scripts/local-package/native/update-zlink-libs.sh core/v10.2.0
+  scripts/local-package/native/update-zlink-libs.sh core/v10.2.0-rc.1
   scripts/local-package/native/update-zlink-libs.sh https://github.com/kairos-code-dev/zlink/releases/tag/core/v10.2.0
   scripts/local-package/native/update-zlink-libs.sh core/v1.3.0 --repo kairos-code-dev/zlink --expect-version 1.3.0
 
@@ -28,7 +31,7 @@ Notes:
   - `--repo` is optional. If omitted, repository is resolved from git origin.
   - Expected version is mandatory for safety:
       - Use --expect-version X.Y.Z, or
-      - let the script infer X.Y.Z from release tag/url.
+      - let the script infer numeric X.Y.Z from a stable or -rc.N tag/url.
   - Binding package versions may have a newer patch than the Core version.
 USAGE
 }
@@ -91,15 +94,6 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
-extract_tag() {
-  local ref="$1"
-  if [[ "${ref}" == *"/releases/tag/"* ]]; then
-    echo "${ref##*/}"
-  else
-    echo "${ref}"
-  fi
-}
-
 resolve_repo() {
   if [[ -n "${repo_override}" ]]; then
     echo "${repo_override}"
@@ -125,18 +119,15 @@ resolve_repo() {
   fi
 }
 
-tag_name="$(extract_tag "${release_ref}")"
-if [[ ! "${tag_name}" =~ ^core/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Error: release tag must use core/vX.Y.Z exactly: ${tag_name}" >&2
-  exit 1
-fi
+zlink_parse_core_release_ref "${release_ref}"
+tag_name="${ZLINK_CORE_RELEASE_TAG}"
 repo_name="$(resolve_repo)"
 if [[ -z "${repo_name}" ]]; then
   echo "Error: unable to resolve repository. Use --repo owner/repo." >&2
   exit 1
 fi
 
-tag_version="${tag_name#core/v}"
+tag_version="${ZLINK_CORE_RUNTIME_VERSION}"
 if [[ -z "${expect_version}" ]]; then
   expect_version="${tag_version}"
 fi
@@ -161,6 +152,9 @@ required_assets=(
   "libzlink_c-linux-x64.tar.gz"
   "libzlink_c-macos-x64.tar.gz"
   "libzlink_c-windows-x64.tar.gz"
+  "checksums.txt"
+  "release-provenance.txt"
+  "zlink-${tag_version}-source.tar.gz"
 )
 missing_assets=()
 optional_libzlink_c_assets_found=0
@@ -189,9 +183,7 @@ if [[ "${#missing_assets[@]}" -gt 0 ]]; then
   exit 1
 fi
 
-if [[ -n "${repo_override}" ]]; then
-  export ZLINK_RELEASE_REPO="${repo_override}"
-fi
+export ZLINK_RELEASE_REPO="${repo_name}"
 
 py_bin=""
 if command -v python3 >/dev/null 2>&1; then

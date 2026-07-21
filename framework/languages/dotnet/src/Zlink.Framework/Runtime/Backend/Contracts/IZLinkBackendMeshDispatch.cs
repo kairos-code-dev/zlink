@@ -87,14 +87,18 @@ internal sealed class ZLinkBackendSubscribeMessage : IDisposable
     private bool _disposed;
 
     public ZLinkBackendSubscribeMessage(
+        string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         ZLinkMessageMetadata? metadata = null)
     {
+        ChannelName = channelName;
         Topic = topic;
         Parts = parts;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
+
+    public string ChannelName { get; }
 
     public string Topic { get; }
 

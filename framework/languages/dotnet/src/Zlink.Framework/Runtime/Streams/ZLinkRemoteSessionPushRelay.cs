@@ -24,6 +24,11 @@ internal static class ZLinkRemoteActorFrameProtocol
     public const string PacketName = "$zlink.actor.frame-relay.v1";
 }
 
+internal static class ZLinkRemoteActorReplyProtocol
+{
+    public const string PacketName = "$zlink.actor.reply-relay.v1";
+}
+
 internal sealed record ZLinkRemoteActorFrameRelay(
     string ActorId,
     ulong ActorGeneration,
@@ -31,6 +36,12 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     string SourceSessionRid,
     byte[] Header,
     byte[] Body);
+
+internal sealed record ZLinkRemoteActorReplyRelay(
+    string ActorId,
+    ulong RequestId,
+    uint Flags,
+    byte[] Frame);
 
 internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime runtime)
     : IZLinkRouteSendHandler<ZLinkRemoteActorFrameRelay>
@@ -79,5 +90,24 @@ internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime r
                 message.Frame,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+}
+
+internal sealed class ZLinkRemoteActorReplyRelayHandler(ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteSendHandler<ZLinkRemoteActorReplyRelay>
+{
+    public ValueTask HandleAsync(
+        ZLinkRemoteActorReplyRelay message,
+        ZLinkRouteSendContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        runtime.DeliverRemoteActorReply(
+            message.ActorId,
+            message.RequestId,
+            message.Flags,
+            message.Frame);
+        return ValueTask.CompletedTask;
     }
 }

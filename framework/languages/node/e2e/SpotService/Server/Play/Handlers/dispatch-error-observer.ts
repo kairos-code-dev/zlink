@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   type ZLinkMessageFlowEvent,
-  type ZLinkMessageFlowObserver,
-  ZLinkMessageFlowOutcome
+  type ZLinkMessageFlowObserver
 } from '@zlink-systems/framework';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
@@ -11,19 +10,17 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
   constructor(private readonly evidence: EvidenceStore) {}
 
   onMessageFlow(flow: ZLinkMessageFlowEvent): void {
-    if (flow.outcome !== ZLinkMessageFlowOutcome.Error) {
+    if (flow.outcome !== 'failed') {
       return;
     }
     this.evidence.add(
       'dispatch-error'
       + `|surface=${flow.surface}`
       + `|kind=${flow.messageKind}`
-      + `|reason=${flow.errorReason}`
-      + `|action=${flow.errorAction}`
+      + `|reason=${flow.reason}`
+      + `|action=${flow.action}`
       + `|packet=${flow.packetName ?? '<null>'}`
       + `|channel=${flow.channelName ?? '<null>'}`
-      + `|errorType=${flow.errorType ?? '<null>'}`
-      + `|errorMessage=${flow.errorMessage ?? '<null>'}`
     );
   }
 }

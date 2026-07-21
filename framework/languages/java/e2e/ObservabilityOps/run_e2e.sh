@@ -67,7 +67,6 @@ location_key_prefix="zlink:e2e:observability:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 
 descendants() {
   local pid="$1" child
@@ -105,9 +104,8 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS:-}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "ObservabilityOps must use 3s readiness and 5s route settle limits" >&2
+   || "${LOCAL_READINESS_ATTEMPTS:-}" != 30 ]]; then
+  echo "ObservabilityOps must use a 3s readiness limit" >&2
   exit 1
 fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Trigger/src/main/java --glob '*.java'; then
@@ -270,7 +268,7 @@ start_delay() {
   "${delay_bin}" --config "${config}" >"${stdout}" 2>"${stderr}" &
 }
 start_play() {
-  local node="$1" drain_policy="$2" stdout="$3" stderr="$4"
+  local node="$1" stdout="$2" stderr="$3"
   local route_endpoint route_peer_endpoint spot_endpoint http_endpoint
   if [[ "${node}" == play-a ]]; then
     route_endpoint="${ROUTE_A_ENDPOINT}"; route_peer_endpoint="${ROUTE_B_ENDPOINT}"
@@ -282,7 +280,6 @@ start_play() {
   local config="${config_dir}/${node}.properties"
   write_config "${config}" \
     "e2e.node-rid=${node}" \
-    "e2e.drain-policy=${drain_policy}" \
     "e2e.route-endpoint=${route_endpoint}" \
     "e2e.route-peer-endpoint=${route_peer_endpoint}" \
     "e2e.spot-endpoint=${spot_endpoint}" \
@@ -330,19 +327,17 @@ run_client() {
   timeout -k 5s "${limit}" "${client_bin}" --config "${config}" --scenario "${scenario}" >"${stdout}" 2>"${stderr}"
 }
 
-play_a_drain_policy=natural
-[[ "${SELECTOR}" == OBS-C5 ]] && play_a_drain_policy=release
 start_initial_role() {
   case "$1" in
     delay)
       start_delay "${log_dir}/delay.stdout.log" "${log_dir}/delay.stderr.log"
       ;;
     play-a)
-      start_play play-a "${play_a_drain_policy}" "${log_dir}/play-a.stdout.log" "${log_dir}/play-a.stderr.log"
+      start_play play-a "${log_dir}/play-a.stdout.log" "${log_dir}/play-a.stderr.log"
       play_a_pid="$!"
       ;;
     play-b)
-      start_play play-b natural "${log_dir}/play-b.stdout.log" "${log_dir}/play-b.stderr.log"
+      start_play play-b "${log_dir}/play-b.stdout.log" "${log_dir}/play-b.stderr.log"
       play_b_pid="$!"
       ;;
     session)
@@ -370,7 +365,6 @@ wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
 wait_port session-stream "${STREAM_ENDPOINT}"
 wait_http session-http "${SESSION_HTTP}"
 wait_metrics_state "${SESSION_HTTP}" true
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A1 ]]; then
   run_client OBS-A1 "" "" 90s "${log_dir}/a1-client.stdout.log" "${log_dir}/a1-client.stderr.log"
@@ -394,7 +388,6 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A3 ]]; then
   session_pid="$!"
   wait_port off-node-stream "${STREAM_ENDPOINT}"; wait_http off-node-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" true
-  sleep "${ROUTE_SETTLE_SECONDS}"
   run_client OBS-A3 "" "" 90s "${log_dir}/a3-client.stdout.log" "${log_dir}/a3-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A4 || "${SELECTOR}" == OBS-B3 ]]; then
@@ -420,7 +413,6 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B4 ]]; then
   session_pid="$!"
   wait_port reader-free-stream "${STREAM_ENDPOINT}"; wait_http reader-free-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" false
-  sleep "${ROUTE_SETTLE_SECONDS}"
   run_client OBS-B4 "${log_dir}/reader-free-result.json" "" 120s "${log_dir}/b4-client.stdout.log" "${log_dir}/b4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/reader-free-metrics.json"
 fi
@@ -457,11 +449,10 @@ PY
   kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
   wait "${play_a_pid}" || true
   truncate -s 0 "${log_dir}/play-a-flow.log"
-  start_play play-a natural "${log_dir}/play-a-c1-restart.stdout.log" "${log_dir}/play-a-c1-restart.stderr.log"; pids+=("$!")
+  start_play play-a "${log_dir}/play-a-c1-restart.stdout.log" "${log_dir}/play-a-c1-restart.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port play-a-restart-route "${ROUTE_A_ENDPOINT}"; wait_port play-a-restart-spot "${SPOT_A_ENDPOINT}"; wait_http play-a-restart-http "${PLAY_A_HTTP}"
   wait_drain_ready "${PLAY_A_HTTP}" play-a
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C2 ]]; then
   run_client OBS-C2 "" "" 60s "${log_dir}/c2-client.stdout.log" "${log_dir}/c2-client.stderr.log" &
@@ -492,43 +483,22 @@ PY
   done
   kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
   wait "${play_a_pid}" || true
-  start_play play-a natural "${log_dir}/play-a-c2-restart.stdout.log" "${log_dir}/play-a-c2-restart.stderr.log"; pids+=("$!")
+  start_play play-a "${log_dir}/play-a-c2-restart.stdout.log" "${log_dir}/play-a-c2-restart.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port play-a-c2-restart-route "${ROUTE_A_ENDPOINT}"; wait_port play-a-c2-restart-spot "${SPOT_A_ENDPOINT}"; wait_http play-a-c2-restart-http "${PLAY_A_HTTP}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C3 ]]; then
   run_client OBS-C3-WRITE "" "" 60s "${log_dir}/c3-write.stdout.log" "${log_dir}/c3-write.stderr.log"
-  fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=15000" "${log_dir}/c3-natural-start.json"
-  fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-natural-during.json"
-  fetch_url "${PLAY_A_HTTP}/spot/close?spotRid=obs-c3-persistent-room" "${log_dir}/c3-natural-close-room.json"
-  fetch_url "${PLAY_A_HTTP}/spot/close?spotRid=await-probe" "${log_dir}/c3-natural-close-probe.json"
+  fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=15000" "${log_dir}/c3-fixed-start.json"
   for _ in $(seq 1 150); do
-    fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-natural-terminal.json"
-    python3 - "${log_dir}/c3-natural-terminal.json" <<'PY' && break
+    fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-fixed-terminal.json"
+    python3 - "${log_dir}/c3-fixed-terminal.json" <<'PY' && break
 import json,sys
 raise SystemExit(0 if json.load(open(sys.argv[1])).get('result') else 1)
 PY
     sleep 0.1
   done
-  fetch_url "${PLAY_A_HTTP}/metrics" "${log_dir}/c3-natural-metrics.json"
-  kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
-  wait "${play_a_pid}" || true
-  start_play play-a release "${log_dir}/play-a-c3-release.stdout.log" "${log_dir}/play-a-c3-release.stderr.log"; pids+=("$!")
-  play_a_pid="$!"
-  wait_port c3-release-route "${ROUTE_A_ENDPOINT}"; wait_http c3-release-http "${PLAY_A_HTTP}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
-  run_client OBS-C3-WRITE "" "" 60s "${log_dir}/c3-release-write.stdout.log" "${log_dir}/c3-release-write.stderr.log"
-  fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=15000" "${log_dir}/c3-release-start.json"
-  for _ in $(seq 1 150); do
-    fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-release-terminal.json"
-    python3 - "${log_dir}/c3-release-terminal.json" <<'PY' && break
-import json,sys
-raise SystemExit(0 if json.load(open(sys.argv[1])).get('result') else 1)
-PY
-    sleep 0.1
-  done
-  fetch_url "${PLAY_A_HTTP}/metrics" "${log_dir}/c3-release-metrics.json"
+  fetch_url "${PLAY_A_HTTP}/metrics" "${log_dir}/c3-fixed-metrics.json"
   run_client OBS-C3-READ "" "" 60s "${log_dir}/c3-read.stdout.log" "${log_dir}/c3-read.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C4 ]]; then
@@ -537,7 +507,6 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C4 ]]; then
   start_session off obs-c4-held-spot on "${log_dir}/c4-session.stdout.log" "${log_dir}/c4-session.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port c4-session-stream "${STREAM_ENDPOINT}"; wait_http c4-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
-  sleep "${ROUTE_SETTLE_SECONDS}"
   run_client OBS-C4 "${log_dir}/c4-connector-result.json" \
     "${SESSION_HTTP}/drain/start?deadlineMs=500" 30s "${log_dir}/c4-client.stdout.log" "${log_dir}/c4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/drain/status" "${log_dir}/c4-drain-status.json"
@@ -549,16 +518,15 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C5 ]]; then
     wait "${play_a_pid}" || true
     wait "${play_b_pid}" || true
     wait "${session_pid}" || true
-    start_play play-a release "${log_dir}/c5-serving-play-a.stdout.log" "${log_dir}/c5-serving-play-a.stderr.log"; pids+=("$!")
+    start_play play-a "${log_dir}/c5-serving-play-a.stdout.log" "${log_dir}/c5-serving-play-a.stderr.log"; pids+=("$!")
     play_a_pid="$!"
     wait_port c5-serving-play-a-route "${ROUTE_A_ENDPOINT}"; wait_http c5-serving-play-a-http "${PLAY_A_HTTP}"
-    start_play play-b natural "${log_dir}/c5-serving-play-b.stdout.log" "${log_dir}/c5-serving-play-b.stderr.log"; pids+=("$!")
+    start_play play-b "${log_dir}/c5-serving-play-b.stdout.log" "${log_dir}/c5-serving-play-b.stderr.log"; pids+=("$!")
     play_b_pid="$!"
     wait_port c5-serving-play-b-route "${ROUTE_B_ENDPOINT}"; wait_http c5-serving-play-b-http "${PLAY_B_HTTP}"
     start_session on "" on "${log_dir}/c5-serving-session.stdout.log" "${log_dir}/c5-serving-session.stderr.log"; pids+=("$!")
     session_pid="$!"
     wait_port c5-serving-session-route "${SESSION_ROUTE_ENDPOINT}"; wait_port c5-serving-session-spot "${SESSION_SPOT_ENDPOINT}"; wait_port c5-serving-session-stream "${STREAM_ENDPOINT}"; wait_http c5-serving-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
-    sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   truncate -s 0 "${log_dir}/play-a-flow.log"
   run_client OBS-C5-PROBE "" "" 60s "${log_dir}/c5-serving-probe.stdout.log" "${log_dir}/c5-serving-probe.stderr.log"
@@ -578,16 +546,15 @@ PY
   wait "${play_a_pid}" || true
   wait "${play_b_pid}" || true
   wait "${session_pid}" || true
-  start_play play-a release "${log_dir}/c5-zero-play-a.stdout.log" "${log_dir}/c5-zero-play-a.stderr.log"; pids+=("$!")
+  start_play play-a "${log_dir}/c5-zero-play-a.stdout.log" "${log_dir}/c5-zero-play-a.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port c5-zero-route "${ROUTE_A_ENDPOINT}"; wait_http c5-zero-http "${PLAY_A_HTTP}"
-  start_play play-b natural "${log_dir}/c5-zero-play-b.stdout.log" "${log_dir}/c5-zero-play-b.stderr.log"; pids+=("$!")
+  start_play play-b "${log_dir}/c5-zero-play-b.stdout.log" "${log_dir}/c5-zero-play-b.stderr.log"; pids+=("$!")
   play_b_pid="$!"
   wait_port c5-zero-play-b-route "${ROUTE_B_ENDPOINT}"; wait_http c5-zero-play-b-http "${PLAY_B_HTTP}"
   start_session on "" on "${log_dir}/c5-zero-session.stdout.log" "${log_dir}/c5-zero-session.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port c5-zero-session-route "${SESSION_ROUTE_ENDPOINT}"; wait_port c5-zero-session-spot "${SESSION_SPOT_ENDPOINT}"; wait_port c5-zero-session-stream "${STREAM_ENDPOINT}"; wait_http c5-zero-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
-  sleep "${ROUTE_SETTLE_SECONDS}"
   run_client OBS-C5-BIND "" "" 60s "${log_dir}/c5-zero-bind.stdout.log" "${log_dir}/c5-zero-bind.stderr.log"
   run_client OBS-C5-PROBE "" "" 60s "${log_dir}/c5-zero-held-spot.stdout.log" "${log_dir}/c5-zero-held-spot.stderr.log"
   fetch_url "${PLAY_B_HTTP}/drain/start?deadlineMs=5000" "${log_dir}/c5-zero-play-b-start.json"

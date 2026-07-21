@@ -25,6 +25,7 @@
 #include <string>
 #include <string.h>
 #include <atomic>
+#include <mutex>
 #include <vector>
 #include <thread>
 
@@ -353,6 +354,46 @@ static void teardown_zlink_ctx ()
     }
 }
 
+namespace
+{
+std::mutex g_ws_stream_probe_mutex;
+std::atomic<bool> g_ws_stream_probe_ready (false);
+zlink_routing_id_t g_ws_stream_probe_rid;
+
+void ws_stream_packet_handler (void *,
+                               const zlink_routing_id_t *rid_,
+                               zlink_msg_t *header_,
+                               zlink_msg_t *body_,
+                               void *)
+{
+    if (rid_) {
+        std::lock_guard<std::mutex> lock (g_ws_stream_probe_mutex);
+        g_ws_stream_probe_rid = *rid_;
+        g_ws_stream_probe_ready.store (true, std::memory_order_release);
+    }
+    if (header_)
+        zlink_msg_close (header_);
+    if (body_)
+        zlink_msg_close (body_);
+}
+
+std::vector<unsigned char> ws_stream_packet (const char *header_, const char *body_)
+{
+    const size_t header_size = strlen (header_);
+    const size_t body_size = strlen (body_);
+    std::vector<unsigned char> frame (6 + header_size + body_size);
+    frame[0] = static_cast<unsigned char> (header_size >> 8);
+    frame[1] = static_cast<unsigned char> (header_size);
+    frame[2] = static_cast<unsigned char> (body_size >> 24);
+    frame[3] = static_cast<unsigned char> (body_size >> 16);
+    frame[4] = static_cast<unsigned char> (body_size >> 8);
+    frame[5] = static_cast<unsigned char> (body_size);
+    memcpy (&frame[6], header_, header_size);
+    memcpy (&frame[6 + header_size], body_, body_size);
+    return frame;
+}
+}
+
 //  Test 6: ZLINK WebSocket bind should not return EPROTONOSUPPORT
 void test_zlink_ws_bind ()
 {
@@ -476,6 +517,95 @@ void test_zlink_ws_pair_message ()
 
     zlink_close (connect_socket);
     zlink_close (bind_socket);
+    teardown_zlink_ctx ();
+}
+
+//  A STREAM socket with packet dispatch remains writable by routing id from
+//  service threads. This is the path used when Mesh bound-session ingress
+//  forwards a complete framework frame to a WebSocket client.
+void test_zlink_ws_stream_packet_handler_routed_send ()
+{
+    setup_zlink_ctx ();
+    g_ws_stream_probe_ready.store (false, std::memory_order_release);
+    memset (&g_ws_stream_probe_rid, 0, sizeof (g_ws_stream_probe_rid));
+
+    void *server = zlink_socket (g_ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (server, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_packet_handler (server, &ws_stream_packet_handler, NULL));
+
+    char endpoint[256];
+    size_t endpoint_size = sizeof (endpoint);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (server, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
+    unsigned int port = 0;
+    TEST_ASSERT_EQUAL_INT (
+      1, sscanf (endpoint, "ws://127.0.0.1:%u", &port));
+
+    net::io_context client_io;
+    tcp::resolver resolver (client_io);
+    websocket::stream<tcp::socket> client (client_io);
+    const std::string port_text = std::to_string (port);
+    net::connect (client.next_layer (), resolver.resolve ("127.0.0.1", port_text));
+    client.binary (true);
+    client.handshake ("127.0.0.1:" + port_text, "/");
+
+    const std::vector<unsigned char> request = ws_stream_packet ("request", "body");
+    client.write (net::buffer (request));
+    for (int waited = 0;
+         waited < 5000 && !g_ws_stream_probe_ready.load (std::memory_order_acquire);
+         waited += 10)
+        msleep (10);
+    TEST_ASSERT_TRUE (g_ws_stream_probe_ready.load (std::memory_order_acquire));
+
+    zlink_routing_id_t rid;
+    {
+        std::lock_guard<std::mutex> lock (g_ws_stream_probe_mutex);
+        rid = g_ws_stream_probe_rid;
+    }
+    const std::string first_body (192, 'n');
+    const std::string second_body (192, 'r');
+    const std::vector<unsigned char> first = ws_stream_packet ("notify", first_body.c_str ());
+    const std::vector<unsigned char> second =
+      ws_stream_packet ("response", second_body.c_str ());
+    const std::vector<unsigned char> *messages[] = {&first, &second};
+    for (size_t i = 0; i < 2; ++i) {
+        std::atomic<int> send_result (ZLINK_SUBMIT_INTERNAL_ERROR);
+        std::thread service_thread ([&, i] () {
+            zlink_msg_t response_message;
+            if (zlink_msg_init_size (&response_message, messages[i]->size ()) != 0)
+                return;
+            memcpy (zlink_msg_data (&response_message), &(*messages[i])[0],
+                    messages[i]->size ());
+            send_result.store (
+              zlink_send_part_rid (
+                server, &rid, &response_message, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL),
+              std::memory_order_release);
+        });
+        service_thread.join ();
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_SUBMIT_OK, send_result.load (std::memory_order_acquire));
+    }
+
+    std::string received_bytes;
+    const size_t expected_size = first.size () + second.size ();
+    while (received_bytes.size () < expected_size) {
+        beast::flat_buffer received;
+        client.read (received);
+        received_bytes += beast::buffers_to_string (received.data ());
+    }
+    TEST_ASSERT_EQUAL_UINT64 (expected_size, received_bytes.size ());
+    TEST_ASSERT_EQUAL_MEMORY (&first[0], received_bytes.data (), first.size ());
+    TEST_ASSERT_EQUAL_MEMORY (&second[0], received_bytes.data () + first.size (),
+                              second.size ());
+
+    boost::system::error_code ignored;
+    client.close (websocket::close_code::normal, ignored);
+    zlink_close (server);
     teardown_zlink_ctx ();
 }
 
@@ -645,6 +775,7 @@ int main ()
     RUN_TEST (test_zlink_ws_bind);
     RUN_TEST (test_zlink_ws_connect);
     RUN_TEST (test_zlink_ws_pair_message);
+    RUN_TEST (test_zlink_ws_stream_packet_handler_routed_send);
     RUN_TEST (test_zlink_ws_pubsub);
     RUN_TEST (test_zlink_ws_with_path);
 #if defined ZLINK_HAVE_WSS

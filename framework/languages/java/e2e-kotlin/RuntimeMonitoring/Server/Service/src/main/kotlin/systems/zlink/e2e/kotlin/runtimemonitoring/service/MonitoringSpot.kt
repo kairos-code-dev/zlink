@@ -8,6 +8,7 @@ import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkTimerOptions
+import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy
 import systems.zlink.framework.spots.ZLinkTimerTick
 import java.time.Duration
 
@@ -17,8 +18,11 @@ class MonitoringSpot(
     override fun context(): ZLinkSpotContext = context
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
-        val options = ZLinkTimerOptions()
-        options.setStopOnUnhandledException(false)
+        val options = ZLinkTimerOptions(
+            ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS,
+            1,
+            false,
+        )
         context.addTimer(
             "failing-monitoring-timer",
             Duration.ofMillis(500),
@@ -29,7 +33,7 @@ class MonitoringSpot(
             "stopping-monitoring-timer",
             Duration.ofMillis(500),
             FailingTimerHandler::class.java,
-            ZLinkTimerOptions(),
+            null,
         )
         return ZLinkSpotCreateResponse.accept()
     }

@@ -9,9 +9,15 @@ namespace ZoneWorld.Server.Ops.Ports;
 /// </summary>
 public interface IWorldOperationsPort
 {
-    void PublishAnnouncement(string announcementId, string text);
+    ValueTask PublishAnnouncementAsync(
+        string announcementId,
+        string text,
+        CancellationToken cancellationToken);
 
-    void PublishMaintenanceChange(string nodeId, bool enabled);
+    ValueTask PublishMaintenanceChangeAsync(
+        string nodeId,
+        bool enabled,
+        CancellationToken cancellationToken);
 
     ValueTask<ApplyNodeMaintenanceRes?> TryApplyMaintenanceAsync(
         string nodeId,

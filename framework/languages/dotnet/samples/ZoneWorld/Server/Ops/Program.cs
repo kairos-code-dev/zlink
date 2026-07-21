@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
@@ -45,7 +46,7 @@ builder.Services.AddSingleton<MaintenanceService>();
 builder.Services.AddSingleton<NodeDiagnosticsService>();
 builder.Services.AddHostedService<NodeStatusBroadcaster>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationEventHandler>();
-builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventHandler>();
+builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>, SocketEventHandler>();
 
 builder.Services.AddZLinkFramework(options =>
 {
@@ -59,7 +60,7 @@ builder.Services.AddZLinkFramework(options =>
     locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
     // Ops observes the zone mesh without joining it: the operational query
     // enumerates it only when declared here (§8.1).
-    locations.ObservedMeshNames.Add(ZoneWorldNames.ZoneMesh);
+    locations.ObservedMeshNames.Add(ZoneWorldNames.MeshName);
 
     options.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
@@ -75,14 +76,15 @@ builder.Services.AddZLinkFramework(options =>
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
         .EnablePublisher(ops.BroadcastEndpoint);
 
-    var reportMesh = options.AddRouteMesh(ZoneWorldNames.ReportChannel)
-        .Listen(ops.ReportEndpoint)
+    var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
+        .Listen(ops.MeshEndpoint)
         // Discovery clients dial this server through its descriptor row,
         // which needs a concrete routing id to be advertised.
         .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-report"));
-    reportMesh.ChannelName(ZoneWorldNames.ReportChannel)
-        .AddSendHandler<ReportSpotEventHandler>()
-        .AddSendHandler<ReportNodeStatusHandler>();
+    mesh.ChannelName(ZoneWorldNames.ReportChannel)
+        .AddHandlerGroup(HandlerGroups.Ops);
+    mesh.ChannelName(ZoneWorldNames.ZoneChannel).SetWeight(0);
+    mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
 
     // A node is addressed by the channel named after it, so the call lands on that node and no
     // other (§8.4). What is enumerated here is the §2 zone placement — the nodes an operator can
@@ -91,10 +93,7 @@ builder.Services.AddZLinkFramework(options =>
     foreach (var nodeId in ZoneTopology.ZoneNodes)
     {
         var channelName = ZoneWorldNames.OpsChannel(nodeId);
-        var nodeMesh = options.AddRouteMesh(channelName)
-            .Listen("tcp://127.0.0.1:0")
-            .SetRoutingId(Systems.Zlink.RoutingId.From($"ops-{nodeId}"));
-        nodeMesh.ChannelName(channelName).SetWeight(0);
+        mesh.ChannelName(channelName).SetWeight(0);
     }
 });
 
@@ -103,9 +102,7 @@ builder.Services.AddZLinkMonitoring(monitor =>
     // Node registration and connection are changes, not answers to a question: a node that
     // shut down cannot reply (§8.1).
     monitor.AddLocationRuntimeEvents(ZoneWorldNames.OpsLocationSource, TimeSpan.FromMilliseconds(300));
-    monitor.AddSocketEvents(ZoneWorldNames.OpsSocketSource);
-    foreach (var nodeId in ZoneTopology.ZoneNodes)
-        monitor.AddSocketEvents(ZoneWorldNames.OpsChannelSocketSource(nodeId));
+    monitor.AddMeshNodeEvents(ZoneWorldNames.MeshName);
 });
 
 await builder.Build().RunAsync();

@@ -17,7 +17,9 @@ public record ClientOptions(
     String readyFile,
     String crashedFile,
     String failedFile,
-    String restartedFile) {
+    String restartedFile,
+    String secondCrashReadyFile,
+    String secondCrashedFile) {
     public ClientOptions {
         required(gatewayHttpEndpoint, "gatewayHttpEndpoint");
         required(streamAEndpoint, "streamAEndpoint");
@@ -31,6 +33,8 @@ public record ClientOptions(
         required(crashedFile, "crashedFile");
         required(failedFile, "failedFile");
         required(restartedFile, "restartedFile");
+        required(secondCrashReadyFile, "secondCrashReadyFile");
+        required(secondCrashedFile, "secondCrashedFile");
     }
 
     public static ClientOptions load(String path) {
@@ -46,7 +50,8 @@ public record ClientOptions(
             required(values, "httpAEndpoint"), required(values, "httpBEndpoint"),
             required(values, "multiAHttpEndpoint"), required(values, "multiBHttpEndpoint"),
             required(values, "readyFile"), required(values, "crashedFile"),
-            required(values, "failedFile"), required(values, "restartedFile"));
+            required(values, "failedFile"), required(values, "restartedFile"),
+            required(values, "secondCrashReadyFile"), required(values, "secondCrashedFile"));
     }
 
     private static String required(Properties values, String name) {

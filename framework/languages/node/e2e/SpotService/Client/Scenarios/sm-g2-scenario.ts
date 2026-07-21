@@ -1,4 +1,4 @@
-// SM-G2: 두 번째 SpotNode 추가 전후의 기존 owner 유지와 신규 로컬 배치를 검증한다.
+// SM-G2: MeshNode scale-out과 신규 배치 시나리오를 검증한다.
 import type {
   CreateSpotReq,
   CreateSpotRes,

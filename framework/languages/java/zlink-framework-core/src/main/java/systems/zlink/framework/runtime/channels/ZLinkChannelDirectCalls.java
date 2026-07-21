@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
 import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +42,7 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.channels.ZLinkFanoutPublishCall;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
@@ -83,8 +85,11 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 
-final class PublishCall implements ZLinkPublishCall {
+final class PublishCall implements ZLinkFanoutPublishCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendPublisherSocket publisher;
     private final String topic;
@@ -112,32 +117,37 @@ final class PublishCall implements ZLinkPublishCall {
         this(runtime, publisher, topic, payload, Optional.empty());
     }
 
-    public ZLinkPublishCall packetName(String packetName) {
+    public ZLinkFanoutPublishCall packetName(String packetName) {
         return new PublishCall(runtime, publisher, topic, payload, Optional.of(packetName));
     }
 
     @Override
-    public void submit() {
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
         ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
-            if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
-                runtime.flow().trace(new ZLinkMessageFlowEvent(
+        if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
+            runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,
                 ZLinkDispatchErrorSurface.CHANNEL,
                 ZLinkDispatchMessageKind.PUBLISH,
                 packetName.orElse(null), null, topic, null, null, null, null, null));
         }
         List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        runtime.submitOneWay(() -> {
-            try {
-                publisher.publish(topic, publishParts, SendFlags.NONE);
-            } finally {
-                publishParts.forEach(Message::close);
-            }
-        });
+        return ZLinkSubmitResults.submitAsync(
+            publisher,
+            ZLinkBackendAdmissionKey.socket(),
+            () -> publisher.publish(topic, publishParts, SendFlags.DONT_WAIT),
+            () -> publishParts.forEach(Message::close));
     }
 }
 
 final class SendCall implements ZLinkSendCall {
+    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
+        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendDealerSocket client;
     private final Message payload;
@@ -163,7 +173,12 @@ final class SendCall implements ZLinkSendCall {
     }
 
     @Override
-    public void submit() {
+    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
+            submitGate.begin();
+        if (duplicate != null) {
+            return duplicate;
+        }
             if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 runtime.flow().trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.SENT,
@@ -171,13 +186,12 @@ final class SendCall implements ZLinkSendCall {
                 ZLinkDispatchMessageKind.SEND,
                 packetName.orElse(null), null, null, null, null, null, null, null));
         }
-        runtime.submitOneWay(() -> {
-            try {
-                client.send(ZLinkChannelCallRuntime.parts(packetName, payload), SendFlags.NONE);
-            } finally {
-                payload.close();
-            }
-        });
+        List<Message> parts = ZLinkChannelCallRuntime.parts(packetName, payload);
+        return ZLinkSubmitResults.submitAsync(
+            client,
+            ZLinkBackendAdmissionKey.socket(),
+            () -> client.send(parts, SendFlags.DONT_WAIT),
+            () -> parts.forEach(Message::close));
     }
 }
 

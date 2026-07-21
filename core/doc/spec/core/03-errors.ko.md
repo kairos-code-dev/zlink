@@ -4,9 +4,9 @@
 
 # 오류, 결과 enum과 버전
 
-이 문서는 ZLink Core 10.1.0의 오류 ABI와 version 계약을 정의한다. 대상 독자는 C API와
+이 문서는 ZLink Core 11.0.0의 오류 ABI와 version 계약을 정의한다. 대상 독자는 C API와
 bindings 개발자다. 이 문서는 “공개 함수의 typed result와 thread-local errno가 어떤 값으로 대응하며
-10.1.0을 어떻게 판별하는가?”에 답한다.
+11.0.0을 어떻게 판별하는가?”에 답한다.
 
 ## 1. 기본 규칙
 
@@ -36,9 +36,10 @@ bindings 개발자다. 이 문서는 “공개 함수의 typed result와 thread-
 #endif
 ```
 
-platform에 없는 POSIX errno는 `ZLINK_HAUSNUMERO` 기반 공개 값으로 정의한다. service lifecycle과 opaque
-token에 사용하는 `ESTALE`, `EALREADY`, `EDEADLK`와 `ESHUTDOWN`은 모든 지원 platform에서 위 값을
-사용할 수 있다. 정확한 함수별 대응은 [errno map](04-errno-map.ko.md)이 소유한다.
+platform에 없는 POSIX errno는 `ZLINK_HAUSNUMERO` 기반 공개 값으로 정의한다. stale handle,
+중복 operation, reentrant callback과 종료한 socket을 표현하는 `ESTALE`, `EALREADY`, `EDEADLK`와
+`ESHUTDOWN`은 모든 지원 platform에서 위 값을 사용할 수 있다. 정확한 함수별 대응은
+[errno map](04-errno-map.ko.md)이 소유한다.
 
 ## 2. Submit result
 
@@ -62,8 +63,8 @@ typedef enum zlink_submit_result_t {
 ```
 
 `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`와 `NOT_ADMITTED`는 정상적인 runtime 제어 흐름이다.
-`NOT_ADMITTED`는 target route는 식별했지만 현재 admission 정책이 신규 submit을 거부했다는 뜻이다.
-Handshake를 통과하지 못한 peer나 신규 outbound weight가 0인 target이 여기에 포함된다. 입력 message
+`NOT_ADMITTED`는 target route는 식별했지만 raw socket의 현재 admission 상태가 신규 submit을
+거부했다는 뜻이다. Handshake가 완료되지 않은 peer가 여기에 포함된다. 입력 message
 ownership은 submit owner 문서가 따로 정하며 result 값만으로 추측하지 않는다.
 
 ## 3. Request completion result
@@ -87,10 +88,9 @@ typedef enum zlink_request_result_t {
 } zlink_request_result_t;
 ```
 
-이 enum은 synchronous lifecycle request의 반환과 asynchronous operation의 terminal completion에 모두
-사용한다. timeout 결과는 `ZLINK_REQUEST_TIMED_OUT`으로 표현한다.
-`BACKPRESSURED`는 transfer와 같이 전체 capacity reservation이 필요한 request가 admission 전에 실패했음을
-뜻한다.
+이 enum은 raw socket request operation의 terminal completion에 사용한다. timeout 결과는
+`ZLINK_REQUEST_TIMED_OUT`으로 표현한다. `BACKPRESSURED`는 request가 outbound admission 전에
+capacity 부족으로 실패했음을 뜻한다.
 
 ## 4. Receive와 handler result
 
@@ -121,8 +121,8 @@ typedef enum zlink_handler_result_t {
 `BUFFER_TOO_SMALL`은 caller가 제공한 batch가 첫 complete message를 담지 못하거나 raw SUB/XSUB의
 topic buffer capacity가 0 또는 필요한 길이보다 작은 경우다. raw subscription receive는 필요한 topic
 길이를 반환하고 queue의 topic과 payload를 소비하지 않으므로 caller가 충분한 buffer로 재시도할 수 있다.
-`INVALID_STATE`는 stale 또는 revoked claim과 domain 불일치에 사용한다. handler unregister나 replace를
-같은 callback에서 호출하면 `DEADLOCK`이다.
+`INVALID_STATE`는 stale handle 또는 종료한 receive state에 사용한다. Handler unregister나
+replace를 같은 callback에서 호출하면 `DEADLOCK`이다.
 
 ## 5. Close, bind와 connect result
 
@@ -157,8 +157,8 @@ typedef enum zlink_connect_result_t {
 } zlink_connect_result_t;
 ```
 
-MeshNode admission의 MeshName, expected RID 또는 generation 불일치는 `CONFLICT`, trust profile과 peer
-authentication 불일치는 `AUTH_FAILED`다.
+Raw connect intent 또는 routing ID 충돌은 `CONFLICT`, transport peer authentication 불일치는
+`AUTH_FAILED`다.
 
 ## 6. Configuration result
 
@@ -184,7 +184,7 @@ batch나 configuration object를 동시에 사용한 경우다.
 ## 7. Version
 
 ```c
-#define ZLINK_VERSION_MAJOR 10
+#define ZLINK_VERSION_MAJOR 11
 #define ZLINK_VERSION_MINOR 0
 #define ZLINK_VERSION_PATCH 0
 
@@ -199,6 +199,6 @@ ZLINK_EXPORT const char *zlink_strerror(int errnum);
 ZLINK_EXPORT void zlink_version(int *major, int *minor, int *patch);
 ```
 
-Core 10.1.0은 SOVERSION 10을 사용한다. `zlink_strerror()`가 반환한
+Core 11.0.0은 SOVERSION 11을 사용한다. `zlink_strerror()`가 반환한
 pointer는 library-owned static storage이며 해제하거나 수정하지 않는다. 세 함수는 thread-safe이고
 `zlink_errno()`는 호출 thread의 값만 반환한다.

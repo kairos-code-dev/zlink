@@ -3,8 +3,10 @@ package systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.
 import kotlinx.coroutines.future.await
 import org.springframework.beans.factory.ObjectProvider
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.channels.ZLinkRequestContext
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 import systems.zlink.framework.handlers.ZLinkRequest
+import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
@@ -18,9 +20,12 @@ class CreateGameHandler(
     private val spots: ObjectProvider<ZLinkSpotManager>,
     private val settings: SampleSettings,
     private val gameCreator: TicTacToeGameCreator,
-) {
+) : ZLinkSuspendingRequestHandler<CreateGameReq, CreateGameRes> {
     @ZLinkRequest
-    suspend fun create(request: CreateGameReq): CreateGameRes {
+    override suspend fun handle(
+        request: CreateGameReq,
+        context: ZLinkRequestContext,
+    ): CreateGameRes {
         val room = gameCreator.nextRoom(request.gameName)
         spots.getObject().create(TicTacToeGame::class.java, RoutingId.from(room.roomId)).await()
         return CreateGameRes(

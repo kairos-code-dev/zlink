@@ -37,6 +37,62 @@ TypeScript 브라우저 client를 공유한다. 지원 언어는 같은 역할 �
 > 같은 TypeScript client 하나를 공유한다. 실제 Chromium에서 `ws`·`wss`, request/reply, push,
 > reconnect와 명시적 flow 전달을 검증한다.
 
+## Channel 역할과 물리 topology 기준
+
+Channel send/request는 ChannelName 하나로 대상을 지정한다. 샘플은 MeshName을 숨기는 application helper를
+추가하지 않고 각 언어의 정식 Channel client를 직접 사용한다. RouteMesh와 ClientServer 선택은 개별 호출
+하나가 아니라 두 process 역할 사이의 전체 업무 방향과 상태 주소 메시징 필요 여부로 결정한다.
+
+- RID·Node·Spot·Actor 직접 메시징, actor transfer 또는 Logical Multicast가 필요한 역할은 RouteMesh를
+  사용한다.
+- 두 역할이 서로 독립적인 업무 send/request를 시작하면 하나의 RouteMesh peer 연결을 양방향으로 사용한다.
+  호출 방향마다 ClientServer Channel을 만들어 연결을 중복하지 않는다.
+- 한쪽만 업무 호출을 시작하고 두 역할이 공유할 RouteMesh가 없을 때 ClientServer Channel을 사용한다.
+- `Client()`는 송신 경로만 등록하고 `Server()`만 handler와 weight를 제공한다. `SetWeight(0)`으로 client
+  역할을 표현하거나 가짜 ChannelName membership을 추가하지 않는다.
+- 로컬 sample runner는 기본 BindHost `127.0.0.1`과 automatic port 0을 사용한다. Container·Kubernetes
+  배포는 `ConfigureNetwork()`에 Pod 또는 Service에서 remote peer가 연결할 AdvertiseHost를
+  명시한다. Wildcard BindHost를 descriptor의 advertised endpoint로 기록하지 않는다.
+- STREAM과 classic Pub/Sub은 Channel egress가 아니므로 독립 listener를 유지한다.
+
+언어별 sample topology regression은 다음 공통 fixture를 읽어야 한다. 같은 기대값을 언어별 source에
+복사해 두지 않는다.
+
+```text
+framework/doc/framework/common/sample/fixtures/
+`-- channel-topology.json
+```
+
+### Sample별 물리 연결
+
+| sample | RouteMesh 범위 | ClientServer 범위 | 별도 연결 |
+|---|---|---|---|
+| Bingo | Session·Api·Play가 `bingo` 하나를 공유 | 없음 | Session STREAM, Redis match queue |
+| TicTacToe | Api·Play가 수동 연결 `tictactoe` 하나를 공유 | 없음 | Play STREAM, Redis room route store |
+| SupportChat | Session·Api·Support가 `supportchat` 하나를 공유 | 없음 | Session STREAM |
+| DeliveryDispatch | Dispatch·CourierSession·CourierActorNode의 `deliverydispatch.courier`, Tracking·CustomerGateway의 `deliverydispatch.customer` | `deliverydispatch.tracking`: Dispatch Client → Tracking Server | Courier STREAM, Customer STREAM |
+| ShoppingMall | CommerceApi·OrderWorkflow가 `shoppingmall.workflow` 하나를 공유하고 OrderWorkflow만 Instance factory 제공 | 없음 | Commerce HTTP, shared event·projection store |
+| GameQuest | GameApi·QuestMission이 `gamequest` 하나를 공유 | 없음 | GameApi STREAM, shared state store |
+| ZoneWorld | Gateway·ZoneNode·Ops가 `zoneworld.mesh` 하나를 공유 | 없음 | Gateway STREAM, Ops STREAM, `zoneworld.broadcast` classic fanout |
+
+### Channel 역할
+
+| sample | Client 역할 | Server 역할 |
+|---|---|---|
+| Bingo | Session·Play: `bingo.api`; Api: `bingo.room` | Api: `bingo.api`; Play: `bingo.room` (reward Logical Multicast 대상 포함) |
+| TicTacToe | Play: `tictactoe.api`; Api: `play-0`, `play-1` | Api: `tictactoe.api`; 각 Play: 자기 play Channel; milestone 대상은 Play만 등록 |
+| SupportChat | Session: api·support; Api: support; Support: api | Api: api; Support: support |
+| DeliveryDispatch | CourierActorNode: dispatch; ClientServer의 Dispatch: tracking | RouteMesh의 Dispatch: dispatch; ClientServer의 Tracking: tracking |
+| ShoppingMall | 없음. CommerceApi는 Order ID의 `InstanceSpotAddress`를 사용 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |
+| GameQuest | 없음. GameApi는 Player ID의 `InstanceSpotAddress`를 사용 | 없음. QuestMission은 `PlayerQuestSpot` Instance factory만 제공 |
+| ZoneWorld | Gateway: actors; ZoneNode: report | actor 생성 ZoneNode: actors; Ops: report; zone multicast 대상은 ZoneNode만 등록 |
+
+TicTacToe의 수동 peer initiator는 API-A→API-B, API-A→Play-A/Play-B, API-B→Play-A/Play-B,
+Play-A→Play-B로 고정한다.
+Play→API request는 이미 설정된 API→Play pipe를 반대 방향으로 사용한다. Play→API 전용 connect와
+중복 reciprocal connect는 만들지 않는다. API-A→API-B는 같은 MeshName의 네 MeshNode가 full mesh를
+구성하기 위한 물리 연결이며 두 API 사이에 별도 업무 ChannelName을 추가한다는 뜻이 아니다.
+
 ## 메시지 이름 원칙
 
 샘플 메시지 이름은 도메인 사건 이름보다 framework 호출 방식이 먼저 드러나야 한다. 같은 업무
@@ -125,6 +181,12 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   바꾸지 않는다.
 - 서버 간 연결은 공유 location store 기반 자동 연결로 구성한다. 샘플 코드가 endpoint
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
+- 한 process는 특별한 물리 격리 요구가 없으면 RouteMesh를 하나만 등록하고, 업무별 route는 그
+  MeshNode의 여러 ChannelName membership으로 나눈다. 현재 정본 샘플에는 보안 경계, 서로 다른
+  transport 수명 또는 상호 연결을 금지해야 하는 노드 집합처럼 RouteMesh를 둘 이상 요구하는 사례가
+  없다. classic pub/sub과 STREAM node는 RouteMesh의 ChannelName이 아니므로 각각 독립 등록을 유지한다.
+  샘플에서 RouteMesh를 추가하려면 먼저 해당 샘플 문서에 물리 mesh를 분리해야 하는 이유와 사용자가
+  체감하는 연결 경계를 기록한다.
 - **절대 규칙: TicTacToe만 수동 연결을 사용할 수 있다.** TicTacToe를 제외한 모든 샘플은
   어떤 이유로도 수동 연결을 추가하거나 유지하면 안 된다. 빌드·실행 성공, 일시적인 자동 연결
   실패, 디버깅 편의, 언어별 구현 차이는 예외 사유가 아니다. 그 밖의 샘플은 ChannelName client에 상대
@@ -143,7 +205,7 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   선언**하되, **assembly·module 스캔에 의한 자동 등록을 쓰지 않고** 구성 코드에서 그 handler를
   직접 등록한다. 나머지 정본 샘플은 어떤 이유로도 수동 등록으로 대체하지 않는다.
 - C++은 runtime reflection scanner를 사용하지 않으므로 compile-time 타입으로 handler를 명시
-  등록한다. 정확한 표면은 [C++ handler 공개 계약](../../spec/server/languages/cpp/02-framework-interfaces.ko.md)을
+  등록한다. 정확한 표면은 [C++ handler 공개 계약](../../spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)을
   따른다. 등록 방법만 다르며 메시지·역할·codec·검증 기준은 바꾸지 않는다.
 
 ## Dispatch 오류 로그 기준

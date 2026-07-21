@@ -88,8 +88,9 @@ export class SpotNodeHandlerRegistry {
   addEntrySpotSubscription(node: MutableSpotNode, registration: ZLinkEntrySpotSubscriptionHandlerRegistration): void {
     this.assertUnique(
       node.entrySpotSubscriptionHandlers,
-      (existing) => existing.entrySpotType === registration.entrySpotType && existing.topic === registration.topic,
-      `Duplicate Entry Spot subscription handler '${registration.entrySpotType.name}:${registration.topic}'.`
+      (existing) => existing.entrySpotType === registration.entrySpotType &&
+        existing.channelName === registration.channelName && existing.topic === registration.topic,
+      `Duplicate Entry Spot subscription handler '${registration.entrySpotType.name}:${registration.channelName}:${registration.topic}'.`
     );
     node.entrySpotSubscriptionHandlers = [...(node.entrySpotSubscriptionHandlers ?? []), registration];
   }
@@ -108,8 +109,9 @@ export class SpotNodeHandlerRegistry {
   addSpotSubscription(node: MutableSpotNode, registration: ZLinkSpotSubscriptionHandlerRegistration): void {
     this.assertUnique(
       node.spotSubscriptionHandlers,
-      (existing) => existing.spotType === registration.spotType && existing.topic === registration.topic,
-      `Duplicate SPOT subscription handler '${registration.spotType.name}:${registration.topic}'.`
+      (existing) => existing.spotType === registration.spotType &&
+        existing.channelName === registration.channelName && existing.topic === registration.topic,
+      `Duplicate SPOT subscription handler '${registration.spotType.name}:${registration.channelName}:${registration.topic}'.`
     );
     node.spotSubscriptionHandlers = [...(node.spotSubscriptionHandlers ?? []), registration];
   }

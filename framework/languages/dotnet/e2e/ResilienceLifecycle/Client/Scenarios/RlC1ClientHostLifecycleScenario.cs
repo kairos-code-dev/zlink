@@ -9,23 +9,24 @@ namespace ResilienceLifecycle.Client.Scenarios;
 internal static class RlC1ClientHostLifecycleScenario
 {
     public static async Task RunAsync(
+        ClientOptions options,
         ZLinkHttpClient consumer,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
         foreach (var index in Enumerable.Range(0, 12))
         {
-            var reply = (await consumer.Post("/profile/request/new-client")
-                .Body(new ProfileReq("fast", $"rl-c1-{index}"))
-                .Async<ProfileRes>()).Body;
+            var reply = await EphemeralRouteClient.RequestAsync(
+                options,
+                new ProfileReq("fast", $"rl-c1-{index}"));
             ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast",
                 "RL-C1 request failed before cleanup.");
         }
 
-        var followUp = (await consumer.Post("/profile/request/new-client")
-            .Body(new ProfileReq("fast", "rl-c1-after-cleanup"))
-            .Async<ProfileRes>()).Body;
+        var followUp = await EphemeralRouteClient.RequestAsync(
+            options,
+            new ProfileReq("fast", "rl-c1-after-cleanup"));
         ZlinkStreamAssert.Ensure(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
 
         {

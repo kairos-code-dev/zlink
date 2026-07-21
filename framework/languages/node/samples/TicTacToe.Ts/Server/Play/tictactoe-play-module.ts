@@ -5,7 +5,10 @@ import { PacketNames } from '../../Shared/Contracts/messages';
 import { SampleNames } from '../Configuration/sample-settings';
 import { CreateGameHandler } from './Infrastructure/ZLink/Handlers/create-game-handler';
 import { PlayActorFactory } from './Infrastructure/ZLink/Actors/play-actor-factory';
-import { PlayActor } from './Infrastructure/ZLink/Actors/play-actor';
+import {
+  DeliverPlayNotificationHandler,
+  InitializePlayActorHandler
+} from './Infrastructure/ZLink/Actors/play-actor';
 import { PlayActorTransferAdapter } from './Infrastructure/ZLink/Actors/play-actor-transfer-adapter';
 import { PlayActorJoinGameHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-join-game-handler';
 import { PlayActorObserveMilestoneHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/play-actor-observe-milestone-handler';
@@ -13,7 +16,16 @@ import { PlayActorLeaveGameHandler } from './Infrastructure/ZLink/Spots/TicTacTo
 import { PlayActorPlaceMarkHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play-actor-place-mark-handler';
 import { PlayerWinMilestoneEventHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/player-win-milestone-event-handler';
 import { TicTacToeGameTimerHandler } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe-game-timer-handler';
-import { MilestoneObserverRegistry, PlayEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/play-entry-spot';
+import {
+  DestroyPlayActorHandler,
+  MilestoneObserverRegistry,
+  PendingActorDestroyRegistry,
+  PlayEntrySpot
+} from './Infrastructure/ZLink/Spots/EntrySpot/play-entry-spot';
+import {
+  PlaceMarkAtGameSpotHandler,
+  VerifyLeaveGameAtSpotHandler
+} from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe-game-operation-handlers';
 import { TicTacToeGameSpot } from './Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe-game-spot';
 import { TICTACTOE_GAME_ROOM_PROVISIONER, TicTacToeGameCreator } from './Application/GameCreation/tictactoe-game-creator';
 import { ZLinkTicTacToeGameRoomProvisioner } from './Infrastructure/ZLink/tictactoe-game-room-provisioner';
@@ -27,9 +39,7 @@ function createTicTacToePlayModule() {
   class TicTacToePlayModule {}
   const configuration = createTicTacToeConfigurationModule([
     'apiEndpoints',
-    'playEndpoint',
     'playSpotEndpoint',
-    'playSpotPubSubEndpoint',
     'playStreamEndpoint',
     'playEndpoints',
     'redisEndpoint',
@@ -37,7 +47,6 @@ function createTicTacToePlayModule() {
     'playSpotNodeRid',
     'peerPlaySpotNodeRid',
     'peerPlaySpotEndpoint',
-    'peerPlaySpotPubEndpoint',
     'logDir'
   ]);
 
@@ -54,25 +63,26 @@ function createTicTacToePlayModule() {
             .traceLogFile(`${config.logDir}/flow-play-${config.playSpotNodeRid}.log`)
             .traceLabel(config.playSpotNodeRid);
           builder.addLocationStore(createTicTacToeLocationStore(config));
-          return builder
-          .addClientServerChannel(SampleNames.playChannel)
-            .enableServer(config.playEndpoint)
-            .addRequestHandler(PacketNames.createGameReq, CreateGameHandler)
-          .addClientServerChannel(SampleNames.apiChannel)
-            .enableClient(config.apiEndpoints)
-            .addActorTransferAdapter(PlayActor, PlayActorTransferAdapter)
-            .addStreamNode(SampleNames.playStream)
-              .bind(config.playStreamEndpoint)
-            .registerSession(PlaySessionFactory)
-            .addSpotMesh(SampleNames.playSpotNode)
-              .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
-              .connectRouter(config.peerPlaySpotNodeRid, config.peerPlaySpotEndpoint)
-              .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
-              .connectPeerPub(config.peerPlaySpotPubEndpoint)
-              .addEntrySpot(PlayEntrySpot)
+          builder.addStreamNode(SampleNames.playStream)
+            .bind(config.playStreamEndpoint)
+            .registerSession(PlaySessionFactory);
+          const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
+            .listen(config.playSpotEndpoint)
+            .routingId(config.playSpotNodeRid)
+            .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
             .actorFactory(SampleNames.playerActorType, PlayActorFactory)
-          .build();
+            .addActorTransferAdapter(SampleNames.playerActorType, PlayActorTransferAdapter);
+          mesh.channelName(SampleNames.apiChannel).setWeight(0);
+          mesh.channelName(SampleNames.playChannel)
+            .addRequestHandler(PacketNames.createGameReq, CreateGameHandler);
+          mesh.channelName(SampleNames.playSpotNode);
+          mesh.channelName(SampleNames.playerMilestoneChannel);
+          for (const endpoint of config.apiEndpoints) {
+            mesh.peerConnections().connect(endpoint);
+          }
+          mesh.peerConnections().connect(config.peerPlaySpotNodeRid, config.peerPlaySpotEndpoint);
+          return builder.build();
         }
       })
     ],
@@ -87,8 +97,12 @@ function createTicTacToePlayModule() {
       CreateGameHandler,
       PlayActorFactory,
       PlayActorTransferAdapter,
+      DeliverPlayNotificationHandler,
+      InitializePlayActorHandler,
       MilestoneObserverRegistry,
+      PendingActorDestroyRegistry,
       PlayEntrySpot,
+      DestroyPlayActorHandler,
       PlayActorJoinGameHandler,
       PlayActorObserveMilestoneHandler,
       PlayActorLeaveGameHandler,
@@ -97,6 +111,8 @@ function createTicTacToePlayModule() {
       PlaySessionFactory,
       AuthenticatePlaySessionHandler,
       TicTacToeGameTimerHandler,
+      PlaceMarkAtGameSpotHandler,
+      VerifyLeaveGameAtSpotHandler,
     ]
   })(TicTacToePlayModule);
 

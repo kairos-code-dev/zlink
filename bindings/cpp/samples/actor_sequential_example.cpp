@@ -38,11 +38,7 @@ int main ()
 
     // actor는 들어온 순서대로 처리한다.
     std::vector<std::string> processed;
-    for (int i = 0; i < 3; ++i) {
-        std::string command;
-        assert (actor_recv_text (node, command));
-        processed.push_back (command);
-    }
+    assert (actor_recv_texts (node, 3, processed));
     assert (processed.size () == 3 && processed[0] == "move" && processed[1] == "attack"
             && processed[2] == "loot");
 

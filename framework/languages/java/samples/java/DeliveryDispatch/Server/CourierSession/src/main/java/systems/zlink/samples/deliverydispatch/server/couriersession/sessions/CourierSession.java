@@ -76,7 +76,7 @@ public final class CourierSession implements ZLinkSession {
             ZLinkSessionActor actor = context.actors().find(decision.courierId())
                 .orElseThrow(() -> new IllegalStateException(
                     "Courier actor is not bound: " + decision.courierId()));
-            return actor.relay(payload);
+            return actor.relay(payload).thenApply(ignored -> null);
         });
     }
 
@@ -91,7 +91,8 @@ public final class CourierSession implements ZLinkSession {
                 : CompletableFuture.completedFuture(bound);
             Messages.BindCourierSessionReq relayed = new Messages.BindCourierSessionReq(
                 request.courierId(), actorRef, context.sessionId());
-            return actorStage.thenCompose(actor -> actor.relay(dispatch, ZLinkMessage.of(relayed)));
+            return actorStage.thenCompose(actor ->
+                actor.relay(dispatch, ZLinkMessage.of(relayed)).thenApply(ignored -> null));
         });
     }
 
@@ -100,7 +101,6 @@ public final class CourierSession implements ZLinkSession {
         String placement = topology.courierPlacement(courierId);
         return resolveSpot(placement).thenCompose(address -> routes
                 .requestToSpot(
-                    SampleNames.CourierSpotDiscovery,
                     address,
                     new Messages.FindCourierActorReq(courierId))
                 .timeout(SampleTimings.RequestTimeout)
@@ -108,7 +108,6 @@ public final class CourierSession implements ZLinkSession {
                 .thenCompose(found -> found.actor() != null
                     ? CompletableFuture.completedFuture(found.actor())
                     : routes.requestToSpot(
-                            SampleNames.CourierSpotDiscovery,
                             address,
                             new Messages.EnsureCourierActorReq(courierId))
                         .timeout(SampleTimings.RequestTimeout)

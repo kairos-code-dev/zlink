@@ -7,5 +7,6 @@ public record SpotTransportAddress(
     String routerChannelId,
     RoutingId targetNodeRid,
     RoutingId spotRid,
+    long spotGeneration,
     ZLinkSpotKind spotKind) {
 }

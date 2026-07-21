@@ -2,7 +2,7 @@ import type { RoutingId } from '../Common';
 
 export enum ZLinkSpotNodeState { Idle = 1, Connecting = 2, PartialReady = 3, Ready = 4, Error = 5 }
 export enum ZLinkSpotPeerSource { Manual = 1, Discovery = 2, Mixed = 3 }
-export enum ZLinkSpotPeerKind { SpotMesh = 1, RouterChannel = 2 }
+export enum ZLinkSpotPeerKind { RouteMesh = 1 }
 export enum ZLinkSpotPeerState { Configured = 1, Connecting = 2, Connected = 3 }
 export enum ZLinkSubjectKind { None = 0, Topic = 1, Pattern = 2 }
 export enum ZLinkSpotRole { Pub = 1, Sub = 2 }

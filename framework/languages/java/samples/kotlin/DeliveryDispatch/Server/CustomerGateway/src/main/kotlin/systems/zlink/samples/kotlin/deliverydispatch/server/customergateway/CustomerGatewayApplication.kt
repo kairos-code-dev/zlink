@@ -35,16 +35,14 @@ class CustomerGatewayApplication {
                         "/flow-customer-gateway.log",
                 )
                 .traceLabel("customer-gateway")
-            val node = options.addSpotMesh(SampleNames.CustomerSpotMesh)
-            node.enableRouter(SampleTopology.CustomerSpotRouterEndpoint)
+            val node = options.addRouteMesh(SampleNames.CustomerSpotMesh)
+            node.listen(SampleTopology.CustomerSpotRouterEndpoint)
                 .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
-            node.configureEntrySpot()
-                .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
-            node.enablePubSub(SampleTopology.CustomerSpotEndpoint)
             node.addEntrySpot(CustomerEntrySpot::class.java)
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(SampleTopology.CustomerStreamEndpoint)
+                .enableActorDispatch(SampleNames.CustomerSpotMesh)
                 .registerSession(CustomerSession::class.java)
         }
 

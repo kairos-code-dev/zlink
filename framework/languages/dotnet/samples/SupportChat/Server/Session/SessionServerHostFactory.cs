@@ -41,21 +41,15 @@ public static class SessionServerHostFactory
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
-            var apiMesh = options.AddRouteMesh(SampleNames.ApiChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From("session-api"));
-            apiMesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            var supportMesh = options.AddRouteMesh(SampleNames.SupportChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From("session-support"));
-            supportMesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
-            var mesh6 = options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
-                .Listen(session.RouterEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(session.MeshEndpoint)
                 .SetRoutingId(session.RoutingId);
-            mesh6.ChannelName(SampleNames.SupportSpotDiscovery);
+            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
-                .EnableActorDispatch(SampleNames.SupportSpotDiscovery)
+                .EnableActorDispatch(SampleNames.MeshName)
                 .AddSession<SupportChatSession>();
         });
 

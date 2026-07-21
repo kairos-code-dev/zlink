@@ -5,12 +5,12 @@ import {
   ZLinkMessageFlowLogMode,
   ZLinkSocketEventKind,
   type ZLinkChannelRuntimeOptions,
-  type ZLinkDrainControl,
+  type ZLinkRouteMeshRuntime,
   type ZLinkLocationRuntimeQuery
 } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_DRAIN_CONTROL,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_LOCATION_RUNTIME_QUERY,
   ZLinkModule,
   zlinkFramework
@@ -41,11 +41,11 @@ export async function startServiceHost(role: ServiceRoleOptions = {}): Promise<v
   const options = app.get(MONITORING_OPTIONS, { strict: false }) as ServiceOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(
     options.httpUrl,
-    createServiceEndpoints(evidence, runtimeOptions, drain, locations, () => { stopping = true; })
+    createServiceEndpoints(evidence, runtimeOptions, routeMeshRuntime, locations, () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -79,15 +79,16 @@ function createServiceModule(role: ServiceRoleOptions): Function {
             redisKeyPrefix: options.redisKeyPrefix
           }));
           Object.assign(builder.configureLocations(), monitoringLocationOptions());
-          builder.addClientServerChannel(RuntimeMonitoringNames.channel)
-            .enableServer(options.channelEndpoint)
-            .routingId(options.rid)
+          const serviceMesh = builder.addRouteMesh(RuntimeMonitoringNames.channel)
+            .listen(options.channelEndpoint)
+            .routingId(options.rid);
+          serviceMesh.channelName(RuntimeMonitoringNames.channel)
             .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler);
-          builder.addSpotMesh(RuntimeMonitoringNames.spotChannel)
+          builder.addRouteMesh(RuntimeMonitoringNames.spotChannel)
             .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
-            .enablePubSub(options.spotPubEndpoint)
-            .addEntrySpot(MonitoringEntrySpot);
+            .listen(options.spotRouterEndpoint)
+            .addEntrySpot(MonitoringEntrySpot)
+            .channelName(RuntimeMonitoringNames.spotChannel);
 
           return {
             ...builder.build(),

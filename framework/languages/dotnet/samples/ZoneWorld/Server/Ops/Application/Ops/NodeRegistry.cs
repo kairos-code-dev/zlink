@@ -17,7 +17,7 @@ public sealed class NodeRegistry
     private readonly ConcurrentDictionary<string, string> _routingIdByNode = new(StringComparer.Ordinal);
     private IReadOnlySet<string> _liveRoutingIds = new HashSet<string>(StringComparer.Ordinal);
 
-    public event Action<NodeView>? Changed;
+    public event Func<NodeView, CancellationToken, ValueTask>? Changed;
 
     public IReadOnlyList<NodeView> Snapshot() =>
         _nodes.Values
@@ -25,42 +25,53 @@ public sealed class NodeRegistry
             .OrderBy(node => node.NodeId, StringComparer.Ordinal)
             .ToArray();
 
-    public void ApplyRegistration(string nodeId, bool registered) =>
-        Update(nodeId, state => state with
+    public ValueTask ApplyRegistrationAsync(
+        string nodeId,
+        bool registered,
+        CancellationToken cancellationToken) =>
+        UpdateAsync(nodeId, state => state with
         {
             View = state.View with
             {
                 Registered = registered,
                 Connected = registered && state.TransportConnected
             }
-        });
+        }, cancellationToken);
 
-    public void ApplyConnection(string nodeId, bool connected) =>
-        Update(nodeId, state => state with
+    public ValueTask ApplyConnectionAsync(
+        string nodeId,
+        bool connected,
+        CancellationToken cancellationToken) =>
+        UpdateAsync(nodeId, state => state with
         {
             TransportConnected = connected,
             // A reconnecting socket can emit ConnectionReady after its remote node has already
             // left the location topology. Keep that transport observation, but do not present
             // an unavailable node to the console as connected.
             View = state.View with { Connected = state.View.Registered && connected }
-        });
+        }, cancellationToken);
 
     public string? NodeIdOf(string routingId) =>
         _nodeByRoutingId.TryGetValue(routingId, out var nodeId) ? nodeId : null;
 
-    public void ApplyLiveRoutingIds(IReadOnlySet<string> liveRoutingIds)
+    public async ValueTask ApplyLiveRoutingIdsAsync(
+        IReadOnlySet<string> liveRoutingIds,
+        CancellationToken cancellationToken)
     {
         _liveRoutingIds = liveRoutingIds;
         foreach (var nodeId in ZoneTopology.ZoneNodes)
         {
             _routingIdByNode.TryGetValue(nodeId, out var routingId);
-            ApplyRegistration(
+            await ApplyRegistrationAsync(
                 nodeId,
-                routingId is not null && liveRoutingIds.Contains(routingId));
+                routingId is not null && liveRoutingIds.Contains(routingId),
+                cancellationToken);
         }
     }
 
-    public void ApplyReport(ReportNodeStatusMsg report)
+    public async ValueTask ApplyReportAsync(
+        ReportNodeStatusMsg report,
+        CancellationToken cancellationToken)
     {
         if (_nodeByRoutingId.TryGetValue(report.NodeRid, out var previousNodeId)
             && previousNodeId != report.NodeId)
@@ -70,7 +81,7 @@ public sealed class NodeRegistry
             _nodeByRoutingId.TryRemove(previousRoutingId, out _);
         _routingIdByNode[report.NodeId] = report.NodeRid;
         _nodeByRoutingId[report.NodeRid] = report.NodeId;
-        Update(report.NodeId, state => state with
+        await UpdateAsync(report.NodeId, state => state with
         {
             TransportConnected = true,
             View = state.View with
@@ -81,17 +92,23 @@ public sealed class NodeRegistry
                 PlayerCount = report.PlayerCount,
                 Maintenance = report.Maintenance
             }
-        });
+        }, cancellationToken);
     }
 
-    private void Update(string nodeId, Func<NodeState, NodeState> change)
+    private async ValueTask UpdateAsync(
+        string nodeId,
+        Func<NodeState, NodeState> change,
+        CancellationToken cancellationToken)
     {
         var updated = _nodes.AddOrUpdate(
             nodeId,
             _ => change(Empty(nodeId)),
             (_, existing) => change(existing));
 
-        Changed?.Invoke(updated.View);
+        if (Changed is not { } changed) return;
+        foreach (var handler in changed.GetInvocationList()
+                     .Cast<Func<NodeView, CancellationToken, ValueTask>>())
+            await handler(updated.View, cancellationToken);
     }
 
     private static NodeState Empty(string nodeId) =>

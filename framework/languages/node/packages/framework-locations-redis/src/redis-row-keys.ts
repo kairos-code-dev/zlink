@@ -11,7 +11,13 @@ export interface SpotKey {
   readonly spotRid: RoutingId;
 }
 
+export interface MeshNodeKey {
+  readonly meshName: string;
+  readonly rid: RoutingId;
+}
+
 export interface ActorKey {
+  readonly meshName?: string;
   readonly actorId: string;
 }
 
@@ -35,8 +41,14 @@ export function encodeSpotKey(key: SpotKey): string {
   return encodeKeySegments(key.meshName, routingIdHex(key.spotRid));
 }
 
+export function encodeMeshNodeKey(key: MeshNodeKey): string {
+  return encodeKeySegments(key.meshName, routingIdHex(key.rid));
+}
+
 export function encodeActorKey(key: ActorKey): string {
-  return encodeKeySegments(key.actorId);
+  return key.meshName === undefined
+    ? encodeKeySegments(key.actorId)
+    : encodeKeySegments(key.meshName, key.actorId);
 }
 
 export function encodeRouteKey(key: RouteKey): string {
@@ -50,10 +62,7 @@ export function encodeKeySegments(...segments: readonly string[]): string {
 function zlinkLocationAutoConnectTypeName(type: ZLinkLocationAutoConnectType): string {
   switch (type) {
     case ZLinkLocationAutoConnectType.RouteMesh: return 'route-mesh';
-    case ZLinkLocationAutoConnectType.ClientServer: return 'client-server';
-    case ZLinkLocationAutoConnectType.DealerMesh: return 'dealer-mesh';
     case ZLinkLocationAutoConnectType.Fanout: return 'fanout';
-    case ZLinkLocationAutoConnectType.SpotMesh: return 'spot-mesh';
     default: throw new RangeError(`Unknown location auto-connect type: ${type}`);
   }
 }

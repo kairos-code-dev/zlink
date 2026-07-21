@@ -24,9 +24,9 @@ internal sealed class BindActorSessionHandler(
             : throw new InvalidOperationException($"Actor '{request.ActorId}' was not found."));
         _ = await context.Actors.BindOrGetAsync(resolved, cancellationToken).ConfigureAwait(false);
         evidence.Add(request.Scenario, request.ActorId, "session_bound", context.SessionId);
-        context.Client.Reply(new BindActorSessionRes(
+        await context.Client.Reply(new BindActorSessionRes(
                 request.Scenario, resolved.ActorId, resolved.NodeRid.ToString(), checked((long)resolved.Generation)))
-            .Submit(cancellationToken);
+            .SubmitAsync(cancellationToken);
     }
 }
 

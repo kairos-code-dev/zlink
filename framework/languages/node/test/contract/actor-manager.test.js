@@ -7,9 +7,6 @@ const {
   ZLinkSpotNativeActorJoinAdmission
 } = require('../../packages/framework/dist/runtime/spots/spot-native-actor-join-admission');
 const {
-  ZLinkLocalFirstActorJoinCoordinator
-} = require('../../packages/framework/dist/runtime/actors/local-first-actor-join-coordinator');
-const {
   ZLinkActorTransferRuntime
 } = require('../../packages/framework/dist/runtime/host/actor-transfer-runtime');
 const {
@@ -36,6 +33,53 @@ function customTextSerializer(prefix = 'custom:') {
 function encodedMessage(value) {
   return framework.ZLinkMessage.fromEncoded(zlink.Message.from(value));
 }
+
+function lifecycleContext(actorId, actorType = 'player', membershipEpoch = 1n) {
+  return {
+    [framework.ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]() {
+      return {
+        actorRef: {
+          nodeRid: zlink.RoutingId.from('node-a'),
+          actorId,
+          generation: 1n
+        },
+        actorType,
+        membershipEpoch
+      };
+    }
+  };
+}
+
+function lifecycleActor(actorId, actorType = 'player', membershipEpoch = 1n) {
+  return { actorId, context: lifecycleContext(actorId, actorType, membershipEpoch) };
+}
+
+test('actor lifecycle snapshots are immutable identity values with distinct epoch meanings', () => {
+  const actor = lifecycleActor('alice', 'player', 7n);
+  const join = framework.createActorJoinRequest(actor);
+  const membership = framework.createActorMembership(actor);
+  const coreMembership = framework.createActorMembership(
+    actor,
+    { nodeRid: zlink.RoutingId.from('node-b'), actorId: 'alice', generation: 4n },
+    11n
+  );
+
+  assert.equal(join.actor.actorId, 'alice');
+  assert.equal(join.actorType, 'player');
+  assert.equal(join.expectedMembershipEpoch, 7n);
+  assert.equal(membership.membershipEpoch, 7n);
+  assert.equal(String(coreMembership.actor.nodeRid), 'node-b');
+  assert.equal(coreMembership.actor.generation, 4n);
+  assert.equal(coreMembership.membershipEpoch, 11n);
+  assert.equal(Object.isFrozen(join), true);
+  assert.equal(Object.isFrozen(join.actor), true);
+  assert.equal(Object.isFrozen(membership), true);
+  assert.equal(Object.isFrozen(membership.actor), true);
+  assert.throws(
+    () => framework.createActorMembership({ actorId: 'invalid' }),
+    framework.ZLinkConfigurationException
+  );
+});
 
 test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantics', async () => {
   const events = [];
@@ -138,8 +182,9 @@ test('transferred actor materialization injects context without invoking actor c
     createActor(actorId) {
       return { nodeRid: 'target-node', actorId, generation: 2n };
     },
-    async destroyActor(actorRef) {
+    destroyActor(actorRef) {
       lifecycle.push(`destroy:${actorRef.actorId}:${actorRef.generation}`);
+      return { high: 0n, low: 1n };
     }
   });
   const registry = new framework.ZLinkActorTransferRegistry(
@@ -148,6 +193,17 @@ test('transferred actor materialization injects context without invoking actor c
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['transfer', TransferFactory]]),
     nativeActorNode: node,
+    nativeActorCompletionTableProvider: () => ({
+      async wait() {
+        return {
+          terminalResult: 0,
+          failureErrno: 0,
+          operationKind: 6,
+          kindData: null,
+          parts: []
+        };
+      }
+    }),
     actorTransferRegistry: registry,
     async actorCreatedNotifier() {
       lifecycle.push('onCreateActor');
@@ -197,9 +253,21 @@ test('transferred actor rollback keeps a dispatch-disabled tombstone until nativ
       createActor(actorId) {
         return { nodeRid: 'target-node', actorId, generation: 2n };
       },
-      async destroyActor() {
+      destroyActor() {
         destroyAttempts += 1;
         if (destroyAttempts === 1) throw new Error('temporary native destroy failure');
+        return { high: 0n, low: BigInt(destroyAttempts) };
+      }
+    }),
+    nativeActorCompletionTableProvider: () => ({
+      async wait() {
+        return {
+          terminalResult: 0,
+          failureErrno: 0,
+          operationKind: 6,
+          kindData: null,
+          parts: []
+        };
       }
     }),
     actorDestroyedCleanup() {
@@ -275,7 +343,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
   class PlayerFactory {
     async create(actorId, context) {
       activatedA++;
-      const row = await store.resolveActor({ actorType: 'player', actorId });
+      const row = await store.resolveActor({ meshName: 'play', actorId });
       assert.equal(row.ownerId, 'owner-a');
       return { actorId, context };
     }
@@ -312,11 +380,13 @@ test('ZLinkActorManager claims location before activation and releases on destro
   });
 
   await managerA.create('alice', 'player');
-  const row = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  const row = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(row.ownerId, 'owner-a');
-  assert.equal(row.nodeRid, 'node-a');
-  assert.deepEqual(row.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 7n });
-  assert.equal(managerA.getState('alice').locationGeneration, row.generation);
+  assert.equal(String(row.ownerNodeRid), 'node-a');
+  assert.equal(String(row.actorRef.nodeRid), 'node-a');
+  assert.equal(row.actorRef.actorId, 'alice');
+  assert.equal(row.actorRef.generation, 7n);
+  assert.ok(managerA.getState('alice').locationGeneration > 0n);
 
   await assert.rejects(
     () => managerB.create('alice', 'player'),
@@ -326,7 +396,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
   assert.equal(activatedB, 0);
 
   await managerA.destroyActor(nativeNodeA, rid('node-a'), managerA.getState('alice').actor);
-  assert.equal(await store.resolveActor({ actorType: 'player', actorId: 'alice' }), undefined);
+  assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'alice' }), undefined);
 });
 
 test('remote actor takeover fences a stale source release by location generation', async () => {
@@ -341,26 +411,27 @@ test('remote actor takeover fences a stale source release by location generation
     actorId: 'alice',
     generation: 4n
   });
-  const sourceRow = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
-
   const takeover = await target.lifecycle.takeoverActorJoinedSpot(
     'player',
     'alice',
     { nodeRid: rid('node-target'), actorId: 'alice', generation: 5n },
     'play',
-    rid('room-target')
+    rid('room-target'),
+    9n,
+    12n,
+    4n
   );
   assert.equal(takeover.status, framework.ZLinkActorClaimStatus.Claimed);
-  const targetRow = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  const targetRow = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(targetRow.ownerId, 'owner-target');
-  assert.equal(targetRow.locationKind, framework.ZLinkSpotKind.User);
+  assert.equal(targetRow.spotKind, framework.ZLinkSpotKind.User);
   assert.equal(String(targetRow.spotRid), 'room-target');
-  assert.equal(targetRow.generation > sourceRow.generation, true);
+  assert.equal(takeover.generation > sourceClaim.generation, true);
 
   await source.lifecycle.releaseActor('player', 'alice');
-  const afterStaleRelease = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  const afterStaleRelease = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(afterStaleRelease.ownerId, 'owner-target');
-  assert.equal(afterStaleRelease.generation, targetRow.generation);
+  assert.deepEqual(afterStaleRelease, targetRow);
   assert.equal(String(afterStaleRelease.actorRef.nodeRid), 'node-target');
 });
 
@@ -402,7 +473,10 @@ test('remote actor takeover preserves moving source state until the commit reply
     'alice',
     { nodeRid: rid('node-target'), actorId: 'alice', generation: 2n },
     'play',
-    rid('room-target')
+    rid('room-target'),
+    9n,
+    12n,
+    4n
   );
   await Promise.resolve();
 
@@ -431,7 +505,7 @@ test('ZLinkActorManager rolls location claim back when activation fails', async 
     () => manager.create('alice', 'player'),
     /actor factory failed/
   );
-  assert.equal(await store.resolveActor({ actorType: 'player', actorId: 'alice' }), undefined);
+  assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'alice' }), undefined);
   assert.equal(await manager.find('alice'), undefined);
 });
 
@@ -552,6 +626,80 @@ test('ZLinkActorManager wires actor context boundSession through runtime factory
   await actor.context.boundSession.disconnect();
 
   assert.deepEqual(sent, [{ ready: true }, 'disconnect']);
+});
+
+test('ZLinkActorContext exposes its RouteMesh and delegates leave through the lifecycle port', async () => {
+  const events = [];
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    actorMeshNameProvider(actorType) {
+      events.push(`mesh:${actorType}`);
+      return 'play-mesh';
+    },
+    async actorLeaveSpot(meshName, spotRid, actor) {
+      events.push(`leave:${meshName}:${spotRid}:${actor.actorId}`);
+    }
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  manager.getState('alice').setJoinedSpot('room-1');
+
+  assert.equal(actor.context.meshName, 'play-mesh');
+  await actor.context.leaveSpot();
+
+  assert.deepEqual(events, [
+    'mesh:player',
+    'mesh:player',
+    'mesh:player',
+    'leave:play-mesh:room-1:alice'
+  ]);
+});
+
+test('actor context handlers own actor packet dispatch before the Spot fallback registry', async () => {
+  class ActorPingHandler {
+    async handle(actor, context, request) {
+      return `${actor.actorId}:${context.packetName}:${request.value}`;
+    }
+  }
+  framework.ZLinkSpotActorRequest('ActorPingReq')(
+    ActorPingHandler.prototype,
+    'handle',
+    Object.getOwnPropertyDescriptor(ActorPingHandler.prototype, 'handle')
+  );
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+    configure() {
+      this.context.handlers.addHandler(ActorPingHandler);
+    }
+  }
+  class PlayerFactory {
+    create(actorId, context) {
+      return new PlayerActor(actorId, context);
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]])
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+  const dispatcher = new framework.ZLinkSpotActorDispatcher({
+    registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
+    spot: {},
+  });
+
+  const reply = await dispatcher.dispatchRequest(
+    actor,
+    'ActorPingReq',
+    { value: 'ready' }
+  );
+
+  assert.equal(reply, 'alice:ActorPingReq:ready');
 });
 
 test('bound session disconnect does not destroy actor manager state or native actor', async () => {
@@ -853,213 +1001,6 @@ test('actor join submit keeps the Spot turn while yield releases it', async () =
   assert.deepEqual(events.slice(-3), ['yield:start', 'yield:next', 'yield:end']);
 });
 
-test('local actor join publishes committed location only after joined callback completes', async () => {
-  const events = [];
-  const actor = { actorId: 'alice' };
-  const state = {
-    actorType: 'player',
-    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
-    setJoinedSpot() { events.push('membership'); }
-  };
-  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
-    localSpotManager: () => ({
-      hasActiveSpot: () => true,
-      async admitActorJoin(_spotRid, _actor, _request, commit) {
-        events.push('admission');
-        commit({});
-        events.push('joined');
-        return { accepted: true };
-      }
-    }),
-    nativeNode: () => ({ routingId: rid('node-a') }),
-    native: { joinSpot() { throw new Error('native join must not run'); } },
-    locationLifecycle: () => ({
-      async notifyActorJoinedSpot(actorType, actorId, meshName, spotRid) {
-        events.push(`location:${actorType}:${actorId}:${meshName}:${spotRid}`);
-      }
-    }),
-    localSpotMeshName: () => 'play',
-    actorTransferRuntime: {
-      async publishRoutedActorOwnership() { events.push('ownership'); }
-    },
-    async actorBinder() { events.push('bind'); }
-  });
-
-  const result = await coordinator.joinSpot(actor, state, 'room-1', zlink.Message.from('join'));
-
-  assert.equal(result.accepted, true);
-  assert.deepEqual(events, [
-    'admission',
-    'membership',
-    'joined',
-    'location:player:alice:play:room-1',
-    'ownership',
-    'bind'
-  ]);
-});
-
-test('local user Spot join prepares the source before target commit and removes source after commit', async () => {
-  const events = [];
-  const sourceSpot = { name: 'room-a' };
-  const targetSpot = { name: 'room-b' };
-  const actor = { actorId: 'alice' };
-  const state = {
-    spotRid: 'room-a',
-    spot: sourceSpot,
-    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
-    setJoinedSpot(spotRid, spot) {
-      this.spotRid = spotRid;
-      this.spot = spot;
-      events.push(`membership:${spotRid}`);
-    },
-    clearJoinedSpot() {
-      this.spotRid = undefined;
-      this.spot = undefined;
-    }
-  };
-  const spotManager = {
-    hasActiveSpot: () => true,
-    async admitActorJoin(_spotRid, _actor, _request, commit, _signal, leaveSource) {
-      events.push('admission');
-      await leaveSource();
-      await commit(targetSpot);
-      events.push('joined');
-      return { accepted: true };
-    },
-    async beginActorTransfer(spotRid, actorId) {
-      events.push(`begin:${spotRid}:${actorId}`);
-    },
-    async prepareActorLeaveForTransfer(spotRid, joinedActor) {
-      events.push(`leave:${spotRid}:${joinedActor.actorId}`);
-    },
-    async cancelActorTransfer() {
-      events.push('cancel');
-    },
-    async restoreActorAfterFailedTransfer() {
-      events.push('restore');
-    },
-    async commitActorLeaveAfterTransfer(spotRid, actorId) {
-      events.push(`source-removed:${spotRid}:${actorId}`);
-    }
-  };
-  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
-    localSpotManager: () => spotManager,
-    nativeNode: () => ({ routingId: rid('node-a') }),
-    native: { joinSpot() { throw new Error('native join must not run'); } }
-  });
-
-  const result = await coordinator.joinSpot(actor, state, 'room-b', zlink.Message.from('join'));
-
-  assert.equal(result.accepted, true);
-  assert.equal(state.spotRid, 'room-b');
-  assert.deepEqual(events, [
-    'admission',
-    'begin:room-a:alice',
-    'leave:room-a:alice',
-    'membership:room-b',
-    'joined',
-    'source-removed:room-a:alice'
-  ]);
-});
-
-test('local user Spot join restores source membership when target commit fails', async () => {
-  const events = [];
-  const sourceSpot = { name: 'room-a' };
-  const actor = { actorId: 'alice' };
-  const state = {
-    spotRid: 'room-a',
-    spot: sourceSpot,
-    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
-    setJoinedSpot(spotRid, spot) {
-      this.spotRid = spotRid;
-      this.spot = spot;
-      events.push(`membership:${spotRid}`);
-    },
-    clearJoinedSpot() {
-      this.spotRid = undefined;
-      this.spot = undefined;
-    }
-  };
-  const spotManager = {
-    hasActiveSpot: () => true,
-    async admitActorJoin(_spotRid, _actor, _request, commit, _signal, leaveSource) {
-      events.push('admission');
-      await leaveSource();
-      const rollback = await commit({ name: 'room-b' });
-      try {
-        throw new Error('target joined callback failed');
-      } catch (error) {
-        rollback();
-        throw error;
-      }
-    },
-    async beginActorTransfer() { events.push('begin'); },
-    async prepareActorLeaveForTransfer() { events.push('leave'); },
-    async cancelActorTransfer() { events.push('cancel'); },
-    async restoreActorAfterFailedTransfer() { events.push('restore'); },
-    async commitActorLeaveAfterTransfer() { events.push('source-removed'); }
-  };
-  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
-    localSpotManager: () => spotManager,
-    nativeNode: () => ({ routingId: rid('node-a') }),
-    native: { joinSpot() { throw new Error('native join must not run'); } }
-  });
-
-  await assert.rejects(
-    () => coordinator.joinSpot(actor, state, 'room-b', zlink.Message.from('join')),
-    /target joined callback failed/
-  );
-
-  assert.equal(state.spotRid, 'room-a');
-  assert.equal(state.spot, sourceSpot);
-  assert.deepEqual(events, [
-    'admission',
-    'begin',
-    'leave',
-    'membership:room-b',
-    'membership:room-a',
-    'restore'
-  ]);
-});
-
-test('post-commit actor binding failure delays accepted completion until the retry succeeds', async () => {
-  let bindAttempts = 0;
-  const reported = [];
-  const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
-    localSpotManager: () => ({
-      hasActiveSpot: () => true,
-      async admitActorJoin(_spotRid, _actor, _request, commit) {
-        commit({});
-        return { accepted: true };
-      }
-    }),
-    nativeNode: () => ({ routingId: rid('node-a') }),
-    native: { joinSpot() { throw new Error('native join must not run'); } },
-    async actorBinder() {
-      bindAttempts += 1;
-      if (bindAttempts === 1) throw new Error('binding route is still connecting');
-    },
-    postCommitErrorReporter(error) {
-      reported.push(error.message);
-    }
-  });
-  const actor = { actorId: 'alice' };
-  const state = {
-    nativeActorRef: { nodeRid: rid('node-a'), actorId: 'alice', generation: 1n },
-    setJoinedSpot() {}
-  };
-
-  const pending = coordinator.joinSpot(actor, state, 'room-1', zlink.Message.from('join'));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(bindAttempts, 1);
-  await new Promise((resolve) => setTimeout(resolve, 40));
-  const result = await pending;
-
-  assert.equal(result.accepted, true);
-  assert.equal(bindAttempts, 2);
-  assert.deepEqual(reported, ['binding route is still connecting']);
-});
-
 test('actor directory find/ensure uses id lookup and exposes actor ref snapshots', async () => {
   class PlayerFactory {
     create(actorId, context) {
@@ -1068,18 +1009,33 @@ test('actor directory find/ensure uses id lookup and exposes actor ref snapshots
   }
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]]),
+    actorMeshNameProvider: (actorType) => actorType === 'player' ? 'play-mesh' : undefined,
     actorCreatedNodeRidProvider: () => rid('node-a')
   });
 
-  assert.equal(await manager.find('alice'), undefined);
-  const ensured = await manager.ensure('alice', { actorType: 'player', displayName: 'Alice' });
-  const found = await manager.find('alice');
-  const existing = await manager.ensure('alice', { actorType: 'player', displayName: 'Ignored' });
+  assert.equal(await manager.find('play-mesh', 'alice'), undefined);
+  const ensured = await manager.ensure(
+    'play-mesh',
+    'alice',
+    { actorType: 'player', displayName: 'Alice' }
+  );
+  const found = await manager.find('play-mesh', 'alice');
+  const existing = await manager.ensure(
+    'play-mesh',
+    'alice',
+    { actorType: 'player', displayName: 'Ignored' }
+  );
   const snapshot = framework.zlinkActorRefSnapshotFrom(ensured);
+  const wireActorRef = framework.zlinkActorRefSnapshotToActorRef(
+    JSON.parse(JSON.stringify(snapshot, (_key, value) => typeof value === 'bigint' ? value.toString() : value))
+  );
 
   assert.deepEqual(found, ensured);
   assert.deepEqual(existing, ensured);
-  assert.deepEqual(framework.zlinkActorRefSnapshotToActorRef(snapshot), ensured);
+  assert.equal(snapshot.nodeRid, 'node-a');
+  assert.equal(wireActorRef.nodeRid, 'node-a');
+  assert.equal(wireActorRef.actorId, ensured.actorId);
+  assert.equal(wireActorRef.generation, ensured.generation);
   assert.equal(framework.zlinkActorRefSnapshotToActorRef({ ...snapshot, generation: '42' }).generation, 42n);
 });
 
@@ -1095,18 +1051,73 @@ test('actor directory find and ensure reuse remote location refs without local c
     }]]),
     actorCreatedNodeRidProvider: () => rid('node-a'),
     actorRefResolver: {
-      async resolveActorRef(actorId) {
-        return actorId === 'alice' ? remote : undefined;
+      async resolveActorRef(meshName, actorId) {
+        return meshName === 'play-mesh' && actorId === 'alice' ? remote : undefined;
       }
     }
   });
 
-  assert.deepEqual(await manager.find('alice'), remote);
+  assert.deepEqual(await manager.find('play-mesh', 'alice'), remote);
   assert.deepEqual(
-    await manager.ensure('alice', { actorType: 'player' }, { preferredNodeRid: rid('node-b') }),
+    await manager.ensure(
+      'play-mesh',
+      'alice',
+      { actorType: 'player' },
+      { preferredNodeRid: rid('node-b') }
+    ),
     remote
   );
   assert.equal(creates, 0);
+});
+
+test('actor directory isolates the same actor id by RouteMesh', async () => {
+  const meshARef = { nodeRid: rid('node-a'), actorId: 'shared', generation: 1n };
+  const meshBRef = { nodeRid: rid('node-b'), actorId: 'shared', generation: 2n };
+  const lookups = [];
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map(),
+    actorRefResolver: {
+      async resolveActorRef(meshName, actorId) {
+        lookups.push(`${meshName}:${actorId}`);
+        if (meshName === 'mesh-a' && actorId === 'shared') return meshARef;
+        if (meshName === 'mesh-b' && actorId === 'shared') return meshBRef;
+        return undefined;
+      }
+    }
+  });
+
+  assert.deepEqual(await manager.find('mesh-a', 'shared'), meshARef);
+  assert.deepEqual(await manager.find('mesh-b', 'shared'), meshBRef);
+  assert.deepEqual(lookups, ['mesh-a:shared', 'mesh-b:shared']);
+});
+
+test('actor manager does not expose a local ActorRef through another RouteMesh', async () => {
+  class PlayerFactory {
+    create(actorId, context) {
+      return { actorId, context };
+    }
+  }
+  const remote = { nodeRid: rid('node-b'), actorId: 'shared', generation: 9n };
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player-a', PlayerFactory], ['player-b', PlayerFactory]]),
+    actorMeshNameProvider: (actorType) =>
+      actorType === 'player-a' ? 'mesh-a' : actorType === 'player-b' ? 'mesh-b' : undefined,
+    actorCreatedNodeRidProvider: () => rid('node-a'),
+    actorRefResolver: {
+      async resolveActorRef(meshName, actorId) {
+        return meshName === 'mesh-b' && actorId === 'shared' ? remote : undefined;
+      }
+    }
+  });
+
+  const local = await manager.getOrCreate('mesh-a', 'shared', 'player-a');
+
+  assert.deepEqual(await manager.find('mesh-a', 'shared'), local);
+  assert.deepEqual(await manager.find('mesh-b', 'shared'), remote);
+  await assert.rejects(
+    () => manager.getOrCreate('mesh-b', 'shared', 'player-b'),
+    (error) => error instanceof framework.ZLinkConfigurationException
+  );
 });
 
 test('actor directory ensure rejects an unavailable preferred node before local creation', async () => {
@@ -1123,7 +1134,12 @@ test('actor directory ensure rejects an unavailable preferred node before local 
   });
 
   await assert.rejects(
-    () => manager.ensure('alice', { actorType: 'player' }, { preferredNodeRid: rid('node-b') }),
+    () => manager.ensure(
+      'play-mesh',
+      'alice',
+      { actorType: 'player' },
+      { preferredNodeRid: rid('node-b') }
+    ),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
   );
   assert.equal(creates, 0);
@@ -1140,7 +1156,7 @@ test('actor directory ensure rejects create failures with ActorCreateRejected', 
   });
 
   await assert.rejects(
-    () => manager.ensure('alice', { actorType: 'player' }),
+    () => manager.ensure('play-mesh', 'alice', { actorType: 'player' }),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateRejected
   );
 });
@@ -1232,6 +1248,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
 
 test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined spot state', async () => {
   const events = [];
+  const locationWrites = [];
   const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
   const joinedRef = { nodeRid: 'node-a', actorId: 'alice', generation: 2n };
   class PlayerActor {
@@ -1270,7 +1287,24 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
-      node
+      node,
+      completionTableProvider: () => node.completionTable,
+      locationLifecycle: {
+        async notifyActorJoinedSpot(...args) {
+          locationWrites.push(args);
+        }
+      },
+      spotRouteResolver: {
+        async resolve(spotRid) {
+          return {
+            routerChannelId: 'play',
+            targetNodeRid: rid('node-a'),
+            spotRid: rid(String(spotRid)),
+            spotKind: framework.ZLinkSpotKind.User,
+            targetSpotGeneration: 9n
+          };
+        }
+      }
     })
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
@@ -1278,10 +1312,21 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
 
   assert.equal(result.status, 'accepted');
-  assert.deepEqual(result.actor, { ...joinedRef, nodeRid: 'node-a' });
+  assert.equal(String(result.actor.nodeRid), 'node-a');
+  assert.equal(result.actor.actorId, joinedRef.actorId);
+  assert.equal(result.actor.generation, joinedRef.generation);
   assert.equal(result.reply, 'native-reply');
-  assert.equal(actor.context.spotRid, 'stage-1');
+  assert.equal(String(actor.context.spotRid), 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(locationWrites.length, 1);
+  assert.equal(locationWrites[0][0], 'player');
+  assert.equal(locationWrites[0][1], 'alice');
+  assert.equal(locationWrites[0][2], 'play');
+  assert.equal(String(locationWrites[0][3]), 'stage-1');
+  assert.equal(locationWrites[0][4], 1n);
+  assert.equal(locationWrites[0][5], 3n);
+  assert.equal(locationWrites[0][6], 1n);
   assert.deepEqual(events, [
     'lookup:alice',
     'createNative:alice',
@@ -1289,9 +1334,9 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   ]);
 });
 
-test('ZLinkActorNativeJoinCoordinator rejects remote joins without the two-phase routed transport', async () => {
+test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remote join', async () => {
   const events = [];
-  const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
+  const createdRef = { nodeRid: rid('node-b'), actorId: 'alice', generation: 1n };
   class PlayerActor {
     constructor(actorId, context) {
       this.actorId = actorId;
@@ -1311,12 +1356,11 @@ test('ZLinkActorNativeJoinCoordinator rejects remote joins without the two-phase
       return createdRef;
     },
     joinActor(actorRef, targetNodeRid, targetSpotRid, request, callback, timeoutMs) {
-      const decoded = JSON.parse(request.data().toString());
-      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${decoded.actorType}:${Buffer.from(decoded.request, 'base64').toString()}:${timeoutMs}`);
+      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${request.data().toString()}:${timeoutMs}`);
       callback({
         result: 0,
         joinResultCode: 0,
-        actor: { nodeRid: 'node-a', actorId: 'alice', generation: 2n },
+        actor: { nodeRid: rid('node-a'), actorId: 'alice', generation: 2n },
         targetNodeRid,
         joinedSpotRid: targetSpotRid,
         joinEpoch: 3n,
@@ -1332,7 +1376,8 @@ test('ZLinkActorNativeJoinCoordinator rejects remote joins without the two-phase
         routerChannelId: 'play-node',
         targetNodeRid: 'node-a',
         spotRid,
-        spotKind: framework.ZLinkSpotKind.User
+        spotKind: framework.ZLinkSpotKind.User,
+        targetSpotGeneration: 9n
       };
     }
   };
@@ -1340,6 +1385,7 @@ test('ZLinkActorNativeJoinCoordinator rejects remote joins without the two-phase
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
+      completionTableProvider: () => node.completionTable,
       spotRouteResolver,
       routedTransport: {
         canRoutePacketChannel(routerChannelId) {
@@ -1362,17 +1408,17 @@ test('ZLinkActorNativeJoinCoordinator rejects remote joins without the two-phase
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload');
-  await assert.rejects(
-    () => actor.context.joinSpot('room-1', request).submit(),
-    /requires the two-phase routed transfer protocol/
-  );
+  const result = await actor.context.joinSpot('room-1', request).submit();
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
-    'canRoutePacket:play-node'
+    'joinActor:1:node-a:room-1:payload:undefined',
+    'bind:node-a:alice:2'
   ]);
 });
 
-test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transport owns the router channel', async () => {
+test('ZLinkActorNativeJoinCoordinator keeps remote joins on the formal Core surface when a routed transport exists', async () => {
   const events = [];
   const createdRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   class PlayerActor {
@@ -1396,8 +1442,16 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
     entrySpot() {
       return { routingId: 'node-b-entry' };
     },
-    joinActor() {
-      throw new Error('native join must not be used when the route transport can route the SPOT node channel');
+    joinActor(actorRef, targetNodeRid, targetSpotRid, request, callback) {
+      events.push(`formalJoin:${targetNodeRid}:${targetSpotRid}:${request.data().toString()}`);
+      callback({
+        result: 0,
+        joinResultCode: 0,
+        actor: { ...actorRef, nodeRid: targetNodeRid, generation: 2n },
+        joinedSpotRid: targetSpotRid,
+        joinEpoch: 3n
+      }, [zlink.Message.from('routed-reply')]);
+      return true;
     }
   });
   const spotRouteResolver = {
@@ -1407,7 +1461,8 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
         routerChannelId: 'play-node',
         targetNodeRid: 'node-a',
         spotRid,
-        spotKind: framework.ZLinkSpotKind.User
+        spotKind: framework.ZLinkSpotKind.User,
+        targetSpotGeneration: 9n
       };
     }
   };
@@ -1415,6 +1470,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
+      completionTableProvider: () => node.completionTable,
       spotRouteResolver,
       routedTransport: {
         canRoutePacketChannel(routerChannelId) {
@@ -1475,12 +1531,7 @@ test('ZLinkActorNativeJoinCoordinator routes remote spot-node join when transpor
   assert.equal(result.reply, 'routed-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
-    'canRoutePacket:play-node',
-    'canRoutePacket:play-node',
-    'routeRequest:admission:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
-    'canRoutePacket:play-node',
-    'routeRequest:commit:play-node:node-a:room-1:__zlink.actor.join_spot.request:alice:player:payload',
-    'leave:alice',
+    'formalJoin:node-a:room-1:payload',
     'bind:node-a:alice:2'
   ]);
 });
@@ -1518,6 +1569,10 @@ test('remote transfer failures before commit preserve source ownership and never
       },
       createActor(actorId) {
         return { nodeRid: rid('node-source'), actorId, generation: 1n };
+      },
+      joinActor() {
+        events.push('formalJoin:failed');
+        throw new Error(`injected ${failurePoint} failure`);
       }
     });
     const transferRegistry = new framework.ZLinkActorTransferRegistry(
@@ -1527,13 +1582,15 @@ test('remote transfer failures before commit preserve source ownership and never
       actorFactories: new Map([['player', PlayerFactory]]),
       joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
         node,
+        completionTableProvider: () => node.completionTable,
         spotRouteResolver: {
           async resolve(spotRid) {
             return {
               routerChannelId: 'play',
               targetNodeRid: rid('node-target'),
               spotRid,
-              spotKind: framework.ZLinkSpotKind.User
+              spotKind: framework.ZLinkSpotKind.User,
+              targetSpotGeneration: 9n
             };
           }
         },
@@ -1594,13 +1651,11 @@ test('remote transfer failures before commit preserve source ownership and never
   }
 
   assert.deepEqual(await runFailure('transferOut'), [
-    'request:admission',
     'move:start',
     'transferOut',
     'move:cancel'
   ]);
   assert.deepEqual(await runFailure('prepare'), [
-    'request:admission',
     'move:start',
     'transferOut',
     'prepare',
@@ -1608,7 +1663,7 @@ test('remote transfer failures before commit preserve source ownership and never
   ]);
 });
 
-test('remote transfer commit rejection rolls prepared source movement back', async () => {
+test('formal remote join rejection rolls back prepared source movement and preserves ownership', async () => {
   class PlayerActor {
     constructor(actorId, context) {
       this.actorId = actorId;
@@ -1621,7 +1676,17 @@ test('remote transfer commit rejection rolls prepared source movement back', asy
   const node = createMockSpotNode({
     routingId: rid('node-source'),
     entrySpot() { return { routingId: rid('entry-source') }; },
-    createActor(actorId) { return { nodeRid: rid('node-source'), actorId, generation: 1n }; }
+    createActor(actorId) { return { nodeRid: rid('node-source'), actorId, generation: 1n }; },
+    joinActor(actorRef, _targetNodeRid, targetSpotRid, _request, callback) {
+      callback({
+        result: 1,
+        joinResultCode: 1,
+        actor: actorRef,
+        joinedSpotRid: targetSpotRid,
+        joinEpoch: 1n
+      }, []);
+      return true;
+    }
   });
   let rolledBack = false;
   let committed = false;
@@ -1629,13 +1694,15 @@ test('remote transfer commit rejection rolls prepared source movement back', asy
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
+      completionTableProvider: () => node.completionTable,
       spotRouteResolver: {
         async resolve(spotRid) {
           return {
             routerChannelId: 'play',
             targetNodeRid: rid('node-target'),
             spotRid,
-            spotKind: framework.ZLinkSpotKind.User
+            spotKind: framework.ZLinkSpotKind.User,
+            targetSpotGeneration: 9n
           };
         }
       },
@@ -1678,6 +1745,8 @@ test('remote transfer commit rejection rolls prepared source movement back', asy
   const result = await actor.context.joinSpot('room-target', encodedMessage('join')).submit();
 
   assert.equal(result.status, 'rejected');
+  assert.equal(result.rejection, undefined);
+  assert.equal(Object.hasOwn(result, 'reply'), false);
   assert.equal(rolledBack, true);
   assert.equal(committed, false);
   assert.equal(manager.getState('alice').isMoving, false);
@@ -1705,8 +1774,25 @@ test('target ownership publication failure releases the claimed actor location',
     markLocationReleased() { ownsLocation = false; }
   };
   const lifecycle = {
-    async takeoverActorJoinedSpot() {
-      return { status: 'claimed', claimed: { generation: 17n } };
+    async takeoverActorJoinedSpot(
+      actorType,
+      actorId,
+      actorRef,
+      meshName,
+      spotRid,
+      spotGeneration,
+      membershipEpoch,
+      ownerNodeGeneration
+    ) {
+      assert.equal(actorType, 'player');
+      assert.equal(actorId, 'alice');
+      assert.equal(String(actorRef.nodeRid), 'target-node');
+      assert.equal(meshName, 'play');
+      assert.equal(String(spotRid), 'room');
+      assert.equal(spotGeneration, 9n);
+      assert.equal(membershipEpoch, 12n);
+      assert.equal(ownerNodeGeneration, 4n);
+      return { status: 'claimed', generation: 17n };
     },
     async releaseActor() { released++; },
     async releaseActorEventually() { throw new Error('not used'); }
@@ -1720,7 +1806,19 @@ test('target ownership publication failure releases the claimed actor location',
       getState: () => state,
       async rollbackTransferredActor() {}
     }),
-    primarySpotNode: () => { throw new Error('not used'); },
+    primaryMeshNode: () => ({
+      actorLookup() {
+        return {
+          actor: state.nativeActorRef,
+          spotRid: rid('room'),
+          spotGeneration: 9n,
+          membershipEpoch: 12n
+        };
+      },
+      status() {
+        return { routingId: rid('target-node'), lifecycleGeneration: 4n };
+      }
+    }),
     async notifyEntrySpotActorLeft() {},
     locationLifecycle: () => lifecycle,
     actorHandoff: {},
@@ -1745,7 +1843,7 @@ test('target ownership publication failure releases the claimed actor location',
   assert.equal(locationGeneration, 17n);
 });
 
-test('transferred actor restores its native remote session binding before joined callbacks run', () => {
+test('transferred actor commit does not duplicate the native session binding restored by Core', () => {
   const actor = { actorId: 'alice' };
   const actorRef = { nodeRid: rid('target-node'), actorId: 'alice', generation: 9n };
   const sessionNodeRid = rid('session-node');
@@ -1783,10 +1881,9 @@ test('transferred actor restores its native remote session binding before joined
 
   runtime.commitRoutedActor(actor, rid('room'), { name: 'room' });
 
-  assert.equal(binds.length, 1);
-  assert.equal(binds[0].boundActor, actorRef);
-  assert.equal(binds[0].boundNodeRid, sessionNodeRid);
-  assert.equal(binds[0].boundSessionRid, sessionRid);
+  assert.equal(binds.length, 0);
+  assert.equal(state.spotRid.toHex(), rid('room').toHex());
+  assert.deepEqual(state.spot, { name: 'room' });
 });
 
 test('native actor join rollback restores Entry location without destroying the existing actor', async () => {
@@ -1795,6 +1892,7 @@ test('native actor join rollback restores Entry location without destroying the 
   let destroyed = 0;
   let joined = true;
   let ownsLocation = true;
+  let restoredLocation;
   const state = {
     actorType: 'player',
     get ownsLocation() { return ownsLocation; },
@@ -1811,16 +1909,26 @@ test('native actor join rollback restores Entry location without destroying the 
     primarySpotNode: () => { throw new Error('not used'); },
     async notifyEntrySpotActorLeft() {},
     locationLifecycle: () => ({
-      async notifyActorLeftSpot() { restoredToEntry++; }
+      async notifyActorLeftSpot(...args) {
+        restoredToEntry++;
+        restoredLocation = args;
+      }
     }),
     actorHandoff: {},
     actorTransferRegistry: {},
     clearRemoteActorPacketTarget() {}
   });
 
-  await runtime.rollbackNativeActorJoin(actor, {});
+  await runtime.rollbackNativeActorJoin(actor, {
+    locationSpotRid: rid('entry'),
+    spotGeneration: 5n,
+    membershipEpoch: 9n,
+    ownerNodeGeneration: 3n
+  });
   assert.equal(joined, false);
   assert.equal(restoredToEntry, 1);
+  assert.equal(restoredLocation[2].toHex(), rid('entry').toHex());
+  assert.deepEqual(restoredLocation.slice(3), [5n, 9n, 3n]);
   assert.equal(ownsLocation, true);
   assert.equal(destroyed, 0);
 });
@@ -1851,7 +1959,7 @@ test('native actor join rollback restores the previous User SPOT location', asyn
       async takeoverActorJoinedSpot(_type, _id, _ref, meshName, spotRid) {
         assert.equal(meshName, 'source-mesh');
         restoredLocationRid = spotRid;
-        return { status: 'claimed', claimed: { generation: 8n } };
+        return { status: 'claimed', generation: 8n };
       }
     }),
     actorHandoff: {},
@@ -1861,7 +1969,15 @@ test('native actor join rollback restores the previous User SPOT location', asyn
 
   await runtime.rollbackNativeActorJoin(
     actor,
-    { spotRid: previousSpotRid, spot: previousSpot, spotMeshName: 'source-mesh' }
+    {
+      spotRid: previousSpotRid,
+      spot: previousSpot,
+      spotMeshName: 'source-mesh',
+      actorRef: state.nativeActorRef,
+      spotGeneration: 7n,
+      membershipEpoch: 11n,
+      ownerNodeGeneration: 3n
+    }
   );
   assert.equal(currentSpotRid.toHex(), previousSpotRid.toHex());
   assert.equal(currentSpot, previousSpot);
@@ -1889,7 +2005,11 @@ test('Entry actor transaction keeps committed entry state when joined callback r
   const runtime = new ZLinkEntryActorRuntimeService({
     actorManager: () => ({ getState: () => state }),
     spotManager: () => undefined,
-    spotNodeRuntime: () => ({ primaryNode: { routingId: rid('entry-node') } }),
+    spotNodeRuntime: () => ({
+      primaryMeshNode: {
+        status: () => ({ routingId: rid('entry-node') })
+      }
+    }),
     streamBindingRuntime: { async refreshActor() {} },
     boundSessionRelay: { clearRemoteActorPacketTarget() { clearedTargets++; } }
   });
@@ -1942,7 +2062,10 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   });
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]]),
-    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      completionTableProvider: () => node.completionTable
+    })
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
   manager.getState('alice').setJoinedSpot('stage-1');
@@ -2161,7 +2284,7 @@ test('DefaultZLinkActorManager adopts remote native actor ref without claiming a
   });
 
   await ownerManager.create('alice', 'player');
-  const ownedRow = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  const ownedRow = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(ownedRow.ownerId, 'owner-a');
 
   const remoteManager = new framework.DefaultZLinkActorManager({
@@ -2176,7 +2299,7 @@ test('DefaultZLinkActorManager adopts remote native actor ref without claiming a
   );
 
   assert.equal(actor.actorId, 'alice');
-  const rowAfterRemoteAdoption = await store.resolveActor({ actorType: 'player', actorId: 'alice' });
+  const rowAfterRemoteAdoption = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(rowAfterRemoteAdoption.ownerId, 'owner-a');
   assert.equal(remoteManager.getState('alice').ownsLocation, false);
 });
@@ -2217,7 +2340,7 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
   const events = [];
   class EntrySpot {
     async onCreateActor(actor) {
-      events.push(`entryCreate:${actor.actorId}`);
+      events.push(`entryCreate:${actor.actor.actorId}`);
     }
     async onLeaveActor(actor) {
       events.push(`entryLeave:${actor.actorId}`);
@@ -2242,7 +2365,7 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
   });
 
   await activation.create();
-  await activation.notifyCreateActor({ actorId: 'alice' }, framework.ZLinkMessage.from({}));
+  await activation.notifyCreateActor(lifecycleActor('alice'), framework.ZLinkMessage.from({}));
   await activation.context.destroyActor({ actorId: 'alice' });
 
   assert.deepEqual(events, [
@@ -2294,7 +2417,11 @@ test('Entry actor commit keeps accepted state while stream binding retries post-
   const runtime = new ZLinkEntryActorRuntimeService({
     actorManager: () => ({ getState: () => state }),
     spotManager: () => undefined,
-    spotNodeRuntime: () => ({ primaryNode: { routingId: rid('entry-node') } }),
+    spotNodeRuntime: () => ({
+      primaryMeshNode: {
+        status: () => ({ routingId: rid('entry-node') })
+      }
+    }),
     streamBindingRuntime: {
       async refreshActor(actorRef) {
         attempts++;
@@ -2356,7 +2483,7 @@ test('native actor join admission closes caller-owned reply when submit fails', 
           return Promise.resolve().then(action);
         }
       },
-      resolveActor: () => ({ actorId: 'joined-actor' }),
+      resolveActor: () => lifecycleActor('joined-actor'),
       getTarget: () => ({
         async onActorJoin() {
           return { accepted: true, reply: 'accepted' };
@@ -2367,7 +2494,10 @@ test('native actor join admission closes caller-owned reply when submit fails', 
 
     await assert.rejects(
       admission.admit({
-        info: { targetActor: { actorId: 'joined-actor' } },
+        info: {
+          targetActor: { nodeRid: rid('node-a'), actorId: 'joined-actor', generation: 1n },
+          joinEpoch: 1n
+        },
         message: requestMessage
       }),
       /actor join reply submit failed/
@@ -2382,7 +2512,7 @@ test('native actor join admission closes caller-owned reply when submit fails', 
 
 test('native actor join commits Entry Spot lifecycle after the native reply', async () => {
   const events = [];
-  const actor = { actorId: 'alice' };
+  const actor = lifecycleActor('alice');
   const request = zlink.Message.from('return-home');
   const admission = new ZLinkSpotNativeActorJoinAdmission({
     nativeSpot: {
@@ -2411,7 +2541,10 @@ test('native actor join commits Entry Spot lifecycle after the native reply', as
   });
 
   await admission.admit({
-    info: { targetActor: { actorId: actor.actorId } },
+    info: {
+      targetActor: { nodeRid: rid('node-a'), actorId: actor.actorId, generation: 1n },
+      joinEpoch: 1n
+    },
     message: request
   });
 
@@ -2458,7 +2591,13 @@ function createEntryJoinHarness() {
   return {
     nativeSpot,
     enqueue(actorId, message) {
-      queue.push({ info: { targetActor: { actorId } }, message });
+      queue.push({
+        info: {
+          targetActor: { nodeRid: rid('node-a'), actorId, generation: 1n },
+          joinEpoch: 1n
+        },
+        message
+      });
       pending += 1;
     },
     async run() {
@@ -2487,15 +2626,15 @@ function createEntryActorRuntime(resolveActor, destroyActor = async () => {}) {
 test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch round-trip', async () => {
   const events = [];
   class EntrySpot {
-    async onActorJoin(actorId, request) {
+    async onActorJoin(actor, request) {
       const reason = request.decode();
-      events.push(`entryJoin:${actorId}:${reason}`);
+      events.push(`entryJoin:${actor.actor.actorId}:${reason}`);
       return reason === 'blocked'
         ? { accepted: false, reply: 'entry-reject-reply' }
         : { accepted: true, reply: 'entry-accept-reply' };
     }
     async onJoinedActor(actor) {
-      events.push(`entryJoined:${actor.actorId}`);
+      events.push(`entryJoined:${actor.actor.actorId}`);
     }
   }
   const harness = createEntryJoinHarness();
@@ -2505,7 +2644,7 @@ test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch
     nativeNode: { routingId: 'node-a', bindRemoteActorSession() {} },
     nodeRid: 'node-a',
     spotNodeName: 'node-a',
-    entryActorRuntime: createEntryActorRuntime((actorId) => ({ actorId }))
+    entryActorRuntime: createEntryActorRuntime((actorId) => lifecycleActor(actorId))
   });
   await activation.create();
   await activation.initialize();
@@ -2543,7 +2682,7 @@ test('native actor join remains accepted when post-commit joined callback throws
     nativeNode: { routingId: 'node-a', bindRemoteActorSession() {} },
     nodeRid: 'node-a',
     spotNodeName: 'node-a',
-    entryActorRuntime: createEntryActorRuntime((actorId) => ({ actorId }))
+    entryActorRuntime: createEntryActorRuntime((actorId) => lifecycleActor(actorId))
   });
   await activation.create();
   await activation.initialize();
@@ -2561,7 +2700,7 @@ test('ZLinkEntrySpotActivation auto-accepts dispatched entry join when onActorJo
   const events = [];
   class EntrySpot {
     async onJoinedActor(actor) {
-      events.push(`entryJoined:${actor.actorId}`);
+      events.push(`entryJoined:${actor.actor.actorId}`);
     }
   }
   const harness = createEntryJoinHarness();
@@ -2571,7 +2710,7 @@ test('ZLinkEntrySpotActivation auto-accepts dispatched entry join when onActorJo
     nativeNode: { routingId: 'node-a', bindRemoteActorSession() {} },
     nodeRid: 'node-a',
     spotNodeName: 'node-a',
-    entryActorRuntime: createEntryActorRuntime((actorId) => ({ actorId }))
+    entryActorRuntime: createEntryActorRuntime((actorId) => lifecycleActor(actorId))
   });
   await activation.create();
   await activation.initialize();
@@ -2644,7 +2783,21 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
   });
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]]),
-    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({ node })
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      completionTableProvider: () => node.completionTable,
+      spotRouteResolver: {
+        async resolve(spotRid) {
+          return {
+            routerChannelId: 'play',
+            targetNodeRid: rid('node-a'),
+            spotRid: rid(String(spotRid)),
+            spotKind: framework.ZLinkSpotKind.User,
+            targetSpotGeneration: 9n
+          };
+        }
+      }
+    })
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
 
@@ -2665,13 +2818,13 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
     }
   }
   class MoveSendHandler {
-    async handle(spot, actor, context, message) {
-      events.push(`send:${spot.name}:${actor.actorId}:${context.packetName}:${message}`);
+    async handle(actor, context, message) {
+      events.push(`send:${actor.actorId}:${context.packetName}:${message}`);
     }
   }
   class MoveRequestHandler {
-    async handle(spot, actor, context, request) {
-      events.push(`request:${spot.name}:${actor.actorId}:${context.packetName}:${request}`);
+    async handle(actor, context, request) {
+      events.push(`request:${actor.actorId}:${context.packetName}:${request}`);
       return 'ok';
     }
   }
@@ -2688,19 +2841,19 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
       actorType: PlayerActor,
       handlerType: MoveRequestHandler
     });
-  const actor = new PlayerActor('alice', {});
+  const actor = new PlayerActor('alice', lifecycleContext('alice'));
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry,
     spot: {
       name: 'game',
       async onJoinedActor(joinedActor) {
-        events.push(`joined:game:${joinedActor.actorId}`);
+        events.push(`joined:game:${joinedActor.actor.actorId}`);
       },
       async onLeaveActor(leftActor) {
-        events.push(`left:game:${leftActor.actorId}`);
+        events.push(`left:game:${leftActor.actor.actorId}`);
       },
       async onDisconnectActor(disconnectedActor) {
-        events.push(`disconnected:game:${disconnectedActor.actorId}`);
+        events.push(`disconnected:game:${disconnectedActor.actor.actorId}`);
       }
     }
   });
@@ -2713,8 +2866,8 @@ test('ZLinkSpotActorDispatcher invokes send request and lifecycle handlers witho
 
   assert.equal(reply, 'ok');
   assert.deepEqual(events, [
-    'send:game:alice:move:left',
-    'request:game:alice:move:right',
+    'send:alice:move:left',
+    'request:alice:move:right',
     'joined:game:alice',
     'left:game:alice',
     'disconnected:game:alice'
@@ -2778,8 +2931,8 @@ test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before i
   );
   assert.equal(handlerInvocations, 0);
   assert.equal(errors.length, 1);
-  assert.equal(errors[0].reason, framework.ZLinkDispatchErrorReason.PayloadDecodeFailed);
-  assert.equal(errors[0].action, framework.ZLinkDispatchErrorAction.Drop);
+  assert.equal(errors[0].reason, 'decode_error');
+  assert.equal(errors[0].action, 'drop');
 });
 
 test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered without actor type', async () => {
@@ -2790,8 +2943,8 @@ test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered wit
     }
   }
   class MoveRequestHandler {
-    async handle(spot, actor, context, request) {
-      events.push(`${spot.name}:${actor.actorId}:${context.packetName}:${request}`);
+    async handle(actor, context, request) {
+      events.push(`${actor.actorId}:${context.packetName}:${request}`);
       return 'ok';
     }
   }
@@ -2805,7 +2958,7 @@ test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered wit
   });
 
   assert.equal(await dispatcher.dispatchRequest(new PlayerActor('alice'), 'move', 'x'), 'ok');
-  assert.deepEqual(events, ['game:alice:move:x']);
+  assert.deepEqual(events, ['alice:move:x']);
 });
 
 test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts', async () => {
@@ -2816,19 +2969,19 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
       this.context = context;
     }
   }
-  const actor = new PlayerActor('alice', {});
+  const actor = new PlayerActor('alice', lifecycleContext('alice'));
   let accept = true;
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
     spot: {
-      async onActorJoin(actorId, request) {
-        events.push(`join:${actorId}:${request.decode()}`);
+      async onActorJoin(actor, request) {
+        events.push(`join:${actor.actor.actorId}:${request.decode()}`);
         return accept
           ? { accepted: true, reply: 'accept-reply' }
           : { accepted: false, reply: 'reject-reply' };
       },
       async onJoinedActor(joinedActor) {
-        events.push(`post:${joinedActor.actorId}`);
+        events.push(`post:${joinedActor.actor.actorId}`);
       }
     }
   });
@@ -2895,7 +3048,7 @@ test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers
     }
   }
   class MoveSendHandler {
-    async handle(_spot, actor, context, message) {
+    async handle(actor, context, message) {
       events.push(`send:${actor.actorId}:${context.packetName}:${message}`);
     }
   }
@@ -2921,7 +3074,7 @@ test('ZLinkSpotActorDispatcher does not fallback actor requests to send handlers
   assert.deepEqual(events, []);
 });
 
-test('ZLinkSpotActorDispatcher exposes dotnet actor reply metadata and compression options', async () => {
+test('ZLinkSpotActorDispatcher exposes actor reply compression options without reply metadata', async () => {
   let replyOptions;
   class PlayerActor {
     constructor(actorId, context) {
@@ -2930,9 +3083,8 @@ test('ZLinkSpotActorDispatcher exposes dotnet actor reply metadata and compressi
     }
   }
   class MoveRequestHandler {
-    async handle(_spot, _actor, context, request) {
+    async handle(_actor, context, request) {
       assert.equal(context.packetName, 'move');
-      assert.equal(context.reply.metadata('reply-trace-id', `reply:${request}`), context.reply);
       assert.equal(context.reply.compress(), context.reply);
       replyOptions = context.reply;
       return { accepted: true };
@@ -2957,7 +3109,7 @@ test('ZLinkSpotActorDispatcher exposes dotnet actor reply metadata and compressi
   assert.equal(replyOptions instanceof framework.DefaultZLinkSpotActorReplyOptions, true);
   const snapshot = replyOptions.snapshot();
   assert.equal(snapshot.compressPayload, true);
-  assert.deepEqual([...snapshot.metadata.entries()], [['reply-trace-id', 'reply:trace-101']]);
+  assert.deepEqual([...snapshot.metadata.entries()], []);
 });
 
 test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided serial executor', async () => {
@@ -2969,7 +3121,7 @@ test('ZLinkSpotActorDispatcher serializes user spot actor handlers on provided s
     }
   }
   class MoveSendHandler {
-    async handle(_spot, _actor, _context, message) {
+    async handle(_actor, _context, message) {
       events.push(`handler:${message}`);
     }
   }
@@ -3019,7 +3171,7 @@ async function locationLifecycleNode(store, ownerId, nodeRid) {
   await runtime.start(rid(nodeRid));
   return {
     runtime,
-    lifecycle: new framework.ZLinkLocationLifecycle(runtime, store)
+    lifecycle: new framework.ZLinkLocationLifecycle(runtime, store, 'play')
   };
 }
 
@@ -3028,7 +3180,9 @@ function rid(value) {
 }
 
 function createMockSpotNode(overrides) {
-  return {
+  let nextOperation = 1n;
+  const completions = new Map();
+  const node = {
     routingId: 'node-a',
     setRoutingId() {},
     setRouterBind() {},
@@ -3038,7 +3192,14 @@ function createMockSpotNode(overrides) {
     disconnectPeer() {},
     createSpot() { throw new Error('not used'); },
     getOrCreateSpot() { throw new Error('not used'); },
-    status() { throw new Error('not used'); },
+    status() {
+      return {
+        routingId: this.routingId instanceof zlink.RoutingId
+          ? this.routingId
+          : rid(String(this.routingId)),
+        lifecycleGeneration: 1n
+      };
+    },
     peers() { return []; },
     subjects() { return []; },
     entrySpot() { throw new Error('not used'); },
@@ -3066,5 +3227,64 @@ function createMockSpotNode(overrides) {
     async dispose() {},
     nativeInstance: {},
     ...overrides
+  };
+  node.completionTable = {
+    async wait(operationId) {
+      const completion = completions.get(operationId.low);
+      if (completion === undefined) throw new Error(`missing completion ${operationId.low}`);
+      completions.delete(operationId.low);
+      return completion;
+    }
+  };
+  node.joinActorSpot ??= (actor, targetNodeRid, targetSpotRid, _targetGeneration, request, timeoutMs) => {
+    const operationId = { high: 0n, low: nextOperation++ };
+    const submitted = node.joinActor(
+      actor,
+      targetNodeRid,
+      targetSpotRid,
+      zlink.Message.from(request),
+      (result, parts) => {
+        completions.set(operationId.low, legacyJoinCompletion(result, parts, targetSpotRid));
+      },
+      timeoutMs
+    );
+    if (!submitted) throw new Error('formal actor join submit failed');
+    return operationId;
+  };
+  const legacyJoinActorEntrySpot = node.joinActorEntrySpot.bind(node);
+  node.joinActorEntrySpot = (actor, targetNodeRid, request, timeoutMs) => {
+    const operationId = { high: 0n, low: nextOperation++ };
+    const submitted = legacyJoinActorEntrySpot(
+      actor,
+      targetNodeRid,
+      zlink.Message.from(request),
+      (result, parts) => {
+        completions.set(operationId.low, legacyJoinCompletion(result, parts, result.joinedSpotRid ?? null));
+      },
+      timeoutMs
+    );
+    if (!submitted) throw new Error('formal entry actor join submit failed');
+    return operationId;
+  };
+  return node;
+}
+
+function legacyJoinCompletion(result, parts, spotRid) {
+  return {
+    terminalResult: result.result,
+    failureErrno: result.result === 0 ? 0 : 1,
+    operationKind: 7,
+    kindData: {
+      kind: 'actorJoinCompletion',
+      joinResult: result.joinResultCode === 0 || result.joinResultCode === 7 ? 0 : 1,
+      actor: result.actor,
+      location: {
+        actor: result.actor,
+        spotRid,
+        spotGeneration: 1n,
+        membershipEpoch: result.joinEpoch ?? 1n
+      }
+    },
+    parts
   };
 }

@@ -463,11 +463,15 @@ bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
 
 void zlink::socket_base_t::stop ()
 {
-    //  Called by ctx when it is terminated (zlink_ctx_term).
-    //  'stop' command is sent from the threads that called zlink_ctx_term to
-    //  the thread owning the socket. This way, blocking call in the
-    //  owner thread can be interrupted.
+    //  Publish termination before queueing the administrative command. Mesh
+    //  owns one ROUTER that may have an ingress receiver and a blocked sender
+    //  on different threads. Either thread can consume the command mailbox
+    //  edge, so an additional wake plus the shared atomic state makes both
+    //  blocking paths observe ETERM. The command still performs the ordinary
+    //  monitor shutdown on the socket thread.
+    _ctx_terminated.store (true, std::memory_order_release);
     send_stop ();
+    static_cast<mailbox_t *> (_mailbox)->signal ();
 }
 
 
@@ -494,10 +498,16 @@ int zlink::socket_base_t::xsend (msg_t *)
     return -1;
 }
 
-int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_, msg_t *msg_)
+int zlink::socket_base_t::xsend_routed (const zlink_routing_id_t *target_rid_,
+                                       msg_t *msg_,
+                                       uint64_t *connection_id_out_,
+                                       uint64_t expected_connection_id_)
 {
     LIBZLINK_UNUSED (target_rid_);
     LIBZLINK_UNUSED (msg_);
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
+    LIBZLINK_UNUSED (expected_connection_id_);
     errno = ENOTSUP;
     return -1;
 }
@@ -539,10 +549,14 @@ int zlink::socket_base_t::xrecv_pipe (msg_t *msg_, pipe_t **pipe_out_)
     return xrecv (msg_);
 }
 
-int zlink::socket_base_t::xrecv_routed (msg_t *msg_, zlink_routing_id_t *source_rid_out_)
+int zlink::socket_base_t::xrecv_routed (msg_t *msg_,
+                                       zlink_routing_id_t *source_rid_out_,
+                                       uint64_t *connection_id_out_)
 {
     if (source_rid_out_)
         source_rid_out_->size = 0;
+    if (connection_id_out_)
+        *connection_id_out_ = 0;
 
     const int rc = xrecv (msg_);
     if (rc == 0 && source_rid_out_)

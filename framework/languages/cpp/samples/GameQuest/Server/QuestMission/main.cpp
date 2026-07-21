@@ -419,19 +419,18 @@ int main (int argc, char **argv)
         /* 같은 spot route mesh를 양방향으로 쓴다. API 노드의 entry spot으로 notify를 보내려면 그
          * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
-        quest_spot_route.enable_server (topology.selected_mission_spot_route_endpoint ());
-        quest_spot_route.set_routing_id (topology.selected_mission_rid ());
-        quest_spot_route.enable_client ();
+        quest_spot_route.listen (topology.selected_mission_spot_route_endpoint ())
+          .set_routing_id (topology.selected_mission_rid ())
+          .channel_name (sample_names_t::quest_spot_route);
         options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-a")] =
           sample_names_t::quest_spot_route;
         options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-b")] =
           sample_names_t::quest_spot_route;
         auto spot_services = options.services ().build_provider ();
-        options.add_spot_mesh (sample_names_t::quest_spot_discovery)
-          .enable_router (topology.selected_mission_spot_router_endpoint ())
+        auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
+        quest_spot.channel_name (sample_names_t::quest_spot_route);
+        quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
-          .enable_pub_sub (topology.selected_mission_spot_endpoint ())
-          .accept_route_mesh (sample_names_t::quest_spot_route)
           .add_spot<player_quest_spot_t> (
             sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] {
                 return std::make_shared<player_quest_spot_t> (*quest_store_ptr, spot_services);

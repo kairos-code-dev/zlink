@@ -200,6 +200,7 @@ internal struct ZlinkMeshReceiveRecord
     public uint Domain;
     public ZlinkRoutingId SourceNodeRid;
     public ZlinkRoutingId SourceSpotRid;
+    public ulong SourceBindingGeneration;
     public ZlinkActorRef SourceActor;
     public ZlinkMeshOperationId OperationId;
     public int OperationKind;
@@ -352,6 +353,7 @@ internal struct ZlinkSpotStatus
     public uint Draining;
     public int LastError;
     public ulong LastChangedMs;
+    public int ActivationState;
 }
 
 // --- stream_session.h ---

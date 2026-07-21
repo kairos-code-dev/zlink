@@ -310,28 +310,16 @@ struct handler_group_options_state_t
 
 struct framework_options_state_t
 {
-    std::set<std::string> spot_nodes;
-    std::map<std::string, std::function<void ()>> spot_node_appliers;
-    std::set<std::string> spot_nodes_with_runtime_capability;
-    std::set<std::string> spot_nodes_with_router;
-    std::set<std::string> spot_nodes_with_pub_sub;
     std::vector<std::function<void (zlink_builder_t &)>> deferred_zlink_actions;
     std::map<std::string, std::function<void (zlink_builder_t &)>> keyed_zlink_actions;
-    zlink_builder_t *active_zlink = nullptr;
     std::set<std::string> client_server_channels;
     std::set<std::string> fanout_channels;
     std::map<std::string, endpoint_connections_t> client_endpoint_connections;
     std::map<std::string, endpoint_connections_t> subscriber_endpoint_connections;
-    std::map<std::string, endpoint_connections_t> spot_router_endpoint_connections;
-    std::map<std::string, endpoint_connections_t> spot_pub_sub_endpoint_connections;
     std::set<std::string> client_server_channels_with_client;
     std::set<std::string> client_server_channels_with_server;
     std::set<std::string> fanout_channels_with_publisher;
     std::set<std::string> fanout_channels_with_subscriber;
-    std::set<std::string> accepted_spot_route_channels;
-    std::map<std::string, std::set<std::string>> accepted_spot_route_channels_by_node;
-    manual_connection_map_t accepted_spot_route_manual_connections_by_node;
-    std::set<std::string> implicit_spot_route_channels;
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;
@@ -340,7 +328,6 @@ struct framework_options_state_t
     std::set<std::string> stream_nodes_with_session;
     std::set<std::string> stream_session_names;
     std::map<std::string, stream_session_factory_t> stream_session_factories;
-    std::map<std::string, spot_drain_policy_t> spot_drain_policies;
     bool use_in_memory_location_stores = false;
     bool has_location_store_instance = false;
     // In-flight handoff (spot-actor.ko.md 10.4): deployment override for the

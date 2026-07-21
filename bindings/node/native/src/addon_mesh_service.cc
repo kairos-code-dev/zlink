@@ -10,8 +10,10 @@
 #include "addon_message_values.h"
 #include "addon_spot_api.h"
 
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <string>
@@ -20,6 +22,156 @@
 
 namespace
 {
+
+const zlink_msg_t *svc_parts_ptr (const std::vector<zlink_msg_t> &parts);
+void svc_set_bool (napi_env env, napi_value obj, const char *name, bool value);
+void svc_set_int32 (napi_env env, napi_value obj, const char *name, int32_t value);
+napi_value svc_create_publish_detail (napi_env env, const zlink_mesh_publish_detail_t &detail);
+
+struct publisher_handle_state_t
+{
+    publisher_handle_state_t () : publisher (NULL), active_work_count (0), closing (false) {}
+
+    std::mutex mutex;
+    void *publisher;
+    size_t active_work_count;
+    bool closing;
+};
+
+enum async_publish_phase_t
+{
+    async_publish_queued = 0,
+    async_publish_started = 1,
+    async_publish_cancelled = 2,
+    async_publish_finished = 3
+};
+
+struct async_publish_state_t
+{
+    async_publish_state_t ()
+        : publisher_handle (NULL), publisher (NULL), flags (ZLINK_SEND_FLAGS_NONE),
+          phase (async_publish_queued), result (ZLINK_SUBMIT_INTERNAL_ERROR), native_errno (0)
+    {
+        memset (&detail, 0, sizeof (detail));
+        detail.struct_size = sizeof (detail);
+        detail.version = ZLINK_MESH_NODE_ABI_VERSION;
+    }
+
+    publisher_handle_state_t *publisher_handle;
+    void *publisher;
+    std::string channel;
+    std::string topic;
+    std::vector<uint8_t> metadata;
+    std::vector<zlink_msg_t> parts;
+    zlink_send_flags_t flags;
+    std::atomic<int> phase;
+    zlink_submit_result_t result;
+    int native_errno;
+    std::string error_message;
+    zlink_mesh_publish_detail_t detail;
+};
+
+struct async_publish_work_t
+{
+    std::shared_ptr<async_publish_state_t> state;
+    napi_deferred deferred;
+    napi_async_work work;
+    napi_ref publisher_ref;
+};
+
+void publisher_handle_finalize (napi_env, void *data, void *)
+{
+    publisher_handle_state_t *state = static_cast<publisher_handle_state_t *> (data);
+    if (!state)
+        return;
+    void *publisher = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        state->closing = true;
+        if (state->active_work_count == 0) {
+            publisher = state->publisher;
+            state->publisher = NULL;
+        }
+    }
+    if (publisher)
+        zlink_mesh_node_publisher_destroy (&publisher);
+    delete state;
+}
+
+void finish_publisher_work (publisher_handle_state_t *state)
+{
+    if (!state)
+        return;
+    void *publisher = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->active_work_count > 0)
+            state->active_work_count -= 1;
+        if (state->closing && state->active_work_count == 0) {
+            publisher = state->publisher;
+            state->publisher = NULL;
+        }
+    }
+    if (publisher)
+        zlink_mesh_node_publisher_destroy (&publisher);
+}
+
+void async_publish_cancel_token_finalize (napi_env, void *data, void *)
+{
+    delete static_cast<std::shared_ptr<async_publish_state_t> *> (data);
+}
+
+void execute_async_publish (napi_env, void *data)
+{
+    async_publish_work_t *work = static_cast<async_publish_work_t *> (data);
+    async_publish_state_t &state = *work->state;
+    int expected = async_publish_queued;
+    if (!state.phase.compare_exchange_strong (expected, async_publish_started,
+                                               std::memory_order_acq_rel))
+        return;
+
+    zlink_mesh_metadata_view_t metadata_view;
+    const zlink_mesh_metadata_view_t *metadata = NULL;
+    if (!state.metadata.empty ()) {
+        metadata_view.data = state.metadata.data ();
+        metadata_view.size = state.metadata.size ();
+        metadata = &metadata_view;
+    }
+    state.result = zlink_mesh_node_publisher_publish (
+      state.publisher, state.channel.c_str (), state.topic.c_str (), metadata,
+      svc_parts_ptr (state.parts), state.parts.size (), &state.detail, state.flags);
+    if (state.result != ZLINK_SUBMIT_OK) {
+        state.native_errno = zlink_errno ();
+        const char *message = zlink_strerror (state.native_errno);
+        state.error_message = message ? message : "error";
+    }
+    state.phase.store (async_publish_finished, std::memory_order_release);
+}
+
+void complete_async_publish (napi_env env, napi_status, void *data)
+{
+    async_publish_work_t *work = static_cast<async_publish_work_t *> (data);
+    async_publish_state_t &state = *work->state;
+    close_msg_vector (state.parts);
+    state.parts.clear ();
+
+    napi_value result;
+    napi_create_object (env, &result);
+    const bool cancelled = state.phase.load (std::memory_order_acquire) == async_publish_cancelled;
+    svc_set_bool (env, result, "cancelled", cancelled);
+    svc_set_int32 (env, result, "result", cancelled ? ZLINK_SUBMIT_INTERNAL_ERROR : state.result);
+    svc_set_int32 (env, result, "nativeErrno", cancelled ? 0 : state.native_errno);
+    napi_value message;
+    napi_create_string_utf8 (env, state.error_message.c_str (), NAPI_AUTO_LENGTH, &message);
+    napi_set_named_property (env, result, "errorMessage", message);
+    napi_set_named_property (env, result, "detail", svc_create_publish_detail (env, state.detail));
+    napi_resolve_deferred (env, work->deferred, result);
+    finish_publisher_work (state.publisher_handle);
+
+    napi_delete_reference (env, work->publisher_ref);
+    napi_delete_async_work (env, work->work);
+    delete work;
+}
 
 // --- small argument / value helpers -------------------------------------
 
@@ -1009,8 +1161,15 @@ napi_value mesh_node_publisher_new (napi_env env, napi_callback_info info)
     void *publisher = zlink_mesh_node_publisher_new (node);
     if (!publisher)
         return throw_last_error (env, "meshNodePublisherNew failed");
+    publisher_handle_state_t *state = new (std::nothrow) publisher_handle_state_t ();
+    if (!state) {
+        zlink_mesh_node_publisher_destroy (&publisher);
+        napi_throw_error (env, NULL, "meshNodePublisherNew failed: out of memory");
+        return NULL;
+    }
+    state->publisher = publisher;
     napi_value ext;
-    napi_create_external (env, publisher, NULL, NULL, &ext);
+    napi_create_external (env, state, publisher_handle_finalize, NULL, &ext);
     return ext;
 }
 
@@ -1019,7 +1178,18 @@ napi_value mesh_node_publisher_publish (napi_env env, napi_callback_info info)
     napi_value argv[6];
     size_t argc = 6;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *publisher = svc_external (env, argv[0]);
+    publisher_handle_state_t *handle =
+      static_cast<publisher_handle_state_t *> (svc_external (env, argv[0]));
+    void *publisher = NULL;
+    if (handle) {
+        std::lock_guard<std::mutex> lock (handle->mutex);
+        if (!handle->closing)
+            publisher = handle->publisher;
+    }
+    if (!publisher) {
+        errno = ESHUTDOWN;
+        return throw_last_error (env, "meshNodePublisherPublish failed");
+    }
     std::string channel = get_string (env, argv[1]);
     std::string topic = get_string (env, argv[2]);
     zlink_mesh_metadata_view_t meta_storage;
@@ -1041,13 +1211,159 @@ napi_value mesh_node_publisher_publish (napi_env env, napi_callback_info info)
     return svc_create_publish_detail (env, detail);
 }
 
+napi_value mesh_node_publisher_publish_async (napi_env env, napi_callback_info info)
+{
+    napi_value argv[6];
+    size_t argc = 6;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    publisher_handle_state_t *handle =
+      static_cast<publisher_handle_state_t *> (svc_external (env, argv[0]));
+    if (!handle) {
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync failed: invalid handle");
+        return NULL;
+    }
+
+    async_publish_state_t *state_storage = new (std::nothrow) async_publish_state_t ();
+    if (!state_storage) {
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync failed: out of memory");
+        return NULL;
+    }
+    std::shared_ptr<async_publish_state_t> state (state_storage);
+    state->publisher_handle = handle;
+    state->channel = get_string (env, argv[1]);
+    state->topic = get_string (env, argv[2]);
+    napi_valuetype metadata_type = napi_undefined;
+    napi_typeof (env, argv[3], &metadata_type);
+    if (metadata_type != napi_undefined && metadata_type != napi_null) {
+        bool is_buffer = false;
+        napi_is_buffer (env, argv[3], &is_buffer);
+        if (!is_buffer) {
+            napi_throw_type_error (env, NULL, "metadata must be a Buffer");
+            return NULL;
+        }
+        void *metadata_data = NULL;
+        size_t metadata_size = 0;
+        napi_get_buffer_info (env, argv[3], &metadata_data, &metadata_size);
+        if (metadata_size > 0) {
+            const uint8_t *metadata_bytes = static_cast<const uint8_t *> (metadata_data);
+            state->metadata.assign (metadata_bytes, metadata_bytes + metadata_size);
+        }
+    }
+    if (!svc_build_parts (env, argv[4], &state->parts))
+        return NULL;
+    state->flags = static_cast<zlink_send_flags_t> (svc_int32 (env, argv[5]));
+
+    {
+        std::lock_guard<std::mutex> lock (handle->mutex);
+        if (handle->closing || !handle->publisher) {
+            close_msg_vector (state->parts);
+            napi_throw_error (env, NULL, "meshNodePublisherPublishAsync failed: publisher is closed");
+            return NULL;
+        }
+        state->publisher = handle->publisher;
+        handle->active_work_count += 1;
+    }
+
+    async_publish_work_t *work = new (std::nothrow) async_publish_work_t ();
+    if (!work) {
+        close_msg_vector (state->parts);
+        finish_publisher_work (handle);
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync failed: out of memory");
+        return NULL;
+    }
+    work->state = state;
+    work->deferred = NULL;
+    work->work = NULL;
+    work->publisher_ref = NULL;
+
+    napi_value promise;
+    napi_value resource_name;
+    napi_create_string_utf8 (env, "zlink.meshPublisher.publish", NAPI_AUTO_LENGTH, &resource_name);
+    if (napi_create_promise (env, &work->deferred, &promise) != napi_ok
+        || napi_create_reference (env, argv[0], 1, &work->publisher_ref) != napi_ok
+        || napi_create_async_work (env, NULL, resource_name, execute_async_publish,
+                                   complete_async_publish, work, &work->work)
+             != napi_ok) {
+        if (work->publisher_ref)
+            napi_delete_reference (env, work->publisher_ref);
+        close_msg_vector (state->parts);
+        finish_publisher_work (handle);
+        delete work;
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync setup failed");
+        return NULL;
+    }
+    if (napi_queue_async_work (env, work->work) != napi_ok) {
+        napi_delete_async_work (env, work->work);
+        napi_delete_reference (env, work->publisher_ref);
+        close_msg_vector (state->parts);
+        finish_publisher_work (handle);
+        delete work;
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync queue failed");
+        return NULL;
+    }
+
+    std::shared_ptr<async_publish_state_t> *cancel_state =
+      new (std::nothrow) std::shared_ptr<async_publish_state_t> (state);
+    if (!cancel_state) {
+        int expected = async_publish_queued;
+        state->phase.compare_exchange_strong (expected, async_publish_cancelled,
+                                               std::memory_order_acq_rel);
+        napi_throw_error (env, NULL, "meshNodePublisherPublishAsync failed: out of memory");
+        return NULL;
+    }
+    napi_value cancel_token;
+    napi_create_external (env, cancel_state, async_publish_cancel_token_finalize, NULL,
+                          &cancel_token);
+    napi_value operation;
+    napi_create_object (env, &operation);
+    napi_set_named_property (env, operation, "promise", promise);
+    napi_set_named_property (env, operation, "cancelToken", cancel_token);
+    return operation;
+}
+
+napi_value mesh_node_publisher_publish_cancel (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    std::shared_ptr<async_publish_state_t> *holder =
+      static_cast<std::shared_ptr<async_publish_state_t> *> (svc_external (env, argv[0]));
+    bool cancelled = false;
+    if (holder && *holder) {
+        int expected = async_publish_queued;
+        cancelled = (*holder)->phase.compare_exchange_strong (
+          expected, async_publish_cancelled, std::memory_order_acq_rel);
+    }
+    napi_value out;
+    napi_get_boolean (env, cancelled, &out);
+    return out;
+}
+
 napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *publisher = svc_external (env, argv[0]);
-    if (zlink_mesh_node_publisher_destroy (&publisher) != ZLINK_CLOSE_OK)
+    publisher_handle_state_t *state =
+      static_cast<publisher_handle_state_t *> (svc_external (env, argv[0]));
+    if (!state) {
+        errno = EFAULT;
+        return throw_last_error (env, "meshNodePublisherDestroy failed");
+    }
+    void *publisher = NULL;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        if (state->closing) {
+            errno = EFAULT;
+            return throw_last_error (env, "meshNodePublisherDestroy failed");
+        }
+        state->closing = true;
+        if (state->active_work_count == 0) {
+            publisher = state->publisher;
+            state->publisher = NULL;
+        }
+    }
+    if (publisher && zlink_mesh_node_publisher_destroy (&publisher) != ZLINK_CLOSE_OK)
         return throw_last_error (env, "meshNodePublisherDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
@@ -1461,6 +1777,8 @@ napi_value mesh_claim_recv_batch (napi_env env, napi_callback_info info)
                                  create_routing_id_value (env, record.source_node_rid));
         napi_set_named_property (env, record_obj, "sourceSpotRid",
                                  create_routing_id_value (env, record.source_spot_rid));
+        svc_set_bigint (env, record_obj, "sourceBindingGeneration",
+                        record.source_binding_generation);
         napi_set_named_property (env, record_obj, "sourceActor",
                                  svc_create_actor_ref (env, record.source_actor));
         napi_set_named_property (env, record_obj, "operationId",
@@ -2490,20 +2808,21 @@ napi_value stream_session_request_to_actor (napi_env env, napi_callback_info inf
 
 napi_value mesh_node_actor_send_bound_session (napi_env env, napi_callback_info info)
 {
-    napi_value argv[4];
-    size_t argc = 4;
+    napi_value argv[5];
+    size_t argc = 5;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *node = svc_external (env, argv[0]);
     zlink_actor_ref_t actor;
     if (!svc_parse_actor_ref (env, argv[1], &actor))
         return NULL;
+    uint64_t expected_generation = svc_u64 (env, argv[2]);
     std::vector<zlink_msg_t> parts;
-    if (!svc_build_parts (env, argv[2], &parts))
+    if (!svc_build_parts (env, argv[3], &parts))
         return NULL;
-    zlink_send_flags_t flags = static_cast<zlink_send_flags_t> (svc_int32 (env, argv[3]));
+    zlink_send_flags_t flags = static_cast<zlink_send_flags_t> (svc_int32 (env, argv[4]));
     zlink_submit_result_t rc =
-      zlink_mesh_node_actor_send_bound_session (node, &actor, svc_parts_ptr (parts), parts.size (),
-                                                flags);
+      zlink_mesh_node_actor_send_bound_session (node, &actor, expected_generation,
+                                                svc_parts_ptr (parts), parts.size (), flags);
     close_msg_vector (parts);
     napi_value out;
     napi_create_int32 (env, static_cast<int32_t> (rc), &out);

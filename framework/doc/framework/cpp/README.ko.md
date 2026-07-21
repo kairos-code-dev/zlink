@@ -5,7 +5,7 @@
 | 문서 | 범위 |
 |------|------|
 | [01 시스템 구조](../spec/server/languages/cpp/01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, configuration, **logging**, HTTP scope·middleware 순서, 기능 등록 |
-| [02 framework 인터페이스](../spec/server/languages/cpp/02-framework-interfaces.ko.md) | 전체 public 타입·시그니처 카탈로그 — App/Host, DI, builder, handler registry, messaging, SPOT, actor, STREAM, dispatch 오류, health, location store |
+| [기능별 exact interface](../spec/server/languages/cpp/interfaces/README.ko.md) | App/Host, builder, messaging, Spot, Actor, STREAM, Location과 monitoring의 exact public 계약 |
 | [60 HTTP hosting](../spec/server/languages/cpp/60-http-hosting.ko.md) | HTTP 호스팅 계약 |
 | [61 내장 HTTP 서버](../spec/server/languages/cpp/61-embedded-http-server.ko.md) | 내장 서버 |
 

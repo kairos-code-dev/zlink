@@ -84,9 +84,8 @@ public interface IZLinkSessionContext
 }
 
 public interface IZLinkSessionSendCall
+    : IZLinkMetadataCall<IZLinkSessionSendCall>
 {
-    IZLinkSessionSendCall Metadata(string key, string value);
-
     IZLinkSessionSendCall Compress();
 
     /// <summary>
@@ -94,13 +93,12 @@ public interface IZLinkSessionSendCall
     /// transport acceptance complete before this method returns. A full or
     /// unavailable transport is reported immediately.
     /// </summary>
-    void Submit(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
 {
-    IZLinkSessionReplyCall Metadata(string key, string value);
-
     IZLinkSessionReplyCall Compress();
 
     /// <summary>
@@ -108,5 +106,6 @@ public interface IZLinkSessionReplyCall
     /// the request packet name and does not expose PacketName because a reply
     /// must keep the request correlation.
     /// </summary>
-    void Submit(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default);
 }

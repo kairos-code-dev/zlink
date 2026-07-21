@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { zlinkRequestHandler } from '@zlink-systems/nestjs';
 import {
   ZLINK_ACTOR_MANAGER,
   ZLINK_SPOT_HANDLE_RESOLVER,
@@ -7,7 +8,7 @@ import {
 import { ZONEWORLD_CONFIG } from '../../../../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../../../../Configuration/configuration';
 import { ZoneWorldNames, zonesOf } from '../../../../../Shared/spec';
-import { DeliverAnnounceMsg, EnsurePlayerActorRes } from '../../../../../Shared/contracts';
+import { DeliverAnnounceMsg, EnsurePlayerActorRes, PacketNames } from '../../../../../Shared/contracts';
 import type {
   ApplyNodeMaintenanceReq,
   ApplyNodeMaintenanceRes,
@@ -28,6 +29,7 @@ import type { NodeMaintenanceChangedEvent, WorldAnnounceEvent } from '../../../.
 import { NodeRuntimeState } from '../../../Domain/node-runtime-state';
 
 @Injectable()
+@zlinkRequestHandler('zone-ops', PacketNames.applyNodeMaintenanceReq)
 class ApplyNodeMaintenanceHandler implements
   ZLinkRequestHandler<ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes> {
   constructor(
@@ -49,6 +51,7 @@ class ApplyNodeMaintenanceHandler implements
 }
 
 @Injectable()
+@zlinkRequestHandler('zone-ops', PacketNames.getNodeDiagnosticsReq)
 class GetNodeDiagnosticsHandler implements
   ZLinkRequestHandler<GetNodeDiagnosticsReq, GetNodeDiagnosticsRes> {
   constructor(
@@ -69,12 +72,18 @@ class GetNodeDiagnosticsHandler implements
 }
 
 @Injectable()
+@zlinkRequestHandler('zone-actors', PacketNames.ensurePlayerActorReq)
 class EnsurePlayerActorHandler implements ZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes> {
   constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager) {}
 
   async handle(request: EnsurePlayerActorReq, _context: ZLinkRequestContext): Promise<EnsurePlayerActorRes> {
     if (!/^[a-z0-9-]{1,32}$/.test(request.playerId)) throw new Error(`Invalid player id '${request.playerId}'.`);
-    const actor = await this.actors.getOrCreate(request.playerId, ZoneWorldNames.playerActorType, request);
+    const actor = await this.actors.getOrCreate(
+      ZoneWorldNames.zoneMesh,
+      request.playerId,
+      ZoneWorldNames.playerActorType,
+      request
+    );
     return new EnsurePlayerActorRes(request.playerId, {
       nodeRid: String(actor.nodeRid),
       actorId: actor.actorId,
@@ -96,7 +105,7 @@ class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent>
     const nodeId = this.config.zoneNode?.nodeId;
     if (nodeId === undefined) return;
     for (const zoneId of zonesOf(nodeId)) {
-      const handle = await this.handles.resolveSpotHandle(zoneId);
+      const handle = await this.handles.resolveSpotHandle(ZoneWorldNames.zoneMesh, zoneId);
       if (handle !== undefined) {
         this.outbound.sendToSpot(handle, new DeliverAnnounceMsg(message.announcementId, message.text)).submit();
       }

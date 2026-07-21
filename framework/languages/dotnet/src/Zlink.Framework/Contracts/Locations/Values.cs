@@ -43,3 +43,10 @@ public enum ZLinkLocationKind
     Spot = 2,
     Actor = 3
 }
+
+public enum ZLinkSpotActivationState
+{
+    Activating = 1,
+    Ready = 2,
+    Closing = 3
+}

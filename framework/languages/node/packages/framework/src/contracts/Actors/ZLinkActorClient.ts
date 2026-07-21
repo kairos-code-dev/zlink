@@ -1,13 +1,14 @@
 import type { ActorRef } from '../Common';
+import type { ZLinkSubmitResult } from '../RouteMesh';
 
 export interface ZLinkActorClient {
-  sendToActor(actor: ActorRef, message: unknown): ZLinkActorSendCall;
-  requestToActor(actor: ActorRef, request: unknown): ZLinkActorRequestCall;
+  sendToActor(meshName: string, actor: ActorRef, message: unknown): ZLinkActorSendCall;
+  requestToActor(meshName: string, actor: ActorRef, request: unknown): ZLinkActorRequestCall;
 }
 
 export interface ZLinkActorSendCall {
   metadata(key: string, value: string): this;
-  submit(): void;
+  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }
 
 export interface ZLinkActorRequestCall {

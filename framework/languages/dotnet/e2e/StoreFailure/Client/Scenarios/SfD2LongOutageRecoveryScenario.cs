@@ -1,4 +1,5 @@
 // Verifies SF-D2 Long Outage Recovery behavior.
+using System.Diagnostics;
 using StoreFailure.Client.Support;
 using StoreFailure.Shared;
 using Zlink.HttpClient;
@@ -17,6 +18,11 @@ internal static class SfD2LongOutageRecoveryScenario
         StoreFailureProcessManager processes,
         ManagedProcess providerB)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-D2: provider routes were not ready before the store outage.");
+
         var trafficWindow = options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4;
         var traffic = Task.Run(() => DriveTolerantRequestsAsync(
             consumer,
@@ -81,11 +87,11 @@ internal static class SfD2LongOutageRecoveryScenario
         ClientOptions options)
     {
         var replies = new List<ProfileRes>();
-        var deadline = DateTimeOffset.UtcNow + window;
-        var lastSuccess = DateTimeOffset.UtcNow;
+        var elapsed = Stopwatch.StartNew();
+        var lastSuccess = TimeSpan.Zero;
         var maxGap = TimeSpan.Zero;
         var index = 0;
-        while (DateTimeOffset.UtcNow < deadline)
+        while (elapsed.Elapsed < window)
         {
             try
             {
@@ -94,10 +100,10 @@ internal static class SfD2LongOutageRecoveryScenario
                     reply.Value == "profile:fast",
                     "SF-D2: request returned an unexpected value.");
                 replies.Add(reply);
-                var gap = DateTimeOffset.UtcNow - lastSuccess;
+                var gap = elapsed.Elapsed - lastSuccess;
                 if (gap > maxGap) maxGap = gap;
 
-                lastSuccess = DateTimeOffset.UtcNow;
+                lastSuccess = elapsed.Elapsed;
             }
             catch
             {
@@ -107,7 +113,7 @@ internal static class SfD2LongOutageRecoveryScenario
             await Task.Delay(150);
         }
 
-        var finalGap = DateTimeOffset.UtcNow - lastSuccess;
+        var finalGap = elapsed.Elapsed - lastSuccess;
         if (finalGap > maxGap) maxGap = finalGap;
 
         ZlinkStreamAssert.Ensure(replies.Count > 0, "SF-D2: the request window produced no successful traffic.");
@@ -121,13 +127,14 @@ internal static class SfD2LongOutageRecoveryScenario
         ZLinkHttpClient consumer,
         ClientOptions options)
     {
-        var deadline = DateTimeOffset.UtcNow + options.HeartbeatInterval + options.PollingInterval * 4;
+        var timeout = options.HeartbeatInterval + options.PollingInterval * 4;
+        var elapsed = Stopwatch.StartNew();
         var probeTimeoutMilliseconds = (int)Math.Clamp(
             Math.Ceiling(options.PollingInterval.TotalMilliseconds),
             1,
             1000);
         Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
+        while (elapsed.Elapsed < timeout)
         {
             var allOnSurvivor = true;
             for (var i = 0; i < 4; i++)

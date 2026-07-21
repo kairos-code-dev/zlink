@@ -1,6 +1,8 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
+internal sealed class ZLinkSessionActorBindingRegistry(
+    ZLinkFrameworkRuntime runtime,
+    string? actorDispatchMeshName)
 {
     private readonly Dictionary<string, ZLinkSessionActor> _actorsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
@@ -19,7 +21,8 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
     public ValueTask<IZLinkSessionActor> BindAsync(
         ZLinkSessionContext context,
         ActorRef actor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool remoteBindingConfirmed = false)
     {
         var actorId = actor.ActorId;
         if (string.IsNullOrWhiteSpace(actorId)) throw new InvalidOperationException("Actor id must not be empty.");
@@ -35,7 +38,8 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             context,
             actor,
             binding.SessionRid,
-            binding.BindingToken);
+            binding.BindingToken,
+            remoteBindingConfirmed);
 
         lock (_bindings)
         {
@@ -122,6 +126,9 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             try
             {
                 await runtime.NotifyActorDisconnectedAsync(
+                        actorDispatchMeshName
+                        ?? throw new ZLinkConfigurationException(
+                            "STREAM Actor dispatch requires EnableActorDispatch(meshName)."),
                         actor.Ref,
                         actor.BindingToken,
                         cancellationToken)

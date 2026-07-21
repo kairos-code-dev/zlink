@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/channels/channel.hpp>
+#include <zlink/framework/contracts/configuration/mesh_node.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 
@@ -20,6 +21,7 @@ class zlink_builder_t;
 namespace detail
 {
 class channel_runtime_manager_t;
+class mesh_node_runtime_t;
 class spot_node_runtime_t;
 class zlink_builder_state_t;
 void apply_dispatch_options (zlink_builder_t &builder, const dispatch_options_t &options);
@@ -46,7 +48,7 @@ class zlink_builder_t
     zlink_builder_t &default_request_timeout (std::chrono::milliseconds timeout);
     route_channel_builder_t route_channel (std::string route_channel_name);
     channel_builder_t channel (std::string channel_name);
-    spot_node_builder_t add_spot_node (std::string spot_node_name);
+    mesh_node_builder_t add_route_mesh (std::string mesh_name);
     stream_builder_t stream (std::string stream_name);
 
     message_bus_t message_bus () const;
@@ -65,6 +67,7 @@ class zlink_builder_t
     friend void detail::bind_zlink_monitoring (zlink_builder_t &builder,
                                                const monitoring_builder_t &monitoring);
     friend class detail::channel_runtime_manager_t;
+    friend class detail::mesh_node_runtime_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
     std::shared_ptr<detail::zlink_builder_state_t> _state;

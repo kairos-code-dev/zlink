@@ -69,25 +69,24 @@ export async function startMultiNodeHost(): Promise<void> {
               ownerLeaseTtlMs: 5000
             });
           } else {
-            builder.useInMemoryLocationStores();
+            throw new Error('MultiNode SpotService requires the Redis location store configuration.');
           }
           const route = options.spotOnly
             ? undefined
-            : builder.addRouteMeshChannel(routeChannel)
-              .enableRouter(options.routeEndpoint)
-              .routingId(options.rid)
-              .connect(options.routeEndpoint);
-          const spot = builder.addSpotMesh(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid)
+            : builder.addRouteMesh(routeChannel)
+              .listen(options.routeEndpoint)
+              .routingId(options.rid);
+          route?.channelName(routeChannel);
+          route?.peerConnections().connect(options.routeEndpoint);
+          const spot = builder.addRouteMesh(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid)
             .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
+            .listen(options.spotRouterEndpoint)
             .addEntrySpot(MultiNodeEntrySpot)
             .actorFactory(SpotServiceNames.actorType, MultiNodeScenarioActorFactory)
             .addSpotFactory(SpotOnlyUserSpot);
-          if (options.spotPubEndpoint !== undefined) {
-            spot.enablePubSub(options.spotPubEndpoint);
-          }
+          spot.channelName(options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid);
           if (options.peerSpotRouterEndpoint !== undefined) {
-            spot.connectRouter(
+            spot.peerConnections().connect(
               isNodeA ? SpotServiceNames.multiSpotNodeB : SpotServiceNames.multiSpotNodeA,
               options.peerSpotRouterEndpoint
             );
@@ -132,7 +131,15 @@ export async function startMultiNodeHost(): Promise<void> {
   const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   SpotOnlyUserSpot.configureDependencies(evidence, spotRefs);
   const server = await startHttpServer(options.httpUrl, createMultiNodeEndpoints(
-    evidence, spots, outbound, spotRefs, actors, actorClient, locations, () => { stopping = true; }
+    evidence,
+    spots,
+    outbound,
+    spotRefs,
+    actors,
+    actorClient,
+    locations,
+    options.spotOnly ? SpotServiceNames.spotOnlyMesh : options.rid,
+    () => { stopping = true; }
   ));
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));

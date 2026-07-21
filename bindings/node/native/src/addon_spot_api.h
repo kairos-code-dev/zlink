@@ -41,6 +41,8 @@ napi_value mesh_node_monitor_close (napi_env env, napi_callback_info info);
 // --- Publisher ---
 napi_value mesh_node_publisher_new (napi_env env, napi_callback_info info);
 napi_value mesh_node_publisher_publish (napi_env env, napi_callback_info info);
+napi_value mesh_node_publisher_publish_async (napi_env env, napi_callback_info info);
+napi_value mesh_node_publisher_publish_cancel (napi_env env, napi_callback_info info);
 napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info);
 
 // --- Pull dispatch ---

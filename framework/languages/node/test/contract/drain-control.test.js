@@ -4,541 +4,175 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
-const connector = require('../../packages/stream-connector/dist');
-const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
-test('DRAIN-001/012 drain is shared, changes readiness, and publishes terminal state', async () => {
-  const events = [];
-  const publisher = {
-    register() {},
-    async publish(event) { events.push(event); }
-  };
-  const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration(),
-    runtimeEventPublisher: publisher
+test('fixed drain seals admission, publishes draining, waits accepted work, then drains resources', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const order = [];
+  const release = deferred();
+  const runtime = createRuntime(gate, {
+    async publishDraining() { order.push('published'); },
+    async drainResources() { order.push('resources'); }
   });
-  const waiting = host.awaitDrained();
-  const first = host.drain(1000);
-  const second = host.drain(10);
-  assert.equal(host.isReady(), false);
+  runtime.markServing();
+  const accepted = gate.run('game', 'accepted request', async () => {
+    order.push('handler');
+    await release.promise;
+    order.push('reply_closed');
+  });
+
+  const draining = runtime.drain('game', 1000);
+  await tick();
+  assert.deepEqual(order, ['handler', 'published']);
+  assert.equal(runtime.isReady('game'), false);
+  assert.throws(
+    () => gate.claim('game', 'late request'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+
+  release.resolve();
+  await accepted;
+  assert.deepEqual(await draining, { kind: 'drained' });
+  assert.deepEqual(order, ['handler', 'published', 'reply_closed', 'resources']);
+});
+
+test('drain and awaitDrained share one mesh-keyed operation', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let calls = 0;
+  const runtime = createRuntime(gate, {
+    async drainResources() { calls += 1; }
+  });
+  runtime.markServing();
+  const waiting = runtime.awaitDrained('game');
+  const first = runtime.drain('game');
+  const second = runtime.drain('game', 1);
   assert.deepEqual(await first, { kind: 'drained' });
   assert.deepEqual(await second, { kind: 'drained' });
   assert.deepEqual(await waiting, { kind: 'drained' });
-  assert.deepEqual(events.map((event) => event.state), ['Draining', 'Drained']);
-  assert(events.every((event) => event.sourceName === 'drain'));
+  assert.equal(calls, 1);
 });
 
-test('DRAIN-007 waiter cancellation does not cancel shared drain', async () => {
-  const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
-  });
-  const controller = new AbortController();
-  controller.abort(new Error('wait canceled'));
-  await assert.rejects(() => host.drain(1000, controller.signal), /wait canceled/);
-  assert.deepEqual(await host.awaitDrained(), { kind: 'drained' });
-});
-
-test('DRAIN-006 rejects a non-positive deadline before starting', async () => {
-  const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
-  });
-  await assert.rejects(() => host.drain(0), /greater than zero/);
-  assert.equal(host.isReady(), true);
-});
-
-test('DRAIN-002 drain closes actor create and SPOT create/join admission', async () => {
-  class RoomSpot {}
-  const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
-  });
-  const actorOptions = host.createActorManagerOptions();
-  const spotOptions = host.createSpotManagerOptions();
-  host.stop = async () => {};
-  await host.drain(1000);
-
-  const actors = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map(),
-    ...actorOptions
-  });
-  const spots = new framework.DefaultZLinkSpotManager({
-    spotFactories: [RoomSpot],
-    ...spotOptions
-  });
-
-  await assert.rejects(
-    () => actors.getOrCreate('new-actor', 'player'),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateRejected
-  );
-  assert.equal(actors.getState('new-actor'), undefined);
-  await assert.rejects(
-    () => spots.create(RoomSpot),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
-  );
-  await assert.rejects(
-    () => spots.admitActorJoin('new-room', { actorId: 'actor-1' }, fakeMessage('join'), async () => {}),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
-  );
-});
-
-test('DRAIN-002 draining stream runtime rejects a new session before application creation', async () => {
-  const socket = new DrainAdmissionStreamSocket();
-  let sessions = 0;
-  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
-    socket,
-    acceptNewSession: () => false,
-    sessionFactory(context) {
-      sessions += 1;
-      return { context };
+test('deadline uses the closed snake_case force reason and terminal event exactly once', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const runtime = createRuntime(gate, {
+    async drainResources(_meshName, signal) {
+      await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
     }
   });
-
-  runtime.start();
-  runtime.markConnected('new-session');
-  await new Promise((resolve) => setImmediate(resolve));
-
-  assert.equal(sessions, 0);
-  assert.deepEqual(socket.disconnects, ['new-session']);
-  const decodedFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0]);
-  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
-  assert.equal(header.name, 'session-closing');
-  assert.equal(decodedFrame.payload[1], 4);
-  await runtime.dispose();
-});
-
-test('drain deadline owns session notification and returns after a hung notification', async () => {
-  const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
+  runtime.markServing();
+  const events = [];
+  const observed = (async () => {
+    for await (const event of runtime.observe('game', 4)) events.push(event);
+  })();
+  assert.deepEqual(await runtime.drain('game', 10), {
+    kind: 'forceStopped',
+    reason: 'deadline_exceeded'
   });
-  let stops = 0;
-  host.streamRuntime = { notifyServerDrain: () => new Promise(() => {}) };
-  host.stop = async () => { stops += 1; };
-  const started = Date.now();
-
-  assert.deepEqual(await host.drain(20), { kind: 'force-stopped', reason: 'DeadlineExceeded' });
-  assert(Date.now() - started < 500);
-  assert.equal(stops, 1);
-});
-
-test('drain distinguishes marker publication failure from later teardown failure', async () => {
-  const markerHost = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
-  });
-  markerHost.locationOwner.runtime = { async publishDraining() { return false; } };
-  markerHost.stop = async () => {};
-  assert.deepEqual(await markerHost.drain(100), {
-    kind: 'force-stopped',
-    reason: 'DrainingStatePublishFailed'
-  });
-
-  const teardownHost = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
-  });
-  teardownHost.streamRuntime = { async notifyServerDrain() { throw new Error('session notification failed'); } };
-  teardownHost.stop = async () => {};
-  assert.deepEqual(await teardownHost.drain(100), {
-    kind: 'force-stopped',
-    reason: 'TeardownFailed'
-  });
-});
-
-test('drain retries transient marker publication failures within the shared deadline', async () => {
-  const registration = framework.createFrameworkRegistration({
-    locations: { options: { pollingIntervalMs: 1 } }
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let attempts = 0;
-  host.locationOwner.runtime = {
-    async publishDraining() {
-      attempts += 1;
-      return attempts >= 2;
-    },
-    async cleanupOwner() {}
-  };
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(100), { kind: 'drained' });
-  assert.equal(attempts, 2);
-});
-
-test('drain retries owner cleanup and does not report Drained before it succeeds', async () => {
-  const registration = framework.createFrameworkRegistration({
-    locations: { options: { pollingIntervalMs: 1 } }
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let cleanupAttempts = 0;
-  host.locationOwner.runtime = {
-    async publishDraining() { return true; },
-    async cleanupOwner() {
-      cleanupAttempts += 1;
-      if (cleanupAttempts === 1) throw new Error('owner store unavailable');
-    }
-  };
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(100), { kind: 'drained' });
-  assert.equal(cleanupAttempts, 2);
-});
-
-test('drain reports OwnerCleanupFailed when owner cleanup cannot finish by the deadline', async () => {
-  const registration = framework.createFrameworkRegistration({
-    locations: { options: { pollingIntervalMs: 1 } }
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  host.locationOwner.runtime = {
-    async publishDraining() { return true; },
-    async cleanupOwner() { throw new Error('owner store unavailable'); }
-  };
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(20), {
-    kind: 'force-stopped',
-    reason: 'OwnerCleanupFailed'
-  });
-});
-
-test('DRAIN-018 managed stream writes session-closing before disconnecting peer', async () => {
-  const order = [];
-  let frame;
-  const stream = new framework.ZLinkManagedStream({
-    send(_routingId, message) {
-      order.push('send');
-      frame = Uint8Array.from(message.data());
-      return true;
-    },
-    disconnectPeer() { order.push('disconnect'); }
-  }, 'session-1');
-  await stream.closeForDrain();
-  assert.deepEqual(order, ['send', 'disconnect']);
-  const decodedFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(frame);
-  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
-  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Control);
-  assert.equal(header.name, 'session-closing');
-  assert.deepEqual([...decodedFrame.payload], [1, 4, 0, 12, ...Buffer.from('server drain')]);
-});
-
-test('DRAIN-013 DrainNatural waits for user spots without forcing close', async () => {
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{ name: 'rooms', router: { bind: 'tcp://127.0.0.1:1' }, drainPolicy: 'DrainNatural' }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let closes = 0;
-  const released = createDeferred();
-  host.setSpotManager({
-    async drainForShutdown() { await released.promise; },
-    async close() { closes += 1; return true; }
-  });
-  const draining = host.drain(1000);
-  released.resolve();
-  assert.deepEqual(await draining, { kind: 'drained' });
-  assert.equal(closes, 0);
-});
-
-test('DRAIN-013 DrainNatural retains actors in an active user Spot until natural departure', async () => {
-  class RoomSpot {}
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'rooms',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      drainPolicy: 'DrainNatural',
-      spotFactories: [RoomSpot]
-    }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  const room = new RoomSpot();
-  let active = true;
-  let handoffs = 0;
-  host.meshRouters.primarySpotMeshName = () => 'rooms';
-  host.locationOwner.createRefResolver = () => ({
-    async listLivePeers() {
-      return [{ nodeRid: 'other-node', draining: false, actorTypes: ['PlayerActor'] }];
-    }
-  });
-  host.setActorManager({
-    snapshotStates() {
-      return [{
-        actor: {
-          actorId: 'player-1',
-          context: {
-            joinEntrySpot() {
-              handoffs += 1;
-              return { async submit() { return { status: 'accepted' }; } };
-            }
-          }
-        },
-        actorType: 'PlayerActor',
-        nativeActorRef: { nodeRid: 'local-node', actorId: 'player-1', generation: 1n },
-        spotRid: 'room-1',
-        spot: room,
-        isMoving: false
-      }];
-    }
-  });
-  host.setSpotManager({
-    retainsActorDuringDrain(spotRid) { return active && spotRid === 'room-1'; },
-    async drainForShutdown() {
-      if (!active) return;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      active = false;
-    },
-    async close() { throw new Error('DrainNatural must not force-close the room.'); }
-  });
-
-  assert.deepEqual(await host.drain(1000), { kind: 'drained' });
-  assert.equal(handoffs, 0);
-});
-
-test('DRAIN-014 ReleaseAndRecreate closes existing user spots', async () => {
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{ name: 'rooms', router: { bind: 'tcp://127.0.0.1:1' }, drainPolicy: 'ReleaseAndRecreate' }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let active = true;
-  const closed = [];
-  host.setSpotManager({
-    async drainForShutdown() {
-      if (active) {
-        closed.push('room-1');
-        active = false;
-      }
-    }
-  });
-  assert.deepEqual(await host.drain(1000), { kind: 'drained' });
-  assert.deepEqual(closed, ['room-1']);
-});
-
-test('drain actor handoff delegates target choice to the location placement owner', async () => {
-  class PlayerActor {}
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'play',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      actorFactories: { Player: PlayerActor }
-    }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  const placementCalls = [];
-  const joins = [];
-  host.locationOwner.createRefResolver = () => ({
-    async selectActorPlacement(meshName, actorType, sourceNodeRid) {
-      placementCalls.push({ meshName, actorType, sourceNodeRid });
-      return 'node-target';
-    }
-  });
-  host.setActorManager({
-    snapshotStates() {
-      return [{
-        actor: {
-          actorId: 'player-1',
-          context: {
-            joinEntrySpot(target) {
-              joins.push(target);
-              return { async submit() { return { status: 'accepted' }; } };
-            }
-          }
-        },
-        actorType: 'Player',
-        nativeActorRef: { nodeRid: 'node-source', actorId: 'player-1', generation: 1n },
-        isMoving: false
-      }];
-    }
-  });
-  host.setSpotManager({
-    retainsActorDuringDrain() { return false; },
-    async drainForShutdown() {}
-  });
-
-  assert.deepEqual(await host.drain(1000), { kind: 'drained' });
-  assert.deepEqual(placementCalls, [{ meshName: 'play', actorType: 'Player', sourceNodeRid: 'node-source' }]);
-  assert.deepEqual(joins, ['node-target']);
-});
-
-test('drain hands off actors and Spots before closing existing stream sessions', async () => {
-  class PlayerActor {}
-  const order = [];
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'play',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      actorFactories: { Player: PlayerActor }
-    }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  host.locationOwner.createRefResolver = () => ({
-    async selectActorPlacement() {
-      order.push('actor-placement');
-      return 'node-target';
-    }
-  });
-  host.setActorManager({
-    snapshotStates: () => [drainActorState(() => {
-      order.push('actor-handoff');
-      return { status: 'accepted' };
-    })]
-  });
-  host.setSpotManager({
-    retainsActorDuringDrain() { return false; },
-    async drainForShutdown() { order.push('spot-drain'); }
-  });
-  host.streamRuntime = {
-    async notifyServerDrain() { order.push('session-close'); }
-  };
-  host.stop = async () => { order.push('runtime-stop'); };
-
-  assert.deepEqual(await host.drain(1000), { kind: 'drained' });
-  assert.deepEqual(order, [
-    'actor-placement',
-    'actor-handoff',
-    'spot-drain',
-    'session-close',
-    'runtime-stop'
+  await observed;
+  assert.deepEqual(events.map((event) => event.state), [
+    framework.ZLinkMeshNodeState.Draining,
+    framework.ZLinkMeshNodeState.ForceStopping
   ]);
+  assert.equal(events.filter((event) => event.state === framework.ZLinkMeshNodeState.ForceStopping).length, 1);
 });
 
-test('drain retries placement failures until the shared deadline instead of reporting marker failure', async () => {
-  class PlayerActor {}
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'play',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      actorFactories: { Player: PlayerActor }
-    }],
-    locations: { options: { pollingIntervalMs: 1 } }
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let placementAttempts = 0;
-  host.locationOwner.createRefResolver = () => ({
-    async selectActorPlacement() {
-      placementAttempts += 1;
-      throw new Error('location lookup failed');
-    }
-  });
-  host.setActorManager({ snapshotStates: () => [drainActorState()] });
-  host.setSpotManager({
-    retainsActorDuringDrain() { return false; },
-    async drainForShutdown() {}
-  });
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(20), { kind: 'force-stopped', reason: 'DeadlineExceeded' });
-  assert(placementAttempts > 1);
-});
-
-test('drain deadline owns a hung actor placement lookup', async () => {
-  class PlayerActor {}
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'play',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      actorFactories: { Player: PlayerActor }
-    }]
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  host.locationOwner.createRefResolver = () => ({
-    selectActorPlacement: () => new Promise(() => {})
-  });
-  host.setActorManager({ snapshotStates: () => [drainActorState()] });
-  host.setSpotManager({
-    retainsActorDuringDrain() { return false; },
-    async drainForShutdown() {}
-  });
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(20), { kind: 'force-stopped', reason: 'DeadlineExceeded' });
-});
-
-test('drain handoff metric counts only accepted actors owned by the drain operation', async () => {
-  class PlayerActor {}
-  const { provider, records } = metricCollector();
-  const registration = framework.createFrameworkRegistration({
-    spotNodes: [{
-      name: 'play',
-      router: { bind: 'tcp://127.0.0.1:1' },
-      actorFactories: { Player: PlayerActor }
-    }],
-    locations: { options: { pollingIntervalMs: 1 } },
-    metrics: { meterProvider: provider }
-  });
-  const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
-  let attempts = 0;
-  const state = drainActorState(() => ({ status: ++attempts === 1 ? 'rejected' : 'accepted' }));
-  host.locationOwner.createRefResolver = () => ({
-    async selectActorPlacement() { return 'node-target'; }
-  });
-  host.setActorManager({ snapshotStates: () => [state] });
-  host.setSpotManager({
-    retainsActorDuringDrain() { return false; },
-    async drainForShutdown() {}
-  });
-  host.stop = async () => {};
-
-  assert.deepEqual(await host.drain(100), { kind: 'drained' });
-  assert.equal(attempts, 2);
-  assert.equal(records.filter((record) => record.name === 'zlink.drain.actors.handed_off').length, 1);
-});
-
-function drainActorState(result = () => ({ status: 'accepted' })) {
-  return {
-    actor: {
-      actorId: 'player-1',
-      context: {
-        joinEntrySpot() {
-          return { async submit() { return result(); } };
-        }
+test('drain classifies publish, owner cleanup, and teardown failures with closed snake_case reasons', async () => {
+  const cases = [
+    ['ZLinkDrainingStatePublishError', 'drain_state_publish_failed', 'publishDraining'],
+    ['ZLinkOwnerCleanupError', 'owner_cleanup_failed', 'drainResources'],
+    ['Error', 'teardown_failed', 'drainResources']
+  ];
+  for (const [errorName, reason, phase] of cases) {
+    const gate = new framework.ZLinkRuntimeAdmissionGate();
+    const failure = new Error(reason);
+    failure.name = errorName;
+    const runtime = createRuntime(gate, {
+      async publishDraining() {
+        if (phase === 'publishDraining') throw failure;
+      },
+      async drainResources() {
+        if (phase === 'drainResources') throw failure;
       }
+    });
+    assert.deepEqual(await runtime.drain('game'), { kind: 'forceStopped', reason });
+  }
+});
+
+test('stale or unknown mesh handles fail with a typed route error and do not create state', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const runtime = createRuntime(gate);
+  assert.throws(
+    () => runtime.snapshot('missing'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+  );
+  assert.throws(
+    () => runtime.isReady('missing'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
+  );
+});
+
+test('multi-mesh drain fails before global owner cleanup can mutate another mesh', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  let published = 0;
+  let cleaned = 0;
+  const node = fakeMeshNode();
+  const runtime = new framework.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game-a', 'game-b'],
+    meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
+    meshNode: () => node,
+    admission: gate,
+    publishDraining: async () => { published += 1; },
+    drainResources: async () => { cleaned += 1; },
+    forceStopResources: async () => {}
+  });
+
+  await assert.rejects(
+    () => runtime.drain('game-a'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+  await assert.rejects(
+    () => runtime.awaitDrained('game-b'),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RequestRejected
+  );
+  assert.equal(published, 0);
+  assert.equal(cleaned, 0);
+  assert.equal(gate.accepts('game-a'), true);
+  assert.equal(gate.accepts('game-b'), true);
+});
+
+function createRuntime(gate, overrides = {}) {
+  const node = fakeMeshNode();
+  return new framework.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game'],
+    meshOptions: new Map([['game', { meshChannels: {} }]]),
+    meshNode: (meshName) => meshName === 'game' ? node : undefined,
+    admission: gate,
+    publishDraining: overrides.publishDraining ?? (async () => {}),
+    drainResources: overrides.drainResources ?? (async () => {}),
+    forceStopResources: overrides.forceStopResources ?? (async () => {})
+  });
+}
+
+function fakeMeshNode() {
+  return {
+    status() {
+      return {
+        meshName: 'game', routingId: 'node-a', lifecycleGeneration: 1n,
+        descriptorRevision: 1n, localEndpoint: 'tcp://127.0.0.1:1', state: 3,
+        lastChangedMs: 1n, multicastSubmitted: 0n, multicastDroppedTargets: 0n,
+        pendingApplicationMessages: 0n, pendingInfrastructureMessages: 0n
+      };
     },
-    actorType: 'Player',
-    nativeActorRef: { nodeRid: 'node-source', actorId: 'player-1', generation: 1n },
-    isMoving: false
+    peers() { return []; },
+    peerChannels() { return { names: [], weights: [] }; }
   };
 }
 
-function metricCollector() {
-  const records = [];
-  const instrument = (name) => ({
-    add(value, attributes) { records.push({ name, value, attributes }); },
-    record(value, attributes) { records.push({ name, value, attributes }); }
-  });
-  return {
-    records,
-    provider: {
-      getMeter() {
-        return {
-          createCounter: instrument,
-          createUpDownCounter: instrument,
-          createHistogram: instrument
-        };
-      }
-    }
-  };
-}
-
-function createDeferred() {
+function deferred() {
   let resolve;
-  const promise = new Promise((complete) => { resolve = complete; });
+  const promise = new Promise((completed) => { resolve = completed; });
   return { promise, resolve };
 }
 
-function fakeMessage(text) {
-  const payload = Buffer.from(text);
-  return {
-    data() { return payload; },
-    close() {}
-  };
-}
-
-class DrainAdmissionStreamSocket {
-  constructor() {
-    this.sent = [];
-    this.disconnects = [];
-  }
-
-  onFramedPacket(handler) { this.handler = handler; }
-  send(_routingId, message) {
-    this.sent.push(Uint8Array.from(message.data()));
-    return true;
-  }
-  disconnectPeer(routingId) { this.disconnects.push(routingId); }
-  async bindActor() {}
-  async unbindActor() {}
-  sendBoundActor() { return true; }
+function tick() {
+  return new Promise((resolve) => setImmediate(resolve));
 }

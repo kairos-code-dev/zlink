@@ -51,8 +51,15 @@ public final class SmG1Scenario extends SpotServiceScenarioContext {
         try {
             recoveredConnector.connect().submit().toCompletableFuture().join();
             authenticateJoinAndEcho(recoveredConnector, actorId, profile, "after-restart", 3);
+            signalFile(options().secondCrashReadyFile());
+            waitForSignalFile(options().secondCrashedFile());
+            Contracts.StateRes survivor = eventually(() ->
+                requestState("room-b", "sm-g1-second-crash-survivor", REQUEST_TIMEOUT));
+            ensure("play-b".equals(survivor.nodeRid()),
+                "SM-G1 second crash lost the surviving play-b reply");
         } catch (Exception error) {
-            throw new IllegalStateException("play crash recovery scenario failed after restart", error);
+            throw new IllegalStateException(
+                "play crash recovery scenario failed after restart or second crash", error);
         } finally {
             closeQuietly(recoveredConnector);
         }

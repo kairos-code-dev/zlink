@@ -27,7 +27,11 @@ class OutboundRequestHandler {
             .submit()
         spot.context()
             .outbound()
-            .publish("spot.events", Contracts.MeshMsg("publish:${request.value}"))
+            .publish(
+                Contracts.ROUTE_CHANNEL,
+                "spot.events",
+                Contracts.MeshMsg("publish:${request.value}"),
+            )
             .submit()
         spot.record("SpotOutbound", "${request.value}/$channelReply")
         return Contracts.OutboundRes(

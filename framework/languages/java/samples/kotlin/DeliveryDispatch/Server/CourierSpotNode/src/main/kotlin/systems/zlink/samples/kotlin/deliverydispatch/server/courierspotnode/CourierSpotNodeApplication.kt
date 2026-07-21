@@ -36,16 +36,13 @@ class CourierSpotNodeApplication {
                         "/flow-courier-$node.log",
                 )
                 .traceLabel("courier-$node")
-            val spotNode = options.addSpotMesh(SampleNames.CourierSpotMesh)
-            spotNode.enableRouter(selected.routerEndpoint)
+            val spotNode = options.addRouteMesh(SampleNames.CourierSpotMesh)
+            spotNode.listen(selected.routerEndpoint)
                 .setRoutingId(RoutingId.from(selected.nodeRid))
-            spotNode.configureEntrySpot()
-                .setRoutingId(RoutingId.from(selected.nodeRid))
-            spotNode.connectRouter(
+            spotNode.peerConnections().connect(
                 RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
                 SampleTopology.CourierSessionSpotRouterEndpoint,
             )
-            spotNode.enablePubSub(selected.spotEndpoint)
             spotNode.addEntrySpot(CourierEntrySpot::class.java)
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory::class.java)
             // The courier's decision goes back to dispatch as its own one-way message, so this

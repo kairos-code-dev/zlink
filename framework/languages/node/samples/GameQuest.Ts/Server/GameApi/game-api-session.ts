@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_ACTOR_MANAGER, ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
-import { questMissionRouteRid, SampleNames } from '../../Shared/Configuration/sample-names';
+import { questMissionRouteChannel, SampleNames } from '../../Shared/Configuration/sample-names';
 import { GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import {
   JoinSessionRes,
@@ -55,9 +55,16 @@ class JoinSessionHandler {
     if (existing !== undefined && existing.actorId !== request.playerId) {
       throw new Error(`Session is already bound to player '${existing.actorId}'.`);
     }
-    const actorRef = (await this.locations.resolveActor({ actorId: request.playerId }))?.actorRef ??
-      await this.actorManager.find(request.playerId) ??
-      await this.actorManager.getOrCreate(request.playerId, SampleNames.playerActorType);
+    const actorRef = (await this.locations.resolveActor({
+      meshName: SampleNames.playerQuestSpotMesh,
+      actorId: request.playerId
+    }))?.actorRef ??
+      await this.actorManager.find(SampleNames.playerQuestSpotMesh, request.playerId) ??
+      await this.actorManager.getOrCreate(
+        SampleNames.playerQuestSpotMesh,
+        request.playerId,
+        SampleNames.playerActorType
+      );
     await context.actors.bindOrGet(actorRef);
     const current = await this.getProjection(request.playerId);
     context.client.reply(new JoinSessionRes(current.activeQuests)).submit();
@@ -65,7 +72,7 @@ class JoinSessionHandler {
 
   private async getProjection(playerId: string): Promise<GetQuestProgressRes> {
     return await this.routes
-      .requestToNode(SampleNames.questMissionRouteChannel, questMissionRouteRid(playerId), getQuestProgressReq(playerId))
+      .requestToChannel(SampleNames.playerQuestSpotMesh, questMissionRouteChannel(playerId), getQuestProgressReq(playerId))
       .timeout(SampleNames.requestTimeout)
       .submit<GetQuestProgressRes>();
   }

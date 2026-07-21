@@ -24,6 +24,8 @@ final class ZLinkFrameworkStreamSubsystem {
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator.MutableServices runtimeHandlers,
         ZLinkRuntimeEventDispatcher eventDispatcher,
+        systems.zlink.framework.runtime.mesh.ZLinkMeshNodesRuntime meshNodes,
+        systems.zlink.framework.runtime.backend.ZLinkBackendContext backendContext,
         ZLinkSpotRuntime spots,
         ZLinkActorRuntime actors,
         systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
@@ -34,12 +36,15 @@ final class ZLinkFrameworkStreamSubsystem {
                 adapterOptions,
                 options.registration(),
                 spots == null ? java.util.Map.of() : spots.nodesByName(),
+                meshNodes.nodesByName(),
                 serializer,
                 actors,
                 runtimeHandlers,
                 spots == null ? ignored -> true : spots::isSessionRelayRouteReady,
                 spots,
-                eventDispatcher);
+                eventDispatcher,
+                backendContext,
+                false);
         if (streams != null) {
             streams.setActorDirectory(actorDirectory);
         }

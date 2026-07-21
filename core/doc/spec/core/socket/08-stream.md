@@ -1,11 +1,11 @@
 [한국어](08-stream.ko.md) | English
 
-[Specification Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md) · [STREAM Session Service](../service/05-stream-session.md) · [Errno Map](../04-errno-map.md)
+[Specification Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md) · [Errno Map](../04-errno-map.md)
 
 # Socket — STREAM
 
 This document defines the generic raw STREAM public contract for ZLink Core
-10.1.0. It is for C API and bindings developers that exchange byte records or
+11.0.0. It is for C API and bindings developers that exchange byte records or
 fixed-framing packets over routed TCP or WebSocket connections.
 
 ## 1. Scope
@@ -15,9 +15,7 @@ accepted client connection. It does not support `zlink_connect()`. An
 application addresses a client by routing ID when sending and reads the source
 routing ID from receive results.
 
-STREAM has no knowledge of MeshNode, Spot, ActorRef, or Actor mailboxes. The
-separate [STREAM Session Service](../service/05-stream-session.md) owns
-session-to-Actor bindings and Actor-transfer barriers.
+STREAM does not interpret application payloads or higher-level protocol semantics.
 
 ## 2. Creation, bind, and options
 

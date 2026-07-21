@@ -9,9 +9,7 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SampleApiNode(
-            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint),
-            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
-            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint)));
+            settings.Require(nameof(settings.MeshEndpoint), settings.MeshEndpoint)));
     }
 
     public static SampleRuntimeConfiguration<SamplePlayNode> LoadPlay(string[] args)
@@ -19,8 +17,7 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SamplePlayNode(
-            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
-            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint)));
+            settings.Require(nameof(settings.MeshEndpoint), settings.MeshEndpoint)));
     }
 
     public static SampleRuntimeConfiguration<SampleSessionNode> LoadSession(string[] args)
@@ -28,8 +25,7 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SampleSessionNode(
-            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
-            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint),
+            settings.Require(nameof(settings.MeshEndpoint), settings.MeshEndpoint),
             settings.Require(nameof(settings.StreamEndpoint), settings.StreamEndpoint)));
     }
 
@@ -60,9 +56,7 @@ public sealed class SampleConfiguration
     public string LogDirectory { get; init; } = "";
     public string RedisEndpoint { get; init; } = "";
     public string RedisKeyPrefix { get; init; } = "";
-    public string ChannelEndpoint { get; init; } = "";
-    public string SpotEndpoint { get; init; } = "";
-    public string SpotRouterEndpoint { get; init; } = "";
+    public string MeshEndpoint { get; init; } = "";
     public string StreamEndpoint { get; init; } = "";
 
     public void ValidateCommon()
@@ -93,16 +87,10 @@ public sealed class SampleConfiguration
     }
 }
 
-public sealed record SampleApiNode(
-    string ChannelEndpoint,
-    string SpotPubEndpoint,
-    string SpotRouterEndpoint);
+public sealed record SampleApiNode(string MeshEndpoint);
 
-public sealed record SamplePlayNode(
-    string SpotPubEndpoint,
-    string SpotRouterEndpoint);
+public sealed record SamplePlayNode(string MeshEndpoint);
 
 public sealed record SampleSessionNode(
-    string PubEndpoint,
-    string RouterEndpoint,
+    string MeshEndpoint,
     string StreamEndpoint);

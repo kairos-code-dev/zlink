@@ -46,20 +46,13 @@ public static class DispatchServerHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
-            var dispatchMesh = options.AddRouteMesh(SampleNames.DispatchChannel)
-                .Listen(topology.DispatchChannelEndpoint)
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.MeshEndpoint)
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"));
-            dispatchMesh.ChannelName(SampleNames.DispatchChannel)
-                .AddSendHandler<AssignDeliveryHandler>()
-                .AddSendHandler<OfferDeliveryResultHandler>();
-            var mesh9 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
-                .Listen(topology.DispatchSpotRouterEndpoint)
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
-            mesh9.ChannelName(SampleNames.CourierActorDiscovery);
-            var trackingMesh = options.AddRouteMesh(SampleNames.TrackingRouteChannel)
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-tracking-client"));
-            trackingMesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.DispatchChannel)
+                .AddHandlerGroup(SampleNames.DispatchChannel);
+            mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
+            mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
         });
 
         var app = builder.Build();
@@ -68,12 +61,12 @@ public static class DispatchServerHostFactory
             CancellationToken cancellationToken) =>
         {
             var courierNode1Ready = await readiness.IsPeerReadyAsync(
-                SampleNames.CourierActorDiscovery,
+                SampleNames.MeshName,
                 ZLinkLocationRole.Spot,
                 topology.CourierActorNode1Rid,
                 cancellationToken);
             var courierNode2Ready = await readiness.IsPeerReadyAsync(
-                SampleNames.CourierActorDiscovery,
+                SampleNames.MeshName,
                 ZLinkLocationRole.Spot,
                 topology.CourierActorNode2Rid,
                 cancellationToken);
@@ -82,7 +75,7 @@ public static class DispatchServerHostFactory
                 ? Results.Ok(new { ready = true, role = "dispatch" })
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
-        app.MapPost("/deliveries", (
+        app.MapPost("/deliveries", async (
             CreateDeliveryReq request,
             Zlink.Framework.Contracts.Channels.IZLinkRouteClient channels,
             ILoggerFactory loggerFactory,
@@ -93,8 +86,8 @@ public static class DispatchServerHostFactory
                 request.CustomerId,
                 request.PickupAddress,
                 request.DropoffAddress);
-            channels.SendToChannel(SampleNames.DispatchChannel, SampleNames.DispatchChannel, assign)
-                .TrySubmit();
+            await channels.SendToChannel(SampleNames.MeshName, SampleNames.DispatchChannel, assign)
+                .SubmitAsync(cancellationToken);
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new CreateDeliveryRes(request.DeliveryId));

@@ -139,7 +139,8 @@ export class ZLinkSpotRouteDispatchStrategy {
     packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
     throwIfAborted(signal);
     const localSpotRouteNode = this.targets.localRouteNode(spotRouteTarget);
@@ -163,7 +164,8 @@ export class ZLinkSpotRouteDispatchStrategy {
       undefined,
       codecs,
       undefined,
-      this.options.flowCreationEnabled?.() ?? true
+      this.options.flowCreationEnabled?.() ?? true,
+      metadata
     ) as readonly Message[];
     if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)) {
       const namedSpotNodeRequest = this.spotNodeTransport.request<TReply>(

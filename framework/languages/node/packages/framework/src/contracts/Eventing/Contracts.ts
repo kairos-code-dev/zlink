@@ -15,10 +15,9 @@ import type {
   ZLinkSpotLocationKey
 } from '../Locations';
 import type {
-  ZLinkSpotNodePeerEntry,
-  ZLinkSpotNodeStatus,
-  ZLinkSpotNodeSubjectEntry
-} from '../Spots';
+  ZLinkMeshNodeSnapshot,
+  ZLinkMeshPeerSnapshot
+} from '../RouteMesh';
 
 export interface ZLinkMonitoringOptions {
   socket?: ZLinkSocketMonitoringRegistration[];
@@ -66,8 +65,7 @@ export enum ZLinkSocketEventKind {
   Disconnected = 'disconnected',
   HandshakeFailed = 'handshakeFailed',
   PeerAdmissionChanged = 'peerAdmissionChanged',
-  Closed = 'closed',
-  Internal = 'internal'
+  Closed = 'closed'
 }
 
 export enum ZLinkSocketNativeEventType {
@@ -170,7 +168,6 @@ export type ZLinkLocationRouteEvent = ZLinkRuntimeEvent & (
 export enum ZLinkSpotEventKind {
   StatusChanged = 'statusChanged',
   PeersChanged = 'peersChanged',
-  SubjectsChanged = 'subjectsChanged',
   TimerHandlerFailed = 'timerHandlerFailed',
   TimerStoppedAfterUnhandledException = 'timerStoppedAfterUnhandledException'
 }
@@ -187,7 +184,6 @@ export interface ZLinkSpotTimerDiagnostic {
 }
 
 export type ZLinkSpotEvent =
-  | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.StatusChanged; readonly status: ZLinkSpotNodeStatus })
-  | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.PeersChanged; readonly peers: readonly ZLinkSpotNodePeerEntry[] })
-  | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.SubjectsChanged; readonly subjects: readonly ZLinkSpotNodeSubjectEntry[] })
+  | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.StatusChanged; readonly status: ZLinkMeshNodeSnapshot })
+  | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.PeersChanged; readonly peers: readonly ZLinkMeshPeerSnapshot[] })
   | (ZLinkRuntimeEvent & { readonly event: ZLinkSpotEventKind.TimerHandlerFailed | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException; readonly timerDiagnostic: ZLinkSpotTimerDiagnostic });

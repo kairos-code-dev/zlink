@@ -9,7 +9,7 @@ import {
   QuestEventStore,
   QuestReadModelStore
 } from '../Shared/Store/quest-progress-store';
-import { questMissionInstanceRid, SampleNames } from '../../Shared/Configuration/sample-names';
+import { questMissionInstanceChannel, questMissionInstanceRid, SampleNames } from '../../Shared/Configuration/sample-names';
 import { QuestEventProcessor } from './Application/quest-event-processor';
 import { QuestOwnerRouter } from './Application/quest-owner-router';
 import { GameplayEventRouteHandler } from './Infrastructure/ZLink/gameplay-event-route-handler';
@@ -33,15 +33,11 @@ import type { GameQuestServerConfig } from '../Configuration/sample-config';
 
 function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
   class GameQuestQuestModule {}
-  const routeEndpointKey = instanceId === 'mission-a' ? 'missionAEndpoint' : 'missionBEndpoint';
-  const spotEndpointKey = instanceId === 'mission-a' ? 'missionASpotEndpoint' : 'missionBSpotEndpoint';
   const spotRouterEndpointKey = instanceId === 'mission-a'
     ? 'missionASpotRouterEndpoint'
     : 'missionBSpotRouterEndpoint';
   const missionRid = questMissionInstanceRid(instanceId);
   const configuration = createGameQuestConfigurationModule([
-    routeEndpointKey,
-    spotEndpointKey,
     spotRouterEndpointKey,
     instanceId === 'mission-a' ? 'missionAHttpUrl' : 'missionBHttpUrl',
     'redisEndpoint',
@@ -63,17 +59,14 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
             .traceLogFile(`${config.logDir}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
           builder.addLocationStore(createGameQuestLocationStore(config));
-          Object.assign(builder.configureLocations(), gameQuestLocationOptions());
-          return builder
-            .addRouteMeshChannel(SampleNames.questMissionRouteChannel)
-              .enableRouter(config[routeEndpointKey])
-              .routingId(missionRid)
-              .addHandlerGroup('quest-owner')
-            .addSpotMesh(SampleNames.playerQuestSpotMesh)
-              .enableRouter(config[spotRouterEndpointKey], missionRid)
-              .enablePubSub(config[spotEndpointKey], missionRid)
-              .addSpotFactory(PlayerQuestSpot)
-            .build();
+          gameQuestLocationOptions(builder.configureLocations());
+          const spotMesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
+            .listen(config[spotRouterEndpointKey])
+            .routingId(missionRid)
+            .addSpotFactory(PlayerQuestSpot);
+          spotMesh.channelName(questMissionInstanceChannel(instanceId)).addHandlerGroup('quest-owner');
+          spotMesh.channelName(SampleNames.playerQuestSpotMesh);
+          return builder.build();
         }
       })
     ],

@@ -215,10 +215,11 @@ async function nodeClientToDotnetChannelServer(tempDir) {
   class ClientModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRootFactory({
-      useFactory: () => nestjs.zlinkFramework()
-        .addClientServerChannel('profiles')
-          .enableClient(endpoint)
-        .build()
+      useFactory: () => {
+        const builder = nestjs.zlinkFramework();
+        builder.addRouteMesh('profiles').peerConnections().connect(endpoint);
+        return builder.build();
+      }
     })]
   })(ClientModule);
   let app;
@@ -288,7 +289,7 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
     try {
       await host.ready;
       await publishUntilFileText(
-        () => publisher.publish('profiles', topic, new TestHostPublishedEvent('node-publish-to-dotnet')).submit(),
+        () => publisher.publish('profiles', new TestHostPublishedEvent('node-publish-to-dotnet')).submit(),
         eventFile,
         (text) => text.includes(`${topic}:node-publish-to-dotnet`),
         7000
@@ -366,8 +367,9 @@ async function dotnetClientToNodeChannelServer(tempDir) {
     imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => {
         const builder = nestjs.zlinkFramework();
-        builder.addClientServerChannel('profiles')
-          .enableServer(endpoint)
+        builder.addRouteMesh('profiles')
+          .listen(endpoint)
+          .channelName('profiles')
           .addRequestHandler('TestHostProfileRequest', TestHostProfileRequestHandler);
         return builder.build();
       }
@@ -409,7 +411,11 @@ async function nodeRouteClientToDotnetRouteServer(tempDir) {
     imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => {
         const builder = nestjs.zlinkFramework();
-        builder.addRouteMeshChannel('cross.route').connect(endpoint);
+        const mesh = builder.addRouteMesh('cross.route')
+          .listen('inproc://cross-route-node-client')
+          .routingId('node-route-client');
+        mesh.channelName('cross.route');
+        mesh.peerConnections().connect(endpoint);
         return builder.build();
       }
     })]
@@ -450,10 +456,11 @@ async function dotnetRouteClientToNodeRouteServer(tempDir) {
     imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => {
         const builder = nestjs.zlinkFramework();
-        builder.addRouteMeshChannel('cross.route')
-          .enableRouter(endpoint)
+        builder.addRouteMesh('cross.route')
+          .listen(endpoint)
           .routingId('node-route')
-          .addRequestHandler('TestHostRouteRequest', TestHostRouteRequestHandler);
+          .addRequestHandler('TestHostRouteRequest', TestHostRouteRequestHandler)
+          .channelName('cross.route');
         return builder.build();
       }
     })],

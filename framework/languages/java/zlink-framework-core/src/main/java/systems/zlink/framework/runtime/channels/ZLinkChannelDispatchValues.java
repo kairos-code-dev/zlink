@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.channels;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
@@ -24,14 +25,24 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
     private final String channelName;
     private final String packetName;
     private final String contentType;
+    private final Map<String, String> metadata;
 
     ChannelHandlerContextBase(
         String channelName,
         String packetName,
         String contentType) {
+        this(channelName, packetName, contentType, Map.of());
+    }
+
+    ChannelHandlerContextBase(
+        String channelName,
+        String packetName,
+        String contentType,
+        Map<String, String> metadata) {
         this.channelName = channelName;
         this.packetName = packetName;
         this.contentType = contentType;
+        this.metadata = Map.copyOf(metadata);
     }
 
     @Override
@@ -49,6 +60,10 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
         return presentText(contentType);
     }
 
+    @Override
+    public final Map<String, String> metadata() {
+        return metadata;
+    }
 
     private static Optional<String> presentText(String value) {
         return Optional.ofNullable(value).filter(text -> !text.isBlank());
@@ -61,6 +76,14 @@ final class DefaultRequestContext
     DefaultRequestContext(String channelName, String packetName, String contentType) {
         super(channelName, packetName, contentType);
     }
+
+    DefaultRequestContext(
+        String channelName,
+        String packetName,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, contentType, metadata);
+    }
 }
 
 final class DefaultSendContext
@@ -68,6 +91,14 @@ final class DefaultSendContext
     implements ZLinkSendContext {
     DefaultSendContext(String channelName, String packetName, String contentType) {
         super(channelName, packetName, contentType);
+    }
+
+    DefaultSendContext(
+        String channelName,
+        String packetName,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, contentType, metadata);
     }
 }
 
@@ -82,6 +113,16 @@ final class DefaultPublishContext
         String topic,
         String contentType) {
         super(channelName, packetName, contentType);
+        this.topic = topic;
+    }
+
+    DefaultPublishContext(
+        String channelName,
+        String packetName,
+        String topic,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, contentType, metadata);
         this.topic = topic;
     }
 
@@ -108,6 +149,16 @@ abstract class RouteHandlerContextBase extends ChannelHandlerContextBase {
         this.routingId = routingId;
     }
 
+    RouteHandlerContextBase(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, contentType, metadata);
+        this.routingId = routingId;
+    }
+
     public final RoutingId routingId() {
         return routingId;
     }
@@ -123,6 +174,15 @@ final class DefaultRouteRequestContext
         String contentType) {
         super(channelName, packetName, routingId, contentType);
     }
+
+    DefaultRouteRequestContext(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, routingId, contentType, metadata);
+    }
 }
 
 final class DefaultRouteSendContext
@@ -134,6 +194,15 @@ final class DefaultRouteSendContext
         RoutingId routingId,
         String contentType) {
         super(channelName, packetName, routingId, contentType);
+    }
+
+    DefaultRouteSendContext(
+        String channelName,
+        String packetName,
+        RoutingId routingId,
+        String contentType,
+        Map<String, String> metadata) {
+        super(channelName, packetName, routingId, contentType, metadata);
     }
 }
 

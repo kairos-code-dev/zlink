@@ -44,6 +44,18 @@ jobs:
             LIBZLINK_VERSION="${{ github.event.inputs.libzlink_version }}"
           fi
 
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ ! "${GITHUB_REF_NAME}" =~ ^core/v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[1-9][0-9]*)?$ ]]; then
+              echo "invalid Core release tag: ${GITHUB_REF_NAME}" >&2
+              exit 1
+            fi
+            TAG_RUNTIME_VERSION="${BASH_REMATCH[1]}"
+            if [[ "${TAG_RUNTIME_VERSION}" != "${LIBZLINK_VERSION}" ]]; then
+              echo "tag runtime ${TAG_RUNTIME_VERSION} does not match source version ${LIBZLINK_VERSION}" >&2
+              exit 1
+            fi
+          fi
+
           LIBZLINK_LIB_SUFFIX="${LIBZLINK_VERSION_MAJOR}_${LIBZLINK_VERSION_MINOR}_${LIBZLINK_VERSION_PATCH}"
 
           echo "libzlink_version=${LIBZLINK_VERSION}" >> $GITHUB_OUTPUT
@@ -477,6 +489,26 @@ jobs:
           git archive --format=tar.gz --output "${TAR_NAME}" "${TAG_NAME}"
           ls -lh "${TAR_NAME}"
 
+      - name: Create release provenance
+        run: |
+          VERSION="${{ needs.read-versions.outputs.libzlink_version }}"
+          TAG_NAME="${GITHUB_REF_NAME}"
+          TAG_ENCODED="${TAG_NAME//\//%2F}"
+          SOURCE_ARCHIVE="zlink-${VERSION}-source.tar.gz"
+          SOURCE_SHA="$(git rev-parse "${TAG_NAME}^{commit}")"
+          CHECKSUMS_SHA="$(sha256sum artifacts/checksums/checksums.txt | awk '{print $1}')"
+          SOURCE_ARCHIVE_SHA="$(sha256sum "${SOURCE_ARCHIVE}" | awk '{print $1}')"
+          {
+            echo "schema=1"
+            echo "tag=${TAG_NAME}"
+            echo "runtime_version=${VERSION}"
+            echo "source_sha=${SOURCE_SHA}"
+            echo "checksums_sha256=${CHECKSUMS_SHA}"
+            echo "source_archive=${SOURCE_ARCHIVE}"
+            echo "source_archive_sha256=${SOURCE_ARCHIVE_SHA}"
+            echo "asset_url=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_ENCODED}/${SOURCE_ARCHIVE}"
+          } > release-provenance.txt
+
       - name: Detect release channel
         id: channel
         run: |
@@ -546,5 +578,5 @@ jobs:
             artifacts/libzlink-macos-arm64.tar.gz
             artifacts/checksums/checksums.txt
             zlink-${{ needs.read-versions.outputs.libzlink_version }}-source.tar.gz
+            release-provenance.txt
           draft: false
-          prerelease: false

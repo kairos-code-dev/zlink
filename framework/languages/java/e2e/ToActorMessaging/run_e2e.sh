@@ -33,11 +33,9 @@ chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
-ROUTE_SETTLE_SECONDS=5
 if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS:-}" != 30 \
-   || "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
-  echo "ToActorMessaging must use 3s readiness and 5s route settle limits" >&2
+   || "${LOCAL_READINESS_ATTEMPTS:-}" != 30 ]]; then
+  echo "ToActorMessaging must use a 3s readiness limit" >&2
   exit 1
 fi
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
@@ -296,7 +294,6 @@ done
 for role in "${SERVER_ROLES[@]}"; do
   wait_role_ready "$role"
 done
-sleep "${ROUTE_SETTLE_SECONDS}"
 
 ./Client/build/install/to-actor-client/bin/to-actor-client \
   --config "${client_config}" --scenario "${SCENARIO}" \

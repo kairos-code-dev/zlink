@@ -79,6 +79,28 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void routeMeshChannelWeightAcceptsContractBoundaries() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game");
+
+        assertDoesNotThrow(() -> mesh.channelName("disabled").setWeight(0));
+        assertDoesNotThrow(() -> mesh.channelName("maximum").setWeight(100));
+    }
+
+    @Test
+    void routeMeshChannelWeightRejectsValuesOutsideContractRange() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game");
+
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> mesh.channelName("negative").setWeight(-1));
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> mesh.channelName("too-large").setWeight(101));
+    }
+
+    @Test
     void routeMeshBuilderRejectsDuplicateMeshName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addRouteMesh("game").listen("inproc://game");
@@ -115,15 +137,19 @@ final class DefaultZLinkFrameworkOptionsTest {
         options.codecs().use(codecs ->
             codecs.addSerializer("application/x-test", new ZLinkJsonMessageSerializer()));
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var metadata = options.configureMetadata(); metadata.addForwardedMetadataKey("trace-id"); };
+        { var metadata = options.configureMetadata();
+            metadata.allowSessionToActor("session-trace")
+                .allowActorToSession("actor-trace"); };
         options.useFilter(TestFilter.class);
         options.configureDispatch().traceSampleRate(0.25d);
 
         assertTrue(options.registration().codecs().serializers().containsKey("application/x-test"));
         assertTrue(options.registration().handlerPackageMarkers()
             .contains(DefaultZLinkFrameworkOptionsTest.class));
-        assertTrue(options.registration().metadataPolicy().forwardedApplicationKeys()
-            .contains("trace-id"));
+        assertTrue(options.registration().metadataPolicy().sessionToActorKeys()
+            .contains("session-trace"));
+        assertTrue(options.registration().metadataPolicy().actorToSessionKeys()
+            .contains("actor-trace"));
         assertTrue(options.registration().filters().contains(TestFilter.class));
         assertEquals(0.25d,
             options.registration().dispatchOptions().diagnostics().sampleRate());
@@ -131,25 +157,12 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     @Test
     void locationStoreConfigurationMutatesRegistrationModel() {
-        DefaultZLinkFrameworkOptions inMemory = new DefaultZLinkFrameworkOptions();
-        inMemory.useInMemoryLocationStores();
-        assertTrue(inMemory.registration().locations().useInMemoryStores());
-
         DefaultZLinkFrameworkOptions instance = new DefaultZLinkFrameworkOptions();
         ZLinkLocationStore store = new ZLinkInMemoryLocationStore();
         instance.addLocationStore(store);
         instance.configureLocations().setListPageSize(64);
         assertEquals(store, instance.registration().locations().storeInstance());
         assertEquals(64, instance.registration().locations().options().listPageSize());
-    }
-
-    @Test
-    void locationStoreValidationRejectsMixedRegistrationModes() {
-        DefaultZLinkFrameworkOptions instanceAndInMemory = new DefaultZLinkFrameworkOptions();
-        instanceAndInMemory.addLocationStore(new ZLinkInMemoryLocationStore());
-        instanceAndInMemory.useInMemoryLocationStores();
-
-        assertThrows(ZLinkConfigurationException.class, instanceAndInMemory::validate);
     }
 
     @Test
@@ -321,7 +334,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientWithoutManualConnectionUsesLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useInMemoryLocationStores();
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
         { var channel = options.addClientServerChannel("profile"); channel.enableClient(); };
 
         assertDoesNotThrow(options::validate);
@@ -524,7 +537,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void fanoutChannelSubscriberWithoutManualConnectionUsesLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useInMemoryLocationStores();
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
         { var channel = options.addFanoutChannel("events"); channel.enableSubscriber();
             channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
 
@@ -601,7 +614,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void routeMeshChannelClientWithoutManualConnectionUsesLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.useInMemoryLocationStores();
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
         { var channel = options.addRouteMeshChannel("route"); channel.enableClient(); };
 
         assertDoesNotThrow(options::validate);
@@ -752,15 +765,21 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void streamNodeWithRouterSpotNodeIsAccepted() {
+    void streamActorDispatchRequiresConfiguredRouteMesh() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
-                node.addSpotFactory(TestSpot.class); }; };
+        options.addRouteMesh("game").listen("inproc://play-mesh");
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
-            stream.registerSession(GameSession.class); };
+            stream.enableActorDispatch("game");
+            stream.registerSession(GameSession.class); }
 
         options.validate();
+
+        DefaultZLinkFrameworkOptions missing = new DefaultZLinkFrameworkOptions();
+        { var stream = missing.addStreamNode("gateway"); stream.bind("inproc://gateway");
+            stream.enableActorDispatch("missing");
+            stream.registerSession(GameSession.class); }
+        assertThrows(ZLinkConfigurationException.class, missing::validate);
     }
 
     @Test

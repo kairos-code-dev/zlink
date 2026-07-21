@@ -26,6 +26,7 @@ export class RuntimeReceiveRecord implements ReceiveRecord {
   readonly domain: number;
   readonly sourceNodeRid;
   readonly sourceSpotRid;
+  readonly sourceBindingGeneration: bigint;
   readonly sourceActor;
   readonly operationId;
   readonly operationKind: number;
@@ -43,6 +44,7 @@ export class RuntimeReceiveRecord implements ReceiveRecord {
     this.domain = raw.domain;
     this.sourceNodeRid = ridOrNull(raw.sourceNodeRid);
     this.sourceSpotRid = ridOrNull(raw.sourceSpotRid);
+    this.sourceBindingGeneration = raw.sourceBindingGeneration;
     this.sourceActor = maybeActorRefFromRaw(raw.sourceActor);
     this.operationId = raw.operationId;
     this.operationKind = raw.operationKind;
@@ -56,19 +58,19 @@ export class RuntimeReceiveRecord implements ReceiveRecord {
     this._replyToken = raw.replyToken;
   }
 
-  reply(parts: Message | readonly Message[], flags?: number): SubmitResult {
+  reply(parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult {
     return requireNative().meshReply(
       this._replyToken,
-      normalizeMessageLikePayload(parts as MessageLike | readonly MessageLike[]),
+      normalizeMessageLikePayload(parts),
       flagsOrZero(flags)
     ) as SubmitResult;
   }
 
-  replyActorJoin(joinResult: number, parts: Message | readonly Message[], flags?: number): SubmitResult {
+  replyActorJoin(joinResult: number, parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult {
     return requireNative().actorJoinReply(
       this._replyToken,
       joinResult | 0,
-      normalizeMessageLikePayload(parts as MessageLike | readonly MessageLike[]),
+      normalizeMessageLikePayload(parts),
       flagsOrZero(flags)
     ) as SubmitResult;
   }

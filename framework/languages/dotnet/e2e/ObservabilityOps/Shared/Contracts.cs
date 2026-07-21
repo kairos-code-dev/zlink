@@ -31,6 +31,8 @@ public sealed record AdvanceWorkflowReq(string Marker);
 public sealed record AdvanceWorkflowRes(string WorkflowRid, string NodeRid, int Version, string State);
 public sealed record ReadWorkflowReq;
 public sealed record ReadWorkflowRes(string WorkflowRid, string NodeRid, int Version, string State);
+public sealed record WorkflowSignalReq(string Marker);
+public sealed record StaleHandleProbeRes(bool Failed, string? ErrorType);
 public sealed record PublishProjectionReq(string Marker);
 public sealed record PublishProjectionRes(string WorkflowRid, int Version);
 public sealed record ProjectionUpdatedEvent(string WorkflowRid, int Version, string Marker);
@@ -59,4 +61,10 @@ public sealed record MetricSample(
 public sealed record PeerRow(string NodeRid, bool Draining, long Generation);
 public sealed record ActorRow(string ActorId, string NodeRid, long Generation);
 public sealed record SpotRow(string MeshName, string NodeRid, string SpotRid, string Kind, long Generation);
-public sealed record DrainStatus(bool Started, bool Completed, string? Result, string? Reason, string? Error);
+public sealed record DrainStatus(
+    bool Started,
+    bool Completed,
+    string? Result,
+    string? Reason,
+    string? Error,
+    int TerminalCount = 0);

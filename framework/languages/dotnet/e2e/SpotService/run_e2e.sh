@@ -80,6 +80,9 @@ case "$SCENARIO_SET" in
     NEED_SESSION_NODES=0
     if [[ "$SCENARIO_SET" != "sm-g2" ]]; then NEED_PLAY_B=0; fi
     ;;
+  sm-c6)
+    NEED_SESSION_NODES=0
+    ;;
   sm-d14)
     NEED_PLAY_B=0
     NEED_TLS_STREAM=1
@@ -121,8 +124,7 @@ mkdir -p "$LOG_DIR"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
+ROUTE_READINESS_TIMEOUT_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
 CHILD_PROCESS_TIMEOUT_SECONDS=420
@@ -178,6 +180,9 @@ PIDS=()
 
 cleanup() {
   set +e
+  if [[ -n "${PAUSED_PROCESS_GROUP:-}" ]]; then
+    kill -CONT -- "-$PAUSED_PROCESS_GROUP" 2>/dev/null || true
+  fi
   rm -rf "$CONFIG_DIR"
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
@@ -257,7 +262,6 @@ SESSION_B_CONTROL="tcp://127.0.0.1:${PORTS[18]}"
 CLIENT_CONTROL="tcp://127.0.0.1:${PORTS[20]}"
 CLIENT_EXTERNAL_ROUTE="tcp://127.0.0.1:${PORTS[21]}"
 CLIENT_SPOT_ROUTER="tcp://127.0.0.1:${PORTS[22]}"
-CLIENT_EXTERNAL_CHANNEL="tcp://127.0.0.1:${PORTS[23]}"
 CLIENT_SPOT_PUB="tcp://127.0.0.1:${PORTS[24]}"
 CLIENT_EXTERNAL_ROUTE_B="tcp://127.0.0.1:${PORTS[27]}"
 MULTI_A_HTTP="http://127.0.0.1:${PORTS[28]}"
@@ -398,18 +402,39 @@ wait_control_route() {
   local source_url="$1"
   local target_rid="$2"
   local name="$3"
-  local payload
+  local payload deadline_ns
   payload="{\"value\":\"ready-${name}\"}"
-  sleep "$ROUTE_SETTLE_SECONDS"
-  if curl --max-time "$HTTP_PROBE_TIMEOUT_SECONDS" \
-    --connect-timeout "$HTTP_PROBE_TIMEOUT_SECONDS" \
-    -fsS \
-    -H 'content-type: application/json' \
-    -d "$payload" \
-    "$source_url/channel/control-ping/$target_rid" >/dev/null 2>&1; then
-    return 0
-  fi
-  echo "Control route ${name} was not ready after route settle ${ROUTE_SETTLE_SECONDS}s via ${source_url} -> ${target_rid}" >&2
+  deadline_ns="$(python3 - "$ROUTE_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+remaining = (int(sys.argv[1]) - time.monotonic_ns()) / 1_000_000_000
+print("0" if remaining <= 0 else f"{min(float(sys.argv[2]), remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS \
+      -H 'content-type: application/json' \
+      -d "$payload" \
+      "$source_url/channel/control-ping/$target_rid" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Control route ${name} was not ready within ${ROUTE_READINESS_TIMEOUT_SECONDS}s via ${source_url} -> ${target_rid}" >&2
   return 1
 }
 
@@ -554,7 +579,6 @@ start_named_server() {
         --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
         --client-spot-pub-endpoint "$CLIENT_SPOT_PUB" \
         --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-        --external-client-endpoint "$CLIENT_EXTERNAL_CHANNEL" \
         --evidence-file "$LOG_DIR/play-a.evidence.log" \
         --log-dir "$LOG_DIR"
       ;;
@@ -611,6 +635,8 @@ start_named_server() {
         --spot-router-endpoint "$GATEWAY_SPOT_ROUTER" \
         --spot-pub-endpoint "$CLIENT_SPOT_PUB" \
         --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
+        --spot-peer-a-endpoint "$PLAY_A_SPOT_ROUTER" \
+        --spot-peer-b-endpoint "$PLAY_B_SPOT_ROUTER" \
         --evidence-file "$LOG_DIR/gateway.evidence.log" \
         --log-dir "$LOG_DIR"
       ;;
@@ -802,6 +828,9 @@ run_client() {
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --sm-c6-pause-ack-file "$LOG_DIR/sm-c6-paused" \
+    --sm-c6-resume-ack-file "$LOG_DIR/sm-c6-resumed" \
+    --sm-c6-blocking-pause-ack-file "$LOG_DIR/sm-c6-blocking-paused" \
     --operation-group "$operation_group"
   if [[ "$operation_group" == "sm-g1" ]]; then
     local first_line client_pid client_status next_line
@@ -816,7 +845,12 @@ run_client() {
     wait_for_log_after client.stdout "spot-service sm-g1 restart-1-ready" "$first_line" 300
     restart_play_a
     wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a-restarted
-    wait_for_log_after client.stdout "spot-service sm-g1 crash-2-ready" "$next_line" 300
+    if ! wait_for_log_after client.stdout "spot-service sm-g1 crash-2-ready" "$next_line" 300; then
+      curl -fsS "$PLAY_A_HTTP/mesh-snapshot" || true
+      curl -fsS "$PLAY_A_HTTP/entry-self-check" || true
+      wait "$client_pid" || true
+      return 1
+    fi
     crash_play_a
     set +e
     wait "$client_pid"
@@ -871,6 +905,58 @@ run_client() {
     [[ "$client_status" -eq 0 ]] || return "$client_status"
     wait_for_log_after play-a.evidence \
       "entry-disconnected|rid=play-a|actor=actor-sm-d13" "$evidence_first_line" 600
+  elif [[ "$operation_group" == "sm-c6" ]]; then
+    local first_line client_pid client_status play_b_pid play_b_pgid
+    first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
+    timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
+      2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+      | tee -a "$LOG_DIR/client.stdout.log" &
+    client_pid=$!
+    if ! wait_for_log_after client.stdout "spot-service sm-c6 pause-play-b-ready" "$first_line" 300; then
+      wait "$client_pid" || true
+      return 1
+    fi
+    play_b_pid="$(pid_for_role play-b)"
+    play_b_pgid="$(ps -o pgid= -p "$play_b_pid" | tr -d ' ')"
+    if [[ "$play_b_pgid" != "$play_b_pid" ]]; then
+      echo "play-b process group mismatch: pid=$play_b_pid pgid=$play_b_pgid" >&2
+      wait "$client_pid" || true
+      return 1
+    fi
+    PAUSED_PROCESS_GROUP="$play_b_pgid"
+    kill -STOP -- "-$PAUSED_PROCESS_GROUP"
+    touch "$LOG_DIR/sm-c6-paused"
+    if ! wait_for_log_after client.stdout \
+      "spot-service sm-c6 resume-play-b-between-modes-ready" "$first_line" 1200; then
+      kill -CONT -- "-$PAUSED_PROCESS_GROUP" 2>/dev/null || true
+      PAUSED_PROCESS_GROUP=""
+      wait "$client_pid" || true
+      return 1
+    fi
+    kill -CONT -- "-$PAUSED_PROCESS_GROUP"
+    PAUSED_PROCESS_GROUP=""
+    touch "$LOG_DIR/sm-c6-resumed"
+    if ! wait_for_log_after client.stdout \
+      "spot-service sm-c6 pause-play-b-blocking-ready" "$first_line" 300; then
+      wait "$client_pid" || true
+      return 1
+    fi
+    PAUSED_PROCESS_GROUP="$play_b_pgid"
+    kill -STOP -- "-$PAUSED_PROCESS_GROUP"
+    touch "$LOG_DIR/sm-c6-blocking-paused"
+    if ! wait_for_log_after client.stdout "spot-service sm-c6 resume-play-b-ready" "$first_line" 1200; then
+      kill -CONT -- "-$PAUSED_PROCESS_GROUP" 2>/dev/null || true
+      PAUSED_PROCESS_GROUP=""
+      wait "$client_pid" || true
+      return 1
+    fi
+    kill -CONT -- "-$PAUSED_PROCESS_GROUP"
+    PAUSED_PROCESS_GROUP=""
+    set +e
+    wait "$client_pid"
+    client_status=$?
+    set -e
+    [[ "$client_status" -eq 0 ]] || return "$client_status"
   else
     timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
       2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
@@ -915,6 +1001,7 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
   run_client sm-c1-c2
   run_client sm-c3
   run_client sm-c5
+  run_client sm-c6
   run_client sm-f3-f5
   run_client sm-e4
   run_client sm-e1-f4

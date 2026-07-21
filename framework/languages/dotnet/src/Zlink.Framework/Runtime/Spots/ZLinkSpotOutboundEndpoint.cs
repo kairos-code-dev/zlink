@@ -15,9 +15,9 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkRoutedSpotRequestCall<TRequest>(activation, RequireResolvedHandle(target), request);
     }
 
-    public IZLinkPublishCall Publish<TEvent>(string topic, TEvent message)
+    public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
-        return new ZLinkCurrentSpotPublishCall<TEvent>(activation, topic, message);
+        return new ZLinkCurrentSpotPublishCall<TEvent>(activation, channelName, topic, message);
     }
 
     public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
@@ -40,28 +40,21 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         string channelName,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = runtime.EnterOperation(countAsRequest: true);
-        var bundle = runtime.GetClientBundle(channelName);
-        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
         var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
         var timedOut = false;
         try
         {
-            return await ZLinkRawRequestSubmitter.SubmitAsync(
-                    bundle.Submitter
-                    ?? throw new InvalidOperationException("ZLink request submitter is not initialized."),
+            return await outbound.RequestToChannelAsync(
+                    channelName,
                     parts,
-                    (pending, callback, currentTimeout) => dealer.Request(
-                        pending,
-                        callback,
-                        SendFlags.DontWait,
-                        currentTimeout),
                     requestTimeout,
-                    "SPOT channel request failed with result '{0}'.",
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    metadata).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -74,32 +67,26 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         }
     }
 
-    /// <summary>One-shot non-blocking channel send (TrySubmit surface): a
-    /// single DontWait attempt on the classic dealer. False = backpressured.</summary>
+    /// <summary>Performs the first non-blocking ChannelName admission attempt
+    /// on the current MeshNode. False lets the async submitter wait for
+    /// send-ready.</summary>
     public bool TrySendToChannelOnce(
         string channelName,
-        IReadOnlyList<Message> parts)
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = runtime.EnterOperation();
-        var bundle = runtime.GetClientBundle(channelName);
-        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        return dealer.Send(parts, SendFlags.DontWait);
+        return outbound.TrySendToChannelOnce(channelName, parts, metadata);
     }
 
-    public ValueTask SendToChannelAsync(
+    public ValueTask<ZLinkSubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = runtime.EnterOperation();
-        var bundle = runtime.GetClientBundle(channelName);
-        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-        return (bundle.Submitter
-                ?? throw new InvalidOperationException("ZLink send submitter is not initialized."))
-            .Async(
-                parts,
-                pending => dealer.Send(pending, SendFlags.DontWait),
-                cancellationToken);
+        return outbound.SendToChannelAsync(channelName, parts, cancellationToken, metadata);
     }
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
@@ -123,28 +110,34 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             metadata);
     }
 
-    public ValueTask<MeshPublishDetail> PublishCurrentAsync(
+    public async ValueTask<MeshPublishResult> PublishCurrentAsync(
+        string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = runtime.EnterOperation();
-        return outbound.PublishCurrentAsync(topic, parts, cancellationToken, metadata);
+        return await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+                runtime.WorkerPool,
+                () => outbound.PublishCurrentBlocking(channelName, topic, parts, metadata),
+                cancellationToken,
+                runtime.ShutdownToken)
+            .ConfigureAwait(false);
     }
 
-    public bool TryPublishCurrentOnce(
+    public MeshPublishResult TryPublishCurrentOnce(
+        string channelName,
         string topic,
         IReadOnlyList<Message> parts,
-        ReadOnlyMemory<byte> metadata,
-        out MeshPublishDetail? detail)
+        ReadOnlyMemory<byte> metadata)
     {
         using var operation = runtime.EnterOperation();
-        return outbound.TryPublishCurrentOnce(topic, parts, metadata, out detail);
+        return outbound.TryPublishCurrentOnce(channelName, topic, parts, metadata);
     }
 
-    /// <summary>One-shot non-blocking spot send (TrySubmit surface): a single
-    /// DontWait attempt with no send-ready wait. False = backpressured.</summary>
+    /// <summary>Performs the first non-blocking spot-send admission attempt.
+    /// False lets the async submitter wait for send-ready.</summary>
     public bool TrySendToSpotOnce(
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -162,7 +155,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             metadata);
     }
 
-    public ValueTask SendToSpotAsync(
+    public ValueTask<ZLinkSubmitResult> SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,

@@ -28,9 +28,17 @@ extern "C" void zlink_test_stream_session_fence_actor (
   void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_);
 extern "C" void zlink_test_stream_session_abort_actor (
   void *service_, const zlink_actor_ref_t *actor_, uint64_t transfer_serial_);
+extern "C" void zlink_test_stream_session_forget_active_session (
+  void *service_, const zlink_routing_id_t *session_rid_);
+extern "C" int zlink_test_actor_roundtrip_owner_fence ();
 
 namespace
 {
+void test_actor_roundtrip_replaces_source_owner_fence ()
+{
+    TEST_ASSERT_EQUAL_INT (0, zlink_test_actor_roundtrip_owner_fence ());
+}
+
 void *new_started_node (void *ctx_,
                         const char *name_,
                         const char *channel_,
@@ -168,7 +176,7 @@ void test_mesh_node_lifecycle_gates ()
     TEST_ASSERT_NULL (zlink_mesh_node_new (ctx, &options));
     TEST_ASSERT_EQUAL_INT (EEXIST, zlink_errno ());
 
-    //  Start requires routing id, bind endpoint and one channel.
+    //  Start still rejects a node before routing id and bind are configured.
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE, zlink_mesh_node_start (node));
     TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
@@ -244,6 +252,84 @@ void test_mesh_node_common_timeout_validation ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_mesh_node_zero_membership_lifecycle_and_missing_targets ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    zlink_mesh_node_options_t options;
+    memset (&options, 0, sizeof (options));
+    options.struct_size = sizeof (options);
+    options.version = 1;
+    options.mesh_name = "zero-membership-mesh";
+    options.mesh_name_size = strlen (options.mesh_name);
+    void *node = zlink_mesh_node_new (ctx, &options);
+    TEST_ASSERT_NOT_NULL (node);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_set_routing_id (node, "zero-node", strlen ("zero-node")));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_mesh_node_set_bind (node, "tcp://127.0.0.1:0"));
+
+    //  An empty membership set is a complete configuration. With no peer
+    //  intents the node reaches READY and advertises no Channel targets.
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_start (node));
+    zlink_mesh_node_status_t status;
+    memset (&status, 0, sizeof (status));
+    status.struct_size = sizeof (status);
+    status.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_mesh_node_status (node, &status));
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_NODE_READY, status.state);
+    TEST_ASSERT_EQUAL_UINT32 (0, status.channel_count);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_NOT_FOUND,
+      zlink_mesh_node_set_channel_weight (node, "missing", 100));
+    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
+
+    zlink_msg_t payload;
+    make_payload (&payload, "zero");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_NOT_FOUND,
+      zlink_mesh_node_send_to_channel (
+        node, "missing", NULL, &payload, 1, ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
+
+    zlink_routing_id_t missing_rid;
+    memset (&missing_rid, 0, sizeof (missing_rid));
+    missing_rid.size = strlen ("missing-rid");
+    memcpy (missing_rid.data, "missing-rid", missing_rid.size);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_NOT_CONNECTED,
+      zlink_mesh_node_send_to_node (
+        node, &missing_rid, NULL, &payload, 1, ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ENOTCONN, zlink_errno ());
+
+    void *publisher = zlink_mesh_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
+    zlink_mesh_publish_detail_t detail;
+    memset (&detail, 0, sizeof (detail));
+    detail.struct_size = sizeof (detail);
+    detail.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_NOT_FOUND,
+      zlink_mesh_node_publisher_publish (
+        publisher, "missing", "topic", NULL, &payload, 1, &detail,
+        ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ENOENT, zlink_errno ());
+    zlink_msg_close (&payload);
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 void test_mesh_local_channel_request_reply ()
 {
     void *ctx = zlink_ctx_new ();
@@ -286,14 +372,9 @@ void test_mesh_local_channel_request_reply ()
     //  One-shot reply through the sealed token.
     zlink_msg_t reply_part;
     make_payload (&reply_part, "ack-2381");
-    //  Payload preparation failure and terminal-mailbox admission failure
-    //  both leave the token and operation retryable.
+    //  Payload preparation failure leaves the token and operation retryable.
+    //  Terminal mailbox admission uses the operation's preallocated record.
     zlink_test_set_mesh_alloc_fault (1);
-    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
-                           zlink_mesh_reply (&record->reply_token, &reply_part, 1,
-                                             ZLINK_SEND_FLAGS_NONE));
-    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
-    zlink_test_set_mesh_alloc_fault (2);
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
                            zlink_mesh_reply (&record->reply_token, &reply_part, 1,
                                              ZLINK_SEND_FLAGS_NONE));
@@ -774,6 +855,203 @@ void test_mesh_actor_lifecycle_and_messaging ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+void test_restarted_node_does_not_reuse_spot_or_actor_generation ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    uint64_t previous_node_generation = 0;
+    uint64_t previous_spot_generation = 0;
+    uint64_t previous_actor_generation = 0;
+    for (int lifecycle = 0; lifecycle < 2; ++lifecycle) {
+        void *node = new_started_node (ctx, "generation-restart-mesh", "sessions");
+
+        zlink_mesh_node_status_t node_status;
+        memset (&node_status, 0, sizeof (node_status));
+        node_status.struct_size = sizeof (node_status);
+        node_status.version = 1;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK, zlink_mesh_node_status (node, &node_status));
+
+        zlink_routing_id_t entry_rid;
+        memset (&entry_rid, 0, sizeof (entry_rid));
+        entry_rid.size = strlen ("generation-restart-mesh");
+        memcpy (entry_rid.data, "generation-restart-mesh", entry_rid.size);
+        void *entry_spot = NULL;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_mesh_node_spot_lookup (node, &entry_rid, &entry_spot));
+        zlink_spot_status_t spot_status;
+        memset (&spot_status, 0, sizeof (spot_status));
+        spot_status.struct_size = sizeof (spot_status);
+        spot_status.version = 1;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK, zlink_spot_status (entry_spot, &spot_status));
+
+        zlink_actor_ref_t actor;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_REQUEST_OK,
+          zlink_mesh_node_actor_new (
+            node, "same-actor", NULL, 0, &actor, ZLINK_SEND_FLAGS_NONE, 1000));
+
+        if (lifecycle != 0) {
+            TEST_ASSERT_TRUE (
+              node_status.lifecycle_generation > previous_node_generation);
+            TEST_ASSERT_TRUE (
+              spot_status.lifecycle_generation > previous_spot_generation);
+            TEST_ASSERT_TRUE (actor.generation > previous_actor_generation);
+        }
+        previous_node_generation = node_status.lifecycle_generation;
+        previous_spot_generation = spot_status.lifecycle_generation;
+        previous_actor_generation = actor.generation;
+
+        zlink_mesh_operation_id_t op_id;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_SUBMIT_OK,
+          zlink_mesh_node_actor_destroy (node, &actor, &op_id, 1000));
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&entry_spot));
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    }
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+void test_mesh_local_actor_join_emits_post_commit_lifecycle ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "local-join-mesh", "sessions");
+
+    zlink_actor_ref_t actor;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK,
+      zlink_mesh_node_actor_new (
+        node, "local-player", NULL, 0, &actor, ZLINK_SEND_FLAGS_NONE, 1000));
+
+    void *batch = zlink_mesh_receive_batch_new (8, 32, 64 * 1024);
+    TEST_ASSERT_NOT_NULL (batch);
+    zlink_mesh_receive_requirements_t requirements;
+    memset (&requirements, 0, sizeof (requirements));
+    zlink_mesh_claim_t claim;
+
+    //  Remove the creation lifecycle record so this test observes only the
+    //  membership transition below.
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_SPOT, ZLINK_MESH_READY_APPLICATION, &claim);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (
+        &claim, batch, &requirements, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    zlink_routing_id_t target_rid;
+    memset (&target_rid, 0, sizeof (target_rid));
+    target_rid.size = 11;
+    memcpy (target_rid.data, "player-room", target_rid.size);
+    void *target_spot = NULL;
+    uint32_t created = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_mesh_node_spot_get_or_new (
+        node, &target_rid, &target_spot, &created));
+    TEST_ASSERT_EQUAL_UINT32 (1, created);
+    zlink_spot_status_t target_status;
+    memset (&target_status, 0, sizeof (target_status));
+    target_status.struct_size = sizeof (target_status);
+    target_status.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_spot_status (target_spot, &target_status));
+
+    zlink_routing_id_t node_rid;
+    memset (&node_rid, 0, sizeof (node_rid));
+    node_rid.size = strlen ("local-join-mesh");
+    memcpy (node_rid.data, "local-join-mesh", node_rid.size);
+    zlink_mesh_operation_id_t join_op;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_actor_join_spot (
+        node, &actor, &node_rid, &target_rid,
+        target_status.lifecycle_generation, NULL, 0, &join_op, 1000));
+
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_SPOT, ZLINK_MESH_READY_APPLICATION, &claim);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_mesh_receive_batch_reset (batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (
+        &claim, batch, &requirements, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (batch));
+    const zlink_mesh_receive_record_t *record =
+      zlink_mesh_receive_batch_data (batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SPOT_CONTROL, record->kind);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_MESH_OPERATION_ACTOR_JOIN, record->operation_kind);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_actor_join_reply (
+        &record->reply_token, ZLINK_ACTOR_JOIN_ACCEPTED, NULL, 0,
+        ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    bool observed_left = false;
+    bool observed_joined = false;
+    for (int i = 0; i < 2; ++i) {
+        take_ready_claim (
+          node, ZLINK_MESH_OWNER_SPOT, ZLINK_MESH_READY_INFRASTRUCTURE,
+          &claim);
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK, zlink_mesh_receive_batch_reset (batch));
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_RECV_OK,
+          zlink_mesh_claim_recv_batch (
+            &claim, batch, &requirements, ZLINK_RECV_FLAGS_NONE));
+        TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (batch));
+        record = zlink_mesh_receive_batch_data (batch);
+        TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_SPOT_CONTROL, record->kind);
+        TEST_ASSERT_NOT_EQUAL (
+          ZLINK_MESH_OPERATION_ACTOR_JOIN, record->operation_kind);
+        TEST_ASSERT_TRUE (
+          record->kind_data_size >= sizeof (zlink_actor_control_record_t));
+        const zlink_actor_control_record_t *control =
+          static_cast<const zlink_actor_control_record_t *> (
+            record->kind_data);
+        TEST_ASSERT_EQUAL_UINT64 (1, control->previous_membership_epoch);
+        TEST_ASSERT_EQUAL_UINT64 (2, control->current_membership_epoch);
+        if (control->kind == ZLINK_ACTOR_LIFECYCLE_LEFT)
+            observed_left = true;
+        if (control->kind == ZLINK_ACTOR_LIFECYCLE_JOINED)
+            observed_joined = true;
+        TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+    }
+    TEST_ASSERT_TRUE (observed_left);
+    TEST_ASSERT_TRUE (observed_joined);
+
+    take_ready_claim (
+      node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_INFRASTRUCTURE, &claim);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK, zlink_mesh_receive_batch_reset (batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (
+        &claim, batch, &requirements, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (batch));
+    record = zlink_mesh_receive_batch_data (batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_COMPLETION, record->kind);
+    TEST_ASSERT_EQUAL_UINT64 (join_op.low, record->operation_id.low);
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, record->terminal_result);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&target_spot));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 void test_stream_session_binding_reports_actor_membership_epoch ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -837,6 +1115,31 @@ void test_stream_session_binding_reports_actor_membership_epoch ()
     TEST_ASSERT_NOT_NULL (source_rid);
     zlink_routing_id_t session_rid = *source_rid;
     zlink_msg_close (&connect_part);
+
+    const int client_fd_2 = connect_raw_stream_client (endpoint);
+    TEST_ASSERT_TRUE (client_fd_2 >= 0);
+    TEST_ASSERT_EQUAL_INT (1, send (client_fd_2, "!", 1, 0));
+    TEST_ASSERT_EQUAL_INT (0, zlink_msg_init (&connect_part));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_recv_part (stream, &source_rid, &connect_part, &has_more,
+                       ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_NOT_NULL (source_rid);
+    zlink_routing_id_t session_rid_2 = *source_rid;
+    zlink_msg_close (&connect_part);
+
+    const int client_fd_3 = connect_raw_stream_client (endpoint);
+    TEST_ASSERT_TRUE (client_fd_3 >= 0);
+    TEST_ASSERT_EQUAL_INT (1, send (client_fd_3, "!", 1, 0));
+    TEST_ASSERT_EQUAL_INT (0, zlink_msg_init (&connect_part));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_recv_part (stream, &source_rid, &connect_part, &has_more,
+                       ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_NOT_NULL (source_rid);
+    zlink_routing_id_t session_rid_3 = *source_rid;
+    zlink_msg_close (&connect_part);
+
     zlink_mesh_operation_id_t operation_id;
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_stream_session_bind_actor (service, &session_rid, &actor,
@@ -858,15 +1161,35 @@ void test_stream_session_binding_reports_actor_membership_epoch ()
     status.version = ZLINK_STREAM_SESSION_ABI_VERSION;
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
                            zlink_stream_session_service_status (service, &status));
-    TEST_ASSERT_EQUAL_UINT64 (1, status.session_count);
+    TEST_ASSERT_EQUAL_UINT64 (3, status.session_count);
+
+    //  A missed observer notification must be repaired from the STREAM's
+    //  current route set before an otherwise live session is rejected.
+    zlink_test_stream_session_forget_active_session (service, &session_rid);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_stream_session_bind_actor (service, &session_rid, &actor,
+                                                            &operation_id, 1000));
 
     TEST_ASSERT_EQUAL_INT (0, shutdown (client_fd, SHUT_RDWR));
     close (client_fd);
+    TEST_ASSERT_EQUAL_INT (0, shutdown (client_fd_2, SHUT_RDWR));
+    close (client_fd_2);
+    TEST_ASSERT_EQUAL_INT (0, shutdown (client_fd_3, SHUT_RDWR));
+    close (client_fd_3);
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_disconnect_rid (stream, &session_rid));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                           zlink_disconnect_rid (stream, &session_rid_2));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                           zlink_disconnect_rid (stream, &session_rid_3));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
                            zlink_stream_session_service_status (service, &status));
     TEST_ASSERT_EQUAL_UINT64 (0, status.session_count);
     TEST_ASSERT_EQUAL_UINT64 (0, status.binding_count);
+    zlink_test_stream_session_forget_active_session (service, &session_rid);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_NOT_CONNECTED,
+      zlink_stream_session_bind_actor (service, &session_rid, &actor, &operation_id, 1000));
+    TEST_ASSERT_EQUAL_INT (ENOTCONN, zlink_errno ());
 
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
                            zlink_stream_session_service_shutdown (service, 1000));
@@ -878,7 +1201,7 @@ void test_stream_session_binding_reports_actor_membership_epoch ()
 #endif
 }
 
-void test_stream_session_actor_send_is_one_complete_byte_message ()
+void test_stream_session_actor_submit_reaches_local_mailbox ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw TCP test helper is unavailable on Windows");
@@ -938,6 +1261,50 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
                            zlink_stream_session_bind_actor (service, &session_rid, &actor,
                                                             &operation_id, 1000));
 
+    //  Consume the asynchronous bind completion before checking the later
+    //  request completion on the same node infrastructure lane.
+    zlink_mesh_claim_t bind_completion_claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_NODE,
+                      ZLINK_MESH_READY_INFRASTRUCTURE,
+                      &bind_completion_claim);
+    void *bind_completion_batch = zlink_mesh_receive_batch_new (1, 1, 16);
+    TEST_ASSERT_NOT_NULL (bind_completion_batch);
+    zlink_mesh_receive_requirements_t bind_completion_required;
+    memset (&bind_completion_required, 0, sizeof (bind_completion_required));
+    bind_completion_required.struct_size = sizeof (bind_completion_required);
+    bind_completion_required.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (&bind_completion_claim,
+                                   bind_completion_batch,
+                                   &bind_completion_required,
+                                   ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (
+      1, zlink_mesh_receive_batch_count (bind_completion_batch));
+    const zlink_mesh_receive_record_t *bind_completion =
+      zlink_mesh_receive_batch_data (bind_completion_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_COMPLETION,
+                           bind_completion->kind);
+    TEST_ASSERT_EQUAL_UINT64 (operation_id.low,
+                              bind_completion->operation_id.low);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&bind_completion_claim));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK,
+      zlink_mesh_receive_batch_destroy (&bind_completion_batch));
+
+    zlink_stream_session_binding_t source_binding;
+    memset (&source_binding, 0, sizeof (source_binding));
+    source_binding.struct_size = sizeof (source_binding);
+    source_binding.version = ZLINK_STREAM_SESSION_ABI_VERSION;
+    size_t source_binding_count = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, &source_binding, &source_binding_count));
+    TEST_ASSERT_EQUAL_UINT64 (1, source_binding_count);
+    TEST_ASSERT_NOT_EQUAL (0, source_binding.binding_generation);
+
     //  The session binding check and local actor admission form one FIFO
     //  operation. A later submit must not enter the actor mailbox while an
     //  earlier submit is between those two steps.
@@ -993,6 +1360,23 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
       zlink_mesh_claim_recv_batch (&actor_claim, actor_batch, &actor_required,
                                    ZLINK_RECV_FLAGS_NONE));
     TEST_ASSERT_EQUAL_UINT64 (2, zlink_mesh_receive_batch_count (actor_batch));
+    const zlink_mesh_receive_record_t *actor_records =
+      zlink_mesh_receive_batch_data (actor_batch);
+    for (size_t i = 0; i < 2; ++i) {
+        TEST_ASSERT_EQUAL_UINT8 (actor.node_rid.size,
+                                 actor_records[i].source_node_rid.size);
+        TEST_ASSERT_EQUAL_MEMORY (actor.node_rid.data,
+                                  actor_records[i].source_node_rid.data,
+                                  actor.node_rid.size);
+        TEST_ASSERT_EQUAL_UINT8 (session_rid.size,
+                                 actor_records[i].source_spot_rid.size);
+        TEST_ASSERT_EQUAL_MEMORY (session_rid.data,
+                                  actor_records[i].source_spot_rid.data,
+                                  session_rid.size);
+        TEST_ASSERT_EQUAL_UINT64 (
+          source_binding.binding_generation,
+          actor_records[i].source_binding_generation);
+    }
     const zlink_msg_t *actor_parts = zlink_mesh_receive_batch_parts (actor_batch);
     TEST_ASSERT_EQUAL_MEMORY (
       "S1", zlink_msg_data (const_cast<zlink_msg_t *> (&actor_parts[0])), 2);
@@ -1001,6 +1385,100 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&actor_claim));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
                            zlink_mesh_receive_batch_destroy (&actor_batch));
+
+    //  A request dispatched from the same live STREAM session must arm the
+    //  local Actor application mailbox. Its reply completes on the node
+    //  infrastructure lane without any framework pump or transport hop.
+    zlink_msg_t request_to_actor;
+    make_payload (&request_to_actor, "RQ");
+    zlink_mesh_operation_id_t request_operation;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_request_to_actor (
+        service, &session_rid, &actor, NULL, &request_to_actor, 1,
+        &request_operation, ZLINK_SEND_FLAGS_NONE, 1000));
+    zlink_msg_close (&request_to_actor);
+
+    zlink_mesh_claim_t request_claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_ACTOR,
+                      ZLINK_MESH_READY_APPLICATION, &request_claim);
+    void *request_batch = zlink_mesh_receive_batch_new (1, 2, 16);
+    TEST_ASSERT_NOT_NULL (request_batch);
+    zlink_mesh_receive_requirements_t request_required;
+    memset (&request_required, 0, sizeof (request_required));
+    request_required.struct_size = sizeof (request_required);
+    request_required.version = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (&request_claim, request_batch,
+                                   &request_required, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (request_batch));
+    const zlink_mesh_receive_record_t *request_record =
+      zlink_mesh_receive_batch_data (request_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_ACTOR_REQUEST,
+                           request_record->kind);
+    TEST_ASSERT_EQUAL_UINT64 (request_operation.low,
+                              request_record->operation_id.low);
+    TEST_ASSERT_EQUAL_UINT8 (actor.node_rid.size,
+                             request_record->source_node_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (actor.node_rid.data,
+                              request_record->source_node_rid.data,
+                              actor.node_rid.size);
+    TEST_ASSERT_EQUAL_UINT8 (session_rid.size,
+                             request_record->source_spot_rid.size);
+    TEST_ASSERT_EQUAL_MEMORY (session_rid.data,
+                              request_record->source_spot_rid.data,
+                              session_rid.size);
+    TEST_ASSERT_EQUAL_UINT64 (
+      source_binding.binding_generation,
+      request_record->source_binding_generation);
+    const zlink_msg_t *request_parts =
+      zlink_mesh_receive_batch_parts (request_batch);
+    TEST_ASSERT_EQUAL_MEMORY (
+      "RQ",
+      zlink_msg_data (const_cast<zlink_msg_t *> (
+        &request_parts[request_record->part_offset])),
+      2);
+
+    zlink_msg_t actor_reply;
+    make_payload (&actor_reply, "OK");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_reply (&request_record->reply_token, &actor_reply, 1,
+                        ZLINK_SEND_FLAGS_NONE));
+    zlink_msg_close (&actor_reply);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&request_claim));
+
+    zlink_mesh_claim_t completion_claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_NODE,
+                      ZLINK_MESH_READY_INFRASTRUCTURE, &completion_claim);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_mesh_receive_batch_reset (request_batch));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_mesh_claim_recv_batch (&completion_claim, request_batch,
+                                   &request_required, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_UINT64 (1, zlink_mesh_receive_batch_count (request_batch));
+    const zlink_mesh_receive_record_t *completion_record =
+      zlink_mesh_receive_batch_data (request_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_MESH_RECORD_COMPLETION,
+                           completion_record->kind);
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                           completion_record->terminal_result);
+    TEST_ASSERT_EQUAL_UINT64 (request_operation.low,
+                              completion_record->operation_id.low);
+    const zlink_msg_t *completion_parts =
+      zlink_mesh_receive_batch_parts (request_batch);
+    TEST_ASSERT_EQUAL_MEMORY (
+      "OK",
+      zlink_msg_data (const_cast<zlink_msg_t *> (
+        &completion_parts[completion_record->part_offset])),
+      2);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_mesh_claim_release (&completion_claim));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&request_batch));
 
     //  Ordering is scoped to one session. While the first session is paused
     //  before mailbox admission, an unrelated session must still submit.
@@ -1164,9 +1642,37 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
     make_payload (&parts[0], "hello");
     make_payload (&parts[1], "-");
     make_payload (&parts[2], "world");
+    zlink_stream_session_binding_t binding;
+    memset (&binding, 0, sizeof (binding));
+    binding.struct_size = sizeof (binding);
+    binding.version = ZLINK_STREAM_SESSION_ABI_VERSION;
+    size_t binding_count = 1;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (service, &session_rid, &binding,
+                                     &binding_count));
+    zlink_actor_ref_t moved_actor = actor;
+    zlink_routing_id_t moved_node_rid;
+    memset (&moved_node_rid, 0, sizeof (moved_node_rid));
+    moved_node_rid.size = strlen ("bound-session-moved-node");
+    memcpy (moved_node_rid.data, "bound-session-moved-node",
+            moved_node_rid.size);
+    moved_actor.node_rid = moved_node_rid;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_INVALID_ARGUMENT,
+      zlink_mesh_node_actor_send_bound_session (
+        node, &moved_actor, 0, parts, 3, ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_INVALID_STATE,
+      zlink_mesh_node_actor_send_bound_session (
+        node, &moved_actor, binding.binding_generation + 1, parts, 3,
+        ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ESTALE, zlink_errno ());
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_mesh_node_actor_send_bound_session (
-                             node, &actor, parts, 3, ZLINK_SEND_FLAGS_NONE));
+                             node, &moved_actor, binding.binding_generation,
+                             parts, 3, ZLINK_SEND_FLAGS_NONE));
     for (size_t i = 0; i < 3; ++i)
         zlink_msg_close (&parts[i]);
 
@@ -1180,21 +1686,78 @@ void test_stream_session_actor_send_is_one_complete_byte_message ()
     }
     TEST_ASSERT_EQUAL_MEMORY ("hello-world", received, sizeof (received));
 
-    zlink_stream_session_binding_t binding;
-    memset (&binding, 0, sizeof (binding));
-    binding.struct_size = sizeof (binding);
-    binding.version = ZLINK_STREAM_SESSION_ABI_VERSION;
-    size_t binding_count = 1;
+    zlink_mesh_operation_id_t unbind_operation;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_unbind_actor (
+        service, &session_rid, &actor, binding.binding_generation,
+        &unbind_operation, 1000));
+    zlink_mesh_operation_id_t rebind_operation;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_bind_actor (service, &second_session_rid, &actor,
+                                       &rebind_operation, 1000));
+    zlink_stream_session_binding_t rebound_bindings[2];
+    memset (rebound_bindings, 0, sizeof (rebound_bindings));
+    for (size_t i = 0; i < 2; ++i) {
+        rebound_bindings[i].struct_size = sizeof (rebound_bindings[i]);
+        rebound_bindings[i].version = ZLINK_STREAM_SESSION_ABI_VERSION;
+    }
+    binding_count = 2;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_CONFIG_OK,
-      zlink_stream_session_bindings (service, &session_rid, &binding, &binding_count));
+      zlink_stream_session_bindings (service, &second_session_rid,
+                                     rebound_bindings, &binding_count));
+    TEST_ASSERT_EQUAL_UINT64 (2, binding_count);
+    const zlink_stream_session_binding_t *rebound_binding = NULL;
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (strncmp (rebound_bindings[i].actor.actor_id, actor.actor_id,
+                     sizeof (actor.actor_id)) == 0)
+            rebound_binding = &rebound_bindings[i];
+    }
+    TEST_ASSERT_NOT_NULL (rebound_binding);
+    TEST_ASSERT_NOT_EQUAL (binding.binding_generation,
+                           rebound_binding->binding_generation);
+
+    zlink_msg_t rebound_part;
+    make_payload (&rebound_part, "fresh");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_INVALID_STATE,
+      zlink_mesh_node_actor_send_bound_session (
+        node, &moved_actor, binding.binding_generation, &rebound_part, 1,
+        ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ESTALE, zlink_errno ());
+    char stale_byte = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, recv (second_client_fd, &stale_byte, sizeof (stale_byte), MSG_DONTWAIT));
+    TEST_ASSERT_TRUE (errno == EAGAIN || errno == EWOULDBLOCK);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_actor_send_bound_session (
+        node, &moved_actor, rebound_binding->binding_generation, &rebound_part,
+        1, ZLINK_SEND_FLAGS_NONE));
+    zlink_msg_close (&rebound_part);
+    char rebound_received[5];
+    size_t rebound_received_size = 0;
+    while (rebound_received_size < sizeof (rebound_received)) {
+        const ssize_t count =
+          recv (second_client_fd, rebound_received + rebound_received_size,
+                sizeof (rebound_received) - rebound_received_size, 0);
+        TEST_ASSERT_TRUE (count > 0);
+        rebound_received_size += static_cast<size_t> (count);
+    }
+    TEST_ASSERT_EQUAL_MEMORY ("fresh", rebound_received,
+                              sizeof (rebound_received));
+
     zlink_mesh_operation_id_t close_operation;
     TEST_ASSERT_EQUAL_INT (
       ZLINK_SUBMIT_OK,
-      zlink_mesh_node_actor_close_bound_session (node, &actor, binding.binding_generation,
-                                                  &close_operation, 1000));
+      zlink_mesh_node_actor_close_bound_session (
+        node, &actor, rebound_binding->binding_generation, &close_operation,
+        1000));
     char after_close = 0;
-    TEST_ASSERT_EQUAL_INT (0, recv (client_fd, &after_close, sizeof (after_close), 0));
+    TEST_ASSERT_EQUAL_INT (
+      0, recv (second_client_fd, &after_close, sizeof (after_close), 0));
 
     close (second_client_fd);
     close (client_fd);
@@ -1280,14 +1843,18 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_mesh_node_lifecycle_gates);
     RUN_TEST (test_mesh_node_common_timeout_validation);
+    RUN_TEST (test_mesh_node_zero_membership_lifecycle_and_missing_targets);
     RUN_TEST (test_mesh_local_channel_request_reply);
     RUN_TEST (test_mesh_metadata_ownership_and_timeout_contract);
     RUN_TEST (test_mesh_local_multicast_and_subscription);
     RUN_TEST (test_mesh_local_multicast_target_specific_drop);
     RUN_TEST (test_mesh_publish_snapshot_cannot_cross_shutdown);
     RUN_TEST (test_mesh_actor_lifecycle_and_messaging);
+    RUN_TEST (test_actor_roundtrip_replaces_source_owner_fence);
+    RUN_TEST (test_restarted_node_does_not_reuse_spot_or_actor_generation);
+    RUN_TEST (test_mesh_local_actor_join_emits_post_commit_lifecycle);
     RUN_TEST (test_stream_session_binding_reports_actor_membership_epoch);
-    RUN_TEST (test_stream_session_actor_send_is_one_complete_byte_message);
+    RUN_TEST (test_stream_session_actor_submit_reaches_local_mailbox);
     RUN_TEST (test_mesh_node_poller_source);
     const int rc = UNITY_END ();
     fflush (NULL);

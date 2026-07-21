@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[스펙 목차](README.ko.md) | [다음: C++ framework 인터페이스](02-framework-interfaces.ko.md)
+[스펙 목차](README.ko.md) | [다음: C++ exact interface](interfaces/README.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # C++ 시스템 구조 — 패키지, 등록과 부트스트랩
@@ -18,7 +18,7 @@
 > [location-runtime](../../40-location-runtime.ko.md),
 > [channel-topology](../../10-channel-topology.ko.md).
 >
-> **public 타입과 시그니처는 [02-framework-interfaces](02-framework-interfaces.ko.md)가 소유한다.**
+> **public 타입과 시그니처는 [기능별 exact interface](interfaces/README.ko.md)가 소유한다.**
 > HTTP는 [60](60-http-hosting.ko.md)·[61](61-embedded-http-server.ko.md)이 소유한다.
 > **내부 runtime 구조는 [internals/runtime-architecture](../../../../cpp/internals/runtime-architecture.ko.md)가 소유한다** —
 > 공개 계약이 아니다.
@@ -233,7 +233,7 @@ class logger_factory_t;
 ## 7. HTTP hosting
 
 **framework가 내장 HTTP 서버를 제공한다.** 계약은 [60](60-http-hosting.ko.md)·[61](61-embedded-http-server.ko.md)이
-소유하고, public 타입은 [02 §15.5](02-framework-interfaces.ko.md)가 소유한다. 여기서는
+소유하고, public 타입은 [configuration과 host](interfaces/02-configuration-host.ko.md)가 소유한다. 여기서는
 **시스템 구조에 걸리는 규칙**만 정리한다.
 
 ### 7.1 요청당 DI scope
@@ -256,18 +256,18 @@ class logger_factory_t;
 
 ## 8. Handler 등록과 filter
 
-handler 등록 표면과 filter 계약은 [02-framework-interfaces §8](02-framework-interfaces.ko.md)이
+handler 등록 표면과 filter 계약은 [channel messaging §3](interfaces/03-channel-messaging.ko.md#3-handler-registry)이
 소유한다. filter의 언어 중립 의미는
 [framework API §8.1](../../../05-framework-api.ko.md#81-handler-filter)이 소유한다.
 
 ## 9. 기능 등록
 
-각 기능의 등록 표면은 [02-framework-interfaces](02-framework-interfaces.ko.md)가 소유한다.
+각 기능의 등록 표면은 [기능별 exact interface](interfaces/README.ko.md)가 소유한다.
 
 | 기능 | 절 |
 |---|---|
 | channel | §7 Channel Builder |
-| SPOT · actor | §11 Spot Framework API |
+| SPOT · actor | §11 Spot Framework API와 Instance Spot 등록·호출 |
 | STREAM | §12 Hosted Service와 Module |
 | HTTP | [60](60-http-hosting.ko.md) · [61](61-embedded-http-server.ko.md) |
 | monitoring · location | §13 Configuration과 Logging |
@@ -277,7 +277,7 @@ handler 등록 표면과 filter 계약은 [02-framework-interfaces §8](02-frame
 [runtime-monitoring §6](../../50-runtime-monitoring.ko.md).
 
 **C++은 모든 위반을 host 시작 전에 실패로 만든다.** 오류는 예외가 아니라
-`result_t`/`framework_exception_t` 경계 규약을 따른다([02 §1](02-framework-interfaces.ko.md)).
+`result_t`/`framework_exception_t` 경계 규약을 따른다([common runtime](interfaces/01-common-runtime.ko.md)).
 
 ## 10. 회귀 테스트
 

@@ -45,7 +45,7 @@
 
 ## 남은 항목
 
-- `SF-B2`: E2E-JV-07에서 grace 초과 뒤 provider 재시작과 신규 outbound 연결 억제를 추적한다.
+- 위 `SF-B2`는 E2E-JV-07에서 grace 초과 뒤 provider 재시작과 신규 outbound 연결 억제를 추적한다.
 
 ## 검증 방법
 

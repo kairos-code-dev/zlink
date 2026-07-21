@@ -118,7 +118,7 @@ class channel_echo_handler_t
         return {.value = "echo-" + request.value, .handled_by = _state.node_rid};
     }
 
-    e2e::channel_echo_res_t route_handle (
+    e2e::channel_echo_res_t handle (
       const e2e::channel_echo_req_t &request,
       const zlink::framework::route_handler_context_t &)
     {

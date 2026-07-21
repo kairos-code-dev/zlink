@@ -68,7 +68,7 @@ internal sealed partial class AwaitSession(
                         + $"|actor={actor.ActorId}|node={actor.NodeRid}");
                 }
 
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "AwaitShutdownScenarioReq":
@@ -82,7 +82,7 @@ internal sealed partial class AwaitSession(
                     spots,
                     request,
                     cancellationToken);
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "AwaitShutdownRecoveryReq":
@@ -96,7 +96,7 @@ internal sealed partial class AwaitSession(
                     spots,
                     request,
                     cancellationToken);
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "AwaitEvidenceReq":
@@ -107,7 +107,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "AwaitEvidenceWaitReq":
@@ -118,7 +118,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "EnsureSpotReq":
@@ -129,7 +129,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                Context.Client.Reply(result).Submit();
+                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
                 return;
             }
             case "HoldReq":
@@ -282,7 +282,7 @@ internal sealed partial class AwaitSession(
             spotRid,
             request,
             cancellationToken);
-        Context.Client.Reply(result).Submit();
+        await Context.Client.Reply(result).SubmitAsync(cancellationToken);
     }
 
     private async Task RelaySpotCommandAsync<TMsg>(

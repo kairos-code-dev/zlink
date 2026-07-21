@@ -1,12 +1,12 @@
 [English](07-monitoring.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Events](05-events.ko.md) · [MeshNode](service/01-mesh-node.ko.md) · [errno map](04-errno-map.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Events](05-events.ko.md) · [errno map](04-errno-map.ko.md)
 
 # Monitoring
 
-이 문서는 ZLink Core 10.1.0의 raw socket monitor와 MeshNode monitor 공개 계약을 정의한다. 대상 독자는
-연결, peer admission, Logical Multicast, backpressure와 lifecycle을 관측하는 C API와 bindings 개발자다.
-monitor는 상태를 관측할 뿐 routing, admission과 queue 상태를 변경하지 않는다.
+이 문서는 ZLink Core 11.0 raw socket monitor 공개 계약을 정의한다. 대상 독자는 connection, transport,
+protocol과 socket lifecycle을 관측하는 C API와 bindings 개발자다. Monitor는 상태를 관측할 뿐 routing과
+queue 상태를 변경하지 않는다.
 
 ## 1. Raw socket monitor
 
@@ -197,144 +197,12 @@ recv에서는 caller-owned output 구조체 안의 값이다. callback의 event 
 `event`는 호출 동안만 유효한 borrowed view다. 이 함수를 handler API에 등록하면 일반 callback
 consumer처럼 event queue를 소비하되 각 event에 아무 작업도 하지 않는다.
 
-## 2. MeshNode monitor type
+## 2. Ordering, overflow와 thread safety
 
-```c
-#define ZLINK_MESH_MONITOR_ABI_VERSION 1u
-#define ZLINK_MESH_MONITOR_CHANNEL_MAX 255u
+Monitor queue는 bounded다. Queue가 가득 차면 동일한 high-frequency event를 aggregate하고 connection state,
+protocol error와 lifecycle event를 우선 보존한다. Aggregate된 수는 다음 status snapshot에 반영한다. Monitor
+consumer 지연은 raw socket submit을 block하지 않는다.
 
-typedef uint64_t zlink_mesh_monitor_event_mask_t;
-
-typedef enum zlink_mesh_monitor_event_kind_t {
-  ZLINK_MESH_MONITOR_STATE_CHANGED       = 1,
-  ZLINK_MESH_MONITOR_PEER_CONNECTING     = 2,
-  ZLINK_MESH_MONITOR_PEER_ADMITTED       = 3,
-  ZLINK_MESH_MONITOR_PEER_DRAINING       = 4,
-  ZLINK_MESH_MONITOR_PEER_CLOSED         = 5,
-  ZLINK_MESH_MONITOR_PEER_REJECTED       = 6,
-  ZLINK_MESH_MONITOR_CHANNEL_CHANGED     = 7,
-  ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED   = 8,
-  ZLINK_MESH_MONITOR_MULTICAST_COMMITTED = 9,
-  ZLINK_MESH_MONITOR_MULTICAST_DROPPED   = 10,
-  ZLINK_MESH_MONITOR_BACKPRESSURED       = 11,
-  ZLINK_MESH_MONITOR_OPERATION_COMPLETED = 12,
-  ZLINK_MESH_MONITOR_PROTOCOL_ERROR      = 13,
-  ZLINK_MESH_MONITOR_CLAIM_REVOKED       = 14
-} zlink_mesh_monitor_event_kind_t;
-
-typedef struct zlink_mesh_monitor_open_options_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_mask_t events;
-} zlink_mesh_monitor_open_options_t;
-
-typedef struct zlink_mesh_monitor_event_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_monitor_event_kind_t kind;
-  uint64_t timestamp_ms;
-  uint64_t mesh_lifecycle_generation;
-  uint64_t mesh_descriptor_revision;
-  zlink_mesh_node_state_t mesh_state;
-  zlink_routing_id_t peer_rid;
-  uint64_t peer_lifecycle_generation;
-  uint64_t peer_descriptor_revision;
-  zlink_mesh_owner_kind_t owner_kind;
-  zlink_routing_id_t spot_rid;
-  zlink_actor_ref_t actor;
-  char channel_name[ZLINK_MESH_MONITOR_CHANNEL_MAX + 1];
-  uint64_t operation_id_high;
-  uint64_t operation_id_low;
-  uint32_t snapshot_remote_target_count;
-  uint32_t admitted_remote_target_count;
-  uint32_t dropped_remote_target_count;
-  uint32_t unreachable_remote_target_count;
-  uint32_t snapshot_local_spot_count;
-  uint32_t admitted_local_spot_count;
-  uint32_t dropped_local_spot_count;
-  int32_t result_code;
-  int32_t failure_errno;
-} zlink_mesh_monitor_event_t;
-
-typedef struct zlink_mesh_monitor_status_t {
-  uint32_t struct_size;
-  uint32_t version;
-  zlink_mesh_node_state_t state;
-  uint64_t peer_admitted;
-  uint64_t peer_rejected;
-  uint64_t submitted_messages;
-  uint64_t completed_operations;
-  uint64_t backpressured_submits;
-  uint64_t multicast_messages;
-  uint64_t multicast_dropped_targets;
-  uint64_t active_claims;
-  uint64_t pending_application_messages;
-  uint64_t pending_infrastructure_messages;
-  uint64_t pending_bytes;
-} zlink_mesh_monitor_status_t;
-
-typedef void (*zlink_mesh_monitor_handler_fn)(
-  const zlink_mesh_monitor_event_t *event,
-  void *userdata);
-```
-
-event mask의 bit `1ULL << (kind - 1)`이 해당 event를 선택한다. `events == 0`은 모든 event를 선택한다.
-적용되지 않는 RID, ActorRef, channel과 operation field는 zero value다. `result_code`는 공개 result enum의
-숫자 값이고 `failure_errno`는 같은 실패의 errno다.
-
-## 3. MeshNode monitor API
-
-```c
-ZLINK_EXPORT void *zlink_mesh_node_monitor_open(
-  void *mesh_node,
-  const zlink_mesh_monitor_open_options_t *options);
-ZLINK_EXPORT zlink_handler_result_t zlink_mesh_node_monitor_handler(
-  void *monitor,
-  zlink_mesh_monitor_handler_fn handler,
-  void *userdata);
-ZLINK_EXPORT zlink_recv_result_t zlink_mesh_node_monitor_recv(
-  void *monitor,
-  zlink_mesh_monitor_event_t *event_out,
-  zlink_recv_flags_t flags);
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_monitor_status(
-  void *monitor,
-  zlink_mesh_monitor_status_t *status_out);
-ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_monitor_close(void **monitor_p);
-```
-
-monitor open은 MeshNode의 strong child reference를 유지하므로 monitor를 먼저 닫아야 MeshNode destroy가
-성공한다. handler와 recv는 같은 event queue의 single consumer다. handler가 `NULL`이면 등록을 해제하며
-같은 callback 안의 해제는 `ZLINK_HANDLER_DEADLOCK`이다.
-
-status는 호출 시점의 atomic snapshot이다. counter는 lifecycle generation 안에서 단조 증가하며 새
-generation에서 0부터 시작한다. status를 읽어도 event를 소비하지 않는다.
-
-## 4. Event 의미
-
-peer event는 peer RID, lifecycle generation과 descriptor revision을 함께 제공한다. rejected event는 MeshName, expected RID,
-generation, trust profile 또는 authentication 실패를 `result_code`와 `failure_errno`로 구분한다.
-socket handshake가 peer RID를 만들기 전에 실패한 경우에도 `PEER_REJECTED`를 전달한다. 이때
-`peer_rid`는 zero value이고 `failure_errno`는 `EPROTO`다. 따라서 snapshot에 peer entry가 없는
-연결 시도도 event stream으로 관측할 수 있다.
-
-multicast committed와 dropped event는 remote와 local 각각의 snapshot, admitted와 dropped count를
-함께 제공한다. 모든 target이 수락되면 committed, local mailbox나 remote ROUTER pipe가 수락하지 못한
-target이 있으면 dropped event를 사용한다. target별 event를 만들지 않고 한 publish의 aggregate count만
-기록해 event queue를 제한한다.
-
-backpressured event는 owner kind와 가능한 경우 Spot·Actor·channel을 제공한다. raw topic, Actor ID,
-application metadata와 payload는 monitor에 복사하지 않는다. 따라서 label cardinality와 sensitive data가
-monitor event에 노출되지 않는다.
-
-operation completed event는 operation ID와 terminal result를 제공하지만 reply payload는 포함하지 않는다.
-claim revoked event는 shutdown deadline 뒤 claim owner와 generation을 기록한다.
-
-## 5. Overflow, ordering과 thread safety
-
-monitor queue는 bounded다. queue가 가득 차면 동일한 high-frequency submit/backpressure event를 aggregate하고
-peer state, protocol error와 lifecycle event를 우선 보존한다. aggregate된 수는 다음 status snapshot에 반드시
-반영한다. Core는 monitor consumer 지연 때문에 application submit을 block하지 않는다.
-
-같은 MeshNode lifecycle에서 event는 Core가 상태 전이를 commit한 순서로 queue에 들어간다. 서로 다른 peer
-I/O thread 사이의 wall-clock order는 보장하지 않는다. handler, recv, status와 close의 result·errno 대응은
-[errno map](04-errno-map.ko.md)을 따른다.
+같은 monitor에서는 Core가 state transition을 commit한 순서로 event를 queue에 넣는다. 서로 다른 connection
+I/O thread 사이의 wall-clock order는 보장하지 않는다. Handler, recv와 close는 같은 event queue의 single
+consumer 규칙을 지킨다. Result와 errno는 [errno map](04-errno-map.ko.md)을 따른다.

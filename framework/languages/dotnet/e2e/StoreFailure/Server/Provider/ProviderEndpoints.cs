@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using StoreFailure.Shared;
 using Zlink.Framework.Contracts.Channels;
@@ -93,8 +94,8 @@ internal static class ProviderEndpoints
             CancellationToken cancellationToken) =>
         {
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
-            var deadline = DateTimeOffset.UtcNow + timeout;
-            while (DateTimeOffset.UtcNow < deadline)
+            var elapsed = Stopwatch.StartNew();
+            while (elapsed.Elapsed < timeout)
             {
                 var weight = runtimeOptions.Channel(StoreFailureNames.Channel, StoreFailureNames.Channel).Weight;
                 if (weight == request.Expected) return Results.Ok(new { weight });

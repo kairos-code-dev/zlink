@@ -56,6 +56,7 @@ class CourierActor implements ZLinkActor {
 
   async decide(decision: CourierDecisionMsg): Promise<void> {
     await this.channels.sendToChannel(
+      SampleNames.routeMesh,
       SampleNames.dispatchChannel,
       new OfferDeliveryResultMsg(
         decision.deliveryId,

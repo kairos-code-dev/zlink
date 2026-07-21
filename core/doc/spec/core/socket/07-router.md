@@ -63,7 +63,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_router_option(
 
 For `zlink_get_router_option()`, `*optvallen_` is the input capacity of
 `optval_`. On success it is updated to the number of bytes written. HWM,
-reconnect, heartbeat, and timeout options that are not ROUTER-specific use
+reconnect and timeout options that are not ROUTER-specific use
 `zlink_set_option()` and `zlink_get_option()`.
 
 ## 3. Raw receive record classification

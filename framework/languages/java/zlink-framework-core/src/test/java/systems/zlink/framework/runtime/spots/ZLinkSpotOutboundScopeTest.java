@@ -12,6 +12,6 @@ final class ZLinkSpotOutboundScopeTest {
 
         assertThrows(
             ZLinkConfigurationException.class,
-            () -> scope.ambient().publish("topic", "message"));
+            () -> scope.ambient().publish("channel", "topic", "message"));
     }
 }

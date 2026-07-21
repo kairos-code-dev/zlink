@@ -104,10 +104,10 @@ Module({
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
-        builder.addSpotMesh(SpotActorTransferNames.mesh)
-          .enableRouter(options.routerEndpoint, options.rid)
+        builder.addRouteMesh(SpotActorTransferNames.mesh)
+          .listen(options.routerEndpoint).routingId(options.rid)
           .configureEntrySpot({ routingId: options.rid })
-          .enablePubSub(options.pubSubEndpoint, options.rid);
+          .channelName(SpotActorTransferNames.mesh);
         builder.addStreamNode(`${SpotActorTransferNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
           .registerSession(GatewaySessionFactory);

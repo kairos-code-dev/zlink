@@ -25,18 +25,19 @@ bound session이 연결되는 배포다. 이 구성을 한 번 시작한 뒤 spo
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer/spot location row는 framework lifecycle이 자동 갱신한다. |
-| play(actor) 노드 | 2 (`play-a`, `play-b`) | Entry Spot + user Spot + actor mailbox를 호스팅한다. MeshNode의 단일 ROUTER endpoint에 Entry Spot·user Spot·actor handler·Spot timer를 등록하고 peer descriptor와 Spot location row를 자동 게시한다. `/evidence`·`/health`를 제공한다. |
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer descriptor와 Spot authority를 framework lifecycle이 자동 갱신한다. |
+| play(actor) 노드 | 2 (`play-a`, `play-b`) | Entry Spot + User Spot + Actor mailbox를 호스팅한다. MeshNode의 단일 ROUTER endpoint에 Entry Spot·User Spot·Actor handler·Spot timer를 등록하고 peer descriptor와 Spot authority를 게시한다. `/evidence`·`/health`를 제공한다. |
 | session(gateway) 노드 | 2 (`session-a`, `session-b`) | stream session을 호스팅한다. `AddStreamNode(...)`의 Actor dispatch 대상 MeshName을 같은 프로세스의 MeshNode로 지정한다. 각자 stream endpoint를 사용하며 업무 로직은 play 노드가 처리한다. |
 | consumer | 시나리오별 | ChannelName client + stream client. entry spot은 location store 기반으로 resolve(자기도 같은 store를 등록). |
 
 이 배포의 핵심은 **연결과 로직을 나눠 둔 것**이다. client는 session(gateway) 노드에 stream으로
 연결되지만 actor는 play 노드에 존재한다(session 노드는 STREAM/auth/relay 전용이라 actor를 직접
 호스팅하지 않는다). 각 session 노드는 **preferred play 노드**를 하나씩 갖는다(`session-a`→`play-a`,
-`session-b`→`play-b`, Bingo의 `PreferredPlayNodeRid` 방식). session handler는 stream header
-metadata의 `actor-id`(`header.Metadata.Get("actor-id")`)를 읽어
-`Context.Actors.Find(actorId)?.RelayAsync(...)`로 해당 bound actor에 relay한다(bind가 하나면
-기본 relay, 여럿이면 `actor-id` 필수). actor가 내보내는 push도 session을 거쳐 client로 relay된다.
+`session-b`→`play-b`, Bingo의 `PreferredPlayNodeRid` 방식). Session handler는 stream header
+metadata의 `actor-id`를 읽고 current dispatch context와 payload를 선택한 bound Actor의 relay call에 함께
+전달한다. Relay를 호출하면 request reply capability는 runtime으로 이전되고 Actor typed reply가 original
+STREAM correlation을 한 번 완료한다. One-way packet에는 reply capability가 없으므로 relay 결과는 admission만
+나타낸다. Actor가 내보내는 push도 session을 거쳐 client로 relay된다.
 
 owner routing 매핑은 고정이다. 앱이 entity key를 결정적 규칙으로 `RoutingId`에 매핑한다(예:
 `RoutingId.From(key)` 또는 고정 해시 → play 노드 owner). 그래서 같은 key는 언제나 같은
@@ -75,7 +76,7 @@ handler 동작(공유):
 - 절차: consumer가 location store 기반 resolve로 entry spot을 찾아 `JoinReq`를 보낸다.
 - 검증: entry Spot이 user Spot을 생성하고 reply에 Spot ID가 포함된다. Spot evidence에 생성 기록이
   남고, store의 `ResolveSpotAsync(...)`가 생성된 Spot의 owner RID와 generation을 반환한다.
-- 세부 동작: entry spot dispatch + spot 생성 + spot location row 자동 등록.
+- 세부 동작: Entry Spot dispatch + Spot 생성 + Spot authority 등록.
 
 #### SM-A2 user spot request와 state mutation
 
@@ -123,10 +124,14 @@ handler 동작(공유):
 
 우선순위: `P1`
 
-**검증 질문:** spot을 만들 때 `OnInitializeAsync`, 닫을 때 `OnClosingAsync`가 정확히 한 번씩 실행되는가(actor가 남아 있으면 close는 거부되는가).
+**검증 질문:** Spot을 만들 때 `OnInitializeAsync`, 닫을 때 `OnClosingAsync`가 정확히 한 번씩 실행되며,
+current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부하는가.
 
-- 절차: user spot을 생성해 `OnInitializeAsync` 시점을 evidence에 남기고, joined actor가 없는 상태에서 명시적 `CloseAsync`로 닫는다.
-- 검증: 생성 시 `OnInitializeAsync`, close 시 `OnClosingAsync`가 직렬화된 close 경로로 1회씩 발화해 evidence에 기록된다. joined actor가 있으면 `CloseAsync`가 거부된다.
+- 절차: User Spot을 생성해 `OnInitializeAsync` 시점을 evidence에 남긴다. Actor가 join한 상태에서 명시적
+  `CloseAsync`를 먼저 호출하고, 그 결과를 확인한 뒤 Actor를 leave 또는 destroy하고 다시 닫는다.
+- 검증: 첫 close는 `false`를 반환하며 Spot admission·authority·Actor membership과
+  `OnClosingAsync` count는 바뀌지 않는다. Framework가 Actor를 숨게 이동하거나 파괴하지 않는다. 명시적
+  leave 또는 destroy 뒤 close만 성공하고 `OnClosingAsync`가 직렬화된 close 경로에서 한 번 실행된다.
 - 세부 동작: spot 생성·종료 lifecycle 콜백.
 
 #### SM-A7 spot 타입 불일치 (SpotTypeMismatch)
@@ -150,10 +155,42 @@ handler 동작(공유):
 - 세부 동작: **worker 축(어느 스레드에서 실행되는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../../spec/04-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
 - 세부 동작: spot 직렬성 유지 + 무거운 작업 offload.
 
+#### SM-A9 Store-backed User Spot publication barrier
+
+우선순위: `P0`
+
+**검증 질문:** Store-backed User Spot create가 final generation을 확보한 뒤에도 factory·initialize가 끝나기
+전에는 remote caller에게 existing Spot으로 공개되지 않는가.
+
+- 절차: User Spot `Creating` CAS 뒤 factory·initialize 사이의 internal test barrier를 닫고 다른 process에서
+  directory resolve와 direct request를 시도한다. Barrier를 열어 `Ready` CAS까지 완료한 뒤 다시 호출한다.
+  별도 반복에서는 factory·initialize를 실패시키고 fenced delete 응답을 한 번 손실시킨다.
+- 검증: `Ready` 전 resolve는 handle을 반환하지 않고 handler count는 0이다. 성공 뒤에는 NewObject CAS가
+  발급한 같은 final Spot generation으로 resolve·request가 성공한다. 실패는 partial Ready row·scope·timer를
+  남기지 않고 exact read로 delete 결과에 수렴하며 다음 caller만 더 높은 object·authority owner generation으로
+  새 create를 시작한다.
+- 세부 동작: Store-backed User Spot의 `Creating`·factory·initialize·`Ready` publication barrier.
+
 ### Track B — actor join과 lifecycle
 
 actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 local과 remote로 나뉜다. 두
 경우를 모두 본다.
+
+#### SM-B0 explicit type local create와 existing-only directory
+
+우선순위: `P0`
+
+**검증 질문:** Actor create·GetOrCreate가 호출한 MeshNode에서만 실행되고 directory 조회가 missing Actor를
+다른 node에 만들지 않는가.
+
+- 절차: `play-a`와 `play-b`에 같은 Actor type factory를 등록한다. 먼저 Actor directory로 missing ID를
+  조회한 뒤 `play-a`의 Actor manager에서 MeshName, Actor type과 Actor ID를 명시해 create와 duplicate
+  GetOrCreate를 실행한다. 이어서 directory로 같은 ID를 조회한다.
+- 검증: Missing 조회는 empty이며 두 factory를 실행하지 않는다. Create와 GetOrCreate는 `play-a`의 factory
+  하나와 같은 Actor generation으로 수렴하고 `play-b` factory count는 0이다. Directory는 생성된 existing
+  ActorRef만 반환한다. Public create call에는 target node·endpoint·capacity hint가 없으며 runtime이 다른
+  MeshNode를 선택하거나 hidden create를 시작하지 않는다.
+- 세부 동작: explicit type local lifecycle과 mesh-scoped existing-only resolve.
 
 #### SM-B1 local actor join
 
@@ -161,7 +198,8 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 
 **검증 질문:** client가 연결된 노드에 actor를 join하면, actor가 그 노드의 local mailbox에 만들어지고 lifecycle callback도 그 노드에서만 실행되는가.
 
-- 절차: consumer가 자신이 붙은 노드(`play-a`)의 entry spot에 actor join을 요청한다. join 대상이 같은 노드로 resolve된다.
+- 절차: `play-a`의 Actor manager가 explicit Actor type으로 actor를 local create한 뒤 consumer가 같은 노드의
+  entry spot에 actor join을 요청한다.
 - 검증: actor가 `play-a`의 local mailbox에 생성된다. 후속 actor request가 같은 노드의 actor로 dispatch된다.
 - 검증(callback): actor lifecycle callback `Created` → `Joined`가 `play-a`에서 순서대로 발화해 그 노드 evidence에 기록되고, `play-b`에는 남지 않는다. (callback 계약 자체는 기존 in-process 테스트가 고정 — 여기선 발화 노드만 확인)
 - 세부 동작: local actor join + local mailbox 실행 + lifecycle callback.
@@ -170,10 +208,13 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 
 우선순위: `P0`
 
-**검증 질문:** 다른 노드가 소유한 actor를 join해도, 노드 경계를 넘어 해당 mailbox에 actor가 만들어지고 callback도 그 노드에서 실행되는가.
+**검증 질문:** 다른 노드의 Entry Spot이 application request를 받아 그 노드에서 actor를 local create·join하면,
+후속 호출이 노드 경계를 넘어 해당 Actor queue에 도달하고 callback도 owner node에서 실행되는가.
 
-- 절차: consumer가 entry spot에 actor join을 요청하되, 대상이 원격 노드(`play-b`)로 resolve되도록 한다(또는 `play-a` consumer가 `play-b` 소유 actor를 join).
-- 검증: actor가 `play-b`의 remote mailbox에 생성된다. join이 노드 경계를 넘어 라우팅되고 후속 actor request가 cross-node로 그 actor에 dispatch된다.
+- 절차: `play-a` consumer가 `play-b`의 ready Entry Spot handle로 application join request를 보낸다. `play-b`
+  handler가 explicit Actor type을 사용해 local Actor manager로 create한 뒤 같은 node의 user Spot에 join한다.
+- 검증: actor가 `play-b`의 local Actor queue에 생성된다. Framework가 remote Actor create target을 선택하지
+  않으며, application request와 후속 Actor request만 node 경계를 넘어 routed된다.
 - 검증(callback): `Created` → `Joined` callback이 원격 노드 `play-b`에서 발화해 그 노드 evidence에 기록된다. join을 트리거한 `play-a`에는 actor 생성 callback이 남지 않는다.
 - 세부 동작: remote actor join + cross-node mailbox 실행 + lifecycle callback.
 
@@ -247,6 +288,38 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 - 검증: 허용 join은 SM-B1/B2와 동일하게 완주한다. 거부 join은 actor가 생성되지 않고(evidence에 생성 callback 없음), caller가 timeout이 아닌 분류된 거부 응답을 받는다. 거부가 노드 경계를 넘어도 같은 의미다.
 - 세부 동작: join admission 심사 + 거부의 fail-fast 전파. (언어 간 구현 격차가 실제로 있었던 표면 — parity 검증 대상.)
 
+#### SM-B10 manual/no-Store process-local Actor
+
+우선순위: `P0`
+
+**검증 질문:** Location Store가 없는 manual topology에서도 process-local Actor를 만들고 같은 process에서
+호출할 수 있으며, distributed 기능은 숨은 authority를 만들지 않고 명확히 거부되는가.
+
+- 절차: Location Store를 등록하지 않은 manual RouteMesh host에서 explicit Actor type으로 Actor를 만들고 local
+  Spot에 join한 뒤 같은 process에서 request한다. 이어서 remote directory resolve, 다른 node의 join, bound
+  session의 distributed binding과 Actor transfer를 각각 시도한다.
+- 검증: Local create·join·request는 runtime-local opaque authority와 handle로 성공한다. Remote resolve,
+  cross-node join, distributed session binding과 transfer·relocation은 configuration 또는 typed operation error로
+  끝난다. Runtime은 hidden Store, durable row, synthetic owner generation이나 remote fallback을 만들지 않는다.
+- 세부 동작: manual topology의 local Actor 기능과 Store-backed distributed 기능의 경계.
+
+#### SM-B11 Store-backed Actor publication barrier
+
+우선순위: `P0`
+
+**검증 질문:** Store-backed Actor create가 final `ActorRef`를 먼저 확보하더라도 factory와 initial Entry
+membership이 끝나기 전에는 remote caller에게 existing Actor로 공개되지 않는가.
+
+- 절차: Actor `Creating` CAS 뒤 factory·initial membership 사이의 internal test barrier를 닫는다. 다른
+  process에서 directory resolve와 direct Actor request를 시도한 뒤 barrier를 열어 initialize와 `Ready` CAS를
+  완료한다. 별도 반복에서는 factory와 initial membership을 각각 실패시키고 fenced delete 응답도 한 번
+  손실시킨다.
+- 검증: Barrier 전 resolve는 existing Actor를 반환하지 않고 remote handler count는 0이다. Barrier 뒤에는
+  NewObject CAS가 발급한 같은 final Actor generation으로 resolve·request가 성공한다. 실패한 반복은 partial
+  Ready row·membership·runtime object를 남기지 않고 exact read로 delete 결과에 수렴하며, 다음 caller만 더 높은
+  object·authority owner generation으로 새 create를 시작한다.
+- 세부 동작: Store-backed Actor의 `Creating`·factory·membership·`Ready` publication barrier.
+
 ### Track C — messaging 방향
 
 여기서는 메시지가 흐르는 방향(channel→spot, spot→channel, spot→spot)별로, 한 시나리오 안에서
@@ -317,11 +390,12 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 
 우선순위: `P0`
 
-- 절차: 수락 가능한 remote peer와 ROUTER 송신 HWM에 도달한 remote peer를 함께 둔 상태에서 blocking
-  publish와 non-blocking submit을 각각 실행한다.
-- 검증: blocking publish는 막힌 remote target에 대해 MeshNode send timeout 범위에서 기다리고,
-  non-blocking submit은 즉시 backpressure 결과를 반환한다. 앞에서 수락된 peer의 전달은 뒤 target의
-  실패 때문에 취소되지 않으며, publish detail의 remote snapshot·admitted·dropped 수가 실제 수신
+- 절차: 수락 가능한 remote peer와 ROUTER 송신 HWM에 도달한 remote peer를 함께 둔 상태에서 public
+  asynchronous publish를 한 번 실행한다.
+- 검증: Runtime은 확정한 snapshot의 target마다 bounded admission을 최대 한 번 시도하고 막힌 target을
+  backpressure detail에 기록한다. 별도 blocking publish나 동기 `TrySubmit` 계열은 사용하지 않는다. 앞에서
+  수락된 peer의 전달은 뒤 target의 실패 때문에 취소되지 않으며, publish detail의 remote
+  snapshot·admitted·dropped 수가 실제 수신
   evidence와 일치해야 한다.
 - 별도 회귀: local matching Spot queue 하나를 가득 채우고 다른 local target은 수락 가능하게 두어,
   가득 찬 target만 drop 수에 기록되고 다른 target은 수신하는지 확인한다.
@@ -338,7 +412,9 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 **검증 질문:** gateway에 연결된 client가 같은 play 노드의 actor에 bind했을 때, 양방향 relay(client→actor, actor→client push)가 동작하는가.
 
 - 절차: consumer가 `session-a` gateway에 stream으로 접속·auth하고, `session-a`의 **preferred play 노드(`play-a`)**의 actor에 bind한다. client → actor request(`actor-id` metadata 포함)를 보내고, actor → client push를 트리거한다.
-- 검증: bind 성립 후 client packet이 `header.Metadata.Get("actor-id")`로 bound actor에 relay되어 처리되고, actor push가 같은 session으로 relay되어 client가 받는다(양방향). bind 안 한 client는 받지 않는다.
+- 검증: bind 성립 후 client packet이 `header.Metadata.Get("actor-id")`로 선택한 bound Actor에 current dispatch
+  context와 함께 relay되어 처리된다. Client request의 Actor typed reply는 original STREAM correlation을 한 번
+  완료하고, Actor push는 같은 session으로 relay되어 client가 받는다. Bind하지 않은 client는 받지 않는다.
 - 세부 동작: gateway → preferred play 노드 actor relay.
 
 #### SM-D2 actor session bind & relay — remote
@@ -368,9 +444,15 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 
 **검증 질문:** 한 stream에 actor를 여럿 bind했을 때, `actor-id`로 지정한 actor에게만 정확히 가고(오배달 없이), id 없이 보내면 실패하는가.
 
-- 절차: 한 stream session에 여러 actor(예: `actor-x`, `actor-y`)를 bind한다. stream header metadata `actor-id`(`header.Metadata.Get("actor-id")`)에 대상 actor id를 실어 보내고, session handler가 `Context.Actors.Find(actorId)?.RelayAsync(...)`로 해당 actor에 relay한다. 각 actor가 push를 낸다.
-- 검증: 각 packet이 `actor-id`로 지정한 actor로만 relay되고(교차 오배달 없음), 각 actor push가 같은 session으로 relay되어 client가 actor별로 구분해 받는다. **relay 대상 선택은 application 책임이다** — framework에는 `actor-id` metadata 기반 자동 라우팅이나 단일 bound 기본 relay가 없으므로, session이 대상 actor를 찾지 못하면 그 실패 처리도 application이 정의한다([31 §6](../../spec/server/31-session-actor-dispatch.ko.md#6-binding과-bound-session)).
-- 세부 동작: 다중 actor bind + `actor-id` metadata 선택 relay (단일 bound만 기본 relay).
+- 절차: 한 stream session에 여러 Actor(예: `actor-x`, `actor-y`)를 bind한다. Stream header metadata
+  `actor-id`에 대상 Actor ID를 실어 보내고, session handler가 current dispatch context와 payload를 선택한
+  bound Actor의 relay call에 전달한다. 각 Actor가 push를 낸다.
+- 검증: 각 packet이 `actor-id`로 지정한 Actor로만 relay되고 교차 오배달이 없다. Request relay는 해당
+  Actor reply로 original STREAM correlation을 한 번 완료하고, 각 Actor push는 같은 session으로 relay되어
+  client가 Actor별로 구분해 받는다. **Relay 대상 선택은 application 책임이다.** Framework는 `actor-id`
+  metadata를 자동 해석하지 않으며, session이 대상을 찾지 못하면 application이 relay를 호출하지 않고
+  current dispatch에 실패를 반환한다([31 §6](../../spec/server/31-session-actor-dispatch.ko.md#6-binding과-bound-session)).
+- 세부 동작: 다중 Actor bind, explicit target 선택과 dispatch-context relay.
 
 #### SM-D5 session disconnect → 명시적 actor 통지
 
@@ -596,19 +678,19 @@ spot 배포(play/session 노드)를 쓰는 시나리오는 Config 2에 둔다. �
 - 절차: 먼저 `play-a`에 actor join + session bind 상태를 만들고 `play-b`에도 독립 기준 actor와
   session을 준비한 뒤 `play-a`를 `SIGKILL`한다. crash 직전 처리 중인 actor request와 crash 뒤 old
   `ActorRef`로 보낸 request의 실패를 각각 관찰한다. 다음 두 복구 경로를 **모두** 실행한다.
-  1. old MeshNode descriptor·actor location이 owner lease 만료로 성공 조회에서 제외될 때까지 기다린다. 그 뒤
+  1. old MeshNode descriptor·Actor authority projection이 owner lease 만료로 성공 조회에서 제외될 때까지 기다린다. 그 뒤
      `play-a`를 같은 RID·endpoint로 restart하고 새 owner generation의 MeshNode descriptor가 조회되는지 확인한다.
      `play-a`가 게시한 Entry Spot rid의 `SpotHandle` resolve가 성공할 때까지 역할 server의 bounded wait로
      기다린다. application은 준비된 handle로 `JoinReq`를 한 번 보내고,
      해당 handler가 로컬 actor를 다시 만든 뒤 join·rebind하고 snapshot/replay를 적용한다.
-  2. 다시 같은 장애를 만든 뒤 old actor location이 성공 조회에서 제외될 때까지 기다리고,
+  2. 다시 같은 장애를 만든 뒤 old Actor authority projection이 성공 조회에서 제외될 때까지 기다리고,
      `play-b`가 게시한 Entry Spot rid의 `SpotHandle` resolve가 성공할 때까지 bounded wait로 기다린 뒤
      application이 준비된 handle로 `JoinReq`를 한 번 보낸다.
      해당 Entry Spot handler가 로컬 actor를 명시적으로 만든 뒤 join·rebind하고 snapshot/replay를
      적용한다.
 - 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 retriable `RouteNotConnected`,
   handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다.
-  owner lease 만료로 old actor location이 성공 조회에서 제외된 뒤, actor를 다시 만들기 전에 old
+  owner lease 만료로 old Actor authority projection이 성공 조회에서 제외된 뒤, Actor를 다시 만들기 전에 old
   `ActorRef`로 보낸 request는 `ActorRouteNotFound`로 끝난다. actor를 같은 id와 새 generation으로 다시
   만든 뒤 old `ActorRef`로 보낸 request는 `ActorLocationStale`로 끝나고, 새 live `ActorRef`로 보낸
   follow-up request는 성공한다. 각 실패는 설정한 timeout 안에 종료되고 어느 단계에서도 old handler가

@@ -59,7 +59,9 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorManagerCreateGetOrCreateAndFindUseRegisteredFactory() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://actor-manager-router");
+                node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
 
@@ -92,9 +94,10 @@ final class ActorRuntimeFakeBackendTest {
                 "factory.channel",
                 "factory.spot",
                 "create.spotNode",
-                "spotNode.createActor.player-1",
+                "spotNode.setRouterBind.inproc://actor-manager-router",
                 "spotNode.entrySpot",
                 "create.entrySpot",
+                "spotNode.createActor.player-1",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -111,6 +114,9 @@ final class ActorRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
+            long sourceGeneration = ((ZLinkActorRuntime) runtime.actorManager())
+                .actorRef(actor)
+                .generation();
 
             var joined = actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
@@ -120,6 +126,7 @@ final class ActorRuntimeFakeBackendTest {
 
             assertEquals("player-1", accepted(joined).actor().actorId());
             assertEquals(RoutingId.from("entry-node"), accepted(joined).actor().nodeRid());
+            assertEquals(sourceGeneration, accepted(joined).actor().generation());
         }
 
         assertEquals(
@@ -130,7 +137,9 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void actorContextJoinSpotUsesBackendSpotNodeJoinOperationAndUpdatesContext() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://actor-join-router");
+                node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         RoutingId spotRid = RoutingId.from("game-1");
@@ -142,6 +151,9 @@ final class ActorRuntimeFakeBackendTest {
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
+            long sourceGeneration = ((ZLinkActorRuntime) runtime.actorManager())
+                .actorRef(actor)
+                .generation();
 
             var joined = actor.context()
                 .joinSpot(spotRid, "join-request")
@@ -153,6 +165,7 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals("joined", joined.reply());
             assertEquals("player-1", accepted(joined).actor().actorId());
             assertEquals(RoutingId.from("spot-node"), accepted(joined).actor().nodeRid());
+            assertEquals(sourceGeneration, accepted(joined).actor().generation());
             assertEquals(Optional.of(spotRid), actor.context().spotRid());
             assertEquals(Optional.of(spotRid), actor.context().spotRid());
 
@@ -175,7 +188,9 @@ final class ActorRuntimeFakeBackendTest {
     @Test
     void customCodecActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(CustomCodecJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://actor-custom-codec-router");
+                node.addSpotFactory(CustomCodecJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         CustomJoinSerializer serializer = new CustomJoinSerializer();
@@ -215,7 +230,9 @@ final class ActorRuntimeFakeBackendTest {
     void protobufActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().use(ZLinkProtobufCodec.defaultCodec());
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(ProtobufJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://actor-protobuf-router");
+                node.addSpotFactory(ProtobufJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
@@ -250,7 +267,9 @@ final class ActorRuntimeFakeBackendTest {
     void messagePackActorContextJoinEncodesRequestAndDecodesReplyThroughRegistry() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.codecs().use(ZLinkMessagePackCodec.defaultCodec());
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.addSpotFactory(MessagePackJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://actor-messagepack-router");
+                node.addSpotFactory(MessagePackJoinSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
@@ -434,6 +453,9 @@ final class ActorRuntimeFakeBackendTest {
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             ZLinkActor actor = managedActor(runtime, "player-remote-join", "player");
+            long sourceGeneration = ((ZLinkActorRuntime) runtime.actorManager())
+                .actorRef(actor)
+                .generation();
 
             ZLinkActorJoinResult<String> joined = actor.context()
                 .joinSpot(RoutingId.from("remote-room"), "join-request")
@@ -444,6 +466,7 @@ final class ActorRuntimeFakeBackendTest {
             assertInstanceOf(ZLinkActorJoinResult.Accepted.class, joined);
             assertEquals("joined", joined.reply());
             assertEquals(RoutingId.from("remote-node"), accepted(joined).actor().nodeRid());
+            assertEquals(sourceGeneration, accepted(joined).actor().generation());
         }
 
         assertTrue(backendFactory.calls().contains(
@@ -510,6 +533,13 @@ final class ActorRuntimeFakeBackendTest {
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
+
+            assertEquals(
+                false,
+                backendFactory.calls().contains(
+                    "stream.unbindActor.player-remote-relay"),
+                () -> "Core transfer must retain the source STREAM binding: "
+                    + backendFactory.calls());
 
             relayWithHeader(sessionActor, "ActorNotify", ZLinkMessage.of("move"));
         }
@@ -689,6 +719,14 @@ final class ActorRuntimeFakeBackendTest {
         @Override
         public ZLinkSpotContext context() {
             return null;
+        }
+
+        @Override
+        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
+            String actorId,
+            ZLinkMessage request) {
+            return CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept("joined"));
         }
     }
 

@@ -8,7 +8,6 @@ import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.service.spot.SpotNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -78,20 +77,6 @@ final class PerfTransport {
             return;
         }
         socket.setTlsClient(cert("ca.crt"), "localhost", true);
-    }
-
-    static void configureServerTls(SpotNode node, String transport) {
-        if (!isTlsTransport(transport)) {
-            return;
-        }
-        node.setTlsServer(cert("server.crt"), cert("server.key"), false);
-    }
-
-    static void configureClientTls(SpotNode node, String transport) {
-        if (!isTlsTransport(transport)) {
-            return;
-        }
-        node.setTlsClient(cert("ca.crt"), "localhost", false);
     }
 
     static void applySocketOptions(Socket socket, PerfUtil.Config config) {

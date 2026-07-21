@@ -16,8 +16,6 @@ public interface IZLinkMetadataCall<TSelf>
 
 public interface IZLinkSendCall : IZLinkMetadataCall<IZLinkSendCall>
 {
-    ZLinkSubmitResult TrySubmit();
-
     ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default);
 }
@@ -33,9 +31,13 @@ public interface IZLinkRequestCall : IZLinkMetadataCall<IZLinkRequestCall>
 
 public interface IZLinkPublishCall : IZLinkMetadataCall<IZLinkPublishCall>
 {
-    ZLinkPublishResult TrySubmit();
-
     ValueTask<ZLinkPublishResult> SubmitAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkFanoutPublishCall
+{
+    ValueTask<ZLinkSubmitResult> SubmitAsync(
         CancellationToken cancellationToken = default);
 }
 
@@ -55,6 +57,7 @@ public readonly record struct ZLinkLogicalMulticastDetail(
     ulong SnapshotRemoteNodeCount,
     ulong AdmittedRemoteNodeCount,
     ulong DroppedRemoteNodeCount,
+    ulong UnreachableRemoteNodeCount,
     ulong SnapshotLocalSpotCount,
     ulong AdmittedLocalSpotCount,
     ulong DroppedLocalSpotCount);

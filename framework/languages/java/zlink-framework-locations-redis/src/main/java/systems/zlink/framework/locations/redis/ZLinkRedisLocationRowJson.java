@@ -80,6 +80,7 @@ final class ZLinkRedisLocationRowJson {
         ObjectNode node = JSON.createObjectNode();
         node.put("MeshName", row.meshName());
         putRid(node, "SpotRid", row.spotRid());
+        node.put("SpotGeneration", row.spotGeneration());
         putNullableText(node, "SpotType", row.spotType());
         putRid(node, "NodeRid", row.nodeRid());
         node.put("SpotKind", spotKindNumber(row.spotKind()));
@@ -95,6 +96,7 @@ final class ZLinkRedisLocationRowJson {
         return new ZLinkSpotLocation(
             text(node, "MeshName"),
             rid(node, "SpotRid"),
+            node.path("SpotGeneration").asLong(generation),
             nullableText(node, "SpotType"),
             rid(node, "NodeRid"),
             spotKind(node.path("SpotKind").asInt()),

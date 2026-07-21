@@ -11,6 +11,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 
 namespace RegistrationCodec.Server.CodecRequester;
@@ -50,6 +51,17 @@ internal static class CodecRequesterHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
+        app.MapGet("/topology/ready", (IZLinkRouteMeshRuntime runtime) =>
+        {
+            var snapshot = runtime.Snapshot(RegistrationCodecNames.Channel);
+            return Results.Ok(new
+            {
+                ready = snapshot.Peers.Any(static peer => peer.Ready)
+                        && snapshot.Channels.Any(static channel =>
+                            channel.ChannelName == RegistrationCodecNames.Channel
+                            && channel.Selectable)
+            });
+        });
         app.MapPost("/codec/protobuf/request", async (
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>

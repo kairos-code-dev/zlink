@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.e2e.runtimemonitoring.client.ClientOptions;
 import systems.zlink.httpclient.RawHttpResponse;
@@ -61,6 +62,17 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             "request did not reach " + providerRid + "; last=" + last);
     }
 
+    public Contracts.WorkRes runtimeRequest(String baseUrl, String value) {
+        return ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(10))
+            .post("/runtime/request")
+            .body(new Contracts.WorkReq(value))
+            .async(Contracts.WorkRes.class)
+            .toCompletableFuture()
+            .join()
+            .body();
+    }
+
     public ValidationResult validation(String name) {
         return trigger.post("/validation/" + name).async(ValidationResult.class).toCompletableFuture().join().body();
     }
@@ -74,6 +86,41 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .join();
         ensure(response.status() >= 200 && response.status() < 300,
             "POST " + baseUrl + path + " returned " + response.status() + ": " + response.body());
+    }
+
+    public Contracts.PublishOutcome publish(
+        String baseUrl,
+        String value,
+        int count) {
+        return publish(baseUrl, value, count, false);
+    }
+
+    public Contracts.PublishOutcome publish(
+        String baseUrl,
+        String value,
+        int count,
+        boolean stopOnLocalDrop) {
+        return ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(30))
+            .post("/runtime/multicast/publish")
+            .body(new Contracts.PublishCommand(
+                "monitoring.multicast", value, count, stopOnLocalDrop))
+            .async(Contracts.PublishOutcome.class)
+            .toCompletableFuture()
+            .join()
+            .body();
+    }
+
+    public long evidenceCount(
+        String baseUrl,
+        String surface,
+        String sourceName,
+        String event) {
+        return evidence(baseUrl).entries().stream()
+            .filter(entry -> surface.equals(entry.surface()))
+            .filter(entry -> sourceName.equals(entry.sourceName()))
+            .filter(entry -> event.equals(entry.event()))
+            .count();
     }
 
     public void postBestEffort(String baseUrl, String path) {
@@ -90,8 +137,137 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .async(Contracts.EvidenceSnapshot.class).toCompletableFuture().join().body();
     }
 
+    public Contracts.RuntimeSnapshot runtimeSnapshot(String baseUrl) {
+        return ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(3))
+            .get("/runtime/snapshot")
+            .async(Contracts.RuntimeSnapshot.class)
+            .toCompletableFuture()
+            .join()
+            .body();
+    }
+
+    public Contracts.ObserverIsolationStatus observer(String baseUrl, String action) {
+        return ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(3))
+            .post("/runtime/observer/" + action)
+            .async(Contracts.ObserverIsolationStatus.class)
+            .toCompletableFuture()
+            .join()
+            .body();
+    }
+
+    public Contracts.ObserverIsolationStatus awaitObserver(
+        String baseUrl,
+        Predicate<Contracts.ObserverIsolationStatus> expected,
+        String failureMessage) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        Contracts.ObserverIsolationStatus last = null;
+        while (System.nanoTime() < deadline) {
+            last = observer(baseUrl, "status");
+            if (expected.test(last)) {
+                return last;
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(failureMessage + "; last=" + last);
+    }
+
+    public Contracts.RuntimeSnapshot awaitRuntimeSnapshot(
+        String baseUrl,
+        Predicate<Contracts.RuntimeSnapshot> expected,
+        String failureMessage) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        Contracts.RuntimeSnapshot last = null;
+        while (System.nanoTime() < deadline) {
+            last = runtimeSnapshot(baseUrl);
+            if (expected.test(last)) {
+                return last;
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(failureMessage + "; last=" + last);
+    }
+
+    public void waitForEvidenceAfter(
+        String baseUrl,
+        int firstEntry,
+        String surface,
+        String event) {
+        waitForEvidenceAfter(baseUrl, firstEntry, surface, null, event);
+    }
+
+    public void waitForEvidenceAfter(
+        String baseUrl,
+        int firstEntry,
+        String surface,
+        String sourceName,
+        String event) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (System.nanoTime() < deadline) {
+            var entries = evidence(baseUrl).entries();
+            for (int index = Math.min(firstEntry, entries.size());
+                 index < entries.size();
+                 index++) {
+                Contracts.EvidenceEntry entry = entries.get(index);
+                if (surface.equals(entry.surface())
+                    && (sourceName == null || sourceName.equals(entry.sourceName()))
+                    && event.equals(entry.event())) {
+                    return;
+                }
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(
+            "missing " + surface + " event " + event + " at " + baseUrl
+                + "; evidence=" + evidence(baseUrl));
+    }
+
     public int evidenceEntryCount(String baseUrl) {
         return evidence(baseUrl).entries().size();
+    }
+
+    public void waitForRouteMeshEventReason(
+        String baseUrl,
+        int firstEntry,
+        String identifier,
+        String reason) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(35);
+        while (System.nanoTime() < deadline) {
+            var entries = evidence(baseUrl).entries();
+            for (int index = Math.min(firstEntry, entries.size());
+                 index < entries.size();
+                 index++) {
+                Contracts.EvidenceEntry entry = entries.get(index);
+                if ("route-mesh-runtime".equals(entry.surface())
+                    && identifier.equals(entry.event())
+                    && entry.detail().contains("reason=" + reason)) {
+                    return;
+                }
+            }
+            sleep(100);
+        }
+        throw new IllegalStateException(
+            "missing route-mesh-runtime event " + identifier
+                + " reason=" + reason + "; evidence=" + evidence(baseUrl));
+    }
+
+    public void setRedisPaused(boolean paused) {
+        ProcessBuilder builder = new ProcessBuilder(
+            "docker",
+            paused ? "pause" : "unpause",
+            options.redisContainer());
+        try {
+            Process process = builder.start();
+            ensure(process.waitFor() == 0,
+                "docker " + (paused ? "pause" : "unpause")
+                    + " failed for " + options.redisContainer());
+        } catch (IOException error) {
+            throw new IllegalStateException("could not control Redis container", error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while controlling Redis container", error);
+        }
     }
 
     public int latestEvidenceCount(

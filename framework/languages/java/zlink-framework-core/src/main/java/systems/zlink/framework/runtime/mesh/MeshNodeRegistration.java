@@ -24,7 +24,6 @@ import systems.zlink.framework.configuration.ZLinkMeshPeerConnection;
 import systems.zlink.framework.configuration.ZLinkMeshPeerConnections;
 import systems.zlink.framework.configuration.ZLinkSpotPublisherConfig;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.monitoring.ZLinkMeshNodeDrainPolicy;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -32,7 +31,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private final String meshName;
     private final Map<String, Channel> channels = new LinkedHashMap<>();
     private final List<Peer> peers = new ArrayList<>();
-    private final List<Handler> routeHandlers = new ArrayList<>();
+    private final List<DispatchHandler> routeHandlers = new ArrayList<>();
     private final List<Class<? extends ZLinkSpot<?>>> spotFactories = new ArrayList<>();
     private final List<Class<? extends ZLinkEntrySpot<?>>> entrySpots = new ArrayList<>();
     private final Map<String, Class<? extends ZLinkActorFactory>> actorFactories =
@@ -48,7 +47,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private String allocationPrefix;
     private String allocationGroup;
     private Duration defaultRequestTimeout;
-    private ZLinkMeshNodeDrainPolicy drainPolicy = ZLinkMeshNodeDrainPolicy.DRAIN_NATURAL;
 
     public MeshNodeRegistration(String meshName) {
         this.meshName = requireText(meshName, "mesh name");
@@ -66,6 +64,25 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return routingId;
     }
 
+    public Integer allocationSlotCount() {
+        return allocationSlotCount;
+    }
+
+    public String allocationPrefix() {
+        return allocationPrefix == null ? meshName : allocationPrefix;
+    }
+
+    public String allocationGroup() {
+        return allocationGroup == null ? meshName : allocationGroup;
+    }
+
+    public void applyAllocatedRoutingId(RoutingId value) {
+        routingId = Objects.requireNonNull(value, "routingId");
+        if (!entrySpots.isEmpty() || !actorFactories.isEmpty()) {
+            entrySpotRoutingId = value;
+        }
+    }
+
     public List<String> channelNames() {
         return List.copyOf(channels.keySet());
     }
@@ -78,6 +95,48 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
     public List<Peer> peers() {
         return List.copyOf(peers);
+    }
+
+    public List<DispatchHandler> nodeHandlers() {
+        return List.copyOf(routeHandlers);
+    }
+
+    public Map<String, List<DispatchHandler>> channelHandlers() {
+        Map<String, List<DispatchHandler>> result = new LinkedHashMap<>();
+        channels.forEach((name, channel) ->
+            result.put(name, List.copyOf(channel.handlers)));
+        return Map.copyOf(result);
+    }
+
+    public Map<String, List<String>> channelHandlerGroups() {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        channels.forEach((name, channel) ->
+            result.put(name, List.copyOf(channel.handlerGroups)));
+        return Map.copyOf(result);
+    }
+
+    public List<Class<? extends ZLinkSpot<?>>> spotFactories() {
+        return List.copyOf(spotFactories);
+    }
+
+    public List<Class<? extends ZLinkEntrySpot<?>>> entrySpots() {
+        return List.copyOf(entrySpots);
+    }
+
+    public Map<String, Class<? extends ZLinkActorFactory>> actorFactories() {
+        return Map.copyOf(actorFactories);
+    }
+
+    public Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> actorTransferAdapters() {
+        return Map.copyOf(transferAdapters);
+    }
+
+    public RoutingId entrySpotRoutingId() {
+        return entrySpotRoutingId;
+    }
+
+    public Duration defaultRequestTimeout() {
+        return defaultRequestTimeout;
     }
 
     public Set<Class<?>> applicationTypes() {
@@ -149,12 +208,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     @Override
-    public ZLinkMeshNodeBuilder useDrainPolicy(ZLinkMeshNodeDrainPolicy policy) {
-        drainPolicy = Objects.requireNonNull(policy, "policy");
-        return this;
-    }
-
-    @Override
     public ZLinkMeshPeerConnections peerConnections() {
         return new PeerConnections();
     }
@@ -170,7 +223,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder addRouteSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType) {
-        routeHandlers.add(new Handler(
+        routeHandlers.add(new DispatchHandler(
             Objects.requireNonNull(handlerType, "handlerType"),
             Objects.requireNonNull(messageType, "messageType"),
             null));
@@ -183,7 +236,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         Class<THandler> handlerType,
         Class<TRequest> requestType,
         Class<TReply> replyType) {
-        routeHandlers.add(new Handler(
+        routeHandlers.add(new DispatchHandler(
             Objects.requireNonNull(handlerType, "handlerType"),
             Objects.requireNonNull(requestType, "requestType"),
             Objects.requireNonNull(replyType, "replyType")));
@@ -252,6 +305,13 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             throw new ZLinkConfigurationException(
                 "MeshNode registers multiple entry spots: " + meshName);
         }
+        Set<Class<? extends ZLinkSpot<?>>> spotTypes = new LinkedHashSet<>();
+        for (Class<? extends ZLinkSpot<?>> spotFactory : spotFactories) {
+            if (!spotTypes.add(spotFactory)) {
+                throw new ZLinkConfigurationException(
+                    "duplicate spot factory type on MeshNode: " + meshName);
+            }
+        }
         for (String actorType : transferAdapters.keySet()) {
             if (!actorFactories.containsKey(actorType)) {
                 throw new ZLinkConfigurationException(
@@ -289,7 +349,13 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     public record Peer(String endpoint, RoutingId expectedRoutingId) {
     }
 
-    private record Handler(Class<?> handlerType, Class<?> messageType, Class<?> replyType) {
+    public record DispatchHandler(
+        Class<?> handlerType,
+        Class<?> messageType,
+        Class<?> replyType) {
+        public boolean request() {
+            return replyType != null;
+        }
     }
 
     private final class PeerConnections implements ZLinkMeshPeerConnections {
@@ -324,7 +390,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private final class Channel implements ZLinkMeshChannelBuilder {
         private final String name;
         private final List<String> handlerGroups = new ArrayList<>();
-        private final List<Handler> handlers = new ArrayList<>();
+        private final List<DispatchHandler> handlers = new ArrayList<>();
         private int weight = 1;
 
         private Channel(String name) {
@@ -333,8 +399,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
         @Override
         public ZLinkMeshChannelBuilder setWeight(int value) {
-            if (value <= 0) {
-                throw new ZLinkConfigurationException("channel weight must be positive");
+            if (value < 0 || value > 100) {
+                throw new ZLinkConfigurationException(
+                    "channel weight must be between 0 and 100");
             }
             weight = value;
             return this;
@@ -351,7 +418,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         ZLinkMeshChannelBuilder addSendHandler(
             Class<THandler> handlerType,
             Class<TMessage> messageType) {
-            handlers.add(new Handler(
+            handlers.add(new DispatchHandler(
                 Objects.requireNonNull(handlerType, "handlerType"),
                 Objects.requireNonNull(messageType, "messageType"),
                 null));
@@ -364,7 +431,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             Class<THandler> handlerType,
             Class<TRequest> requestType,
             Class<TReply> replyType) {
-            handlers.add(new Handler(
+            handlers.add(new DispatchHandler(
                 Objects.requireNonNull(handlerType, "handlerType"),
                 Objects.requireNonNull(requestType, "requestType"),
                 Objects.requireNonNull(replyType, "replyType")));
@@ -392,7 +459,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override public Optional<Duration> sendTimeout() {
             return Optional.ofNullable(sendTimeout);
         }
-        @Override public void setSendTimeout(Duration value) { sendTimeout = value; }
+        @Override public void setSendTimeout(Duration value) {
+            sendTimeout = value == null ? null : requireSendTimeout(value);
+        }
     }
 
     private static final class SpotPublisherConfig implements ZLinkSpotPublisherConfig {
@@ -405,8 +474,28 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         @Override public Optional<Duration> sendTimeout() {
             return Optional.ofNullable(sendTimeout);
         }
-        @Override public void setSendTimeout(Duration value) { sendTimeout = value; }
+        @Override public void setSendTimeout(Duration value) {
+            sendTimeout = value == null ? null : requireSendTimeout(value);
+        }
         @Override public Optional<Duration> linger() { return Optional.ofNullable(linger); }
         @Override public void setLinger(Duration value) { linger = value; }
+    }
+
+    private static Duration requireSendTimeout(Duration value) {
+        if (value.isZero() || value.isNegative()) {
+            throw new ZLinkConfigurationException("send timeout must be positive");
+        }
+        long seconds = value.getSeconds();
+        if (seconds > Integer.MAX_VALUE / 1000L) {
+            throw new ZLinkConfigurationException(
+                "send timeout must normalize to at most Integer.MAX_VALUE ms");
+        }
+        long millis = seconds * 1000L
+            + (value.getNano() + 999_999L) / 1_000_000L;
+        if (millis > Integer.MAX_VALUE) {
+            throw new ZLinkConfigurationException(
+                "send timeout must normalize to at most Integer.MAX_VALUE ms");
+        }
+        return value;
     }
 }

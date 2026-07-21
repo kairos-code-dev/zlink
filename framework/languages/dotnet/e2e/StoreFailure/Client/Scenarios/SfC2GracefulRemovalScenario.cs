@@ -17,6 +17,11 @@ internal static class SfC2GracefulRemovalScenario
         ZLinkHttpClient consumer,
         ManagedProcess providerB)
     {
+        await SfProbe.WaitProviderRoutesAsync(
+            consumer,
+            options.PollingInterval * 4,
+            "SF-C2: provider routes were not ready before api-b began draining.");
+
         using var provider = ZLinkHttpClient.Create(options.ProviderBUrl)
             .Timeout(TimeSpan.FromSeconds(5))
             .Build();
@@ -32,12 +37,11 @@ internal static class SfC2GracefulRemovalScenario
             drainingStatus.OwnerLeaseHealthy,
             "SF-C2: api-b stopped renewing its owner lease while drain was in progress.");
 
-        var propagationDeadline = DateTimeOffset.UtcNow
-                                  + options.StoreFailureGrace
-                                  + options.OwnerLeaseTtl;
+        var propagationTimeout = options.StoreFailureGrace + options.OwnerLeaseTtl;
+        var propagationElapsed = Stopwatch.StartNew();
         var consecutiveSurvivorReplies = 0;
         var probe = 0;
-        while (DateTimeOffset.UtcNow < propagationDeadline && consecutiveSurvivorReplies < 20)
+        while (propagationElapsed.Elapsed < propagationTimeout && consecutiveSurvivorReplies < 20)
         {
             try
             {
@@ -49,7 +53,7 @@ internal static class SfC2GracefulRemovalScenario
                     ? consecutiveSurvivorReplies + 1
                     : 0;
             }
-            catch (ZLinkFrameworkException) when (DateTimeOffset.UtcNow < propagationDeadline)
+            catch (ZLinkFrameworkException) when (propagationElapsed.Elapsed < propagationTimeout)
             {
                 consecutiveSurvivorReplies = 0;
             }

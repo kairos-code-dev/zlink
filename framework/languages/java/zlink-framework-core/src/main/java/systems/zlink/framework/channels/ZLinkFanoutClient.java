@@ -1,8 +1,7 @@
 package systems.zlink.framework.channels;
 
 public interface ZLinkFanoutClient {
-    ZLinkPublishCall publish(
+    ZLinkFanoutPublishCall publish(
         String channelName,
-        String topic,
         Object message);
 }

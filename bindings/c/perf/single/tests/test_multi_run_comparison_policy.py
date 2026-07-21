@@ -68,6 +68,52 @@ def auto_hwm_detail_line(pattern, transport, component, msg_size, **fields):
 
 
 class MultiRunComparisonPolicyTests(unittest.TestCase):
+    def test_paired_gate_selects_process_per_peer_router_echo_clients(self):
+        previous = os.environ.get("PERF_MULTI_MATCHED_BASELINE")
+        try:
+            os.environ["PERF_MULTI_MATCHED_BASELINE"] = "1"
+            self.assertEqual(
+                RC.resolve_binary_names("ROUTER_ROUTER_REQREP")["client"],
+                "comp_src_router_router_reqrep_matched_client",
+            )
+            self.assertEqual(
+                RC.resolve_binary_names("ROUTER_ROUTER_SENDSEND")["client"],
+                "comp_src_router_router_sendsend_matched_client",
+            )
+            self.assertEqual(
+                RC.resolve_binary_names("ROUTER_ROUTER_ONEWAY")["client"],
+                "comp_src_router_router_oneway_client",
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("PERF_MULTI_MATCHED_BASELINE", None)
+            else:
+                os.environ["PERF_MULTI_MATCHED_BASELINE"] = previous
+
+    def test_spot_diagnostic_lines_are_preserved_without_becoming_results(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            RC.emit_spot_diag_line(
+                "SPOT_DIAG,current,MULTI_SPOT_PUBSUB,tcp,64,"
+                "role=hub,pending_bytes=0\n"
+            )
+            RC.emit_spot_diag_line(
+                "RESULT,current,MULTI_SPOT_PUBSUB,tcp,64,throughput,1\n"
+            )
+            RC.emit_spot_diag_line(
+                "MATCHED_DIAG,current,MULTI_ROUTER_ROUTER_REQREP,tcp,64,"
+                "role=peers,processes=100,contexts=100,sockets=100\n"
+            )
+        self.assertEqual(
+            output.getvalue(),
+            (
+                "SPOT_DIAG,current,MULTI_SPOT_PUBSUB,tcp,64,"
+                "role=hub,pending_bytes=0\n"
+                "MATCHED_DIAG,current,MULTI_ROUTER_ROUTER_REQREP,tcp,64,"
+                "role=peers,processes=100,contexts=100,sockets=100\n"
+            ),
+        )
+
     def test_multi_required_result_metrics_are_tier1_only(self):
         self.assertEqual(RC.REQUIRED_RESULT_METRICS, tuple(name for name, _ in tier1_metrics(1.0)))
         self.assertEqual(RC.REQUIRED_RESULT_METRIC_COUNT, 5)
@@ -179,6 +225,33 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             RC.ALLOW_MULTI = old_allow_multi
             os.environ.clear()
             os.environ.update(old_env)
+
+    def test_router_router_oneway_is_direction_matched_one_way_baseline(self):
+        old_allow_multi = RC.ALLOW_MULTI
+        try:
+            RC.ALLOW_MULTI = True
+            self.assertEqual(
+                RC.resolve_binary_names("ROUTER_ROUTER_ONEWAY"),
+                {
+                    "server": "comp_src_router_router_oneway_server",
+                    "client": "comp_src_router_router_oneway_client",
+                },
+            )
+            self.assertFalse(RC.is_echo_pattern("ROUTER_ROUTER_ONEWAY"))
+            self.assertEqual(
+                RC.compute_bandwidth_mb_s("ROUTER_ROUTER_ONEWAY", 64, 1000),
+                0.064,
+            )
+            self.assertEqual(
+                RC.pattern_default_clients("ROUTER_ROUTER_ONEWAY"),
+                100,
+            )
+            self.assertEqual(
+                RC.pattern_default_io_threads("ROUTER_ROUTER_ONEWAY"),
+                1,
+            )
+        finally:
+            RC.ALLOW_MULTI = old_allow_multi
 
     def test_multi_split_runner_isolates_each_size_case(self):
         old_allow_multi = RC.ALLOW_MULTI

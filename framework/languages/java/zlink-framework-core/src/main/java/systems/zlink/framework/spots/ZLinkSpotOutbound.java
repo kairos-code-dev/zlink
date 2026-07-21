@@ -14,6 +14,7 @@ public interface ZLinkSpotOutbound {
         Object request);
 
     ZLinkPublishCall publish(
+        String channelName,
         String topic,
         Object message);
 

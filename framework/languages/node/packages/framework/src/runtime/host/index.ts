@@ -1,25 +1,38 @@
 import { randomUUID } from 'node:crypto';
-import { ZLinkNodeBackendAdapterFactory } from '../backend';
+import {
+  Message as BindingMessage,
+  OperationKind,
+  ReceiveKind,
+  SubmitResult,
+  type MessageLike,
+  type ReadyRecord,
+  type ReceiveRecord
+} from '@zlink-systems/zlink';
+import {
+  meshActorSessionNodeAdapter,
+  ZLinkNodeBackendAdapterFactory
+} from '../backend';
 import type {
   ZLinkBackendAdapterFactory,
-  ZLinkBackendContext,
-  ZLinkBackendSpotNode
+  ZLinkBackendContext
 } from '../backend';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
   ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
-  ZLinkDrainControl,
-  ZLinkDrainResult
+  ZLinkRouteMeshRuntime,
+  ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
-  ZLinkDispatchErrorSurface,
-  ZLinkDispatchMessageKind,
   ZLinkMessageFlowLogMode,
-  ZLinkMessageFlowOutcome
+  ZLinkSubmitStatus
 } from '../../contracts';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { ZLinkMessageFlowControl } from '../../contracts';
 import {
   DefaultZLinkChannelRuntimeOptions,
@@ -31,7 +44,7 @@ import {
 } from '../channels';
 import {
   ZLinkFrameworkRuntimeState,
-  ZLinkRuntimeErrorSink
+  ZLinkRuntimeTaskErrorSink
 } from '../execution';
 import {
   createDiagnosticsContext,
@@ -57,8 +70,10 @@ import type {
 } from '../actors';
 import {
   DefaultZLinkActorClient,
+  forwardEncodedActorPacket,
   ZLinkActorHandoffCoordinator,
-  ZLinkActorTransferRegistry
+  ZLinkActorTransferRegistry,
+  decodeRemoteActorSourceLeaveTerminal
 } from '../actors';
 import {
   DefaultZLinkBoundSessionFactory,
@@ -80,6 +95,7 @@ import {
 import { ZLinkMonitoringRuntime } from './monitoring-runtime';
 import { ZLinkActorRuntimeOptionsFactory } from './actor-runtime-options-factory';
 import { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
+import { ZLinkActorTransferAuthorityRuntime } from './actor-transfer-authority-runtime';
 import { ZLinkEntryActorRuntimeService } from './entry-actor-runtime';
 import { ZLinkLocationRuntimeOwner } from './location-runtime-owner';
 import { MeshRouterResolver } from './mesh-router-resolver';
@@ -90,9 +106,11 @@ import { ZLinkChannelRuntimeOptionsFactory } from './channel-runtime-options-fac
 import { ZLinkSpotNodeRuntimeOptionsFactory } from './spot-node-runtime-options-factory';
 import { rollbackRuntimeStart, stopRuntimeParts } from './runtime-shutdown';
 import { ZLinkRuntimeAdmissionGate } from '../admission';
+import { ZLinkRouteMeshRuntimeCoordinator } from './route-mesh-runtime';
 import { collectRoutingIdAllocationMembers } from '../../contracts/Configuration/RoutingIdAllocationRegistration';
 import { ZLinkConfigurationException } from '../../contracts/Configuration/ConfigurationException';
 import type { ZLinkAllocatedRoutingId, ZLinkAllocatedRoutingIdProvider } from '../../contracts/Locations';
+import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -111,7 +129,6 @@ export interface ZLinkFrameworkRuntimeHostOptions {
 export class ZLinkFrameworkRuntimeHost implements
   ZLinkFrameworkRuntime,
   ZLinkMessageFlowControl,
-  ZLinkDrainControl,
   ZLinkAllocatedRoutingIdProvider {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
@@ -127,20 +144,17 @@ export class ZLinkFrameworkRuntimeHost implements
   private readonly actorHandoff: ZLinkActorHandoffCoordinator;
   private readonly actorTransferRegistry: ZLinkActorTransferRegistry;
   private readonly actorTransferRuntime: ZLinkActorTransferRuntime;
+  private readonly actorTransferAuthorityRuntime: ZLinkActorTransferAuthorityRuntime;
   private readonly entryActorRuntime: ZLinkEntryActorRuntimeService;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
   private readonly destroyedActorRefs = new Map<string, ActorRef>();
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   private readonly metrics: ZLinkRuntimeMetrics;
-  private ready = true;
   private readonly admission = new ZLinkRuntimeAdmissionGate();
-  private drainOperation?: Promise<ZLinkDrainResult>;
-  private drainingMarkerPublished = false;
-  private ownerCleanupPending = false;
-  private readonly drainedWaiters: Array<(result: ZLinkDrainResult) => void> = [];
-  private drainMetricState = 'serving';
-  private drainStartedAt?: bigint;
+  private readonly meshSubmitters = new ZLinkMeshSubmitterRegistry();
+  private readonly localMeshRouteInFlight = new Map<string, number>();
+  private readonly localMeshRouteCapacity = 4096;
   private readonly allocatedRoutingIdGroupNames: ReadonlySet<string>;
   private allocationRuntimeReady!: Promise<ZLinkAllocatedRoutingIdRuntime>;
   private resolveAllocationRuntime!: (runtime: ZLinkAllocatedRoutingIdRuntime) => void;
@@ -155,25 +169,34 @@ export class ZLinkFrameworkRuntimeHost implements
       (this.errorSink ?? this.preStartErrorSink).reportRuntimeTaskException(taskName, error)
   };
   private cachedDiagnosticsContext?: ZLinkDiagnosticsContext;
-  private readonly preStartErrorSink = new ZLinkRuntimeErrorSink();
+  private readonly preStartErrorSink = new ZLinkRuntimeTaskErrorSink();
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly channelRuntimeOptions = new DefaultZLinkChannelRuntimeOptions(() => this.channelRuntime);
-  readonly routeTransport = new ZLinkRuntimeRouteTransport(
-    () => this.channelRuntime,
-    (routerChannelId) => this.meshRouters.canUseRouterChannel(routerChannelId)
-  );
+  readonly routeTransport: ZLinkRuntimeRouteTransport;
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionFactory: DefaultZLinkBoundSessionFactory;
   readonly spotRouterChannelIdForMesh: (meshName: string) => string;
+  readonly routeMeshRuntime: ZLinkRouteMeshRuntime;
+  private readonly routeMeshCoordinator: ZLinkRouteMeshRuntimeCoordinator;
 
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
     this.runtimeEventPublisher = options.runtimeEventPublisher ?? new DefaultZLinkRuntimeEventPublisher();
     this.metrics = new ZLinkRuntimeMetrics(options.registration.metrics?.meterProvider);
-    this.metrics.change('zlink.drain.state', 1, { state: 'serving' });
     this.meshRouters = new MeshRouterResolver(options.registration);
+    this.routeTransport = new ZLinkRuntimeRouteTransport(
+      () => this.channelRuntime,
+      (routerChannelId) => this.meshRouters.canUseRouterChannel(routerChannelId),
+      () => this.spotNodeRuntime,
+      { serializers: options.registration.messageSerializers },
+      this.meshSubmitters,
+      (meshName, targetNodeRid) =>
+        this.meshRouters.classifyManualNodeTarget(meshName, targetNodeRid),
+      (meshName, sourceNodeRid, parts) =>
+        this.submitLocalMeshRoute(meshName, sourceNodeRid, parts)
+    );
     this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
     this.allocatedRoutingIdGroupNames = new Set(
       collectRoutingIdAllocationMembers(options.registration).map((member) => member.groupName)
@@ -182,8 +205,7 @@ export class ZLinkFrameworkRuntimeHost implements
       registration: options.registration,
       runtimeEventPublisher: this.runtimeEventPublisher,
       metrics: this.metrics,
-      fallbackNodeRid: `node-${randomUUID()}`,
-      allocatedRoutingIdsEnabled: this.allocatedRoutingIdGroupNames.size > 0
+      fallbackNodeRid: `node-${randomUUID()}`
     });
     this.resetAllocationRuntimeReady();
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
@@ -192,24 +214,28 @@ export class ZLinkFrameworkRuntimeHost implements
       messageSerializers: options.registration.messageSerializers,
       metrics: this.metrics,
       flowCreationEnabled: () => this.flowCreationEnabled(),
-      nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
-      confirmRemoteActorSessionBinding: (actor, sessionRid, signal) => {
-        if (!this.isStarted) return Promise.resolve();
-        const sessionNodeRid = this.requirePrimarySpotNode().routingId;
-        return this.boundSessionRelay.actorPackets.confirmRemoteSessionBinding(
-          actor,
-          sessionNodeRid,
-          sessionRid,
-          signal
-        );
-      },
-      relay: (actor, header, payload, signal) =>
-        this.boundSessionRelay.actorPackets.relayActorPacket(actor, header, payload, signal),
-      notifyDisconnected: (actor, signal) =>
-        this.boundSessionRelay.actorPackets.notifyBoundActorDisconnected(actor, signal)
+      nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryMeshNode,
+      meshSubmitters: this.meshSubmitters,
+      nativeActorMeshNameProvider: () => this.meshRouters.primaryMeshName()
     });
     this.actorHandoff = new ZLinkActorHandoffCoordinator({
       routedTransport: this.routeTransport,
+      forwardActorPacket: async (_actorId, actor, packet) => {
+        const completions = this.spotNodeRuntime?.primaryMeshCompletions;
+        if (completions === undefined) {
+          throw new Error('Actor handoff requires a running MeshNode completion table.');
+        }
+        return await forwardEncodedActorPacket(
+          this.requirePrimaryMeshNode(),
+          completions,
+          actor,
+          Buffer.from(packet.header, 'base64'),
+          Buffer.from(packet.payload, 'base64'),
+          packet.returnResponse,
+          options.registration.requestTimeoutMs,
+          options.registration.messageSerializers
+        );
+      },
       forwardWindowMs: options.registration.actorTransferForwardWindowMs,
       requestTimeoutMs: options.registration.requestTimeoutMs,
       onMarker: (marker, actorId, index) => {
@@ -241,7 +267,8 @@ export class ZLinkFrameworkRuntimeHost implements
     this.actorTransferRegistry = new ZLinkActorTransferRegistry(
       options.registration.actorTransferAdapters,
       options.providerResolver,
-      options.registration.messageSerializers
+      options.registration.messageSerializers,
+      options.registration.actorFactories
     );
     this.boundSessionFactory = new DefaultZLinkBoundSessionFactory(this.streamBindingRuntime);
     this.boundSessionRelay = new ZLinkBoundSessionRelay({
@@ -252,7 +279,10 @@ export class ZLinkFrameworkRuntimeHost implements
       actorManager: () => this.actorManager,
       spotManager: () => this.spotManager,
       spotNodeRuntime: () => this.spotNodeRuntime,
-      primarySpotNode: () => this.requirePrimarySpotNode(),
+      primaryMeshNode: () => meshActorSessionNodeAdapter(
+        this.requirePrimaryMeshNode(),
+        this.spotNodeRuntime?.primaryMeshCompletions
+      ),
       destroyedActorRefs: this.destroyedActorRefs,
       errorSink: () => this.errorSink ?? this.preStartErrorSink,
       boundSessionFactory: (actorId) => {
@@ -278,7 +308,7 @@ export class ZLinkFrameworkRuntimeHost implements
       messageSerializers: options.registration.messageSerializers,
       spotManager: () => this.spotManager,
       actorManager: () => this.actorManager,
-      primarySpotNode: () => this.requirePrimarySpotNode(),
+      primaryMeshNode: () => this.requirePrimaryMeshNode(),
       notifyEntrySpotActorLeft: (actor, signal) =>
         this.spotNodeRuntime?.notifyPrimaryEntrySpotActorLeft(actor, signal) ?? Promise.resolve(),
       restoreEntrySpotActorJoined: (actor, signal) =>
@@ -295,6 +325,24 @@ export class ZLinkFrameworkRuntimeHost implements
       shutdownSignal: () => this.state?.abortController.signal,
       metrics: this.metrics
     });
+    this.actorTransferAuthorityRuntime = new ZLinkActorTransferAuthorityRuntime({
+      store: () => this.locationOwner.actorTransferStore() as never,
+      recoveryOwnerId: () => this.locationOwner.currentRuntime?.ownerId,
+      recoveryLeaseTtlMs: {
+        ...zlinkDefaultLocationOptions,
+        ...options.registration.locations.options
+      }.ownerLeaseTtlMs
+    });
+    this.routeMeshCoordinator = new ZLinkRouteMeshRuntimeCoordinator({
+      meshNames: [...options.registration.spotNodes.keys()],
+      meshOptions: options.registration.spotNodes,
+      meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
+      admission: this.admission,
+      publishDraining: (meshName, signal) => this.publishDraining(meshName, signal),
+      drainResources: (meshName, signal) => this.performMeshDrain(meshName, signal),
+      forceStopResources: (meshName) => this.forceStopMesh(meshName)
+    });
+    this.routeMeshRuntime = this.routeMeshCoordinator;
   }
 
   get isStarted(): boolean {
@@ -382,7 +430,7 @@ export class ZLinkFrameworkRuntimeHost implements
         ZLinkMessageFlowLogMode.ErrorsOnly;
       const dispatchErrors = this.createDispatchErrorReporter(this.state.errorSink);
       if (this.allocatedRoutingIdGroupNames.size > 0) {
-        const locationRuntime = this.locationOwner.ensureRuntime(this.meshRouters.primarySpotMeshName());
+        const locationRuntime = this.locationOwner.ensureRuntime(this.meshRouters.primaryMeshName());
         const allocationStore = this.locationOwner.routingIdAllocationStore();
         if (locationRuntime === undefined || allocationStore === undefined) {
           throw new ZLinkConfigurationException(
@@ -394,7 +442,6 @@ export class ZLinkFrameworkRuntimeHost implements
           allocationStore,
           locationRuntime,
           (error) => {
-            this.ready = false;
             queueMicrotask(() => {
               void this.stop().catch((stopError) =>
                 this.runtimeOrPreStartErrorSink.reportRuntimeTaskException(
@@ -418,18 +465,18 @@ export class ZLinkFrameworkRuntimeHost implements
         this.createChannelRuntimeOptions()
       );
       this.channelRuntime = channelRuntime;
+      channelRuntime.prepareMeshDispatch(this.state.taskRunner);
       spotNodeRuntime = new ZLinkSpotNodeRuntimeManager(
         this.createSpotNodeRuntimeOptions(context, dispatchErrors)
       );
       await spotNodeRuntime.start();
       channelRuntime.bindRouteMeshRouters();
       const locationRuntime = await this.locationOwner.startForRuntime(
-        this.meshRouters.primarySpotMeshName(),
+        this.meshRouters.primaryMeshName(),
         spotNodeRuntime,
         channelRuntime
       );
       startedLocationRuntime = locationRuntime;
-      channelRuntime.setSpotNodes(spotNodeRuntime.nodesByName);
       this.state.listenerTasks.push(...channelRuntime.start(this.state.taskRunner));
       this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
@@ -437,11 +484,19 @@ export class ZLinkFrameworkRuntimeHost implements
         backendAdapterFactory: this.backendAdapterFactory,
         context,
         bindingRuntime: this.streamBindingRuntime,
-        spotNodes: spotNodeRuntime.nodesByName,
         providerResolver: this.options.providerResolver,
         dispatchErrors,
         metrics: this.metrics,
-        acceptNewSession: () => this.admission.acceptsNewWork
+        acceptNewSession: (meshName) => meshName === undefined
+          ? this.admission.acceptsNewWork
+          : this.admission.accepts(meshName),
+        primaryMeshName: this.meshRouters.primaryMeshName(),
+        claimApplicationWork: (meshName) =>
+          this.admission.claim(meshName, 'STREAM session dispatch'),
+        nativeMeshNode: spotNodeRuntime.primaryMeshNode,
+        meshCompletions: spotNodeRuntime.primaryMeshCompletions,
+        nativeMeshNodeForName: (meshName) => spotNodeRuntime?.meshNode(meshName),
+        meshCompletionsForName: (meshName) => spotNodeRuntime?.meshCompletionTable(meshName)
       });
       streamRuntime.start();
       this.streamRuntime = streamRuntime;
@@ -449,13 +504,14 @@ export class ZLinkFrameworkRuntimeHost implements
         this.monitoringRuntime = new ZLinkMonitoringRuntime({
           registration: this.options.registration,
           channelRuntime,
-          spotNodes: spotNodeRuntime.nodesByName,
+          meshNodes: spotNodeRuntime.meshNodesByName,
           locationRuntime,
           monitoringAdapter: this.backendAdapterFactory.createMonitoringAdapter(),
           publisher: this.runtimeEventPublisher
         });
         this.monitoringRuntime.start(this.state);
       }
+      this.routeMeshCoordinator.markServing();
       this.lifecycleSink?.push('framework:started');
       allocatedRoutingIdRuntime?.markReady();
     } catch (error) {
@@ -513,6 +569,7 @@ export class ZLinkFrameworkRuntimeHost implements
       channelRuntime,
       allocatedRoutingIdRuntime
     });
+    this.meshSubmitters.dispose();
     this.resetAllocationRuntimeReady();
     this.lifecycleSink?.push('framework:stopped');
   }
@@ -522,77 +579,34 @@ export class ZLinkFrameworkRuntimeHost implements
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await this.drain();
-  }
-
-  isReady(): boolean {
-    return this.ready;
-  }
-
-  drain(deadlineMs = 30_000, signal?: AbortSignal): Promise<ZLinkDrainResult> {
-    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
-      return Promise.reject(new TypeError('Drain deadlineMs must be greater than zero.'));
+    const meshNames = [...this.options.registration.spotNodes.keys()];
+    if (meshNames.length === 1) {
+      await this.routeMeshRuntime.drain(meshNames[0]!);
     }
-    this.drainOperation ??= this.runLifecycle(() => this.performDrain(deadlineMs)).then((result) => {
-      for (const resolve of this.drainedWaiters.splice(0)) resolve(result);
-      return result;
-    });
-    return waitForDrain(this.drainOperation, signal);
+    await this.stop();
   }
 
-  awaitDrained(signal?: AbortSignal): Promise<ZLinkDrainResult> {
-    const operation = this.drainOperation ?? new Promise<ZLinkDrainResult>((resolve) => {
-      this.drainedWaiters.push(resolve);
-    });
-    return waitForDrain(operation, signal);
-  }
-
-  private async performDrain(deadlineMs: number): Promise<ZLinkDrainResult> {
-    this.drainStartedAt = process.hrtime.bigint();
-    this.ready = false;
-    this.admission.close();
-    const deadline = new AbortController();
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<{ readonly kind: 'timeout' }>((resolve) => {
-      timeoutHandle = setTimeout(() => {
-        deadline.abort();
-        resolve({ kind: 'timeout' });
-      }, deadlineMs);
-    });
-    try {
-      const graceful = this.performGracefulDrain(deadline.signal).then(
-        () => ({ kind: 'drained' } as const),
-        (error: unknown) => ({ kind: 'failed', error } as const)
+  private async performMeshDrain(meshName: string, signal: AbortSignal): Promise<void> {
+    const handedOffActorIds = new Set<string>();
+    while (!await this.handoffActorsForDrain(meshName, handedOffActorIds, signal)) {
+      await waitForDrainRetry(
+        this.options.registration.locations.options.pollingIntervalMs
+          ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+        signal
       );
-      const outcome = await Promise.race([graceful, timeout]);
-      if (outcome.kind === 'timeout') {
-        return await this.forceStopDrain(
-          !this.drainingMarkerPublished
-            ? 'DrainingStatePublishFailed'
-            : this.ownerCleanupPending ? 'OwnerCleanupFailed' : 'DeadlineExceeded'
-        );
-      }
-      if (outcome.kind === 'failed') {
-        if (outcome.error instanceof ZLinkDrainingStatePublishError) {
-          return await this.forceStopDrain('DrainingStatePublishFailed');
-        }
-        if (containsOwnerCleanupError(outcome.error)) {
-          return await this.forceStopDrain('OwnerCleanupFailed');
-        }
-        if (deadline.signal.aborted) {
-          return await this.forceStopDrain('DeadlineExceeded');
-        }
-        return await this.forceStopDrain('TeardownFailed');
-      }
-      const result = { kind: 'drained' } as const;
-      await this.publishDrainState('Drained', result);
-      return result;
-    } finally {
-      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
+    await this.streamRuntime?.notifyServerDrain(meshName);
+    await this.drainSpots(meshName, signal);
+    await this.cleanupOwnerForDrain(signal);
   }
 
-  private async performGracefulDrain(signal: AbortSignal): Promise<void> {
+  private async publishDraining(meshName: string, signal: AbortSignal): Promise<void> {
+    const node = this.spotNodeRuntime?.meshNode(meshName);
+    for (const channelName of Object.keys(
+      this.options.registration.spotNodes.get(meshName)?.meshChannels ?? {}
+    )) {
+      node?.setChannelWeight(channelName, 0);
+    }
     try {
       const runtime = this.locationOwner.currentRuntime;
       while (runtime !== undefined && !await runtime.publishDraining(signal)) {
@@ -602,11 +616,9 @@ export class ZLinkFrameworkRuntimeHost implements
           signal
         );
       }
-      this.drainingMarkerPublished = true;
     } catch (error) {
       throw new ZLinkDrainingStatePublishError(error);
     }
-    await this.publishDrainState('Draining');
     if (this.locationOwner.currentRuntime !== undefined) {
       await waitForDrainRetry(
         this.options.registration.locations.options.pollingIntervalMs
@@ -614,59 +626,42 @@ export class ZLinkFrameworkRuntimeHost implements
         signal
       );
     }
-    const handedOffActorIds = new Set<string>();
-    while (!await this.handoffActorsForDrain(handedOffActorIds, signal)) {
-      await waitForDrainRetry(
-        this.options.registration.locations.options.pollingIntervalMs
-          ?? zlinkDefaultLocationOptions.pollingIntervalMs,
-        signal
-      );
-    }
-    await this.drainSpots(signal);
-    await this.streamRuntime?.notifyServerDrain();
-    await this.cleanupOwnerForDrain(signal);
-    await this.stop();
   }
 
   private async cleanupOwnerForDrain(signal: AbortSignal): Promise<void> {
     const runtime = this.locationOwner.currentRuntime;
     if (runtime === undefined) return;
-    this.ownerCleanupPending = true;
     for (;;) {
       try {
         await runtime.cleanupOwner(signal);
-        this.ownerCleanupPending = false;
         return;
       } catch {
-        await waitForDrainRetry(
-          this.options.registration.locations.options.pollingIntervalMs
-            ?? zlinkDefaultLocationOptions.pollingIntervalMs,
-          signal
-        );
+        try {
+          await waitForDrainRetry(
+            this.options.registration.locations.options.pollingIntervalMs
+              ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+            signal
+          );
+        } catch (error) {
+          throw new ZLinkOwnerCleanupError(error);
+        }
       }
     }
   }
 
-  private async forceStopDrain(reason: import('../../contracts').ZLinkDrainForceReason): Promise<ZLinkDrainResult> {
-    let terminalReason = reason;
-    try {
-      await waitForForcedSessionNotification(this.streamRuntime?.notifyServerDrain());
-      await this.stop();
-    } catch (error) {
-      terminalReason = containsOwnerCleanupError(error) ? 'OwnerCleanupFailed' : 'TeardownFailed';
-    }
-    const result = { kind: 'force-stopped', reason: terminalReason } as const;
-    await this.publishDrainState('ForceStopping', result).catch(() => undefined);
-    return result;
+  private async forceStopMesh(meshName: string): Promise<void> {
+    await waitForForcedSessionNotification(this.streamRuntime?.notifyServerDrain(meshName));
+    await this.spotManager?.drainForShutdown(meshName);
   }
 
-  private async drainSpots(signal?: AbortSignal): Promise<void> {
+  private async drainSpots(meshName: string, signal?: AbortSignal): Promise<void> {
     const manager = this.spotManager;
     if (manager === undefined) return;
-    await manager.drainForShutdown(signal);
+    await manager.drainForShutdown(meshName, signal);
   }
 
   private async handoffActorsForDrain(
+    drainingMeshName: string,
     handedOffActorIds: Set<string>,
     signal?: AbortSignal
   ): Promise<boolean> {
@@ -683,12 +678,8 @@ export class ZLinkFrameworkRuntimeHost implements
         allMoved = false;
         continue;
       }
-      if (this.spotManager?.retainsActorDuringDrain(state.spotRid) === true) continue;
-      const meshName = this.meshRouters.actorSpotMeshName(actorType);
-      if (meshName === undefined) {
-        allMoved = false;
-        continue;
-      }
+      const meshName = this.meshRouters.actorMeshName(actorType);
+      if (meshName !== drainingMeshName) continue;
       try {
         const target = await this.locationOwner.createRefResolver([meshName])
           ?.selectActorPlacement(meshName, actorType, sourceNodeRid, signal);
@@ -711,27 +702,6 @@ export class ZLinkFrameworkRuntimeHost implements
     return allMoved;
   }
 
-  private publishDrainState(state: import('../../contracts').ZLinkDrainState, result?: ZLinkDrainResult): Promise<void> {
-    const metricState = drainMetricState(state);
-    if (metricState !== this.drainMetricState) {
-      this.metrics.change('zlink.drain.state', -1, { state: this.drainMetricState });
-      this.metrics.change('zlink.drain.state', 1, { state: metricState });
-      this.drainMetricState = metricState;
-    }
-    if (state === 'Drained' || state === 'ForceStopping') {
-      if (this.drainStartedAt !== undefined) {
-        this.metrics.duration('zlink.drain.duration', Number(process.hrtime.bigint() - this.drainStartedAt) / 1e9);
-      }
-      if (state === 'ForceStopping') this.metrics.count('zlink.drain.forced');
-    }
-    return this.runtimeEventPublisher.publish({
-      sourceName: 'drain',
-      timestamp: new Date(),
-      state,
-      result
-    });
-  }
-
   setActorManager(actorManager: DefaultZLinkActorManager): void {
     this.actorManager = actorManager;
   }
@@ -743,6 +713,8 @@ export class ZLinkFrameworkRuntimeHost implements
   createActorManagerOptions(spotRouteResolver?: ZLinkSpotRouteResolver): Pick<
     ZLinkActorManagerOptions,
     | 'joinCoordinator'
+    | 'actorMeshNameProvider'
+    | 'actorLeaveSpot'
     | 'messageSerializers'
     | 'nativeActorNode'
     | 'nativeActorNodeProvider'
@@ -800,12 +772,16 @@ export class ZLinkFrameworkRuntimeHost implements
       providerResolver: this.options.providerResolver,
       spotManager: () => this.spotManager,
       actorManager: () => this.actorManager,
-      primarySpotNode: () => this.requirePrimarySpotNode(),
-      primarySpotNodeOrUndefined: () => this.spotNodeRuntime?.primaryNode,
+      primaryMeshNode: () => this.requirePrimaryMeshNode(),
+      primaryMeshNodeOrUndefined: () => this.spotNodeRuntime?.primaryMeshNode,
+      primaryMeshCompletions: () => this.spotNodeRuntime?.primaryMeshCompletions,
+      meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
+      meshCompletions: (meshName) => this.spotNodeRuntime?.meshCompletionTable(meshName),
       notifyEntrySpotActorCreated: (nodeRid, actor, createRequest, signal) =>
         this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
       locationLifecycle: () => this.locationOwner.currentLifecycle,
-      primarySpotMeshName: () => this.meshRouters.primarySpotMeshName(),
+      primaryMeshName: () => this.meshRouters.primaryMeshName(),
+      actorMeshName: (actorType) => this.meshRouters.actorMeshName(actorType),
       createLocationSpotRouteResolver: () => this.createLocationSpotRouteResolver(),
       createActorLocationResolver: () => this.createActorLocationResolver(),
       forgetDestroyedActorRef: (actorId) => this.destroyedActorRefs.delete(actorId),
@@ -822,6 +798,7 @@ export class ZLinkFrameworkRuntimeHost implements
       admission: this.admission,
       actorPacketTargetForState: (actorId) =>
         this.boundSessionRelay.actorPackets.actorPacketTargetForState(actorId),
+      meshSubmitters: this.meshSubmitters,
       flowCreationEnabled: () => this.flowCreationEnabled(),
       traceBoundSessionSend: (actorId, packetName) => {
         const flow = this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink).flow;
@@ -851,7 +828,7 @@ export class ZLinkFrameworkRuntimeHost implements
     context: ZLinkBackendContext,
     dispatchErrors: ZLinkDispatchErrorReporter
   ) {
-    return new ZLinkSpotNodeRuntimeOptionsFactory({
+    const options = new ZLinkSpotNodeRuntimeOptionsFactory({
       registration: this.options.registration,
       backendAdapterFactory: this.backendAdapterFactory,
       context,
@@ -869,6 +846,170 @@ export class ZLinkFrameworkRuntimeHost implements
       detachedTaskRunner: this.detachedTaskRunner(),
       metrics: this.metrics
     }).create();
+    return {
+      ...options,
+      meshRecordDispatcher: (meshName: string, owner: ReadyRecord, record: ReceiveRecord) =>
+        this.dispatchMeshRecord(meshName, owner, record, this.state?.abortController.signal)
+    };
+  }
+
+  private dispatchMeshRecord(
+    meshName: string,
+    owner: ReadyRecord,
+    record: ReceiveRecord,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (record.operationKind === OperationKind.ActorJoin) {
+      if (this.spotManager === undefined) {
+        throw new ZLinkConfigurationException('MeshNode Actor join dispatch requires the Spot manager.');
+      }
+      return this.spotManager.dispatchMeshActorJoin(meshName, owner, record);
+    }
+    switch (record.kind) {
+      case ReceiveKind.TransferControl:
+        if (record.kindData?.kind !== 'transferControl') {
+          throw new ZLinkConfigurationException('MeshNode transfer control record has no typed control payload.');
+        }
+        return this.actorTransferAuthorityRuntime.handle(meshName, record.kindData, signal);
+      case ReceiveKind.ChannelSend:
+      case ReceiveKind.ChannelRequest: {
+        const channelRuntime = this.channelRuntime;
+        if (channelRuntime === undefined) {
+          throw new ZLinkConfigurationException('MeshNode channel dispatch requires the channel runtime.');
+        }
+        return this.admission.run(meshName, 'RouteMesh channel dispatch', () =>
+          channelRuntime.dispatchMeshChannel(meshName, record, signal));
+      }
+      case ReceiveKind.NodeSend:
+      case ReceiveKind.NodeRequest: {
+        if (record.kind === ReceiveKind.NodeRequest && record.parts.length === 1) {
+          const terminal = decodeRemoteActorSourceLeaveTerminal(record.parts[0]!.data());
+          if (terminal !== undefined) {
+            if (
+              this.spotManager?.completeFormalSourceLeaveTerminal(
+                terminal.actorId,
+                terminal.transferId,
+                terminal.succeeded
+              ) !== true
+            ) {
+              throw new ZLinkConfigurationException(
+                `Actor '${terminal.actorId}' has no matching formal transfer terminal gate.`
+              );
+            }
+            if (record.reply(Buffer.alloc(0)) !== SubmitResult.Ok) {
+              throw new ZLinkConfigurationException(
+                `Actor '${terminal.actorId}' formal transfer terminal acknowledgement failed.`
+              );
+            }
+            return Promise.resolve();
+          }
+        }
+        const channelRuntime = this.channelRuntime;
+        if (channelRuntime === undefined) {
+          throw new ZLinkConfigurationException('MeshNode node-direct dispatch requires the channel runtime.');
+        }
+        return this.admission.run(meshName, 'RouteMesh node dispatch', () =>
+          channelRuntime.dispatchMeshRoute(meshName, record));
+      }
+      case ReceiveKind.SpotSend:
+      case ReceiveKind.SpotRequest:
+      case ReceiveKind.SpotMulticast:
+        return this.admission.run(meshName, 'RouteMesh Spot dispatch', () =>
+          this.dispatchMeshSpotRecord(meshName, owner, record));
+      case ReceiveKind.SpotControl:
+        if (this.spotManager === undefined) {
+          throw new ZLinkConfigurationException('MeshNode Spot control dispatch requires the Spot manager.');
+        }
+        return this.spotManager.dispatchMeshSpotControl(meshName, owner, record);
+      case ReceiveKind.ActorSend:
+      case ReceiveKind.ActorRequest:
+        if (this.spotManager === undefined) {
+          throw new ZLinkConfigurationException('MeshNode Actor dispatch requires the Spot manager.');
+        }
+        return this.admission.run(meshName, 'RouteMesh Actor dispatch', () =>
+          this.spotManager!.dispatchMeshActor(meshName, owner, record));
+      case ReceiveKind.SendReady:
+        this.meshSubmitters.notify(meshName);
+        return Promise.resolve();
+      default:
+        throw new ZLinkConfigurationException(
+          `MeshNode record kind '${record.kind}' does not yet have a registered framework consumer.`
+        );
+    }
+  }
+
+  private submitLocalMeshRoute(
+    meshName: string,
+    sourceNodeRid: string,
+    parts: readonly MessageLike[]
+  ) {
+    const state = this.state;
+    const channelRuntime = this.channelRuntime;
+    if (state === undefined || channelRuntime === undefined || !this.admission.accepts(meshName)) {
+      return { status: ZLinkSubmitStatus.Shutdown } as const;
+    }
+    if (!channelRuntime.canDispatchLocalMeshRoute(meshName)) {
+      return { status: ZLinkSubmitStatus.TargetNotFound } as const;
+    }
+    const inFlight = this.localMeshRouteInFlight.get(meshName) ?? 0;
+    if (inFlight >= this.localMeshRouteCapacity) {
+      return { status: ZLinkSubmitStatus.Backpressured } as const;
+    }
+    const claim = this.admission.claim(meshName, 'RouteMesh local node dispatch');
+    this.localMeshRouteInFlight.set(meshName, inFlight + 1);
+    const ownedParts: BindingMessage[] = [];
+    try {
+      for (const part of parts) {
+        ownedParts.push(BindingMessage.from(
+          typeof (part as { data?: unknown }).data === 'function'
+            ? (part as { data(): Buffer }).data()
+            : part
+        ));
+      }
+    } catch (error) {
+      for (const part of ownedParts) part.close();
+      claim.close();
+      this.releaseLocalMeshRouteSlot(meshName);
+      throw error;
+    }
+    try {
+      state.taskRunner.runDetached('mesh-node-local-route-dispatch', async () => {
+        try {
+          await channelRuntime.dispatchLocalMeshRoute(meshName, sourceNodeRid, ownedParts);
+        } finally {
+          for (const part of ownedParts) part.close();
+          claim.close();
+          this.releaseLocalMeshRouteSlot(meshName);
+        }
+      });
+    } catch (error) {
+      for (const part of ownedParts) part.close();
+      claim.close();
+      this.releaseLocalMeshRouteSlot(meshName);
+      throw error;
+    }
+    return { status: ZLinkSubmitStatus.Submitted } as const;
+  }
+
+  private releaseLocalMeshRouteSlot(meshName: string): void {
+    const remaining = (this.localMeshRouteInFlight.get(meshName) ?? 1) - 1;
+    if (remaining === 0) this.localMeshRouteInFlight.delete(meshName);
+    else this.localMeshRouteInFlight.set(meshName, remaining);
+    this.meshSubmitters.notify(meshName);
+  }
+
+  private async dispatchMeshSpotRecord(
+    meshName: string,
+    owner: ReadyRecord,
+    record: ReceiveRecord
+  ): Promise<void> {
+    if (await this.spotNodeRuntime?.dispatchEntrySpotRecord(meshName, owner, record) === true) {
+      return;
+    }
+    if (this.spotManager === undefined) {
+      throw new ZLinkConfigurationException('MeshNode Spot dispatch requires the Spot manager.');
+    }
+    await this.spotManager.dispatchMeshSpot(meshName, owner, record);
   }
 
   private createDispatchErrorReporter(errorSink: ZLinkDispatchErrorSink): ZLinkDispatchErrorReporter {
@@ -925,8 +1066,8 @@ export class ZLinkFrameworkRuntimeHost implements
     return runWithFlow(flow, operation);
   }
 
-  requirePrimarySpotNode(): ZLinkBackendSpotNode {
-    const node = this.spotNodeRuntime?.primaryNode;
+  requirePrimaryMeshNode() {
+    const node = this.spotNodeRuntime?.primaryMeshNode;
     if (node === undefined) {
       throw new Error('Primary Entry Spot node is not started.');
     }
@@ -934,19 +1075,22 @@ export class ZLinkFrameworkRuntimeHost implements
   }
 
   private ensureLocationRuntime(): ZLinkLocationRuntime | undefined {
-    return this.locationOwner.ensureRuntime(this.meshRouters.primarySpotMeshName());
+    return this.locationOwner.ensureRuntime(this.meshRouters.primaryMeshName());
   }
 
   private createLocationSpotRouteResolver(): ZLinkSpotRouteResolver | undefined {
     this.ensureLocationRuntime();
     return this.locationOwner.createSpotRouteResolver(
       this.meshRouters.spotLocationMeshNames(),
-      this.meshRouters.spotRouterChannelIdByMesh()
+      this.meshRouters.spotRouterChannelIdByMesh(),
+      (spotRid) => this.spotManager?.resolveLocalSpotRoute(spotRid)
     );
   }
 
   private createActorLocationResolver(): ZLinkStoreLocationResolvers | undefined {
-    return this.locationOwner.createActorLocationResolver();
+    return this.locationOwner.createActorLocationResolver(
+      this.meshRouters.spotLocationMeshNames()
+    );
   }
 
   private resetAllocationRuntimeReady(): void {
@@ -956,6 +1100,12 @@ export class ZLinkFrameworkRuntimeHost implements
   }
 
 }
+
+export {
+  ZLinkActorTransferAuthorityRuntime,
+  transferIdString
+} from './actor-transfer-authority-runtime';
+export { ZLinkRouteMeshRuntimeCoordinator } from './route-mesh-runtime';
 
 function waitForAllocationRuntime<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (signal === undefined) return operation;
@@ -982,25 +1132,11 @@ async function waitForForcedSessionNotification(operation: Promise<void> | undef
   }
 }
 
-function drainMetricState(state: import('../../contracts').ZLinkDrainState): string {
-  switch (state) {
-    case 'Serving': return 'serving';
-    case 'Draining': return 'draining';
-    case 'Drained': return 'drained';
-    case 'ForceStopping': return 'force_stopping';
-  }
-}
-
 class ZLinkDrainingStatePublishError extends Error {
   constructor(cause: unknown) {
     super('Failed to publish draining peer rows.', { cause });
+    this.name = 'ZLinkDrainingStatePublishError';
   }
-}
-
-function containsOwnerCleanupError(error: unknown): boolean {
-  if (error instanceof ZLinkOwnerCleanupError) return true;
-  return error instanceof AggregateError
-    && error.errors.some((nested) => containsOwnerCleanupError(nested));
 }
 
 function waitForDrainRetry(delayMs: number, signal: AbortSignal): Promise<void> {
@@ -1015,16 +1151,6 @@ function waitForDrainRetry(delayMs: number, signal: AbortSignal): Promise<void> 
       reject(new Error('Drain deadline exceeded.'));
     };
     signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-function waitForDrain(operation: Promise<ZLinkDrainResult>, signal?: AbortSignal): Promise<ZLinkDrainResult> {
-  if (signal?.aborted === true) return Promise.reject(signal.reason ?? new Error('Drain wait was aborted.'));
-  if (signal === undefined) return operation;
-  return new Promise((resolve, reject) => {
-    const aborted = () => reject(signal.reason ?? new Error('Drain wait was aborted.'));
-    signal.addEventListener('abort', aborted, { once: true });
-    operation.then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted)).catch(() => undefined);
   });
 }
 

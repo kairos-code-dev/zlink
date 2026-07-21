@@ -230,10 +230,10 @@ void connect_spot_peer (const spot_node_snapshot_t &snapshot,
                         const peer_location_t &local,
                         zlink::service::spot_node_t &node,
                         const peer_location_t &peer,
-                        bool connect_router)
+                        bool connect_route)
 {
     trace_spot_dial (local, peer);
-    if (connect_router && !peer.endpoint.empty ()
+    if (connect_route && !peer.endpoint.empty ()
         && !is_manual_spot_endpoint (snapshot, peer.endpoint)) {
         try {
             if (peer.node_rid) {

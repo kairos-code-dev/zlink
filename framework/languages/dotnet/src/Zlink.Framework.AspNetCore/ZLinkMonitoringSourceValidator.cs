@@ -69,10 +69,8 @@ internal sealed class ZLinkMonitoringSourceValidator(
     {
         return capability switch
         {
-            "server" => channel.Server is not null,
             "subscriber" => channel.Subscriber is not null,
             "publisher" => channel.Publisher is not null,
-            "client" => channel.Client is not null,
             _ => false
         };
     }

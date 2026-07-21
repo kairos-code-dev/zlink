@@ -37,6 +37,7 @@ CONFIGS=(
   ToActorMessaging
   SpotActorTransfer
   ObservabilityOps
+  SubmitAdmission
 )
 
 START_ORDER_VARIANTS=(

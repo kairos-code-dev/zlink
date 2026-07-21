@@ -1763,6 +1763,78 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task CloseCompletesWhenReconnectTransportArrivesAfterCloseStarted()
+    {
+        var firstConnection = new RecordingCloseConnection();
+        var secondConnection = new RecordingCloseConnection();
+        var reconnectTransportEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseReconnectTransport = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var connectCount = 0;
+        using var shutdown = new CancellationTokenSource();
+        var taskRunner = new ZlinkStreamTaskRunner(shutdown.Token);
+        var pending = new ZlinkStreamPendingRequests();
+        var callbacks = new ZlinkStreamConnectorCallbacks(
+            taskRunner,
+            ZlinkStreamDispatchMode.Immediate,
+            32);
+        var lifecycle = new ZlinkStreamConnectorLifecycle(
+            new ZlinkStreamConnectorOptions
+            {
+                Endpoint = new Uri("tcp://127.0.0.1:1"),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                Reconnect = new ZlinkStreamReconnectOptions
+                {
+                    InitialDelay = TimeSpan.FromMilliseconds(1),
+                    MaxDelay = TimeSpan.FromMilliseconds(1),
+                    BackoffFactor = 1.0,
+                    MaxAttempts = 1
+                }
+            },
+            pending,
+            taskRunner,
+            callbacks,
+            OpenTransportAsync);
+
+        await lifecycle.ConnectAsync(
+            token => Task.Delay(Timeout.InfiniteTimeSpan, token),
+            _ => ValueTask.CompletedTask,
+            () => { },
+            CancellationToken.None);
+        await lifecycle.HandleTransportErrorAsync(
+            new ZlinkStreamError(
+                ZlinkStreamErrorCode.Disconnected,
+                "transport failed"));
+        await reconnectTransportEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var close = lifecycle.CloseAsync(CancellationToken.None).AsTask();
+        releaseReconnectTransport.TrySetResult();
+        await close.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(ZlinkStreamConnectionState.Closed, lifecycle.State);
+        Assert.Equal(1, firstConnection.CloseCount);
+        Assert.Equal(1, secondConnection.CloseCount);
+        lifecycle.Dispose();
+        shutdown.Cancel();
+        return;
+
+        ValueTask<IZlinkStreamConnection> OpenTransportAsync(CancellationToken _)
+        {
+            if (Interlocked.Increment(ref connectCount) == 1)
+                return ValueTask.FromResult<IZlinkStreamConnection>(firstConnection);
+            return AwaitReconnectTransportAsync();
+        }
+
+        async ValueTask<IZlinkStreamConnection> AwaitReconnectTransportAsync()
+        {
+            reconnectTransportEntered.TrySetResult();
+            await releaseReconnectTransport.Task.ConfigureAwait(false);
+            return secondConnection;
+        }
+    }
+
+    [Fact]
     public async Task ConnectAsyncWhileReconnectingFailsWhenClosed()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

@@ -37,8 +37,6 @@ public sealed class BuilderContracts
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddRouteMesh), methods);
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddFanoutChannel), methods);
         Assert.Contains(nameof(IZLinkFrameworkOptions.AddStreamNode), methods);
-        Assert.DoesNotContain("AddClientServerChannel", methods);
-        Assert.DoesNotContain("AddRouteMeshChannel", methods);
     }
 
     [Fact]
@@ -72,23 +70,11 @@ public sealed class BuilderContracts
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.Contains(nameof(IZLinkMeshChannelBuilder.SetWeight), methods);
+        Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddHandlerGroup), methods);
         Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddSendHandler), methods);
         Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddRequestHandler), methods);
         Assert.DoesNotContain("Listen", methods);
         Assert.DoesNotContain("SetRoutingId", methods);
     }
 
-    [Fact]
-    public void Removed_topology_builder_types_are_not_exported()
-    {
-        var exportedNames = typeof(IZLinkFrameworkOptions).Assembly
-            .GetExportedTypes()
-            .Select(static type => type.Name)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.DoesNotContain("IZLinkClientServerChannelBuilder", exportedNames);
-        Assert.DoesNotContain("IZLinkClientServerChannelOptions", exportedNames);
-        Assert.DoesNotContain("IZLinkRouteMeshChannelBuilder", exportedNames);
-        Assert.DoesNotContain("IZLinkRouteMeshChannelOptions", exportedNames);
-    }
 }

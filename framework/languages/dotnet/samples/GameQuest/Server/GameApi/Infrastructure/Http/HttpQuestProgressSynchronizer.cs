@@ -13,7 +13,7 @@ internal sealed class ZLinkQuestProgressSynchronizer(
         string playerId,
         CancellationToken cancellationToken)
     {
-        return await channels.RequestToChannel(topology.QuestOwnerChannel(playerId), topology.QuestOwnerChannel(playerId),
+        return await channels.RequestToChannel(SampleNames.MeshName, topology.QuestOwnerChannel(playerId),
                 new SyncQuestProgressReq(playerId))
             .Async<SyncQuestProgressRes>(cancellationToken);
     }

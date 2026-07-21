@@ -2,6 +2,8 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
@@ -15,7 +17,10 @@ import type {
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { Message } from '../../contracts/Common/Message';
-import type { RequestResult } from '@zlink-systems/zlink';
+import type {
+  Message as BindingMessage,
+  RequestResult
+} from '@zlink-systems/zlink';
 import type {
   ZLinkRemoteBoundSessionTarget
 } from '../actors';
@@ -48,10 +53,10 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
  * drains only need the callbacks declared here.
  */
 interface ZLinkActorJoinAdmissionTarget {
-  onActorJoin?(actorId: string, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotActorJoinResponse>;
-  onJoinedActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onLeaveActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
-  onDisconnectActor?(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
+  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
+  onLeaveActor?(actor: ZLinkActorMembership): Promise<void>;
+  onDisconnectActor?(actor: ZLinkActorMembership): Promise<void>;
 }
 
 interface ZLinkSpotActorAdmissionRuntime {
@@ -185,6 +190,14 @@ export class ZLinkSpotActorJoinDispatch {
   configureSubscriptions(registrations: readonly ZLinkSpotHandlerRegistration[]): void {
     this.subscriptions.configure(registrations);
     this.routedFrames.configurePacketHandlers(registrations);
+  }
+
+  async dispatchSubscriptionRecord(
+    topic: string,
+    parts: readonly BindingMessage[],
+    sourceRid: RoutingId | null
+  ): Promise<void> {
+    await this.subscriptions.dispatchRecord(topic, parts, sourceRid);
   }
 
   dispose(): void {

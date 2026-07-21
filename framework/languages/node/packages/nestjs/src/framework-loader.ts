@@ -11,6 +11,8 @@ import type {
   ZLinkCodecRegistryBuilder,
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
+  ZLinkLocationOptionValues,
+  ZLinkLocationOptions,
   ZLinkEntrySpot,
   ZLinkFanoutClient,
   ZLinkHandlerContext,
@@ -41,6 +43,9 @@ interface FrameworkIntegrationModule {
   hasSpotNode(registration: ZLinkFrameworkRegistration): boolean;
   hasSpotPublisherClient(registration: ZLinkFrameworkRegistration): boolean;
   createIntegrationDispatchOptionsBuilder(dispatch: ZLinkDispatchOptions): ZLinkDispatchOptionsBuilder;
+  createIntegrationLocationOptionsBuilder(
+    options: Partial<ZLinkLocationOptionValues>
+  ): ZLinkLocationOptions;
   createIntegrationStreamCompressionBuilder(
     options: { disabled?: boolean; codec?: ZLinkStreamCompressionCodec }
   ): ZLinkStreamCompressionBuilder;
@@ -86,6 +91,7 @@ interface FrameworkIntegrationModule {
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): void;
+  validateActorTransferTimeout(timeoutMs: number): number;
   validateActorTransferForwardWindow(timeoutMs: number): number;
   createRoutingIdAllocation(
     slotCount: number,

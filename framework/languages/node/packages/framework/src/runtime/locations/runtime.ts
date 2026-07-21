@@ -1,25 +1,29 @@
+import {
+  zlinkRuntimeDefaultLocationOptions,
+  type ZLinkLocationOptionOverrides
+} from '../../contracts/Locations/Options';
 import { randomUUID } from 'node:crypto';
 import type { RoutingId } from '../../contracts/Common';
+import type {
+  ZLinkPeerLocationStore,
+  ZLinkRouteLocationStore
+} from '../../contracts/Locations/Stores';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationKind,
   ZLinkLocationTopologyState,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  zlinkDefaultLocationOptions,
   type ZLinkActorLocationStore,
   type ZLinkLocationRuntimeQuery,
   type ZLinkLocationStore,
   type ZLinkOwnerLeaseStore,
   type ZLinkOwnerLeaseRenewal,
-  type ZLinkPeerLocationStore,
-  type ZLinkRouteLocationStore,
   type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
   type ZLinkLocationKey,
-  type ZLinkLocationOptions,
   type ZLinkLocationPage,
   type ZLinkLocationRuntimeStatus,
   type ZLinkLocationServiceSummary,
@@ -38,6 +42,10 @@ import {
   type ZLinkSpotLocationFilter,
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
+import type {
+  ZLinkActorLocationQueryStore,
+  ZLinkSpotLocationQueryStore
+} from '../../contracts/Locations/Stores';
 import {
   zlinkLocationAutoConnectTypeName,
   zlinkLocationRoleName
@@ -60,15 +68,15 @@ export interface ZLinkLocationRuntimeStores {
 
 export interface ZLinkLocationRuntimeOptions {
   readonly stores: ZLinkLocationRuntimeStores;
-  readonly options?: ZLinkLocationOptions;
+  readonly options?: ZLinkLocationOptionOverrides;
   readonly ownerId?: string;
   readonly events?: ZLinkLocationEventSink;
   readonly leaseTracker?: ZLinkOwnerLeaseTracker;
   readonly now?: () => Date;
+  readonly monotonicNowMs?: () => number;
   readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
-  readonly allocatedRoutingIdsEnabled?: boolean;
 }
 
 export interface ZLinkLocationEventSink {
@@ -94,27 +102,28 @@ export interface ZLinkLocationEventSink {
 export class ZLinkOwnerCleanupError extends Error {
   constructor(cause: unknown) {
     super(`Owner cleanup failed: ${errorMessage(cause)}`, { cause });
+    this.name = 'ZLinkOwnerCleanupError';
   }
 }
 
 export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   readonly ownerId: string;
-  private readonly options: Required<ZLinkLocationOptions>;
+  private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly stores: ZLinkLocationRuntimeStores;
   private readonly events?: ZLinkLocationEventSink;
   private readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
-  private readonly now: () => Date;
+  private readonly monotonicNowMs: () => number;
   private readonly liveRows: ZLinkLiveRowFilter;
   private readonly ownershipLostHandlers = new Set<(event: ZLinkOwnershipLostEvent) => void>();
   private readonly ownerLeaseRenewedHandlers = new Set<(renewal: ZLinkOwnerLeaseRenewal) => void>();
   private readonly ownerLeaseRenewalFailedHandlers = new Set<() => void>();
   private heartbeatTimer: unknown;
+  private heartbeatRenewal?: Promise<void>;
   private nodeRidValue?: RoutingId;
   private started = false;
   private ownerCleanupComplete = true;
   private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
-  private readonly allocatedRoutingIdsEnabled: boolean;
   private peerMetricCount = 0;
   private nextLeaseRenewAtMs?: number;
 
@@ -124,12 +133,11 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   constructor(runtimeOptions: ZLinkLocationRuntimeOptions) {
     this.stores = runtimeOptions.stores;
-    this.options = { ...zlinkDefaultLocationOptions, ...runtimeOptions.options };
+    this.options = { ...zlinkRuntimeDefaultLocationOptions, ...runtimeOptions.options };
     this.ownerId = runtimeOptions.ownerId ?? randomUUID().replaceAll('-', '');
     this.events = runtimeOptions.events;
     this.metrics = runtimeOptions.metrics;
-    this.allocatedRoutingIdsEnabled = runtimeOptions.allocatedRoutingIdsEnabled ?? false;
-    this.now = runtimeOptions.now ?? (() => new Date());
+    this.monotonicNowMs = runtimeOptions.monotonicNowMs ?? (() => performance.now());
     this.setTimer = runtimeOptions.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimer = runtimeOptions.clearTimer ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
     const leaseTracker = runtimeOptions.leaseTracker ?? new ZLinkOwnerLeaseTracker({
@@ -180,6 +188,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.ownerCleanupComplete = false;
     this.nodeRidValue = nodeRid;
     await this.renewOwnerLeaseOnce(signal);
+    this.nextLeaseRenewAtMs = this.monotonicNowMs() + this.options.heartbeatIntervalMs;
     this.scheduleHeartbeat();
   }
 
@@ -193,6 +202,8 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.clearTimer(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
+    this.nextLeaseRenewAtMs = undefined;
+    await this.heartbeatRenewal;
 
     await this.cleanupOwner(signal);
   }
@@ -218,23 +229,16 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     }
 
     try {
-      const result = this.allocatedRoutingIdsEnabled
-        ? await withTimeout(
-            (renewSignal) => this.stores.ownerLeaseStore.renewOwnerLease(
-              this.ownerId,
-              this.nodeRidValue as RoutingId,
-              this.options.ownerLeaseTtlMs,
-              renewSignal
-            ),
-            this.options.ownerLeaseRenewTimeoutMs,
-            signal
-          )
-        : await this.stores.ownerLeaseStore.renewOwnerLease(
+      const result = await withTimeout(
+        (renewSignal) => this.stores.ownerLeaseStore.renewOwnerLease(
             this.ownerId,
-            this.nodeRidValue,
+            this.nodeRidValue as RoutingId,
             this.options.ownerLeaseTtlMs,
-            signal
-          );
+            renewSignal
+        ),
+        this.options.ownerLeaseRenewTimeoutMs,
+        signal
+      );
       this.ownerLeaseHealthy = true;
       this.ownerLeaseRenewedAt = result.storeNow;
       this.lastError = undefined;
@@ -301,7 +305,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     const result = await this.guardWrite(() => this.stores.spotStore.updateSpot(stamped, intent, signal));
     const key = { meshName: spot.meshName, spotRid: spot.spotRid };
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      this.events?.spotRowUpdated(key, { ...stamped, generation: result.generation, updatedAt: result.updatedAt });
+      this.events?.spotRowUpdated(key, { ...stamped, updatedAt: result.updatedAt });
     }
     this.notifyIfStale(result, ZLinkLocationKind.Spot, ZLinkLocationKeyCodec.encodeSpotKey(key));
     return result;
@@ -318,9 +322,9 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       ownerId: this.ownerId
     };
     const result = await this.guardWrite(() => this.stores.actorStore.updateActor(stamped, intent, signal));
-    const key = { actorId: stamped.actorId };
+    const key = { meshName: stamped.meshName, actorId: stamped.actorId };
     if (result.status === ZLinkLocationWriteStatus.Stored) {
-      this.events?.actorRowUpdated(key, { ...stamped, generation: result.generation, updatedAt: result.updatedAt });
+      this.events?.actorRowUpdated(key, { ...stamped, updatedAt: result.updatedAt });
     }
     this.notifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.encodeActorKey(key));
     return result;
@@ -351,24 +355,24 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     return result;
   }
 
-  async removeSpot(key: ZLinkSpotLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult> {
-    const result = await this.guardWrite(() =>
+  async removeSpot(key: ZLinkSpotLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteStatus> {
+    const status = await this.guardStatusWrite(() =>
       this.stores.spotStore.removeSpot(key, { ownerId: this.ownerId, generation }, signal));
-    if (result.status === ZLinkLocationWriteStatus.Stored) {
+    if (status === ZLinkLocationWriteStatus.Stored) {
       this.events?.spotRowRemoved(key);
     }
-    this.notifyIfStale(result, ZLinkLocationKind.Spot, ZLinkLocationKeyCodec.encodeSpotKey(key));
-    return result;
+    this.notifyIfStaleStatus(status, ZLinkLocationKind.Spot, ZLinkLocationKeyCodec.encodeSpotKey(key));
+    return status;
   }
 
-  async removeActor(key: ZLinkActorLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult> {
-    const result = await this.guardWrite(() =>
+  async removeActor(key: ZLinkActorLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteStatus> {
+    const status = await this.guardStatusWrite(() =>
       this.stores.actorStore.removeActor(key, { ownerId: this.ownerId, generation }, signal));
-    if (result.status === ZLinkLocationWriteStatus.Stored) {
+    if (status === ZLinkLocationWriteStatus.Stored) {
       this.events?.actorRowRemoved(key);
     }
-    this.notifyIfStale(result, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.encodeActorKey(key));
-    return result;
+    this.notifyIfStaleStatus(status, ZLinkLocationKind.Actor, ZLinkLocationKeyCodec.encodeActorKey(key));
+    return status;
   }
 
   async removeRoute(key: ZLinkRouteLocationKey, generation: bigint, signal?: AbortSignal): Promise<ZLinkLocationWriteResult> {
@@ -406,7 +410,12 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkSpotLocation>> {
-    const rows = await this.stores.spotStore.listSpots(filter, this.pageRequest(page), signal);
+    const queryStore = this.stores.spotStore as ZLinkSpotLocationStore
+      & Partial<ZLinkSpotLocationQueryStore>;
+    if (queryStore.listSpots === undefined) {
+      throw new Error('The configured Spot location store does not provide operational list queries.');
+    }
+    const rows = await queryStore.listSpots(filter, this.pageRequest(page), signal);
     return {
       items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
       continuationToken: rows.continuationToken
@@ -418,7 +427,12 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkActorLocation>> {
-    const rows = await this.stores.actorStore.listActors(filter, this.pageRequest(page), signal);
+    const queryStore = this.stores.actorStore as ZLinkActorLocationStore
+      & Partial<ZLinkActorLocationQueryStore>;
+    if (queryStore.listActors === undefined) {
+      throw new Error('The configured Actor location store does not provide operational list queries.');
+    }
+    const rows = await queryStore.listActors(filter, this.pageRequest(page), signal);
     return {
       items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
       continuationToken: rows.continuationToken
@@ -478,7 +492,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       entries.push(...spots.items.map((spot) => ({
         kind: ZLinkLocationKind.Spot,
         meshName: spot.meshName,
-        nodeRid: spot.nodeRid,
+        nodeRid: spot.ownerNodeRid,
         spotRid: spot.spotRid,
         state: ZLinkLocationTopologyState.Discovered,
         desiredCount: 1,
@@ -490,8 +504,8 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     if (filter.kind === undefined || filter.kind === ZLinkLocationKind.Actor) {
       entries.push(...actors.items.map((actor) => ({
         kind: ZLinkLocationKind.Actor,
-        meshName: actor.spotMeshName,
-        nodeRid: actor.nodeRid,
+        meshName: actor.meshName,
+        nodeRid: actor.ownerNodeRid,
         spotRid: actor.spotRid,
         actorId: actor.actorId,
         state: ZLinkLocationTopologyState.Discovered,
@@ -563,21 +577,42 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     if (!this.started) {
       return;
     }
-    this.nextLeaseRenewAtMs = this.now().getTime() + this.options.heartbeatIntervalMs;
+    const scheduledAt = this.nextLeaseRenewAtMs
+      ?? this.monotonicNowMs() + this.options.heartbeatIntervalMs;
+    const delayMs = Math.max(0, scheduledAt - this.monotonicNowMs());
     this.heartbeatTimer = this.setTimer(() => {
       this.heartbeatTimer = undefined;
-      const expectedAt = this.nextLeaseRenewAtMs;
-      if (expectedAt !== undefined) {
-        this.metrics?.duration(
-          'zlink.location.owner_lease.renew.lateness',
-          Math.max(0, this.now().getTime() - expectedAt) / 1000
-        );
-      }
-      void this.renewOwnerLeaseOnce().finally(() => this.scheduleHeartbeat());
-    }, this.options.heartbeatIntervalMs);
+      this.metrics?.duration(
+        'zlink.location.owner_lease.renew.lateness',
+        Math.max(0, this.monotonicNowMs() - scheduledAt) / 1000
+      );
+      this.nextLeaseRenewAtMs = scheduledAt + this.options.heartbeatIntervalMs;
+      const renewal = this.renewOwnerLeaseOnce().then(
+        () => undefined,
+        () => undefined
+      ).finally(() => {
+        if (this.heartbeatRenewal === renewal) {
+          this.heartbeatRenewal = undefined;
+        }
+        this.scheduleHeartbeat();
+      });
+      this.heartbeatRenewal = renewal;
+      void renewal;
+    }, delayMs);
   }
 
   private async guardWrite(write: () => Promise<ZLinkLocationWriteResult>): Promise<ZLinkLocationWriteResult> {
+    try {
+      return await write();
+    } catch (error) {
+      this.recordFailure(errorMessage(error));
+      throw error;
+    }
+  }
+
+  private async guardStatusWrite(
+    write: () => Promise<ZLinkLocationWriteStatus>
+  ): Promise<ZLinkLocationWriteStatus> {
     try {
       return await write();
     } catch (error) {
@@ -591,6 +626,18 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.metrics?.count('zlink.location.write.conflicts');
     }
     if (result.status !== ZLinkLocationWriteStatus.IgnoredStale) {
+      return;
+    }
+    for (const handler of this.ownershipLostHandlers) {
+      handler({ kind, key });
+    }
+  }
+
+  private notifyIfStaleStatus(status: ZLinkLocationWriteStatus, kind: ZLinkLocationKind, key: string): void {
+    if (status === ZLinkLocationWriteStatus.IgnoredStale || status === ZLinkLocationWriteStatus.RejectedConflict) {
+      this.metrics?.count('zlink.location.write.conflicts');
+    }
+    if (status !== ZLinkLocationWriteStatus.IgnoredStale) {
       return;
     }
     for (const handler of this.ownershipLostHandlers) {

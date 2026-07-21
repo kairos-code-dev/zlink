@@ -40,13 +40,18 @@ ConfigureQuietLogging(zlinkBuilder);
 zlinkBuilder.Services.AddZLinkFramework(framework =>
 {
     framework.Codecs.Use(ZLinkProtobufCodec.Default);
-    framework.AddClientServerChannel("bench")
-        .EnableClient(options.ZLinkEndpoint);
+    var mesh = framework.AddRouteMesh("bench")
+        .Listen("tcp://127.0.0.1:0")
+        .SetRoutingId(RoutingId.From("bench-client"));
+    mesh.ChannelName("bench").SetWeight(0);
+    mesh.PeerConnections.Connect(
+        RoutingId.From("bench-server"),
+        options.ZLinkEndpoint);
 });
 
 using var zlinkHost = zlinkBuilder.Build();
 await zlinkHost.StartAsync();
-var zlink = zlinkHost.Services.GetRequiredService<IZLinkChannelClient>();
+var zlink = zlinkHost.Services.GetRequiredService<IZLinkRouteClient>();
 using var rawContext = Systems.Zlink.Zlink.CreateContext();
 var metadata = await CreateMetadataAsync(options);
 
@@ -88,8 +93,7 @@ foreach (var payloadSize in options.PayloadSizes)
                 options.ZLinkStatsUrl,
                 async (payload, ct) =>
                 {
-                    return await zlink.RequestToChannel("bench", payload)
-                        .PacketName("BenchPayload")
+                    return await zlink.RequestToChannel("bench", "bench", payload)
                         .Async<BenchPayload>(ct);
                 }));
             Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-serial");
@@ -131,8 +135,7 @@ foreach (var payloadSize in options.PayloadSizes)
                 options.ZLinkStatsUrl,
                 async (payload, ct) =>
                 {
-                    return await zlink.RequestToChannel("bench", payload)
-                        .PacketName("BenchPayload")
+                    return await zlink.RequestToChannel("bench", "bench", payload)
                         .Async<BenchPayload>(ct);
                 }));
             Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-request-window");
@@ -169,12 +172,13 @@ foreach (var payloadSize in options.PayloadSizes)
                 payloadSize,
                 options,
                 options.ZLinkStatsUrl,
-                (_, payload, ct) =>
+                async (_, payload, ct) =>
                 {
-                    zlink.SendToChannel("bench", payload)
-                        .PacketName("BenchPayload")
-                        .Submit(ct);
-                    return ValueTask.CompletedTask;
+                    var submit = await zlink.SendToChannel("bench", "bench", payload)
+                        .SubmitAsync(ct);
+                    if (submit.Status != ZLinkSubmitStatus.Submitted)
+                        throw new InvalidOperationException(
+                            $"ZLink framework send was not submitted: {submit.Status}.");
                 }));
             Console.Error.WriteLine("[bench] finished zlink-framework-dotnet-send-saturation");
         }

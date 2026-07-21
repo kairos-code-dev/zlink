@@ -13,6 +13,7 @@ public sealed record ZLinkMeshNodeDescriptor(
     ulong DescriptorRevision,
     string Endpoint,
     IReadOnlyDictionary<string, int> ChannelWeights,
+    IReadOnlySet<string> InstanceSpotTypes,
     bool Draining,
     string SecurityIdentity,
     string OwnerId,
@@ -37,6 +38,79 @@ public sealed record ZLinkSpotLocation(
     string SpotType,
     string OwnerId,
     DateTimeOffset UpdatedAt);
+
+public sealed record InstanceSpotLocation(
+    string MeshName,
+    RoutingId SpotRid,
+    ulong SpotGeneration,
+    RoutingId OwnerNodeRid,
+    ulong OwnerNodeGeneration,
+    string InstanceSpotType,
+    ZLinkSpotActivationState ActivationState,
+    ulong ActivationEpoch,
+    string OwnerId,
+    ulong LocationGeneration,
+    DateTimeOffset UpdatedAt);
+
+public sealed record InstanceSpotClaimRequest(
+    string MeshName,
+    RoutingId SpotRid,
+    string InstanceSpotType,
+    RoutingId TargetNodeRid,
+    ulong TargetNodeGeneration,
+    string OwnerId);
+
+public sealed record InstanceSpotLeaseSnapshot(
+    DateTimeOffset LeaseExpiresAt,
+    DateTimeOffset StoreNow);
+
+public sealed record InstanceSpotSnapshot(
+    InstanceSpotLocation Location,
+    InstanceSpotLeaseSnapshot Lease);
+
+public abstract record InstanceSpotClaimResult
+{
+    private InstanceSpotClaimResult()
+    {
+    }
+
+    public sealed record Claimed(InstanceSpotSnapshot Snapshot)
+        : InstanceSpotClaimResult;
+    public sealed record Existing(InstanceSpotSnapshot Snapshot)
+        : InstanceSpotClaimResult;
+    public sealed record Conflict : InstanceSpotClaimResult;
+}
+
+public abstract record InstanceSpotWriteResult
+{
+    private InstanceSpotWriteResult()
+    {
+    }
+
+    public sealed record Stored(InstanceSpotSnapshot Snapshot)
+        : InstanceSpotWriteResult;
+    public sealed record Stale : InstanceSpotWriteResult;
+    public sealed record Conflict : InstanceSpotWriteResult;
+}
+
+public abstract record InstanceSpotResolveResult
+{
+    private InstanceSpotResolveResult()
+    {
+    }
+
+    public sealed record Found(InstanceSpotSnapshot Snapshot)
+        : InstanceSpotResolveResult;
+    public sealed record Missing : InstanceSpotResolveResult;
+}
+
+public sealed record InstanceSpotFence(
+    string MeshName,
+    RoutingId SpotRid,
+    string OwnerId,
+    ulong OwnerNodeGeneration,
+    ulong LocationGeneration,
+    ulong ActivationEpoch);
 
 /// <summary>
 ///     Current location of one actor: the distributed owner and membership

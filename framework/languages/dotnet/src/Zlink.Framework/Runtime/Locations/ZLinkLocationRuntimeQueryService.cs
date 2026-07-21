@@ -47,11 +47,18 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
     {
         var health = _runtime.GetHealthSnapshot();
         var store = _storeHealth?.GetSnapshot();
+        var lastRefreshAt = store?.LastSuccessAt;
+        if (health.RenewedAt is { } renewedAt
+            && (lastRefreshAt is null || renewedAt > lastRefreshAt))
+        {
+            lastRefreshAt = renewedAt;
+        }
+
         return ValueTask.FromResult(new ZLinkLocationRuntimeStatus(
             StoreHealthy: health.LastError is null && (store?.Healthy ?? true),
             WatchEnabled: _watchEnabled,
             PollingInterval: _options.PollingInterval,
-            LastRefreshAt: store?.LastSuccessAt ?? health.RenewedAt,
+            LastRefreshAt: lastRefreshAt,
             LastError: store?.LastError ?? health.LastError,
             OwnerLeaseHealthy: health.Healthy,
             OwnerLeaseRenewedAt: health.RenewedAt));

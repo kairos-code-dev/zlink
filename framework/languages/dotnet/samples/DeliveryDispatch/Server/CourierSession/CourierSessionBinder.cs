@@ -48,7 +48,10 @@ internal sealed class CourierSessionBinder(
         CancellationToken cancellationToken)
     {
         var placement = topology.CourierPlacement(courierId);
-        var address = await spots.ResolveSpotHandleAsync(placement.NodeRid, cancellationToken)
+        var address = await spots.ResolveSpotHandleAsync(
+                          SampleNames.MeshName,
+                          placement.NodeRid,
+                          cancellationToken)
                       ?? throw new InvalidOperationException(
                           $"Courier placement spot '{placement.NodeRid}' was not found.");
         var found = await routes.RequestToSpot(address,

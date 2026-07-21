@@ -13,7 +13,9 @@ internal sealed class ProjectionSpot(
     public IZLinkSpotContext Context { get; } = context;
 
     public void Configure() =>
-        Context.Handlers.AddSubscribe<ProjectionUpdatedHandler>("observability.projection"); // This Spot receives projection fanout.
+        Context.Handlers.AddSubscribe<ProjectionUpdatedHandler>(
+            ObservabilityNames.WorkflowMesh,
+            "observability.projection"); // This Spot receives projection fanout.
 
     public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
         ZLinkMessage request,

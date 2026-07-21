@@ -41,6 +41,12 @@ public final class StreamBuilders {
         }
 
         @Override
+        public ZLinkStreamNodeBuilder enableActorDispatch(String meshName) {
+            registration.enableActorDispatch(meshName);
+            return this;
+        }
+
+        @Override
         public ZLinkStreamNodeBuilder addSessionPacketHandler(Class<?> handlerType) {
             registration.addSessionPacketHandler(handlerType);
             return this;

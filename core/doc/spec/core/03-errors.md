@@ -4,7 +4,7 @@
 
 # Errors, result enums, and version
 
-This document defines the error ABI and version contract for ZLink Core 10.1.0. Its audience is developers of the C API and bindings. It answers: “How do typed public results map to thread-local errno, and how is version 10.1.0 identified?”
+This document defines the error ABI and version contract for ZLink Core 11.0.0. Its audience is developers of the C API and bindings. It answers: “How do typed public results map to thread-local errno, and how is version 11.0.0 identified?”
 
 ## 1. General rules
 
@@ -32,7 +32,11 @@ Public functions return their primary control flow through a `zlink_*_result_t` 
 #endif
 ```
 
-POSIX errno values missing on a platform use public values based on `ZLINK_HAUSNUMERO`. `ESTALE`, `EALREADY`, `EDEADLK`, and `ESHUTDOWN` are available on every supported platform for service lifecycle and opaque-token errors. The [errno map](04-errno-map.md) owns the exact per-function mappings.
+POSIX errno values missing on a platform use public values based on
+`ZLINK_HAUSNUMERO`. `ESTALE`, `EALREADY`, `EDEADLK`, and `ESHUTDOWN` are
+available on every supported platform for stale handles, duplicate operations,
+reentrant callbacks, and closed sockets. The [errno map](04-errno-map.md) owns
+the exact per-function mappings.
 
 ## 2. Submit result
 
@@ -57,9 +61,8 @@ typedef enum zlink_submit_result_t {
 
 `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`, and `NOT_ADMITTED` are normal
 runtime control flow. `NOT_ADMITTED` means that the target route was identified
-but the current admission policy rejects a new submit. This includes a peer
-that has not passed its handshake and a target whose new-outbound weight is
-zero. The submit owner document separately defines input-message ownership;
+but the raw socket's current admission state rejects a new submit. This includes
+a peer whose handshake has not completed. The submit owner document separately defines input-message ownership;
 callers do not infer it from the result value alone.
 
 ## 3. Request completion result
@@ -83,7 +86,9 @@ typedef enum zlink_request_result_t {
 } zlink_request_result_t;
 ```
 
-This enum is used by both synchronous lifecycle requests and terminal completions of asynchronous operations. Timeout is represented by `ZLINK_REQUEST_TIMED_OUT`. `BACKPRESSURED` means that a request requiring whole-capacity reservation, such as transfer, failed before admission.
+This enum represents terminal completion of a raw socket request operation.
+Timeout is represented by `ZLINK_REQUEST_TIMED_OUT`. `BACKPRESSURED` means that
+outbound admission failed because capacity was unavailable.
 
 ## 4. Receive and handler results
 
@@ -115,8 +120,8 @@ typedef enum zlink_handler_result_t {
 complete message, or that a raw SUB/XSUB topic-buffer capacity is zero or less
 than the required length. Raw subscription receive reports the required topic
 length without consuming the queued topic or payload, so the caller can retry
-with a sufficient buffer. `INVALID_STATE` covers stale or revoked claims and
-domain mismatch. Unregistering or replacing a handler from the same callback
+with a sufficient buffer. `INVALID_STATE` covers a stale handle or closed
+receive state. Unregistering or replacing a handler from the same callback
 returns `DEADLOCK`.
 
 ## 5. Close, bind, and connect results
@@ -152,7 +157,7 @@ typedef enum zlink_connect_result_t {
 } zlink_connect_result_t;
 ```
 
-A MeshNode admission mismatch in MeshName, expected RID, or generation is `CONFLICT`. A trust-profile or peer-authentication mismatch is `AUTH_FAILED`.
+A raw connect-intent or routing-ID collision is `CONFLICT`. A transport peer-authentication mismatch is `AUTH_FAILED`.
 
 ## 6. Configuration result
 
@@ -176,7 +181,7 @@ typedef enum zlink_config_result_t {
 ## 7. Version
 
 ```c
-#define ZLINK_VERSION_MAJOR 10
+#define ZLINK_VERSION_MAJOR 11
 #define ZLINK_VERSION_MINOR 0
 #define ZLINK_VERSION_PATCH 0
 
@@ -191,4 +196,4 @@ ZLINK_EXPORT const char *zlink_strerror(int errnum);
 ZLINK_EXPORT void zlink_version(int *major, int *minor, int *patch);
 ```
 
-Core 10.1.0 uses SOVERSION 10. The pointer returned by `zlink_strerror()` refers to library-owned static storage and must not be freed or modified. All three functions are thread-safe, and `zlink_errno()` returns only the calling thread’s value.
+Core 11.0.0 uses SOVERSION 11. The pointer returned by `zlink_strerror()` refers to library-owned static storage and must not be freed or modified. All three functions are thread-safe, and `zlink_errno()` returns only the calling thread’s value.

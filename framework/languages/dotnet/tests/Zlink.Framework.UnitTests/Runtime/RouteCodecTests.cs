@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Codecs;
@@ -11,11 +10,91 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class RouteCodecTests
 {
     [Fact]
+    public void MeshMetadataCodec_RoundTrips_The_Last_Value_Snapshot()
+    {
+        var callMetadata = new ZLinkCallMetadata();
+        callMetadata.Set("trace-id", "first");
+        callMetadata.Set("trace-id", "last");
+        callMetadata.Set("tenant", "sample");
+
+        var encoded = callMetadata.Encode();
+
+        Assert.True(ZLinkMeshMetadataCodec.TryDecode(encoded.Span, out var decoded));
+        Assert.Equal("last", decoded.Find("trace-id"));
+        Assert.Equal("sample", decoded.Find("tenant"));
+        Assert.Equal(2, decoded.Values.Count);
+    }
+
+    [Fact]
+    public void MeshMetadataCodec_Accepts_Exactly_1024_Bytes_And_Rejects_The_Next_Byte()
+    {
+        var atLimit = new ZLinkCallMetadata();
+        atLimit.Set("k", new string('v', 1018));
+        Assert.Equal(1024, atLimit.Encode().Length);
+
+        var overLimit = new ZLinkCallMetadata();
+        overLimit.Set("k", new string('v', 1019));
+        var failure = Assert.Throws<ArgumentException>(() => overLimit.Encode());
+
+        Assert.Contains("1024-byte limit", failure.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MeshMetadataCodec_Rejects_A_Malformed_Ingress_Frame()
+    {
+        var malformed = new byte[]
+        {
+            1, 1,
+            3, (byte)'k'
+        };
+
+        Assert.False(ZLinkMeshMetadataCodec.TryDecode(malformed, out _));
+    }
+
+    [Fact]
     public void SocketConfig_Uses_The_Framework_Default_PeerWeight()
     {
         var config = new ZLinkSocketConfig();
 
         Assert.Equal(ZLinkSocketConfig.DefaultPeerWeight, config.Weight);
+    }
+
+    [Fact]
+    public void SocketConfig_SendTimeout_Ceils_Positive_SubMillisecond_Value()
+    {
+        var config = new ZLinkSocketConfig { SendTimeout = TimeSpan.FromTicks(1) };
+
+        Assert.Equal(TimeSpan.FromMilliseconds(1), config.SendTimeout);
+    }
+
+    [Fact]
+    public void SocketConfig_SendTimeout_Preserves_IntMax_Milliseconds()
+    {
+        var config = new ZLinkSocketConfig
+        {
+            SendTimeout = TimeSpan.FromMilliseconds(int.MaxValue)
+        };
+
+        Assert.Equal(TimeSpan.FromMilliseconds(int.MaxValue), config.SendTimeout);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void SocketConfig_SendTimeout_Rejects_NonPositive_Value(long ticks)
+    {
+        var config = new ZLinkSocketConfig();
+
+        Assert.Throws<ZLinkConfigurationException>(() => config.SendTimeout = TimeSpan.FromTicks(ticks));
+    }
+
+    [Fact]
+    public void SocketConfig_SendTimeout_Rejects_Value_Above_IntMax_Milliseconds()
+    {
+        var config = new ZLinkSocketConfig();
+        var timeout = TimeSpan.FromMilliseconds((long)int.MaxValue + 1);
+
+        Assert.Throws<ZLinkConfigurationException>(() => config.SendTimeout = timeout);
     }
 
     [Fact]
@@ -34,37 +113,6 @@ public sealed class RouteCodecTests
         Assert.Equal(4096, socket.MaxMessageSize);
         Assert.Equal(12, socket.SendHighWaterMark);
         Assert.Equal(34, socket.ReceiveHighWaterMark);
-    }
-
-    [Fact]
-    public void ChannelBundleFactory_Applies_ServerRoutingConfig_To_BackendRouter()
-    {
-        var socket = new RecordingRouter();
-        var config = new ZLinkRouteConfig
-        {
-            RequireKnownPeer = true,
-            AllowPeerHandover = true,
-            EnablePeerProbe = true,
-            ConnectRoutingId = RoutingId.From("next-peer")
-        };
-
-        ZLinkChannelBundleFactory.ApplyServerRoutingConfig(socket, config);
-
-        Assert.True(socket.Mandatory);
-        Assert.True(socket.Handover);
-        Assert.True(socket.Probe);
-        Assert.Equal(config.ConnectRoutingId, socket.ConnectRoutingId);
-    }
-
-    [Fact]
-    public void ChannelBundleFactory_Applies_ClientRoutingConfig_To_BackendDealer()
-    {
-        var socket = new RecordingRoutingDealer();
-        var config = new ZLinkOutboundRouteConfig { ProbeRouterOnConnect = true };
-
-        ZLinkChannelBundleFactory.ApplyClientRoutingConfig(socket, config);
-
-        Assert.True(socket.ProbeRouterOnConnect);
     }
 
     [Fact]
@@ -146,73 +194,6 @@ public sealed class RouteCodecTests
     }
 
     [Fact]
-    public void RouteConnectionSet_RidAwareConnect_SetsProbeBeforeConnect()
-    {
-        var router = new RecordingConnectRouter();
-        var connections = new ZLinkRouteConnectionSet(router);
-        var peerRid = RoutingId.From("route-peer");
-
-        connections.ConnectManual(peerRid, "inproc://route-peer");
-
-        Assert.Equal(peerRid, router.ConnectRoutingId);
-        Assert.True(router.ProbeEnabled);
-        Assert.Equal(["connect-rid", "probe", "connect"], router.Events);
-        Assert.Equal("inproc://route-peer", Assert.Single(router.Connected));
-    }
-
-    [Fact]
-    public void RouteConnectionSet_Keeps_Physical_Link_Until_Manual_And_Auto_Owners_Release_It()
-    {
-        var router = new RecordingConnectRouter();
-        var connections = new ZLinkRouteConnectionSet(router);
-        const string endpoint = "inproc://shared-route-peer";
-
-        Assert.True(connections.ConnectAuto(RoutingId.From("peer"), endpoint));
-        connections.ConnectManual(endpoint);
-        connections.DisconnectManual(endpoint);
-
-        Assert.Single(router.Connected);
-        Assert.Empty(router.Disconnected);
-
-        Assert.True(connections.DisconnectAuto(endpoint));
-        Assert.Equal([endpoint], router.Disconnected);
-    }
-
-    [Fact]
-    public async Task Route_Send_Uses_Monotonic_Correlation_And_Logs_Target_As_SourceRid()
-    {
-        var loggerFactory = new RecordingLoggerFactory();
-        await using var services = new ServiceCollection()
-            .AddSingleton<ILoggerFactory>(loggerFactory)
-            .BuildServiceProvider();
-        var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
-        var router = new RecordingRouter();
-        await using var submitter = new ZLinkAsyncSubmitter(
-            _ => { },
-            TimeSpan.FromSeconds(1),
-            CancellationToken.None);
-        var calls = new ZLinkRouteChannelCalls(
-            services,
-            null,
-            registration,
-            "play.route",
-            router,
-            submitter);
-        var target = RoutingId.From("target-node");
-
-        await calls.SubmitSendAsync(target, "RouteProbe", new RouteProbe("payload"), CancellationToken.None);
-
-        var header = Assert.IsType<ZLinkEnvelopeHeader>(router.SentHeader);
-        Assert.Matches("^[0-9a-f]+$", Assert.IsType<string>(header.CorrelationId));
-        var log = Assert.Single(loggerFactory.Messages);
-        Assert.Contains("phase=sent", log, StringComparison.Ordinal);
-        Assert.Contains($"corr={header.CorrelationId}", log, StringComparison.Ordinal);
-        Assert.Contains($"src={target}", log, StringComparison.Ordinal);
-        Assert.DoesNotContain("peerRid=target-node", log, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task RouterProbe_AllowsNonInitiatorRidAddressedSendOverInboundIdentity()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -238,47 +219,6 @@ public sealed class RouteCodecTests
             initiatorRid,
             "reply-from-non-initiator",
             TimeSpan.FromSeconds(3));
-    }
-
-    private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime()
-        => CreateRouteChannelRuntime(new RecordingRouter());
-
-    private static ZLinkRouteChannelRuntime CreateRouteChannelRuntime(RecordingRouter router)
-    {
-        var services = new ServiceCollection().BuildServiceProvider();
-        return new ZLinkRouteChannelRuntime(
-            services,
-            new ZLinkFrameworkRegistration(),
-            new ZLinkRouteChannelRegistration { RouterChannelId = "route-test" },
-            router,
-            new ZLinkRouteHandlerRegistry([]),
-            null,
-            CancellationToken.None,
-            new object(),
-            errorSink: new ZLinkRuntimeErrorSink());
-    }
-
-    [Fact]
-    public async Task Route_Runtime_Concurrent_Dispose_Callers_Share_Router_Cleanup()
-    {
-        var failure = new InvalidOperationException("router cleanup failed");
-        var router = new RecordingRouter { BlockDispose = true, DisposeFailure = failure };
-        var runtime = CreateRouteChannelRuntime(router);
-
-        var first = runtime.DisposeAsync().AsTask();
-        await router.DisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var second = runtime.DisposeAsync().AsTask();
-
-        Assert.Same(first, second);
-        Assert.False(second.IsCompleted);
-        router.AllowDispose.TrySetResult();
-        var firstFailure = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => first.WaitAsync(TimeSpan.FromSeconds(5)));
-        var secondFailure = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => second.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Same(failure, firstFailure);
-        Assert.Same(firstFailure, secondFailure);
-        Assert.Equal(1, router.DisposeCount);
     }
 
     private static async Task SendUntilReceivedAsync(
@@ -643,200 +583,6 @@ public sealed class RouteCodecTests
             SentHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
             ReplyContentType = SentHeader.ContentType;
             ReplyBody = parts[1].GetString();
-        }
-    }
-
-    private sealed class RecordingLoggerFactory : ILoggerFactory
-    {
-        public List<string> Messages { get; } = [];
-
-        public void AddProvider(ILoggerProvider provider) => _ = provider;
-
-        public ILogger CreateLogger(string categoryName)
-        {
-            Assert.Equal(ZLinkMessageFlowTracer.LoggerCategory, categoryName);
-            return new RecordingLogger(Messages);
-        }
-
-        public void Dispose()
-        {
-        }
-    }
-
-    private sealed class RecordingLogger(List<string> messages) : ILogger
-    {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter) => messages.Add(formatter(state, exception));
-    }
-
-    private sealed class RecordingConnectRouter : IZLinkBackendRouterSocket
-    {
-        public List<string> Events { get; } = [];
-
-        public List<string> Connected { get; } = [];
-
-        public List<string> Disconnected { get; } = [];
-
-        public RoutingId? ConnectRoutingId { get; private set; }
-
-        public bool ProbeEnabled { get; private set; }
-
-        public void ApplySocketConfig(IZLinkSocketConfig config) => throw new NotSupportedException();
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
-
-        public void Bind(string endpoint)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetChannelName(string channelName)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetMaxMessageSize(long value)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void Connect(string endpoint)
-        {
-            Events.Add("connect");
-            Connected.Add(endpoint);
-        }
-
-        public void Disconnect(string endpoint)
-        {
-            Disconnected.Add(endpoint);
-        }
-
-        public void SetPeerWeight(int weight)
-        {
-            throw new NotSupportedException();
-        }
-
-        public int GetPeerWeight()
-        {
-            throw new NotSupportedException();
-        }
-
-        public void OnSendReady(Action handler)
-        {
-            _ = handler;
-        }
-
-        public void SetSendHighWaterMark(int value)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetReceiveHighWaterMark(int value)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetRoutingId(RoutingId routingId)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetConnectRoutingId(RoutingId routingId)
-        {
-            Events.Add("connect-rid");
-            ConnectRoutingId = routingId;
-        }
-
-        public void SetProbe(bool enabled)
-        {
-            Events.Add("probe");
-            ProbeEnabled = enabled;
-        }
-
-        public void SetMandatory(bool mandatory)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void SetHandover(bool enabled)
-        {
-            Events.Add("handover");
-        }
-
-        public Received? Recv(RecvFlags flags = RecvFlags.None)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool Send(RoutingId routingId, Message message, SendFlags flags)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool Send(RoutingId routingId, IReadOnlyList<Message> parts, SendFlags flags)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool Request(
-            RoutingId routingId,
-            Message message,
-            RequestCallback callback,
-            SendFlags flags,
-            TimeSpan? timeout)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool Request(
-            RoutingId routingId,
-            IReadOnlyList<Message> parts,
-            RequestCallback callback,
-            SendFlags flags,
-            TimeSpan? timeout)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool SendToSpot(
-            RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            SendFlags flags)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool RequestToSpot(
-            RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
-            IReadOnlyList<Message> parts,
-            RequestCallback callback,
-            SendFlags flags,
-            TimeSpan? timeout)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void Reply(RoutingId routingId, ulong requestSeq, Message message)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void Reply(RoutingId routingId, ulong requestSeq, IReadOnlyList<Message> parts)
-        {
-            throw new NotSupportedException();
         }
     }
 

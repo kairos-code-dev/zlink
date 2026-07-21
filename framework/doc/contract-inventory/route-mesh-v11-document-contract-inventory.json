@@ -1,0 +1,648 @@
+{
+  "schema": 1,
+  "version": "11.0.0",
+  "description": "RouteMesh 11 formal document semantics. This inventory intentionally contains no document or code-block hash.",
+  "languages": ["dotnet", "cpp", "java", "kotlin", "node"],
+  "termination_result_contract": {
+    "formal_path": "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md",
+    "target_path": "framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md",
+    "e2e_path": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
+    "outcomes": [
+      { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
+      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "TransferDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
+      { "name": "ForceStopped", "wire_value": 2, "reasons": ["DeadlineExceeded", "TransferFailed", "TeardownFailed"] }
+    ],
+    "reasons": [
+      { "name": "None", "wire_value": 0 },
+      { "name": "TargetUnavailable", "wire_value": 1 },
+      { "name": "StoreUnavailable", "wire_value": 2 },
+      { "name": "TransferDisabled", "wire_value": 3 },
+      { "name": "StateIncompatible", "wire_value": 4 },
+      { "name": "DeadlineExceeded", "wire_value": 5 },
+      { "name": "TransferFailed", "wire_value": 6 },
+      { "name": "TeardownFailed", "wire_value": 7 },
+      { "name": "RuntimeNotReady", "wire_value": 8 }
+    ],
+    "checkpoint_ceiling_pair": "Blocked/StateIncompatible",
+    "forbidden_fragments": ["CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
+  },
+  "java_kotlin_termination_owners": {
+    "members": ["drain", "awaitDrained", "retire", "shutdown"],
+    "allowed": ["ZLinkFrameworkRuntime", "ZLinkDrainControl"],
+    "forbidden_topologies": [
+      "ZLinkRouteMeshRuntime",
+      "ZLinkClientServerRuntime",
+      "ZLinkFanoutRuntime"
+    ]
+  },
+  "exact_interfaces": {
+    "dotnet": {
+      "code_tags": ["csharp"],
+      "minimum_documents": 10,
+      "minimum_code_blocks": 10,
+      "required_fragments": [
+        "public interface IZLinkFrameworkRuntime",
+        "public interface IZLinkMeshChannelRoleBuilder",
+        "public interface IZLinkSendCall",
+        "public interface IZLinkSpotActorLifecycle<TActor>",
+        "public sealed record InstanceSpotAddress(",
+        "public interface IZLinkLocationStore",
+        "ZLinkClientServerServerState",
+        "ZLinkFanoutPublisherConnectionState"
+      ]
+    },
+    "cpp": {
+      "code_tags": ["cpp"],
+      "minimum_documents": 8,
+      "minimum_code_blocks": 8,
+      "required_fragments": [
+        "class framework_runtime_t",
+        "class mesh_channel_builder_t",
+        "class send_call_t",
+        "on_actor_join(",
+        "struct instance_spot_address_t",
+        "class location_store_t",
+        "client_server_server_state_t",
+        "fanout_publisher_connection_state_t"
+      ]
+    },
+    "java": {
+      "code_tags": ["java"],
+      "minimum_documents": 8,
+      "minimum_code_blocks": 8,
+      "required_fragments": [
+        "class ZLinkFrameworkRuntime",
+        "interface ZLinkMeshChannelBuilder",
+        "ZLinkSendCall {",
+        "ZLinkSpotActorLifecycle<TActor extends",
+        "record InstanceSpotAddress(",
+        "interface ZLinkLocationStore",
+        "public interface ZLinkRuntimeQuery",
+        "public record ZLinkFrameworkRuntimeSnapshot(",
+        "public record ZLinkFrameworkRuntimeEvent(",
+        "public record ZLinkInstanceSpotTypeSnapshot(",
+        "public interface ZLinkClientServerRuntime",
+        "public interface ZLinkFanoutRuntime",
+        "public ZLinkRouteMeshRuntime routeMeshRuntime();",
+        "public ZLinkClientServerRuntime clientServerRuntime();",
+        "public ZLinkFanoutRuntime fanoutRuntime();",
+        "ZLinkClientServerServerState",
+        "ZLinkFanoutPublisherConnectionState"
+      ],
+      "required_file_fragments": {
+        "common-runtime.ko.md": [
+          "public ZLinkRouteMeshRuntime routeMeshRuntime();",
+          "public ZLinkClientServerRuntime clientServerRuntime();",
+          "public ZLinkFanoutRuntime fanoutRuntime();",
+          "Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환한 객체와 reference identity가 같다.",
+          "MeshName을 받는 partial termination operation은 없다."
+        ],
+        "monitoring.ko.md": [
+          "## Host runtime observation exact source signature",
+          "## Topology runtime observation exact source signature",
+          "public interface ZLinkRuntimeQuery {",
+          "public record ZLinkFrameworkRuntimeSnapshot(",
+          "Optional<ZLinkTerminationResult> terminalResult,",
+          "public record ZLinkFrameworkRuntimeEvent(",
+          "public record ZLinkInstanceSpotTypeSnapshot(",
+          "public interface ZLinkClientServerRuntime {",
+          "public interface ZLinkFanoutRuntime {",
+          "MeshName을 받는 partial termination operation과 component termination result는 제공하지 않는다.",
+          "위의 host와 topology exact source signature가 11.0 monitoring public type의 정본이다."
+        ],
+        "configuration-host.ko.md": [
+          "## Spring bean 계약",
+          "Spring starter는 `ZLinkFrameworkRuntime`, `ZLinkRouteMeshRuntime`, `ZLinkClientServerRuntime`과",
+          "`runtime.routeMeshRuntime()`, `runtime.clientServerRuntime()`과 `runtime.fanoutRuntime()`의 반환값과",
+          "Public client와 나머지 runtime service",
+          "public interface systems.zlink.framework.spring.EnableZLinkFramework",
+          "public interface systems.zlink.framework.spring.ZLinkMetricsCustomizer"
+        ]
+      },
+      "forbidden_file_fragments": {
+        "configuration-host.ko.md": [
+          "systems.zlink.framework.runtime.internal",
+          "systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration",
+          "systems.zlink.framework.spring.ZLinkMonitoringLifecycle",
+          "systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle",
+          "ZLinkDrainReadinessContributor",
+          "ZLinkMetricsAutoConfiguration",
+          "zlinkFrameworkRuntime("
+        ]
+      }
+    },
+    "kotlin": {
+      "code_tags": ["kotlin", "java"],
+      "minimum_documents": 8,
+      "minimum_code_blocks": 8,
+      "required_fragments": [
+        "Kotlin은 Java의 `ZLinkMeshNodeState`",
+        "fun ZLinkMeshNodeBuilder.channel(",
+        "CompletionStage<T>.await()",
+        "onActorJoinSuspending(",
+        "target: InstanceSpotAddress",
+        "class ZLinkSuspendingLocationStore",
+        "ZLinkClientServerServerState",
+        "ZLinkFanoutPublisherConnectionState"
+      ],
+      "required_file_fragments": {
+        "location-maintenance.ko.md": [
+          "fun <T> Publisher<T>.asFlow(): Flow<T>",
+          "Flow<T> asFlow(java.util.concurrent.Flow$Publisher<T>)"
+        ],
+        "monitoring.ko.md": [
+          "[Location과 maintenance](location-maintenance.ko.md)가 소유하는 공통 `asFlow()` bridge",
+          "Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clientServerRuntime()`과",
+          "bean은 해당 Java accessor의 반환값과 reference identity가 같다."
+        ]
+      },
+      "forbidden_file_fragments": {
+        "monitoring.ko.md": [
+          "fun <T> Publisher<T>.asFlow(): Flow<T>"
+        ]
+      }
+    },
+    "node": {
+      "code_tags": ["ts", "typescript"],
+      "minimum_documents": 8,
+      "minimum_code_blocks": 8,
+      "required_fragments": [
+        "export interface ZLinkFrameworkRuntime",
+        "export interface ZLinkMeshChannelBuilder",
+        "export interface ZLinkSendCall",
+        "export interface ZLinkSpotActorLifecycle",
+        "export interface InstanceSpotAddress",
+        "export interface ZLinkLocationStore",
+        "ZLinkClientServerServerState",
+        "ZLinkFanoutPublisherConnectionState"
+      ]
+    }
+  },
+  "required_repository_file_fragments": {
+    "framework/doc/framework/java/internals/runtime-lifecycle.ko.md": [
+      "non-public bean assembly",
+      "package-private bootstrap",
+      "별도 adapter를 만들지 않는다.",
+      "Bean assembly는 public client와 세 topology view를 runtime에서 가져와 singleton bean으로 등록한다.",
+      "package-private start boundary",
+      "reflection, `MethodHandles`",
+      "MeshName을 받는 partial termination",
+      "ZLinkFrameworkAutoConfigurationTest.exposesSingleRuntimeAndTopologyRuntimeBeans",
+      "facade accessor의 반환값과 `assertSame`으로 일치한다.",
+      "HostTest.smartLifecycleStartsAndStopsTheSameFrameworkRuntimeBean",
+      "HostTest.beanCreationDoesNotStartRuntime"
+    ]
+  },
+  "forbidden_repository_file_fragments": {
+    "framework/doc/framework/java/internals/runtime-lifecycle.ko.md": [
+      "host·Mesh별 `drain/awaitDrained`"
+    ]
+  },
+  "forbidden_public_code_patterns": [
+    "\\b(?:TrySubmit|trySubmit|try_submit)\\b",
+    "\\b(?:ZLinkMeshNodeDrainPolicy|mesh_node_drain_policy_t|DrainNatural|ReleaseAndRecreate)\\b",
+    "\\b(?:IZLinkActorTransferStore|actor_transfer_store_t|ZLinkActorTransferStore|IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore|IZLinkActorTransferAdapter|actor_transfer_adapter_t|ZLinkActorTransferAdapter)\\b",
+    "\\bzlink_(?:mesh_node|instance_spot|spot)_[a-z0-9_]+\\s*\\("
+  ],
+  "target_document_sets": [
+    {
+      "name": "target-spec",
+      "directory": "framework/doc/plan/v11.0/target-spec",
+      "required_documents": [
+        "README.ko.md",
+        "01-mesh-node.ko.md",
+        "02-dispatch.ko.md",
+        "03-spot.ko.md",
+        "04-actor.ko.md",
+        "05-stream-session.ko.md",
+        "06-instance-spot.ko.md",
+        "07-location-maintenance.ko.md",
+        "08-liveness-observability.ko.md",
+        "09-core-raw-runtime-boundary.ko.md"
+      ],
+      "readme_required_fragments": [
+        "Framework Service 11.0 공개 계약 migration crosswalk",
+        "정식 spec과 이 묶음의 내용이 다르면 정식 spec을 적용",
+        "Core Service 원문 no-loss 표",
+        "`core/doc/spec/core/service/`",
+        "C ABI type layout",
+        "private Core C ABI와 binding 내부 진입점은 두지 않는다.",
+        "`01-mesh-node`",
+        "`02-dispatch`",
+        "`03-spot`",
+        "`04-actor`",
+        "`05-stream-session`"
+      ],
+      "required_file_fragments": {
+        "07-location-maintenance.ko.md": [
+          "| 0 | `Stopped` | `None` |",
+          "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `TransferDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |",
+          "| 2 | `ForceStopped` | `DeadlineExceeded`, `TransferFailed`, `TeardownFailed` |",
+          "`ForceStopped/TeardownFailed`"
+        ],
+        "08-liveness-observability.ko.md": [
+          "RouteMesh와 ClientServer",
+          "fanout",
+          "전용 SUB socket",
+          "one-way",
+          "beacon",
+          "probe·ACK를 사용하지 않는다.",
+          "Beacon은 ACK, application dispatch"
+        ],
+        "09-core-raw-runtime-boundary.ko.md": [
+          "Core raw runtime 정본",
+          "core/doc/spec/core/09-runtime-boundary.ko.md",
+          "계약을 다시 정의하지 않는다"
+        ]
+      },
+      "aggregate_required_fragments": [
+        "Retire",
+        "Shutdown",
+        "Instance Spot",
+        "service liveness"
+      ],
+      "forbidden_code_patterns": [
+        "\\bzlink_(?:mesh_node|mesh_spot|mesh_actor|mesh_stream_session|instance_spot|spot)_[a-z0-9_]+\\s*\\("
+      ]
+    },
+    {
+      "name": "target-internals",
+      "directory": "framework/doc/plan/v11.0/target-internals",
+      "required_documents": [
+        "README.ko.md",
+        "01-runtime-architecture.ko.md",
+        "02-wire-protocol.ko.md",
+        "03-mailbox-dispatch.ko.md",
+        "04-stateful-object-runtime.ko.md",
+        "05-maintenance-recovery.ko.md",
+        "06-stream-session-runtime.ko.md",
+        "07-liveness-monitoring.ko.md",
+        "08-concurrency-resources.ko.md",
+        "09-core-raw-runtime-boundary.ko.md"
+      ],
+      "readme_required_fragments": [
+        "RouteMesh 11 service runtime 구현 crosswalk",
+        "정식 internals 또는 schema와 이 묶음의 내용이 다르면 정식 문서를 적용",
+        "Core service C ABI를 다시 만들거나",
+        "Core service internals no-loss mapping",
+        "§1 Source layout and boundaries",
+        "§2 Object model",
+        "§3 Mailbox, ready and claim",
+        "§4 Request, reply and completion",
+        "§5 Wire",
+        "§6 Logical multicast",
+        "§7 Actor and transfer fence",
+        "§8 Monitor",
+        "§9 Locks and threads",
+        "§10 STREAM"
+      ],
+      "required_file_fragments": {
+        "07-liveness-monitoring.ko.md": [
+          "RouteMesh와 ClientServer",
+          "fanout",
+          "전용 SUB socket",
+          "one-way",
+          "beacon",
+          "ACK를 보내지 않",
+          "publisher만 not-ready"
+        ],
+        "09-core-raw-runtime-boundary.ko.md": [
+          "Core raw runtime internals 정본",
+          "core/doc/internals/runtime-boundary.ko.md",
+          "구조를 다시 정의하지 않는다"
+        ]
+      },
+      "aggregate_required_fragments": [
+        "protocol schema",
+        "mailbox",
+        "Location Store",
+        "livenessProbe"
+      ],
+      "forbidden_code_patterns": [
+        "\\bzlink_(?:mesh_node|mesh_spot|mesh_actor|mesh_stream_session|instance_spot|spot)_[a-z0-9_]+\\s*\\("
+      ]
+    }
+  ],
+  "plan_consolidation": {
+    "directory": "framework/doc/plan/v11.0",
+    "allowed_documents": [
+      "README.ko.md",
+      "route-mesh-11.0.0-execution-ledger.ko.md",
+      "target-spec/README.ko.md",
+      "target-spec/01-mesh-node.ko.md",
+      "target-spec/02-dispatch.ko.md",
+      "target-spec/03-spot.ko.md",
+      "target-spec/04-actor.ko.md",
+      "target-spec/05-stream-session.ko.md",
+      "target-spec/06-instance-spot.ko.md",
+      "target-spec/07-location-maintenance.ko.md",
+      "target-spec/08-liveness-observability.ko.md",
+      "target-spec/09-core-raw-runtime-boundary.ko.md",
+      "target-internals/README.ko.md",
+      "target-internals/01-runtime-architecture.ko.md",
+      "target-internals/02-wire-protocol.ko.md",
+      "target-internals/03-mailbox-dispatch.ko.md",
+      "target-internals/04-stateful-object-runtime.ko.md",
+      "target-internals/05-maintenance-recovery.ko.md",
+      "target-internals/06-stream-session-runtime.ko.md",
+      "target-internals/07-liveness-monitoring.ko.md",
+      "target-internals/08-concurrency-resources.ko.md",
+      "target-internals/09-core-raw-runtime-boundary.ko.md"
+    ],
+    "ledger_required_fragments": [
+      "진행 문서는 이 ledger 하나만 유지한다",
+      "public declaration owner를 member 단위 trace에 연결한다",
+      "verified-baseline",
+      "v11-first-implementation",
+      "intentional-removal",
+      "contract test, 공통 E2E scenario와 package·clean-consumer owner",
+      "### 3.4 ID별 execution card catalog",
+      "DIFF-OWNED",
+      "DIFF-SNAPSHOT",
+      "route-mesh-v11-public-contract-trace.json"
+    ],
+    "allowed_profiles": [
+      "P-DEEP",
+      "P-DELIVERY",
+      "P-SCAN"
+    ],
+    "required_parallel_review_rows": [
+      "V11-R1",
+      "V11-R2",
+      "V11-R3",
+      "V11-R4",
+      "V11-R5A",
+      "V11-R5B",
+      "V11-R5C",
+      "V11-R6",
+      "V11-R7"
+    ],
+    "forbidden_fragments": [
+      "gpt-5.6-sol",
+      "gpt-5.6-luna"
+    ],
+    "required_semantic_owners": [
+      {
+        "id": "performance-smoke-only",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "## 15. Performance smoke-only 판정",
+          "11.0에서는 성능 수치를 판정하거나 개선하지 않는다.",
+          "개선은 11.0 완료 조건이 아니다."
+        ]
+      },
+      {
+        "id": "local-internal-package",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "Package gate는 local/internal package 생성",
+          "package는 local/internal 위치에만 생성한다."
+        ]
+      },
+      {
+        "id": "no-external-publish",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "외부 registry에는 배포하지 않는다."
+        ]
+      },
+      {
+        "id": "model-lanes",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "## 3. Codex profile과 병렬 lane",
+          "| `P-DEEP` | `gpt-5.6 high` |",
+          "| `P-DELIVERY` | `gpt-5.6 medium` |",
+          "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
+          "`xhigh`나 `max`는 재현되지 않은 race",
+          "`ultra`는 지원 model에서 최종 교차 영역 감사",
+          "두 경우 모두 기본값으로 강제하지 않으며",
+          "실제 사용한 model,",
+          "Java와 Kotlin은 Java binding과 JVM service runtime 하나를 공유한다."
+        ]
+      },
+      {
+        "id": "four-round-review-convergence",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "1~4회차에는 `Critical`, `High`, `Medium`, `Low`의 모든 유효 finding을 반영한다.",
+          "5회차부터 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 gate를 통과하지 못한다.",
+          "Claude `claude-sonnet-5` 병렬 reviewer"
+        ]
+      },
+      {
+        "id": "candidate-rollback",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "## 17. Candidate 실패와 되돌림",
+          "M3 candidate 전체를",
+          "review 이전 상태로 되돌린 뒤 제거 범위나 raw 보존 코드를 수정한다."
+        ]
+      },
+      {
+        "id": "posd-ddd-cleanup",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "POSD·DDD·제거 범위 독립 review",
+          "Cleanup은 문자열 검색만으로 완료하지 않는다.",
+          "빈 wrapper, forwarding helper와 deprecated alias",
+          "Core와 bindings 제거를 이 단계로 미루지 않는다.",
+          "pass-through adapter"
+        ]
+      },
+      {
+        "id": "removal-first-order",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "removal-first 순서로 진행한다.",
+          "M3 Core removal/review/package",
+          "M4 bindings removal/review/package",
+          "M5 fail-closed scaffold/foundation/review"
+        ]
+      },
+      {
+        "id": "oracle-process-isolation",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "별도 Core 10 process의 normalized trace와 대조한다.",
+          "candidate는 oracle artifact를 compile,",
+          "link 또는 load하지 않는다.",
+          "별도 process protocol"
+        ]
+      },
+      {
+        "id": "fail-closed-scaffold",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "`RuntimeNotReady`로 즉시 실패하는 compile scaffold만 허용한다.",
+          "fake success, fake reply",
+          "required E2E를 완료나",
+          "required scenario가 실행 대상으로 등록됨"
+        ]
+      },
+      {
+        "id": "heartbeat-removal-and-service-liveness",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "### 5.5 ZMP heartbeat 제거와 service liveness 규칙",
+          "`ZLINK_OPT_HEARTBEAT_TIMEOUT`, ZMP `HEARTBEAT`·`HEARTBEAT_ACK` frame",
+          "`livenessProbe=5`·`livenessAck=6`",
+          "`PGM_HEARTBEAT_SPM`은 ZMP socket heartbeat와 다른 protocol 설정",
+          "Manual·automatic classic fanout은 raw PUB/SUB 단방향이므로 ACK를 보내지 않는다.",
+          "publisher descriptor 또는 manual publisher endpoint별로 전용 SUB socket",
+          "fanout liveness beacon",
+          "`topicFrameBytes=01 5A 4C 46 31`",
+          "`malformedReservedTopic=protocol-error-immediate-not-ready`",
+          "valid application frame 또는 valid beacon을 수신한 뒤에만",
+          "exact reserved topic만 호출 인자 오류로 거부",
+          "같은 prefix 뒤에 byte가 하나 이상",
+          "Config 3 `PS-F1~F5`와 Config 5",
+          "`RL-E1~E5`",
+          "Core ZMP heartbeat 유지 / Core heartbeat 제거와 Framework topology별 liveness",
+          "Shared SUB와 publisher identity 공개 / publisher별 dedicated SUB",
+          "application public option으로 노출하지 않는다."
+        ]
+      },
+      {
+        "id": "explicit-core-service-document-review",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "Core guide·internals·spec의 service 의미",
+          "파일별 `Remove`·`Rewrite`·`Retain`",
+          "exact path 75개",
+          "Allowlist에서 기존 ZMP guide를 제거하는 변이",
+          "`V11-M3-CORE-CLEAN`, `V11-M9-DOCS`"
+        ]
+      },
+      {
+        "id": "standalone-id-execution-cards",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "### 3.1 Ledger 경로와 ID만 사용하는 작업 지시",
+          "### 3.4 ID별 execution card catalog",
+          "Authoritative input",
+          "Owned source·test·package path와 산출물"
+        ]
+      },
+      {
+        "id": "owned-diff-and-inventory-coordination",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "`DIFF-OWNED`를 뜻한다.",
+          "개별 language lane은 shared migration inventory를",
+          "`INV`는 inventory owner, join, review와",
+          "`DIFF-SNAPSHOT`으로 검사한다."
+        ]
+      },
+      {
+        "id": "review-before-package-tooling",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "review한 source·tooling revision을 수정하지 않고",
+          "package metadata·consumer tooling self-test",
+          "persistent Framework package runner self-test"
+        ]
+      },
+      {
+        "id": "public-contract-member-trace",
+        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "required_fragments": [
+          "route-mesh-v11-public-contract-trace.json",
+          "ctor·overload·generic·callback·enum·extension·export 누락 0",
+          "member·owner·disposition·implementation ID 미분류 0"
+        ]
+      }
+    ],
+    "forbidden_legacy_documents": [
+      "route-mesh-11.0.0-integrated-plan.ko.md",
+      "core-service-contract-migration-inventory.ko.md",
+      "core-socket-heartbeat-removal-plan.ko.md",
+      "service-performance-suite-migration-plan.ko.md",
+      "stateful-rolling-maintenance-draft.ko.md",
+      "public-contract/README.ko.md",
+      "public-contract/cpp-public-interface.ko.md",
+      "public-contract/dotnet-public-interface.ko.md",
+      "public-contract/java-public-interface.ko.md",
+      "public-contract/kotlin-public-interface.ko.md",
+      "public-contract/node-public-interface.ko.md",
+      "stateful-maintenance-public-contract/README.ko.md",
+      "stateful-maintenance-public-contract/cpp-public-interface.ko.md",
+      "stateful-maintenance-public-contract/dotnet-public-interface.ko.md",
+      "stateful-maintenance-public-contract/java-public-interface.ko.md",
+      "stateful-maintenance-public-contract/kotlin-public-interface.ko.md",
+      "stateful-maintenance-public-contract/node-public-interface.ko.md"
+    ]
+  },
+  "formal_documents": [
+    {
+      "path": "framework/doc/framework/common/internals/service-wire-protocol.ko.md",
+      "required_fragments": [
+        "`livenessProbe`",
+        "`livenessAck`",
+        "complete record 길이",
+        "`applicationPayloadAbsoluteBytes`",
+        "`normalizedEffectiveMaxMessageBytes`",
+        "`TargetAttemptGeneration`",
+        "`AuthorityOwnerGeneration`",
+        "`OwnerId`·`OwnerLeaseGeneration`",
+        "`replyRelay`",
+        "`replyRelayAck`",
+        "Instance Spot cold activation",
+        "Actor Retire",
+        "`Captured` CAS"
+      ],
+      "forbidden_fragments": [
+        "finalSequence:",
+        "messageContractId:",
+        "relaySerial:u64",
+        "payloadFrame1:",
+        "actorTransferReady"
+      ]
+    },
+    {
+      "path": "framework/doc/framework/spec/00-public-contract-governance.ko.md",
+      "required_fragments": ["package의 `languages/<lang>/`", "공통 스펙"],
+      "forbidden_fragments": []
+    },
+    {
+      "path": "framework/doc/framework/spec/04-async-execution-policy.ko.md",
+      "required_fragments": ["동기 `TrySubmit` 계열을 제공하지 않는다", "비동기 submit terminator 하나만 제공하고"],
+      "forbidden_fragments": []
+    },
+    {
+      "path": "framework/doc/framework/spec/05-framework-api.ko.md",
+      "required_fragments": ["ChannelName", "InstanceSpotAddress", "Retire", "Shutdown"],
+      "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate"]
+    },
+    {
+      "path": "framework/doc/framework/spec/server/10-channel-topology.ko.md",
+      "required_fragments": ["Client", "Server", "ChannelName"],
+      "forbidden_fragments": []
+    },
+    {
+      "path": "framework/doc/framework/spec/server/20-spot-messaging.ko.md",
+      "required_fragments": ["local outbound admission", "Instance Spot"],
+      "forbidden_fragments": []
+    },
+    {
+      "path": "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
+      "required_fragments": ["InstanceSpotAddress", "activation barrier", "address cold activation"],
+      "forbidden_fragments": ["ReleaseAndRecreate"]
+    },
+    {
+      "path": "framework/doc/framework/spec/server/40-location-runtime.ko.md",
+      "required_fragments": ["Instance Spot authority row", "owner lease", "CAS"],
+      "forbidden_fragments": []
+    },
+    {
+      "path": "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md",
+      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `TransferDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `TransferFailed`, `TeardownFailed` |"],
+      "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate", "DrainNatural", "CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
+    },
+    {
+      "path": "framework/doc/framework/spec/server/55-transport-liveness.ko.md",
+      "required_fragments": ["service liveness", "`livenessProbe`", "`livenessAck`", "application public API가 아니며", "Orderly close", "전용 SUB socket", "one-way", "beacon", "사용하지 않는다. Subscriber", "publisher만 not-ready"],
+      "forbidden_fragments": []
+    }
+  ]
+}

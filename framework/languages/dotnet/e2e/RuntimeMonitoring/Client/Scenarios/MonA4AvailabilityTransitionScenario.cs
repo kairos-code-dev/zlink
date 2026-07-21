@@ -1,4 +1,5 @@
-// Verifies that provider drain and restore are observable before the first request uses the new provider.
+// Verifies normal replacement and crash recovery against public runtime snapshots and events.
+using System.Diagnostics;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
@@ -9,125 +10,214 @@ internal static class MonA4AvailabilityTransitionScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var serviceA = ZLinkHttpClient.Create(options.ServiceUrl)
-            .Timeout(TimeSpan.FromSeconds(30))
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(35))
             .Build();
-        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
-        await VerifySameRidEndpointFailoverAsync(options, serviceA);
+        await VerifyNormalReplacementAsync(options, observer);
+        await VerifyCrashRecoveryAsync(options, observer);
 
-        await serviceB.Post("/admin/weight/exclude").AsyncRaw();
-        var drainedB = await WaitForEvidenceAsync(
-            serviceA,
-            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint, "value=0"]);
-        ZlinkStreamAssert.Ensure(
-            HasAdmission(drainedB, options.ServiceBChannelEndpoint, 0),
-            "MON-A4 did not observe svc-b drain admission.");
-
-        var before = await RequestAsync(serviceA, new ProfileReq("before", "mon-a4-before"));
-        ZlinkStreamAssert.Ensure(before.ProviderRid == "svc-a", "MON-A4 initial request did not use svc-a.");
-
-        var failoverBaseline = (await serviceA.Get("/evidence").Async<string[]>()).Body.Length;
-        await serviceB.Post("/admin/weight/include").AsyncRaw();
-        await serviceA.Post("/admin/weight/exclude").AsyncRaw();
-        var failedOverEvidence = await WaitForEvidenceAsync(
-            serviceA,
-            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint,
-                "value=100", options.ServiceChannelEndpoint, "value=0"],
-            failoverBaseline);
-        ZlinkStreamAssert.Ensure(
-            HasAdmission(failedOverEvidence, options.ServiceBChannelEndpoint, 100)
-            && HasAdmission(failedOverEvidence, options.ServiceChannelEndpoint, 0),
-            "MON-A4 failover admission transitions were incomplete.");
-
-        // This is the first request after the observed transition; no retry or delay may hide a failover defect.
-        var failedOver = await RequestAsync(serviceA, new ProfileReq("after", "mon-a4-after"));
-        ZlinkStreamAssert.Ensure(failedOver.ProviderRid == "svc-b",
-            "MON-A4 request did not fail over to svc-b. evidence=" + string.Join(";", failedOverEvidence));
-
-        var restoreBaseline = (await serviceA.Get("/evidence").Async<string[]>()).Body.Length;
-        await serviceA.Post("/admin/weight/include").AsyncRaw();
-        var restored = await WaitForEvidenceAsync(
-            serviceA,
-            ["source=monitor.profile", "kind=PeerAdmissionChanged", options.ServiceChannelEndpoint, "value=100"],
-            restoreBaseline);
-        ZlinkStreamAssert.Ensure(HasAdmission(restored, options.ServiceChannelEndpoint, 100),
-            "MON-A4 restore admission transition was not observed.");
         Console.WriteLine("scenario MON-A4 passed");
     }
 
-    private static async Task VerifySameRidEndpointFailoverAsync(
+    private static async Task VerifyNormalReplacementAsync(
         ClientOptions options,
         ZLinkHttpClient observer)
     {
-        const string failoverRid = "svc-a4-failover";
-        var addBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        var first = await EphemeralService.StartAsync(options, failoverRid);
-        var firstAdded = await WaitForEvidenceAsync(
-            observer,
-            ["kind=TopologyChanged", $"added={failoverRid}", "kind=ServiceSummaryChanged",
-                "source=monitor.profile", first.ChannelEndpoint],
-            addBaseline);
-        ZlinkStreamAssert.Ensure(
-            HasSocketTransition(firstAdded, first.ChannelEndpoint, "Connected", "ConnectionReady"),
-            "MON-A4 first failover endpoint did not produce a connection transition.");
+        const string rid = "svc-a4-normal";
+        var evidenceBaseline = await EvidenceCountAsync(observer);
+        ulong firstGeneration;
+        string firstEndpoint;
 
-        var removeBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        var drain = await first.DrainAsync();
-        ZlinkStreamAssert.Ensure(
-            drain.Result == "Drained",
-            $"MON-A4 replacement source returned {drain.Result}/{drain.Reason}.");
-        var firstRemoved = await WaitForEvidenceAsync(
-            observer,
-            ["kind=TopologyChanged", $"removed={failoverRid}", "kind=ServiceSummaryChanged"],
-            removeBaseline);
-        await first.DisposeAsync();
-        var disconnected = await WaitForEvidenceAsync(
-            observer,
-            ["source=monitor.profile", "kind=Disconnected", first.ChannelEndpoint],
-            removeBaseline);
-        ZlinkStreamAssert.Ensure(
-            HasSocketTransition(disconnected, first.ChannelEndpoint, "Disconnected", "Closed"),
-            "MON-A4 old failover endpoint did not produce a disconnect transition.");
+        await using (var first = await EphemeralService.StartAsync(options, rid))
+        {
+            var ready = await WaitForReadyPeerAsync(observer, rid);
+            var peer = ready.Peers.Single(candidate => candidate.Rid == rid && candidate.Ready);
+            firstGeneration = peer.LifecycleGeneration;
+            firstEndpoint = peer.Endpoint;
+            ZlinkStreamAssert.Ensure(
+                peer.DescriptorRevision > 0
+                && firstEndpoint == first.ChannelEndpoint
+                && Channel(ready).ReadyMemberCount >= 2,
+                "MON-A4 normal lifetime was not represented by the ready snapshot.");
 
-        var replaceBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        await using var replacement = await EphemeralService.StartAsync(options, failoverRid);
-        ZlinkStreamAssert.Ensure(replacement.ChannelEndpoint != first.ChannelEndpoint,
-            "MON-A4 replacement reused the old endpoint.");
-        var replaced = await WaitForEvidenceAsync(
-            observer,
-            ["kind=TopologyChanged", $"added={failoverRid}", "kind=ServiceSummaryChanged",
-                "source=monitor.profile", replacement.ChannelEndpoint],
-            replaceBaseline);
+            var drain = await first.DrainAsync();
+            ZlinkStreamAssert.Ensure(
+                drain.Result == "Drained",
+                $"MON-A4 normal source returned {drain.Result}/{drain.Reason}.");
+        }
+
+        var removed = await WaitUntilNotReadyAsync(observer, rid, firstGeneration);
         ZlinkStreamAssert.Ensure(
-            HasSocketTransition(replaced, replacement.ChannelEndpoint, "Connected", "ConnectionReady"),
-            "MON-A4 replacement endpoint did not produce a connection transition.");
+            !removed.Peers.Any(peer =>
+                peer.Rid == rid
+                && peer.LifecycleGeneration == firstGeneration
+                && peer.Ready),
+            "MON-A4 drained lifetime remained ready.");
+
+        await using var replacement = await EphemeralService.StartAsync(options, rid);
+        var restored = await WaitForReadyPeerAsync(observer, rid);
+        var replacementPeer = restored.Peers.Single(peer => peer.Rid == rid && peer.Ready);
+        ZlinkStreamAssert.Ensure(
+            replacementPeer.LifecycleGeneration != firstGeneration
+            && replacementPeer.Endpoint != firstEndpoint
+            && replacementPeer.Endpoint == replacement.ChannelEndpoint
+            && Channel(restored).ReadyMemberCount >= 2,
+            "MON-A4 normal replacement did not converge to the new lifetime.");
+        await AssertPeerEventSequenceAsync(
+            observer,
+            evidenceBaseline,
+            rid,
+            replacementPeer.LifecycleGeneration);
     }
 
-    private static async Task<ProfileRes> RequestAsync(ZLinkHttpClient service, ProfileReq request)
-        => (await service.Post("/profile/request").Body(request).Async<ProfileRes>()).Body;
+    private static async Task VerifyCrashRecoveryAsync(
+        ClientOptions options,
+        ZLinkHttpClient observer)
+    {
+        var beforeCrash = await WaitForReadyPeerAsync(observer, "svc-b");
+        var crashedPeer = beforeCrash.Peers.Single(peer => peer.Rid == "svc-b" && peer.Ready);
+        var evidenceBaseline = await EvidenceCountAsync(observer);
 
-    private static async Task<string[]> WaitForEvidenceAsync(
+        using (var process = Process.GetProcessById(options.ServiceBProcessId))
+        {
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        var unavailable = await WaitUntilNotReadyAsync(
+            observer,
+            "svc-b",
+            crashedPeer.LifecycleGeneration);
+        ZlinkStreamAssert.Ensure(
+            !unavailable.Peers.Any(peer =>
+                peer.Rid == "svc-b"
+                && peer.LifecycleGeneration == crashedPeer.LifecycleGeneration
+                && peer.Ready),
+            "MON-A4 crashed lifetime remained a successful ready route.");
+
+        // The continuously running local provider makes this a deterministic
+        // bounded operation while proving that the dead descriptor is not selected.
+        var started = Stopwatch.GetTimestamp();
+        var followUp = await observer.Post("/profile/request")
+            .Body(new ProfileReq("after-crash", "mon-a4-after-crash"))
+            .Async<ProfileRes>();
+        var elapsed = Stopwatch.GetElapsedTime(started);
+        ZlinkStreamAssert.Ensure(
+            elapsed < TimeSpan.FromSeconds(3)
+            && followUp.Body.ProviderRid == "svc-a",
+            "MON-A4 follow-up request did not reach a bounded live provider.");
+
+        await using var replacement = await EphemeralService.StartAsync(options, "svc-b");
+        var restored = await WaitForReadyPeerAsync(observer, "svc-b");
+        var replacementPeer = restored.Peers.Single(peer => peer.Rid == "svc-b" && peer.Ready);
+        ZlinkStreamAssert.Ensure(
+            replacementPeer.LifecycleGeneration != crashedPeer.LifecycleGeneration
+            && replacementPeer.Endpoint != crashedPeer.Endpoint
+            && replacementPeer.Endpoint == replacement.ChannelEndpoint
+            && Channel(restored).ReadyMemberCount >= 2,
+            "MON-A4 crash replacement did not restore the latest ready topology.");
+        await AssertPeerEventSequenceAsync(
+            observer,
+            evidenceBaseline,
+            "svc-b",
+            replacementPeer.LifecycleGeneration);
+    }
+
+    private static MeshRuntimeChannelRes Channel(MeshRuntimeSnapshotRes snapshot)
+        => snapshot.Channels.Single(channel =>
+            channel.ChannelName == RuntimeMonitoringNames.Channel);
+
+    private static async Task<int> EvidenceCountAsync(ZLinkHttpClient service)
+        => (await service.Get("/evidence").Async<string[]>()).Body.Length;
+
+    private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(ZLinkHttpClient service)
+        => (await service.Get(
+                $"/runtime/snapshot/{RuntimeMonitoringNames.Channel}")
+            .Async<MeshRuntimeSnapshotRes>()).Body;
+
+    private static async Task<MeshRuntimeSnapshotRes> WaitForReadyPeerAsync(
         ZLinkHttpClient service,
-        string[] contains,
-        int afterIndex = 0)
-        => (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(contains, [], TimeoutMilliseconds: 30000, AfterIndex: afterIndex))
+        string rid)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (snapshot.Peers.Any(peer => peer.Rid == rid && peer.Ready))
+                return snapshot;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-A4 peer '{rid}' did not become ready.");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+    }
+
+    private static async Task<MeshRuntimeSnapshotRes> WaitUntilNotReadyAsync(
+        ZLinkHttpClient service,
+        string rid,
+        ulong generation)
+    {
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var snapshot = await SnapshotAsync(service);
+            if (!snapshot.Peers.Any(peer =>
+                    peer.Rid == rid
+                    && peer.LifecycleGeneration == generation
+                    && peer.Ready))
+                return snapshot;
+            if (elapsed.Elapsed >= TimeSpan.FromSeconds(3))
+                throw new InvalidOperationException(
+                    $"MON-A4 peer '{rid}' generation {generation} remained ready.");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+    }
+
+    private static async Task AssertPeerEventSequenceAsync(
+        ZLinkHttpClient service,
+        int afterIndex,
+        string rid,
+        ulong replacementGeneration)
+    {
+        var evidence = (await service.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                [
+                    "identifier=zlink.runtime.mesh_node.peer_changed",
+                    $"routing={rid}",
+                    $"generation={replacementGeneration}"
+                ],
+                [],
+                TimeoutMilliseconds: 3000,
+                AfterIndex: afterIndex))
             .Async<string[]>()).Body;
+        var sequence = evidence
+            .Where(line =>
+                line.Contains(
+                    $"source={RuntimeMonitoringNames.Channel}",
+                    StringComparison.Ordinal)
+                && line.Contains(
+                    "identifier=zlink.runtime.mesh_node.peer_changed",
+                    StringComparison.Ordinal)
+                && line.Contains($"routing={rid}", StringComparison.Ordinal))
+            .Select(ParseSequence)
+            .ToArray();
+        ZlinkStreamAssert.Ensure(
+            sequence.Length >= 2
+            && sequence.All(value => value > 0)
+            && sequence.Zip(sequence.Skip(1), static (left, right) => right > left)
+                .All(static increasing => increasing),
+            $"MON-A4 peer event sequence for '{rid}' was not strictly increasing.");
+    }
 
-    private static bool HasAdmission(IEnumerable<string> evidence, string endpoint, uint value)
-        => evidence.Any(line =>
-            line.Contains("source=monitor.profile", StringComparison.Ordinal)
-            && line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)
-            && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
-            && line.Contains($"value={value}", StringComparison.Ordinal));
-
-    private static bool HasSocketTransition(
-        IEnumerable<string> evidence,
-        string endpoint,
-        params string[] kinds)
-        => evidence.Any(line =>
-            line.Contains("source=monitor.profile", StringComparison.Ordinal)
-            && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
-            && kinds.Any(kind => line.Contains($"kind={kind}", StringComparison.Ordinal)));
+    private static ulong ParseSequence(string line)
+    {
+        const string prefix = "|sequence=";
+        var start = line.IndexOf(prefix, StringComparison.Ordinal);
+        if (start < 0) return 0;
+        start += prefix.Length;
+        var end = line.IndexOf('|', start);
+        var text = end < 0 ? line[start..] : line[start..end];
+        return ulong.TryParse(text, out var value) ? value : 0;
+    }
 }

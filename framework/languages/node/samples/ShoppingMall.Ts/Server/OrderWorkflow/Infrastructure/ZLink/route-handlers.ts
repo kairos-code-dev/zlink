@@ -135,8 +135,8 @@ class VerifyExpectedVersionFenceRouteHandler implements ZLinkRequestHandler<Veri
 }
 
 async function resolveOrderSpot(spots: ZLinkSpotManager, spotRefs: ZLinkSpotHandleResolver, orderId: string): Promise<SpotHandle> {
-  await spots.getOrCreate(OrderWorkflowSpot, orderId, { orderId });
-  const spot = await spotRefs.resolveSpotHandle(orderId);
+  await spots.getOrCreate(SampleNames.orderWorkflowSpotMesh, OrderWorkflowSpot, orderId, { orderId });
+  const spot = await spotRefs.resolveSpotHandle(SampleNames.orderWorkflowSpotMesh, orderId);
   if (spot === undefined) throw new Error(`Order workflow spot '${orderId}' was not resolved.`);
   return spot;
 }

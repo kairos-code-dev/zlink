@@ -92,9 +92,9 @@ flowchart TB
 - The **public C API** is the entry point: it validates handles and versioned
   structs, then delegates into the mesh runtime.
 - The **mesh runtime** splits into the process-local state machine
-  (`mesh_runtime`) and the remote wire (`mesh_wire`). See
-  [Service Layer Internal Design](../internals/services-internals.md) for the
-  internals.
+  (`mesh_runtime`) and the remote wire (`mesh_wire`). See the
+  [Framework public contract](../../../framework/doc/framework/spec/README.ko.md) for the
+  11.0 target service contract.
 - The raw socket layer knows nothing about mesh. A MeshNode talks to all of
   its peers over its single owned ROUTER.
 
@@ -108,19 +108,19 @@ flowchart TB
 | **STREAM session** | External byte session | A service attached 1:1 to a raw STREAM socket owns session↔Actor bindings and the relay |
 
 - MeshNode lifecycle and messaging: `zlink_mesh_node_*`
-  ([formal spec](../spec/core/service/01-mesh-node.md))
+  ([formal spec](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md))
 - Dispatch (ready handler, drain, claim, receive batch, reply):
   the `zlink_mesh_*` dispatch family
-  ([formal spec](../spec/core/service/02-dispatch.md))
+  ([formal spec](../../../framework/doc/framework/spec/server/11-channel-messaging.ko.md))
 - Spot: `zlink_spot_*`, `zlink_mesh_node_spot_*`
-  ([formal spec](../spec/core/service/03-spot.md), [guide](07-3-spot.md))
+  ([formal spec](../../../framework/doc/framework/spec/server/20-spot-messaging.ko.md), [guide](07-3-spot.md))
 - Actor: `zlink_mesh_node_actor_*`, `zlink_actor_*`
-  ([formal spec](../spec/core/service/04-actor.md), [guide](07-4-actor.md))
+  ([formal spec](../../../framework/doc/framework/spec/server/23-spot-actor.ko.md), [guide](07-4-actor.md))
 - STREAM session: `zlink_stream_session_*`
-  ([formal spec](../spec/core/service/05-stream-session.md))
+  ([formal spec](../../../framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md))
 - **Thread-safe** — multiple threads may call operational APIs on one
   MeshNode/Spot handle concurrently. The re-entrancy restrictions are defined
-  by the [thread safety section of the formal spec](../spec/core/service/01-mesh-node.md).
+  by the [thread safety section of the formal spec](../../../framework/doc/framework/spec/server/21-mesh-node.ko.md).
 
 ## 4. Graceful maintenance (weights)
 

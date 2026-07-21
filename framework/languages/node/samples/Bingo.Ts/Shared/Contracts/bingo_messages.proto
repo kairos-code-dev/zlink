@@ -46,6 +46,12 @@ message PlayerActorTransferState {
   bool disconnected = 3;
 }
 
+// Internal actor control packets also use generated Protobuf messages so the
+// framework's default typed codec can carry them across RouteMesh peers.
+message LeaveFinishedBingoRoom {}
+
+message DestroyBingoActor {}
+
 message EnsurePlayerActorRes {
   string actor_id = 1;
   string actor_type = 2;

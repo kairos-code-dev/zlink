@@ -192,15 +192,14 @@ int main (int argc, char **argv)
         add_supportchat_location_store (options, topology);
         options.add_client_server_channel ("supportchat.support").enable_client ();
         options.add_client_server_channel ("supportchat.api").enable_client ();
-        options.add_route_mesh ("supportchat.session.actor.route")
-          .enable_server (topology.session_actor_route_endpoint)
-          .enable_client ()
-          .set_routing_id (zlink::routing_id_t::from (supportchat_session_node));
-        options.add_spot_mesh ("supportchat.support.spot")
-          .accept_route_mesh ("supportchat.session.actor.route")
+        auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
+        actor_route.listen (topology.session_actor_route_endpoint)
           .set_routing_id (zlink::routing_id_t::from (supportchat_session_node))
-          .enable_router (topology.session_spot_router_endpoint)
-          .enable_pub_sub (topology.session_spot_endpoint);
+          .channel_name ("supportchat.session.actor.route");
+        auto support_spot = options.add_route_mesh ("supportchat.support.spot");
+        support_spot.channel_name ("supportchat.session.actor.route");
+        support_spot.set_routing_id (zlink::routing_id_t::from (supportchat_session_node))
+          .listen (topology.session_spot_router_endpoint);
         options.add_stream_node ("supportchat-session-stream")
           .bind (topology.session_stream_endpoint)
           .register_session<supportchat_session_t> ();

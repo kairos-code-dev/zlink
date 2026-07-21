@@ -60,31 +60,24 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            var apiMesh = options.AddRouteMesh(SampleNames.GameApiChannel)
-                .Listen(topology.GameApiChannelEndpoint(apiName))
-                .SetRoutingId(topology.RouteRidForApi(apiName));
-            apiMesh.ChannelName(SampleNames.GameApiChannel)
-                .AddSendHandler<QuestProgressNotifyHandler>()
-                .AddSendHandler<QuestCompletedNotifyHandler>();
+            var mesh = options.AddRouteMesh(SampleNames.MeshName)
+                .Listen(topology.GameApiMeshEndpoint(apiName))
+                .SetRoutingId(topology.MeshRidForApi(apiName))
+                .SetEntrySpotRoutingId(topology.MeshRidForApi(apiName))
+                .AddEntrySpot<GameQuestEntrySpot>()
+                .AddActorFactory<PlayerSessionActorFactory>(SampleNames.SessionActorType);
+            mesh.ChannelName(SampleNames.GameApiChannel)
+                .AddHandlerGroup(SampleNames.GameApiHandlerGroup);
             foreach (var mission in new[] { "mission-a", "mission-b" })
             {
                 var channelName = SampleNames.QuestOwnerChannelFor(mission);
-                var questOwnerMesh = options.AddRouteMesh(channelName)
-                    .Listen("tcp://127.0.0.1:0")
-                    .SetRoutingId(topology.RouteRidForApi(apiName));
-                questOwnerMesh.ChannelName(channelName).SetWeight(0);
+                mesh.ChannelName(channelName).SetWeight(0);
             }
+            mesh.ChannelName(SampleNames.MeshName);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
-                .EnableActorDispatch(SampleNames.SessionSpotDiscovery)
+                .EnableActorDispatch(SampleNames.MeshName)
                 .AddSession<GameQuestSession>();
-            var mesh15 = options.AddRouteMesh(SampleNames.SessionSpotDiscovery)
-                .Listen(topology.GameApiSpotRouterEndpoint(apiName))
-                .SetRoutingId(topology.GameApiSpotRid(apiName))
-                .SetEntrySpotRoutingId(topology.GameApiSpotRid(apiName))
-                .AddEntrySpot<GameQuestEntrySpot>()
-                .AddActorFactory<PlayerSessionActorFactory>(SampleNames.SessionActorType);
-            mesh15.ChannelName(SampleNames.SessionSpotDiscovery);
         });
 
         var app = builder.Build();

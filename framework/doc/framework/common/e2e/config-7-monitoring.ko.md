@@ -13,11 +13,11 @@ source나 event kind를 정의하지 않는다.
 
 | 언어 | 정식 interface |
 |---|---|
-| C++ | [`route_mesh_runtime_t`](../../spec/server/languages/cpp/02-framework-interfaces.ko.md) |
+| C++ | [`route_mesh_runtime_t`](../../spec/server/languages/cpp/interfaces/08-monitoring.ko.md) |
 | .NET | [`IZLinkRouteMeshRuntime`](../../spec/server/languages/dotnet/05-route-mesh.ko.md#8-runtime-snapshot-event와-drain) |
-| Java | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/java/02-handler-interfaces.ko.md#42-runtime-monitoring) |
-| Kotlin | [Java runtime 표면을 사용하는 Kotlin 계약](../../spec/server/languages/kotlin/02-handler-interfaces.ko.md#8-관측운영-표면-metrics--flow-correlation--drain) |
-| Node.js | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/node/02-handler-interfaces.ko.md) |
+| Java | [Java monitoring](../../spec/server/languages/java/interfaces/monitoring.ko.md) |
+| Kotlin | [Kotlin monitoring](../../spec/server/languages/kotlin/interfaces/monitoring.ko.md) |
+| Node.js | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/node/interfaces/03-location-observability.ko.md) |
 
 ## 1. 목적과 범위
 

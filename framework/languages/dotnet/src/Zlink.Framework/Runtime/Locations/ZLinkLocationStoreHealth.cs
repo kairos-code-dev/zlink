@@ -10,6 +10,7 @@ internal sealed class ZLinkLocationStoreHealth
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _failures = new(StringComparer.Ordinal);
     private DateTimeOffset? _lastSuccessAt;
+    private DateTimeOffset? _lastFailureAt;
 
     internal void ReportSuccess(string source)
     {
@@ -22,7 +23,11 @@ internal sealed class ZLinkLocationStoreHealth
 
     internal void ReportFailure(string source, Exception error)
     {
-        lock (_gate) _failures[source] = error.Message;
+        lock (_gate)
+        {
+            _failures[source] = error.Message;
+            _lastFailureAt = DateTimeOffset.UtcNow;
+        }
     }
 
     internal Snapshot GetSnapshot()
@@ -32,6 +37,7 @@ internal sealed class ZLinkLocationStoreHealth
             return new Snapshot(
                 _failures.Count == 0,
                 _lastSuccessAt,
+                _lastFailureAt,
                 _failures.Count == 0
                     ? null
                     : string.Join("; ", _failures.OrderBy(static pair => pair.Key)
@@ -42,6 +48,7 @@ internal sealed class ZLinkLocationStoreHealth
     internal readonly record struct Snapshot(
         bool Healthy,
         DateTimeOffset? LastSuccessAt,
+        DateTimeOffset? LastFailureAt,
         string? LastError);
 }
 

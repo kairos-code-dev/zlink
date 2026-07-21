@@ -57,7 +57,7 @@ trap cleanup_sample EXIT
 reserve_ports() {
   local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
   local endpoints=()
-  for offset in $(seq 0 14); do
+  for offset in $(seq 0 7); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -66,7 +66,7 @@ reserve_ports() {
 build_framework_jars() {
   (
     cd ../../..
-    ./gradlew --no-daemon \
+    ./gradlew --no-daemon --no-parallel \
       :zlink-framework-core:jar \
       :zlink-framework-spring-boot-starter:jar \
       :zlink-framework-locations-redis:jar \
@@ -76,27 +76,15 @@ build_framework_jars() {
   )
 }
 
-read -r api_a_channel play_a_channel session_a_spot session_a_router play_a_spot play_a_router session_a_stream api_b_channel play_b_channel session_b_spot session_b_router play_b_spot play_b_router session_b_stream unused_endpoint < <(reserve_ports)
+read -r api_a_channel session_a_router play_a_router session_a_stream api_b_channel session_b_router play_b_router session_b_stream < <(reserve_ports)
 api_a_host="${api_a_channel%:*}"
 api_a_port="${api_a_channel##*:}"
 api_b_host="${api_b_channel%:*}"
 api_b_port="${api_b_channel##*:}"
-play_a_host="${play_a_channel%:*}"
-play_a_port="${play_a_channel##*:}"
-play_b_host="${play_b_channel%:*}"
-play_b_port="${play_b_channel##*:}"
-session_a_spot_host="${session_a_spot%:*}"
-session_a_spot_port="${session_a_spot##*:}"
-session_b_spot_host="${session_b_spot%:*}"
-session_b_spot_port="${session_b_spot##*:}"
 session_a_router_host="${session_a_router%:*}"
 session_a_router_port="${session_a_router##*:}"
 session_b_router_host="${session_b_router%:*}"
 session_b_router_port="${session_b_router##*:}"
-play_a_spot_host="${play_a_spot%:*}"
-play_a_spot_port="${play_a_spot##*:}"
-play_b_spot_host="${play_b_spot%:*}"
-play_b_spot_port="${play_b_spot##*:}"
 play_a_router_host="${play_a_router%:*}"
 play_a_router_port="${play_a_router##*:}"
 play_b_router_host="${play_b_router%:*}"
@@ -137,28 +125,16 @@ EOF
       ;;
     playNode)
       cat >>"$path" <<EOF
-sample.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port}
-sample.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port}
-sample.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
-sample.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
 sample.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
 sample.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
-sample.playANodeRid=2201
-sample.playBNodeRid=2202
 EOF
       ;;
     sessionNode)
       cat >>"$path" <<EOF
-sample.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
-sample.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
 sample.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port}
 sample.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port}
 sample.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
 sample.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
-sample.sessionARouterRid=1101
-sample.sessionBRouterRid=1102
-sample.playANodeRid=2201
-sample.playBNodeRid=2202
 EOF
       ;;
   esac
@@ -209,9 +185,7 @@ wait_port "${stream_b_host}" "${stream_b_port}"
 wait_port "${api_a_host}" "${api_a_port}"
 wait_port "${api_b_host}" "${api_b_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
-wait_port "${play_a_spot_host}" "${play_a_spot_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
-wait_port "${play_b_spot_host}" "${play_b_spot_port}"
 
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1
 

@@ -26,6 +26,16 @@ fun zlinkLocalMavenRepository(): java.io.File {
     }
 }
 
+val zlinkBindingsSource = providers.environmentVariable("ZLINK_JAVA_BINDINGS_SOURCE").orNull
+if (!zlinkBindingsSource.isNullOrBlank()) {
+    includeBuild(file(zlinkBindingsSource)) {
+        name = "zlink-bindings-java"
+        dependencySubstitution {
+            substitute(module("systems.zlink:zlink")).using(project(":"))
+        }
+    }
+}
+
 val zlinkGitHubPackagesUrl = providers.gradleProperty("zlink.githubPackagesUrl")
     .orElse(providers.environmentVariable("ZLINK_GITHUB_PACKAGES_URL"))
     .orElse("https://maven.pkg.github.com/kairos-code-dev/zlink")

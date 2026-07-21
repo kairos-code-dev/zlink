@@ -111,16 +111,17 @@ int main (int argc, char **argv)
             channel.use_handler_group (e2e::handler_group);
         }
         if (!options.route_endpoint.empty ()) {
-            auto route = framework.add_route_mesh (e2e::route_channel)
-              .enable_server (options.route_endpoint)
+            auto route = framework.add_route_mesh (e2e::route_channel);
+            route.listen (options.route_endpoint)
               .set_routing_id (zlink::routing_id_t::from (options.rid))
-              .add_request_handler<rm_provider::route_ping_handler_t,
-                                   e2e::scenario_route_req_t,
-                                   e2e::scenario_route_res_t> ("ScenarioRouteReq",
-                                                       &rm_provider::route_ping_handler_t::handle);
+              .channel_name (e2e::route_channel);
+            route.add_route_request_handler<rm_provider::route_ping_handler_t,
+                                            e2e::scenario_route_req_t,
+                                            e2e::scenario_route_res_t> (
+              "ScenarioRouteReq");
             for (const auto &peer : options.route_peers) {
                 if (peer != options.route_endpoint) {
-                    route.enable_client (peer);
+                    route.peer_connections ().connect (peer);
                 }
             }
         }

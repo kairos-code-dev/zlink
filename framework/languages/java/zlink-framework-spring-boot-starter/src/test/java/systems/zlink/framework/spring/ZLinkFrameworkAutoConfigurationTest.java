@@ -41,6 +41,7 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteRequestContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRequestContext;
@@ -57,6 +58,7 @@ import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
+import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
@@ -104,12 +106,25 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.getBean(ZLinkChannelRuntimeOptions.class);
             ZLinkFanoutClient fanout = context.getBean(ZLinkFanoutClient.class);
             ZLinkRouteClient route = context.getBean(ZLinkRouteClient.class);
+            ZLinkRouteMeshRuntime routeMeshRuntime =
+                context.getBean(ZLinkRouteMeshRuntime.class);
+            ZLinkRouteMeshRuntimeOptions routeMeshRuntimeOptions =
+                context.getBean(ZLinkRouteMeshRuntimeOptions.class);
 
             assertTrue(lifecycle.isRunning());
             assertInstanceOf(ZLinkFrameworkLifecycle.class, client);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, runtimeOptions);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, fanout);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, route);
+            assertInstanceOf(
+                systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeService.class,
+                routeMeshRuntime);
+            assertThrows(
+                ZLinkConfigurationException.class,
+                () -> routeMeshRuntime.snapshot("missing"));
+            assertInstanceOf(
+                systems.zlink.framework.runtime.host.ZLinkRouteMeshRuntimeOptionsService.class,
+                routeMeshRuntimeOptions);
         }
     }
 
@@ -1505,6 +1520,10 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 return java.util.Optional.empty();
             }
 
+            @Override
+            public java.util.Map<String, String> metadata() {
+                return java.util.Map.of();
+            }
         };
     }
 }

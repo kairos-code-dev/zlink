@@ -276,9 +276,91 @@ void test_callback_dispatch_cross_direction_duplicate_converges ()
     char buffer[255];
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (server_two, buffer, sizeof buffer, 0));
 
+    //  The losing physical direction remains as an idle standby. When the
+    //  selected direction closes, ROUTER promotes the existing standby
+    //  without waiting for another TCP connection.
+    test_context_socket_close_zero_linger (server_one);
+    server_one = NULL;
+    bool recovered = false;
+    for (int i = 0; i < 50 && !recovered; ++i) {
+        const int rc = zlink_send (client, "A", 1, ZLINK_SNDMORE);
+        if (rc == -1) {
+            TEST_ASSERT_EQUAL_INT (EHOSTUNREACH, errno);
+            msleep (10);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT (1, rc);
+        send_string_expect_success (client, "recovered", 0);
+        const int received = zlink_recv (server_two, buffer, sizeof buffer, 0);
+        if (received == -1) {
+            TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+            continue;
+        }
+        TEST_ASSERT_EQUAL_INT (1, received);
+        TEST_ASSERT_EQUAL_INT ('Z', buffer[0]);
+        recv_string_expect_success (server_two, "recovered", 0);
+        recovered = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE (
+      recovered, "standby connector did not restore the route after selected pipe loss");
+
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server_two);
-    test_context_socket_close_zero_linger (server_one);
+}
+
+void test_repeated_cross_direction_reconnect_uses_current_endpoint ()
+{
+    const int handover = ZLINK_RID_DUPLICATE_HANDOVER;
+    const int zero = 0;
+    char client_endpoint[MAX_SOCKET_STRING];
+
+    void *client = test_context_socket (ZLINK_SOCKET_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (client, "Z", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_LINGER, &zero, sizeof zero));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (client, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                        &handover, sizeof handover));
+    bind_loopback_ipv4 (
+      client, client_endpoint, sizeof client_endpoint);
+
+    for (int lifecycle = 0; lifecycle < 16; ++lifecycle) {
+        char server_endpoint[MAX_SOCKET_STRING];
+        void *server = test_context_socket (ZLINK_SOCKET_ROUTER);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_routing_id (server, "A", 1));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_option (server, ZLINK_OPT_LINGER,
+                            &zero, sizeof zero));
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_set_option (server, ZLINK_OPT_RID_DUPLICATE_POLICY,
+                            &handover, sizeof handover));
+        bind_loopback_ipv4 (
+          server, server_endpoint, sizeof server_endpoint);
+
+        //  Both nodes configure a connector. A sorts before Z, so A -> Z is
+        //  the selected direction and Z -> A remains the reciprocal standby.
+        set_connect_routing_id (server, "Z");
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_connect (server, client_endpoint));
+        set_connect_routing_id (client, "A");
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_connect (client, server_endpoint));
+        msleep (SETTLE_TIME);
+
+        send_request_to_activate_callback_dispatch (
+          client, server, "A");
+
+        //  Discovery removes the retired endpoint before the same RID is
+        //  observed at the next endpoint. No physical pipe from this
+        //  lifecycle may later take ownership of the stable RID.
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_disconnect (client, server_endpoint));
+        test_context_socket_close_zero_linger (server);
+        msleep (SETTLE_TIME);
+    }
+
+    test_context_socket_close_zero_linger (client);
 }
 
 void test_async_handshake_preserves_outgoing_direction ()
@@ -370,6 +452,7 @@ int main ()
     RUN_TEST (test_without_handover);
     RUN_TEST (test_callback_dispatch_same_direction_reconnect_handover);
     RUN_TEST (test_callback_dispatch_cross_direction_duplicate_converges);
+    RUN_TEST (test_repeated_cross_direction_reconnect_uses_current_endpoint);
     RUN_TEST (test_async_handshake_preserves_outgoing_direction);
     return UNITY_END ();
 }

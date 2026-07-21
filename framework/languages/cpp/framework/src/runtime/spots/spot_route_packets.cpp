@@ -107,6 +107,13 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"boundSessionRid", value.bound_session_rid},
                           {"transferState", value.transfer_state},
                           {"handoffBacklog", value.handoff_backlog},
+                          {"coreTransfer", value.core_transfer},
+                          {"coreTransferIdHigh", value.core_transfer_id_high},
+                          {"coreTransferIdLow", value.core_transfer_id_low},
+                          {"coreMembershipEpoch", value.core_membership_epoch},
+                          {"coreFinalSequence", value.core_final_sequence},
+                          {"coreReserveMessageCount", value.core_reserve_message_count},
+                          {"coreReserveByteCount", value.core_reserve_byte_count},
                           {"prepare", value.prepare},
                           {"finalize", value.finalize}};
 }
@@ -124,6 +131,15 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
     value.handoff_backlog =
       json.value ("handoffBacklog", std::vector<spot_actor_handoff_packet_t>{});
+    value.core_transfer = json.value ("coreTransfer", false);
+    value.core_transfer_id_high = json.value ("coreTransferIdHigh", std::uint64_t{0});
+    value.core_transfer_id_low = json.value ("coreTransferIdLow", std::uint64_t{0});
+    value.core_membership_epoch = json.value ("coreMembershipEpoch", std::uint64_t{0});
+    value.core_final_sequence = json.value ("coreFinalSequence", std::uint64_t{0});
+    value.core_reserve_message_count =
+      json.value ("coreReserveMessageCount", std::uint64_t{0});
+    value.core_reserve_byte_count =
+      json.value ("coreReserveByteCount", std::uint64_t{0});
     value.prepare = json.value ("prepare", false);
     value.finalize = json.value ("finalize", false);
 }

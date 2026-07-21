@@ -81,10 +81,11 @@ function createProviderModule(): Function {
             Object.assign(builder.configureLocations(), resilienceLocationOptions());
           }
           if (options.channelEndpoint !== undefined) {
-            builder.addClientServerChannel('profile')
-              .enableServer(options.channelEndpoint)
-              .routingId(options.rid)
-              .enableClient()
+            const profile = builder.addRouteMesh('profile')
+              .listen(options.channelEndpoint)
+              .routingId(options.rid);
+            profile.peerConnections();
+            profile.channelName('profile')
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)
               .addRequestHandler(PacketNames.payloadReq, PayloadRequestHandler)
               .addSendHandler(PacketNames.profileMsg, ProfileCommandHandler);

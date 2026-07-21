@@ -5,8 +5,8 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   ZLinkPacket,
-  type ZLinkDrainControl,
-  type ZLinkDrainResult,
+  type ZLinkMeshDrainResult,
+  type ZLinkRouteMeshRuntime,
   type ZLinkFanoutClient,
   type ZLinkHandlerContext,
   type ZLinkPublishContext,
@@ -19,7 +19,8 @@ import {
   type ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import type {
-  ZLinkActor,
+  ZLinkActorJoinRequest,
+  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotTimerHandler,
@@ -28,7 +29,7 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import {
-  ZLINK_DRAIN_CONTROL,
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_FANOUT_CLIENT,
   ZLINK_SPOT_HANDLE_RESOLVER,
   ZLINK_SPOT_MANAGER,
@@ -85,13 +86,15 @@ class WorkflowSpot implements ZLinkSpot {
     return { accepted: true };
   }
 
-  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: false };
   }
 
-  async onJoinedActor(_actor: ZLinkActor): Promise<void> {}
+  async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}
 
-  async onLeaveActor(_actor: ZLinkActor): Promise<void> {}
+  async onLeaveActor(_actor: ZLinkActorMembership): Promise<void> {}
+
+  async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 
   async completeTimer(): Promise<void> {
     const timer = this.timer;
@@ -128,7 +131,7 @@ class ProjectionHandler implements ZLinkPublishHandler<WorkflowProjected> {
 class WorkflowTimerHandler implements ZLinkSpotTimerHandler<WorkflowSpot> {
   async handle(spot: WorkflowSpot, tick: ZLinkTimerTick): Promise<void> {
     evidence.add('workflow', String(spot.context.spotRid), 'timer', `tick=${tick.deliveryIndex}`);
-    fanoutClient.publish(WORKFLOW_FANOUT, WORKFLOW_TOPIC,
+    await fanoutClient.publish(WORKFLOW_FANOUT,
       new WorkflowProjected(String(spot.context.spotRid), Number(tick.deliveryIndex), options.rid)).submit();
     await spot.completeTimer();
   }
@@ -167,11 +170,10 @@ Module({
           .enablePublisher(options.fanoutEndpoint)
           .enableSubscriber()
           .addPublishHandler('WorkflowProjected', ProjectionHandler);
-        builder.addSpotMesh(WORKFLOW_MESH)
-          .enableRouter(options.routerEndpoint, options.rid)
-          .enablePubSub(options.pubSubEndpoint, options.rid)
+        builder.addRouteMesh(WORKFLOW_MESH)
+          .listen(options.routerEndpoint).routingId(options.rid)
           .addSpotFactory(WorkflowSpot)
-          .useDrainPolicy('ReleaseAndRecreate');
+          .channelName(WORKFLOW_MESH);
         return builder.build();
       }
     })
@@ -186,14 +188,16 @@ async function main(): Promise<void> {
   const outbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
   const fanout = app.get(ZLINK_FANOUT_CLIENT, { strict: false }) as ZLinkFanoutClient;
   fanoutClient = fanout;
-  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
-  let drainResult: ZLinkDrainResult | undefined;
+  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  let drainResult: ZLinkMeshDrainResult | undefined;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     createFlowLogRoute(options.logDir, options.rid),
     { method: 'GET', path: '/metrics', handle: () => metrics.snapshot() },
-    { method: 'GET', path: '/drain/status', handle: () => ({ ready: drain.isReady(), result: drainResult }) },
+    { method: 'GET', path: '/drain/status', handle: () => ({
+      ready: routeMeshRuntime.isReady(WORKFLOW_MESH), result: drainResult
+    }) },
     {
       method: 'POST', path: '/workflows', handle: async (body) => {
         const request = body as WorkflowApplyReq;
@@ -202,7 +206,7 @@ async function main(): Promise<void> {
         if (handle === undefined) throw new Error(`Workflow '${request.orderId}' was not resolved.`);
         const result = await outbound.requestToSpot(handle, new WorkflowApplyReq(request.orderId, request.value))
           .timeout(5000).submit<WorkflowApplyRes>();
-        fanout.publish(WORKFLOW_FANOUT, WORKFLOW_TOPIC,
+        await fanout.publish(WORKFLOW_FANOUT,
           new WorkflowProjected(result.orderId, result.value, result.nodeRid)).submit();
         return result;
       }
@@ -211,7 +215,8 @@ async function main(): Promise<void> {
     {
       method: 'POST', path: '/drain', handle: (body) => {
         const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
-        void drain.drain(deadlineMs).then((result) => { drainResult = result; });
+        void routeMeshRuntime.drain(WORKFLOW_MESH, deadlineMs)
+          .then((result) => { drainResult = result; });
         return { started: true };
       }
     },

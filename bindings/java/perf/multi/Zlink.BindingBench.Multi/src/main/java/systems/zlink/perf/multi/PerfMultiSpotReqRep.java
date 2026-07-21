@@ -2,41 +2,32 @@
 
 package systems.zlink.perf.multi;
 
-import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.core.Context;
-import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.eventing.PollEventFlags;
-import systems.zlink.contracts.eventing.PollEvents;
-import systems.zlink.contracts.eventing.Poller;
-import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.errors.ZlinkRecvException;
-import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.sockets.RequestCallback;
-import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.Dispatch;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.OperationId;
+import systems.zlink.contracts.service.spot.OperationKind;
+import systems.zlink.contracts.service.spot.RecordKind;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotDispatchEvent;
-import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.perf.PerfControl;
+import systems.zlink.perf.PerfMeshDispatch;
 import systems.zlink.perf.PerfUtil;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.Map;
 
 final class PerfMultiSpotReqRep {
-    private static final long ACTIVE_DEADLINE_SLOT = Integer.MAX_VALUE;
+    private static final String CHANNEL = "bench-reqrep";
     private static final RoutingId SERVER_NODE_RID =
         routingId("SPOT-REQREP-SERVER-NODE");
     private static final RoutingId SERVER_SPOT_RID =
@@ -46,62 +37,55 @@ final class PerfMultiSpotReqRep {
     }
 
     static PerfUtil.Result runServer(PerfUtil.Config config) {
-        AtomicBoolean stopRequested = new AtomicBoolean(false);
-        AtomicLong activeEndRef = new AtomicLong(Long.MAX_VALUE);
-        AtomicReference<Throwable> failure = new AtomicReference<>();
+        if (secureTransport(config.transport())) {
+            return PerfUtil.Result.unsupported(
+                "MeshNode benchmark trust profiles are not configured", config);
+        }
         String controlEndpoint = derivedEndpoint(config.endpoint(), 1);
-        String routerEndpoint = derivedEndpoint(config.endpoint(), 2);
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = ctx.createSpotNode();
-             Spot replier = node.createSpot();
+             MeshNode node = ctx.createMeshNode();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, controlEndpoint, "reqrep-server")) {
             node.setRoutingId(SERVER_NODE_RID);
-            replier.setRoutingId(SERVER_SPOT_RID);
-            PerfUtil.configureServerTls(node, config.transport());
-            PerfUtil.configureClientTls(node, config.transport());
-            node.setRouterBind(routerEndpoint);
-            node.setPubBind(config.endpoint());
-            PerfControl.emitReady(config.endpoint());
-            PerfControl.emitControlReady(controlEndpoint);
-            replier.setDispatchHandler(info -> {
-                if (info.event() != SpotDispatchEvent.ROUTED_READABLE) {
-                    return;
+            node.setBind(config.endpoint());
+            node.addChannel(CHANNEL);
+            node.start();
+            try (Spot replier = node.getOrCreateSpot(SERVER_SPOT_RID).spot();
+                 PerfMeshDispatch dispatch = new PerfMeshDispatch(node, 64)) {
+                PerfControl.emitReady(config.endpoint());
+                PerfControl.emitControlReady(controlEndpoint);
+                awaitDirectControlStart(control, node, config,
+                    "mesh reqrep server", spotServerReadyTimeoutMs(config));
+                PerfUtil.recalculateAutoHwm(ctx);
+                long activeEnd = System.nanoTime()
+                    + Duration.ofSeconds(config.durationSeconds()).toNanos();
+                while (System.nanoTime() < activeEnd) {
+                    int count = dispatch.drain((owner, record, parts) -> {
+                        if (record.kind() != RecordKind.SPOT_REQUEST
+                            || record.replyToken() == null
+                            || parts.isEmpty()) {
+                            return;
+                        }
+                        try (Message reply = Message.from(parts.get(0))) {
+                            Dispatch.reply(
+                                record.replyToken(), List.of(reply), SendFlags.NONE);
+                        }
+                    });
+                    if (count == 0) {
+                        Thread.onSpinWait();
+                    }
                 }
-                long activeEnd = activeEndRef.get();
-                if (stopRequested.get() || System.nanoTime() >= activeEnd) {
-                    return;
-                }
-                try {
-                    drainServer(replier, activeEnd);
-                } catch (Throwable ex) {
-                    failure.compareAndSet(null, ex);
-                    stopRequested.set(true);
-                }
-            });
-            awaitDirectControlStart(control, node, config,
-                "spot reqrep server", spotServerReadyTimeoutMs(config));
-            PerfUtil.recalculateAutoHwm(ctx);
-            PerfUtil.printMultiSpotNodeAutoHwm(config, node, "server");
-            long activeEnd = System.nanoTime()
-                + Duration.ofSeconds(config.durationSeconds()).toNanos();
-            activeEndRef.set(activeEnd);
-            while (!stopRequested.get() && System.nanoTime() < activeEnd) {
-                Throwable ex = failure.get();
-                if (ex != null) {
-                    throw new IllegalStateException(
-                        "spot reqrep dispatch drain failed", ex);
-                }
-                sleepQuietly(1);
+                return PerfUtil.Result.silent(config);
             }
-            stopRequested.set(true);
-            return PerfUtil.Result.silent(config);
         }
     }
 
     static PerfUtil.Result runClient(PerfUtil.Config config) {
-        String endpoint = normalizeClientEndpoint(config.endpoint(),
-            config.transport());
+        if (secureTransport(config.transport())) {
+            return PerfUtil.Result.unsupported(
+                "MeshNode benchmark trust profiles are not configured", config);
+        }
+        String endpoint = normalizeClientEndpoint(config.endpoint(), config.transport());
         String serverControlEndpoint = normalizeClientEndpoint(
             derivedEndpoint(config.endpoint(), 1), config.transport());
         String clientControlEndpoint = normalizeClientEndpoint(
@@ -110,303 +94,111 @@ final class PerfMultiSpotReqRep {
         String clientDataEndpoint = normalizeClientEndpoint(
             PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-client"),
             config.transport());
-        String clientRouterEndpoint = normalizeClientEndpoint(
-            PerfUtil.endpoint(config.transport(), "multi-spot-reqrep-client-router"),
-            config.transport());
         PerfUtil.Metrics metrics = new PerfUtil.Metrics(config);
-
         try (Context ctx = PerfUtil.newContext(config);
-             SpotNode node = ctx.createSpotNode();
+             MeshNode node = ctx.createMeshNode();
              PerfSpotDirectControl control = PerfSpotDirectControl.bind(
                  ctx, config, clientControlEndpoint, "reqrep-client")) {
             node.setRoutingId(routingId("SPOT-REQREP-CLIENT-NODE"));
-            PerfUtil.configureServerTls(node, config.transport());
-            PerfUtil.configureClientTls(node, config.transport());
-            node.setRouterBind(clientRouterEndpoint);
-            node.setPubBind(clientDataEndpoint);
-            node.connectPeer(endpoint);
-
+            node.setBind(clientDataEndpoint);
+            node.addChannel(CHANNEL);
+            node.start();
+            node.connectPeer(endpoint, SERVER_NODE_RID);
             List<Spot> requesters = new ArrayList<>(config.clients());
-            try {
+            try (PerfMeshDispatch dispatch =
+                     new PerfMeshDispatch(node, Math.max(16, config.clients()))) {
                 for (int i = 0; i < config.clients(); i++) {
-                    Spot requester = node.createSpot();
-                    requester.setRoutingId(routingId(
-                        "SPOT-REQREP-CLIENT-SPOT-" + i));
-                    requesters.add(requester);
+                    requesters.add(node.createSpot());
                 }
                 control.connectPeer(serverControlEndpoint);
                 PerfControl.emitClientControlEndpoint(clientControlEndpoint);
                 PerfControl.awaitControlConnected(clientControlEndpoint,
-                    "spot reqrep client");
-                settleAfterReady();
-                PerfUtil.recalculateAutoHwm(ctx);
-                PerfUtil.printMultiSpotNodeAutoHwm(config, node, "client");
-                control.publishDataEndpoint(clientDataEndpoint);
+                    "mesh reqrep client");
                 waitForConnectedPeers(node, 1, config.connectReadyTimeoutMs(),
-                    "spot reqrep client data link");
+                    "mesh reqrep client data link");
+                control.publishDataEndpoint(clientDataEndpoint);
                 control.publishConnected();
                 control.publishReadyCount(config.size(), requesters.size());
                 PerfControl.emitClientReady(config.size());
-                PerfControl.awaitStart(config.size(), "spot reqrep client");
+                PerfControl.awaitStart(config.size(), "mesh reqrep client");
                 control.waitStart(config.size(), config.connectReadyTimeoutMs());
-                runClientWorkers(requesters, config, metrics);
+                runRequests(node, dispatch, requesters, config, metrics);
                 return metrics.finishMulti(config);
             } finally {
-                for (Spot requester : requesters) {
-                    requester.close();
-                }
+                requesters.forEach(Spot::close);
             }
         }
     }
 
-    private static boolean drainServer(Spot replier, long activeEnd) {
-        boolean progressed = false;
-        Received received = new Received();
-        try {
-            for (;;) {
-                if (System.nanoTime() >= activeEnd) {
-                    return progressed;
-                }
-                if (!recvRoutedNoWait(replier, received)) {
-                    return progressed;
-                }
-                progressed = true;
-                try {
-                    try (Message reply = Message.from(received.firstPart())) {
-                        try {
-                            received.reply().message(reply).submit();
-                        } catch (ZlinkSubmitException ex) {
-                            if (!isTransientSubmit(ex)) {
-                                throw ex;
-                            }
-                        }
-                    }
-                } finally {
-                    received.close();
-                }
-            }
-        } finally {
-            received.close();
-        }
-    }
-
-    private static void runClientWorkers(List<Spot> requesters,
-                                         PerfUtil.Config config,
-                                         PerfUtil.Metrics metrics) {
-        int activeClients = activeSpotSlotLimit(requesters.size(), config.size());
-        Message[] payloads = new Message[activeClients];
-        AtomicBoolean[] waitingReply = new AtomicBoolean[activeClients];
-        AtomicReference<Throwable> failure = new AtomicReference<>();
-        for (int i = 0; i < activeClients; i++) {
-            payloads[i] = PerfUtil.payloadTemplate(config.size());
-            waitingReply[i] = new AtomicBoolean();
-        }
-        try (Poller completionPoller = Zlink.createPoller();
-             ZlinkTimer activeZlinkTimer = Zlink.createTimer()) {
-            PollEvents completionEvents = new PollEvents(
-                Math.max(1, activeClients + 1));
-            for (int i = 0; i < activeClients; i++) {
-                completionPoller.add(requesters.get(i), i,
-                    PollEventFlags.POLLCOMPLETION);
-            }
-            completionPoller.add(activeZlinkTimer, ACTIVE_DEADLINE_SLOT);
-            long activeEnd = System.nanoTime()
-                + config.durationSeconds() * 1_000_000_000L;
-            activeZlinkTimer.start(Duration.ofSeconds(
-                Math.max(1, config.durationSeconds())), 1);
-            Duration requestTimeout = Duration.ofMillis(
-                Math.max(1, config.recvTimeoutMs()));
-            RequestMetricsCallback[] callbacks =
-                new RequestMetricsCallback[activeClients];
-            for (int i = 0; i < activeClients; i++) {
-                callbacks[i] = new RequestMetricsCallback(waitingReply[i],
-                    config.size(), activeEnd, metrics, failure);
-            }
-            while (System.nanoTime() < activeEnd) {
-                Throwable error = failure.get();
-                if (error != null) {
-                    throw new IllegalStateException(
-                        "spot reqrep callback failed", error);
-                }
-                boolean sendProgress = false;
-                boolean hasWaitingReply = false;
-                for (int i = 0; i < activeClients; i++) {
-                    if (waitingReply[i].get()) {
-                        hasWaitingReply = true;
+    private static void runRequests(
+        MeshNode node,
+        PerfMeshDispatch dispatch,
+        List<Spot> requesters,
+        PerfUtil.Config config,
+        PerfUtil.Metrics metrics) {
+        long activeEnd = System.nanoTime()
+            + Duration.ofSeconds(config.durationSeconds()).toNanos();
+        Map<OperationId, Integer> pending = new HashMap<>();
+        boolean[] busy = new boolean[requesters.size()];
+        while (System.nanoTime() < activeEnd || !pending.isEmpty()) {
+            if (System.nanoTime() < activeEnd) {
+                for (int i = 0; i < requesters.size(); i++) {
+                    if (busy[i]) {
                         continue;
                     }
-                    payloads[i] = PerfUtil.resetAndWritePayload(payloads[i], config.size(),
-                        (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime());
-                    waitingReply[i].set(true);
-                    if (submitRequest(requesters.get(i), payloads[i],
-                            requestTimeout, callbacks[i])) {
-                        sendProgress = true;
-                    } else {
-                        waitingReply[i].set(false);
+                    try (Message request = PerfUtil.payload(
+                        config.size(), (byte) PerfUtil.PHASE_ACTIVE, System.nanoTime())) {
+                        OperationId operation = requesters.get(i).requestToSpot(
+                            SERVER_NODE_RID,
+                            SERVER_SPOT_RID,
+                            1L,
+                            List.of(request),
+                            SendFlags.DONT_WAIT,
+                            Duration.ofSeconds(5));
+                        pending.put(operation, i);
+                        busy[i] = true;
+                    } catch (ZlinkSubmitException error) {
+                        if (!transientSubmit(error)) {
+                            throw error;
+                        }
                     }
                 }
-                if (!sendProgress && hasWaitingReply) {
-                    if (!waitForCompletion(completionPoller, completionEvents,
-                            activeZlinkTimer, true)) {
-                        break;
-                    }
-                } else if (sendProgress) {
-                    waitForCompletion(completionPoller, completionEvents,
-                        activeZlinkTimer, false);
+            }
+            int progressed = dispatch.drain((owner, record, parts) -> {
+                if (record.kind() != RecordKind.COMPLETION
+                    || record.operationKind() != OperationKind.SPOT_REQUEST) {
+                    return;
                 }
-            }
-            waitForOutstandingCallbacks(waitingReply, failure,
-                completionPoller, completionEvents, activeZlinkTimer);
-        } finally {
-            Message.closeAll(List.of(payloads));
-        }
-    }
-
-    private static boolean waitForCompletion(Poller poller, PollEvents events,
-                                             ZlinkTimer activeZlinkTimer,
-                                             boolean block) {
-        int count = poller.wait(events,
-            block ? Duration.ofMillis(-1) : Duration.ZERO);
-        for (int i = 0; i < count; i++) {
-            if (events.slot(i) == ACTIVE_DEADLINE_SLOT) {
-                activeZlinkTimer.recv();
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean submitRequest(Spot requester,
-                                         Message payload,
-                                         Duration requestTimeout,
-                                         RequestCallback callback) {
-        try {
-            return requester.requestToSpot(SERVER_NODE_RID, SERVER_SPOT_RID)
-                .message(payload)
-                .flags(SendFlags.DONT_WAIT)
-                .timeout(requestTimeout)
-                .submit(callback);
-        } catch (ZlinkSubmitException ex) {
-            if (isTransientSubmit(ex)) {
-                return false;
-            }
-            throw ex;
-        }
-    }
-
-    private static final class RequestMetricsCallback implements RequestCallback {
-        private final AtomicBoolean waitingReply;
-        private final int expectedSize;
-        private final long activeEnd;
-        private final PerfUtil.Metrics metrics;
-        private final AtomicReference<Throwable> failure;
-
-        private RequestMetricsCallback(AtomicBoolean waitingReply,
-                                       int expectedSize,
-                                       long activeEnd,
-                                       PerfUtil.Metrics metrics,
-                                       AtomicReference<Throwable> failure) {
-            this.waitingReply = waitingReply;
-            this.expectedSize = expectedSize;
-            this.activeEnd = activeEnd;
-            this.metrics = metrics;
-            this.failure = failure;
-        }
-
-        @Override
-        public void onComplete(RequestResult result, List<Message> parts) {
-            try {
-                if (result == RequestResult.OK
-                    && parts != null
-                    && !parts.isEmpty()
-                    && System.nanoTime() < activeEnd) {
-                    PerfUtil.Header reply = PerfUtil.decodeHeader(
-                        parts.get(0), expectedSize);
-                    if (reply.phase() == PerfUtil.PHASE_ACTIVE) {
-                        metrics.recordNanos(reply.latencyNanos() / 2L);
-                    }
+                Integer slot = pending.remove(record.operationId());
+                if (slot != null) {
+                    busy[slot] = false;
                 }
-            } catch (Throwable ex) {
-                failure.compareAndSet(null, ex);
-            } finally {
-                closeReplyParts(parts);
-                waitingReply.set(false);
-            }
-        }
-    }
-
-    private static void closeReplyParts(List<Message> parts) {
-        if (parts == null || parts.isEmpty()) {
-            return;
-        }
-        if (parts.size() == 1) {
-            parts.get(0).close();
-            return;
-        }
-        Message.closeAll(parts);
-    }
-
-    private static void waitForOutstandingCallbacks(AtomicBoolean[] waitingReply,
-                                                    AtomicReference<Throwable> failure,
-                                                    Poller completionPoller,
-                                                    PollEvents completionEvents,
-                                                    ZlinkTimer activeZlinkTimer) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(500);
-        activeZlinkTimer.start(Duration.ofMillis(500), 1);
-        while (System.nanoTime() < deadline) {
-            Throwable error = failure.get();
-            if (error != null) {
-                throw new IllegalStateException("spot reqrep callback failed",
-                    error);
-            }
-            boolean hasWaitingReply = false;
-            for (AtomicBoolean waiting : waitingReply) {
-                if (waiting.get()) {
-                    hasWaitingReply = true;
-                    break;
+                if (record.terminalResult() == 0 && !parts.isEmpty()
+                    && PerfUtil.recordActiveLatency(
+                        metrics, parts.get(0), config.size(), true)) {
+                    metrics.recordEvent();
                 }
+            });
+            if (progressed == 0) {
+                Thread.onSpinWait();
             }
-            if (!hasWaitingReply) {
-                return;
-            }
-            if (!waitForCompletion(completionPoller, completionEvents,
-                    activeZlinkTimer, true)) {
-                return;
+            if (System.nanoTime() >= activeEnd && pending.isEmpty()) {
+                break;
             }
         }
     }
 
-    private static int activeSpotSlotLimit(int clients, int msgSize) {
-        if (msgSize >= 131_072)
-            return Math.min(clients, 8);
-        if (msgSize >= 65_536)
-            return Math.min(clients, 32);
-        return clients;
+    private static boolean transientSubmit(ZlinkSubmitException error) {
+        return error.getResult() == SubmitResult.BACKPRESSURED
+            || error.getResult() == SubmitResult.NOT_CONNECTED;
     }
 
-    private static boolean isTransientSubmit(ZlinkSubmitException ex) {
-        SubmitResult result = ex.getResult();
-        return result == SubmitResult.BACKPRESSURED
-            || result == SubmitResult.NOT_CONNECTED;
-    }
-
-    private static boolean recvRoutedNoWait(Spot spot, Received received) {
-        try {
-            return spot.recvRouted(received, RecvFlags.DONT_WAIT);
-        } catch (ZlinkRecvException ex) {
-            if (ex.getResult() == RecvResult.NO_DATA
-                || ex.getResult() == RecvResult.BUSY) {
-                return false;
-            }
-            throw ex;
-        }
-    }
-
-    private static void awaitDirectControlStart(PerfSpotDirectControl control,
-                                                SpotNode dataNode,
-                                                PerfUtil.Config config,
-                                                String label,
-                                                int timeoutMs) {
+    private static void awaitDirectControlStart(
+        PerfSpotDirectControl control,
+        MeshNode dataNode,
+        PerfUtil.Config config,
+        String label,
+        int timeoutMs) {
         String expectedStart = "START," + config.size();
         try (BufferedReader reader = new BufferedReader(
                  new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
@@ -421,38 +213,34 @@ final class PerfMultiSpotReqRep {
             }
             PerfSpotDirectControl.ReadyState ready = control.waitReady(
                 config.size(), config.clients(), timeoutMs,
-                endpoint -> dataNode.connectPeer(normalizeClientEndpoint(endpoint,
-                    config.transport())));
+                endpoint -> dataNode.connectPeer(normalizeClientEndpoint(
+                    endpoint, config.transport())));
             if (ready.dataEndpoints().isEmpty()) {
                 throw new IllegalStateException(label + " missing data endpoint");
             }
-            waitForConnectedPeers(dataNode, ready.dataEndpoints().size(),
-                timeoutMs, label + " data link");
+            waitForConnectedPeers(
+                dataNode, ready.dataEndpoints().size(), timeoutMs, label + " data link");
             while ((line = reader.readLine()) != null) {
                 if (expectedStart.equals(line)) {
                     control.publishStart(config.size());
                     return;
                 }
             }
-        } catch (java.io.IOException ex) {
-            throw new IllegalStateException(label + " control read failed", ex);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException(label + " control read failed", error);
         }
         throw new IllegalStateException(label + " missing " + expectedStart);
     }
 
-    private static int spotServerReadyTimeoutMs(PerfUtil.Config config) {
-        int connectTimeoutMs = Math.max(1, config.connectReadyTimeoutMs());
-        return Math.max(connectTimeoutMs, Math.max(1000, connectTimeoutMs * 6));
-    }
-
-    private static void waitForConnectedPeers(SpotNode node,
-                                              int expectedPeers,
-                                              int timeoutMs,
-                                              String label) {
+    private static void waitForConnectedPeers(
+        MeshNode node,
+        int expectedPeers,
+        int timeoutMs,
+        String label) {
         long deadline = System.nanoTime()
             + Duration.ofMillis(Math.max(1, timeoutMs)).toNanos();
         while (System.nanoTime() < deadline) {
-            if (node.status().connectedPeerCount() >= expectedPeers) {
+            if (node.status().admittedPeerCount() >= expectedPeers) {
                 return;
             }
             sleepQuietly(10);
@@ -460,28 +248,26 @@ final class PerfMultiSpotReqRep {
         throw new IllegalStateException(label + " connected peer timeout");
     }
 
-    private static void settleAfterReady() {
-        int settleMs = PerfUtil.intEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", 1000);
-        if (settleMs > 0) {
-            sleepQuietly(settleMs);
-        }
+    private static int spotServerReadyTimeoutMs(PerfUtil.Config config) {
+        int connectTimeoutMs = Math.max(1, config.connectReadyTimeoutMs());
+        return Math.max(connectTimeoutMs, Math.max(1000, connectTimeoutMs * 6));
+    }
+
+    private static boolean secureTransport(String transport) {
+        return "tls".equals(transport) || "wss".equals(transport);
     }
 
     private static void sleepQuietly(int millis) {
         try {
             Thread.sleep(millis);
-        } catch (InterruptedException ex) {
+        } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("spot reqrep sleep interrupted", ex);
+            throw new IllegalStateException("mesh reqrep sleep interrupted", error);
         }
     }
 
-    private static String normalizeClientEndpoint(String endpoint,
-                                                  String transport) {
-        if (!"tls".equals(transport) && !"wss".equals(transport)) {
-            return endpoint;
-        }
-        return endpoint.replace("://127.0.0.1:", "://localhost:");
+    private static String normalizeClientEndpoint(String endpoint, String transport) {
+        return endpoint;
     }
 
     private static String derivedEndpoint(String endpoint, int portOffset) {
@@ -489,8 +275,7 @@ final class PerfMultiSpotReqRep {
         int colon = endpoint.lastIndexOf(':');
         if (schemeSep <= 0 || colon <= schemeSep + 2
             || colon == endpoint.length() - 1) {
-            throw new IllegalArgumentException(
-                "cannot derive endpoint from: " + endpoint);
+            throw new IllegalArgumentException("cannot derive endpoint from: " + endpoint);
         }
         int port = Integer.parseInt(endpoint.substring(colon + 1));
         return endpoint.substring(0, colon + 1) + (port + portOffset);

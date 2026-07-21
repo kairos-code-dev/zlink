@@ -5,7 +5,7 @@
 #include <zlink/stream_e2e_client.hpp>
 #include <zlink/stream_e2e_client/codecs/auto_codec.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
-#include <zlink/Contracts/Service/operation_contracts.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 
 #include "runtime/connector_runtime.hpp"
 #include "runtime/protocol/compression/lz4_compression_codec.hpp"
@@ -2570,6 +2570,32 @@ int main ()
     auto immediate = zlink::stream_connector::connector_factory_t::create (immediate_options);
     if (!immediate.connect ()) {
         return 9;
+    }
+    auto invalid_typed_wait =
+      immediate.wait_for<auto_payload_t> ("server.wait.invalid-json")
+        .timeout (std::chrono::milliseconds (100))
+        .to_future ("typed wait payload decode failed");
+    zlink::stream_connector::detail::connector_runtime_t::from (immediate)
+      .receive_packet (zlink::stream_connector::packet_t{
+        "server.wait.invalid-json",
+        {},
+        zlink::stream_connector::codec_t::json,
+        false,
+        zlink::message_t::from (std::string ("{not-json"))});
+    bool typed_wait_decode_failed = false;
+    try {
+        (void) invalid_typed_wait.get ();
+    }
+    catch (const std::runtime_error &) {
+        typed_wait_decode_failed = true;
+    }
+    catch (const std::future_error &) {
+        immediate.close ();
+        return 203;
+    }
+    if (!typed_wait_decode_failed) {
+        immediate.close ();
+        return 203;
     }
     auto immediate_coroutine = zlink::stream_e2e_client::use (immediate);
     auto immediate_none = immediate_coroutine.expect_none ("server.none.coroutine")

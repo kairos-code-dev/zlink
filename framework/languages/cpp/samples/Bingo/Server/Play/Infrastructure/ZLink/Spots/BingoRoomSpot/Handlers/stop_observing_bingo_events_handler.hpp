@@ -6,7 +6,7 @@
 namespace zlink::samples::bingo
 {
 
-inline stop_observing_bingo_events_res_t
+inline task_t<stop_observing_bingo_events_res_t>
 bingo_room_spot_t::stop_observing_events (
   const player_actor_t &actor,
   const spot_actor_request_context_t &,
@@ -22,10 +22,11 @@ bingo_room_spot_t::stop_observing_events (
     if (observer == observers.end ()) {
         throw std::runtime_error ("actor has no observer subscription in this room");
     }
-    observers.erase (observer);
-    (void) _context.leave_actor (
+    const auto returned = co_await _context.leave_actor (
       actor_ref_for (actor), const_cast<player_actor_t &> (actor));
-    return {true, std::string (actor.actor.node_rid.value ())};
+    record_observer_returned_to_entry_spot (actor);
+    co_return stop_observing_bingo_events_res_t{
+      true, std::string (returned.node_rid ().value ())};
 }
 
 } // namespace zlink::samples::bingo

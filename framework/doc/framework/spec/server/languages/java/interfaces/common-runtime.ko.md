@@ -1,0 +1,254 @@
+# Java 공통 runtime 공개 인터페이스
+
+[인터페이스 목차](README.ko.md) · [Host 종료 계약](../../../54-graceful-drain-handoff.ko.md)
+
+```java
+public enum ZLinkFrameworkRuntimeState {
+    PREPARING(0), SERVING(1), DRAINING(2), STOPPED(3), ERROR(4);
+    private final int wireValue;
+    ZLinkFrameworkRuntimeState(int wireValue) { this.wireValue = wireValue; }
+    public int wireValue() { return wireValue; }
+}
+
+public enum ZLinkTerminationIntent {
+    RETIRE(0), SHUTDOWN(1);
+    private final int wireValue;
+    ZLinkTerminationIntent(int wireValue) { this.wireValue = wireValue; }
+    public int wireValue() { return wireValue; }
+}
+
+public enum ZLinkTerminationOutcome {
+    STOPPED(0), BLOCKED(1), FORCE_STOPPED(2);
+    private final int wireValue;
+    ZLinkTerminationOutcome(int wireValue) { this.wireValue = wireValue; }
+    public int wireValue() { return wireValue; }
+}
+
+public enum ZLinkTerminationReason {
+    NONE(0), TARGET_UNAVAILABLE(1), STORE_UNAVAILABLE(2),
+    TRANSFER_DISABLED(3), STATE_INCOMPATIBLE(4),
+    DEADLINE_EXCEEDED(5), TRANSFER_FAILED(6),
+    TEARDOWN_FAILED(7), RUNTIME_NOT_READY(8);
+    private final int wireValue;
+    ZLinkTerminationReason(int wireValue) { this.wireValue = wireValue; }
+    public int wireValue() { return wireValue; }
+}
+
+public record ZLinkTerminationResult(
+    ZLinkTerminationIntent effectiveIntent,
+    ZLinkTerminationOutcome outcome,
+    ZLinkTerminationReason reason) {}
+
+public final class ZLinkFrameworkRuntime
+    implements AutoCloseable, ZLinkMessageFlowControl, ZLinkDrainControl, ZLinkRuntimeQuery {
+    public static final Duration DEFAULT_TERMINATION_DEADLINE = Duration.ofSeconds(30);
+
+    public ZLinkClient client();
+    public void setMessageFlowMode(ZLinkMessageFlowLogMode mode);
+    public ZLinkMessageFlowLogMode messageFlowMode();
+    public ZLinkFanoutClient fanout();
+    public ZLinkRouteClient route();
+    public ZLinkRouteMeshRuntime routeMeshRuntime();
+    public ZLinkClientServerRuntime clientServerRuntime();
+    public ZLinkFanoutRuntime fanoutRuntime();
+    public ZLinkSpotManager spotManager();
+    public ZLinkSpotOutbound spotOutbound();
+    public ZLinkSpotPublisherClient spotPublisherClient();
+    public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery();
+    public ZLinkAllocatedRoutingIdProvider allocatedRoutingIds();
+    public ZLinkLocationReadiness locationReadiness();
+    public boolean stopSpotRuntime();
+    public ZLinkActorManager actorManager();
+    public ZLinkActorDirectory actorDirectory();
+    public ZLinkActorClient actorClient();
+    public SpotHandleResolver spotHandleResolver();
+    public ActorSpotHandleResolver actorSpotHandleResolver();
+    public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid);
+
+    @Deprecated(since = "11.0", forRemoval = false)
+    public CompletionStage<ZLinkTerminationResult> drain();
+    @Deprecated(since = "11.0", forRemoval = false)
+    public CompletionStage<ZLinkTerminationResult> drain(Duration deadline);
+    @Deprecated(since = "11.0", forRemoval = false)
+    public CompletionStage<ZLinkTerminationResult> awaitDrained();
+    public boolean isReady();
+    public ZLinkFrameworkRuntimeState state();
+    public ZLinkFrameworkRuntimeSnapshot snapshot();
+    public Flow.Publisher<ZLinkFrameworkRuntimeEvent> observe(int capacity);
+    public CompletionStage<ZLinkTerminationResult> retire();
+    public CompletionStage<ZLinkTerminationResult> retire(Duration deadline);
+    public CompletionStage<ZLinkTerminationResult> shutdown();
+    public CompletionStage<ZLinkTerminationResult> shutdown(Duration deadline);
+    public void close();
+}
+```
+
+`retire()`는 continuity preflight와 필요한 transfer를 수행한 뒤 host를 종료한다. User Spot이 하나라도
+남아 있거나 `Disabled` policy object를 옮겨야 하면 admission을 변경하지 않고
+`Blocked/TransferDisabled`로 끝난다. `shutdown()`은 새 transfer를 시작하지 않는다. 두 operation 모두
+숨은 remote `GetOrCreate`를 수행하지 않으며, waiter cancellation은 이미 시작한 shared operation을
+취소하지 않는다. 각 호출은 shared operation 결과를 따르는 전용 `CompletableFuture` view를 반환한다.
+`toCompletableFuture().cancel(...)`은 그 waiter만 해제하며 host operation은 계속 진행되고 다른 waiter는 같은
+terminal 결과를 받는다. 별도 public cancellation token이나 host operation 취소 member를 추가하지 않는다.
+
+`Blocked/DeadlineExceeded`는 seal과 첫 `CAPTURED` commit 전의 preflight가 deadline 안에 끝나지 않은
+결과다. 이 경우 host state와 admission은 그대로 유지한다. Seal 뒤 bounded teardown이 deadline을 넘으면
+`ForceStopped/DeadlineExceeded`를 반환한다. 두 결과는 같은 reason을 사용하지만 phase와 side effect가
+다르며 enum을 추가하지 않는다.
+
+`ZLinkFrameworkRuntime`은 RouteMesh, ClientServer와 automatic fanout의 monitoring view를 각각 하나씩
+소유한다. 세 accessor는 runtime 수명 동안 같은 객체를 반환하며 호출할 때 새 adapter를 만들지 않는다.
+Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환한 객체와 reference identity가 같다.
+
+Spring starter는 `ZLinkFrameworkRuntime` bean을 제공한다. Host 종료의 정본은 `retire()`와 `shutdown()`이다.
+Host-level `drain()`과 `awaitDrained()`는 source compatibility를 위한 deprecated facade이며 같은 shared
+`shutdown()`의 `ZLinkTerminationResult`를 반환한다. MeshName을 받는 partial termination operation은 없다.
+`SmartLifecycle`은 `shutdown()`을 사용하고 운영 maintenance endpoint는 `retire()`를 사용한다.
+
+## Exact public member `javap` inventory
+
+아래 선언은 `javap`가 출력하는 binary signature 형식으로 Java public type과 member를 고정한다.
+
+```java
+public final class systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState extends java.lang.Enum<systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState> {
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState PREPARING;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState SERVING;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState DRAINING;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState STOPPED;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState ERROR;
+  public int wireValue();
+}
+public final class systems.zlink.framework.runtime.host.ZLinkTerminationIntent extends java.lang.Enum<systems.zlink.framework.runtime.host.ZLinkTerminationIntent> {
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationIntent RETIRE;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationIntent SHUTDOWN;
+  public int wireValue();
+}
+public final class systems.zlink.framework.runtime.host.ZLinkTerminationOutcome extends java.lang.Enum<systems.zlink.framework.runtime.host.ZLinkTerminationOutcome> {
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationOutcome STOPPED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationOutcome BLOCKED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationOutcome FORCE_STOPPED;
+  public int wireValue();
+}
+public final class systems.zlink.framework.runtime.host.ZLinkTerminationReason extends java.lang.Enum<systems.zlink.framework.runtime.host.ZLinkTerminationReason> {
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason NONE;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TARGET_UNAVAILABLE;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason STORE_UNAVAILABLE;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TRANSFER_DISABLED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason STATE_INCOMPATIBLE;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason DEADLINE_EXCEEDED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TRANSFER_FAILED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TEARDOWN_FAILED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RUNTIME_NOT_READY;
+  public int wireValue();
+}
+public final class systems.zlink.framework.runtime.host.ZLinkTerminationResult extends java.lang.Record {
+  public systems.zlink.framework.runtime.host.ZLinkTerminationResult(systems.zlink.framework.runtime.host.ZLinkTerminationIntent, systems.zlink.framework.runtime.host.ZLinkTerminationOutcome, systems.zlink.framework.runtime.host.ZLinkTerminationReason);
+  public systems.zlink.framework.runtime.host.ZLinkTerminationIntent effectiveIntent();
+  public systems.zlink.framework.runtime.host.ZLinkTerminationOutcome outcome();
+  public systems.zlink.framework.runtime.host.ZLinkTerminationReason reason();
+}
+public interface systems.zlink.framework.ZLinkHandlerContext {
+  public abstract java.util.Optional<java.lang.String> channelName();
+  public abstract java.util.Optional<java.lang.String> packetName();
+  public abstract java.util.Optional<java.lang.String> contentType();
+  public abstract java.util.Map<java.lang.String, java.lang.String> metadata();
+}
+public interface systems.zlink.framework.ZLinkHandlerFilter {
+  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkInvocationContext, systems.zlink.framework.ZLinkNext<T>);
+}
+public interface systems.zlink.framework.ZLinkInvocationContext extends systems.zlink.framework.ZLinkHandlerContext {
+  public abstract java.util.Optional<java.lang.Object> request();
+}
+public interface systems.zlink.framework.ZLinkMessageSerializer {
+  public abstract <T> systems.zlink.framework.ZLinkEncodedPayload serialize(T);
+  public abstract <T> T deserialize(systems.zlink.framework.ZLinkEncodedPayload, java.lang.Class<T>);
+  public default void prepare(java.lang.Class<?>);
+}
+public interface systems.zlink.framework.ZLinkNext<T> {
+  public abstract java.util.concurrent.CompletionStage<T> invoke();
+}
+public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extends java.lang.Enum<systems.zlink.framework.errors.ZLinkFrameworkErrorKind> {
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_ROUTE_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_CREATE_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_ALREADY_EXISTS;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_TYPE_MISMATCH;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_CREATE_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_ROUTE_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_TYPE_MISMATCH;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_SESSION_NOT_BOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind HANDLER_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTE_HANDLER_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_DISPATCH_HANDLER_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind PAYLOAD_DECODE_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTE_NOT_CONNECTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_TARGET_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_REJECTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_PROTOCOL_ERROR;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind REQUEST_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_QUEUE_FULL;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_TIMED_OUT;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_FAILED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_LOCATION_STALE;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_CREATE_REJECTED;
+  public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
+  public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
+  public int value();
+  public boolean retriable();
+  public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind fromValue(int);
+}
+public class systems.zlink.framework.errors.ZLinkFrameworkException extends java.lang.RuntimeException {
+  public systems.zlink.framework.errors.ZLinkFrameworkException(java.lang.String);
+  public systems.zlink.framework.errors.ZLinkFrameworkException(java.lang.String, java.lang.Throwable);
+  public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String);
+  public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String, java.lang.Throwable);
+  public systems.zlink.framework.errors.ZLinkFrameworkException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String, java.lang.Boolean, java.lang.Throwable);
+  public systems.zlink.framework.errors.ZLinkFrameworkErrorKind kind();
+  public boolean retriable();
+}
+```
+
+## Serializer와 오류 public signature
+
+```java
+public final class systems.zlink.framework.ZLinkEncodedPayload {
+  public static systems.zlink.framework.ZLinkEncodedPayload from(byte[]);
+  public byte[] bytes();
+}
+public final class systems.zlink.framework.errors.ZLinkConfigurationException extends systems.zlink.framework.errors.ZLinkFrameworkException {
+  public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String);
+  public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String, java.lang.Throwable);
+}
+public final class systems.zlink.framework.errors.ZLinkOperationCanceledException extends systems.zlink.framework.errors.ZLinkFrameworkException {
+  public systems.zlink.framework.errors.ZLinkOperationCanceledException(java.lang.String);
+}
+public class systems.zlink.framework.errors.ZLinkWorkerFailedException extends systems.zlink.framework.errors.ZLinkFrameworkException {
+  public systems.zlink.framework.errors.ZLinkWorkerFailedException(java.lang.String, java.lang.Throwable);
+}
+public class systems.zlink.framework.errors.ZLinkWorkerQueueFullException extends systems.zlink.framework.errors.ZLinkFrameworkException {
+  public systems.zlink.framework.errors.ZLinkWorkerQueueFullException(java.lang.String);
+}
+public class systems.zlink.framework.errors.ZLinkWorkerTimeoutException extends systems.zlink.framework.errors.ZLinkFrameworkException {
+  public systems.zlink.framework.errors.ZLinkWorkerTimeoutException(java.lang.String);
+}
+public final class systems.zlink.framework.messaging.ZLinkMessage {
+  public static systems.zlink.framework.messaging.ZLinkMessage empty();
+  public static systems.zlink.framework.messaging.ZLinkMessage of(java.lang.Object);
+  public static systems.zlink.framework.messaging.ZLinkMessage fromEncoded(systems.zlink.framework.ZLinkEncodedPayload, systems.zlink.framework.ZLinkMessageSerializer);
+  public boolean isEmpty();
+  public <T> T decode(java.lang.Class<T>);
+  public systems.zlink.framework.ZLinkEncodedPayload toEncodedPayload(systems.zlink.framework.ZLinkMessageSerializer);
+}
+public final class systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec implements systems.zlink.framework.configuration.ZLinkCodecExtension,systems.zlink.stream.connector.ZLinkStreamTypedCodec {
+  public static systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec defaultCodec();
+  public static systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec forPayloadTypes(java.util.function.Predicate<java.lang.Class<?>>);
+  public <T> systems.zlink.stream.connector.ZLinkStreamEncodedPayload encode(java.lang.String, T);
+  public <T> T decode(systems.zlink.stream.connector.ZLinkStreamEncodedPayload, java.lang.Class<T>);
+  public void register(systems.zlink.framework.configuration.ZLinkCodecRegistrar);
+}
+public final class systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec implements systems.zlink.framework.configuration.ZLinkCodecExtension,systems.zlink.stream.connector.ZLinkStreamTypedCodec {
+  public static systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec defaultCodec();
+  public <T> systems.zlink.stream.connector.ZLinkStreamEncodedPayload encode(java.lang.String, T);
+  public <T> T decode(systems.zlink.stream.connector.ZLinkStreamEncodedPayload, java.lang.Class<T>);
+  public void register(systems.zlink.framework.configuration.ZLinkCodecRegistrar);
+}
+```

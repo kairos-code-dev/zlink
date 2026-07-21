@@ -102,6 +102,7 @@ final class ZLinkChannelRequestSubmitter {
                 int errno = submit.getNativeErrno();
                 return submit.getResult() == SubmitResult.BACKPRESSURED
                     || submit.getResult() == SubmitResult.NOT_CONNECTED
+                    || submit.getResult() == SubmitResult.NOT_FOUND
                     || errno == ERRNO_EHOSTUNREACH
                     || errno == ERRNO_EHOSTUNREACH_WIN
                     || errno == ERRNO_ENETUNREACH

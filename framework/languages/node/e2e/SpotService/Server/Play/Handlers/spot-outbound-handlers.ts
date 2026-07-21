@@ -39,7 +39,7 @@ export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserS
         spotServicePacket(ChannelNotify, { marker: notifyMarker }))
       .submit();
     await spot.context.outbound
-      .publish(SpotServiceNames.spotEventTopic,
+      .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic,
         spotServicePacket(SpotMsg, { marker: 'sm-c2-publish' }))
       .submit();
     this.evidence.add(

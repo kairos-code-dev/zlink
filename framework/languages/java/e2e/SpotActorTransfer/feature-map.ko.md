@@ -30,5 +30,5 @@
 
 ## 남은 검증 갭
 
-- `ST-A1`의 callback과 location commit 순서는 E2E-JV-31에서 추적한다. 성공 응답 marker가 있다는
+- 위 `ST-A1`의 callback과 location commit 순서는 E2E-JV-31에서 추적한다. 성공 응답 marker가 있다는
   사실만으로 10.0.0 순서 계약을 완료로 판정하지 않는다.

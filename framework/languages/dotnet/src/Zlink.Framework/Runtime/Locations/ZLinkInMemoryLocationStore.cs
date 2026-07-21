@@ -11,6 +11,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed partial class ZLinkInMemoryLocationStore :
     IZLinkLocationStore,
+    IZLinkInstanceSpotLocationStore,
     IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore
 {
@@ -19,6 +20,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
     private readonly RowTable<ZLinkMeshNodeDescriptor> _meshNodes = new();
     private readonly RowTable<ZLinkSpotLocation> _spots = new();
+    private readonly RowTable<InstanceSpotLocation> _instanceSpots = new();
     private readonly RowTable<ZLinkActorLocation> _actors = new();
     private readonly Dictionary<ZLinkLocationChangeStampScope, ulong> _stamps = [];
     private readonly Dictionary<string, RoutingIdAllocationGroup> _routingIdGroups =
@@ -186,6 +188,9 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 _spots, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Spot,
                 static row => row.MeshName);
             removed += RemoveByOwnerNoLock(
+                _instanceSpots, ownerId, static row => row.OwnerId,
+                ZLinkLocationChangeScopeKind.Spot, static row => row.MeshName);
+            removed += RemoveByOwnerNoLock(
                 _actors, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Actor,
                 static row => row.MeshName);
             return ValueTask.FromResult(removed);
@@ -335,7 +340,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
 
     private static IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> NormalizeMembers(
         IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> members) =>
-        members.OrderBy(static member => member.ChannelName, StringComparer.Ordinal)
+        members.OrderBy(static member => member.MeshName, StringComparer.Ordinal)
             .ThenBy(static member => member.RoutingIdPrefix, StringComparer.Ordinal)
             .ToArray();
 

@@ -4,16 +4,18 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimer
-import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.play.domain.tictactoe.TicTacToeMatch
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.actors.PlayActor
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.PlayActorLeaveGameHandler
+import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.PlayActorPlaceMarkHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler
 import systems.zlink.samples.kotlin.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameTimerHandler
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.GameState
@@ -39,6 +41,11 @@ class TicTacToeGame(
     private var created = false
 
     override fun context(): ZLinkSpotContext = context
+
+    override fun configure() {
+        context.handlers().addHandler<PlayActorLeaveGameHandler>()
+        context.handlers().addHandler<PlayActorPlaceMarkHandler>()
+    }
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         createdHandler.handle(this, request)
@@ -78,7 +85,7 @@ class TicTacToeGame(
             "game-tick",
             gameTickPeriod,
             TicTacToeGameTimerHandler::class.java,
-            ZLinkTimerOptions(),
+            null,
         ).await()
     }
 
@@ -212,6 +219,7 @@ class TicTacToeGame(
         }
         context.outbound()
             .publish(
+                SampleNames.PlayNode,
                 SampleNames.PlayerMilestoneTopic,
                 PlayerWinMilestoneMsg(
                     roomId = after.roomId,

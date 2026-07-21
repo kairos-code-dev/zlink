@@ -9,7 +9,6 @@ import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actor
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiReq
@@ -17,7 +16,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoApiRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.MatchBingoRes
 
-class MatchBingoActorHandler(private val topology: SampleTopology) : ZLinkSuspendingEntrySpotActorRequestHandler<
+class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
     BingoEntrySpot,
     PlayerActor,
     MatchBingoReq,
@@ -35,7 +34,7 @@ class MatchBingoActorHandler(private val topology: SampleTopology) : ZLinkSuspen
                 actor.actorId(),
                 actor.displayName,
                 request.mode,
-                topology.selectedPlayNodeRid(),
+                entrySpot.context().nodeRid().toString(),
             ),
         )
             .timeout(SampleTimings.RequestTimeout)

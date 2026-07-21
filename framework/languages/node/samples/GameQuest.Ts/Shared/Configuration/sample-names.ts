@@ -11,6 +11,14 @@ function questMissionRouteRid(playerId: string): string {
   return questMissionInstanceRid(questMissionOwnerInstanceId(playerId));
 }
 
+function questMissionRouteChannel(playerId: string): string {
+  return questMissionInstanceChannel(questMissionOwnerInstanceId(playerId));
+}
+
+function questMissionInstanceChannel(instanceId: 'mission-a' | 'mission-b'): string {
+  return `${SampleNames.questMissionRouteChannel}.${instanceId}`;
+}
+
 function questMissionInstanceRid(instanceId: 'mission-a' | 'mission-b'): string {
   return instanceId === 'mission-a' ? 'gamequest-mission-a' : 'gamequest-mission-b';
 }
@@ -33,6 +41,8 @@ function ownerIndex(playerId: string): number {
 
 export {
   SampleNames,
+  questMissionRouteChannel,
+  questMissionInstanceChannel,
   questMissionRouteRid,
   questMissionInstanceRid,
   questMissionOwnerInstanceId,

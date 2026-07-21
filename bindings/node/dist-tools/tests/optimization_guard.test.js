@@ -278,6 +278,16 @@ test('node binding does not expose borrowed buffer send helpers', () => {
     assert.doesNotMatch(body, /socketSendRoutingBorrowedNoWaitResult/);
     assert.doesNotMatch(body, /init_msg_borrowed_from_bytes/);
 });
+test('native stream and MeshNode ready callbacks never block Core I/O threads on JS', () => {
+    const streamBody = fs.readFileSync(path.join(NATIVE_SRC, 'addon_core.cc'), 'utf8');
+    const meshBody = fs.readFileSync(path.join(NATIVE_SRC, 'addon_mesh_service.cc'), 'utf8');
+    const streamCallback = streamBody.slice(streamBody.indexOf('void stream_on_packet_slot'), streamBody.indexOf('typedef void (*stream_slot_packet_callback_t'));
+    const readyCallback = meshBody.slice(meshBody.indexOf('zlink_mesh_ready_domain_mask_t ready_handler_bridge'), meshBody.indexOf('void ready_tsfn_finalize'));
+    assert.match(streamCallback, /napi_tsfn_nonblocking/);
+    assert.doesNotMatch(streamCallback, /napi_tsfn_blocking/);
+    assert.match(readyCallback, /napi_tsfn_nonblocking/);
+    assert.doesNotMatch(readyCallback, /napi_tsfn_blocking|condition_variable|\.wait\s*\(/);
+});
 test('native addon registration stays limited to runtime-owned methods', () => {
     const body = readNativeRegistrationSources();
     const removedExports = [

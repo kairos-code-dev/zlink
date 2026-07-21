@@ -9,9 +9,12 @@ import java.util.List;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
@@ -21,6 +24,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ZLinkSpotManager spots;
     private final ZLinkRouteClient routes;
     private final SpotHandleResolver spotHandles;
+    private final ZLinkRouteMeshRuntime meshRuntime;
+    private final ZLinkSpotLocationStore spotLocations;
     private HttpServer server;
     private boolean running;
 
@@ -30,13 +35,17 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         String endpoint,
         ZLinkSpotManager spots,
         ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles) {
+        SpotHandleResolver spotHandles,
+        ZLinkRouteMeshRuntime meshRuntime,
+        ZLinkSpotLocationStore spotLocations) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.spots = spots;
         this.routes = routes;
         this.spotHandles = spotHandles;
+        this.meshRuntime = meshRuntime;
+        this.spotLocations = spotLocations;
     }
 
     @Override
@@ -52,6 +61,23 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);
                 exchange.close();
+            });
+            server.createContext("/topology/ready", exchange -> {
+                int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
+                long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
+                    .filter(peer -> peer.ready())
+                    .count();
+                write(exchange, ready >= expected ? 200 : 503, ready + "\n");
+            });
+            server.createContext("/location/spot-owner", exchange -> {
+                String spotRid = queryValue(exchange.getRequestURI(), "spotRid");
+                var location = spotLocations.resolveSpot(new ZLinkSpotLocationKey(
+                        Contracts.SPOT_MESH,
+                        RoutingId.from(spotRid)))
+                    .toCompletableFuture()
+                    .join();
+                write(exchange, location == null ? 404 : 200,
+                    location == null ? "absent\n" : location.ownerId() + "\n");
             });
             server.createContext("/evidence", exchange -> {
                 byte[] body = json.writeValueAsBytes(state.snapshot());

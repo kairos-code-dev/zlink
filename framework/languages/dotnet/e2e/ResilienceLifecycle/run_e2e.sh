@@ -17,9 +17,22 @@ fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
+
+if [[ "$SCENARIO" == "all" ]]; then
+  scenarios=(
+    RL-A1 RL-A2 RL-A3 RL-A4 RL-A5
+    RL-B1 RL-B2 RL-B3 RL-B4 RL-B5 RL-B6
+    RL-C1 RL-C2 RL-C3 RL-C4
+    RL-D1 RL-D2 RL-D3 RL-D4 RL-D5
+  )
+  for index in "${!scenarios[@]}"; do
+    "$0" "${scenarios[$index]}"
+  done
+  echo "resilience-lifecycle e2e result=passed"
+  exit 0
+fi
+
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -35,34 +48,25 @@ PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/ResilienceLifecycle.Provider.csproj"
 CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/ResilienceLifecycle.Consumer.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ResilienceLifecycle.Client.csproj"
 
-pick_port() {
-  python3 - <<'PY'
+pick_ports() {
+  local count="$1"
+  python3 - "$count" <<'PY'
 import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
+import sys
+
+sockets = []
+try:
+    for _ in range(int(sys.argv[1])):
+        current = socket.socket()
+        current.bind(("127.0.0.1", 0))
+        sockets.append(current)
+    for current in sockets:
+        print(current.getsockname()[1])
+finally:
+    for current in sockets:
+        current.close()
 PY
 }
-
-API_A_HTTP_PORT="$(pick_port)"
-API_B_HTTP_PORT="$(pick_port)"
-CONSUMER_HTTP_PORT="$(pick_port)"
-API_A_PORT="$(pick_port)"
-API_B_PORT="$(pick_port)"
-API_B_REMAP_HTTP_PORT="$(pick_port)"
-API_B_REMAP_PORT="$(pick_port)"
-API_B_GREEN_HTTP_PORT="$(pick_port)"
-API_B_GREEN_PORT="$(pick_port)"
-
-API_A="tcp://127.0.0.1:$API_A_PORT"
-API_B="tcp://127.0.0.1:$API_B_PORT"
-API_A_URL="http://127.0.0.1:$API_A_HTTP_PORT"
-API_B_URL="http://127.0.0.1:$API_B_HTTP_PORT"
-API_B_REMAP_URL="http://127.0.0.1:$API_B_REMAP_HTTP_PORT"
-API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
-API_B_GREEN_URL="http://127.0.0.1:$API_B_GREEN_HTTP_PORT"
-API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
 pids=()
 cleanup() {
@@ -145,11 +149,14 @@ PY
 start_server() {
   local name="$1"
   local project="$2"
+  local project_dir application
   shift
   shift
   local config="$CONFIG_DIR/$name.json"
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
-  setsid dotnet run --no-build --project "$project" -- --config "$config" \
+  project_dir="$(dirname "$project")"
+  application="$project_dir/bin/Debug/net8.0/$(basename "${project%.csproj}").dll"
+  setsid dotnet "$application" --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -173,6 +180,33 @@ zlink_redis_start_scoped_assign \
   "$LOG_DIR"
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="resilience-e2e:$$:"
+
+# Select all role ports in one operation so this process cannot receive a
+# duplicate ephemeral port. Do this after build and Redis startup to keep the
+# unavoidable close-to-bind interval as short as possible under parallel E2E.
+mapfile -t ROLE_PORTS < <(pick_ports 9)
+if [[ "${#ROLE_PORTS[@]}" -ne 9 ]]; then
+  echo "Failed to allocate the ResilienceLifecycle role ports." >&2
+  exit 1
+fi
+API_A_HTTP_PORT="${ROLE_PORTS[0]}"
+API_B_HTTP_PORT="${ROLE_PORTS[1]}"
+CONSUMER_HTTP_PORT="${ROLE_PORTS[2]}"
+API_A_PORT="${ROLE_PORTS[3]}"
+API_B_PORT="${ROLE_PORTS[4]}"
+API_B_REMAP_HTTP_PORT="${ROLE_PORTS[5]}"
+API_B_REMAP_PORT="${ROLE_PORTS[6]}"
+API_B_GREEN_HTTP_PORT="${ROLE_PORTS[7]}"
+API_B_GREEN_PORT="${ROLE_PORTS[8]}"
+
+API_A="tcp://127.0.0.1:$API_A_PORT"
+API_B="tcp://127.0.0.1:$API_B_PORT"
+API_A_URL="http://127.0.0.1:$API_A_HTTP_PORT"
+API_B_URL="http://127.0.0.1:$API_B_HTTP_PORT"
+API_B_REMAP_URL="http://127.0.0.1:$API_B_REMAP_HTTP_PORT"
+API_B_REMAP="tcp://127.0.0.1:$API_B_REMAP_PORT"
+API_B_GREEN_URL="http://127.0.0.1:$API_B_GREEN_HTTP_PORT"
+API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 
 start_server api-a "$PROVIDER_PROJECT" \
   --rid api-a \
@@ -205,8 +239,6 @@ start_server consumer "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
-sleep "$ROUTE_SETTLE_SECONDS"
-
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
@@ -229,7 +261,8 @@ python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
   --provider-project "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO"
-dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
+CLIENT_APPLICATION="$ROOT_DIR/Client/bin/Debug/net8.0/ResilienceLifecycle.Client.dll"
+dotnet "$CLIENT_APPLICATION" --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

@@ -8,6 +8,7 @@ import type { BingoRewardAcquiredEvent } from '../../../../../../../Shared/Contr
 @Injectable()
 @zlinkSpotSubscriptionHandler({
   spot: () => BingoRoomSpot,
+  channelName: SampleNames.roomRewardChannel,
   topic: SampleNames.roomRewardTopic
 })
 class BingoRewardAcquiredEventHandler

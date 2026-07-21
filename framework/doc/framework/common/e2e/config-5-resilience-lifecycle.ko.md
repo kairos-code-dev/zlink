@@ -187,7 +187,7 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 제외되고, 원래 값으로 복원하면 다시 대상에 포함되는가.
 
 - 절차: provider 2대로 분산 중 한 노드의 admin 경로에서
-  `IZLinkRouteMeshRuntimeOptions.Channel(meshName, channelName).Weight = 0`으로 바꾼다.
+  `IZLinkRouteMeshRuntimeOptions.Channel(channelName).Weight = 0`으로 바꾼다.
   local getter와 descriptor `ChannelWeights[channelName]`가 weight 0을 반영한 뒤 consumer가 request를 보내 실제 전파를
   확인한다. 이후 같은 노드를 `Weight = 100`으로 복원하고 다시 실제 트래픽으로 반영을 확인한다.
 - 검증: weight 0 전파를 확인한 뒤의 검증 구간에는 신규 request가 해당 노드 evidence에 기록되지 않고
@@ -210,7 +210,7 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 끝나며, 전파 완료 뒤의 신규 request만 해당 provider의 부하 분산 대상에서 제외되는가.
 
 - 절차: provider가 느린 handler(`value=="slow"`)로 request를 처리하고 있다는 handler-start evidence를
-  확인한 뒤 그 provider의 `Channel(meshName, channelName).Weight = 0`으로 바꾼다. local getter와
+  확인한 뒤 그 provider의 `Channel(channelName).Weight = 0`으로 바꾼다. local getter와
   descriptor `ChannelWeights` 반영 뒤 신규 request를
   계속 보내 실제 전파 완료를 확인한다.
 - 검증: weight 변경 전에 시작한 request는 끝까지 완료되어 reply가 정상 수신된다. 전파 완료 뒤의 신규
@@ -292,7 +292,7 @@ generation으로 topology가 다시 수렴하며 같은 RID의 유효한 descrip
   resolve는 store에 의존하지만 수립된 연결 자체는 store와 독립 — fail-static). store 다운 중 read
   표면은 store 장애를 not found가 아니라 infrastructure error로 구분해 반환한다. store 복구 후 각
   노드가 owner lease와 MeshNode descriptor를 다시 upsert하고, MeshNode runtime snapshot이 정상화되며 follow-up
-  request가 성공한다. (재등록 순서·heartbeat 유예·grace 초과 같은 장애 매트릭스 정밀 검증은
+  request가 성공한다. (재등록 순서·owner lease renew 유예·grace 초과 같은 장애 매트릭스 정밀 검증은
   Config 6가 담당한다 — 여기서는 "수립된 연결의 store 독립 + 복구 후 정상화"만 본다.)
 - 세부 동작: admitted peer 연결은 store와 독립(fail-static) + 복구 후 owner lease/descriptor 재등록·재조회.
 
@@ -362,8 +362,216 @@ dispatch 오류 marker가 남는가.
   RM-B2, RL-B4, RL-B5와 RL-C1 결과로 별도 판정한다.
 - 세부 동작: 재현 가능한 기준 부하의 비차단 soak 관측.
 
+### Track E — service connection liveness
+
+#### RL-E1 orderly disconnect 즉시 반영
+
+우선순위: `P0`
+
+**검증 질문:** RouteMesh와 ClientServer의 FIN, RST 또는 정상 process 종료가 15초 liveness deadline을
+기다리지 않고 ready selection에서 제외되는가.
+
+- 절차: ready peer와 server를 각각 정상 종료하고 RST fault도 별도 실행에서 주입한다. Public runtime
+  snapshot과 event로 ready 전이를 관찰한다.
+- 검증: raw monitor event를 관측한 runtime turn에서 해당 connection을 selection에서 제외한다. Harness의
+  5초 observation budget은 process·monitor 전달을 확인하는 상한일 뿐 runtime이 추가로 기다리는 시간이 아니다.
+- 세부 동작: raw disconnect와 half-open deadline 분리.
+
+#### RL-E2 RouteMesh·ClientServer half-open 판정
+
+우선순위: `P0`
+
+**검증 질문:** transport disconnect event가 없는 packet blackhole을 application traffic과 독립된 Framework
+probe·ACK round trip으로 판정하는가.
+
+- 절차: RouteMesh peer와 ClientServer server 연결에 fault proxy를 두고 한 physical connection의 packet을
+  양방향 또는 A→B 한 방향으로 차단한다. 단방향 case에서는 B→A application traffic을 1초마다 계속 보내
+  inbound activity가 존재하도록 한다. 같은 topology의 다른 ready target은 정상 통신을 유지한다.
+- 검증: Application traffic과 관계없이 5초마다 infrastructure `livenessProbe`가 진행된다. Current connection의
+  matching ACK가 15초 동안 없으면 reverse traffic이 계속되어도 차단한 connection만 not-ready가 된다.
+  Probe와 ACK는 handler, application mailbox와 message-flow application event에 나타나지 않는다. 다른 ready
+  target과 host state는 유지된다.
+- 세부 동작: topology 공통 5초/15초 profile과 peer failure 격리.
+
+#### RL-E3 connection lifetime과 stale ACK
+
+우선순위: `P0`
+
+**검증 질문:** probe ID와 ACK가 같은 admitted physical connection에만 적용되고 reconnect 전 connection의
+늦은 ACK가 새 deadline을 갱신하지 않는가.
+
+- 절차: protocol fixture에서 non-zero probe ID를 보낸 뒤 connection을 교체하고 이전 connection의 같은 ID
+  ACK를 지연 전달한다. 새 connection에는 별도 probe ID를 사용한다. 한 connection의 ACK를 15초보다 짧게
+  지연해 5초 tick 재전송도 관찰한다.
+- 검증: Service admission이 initial Ready를 만들고 같은 시점에 15초 deadline을 시작한다. Connection마다
+  outstanding probe ID는 최대 하나이며 5초 tick에서 ACK가 없으면 새 ID를 계속 만들지 않고 같은 ID를
+  재전송한다. Current outstanding ID의 첫 matching ACK만 deadline을 갱신하고 ID를 clear한다. Duplicate,
+  이전 ID와 이전 connection ACK는 current round-trip evidence와 ready를 변경하지 않는다. 다른 valid frame은
+  diagnostics에는 기록할 수 있지만 ACK를 대신하지 않는다.
+- 세부 동작: connection-local probe identity와 stale callback fencing.
+
+#### RL-E4 connection loss와 terminal completion
+
+우선순위: `P0`
+
+**검증 질문:** request admission·reply·timeout·cancellation·disconnect가 경쟁해도 terminal result가 하나이고
+다른 peer에 숨은 재제출이 없는가.
+
+- 절차: request가 transport admission 전, admission 직후와 reply 직전에 각각 connection loss와 cancellation을
+  경쟁시킨다. Provider evidence는 correlation별 handler 실행 수를 기록한다.
+- 검증: caller completion은 정확히 한 번이고 같은 correlation의 handler 실행은 최대 한 번이다. 수락 여부가
+  불명확하거나 이미 수락된 request를 다른 peer에 자동 재제출하지 않는다.
+- 세부 동작: liveness failure와 request terminal-once 경계.
+
+#### RL-E5 store 독립과 liveness cleanup
+
+우선순위: `P1`
+
+**검증 질문:** store polling 장애 중에도 established connection liveness가 진행되고 terminal host 뒤 timer와
+monitor callback이 남지 않는가.
+
+- 절차: ready connection을 유지한 채 Redis 응답을 중단하고 packet blackhole을 별도로 주입한다. 이어서 host
+  `Retire`와 `Shutdown`을 각각 완료한다.
+- 검증: store failure는 마지막 connection intent를 유지하지만 15초 matching-ACK timeout을 막지 않는다. Transport
+  ready도 만료 owner lease를 복구하지 않는다. Terminal 결과 뒤 probe scheduler, reconnect timer, raw monitor
+  subscription과 pending callback이 0이다.
+- 세부 동작: Location authority와 transport liveness 분리, terminal resource cleanup.
+
+### Track F — Maintenance fencing과 interop
+
+#### RL-F1 preflight·admission seal capacity 경쟁
+
+우선순위: `P0`
+
+- 절차: Target capacity preflight와 source admission seal 사이에 application message를 queue 상한까지
+  제출한다. Reversible seal, exact inventory capture, target reservation과 transfer commit의 실행 순서를
+  바꾸어 반복한다.
+- 검증: 성공으로 반환한 preflight 뒤 accepted work가 reservation 부족으로 유실되지 않는다.
+  Reservation이 부족하면 source admission과 descriptor state를 원래대로 복원하고 `Blocked`로 종료한다.
+  Target replacement는 target attempt generation과 reservation만 바꾸며 stable transfer ID가 소유한 immutable
+  checkpoint, accepted journal, replay cursor와 operation terminal record를 다시 쓰거나 다른 key로 옮기지 않는다.
+
+#### RL-F2 Actor owner ABA fence
+
+우선순위: `P0`
+
+- 절차: 같은 Actor를 owner A에서 B로 이전한 뒤 새 authority로 A에 다시 이전한다. 최초
+  A owner의 message, frozen journal, forwarding record와 timer를 지연시켜 두 번째 A owner에 도착시킨다.
+- 검증: Current membership fence와 다른 모든 record를 application admission 전에 거부한다. 새 A
+  owner의 state, accepted journal order과 handler count는 지연 record로 변경되지 않는다.
+
+#### RL-F3 언어 간 terminal failure 해석
+
+우선순위: `P0`
+
+- 절차: Source와 target runtime 언어를 바꿔 reply, infrastructure completion과 relay의 모든 stable
+  failure code를 전달한다. 한 회는 schema에 없는 code를 주입하는 음성 fixture로 실행한다.
+- 검증: Stable code는 모든 언어 조합에서 같은 typed terminal result로 변환한다. `OK`결과와
+  failure code·failure payload의 모순, unknown code와 extra payload는 handler에 전달하지 않고 protocol
+  error로 종료한다.
+
+#### RL-F4 ClientServer topology·direction command 격리
+
+우선순위: `P0`
+
+- 절차: 정상 ClientServer client→server 연결을 admission한 뒤 RouteMesh node·Spot·Actor·transfer command와
+  server→client application command를 각각 음성 fixture로 주입한다. 동시에 별도 정상 ClientServer 연결에서
+  유효한 client→server request를 계속 처리한다.
+- 검증: ClientServer role과 direction allowlist에 없는 command는 application handler나 authority state에
+  전달하지 않고 해당 physical connection만 protocol error로 종료한다. 잘못된 command를 RouteMesh admission
+  또는 server-originated 업무로 해석하지 않으며 다른 정상 연결의 ready와 request completion은 유지한다.
+
+#### RL-F5 Activated seal과 Completed 공개 경계
+
+우선순위: `P0`
+
+- 절차: Actor와 Instance Spot transfer를 target restore·journal replay가 끝난 `Activated`에서 멈춘다. Target
+  application call과 bound-session packet을 제출하고 source cleanup 전후에 source·target을 각각 종료한다.
+  별도 실행에서는 source cleanup을 terminal로 확인한 뒤 authority `Completed` CAS를 수행하고 같은 call을
+  다시 제출한다.
+- 검증: `Activated`에서는 restored target과 session route가 준비되어도 application·session ingress와 public
+  ready가 열리지 않는다. Transfer 시작 때 source node와 exact source owner ID·host lease generation을 durable
+  subrecord에 고정하며 main owner가 target으로 바뀌어도 이 source token을 유지한다. `Completed` 전 crash는
+  immutable checkpoint를 사용한 replacement 하나로 수렴하고
+  target에서 새 업무를 처리한 evidence가 없다. Source cleanup terminal은 current source owner token으로
+  인증한 completion 또는 exact source lease expiry를 확인한 coordinator의 fenced CAS로 authority에 먼저
+  기록한다. 이 증거와 `Completed` CAS 뒤에만 steady authority로 정규화하고 ready·ingress를 열어 checkpoint
+  reference를 fenced release한다. `Completed` 뒤 owner loss는 종료된 transfer checkpoint를 replay하지 않고
+  일반 owner-loss 결과로 처리한다.
+
+#### RL-F6 admitted descriptor update fence
+
+우선순위: `P0`
+
+- 절차: Admitted current connection에서 descriptor revision을 올리며 weight, runtime state, placement capacity와
+  maintenance wave를 각각 갱신한다. 같은 revision의 동일 bytes·다른 bytes, 낮은 revision과 함께 MeshName,
+  security identity, endpoint, node lifecycle generation, negotiated message bound, Channel membership key와
+  capability identity를 바꾼 update fixture도 전달한다.
+- 검증: 더 높은 revision의 허용된 mutable field만 적용한다. 같은 revision·same bytes는 idempotent이고 낮은
+  revision은 stale로 무시한다. 같은 revision·different bytes 또는 immutable identity·capability mutation은
+  application handler와 selection에 적용하지 않고 offending connection을 not-ready와 protocol error로
+  종료한다. Reconnect한 새 physical connection은 service admission을 처음부터 다시 수행한다.
+
+#### RL-F7 transferred request reply ACK barrier
+
+우선순위: `P0`
+
+- 절차: 서로 다른 reply correlation을 가진 node·Channel·Spot·Actor·Instance·bound-session accepted request를
+  Transfer journal에 포함하고 target에서 처리해 reply를 만든다. `replyRelay`,
+  `replyRelayAck`와 ACK 재전송을 각각 한 번씩 유실한다. 다른 반복에서는 원 caller의 timeout·cancellation,
+  request-source connection 종료·재연결, request-source host lease expiry와 reply 도착을 경쟁시킨다.
+- 검증: Target은 stable transfer ID와 operation ID로 terminal completion을 checkpoint stream에 기록하고 current
+  request record에 보존한 exact nonzero reply route로 응답한다. Operation ID를 reply route로 대신하지 않으며
+  request 종류마다 원 correlation으로 terminal result 하나가 도착한다. Current request-source connection의
+  `terminalReceived` 또는 `alreadyTerminal` ACK까지 relay를 재전송한다. ACK가
+  유실되면 source가 이미 terminal이어도 같은 결과로 다시 ACK하며 application completion은 한 번뿐이다.
+  Physical connection close는 terminal 증거가 아니므로 current route에서 relay를 계속한다. 모든 accepted
+  request가 ACK되거나 accepted record에 고정한 exact request-source owner lease expiry로 caller terminal이
+  확정되기 전에는 source cleanup terminal, authority `Completed`와 checkpoint release를 수행하지 않는다.
+  Source lease가 유지된 partition이 host deadline을 넘으면 `ForceStopped`로 끝내되 reply bytes와 checkpoint는
+  recovery retention 동안 유지한다.
+
+#### RL-F8 manual source의 accepted work와 maintenance capture
+
+우선순위: `P0`
+
+- 절차: Location Store를 사용하지 않는 manual RouteMesh peer에서 target object로 장기 request와 one-way send를
+  각각 수락시킨 뒤 target host `Retire`를 시작한다. 첫 반복은 두 작업을 capture 전에 완료하고, 두 번째 반복은
+  reversible seal deadline을 넘도록 handler를 지연한다. Manual peer를 재시작해 같은 RID로 새 service
+  connection도 admission한다.
+- 검증: Manual peer lifecycle generation은 runtime이 만든 nonzero opaque equality token이며 숫자 대소로 restart를
+  판정하지 않는다. Current physical connection handover가 이전 connection event를 fence한다. Connection-bound
+  request와 one-way send는 durable accepted journal과 reply relay에 포함하지 않고 모두 `Captured` 전에 terminal
+  drain한다. 하나라도 deadline 안에 끝나지 않으면 transfer는 pre-Captured abort, `Retire`는
+  `Blocked/TransferDisabled`이고 source admission을 복원한다. Durable accepted journal은 exact source owner lease로
+  fence할 수 있는 lease-backed accepted work만 기록한다.
+
+#### RL-F9 preflight deadline과 seal 경계
+
+우선순위: `P0`
+
+- 절차: 첫 반복은 target capability·capacity preflight를 host deadline 뒤까지 지연하되 source admission seal은
+  시작하지 않는다. 두 번째 반복은 preflight와 seal을 완료한 뒤 teardown을 같은 deadline 뒤까지 지연한다.
+- 검증: Seal 전 timeout은 `Blocked/DeadlineExceeded`로 한 번 끝나고 host·descriptor·admission은 호출 전 상태를
+  유지한다. Seal 뒤 timeout만 `ForceStopped/DeadlineExceeded`이며 bounded teardown을 수행한다. 두 결과가 같은
+  reason을 사용하더라도 outcome과 state transition을 바꾸어 해석하지 않는다.
+
+#### RL-F10 Retire Actor의 target Entry membership
+
+우선순위: `P0`
+
+- 절차: 첫 반복은 source Entry Spot에만 Actor를 둔 뒤 host `Retire`를 실행한다. Target offer와 Prepared
+  evidence에 target node의 initialized Entry Spot identity를 기록하고 NewOwner CAS 전후 authority를 관찰한다.
+  두 번째 반복은 Actor를 User Spot에 join한 상태로 `Retire`를 호출한다.
+- 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
+  target Entry Spot RID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory·restore와 `OnJoinedActor`가
+  journal replay보다 먼저 끝나고 source `OnLeaveActor`와 old Entry membership 제거는 durable cleanup에 포함된다.
+  Admission은 Completed, bound-session route ACK와 steady normalization 전까지 닫혀 있다. User Spot member가 있는
+  반복은 seal 전에 `Blocked/TransferDisabled`로 끝나며 authority와 admission을 바꾸지 않는다.
+
 ## 5. 완료 기준
 
-- `P1` 시나리오는 지원 언어에서 구현한다. `P2`는 선택이며 미구현 이유를 남긴다.
+- `P1`과 Track F의 `P0` 시나리오는 지원 언어에서 구현한다. `P2`는 선택이며
+  미구현 이유를 남긴다.
 - 복구 시나리오는 복구 후 follow-up request 성공 + runtime query MeshNode descriptor snapshot의 제거/추가 반영으로 관측한다(내부 pending/stale 상태는 public 표면이 아니므로 직접 단언하지 않는다).
 - public contract만 직접 호출하고 `ensure`로 단언한다.

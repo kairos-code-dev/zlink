@@ -2,7 +2,7 @@
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_e2e_client.hpp>
-#include <zlink/Contracts/Service/operation_contracts.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 
 #include "runtime/connector_runtime.hpp"
@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <string>
 #include <thread>
@@ -252,26 +253,34 @@ std::thread start_loopback_server (zlink::context_t &context,
     endpoint = server->options ().last_endpoint ();
     return std::thread ([server, expected_clients] {
         try {
-            for (int accepted = 0; accepted < expected_clients; ++accepted) {
+            std::map<std::string, std::string> buffers;
+            int replied = 0;
+            while (replied < expected_clients) {
                 zlink::received_t inbound;
                 if (server->recv (inbound) != 0) {
                     return;
                 }
-                std::string buffer =
-                  inbound.parts ().empty () ? std::string{} : inbound.parts ()[0].to_string ();
+                if (!inbound.routing_id ()) {
+                    inbound.close ();
+                    continue;
+                }
+                auto &buffer = buffers[inbound.routing_id ()->to_hex ()];
+                for (const auto &part : inbound.parts ())
+                    buffer += part.to_string ();
                 std::string outbound;
                 while (auto frame = try_read_server_frame (buffer)) {
                     if (frame->header.kind == zlink::stream_connector::message_kind_t::request) {
-                        /* stream connector §5.2: Response의 packet name은 request와 같아야 한다. */
-                        outbound += make_server_frame (
-                                      zlink::stream_connector::message_kind_t::response,
-                                      frame->header.request_seq.value_or (0), frame->header.name,
-                                      "ok")
-                                      .to_string ();
-                        outbound += make_server_frame (
-                                      zlink::stream_connector::message_kind_t::send, 0,
-                                      "connector.perf.push", "push")
-                                      .to_string ();
+                        // Response correlation is carried only by request_seq;
+                        // response headers do not carry packet names.
+                        auto response = make_server_frame (
+                          zlink::stream_connector::message_kind_t::response,
+                          frame->header.request_seq.value_or (0), {}, "ok");
+                        outbound += response.to_string ();
+                        auto push = make_server_frame (
+                          zlink::stream_connector::message_kind_t::send, 0,
+                          "connector.perf.push", "push");
+                        outbound += push.to_string ();
+                        ++replied;
                     }
                 }
                 if (!outbound.empty ()) {

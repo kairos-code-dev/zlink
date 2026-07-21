@@ -10,7 +10,7 @@ import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
 function createTicTacToeApiModule() {
   class TicTacToeApiModule {}
   const configuration = createTicTacToeConfigurationModule([
-    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playChannelEndpoints', 'logDir'
+    'apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'logDir'
   ]);
 
   Module({
@@ -25,13 +25,17 @@ function createTicTacToeApiModule() {
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${config.logDir}/flow-api-${config.apiIndex}.log`)
             .traceLabel(`api-${config.apiIndex}`);
-          return builder
-          .addClientServerChannel(SampleNames.apiChannel)
-            .enableServer(config.apiEndpoints[config.apiIndex])
-            .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler)
-          .addClientServerChannel(SampleNames.playChannel)
-            .enableClient(config.playChannelEndpoints)
-          .build();
+          const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
+            .listen(config.apiEndpoints[config.apiIndex])
+            .routingId(`api-${config.apiIndex + 1}`);
+          mesh.channelName(SampleNames.apiChannel)
+            .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler);
+          mesh.channelName(SampleNames.playChannel).setWeight(0);
+          mesh.channelName(SampleNames.playSpotNode).setWeight(0);
+          for (const endpoint of config.playSpotEndpoints) {
+            mesh.peerConnections().connect(endpoint);
+          }
+          return builder.build();
         }
       })
     ],

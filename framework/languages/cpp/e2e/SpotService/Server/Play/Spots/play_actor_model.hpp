@@ -218,7 +218,7 @@ class user_spot_t : public zlink::framework::spot_t
                                     .generation = 0}});
     }
 
-    void on_actor_joined (const scenario_actor_t &actor)
+    zlink::framework::task_t<void> on_actor_joined (const scenario_actor_t &actor)
     {
         const auto pending = _pending_joins.find (actor.actor_id);
         if (pending != _pending_joins.end ()) {
@@ -230,17 +230,20 @@ class user_spot_t : public zlink::framework::spot_t
         }
         _state.record ("ActorJoinedCallback", actor.actor_id,
                        std::string (_context.spot_rid ().value ()));
+        co_return;
     }
 
-    void on_leave_actor (const scenario_actor_t &actor)
+    zlink::framework::task_t<void> on_leave_actor (const scenario_actor_t &actor)
     {
         _state.record ("ActorLeft", actor.actor_id, std::string (_context.spot_rid ().value ()));
+        co_return;
     }
 
-    void on_disconnect_actor (const scenario_actor_t &actor)
+    zlink::framework::task_t<void> on_disconnect_actor (const scenario_actor_t &actor)
     {
         _state.record ("ActorDisconnected", actor.actor_id,
                        std::string (_context.spot_rid ().value ()));
+        co_return;
     }
 
     e2e::state_res_t mutate (const scenario_actor_t &actor,
@@ -855,10 +858,11 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         _state.record ("ActorCreated", actor.actor_id, std::string (_context.spot_rid ().value ()));
     }
 
-    void on_actor_joined (const scenario_actor_t &actor)
+    zlink::framework::task_t<void> on_actor_joined (const scenario_actor_t &actor)
     {
         _state.record ("EntryActorJoined", actor.actor_id,
                        std::string (_context.spot_rid ().value ()));
+        co_return;
     }
 
     zlink::framework::task_t<e2e::join_res_t>

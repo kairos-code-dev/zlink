@@ -8,15 +8,15 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Handlers;
 internal sealed class WatchNodesHandler(NodeRegistry nodes, OpsConsoleRegistry consoles)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, WatchNodesReq>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         WatchNodesReq request,
         CancellationToken cancellationToken)
     {
-        context.Client.Reply(new WatchNodesRes(nodes.Snapshot())).Submit(cancellationToken);
-        consoles.ReplayAlerts(context);
-        return ValueTask.CompletedTask;
+        await context.Client.Reply(new WatchNodesRes(nodes.Snapshot()))
+            .SubmitAsync(cancellationToken);
+        await consoles.ReplayAlertsAsync(context, cancellationToken);
     }
 }
 
@@ -30,20 +30,20 @@ internal sealed class AnnounceWorldHandler(
     ILogger<AnnounceWorldHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AnnounceWorldReq>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         IZLinkSessionContext context,
         ZLinkSessionDispatchContext dispatch,
         AnnounceWorldReq request,
         CancellationToken cancellationToken)
     {
-        var announcementId = announcements.Publish(request.Text);
+        var announcementId = await announcements.PublishAsync(request.Text, cancellationToken);
 
         logger.LogInformation(
             "announcement published. announcement={AnnouncementId}",
             announcementId);
 
-        context.Client.Reply(new AnnounceWorldRes(announcementId)).Submit(cancellationToken);
-        return ValueTask.CompletedTask;
+        await context.Client.Reply(new AnnounceWorldRes(announcementId))
+            .SubmitAsync(cancellationToken);
     }
 }
 
@@ -64,7 +64,7 @@ internal sealed class SetMaintenanceHandler(
         CancellationToken cancellationToken)
     {
         var reply = await maintenance.SetAsync(request.NodeId, request.Enabled, cancellationToken);
-        context.Client.Reply(reply).Submit(cancellationToken);
+        await context.Client.Reply(reply).SubmitAsync(cancellationToken);
     }
 }
 
@@ -79,6 +79,6 @@ internal sealed class NodeDiagnosticsHandler(
         CancellationToken cancellationToken)
     {
         var reply = await diagnostics.GetAsync(request.NodeId, cancellationToken);
-        context.Client.Reply(reply).Submit(cancellationToken);
+        await context.Client.Reply(reply).SubmitAsync(cancellationToken);
     }
 }

@@ -2,7 +2,7 @@
 
 [스펙 목차](../README.ko.md) | [이전: Stage Wrapper On SPOT](25-stage-wrapper-on-spot.ko.md) | [다음: Session Actor Dispatch](31-session-actor-dispatch.ko.md)
 
-이 문서는 ZLink Framework 10.0.0의 서버 쪽 STREAM session 공개 계약을 정의한다. 대상 독자는 서버 session
+이 문서는 ZLink Framework 11.0.0의 서버 쪽 STREAM session 공개 계약을 정의한다. 대상 독자는 서버 session
 표면, dispatch, 등록, codec과 오류 경계를 구현하는 framework 개발자다. Client 쪽 계약은
 [Stream Connector 공통 스펙](../stream-connector/32-stream-connector.ko.md)이 소유하며 두 문서는 같은 wire
 계약을 공유한다. 언어별 타입과 시그니처는 `languages/<lang>/`의 STREAM 문서가 고정한다.
@@ -79,9 +79,9 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 
 **framework 기본 표면은 session·session context·stream·message까지만 유지한다.**
 
-- 객체 변환은 binding core의 message가 아니라 **framework message와 별도 codec extension**이
+- 객체 변환은 raw transport message가 아니라 **framework message와 별도 codec extension**이
   맡는다.
-- **transport core나 framework 기본 runtime에 특정 codec 구현을 직접 섞지 않는다.**
+- **raw transport나 framework 기본 runtime에 특정 codec 구현을 직접 섞지 않는다.**
 - **session handler는 codec별 helper를 직접 호출하지 않는다.** JSON·Protobuf·MessagePack·custom
   codec을 바꿔도 업무 코드는 같은 decode 표면을 쓴다.
 - server framework, HTTP client host와 stream connector는 codec 번호, content-type과 typed payload 선택

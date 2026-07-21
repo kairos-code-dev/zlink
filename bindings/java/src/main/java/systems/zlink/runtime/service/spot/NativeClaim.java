@@ -19,6 +19,7 @@ public final class NativeClaim implements Claim {
 
     private final MemorySegment claim;
     private boolean valid;
+    private boolean released;
 
     NativeClaim(MemorySegment claim, boolean valid) {
         this.claim = claim;
@@ -51,8 +52,9 @@ public final class NativeClaim implements Claim {
 
     @Override
     public void release() {
-        if (valid) {
+        if (!released) {
             NativeServiceSymbols.claimRelease(claim);
+            released = true;
             valid = false;
         }
     }

@@ -21,14 +21,20 @@ using zlink::framework::runtime::location_runtime_t;
 
 actor_location_t make_actor (std::string actor_id, std::int64_t generation = 0)
 {
-    return actor_location_t{.actor_id = std::move (actor_id),
+    (void) generation;
+    const auto actor_id_copy = actor_id;
+    return actor_location_t{.mesh_name = "node-a",
+                            .actor_id = std::move (actor_id),
                             .actor_type = "player",
-                            .actor_ref = std::nullopt,
-                            .node_rid = zlink::routing_id_t::from ("node-a"),
-                            .location_kind = zlink::spot_kind::entry,
-                            .spot_mesh_name = "node-a",
+                            .actor_ref = zlink::framework::actor_ref_t (
+                              zlink::framework::node_rid_t::from_string ("node-a"),
+                              "player", actor_id_copy, 1),
+                            .owner_node_rid = zlink::routing_id_t::from ("node-a"),
+                            .owner_node_generation = 1,
                             .spot_rid = zlink::routing_id_t::from ("entry-spot"),
-                            .generation = generation};
+                            .spot_generation = 1,
+                            .spot_kind = zlink::spot_kind::entry,
+                            .membership_epoch = 1};
 }
 
 spot_location_t make_spot (std::string spot_rid)
@@ -49,16 +55,17 @@ TEST (ZLinkFrameworkLocationLifecycle, ClaimsActorBeforeActivation)
 
     const auto claim = lifecycle.claim_actor (make_actor ("actor-1"));
     ASSERT_EQ (location_write_status_t::stored, claim.status);
-    EXPECT_EQ (1, claim.actor.generation);
+    EXPECT_EQ (1u, claim.store_generation);
     EXPECT_EQ (1u, lifecycle.tracked_actor_count ());
 
     const auto stored =
-      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+      store.resolve_actor (
+             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
         .result ()
         .value ();
     ASSERT_TRUE (stored.has_value ());
     EXPECT_EQ ("owner-a", stored->owner_id);
-    EXPECT_EQ (claim.actor.generation, stored->generation);
+    EXPECT_EQ (1u, stored->actor_ref.generation ());
 
     runtime.stop ();
 }
@@ -95,11 +102,13 @@ TEST (ZLinkFrameworkLocationLifecycle, ReleasesActorWithOwnerGenerationToken)
     ASSERT_EQ (location_write_status_t::stored,
                lifecycle.claim_actor (make_actor ("actor-1")).status);
     const auto released =
-      lifecycle.release_actor (actor_location_key_t{.actor_id = "actor-1"});
+      lifecycle.release_actor (
+        actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"});
     EXPECT_EQ (location_write_status_t::stored, released.status);
     EXPECT_EQ (0u, lifecycle.tracked_actor_count ());
     EXPECT_FALSE (
-      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+      store.resolve_actor (
+             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
         .result ()
         .value ()
         .has_value ());
@@ -115,18 +124,17 @@ TEST (ZLinkFrameworkLocationLifecycle, IgnoresActorOperationsWhenClaimIsNotTrack
     location_lifecycle_t lifecycle (runtime);
 
     auto moved = make_actor ("actor-missing");
-    moved.actor_ref = std::nullopt;
     const auto updated = lifecycle.update_actor_location (std::move (moved));
     EXPECT_EQ (location_write_status_t::ignored_stale, updated.status);
 
     const auto renewed =
       lifecycle.renew_actor (
-        actor_location_key_t{.actor_id = "actor-missing"});
+        actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-missing"});
     EXPECT_EQ (location_write_status_t::ignored_stale, renewed.status);
 
     const auto released =
       lifecycle.release_actor (
-        actor_location_key_t{.actor_id = "actor-missing"});
+        actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-missing"});
     EXPECT_EQ (location_write_status_t::ignored_stale, released.status);
     EXPECT_EQ (0u, lifecycle.tracked_actor_count ());
 
@@ -143,25 +151,25 @@ TEST (ZLinkFrameworkLocationLifecycle, UpdatesTrackedActorLocationWithoutChangin
     const auto claim = lifecycle.claim_actor (make_actor ("actor-1"));
     ASSERT_EQ (location_write_status_t::stored, claim.status);
     EXPECT_TRUE (
-      lifecycle.owns_actor (actor_location_key_t{.actor_id = "actor-1"}));
+      lifecycle.owns_actor (
+        actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"}));
 
     auto moved = make_actor ("actor-1");
-    moved.actor_ref = std::nullopt;
-    moved.location_kind = zlink::spot_kind::user;
+    moved.spot_kind = zlink::spot_kind::user;
     moved.spot_rid = zlink::routing_id_t::from ("play-spot");
     const auto updated = lifecycle.update_actor_location (std::move (moved));
     ASSERT_EQ (location_write_status_t::stored, updated.status);
-    EXPECT_EQ (claim.actor.generation, updated.generation);
+    EXPECT_EQ (claim.store_generation, static_cast<std::uint64_t> (updated.generation));
 
     const auto stored =
-      store.resolve_actor (actor_location_key_t{.actor_id = "actor-1"})
+      store.resolve_actor (
+             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
         .result ()
         .value ();
     ASSERT_TRUE (stored.has_value ());
-    EXPECT_FALSE (stored->actor_ref.has_value ());
-    ASSERT_TRUE (stored->spot_rid.has_value ());
-    EXPECT_EQ ("play-spot", stored->spot_rid->to_string ());
-    EXPECT_EQ (claim.actor.generation, stored->generation);
+    EXPECT_FALSE (stored->actor_ref.empty ());
+    EXPECT_EQ ("play-spot", stored->spot_rid.to_string ());
+    EXPECT_EQ (claim.store_generation, static_cast<std::uint64_t> (updated.generation));
 
     runtime.stop ();
 }
@@ -235,7 +243,8 @@ TEST (ZLinkFrameworkLocationLifecycle, DeactivatesTrackedActorWhenOwnershipIsSta
     ASSERT_EQ (location_write_status_t::stored, takeover.status);
 
     const auto stale =
-      lifecycle_a.renew_actor (actor_location_key_t{.actor_id = "actor-1"});
+      lifecycle_a.renew_actor (
+        actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"});
     EXPECT_EQ (location_write_status_t::ignored_stale, stale.status);
     EXPECT_EQ (std::vector<std::string> ({"actor-1"}), deactivated);
     EXPECT_EQ (0u, lifecycle_a.tracked_actor_count ());

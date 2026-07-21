@@ -225,27 +225,3 @@ STREAM 외 공통 소켓 기본값은
 STREAM의 public routing id는 서버가 연결별로 부여한 4바이트 connection id다.
 `zlink_disconnect_rid()`는 이 id를 `uint32_t`로 해석해 STREAM 라우팅 맵에서
 pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된 인자로 실패한다.
-
-## 9. Session Actor relay (session relay)
-
-STREAM socket은 client session 메시지를 mesh Actor로 relay할 수 있다. 각 client
-연결의 `source_rid`가 STREAM session이 된다. 10.1.0에서 socket과 MeshNode의
-연결은 STREAM session service가 명시적으로 소유한다:
-`zlink_stream_session_service_new(stream_socket, node)`가 socket과 node에
-1:1:1로 붙고, 다른 node에 이미 붙은 socket은 `EEXIST`로 거부된다.
-
-STREAM socket은 relay 상태를 직접 보관하지 않는다. owner 매핑, session-to-Actor binding,
-relay 경로는 모두 MeshNode의 STREAM session service에 있다. companion API는
-`zlink_stream_session_service_new()`로 socket과 node에 1:1:1로 붙는 service handle과
-`zlink_stream_session_bind_actor()` / `zlink_stream_session_unbind_actor()`(binding CAS),
-`zlink_stream_session_send_to_actor()` / `zlink_stream_session_request_to_actor()`(relay),
-`zlink_stream_session_bindings()`(열거)다. 배선과 relay 경로, cleanup 규칙은
-[서비스 계층 내부 설계 §10](services-internals.ko.md)에 정리되어 있다. STREAM 계층에서
-중요한 것은 `source_rid`별 byte pipe가 relay가 타는 transport라는 점, 그리고 session
-disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그 session의 binding만 제거한다는
-점뿐이다.
-
-session에서 Actor로 보내는 경로는 service mutex 아래에서 binding 확인과 Actor mailbox
-admission을 하나의 순서 단위로 처리한다. 이 경계를 나누면 같은 session의 동시 submit이
-mailbox에 반대 순서로 들어갈 수 있으므로, mailbox admission이 끝나기 전에 mutex를
-해제하지 않는다.

@@ -18,8 +18,8 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_bingo_session \
   sample_cpp_framework_bingo_client \
   test_cpp_framework_sample_parity \
-  test_cpp_framework_spot_runtime \
-  test_cpp_framework_ActorGateway_actor_session_relay >/dev/null
+  zlink_cpp_framework_mesh_node_vertical_test \
+  test_cpp_framework_actor_gateway >/dev/null
 
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_bingo_api" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_bingo_api" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -40,7 +40,7 @@ for binary in "$API_BIN" "$PLAY_BIN" "$SESSION_BIN" "$CLIENT_BIN"; do
 done
 
 "$CTEST_BIN" --test-dir "$BUILD_DIR" \
-  -R 'test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay' \
+  -R 'test_cpp_framework_sample_parity|zlink_cpp_framework_mesh_node_vertical_test|test_cpp_framework_actor_gateway' \
   --output-on-failure
 
 read -r -a PORTS <<<"$(python3 - <<'PY'
@@ -126,6 +126,20 @@ wait_port() {
     sleep 0.1
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
+  return 1
+}
+
+wait_log_contains() {
+  local description="$1"
+  local pattern="$2"
+  shift 2
+  for _ in $(seq 1 300); do
+    if grep -q "$pattern" "$@" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for ${description}." >&2
   return 1
 }
 
@@ -287,11 +301,9 @@ start_server session-b "$SESSION_BIN" --config="$CONFIG_DIR/session-b.json"
 wait_port play-a "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-route "$PLAY_A_ROUTE_ENDPOINT"
 wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER_ENDPOINT"
-wait_port play-a-spot-pub "$PLAY_A_SPOT_ENDPOINT"
 wait_port play-b "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-route "$PLAY_B_ROUTE_ENDPOINT"
 wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER_ENDPOINT"
-wait_port play-b-spot-pub "$PLAY_B_SPOT_ENDPOINT"
 wait_port api-a "$API_A_CHANNEL_ENDPOINT"
 wait_port api-b "$API_B_CHANNEL_ENDPOINT"
 wait_port session-a-router "$SESSION_A_ROUTER_ENDPOINT"
@@ -302,12 +314,19 @@ wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \
   --session-b-stream-endpoint "$SESSION_B_STREAM_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
+  echo "=== bingo client ===" >&2
   cat "$LOG_DIR/client.log" >&2
+  echo "=== bingo session-a ===" >&2
   cat "$LOG_DIR/session-a.log" >&2
+  echo "=== bingo session-b ===" >&2
   cat "$LOG_DIR/session-b.log" >&2
+  echo "=== bingo play-a ===" >&2
   cat "$LOG_DIR/play-a.log" >&2
+  echo "=== bingo play-b ===" >&2
   cat "$LOG_DIR/play-b.log" >&2
+  echo "=== bingo api-a ===" >&2
   cat "$LOG_DIR/api-a.log" >&2
+  echo "=== bingo api-b ===" >&2
   cat "$LOG_DIR/api-b.log" >&2
   exit 1
 }
@@ -316,8 +335,12 @@ grep -q "bingo=completed" "$LOG_DIR/client.log"
 grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.log"
-grep -Rq "entry spot: actor destroy completed. actor=player-1" "$LOG_DIR"/play-*.log
-grep -Rq "entry spot: actor destroy completed. actor=player-2" "$LOG_DIR"/play-*.log
+wait_log_contains "player-1 actor destroy completion" \
+  "entry spot: actor destroy completed. actor=player-1" "$LOG_DIR"/play-*.log
+wait_log_contains "player-2 actor destroy completion" \
+  "entry spot: actor destroy completed. actor=player-2" "$LOG_DIR"/play-*.log
+wait_log_contains "observer return to Entry Spot" \
+  "observer returned to entry spot" "$LOG_DIR"/play-*.log
 if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/play-*.log; then
   echo "Observer actor must not be destroyed during Bingo player cleanup." >&2
   exit 1

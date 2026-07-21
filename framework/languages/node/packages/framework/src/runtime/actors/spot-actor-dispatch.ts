@@ -1,6 +1,7 @@
 import type {
   Type,
   ZLinkActor,
+  ZLinkActorHandlerRegistry,
   ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
@@ -17,8 +18,10 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { ZLinkConfigurationException } from '../configuration';
+import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkMessageSerializer } from '../../contracts';
+import { createActorJoinRequest, createActorMembership } from './actor-lifecycle-snapshot';
 
 export enum ZLinkActorPacketKind {
   Send = 'send',
@@ -32,8 +35,26 @@ export interface ZLinkActorPacketDescriptor {
   readonly handlerType: Type;
 }
 
-export class ZLinkSpotActorHandlerRegistryRuntime {
+export class ZLinkSpotActorHandlerRegistryRuntime implements ZLinkActorHandlerRegistry {
   private readonly packets = new Map<string, ZLinkActorPacketDescriptor>();
+
+  addHandler<THandler>(handlerType: Type<THandler>): this {
+    const metadata = readZLinkDecoratorMetadata(handlerType).find((entry) =>
+      entry.kind === 'spotActorSend' || entry.kind === 'spotActorRequest');
+    if (metadata?.packetName === undefined) {
+      throw new ZLinkConfigurationException(
+        `Actor packet handler '${handlerType.name}' must declare a packet name.`
+      );
+    }
+    return this.addPacket({
+      kind: metadata.kind === 'spotActorSend'
+        ? ZLinkActorPacketKind.Send
+        : ZLinkActorPacketKind.Request,
+      packetName: metadata.packetName,
+      actorType: Object as unknown as Type<ZLinkActor>,
+      handlerType
+    });
+  }
 
   addPacket(descriptor: ZLinkActorPacketDescriptor): this {
     const key = packetKey(descriptor.kind, descriptor.actorType, descriptor.packetName);
@@ -85,13 +106,7 @@ export interface ZLinkSpotActorDispatcherOptions {
 }
 
 export class DefaultZLinkSpotActorReplyOptions implements ZLinkSpotActorReplyOptions {
-  private readonly selectedMetadata = new Map<string, string>();
   private compressionEnabled = false;
-
-  metadata(key: string, value: string): this {
-    this.selectedMetadata.set(key, value);
-    return this;
-  }
 
   compress(enabled = true): this {
     this.compressionEnabled = enabled;
@@ -100,7 +115,7 @@ export class DefaultZLinkSpotActorReplyOptions implements ZLinkSpotActorReplyOpt
 
   snapshot(): ZLinkSpotActorReplyOptionsSnapshot {
     return {
-      metadata: new Map(this.selectedMetadata),
+      metadata: new Map<string, string>(),
       compressPayload: this.compressionEnabled
     };
   }
@@ -122,8 +137,8 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<void> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Send, actor, packetName);
-      const handler = this.createHandler<ZLinkSpotActorSendHandler<ZLinkSpot, ZLinkActor, TMessage>>(descriptor);
-      await handler.handle(this.options.spot, actor, this.createSendContext(packetName, context), message);
+      const handler = this.createHandler<ZLinkSpotActorSendHandler<ZLinkActor, TMessage>>(descriptor);
+      await handler.handle(actor, this.createSendContext(packetName, context), message);
     });
   }
 
@@ -145,7 +160,7 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<TResult> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Request, actor, packetName);
-      const handler = this.createHandler<ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>>(descriptor);
+      const handler = this.createHandler<ZLinkSpotActorRequestHandler<ZLinkActor, TRequest, TReply>>(descriptor);
       const replyOptions = context.reply instanceof DefaultZLinkSpotActorReplyOptions
         ? context.reply
         : new DefaultZLinkSpotActorReplyOptions();
@@ -154,7 +169,6 @@ export class ZLinkSpotActorDispatcher {
         reply: context.reply ?? replyOptions
       };
       const reply = await handler.handle(
-        this.options.spot,
         actor,
         this.createRequestContext(packetName, requestContext),
         request
@@ -188,7 +202,7 @@ export class ZLinkSpotActorDispatcher {
       const onActorJoin = (this.options.spot as Partial<ZLinkSpot>).onActorJoin;
       return onActorJoin === undefined
         ? { accepted: false }
-        : await onActorJoin.call(this.options.spot, actor.actorId, payload);
+        : await onActorJoin.call(this.options.spot, createActorJoinRequest(actor), payload);
     });
   }
 
@@ -198,20 +212,20 @@ export class ZLinkSpotActorDispatcher {
   ): Promise<void> {
     return this.execute(async () => {
       await commit();
-      await this.options.spot.onJoinedActor(actor);
+      await this.options.spot.onJoinedActor(createActorMembership(actor));
     });
   }
 
   notifyJoinActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onJoinedActor(actor));
+    return this.execute(() => this.options.spot.onJoinedActor(createActorMembership(actor)));
   }
 
   notifyLeaveActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onLeaveActor(actor));
+    return this.execute(() => this.options.spot.onLeaveActor(createActorMembership(actor)));
   }
 
   notifyDisconnectActor(actor: ZLinkActor): Promise<void> {
-    return this.execute(() => this.options.spot.onDisconnectActor?.(actor));
+    return this.execute(() => this.options.spot.onDisconnectActor(createActorMembership(actor)));
   }
 
   private requirePacket(
@@ -219,6 +233,13 @@ export class ZLinkSpotActorDispatcher {
     actor: ZLinkActor,
     packetName: string
   ): ZLinkActorPacketDescriptor {
+    const actorRegistry = (actor as Partial<ZLinkActor>).context?.handlers;
+    if (actorRegistry instanceof ZLinkSpotActorHandlerRegistryRuntime) {
+      const actorDescriptor = actorRegistry.resolvePacket(kind, actor, packetName);
+      if (actorDescriptor !== undefined) {
+        return actorDescriptor;
+      }
+    }
     const descriptor = this.options.registry.resolvePacket(kind, actor, packetName);
     if (descriptor === undefined) {
       throw actorDispatchHandlerNotFound(`No Spot actor ${kind} handler is registered for '${packetName}'.`);

@@ -4,21 +4,17 @@ internal sealed class ZLinkHandlerExposureCatalog
 {
     private readonly IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> _groups;
     private readonly IReadOnlyList<ZLinkHandlerExposure> _scannedChannels;
-    private readonly IReadOnlyList<ZLinkHandlerExposure> _scannedRoutes;
 
     private ZLinkHandlerExposureCatalog(
         IReadOnlyDictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>> groups,
-        IReadOnlyList<ZLinkHandlerExposure> scannedChannels,
-        IReadOnlyList<ZLinkHandlerExposure> scannedRoutes)
+        IReadOnlyList<ZLinkHandlerExposure> scannedChannels)
     {
         _groups = groups;
         _scannedChannels = scannedChannels;
-        _scannedRoutes = scannedRoutes;
     }
 
     public static ZLinkHandlerExposureCatalog Build(
-        IReadOnlyList<ZLinkHandlerEndpointDescriptor> channelEndpoints,
-        IReadOnlyList<ZLinkRouteHandlerEndpointDescriptor> routeEndpoints)
+        IReadOnlyList<ZLinkHandlerEndpointDescriptor> channelEndpoints)
     {
         var groups = new Dictionary<string, HashSet<ZLinkHandlerGroupCatalogEntry>>(StringComparer.Ordinal);
         var channels = channelEndpoints
@@ -27,24 +23,14 @@ internal sealed class ZLinkHandlerExposureCatalog
                 endpoint.MessageName,
                 endpoint.Groups))
             .ToArray();
-        var routes = routeEndpoints
-            .Select(static endpoint => new ZLinkHandlerExposure(
-                endpoint.Kind,
-                endpoint.MessageName,
-                endpoint.Groups))
-            .ToArray();
 
         AddGroups(groups, ZLinkHandlerEndpointSurface.Channel, channels);
-        AddGroups(groups, ZLinkHandlerEndpointSurface.Route, routes);
-        return new ZLinkHandlerExposureCatalog(groups, channels, routes);
+        return new ZLinkHandlerExposureCatalog(groups, channels);
     }
 
     public IReadOnlySet<ZLinkMessageKind> ValidateChannel(ZLinkChannelRegistration channel)
     {
-        var allowedKinds = channel.AutoConnectType == ZLinkAutoConnectType.Fanout
-            ? FanoutKinds
-            : ClientServerKinds;
-        ValidateChannelMappedGroups(channel, allowedKinds);
+        ValidateChannelMappedGroups(channel, FanoutKinds);
 
         ValidateExplicitChannelDuplicates(channel);
         var exposed = SelectMapped(_scannedChannels, channel.HandlerGroups);
@@ -56,49 +42,72 @@ internal sealed class ZLinkHandlerExposureCatalog
         return exposed.Select(static entry => entry.Kind).ToHashSet();
     }
 
-    public void ValidateRoute(ZLinkRouteChannelRegistration route)
+    public void ValidateMeshNode(ZLinkSpotNodeRegistration node)
     {
-        ValidateRouteMappedGroups(route);
+        foreach (var membership in node.ChannelMemberships)
+        {
+            ValidateMappedGroups(
+                $"channel '{node.SpotNodeName}:{membership.ChannelName}'",
+                membership.HandlerGroups,
+                MeshChannelKinds);
 
-        ValidateExplicitRouteDuplicates(route);
-        var exposed = SelectMapped(_scannedRoutes, route.HandlerGroups);
-        AddExplicitRouteHandlers(exposed, route);
-        ValidateConflicts(
-            exposed,
-            (kind, packetName) =>
-                $"Route channel '{route.RouterChannelId}' maps duplicate {kind} handler packet '{packetName}'.");
+            ValidateExplicitDuplicates(
+                membership.SendHandlers.Select(static handler =>
+                    Explicit(handler, ZLinkMessageKind.Command)),
+                packetName =>
+                    $"Duplicate send handler '{node.SpotNodeName}:{membership.ChannelName}:{packetName}'.");
+            ValidateExplicitDuplicates(
+                membership.RequestHandlers.Select(static handler =>
+                    Explicit(handler, ZLinkMessageKind.Request)),
+                packetName =>
+                    $"Duplicate request handler '{node.SpotNodeName}:{membership.ChannelName}:{packetName}'.");
+
+            var exposed = SelectMapped(_scannedChannels, membership.HandlerGroups);
+            foreach (var handler in membership.SendHandlers)
+                exposed.Add(Explicit(handler, ZLinkMessageKind.Command));
+            foreach (var handler in membership.RequestHandlers)
+                exposed.Add(Explicit(handler, ZLinkMessageKind.Request));
+            ValidateConflicts(
+                exposed,
+                (kind, packetName) =>
+                    $"channel '{node.SpotNodeName}:{membership.ChannelName}' maps duplicate {kind} handler packet '{packetName}'.");
+        }
+
+        ValidateExplicitDuplicates(
+            node.RouteSendHandlers.Select(static handler =>
+                Explicit(handler, ZLinkMessageKind.Command)),
+            packetName =>
+                $"Duplicate routed send handler '{node.SpotNodeName}:{packetName}'.");
+        ValidateExplicitDuplicates(
+            node.RouteRequestHandlers.Select(static handler =>
+                Explicit(handler, ZLinkMessageKind.Request)),
+            packetName =>
+                $"Duplicate routed request handler '{node.SpotNodeName}:{packetName}'.");
     }
 
     private void ValidateChannelMappedGroups(
         ZLinkChannelRegistration channel,
         IReadOnlySet<ZLinkMessageKind> allowedKinds)
+        => ValidateMappedGroups(
+            $"channel '{channel.ChannelName}'",
+            channel.HandlerGroups,
+            allowedKinds);
+
+    private void ValidateMappedGroups(
+        string owner,
+        IReadOnlySet<string> handlerGroups,
+        IReadOnlySet<ZLinkMessageKind> allowedKinds)
     {
-        foreach (var group in channel.HandlerGroups)
+        foreach (var group in handlerGroups)
         {
             if (!_groups.TryGetValue(group, out var entries))
                 throw new ZLinkConfigurationException(
-                    $"channel '{channel.ChannelName}' maps unknown handler group '{group}'.");
+                    $"{owner} maps unknown handler group '{group}'.");
 
             foreach (var entry in entries)
                 if (entry.Surface != ZLinkHandlerEndpointSurface.Channel || !allowedKinds.Contains(entry.Kind))
                     throw new ZLinkConfigurationException(
-                        $"channel '{channel.ChannelName}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
-        }
-    }
-
-    private void ValidateRouteMappedGroups(ZLinkRouteChannelRegistration route)
-    {
-        foreach (var group in route.HandlerGroups)
-        {
-            if (!_groups.TryGetValue(group, out var entries))
-                throw new ZLinkConfigurationException(
-                    $"Route channel '{route.RouterChannelId}' maps unknown handler group '{group}'.");
-
-            foreach (var entry in entries)
-                if (entry.Surface != ZLinkHandlerEndpointSurface.Route
-                    || !ClientServerKinds.Contains(entry.Kind))
-                    throw new ZLinkConfigurationException(
-                        $"Route channel '{route.RouterChannelId}' maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
+                        $"{owner} maps handler group '{group}' with incompatible handler kind '{entry.Kind}'.");
         }
     }
 
@@ -113,16 +122,6 @@ internal sealed class ZLinkHandlerExposureCatalog
         ValidateExplicitDuplicates(
             channel.PublishHandlers.Select(static handler => Explicit(handler, ZLinkMessageKind.Publish)),
             packetName => $"Duplicate publish handler '{channel.ChannelName}:{packetName}'.");
-    }
-
-    private static void ValidateExplicitRouteDuplicates(ZLinkRouteChannelRegistration route)
-    {
-        ValidateExplicitDuplicates(
-            route.SendHandlers.Select(static handler => Explicit(handler, ZLinkMessageKind.Command)),
-            packetName => $"Duplicate routed send handler '{route.RouterChannelId}:{packetName}'.");
-        ValidateExplicitDuplicates(
-            route.RequestHandlers.Select(static handler => Explicit(handler, ZLinkMessageKind.Request)),
-            packetName => $"Duplicate routed request handler '{route.RouterChannelId}:{packetName}'.");
     }
 
     private static void ValidateExplicitDuplicates(
@@ -151,16 +150,6 @@ internal sealed class ZLinkHandlerExposureCatalog
             exposed.Add(Explicit(handler, ZLinkMessageKind.Request));
         foreach (var handler in channel.PublishHandlers)
             exposed.Add(Explicit(handler, ZLinkMessageKind.Publish));
-    }
-
-    private static void AddExplicitRouteHandlers(
-        ICollection<ZLinkHandlerExposure> exposed,
-        ZLinkRouteChannelRegistration route)
-    {
-        foreach (var handler in route.SendHandlers)
-            exposed.Add(Explicit(handler, ZLinkMessageKind.Command));
-        foreach (var handler in route.RequestHandlers)
-            exposed.Add(Explicit(handler, ZLinkMessageKind.Request));
     }
 
     private static ZLinkHandlerExposure Explicit(
@@ -211,10 +200,10 @@ internal sealed class ZLinkHandlerExposureCatalog
     }
 
     private static readonly IReadOnlySet<string> EmptyGroups = new HashSet<string>(StringComparer.Ordinal);
-    private static readonly IReadOnlySet<ZLinkMessageKind> ClientServerKinds =
-        new HashSet<ZLinkMessageKind> { ZLinkMessageKind.Command, ZLinkMessageKind.Request };
     private static readonly IReadOnlySet<ZLinkMessageKind> FanoutKinds =
         new HashSet<ZLinkMessageKind> { ZLinkMessageKind.Publish };
+    private static readonly IReadOnlySet<ZLinkMessageKind> MeshChannelKinds =
+        new HashSet<ZLinkMessageKind> { ZLinkMessageKind.Command, ZLinkMessageKind.Request };
 
     private sealed record ZLinkHandlerExposure(
         ZLinkMessageKind Kind,

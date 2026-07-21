@@ -49,13 +49,14 @@ public sealed class ActorContracts
             .JoinEntrySpot(RoutingId.From("play-node"), ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
             .Async();
-        actorClient.SendToActor(actorRef, new JoinRoom("room-1")).Submit();
+        var actorSend = await actorClient.SendToActor("actors", actorRef, new JoinRoom("room-1"))
+            .SubmitAsync();
         var actorReply = await actorClient
-            .RequestToActor(actorRef, new JoinRoom("room-1"))
+            .RequestToActor("actors", actorRef, new JoinRoom("room-1"))
             .Timeout(TimeSpan.FromSeconds(1))
             .Async<JoinedRoom>();
         var yieldedActorReply = await actorClient
-            .RequestToActor(actorRef, new JoinRoom("room-1"))
+            .RequestToActor("actors", actorRef, new JoinRoom("room-1"))
             .Timeout(TimeSpan.FromSeconds(1))
             .Yield<JoinedRoom>();
 
@@ -76,19 +77,28 @@ public sealed class ActorContracts
         Assert.Equal(RoutingId.From("play-node"), entryActor.NodeRid);
         Assert.Equal("room-1", actorReply.RoomId);
         Assert.Equal("room-1", yieldedActorReply.RoomId);
+        Assert.Equal(ZLinkSubmitStatus.Submitted, actorSend.Status);
     }
 
     private sealed class ActorClient : IZLinkActorClient
     {
-        public IZLinkActorSendCall SendToActor<TMessage>(ActorRef actor, TMessage message)
+        public IZLinkActorSendCall SendToActor<TMessage>(
+            string meshName,
+            ActorRef actor,
+            TMessage message)
         {
+            _ = meshName;
             _ = actor;
             _ = message;
             return new ActorSendCall();
         }
 
-        public IZLinkActorRequestCall RequestToActor<TRequest>(ActorRef actor, TRequest request)
+        public IZLinkActorRequestCall RequestToActor<TRequest>(
+            string meshName,
+            ActorRef actor,
+            TRequest request)
         {
+            _ = meshName;
             _ = actor;
             _ = request;
             return new ActorRequestCall();
@@ -97,13 +107,21 @@ public sealed class ActorContracts
 
     private sealed class ActorSendCall : IZLinkActorSendCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkActorSendCall Metadata(string key, string value) => this;
+
+        public IZLinkActorSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
     }
 
     private sealed class ActorRequestCall : IZLinkActorRequestCall
     {
+        public IZLinkActorRequestCall Metadata(string key, string value) => this;
+
+        public IZLinkActorRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
+
         public IZLinkActorRequestCall Timeout(TimeSpan timeout)
         {
             _ = timeout;
@@ -222,6 +240,8 @@ public sealed class ActorContracts
 
     private sealed class ActorContext(string actorId) : IZLinkActorContext
     {
+        public string MeshName => "play";
+
         public RoutingId? SpotRid => RoutingId.From("room-1");
 
         public IZLinkBoundSession BoundSession { get; } = new BoundSession();

@@ -15,16 +15,6 @@ internal sealed class StreamSocket : RoutedMessageSocketBase, IStreamSocket
 
     public new StreamSocketOptions Options { get; }
 
-    public void SetRoutingId(RoutingId routingId)
-    {
-        Kernel.SetOption(SocketOptions.RoutingId, routingId.ToBytes());
-    }
-
-    public RoutingId GetRoutingId()
-    {
-        return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
-    }
-
     public void OnPacket(StreamPacketHandler handler)
     {
         Kernel.AttachStreamPacket(handler);

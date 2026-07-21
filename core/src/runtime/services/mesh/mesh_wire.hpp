@@ -38,7 +38,11 @@ enum wire_type_t
     wire_transfer_ack = 32,
     wire_reply_relay = 33,
     wire_transfer_seal = 34,
-    wire_transfer_complete = 35
+    wire_transfer_complete = 35,
+    wire_bound_session_send = 36,
+    wire_actor_joined = 37,
+    wire_bound_session_bind = 38,
+    wire_instance_spot = 39
 };
 
 //  Creates, configures and binds the node's ROUTER socket, resolves the
@@ -75,7 +79,8 @@ zlink_submit_result_t wire_submit_data (mesh_node_t *node_,
                                         const zlink_mesh_metadata_view_t *metadata_,
                                         const zlink_msg_t *parts_,
                                         size_t part_count_,
-                                        zlink_send_flags_t flags_);
+                                        zlink_send_flags_t flags_,
+                                        const send_ready_interest_t *interest_ = NULL);
 
 //  Spot direct submit to an admitted peer. The target Spot is addressed by
 //  rid + lifecycle generation; absence and generation conflicts come back as
@@ -90,7 +95,35 @@ zlink_submit_result_t wire_submit_spot (mesh_node_t *node_,
                                         const zlink_mesh_metadata_view_t *metadata_,
                                         const zlink_msg_t *parts_,
                                         size_t part_count_,
-                                        zlink_send_flags_t flags_);
+                                        zlink_send_flags_t flags_,
+                                        const send_ready_interest_t *interest_ = NULL,
+                                        uint64_t expected_connection_id_ = 0);
+
+//  Cold Instance Spot traffic carries the Framework-selected placement. The
+//  target node validates the exact node generation before exposing activation.
+zlink_submit_result_t wire_submit_instance (
+  mesh_node_t *node_,
+  const instance_placement_value_t &target_,
+  bool is_request_,
+  uint64_t correlation_,
+  uint32_t timeout_ms_,
+  const rid_bytes_t &source_spot_rid_,
+  const zlink_mesh_metadata_view_t *metadata_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_,
+  const send_ready_interest_t *interest_ = NULL,
+  uint64_t *connection_id_out_ = NULL,
+  uint64_t expected_connection_id_ = 0);
+
+//  Moves a placement record once to an exact Ready Spot after a remote
+//  location CAS loss. A request keeps its original reply route through a
+//  sealed relay serial; success consumes record_.
+zlink_submit_result_t wire_redirect_instance (
+  mesh_node_t *node_,
+  const instance_placement_value_t &target_,
+  uint64_t target_spot_generation_,
+  std::unique_ptr<queued_record_t> &record_);
 
 //  Remote leg of a Logical Multicast. Each target is submitted independently
 //  through the node ROUTER with the caller's flags; successful earlier
@@ -119,7 +152,64 @@ zlink_submit_result_t wire_submit_actor_data (mesh_node_t *node_,
                                               const zlink_mesh_metadata_view_t *metadata_,
                                               const zlink_msg_t *parts_,
                                               size_t part_count_,
-                                              zlink_send_flags_t flags_);
+                                              zlink_send_flags_t flags_,
+                                              const send_ready_interest_t *interest_ = NULL);
+
+//  Actor data originating from a STREAM binding. The receiver records the
+//  reverse node route before admitting the actor message.
+zlink_submit_result_t wire_submit_bound_actor_data (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  bool is_request_,
+  uint64_t correlation_,
+  const rid_bytes_t &source_session_rid_,
+  uint64_t source_binding_generation_,
+  const zlink_actor_ref_t &target_actor_,
+  const zlink_mesh_metadata_view_t *metadata_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_,
+  const send_ready_interest_t *interest_ = NULL);
+
+//  Reverse leg of a transferred actor's bound STREAM session. The target
+//  actor routes payload back to the node that physically owns the session.
+zlink_submit_result_t wire_submit_bound_session (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  const zlink_actor_ref_t &actor_,
+  uint64_t expected_binding_generation_,
+  const zlink_msg_t *parts_,
+  size_t part_count_,
+  zlink_send_flags_t flags_);
+
+//  Announces one STREAM binding generation to an admitted peer. Generation
+//  zero is a tombstone and retired_binding_generation identifies the exact
+//  cached generation that may be removed.
+zlink_submit_result_t wire_submit_bound_session_bind (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  uint64_t correlation_,
+  const zlink_actor_ref_t &actor_,
+  uint64_t binding_generation_,
+  uint64_t retired_binding_generation_ = 0);
+
+void wire_submit_bound_session_bind_reply (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  uint64_t correlation_,
+  int32_t terminal_result_,
+  int32_t failure_errno_,
+  uint64_t binding_generation_,
+  uint64_t membership_epoch_);
+
+//  Announces a STREAM binding to every currently admitted peer. Actor owners
+//  and transfer targets retain the reverse route to the node that owns the
+//  physical session. Generation zero conditionally removes the retired
+//  generation so a delayed tombstone cannot erase a newer rebind.
+void wire_broadcast_bound_session_bind (mesh_node_t *node_,
+                                        const zlink_actor_ref_t &actor_,
+                                        uint64_t binding_generation_,
+                                        uint64_t retired_binding_generation_ = 0);
 
 //  Remote actor infrastructure operations (lookup / destroy / join). The
 //  join carries creation parts as payload frames; entry_ addresses the
@@ -151,6 +241,18 @@ void wire_notify_actor_left (mesh_node_t *node_,
                              uint64_t previous_spot_generation_,
                              uint64_t previous_membership_epoch_,
                              uint64_t current_membership_epoch_);
+
+//  One-way post-commit notification to the target Spot. This is distinct
+//  from wire_actor_join, which asks the target to accept or reject admission.
+void wire_notify_actor_joined (mesh_node_t *node_,
+                               const rid_bytes_t &peer_rid_,
+                               const zlink_actor_ref_t &actor_,
+                               const rid_bytes_t &previous_spot_rid_,
+                               uint64_t previous_spot_generation_,
+                               uint64_t previous_membership_epoch_,
+                               const rid_bytes_t &current_spot_rid_,
+                               uint64_t current_spot_generation_,
+                               uint64_t current_membership_epoch_);
 
 //  Sends a join verdict back to the requester with the actual joined Spot
 //  address (used by the remote-origin branch of zlink_actor_join_reply).
@@ -216,7 +318,8 @@ zlink_submit_result_t wire_submit_reply_relay (mesh_node_t *node_,
                                                int32_t terminal_result_,
                                                int32_t failure_errno_,
                                                const zlink_msg_t *parts_,
-                                               size_t part_count_);
+                                               size_t part_count_,
+                                               uint64_t expected_connection_id_ = 0);
 
 //  Terminal reply for a remote-origin request. Success carries the reply
 //  parts; failures carry the terminal result and errno instead.
@@ -226,7 +329,8 @@ zlink_submit_result_t wire_submit_reply (mesh_node_t *node_,
                                          int32_t terminal_result_,
                                          int32_t failure_errno_,
                                          const zlink_msg_t *parts_,
-                                         size_t part_count_);
+                                         size_t part_count_,
+                                         uint64_t expected_connection_id_ = 0);
 }
 }
 

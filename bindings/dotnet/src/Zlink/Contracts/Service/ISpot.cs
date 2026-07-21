@@ -14,7 +14,29 @@ public enum SpotKind
     Entry = 1,
 
     /// <summary>A user-created spot.</summary>
-    User = 2
+    User = 2,
+
+    /// <summary>A Framework-managed, address-activated spot.</summary>
+    Instance = 3
+}
+
+/// <summary>
+///     The activation state of a spot. Non-instance spots report
+///     <see cref="Invalid" />.
+/// </summary>
+public enum SpotActivationState
+{
+    /// <summary>The spot does not use the Instance Spot activation barrier.</summary>
+    Invalid = 0,
+
+    /// <summary>The owner is being selected and initialized.</summary>
+    Activating = 1,
+
+    /// <summary>The owner accepts application messages and timer ticks.</summary>
+    Ready = 2,
+
+    /// <summary>The owner has stopped accepting new application work.</summary>
+    Closing = 3
 }
 
 /// <summary>
@@ -51,6 +73,15 @@ public sealed record MeshPublishDetail(
     uint DroppedLocalSpots);
 
 /// <summary>
+///     The terminal result and target detail from one Logical Multicast
+///     operation. Core provides the detail for both successful and
+///     back-pressured partial admission.
+/// </summary>
+public sealed record MeshPublishResult(
+    SubmitResult Result,
+    MeshPublishDetail Detail);
+
+/// <summary>
 ///     A snapshot of a spot's status. Maps to <c>zlink_spot_status_t</c>.
 /// </summary>
 /// <param name="SpotRid">The spot routing id.</param>
@@ -63,6 +94,7 @@ public sealed record MeshPublishDetail(
 /// <param name="Draining">Whether the spot is draining.</param>
 /// <param name="LastError">The last native error code, or 0.</param>
 /// <param name="LastChangedMs">When the spot last changed, in milliseconds.</param>
+/// <param name="ActivationState">The Instance Spot activation state.</param>
 public sealed record SpotStatus(
     RoutingId SpotRid,
     SpotKind SpotKind,
@@ -73,7 +105,8 @@ public sealed record SpotStatus(
     uint ActiveActorCount,
     bool Draining,
     int LastError,
-    ulong LastChangedMs);
+    ulong LastChangedMs,
+    SpotActivationState ActivationState);
 
 /// <summary>
 ///     A spot: a logical destination that can send, request, publish, subscribe,
@@ -118,7 +151,7 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     ///     Publishes parts under a channel/topic (logical multicast), optionally
     ///     attaching immutable outbound application metadata.
     /// </summary>
-    MeshPublishDetail Publish(string channelName, string? topic,
+    MeshPublishResult Publish(string channelName, string? topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
 

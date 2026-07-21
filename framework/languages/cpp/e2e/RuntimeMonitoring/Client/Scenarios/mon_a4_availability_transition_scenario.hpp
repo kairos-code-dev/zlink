@@ -3,70 +3,81 @@
 #pragma once
 
 #include "../Support/client_support.hpp"
-#include "mon_a1_socket_events_scenario.hpp"
+#include "mon_c1_dispatch_failure_scenario.hpp"
 
-#include <zlink/http_client.hpp>
-
-#include <chrono>
+#include <cstdint>
 #include <iostream>
+#include <set>
+#include <string>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
 
-inline std::size_t mon_a4_find_after (const std::vector<std::string> &entries,
-                                      const std::string &needle,
-                                      std::size_t start)
+inline std::uint64_t mon_a4_generation (const std::string &line)
 {
-    for (auto index = start; index < entries.size (); ++index) {
-        if (contains (entries[index], needle)) {
-            return index;
-        }
-    }
-    throw std::runtime_error ("MON-A4 ordered evidence missing: " + needle);
+    const auto marker = line.find ("|generation=");
+    if (marker == std::string::npos)
+        return 0;
+    return std::stoull (line.substr (marker + 12));
 }
 
-inline void run_mon_a4_availability_transition_scenario (const client_options_t &options)
+inline void run_mon_a4_availability_transition_scenario (
+  const client_options_t &options)
 {
-    ensure (!options.old_service_channel_endpoint.empty ()
-              && !options.new_service_channel_endpoint.empty (),
-            "MON-A4 runner did not provide failover endpoints");
+    const auto evidence = wait_evidence_count_at_least (
+      options.service_url,
+      "identifier=zlink.runtime.mesh_node.peer_changed", 4,
+      std::chrono::seconds (15));
+    std::uint64_t previous_sequence = 0;
+    std::set<std::uint64_t> generations;
+    int svc_b_events = 0;
+    for (const auto &line : evidence) {
+        if (!contains (
+              line,
+              "identifier=zlink.runtime.mesh_node.peer_changed")
+            || !contains (line, "peer-rid=svc-b"))
+            continue;
+        const auto sequence = evidence_sequence (line);
+        ensure (sequence > previous_sequence,
+                "MON-A4 peer events are not sequence ordered");
+        previous_sequence = sequence;
+        const auto generation = mon_a4_generation (line);
+        if (generation != 0)
+            generations.insert (generation);
+        ++svc_b_events;
+    }
+    ensure (svc_b_events >= 4,
+            "MON-A4 normal/crash replacement peer events are incomplete");
+    ensure (generations.size () >= 2,
+            "MON-A4 replacement did not expose a fresh lifecycle generation");
 
-    const auto trigger_entries = wait_evidence_contains (
-      options.trigger_url, "kind=ConnectionReady|remote=" + options.new_service_channel_endpoint,
-      std::chrono::milliseconds (10000));
-    const auto disconnected = mon_a4_find_after (
-      trigger_entries, "kind=Disconnected|remote=" + options.old_service_channel_endpoint, 0);
-    const auto connected = mon_a4_find_after (
-      trigger_entries, "kind=Connected|remote=" + options.new_service_channel_endpoint,
-      disconnected + 1);
-    mon_a4_find_after (trigger_entries,
-                       "kind=ConnectionReady|remote=" + options.new_service_channel_endpoint,
-                       connected + 1);
+    const auto snapshot = runtime_snapshot (options.service_url);
+    int svc_b_ready = 0;
+    std::uint64_t ready_generation = 0;
+    for (const auto &peer : snapshot.at ("peers")) {
+        if (peer.at ("rid").get<std::string> () != "svc-b"
+            || !peer.at ("ready").get<bool> ())
+            continue;
+        ++svc_b_ready;
+        ready_generation = peer.at ("generation").get<std::uint64_t> ();
+        ensure (!peer.at ("endpoint").get<std::string> ().empty (),
+                "MON-A4 recovered peer endpoint is empty");
+    }
+    ensure (svc_b_ready == 1,
+            "MON-A4 old svc-b lifetime remained ready after replacement");
+    ensure (ready_generation == *generations.rbegin (),
+            "MON-A4 snapshot did not retain the newest ready generation");
 
-    const auto location_entries = wait_evidence_contains (
-      options.filtered_service_url, "svc-a@" + options.new_service_channel_endpoint,
-      std::chrono::milliseconds (10000));
-    const auto old_route =
-      mon_a4_find_after (location_entries, "svc-a@" + options.old_service_channel_endpoint, 0);
-    mon_a4_find_after (location_entries, "svc-a@" + options.new_service_channel_endpoint,
-                       old_route + 1);
-
-    auto http = zlink::http_client::client_t::create ()
-                  .base_url (options.service_url)
-                  .timeout (std::chrono::milliseconds (1000))
-                  .build ();
-
-    auto service_entries = fetch_evidence (options.service_url);
-    auto drained = http.post ("/admin/server-weight?weight=0").async_raw ().result ();
-    ensure (drained && drained.value ().status < 400, "MON-A4 drain admin call failed");
-    wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
-                           service_entries.size ());
-
-    service_entries = fetch_evidence (options.service_url);
-    auto restored = http.post ("/admin/server-weight?weight=100").async_raw ().result ();
-    ensure (restored && restored.value ().status < 400, "MON-A4 restore admin call failed");
-    wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
-                           service_entries.size ());
+    bool channel_ready = false;
+    for (const auto &channel : snapshot.at ("channels")) {
+        if (channel.at ("name").get<std::string> () == route_mesh_channel) {
+            channel_ready =
+              channel.at ("selectable").get<bool> ()
+              && channel.at ("readyMemberCount").get<std::uint64_t> () >= 2;
+        }
+    }
+    ensure (channel_ready,
+            "MON-A4 recovered channel readiness did not converge");
     std::cout << "scenario MON-A4 passed\n";
 }
 

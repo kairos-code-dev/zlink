@@ -9,19 +9,18 @@ namespace DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot.Handlers;
 internal sealed class OfferDeliveryActorHandler(ILogger<OfferDeliveryActorHandler> logger)
     : IZLinkEntrySpotActorSendHandler<CourierEntrySpot, CourierActor, OfferDeliveryMsg>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         CourierEntrySpot entrySpot,
         CourierActor actor,
         ZLinkSpotActorSendContext context,
         OfferDeliveryMsg message,
         CancellationToken cancellationToken)
     {
-        actor.Offer(message, cancellationToken);
+        await actor.OfferAsync(message, cancellationToken);
         logger.LogInformation(
             "deliverydispatch courier-actor: offer pushed delivery={DeliveryId} courier={CourierId} attempt={Attempt}",
             message.DeliveryId,
             actor.ActorId,
             message.Attempt);
-        return ValueTask.CompletedTask;
     }
 }

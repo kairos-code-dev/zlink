@@ -62,9 +62,10 @@ class GatewayApplication {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${options.logDir}/${options.rid}-flow.log")
                 .traceLabel(options.rid)
-            framework.addSpotMesh(Contracts.SPOT_MESH)
+            val mesh = framework.addRouteMesh(Contracts.SPOT_MESH)
+                .listen(requireOption(options.spotPubEndpoint, "--spot-pub-endpoint"))
                 .setRoutingId(RoutingId.from(options.rid))
-                .enablePubSub(requireOption(options.spotPubEndpoint, "--spot-pub-endpoint"))
+            mesh.configureSpotPublisher()
         }
 
     @Bean

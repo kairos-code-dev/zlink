@@ -17,7 +17,10 @@ test('DeliveryDispatch addresses courier entry spots through opaque handles', ()
     const content = read(source);
     assert.match(content, /ZLINK_SPOT_HANDLE_RESOLVER/);
     assert.match(content, /ZLINK_SPOT_OUTBOUND/);
-    assert.match(content, /resolveSpotHandle\(courierActorNodeRid\(courierId\)\)/);
+    assert.match(
+      content,
+      /resolveSpotHandle\(\s*SampleNames\.routeMesh,\s*courierActorNodeRid\(courierId\)\s*\)/
+    );
     assert.doesNotMatch(content, /ZLINK_ROUTE_CLIENT|requestToNode|sendToNode/);
   }
 
@@ -35,7 +38,7 @@ test('DeliveryDispatch addresses courier entry spots through opaque handles', ()
     'samples/DeliveryDispatch.Ts/Server/CourierSession/courier-session-module.ts'
   ]) {
     const content = read(source);
-    assert.match(content, /addSpotMesh\(SampleNames\.courierActorSpotMesh\)/);
-    assert.match(content, /enableRouter\(/);
+    assert.match(content, /addRouteMesh\(SampleNames\.routeMesh\)/);
+    assert.match(content, /\.listen\(/);
   }
 });

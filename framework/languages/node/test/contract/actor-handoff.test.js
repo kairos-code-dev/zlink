@@ -42,6 +42,7 @@ function harness(forwardWindowMs = 30) {
     routedTransport: transport,
     forwardWindowMs,
     isStaleActorRef: (_actorId, ref) => ref.generation !== currentGeneration,
+    isCurrentHandoffTarget: (_actorId, spotRid) => spotRid === 'target-spot',
     onMarker: (marker, actorId, index) => markers.push({ marker, actorId, index })
   });
   return {
@@ -149,6 +150,44 @@ test('stragglers forward inside the window and fail fast after mapping eviction'
   outside.forEach((part) => part.close());
   assert.equal(markers.some((entry) => entry.marker === 'mapping_evicted'), true);
   assert.equal(markers.some((entry) => entry.marker === 'stale_fail_fast'), true);
+});
+
+test('a Core-routed packet owned by the current actor bypasses an older forwarding mapping', async () => {
+  const { coordinator, forwarded, markers } = harness();
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+
+  const current = frame('current-owner');
+  assert.equal(
+    coordinator.capture('actor-1', current, false, undefined, actorRef(2n)),
+    undefined
+  );
+  current.forEach((part) => part.close());
+
+  assert.deepEqual(forwarded, []);
+  assert.equal(markers.some((entry) => entry.marker === 'straggler_forward'), false);
+});
+
+test('a Core-routed packet marked with the current target bypasses stale owner generation', async () => {
+  const { coordinator, forwarded, markers } = harness();
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+
+  const owner = Object.assign(actorRef(1n), {
+    handoffForwarded: true,
+    handoffTargetSpotRid: 'target-spot'
+  });
+  const current = frame('current-target');
+  assert.equal(
+    coordinator.capture('actor-1', current, false, undefined, owner),
+    undefined
+  );
+  current.forEach((part) => part.close());
+
+  assert.deepEqual(forwarded, []);
+  assert.equal(markers.some((entry) => entry.marker === 'straggler_forward'), false);
 });
 
 test('chained movement replaces the node-local mapping and leaves no retained entry after cutoff', async () => {

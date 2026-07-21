@@ -36,6 +36,7 @@
         <Compile Include="SupportChatRegressionTests.cs"/>
         <Compile Include="TicTacToeRegressionTests.cs"/>
         <Compile Include="ZoneWorldOpsConsoleRegistryTests.cs"/>
+        <Compile Include="ZoneWorldTopologyRegressionTests.cs"/>
         <Compile Include="../../samples/ZoneWorld/Server/Ops/Infrastructure/ZLink/Sessions/OpsConsoleRegistry.cs"
                  Link="ZoneWorld/OpsConsoleRegistry.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>

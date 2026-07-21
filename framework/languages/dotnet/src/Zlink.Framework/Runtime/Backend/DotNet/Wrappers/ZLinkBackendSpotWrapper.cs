@@ -12,32 +12,22 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ZLinkMeshDispatchPump.SpotDispatchState _state;
 
-    private readonly Func<string?> _publishChannelName;
-
     public ZLinkBackendSpotWrapper(
         IMeshNode node,
         ISpot spot,
         ZLinkMeshDispatchPump pump,
         ZLinkMeshCompletionTable completions,
-        Func<string?>? publishChannelName = null,
         ZLinkSpotSubscriptionTracker? subscriptions = null)
     {
         _node = node;
         _spot = spot;
         _pump = pump;
         _completions = completions;
-        _publishChannelName = publishChannelName ?? (static () => null);
         _subscriptions = subscriptions;
         _state = pump.RegisterSpot(spot.RoutingId);
     }
 
     private readonly ZLinkSpotSubscriptionTracker? _subscriptions;
-
-    // Spot pub/sub is logical multicast on the router plane: the publish and
-    // subscription channel is the node's mesh channel; the topic is the
-    // filter. Falls back to the topic (channel-per-topic) when the node has
-    // no registered channel yet.
-    private string PublishChannel(string topic) => _publishChannelName() ?? topic;
 
     public RoutingId RoutingId => _spot.RoutingId;
 
@@ -51,10 +41,10 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
     {
     }
 
-    public void SetSubscription(string topic)
+    public void SetSubscription(string channelName, string topic)
     {
-        _spot.SetSubscription(PublishChannel(topic), topic);
-        _subscriptions?.Add(_spot.RoutingId, topic);
+        _spot.SetSubscription(channelName, topic);
+        _subscriptions?.Add(_spot.RoutingId, channelName, topic);
     }
 
     public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags)
@@ -118,19 +108,18 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         return _spot.SendToChannel(channelName, parts, flags, metadata);
     }
 
-    public MeshPublishDetail Publish(
-        string topic, Message message, SendFlags flags,
+    public MeshPublishResult Publish(
+        string channelName, string topic, Message message, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(PublishChannel(topic), topic, new[] { message }, flags, metadata);
+        return _spot.Publish(channelName, topic, new[] { message }, flags, metadata);
     }
 
-    public MeshPublishDetail Publish(
-        string topic, IReadOnlyList<Message> parts, SendFlags flags,
+    public MeshPublishResult Publish(
+        string channelName, string topic, IReadOnlyList<Message> parts, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        var detail = _spot.Publish(PublishChannel(topic), topic, parts, flags, metadata);
-        return detail;
+        return _spot.Publish(channelName, topic, parts, flags, metadata);
     }
 
     public SubmitResult SendToSpot(

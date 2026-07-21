@@ -16,8 +16,8 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_tictactoe_api \
   sample_cpp_framework_tictactoe_client \
   test_cpp_framework_sample_parity \
-  test_cpp_framework_spot_runtime \
-  test_cpp_framework_ActorGateway_actor_session_relay >/dev/null
+  zlink_cpp_framework_mesh_node_vertical_test \
+  test_cpp_framework_actor_gateway >/dev/null
 
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_tictactoe_play" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_tictactoe_play" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -37,7 +37,7 @@ for binary in "$PLAY_BIN" "$API_BIN" "$CLIENT_BIN"; do
 done
 
 "$CTEST_BIN" --test-dir "$BUILD_DIR" \
-  -R 'test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_tictactoe_(play|api)' \
+  -R 'test_cpp_framework_sample_parity|zlink_cpp_framework_mesh_node_vertical_test|test_cpp_framework_actor_gateway|sample_smoke_sample_cpp_framework_tictactoe_(play|api)' \
   --output-on-failure
 
 read -r -a PORTS <<<"$(python3 - <<'PY'

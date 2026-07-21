@@ -16,24 +16,68 @@ public final class ZLinkAsyncSerialQueue {
     private static final ThreadLocal<Boolean> CURRENT_RELEASE_DEFERRED = new ThreadLocal<>();
 
     private final boolean releaseOnIncompleteStage;
+    private final int pendingCapacity;
     private CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+    private int outstanding;
+    private Runnable capacityAvailable = () -> { };
 
     public ZLinkAsyncSerialQueue() {
-        this(false);
+        this(false, Integer.MAX_VALUE);
     }
 
     public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage) {
+        this(releaseOnIncompleteStage, Integer.MAX_VALUE);
+    }
+
+    public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage, int pendingCapacity) {
+        if (pendingCapacity <= 0) {
+            throw new IllegalArgumentException("pendingCapacity must be positive");
+        }
         this.releaseOnIncompleteStage = releaseOnIncompleteStage;
+        this.pendingCapacity = pendingCapacity;
     }
 
     public synchronized CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation) {
+        return enqueueAccepted(operation);
+    }
+
+    public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
+        if (outstanding > pendingCapacity) {
+            return false;
+        }
+        enqueueAccepted(operation);
+        return true;
+    }
+
+    public synchronized void onCapacityAvailable(Runnable callback) {
+        capacityAvailable = java.util.Objects.requireNonNull(callback, "callback");
+    }
+
+    private CompletionStage<Void> enqueueAccepted(
+        Supplier<CompletionStage<Void>> operation) {
+        outstanding++;
         CompletableFuture<Void> result = new CompletableFuture<>();
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletionStage<Void> gate = tail
             .handle((ignored, error) -> null)
             .thenCompose(ignored -> invoke(operation, result, flow));
         tail = gate.handle((ignored, error) -> null);
+        gate.whenComplete((ignored, error) -> releaseCapacity());
         return result;
+    }
+
+    private void releaseCapacity() {
+        Runnable notify = null;
+        synchronized (this) {
+            boolean wasFull = outstanding > pendingCapacity;
+            outstanding--;
+            if (wasFull && outstanding <= pendingCapacity) {
+                notify = capacityAvailable;
+            }
+        }
+        if (notify != null) {
+            HANDLER_EXECUTOR.execute(notify);
+        }
     }
 
     private CompletionStage<Void> invoke(
@@ -99,6 +143,11 @@ public final class ZLinkAsyncSerialQueue {
         }
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletableFuture<T> managed = new CompletableFuture<>();
+        managed.whenComplete((ignored, error) -> {
+            if (managed.isCancelled()) {
+                stage.toCompletableFuture().cancel(false);
+            }
+        });
         if (!queue.releaseOnIncompleteStage) {
             CompletableFuture<Void> gate = CURRENT_GATE.get();
             stage.whenComplete((value, error) -> HANDLER_EXECUTOR.execute(() -> {
@@ -157,6 +206,11 @@ public final class ZLinkAsyncSerialQueue {
         }
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletableFuture<T> managed = new CompletableFuture<>();
+        managed.whenComplete((ignored, error) -> {
+            if (managed.isCancelled()) {
+                stage.toCompletableFuture().cancel(false);
+            }
+        });
         gate.complete(null);
         stage.whenComplete((value, error) -> queue.enqueue(() -> {
             try (ZLinkFlowContext.Scope ignored = flow == null

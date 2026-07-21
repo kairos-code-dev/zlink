@@ -4,7 +4,7 @@
 
 # 유틸리티
 
-이 문서는 ZLink Core 10.1.0의 atomic counter, timer, 고해상도 clock과 thread helper 공개 계약을
+이 문서는 ZLink Core 11.0.0의 atomic counter, timer, 고해상도 clock과 thread helper 공개 계약을
 정의한다. 대상 독자는 이러한 utility의 lifecycle, thread-safety와 callback ownership을 C API와
 bindings에 투영하는 개발자다. 이 문서는 “공통 runtime 기능을 사용할 때 각 handle과 callback의 수명,
 동시 호출 범위와 반환값을 어떻게 해석하는가?”에 답한다.
@@ -142,8 +142,8 @@ typedef void (zlink_thread_fn) (void *);
 
 ## 타이머
 
-나노초 정밀도의 주기적/일회성 타이머를 제공합니다. `zlink_timer_new`로 독립
-실행형 타이머를, `zlink_spot_timer_new`로 Spot 소유 타이머를 생성합니다.
+나노초 정밀도의 주기적/일회성 generic 타이머를 제공합니다. `zlink_timer_new`로
+독립 실행형 타이머를 생성합니다.
 타이머는 `zlink_timer_recv`로 동기 수신하거나 `zlink_timer_handler` 콜백으로
 구동할 수 있고, `zlink_poller_add_timer`로 poller에 통합할 수도 있습니다.
 
@@ -162,31 +162,7 @@ ZLINK_EXPORT void *zlink_timer_new (void);
 
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
-**참고:** `zlink_spot_timer_new`, `zlink_timer_destroy`
-
----
-
-### zlink_spot_timer_new
-
-Spot 소유 타이머를 생성합니다. 생성된 타이머의 수명과 event 전달은 연결된
-Spot과 함께 동작합니다.
-
-```c
-ZLINK_EXPORT void *zlink_spot_timer_new (void *spot_);
-```
-
-**매개변수:**
-
-| 이름 | 설명 |
-|---|---|
-| `spot_` | 타이머와 연결할 Spot handle |
-
-**반환값:** 성공 시 타이머 핸들, 실패 시 `NULL`. 실패하면 errno를 설정합니다.
-
-**스레드 안전성:** 같은 타이머 handle을 변경하는 다른 작업과 동시에 호출하지 않는 한
-모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_timer_new`, `zlink_timer_destroy`
+**참고:** `zlink_timer_destroy`
 
 ---
 

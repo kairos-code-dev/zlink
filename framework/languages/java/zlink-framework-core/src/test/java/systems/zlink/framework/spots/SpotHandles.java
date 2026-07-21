@@ -7,6 +7,6 @@ public final class SpotHandles {
     }
 
     public static SpotHandle create(RoutingId spotRid) {
-        return new FrameworkSpotHandle(spotRid);
+        return new FrameworkSpotHandle("test-mesh", spotRid, spotRid, 1L);
     }
 }

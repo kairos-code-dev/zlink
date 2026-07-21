@@ -4,6 +4,7 @@
 #define __ZLINK_PIPE_HPP_INCLUDED__
 
 #include <atomic>
+#include <memory>
 
 #include "core/ypipe_base.hpp"
 #include "utils/config.hpp"
@@ -26,6 +27,15 @@ enum pipe_write_status_t
     pipe_write_ready = 0,
     pipe_write_hwm_full,
     pipe_write_inactive
+};
+
+struct transport_lifetime_t
+{
+    explicit transport_lifetime_t (uint64_t connection_id_) :
+        connection_id (connection_id_)
+    {
+    }
+    std::atomic<uint64_t> connection_id;
 };
 
 //  Create a pipepair for bi-directional transfer of messages.
@@ -66,6 +76,9 @@ class pipe_t ZLINK_FINAL : public object_t,
                            public array_item_t<3>
 {
     template <typename T> friend void release_heap_owned (T *);
+#ifdef ZLINK_BUILD_TESTS
+    friend class session_termination_test_access_t;
+#endif
 
     //  This allows pipepair to create pipe objects.
     friend int pipepair (zlink::object_t *parents_[2],
@@ -179,6 +192,8 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     void set_endpoint_pair (endpoint_uri_pair_t endpoint_pair_);
     const endpoint_uri_pair_t &get_endpoint_pair () const;
+    void set_transport_connection_id (uint64_t connection_id_);
+    uint64_t get_transport_connection_id () const;
 
     void send_disconnect_msg ();
     void set_disconnect_msg (const std::vector<unsigned char> &disconnect_);
@@ -219,7 +234,8 @@ class pipe_t ZLINK_FINAL : public object_t,
             int inhwm_,
             int outhwm_,
             bool conflate_,
-            bool session_pipe_);
+            bool session_pipe_,
+            const std::shared_ptr<transport_lifetime_t> &transport_lifetime_);
 
     //  Pipepair uses this function to let us know about
     //  the peer pipe object.
@@ -320,6 +336,7 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     // The endpoints of this pipe.
     endpoint_uri_pair_t _endpoint_pair;
+    std::shared_ptr<transport_lifetime_t> _transport_lifetime;
 
     // Disconnect msg
     msg_t _disconnect_msg;

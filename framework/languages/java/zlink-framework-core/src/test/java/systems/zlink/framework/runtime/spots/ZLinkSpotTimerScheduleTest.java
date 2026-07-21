@@ -61,10 +61,6 @@ final class ZLinkSpotTimerScheduleTest {
     private static ZLinkTimerOptions timerOptions(
         ZLinkTimerOverrunPolicy overrunPolicy,
         int maxCatchUpTicks) {
-        ZLinkTimerOptions options = new ZLinkTimerOptions();
-        options.setOverrunPolicy(overrunPolicy);
-        options.setMaxCatchUpTicks(maxCatchUpTicks);
-        options.setStopOnUnhandledException(false);
-        return options;
+        return new ZLinkTimerOptions(overrunPolicy, maxCatchUpTicks, false);
     }
 }

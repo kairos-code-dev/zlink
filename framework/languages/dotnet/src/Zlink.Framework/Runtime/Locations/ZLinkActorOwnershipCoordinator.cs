@@ -133,40 +133,65 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             OwnerId: string.Empty,
             UpdatedAt: default);
         ZLinkLocationWriteResult result;
-        try
+        const int leaseBoundaryRetries = 10;
+        for (var attempt = 0;; attempt++)
         {
-            result = await runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
-        }
-        if (result.Status == ZLinkLocationWriteStatus.RejectedConflict
-            && claimMode == ZLinkActorClaimMode.TakeoverExistingOwner)
-        {
-            // Hosting handoff: the live row belongs to the previous host,
-            // which deactivates its instance as part of the move. Takeover
-            // is the fencing path that lets the new host claim anyway. The
-            // membership epoch continues from the existing row — it is the
-            // monotonic ordering axis across transfers, and a takeover that
-            // reset it would make the new incarnation read as a lagging
-            // replica to every observer.
             try
             {
-                var existing = await resolver.ResolveActorRowAsync(
-                        new ZLinkActorLocationKey(meshName, actorId),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (existing is not null)
-                    row = row with { MembershipEpoch = existing.MembershipEpoch };
-                result = await runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
+                result = await runtime.WriteActorAsync(
+                        row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch
             {
                 return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
             }
+            if (result.Status == ZLinkLocationWriteStatus.RejectedConflict
+                && claimMode == ZLinkActorClaimMode.TakeoverExistingOwner)
+            {
+                // Hosting handoff: the live row belongs to the previous host,
+                // which deactivates its instance as part of the move. Takeover
+                // is the fencing path that lets the new host claim anyway. The
+                // membership epoch continues from the existing row — it is the
+                // monotonic ordering axis across transfers, and a takeover that
+                // reset it would make the new incarnation read as a lagging
+                // replica to every observer.
+                try
+                {
+                    var existing = await resolver.ResolveActorRowAsync(
+                            new ZLinkActorLocationKey(meshName, actorId),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (existing is not null)
+                        row = row with { MembershipEpoch = existing.MembershipEpoch };
+                    result = await runtime.WriteActorAsync(
+                            row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    return new ZLinkActorClaimResult(ZLinkActorClaimStatus.StoreFailure, null);
+                }
+            }
+
+            if (result.Status != ZLinkLocationWriteStatus.RejectedConflict
+                || claimMode == ZLinkActorClaimMode.TakeoverExistingOwner)
+                break;
+
+            // Redis can still report the previous owner's lease key at the
+            // exact millisecond where the live-row resolver has measured that
+            // lease as expired. A conflict with no live row is therefore a
+            // short store-clock boundary, not a competing owner. Absorb it
+            // here so callers do not need a crash-recovery retry policy.
+            var conflict = await ResolveExistingActorWithPresenceAsync(
+                    meshName, actorId, cancellationToken)
+                .ConfigureAwait(false);
+            if (conflict.RowPresent || attempt + 1 >= leaseBoundaryRetries)
+                return new ZLinkActorClaimResult(
+                    ZLinkActorClaimStatus.Conflict, conflict.Row);
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                .ConfigureAwait(false);
         }
 
         switch (result.Status)
@@ -186,9 +211,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
             case ZLinkLocationWriteStatus.RejectedConflict:
             {
-                var existing = await ResolveExistingActorAsync(meshName, actorId, cancellationToken)
+                var existing = await ResolveExistingActorWithPresenceAsync(
+                        meshName, actorId, cancellationToken)
                     .ConfigureAwait(false);
-                return new ZLinkActorClaimResult(ZLinkActorClaimStatus.Conflict, existing);
+                return new ZLinkActorClaimResult(
+                    ZLinkActorClaimStatus.Conflict, existing.Row);
             }
 
             default:
@@ -540,14 +567,15 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         }
     }
 
-    private async ValueTask<ZLinkActorLocation?> ResolveExistingActorAsync(
+    private async ValueTask<(ZLinkActorLocation? Row, bool RowPresent)>
+        ResolveExistingActorWithPresenceAsync(
         string meshName,
         string actorId,
         CancellationToken cancellationToken)
     {
         try
         {
-            return await resolver.ResolveActorRowAsync(
+            return await resolver.ResolveActorRowWithPresenceAsync(
                     new ZLinkActorLocationKey(meshName, actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -556,7 +584,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"actor conflict resolve failed for '{actorId}': {exception.Message}");
-            return null;
+            // A failed resolve cannot prove the owner is absent. Preserve the
+            // conflict instead of retrying a claim that might split ownership.
+            return (null, true);
         }
     }
 

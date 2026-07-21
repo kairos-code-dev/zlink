@@ -88,7 +88,7 @@ completion 이 어떤 의미인지는 호출 종류에 따라 달라진다.
 
 ### 2.3.2 단일 실행 queue
 
-이 절은 한 session 또는 한 actor 의 실행 줄을 어떻게 한 줄로 묶는지를 다룬다.
+이 절은 한 session 또는 한 actor의 작업을 어떤 실행 queue에서 직렬화하는지 다룬다.
 
 먼저 헷갈리기 쉬운 부분을 짚어 둔다. `draining` 플래그는 handler 하나하나를
 감싸는 lock 이 아니다. 아래 코드의 `draining` 은 queue 를 비우는 drain loop
@@ -210,7 +210,7 @@ class ZLinkSerialExecutionQueue {
 
 이 queue 의 동작은 다음과 같이 읽으면 된다.
 
-- `post(...)` 는 work item 을 queue 에 넣고 drain task 를 깨운다.
+- `post(...)`는 work item을 queue에 넣고 drain task를 예약한다.
 - 이미 drain 중이라면 `draining` 플래그가 `true` 다. 그래서 새로 만들어진
   drain task 는 곧바로 끝난다.
 - 진행 중이던 drain task 가 queue 를 계속 비우므로, handler 가 하나씩 차례로
@@ -379,7 +379,7 @@ class ZLinkStreamSessionRuntime {
 
 요약하면, transport 진입점은 handler 의 reply 를 기다려서 응답으로 돌려 주는
 public request / reply 경로가 아니다. 그저 work item 을 queue 에 안전하게
-밀어 넣을 때까지만 책임지는 자리다.
+등록할 때까지만 책임지는 자리다.
 
 다만 shutdown 처럼 "지금까지 들어온 모든 일이 끝날 때까지 반드시 기다려야"
 하는 runtime 흐름은 따로 있다. 이 흐름은 별도의 drain / stop 단계에서, queue
@@ -546,7 +546,7 @@ handler 두 개가 동시에 건드릴 수 있다. 그래서 actor 가 user Spot
 
 ### 2.3.7 user Spot queue
 
-이 절은 user Spot 의 실행 queue 가 어떤 입력을 한 줄로 묶는지를 다룬다.
+이 절은 user Spot의 실행 queue가 어떤 입력을 직렬화하는지 다룬다.
 
 user Spot queue 는 actor packet 만 처리하는 곳이 아니다. 다음 항목 모두 같은
 queue 로 들어와야 한다.
@@ -654,16 +654,24 @@ class ZLinkEntrySpotRuntime {
     return this.lifecycleQueue.run(() => this.entrySpot.onClosing(), signal);
   }
 
-  actorJoined(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  actorJoined(
+    membership: ZLinkActorMembership,
+    signal?: AbortSignal,
+  ): Promise<void> {
     return this.lifecycleQueue.run(
-      () => this.entrySpot.onJoinedActor?.(actor),
+      // lifecycle callback은 live Actor가 아니라 확정된 membership snapshot을 받는다.
+      () => this.entrySpot.onJoinedActor(membership),
       signal,
     );
   }
 
-  actorLeft(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+  actorLeft(
+    membership: ZLinkActorMembership,
+    signal?: AbortSignal,
+  ): Promise<void> {
     return this.lifecycleQueue.run(
-      () => this.entrySpot.onLeaveActor?.(actor),
+      // leave도 같은 immutable membership identity를 전달한다.
+      () => this.entrySpot.onLeaveActor(membership),
       signal,
     );
   }
@@ -685,8 +693,8 @@ Entry Spot timer 도 이 lifecycle queue 에 넣지 않는다. Entry Spot 은 �
 
 특정 Spot 이나 actor 의 상태를 보호할 필요가 없는 node-level message 는
 message 하나를 runtime task 하나로 실행한다. 이 경로에는 전역 node queue 를
-두지 않는다. 전역 queue 를 두면 서로 무관한 node message 들이 한 줄로 묶여
-막혀 버리기 때문이다.
+두지 않는다. 전역 queue를 두면 서로 무관한 node message가 불필요하게 서로의
+완료를 기다리기 때문이다.
 
 ```ts
 class ZLinkNodeMessageRuntime {

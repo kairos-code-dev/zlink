@@ -27,7 +27,7 @@ export async function runSample(ctx) {
   const roleConfig = (name, keys) => ctx.writeConfig(name,
     Object.fromEntries(keys.map((key) => [key, sample[key]])));
   for (const [role, entry, ready, configPath] of [
-    ['tracking', 'dist/Server/Tracking/main.js', sample.trackingEndpoint,
+    ['tracking', 'dist/Server/Tracking/main.js', sample.trackingSpotEndpoint,
       roleConfig('tracking', ['trackingEndpoint', 'trackingSpotEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir', 'workDir'])],
     ['customer-gateway', 'dist/Server/Session/main.js', sample.sessionStreamEndpoint,
       roleConfig('customer-gateway', ['sessionSpotRouterEndpoint', 'sessionSpotNodeRid', 'sessionStreamEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'])],
@@ -37,7 +37,7 @@ export async function runSample(ctx) {
       roleConfig('courier-spot-node1', ['courierActorNode1SpotEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'])],
     ['courier-spot-node2', 'dist/Server/Courier/node2-main.js', sample.courierActorNode2SpotEndpoint,
       roleConfig('courier-spot-node2', ['courierActorNode2SpotEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir'])],
-    ['dispatch', 'dist/Server/Dispatch/main.js', sample.dispatchEndpoint,
+    ['dispatch', 'dist/Server/Dispatch/main.js', sample.dispatchSpotEndpoint,
       roleConfig('dispatch', ['dispatchApiHttpUrl', 'dispatchEndpoint', 'dispatchSpotEndpoint', 'redisEndpoint', 'redisKeyPrefix', 'logDir', 'workDir'])]
   ]) {
     await ctx.start(role, entry, ['--config', configPath]);
@@ -47,13 +47,10 @@ export async function runSample(ctx) {
   ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
     '--redis-endpoint', ctx.redisEndpoint,
     '--key-prefix', `${sample.redisKeyPrefix}location`,
-    '--peer', 'client-server', 'deliverydispatch.dispatch', 'router', sample.dispatchEndpoint,
-    '--peer', 'client-server', 'deliverydispatch.tracking', 'router', sample.trackingEndpoint,
-    '--peer', 'spot-mesh', 'delivery-couriers', 'spot',
-      sample.dispatchSpotEndpoint, sample.courierSessionSpotEndpoint,
-      sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint,
-    '--peer', 'spot-mesh', 'delivery-customers', 'spot',
-      sample.sessionSpotRouterEndpoint, sample.trackingSpotEndpoint
+    '--peer', 'route-mesh', 'deliverydispatch.mesh', 'router',
+      sample.dispatchSpotEndpoint, sample.trackingSpotEndpoint,
+      sample.sessionSpotRouterEndpoint, sample.courierSessionSpotEndpoint,
+      sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint
   ]);
   console.log('topology=ready');
   ctx.runBrowser({

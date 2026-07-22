@@ -11,7 +11,6 @@
 | [Framework 정식 spec](../../framework/spec/README.ko.md) | Service 공개 동작과 package별 계약의 단일 기준 |
 | [Framework 공통 internals](../../framework/common/internals/README.ko.md) | Protocol, queue, ownership, fencing, recovery와 resource 불변 조건의 단일 기준 |
 | [Core service migration inventory](../../contract-inventory/route-mesh-v11-core-service-migration-inventory.json) | Core 10 service 공개 의미와 구현 입력을 정식 Framework spec·internals owner에 연결하는 machine-readable 대조 자료 |
-| [Framework 공통 internals](../../framework/common/internals/README.ko.md) | 네 언어 service runtime의 정식 내부 구조와 구현 불변 조건 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
 | [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | M5 이후 public contract amendment review까지만 사용하는 임시 설계 입력. 승인 내용을 정식 spec에 흡수한 뒤 삭제한다. |
 | [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | 다섯 언어 exact interface amendment review까지만 사용하는 임시 C# 표현 입력. 승인 내용을 정식 interface에 흡수한 뒤 삭제한다. |

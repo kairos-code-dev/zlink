@@ -310,6 +310,7 @@ opaque 16 bytes로 보존하며 application JSON 계약으로 노출하지 않�
 ```csharp
 public sealed record ZLinkTransferStored(
     string Reference,
+    uint ChecksumCrc32c,
     DateTimeOffset ExpiresAt,
     DateTimeOffset StoreNow);
 
@@ -360,7 +361,9 @@ option이 아니다. Authority의 current transfer reference를 확인한 owner 
 `RenewTransferAsync`를 호출하며, 존재하지 않는 reference는 `Missing` 정상 결과다.
 Provider는 자신의 store clock에서 `ExpiresAt`을 계산하고 `Renewed`에 새 expiry와 `StoreNow`를 반환한다.
 Runtime은 이 두 값을 다음 renewal 판단에 사용하며 local clock으로 provider expiry를 추측하지 않는다.
-Provider는 reference와 payload를 opaque value로 취급한다.
+Provider는 reference와 payload를 opaque value로 취급한다. `ChecksumCrc32c`는 저장된 immutable root bytes의
+CRC32C(Castagnoli)를 나타내는 unsigned 32-bit 값이다. Runtime은 이 값과 Location authority에 publish할
+checksum이 정확히 같은지 검증한다.
 `GetTransferAsync`의 `Missing`은 닫힌 결과이고 `DeleteTransferAsync`의 `Missing`은 idempotent cleanup
 성공이다. Runtime은 completed·aborted transaction의 transfer를 즉시 삭제하며 실패나 orphan은 24시간 TTL이
 정리한다.

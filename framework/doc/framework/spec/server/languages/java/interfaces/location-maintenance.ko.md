@@ -178,7 +178,7 @@ public interface ZLinkAuthorityStore {
 }
 
 public record ZLinkTransferStored(
-    String reference, Instant expiresAt, Instant storeNow) {}
+    String reference, long checksumCrc32c, Instant expiresAt, Instant storeNow) {}
 public sealed interface ZLinkTransferReadResult
     permits ZLinkTransferFound, ZLinkTransferMissing {}
 public record ZLinkTransferFound(byte[] payload)
@@ -201,6 +201,10 @@ public interface ZLinkTransferStore {
     CompletionStage<ZLinkTransferDeleteResult> delete(
         String reference, ZLinkStoreCancellation cancellation);
 }
+
+`checksumCrc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는
+`0..0xFFFF_FFFFL` 범위의 `long`이다. Provider가 이 범위를 벗어난 값을 반환하면 contract violation이다.
+Runtime은 이 값과 Location authority에 publish할 u32 checksum이 정확히 같은지 검증한다.
 
 public interface ZLinkStoreCancellation {
     boolean isCancellationRequested();
@@ -1007,11 +1011,12 @@ public interface systems.zlink.framework.locations.ZLinkAuthorityStore {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult> abortAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
 }
 public final class systems.zlink.framework.locations.ZLinkTransferStored extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkTransferStored(java.lang.String, java.time.Instant, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkTransferStored(java.lang.String, long, java.time.Instant, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public java.lang.String reference();
+  public long checksumCrc32c();
   public java.time.Instant expiresAt();
   public java.time.Instant storeNow();
 }

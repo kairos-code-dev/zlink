@@ -1369,6 +1369,11 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       },
       unknownFailureCode: "protocol-error-before-application-dispatch",
       publicMapping: "wire-value-minus-one",
+      reservedWireValues: {
+        first: 23,
+        last: 34,
+        reason: "public-only-framework-errors-not-valid-on-service-wire",
+      },
     }],
     ["actor-route-transition-integrity", {
       spotRefType: "spot-ref",
@@ -3492,11 +3497,12 @@ function validateServiceInvariants(schema, types, fail) {
     "handlerNotFound", "routeHandlerNotFound", "actorDispatchHandlerNotFound",
     "payloadDecodeFailed", "routeNotConnected", "requestTargetNotFound", "requestRejected",
     "requestProtocolError", "requestFailed", "workerQueueFull", "workerTimedOut", "workerFailed",
-    "actorLocationStale", "actorCreateRejected", "transferDataLost",
+    "actorLocationStale", "actorCreateRejected",
   ].map((name, value) => ({ name, value }));
+  expectedFrameworkErrors.push({ name: "transferDataLost", value: 35 });
   if (frameworkError?.encoding !== "u32"
       || JSON.stringify(frameworkError.values) !== JSON.stringify(expectedFrameworkErrors)) {
-    fail("$.types", "framework failure codes must use the stable none=0 and public-kind-plus-one mapping");
+    fail("$.types", "framework failure codes must use stable none=0 and public-kind-plus-one wire values, including TransferDataLost=35");
   }
   for (const [name, minimum] of [["nonzero-u64", "1"], ["ordinal-or-zero", "0"]]) {
     const ordinal = types.get(name);
@@ -5485,6 +5491,16 @@ function runSelfTests(schema) {
       errorCodes.values = errorCodes.values.filter(
         (entry) => entry.name !== "transferDataLost",
       );
+    }],
+    ["TransferDataLost wire value changed", (candidate) => {
+      const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
+      errorCodes.values.find((entry) => entry.name === "transferDataLost").value = 23;
+    }],
+    ["framework error reserved wire gap narrowed", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "terminal-failure-integrity",
+      );
+      constraint.reservedWireValues.last = 33;
     }],
     ["TransferDataLost mapping changed", (candidate) => {
       const constraint = candidate.semanticConstraints.find(

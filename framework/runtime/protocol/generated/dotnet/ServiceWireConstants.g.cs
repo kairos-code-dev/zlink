@@ -56,4 +56,31 @@ internal static class ServiceWireConstants
         SourceSpotRid = 4,
         Extension = 8,
     }
+    internal enum FrameworkErrorCode : uint
+    {
+        None = 0,
+        ActorRouteNotFound = 1,
+        ActorCreateFailed = 2,
+        ActorAlreadyExists = 3,
+        ActorTypeMismatch = 4,
+        SpotCreateFailed = 5,
+        SpotRouteNotFound = 6,
+        SpotTypeMismatch = 7,
+        ActorSessionNotBound = 8,
+        HandlerNotFound = 9,
+        RouteHandlerNotFound = 10,
+        ActorDispatchHandlerNotFound = 11,
+        PayloadDecodeFailed = 12,
+        RouteNotConnected = 13,
+        RequestTargetNotFound = 14,
+        RequestRejected = 15,
+        RequestProtocolError = 16,
+        RequestFailed = 17,
+        WorkerQueueFull = 18,
+        WorkerTimedOut = 19,
+        WorkerFailed = 20,
+        ActorLocationStale = 21,
+        ActorCreateRejected = 22,
+        TransferDataLost = 35,
+    }
 }

@@ -25,7 +25,10 @@ const git = (args, encoding = 'utf8') => {
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 const stableJson = value => `${JSON.stringify(value, null, 2)}\n`;
-const baselineRevision = git(['rev-parse', 'HEAD']).trim();
+// V11 contract-amendment impact is always measured from the reviewed M5 base.
+// Using HEAD makes a committed manifest stale as soon as the candidate is committed.
+const baselineRevision = '1f5b979675c4ece4bd9e126d1a66653157ac3b52';
+git(['cat-file', '-e', `${baselineRevision}^{commit}`]);
 
 function baselineFiles(relative) {
   const output = git(['ls-tree', '-r', '--full-tree', baselineRevision, '--', relative]);
@@ -81,6 +84,18 @@ function registrationFiles(relative) {
       || /\.csproj$/u.test(name)
       || /^build\.gradle(?:\.kts)?$/u.test(name);
   });
+}
+
+function regressionFiles(relative, language) {
+  const patterns = {
+    cpp: /(?:^|\/)(?:test[^/]*|[^/]*_test)\.cpp$/u,
+    dotnet: /(?:^|\/)[^/]*(?:Tests?|Test)\.cs$/u,
+    java: /(?:^|\/)[^/]*(?:Tests?|Test)\.java$/u,
+    kotlin: /(?:^|\/)[^/]*(?:Tests?|Test)\.kt$/u,
+    node: /(?:^|\/)[^/]*(?:test|spec)\.(?:ts|js|mjs)$/u,
+    common: /(?:validate|verify|fixture).*\.(?:mjs|json)$/u,
+  };
+  return baselineFiles(relative).filter(record => patterns[language].test(record.path));
 }
 
 const entries = [];
@@ -226,6 +241,108 @@ for (const [language, regressionPath] of regressionRoots) {
     activationStage: 'V11-M6-SCAFFOLD-ZERO',
     quarantineStatus: 'active-regression',
   });
+  for (const regression of regressionFiles(regressionPath, language)) {
+    addBaselineEntry({
+      id: `regression-test:${language}:${sha256(regression.path).slice(0, 16)}`,
+      kind: 'regression-test',
+      language,
+      path: regression.path,
+      disposition: 'retain',
+      acceptanceIntent: '개별 deterministic regression의 assertion과 실행 registration을 유지하고 runtime 구현 중 계속 실행한다.',
+      replacementCoverage: [],
+      specOwner: language === 'common'
+        ? 'framework/doc/framework/common/internals/README.ko.md'
+        : `framework/doc/framework/spec/server/languages/${language}/interfaces/README.ko.md`,
+      runtimeOwner: language === 'common'
+        ? 'V11-CA-PROTOCOL'
+        : languageOwner(language, 'V11-M6A-E2E'),
+      activationStage: 'V11-M6-SCAFFOLD-ZERO',
+      quarantineStatus: 'active-regression',
+    });
+  }
+}
+
+const publicMemberId = (language, member) =>
+  `public-member:add:${language}:${sha256(member).slice(0, 16)}`;
+const publicMemberAdds = [
+  ['cpp', 'add_transfer_store', 'framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md'],
+  ['cpp', 'transfer_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
+  ['cpp', 'redis_transfer_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-store.ko.md'],
+  ['cpp', 'transfer_stored_t.checksum', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
+  ['cpp', 'aggregate_prepare_request_t.inventory_digest', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
+  ['cpp', 'framework_error_kind_t.transfer_data_lost', 'framework/doc/framework/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md'],
+  ['dotnet', 'IZLinkFrameworkOptions.AddTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md'],
+  ['dotnet', 'IZLinkTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
+  ['dotnet', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-location-provider-redis.ko.md'],
+  ['dotnet', 'ZLinkTransferStored.Checksum', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
+  ['dotnet', 'ZLinkAggregatePrepareRequest.InventoryDigest', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
+  ['dotnet', 'ZLinkFrameworkErrorKind.TransferDataLost', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/10-monitoring-errors.ko.md'],
+  ['java', 'ZLinkFrameworkOptions.addTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/configuration-host.ko.md'],
+  ['java', 'ZLinkTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
+  ['java', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
+  ['java', 'ZLinkTransferStored.checksum', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
+  ['java', 'ZLinkAggregatePrepareRequest.inventoryDigest', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
+  ['java', 'ZLinkFrameworkErrorKind.TRANSFER_DATA_LOST', 'framework/doc/framework/spec/server/languages/java/interfaces/common-runtime.ko.md'],
+  ['kotlin', 'ZLinkSuspendingTransferStore', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md'],
+  ['kotlin', 'ZLinkSuspendingLocationStore.prepareAggregateSuspending', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md'],
+  ['kotlin', 'ZLinkFrameworkErrorKind.TRANSFER_DATA_LOST', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/monitoring.ko.md'],
+  ['node', 'ZLinkFrameworkOptions.addTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md'],
+  ['node', 'ZLinkTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
+  ['node', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
+  ['node', 'ZLinkTransferStored.checksum', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
+  ['node', 'ZLinkAggregatePrepareRequest.inventoryDigest', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
+  ['node', 'ZLinkFrameworkErrorKind.TransferDataLost', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md'],
+];
+for (const [language, member, memberPath] of publicMemberAdds) {
+  entries.push({
+    id: publicMemberId(language, member),
+    kind: 'public-member',
+    language,
+    path: memberPath,
+    disposition: 'add',
+    baselineHash: null,
+    approvedHash: null,
+    acceptanceIntent: `${member} public declaration과 contract test를 exact interface에 맞춘다.`,
+    replacementCoverage: [],
+    specOwner: memberPath,
+    runtimeOwner: 'V11-M7-CONTRACT',
+    activationStage: 'V11-M7-CONTRACT',
+    quarantineStatus: 'pending-disabled-by-contract-amendment',
+  });
+}
+
+const publicMemberRemovals = [
+  ['cpp', 'add_checkpoint_store', 'framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md', 'add_transfer_store'],
+  ['cpp', 'checkpoint_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md', 'transfer_store_t'],
+  ['cpp', 'checkpoint_stored_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md', 'transfer_stored_t.checksum'],
+  ['dotnet', 'IZLinkFrameworkOptions.AddCheckpointStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md', 'IZLinkFrameworkOptions.AddTransferStore'],
+  ['dotnet', 'IZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-checkpoint.ko.md', 'IZLinkTransferStore'],
+  ['dotnet', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-checkpoint.ko.md', 'ZLinkTransferStored.Checksum'],
+  ['java', 'ZLinkFrameworkOptions.addCheckpointStore', 'framework/doc/framework/spec/server/languages/java/interfaces/configuration-host.ko.md', 'ZLinkFrameworkOptions.addTransferStore'],
+  ['java', 'ZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md', 'ZLinkTransferStore'],
+  ['java', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md', 'ZLinkTransferStored.checksum'],
+  ['node', 'ZLinkFrameworkOptions.addCheckpointStore', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md', 'ZLinkFrameworkOptions.addTransferStore'],
+  ['node', 'ZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md', 'ZLinkTransferStore'],
+  ['node', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md', 'ZLinkTransferStored.checksum'],
+];
+for (const [language, member, baselinePath, replacement] of publicMemberRemovals) {
+  entries.push({
+    id: `public-member:remove:${language}:${sha256(member).slice(0, 16)}`,
+    kind: 'public-member',
+    language,
+    path: null,
+    baselinePath,
+    disposition: 'remove',
+    baselineHash: baselineHash(baselinePath),
+    approvedHash: null,
+    acceptanceIntent: `${member} 공개 member를 제거하고 Location·Transfer 책임을 분리한 계약으로 대체한다.`,
+    replacementCoverage: [publicMemberId(language, replacement)],
+    specOwner: publicMemberAdds.find(item => item[0] === language && item[1] === replacement)?.[2]
+      ?? 'framework/doc/framework/spec/05-framework-api.ko.md',
+    runtimeOwner: 'V11-M7-CONTRACT',
+    activationStage: 'V11-M7-CONTRACT',
+    quarantineStatus: 'pending-disabled-by-contract-amendment',
+  });
 }
 
 const plannedAdds = [
@@ -253,7 +370,41 @@ const plannedAdds = [
   ['regression:add:location-participant-digest-authority', 'regression', 'bounded canonical participant set과 inventory digest의 authority는 Location Store에만 있고 Transfer manifest는 payload 탐색에만 사용하며 두 digest가 일치해야 한다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['regression:add:transfer-data-lost-no-rollback', 'regression', 'published payload의 영구 누락, checksum 불일치와 participant inventory digest 불일치를 non-retriable TransferDataLost로 분류하고 임의 rollback을 금지한다.', 'V11-M6-SCAFFOLD-ZERO'],
 ];
+const plannedRuntimeLanguages = ['cpp', 'dotnet', 'java', 'node'];
+const storeRegressionIds = plannedAdds
+  .filter(([id, kind]) => kind === 'regression'
+    && (id.includes('transfer-') || id.includes('location-participant-digest')))
+  .flatMap(([id]) => plannedRuntimeLanguages.map(language => `${id}:${language}`));
 for (const [id, kind, acceptanceIntent, activationStage] of plannedAdds) {
+  const storeRelated = id.includes('transfer-store')
+    || id.includes('transfer-')
+    || id.includes('redis-stores')
+    || id.includes('location-participant-digest');
+  const specOwner = storeRelated
+    ? 'framework/doc/framework/spec/server/42-transfer-store-redis.ko.md'
+    : kind.startsWith('sample')
+      ? 'framework/doc/framework/common/sample/README.ko.md'
+      : 'framework/doc/framework/common/e2e/README.ko.md';
+  if (kind === 'regression') {
+    for (const language of plannedRuntimeLanguages) {
+      entries.push({
+        id: `${id}:${language}`,
+        kind: 'regression',
+        language,
+        path: null,
+        disposition: 'add',
+        baselineHash: null,
+        approvedHash: null,
+        acceptanceIntent,
+        replacementCoverage: [],
+        specOwner,
+        runtimeOwner: languageOwner(language, 'V11-M6A-E2E'),
+        activationStage: 'V11-M6-SCAFFOLD-ZERO',
+        quarantineStatus: 'planned-regression',
+      });
+    }
+    continue;
+  }
   entries.push({
     id,
     kind,
@@ -263,20 +414,11 @@ for (const [id, kind, acceptanceIntent, activationStage] of plannedAdds) {
     baselineHash: null,
     approvedHash: null,
     acceptanceIntent,
-    replacementCoverage: [],
-    specOwner: id.includes('transfer-store')
-        || id.includes('transfer-')
-        || id.includes('redis-stores')
-        || id.includes('location-participant-digest')
-      ? 'framework/doc/framework/spec/server/42-transfer-store-redis.ko.md'
-      : kind.startsWith('sample')
-        ? 'framework/doc/framework/common/sample/README.ko.md'
-        : 'framework/doc/framework/common/e2e/README.ko.md',
-    runtimeOwner: activationStage.startsWith('V11-M6C') ? 'V11-M6C-CPP'
-      : activationStage.startsWith('V11-M6B') ? 'V11-M6B-CPP'
-        : 'V11-M6A-CPP',
+    replacementCoverage: storeRelated && kind === 'e2e-scenario' ? storeRegressionIds : [],
+    specOwner,
+    runtimeOwner: kind.startsWith('sample') ? 'V11-M7-SAMPLES' : activationStage,
     activationStage,
-    quarantineStatus: kind === 'regression' ? 'planned-regression' : 'pending-disabled-by-contract-amendment',
+    quarantineStatus: 'pending-disabled-by-contract-amendment',
   });
 }
 

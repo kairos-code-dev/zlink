@@ -441,7 +441,12 @@
         }
       },
       "unknownFailureCode": "protocol-error-before-application-dispatch",
-      "publicMapping": "wire-value-minus-one"
+      "publicMapping": "wire-value-minus-one",
+      "reservedWireValues": {
+        "first": 23,
+        "last": 34,
+        "reason": "public-only-framework-errors-not-valid-on-service-wire"
+      }
     },
     {
       "kind": "actor-route-transition-integrity",
@@ -1766,7 +1771,7 @@
         { "name": "workerFailed", "value": 20 },
         { "name": "actorLocationStale", "value": 21 },
         { "name": "actorCreateRejected", "value": 22 },
-        { "name": "transferDataLost", "value": 23 }
+        { "name": "transferDataLost", "value": 35 }
       ]
     },
     {

@@ -47,5 +47,29 @@ public final class ServiceWireConstants {
     public static final int FLAG_BOUND_SESSION = 2;
     public static final int FLAG_SOURCE_SPOT_RID = 4;
     public static final int FLAG_EXTENSION = 8;
+    public static final long FRAMEWORK_ERROR_NONE = 0L;
+    public static final long FRAMEWORK_ERROR_ACTOR_ROUTE_NOT_FOUND = 1L;
+    public static final long FRAMEWORK_ERROR_ACTOR_CREATE_FAILED = 2L;
+    public static final long FRAMEWORK_ERROR_ACTOR_ALREADY_EXISTS = 3L;
+    public static final long FRAMEWORK_ERROR_ACTOR_TYPE_MISMATCH = 4L;
+    public static final long FRAMEWORK_ERROR_SPOT_CREATE_FAILED = 5L;
+    public static final long FRAMEWORK_ERROR_SPOT_ROUTE_NOT_FOUND = 6L;
+    public static final long FRAMEWORK_ERROR_SPOT_TYPE_MISMATCH = 7L;
+    public static final long FRAMEWORK_ERROR_ACTOR_SESSION_NOT_BOUND = 8L;
+    public static final long FRAMEWORK_ERROR_HANDLER_NOT_FOUND = 9L;
+    public static final long FRAMEWORK_ERROR_ROUTE_HANDLER_NOT_FOUND = 10L;
+    public static final long FRAMEWORK_ERROR_ACTOR_DISPATCH_HANDLER_NOT_FOUND = 11L;
+    public static final long FRAMEWORK_ERROR_PAYLOAD_DECODE_FAILED = 12L;
+    public static final long FRAMEWORK_ERROR_ROUTE_NOT_CONNECTED = 13L;
+    public static final long FRAMEWORK_ERROR_REQUEST_TARGET_NOT_FOUND = 14L;
+    public static final long FRAMEWORK_ERROR_REQUEST_REJECTED = 15L;
+    public static final long FRAMEWORK_ERROR_REQUEST_PROTOCOL_ERROR = 16L;
+    public static final long FRAMEWORK_ERROR_REQUEST_FAILED = 17L;
+    public static final long FRAMEWORK_ERROR_WORKER_QUEUE_FULL = 18L;
+    public static final long FRAMEWORK_ERROR_WORKER_TIMED_OUT = 19L;
+    public static final long FRAMEWORK_ERROR_WORKER_FAILED = 20L;
+    public static final long FRAMEWORK_ERROR_ACTOR_LOCATION_STALE = 21L;
+    public static final long FRAMEWORK_ERROR_ACTOR_CREATE_REJECTED = 22L;
+    public static final long FRAMEWORK_ERROR_TRANSFER_DATA_LOST = 35L;
     private ServiceWireConstants() {}
 }

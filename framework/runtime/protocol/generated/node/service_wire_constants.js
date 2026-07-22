@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ServiceWireFlag = exports.ServiceWireCommand = exports.SERVICE_WIRE_REQUIRED_CAPABILITY = exports.SERVICE_WIRE_MAJOR = exports.SERVICE_WIRE_MAGIC = void 0;
+exports.ServiceWireFrameworkErrorCode = exports.ServiceWireFlag = exports.ServiceWireCommand = exports.SERVICE_WIRE_REQUIRED_CAPABILITY = exports.SERVICE_WIRE_MAJOR = exports.SERVICE_WIRE_MAGIC = void 0;
 // Generated from service-wire-v1.schema.json. Do not edit.
 exports.SERVICE_WIRE_MAGIC = [90, 77];
 exports.SERVICE_WIRE_MAJOR = 1;
@@ -49,4 +49,30 @@ exports.ServiceWireFlag = {
     boundSession: 2,
     sourceSpotRid: 4,
     extension: 8,
+};
+exports.ServiceWireFrameworkErrorCode = {
+    none: 0,
+    actorRouteNotFound: 1,
+    actorCreateFailed: 2,
+    actorAlreadyExists: 3,
+    actorTypeMismatch: 4,
+    spotCreateFailed: 5,
+    spotRouteNotFound: 6,
+    spotTypeMismatch: 7,
+    actorSessionNotBound: 8,
+    handlerNotFound: 9,
+    routeHandlerNotFound: 10,
+    actorDispatchHandlerNotFound: 11,
+    payloadDecodeFailed: 12,
+    routeNotConnected: 13,
+    requestTargetNotFound: 14,
+    requestRejected: 15,
+    requestProtocolError: 16,
+    requestFailed: 17,
+    workerQueueFull: 18,
+    workerTimedOut: 19,
+    workerFailed: 20,
+    actorLocationStale: 21,
+    actorCreateRejected: 22,
+    transferDataLost: 35,
 };

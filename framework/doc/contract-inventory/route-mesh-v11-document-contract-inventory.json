@@ -54,6 +54,7 @@
         "void AddTransferStore(IZLinkTransferStore store);",
         "public interface IZLinkTransferStore",
         "public sealed class ZLinkRedisTransferStore",
+        "uint ChecksumCrc32c",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
@@ -83,6 +84,7 @@
         "std::shared_ptr<transfer_store_t> store);",
         "class transfer_store_t",
         "class redis_transfer_store_t",
+        "std::uint32_t checksum_crc32c;",
         "client_server_server_state_t",
         "fanout_publisher_connection_state_t"
       ],
@@ -111,6 +113,7 @@
         "void addTransferStore(ZLinkTransferStore store);",
         "interface ZLinkTransferStore",
         "class ZLinkRedisTransferStore",
+        "long checksumCrc32c",
         "public interface ZLinkRuntimeQuery",
         "public record ZLinkFrameworkRuntimeSnapshot(",
         "public record ZLinkFrameworkRuntimeEvent(",
@@ -197,6 +200,9 @@
         "protected abstract suspend fun reserveSuspending(",
         "class ZLinkSuspendingLocationStore",
         "class ZLinkSuspendingTransferStore",
+        "prepareAggregateSuspending(",
+        "commitAggregateSuspending(",
+        "abortAggregateSuspending(",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
@@ -238,6 +244,7 @@
         "addTransferStore(store: ZLinkTransferStore): this",
         "export interface ZLinkTransferStore",
         "export declare class ZLinkRedisTransferStore",
+        "readonly checksumCrc32c: number;",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],

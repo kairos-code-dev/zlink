@@ -53,6 +53,32 @@ enum class flag : std::uint8_t {
     sourceSpotRid = 4,
     extension = 8,
 };
+enum class framework_error_code : std::uint32_t {
+    none = 0,
+    actorRouteNotFound = 1,
+    actorCreateFailed = 2,
+    actorAlreadyExists = 3,
+    actorTypeMismatch = 4,
+    spotCreateFailed = 5,
+    spotRouteNotFound = 6,
+    spotTypeMismatch = 7,
+    actorSessionNotBound = 8,
+    handlerNotFound = 9,
+    routeHandlerNotFound = 10,
+    actorDispatchHandlerNotFound = 11,
+    payloadDecodeFailed = 12,
+    routeNotConnected = 13,
+    requestTargetNotFound = 14,
+    requestRejected = 15,
+    requestProtocolError = 16,
+    requestFailed = 17,
+    workerQueueFull = 18,
+    workerTimedOut = 19,
+    workerFailed = 20,
+    actorLocationStale = 21,
+    actorCreateRejected = 22,
+    transferDataLost = 35,
+};
 inline constexpr std::uint64_t ridBytes = 255ULL;
 inline constexpr std::uint64_t shortTextBytes = 255ULL;
 inline constexpr std::uint64_t endpointBytes = 4096ULL;

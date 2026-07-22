@@ -259,6 +259,7 @@ public:
 
 struct transfer_stored_t {
     std::string reference;
+    std::uint32_t checksum_crc32c;
     std::chrono::system_clock::time_point expires_at;
     std::chrono::system_clock::time_point store_now;
 };
@@ -295,6 +296,9 @@ public:
 };
 
 ```
+
+`checksum_crc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는 exact unsigned 32-bit 값이다.
+Runtime은 이 값과 Location authority에 publish할 checksum이 정확히 같은지 검증한다.
 
 `reserve(...)`는 Missing authority를 Creating으로 바꾸고 final object·owner generation, durable creation intent와
 target pending capacity를 하나의 atomic operation에서 확정한다. Request content는 최대 1 MiB이며 reference와

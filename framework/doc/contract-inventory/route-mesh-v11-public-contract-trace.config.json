@@ -6,8 +6,8 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3959,
-      "sha256": "d65da94a077093a9d219620aa409c3b1d3c92e9adac6ad8658132675065c55df",
+      "count": 3968,
+      "sha256": "2a07ea116afd66bc476af2839a6a087c94bdf9e96195b7f6ea02beee2d781638",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {

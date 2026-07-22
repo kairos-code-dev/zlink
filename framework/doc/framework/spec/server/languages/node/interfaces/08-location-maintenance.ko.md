@@ -483,6 +483,7 @@ export interface ZLinkTransferReference {
 
 export interface ZLinkTransferStored {
     readonly reference: ZLinkTransferReference;
+    readonly checksumCrc32c: number;
     readonly expiresAt: Date;
     readonly storeNow: Date;
 }
@@ -512,6 +513,8 @@ Framework는 put과 renew의 `retentionMs`에 고정된 24시간만 전달한다
 않는다. Authority의 current transfer reference를 확인한 owner 또는 recovery coordinator만
 `renewTransfer`를 호출하며, 존재하지 않는 reference는 `"missing"` 정상 결과다. `"renewed"`는 provider
 clock의 새 `expiresAt`과 `storeNow`를 반환한다. Runtime은 local clock으로 provider expiry를 추측하지 않는다.
+`checksumCrc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는 `0..0xFFFF_FFFF` 정수다.
+Runtime은 이 값과 Location authority에 publish할 checksum이 정확히 같은지 검증한다.
 `getTransfer`의 `missing`은 닫힌 정상 결과다. `deleteTransfer`는 reference가 없으면 `"missing"`을
 반환하며 반복 호출해도 오류가 아니다. Provider는 transfer envelope과 업무 state를 해석하지 않는다.
 

@@ -8,6 +8,11 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const schema = JSON.parse(fs.readFileSync(path.join(root, "service-wire-v1.schema.json"), "utf8"));
 const fixtures = JSON.parse(fs.readFileSync(path.join(root, "golden/service-decoder-fixtures-v1.json"), "utf8"));
 const commands = new Map(schema.commands.map((entry) => [entry.id, entry]));
+const frameworkErrorType = schema.types.find((entry) => entry.name === "framework-error-code");
+const frameworkErrors = new Map(frameworkErrorType.values.map((entry) => [entry.value, entry]));
+const terminalFailureIntegrity = schema.semanticConstraints.find(
+  (entry) => entry.kind === "terminal-failure-integrity",
+);
 
 function fail(code) {
   const error = new Error(code);
@@ -38,6 +43,16 @@ function decode(bytes) {
   return { command: command.name };
 }
 
+function decodeFrameworkErrorCode(wireValue) {
+  const entry = frameworkErrors.get(wireValue);
+  if (!entry) fail("unknown-framework-error");
+  if (entry.name === "none") return { name: entry.name, publicValue: null };
+  if (terminalFailureIntegrity.publicMapping !== "wire-value-minus-one") {
+    fail("unsupported-framework-error-mapping");
+  }
+  return { name: entry.name, publicValue: wireValue - 1 };
+}
+
 for (const fixture of fixtures.canonical) {
   const decoded = decode(fixture.bytes);
   if (decoded.command !== fixture.name || decoded.probeId.toString() !== fixtures.probeId) {
@@ -56,4 +71,35 @@ const probe = decode(fixtures.canonical.find((entry) => entry.name === "liveness
 const ack = decode(fixtures.canonical.find((entry) => entry.name === "livenessAck").bytes);
 if (probe.probeId !== ack.probeId) throw new Error("livenessAck does not echo livenessProbe id");
 
-console.log(`service wire decoder fixtures valid: canonical=${fixtures.canonical.length} malformed=${fixtures.malformed.length} probeEcho=pass`);
+if (fixtures.frameworkErrors.publicMapping !== terminalFailureIntegrity.publicMapping
+    || JSON.stringify(fixtures.frameworkErrors.reservedWireValues)
+      !== JSON.stringify(terminalFailureIntegrity.reservedWireValues)) {
+  throw new Error("framework error mapping fixture does not match schema");
+}
+for (const fixture of fixtures.frameworkErrors.canonical) {
+  const decoded = decodeFrameworkErrorCode(fixture.wireValue);
+  if (decoded.name !== fixture.name || decoded.publicValue !== fixture.publicValue) {
+    throw new Error(`framework error fixture mismatch: ${fixture.name}`);
+  }
+}
+for (const fixture of fixtures.frameworkErrors.malformed) {
+  try {
+    decodeFrameworkErrorCode(fixture.wireValue);
+    throw new Error(`malformed framework error fixture was accepted: ${fixture.name}`);
+  } catch (error) {
+    if (error.code !== fixture.error) throw error;
+  }
+}
+const transferDataLost = fixtures.frameworkErrors.canonical.find(
+  (entry) => entry.name === "transferDataLost",
+);
+if (transferDataLost?.wireValue !== 35 || transferDataLost.publicValue !== 34) {
+  throw new Error("TransferDataLost must decode from wire 35 to public 34");
+}
+
+console.log(
+  `service wire decoder fixtures valid: canonical=${fixtures.canonical.length} `
+    + `malformed=${fixtures.malformed.length} frameworkErrors=${fixtures.frameworkErrors.canonical.length} `
+    + `frameworkErrorMalformed=${fixtures.frameworkErrors.malformed.length} probeEcho=pass `
+    + `TransferDataLost=wire35/public34`,
+);

@@ -36,7 +36,7 @@ abstract class ZLinkSuspendingLocationStore(
     ): ZLinkAuthorityReadResult
 
     protected abstract suspend fun compareExchangeAuthoritySuspending(
-        key: ZLinkAuthorityKey,
+        key: String,
         expectation: ZLinkAuthorityExpectation,
         mutation: ZLinkAuthorityMutation,
         cancellation: ZLinkStoreCancellation,
@@ -65,6 +65,20 @@ abstract class ZLinkSuspendingLocationStore(
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectAbortResult
 
+    protected abstract suspend fun prepareAggregateSuspending(
+        request: ZLinkAggregatePrepareRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregatePrepareResult
+
+    protected abstract suspend fun commitAggregateSuspending(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregateCommitResult
+
+    protected abstract suspend fun abortAggregateSuspending(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregateAbortResult
 }
 
 abstract class ZLinkSuspendingTransferStore(
@@ -116,6 +130,9 @@ Location Store의 단일 CAS로 reference를 공개한다. CAS 전에 실패하�
 orphan이며 고정 retention과 cleanup으로 제거한다. Root 교체는 새 root 저장과 검증, Location reference CAS,
 이전 root cleanup 순서다. Transfer payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
 Transfer Store에서 payload를 삭제한다. 두 Store 사이 transaction이나 2PC는 요구하지 않는다.
+Java에서 상속한 `ZLinkTransferStored.checksumCrc32c()`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를
+나타내는 `0..0xFFFF_FFFFL` 범위의 `Long`이다. Kotlin runtime은 이 값을 Location authority에 publish할
+u32 checksum과 비교하며 범위를 벗어난 provider 결과를 contract violation으로 처리한다.
 
 ## Exact generated JVM signature
 
@@ -128,6 +145,9 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   protected abstract java.lang.Object reserveSuspending(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectReserveResult>);
   protected abstract java.lang.Object commitSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectCommitResult>);
   protected abstract java.lang.Object abortSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectAbortResult>);
+  protected abstract java.lang.Object prepareAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregatePrepareResult>);
+  protected abstract java.lang.Object commitAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregateCommitResult>);
+  protected abstract java.lang.Object abortAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregateAbortResult>);
 }
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingTransferStore implements systems.zlink.framework.locations.ZLinkTransferStore {
   public systems.zlink.framework.kotlin.ZLinkSuspendingTransferStore(kotlinx.coroutines.CoroutineScope, kotlinx.coroutines.CoroutineDispatcher);

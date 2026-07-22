@@ -44,11 +44,24 @@ function currentHash(relative) {
   return records.length === 0 ? null : sha256(stableJson(records));
 }
 
+function revisionHash(revision, relative) {
+  const output = git(['ls-tree', '-r', '--full-tree', revision, '--', relative]);
+  const records = output.trim().length === 0 ? [] : output.trim().split('\n').map(record => {
+    const match = /^(\d+) blob ([0-9a-f]+)\t(.+)$/u.exec(record);
+    if (!match) throw new Error(`unexpected git ls-tree record: ${record}`);
+    return {path: match[3], blob: match[2]};
+  }).sort((left, right) => left.path.localeCompare(right.path, 'en'));
+  return records.length === 0 ? null : sha256(stableJson(records));
+}
+
 function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const errors = [];
   const fail = message => errors.push(message);
   if (manifest?.schemaVersion !== 1 || manifest?.version !== '11.0.0') {
     fail('manifest schemaVersion/version must identify RouteMesh 11.0.0 schema 1');
+  }
+  if (manifest?.baselineRevision !== '1f5b979675c4ece4bd9e126d1a66653157ac3b52') {
+    fail('manifest baselineRevision must identify the reviewed M5 amendment base');
   }
   if (!['quarantine', 'finalized'].includes(mode)) fail(`unknown mode ${mode}`);
   if (manifest?.execution?.executed !== 0 || manifest?.execution?.skipped !== 0) {
@@ -89,6 +102,13 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     } else if (!/^[0-9a-f]{64}$/u.test(entry.baselineHash ?? '')) {
       fail(`${label}: baselineHash must be SHA-256`);
     }
+    if (entry.baselinePath !== undefined) {
+      if (typeof entry.baselinePath !== 'string' || entry.baselinePath.length === 0) {
+        fail(`${label}: baselinePath must be a non-empty repository-relative path`);
+      } else if (revisionHash(manifest.baselineRevision, entry.baselinePath) !== entry.baselineHash) {
+        fail(`${label}: baselinePath hash does not match baselineHash`);
+      }
+    }
 
     if (mode === 'quarantine') {
       if (entry.quarantineStatus === 'pending-disabled-by-contract-amendment'
@@ -119,6 +139,30 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     const expected = mode === 'finalized' && entry.approvedHash ? entry.approvedHash : entry.baselineHash;
     if (expected && hash !== expected) {
       fail(`${label}: current hash differs from ${mode} approved baseline expected=${expected} actual=${hash}`);
+    }
+  }
+  const publicMemberLanguages = new Set(manifest.entries
+    .filter(entry => entry.kind === 'public-member')
+    .map(entry => entry.language));
+  for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node']) {
+    if (!publicMemberLanguages.has(language)) {
+      fail(`public-member impact coverage is missing for ${language}`);
+    }
+  }
+  const individualRegressionLanguages = new Set(manifest.entries
+    .filter(entry => entry.kind === 'regression-test')
+    .map(entry => entry.language));
+  for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node', 'common']) {
+    if (!individualRegressionLanguages.has(language)) {
+      fail(`individual regression-test inventory is missing for ${language}`);
+    }
+  }
+  const plannedRuntimeLanguages = new Set(manifest.entries
+    .filter(entry => entry.kind === 'regression' && entry.disposition === 'add')
+    .map(entry => entry.language));
+  for (const language of ['cpp', 'dotnet', 'java', 'node']) {
+    if (!plannedRuntimeLanguages.has(language)) {
+      fail(`planned deterministic runtime regression coverage is missing for ${language}`);
     }
   }
   return errors;

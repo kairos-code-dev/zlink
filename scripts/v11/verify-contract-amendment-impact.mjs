@@ -10,16 +10,22 @@ import {fileURLToPath} from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const ledgerPath = path.join(root, 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md');
+const traceRelativePath =
+  'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json';
+const tracePath = path.join(root, traceRelativePath);
 const stableJson = value => `${JSON.stringify(value, null, 2)}\n`;
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
+const currentHashCache = new Map();
+const revisionHashCache = new Map();
 
 function git(args, encoding = 'utf8') {
-  const result = spawnSync('git', args, {cwd: root, encoding});
+  const result = spawnSync('git', args, {cwd: root, encoding, maxBuffer: 128 * 1024 * 1024});
   if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${String(result.stderr).trim()}`);
   return result.stdout;
 }
 
 function currentHash(relative) {
+  if (currentHashCache.has(relative)) return currentHashCache.get(relative);
   const index = git(['ls-files', '-s', '-z', '--', relative], null).toString('utf8');
   const recordsByPath = new Map(index.split('\0').filter(Boolean).map(record => {
     const match = /^(\d+) ([0-9a-f]+) \d+\t(.+)$/u.exec(record);
@@ -41,18 +47,44 @@ function currentHash(relative) {
   }
   const records = [...recordsByPath.values()]
     .sort((left, right) => left.path.localeCompare(right.path, 'en'));
-  return records.length === 0 ? null : sha256(stableJson(records));
+  const result = records.length === 0 ? null : sha256(stableJson(records));
+  currentHashCache.set(relative, result);
+  return result;
 }
 
 function revisionHash(revision, relative) {
+  const cacheKey = `${revision}\0${relative}`;
+  if (revisionHashCache.has(cacheKey)) return revisionHashCache.get(cacheKey);
   const output = git(['ls-tree', '-r', '--full-tree', revision, '--', relative]);
   const records = output.trim().length === 0 ? [] : output.trim().split('\n').map(record => {
     const match = /^(\d+) blob ([0-9a-f]+)\t(.+)$/u.exec(record);
     if (!match) throw new Error(`unexpected git ls-tree record: ${record}`);
     return {path: match[3], blob: match[2]};
   }).sort((left, right) => left.path.localeCompare(right.path, 'en'));
-  return records.length === 0 ? null : sha256(stableJson(records));
+  const result = records.length === 0 ? null : sha256(stableJson(records));
+  revisionHashCache.set(cacheKey, result);
+  return result;
 }
+
+function revisionFile(revision, relative) {
+  return git(['show', `${revision}:${relative}`]);
+}
+
+function currentTrackedFiles(relative) {
+  return git(['ls-files', '-z', '--', relative], null).toString('utf8')
+    .split('\0').filter(Boolean)
+    .filter(relativePath => fs.existsSync(path.join(root, relativePath))
+      && fs.statSync(path.join(root, relativePath)).isFile())
+    .sort((left, right) => left.localeCompare(right, 'en'));
+}
+
+const requiredRawRegressionRoots = [
+  {scope: 'core', language: 'core', path: 'core/tests', runtimeOwner: 'V11-M3-CORE-VERIFY'},
+  {scope: 'binding', language: 'cpp', path: 'bindings/cpp/tests', runtimeOwner: 'V11-M4-BIND-CPP'},
+  {scope: 'binding', language: 'dotnet', path: 'bindings/dotnet/tests', runtimeOwner: 'V11-M4-BIND-DN'},
+  {scope: 'binding', language: 'java', path: 'bindings/java/src/test', runtimeOwner: 'V11-M4-BIND-JVM'},
+  {scope: 'binding', language: 'node', path: 'bindings/node/tests', runtimeOwner: 'V11-M4-BIND-NODE'},
+];
 
 function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const errors = [];
@@ -121,7 +153,10 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     }
 
     if (!checkFiles || entry.path === null) {
-      if (mode === 'finalized' && entry.disposition !== 'remove') fail(`${label}: finalized item requires a path`);
+      if (mode === 'finalized' && entry.disposition !== 'remove'
+          && entry.kind !== 'raw-regression-test') {
+        fail(`${label}: finalized item requires a path`);
+      }
       continue;
     }
     if (typeof entry.path !== 'string' || entry.path.startsWith('/') || entry.path.includes('..')) {
@@ -141,13 +176,86 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
       fail(`${label}: current hash differs from ${mode} approved baseline expected=${expected} actual=${hash}`);
     }
   }
-  const publicMemberLanguages = new Set(manifest.entries
-    .filter(entry => entry.kind === 'public-member')
-    .map(entry => entry.language));
-  for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node']) {
-    if (!publicMemberLanguages.has(language)) {
-      fail(`public-member impact coverage is missing for ${language}`);
+  for (const entry of manifest.entries) {
+    for (const replacement of entry.replacementCoverage ?? []) {
+      if (!ids.has(replacement)) fail(`${entry.id}: replacement coverage does not resolve: ${replacement}`);
     }
+  }
+
+  const baselineTraceSource = revisionFile(manifest.baselineRevision, traceRelativePath);
+  const currentTraceSource = fs.readFileSync(tracePath, 'utf8');
+  const baselineTrace = JSON.parse(baselineTraceSource);
+  const currentTrace = JSON.parse(currentTraceSource);
+  const baselineIdentities = new Set(baselineTrace.members.map(member => member.identity));
+  const currentIdentities = new Set(currentTrace.members.map(member => member.identity));
+  const expectedAdded = currentTrace.members.filter(member => !baselineIdentities.has(member.identity));
+  const expectedRemoved = baselineTrace.members.filter(member => !currentIdentities.has(member.identity));
+  const traceDelta = manifest.publicContractTraceDelta;
+  if (traceDelta?.path !== traceRelativePath
+      || traceDelta?.baselineSha256 !== sha256(baselineTraceSource)
+      || traceDelta?.currentSha256 !== sha256(currentTraceSource)
+      || traceDelta?.added !== expectedAdded.length
+      || traceDelta?.removed !== expectedRemoved.length) {
+    fail('publicContractTraceDelta does not match the approved baseline/current trace files');
+  }
+  const publicEntries = manifest.entries.filter(entry => entry.kind === 'public-member');
+  const publicEntryKeys = new Set();
+  for (const entry of publicEntries) {
+    const key = `${entry.disposition}\0${entry.memberIdentity}`;
+    if (publicEntryKeys.has(key)) fail(`${entry.id}: duplicate public trace identity`);
+    publicEntryKeys.add(key);
+  }
+  const assertTraceMember = (member, disposition) => {
+    const key = `${disposition}\0${member.identity}`;
+    if (!publicEntryKeys.has(key)) fail(`public trace delta is missing ${disposition}: ${member.identity}`);
+    const entry = publicEntries.find(candidate =>
+      candidate.disposition === disposition && candidate.memberIdentity === member.identity);
+    if (!entry) return;
+    if (entry.language !== member.language || entry.memberName !== member.memberName
+        || entry.ownerIdentity !== member.ownerIdentity) {
+      fail(`${entry.id}: public trace member metadata does not match ${member.identity}`);
+    }
+    const expectedPath = disposition === 'add' ? entry.path : entry.baselinePath;
+    if (expectedPath !== member.exactInterface) {
+      fail(`${entry.id}: exact interface path does not match trace member`);
+    }
+  };
+  expectedAdded.forEach(member => assertTraceMember(member, 'add'));
+  expectedRemoved.forEach(member => assertTraceMember(member, 'remove'));
+  if (publicEntries.length !== expectedAdded.length + expectedRemoved.length) {
+    fail('public-member inventory contains entries outside the exact trace delta');
+  }
+
+  const rawRootEntries = manifest.entries.filter(entry => entry.kind === 'raw-regression-root');
+  const rawTestEntries = manifest.entries.filter(entry => entry.kind === 'raw-regression-test');
+  for (const required of requiredRawRegressionRoots) {
+    const roots = rawRootEntries.filter(entry => entry.scope === required.scope
+      && entry.language === required.language && entry.path === required.path
+      && entry.runtimeOwner === required.runtimeOwner);
+    if (roots.length !== 1) {
+      fail(`required raw regression root must appear exactly once: ${required.path}`);
+    }
+    const expectedFiles = currentTrackedFiles(required.path);
+    const actualFiles = rawTestEntries.filter(entry => entry.scope === required.scope
+      && entry.language === required.language).map(entry => entry.path)
+      .sort((left, right) => left.localeCompare(right, 'en'));
+    if (expectedFiles.length === 0 || stableJson(actualFiles) !== stableJson(expectedFiles)) {
+      fail(`raw regression file inventory does not match current tracked scope: ${required.path}`);
+    }
+    for (const entry of rawTestEntries.filter(candidate => candidate.scope === required.scope
+      && candidate.language === required.language)) {
+      if (currentHash(entry.path) !== entry.baselineHash) {
+        fail(`${entry.id}: raw regression snapshot hash does not match current tracked content`);
+      }
+    }
+  }
+  if (rawRootEntries.length !== requiredRawRegressionRoots.length) {
+    fail('raw regression root inventory contains missing or unapproved scopes');
+  }
+  const expectedRawFileCount = requiredRawRegressionRoots.reduce(
+    (count, required) => count + currentTrackedFiles(required.path).length, 0);
+  if (rawTestEntries.length !== expectedRawFileCount) {
+    fail('raw regression file inventory contains missing or unapproved entries');
   }
   const individualRegressionLanguages = new Set(manifest.entries
     .filter(entry => entry.kind === 'regression-test')
@@ -177,6 +285,13 @@ function selfTest(manifest) {
     candidate => {
       candidate.entries[0].disposition = 'remove';
       candidate.entries[0].replacementCoverage = [];
+    },
+    candidate => {
+      candidate.entries = candidate.entries.filter(entry => entry.kind !== 'public-member').slice(1);
+    },
+    candidate => {
+      candidate.entries = candidate.entries.filter(entry => entry.kind !== 'raw-regression-test'
+        || entry.path !== 'core/tests/CMakeLists.txt');
     },
   ];
   for (const mutate of mutations) {

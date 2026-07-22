@@ -227,7 +227,12 @@
       "deleteOrder": "release-or-replace-location-authority-reference-before-idempotent-transfer-root-delete",
       "backend": "location-and-transfer-providers-may-use-different-backends-connections-and-failure-domains",
       "clock": "retention-and-renewal-use-transfer-provider-storeNow-and-expiresAt-only",
-      "publishedPayloadMissing": {
+      "publishedTransferDataLoss": {
+        "closedTerminalTriggers": [
+          "permanent-published-payload-missing",
+          "published-payload-checksum-mismatch",
+          "published-payload-inventory-digest-mismatch"
+        ],
         "failureCode": "transferDataLost",
         "retriable": false,
         "rollback": "forbidden",

@@ -24,7 +24,7 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 
 Codec table이나 fixture를 생성하기 전에 다음 명령이 성공해야 한다. 현재 gate는 37개 command, 151개 type,
 4개 flag, 35개 bound, durable fixture 3개와 logical·JSON·authority key fixture를 확인한다. `--self-test`는
-contract amendment fixture 1개와 156가지 invalid mutation이 실제로
+contract amendment fixture 1개와 159가지 invalid mutation이 실제로
 거부되는지도 확인한다. 여기에는 integer overflow, length capacity 초과, 잘못된 정렬 field, enum domain 이탈,
 conditional discriminator 오류, TLV 순서·required capability 제약 변경, transfer vector 불일치, durable
 magic·version·length·checksum·semantic·order·range 훼손, transfer graph·policy 오류와 fanout socket·beacon·deadline

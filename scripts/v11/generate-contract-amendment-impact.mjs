@@ -14,9 +14,12 @@ const manifestPath = path.join(
   root,
   'framework/doc/plan/v11.0/route-mesh-11.0.0-contract-amendment-impact.json',
 );
+const traceRelativePath =
+  'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json';
+const tracePath = path.join(root, traceRelativePath);
 
 const git = (args, encoding = 'utf8') => {
-  const result = spawnSync('git', args, {cwd: root, encoding});
+  const result = spawnSync('git', args, {cwd: root, encoding, maxBuffer: 128 * 1024 * 1024});
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${String(result.stderr).trim()}`);
   }
@@ -29,6 +32,10 @@ const stableJson = value => `${JSON.stringify(value, null, 2)}\n`;
 // Using HEAD makes a committed manifest stale as soon as the candidate is committed.
 const baselineRevision = '1f5b979675c4ece4bd9e126d1a66653157ac3b52';
 git(['cat-file', '-e', `${baselineRevision}^{commit}`]);
+
+function revisionFile(revision, relative) {
+  return git(['show', `${revision}:${relative}`]);
+}
 
 function baselineFiles(relative) {
   const output = git(['ls-tree', '-r', '--full-tree', baselineRevision, '--', relative]);
@@ -45,6 +52,23 @@ function baselineHash(relative) {
     blob: record.object,
   })).sort((left, right) => left.path.localeCompare(right.path, 'en'));
   if (records.length === 0) throw new Error(`baseline path is empty: ${relative}`);
+  return sha256(stableJson(records));
+}
+
+function currentTrackedFiles(relative) {
+  const paths = git(['ls-files', '-z', '--', relative], null).toString('utf8')
+    .split('\0').filter(Boolean)
+    .filter(relativePath => fs.existsSync(path.join(root, relativePath))
+      && fs.statSync(path.join(root, relativePath)).isFile());
+  return paths.map(relativePath => ({
+    path: relativePath,
+    blob: git(['hash-object', `--path=${relativePath}`, relativePath]).trim(),
+  })).sort((left, right) => left.path.localeCompare(right.path, 'en'));
+}
+
+function currentTrackedHash(relative) {
+  const records = currentTrackedFiles(relative);
+  if (records.length === 0) throw new Error(`current tracked path is empty: ${relative}`);
   return sha256(stableJson(records));
 }
 
@@ -262,47 +286,108 @@ for (const [language, regressionPath] of regressionRoots) {
   }
 }
 
-const publicMemberId = (language, member) =>
-  `public-member:add:${language}:${sha256(member).slice(0, 16)}`;
-const publicMemberAdds = [
-  ['cpp', 'add_transfer_store', 'framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md'],
-  ['cpp', 'transfer_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
-  ['cpp', 'redis_transfer_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-store.ko.md'],
-  ['cpp', 'transfer_stored_t.checksum', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
-  ['cpp', 'aggregate_prepare_request_t.inventory_digest', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md'],
-  ['cpp', 'framework_error_kind_t.transfer_data_lost', 'framework/doc/framework/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md'],
-  ['dotnet', 'IZLinkFrameworkOptions.AddTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md'],
-  ['dotnet', 'IZLinkTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
-  ['dotnet', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-location-provider-redis.ko.md'],
-  ['dotnet', 'ZLinkTransferStored.Checksum', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
-  ['dotnet', 'ZLinkAggregatePrepareRequest.InventoryDigest', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-transfer.ko.md'],
-  ['dotnet', 'ZLinkFrameworkErrorKind.TransferDataLost', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/10-monitoring-errors.ko.md'],
-  ['java', 'ZLinkFrameworkOptions.addTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/configuration-host.ko.md'],
-  ['java', 'ZLinkTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
-  ['java', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
-  ['java', 'ZLinkTransferStored.checksum', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
-  ['java', 'ZLinkAggregatePrepareRequest.inventoryDigest', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md'],
-  ['java', 'ZLinkFrameworkErrorKind.TRANSFER_DATA_LOST', 'framework/doc/framework/spec/server/languages/java/interfaces/common-runtime.ko.md'],
-  ['kotlin', 'ZLinkSuspendingTransferStore', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md'],
-  ['kotlin', 'ZLinkSuspendingLocationStore.prepareAggregateSuspending', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md'],
-  ['kotlin', 'ZLinkFrameworkErrorKind.TRANSFER_DATA_LOST', 'framework/doc/framework/spec/server/languages/kotlin/interfaces/monitoring.ko.md'],
-  ['node', 'ZLinkFrameworkOptions.addTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md'],
-  ['node', 'ZLinkTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
-  ['node', 'ZLinkRedisTransferStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
-  ['node', 'ZLinkTransferStored.checksum', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
-  ['node', 'ZLinkAggregatePrepareRequest.inventoryDigest', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md'],
-  ['node', 'ZLinkFrameworkErrorKind.TransferDataLost', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md'],
+const rawRegressionRoots = [
+  {scope: 'core', language: 'core', path: 'core/tests', runtimeOwner: 'V11-M3-CORE-VERIFY'},
+  {scope: 'binding', language: 'cpp', path: 'bindings/cpp/tests', runtimeOwner: 'V11-M4-BIND-CPP'},
+  {scope: 'binding', language: 'dotnet', path: 'bindings/dotnet/tests', runtimeOwner: 'V11-M4-BIND-DN'},
+  {scope: 'binding', language: 'java', path: 'bindings/java/src/test', runtimeOwner: 'V11-M4-BIND-JVM'},
+  {scope: 'binding', language: 'node', path: 'bindings/node/tests', runtimeOwner: 'V11-M4-BIND-NODE'},
 ];
-for (const [language, member, memberPath] of publicMemberAdds) {
+for (const rawRoot of rawRegressionRoots) {
+  const files = currentTrackedFiles(rawRoot.path);
+  if (files.length === 0) throw new Error(`required raw regression root is empty: ${rawRoot.path}`);
   entries.push({
-    id: publicMemberId(language, member),
+    id: `raw-regression-root:${rawRoot.scope}:${rawRoot.language}:${sha256(rawRoot.path).slice(0, 12)}`,
+    kind: 'raw-regression-root',
+    scope: rawRoot.scope,
+    language: rawRoot.language,
+    path: rawRoot.path,
+    disposition: 'retain',
+    baselineHash: currentTrackedHash(rawRoot.path),
+    approvedHash: null,
+    acceptanceIntent: '현재 tracked Core 또는 binding의 전체 raw regression source와 registration을 보존하고 Framework runtime 구현 중 계속 실행한다.',
+    replacementCoverage: [],
+    specOwner: 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md',
+    runtimeOwner: rawRoot.runtimeOwner,
+    activationStage: 'V11-M6-SCAFFOLD-ZERO',
+    quarantineStatus: 'active-regression',
+  });
+  for (const record of files) {
+    entries.push({
+      id: `raw-regression-test:${rawRoot.scope}:${rawRoot.language}:${sha256(record.path).slice(0, 16)}`,
+      kind: 'raw-regression-test',
+      scope: rawRoot.scope,
+      language: rawRoot.language,
+      path: record.path,
+      disposition: 'retain',
+      baselineHash: currentTrackedHash(record.path),
+      approvedHash: null,
+      acceptanceIntent: '현재 tracked raw regression file과 registration을 개별 항목으로 보존한다.',
+      replacementCoverage: [],
+      specOwner: 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md',
+      runtimeOwner: rawRoot.runtimeOwner,
+      activationStage: 'V11-M6-SCAFFOLD-ZERO',
+      quarantineStatus: 'active-regression',
+    });
+  }
+}
+
+const baselineTraceSource = revisionFile(baselineRevision, traceRelativePath);
+const currentTraceSource = fs.readFileSync(tracePath, 'utf8');
+const baselineTrace = JSON.parse(baselineTraceSource);
+const currentTrace = JSON.parse(currentTraceSource);
+for (const [label, trace] of [['baseline', baselineTrace], ['current', currentTrace]]) {
+  if (!Array.isArray(trace.members) || trace.members.length === 0) {
+    throw new Error(`${label} public-contract trace has no members`);
+  }
+}
+const baselineTraceIdentities = new Set(baselineTrace.members.map(member => member.identity));
+const currentTraceIdentities = new Set(currentTrace.members.map(member => member.identity));
+const publicMemberAdds = currentTrace.members
+  .filter(member => !baselineTraceIdentities.has(member.identity))
+  .sort((left, right) => left.identity.localeCompare(right.identity, 'en'));
+const publicMemberRemovals = baselineTrace.members
+  .filter(member => !currentTraceIdentities.has(member.identity))
+  .sort((left, right) => left.identity.localeCompare(right.identity, 'en'));
+const publicMemberId = (disposition, member) =>
+  `public-member:${disposition}:${member.language}:${sha256(member.identity).slice(0, 20)}`;
+const additionsByOwnerAndName = new Map();
+const additionsByDocument = new Map();
+for (const member of publicMemberAdds) {
+  const ownerAndName = `${member.language}\0${member.ownerIdentity}\0${member.memberName}\0${member.kind}`;
+  if (!additionsByOwnerAndName.has(ownerAndName)) additionsByOwnerAndName.set(ownerAndName, []);
+  additionsByOwnerAndName.get(ownerAndName).push(member);
+  const documentKey = `${member.language}\0${member.exactInterface}`;
+  if (!additionsByDocument.has(documentKey)) additionsByDocument.set(documentKey, []);
+  additionsByDocument.get(documentKey).push(member);
+}
+const semanticName = value => value.toLowerCase()
+  .replace(/checkpoint/gu, 'transfer')
+  .replace(/[^a-z0-9]+/gu, '');
+const bestReplacement = (removed, candidates) => candidates
+  .map(candidate => ({
+    candidate,
+    score: (candidate.ownerIdentity === removed.ownerIdentity ? 100 : 0)
+      + (candidate.kind === removed.kind ? 20 : 0)
+      + (semanticName(candidate.memberName) === semanticName(removed.memberName) ? 200 : 0)
+      + candidate.categoryIds.filter(category => removed.categoryIds.includes(category)).length * 10,
+  }))
+  .sort((left, right) => right.score - left.score
+    || left.candidate.identity.localeCompare(right.candidate.identity, 'en'))[0]?.candidate;
+for (const member of publicMemberAdds) {
+  const memberPath = member.exactInterface;
+  entries.push({
+    id: publicMemberId('add', member),
     kind: 'public-member',
-    language,
+    language: member.language,
     path: memberPath,
     disposition: 'add',
     baselineHash: null,
     approvedHash: null,
-    acceptanceIntent: `${member} public declaration과 contract test를 exact interface에 맞춘다.`,
+    memberIdentity: member.identity,
+    memberName: member.memberName,
+    ownerIdentity: member.ownerIdentity,
+    acceptanceIntent: `${member.identity} public declaration과 contract test를 exact interface에 맞춘다.`,
     replacementCoverage: [],
     specOwner: memberPath,
     runtimeOwner: 'V11-M7-CONTRACT',
@@ -310,35 +395,48 @@ for (const [language, member, memberPath] of publicMemberAdds) {
     quarantineStatus: 'pending-disabled-by-contract-amendment',
   });
 }
-
-const publicMemberRemovals = [
-  ['cpp', 'add_checkpoint_store', 'framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md', 'add_transfer_store'],
-  ['cpp', 'checkpoint_store_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md', 'transfer_store_t'],
-  ['cpp', 'checkpoint_stored_t', 'framework/doc/framework/spec/server/languages/cpp/interfaces/07-location-maintenance.ko.md', 'transfer_stored_t.checksum'],
-  ['dotnet', 'IZLinkFrameworkOptions.AddCheckpointStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md', 'IZLinkFrameworkOptions.AddTransferStore'],
-  ['dotnet', 'IZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-checkpoint.ko.md', 'IZLinkTransferStore'],
-  ['dotnet', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/dotnet/interfaces/08-authority-checkpoint.ko.md', 'ZLinkTransferStored.Checksum'],
-  ['java', 'ZLinkFrameworkOptions.addCheckpointStore', 'framework/doc/framework/spec/server/languages/java/interfaces/configuration-host.ko.md', 'ZLinkFrameworkOptions.addTransferStore'],
-  ['java', 'ZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md', 'ZLinkTransferStore'],
-  ['java', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/java/interfaces/location-maintenance.ko.md', 'ZLinkTransferStored.checksum'],
-  ['node', 'ZLinkFrameworkOptions.addCheckpointStore', 'framework/doc/framework/spec/server/languages/node/interfaces/03-location-observability.ko.md', 'ZLinkFrameworkOptions.addTransferStore'],
-  ['node', 'ZLinkCheckpointStore', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md', 'ZLinkTransferStore'],
-  ['node', 'ZLinkCheckpointStored', 'framework/doc/framework/spec/server/languages/node/interfaces/08-location-maintenance.ko.md', 'ZLinkTransferStored.checksum'],
-];
-for (const [language, member, baselinePath, replacement] of publicMemberRemovals) {
+for (const member of publicMemberRemovals) {
+  const baselinePath = member.exactInterface;
+  const ownerAndName = `${member.language}\0${member.ownerIdentity}\0${member.memberName}\0${member.kind}`;
+  const sameMemberReplacements = additionsByOwnerAndName.get(ownerAndName) ?? [];
+  const sameDocumentReplacements = additionsByDocument.get(`${member.language}\0${baselinePath}`) ?? [];
+  const sameCategoryReplacements = publicMemberAdds.filter(candidate =>
+    candidate.language === member.language
+      && candidate.categoryIds.some(category => member.categoryIds.includes(category)));
+  const replacementCandidates = sameMemberReplacements.length > 0
+    ? sameMemberReplacements
+    : sameDocumentReplacements.length > 0
+      ? sameDocumentReplacements
+      : sameCategoryReplacements;
+  const replacements = sameMemberReplacements.length > 0
+    ? sameMemberReplacements
+    : [bestReplacement(member, replacementCandidates)].filter(Boolean);
+  const behaviorCoverage = /RoutingId|Allocation/iu.test(member.identity)
+    ? 'e2e:add:automatic-rid-collision'
+    : /Bind|Destroy|Close/iu.test(member.identity)
+      ? 'e2e:add:exact-generation-mutation-bind'
+      : /Spot/iu.test(member.identity)
+        ? 'e2e:add:global-spot-explicit-create'
+        : 'e2e:add:global-actor-remote-create';
   entries.push({
-    id: `public-member:remove:${language}:${sha256(member).slice(0, 16)}`,
+    id: publicMemberId('remove', member),
     kind: 'public-member',
-    language,
+    language: member.language,
     path: null,
     baselinePath,
     disposition: 'remove',
     baselineHash: baselineHash(baselinePath),
     approvedHash: null,
-    acceptanceIntent: `${member} 공개 member를 제거하고 Location·Transfer 책임을 분리한 계약으로 대체한다.`,
-    replacementCoverage: [publicMemberId(language, replacement)],
-    specOwner: publicMemberAdds.find(item => item[0] === language && item[1] === replacement)?.[2]
-      ?? 'framework/doc/framework/spec/05-framework-api.ko.md',
+    memberIdentity: member.identity,
+    memberName: member.memberName,
+    ownerIdentity: member.ownerIdentity,
+    acceptanceIntent: `${member.identity} 공개 member를 제거하고 trace delta가 지정한 exact declaration으로 대체한다.`,
+    replacementCoverage: replacements.length > 0
+      ? replacements.map(replacement => publicMemberId('add', replacement))
+      : [behaviorCoverage],
+    specOwner: replacements.length > 0
+      ? replacements[0].exactInterface
+      : 'framework/doc/framework/common/e2e/README.ko.md',
     runtimeOwner: 'V11-M7-CONTRACT',
     activationStage: 'V11-M7-CONTRACT',
     quarantineStatus: 'pending-disabled-by-contract-amendment',
@@ -428,6 +526,13 @@ const manifest = {
   version: '11.0.0',
   baselineRevision,
   contractDecisionRange: 'CA-D01..CA-D36',
+  publicContractTraceDelta: {
+    path: traceRelativePath,
+    baselineSha256: sha256(baselineTraceSource),
+    currentSha256: sha256(currentTraceSource),
+    added: publicMemberAdds.length,
+    removed: publicMemberRemovals.length,
+  },
   state: 'pending-disabled-by-contract-amendment',
   execution: {executed: 0, skipped: 0},
   entries,

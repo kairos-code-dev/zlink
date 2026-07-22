@@ -1159,7 +1159,12 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       deleteOrder: "release-or-replace-location-authority-reference-before-idempotent-transfer-root-delete",
       backend: "location-and-transfer-providers-may-use-different-backends-connections-and-failure-domains",
       clock: "retention-and-renewal-use-transfer-provider-storeNow-and-expiresAt-only",
-      publishedPayloadMissing: {
+      publishedTransferDataLoss: {
+        closedTerminalTriggers: [
+          "permanent-published-payload-missing",
+          "published-payload-checksum-mismatch",
+          "published-payload-inventory-digest-mismatch",
+        ],
         failureCode: "transferDataLost",
         retriable: false,
         rollback: "forbidden",
@@ -5480,11 +5485,38 @@ function runSelfTests(schema) {
       );
       constraint.aggregateAuthority.inventoryDigestMatch = "optional";
     }],
+    ["published payload missing terminal trigger omitted", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.publishedTransferDataLoss.closedTerminalTriggers =
+        constraint.publishedTransferDataLoss.closedTerminalTriggers.filter(
+          (trigger) => trigger !== "permanent-published-payload-missing",
+        );
+    }],
+    ["published payload checksum mismatch terminal trigger omitted", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.publishedTransferDataLoss.closedTerminalTriggers =
+        constraint.publishedTransferDataLoss.closedTerminalTriggers.filter(
+          (trigger) => trigger !== "published-payload-checksum-mismatch",
+        );
+    }],
+    ["published payload inventory digest mismatch terminal trigger omitted", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.publishedTransferDataLoss.closedTerminalTriggers =
+        constraint.publishedTransferDataLoss.closedTerminalTriggers.filter(
+          (trigger) => trigger !== "published-payload-inventory-digest-mismatch",
+        );
+    }],
     ["published Transfer loss becomes retriable", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
         (entry) => entry.kind === "location-transfer-storage-integrity",
       );
-      constraint.publishedPayloadMissing.retriable = true;
+      constraint.publishedTransferDataLoss.retriable = true;
     }],
     ["TransferDataLost failure omitted", (candidate) => {
       const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");

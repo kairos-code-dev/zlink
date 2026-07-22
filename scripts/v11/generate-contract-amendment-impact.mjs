@@ -7,6 +7,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {
+  auditRemovedMemberBehavior,
+  removedMemberBehavior,
+  semanticMemberKey,
+} from './contract-amendment-impact-policy.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDirectory, '../..');
@@ -351,29 +356,28 @@ const publicMemberRemovals = baselineTrace.members
   .sort((left, right) => left.identity.localeCompare(right.identity, 'en'));
 const publicMemberId = (disposition, member) =>
   `public-member:${disposition}:${member.language}:${sha256(member.identity).slice(0, 20)}`;
-const additionsByOwnerAndName = new Map();
-const additionsByDocument = new Map();
+const additionsBySemanticMember = new Map();
 for (const member of publicMemberAdds) {
-  const ownerAndName = `${member.language}\0${member.ownerIdentity}\0${member.memberName}\0${member.kind}`;
-  if (!additionsByOwnerAndName.has(ownerAndName)) additionsByOwnerAndName.set(ownerAndName, []);
-  additionsByOwnerAndName.get(ownerAndName).push(member);
-  const documentKey = `${member.language}\0${member.exactInterface}`;
-  if (!additionsByDocument.has(documentKey)) additionsByDocument.set(documentKey, []);
-  additionsByDocument.get(documentKey).push(member);
+  const key = semanticMemberKey(member);
+  if (!additionsBySemanticMember.has(key)) additionsBySemanticMember.set(key, []);
+  additionsBySemanticMember.get(key).push(member);
 }
-const semanticName = value => value.toLowerCase()
-  .replace(/checkpoint/gu, 'transfer')
-  .replace(/[^a-z0-9]+/gu, '');
-const bestReplacement = (removed, candidates) => candidates
-  .map(candidate => ({
-    candidate,
-    score: (candidate.ownerIdentity === removed.ownerIdentity ? 100 : 0)
-      + (candidate.kind === removed.kind ? 20 : 0)
-      + (semanticName(candidate.memberName) === semanticName(removed.memberName) ? 200 : 0)
-      + candidate.categoryIds.filter(category => removed.categoryIds.includes(category)).length * 10,
-  }))
-  .sort((left, right) => right.score - left.score
-    || left.candidate.identity.localeCompare(right.candidate.identity, 'en'))[0]?.candidate;
+const invalidRemovalPolicies = publicMemberRemovals
+  .filter(member => !(additionsBySemanticMember.get(semanticMemberKey(member))?.length))
+  .map(member => ({member, audit: auditRemovedMemberBehavior(member)}))
+  .filter(result => result.audit.state !== 'matched');
+if (invalidRemovalPolicies.length > 0) {
+  const counts = invalidRemovalPolicies.reduce((result, item) => {
+    result[item.audit.state] = (result[item.audit.state] ?? 0) + 1;
+    return result;
+  }, {});
+  const sample = invalidRemovalPolicies.slice(0, 30).map(item =>
+    `${item.audit.state}[${item.audit.ruleIds.join(',')}]:${item.member.identity}`);
+  throw new Error(`removed-member policy is not closed ${JSON.stringify(counts)}\n${sample.join('\n')}`);
+}
+const signatureReplacementCount = publicMemberRemovals.filter(member =>
+  additionsBySemanticMember.get(semanticMemberKey(member))?.length).length;
+const behaviorReplacementCount = publicMemberRemovals.length - signatureReplacementCount;
 for (const member of publicMemberAdds) {
   const memberPath = member.exactInterface;
   entries.push({
@@ -395,29 +399,27 @@ for (const member of publicMemberAdds) {
     quarantineStatus: 'pending-disabled-by-contract-amendment',
   });
 }
+for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node']) {
+  entries.push({
+    id: `public-behavior:formal-contract-parity:${language}`,
+    kind: 'public-behavior',
+    language,
+    path: null,
+    disposition: 'add',
+    baselineHash: null,
+    approvedHash: null,
+    acceptanceIntent: 'CA-D29에 따라 현재 source의 우연한 표면이 아니라 reviewed exact interface와 contract test로 공개 동작을 검증한다.',
+    replacementCoverage: [],
+    specOwner: `framework/doc/framework/spec/server/languages/${language}/interfaces/README.ko.md`,
+    runtimeOwner: 'V11-M7-CONTRACT',
+    activationStage: 'V11-M7-CONTRACT',
+    quarantineStatus: 'pending-disabled-by-contract-amendment',
+  });
+}
 for (const member of publicMemberRemovals) {
   const baselinePath = member.exactInterface;
-  const ownerAndName = `${member.language}\0${member.ownerIdentity}\0${member.memberName}\0${member.kind}`;
-  const sameMemberReplacements = additionsByOwnerAndName.get(ownerAndName) ?? [];
-  const sameDocumentReplacements = additionsByDocument.get(`${member.language}\0${baselinePath}`) ?? [];
-  const sameCategoryReplacements = publicMemberAdds.filter(candidate =>
-    candidate.language === member.language
-      && candidate.categoryIds.some(category => member.categoryIds.includes(category)));
-  const replacementCandidates = sameMemberReplacements.length > 0
-    ? sameMemberReplacements
-    : sameDocumentReplacements.length > 0
-      ? sameDocumentReplacements
-      : sameCategoryReplacements;
-  const replacements = sameMemberReplacements.length > 0
-    ? sameMemberReplacements
-    : [bestReplacement(member, replacementCandidates)].filter(Boolean);
-  const behaviorCoverage = /RoutingId|Allocation/iu.test(member.identity)
-    ? 'e2e:add:automatic-rid-collision'
-    : /Bind|Destroy|Close/iu.test(member.identity)
-      ? 'e2e:add:exact-generation-mutation-bind'
-      : /Spot/iu.test(member.identity)
-        ? 'e2e:add:global-spot-explicit-create'
-        : 'e2e:add:global-actor-remote-create';
+  const replacements = additionsBySemanticMember.get(semanticMemberKey(member)) ?? [];
+  const behavior = replacements.length === 0 ? removedMemberBehavior(member) : null;
   entries.push({
     id: publicMemberId('remove', member),
     kind: 'public-member',
@@ -430,10 +432,15 @@ for (const member of publicMemberRemovals) {
     memberIdentity: member.identity,
     memberName: member.memberName,
     ownerIdentity: member.ownerIdentity,
-    acceptanceIntent: `${member.identity} 공개 member를 제거하고 trace delta가 지정한 exact declaration으로 대체한다.`,
+    replacementKind: replacements.length > 0 ? 'signature' : 'behavior',
+    replacementRule: replacements.length > 0 ? 'exact-semantic-member' : behavior.ruleId,
+    decisionCoverage: behavior?.decisionCoverage ?? [],
+    acceptanceIntent: replacements.length > 0
+      ? `${member.identity} signature를 같은 semantic member의 exact trace identity로 교체한다.`
+      : `${member.identity} 공개 member 제거를 ${behavior.decisionCoverage.join(', ')} 결정과 reviewed public behavior coverage로 검증한다.`,
     replacementCoverage: replacements.length > 0
       ? replacements.map(replacement => publicMemberId('add', replacement))
-      : [behaviorCoverage],
+      : behavior.replacementCoverage,
     specOwner: replacements.length > 0
       ? replacements[0].exactInterface
       : 'framework/doc/framework/common/e2e/README.ko.md',
@@ -532,6 +539,12 @@ const manifest = {
     currentSha256: sha256(currentTraceSource),
     added: publicMemberAdds.length,
     removed: publicMemberRemovals.length,
+    replacementPolicy: {
+      signature: signatureReplacementCount,
+      behavior: behaviorReplacementCount,
+      unmatched: 0,
+      ambiguous: 0,
+    },
   },
   state: 'pending-disabled-by-contract-amendment',
   execution: {executed: 0, skipped: 0},

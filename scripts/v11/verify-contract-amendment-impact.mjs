@@ -7,6 +7,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {
+  removedMemberBehavior,
+  semanticMemberKey,
+} from './contract-amendment-impact-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const ledgerPath = path.join(root, 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md');
@@ -190,12 +194,27 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const currentIdentities = new Set(currentTrace.members.map(member => member.identity));
   const expectedAdded = currentTrace.members.filter(member => !baselineIdentities.has(member.identity));
   const expectedRemoved = baselineTrace.members.filter(member => !currentIdentities.has(member.identity));
+  const publicMemberId = (disposition, member) =>
+    `public-member:${disposition}:${member.language}:${sha256(member.identity).slice(0, 20)}`;
+  const additionsBySemanticMember = new Map();
+  for (const member of expectedAdded) {
+    const key = semanticMemberKey(member);
+    if (!additionsBySemanticMember.has(key)) additionsBySemanticMember.set(key, []);
+    additionsBySemanticMember.get(key).push(member);
+  }
+  const expectedSignatureReplacementCount = expectedRemoved.filter(member =>
+    additionsBySemanticMember.get(semanticMemberKey(member))?.length).length;
+  const expectedBehaviorReplacementCount = expectedRemoved.length - expectedSignatureReplacementCount;
   const traceDelta = manifest.publicContractTraceDelta;
   if (traceDelta?.path !== traceRelativePath
       || traceDelta?.baselineSha256 !== sha256(baselineTraceSource)
       || traceDelta?.currentSha256 !== sha256(currentTraceSource)
       || traceDelta?.added !== expectedAdded.length
-      || traceDelta?.removed !== expectedRemoved.length) {
+      || traceDelta?.removed !== expectedRemoved.length
+      || traceDelta?.replacementPolicy?.signature !== expectedSignatureReplacementCount
+      || traceDelta?.replacementPolicy?.behavior !== expectedBehaviorReplacementCount
+      || traceDelta?.replacementPolicy?.unmatched !== 0
+      || traceDelta?.replacementPolicy?.ambiguous !== 0) {
     fail('publicContractTraceDelta does not match the approved baseline/current trace files');
   }
   const publicEntries = manifest.entries.filter(entry => entry.kind === 'public-member');
@@ -219,11 +238,40 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     if (expectedPath !== member.exactInterface) {
       fail(`${entry.id}: exact interface path does not match trace member`);
     }
+    if (disposition === 'remove') {
+      const signatureReplacements = additionsBySemanticMember.get(semanticMemberKey(member)) ?? [];
+      const behavior = signatureReplacements.length === 0 ? removedMemberBehavior(member) : null;
+      const expectedReplacementKind = signatureReplacements.length > 0 ? 'signature' : 'behavior';
+      const expectedReplacementRule = signatureReplacements.length > 0
+        ? 'exact-semantic-member'
+        : behavior.ruleId;
+      const expectedCoverage = signatureReplacements.length > 0
+        ? signatureReplacements.map(replacement => publicMemberId('add', replacement))
+        : behavior.replacementCoverage;
+      if (entry.replacementKind !== expectedReplacementKind
+          || entry.replacementRule !== expectedReplacementRule
+          || stableJson([...entry.replacementCoverage].sort())
+            !== stableJson([...expectedCoverage].sort())) {
+        fail(`${entry.id}: semantic replacement mapping does not match reviewed policy`);
+      }
+      if (!Array.isArray(entry.decisionCoverage)
+          || stableJson([...entry.decisionCoverage].sort())
+            !== stableJson([...(behavior?.decisionCoverage ?? [])].sort())) {
+        fail(`${entry.id}: CA decision coverage does not match reviewed policy`);
+      }
+    }
   };
   expectedAdded.forEach(member => assertTraceMember(member, 'add'));
   expectedRemoved.forEach(member => assertTraceMember(member, 'remove'));
   if (publicEntries.length !== expectedAdded.length + expectedRemoved.length) {
     fail('public-member inventory contains entries outside the exact trace delta');
+  }
+  const parityCoverage = manifest.entries.filter(entry => entry.kind === 'public-behavior'
+    && entry.id.startsWith('public-behavior:formal-contract-parity:'));
+  const expectedParityIds = ['cpp', 'dotnet', 'java', 'kotlin', 'node']
+    .map(language => `public-behavior:formal-contract-parity:${language}`).sort();
+  if (stableJson(parityCoverage.map(entry => entry.id).sort()) !== stableJson(expectedParityIds)) {
+    fail('formal public-contract parity coverage must exist exactly once for all five languages');
   }
 
   const rawRootEntries = manifest.entries.filter(entry => entry.kind === 'raw-regression-root');
@@ -292,6 +340,16 @@ function selfTest(manifest) {
     candidate => {
       candidate.entries = candidate.entries.filter(entry => entry.kind !== 'raw-regression-test'
         || entry.path !== 'core/tests/CMakeLists.txt');
+    },
+    candidate => {
+      const removal = candidate.entries.find(entry =>
+        entry.kind === 'public-member' && entry.replacementKind === 'behavior');
+      removal.replacementCoverage = ['e2e:add:not-reviewed'];
+    },
+    candidate => {
+      const removal = candidate.entries.find(entry =>
+        entry.kind === 'public-member' && entry.disposition === 'remove');
+      removal.decisionCoverage = ['CA-D99'];
     },
   ];
   for (const mutate of mutations) {

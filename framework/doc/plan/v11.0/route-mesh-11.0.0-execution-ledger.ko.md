@@ -184,8 +184,6 @@ manifest에 포함된 파일과 당시 content digest를 기준으로 결과를 
 | [Framework 공통·server 정식 spec](../../framework/spec/README.ko.md) | Application이 관찰하는 topology, messaging, object, maintenance, liveness와 오류 계약 |
 | [Framework 공통 service internals](../../framework/common/internals/README.ko.md) | 네 언어 runtime이 공유할 protocol, mailbox, stateful object, maintenance, session, liveness와 resource 목표 구조. M6 완료 전 target model 표기는 ledger 구현 gap과 함께 해석함 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js의 정확한 public signature와 package owner |
-| [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | `V11-R4A`까지만 사용하는 임시 설계 입력. 승인 내용은 정식 spec·exact interface·protocol에 흡수하고 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
-| [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | `V11-R4A`까지만 사용하는 임시 .NET 표현 입력. 다섯 언어 정식 계약과 disposition을 확정한 뒤 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
 | 보존된 Core service 구현·test snapshot | 기존 component 경계, type 관계, state machine, algorithm, queue·lock 순서, 오류·종료 처리. 새 runtime은 이를 언어별 구조와 raw binding 경계에 맞게 이관하며 목표 의미가 spec·internals와 다를 때만 해당 차이를 적용하지 않음 |
 | [Service wire schema](../../../../framework/runtime/protocol/service-wire-v1.schema.json) | Command·field·bound·encoding과 생성 상수의 단일 wire 정본 |
 | [공통 E2E 계약](../../framework/common/e2e/README.ko.md)과 이 ledger §14 | 공통 scenario ID, 방향성 조합, race·crash·functional 완료 조건 |
@@ -867,8 +865,8 @@ Framework runtime source를 구현하지 않는다.
 | `V11-CA-PROTOCOL` | Placement·identity protocol과 fixture amendment | protocol lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | schema·generated constant·golden·negative fixture와 formal 의미 drift 0 | `TransferDataLost`는 wire 35 → public 34로 고정하고 wire 23..34를 예약했다. Permanent payload missing, checksum mismatch와 inventory digest mismatch를 닫힌 terminal trigger 3개로 고정했으며 각 trigger 제거 mutation을 포함한 WIRE 37 commands·151 types·159 negative self-tests, generated 35 fixtures와 decoder 24 error·3 malformed가 통과했다. |
 | `V11-CA-IMPACT` | E2E·sample·regression 영향 목록과 실행 격리 | E2E·sample·regression lanes, `P-DELIVERY` | `V11-CA-DECISION` | 완료 | 모든 항목 baseline hash·disposition·owner·activation stage 분류, `pending-disabled-by-contract-amendment`, executed·skipped 0 | Approved base `1f5b979675`와 현재 trace의 exact delta에서 public member 추가 935·제거 805를 생성하고 현재 Core·bindings raw regression 213개를 보존 대상으로 기록했다. 제거 member는 exact signature replacement 147개와 closed decision·behavior replacement 658개로 분류했다. Cross-language 76개 group과 Kotlin source/JVM 43개 group을 재검증한 결과 unmatched·ambiguous·parity mismatch와 Core PGM 항목은 0이다. 전체 2,998개에 대한 `--check`와 quarantine self-test는 pending 2,420, executed·skipped 0, negative mutation 14개로 통과했다. |
 | `V11-CA-JOIN` | Contract amendment 합류 | amendment coordinator, `P-DELIVERY` | `V11-CA-SPEC`, `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-CA-PROTOCOL`, `V11-CA-IMPACT` | 완료 | 정식 spec·다섯 interface·wire·impact manifest·trace의 미분류와 semantic drift 0 | Review finding 반영 뒤 `DOC`, `INV`, `TRACE --check`, `WIRE`, `WIRE-GEN --check`, decoder fixture, impact generator `--check`, quarantine self-test, Instance Spot contract와 diff check가 통과했다. Trace는 documents 56, owners 1622, members 6199, unclassified·ambiguous·unknown 0이다. E2E·sample source diff는 0이며 Core PGM·perf는 사용자 확인에 따라 별도 병행 작업으로 제외했다. |
-| `V11-R4A` | Contract amendment 독립 review | Codex xhigh review lane, `P-XHIGH` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-CA-JOIN` | 리뷰 중 | public contract·protocol·영향 disposition·대체 coverage의 I1·I2·I3 review clean | Candidate `ddf7747688`, `9f5a9caa34`, `46da38f29b`, `d5560840f5`, `4a566820c8` review에서 나온 evidence freshness, wire mapping·terminal trigger, Kotlin bridge·ABI, Put checksum, impact inventory·baseline·semantic replacement·parity와 README finding을 반영했다. 제거 member 805개의 replacement는 exact signature 147개와 closed decision·behavior 658개로 재검증하며 unmatched·ambiguous·parity mismatch 0이다. Core PGM·perf는 별도 작업으로 제외했고 최종 candidate의 독립 재검토를 기다린다. |
-| `V11-CA-DRAFT-RETIRE` | 임시 contract 변경 제안 흡수 확인과 삭제 | contract coordinator, `P-DELIVERY` | `V11-R4A` | 대기 | 채택 내용은 정식 spec·exact interface·protocol에 모두 존재하고 E2E·sample 영향은 manifest에 분류되며, 미채택·수정 결정은 ledger에 이유가 기록되고 두 proposal과 link가 repository에서 0 | — |
+| `V11-R4A` | Contract amendment 독립 review | Codex xhigh review lane, `P-XHIGH` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-CA-JOIN` | 완료 | public contract·protocol·영향 disposition·대체 coverage의 I1·I2·I3 review clean | Candidate `ddf7747688`, `9f5a9caa34`, `46da38f29b`, `d5560840f5`, `4a566820c8`의 finding을 모두 반영한 `edc361796a`를 재검토했다. Codex 5.6 sol xhigh와 Claude Sonnet은 blocking finding 0으로 판정했고 별도 policy audit도 clean이다. 제거 member 805개의 replacement는 exact signature 147개와 closed decision·behavior 658개이며, cross-language 76개 group과 Kotlin source/JVM 43개 group의 unmatched·ambiguous·parity mismatch가 0이다. Core PGM·perf는 별도 작업으로 제외했다. |
+| `V11-CA-DRAFT-RETIRE` | 임시 contract 변경 제안 흡수 확인과 삭제 | contract coordinator, `P-DELIVERY` | `V11-R4A` | 완료 | 채택 내용은 정식 spec·exact interface·protocol에 모두 존재하고 E2E·sample 영향은 manifest에 분류되며, 미채택·수정 결정은 ledger에 이유가 기록되고 두 proposal과 link가 repository에서 0 | R4A clean 뒤 임시 입력 두 개를 삭제하고 README·ledger·document inventory의 link와 허용 목록을 제거했다. 정식 spec·internals·다섯 exact interface·protocol·impact manifest와 이 ledger만으로 M6 입력을 구성하며 `DOC`, `TRACE --check`, impact quarantine self-test와 repository link 0 검증이 통과했다. 증거: `.artifacts/v11/evidence/V11-CA-DRAFT-RETIRE/result.json` |
 
 #### 9.1.1 Contract amendment decision register
 
@@ -932,12 +930,9 @@ mailbox ordering, terminal winner, ownership·CAS·lease·fencing과 resource cl
 각 언어의 deterministic internal contract test owner를 지정한다. E2E·sample source와 registration은 삭제하거나
 주석 처리하지 않고 build·test 실행 graph에서만 분리한다.
 
-`V11-R4A`가 끝나면 두 임시 제안의 채택 내용은 정식 문서에 이미 존재해야 한다. 채택하지 않았거나 표현을
-바꾼 항목의 decision ID, 결론과 이유만 이 절의 증거에 요약한다. `V11-CA-DRAFT-RETIRE`는
-`actor-spot-remote-placement-and-node-identity-change-proposal.ko.md`와
-`dotnet-remote-placement-public-contract-change-sketch.ko.md`를 삭제하고 README와 이 ledger에서 해당 link를
-제거한다. 이후 M6 작업 지시는 정식 spec·internals, exact interface, protocol/schema, impact manifest와 이
-ledger만으로 구성하며 삭제한 proposal을 참조하지 않는다.
+R4A에서 확정한 채택 내용은 정식 spec·internals, exact interface, protocol/schema와 impact manifest에 반영했다.
+채택하지 않았거나 표현을 바꾼 항목의 결론과 이유는 `CA-D01~CA-D36`이 소유한다. 임시 설계 입력은
+`V11-CA-DRAFT-RETIRE`에서 삭제했으며 이후 M6 작업 지시는 정식 문서와 이 ledger만으로 구성한다.
 
 ## 10. M6 — Framework vertical slice 네 병렬 lane
 

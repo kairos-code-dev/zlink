@@ -63,18 +63,25 @@ C, Python, Go와 Rust bindings는 Core 10.x의 마지막 지원 조합에 격리
 10. SPEC 선행 gate가 완료되지 않아도 담당 범위의 문서 작성과 자체 검증은 병렬로 진행할 수 있다.
     다만 모든 선행 ID가 `완료`가 되기 전에는 해당 행을 `검토 준비 완료`, `리뷰 중`, `완료`로
     전환하거나 독립 review를 시작하지 않는다.
-11. 기존 Framework public interface, sample과 E2E source는 migration 불변 입력이다. 명시적으로 승인한
-    새 공개 기능을 추가할 때만 새 sample·E2E를 추가하며, Core service runtime 이관을 이유로 기존 source,
-    scenario ID나 실행 registration을 수정·삭제하지 않는다.
+11. 기존 Framework public interface, sample과 E2E source는 migration 불변 입력이다. Contract amendment가
+    승인되기 전에는 Core service runtime 이관을 이유로 기존 source, scenario ID나 실행 registration을
+    수정·삭제하지 않는다. 승인한 public contract 변경으로 영향을 받는 항목은 amendment impact manifest에
+    기존 hash, disposition, 새 acceptance intent와 대체 coverage를 먼저 기록한 뒤에만 변경한다. 영향받지 않은
+    source와 registration은 Git diff 0을 유지한다.
 12. Core service ABI를 대체하는 public·private binding service API를 만들지 않는다. Framework 내부에
     private binding-facing port를 두고 해당 언어 binding의 설치된 public raw API만 호출한다.
-13. Framework service runtime이 완성되기 전에는 기존 sample·E2E를 실행해 완료를 판정하지 않는다.
-    이 구간은 Core raw regression, binding raw contract, protocol fixture와 Framework internal contract test만
-    실행한다.
-14. Framework runtime 구현 중 기존 sample·E2E가 compile 또는 run에 실패해도 source를 수정하지 않는다.
-    원인은 private binding-facing port, runtime implementation 또는 package 연결에서 수정한다.
-15. 전체 runtime과 production placeholder 제거가 끝난 뒤 기존 E2E를 먼저 실행하고, E2E가 통과한 뒤 기존
-    sample을 source 변경 없이 compile·run한다.
+13. Framework service runtime이 완성되기 전에는 sample·E2E를 실행해 완료를 판정하지 않는다. Contract
+    amendment impact manifest는 각 항목을 `retain`, `amend`, `replace`, `add`, `remove`로 분류하고 실행 상태를
+    `pending-disabled-by-contract-amendment`로 고정한다. 이 상태는 skip이나 성공 결과가 아니며 source와
+    registration을 삭제하거나 주석 처리하지 않는다.
+14. Runtime 구현 build에서는 sample·E2E project와 task만 실행 graph에서 분리한다. Sample·E2E source가 새
+    interface 때문에 compile되지 않아도 runtime 통과를 위해 source를 임시 수정하거나 compatibility helper를
+    추가하지 않는다. 이 구간은 Core raw regression, binding raw contract, protocol fixture, public declaration
+    snapshot과 Framework internal unit·contract·resource test를 실행한다.
+15. 전체 runtime과 production placeholder 제거가 끝난 뒤 E2E·sample spec을 승인한 contract snapshot에 맞춰
+    최종 확정한다. E2E는 topology, stateful object, maintenance, race·cross-language 순서로 작은 묶음씩
+    활성화하며 각 묶음의 runtime gap을 닫은 뒤 다음 묶음을 시작한다. Sample은 전체 E2E가 통과한 뒤
+    활성화하고 public API만 사용해 compile·run한다.
 
 ### 2.1 Runtime-first 실행 순서
 
@@ -82,24 +89,31 @@ RouteMesh 11.0 migration은 다음 순서를 바꾸지 않는다.
 
 1. Core 11 raw runtime과 regression·sanitizer 결과를 고정한다.
 2. Core 11 local package와 Framework runtime이 필요로 하는 최소 raw binding package를 만든다.
-3. 각 Framework 언어에서 기존 public interface와 호출 구조를 그대로 유지하고, 그 뒤에 private
-   binding-facing port를 연결한다. 이 port는 설치된 public raw binding API만 사용한다.
-4. 언어별 vertical slice에서 기존 interface의 실제 동작을 먼저 복구한다. Protocol codec,
-   transport·session, liveness, routing·registry, Spot·Actor lifecycle과 maintenance를 순서대로 연결하되,
-   기존 Framework source의 구조 변경은 동작 복구에 필요한 최소 범위로 제한한다.
-5. 각 vertical slice가 internal unit·contract·protocol regression을 통과하면 다음 기능으로 진행한다.
-   네 언어의 기존 interface가 모두 동작하고 production placeholder가 0인 것을 확인한 뒤에만 중복 상태
-   기계나 adapter를 통합하는 후속 refactoring을 수행한다. Refactoring은 동작 복구의 선행 조건이 아니다.
-6. 기존 E2E를 source·scenario·registration 변경 없이 실행한다.
-7. E2E 통과 뒤 기존 sample을 source·registration 변경 없이 compile·run한다.
+3. M5 뒤 public contract amendment의 identity, remote create, placement, failure, maintenance 의미와 다섯 언어
+   exact interface를 확정한다. 변경될 E2E scenario, sample과 유지할 regression test를 impact manifest에
+   나열하고 baseline source·registration hash를 봉인한다.
+4. E2E·sample 실행을 source 변경 없이 격리한 뒤 각 Framework 언어의 private binding-facing port에 새 contract의
+   실제 동작을 연결한다. Protocol codec, transport·session, liveness, routing·registry, Spot·Actor lifecycle과
+   maintenance를 순서대로 구현하되, 기존 Framework source의 구조 변경은 동작 복구에 필요한 최소 범위로
+   제한한다.
+5. 각 vertical slice가 internal unit·contract·protocol regression을 통과하면 다음 기능으로 진행한다. 새
+   public behavior는 E2E 대신 deterministic internal contract test로 먼저 검증한다. 네 언어 runtime과
+   production placeholder 제거가 모두 끝날 때까지 E2E·sample source를 구현 편의에 맞춰 바꾸지 않는다.
+6. Runtime 전체 합류 뒤 amendment impact manifest를 기준으로 E2E spec과 sample spec을 최종 확정한다.
+   영향받은 source만 승인한 disposition에 따라 바꾸고 영향받지 않은 source·registration은 diff 0을 유지한다.
+7. E2E를 topology, stateful object, maintenance, race·cross-language 순서로 재활성화해 runtime gap을 닫는다.
+8. 전체 E2E 통과 뒤 sample을 재활성화하여 public API 사용, startup, operation과 cleanup을 검증한다.
 
-M4까지는 sample·E2E source와 registration의 Git diff 0만 확인하고 실행하지 않는다. M5·M6는 internal
-runtime contract만 완료 증거로 사용한다. 최초 runtime candidate의 기존 E2E와 sample 실행 결과는 M7이
-소유하고, final package 조합의 재검증 결과는 M9가 소유한다.
+M4까지는 sample·E2E source와 registration의 Git diff 0만 확인하고 실행하지 않는다. M5와 contract amendment,
+M6 runtime 구현은 internal runtime contract만 완료 증거로 사용한다. Contract amendment가 승인한 변경은
+impact manifest가 old→new source·registration hash와 coverage를 소유한다. 최초 runtime candidate의 단계별 E2E
+활성화와 전체 matrix는 M6 후반과 M7이 소유하고, sample 실행은 전체 E2E 뒤 M7이 소유한다. Final package
+조합의 재검증 결과는 M9가 소유한다.
 
-이 순서에서 보존하는 interface는 Framework public API다. 제거 대상인 Core service ABI나 binding service
-projection을 compatibility layer로 되살리지 않는다. 기존 Framework interface의 구현은 private port 뒤에서
-raw binding 조합으로 교체한다. 따라서 sample과 E2E 호출부는 바꾸지 않고 runtime 구현만 교체할 수 있다.
+이 순서에서 public interface는 승인된 contract snapshot을 따른다. 제거 대상인 Core service ABI나 binding
+service projection을 compatibility layer로 되살리지 않는다. Contract amendment에서 replace·remove한 Framework
+surface도 구현 편의를 위한 adapter로 유지하지 않는다. Sample과 E2E 호출부 변경은 runtime 구현 중이 아니라
+spec 최종화 뒤 impact manifest가 승인한 항목에만 적용한다.
 
 ## 3. Codex profile과 병렬 lane
 
@@ -113,14 +127,15 @@ model을 사용할 수 없으면 대체 model과 이유를 기록하며 조용�
 | Profile | 기본 model·effort | 적용 범위 |
 |---|---|---|
 | `P-DEEP` | `gpt-5.6 high` | 공개 계약·POSD, 동시성·ownership·recovery, 독립 review |
+| `P-ULTRA` | `gpt-5.6 ultra` | Final E2E·sample spec처럼 public contract와 다섯 언어 coverage를 함께 판단하는 교차 영역 독립 review |
 | `P-DELIVERY` | `gpt-5.6 medium` | 일반 기능 구현, E2E, package, smoke와 consumer 검증 |
 | `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` | manifest·링크·inventory, 범위 분류와 read-heavy scan |
 
 `P-SCAN`은 단순 수집·no-hit 검사에 `low`를 사용하고 분류 판단이 필요하면 `medium`을 사용한다.
 `xhigh`나 `max`는 재현되지 않은 race, protocol·ABI 판단 또는 최종 통합 감사를 기본 effort로
-종료할 수 없을 때만 상향한다. `ultra`는 지원 model에서 최종 교차 영역 감사에 더 깊은 reasoning이
-필요하거나 proactive multi-agent orchestration을 하나의 작업에서 직접 조정해야 할 때 선택한다.
-두 경우 모두 기본값으로 강제하지 않으며, 상향 이유와 조정 범위는 해당 행의 증거 칸에 기록한다.
+종료할 수 없을 때만 상향한다. `P-ULTRA`는 `V11-R5D`에서 의무적으로 사용한다. 그 밖의 row에서 `ultra`는
+지원 model로 최종 교차 영역 감사를 수행하거나 proactive multi-agent orchestration을 하나의 작업에서 직접
+조정해야 할 때만 선택한다. 임의로 사용하는 경우 상향 이유와 조정 범위는 해당 행의 증거 칸에 기록한다.
 
 병렬 실행의 단일 소유자와 합류 gate는 다음과 같다.
 
@@ -169,11 +184,15 @@ manifest에 포함된 파일과 당시 content digest를 기준으로 결과를 
 | [Core 11 raw 내부 경계](../../../../core/doc/internals/runtime-boundary.ko.md) | 제거할 engine·timer·state와 남길 generic transport·timer·monitor 구조 |
 | [Framework 공통·server 정식 spec](../../framework/spec/README.ko.md) | Application이 관찰하는 topology, messaging, object, maintenance, liveness와 오류 계약 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js의 정확한 public signature와 package owner |
+| [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | `V11-R4A`까지만 사용하는 임시 설계 입력. 승인 내용은 정식 spec·exact interface·protocol에 흡수하고 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
+| [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | `V11-R4A`까지만 사용하는 임시 .NET 표현 입력. 다섯 언어 정식 계약과 disposition을 확정한 뒤 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
 | [Service 공개 계약 migration crosswalk](target-spec/README.ko.md) | Core service 의미와 Framework 정식 spec의 소유 위치를 누락 없이 대조하는 표 |
 | [Service runtime 구현 crosswalk](target-internals/README.ko.md) | 정식 internals와 Core 10 구현을 네 runtime의 protocol, queue, ownership, fencing, recovery와 resource 작업에 연결하는 표 |
 | 보존된 Core service 구현·test snapshot | 기존 component 경계, type 관계, state machine, algorithm, queue·lock 순서, 오류·종료 처리. 새 runtime은 이를 언어별 구조와 raw binding 경계에 맞게 이관하며 목표 의미가 spec·internals와 다를 때만 해당 차이를 적용하지 않음 |
 | [Service wire schema](../../../../framework/runtime/protocol/service-wire-v1.schema.json) | Command·field·bound·encoding과 생성 상수의 단일 wire 정본 |
 | [공통 E2E 계약](../../framework/common/e2e/README.ko.md)과 이 ledger §14 | 공통 scenario ID, 방향성 조합, race·crash·functional 완료 조건 |
+| [공통 sample spec](../../framework/common/sample/README.ko.md) | 다섯 언어 sample이 보여 줄 public 사용 흐름, 역할, message와 acceptance marker |
+| `route-mesh-11.0.0-contract-amendment-impact.json` | Contract amendment가 영향을 주는 public member, E2E scenario, sample, registration과 regression test의 baseline hash, disposition, owner와 활성화 단계 |
 | [Local package 규칙](../../../../scripts/local-package/README.ko.md) | version 고정 지점, local/internal output, clean consumer와 provenance |
 | [Migration machine inventory](../../contract-inventory/route-mesh-v11-core-service-migration-inventory.json) | 제거·보존·대체할 symbol, source, test, package 입력과 담당 gate |
 
@@ -286,7 +305,9 @@ self-test를 추가한다. 이후 card가 이 명령을 요구하면 runner가 �
 | `BIND-PKG-TEST` | `scripts/local-package/<cpp|dotnet|java|node>/verify-consumer.sh --self-test --dry-run --evidence <absolute-result.json>`; ID suffix `JVM`은 `java`를 선택한다. Package를 발행하지 않고 각 lane이 소유한 package metadata·resolver·public-only consumer fixture를 검증 | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` |
 | `WIRE-GEN` | `node framework/runtime/protocol/generate-service-wire-constants.mjs --schema framework/runtime/protocol/service-wire-v1.schema.json <--write|--check>`; C++·C#·Java·TypeScript 생성물의 source schema revision과 drift를 검증 | `V11-M5-PROTOCOL` |
 | `TRACE` | `node scripts/generate-v11-public-contract-trace.mjs <--write|--check>`; `framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json`의 member identity, disposition, POSD decision, spec·test·E2E·package owner와 implementation ledger ID를 deterministic하게 검증 | `SPEC-06` |
-| `V11-E2E` | `scripts/v11/run-cross-language-e2e.sh --slice <topology|stateful|maintenance|full> --matrix 4x4 --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; §14 ID를 그대로 사용하고 required skip을 실패로 처리 | `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M9-E2E-4X4` |
+| `AMENDMENT-IMPACT` | `scripts/v11/verify-contract-amendment-impact.sh --manifest framework/doc/plan/v11.0/route-mesh-11.0.0-contract-amendment-impact.json --mode <quarantine|finalized> --evidence <absolute-result.json>`; 모든 영향 항목의 baseline·approved hash, disposition, spec·runtime·activation owner를 검증하고 quarantine을 skip·pass로 집계하지 않음 | `V11-CA-IMPACT` |
+| `M6-RUNTIME` | `scripts/v11/run-framework-runtime-regression.sh --language <cpp|dotnet|jvm|node> --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; sample·E2E project와 task를 실행 graph에서 제외하고 compile, public declaration snapshot, internal unit·contract·resource·protocol regression만 실행 | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` |
+| `V11-E2E` | `scripts/v11/run-cross-language-e2e.sh --slice <topology|stateful|maintenance|full> --matrix 4x4 --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; §14의 유지·변경·대체·추가 ID를 approved impact manifest와 대조하고 required skip을 실패로 처리 | `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M9-E2E-4X4` |
 | `V11-SMOKE` | `scripts/v11/run-smoke.sh --kind <functional|perf> --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; perf는 §15 최소 operation·provenance·cleanup만 판정 | `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` |
 | `FW-PKG` | `scripts/local-package/framework/build-wsl.sh <cpp|dotnet|jvm|node> --binding-manifest <absolute-binding-manifest.json> --output-root <absolute-local-root> --evidence <absolute-result.json>`; persistent Framework package를 만들고 package version·Core·binding provenance를 기록 | `V11-M8-CLEAN-COMMON` |
 | `FW-PKG-TEST` | `scripts/local-package/framework/test-build-wsl.sh --language <cpp|dotnet|jvm|node> --self-test --dry-run --evidence <absolute-result.json>`; persistent package를 발행하지 않고 package manifest·provenance·clean consumer fixture를 검증 | `V11-M8-CLEAN-COMMON` |
@@ -317,7 +338,7 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 | `SPEC-04` | 다섯 언어 exact interface README와 기능별 interface | `framework/doc/framework/spec/server/languages/*/interfaces/`; member trace | `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
 | `SPEC-05` | target-internals `01~08`, wire schema, formal service wire internals | `target-internals/`, `framework/runtime/protocol/`, `framework/doc/framework/common/internals/service-wire-protocol.ko.md`, golden·negative fixture; schema·target·formal semantic drift 0 | `WIRE`, `DOC`, `DIFF-OWNED` | 담당 row, schema·target·formal 대조 결과와 `<ID>` result |
 | `SPEC-06` | §5.2·§5.6, 다섯 exact interface, §14 scenario | `route-mesh-v11-public-contract-trace.json`, deterministic generator·checker와 ledger member trace; ctor·overload·generic·callback·enum·extension·export 누락 0 | `TRACE --write`, `TRACE --check`, `DOC`, `INV`, `DIFF-OWNED` | 담당 row, member·owner·disposition·implementation ID 미분류 0과 `<ID>` result |
-| `V11-R1`, `V11-R2`, `V11-R3`, `V11-R4`, `V11-R5A`, `V11-R5B`, `V11-R5C`, `V11-R6` | 직접 선행 row의 candidate·evidence, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex·Claude 독립 finding과 수렴 결과 | §18 독립 review, `DOC`, `INV`, `DIFF-OWNED`; protocol 영향 시 `WIRE` | 담당 review row, 두 reviewer 결과와 `<ID>` result |
+| `V11-R1`, `V11-R2`, `V11-R3`, `V11-R4`, `V11-R4A`, `V11-R5A`, `V11-R5B`, `V11-R5C`, `V11-R6` | 직접 선행 row의 candidate·evidence, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex·Claude 독립 finding과 수렴 결과 | §18 독립 review, `DOC`, `INV`, `DIFF-OWNED`; protocol 영향 시 `WIRE` | 담당 review row, 두 reviewer 결과와 `<ID>` result |
 | `V11-R7` | final candidate revision, 직접 선행 row의 evidence, §18 | source 수정 없음; reviewed base→final candidate 전체 snapshot | §18 독립 review, `DOC`, `INV`, `WIRE`, `DIFF-SNAPSHOT` | final review row, 두 reviewer 결과와 `<ID>` result |
 | `V11-M2-ORACLE` | 10.x disposition, §14 baseline 대상 | `scripts/v11/run-oracle.sh`, `framework/testdata/v11/oracle/`; frozen manifest·normalized trace | `ORACLE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M2-CORE-READINESS` | Core raw 공개·내부 경계, machine inventory | Core·perf removal classification; Core removal manifest | `INV`, inventory 기반 Core no-hit probe, 공통 | 담당 row와 `<ID>` result |
@@ -337,17 +358,27 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 | `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE` | 해당 exact interface, 새 binding package, target-internals `01` | 각 Framework private binding-facing port, 보존 public value type ownership과 internal compile contract; 새 port의 Core adapter·production placeholder·fake data 0. 기존 service owner 실행 경로의 제거는 M6 vertical slice와 `V11-M6-SCAFFOLD-ZERO`가 소유 | 대응 Framework M5 internal contract, 신규 owned path의 forbidden-reference audit, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | target-internals `01`·`02`·`03`·`08`, wire schema | 각 Framework transport·codec·operation·resource source와 unit test | 대응 Framework command, `WIRE`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M5-FOUND-JOIN` | 네 foundation evidence와 required E2E catalog | codec cross-language fixture·pending scenario manifest, migration inventory JSON·generator·verifier | `WIRE`, `INV`, `ROW-GATE`, 공통 | 담당 row, pending·completed·skipped count와 `<ID>` result |
-| `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | target spec `01`·`02`·`07`·`08`, internals `01`·`03`·`07`·`08`, exact topology interface | 각 Framework topology·dispatch·Location·liveness source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6A-E2E` | §14 topology·liveness scenario와 공통 E2E config | topology fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
-| `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | target spec `03`~`06`, internals `03`·`04`·`06`·`08`, exact object interface | 각 Framework Spot·Actor·STREAM·Instance source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6B-E2E` | §14 stateful scenario와 공통 E2E config | stateful fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
-| `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | target spec `07`·`08`, internals `05`·`07`·`08`, exact maintenance·monitoring·host interface | 각 Framework maintenance·monitoring·hosting source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6C-E2E` | §14 maintenance·hosting scenario와 공통 E2E config | maintenance·crash·hosting fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
-| `V11-M6-SCAFFOLD-ZERO` | 네 Framework source와 required scenario manifest | production scaffold·placeholder·fake data·pending registration 검사 결과 | Framework scope 네 `REMOVE`, `INV`, `ROW-GATE`, 공통 | 담당 row, 모든 금지 count 0과 `<ID>` result |
-| `V11-M7-CONTRACT` | 공통 spec, 다섯 exact interface | 네 language contract suite와 public declaration comparison | 네 Framework command, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-CA-DECISION` | 두 contract 변경 제안, POSD 공개 경계, M5 foundation evidence | global identity·remote create·placement·reservation·handover·failure의 결정 기록과 proposal open item disposition | `DOC`, `TRACE --check`, `ROW-GATE`, 공통 | open item 미결정 0, 대안·선택 이유·정식 spec owner와 `<ID>` result |
+| `V11-CA-SPEC` | 승인한 amendment decision, Framework 공통·server 정식 spec | `framework/doc/framework/spec/`, `target-spec/`; 변경된 목표 계약과 migration crosswalk | `DOC`, `TRACE --write`, `TRACE --check`, `ROW-GATE`, 공통 | identity·placement·failure 의미의 미분류 0과 `<ID>` result |
+| `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE` | 승인한 amendment spec, 다섯 언어 exact interface | 대응 exact interface와 public declaration trace. JVM row는 Java·Kotlin을 함께 소유 | `DOC`, `TRACE --write`, `TRACE --check`, `ROW-GATE`, 공통 | public member parity·표현 차이 미분류 0과 각 `<ID>` result |
+| `V11-CA-PROTOCOL` | 승인한 amendment spec, wire schema, target-internals | placement reservation·aggregate transfer·route·identity command와 schema·generated constant·golden·negative fixture | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `DOC`, `ROW-GATE`, 공통 | formal·schema·fixture semantic drift 0과 `<ID>` result |
+| `V11-CA-IMPACT` | 승인한 amendment spec, baseline E2E·sample·registration·regression catalog | `route-mesh-11.0.0-contract-amendment-impact.json`, verifier와 self-test; 각 항목의 baseline hash·disposition·owner·activation stage | `AMENDMENT-IMPACT --mode quarantine`, `DOC`, `INV`, `ROW-GATE`, 공통 | 미분류 0, `pending-disabled-by-contract-amendment` 수, executed·skipped 0과 `<ID>` result |
+| `V11-CA-JOIN` | amendment spec·네 exact interface·protocol·impact evidence | amendment candidate aggregate와 public contract trace·impact manifest reconcile | `DOC`, `INV`, `WIRE`, `TRACE --check`, `AMENDMENT-IMPACT --mode quarantine`, `ROW-GATE`, 공통 | 정식 계약·언어·wire·E2E·sample·regression owner 누락 0과 `<ID>` result |
+| `V11-CA-DRAFT-RETIRE` | `V11-R4A`가 승인한 amendment candidate와 두 임시 변경 제안 | 두 proposal 삭제, 이 README·ledger의 임시 link 제거와 decision disposition 요약 | `DOC`, `TRACE --check`, `AMENDMENT-IMPACT --mode quarantine`, `ROW-GATE`, 공통 | 채택 내용의 formal spec·exact interface·protocol owner 누락 0, 미채택·수정 이유 미기록 0, 두 proposal과 repository link 0, `<ID>` result |
+| `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | amended formal spec·exact interface, target internals `01`·`03`·`07`·`08`, 보존된 Core service 구현·test | 각 Framework topology·dispatch·Location·liveness source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | amended formal spec·exact interface, target internals `03`·`04`·`06`·`08`, 보존된 Core service 구현·test | 각 Framework Spot·Actor·STREAM·Instance source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | amended formal spec·exact interface, target internals `05`·`07`·`08`, 보존된 Core service 구현·test | 각 Framework maintenance·monitoring·hosting source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6-SCAFFOLD-ZERO` | 네 Framework runtime과 amendment impact manifest | production scaffold·placeholder·fake data와 quarantine 실행 graph 검사 결과 | Framework scope 네 `REMOVE`, `AMENDMENT-IMPACT --mode quarantine`, `INV`, `ROW-GATE`, 공통 | production 금지 count 0, sample·E2E source 삭제·임시 우회 0과 `<ID>` result |
+| `V11-E2E-SPEC-FINAL` | approved amendment, completed runtime, impact manifest, 공통 E2E 계약 | `framework/doc/framework/common/e2e/`, §14와 impact manifest의 approved scenario·registration hash | `DOC`, `TRACE --write`, `TRACE --check`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required scenario·negative·race·matrix owner와 acceptance 누락 0 |
+| `V11-SAMPLE-SPEC-FINAL` | approved amendment, completed runtime, impact manifest, 공통 sample spec | `framework/doc/framework/common/sample/`과 impact manifest의 approved sample·registration hash | `DOC`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | 다섯 언어 sample의 public 흐름·marker·owner 누락 0 |
+| `V11-R5D` | final E2E·sample spec candidate, finalized impact manifest, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex ultra·Claude Sonnet 독립 finding과 수렴 evidence | §18 독립 review, `DOC`, `TRACE --check`, `AMENDMENT-IMPACT --mode finalized`, `INV`, `DIFF-OWNED` | assertion 약화·coverage 손실·언어 parity gap 0, 두 reviewer 결과와 `<ID>` result |
+| `V11-M6A-E2E` | final E2E·sample spec, topology·liveness impact 항목 | topology fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice topology`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
+| `V11-M6B-E2E` | final E2E·sample spec, stateful object impact 항목 | stateful fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice stateful`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
+| `V11-M6C-E2E` | final E2E·sample spec, maintenance·hosting impact 항목 | maintenance·hosting fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice maintenance`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
+| `V11-M7-CONTRACT` | amended common spec, 다섯 exact interface | 네 language contract suite와 public declaration comparison | 네 Framework command, `ROW-GATE`, 공통 | required contract skipped 0과 `<ID>` result |
 | `V11-M7-RACE-CRASH` | §14.2와 target-internals `05`·`08` | race·phase crash·pause·resource test와 seed manifest | `V11-E2E --slice full`, `ROW-GATE`, 공통 | 담당 row, seed·반복·결과와 `<ID>` result |
-| `V11-M7-E2E-4X4` | §14 전체 scenario와 공통 E2E config | full directional matrix result | `V11-E2E --slice full`, `E2E-CURRENT`, `ROW-GATE`, 공통 | 담당 row, required/skipped cell과 `<ID>` result |
-| `V11-M7-SAMPLES` | 언어 exact example와 sample contract | 다섯 언어 sample source·build·run evidence | `SAMPLES`, 언어별 Framework command, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-M7-E2E-4X4` | final E2E spec과 approved impact manifest | full directional matrix result | `V11-E2E --slice full`, `E2E-CURRENT`, `ROW-GATE`, 공통 | 담당 row, required/skipped cell과 `<ID>` result |
+| `V11-M7-SAMPLES` | final sample spec과 approved impact manifest | 다섯 언어 sample source·build·run evidence | `SAMPLES`, 언어별 Framework command, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` | §14 functional, §15 perf smoke-only | v11 smoke runner·result schema·provenance | 대응 `V11-SMOKE`; perf row는 `RAW-PERF-SMOKE`도 실행, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M7-JOIN` | M7 모든 candidate·evidence | correctness aggregate manifest | `ROW-GATE`, `DOC`, `INV`, `WIRE`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
 | `V11-M8-INVENTORY` | machine inventory와 M7 load·coverage evidence | Framework·common cleanup inventory | Framework·common `REMOVE`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
@@ -367,9 +398,16 @@ SPEC-01..06 -> V11-R1 -> M2 oracle/readiness
             -> M3 Core removal/review/package
             -> M4 bindings removal/review/package
             -> M5 private binding port/foundation/review
-            -> M6A topology -> M6B stateful -> M6C maintenance
+            -> contract amendment/spec/interfaces/protocol/impact/review
+            -> temporary proposal retirement
+            -> E2E/sample execution quarantine
+            -> M6A topology runtime/review
+            -> M6B stateful runtime/review
+            -> M6C maintenance runtime/review
             -> M6 production placeholder zero
-            -> M7 existing E2E -> existing samples -> correctness/smoke
+            -> final E2E/sample spec -> ultra/Sonnet independent review
+            -> topology E2E -> stateful E2E -> maintenance E2E
+            -> M7 full E2E/race -> samples -> correctness/smoke
             -> M8 Framework cleanup/review
             -> M9 final package/re-proof/E2E/smoke/docs/review
 ```
@@ -384,9 +422,12 @@ migration은 removal-first 순서로 진행한다. 동작 결과는 별도 Core 
 
 Core와 bindings는 각각 제거·POSD·DDD review가 끝난 뒤에만 version을 올리고 local/internal package를 만든다.
 그 package를 입력으로 네 Framework runtime의 private binding-facing port와 service runtime을 같은 계약
-snapshot에서 병렬 구현한다. M5·M6는 internal contract와 독립 review에서 합류하고, topology·stateful·
-maintenance runtime과 production placeholder 제거가 모두 끝난 뒤 M7에서 기존 E2E와 sample을 순서대로
-실행한다.
+snapshot에서 병렬 구현한다. 완료한 초기 SPEC·M5 evidence는 당시 snapshot의 이력으로 유지하고 다시 열지
+않는다. M5 뒤 contract amendment가 변경된 정식 spec, exact interface, protocol과 영향 목록을 새 snapshot으로
+고정하고 독립 review를 통과한 뒤 M6를 시작한다. M6는 internal contract와 독립 review에서 합류하며
+topology·stateful·maintenance runtime과 production placeholder 제거가 끝날 때까지 E2E·sample 실행을 격리한다.
+그 뒤 E2E·sample spec을 최종 확정하고 E2E를 작은 묶음부터 활성화한다. 전체 E2E와 race·crash가 통과한 뒤
+sample을 실행한다.
 
 ## 5. SPEC — 구현 전 계약 확정
 
@@ -418,8 +459,8 @@ SPEC은 모든 구현 stage보다 우선한다. `V11-R1`이 완료되기 전에�
 | Core guide·internals·spec의 service 의미 | Explicit reviewed manifest에서 파일별 `Remove`·`Rewrite`·`Retain`을 고정한다. ZMP guide의 SPOT envelope는 Framework service wire owner로 옮기고 Core 문서는 raw ZMP만 설명한다 | `SPEC-01`, `SPEC-03`, `V11-M3-CORE-CLEAN`, `V11-M9-DOCS` |
 | C++·.NET·Java·Node.js bindings의 service wrapper·generated symbol·test | Core 11 package를 기준으로 projection을 제거하고 일반 raw socket 사용자에게도 유효한 public capability만 보완 | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` |
 | C, Python, Go와 Rust bindings | 10.x oracle 조합에 격리. Core 11 build·package·CI와 호환 표기에서 제외하고 새 candidate가 link·load하지 않음 | `V11-M2-BIND-READINESS`, `V11-M9-RAW-FINAL` |
-| C++·.NET·Java·Kotlin·Node.js Framework public surface | 정식 exact interface에 승인한 11.0 계약을 반영하고 Java·Kotlin은 JVM runtime 하나를 공유 | `SPEC-04`, `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE`, `V11-M6-SCAFFOLD-ZERO` |
-| Sample, common E2E, race·crash test와 hosting integration | M6에서 source·ID·registration 불변과 pending catalog를 확인하고, M7에서 public contract 경로로 topology·stateful object·maintenance·liveness를 실제 검증하며 private adapter를 두지 않음 | `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M7-SAMPLES`, `V11-M7-JOIN`, `V11-M9-E2E-4X4` |
+| C++·.NET·Java·Kotlin·Node.js Framework public surface | 초기 exact interface evidence는 이력으로 유지한다. M5 이후 amendment에서 global identity·remote placement 계약과 다섯 언어 표현을 다시 고정하며 Java·Kotlin은 JVM runtime 하나를 공유 | `SPEC-04`, `V11-CA-SPEC`, `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-M6-SCAFFOLD-ZERO` |
+| Sample, common E2E, race·crash test와 hosting integration | Amendment impact manifest에서 `retain`·`amend`·`replace`·`add`·`remove`와 대체 coverage를 먼저 확정한다. Runtime 중에는 source·registration을 보존하고 실행만 격리하며, runtime 완료 뒤 spec을 확정하고 topology→stateful→maintenance→full matrix→sample 순서로 활성화한다 | `V11-CA-IMPACT`, `V11-E2E-SPEC-FINAL`, `V11-SAMPLE-SPEC-FINAL`, `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M7-SAMPLES`, `V11-M7-JOIN`, `V11-M9-E2E-4X4` |
 | `bindings/c/perf`의 active Spot suite | 10.x oracle trace를 봉인한 뒤 active Spot source·target·pattern·parser·CI 입력을 제거. Raw socket perf와 읽기 전용 10.x archive는 유지 | `V11-M2-ORACLE`, `V11-M3-PERF-LEGACY`, §15 |
 | Core·binding·Framework 문서와 package metadata | 정식 spec·internals와 target crosswalk를 구현에 맞춰 검증하고 제거한 service API 링크·version·package 입력을 정리 | `V11-M9-DOCS`, `V11-R7` |
 
@@ -810,27 +851,68 @@ sample·E2E는 source·registration을 보존한 채 `pending`으로 유지한�
 | `V11-M5-FOUND-JOIN` | Foundation 합류와 pending E2E 감사 | foundation coordinator, `P-DELIVERY` | `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | 완료 | 네 codec golden·negative fixture 일치, required E2E `executed=0`, `skipped=0`, `pending=required` | 네 foundation의 generated protocol·decoder fixture가 일치하고 inventory 1,908건과 새 M5 owned path 금지 참조 0을 확인했다. Required scenario 112건은 `pending=112`, `executed=0`, `skipped=0`이며 sample/E2E source·registration diff는 0이다. Candidate `052b93c6…`의 `ROW-GATE`가 통과했다. 기존 production owner의 full removal은 `V11-M6-SCAFFOLD-ZERO` 입력으로 기록했다. 증거: `.artifacts/v11/evidence/V11-M5-FOUND-JOIN/result.json` |
 | `V11-R4` | Runtime foundation 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M5-FOUND-JOIN` | 완료 | schema, public binding 경계, production placeholder 0과 resource ownership review clean | C++/.NET과 JVM/Node·protocol을 나눈 독립 review에서 발견한 no-op·synthetic success·wire frame·terminal cleanup 문제를 모두 제거하고 재검토했다. Blocking finding 0, sample/E2E diff 0이며 candidate `3a7f6399…`의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-R4/result.json`, `.artifacts/v11/evidence/V11-R4-M5/` |
 
+### 9.1 M5 이후 public contract amendment와 실행 격리
+
+이 stage는 M5 완료 뒤 추가된 global identity와 remote placement 변경을 M6 입력으로 확정한다. 두 변경 제안은
+설계 입력일 뿐이며, 공개 계약은 Framework 공통·server 정식 spec과 다섯 언어 exact interface에 먼저 반영한다.
+Protocol과 E2E·sample 영향 목록도 같은 candidate에서 확정하고 독립 review를 통과한다. 이 stage에서는
+Framework runtime source를 구현하지 않는다.
+
+| ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
+|---|---|---|---|---|---|---|
+| `V11-CA-DECISION` | Global identity·remote placement 공개 경계 결정 | architecture·contract lane, `P-DEEP` | `V11-R4` | 대기 | 두 제안의 open item 미결정 0, 대안·POSD 판단·정식 owner 확정 | — |
+| `V11-CA-SPEC` | Framework 공통·server 정식 spec amendment | contract lane, `P-DEEP` | `V11-CA-DECISION` | 대기 | identity·remote create·placement·reservation·handover·failure 의미와 target crosswalk 누락 0 | — |
+| `V11-CA-IFACE-CPP` | C++ exact interface amendment | C++ contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | C++ public signature·example·trace가 amended spec과 일치 | — |
+| `V11-CA-IFACE-DN` | .NET exact interface amendment | .NET contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | .NET public signature·example·trace가 amended spec과 일치 | — |
+| `V11-CA-IFACE-JVM` | Java·Kotlin exact interface amendment | JVM contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | Java·Kotlin public signature·example·trace가 amended spec과 일치 | — |
+| `V11-CA-IFACE-NODE` | Node.js exact interface amendment | Node contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | Node.js public signature·example·trace가 amended spec과 일치 | — |
+| `V11-CA-PROTOCOL` | Placement·identity protocol과 fixture amendment | protocol lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | schema·generated constant·golden·negative fixture와 formal 의미 drift 0 | — |
+| `V11-CA-IMPACT` | E2E·sample·regression 영향 목록과 실행 격리 | E2E·sample·regression lanes, `P-DELIVERY` | `V11-CA-SPEC` | 대기 | 모든 항목 baseline hash·disposition·owner·activation stage 분류, `pending-disabled-by-contract-amendment`, executed·skipped 0 | — |
+| `V11-CA-JOIN` | Contract amendment 합류 | amendment coordinator, `P-DELIVERY` | `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-CA-PROTOCOL`, `V11-CA-IMPACT` | 대기 | 정식 spec·다섯 interface·wire·impact manifest·trace의 미분류와 semantic drift 0 | — |
+| `V11-R4A` | Contract amendment 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-CA-JOIN` | 대기 | public contract·protocol·영향 disposition·대체 coverage의 I1·I2·I3 review clean | — |
+| `V11-CA-DRAFT-RETIRE` | 임시 contract 변경 제안 흡수 확인과 삭제 | contract coordinator, `P-DELIVERY` | `V11-R4A` | 대기 | 채택 내용은 정식 spec·exact interface·protocol에 모두 존재하고 E2E·sample 영향은 manifest에 분류되며, 미채택·수정 결정은 ledger에 이유가 기록되고 두 proposal과 link가 repository에서 0 | — |
+
+Impact manifest는 public member, E2E scenario, sample, 실행 registration과 회귀 test를 각각 독립 항목으로
+기록한다. 각 항목은 stable ID·path, baseline hash, `retain`·`amend`·`replace`·`add`·`remove`, 새 acceptance
+intent, spec owner, runtime owner, activation stage와 approved hash를 가진다. Approved hash는 spec 최종화 전까지
+비워 둘 수 있지만 disposition과 대체 coverage는 `V11-R4A` 전에 확정한다. `remove`는 단순 삭제를 뜻하지 않는다.
+공개 계약에서 해당 흐름이 없어지는 근거와 같은 의미를 검증할 대체 coverage가 함께 있어야 한다.
+
+Runtime 중 유지할 regression 목록에는 Core·binding raw regression, public declaration snapshot, wire golden·negative,
+mailbox ordering, terminal winner, ownership·CAS·lease·fencing과 resource cleanup test를 포함한다. 새 public behavior는
+각 언어의 deterministic internal contract test owner를 지정한다. E2E·sample source와 registration은 삭제하거나
+주석 처리하지 않고 build·test 실행 graph에서만 분리한다.
+
+`V11-R4A`가 끝나면 두 임시 제안의 채택 내용은 정식 문서에 이미 존재해야 한다. 채택하지 않았거나 표현을
+바꾼 항목의 decision ID, 결론과 이유만 이 절의 증거에 요약한다. `V11-CA-DRAFT-RETIRE`는
+`actor-spot-remote-placement-and-node-identity-change-proposal.ko.md`와
+`dotnet-remote-placement-public-contract-change-sketch.ko.md`를 삭제하고 README와 이 ledger에서 해당 link를
+제거한다. 이후 M6 작업 지시는 정식 spec·internals, exact interface, protocol/schema, impact manifest와 이
+ledger만으로 구성하며 삭제한 proposal을 참조하지 않는다.
+
 ## 10. M6 — Framework vertical slice 네 병렬 lane
 
-각 slice는 C++·.NET·JVM·Node.js가 같은 spec·schema revision에서 기존 public interface의 실제 동작을
-각각 복구하고 internal contract와 독립 review에서 합류한다. 언어별 lane은 transport부터 public operation까지
-하나의 vertical slice를 완성한 뒤 다음 기능으로 진행한다. 한 언어 구현을 다른 언어가 source 수준에서
-포팅하지 않으며, 동작 검증 전에 공통 abstraction을 만들기 위한 대규모 통합 refactoring을 수행하지 않는다.
-M6의 `*-E2E` ID는 기존
-ID와 dependency graph를 유지하지만 이 stage에서 기존 E2E process를 실행하지 않는다. 각 row는 공통 scenario
-source·ID·registration hash가 바뀌지 않았고 required scenario가 `pending`인지 확인하며, 실제 실행은 세 slice와
-`V11-M6-SCAFFOLD-ZERO`가 모두 끝난 뒤 M7이 소유한다.
+각 slice는 C++·.NET·JVM·Node.js가 같은 amended spec·schema revision에서 public interface의 실제 동작을
+각각 구현하고 internal contract와 독립 review에서 합류한다. 보존된 Core service 구현·test의 component,
+state machine, algorithm, ordering·ownership과 failure 처리를 참고하되 정식 spec·internals와 다른 부분은
+목표 계약을 따른다. 언어별 lane은 transport부터 public operation까지 하나의 vertical slice를 완성한 뒤 다음
+기능으로 진행한다. 한 언어 구현을 다른 언어가 source 수준에서 포팅하지 않으며, 동작 검증 전에 공통
+abstraction을 만들기 위한 대규모 통합 refactoring을 수행하지 않는다.
+
+M6 runtime row는 `M6-RUNTIME`으로 sample·E2E project와 task를 제외한 build, public declaration snapshot,
+internal unit·contract·resource·protocol regression만 실행한다. 이 격리는 E2E·sample 실패를 숨기는 skip이 아니다.
+Impact manifest의 상태는 계속 `pending-disabled-by-contract-amendment`이며 executed·skipped는 모두 0이어야 한다.
+Source와 registration을 삭제하거나 runtime 통과용 compatibility helper를 추가하지 않는다.
 
 ### 10.1 M6A — Topology, dispatch, Location과 liveness
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness | C++ lane, `P-DEEP` | `V11-R4` | 대기 | node·Channel·ClientServer·manual·automatic classic fanout, mailbox·CAS·reconnect·liveness contract 통과 | — |
-| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness | .NET lane, `P-DEEP` | `V11-R4` | 대기 | topology·mailbox·CAS·Task terminal winner·liveness contract 통과 | — |
-| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness | JVM lane, `P-DEEP` | `V11-R4` | 대기 | Java·Kotlin API, CAS·executor·coroutine·reconnect contract 통과 | — |
-| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness | Node lane, `P-DEEP` | `V11-R4` | 대기 | topology·CAS·Promise·event-loop·reconnect contract 통과 | — |
-| `V11-M6A-E2E` | Topology E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 대기 | Config 3 `PS-F1~F5`, Config 5 `RL-E1~E5` source·ID·registration drift 0, required scenario 완료·skip 0이고 모두 pending | — |
-| `V11-R5A` | Topology slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6A-E2E` | 대기 | topology·dispatch·authority·liveness의 I1·I2·I3 review clean | — |
+| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-CA-DRAFT-RETIRE` | 대기 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | — |
+| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-CA-DRAFT-RETIRE` | 대기 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | — |
+| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-CA-DRAFT-RETIRE` | 대기 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | — |
+| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-CA-DRAFT-RETIRE` | 대기 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | — |
+| `V11-R5A` | Topology runtime slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 대기 | topology·dispatch·placement·authority·liveness와 실행 격리의 I1·I2·I3 review clean | — |
 
 Framework service runtime은 제거한 Core heartbeat option을 설정하지 않는다. Raw monitor는 orderly disconnect를
 즉시 알리고 Framework liveness probe scheduler가 half-open deadline을 소유한다. Location owner lease와
@@ -846,8 +928,7 @@ Fanout subscriber는 publisher별 전용 SUB socket을 사용하며 reserved bea
 | `V11-M6B-DN` | .NET stateful object runtime | .NET lane, `P-DEEP` | `V11-R5A` | 대기 | turn·membership·session·Instance Task 경쟁 contract 통과 | — |
 | `V11-M6B-JVM` | JVM stateful object runtime | JVM lane, `P-DEEP` | `V11-R5A` | 대기 | Java·Kotlin turn·membership·session·Instance contract 통과 | — |
 | `V11-M6B-NODE` | Node stateful object runtime | Node lane, `P-DEEP` | `V11-R5A` | 대기 | turn·membership·session·Instance Promise 경쟁 contract 통과 | — |
-| `V11-M6B-E2E` | Stateful E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | 대기 | Spot·Actor·bound STREAM·Instance·cold activation·one-submit·stale owner scenario source·ID·registration drift 0, 완료·skip 0이고 모두 pending | — |
-| `V11-R5B` | Stateful slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6B-E2E` | 대기 | mailbox ordering, ownership·fencing·resource의 I1·I2·I3 review clean | — |
+| `V11-R5B` | Stateful runtime slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | 대기 | global identity, remote create, mailbox ordering, ownership·fencing·resource와 실행 격리의 I1·I2·I3 review clean | — |
 
 ### 10.3 M6C — Maintenance, monitoring과 hosting
 
@@ -861,28 +942,49 @@ route를 만들지 않는다.
 | `V11-M6C-DN` | .NET maintenance·monitoring·ASP.NET | .NET lane, `P-DEEP` | `V11-R5B` | 대기 | CAS·lease·Task race·terminal observation·ASP.NET shutdown contract 통과 | — |
 | `V11-M6C-JVM` | JVM maintenance·monitoring·Spring | JVM lane, `P-DEEP` | `V11-R5B` | 대기 | Java·Kotlin lifecycle·coroutine·Spring metadata와 shutdown contract 통과 | — |
 | `V11-M6C-NODE` | Node maintenance·monitoring·NestJS | Node lane, `P-DEEP` | `V11-R5B` | 대기 | Promise·event-loop recovery·terminal observation·NestJS cleanup contract 통과 | — |
-| `V11-M6C-E2E` | Maintenance E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | 대기 | Retire·Shutdown·transfer·crash recovery·remote fencing·hosting scenario source·ID·registration drift 0, 완료·skip 0이고 모두 pending | — |
-| `V11-R5C` | Maintenance slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6C-E2E` | 대기 | lifecycle·authority·recovery·observability·hosting의 I1·I2·I3 review clean | — |
-| `V11-M6-SCAFFOLD-ZERO` | Production placeholder 제거와 E2E 실행 준비 gate | inventory·contract lane, `P-SCAN` | `V11-R5C` | 대기 | production scaffold branch·`RuntimeNotReady` placeholder·fake data 0, 기존 required scenario source·ID·registration drift 0이고 실행 대상으로 등록됨 | — |
+| `V11-R5C` | Maintenance runtime slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | 대기 | lifecycle·authority·handover·recovery·observability·hosting과 실행 격리의 I1·I2·I3 review clean | — |
+| `V11-M6-SCAFFOLD-ZERO` | Production placeholder 제거와 runtime 완료 gate | inventory·contract lane, `P-SCAN` | `V11-R5C` | 대기 | production scaffold branch·`RuntimeNotReady` placeholder·fake data 0, 모든 runtime regression 통과, sample·E2E source 삭제·임시 우회 0 | — |
 
-`V11-M6-SCAFFOLD-ZERO`가 끝나기 전에는 M7 correctness를 시작하지 않는다. M5에서 pending으로 둔 required
-scenario를 skip이나 과거 결과로 닫지 않고 현재 candidate로 실행한다.
+### 10.4 Runtime 완료 후 E2E·sample spec 확정과 단계별 활성화
+
+`V11-M6-SCAFFOLD-ZERO` 뒤 공통 E2E와 sample spec을 amended contract와 실제 runtime에 맞춰 최종 확정한다.
+Runtime과 spec 사이에 gap이 있으면 public contract를 구현 편의에 맞춰 축소하지 않고 runtime owner로 돌려보낸다.
+영향받은 source와 registration은 impact manifest가 승인한 old→new hash로만 바꾸며, 영향받지 않은 항목은
+diff 0을 유지한다.
+
+| ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
+|---|---|---|---|---|---|---|
+| `V11-E2E-SPEC-FINAL` | Amended contract 기준 공통 E2E spec 확정 | E2E·contract lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO`, `V11-CA-IMPACT` | 대기 | scenario·negative·race·directional matrix와 approved hash·runtime owner 누락 0 | — |
+| `V11-SAMPLE-SPEC-FINAL` | Amended contract 기준 공통 sample spec 확정 | sample·contract lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO`, `V11-CA-IMPACT` | 대기 | public 사용 흐름·역할·message·marker와 다섯 언어 owner 누락 0 | — |
+| `V11-R5D` | Final E2E·sample spec 독립 review | Codex ultra review lane, `P-ULTRA` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-E2E-SPEC-FINAL`, `V11-SAMPLE-SPEC-FINAL` | 대기 | public contract 일치, assertion 약화·coverage 손실·미분류 impact 0, 대체 scenario와 다섯 언어 sample parity의 I1·I2·I3 review clean | — |
+| `V11-M6A-E2E` | Topology·liveness E2E 활성화와 gap 해소 | E2E·topology runtime lanes, `P-DELIVERY` | `V11-R5D` | 대기 | Config 3 `PS-F1~F5`, Config 5 `RL-E1~E5`와 amended placement scenario를 현재 candidate에서 실행, required skip·runtime gap 0 | — |
+| `V11-M6B-E2E` | Stateful object E2E 활성화와 gap 해소 | E2E·stateful runtime lanes, `P-DELIVERY` | `V11-M6A-E2E` | 대기 | Spot·Actor·bound STREAM·Instance·remote create·global identity·stale owner scenario required skip·runtime gap 0 | — |
+| `V11-M6C-E2E` | Maintenance·hosting E2E 활성화와 gap 해소 | E2E·maintenance runtime lanes, `P-DELIVERY` | `V11-M6B-E2E` | 대기 | Retire·Shutdown·aggregate transfer·crash recovery·remote fencing·hosting scenario required skip·runtime gap 0 | — |
+
+`V11-R5D`에서 Codex `ultra`와 Claude Sonnet은 같은 candidate를 독립적으로 검토하고 finding을 §18 규칙으로
+수렴한다. 두 reviewer가 clean을 기록하고 post-review `DOC`, `TRACE`, `AMENDMENT-IMPACT --mode finalized`가
+통과하기 전에는 E2E source·registration을 변경하거나 `V11-M6A-E2E`를 시작하지 않는다.
+
+각 E2E row는 실패한 scenario의 원인이 runtime gap이면 해당 M6 language owner를 수정하고 internal regression을
+먼저 추가한 뒤 같은 E2E 묶음을 다시 실행한다. Scenario나 sample을 삭제하거나 assertion을 약화해 통과시키지
+않는다. `V11-M6C-E2E`가 끝나기 전에는 full matrix, race·crash와 sample 실행을 시작하지 않는다.
 
 ## 11. M7 — 전체 correctness, E2E, sample과 smoke
 
 M7은 service 의미가 Core 10.x 구현 없이 네 Framework runtime에서 성립하는지 검증한다. Oracle은 별도 process의
 normalized trace 비교에만 사용하며 candidate process의 dependency가 될 수 없다.
 
-M7은 기존 E2E를 먼저 실행하고 E2E가 통과한 뒤 기존 sample을 실행한다. 두 lane 모두 migration 시작 전
-source·scenario·registration을 그대로 사용한다. 새 공개 기능을 승인해 추가한 항목을 제외하면 E2E·sample
-source diff가 있거나 required registration이 줄어든 candidate는 실행 전에 실패한다.
+M7은 M6 후반에 단계별 활성화를 마친 E2E를 full `4 x 4` matrix와 race·crash 조건으로 다시 검증한다. 그 결과가
+통과한 뒤 sample을 처음 실행한다. 영향받은 E2E·sample source와 registration은 finalized impact manifest의
+approved hash와 일치해야 하며, 영향받지 않은 항목은 baseline hash를 유지해야 한다. Required registration이나
+대체 coverage가 줄어든 candidate는 실행 전에 실패한다.
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M7-CONTRACT` | 다섯 public contract와 네 runtime contract test | contract·language lanes, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | exact interface·source·test 일치, required contract skipped 0 | — |
-| `V11-M7-RACE-CRASH` | 동시성·수명·crash·recovery suite | race·recovery lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO` | 대기 | §14.2 race, transfer phase crash, pause fencing과 resource cleanup 통과 | — |
-| `V11-M7-E2E-4X4` | 기존 방향성 cross-language `4 x 4` E2E | E2E lane, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | source·scenario·registration drift 0, required service·maintenance caller→server cell, negative frame와 crash scenario skipped 0 | — |
-| `V11-M7-SAMPLES` | 기존 C++·.NET·Java·Kotlin·Node sample 검증 | sample·language lanes, `P-DELIVERY` | `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` | 대기 | source·registration drift 0, public API만 사용, 표준 topology·typed JSON·hosting startup와 cleanup 통과 | 잘못 삭제된 언어 sample 75개와 수정된 Node sample support/runner 3개를 Git에서 복구했다. C++/.NET/JVM/Node registration audit도 손실 0이며 실제 compile·run은 Framework runtime과 기존 E2E 완료 뒤 시작한다. 증거: `.artifacts/v11/evidence/V11-M4-SAMPLE-RECOVERY/` |
+| `V11-M7-CONTRACT` | 다섯 amended public contract와 네 runtime contract test | contract·language lanes, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO`, `V11-R4A` | 대기 | exact interface·source·test·public declaration 일치, required contract skipped 0 | — |
+| `V11-M7-RACE-CRASH` | 동시성·수명·crash·recovery suite | race·recovery lanes, `P-DEEP` | `V11-M6C-E2E` | 대기 | §14.2 race, reservation·aggregate transfer phase crash, pause fencing과 resource cleanup 통과 | — |
+| `V11-M7-E2E-4X4` | Final directional cross-language `4 x 4` E2E | E2E lane, `P-DELIVERY` | `V11-M6C-E2E`, `V11-M7-CONTRACT` | 대기 | approved source·scenario·registration hash 일치, required service·maintenance caller→server cell, negative frame와 crash scenario skipped 0 | — |
+| `V11-M7-SAMPLES` | C++·.NET·Java·Kotlin·Node sample 활성화·검증 | sample·language lanes, `P-DELIVERY` | `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-SAMPLE-SPEC-FINAL` | 대기 | approved source·registration hash 일치, public API만 사용, remote placement·typed JSON·hosting startup와 cleanup 통과 | 잘못 삭제된 언어 sample 75개와 수정된 Node sample support/runner 3개를 Git에서 복구했다. C++/.NET/JVM/Node registration audit도 손실 0이며 실제 source 변경·compile·run은 runtime 완료, sample spec 확정과 전체 E2E 통과 뒤 시작한다. 증거: `.artifacts/v11/evidence/V11-M4-SAMPLE-RECOVERY/` |
 | `V11-M7-SMOKE-FUNCTIONAL` | Liveness·maintenance functional smoke | integration lane, `P-DELIVERY` | `V11-M7-CONTRACT`, `V11-M7-E2E-4X4`, `V11-M7-SAMPLES` | 대기 | reconnect·Retire·Shutdown·transfer·recovery와 resource cleanup 통과 | — |
 | `V11-M7-SMOKE-PERF` | Service·Core raw performance smoke-only | perf lane, `P-DELIVERY` | `V11-M7-CONTRACT`, `V11-M7-E2E-4X4`, `V11-M7-SAMPLES` | 대기 | 네 runtime·Kotlin consumer·Core raw 최소 workload, provenance와 cleanup 통과; 수치 판정 없음 | — |
 | `V11-M7-JOIN` | 전체 correctness 합류 | release test coordinator, `P-DEEP` | `V11-M7-RACE-CRASH`, `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` | 대기 | contract·race·crash·`4 x 4`·sample·functional·perf smoke 누락과 skip 0 | — |
@@ -949,6 +1051,12 @@ Correctness gate는 최소한 다음 영역을 포함한다.
 
 아래 ID는 공통 E2E catalog에서 같은 이름으로 구현한다. 언어별 runner가 임의로 ID를 바꾸거나 일부 항목을
 단위 test 통과로 대신하지 않는다.
+
+이 표는 `V11-R4` 시점의 baseline catalog다. Global identity와 remote placement 때문에 의미가 바뀌는 ID도
+runtime 구현 중 삭제하거나 assertion을 약화하지 않는다. `V11-CA-IMPACT`가 각 ID를 분류하고
+`V11-E2E-SPEC-FINAL`이 amended contract에 맞는 완료 조건과 approved hash를 확정한다. 특히 local-only create와
+Mesh별 ID collision을 전제로 한 항목은 필수 영향 검사 대상이며, `replace`·`remove`하려면 같은 public 의미를
+검증하는 대체 ID와 방향성 coverage를 먼저 지정한다.
 
 | ID | Scenario | 완료 조건 |
 |---|---|---|
@@ -1268,8 +1376,12 @@ Review 축은 다음과 같다.
 3. 5회차부터 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 gate를 통과하지 못한다.
 4. 5회차 이후 `Low` finding만 남으면 위치, 영향과 처리 결정을 증거 칸에 기록하고 clean으로 종료할 수 있다.
 5. 정확성, 공개 계약, data loss, race, security, package mismatch와 제거 누락을 선호 문제로 낮추지 않는다.
-6. 두 reviewer가 clean을 기록한 뒤 해당 stage가 소유한 required gate를 다시 실행한다. M5·M6 review는 internal
-   contract와 E2E pending catalog audit만 재실행하며, 최초 실제 E2E는 M7, final package 재검증은 M9가 소유한다.
+6. 두 reviewer가 clean을 기록한 뒤 해당 stage가 소유한 required gate를 다시 실행한다. M5 review는 internal
+   contract와 기존 pending catalog를, `V11-R4A`는 amended formal contract·protocol·impact manifest를 재검증한다.
+   M6 runtime review는 internal regression과 execution quarantine만 재실행한다. `V11-R5D`는 Codex `ultra`와
+   Claude Sonnet이 final E2E·sample spec, impact disposition과 coverage를 독립 review하고 post-review gate를
+   재실행한다. 최초 실제 E2E는 `V11-R5D` 뒤 `V11-M6A-E2E`가 시작하고, full matrix는 M7, final package
+   재검증은 M9가 소유한다.
 7. 이후 source가 바뀌면 의미와 직접 의존 범위만 다시 review한다. Hash 변화만으로 전체 review를 처음부터
    시작하지 않는다.
 
@@ -1277,6 +1389,12 @@ Review 축은 다음과 같다.
 
 - [x] `SPEC-01~06`과 `V11-R1`이 구현 전에 완료됐다.
 - [ ] Framework 공통 정식 spec, Core raw 정식 spec과 다섯 exact interface가 실제 구현과 일치한다.
+- [ ] Global identity·remote placement amendment의 미결정이 0이고 정식 spec·다섯 exact interface·protocol에
+  모두 흡수됐다.
+- [ ] Amendment 독립 review 뒤 두 임시 변경 제안과 repository link가 제거됐으며, 이후 작업이 정식 spec과
+  이 ledger의 입력만으로 수행됐다.
+- [ ] 영향받은 public member·E2E·sample·registration·regression이 impact manifest에 빠짐없이 분류됐고,
+  영향받지 않은 source와 registration은 baseline hash를 유지했다.
 - [ ] Core 10.x oracle는 별도 process와 normalized trace로만 사용됐고 새 candidate의 compile·link·load 입력이 아니다.
 - [ ] Core service 제거와 POSD·DDD review 뒤에만 Core 11 version과 internal package를 만들었다.
 - [ ] 네 bindings service projection 제거와 POSD·DDD review 뒤에만 binding 11 package를 만들었다.
@@ -1287,7 +1405,13 @@ Review 축은 다음과 같다.
 - [ ] C++·.NET·JVM·Node.js runtime이 해당 언어 public binding API만 사용한다.
 - [ ] Java와 Kotlin 공개 surface·ABI·coroutine·metadata를 JVM lane 하나가 각각 검증했다.
 - [ ] Topology, messaging, Spot, Actor, Instance Spot, STREAM과 stateful maintenance가 네 runtime에 구현됐다.
+- [ ] Runtime 구현 중 E2E·sample은 실행 graph에서만 격리됐고 source 삭제·임시 우회·skip·성공 처리가 없었다.
+- [ ] Runtime 완료 뒤 공통 E2E·sample spec을 확정하고 topology→stateful object→maintenance 순서로 E2E를
+  활성화해 각 묶음의 runtime gap을 0으로 만들었다.
+- [ ] Final E2E·sample spec이 `V11-R5D`에서 Codex `ultra`와 Claude Sonnet의 독립 review와 post-review gate를
+  통과한 뒤에만 E2E source·registration 변경과 실행을 시작했다.
 - [ ] Required contract·race·crash·recovery와 방향이 있는 `4 x 4` E2E가 skipped 없이 통과했다.
+- [ ] 전체 E2E 뒤 다섯 언어 sample이 approved source·registration과 public API만 사용해 compile·run됐다.
 - [ ] Core service와 네 bindings service projection이 제거됐다.
 - [ ] Production scaffold, `RuntimeNotReady` placeholder와 fake success·data branch가 production code에 남지 않았다.
 - [ ] Core generic timer·monitor와 raw transport 회귀는 유지되고 제거한 ZMP heartbeat 잔여가 없다.

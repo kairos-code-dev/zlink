@@ -1019,16 +1019,22 @@ if (typeof consolidation.directory !== 'string'
     }
   }
   const allowedProfiles = new Set(consolidation.allowed_profiles);
-  if (consolidation.allowed_profiles.length !== 3
+  if (consolidation.allowed_profiles.length !== 4
       || allowedProfiles.size !== consolidation.allowed_profiles.length
       || consolidation.allowed_profiles.some(profile => !/^P-[A-Z]+$/u.test(profile))) {
-    fail('v11 consolidation must declare 3 unique central profile IDs');
+    fail('v11 consolidation must declare 4 unique central profile IDs');
   }
   const parallelReviewRows = new Set(consolidation.required_parallel_review_rows);
-  if (consolidation.required_parallel_review_rows.length !== 9
+  if (consolidation.required_parallel_review_rows.length !== 11
       || parallelReviewRows.size !== consolidation.required_parallel_review_rows.length
       || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
-    fail('v11 consolidation must declare 9 unique parallel review row IDs');
+    fail('v11 consolidation must declare 11 unique parallel review row IDs');
+  }
+  const ultraReviewRows = new Set(consolidation.required_ultra_review_rows);
+  if (consolidation.required_ultra_review_rows.length !== 1
+      || ultraReviewRows.size !== consolidation.required_ultra_review_rows.length
+      || consolidation.required_ultra_review_rows.some(id => !parallelReviewRows.has(id))) {
+    fail('v11 consolidation must declare one ultra parallel review row ID');
   }
   if (consolidation.forbidden_fragments.length === 0
       || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
@@ -1174,7 +1180,8 @@ if (typeof consolidation.directory !== 'string'
         fail(`v11 execution ledger parallel review row is missing: ${id}`);
         continue;
       }
-      if (!row.assignmentCell.includes('`P-DEEP`')
+      const expectedProfile = ultraReviewRows.has(id) ? '`P-ULTRA`' : '`P-DEEP`';
+      if (!row.assignmentCell.includes(expectedProfile)
           || !row.assignmentCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
         fail(`v11 execution ledger parallel review assignment differs: ${id}`);
         continue;

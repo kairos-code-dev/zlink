@@ -13,8 +13,8 @@
 | [Service 공개 계약 migration crosswalk](target-spec/README.ko.md) | Core 10 service 의미를 정식 Framework spec의 소유 문서와 연결하는 대조 자료 |
 | [Service runtime 구현 crosswalk](target-internals/README.ko.md) | Core 10 구현·test를 네 언어 runtime의 정식 internals와 구현 lane에 연결하는 대조 자료 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
-| [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | M5 이후 public contract amendment에서 검토할 remote create, placement, random RID와 maintenance handover 설계 입력 |
-| [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | 현재 .NET exact interface와 M5 이후 변경 후보를 AS-IS·TO-BE로 비교하는 비정식 C# 설계 입력 |
+| [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | M5 이후 public contract amendment review까지만 사용하는 임시 설계 입력. 승인 내용을 정식 spec에 흡수한 뒤 삭제한다. |
+| [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | 다섯 언어 exact interface amendment review까지만 사용하는 임시 C# 표현 입력. 승인 내용을 정식 interface에 흡수한 뒤 삭제한다. |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
 
 Target 문서는 정식 계약을 별도로 정의하지 않는다. 정식 문서와 내용이 다르면 정식 spec 또는 정식 internals를
@@ -32,14 +32,25 @@ package 증거는 execution ledger에만 기록한다.
    POSD·DDD review를 통과한 Core 11 local/internal package를 만든다.
 5. C++·.NET·Java·Node bindings의 service·heartbeat projection을 제거하고 public raw capability와 package를
    검증한다.
-6. 기존 Framework service adapter를 fail-closed compile scaffold로 교체한 뒤 C++·.NET·JVM·Node.js runtime을
-   같은 계약 snapshot에서 병렬 구현한다. Java와 Kotlin은 JVM runtime과 build 파일을 공유한다.
-7. Vertical slice별 E2E와 review, 전체 contract·race·crash·`4 x 4` E2E·sample·smoke, Framework cleanup을
-   통과한 뒤 final local/internal package를 검증한다.
+6. M5 foundation 뒤 global identity와 remote placement contract amendment를 정식 공통·server spec, 다섯 언어
+   exact interface와 protocol/schema에 먼저 반영한다. 변경될 E2E·sample·registration과 유지할 regression을
+   impact manifest에 분류하고 review한다.
+7. Review가 끝나면 두 임시 변경 제안의 채택 내용을 정식 문서에 모두 흡수했는지 확인하고 제안 문서를
+   삭제한다. 이후 작업은 정식 spec·internals, exact interface, protocol/schema, impact manifest와 execution
+   ledger만 참조한다.
+8. E2E·sample source와 registration은 유지한 채 실행 graph에서만 격리하고 C++·.NET·JVM·Node.js runtime을
+   같은 계약 snapshot에서 병렬 구현한다. Java와 Kotlin은 JVM runtime과 build 파일을 공유한다. 이 구간은
+   internal unit·contract·resource·protocol regression만 실행한다.
+9. 네 runtime과 production placeholder 제거가 끝나면 공통 E2E와 sample spec을 최종 확정한다. Codex
+   `ultra`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
+   뒤에만 E2E source와 registration을 변경한다.
+10. E2E는 topology, stateful object, maintenance, race·`4 x 4` 순서로 활성화하고 전체 E2E 통과 뒤 sample을
+   실행한다.
+11. Correctness·smoke와 Framework cleanup을 통과한 뒤 final local/internal package를 검증한다.
 
-정식 spec과 주요 내부 불변 조건이 확정되기 전에는 runtime 구현을 시작하지 않는다. 한 언어를 먼저 완성해
-나머지 언어가 번역하는 방식은 사용하지 않는다. 각 lane은 같은 schema와 fixture를 사용하고 기능 block의
-contract test와 cross-language E2E에서 합류한다.
+정식 spec과 주요 내부 불변 조건이 확정되고 임시 변경 제안이 제거되기 전에는 runtime 구현을 시작하지 않는다.
+한 언어를 먼저 완성해 나머지 언어가 번역하는 방식은 사용하지 않는다. 각 lane은 같은 schema와 fixture를
+사용하고 runtime 구현 중에는 internal contract test, 실행 재활성화 뒤에는 cross-language E2E에서 합류한다.
 
 ## 구현 경계
 
@@ -65,6 +76,10 @@ C, Python, Go와 Rust는 마지막 지원 Core 10.x 조합으로 격리하고 Co
   기록하고 clean으로 종료할 수 있다.
 - 문서나 aggregate hash 변화만으로 작업을 막지 않는다. 바뀐 의미와 직접 영향받는 계약·fixture·lane을 다시
   확인한다.
+- Runtime 구현 중 E2E·sample은 `pending-disabled-by-contract-amendment` 상태로 관리한다. 이 상태를 skip이나
+  성공으로 집계하지 않으며 source·scenario ID·registration을 삭제하거나 주석 처리하지 않는다.
+- Contract amendment가 영향을 주는 E2E·sample만 impact manifest의 승인한 old→new hash에 따라 변경한다.
+  영향받지 않은 source와 registration은 diff 0을 유지한다.
 
 작업을 시작할 때는 execution ledger에서 담당 ID, 선행 조건, 소유 파일과 완료 gate를 먼저 확인한다. 상태와
 증거를 다른 문서에 복제하지 않는다.

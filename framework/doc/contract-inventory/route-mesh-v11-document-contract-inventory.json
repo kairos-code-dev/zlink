@@ -365,6 +365,7 @@
     ],
     "allowed_profiles": [
       "P-DEEP",
+      "P-ULTRA",
       "P-DELIVERY",
       "P-SCAN"
     ],
@@ -373,11 +374,16 @@
       "V11-R2",
       "V11-R3",
       "V11-R4",
+      "V11-R4A",
       "V11-R5A",
       "V11-R5B",
       "V11-R5C",
+      "V11-R5D",
       "V11-R6",
       "V11-R7"
+    ],
+    "required_ultra_review_rows": [
+      "V11-R5D"
     ],
     "forbidden_fragments": [
       "gpt-5.6-sol",
@@ -414,11 +420,13 @@
         "required_fragments": [
           "## 3. Codex profile과 병렬 lane",
           "| `P-DEEP` | `gpt-5.6 high` |",
+          "| `P-ULTRA` | `gpt-5.6 ultra` |",
           "| `P-DELIVERY` | `gpt-5.6 medium` |",
           "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
           "`xhigh`나 `max`는 재현되지 않은 race",
-          "`ultra`는 지원 model에서 최종 교차 영역 감사",
-          "두 경우 모두 기본값으로 강제하지 않으며",
+          "`P-ULTRA`는 `V11-R5D`에서 의무적으로 사용한다.",
+          "그 밖의 row에서 `ultra`는",
+          "임의로 사용하는 경우 상향 이유와 조정 범위는",
           "실제 사용한 model,",
           "Java와 Kotlin은 Java binding과 JVM service runtime 하나를 공유한다."
         ]
@@ -479,7 +487,7 @@
           "binding-facing port를 먼저 구현한다.",
           "production scaffold를 만드는 작업이 아니다.",
           "sample·E2E는 source·registration을 보존한 채 `pending`으로 유지한다.",
-          "M7에서 기존 E2E와 sample을 순서대로"
+          "topology→stateful→maintenance→full matrix→sample 순서로 활성화한다"
         ]
       },
       {

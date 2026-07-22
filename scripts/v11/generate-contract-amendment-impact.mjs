@@ -14,6 +14,7 @@ import {
   removedMemberParityKey,
   replacementParitySignature,
   semanticMemberKey,
+  sourceJvmParityExpectation,
 } from './contract-amendment-impact-policy.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -396,6 +397,14 @@ const crossLanguageParityGroups = [...parityGroups.entries()].filter(([, group])
 const sourceJvmParityGroups = [...parityGroups.entries()].filter(([, group]) =>
   group.every(item => item.member.language === 'kotlin')
     && new Set(group.map(item => item.member.ownerIdentity)).size > 1);
+const sourceJvmIdentities = sourceJvmParityGroups.flatMap(([, group]) =>
+  group.map(item => item.member.identity)).sort((left, right) => left.localeCompare(right, 'en'));
+const sourceJvmIdentitySetSha256 = sha256(stableJson(sourceJvmIdentities));
+if (sourceJvmParityGroups.length !== sourceJvmParityExpectation.groups
+    || sourceJvmIdentitySetSha256 !== sourceJvmParityExpectation.identitySetSha256) {
+  throw new Error('Kotlin source/JVM parity set changed without review'
+    + ` groups=${sourceJvmParityGroups.length} sha256=${sourceJvmIdentitySetSha256}`);
+}
 const auditedParityGroups = [...new Map([
   ...crossLanguageParityGroups,
   ...sourceJvmParityGroups,
@@ -589,6 +598,8 @@ const manifest = {
       ambiguous: 0,
       crossLanguageGroups: crossLanguageParityGroups.length,
       sourceJvmGroups: sourceJvmParityGroups.length,
+      sourceJvmRecoveredPairs: sourceJvmParityExpectation.recoveredPairs,
+      sourceJvmIdentitySetSha256,
       auditedParityGroups: auditedParityGroups.length,
       parityMismatches: 0,
       behaviorByRule: behaviorRuleCounts,

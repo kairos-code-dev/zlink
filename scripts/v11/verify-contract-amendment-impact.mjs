@@ -13,6 +13,7 @@ import {
   removedMemberParityKey,
   replacementParitySignature,
   semanticMemberKey,
+  sourceJvmParityExpectation,
 } from './contract-amendment-impact-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -223,6 +224,13 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const sourceJvmParityGroups = [...parityGroups.entries()].filter(([, group]) =>
     group.every(item => item.member.language === 'kotlin')
       && new Set(group.map(item => item.member.ownerIdentity)).size > 1);
+  const sourceJvmIdentities = sourceJvmParityGroups.flatMap(([, group]) =>
+    group.map(item => item.member.identity)).sort((left, right) => left.localeCompare(right, 'en'));
+  const sourceJvmIdentitySetSha256 = sha256(stableJson(sourceJvmIdentities));
+  if (sourceJvmParityGroups.length !== sourceJvmParityExpectation.groups
+      || sourceJvmIdentitySetSha256 !== sourceJvmParityExpectation.identitySetSha256) {
+    fail('Kotlin source/JVM parity identity set differs from reviewed seal');
+  }
   const auditedParityGroups = [...new Map([
     ...crossLanguageParityGroups,
     ...sourceJvmParityGroups,
@@ -259,6 +267,10 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
       || traceDelta?.replacementPolicy?.ambiguous !== 0
       || traceDelta?.replacementPolicy?.crossLanguageGroups !== crossLanguageParityGroups.length
       || traceDelta?.replacementPolicy?.sourceJvmGroups !== sourceJvmParityGroups.length
+      || traceDelta?.replacementPolicy?.sourceJvmRecoveredPairs
+        !== sourceJvmParityExpectation.recoveredPairs
+      || traceDelta?.replacementPolicy?.sourceJvmIdentitySetSha256
+        !== sourceJvmIdentitySetSha256
       || traceDelta?.replacementPolicy?.auditedParityGroups !== auditedParityGroups.length
       || traceDelta?.replacementPolicy?.parityMismatches !== 0
       || stableJson(traceDelta?.replacementPolicy?.behaviorByRule)
@@ -427,12 +439,15 @@ function selfTest(manifest) {
         && entry.disposition === 'remove' && entry.language === 'kotlin'
         && entry.memberName === 'listMeshNodes');
       if (removals.length < 2) throw new Error('source/JVM parity mutation requires listMeshNodes representations');
-      removals[0].decisionCoverage = ['CA-D26'];
+      removals[0].decisionCoverage = ['CA-D29'];
     },
     candidate => {
       const removal = candidate.entries.find(entry =>
         entry.replacementRule === 'node-reviewed-contract-set');
       removal.replacementRule = 'spot-location-filter';
+    },
+    candidate => {
+      candidate.publicContractTraceDelta.replacementPolicy.sourceJvmRecoveredPairs = 0;
     },
   ];
   for (const [index, mutate] of mutations.entries()) {

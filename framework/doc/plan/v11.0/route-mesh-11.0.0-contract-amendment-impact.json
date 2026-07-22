@@ -14,17 +14,22 @@
       "behavior": 658,
       "unmatched": 0,
       "ambiguous": 0,
-      "crossLanguageGroups": 62,
-      "sourceJvmGroups": 4,
-      "auditedParityGroups": 66,
+      "crossLanguageGroups": 76,
+      "sourceJvmGroups": 43,
+      "sourceJvmRecoveredPairs": 39,
+      "sourceJvmIdentitySetSha256": "3f081c48ebebe6b3ac2bb490e0e8987e342510544611c397543ee5b1dc7fd926",
+      "auditedParityGroups": 119,
       "parityMismatches": 0,
       "behaviorByRule": {
         "actor-client-messaging": 2,
+        "actor-directory-query": 8,
         "actor-factory-registration": 6,
         "actor-fluent-create": 6,
         "actor-global-authority-key": 3,
         "actor-location-filter": 4,
-        "actor-manager-replacement": 53,
+        "actor-ref-contract": 28,
+        "actor-ref-record-helper": 3,
+        "actor-spot-handle-query": 9,
         "automatic-routing-id": 171,
         "closed-object-role": 25,
         "exact-object-mutation": 1,
@@ -37,23 +42,24 @@
         "instance-spot-explicit-create": 14,
         "instance-spot-options-constructor": 1,
         "instance-spot-options-record-helper": 3,
-        "kotlin-reviewed-contract-set": 148,
+        "kotlin-reviewed-contract-set": 115,
         "mesh-node-spot-types": 2,
         "node-reviewed-contract-set": 59,
         "object-capability-availability": 1,
-        "operational-location-query": 3,
+        "operational-location-query": 28,
         "redis-location-options-split": 1,
         "redis-transfer-store-split": 4,
+        "session-actor-bind-reference": 11,
         "spot-fluent-create": 14,
         "spot-global-authority-key": 5,
         "spot-location-filter": 4,
-        "spot-manager-replacement": 29,
+        "spot-manager-replacement": 31,
         "transfer-store-vocabulary": 80
       },
       "closedCatchAll": {
         "kotlin-reviewed-contract-set": {
-          "count": 148,
-          "identitySetSha256": "1e10d4fb966a38f49265f4cc2f34feb21e3f164f196f1bb8c455efd12a2d0a68"
+          "count": 115,
+          "identitySetSha256": "1cbe6e9160f7bad5a480e643feae184e10f83f9d36ef086097ccd49967c991ab"
         },
         "node-reviewed-contract-set": {
           "count": 59,
@@ -19312,14 +19318,13 @@
       "memberName": "~session_actor_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.~session_actor_t#6967f25f0567083b 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.~session_actor_t#6967f25f0567083b 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -19522,12 +19527,11 @@
       "memberName": "generation",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_snapshot_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.generation#966fddebbf826a9a 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.generation#966fddebbf826a9a 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -19630,14 +19634,13 @@
       "memberName": "session_actor_manager_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_manager_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.session_actor_manager_t#1ea26de4f144ada0 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.session_actor_manager_t#1ea26de4f144ada0 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20082,12 +20085,11 @@
       "memberName": "from",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_snapshot_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.from#0d8a3782d5a3d9c3 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.from#0d8a3782d5a3d9c3 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -20297,7 +20299,7 @@
       "memberName": "resolve_actor_spot_handle",
       "ownerIdentity": "zlink-framework-cpp::actor_spot_handle_resolver_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -20324,14 +20326,13 @@
       "memberName": "actor_id",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.actor_id#3583b077083a55b2 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.actor_id#3583b077083a55b2 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20619,7 +20620,7 @@
       "memberName": "~actor_spot_handle_resolver_t",
       "ownerIdentity": "zlink-framework-cpp::actor_spot_handle_resolver_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -20646,14 +20647,13 @@
       "memberName": "session_actor_manager_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_manager_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.session_actor_manager_t#367f44efd295f462 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.session_actor_manager_t#367f44efd295f462 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20699,14 +20699,13 @@
       "memberName": "operator=",
       "ownerIdentity": "zlink-framework-cpp::session_actor_manager_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.operator=#2a0255c8616b3ffe 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.operator=#2a0255c8616b3ffe 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20774,14 +20773,13 @@
       "memberName": "session_actor_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.session_actor_t#fc8465e73c2f5779 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.session_actor_t#fc8465e73c2f5779 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20855,14 +20853,13 @@
       "memberName": "operator=",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.operator=#10e8fa5604613c0f 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.operator=#10e8fa5604613c0f 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -20935,14 +20932,13 @@
       "memberName": "~session_actor_manager_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_manager_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.~session_actor_manager_t#a84ea4e72ab30a1d 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.~session_actor_manager_t#a84ea4e72ab30a1d 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -21069,14 +21065,13 @@
       "memberName": "operator=",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.operator=#e668c79f37d2acc7 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.operator=#e668c79f37d2acc7 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -21120,14 +21115,13 @@
       "memberName": "session_actor_t",
       "ownerIdentity": "zlink-framework-cpp::session_actor_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.session_actor_t#6b102ea947ef6203 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.session_actor_t#6b102ea947ef6203 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -21225,12 +21219,11 @@
       "memberName": "~actor_directory_t",
       "ownerIdentity": "zlink-framework-cpp::actor_directory_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_directory_t.~actor_directory_t#62936e5b7e9bf693 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_directory_t.~actor_directory_t#62936e5b7e9bf693 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -21303,12 +21296,11 @@
       "memberName": "actor_id",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_snapshot_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.actor_id#5866697075a5fed1 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.actor_id#5866697075a5fed1 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -21330,12 +21322,11 @@
       "memberName": "to_actor_ref",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_snapshot_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.to_actor_ref#2130136974b1bee8 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.to_actor_ref#2130136974b1bee8 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -21511,14 +21502,13 @@
       "memberName": "operator=",
       "ownerIdentity": "zlink-framework-cpp::session_actor_manager_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "session-actor-bind-reference",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D05"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.operator=#cf30c15d0c8d713e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.operator=#cf30c15d0c8d713e 공개 member 제거를 CA-D05 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "e2e:add:exact-generation-mutation-bind"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -21671,12 +21661,11 @@
       "memberName": "node_rid",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_snapshot_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.node_rid#c7bed8578df75076 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_snapshot_t.node_rid#c7bed8578df75076 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -22142,12 +22131,11 @@
       "memberName": "empty",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.empty#706ae24436b100fe 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.empty#706ae24436b100fe 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -22410,12 +22398,11 @@
       "memberName": "find",
       "ownerIdentity": "zlink-framework-cpp::actor_directory_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_directory_t.find#0a8f0c7894fd437e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_directory_t.find#0a8f0c7894fd437e 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -22464,12 +22451,11 @@
       "memberName": "generation",
       "ownerIdentity": "zlink-framework-cpp::actor_ref_t",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.generation#c4a134ed7d8fb6b0 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.generation#c4a134ed7d8fb6b0 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -23068,12 +23054,11 @@
       "memberName": "From",
       "ownerIdentity": "Zlink.Framework::ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.From#e0b9468253876550 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.From#e0b9468253876550 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -23492,7 +23477,7 @@
       "memberName": "ResolveActorSpotHandleAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkActorSpotHandleResolver",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -23679,12 +23664,11 @@
       "memberName": "FindAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkActorDirectory",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorDirectory.FindAsync#58c5260ead740cc0 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorDirectory.FindAsync#58c5260ead740cc0 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24175,12 +24159,11 @@
       "memberName": "Generation",
       "ownerIdentity": "Zlink.Framework::ActorRef",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.Generation#a923080309e57f5f 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.Generation#a923080309e57f5f 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24491,12 +24474,11 @@
       "memberName": "ActorRefSnapshot",
       "ownerIdentity": "Zlink.Framework::ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.ActorRefSnapshot#273b9c1feb4d4fd0 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.ActorRefSnapshot#273b9c1feb4d4fd0 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24593,12 +24575,11 @@
       "memberName": "NodeRid",
       "ownerIdentity": "Zlink.Framework::ActorRef",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.NodeRid#bc3a86732d61d779 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.NodeRid#bc3a86732d61d779 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24620,12 +24601,11 @@
       "memberName": "ToActorRef",
       "ownerIdentity": "Zlink.Framework::ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.ToActorRef#8e2ba3d6f2c4d5a0 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRefSnapshot.ToActorRef#8e2ba3d6f2c4d5a0 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24702,12 +24682,11 @@
       "memberName": "ActorId",
       "ownerIdentity": "Zlink.Framework::ActorRef",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.ActorId#f566089f1df74a36 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.ActorId#f566089f1df74a36 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -24915,12 +24894,11 @@
       "memberName": "find",
       "ownerIdentity": "systems.zlink.framework.actors.ZLinkActorDirectory",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ZLinkActorDirectory.find#54a39e88f20980b8 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ZLinkActorDirectory.find#54a39e88f20980b8 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -25576,12 +25554,11 @@
       "memberName": "generation",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.generation#870afdc42a0e0d30 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.generation#870afdc42a0e0d30 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -26188,14 +26165,13 @@
       "memberName": "equals",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-record-helper",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D29"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.equals#8800b2d0cf49c509 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.equals#8800b2d0cf49c509 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "public-behavior:formal-contract-parity:java"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -26631,14 +26607,13 @@
       "memberName": "hashCode",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-record-helper",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D29"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.hashCode#4498ac8f30aeb326 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.hashCode#4498ac8f30aeb326 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "public-behavior:formal-contract-parity:java"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -26658,12 +26633,11 @@
       "memberName": "actorDirectory",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkFrameworkRuntime",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkRuntime.actorDirectory#b43fada258ff1129 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkRuntime.actorDirectory#b43fada258ff1129 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -27680,12 +27654,11 @@
       "memberName": "generation",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRef",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRef.generation#870afdc42a0e0d30 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRef.generation#870afdc42a0e0d30 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -28323,12 +28296,11 @@
       "memberName": "from",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.from#9698d562da4d904a 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.from#9698d562da4d904a 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -28403,14 +28375,13 @@
       "memberName": "toString",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-record-helper",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D29"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.toString#84a3e7162a0d79f4 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.toString#84a3e7162a0d79f4 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:global-actor-remote-create"
+        "public-behavior:formal-contract-parity:java"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -28430,7 +28401,7 @@
       "memberName": "actorSpotHandleResolver",
       "ownerIdentity": "systems.zlink:zlink-framework-core::ZLinkFrameworkRuntime",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -29033,12 +29004,11 @@
       "memberName": "ActorRefSnapshot",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.ActorRefSnapshot#f5efb9068e6a00d6 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.ActorRefSnapshot#f5efb9068e6a00d6 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -29425,12 +29395,11 @@
       "memberName": "actorId",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.actorId#b652bec6ff891f81 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.actorId#b652bec6ff891f81 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -29452,7 +29421,7 @@
       "memberName": "resolveActorSpotHandle",
       "ownerIdentity": "systems.zlink.framework.spots.ActorSpotHandleResolver",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -29533,12 +29502,11 @@
       "memberName": "toActorRef",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.toActorRef#0353ecf1aa66185e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.toActorRef#0353ecf1aa66185e 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -30140,12 +30108,11 @@
       "memberName": "nodeRid",
       "ownerIdentity": "systems.zlink.framework.actors.ActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.nodeRid#849ad30ecc5fdc71 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.actors.ActorRefSnapshot.nodeRid#849ad30ecc5fdc71 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -30401,11 +30368,11 @@
       "memberName": "listPeerLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listPeerLocations#1d9fe4fbec631fa6 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listPeerLocations#1d9fe4fbec631fa6 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -30505,11 +30472,11 @@
       "memberName": "listLivePeers",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listLivePeers#0c0af6bc16405590 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listLivePeers#0c0af6bc16405590 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -30711,11 +30678,11 @@
       "memberName": "listActorLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listActorLocations#913655e3395d3a7d 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listActorLocations#913655e3395d3a7d 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -30838,11 +30805,11 @@
       "memberName": "listMeshNodes$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listMeshNodes$default#c091c3d683d37393 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listMeshNodes$default#c091c3d683d37393 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -30864,13 +30831,13 @@
       "memberName": "findActor",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt.findActor#3716116707db021f 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt.findActor#3716116707db021f 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -30916,11 +30883,11 @@
       "memberName": "listRouteLocations$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations$default#ffc93dc8a06d195d 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations$default#ffc93dc8a06d195d 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -30942,11 +30909,11 @@
       "memberName": "listPeerLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations#4c7d18ec0b1900b0 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations#4c7d18ec0b1900b0 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -31226,11 +31193,11 @@
       "memberName": "listRouteLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations#63153e6c13865cd5 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations#63153e6c13865cd5 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -31564,13 +31531,13 @@
       "memberName": "actorRef",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D01"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.actorRef#2d9f4c9a0f140f8c 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.actorRef#2d9f4c9a0f140f8c 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -31590,13 +31557,14 @@
       "memberName": "resolveSpotHandle",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "spot-manager-replacement",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D02",
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.resolveSpotHandle#d107f7a021392acb 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.resolveSpotHandle#d107f7a021392acb 공개 member 제거를 CA-D02, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-spot-explicit-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -31616,11 +31584,11 @@
       "memberName": "listPeerLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listPeerLocations#5318229f82af7198 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listPeerLocations#5318229f82af7198 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -31642,13 +31610,14 @@
       "memberName": "resolveActorSpotHandle",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D01",
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.resolveActorSpotHandle#1029dc6744569e35 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.resolveActorSpotHandle#1029dc6744569e35 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -31746,11 +31715,11 @@
       "memberName": "listRouteLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations#d3e02d56d5cbf884 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations#d3e02d56d5cbf884 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -31896,13 +31865,13 @@
       "memberName": "actorRef",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D01"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt.actorRef#413f05ac6811241e 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt.actorRef#413f05ac6811241e 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -31974,11 +31943,11 @@
       "memberName": "listTopology",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listTopology#6f10229d02d758cb 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listTopology#6f10229d02d758cb 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -32361,13 +32330,14 @@
       "memberName": "resolveActorSpotHandle",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D01",
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.resolveActorSpotHandle#17377e6c0ec3b1cd 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.resolveActorSpotHandle#17377e6c0ec3b1cd 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -32439,11 +32409,11 @@
       "memberName": "listRouteLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listRouteLocations#1be202b922c927dc 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listRouteLocations#1be202b922c927dc 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -32465,13 +32435,13 @@
       "memberName": "findActor",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.findActor#d81e33c6ce8d9120 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.findActor#d81e33c6ce8d9120 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-actor-remote-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -32491,11 +32461,11 @@
       "memberName": "listRouteLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listRouteLocations#03458f15cc50001c 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listRouteLocations#03458f15cc50001c 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -32543,11 +32513,11 @@
       "memberName": "listSpotLocations$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listSpotLocations$default#aa0312d7d1a32d51 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listSpotLocations$default#aa0312d7d1a32d51 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -32569,11 +32539,11 @@
       "memberName": "listPeerLocations$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations$default#a748d93fa2396b6e 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations$default#a748d93fa2396b6e 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -32647,11 +32617,11 @@
       "memberName": "listTopology",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listTopology#e38fc1f6ee7dfd21 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listTopology#e38fc1f6ee7dfd21 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33108,11 +33078,11 @@
       "memberName": "listRouteLocations$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations$default#86f8df6745b27dce 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listRouteLocations$default#86f8df6745b27dce 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33314,11 +33284,11 @@
       "memberName": "listSpotLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listSpotLocations#dbcdc25e733e3b08 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listSpotLocations#dbcdc25e733e3b08 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33546,13 +33516,14 @@
       "memberName": "resolveSpotHandle",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "spot-manager-replacement",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D02",
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.resolveSpotHandle#61169232dfe42ce1 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.resolveSpotHandle#61169232dfe42ce1 공개 member 제거를 CA-D02, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "public-behavior:formal-contract-parity:kotlin"
+        "e2e:add:global-spot-explicit-create"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -33572,11 +33543,11 @@
       "memberName": "listMeshNodes",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listMeshNodes#7594c032f3a382a4 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listMeshNodes#7594c032f3a382a4 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33650,11 +33621,11 @@
       "memberName": "listSpotLocations",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listSpotLocations#0210a97edc0aac57 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listSpotLocations#0210a97edc0aac57 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33676,11 +33647,11 @@
       "memberName": "listActorLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listActorLocations#91e304e4e07f5bb8 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listActorLocations#91e304e4e07f5bb8 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -33702,11 +33673,11 @@
       "memberName": "listLivePeers",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listLivePeers#001e37adfacf37a2 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listLivePeers#001e37adfacf37a2 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -34138,11 +34109,11 @@
       "memberName": "listPeerLocations",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations#58f8ea4769f064f3 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listPeerLocations#58f8ea4769f064f3 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -34621,11 +34592,11 @@
       "memberName": "listMeshNodes",
       "ownerIdentity": "systems.zlink:zlink-framework-kotlin::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listMeshNodes#51042efe94fe1ab1 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.listMeshNodes#51042efe94fe1ab1 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -34673,11 +34644,11 @@
       "memberName": "listActorLocations$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listActorLocations$default#9872aee7897c5241 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listActorLocations$default#9872aee7897c5241 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -34725,11 +34696,11 @@
       "memberName": "listTopology$default",
       "ownerIdentity": "systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt",
       "replacementKind": "behavior",
-      "replacementRule": "kotlin-reviewed-contract-set",
+      "replacementRule": "operational-location-query",
       "decisionCoverage": [
-        "CA-D29"
+        "CA-D26"
       ],
-      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listTopology$default#b49a7d76c74d71df 공개 member 제거를 CA-D29 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink.framework.kotlin.ZLinkLocationExtensionsKt.listTopology$default#b49a7d76c74d71df 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "public-behavior:formal-contract-parity:kotlin"
       ],
@@ -35089,12 +35060,11 @@
       "memberName": "nodeRid",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.nodeRid#23c57a8316e8fa48 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.nodeRid#23c57a8316e8fa48 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -35301,7 +35271,7 @@
       "memberName": "ZLINK_ACTOR_SPOT_HANDLE_RESOLVER",
       "ownerIdentity": "@zlink-systems/framework::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -36478,7 +36448,7 @@
       "memberName": "resolveActorSpotHandle",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorSpotHandleResolver",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-spot-handle-query",
       "decisionCoverage": [
         "CA-D01",
         "CA-D26"
@@ -37495,12 +37465,11 @@
       "memberName": "zlinkActorRefSnapshotToActorRef",
       "ownerIdentity": "@zlink-systems/framework::<package>",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::<package>.zlinkActorRefSnapshotToActorRef#f8649378523fe6c6 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::<package>.zlinkActorRefSnapshotToActorRef#f8649378523fe6c6 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -38302,12 +38271,11 @@
       "memberName": "actorId",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.actorId#60f8e4c56d669bdf 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.actorId#60f8e4c56d669bdf 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -38535,12 +38503,11 @@
       "memberName": "find",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorDirectory",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-directory-query",
       "decisionCoverage": [
-        "CA-D01",
         "CA-D26"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorDirectory.find#53c55c3a103ce508 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorDirectory.find#53c55c3a103ce508 공개 member 제거를 CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -38643,12 +38610,11 @@
       "memberName": "generation",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.generation#791f9c8b64fa543e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.generation#791f9c8b64fa543e 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -39037,12 +39003,11 @@
       "memberName": "zlinkActorRefSnapshotFrom",
       "ownerIdentity": "@zlink-systems/framework::ZLinkActorRefSnapshot",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.zlinkActorRefSnapshotFrom#e2da9bd962b64d5e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorRefSnapshot.zlinkActorRefSnapshotFrom#e2da9bd962b64d5e 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],
@@ -39299,12 +39264,11 @@
       "memberName": "generation",
       "ownerIdentity": "@zlink-systems/framework::ActorRef",
       "replacementKind": "behavior",
-      "replacementRule": "actor-manager-replacement",
+      "replacementRule": "actor-ref-contract",
       "decisionCoverage": [
-        "CA-D01",
-        "CA-D26"
+        "CA-D01"
       ],
-      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ActorRef.generation#791f9c8b64fa543e 공개 member 제거를 CA-D01, CA-D26 결정과 reviewed public behavior coverage로 검증한다.",
+      "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ActorRef.generation#791f9c8b64fa543e 공개 member 제거를 CA-D01 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
         "e2e:add:global-actor-remote-create"
       ],

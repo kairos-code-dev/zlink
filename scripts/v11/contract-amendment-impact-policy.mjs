@@ -12,16 +12,15 @@ export const semanticMemberKey = member => [
 
 const portableOwner = ownerIdentity => {
   const simple = ownerIdentity.split(/::|\./u).at(-1) ?? ownerIdentity;
-  return normalize(simple)
-    .replace(/^izlink|^zlink/gu, '')
-    .replace(/t$/gu, '');
+  const normalized = normalize(simple).replace(/^izlink|^zlink/gu, '');
+  return /_t$/u.test(simple) ? normalized.slice(0, -1) : normalized;
 };
 
 export const removedMemberParityKey = member => {
   const owner = portableOwner(member.ownerIdentity);
   const name = normalize(member.memberName);
   if (member.language === 'kotlin' && /package|extensionskt/u.test(owner)) {
-    return `kotlin-logical.${name}.${member.kind}`;
+    return `kotlin-logical.${name}`;
   }
   if (/entryspotoptions/u.test(owner) && /^(?:set)?routingid$/u.test(name)) {
     return 'entry-spot-options.routing-id';
@@ -58,13 +57,19 @@ const runtimeLanguage = language => language === 'kotlin' ? 'java' : language;
 
 export const closedCatchAllExpectations = {
   'kotlin-reviewed-contract-set': {
-    count: 148,
-    identitySetSha256: '1e10d4fb966a38f49265f4cc2f34feb21e3f164f196f1bb8c455efd12a2d0a68',
+    count: 115,
+    identitySetSha256: '1cbe6e9160f7bad5a480e643feae184e10f83f9d36ef086097ccd49967c991ab',
   },
   'node-reviewed-contract-set': {
     count: 59,
     identitySetSha256: '8dba9a58fd81c96453072ce5d5410f0bd4b5315f9910539324a9d46af76504f5',
   },
+};
+
+export const sourceJvmParityExpectation = {
+  groups: 43,
+  recoveredPairs: 39,
+  identitySetSha256: '3f081c48ebebe6b3ac2bb490e0e8987e342510544611c397543ee5b1dc7fd926',
 };
 
 const rules = [
@@ -112,16 +117,40 @@ const rules = [
     coverage: () => ['e2e:add:same-node-join-without-transfer-payload'],
   },
   {
-    id: 'actor-manager-replacement',
-    matches: value => /actordirectory|actorspothandleresolver|sessionactormanager|sessionactor(?:t|\b)|actorref|findactor/u.test(value)
-      && !/iszlinkframeworkerrorretriablebydefault/u.test(value),
+    id: 'session-actor-bind-reference',
+    matches: value => /sessionactormanager|sessionactor(?:t|\b)/u.test(value),
+    decisions: ['CA-D05'],
+    coverage: () => ['e2e:add:exact-generation-mutation-bind'],
+  },
+  {
+    id: 'actor-ref-record-helper',
+    matches: value => /actorrefsnapshot.*(?:equals|hashcode|tostring)/u.test(value),
+    decisions: ['CA-D29'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'actor-ref-contract',
+    matches: value => /actorrefsnapshot|actorref/u.test(value)
+      && !/iszlinkframeworkerrorretriablebydefault|equals|hashcode|tostring/u.test(value),
+    decisions: ['CA-D01'],
+    coverage: () => ['e2e:add:global-actor-remote-create'],
+  },
+  {
+    id: 'actor-directory-query',
+    matches: value => /actordirectory|findactor/u.test(value),
+    decisions: ['CA-D26'],
+    coverage: () => ['e2e:add:global-actor-remote-create'],
+  },
+  {
+    id: 'actor-spot-handle-query',
+    matches: value => /actorspothandleresolver|resolveactorspothandle/u.test(value),
     decisions: ['CA-D01', 'CA-D26'],
     coverage: () => ['e2e:add:global-actor-remote-create'],
   },
   {
     id: 'spot-manager-replacement',
-    matches: value => /spothandleresolver|spothandle|spotmanager.*(?:find|list)|spotinfo/u.test(value)
-      && !/actorspothandleresolver/u.test(value),
+    matches: value => /spothandleresolver|resolvespothandle|spothandle|spotmanager.*(?:find|list)|spotinfo/u.test(value)
+      && !/actorspothandleresolver|resolveactorspothandle/u.test(value),
     decisions: ['CA-D02', 'CA-D26'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
@@ -284,10 +313,11 @@ const rules = [
 export function auditRemovedMemberBehavior(member) {
   const value = normalize(`${member.ownerIdentity}.${member.memberName}`);
   const kotlinReviewedRule = rules.find(rule => rule.id === 'kotlin-reviewed-contract-set');
-  const candidates = kotlinReviewedRule.matches(value, member)
-    ? [kotlinReviewedRule]
-    : rules.filter(rule => rule !== kotlinReviewedRule);
-  const matches = candidates.filter(candidate => candidate.matches(value, member));
+  const domainMatches = rules.filter(rule => rule !== kotlinReviewedRule)
+    .filter(candidate => candidate.matches(value, member));
+  const matches = domainMatches.length > 0
+    ? domainMatches
+    : kotlinReviewedRule.matches(value, member) ? [kotlinReviewedRule] : [];
   if (matches.length !== 1) {
     return {
       state: matches.length === 0 ? 'unmatched' : 'ambiguous',

@@ -327,6 +327,8 @@
     "directory": "framework/doc/plan/v11.0",
     "allowed_documents": [
       "README.ko.md",
+      "actor-spot-remote-placement-and-node-identity-change-proposal.ko.md",
+      "dotnet-remote-placement-public-contract-change-sketch.ko.md",
       "route-mesh-11.0.0-execution-ledger.ko.md",
       "target-spec/README.ko.md",
       "target-spec/01-mesh-node.ko.md",

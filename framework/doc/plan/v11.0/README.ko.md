@@ -14,6 +14,7 @@
 | [Service runtime 구현 crosswalk](target-internals/README.ko.md) | Core 10 구현·test를 네 언어 runtime의 정식 internals와 구현 lane에 연결하는 대조 자료 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
 | [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | M5 이후 public contract amendment에서 검토할 remote create, placement, random RID와 maintenance handover 설계 입력 |
+| [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | 현재 .NET exact interface와 M5 이후 변경 후보를 AS-IS·TO-BE로 비교하는 비정식 C# 설계 입력 |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
 
 Target 문서는 정식 계약을 별도로 정의하지 않는다. 정식 문서와 내용이 다르면 정식 spec 또는 정식 internals를

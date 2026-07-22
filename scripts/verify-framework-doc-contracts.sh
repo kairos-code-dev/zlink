@@ -998,11 +998,11 @@ if (typeof consolidation.directory !== 'string'
 } else {
   const allowedDocuments = consolidation.allowed_documents;
   const allowedSet = new Set(allowedDocuments);
-  if (allowedDocuments.length !== 22 || allowedSet.size !== allowedDocuments.length
+  if (allowedDocuments.length !== 24 || allowedSet.size !== allowedDocuments.length
       || allowedDocuments.some(relative => typeof relative !== 'string'
         || relative.length === 0 || path.posix.isAbsolute(relative)
         || relative.split('/').includes('..'))) {
-    fail('v11 consolidated plan must declare 22 unique safe relative document paths');
+    fail('v11 consolidated plan must declare 24 unique safe relative document paths');
   }
   const actualDocuments = filesUnder(consolidation.directory)
     .map(relative => path.posix.relative(consolidation.directory, relative));

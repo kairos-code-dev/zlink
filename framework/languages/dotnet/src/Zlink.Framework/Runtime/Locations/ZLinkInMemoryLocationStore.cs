@@ -110,6 +110,179 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         }
     }
 
+    public ValueTask<InstanceSpotClaimResult> ClaimInstanceSpotAsync(
+        InstanceSpotClaimRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (!_leases.TryGetValue(request.OwnerId, out var claimantLease)
+                || claimantLease.LeaseExpiresAt <= now)
+                return ValueTask.FromResult<InstanceSpotClaimResult>(
+                    new InstanceSpotClaimResult.Conflict());
+
+            var key = ZLinkLocationKeyCodec.EncodeSpotKey(
+                new ZLinkSpotLocationKey(request.MeshName, request.SpotRid));
+            if (_instanceSpots.Rows.TryGetValue(key, out var current)
+                && _leases.TryGetValue(current.OwnerId, out var currentLease)
+                && currentLease.LeaseExpiresAt > now)
+                return ValueTask.FromResult<InstanceSpotClaimResult>(
+                    new InstanceSpotClaimResult.Existing(
+                        new InstanceSpotSnapshot(
+                            current,
+                            new InstanceSpotLeaseSnapshot(currentLease.LeaseExpiresAt, now))));
+
+            _instanceSpots.Generations.TryGetValue(key, out var previousGeneration);
+            var generation = checked(previousGeneration + 1);
+            var activationEpoch = current is null
+                ? 1UL
+                : checked(current.ActivationEpoch + 1);
+            var claimed = new InstanceSpotLocation(
+                request.MeshName,
+                request.SpotRid,
+                0,
+                request.TargetNodeRid,
+                request.TargetNodeGeneration,
+                request.InstanceSpotType,
+                ZLinkSpotActivationState.Activating,
+                activationEpoch,
+                request.OwnerId,
+                generation,
+                now);
+            _instanceSpots.Rows[key] = claimed;
+            _instanceSpots.Generations[key] = generation;
+            Bump(ZLinkLocationChangeScopeKind.Spot, request.MeshName);
+            return ValueTask.FromResult<InstanceSpotClaimResult>(
+                new InstanceSpotClaimResult.Claimed(
+                    new InstanceSpotSnapshot(
+                        claimed,
+                        new InstanceSpotLeaseSnapshot(claimantLease.LeaseExpiresAt, now))));
+        }
+    }
+
+    public ValueTask<InstanceSpotWriteResult> CommitInstanceSpotReadyAsync(
+        InstanceSpotFence fence,
+        ulong spotGeneration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fence);
+        if (spotGeneration == 0) throw new ArgumentOutOfRangeException(nameof(spotGeneration));
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var key = ZLinkLocationKeyCodec.EncodeSpotKey(
+                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+            if (!_instanceSpots.Rows.TryGetValue(key, out var current)
+                || !MatchesFence(current, fence))
+                return ValueTask.FromResult<InstanceSpotWriteResult>(
+                    new InstanceSpotWriteResult.Stale());
+            if (current.ActivationState != ZLinkSpotActivationState.Activating)
+                return ValueTask.FromResult<InstanceSpotWriteResult>(
+                    new InstanceSpotWriteResult.Conflict());
+            if (!_leases.TryGetValue(current.OwnerId, out var lease)
+                || lease.LeaseExpiresAt <= now)
+                return ValueTask.FromResult<InstanceSpotWriteResult>(
+                    new InstanceSpotWriteResult.Stale());
+
+            var ready = current with
+            {
+                SpotGeneration = spotGeneration,
+                ActivationState = ZLinkSpotActivationState.Ready,
+                UpdatedAt = now
+            };
+            _instanceSpots.Rows[key] = ready;
+            Bump(ZLinkLocationChangeScopeKind.Spot, fence.MeshName);
+            return ValueTask.FromResult<InstanceSpotWriteResult>(
+                new InstanceSpotWriteResult.Stored(
+                    new InstanceSpotSnapshot(
+                        ready,
+                        new InstanceSpotLeaseSnapshot(lease.LeaseExpiresAt, now))));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteResult> BeginInstanceSpotClosingAsync(
+        InstanceSpotFence fence,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fence);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var key = ZLinkLocationKeyCodec.EncodeSpotKey(
+                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+            if (!_instanceSpots.Rows.TryGetValue(key, out var current)
+                || !MatchesFence(current, fence))
+                return ValueTask.FromResult(ZLinkLocationWriteResult.IgnoredStale);
+
+            _instanceSpots.Rows[key] = current with
+            {
+                ActivationState = ZLinkSpotActivationState.Closing,
+                UpdatedAt = now
+            };
+            Bump(ZLinkLocationChangeScopeKind.Spot, fence.MeshName);
+            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(
+                current.LocationGeneration, now));
+        }
+    }
+
+    public ValueTask<ZLinkLocationWriteStatus> ReleaseInstanceSpotAsync(
+        InstanceSpotFence fence,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(fence);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var key = ZLinkLocationKeyCodec.EncodeSpotKey(
+                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+            if (!_instanceSpots.Rows.TryGetValue(key, out var current)
+                || !MatchesFence(current, fence))
+                return ValueTask.FromResult(ZLinkLocationWriteStatus.IgnoredStale);
+
+            _instanceSpots.Rows.Remove(key);
+            Bump(ZLinkLocationChangeScopeKind.Spot, fence.MeshName);
+            return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
+        }
+    }
+
+    public ValueTask<InstanceSpotResolveResult> ResolveInstanceSpotAsync(
+        ZLinkSpotLocationKey key,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (!_instanceSpots.Rows.TryGetValue(
+                    ZLinkLocationKeyCodec.EncodeSpotKey(key), out var current)
+                || !_leases.TryGetValue(current.OwnerId, out var lease)
+                || lease.LeaseExpiresAt <= now)
+                return ValueTask.FromResult<InstanceSpotResolveResult>(
+                    new InstanceSpotResolveResult.Missing());
+
+            return ValueTask.FromResult<InstanceSpotResolveResult>(
+                new InstanceSpotResolveResult.Found(
+                    new InstanceSpotSnapshot(
+                        current,
+                        new InstanceSpotLeaseSnapshot(lease.LeaseExpiresAt, now))));
+        }
+    }
+
+    private static bool MatchesFence(
+        InstanceSpotLocation location,
+        InstanceSpotFence fence) =>
+        string.Equals(location.MeshName, fence.MeshName, StringComparison.Ordinal)
+        && location.SpotRid == fence.SpotRid
+        && string.Equals(location.OwnerId, fence.OwnerId, StringComparison.Ordinal)
+        && location.OwnerNodeGeneration == fence.OwnerNodeGeneration
+        && location.LocationGeneration == fence.LocationGeneration
+        && location.ActivationEpoch == fence.ActivationEpoch;
+
     public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent,

@@ -8,7 +8,6 @@ import { RequestResult } from '@zlink-systems/zlink';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import { ZLinkActorRetryDelay } from './actor-retry-delay';
-import { toBindingRoutingId } from '../routing-id';
 
 type ZLinkTransferredActorRollbackOptions = Pick<
   ZLinkActorManagerOptions,
@@ -97,7 +96,7 @@ export class ZLinkTransferredActorRollbackCoordinator {
       throw new Error('Actor rollback requires a running MeshNode completion table.');
     }
     const operationId = node.destroyActor({
-      nodeRid: toBindingRoutingId(actorRef.nodeRid),
+      nodeRid: actorRef.nodeRid,
       actorId: actorRef.actorId,
       generation: actorRef.generation
     });

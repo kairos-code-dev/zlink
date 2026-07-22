@@ -212,8 +212,7 @@ export class ZLinkSpotRoutePacketDispatch {
         reason: ZLinkDispatchErrorReason.HandlerMissing,
         action,
         packetName: envelope.packetName,
-        channelName: envelope.channelName,
-        spotRid: received.spotRid === null ? undefined : String(received.spotRid)
+        channelName: envelope.channelName
       });
       if (replyable) {
         submitRouteReply(
@@ -253,7 +252,6 @@ export class ZLinkSpotRoutePacketDispatch {
         action,
         packetName: envelope.packetName,
         channelName: envelope.channelName,
-        spotRid: received.spotRid === null ? undefined : String(received.spotRid),
         error
       });
       if (replyable) {

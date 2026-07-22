@@ -83,7 +83,7 @@ internal sealed class ZLinkMeshCompletionTable
         foreach (var operationId in _pending.Keys.ToArray())
             if (_pending.TryRemove(operationId, out var handler))
                 handler(
-                    default,
+                    MeshReceiveRecord.CompletionFailure(operationId, result),
                     Array.Empty<Message>());
         foreach (var operationId in _early.Keys.ToArray())
             if (_early.TryRemove(operationId, out var early))

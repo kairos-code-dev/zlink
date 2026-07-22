@@ -1,0 +1,162 @@
+{
+  "schema": "zlink-service-wire-decoder-fixtures-v1",
+  "wireMajor": 1,
+  "probeId": "72623859790382856",
+  "canonical": [
+    {
+      "name": "livenessProbe",
+      "commandId": 5,
+      "bytes": [
+        90,
+        77,
+        1,
+        5,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "livenessAck",
+      "commandId": 6,
+      "bytes": [
+        90,
+        77,
+        1,
+        6,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "echoesProbeIdFrom": "livenessProbe"
+    }
+  ],
+  "malformed": [
+    {
+      "name": "wrongMagic",
+      "bytes": [
+        0,
+        77,
+        1,
+        5,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "error": "invalid-magic"
+    },
+    {
+      "name": "unknownCommand",
+      "bytes": [
+        90,
+        77,
+        1,
+        7,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "error": "unknown-command"
+    },
+    {
+      "name": "forbiddenFlag",
+      "bytes": [
+        90,
+        77,
+        1,
+        5,
+        1,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "error": "forbidden-flag"
+    },
+    {
+      "name": "zeroProbeId",
+      "bytes": [
+        90,
+        77,
+        1,
+        5,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "error": "invalid-field"
+    },
+    {
+      "name": "truncatedProbeId",
+      "bytes": [
+        90,
+        77,
+        1,
+        5,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "error": "truncated-field"
+    },
+    {
+      "name": "trailingByte",
+      "bytes": [
+        90,
+        77,
+        1,
+        5,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        0
+      ],
+      "error": "trailing-byte"
+    }
+  ]
+}

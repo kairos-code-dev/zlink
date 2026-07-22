@@ -13,6 +13,9 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 - `golden/checkpoint-envelope-v1.json`: 네 runtime이 non-empty Instance request journal·completion bytes를 읽고
   쓰는 golden fixture
 - `golden/`: service frame의 정상·경계·오류 fixture를 추가하는 위치
+- `generate-service-wire-assets.mjs`: 검증한 schema에서 네 언어 command·flag 상수와 공통 decoder fixture를
+  생성하고 `--check`로 drift를 차단하는 도구
+- `generated/`: C++·.NET·JVM·Node.js runtime이 복사하지 않고 사용하는 생성 상수
 - `traces/`: schema 승인 뒤 생성하는 normalized behavior trace
 
 Codec table이나 fixture를 생성하기 전에 다음 명령이 성공해야 한다. 현재 gate는 30개 command, 81개 type,
@@ -25,6 +28,9 @@ magic·version·length·checksum·semantic·order·range 훼손, transfer graph�
 ```bash
 node framework/runtime/protocol/validate-service-wire-schema.mjs \
   --self-test framework/runtime/protocol/service-wire-v1.schema.json
+node framework/runtime/protocol/generate-service-wire-assets.mjs
+node framework/runtime/protocol/generate-service-wire-assets.mjs --check
+node framework/runtime/protocol/verify-service-wire-decoder-fixtures.mjs
 ```
 
 Durable fixture의 header는 4-byte magic, version `1`, zero flags, big-endian `u32` body length, exact body와

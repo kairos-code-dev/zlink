@@ -1,0 +1,60 @@
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
+#pragma once
+
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <vector>
+
+namespace zlink
+{
+class router_socket_t;
+}
+
+namespace zlink::framework::detail::backend
+{
+
+using raw_bytes_t = std::vector<std::uint8_t>;
+using raw_message_t = std::vector<raw_bytes_t>;
+
+struct raw_received_t
+{
+    raw_bytes_t source_routing_id;
+    std::optional<std::uint64_t> request_sequence;
+    raw_message_t parts;
+};
+
+enum class raw_request_result_t
+{
+    ok,
+    timed_out,
+    not_connected,
+    terminated,
+    failed
+};
+
+class raw_route_port_t
+{
+  public:
+    using request_callback_t =
+      std::function<void (raw_request_result_t, raw_message_t)>;
+
+    explicit raw_route_port_t (zlink::router_socket_t &socket) noexcept;
+
+    bool send (const raw_bytes_t &target_routing_id, const raw_message_t &parts);
+    bool request (const raw_bytes_t &target_routing_id,
+                  const raw_message_t &parts,
+                  std::chrono::milliseconds timeout,
+                  request_callback_t callback);
+    std::optional<raw_received_t> try_receive ();
+    bool reply (const raw_received_t &request, const raw_message_t &parts);
+    void close () noexcept;
+
+  private:
+    zlink::router_socket_t *_socket;
+    std::mutex _socket_mutex;
+};
+
+} // namespace zlink::framework::detail::backend

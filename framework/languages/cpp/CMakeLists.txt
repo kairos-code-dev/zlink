@@ -19,6 +19,7 @@ include(CMakePackageConfigHelpers)
 find_package(Threads REQUIRED)
 
 option(ZLINK_FRAMEWORK_CPP_BUILD_TESTS "Build C++ framework tests" ON)
+option(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS "Build isolated C++ service foundation tests" ON)
 option(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES "Build C++ framework samples" ON)
 option(ZLINK_FRAMEWORK_CPP_BUILD_E2E "Build C++ framework scenario e2e apps" ON)
 option(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK "Install C++ framework and HTTP client package artifacts" ON)
@@ -53,6 +54,9 @@ endif()
 set(ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX
   "${ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT}/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}" CACHE PATH
   "Local zlink_cpp package install prefix")
+set(ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CORE_PREFIX
+  "${ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT}/install/zlink-core/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}" CACHE PATH
+  "Local zlink Core package install prefix used by zlink_cpp")
 if(WIN32)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(ZLINK_FRAMEWORK_CPP_NATIVE_RUNTIME
@@ -75,11 +79,16 @@ else()
 endif()
 
 if(NOT TARGET zlink::cpp)
-  list(PREPEND CMAKE_PREFIX_PATH "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}")
+  list(PREPEND CMAKE_PREFIX_PATH
+    "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CPP_PREFIX}"
+    "${ZLINK_FRAMEWORK_CPP_LOCAL_ZLINK_CORE_PREFIX}")
   find_package(zlink_cpp ${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION} EXACT CONFIG REQUIRED)
 endif()
 
 add_library(zlink_framework STATIC
+  framework/src/runtime/backend/raw_route_port.cpp
+  framework/src/runtime/foundation/operation_registry.cpp
+  framework/src/runtime/protocol/service_wire_codec.cpp
   framework/src/runtime/channels/channel_packet_dispatcher.cpp
   framework/src/runtime/channels/channel_host_service.cpp
   framework/src/runtime/channels/channel_bundle_factory.cpp
@@ -147,7 +156,8 @@ target_include_directories(zlink_framework PUBLIC
   $<BUILD_INTERFACE:${ZLINK_FRAMEWORK_CPP_DIR}/framework/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_include_directories(zlink_framework PRIVATE
-  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+  ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
 target_link_libraries(zlink_framework PUBLIC zlink::cpp)
 set(ZLINK_FRAMEWORK_CPP_BOOST_INCLUDE_DIR "" CACHE PATH
   "Boost include directory used by the C++ framework and stream connector")
@@ -672,6 +682,50 @@ install(FILES
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   enable_testing()
+endif()
+
+if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
+  add_executable(test_cpp_framework_raw_route_port_contract
+    tests/Zlink.Framework.ContractTests/test_cpp_framework_raw_route_port_contract.cpp
+    framework/src/runtime/backend/raw_route_port.cpp)
+  target_compile_features(test_cpp_framework_raw_route_port_contract PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_raw_route_port_contract PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  target_link_libraries(test_cpp_framework_raw_route_port_contract PRIVATE
+    zlink::cpp
+    Threads::Threads)
+  add_test(NAME test_cpp_framework_raw_route_port_contract
+    COMMAND test_cpp_framework_raw_route_port_contract)
+  set_tests_properties(test_cpp_framework_raw_route_port_contract PROPERTIES
+    LABELS "framework-contract;framework-foundation;raw-binding"
+    TIMEOUT 30)
+
+  add_executable(test_cpp_framework_service_wire_codec
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_service_wire_codec.cpp
+    framework/src/runtime/protocol/service_wire_codec.cpp)
+  target_compile_features(test_cpp_framework_service_wire_codec PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_service_wire_codec PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  add_test(NAME test_cpp_framework_service_wire_codec
+    COMMAND test_cpp_framework_service_wire_codec)
+  set_tests_properties(test_cpp_framework_service_wire_codec PROPERTIES
+    LABELS "framework-unit;framework-foundation;protocol"
+    TIMEOUT 30)
+
+  add_executable(test_cpp_framework_operation_registry
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_operation_registry.cpp
+    framework/src/runtime/foundation/operation_registry.cpp)
+  target_compile_features(test_cpp_framework_operation_registry PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_operation_registry PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  target_link_libraries(test_cpp_framework_operation_registry PRIVATE Threads::Threads)
+  add_test(NAME test_cpp_framework_operation_registry
+    COMMAND test_cpp_framework_operation_registry)
+  set_tests_properties(test_cpp_framework_operation_registry PROPERTIES
+    LABELS "framework-unit;framework-foundation;operation;resource"
+    TIMEOUT 30)
+
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)

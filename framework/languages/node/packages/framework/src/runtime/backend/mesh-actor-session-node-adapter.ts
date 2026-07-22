@@ -1,4 +1,4 @@
-import { SubmitResult, type ActorRef as BindingActorRef } from '@zlink-systems/zlink';
+import { SubmitResult } from '@zlink-systems/zlink';
 import { ZLinkSubmitStatus } from '../../contracts';
 import type {
   ZLinkBackendActorSessionNode,
@@ -16,7 +16,7 @@ export function meshActorSessionNodeAdapter(
   return {
     sendActorBoundSession(actor, expectedBindingGeneration, parts, flags) {
       const result = node.sendActorBoundSession(
-        actor as unknown as BindingActorRef,
+        actor,
         expectedBindingGeneration,
         parts as never,
         flags
@@ -42,7 +42,7 @@ export function meshActorSessionNodeAdapter(
         throw new Error('MeshNode completion runtime is not started.');
       }
       const operationId = node.closeActorBoundSession(
-        actor as unknown as BindingActorRef,
+        actor,
         expectedBindingGeneration,
         timeoutMs
       );

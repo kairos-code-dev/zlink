@@ -7,6 +7,8 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkLocationRegistration
 {
+    private ZLinkInMemoryLocationStore? _inMemoryStore;
+
     public bool UseInMemoryStores { get; set; }
 
     /// <summary>One physical store instance providing every store role
@@ -17,4 +19,11 @@ internal sealed class ZLinkLocationRegistration
     public ZLinkLocationOptions Options { get; } = new();
 
     public bool Enabled => UseInMemoryStores || StoreInstance is not null;
+
+    internal IZLinkLocationStore? ResolveStore()
+    {
+        if (StoreInstance is not null) return StoreInstance;
+        if (!UseInMemoryStores) return null;
+        return _inMemoryStore ??= new ZLinkInMemoryLocationStore();
+    }
 }

@@ -4,7 +4,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;

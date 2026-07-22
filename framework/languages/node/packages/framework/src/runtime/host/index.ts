@@ -1,13 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
   Message as BindingMessage,
+  SubmitResult,
+  type MessageLike
+} from '@zlink-systems/zlink';
+import {
   OperationKind,
   ReceiveKind,
-  SubmitResult,
-  type MessageLike,
   type ReadyRecord,
   type ReceiveRecord
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
 import {
   meshActorSessionNodeAdapter,
   ZLinkNodeBackendAdapterFactory

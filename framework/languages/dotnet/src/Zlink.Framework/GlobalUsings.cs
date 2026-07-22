@@ -33,4 +33,5 @@ global using Zlink.Framework.Runtime.Execution;
 global using Zlink.Framework.Runtime.Host;
 global using Zlink.Framework.Runtime.Locations;
 global using Zlink.Framework.Runtime.Spots;
+global using Zlink.Framework.Runtime.Service;
 global using Zlink.Framework.Runtime.Streams;

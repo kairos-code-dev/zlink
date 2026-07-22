@@ -7,7 +7,7 @@ import type {
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkMessageFlowModeCell } from '../diagnostics';
 import type { Message } from '@zlink-systems/zlink';
-import type { ReceiveRecord } from '@zlink-systems/zlink';
+import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration

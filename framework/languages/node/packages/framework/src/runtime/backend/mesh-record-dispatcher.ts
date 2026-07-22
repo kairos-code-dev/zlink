@@ -3,7 +3,7 @@ import {
   ReceiveKind,
   type ReadyRecord,
   type ReceiveRecord
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
 
 export interface ZLinkMeshRecordDispatchPorts {
   readonly node: (record: ReceiveRecord) => void | Promise<void>;

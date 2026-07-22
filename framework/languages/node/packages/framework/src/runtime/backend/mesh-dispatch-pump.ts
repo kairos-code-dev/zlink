@@ -1,10 +1,12 @@
 import {
+  RecvFlags
+} from '@zlink-systems/zlink';
+import {
   ReadyDomain,
-  RecvFlags,
-  type MeshNode,
   type ReadyRecord,
   type ReceiveRecord
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
+import type { ZLinkBackendMeshNode } from './contracts';
 
 export interface ZLinkMeshDispatchPumpOptions {
   readonly readyCapacity?: number;
@@ -22,7 +24,7 @@ export class ZLinkMeshDispatchPump {
   private drainPromise?: Promise<void>;
 
   constructor(
-    private readonly node: MeshNode,
+    private readonly node: ZLinkBackendMeshNode,
     private readonly options: ZLinkMeshDispatchPumpOptions
   ) {
   }

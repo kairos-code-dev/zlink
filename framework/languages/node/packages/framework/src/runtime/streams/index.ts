@@ -29,7 +29,7 @@ import type {
 import type { ZLinkMeshCompletionTable } from '../backend/mesh-completion-table';
 import type { ZLinkApplicationWorkClaim } from '../admission';
 import type { ZLinkMeshSubmitterRegistry } from '../messaging';
-import type { StreamSessionService } from '@zlink-systems/zlink';
+import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
   messageToBytes,
   ZLinkStreamCodec,

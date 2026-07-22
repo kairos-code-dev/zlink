@@ -11,9 +11,6 @@ import {
   ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import {
-  type ActorRef as NativeActorRef
-} from '@zlink-systems/zlink';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import {
   closeMeshCompletion,
@@ -62,7 +59,7 @@ export class ZLinkLocalNativeActorJoin {
     node: ZLinkBackendMeshNode,
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    actorRef: NativeActorRef,
+    actorRef: ActorRef,
     spotRid: RoutingId,
     spotRouteTarget: ZLinkSpotRouteTarget | undefined,
     request: Message,
@@ -237,7 +234,7 @@ export class ZLinkLocalNativeActorJoin {
     node: ZLinkBackendMeshNode,
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    actorRef: NativeActorRef,
+    actorRef: ActorRef,
     nodeRid: RoutingId,
     request: Message,
     timeoutMs: number | undefined
@@ -349,9 +346,9 @@ export class ZLinkLocalNativeActorJoin {
   }
 }
 
-function normalizeNativeActorRef(actor: NativeActorRef): NativeActorRef {
+function normalizeNativeActorRef(actor: ActorRef): ActorRef {
   return {
-    nodeRid: toBindingRoutingId(actor.nodeRid),
+    nodeRid: actor.nodeRid,
     actorId: actor.actorId,
     generation: actor.generation
   };

@@ -32,13 +32,15 @@ import {
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import {
-  ActorLifecycleKind,
   Message as BindingMessage,
+  SubmitResult
+} from '@zlink-systems/zlink';
+import {
+  ActorLifecycleKind,
   ReceiveKind,
-  SubmitResult,
   type ReadyRecord,
   type ReceiveRecord
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException
 } from '../configuration';

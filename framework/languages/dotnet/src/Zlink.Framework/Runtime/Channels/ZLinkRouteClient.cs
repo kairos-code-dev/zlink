@@ -46,6 +46,12 @@ internal sealed class ZLinkSpotClient(ZLinkFrameworkRuntime runtime) : IZLinkSpo
     public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request) =>
         new ZLinkRouteSpotRequestCall<TRequest>(runtime, RequireResolvedHandle(target), request);
 
+    public IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message) =>
+        new ZLinkInstanceSpotSendCall<TMessage>(runtime, target, message);
+
+    public IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request) =>
+        new ZLinkInstanceSpotRequestCall<TRequest>(runtime, target, request);
+
     private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target) =>
         target as ZLinkResolvedSpotHandle
         ?? throw new ArgumentException(

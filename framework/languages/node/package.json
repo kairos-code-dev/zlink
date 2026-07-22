@@ -17,6 +17,8 @@
     "test": "node scripts/run_node_runtime_gate.js",
     "verify:ci": "node scripts/run_node_framework_ci_gate.js",
     "verify:p0": "node scripts/run_node_runtime_gate.js",
+    "verify:m5-scaffold": "node node_modules/typescript/bin/tsc -p tsconfig.m5-scaffold.json",
+    "verify:m5-foundation": "rm -rf build/m5-foundation && node node_modules/typescript/bin/tsc -p tsconfig.m5-foundation.json && node --test build/m5-foundation/languages/node/test/m5/m5-foundation.contract.js",
     "verify:coverage": "node scripts/run_node_coverage_gate.js",
     "verify:samples": "./samples/run_samples.sh",
     "verify:runtime-matrix": "node scripts/verify_node_runtime_matrix.js",

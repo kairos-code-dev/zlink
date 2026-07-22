@@ -13,7 +13,7 @@ record ZLinkJavaPublisherSocket(PubSocket socket)
     @Override public Socket nativeSocket() { return socket; }
     @Override public String name() { return "publisher"; }
     @Override public void bind(String endpoint) { socket.bind(endpoint); }
-    @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
+    @Override public void setChannelName(String channelName) { ZLinkJavaSocketSupport.validateChannelName(channelName); }
     @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
     @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
         return ZLinkJavaSocketSupport.submit(socket.publish(topic), parts, flags);

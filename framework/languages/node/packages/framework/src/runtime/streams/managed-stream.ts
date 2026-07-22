@@ -19,12 +19,8 @@ import type {
   ZLinkBackendSendFlags,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
-import {
-  Message as NativeMessage,
-  RoutingId as NativeRoutingId,
-  type ActorRef as NativeActorRef,
-  type StreamSessionService
-} from '@zlink-systems/zlink';
+import { Message as NativeMessage } from '@zlink-systems/zlink';
+import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
   closeMeshCompletion,
   type ZLinkMeshCompletionTable
@@ -42,7 +38,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   private currentLocalAddr: string | undefined;
   private currentRemoteAddr: string | undefined;
   private readonly nativeActorBindings = new Map<string, {
-    readonly actor: NativeActorRef;
+    readonly actor: ActorRef;
     readonly bindingGeneration: bigint;
   }>();
   private readonly submitter: ZLinkAsyncSubmitter;
@@ -263,7 +259,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   private async submitNativeSessionBind(
-    actor: NativeActorRef,
+    actor: ActorRef,
     timeoutMs: number,
     signal?: AbortSignal
   ): Promise<{ readonly high: bigint; readonly low: bigint }> {
@@ -331,9 +327,9 @@ function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   };
 }
 
-function toNativeActorRef(actor: ActorRef): NativeActorRef {
+function toNativeActorRef(actor: ActorRef): ActorRef {
   return {
-    nodeRid: NativeRoutingId.from(String(actor.nodeRid)),
+    nodeRid: actor.nodeRid,
     actorId: actor.actorId,
     generation: actor.generation
   };

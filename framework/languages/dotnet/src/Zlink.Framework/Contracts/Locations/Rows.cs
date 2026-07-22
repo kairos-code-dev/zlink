@@ -17,7 +17,34 @@ public sealed record ZLinkMeshNodeDescriptor(
     bool Draining,
     string SecurityIdentity,
     string OwnerId,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    internal ZLinkMeshNodeDescriptor(
+        string MeshName,
+        RoutingId Rid,
+        ulong LifecycleGeneration,
+        ulong DescriptorRevision,
+        string Endpoint,
+        IReadOnlyDictionary<string, int> ChannelWeights,
+        bool Draining,
+        string SecurityIdentity,
+        string OwnerId,
+        DateTimeOffset UpdatedAt)
+        : this(
+            MeshName,
+            Rid,
+            LifecycleGeneration,
+            DescriptorRevision,
+            Endpoint,
+            ChannelWeights,
+            new HashSet<string>(StringComparer.Ordinal),
+            Draining,
+            SecurityIdentity,
+            OwnerId,
+            UpdatedAt)
+    {
+    }
+}
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
     string MeshName,

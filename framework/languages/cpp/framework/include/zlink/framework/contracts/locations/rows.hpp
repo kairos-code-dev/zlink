@@ -2,8 +2,8 @@
 #pragma once
 
 #include <zlink/Contracts/Core/routing_id.hpp>
-#include <zlink/Contracts/Service/actor_models.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/locations/spot_kind.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 
 #include <chrono>

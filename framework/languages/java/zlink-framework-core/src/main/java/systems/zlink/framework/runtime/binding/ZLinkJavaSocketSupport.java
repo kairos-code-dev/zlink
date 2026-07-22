@@ -7,9 +7,9 @@ import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.ReplyOperation;
-import systems.zlink.contracts.service.spot.RequestOperation;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.ReplyOperation;
+import systems.zlink.contracts.messaging.RequestOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -20,6 +20,12 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 
 final class ZLinkJavaSocketSupport {
     private ZLinkJavaSocketSupport() {
+    }
+
+    static void validateChannelName(String channelName) {
+        if (channelName == null || channelName.isBlank()) {
+            throw new IllegalArgumentException("channelName must not be blank");
+        }
     }
 
     static boolean recvOrNoData(java.util.function.BooleanSupplier receive) {
@@ -82,7 +88,7 @@ final class ZLinkJavaSocketSupport {
     static ZLinkBackendReceived fromReceived(Received received) {
         return new ZLinkBackendReceived(
             received.getRoutingId(),
-            received.spotRid(),
+            Optional.empty(),
             received.requestSeq(),
             received.parts().stream().map(Message::from).toList(),
             replyParts -> submitReply(received.reply(), replyParts),

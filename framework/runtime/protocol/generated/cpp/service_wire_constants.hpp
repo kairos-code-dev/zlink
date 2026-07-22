@@ -1,0 +1,79 @@
+// Generated from service-wire-v1.schema.json. Do not edit.
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace zlink::framework::runtime::protocol {
+inline constexpr std::uint8_t magic[] = {90, 77};
+inline constexpr std::uint8_t wire_major = 1;
+inline constexpr const char required_capability[] = "framework-service-v11";
+enum class command : std::uint8_t {
+    hello = 1,
+    admit = 2,
+    reject = 3,
+    update = 4,
+    livenessProbe = 5,
+    livenessAck = 6,
+    nodeSend = 16,
+    nodeRequest = 17,
+    channelSend = 18,
+    channelRequest = 19,
+    reply = 20,
+    spotSend = 21,
+    spotRequest = 22,
+    logicalMulticast = 23,
+    actorSend = 24,
+    actorRequest = 25,
+    actorLookup = 26,
+    actorDestroy = 27,
+    actorJoin = 28,
+    actorLeft = 29,
+    transferReady = 30,
+    transferData = 31,
+    transferAck = 32,
+    replyRelay = 33,
+    transferSeal = 34,
+    transferComplete = 35,
+    boundSessionSend = 36,
+    actorJoined = 37,
+    boundSessionBind = 38,
+    instanceSpot = 39,
+    transferPrepare = 40,
+    transferReserved = 41,
+    sessionTransferSeal = 42,
+    sessionTransferSealed = 43,
+    sessionTransferRoute = 44,
+    sessionTransferRouted = 45,
+    replyRelayAck = 46,
+};
+enum class flag : std::uint8_t {
+    metadata = 1,
+    boundSession = 2,
+    sourceSpotRid = 4,
+    extension = 8,
+};
+inline constexpr std::uint64_t ridBytes = 255ULL;
+inline constexpr std::uint64_t shortTextBytes = 255ULL;
+inline constexpr std::uint64_t endpointBytes = 4096ULL;
+inline constexpr std::uint64_t blobBytes = 65535ULL;
+inline constexpr std::uint64_t metadataBytes = 1024ULL;
+inline constexpr std::uint64_t packetNameBytes = 255ULL;
+inline constexpr std::uint64_t contentTypeBytes = 255ULL;
+inline constexpr std::uint64_t checkpointReferenceBytes = 4096ULL;
+inline constexpr std::uint64_t authorityStoreVersionBytes = 4096ULL;
+inline constexpr std::uint64_t wireU32CompleteMessageBytes = 4294967295ULL;
+inline constexpr std::uint64_t applicationPayloadAbsoluteBytes = 4294966774ULL;
+inline constexpr std::uint64_t descriptorEnvelopeBytes = 1048576ULL;
+inline constexpr std::uint64_t journalRecordCount = 65535ULL;
+inline constexpr std::uint64_t authorityEnvelopeBytes = 1048576ULL;
+inline constexpr std::uint64_t descriptorPageBytes = 4194304ULL;
+inline constexpr std::uint64_t authorityScanPageBytes = 4194304ULL;
+inline constexpr std::uint64_t checkpointChunkBytes = 67108864ULL;
+inline constexpr std::uint64_t checkpointChunkEnvelopeBytes = 67108886ULL;
+inline constexpr std::uint64_t checkpointChunkCount = 4096ULL;
+inline constexpr std::uint64_t checkpointLogicalBytes = 274877906944ULL;
+inline constexpr std::uint64_t checkpointManifestBytes = 33554432ULL;
+inline constexpr std::uint64_t transferControlEnvelopeBytes = 1048576ULL;
+inline constexpr std::uint64_t weightMax = 100ULL;
+} // namespace zlink::framework::runtime::protocol

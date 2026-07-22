@@ -54,6 +54,7 @@ const actionDefinitions = Object.freeze({
   'remove-binding-service-projection': {scope: 'symbol-reference', meaning: 'Remove this exact Core service symbol reference from the binding.'},
   'remove-binding-service-projection-after-framework-runtime-replacement': {scope: 'whole-file', meaning: 'Remove the binding service projection file after the Framework replacement exists.'},
   'remove-core-service-header-copy-before-core-11-package': {scope: 'partial-file', meaning: 'Remove only the service-header copy operation from the package script.'},
+  'remove-framework-binding-service-projection-reference': {scope: 'partial-file', meaning: 'Remove Core or binding service runtime access while retaining the Framework-owned contract and runtime file.'},
   'remove-core-service-only-document-after-target-meaning-is-owned-by-framework': {scope: 'whole-file', meaning: 'Remove the Core-only service document after Framework owns its contract.'},
   'remove-export-from-core-11': {scope: 'symbol', meaning: 'Remove this exact export symbol from Core 11.'},
   'remove-file': {scope: 'whole-file', meaning: 'Remove the complete file at the stated gate.'},
@@ -69,6 +70,7 @@ const actionDefinitions = Object.freeze({
   'replace-package-payload': {scope: 'whole-file', meaning: 'Replace the complete packaged binary payload.'},
   'retain-and-exclude-from-server-framework-service-migration': {scope: 'whole-file', meaning: 'Retain the adjacent component unchanged outside this migration.'},
   'retain-framework-owned-service-wire-input': {scope: 'whole-file', meaning: 'Retain this Framework-owned service wire input.'},
+  'retain-framework-owned-service-runtime': {scope: 'whole-file', meaning: 'Retain the Framework-owned service contract value type or runtime implementation; this is not a binding projection.'},
   'retain-generic-scheduler-regression-and-remove-service-specific-assertions': {scope: 'partial-file', meaning: 'Retain the generic test and remove only service assertions.'},
   'retain-or-rename-generic-scheduler-and-remove-service-specific-state': {scope: 'partial-file', meaning: 'Retain the generic scheduler and remove only service state.'},
   'retain-pgm-heartbeat-spm-as-independent-transport-setting': {scope: 'whole-file', meaning: 'Retain the independent PGM transport heartbeat implementation.'},
@@ -354,21 +356,25 @@ const bindingDefinitions = {
 const frameworkDefinitions = {
   cpp: {
     root: 'framework/languages/cpp',
+    auditFile: 'framework/languages/cpp/CMakeLists.txt',
     removalGate: 'V11-M8-CLEAN-CPP',
     finalGate: 'V11-M9-PKG-CPP',
   },
   dotnet: {
     root: 'framework/languages/dotnet',
+    auditFile: 'framework/languages/dotnet/src/Zlink.Framework/Zlink.Framework.csproj',
     removalGate: 'V11-M8-CLEAN-DN',
     finalGate: 'V11-M9-PKG-DN',
   },
   java: {
     root: 'framework/languages/java',
+    auditFile: 'framework/languages/java/zlink-framework-core/build.gradle.kts',
     removalGate: 'V11-M8-CLEAN-JVM',
     finalGate: 'V11-M9-PKG-JVM',
   },
   node: {
     root: 'framework/languages/node',
+    auditFile: 'framework/languages/node/packages/framework/package.json',
     removalGate: 'V11-M8-CLEAN-NODE',
     finalGate: 'V11-M9-PKG-NODE',
   },
@@ -1575,7 +1581,7 @@ function frameworkFileRecord(language, file) {
     language,
     category,
     disposition: 'target-contract',
-    action: 'replace-binding-service-projection-with-language-owned-runtime-and-public-raw-binding',
+    action: 'retain-framework-owned-service-runtime',
     targetOwners: [
       ...bindingTargetOwners(language),
       `${targetInternalsRoot}/README.ko.md`,
@@ -1897,6 +1903,31 @@ function fileRecords(repositoryFiles, reviewedCoreRemovalFiles) {
     }
     if (!record) continue;
     if (seen.has(record.id)) throw new Error(`duplicate file classification: ${file}`);
+    seen.add(record.id);
+    records.push(record);
+  }
+  for (const [language, definition] of Object.entries(frameworkDefinitions)) {
+    if (!repositoryFiles.includes(definition.auditFile)) {
+      throw new Error(`Framework removal audit anchor is missing: ${definition.auditFile}`);
+    }
+    const record = {
+      id: `framework-removal-audit:${language}`,
+      file: definition.auditFile,
+      scope: 'framework-consumer',
+      language,
+      category: 'framework-binding-service-projection-removal-audit',
+      disposition: 'remove',
+      action: 'remove-framework-binding-service-projection-reference',
+      targetOwners: [
+        ...bindingTargetOwners(language),
+        `${targetInternalsRoot}/01-runtime-architecture.ko.md`,
+      ],
+      removalGate: language === 'java' ? 'V11-M5-SCAFFOLD-JVM'
+        : language === 'dotnet' ? 'V11-M5-SCAFFOLD-DN'
+          : `V11-M5-SCAFFOLD-${language.toUpperCase()}`,
+      finalGate: definition.finalGate,
+    };
+    if (seen.has(record.id)) throw new Error(`duplicate Framework audit classification: ${record.id}`);
     seen.add(record.id);
     records.push(record);
   }

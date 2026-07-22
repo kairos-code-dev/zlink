@@ -25,12 +25,14 @@ import {
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import {
   SubmitError,
-  SubmitResult,
+  SubmitResult
+} from '@zlink-systems/zlink';
+import {
   type MeshPublishDetail,
   ReceiveKind,
   type ReadyRecord,
   type ReceiveRecord
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkConfigurationException,

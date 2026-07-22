@@ -291,6 +291,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 lifecycleGeneration, DescriptorRevision: 1,
                 endpoint,
                 new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
+                new HashSet<string>(StringComparer.Ordinal),
                 Draining: false,
                 SecurityIdentity: string.Empty,
                 OwnerId: string.Empty,

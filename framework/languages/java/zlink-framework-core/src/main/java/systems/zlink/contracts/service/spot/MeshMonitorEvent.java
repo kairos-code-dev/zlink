@@ -1,0 +1,32 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink.contracts.service.spot;
+
+import systems.zlink.contracts.core.RoutingId;
+
+/** One event received from a MeshNode monitor. */
+public record MeshMonitorEvent(
+    MeshMonitorEventKind kind,
+    long timestampMs,
+    long meshLifecycleGeneration,
+    long meshDescriptorRevision,
+    MeshNodeState meshState,
+    RoutingId peerRid,
+    long peerLifecycleGeneration,
+    long peerDescriptorRevision,
+    /** Owner kind, or {@code null} when the event is not associated with an owner. */
+    OwnerKind ownerKind,
+    RoutingId spotRid,
+    ActorRef actor,
+    String channelName,
+    OperationId operationId,
+    int snapshotRemoteTargetCount,
+    int admittedRemoteTargetCount,
+    int droppedRemoteTargetCount,
+    int unreachableRemoteTargetCount,
+    int snapshotLocalSpotCount,
+    int admittedLocalSpotCount,
+    int droppedLocalSpotCount,
+    int resultCode,
+    int failureErrno) {
+}

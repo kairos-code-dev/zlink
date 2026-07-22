@@ -131,7 +131,7 @@ export function decodeRemoteActorJoinPayload(
       payload.boundSessionTargetNodeRidHex,
       transferProtocol
         ? payload.boundSessionSpotRid
-        : payload.boundSessionSpotRid ?? payload.sourceSpotRid ?? received.spotRid ?? undefined,
+        : payload.boundSessionSpotRid ?? payload.sourceSpotRid,
       transferProtocol ? payload.boundSessionSpotRidHex : payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex,
       payload.boundSessionNodeRid,
       payload.boundSessionNodeRidHex,

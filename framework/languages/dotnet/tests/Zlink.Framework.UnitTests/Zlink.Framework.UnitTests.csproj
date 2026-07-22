@@ -80,6 +80,7 @@
         <Compile Include="Runtime/MeshNodeRouteDispatcherTests.cs"/>
         <Compile Include="Runtime/PublicContractSnapshotTests.cs"/>
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
+        <Compile Include="Runtime/ServiceRuntimeFoundationTests.cs"/>
         <Compile Include="Runtime/SessionActorCoordinatorTests.cs"/>
         <Compile Include="Runtime/StreamWireInteropTests.cs"/>
         <Compile Include="Runtime/StreamSessionLivenessTests.cs"/>

@@ -15,6 +15,16 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return new ZLinkRoutedSpotRequestCall<TRequest>(activation, RequireResolvedHandle(target), request);
     }
 
+    public IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message)
+    {
+        return new ZLinkInstanceSpotSendCall<TMessage>(runtime, target, message);
+    }
+
+    public IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request)
+    {
+        return new ZLinkInstanceSpotRequestCall<TRequest>(runtime, target, request);
+    }
+
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
         return new ZLinkCurrentSpotPublishCall<TEvent>(activation, channelName, topic, message);

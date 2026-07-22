@@ -1,9 +1,11 @@
 import {
-  Message,
-  type MeshOperationId,
-  type ReceiveKindData,
-  type ReceiveRecord
+  Message
 } from '@zlink-systems/zlink';
+import type {
+  MeshOperationId,
+  ReceiveKindData,
+  ReceiveRecord
+} from '../foundation/service-runtime-contracts';
 
 export interface ZLinkMeshCompletion {
   readonly terminalResult: number;

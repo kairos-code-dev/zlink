@@ -6,7 +6,6 @@ import {
   RequestError,
   SendFlags
 } from '@zlink-systems/zlink';
-import type { ActorRef as BindingActorRef } from '@zlink-systems/zlink';
 import type {
   ActorRef,
   ZLinkActorClient,
@@ -22,6 +21,7 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type {
+  ZLinkBackendActorRef,
   ZLinkBackendMeshNode,
   ZLinkMeshCompletionTable
 } from '../backend';
@@ -39,7 +39,6 @@ import {
 } from '../streams/protocol';
 import type { ZLinkStoreLocationResolvers } from '../locations';
 import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
-import { toBindingRoutingId } from '../routing-id';
 import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
@@ -185,7 +184,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
 
   private submitActorSend(
     meshName: string,
-    actor: BindingActorRef,
+    actor: ZLinkBackendActorRef,
     parts: readonly Message[]
   ): ZLinkSubmitResult {
     const node = this.requireNode(meshName);
@@ -206,7 +205,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
 
   private async submitActorRequest<TReply>(
     meshName: string,
-    actor: BindingActorRef,
+    actor: ZLinkBackendActorRef,
     parts: readonly Message[],
     timeoutMs: number | undefined,
     signal?: AbortSignal
@@ -302,9 +301,9 @@ export async function forwardEncodedActorPacket(
   return decodeActorReply(completion.parts, serializers);
 }
 
-function toBackendActorRef(actor: ActorRef): BindingActorRef {
+function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
-    nodeRid: toBindingRoutingId(actor.nodeRid),
+    nodeRid: actor.nodeRid,
     actorId: actor.actorId,
     generation: actor.generation
   };

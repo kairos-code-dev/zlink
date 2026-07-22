@@ -1,9 +1,8 @@
 import {
   ActorTransferPhase,
   ActorTransferRole,
-  type ActorRef as NativeActorRef,
   type ActorTransferControlPayload
-} from '@zlink-systems/zlink';
+} from '../foundation/service-runtime-contracts';
 import type {
   ActorRef,
   RoutingId,
@@ -85,7 +84,7 @@ export class ZLinkActorTransferAuthorityRuntime {
     meshName: string,
     actorId: string,
     transferId: string,
-    nativeTarget: NativeActorRef,
+    nativeTarget: ActorRef,
     membershipEpoch: bigint,
     signal?: AbortSignal
   ): Promise<void> {

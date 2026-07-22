@@ -14,7 +14,7 @@ record ZLinkJavaSubscriberSocket(SubSocket socket)
     @Override public void bind(String endpoint) { socket.bind(endpoint); }
     @Override public void connect(String endpoint) { socket.connect(endpoint); }
     @Override public void disconnect(String endpoint) { socket.disconnect(endpoint); }
-    @Override public void setChannelName(String channelName) { socket.setChannelName(channelName); }
+    @Override public void setChannelName(String channelName) { ZLinkJavaSocketSupport.validateChannelName(channelName); }
     @Override public void setSubscription(String topic) { socket.setSubscription(topic); }
 
     @Override

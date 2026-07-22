@@ -39,6 +39,11 @@ internal sealed class ZLinkCallMetadata
         return ZLinkMeshMetadataCodec.Encode(new ZLinkMessageMetadata(_values));
     }
 
+    internal IReadOnlyDictionary<string, string> Snapshot() =>
+        _values is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(_values, StringComparer.Ordinal);
+
     public ZlinkStreamMetadata ToStreamMetadata()
     {
         _ = Encode();

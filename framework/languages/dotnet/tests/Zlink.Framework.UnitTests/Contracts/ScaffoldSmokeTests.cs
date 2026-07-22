@@ -123,6 +123,7 @@ public sealed class ScaffoldSmokeTests
     {
         var violations = typeof(IZLinkActor).Assembly
             .GetExportedTypes()
+            .Where(static type => type != typeof(ActorRef))
             .Where(static type => type.Namespace is null
                                   || (!type.Namespace.Equals("Zlink.Framework.Contracts", StringComparison.Ordinal)
                                       && !type.Namespace.StartsWith("Zlink.Framework.Contracts.",
@@ -132,6 +133,8 @@ public sealed class ScaffoldSmokeTests
             .ToArray();
 
         Assert.Empty(violations);
+        Assert.Same(typeof(IZLinkActor).Assembly, typeof(ActorRef).Assembly);
+        Assert.Equal("Systems.Zlink.ActorRef", typeof(ActorRef).FullName);
     }
 
     private static void AssertBackendLeakageFree(Assembly assembly)

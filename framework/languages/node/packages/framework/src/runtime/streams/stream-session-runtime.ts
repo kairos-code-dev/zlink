@@ -28,7 +28,7 @@ import type {
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
 import type { ZLinkMeshCompletionTable } from '../backend/mesh-completion-table';
-import type { StreamSessionService } from '@zlink-systems/zlink';
+import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
   decodeStreamHeader,
   messageToBytes,

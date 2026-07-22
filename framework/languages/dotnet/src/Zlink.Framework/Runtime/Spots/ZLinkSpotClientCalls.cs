@@ -20,6 +20,16 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
             request);
     }
 
+    public IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message)
+    {
+        return ZLinkSpotAmbientContext.RequireCurrent().Outbound.SendToSpot(target, message);
+    }
+
+    public IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request)
+    {
+        return ZLinkSpotAmbientContext.RequireCurrent().Outbound.RequestToSpot(target, request);
+    }
+
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
         return ZLinkSpotAmbientContext.RequireCurrent().Outbound.Publish(channelName, topic, message);
@@ -41,6 +51,86 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
                ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
+}
+
+internal sealed class ZLinkInstanceSpotSendCall<TMessage>(
+    ZLinkFrameworkRuntime runtime,
+    InstanceSpotAddress target,
+    TMessage message) : IZLinkSendCall
+{
+    private readonly ZLinkCallMetadata _metadata = new();
+
+    public IZLinkSendCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var handle = await runtime.ResolveInstanceSpotHandleAsync(target, cancellationToken)
+            .ConfigureAwait(false);
+        if (handle is null)
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TargetNotFound);
+
+        var call = new ZLinkRouteSpotSendCall<TMessage>(runtime, handle, message);
+        call.Metadata(new ZLinkMessageMetadata(_metadata.Snapshot()));
+        return await call.SubmitAsync(cancellationToken).ConfigureAwait(false);
+    }
+}
+
+internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
+    ZLinkFrameworkRuntime runtime,
+    InstanceSpotAddress target,
+    TRequest request) : IZLinkRequestCall
+{
+    private readonly ZLinkCallMetadata _metadata = new();
+    private TimeSpan? _timeout;
+
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        _timeout = timeout;
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
+        ExecuteAsync<TReply>(cancellationToken);
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default) =>
+        ExecuteAsync<TReply>(cancellationToken);
+
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
+    {
+        var handle = await runtime.ResolveInstanceSpotHandleAsync(target, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                $"Instance Spot '{target.InstanceSpotType}/{target.SpotRid}' is not ready.");
+        var call = new ZLinkRouteSpotRequestCall<TRequest>(runtime, handle, request);
+        if (_timeout is { } timeout) call.Timeout(timeout);
+        call.Metadata(new ZLinkMessageMetadata(_metadata.Snapshot()));
+        return await call.Async<TReply>(cancellationToken).ConfigureAwait(false);
+    }
 }
 
 internal sealed class ZLinkRoutedSpotSendCall<TMessage>(

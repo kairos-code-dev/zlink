@@ -110,8 +110,47 @@ function forbiddenPatterns(scope) {
   const coreProjection = /zlink_(?:mesh_node|spot|actor|instance_spot|stream_session)|ZLINK_(?:OPT_HEARTBEAT|MESH_|SPOT_|ACTOR_|INSTANCE_SPOT_|STREAM_SESSION_)/;
   if (scope === "core") return [coreProjection, /zlink\/service\//, /runtime\/services\/mesh/];
   if (scope.startsWith("binding:")) return [coreProjection, /(?:contracts|runtime)[./\\]service/, /createSpotNode|SpotDispatchEvent|bindActor|sendBoundActor/];
-  if (scope.startsWith("framework:")) return [coreProjection, /native.*(?:meshNode|spot|actor|instanceSpot|streamSession)/i];
+  if (scope.startsWith("framework:")) {
+    const language = scope.slice("framework:".length);
+    const removedCoreServiceApi = /\bzlink_(?:mesh_node|spot|actor|instance_spot|stream_session)_[A-Za-z0-9_]+\b/;
+    const languagePatterns = {
+      cpp: [/<zlink\/Contracts\/Service\//, /<zlink\/service\//],
+      dotnet: [/\b(?:DllImport|LibraryImport)\b[^\n]*\bzlink_(?:mesh_node|spot|actor|instance_spot|stream_session)_/i,
+        /\b(?:MethodInfo|FieldInfo)\.(?:Invoke|GetValue)\b/, /BindingFlags\.(?:NonPublic|Private)/],
+      jvm: [/\bsystems\.zlink\.runtime\.(?:service|nativeapi\.(?:InternalAccess|NativeServiceSymbols|ServiceInterop))\b/,
+        /\bInternalAccess\b/, /\bnativeContext\s*\([^)]*\)\s*\.\s*createMeshNode\s*\(/],
+      node: [/from\s+["']@zlink-systems\/zlink\/(?:contracts|runtime)\/service/i,
+        /\b(?:binding|zlink)\.createMeshNode\s*\(/, /(?:^|\/)build\/(?:Release|Debug)\/[^\s"']*\.node/]
+    };
+    return [removedCoreServiceApi, ...(languagePatterns[language] ?? [])];
+  }
   return [/perf_(?:multi_)?spot|SPOT_(?:PUBSUB|REQREP|SENDSEND)|comp_src_spot|zlink_(?:spot|mesh_node)_/i];
+}
+function frameworkSourceRoot(scope, repoRoot) {
+  const language = scope.slice("framework:".length);
+  const relative = {
+    cpp: "framework/languages/cpp/framework",
+    dotnet: "framework/languages/dotnet/src/Zlink.Framework",
+    jvm: "framework/languages/java/zlink-framework-core/src/main",
+    node: "framework/languages/node/packages/framework/src"
+  }[language];
+  assert(relative, `unsupported Framework source scope: ${scope}`);
+  return join(repoRoot, relative);
+}
+function frameworkSourceFiles(root, output = []) {
+  if (!existsSync(root)) return output;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (["build", "dist", "node_modules", ".gradle", "obj", "bin"].includes(entry.name)) continue;
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) frameworkSourceFiles(path, output);
+    else if (/\.(?:c|cc|cpp|cxx|h|hh|hpp|cs|java|kt|kts|js|mjs|cjs|ts|tsx)$/i.test(entry.name)) output.push(path);
+  }
+  return output;
+}
+function frameworkProjectionSource(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, (value) => value.replace(/[^\n]/g, " "))
+    .replace(/\/\/[^\n]*/g, (value) => " ".repeat(value.length));
 }
 function artifactRoots(scope, repoRoot) {
   if (scope === "core") return [join(repoRoot, "core/build")];
@@ -130,7 +169,7 @@ function artifactFiles(root, output = []) {
   const stat = statSync(root);
   if (stat.isFile()) { output.push(root); return output; }
   for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (["node_modules", ".pytest_cache", "results", "baseline", "archive", "tmp"].includes(entry.name)) continue;
+    if (["node_modules", ".pytest_cache", "results", "baseline", "archive", "tmp", "package-consumer-runs"].includes(entry.name)) continue;
     artifactFiles(join(root, entry.name), output);
   }
   return output;
@@ -166,6 +205,19 @@ function verify(scope, inventoryPath, repoRoot) {
   for (const record of selected) {
     const token = record.symbol ?? record.coreSymbol;
     if (token) symbolRecordsByFile.set(record.file, [...(symbolRecordsByFile.get(record.file) ?? []), record]);
+  }
+  if (scope.startsWith("framework:")) {
+    for (const path of frameworkSourceFiles(frameworkSourceRoot(scope, repoRoot))) {
+      const text = frameworkProjectionSource(readFileSync(path, "utf8"));
+      const hit = patterns.find((pattern) => pattern.test(text));
+      if (hit) {
+        violations.push({
+          kind: "framework-service-projection-reference",
+          path: path.slice(repoRoot.length + 1),
+          matches: [String(hit)]
+        });
+      }
+    }
   }
   for (const record of selected) {
     assert(typeof record.id === "string" && typeof record.file === "string" && typeof record.action === "string", `invalid inventory removal record: ${record.id ?? "<missing>"}`);
@@ -288,7 +340,37 @@ int raw_retained();
     const result = JSON.parse(readFileSync(evidence, "utf8"));
     assert(result.status === "passed" && result.checks.absentSymbols === 2 && result.checks.referenceNoHits === 1
       && result.checks.absentFiles === 1 && result.checks.artifactFiles === 1, "self-test evidence mismatch");
-    process.stdout.write("removal verifier self-test passed: qualified member scope, raw-name preservation, symbol/file no-hit, runtime isolation, and negative mutation\n");
+    for (const language of ["cpp", "dotnet", "jvm", "node"]) {
+      const directory = language === "jvm" ? "java" : language;
+      assert(inScope({ file: `framework/languages/${directory}/audit`,
+        action: "remove-framework-binding-service-projection-reference" }, `framework:${language}`),
+      `Framework audit record is not selected: ${language}`);
+    }
+    const frameworkRoot = join(work,
+      "framework/languages/java/zlink-framework-core/src/main/systems/zlink/contracts/service/spot");
+    mkdirSync(frameworkRoot, { recursive: true });
+    const frameworkValueType = join(frameworkRoot, "MeshNodeStatus.java");
+    writeFileSync(frameworkValueType,
+      "package systems.zlink.contracts.service.spot; record MeshNodeStatus(int peers) {}\n");
+    const frameworkAudit = join(work, "framework/languages/java/zlink-framework-core/build.gradle.kts");
+    mkdirSync(dirname(frameworkAudit), { recursive: true });
+    writeFileSync(frameworkAudit, "plugins { java }\n");
+    const frameworkInventory = { schema: 1, version: "self-test",
+      corePublicSymbols: [], coreExportSymbols: [], bindingPublicDeclarations: [],
+      bindingProjectionUnits: [], bindingCoreSymbolReferences: [], files: [
+        { id: "framework-jvm-audit", file: "framework/languages/java/zlink-framework-core/build.gradle.kts",
+          action: "remove-framework-binding-service-projection-reference" }
+      ] };
+    writeFileSync(inventoryPath, JSON.stringify(frameworkInventory));
+    run({ scope: "framework:jvm", inventory: inventoryPath, evidence }, work);
+    writeFileSync(frameworkValueType,
+      "package systems.zlink.contracts.service.spot; class Bad { InternalAccess access; }\n");
+    let privateAccessRejected = false;
+    try { run({ scope: "framework:jvm", inventory: inventoryPath, evidence }, work); }
+    catch (error) { privateAccessRejected = error.message.includes("violation"); }
+    assert(privateAccessRejected,
+      "Framework self-test did not reject removed binding private access");
+    process.stdout.write("removal verifier self-test passed: qualified member scope, raw-name preservation, symbol/file no-hit, runtime isolation, Framework-owned value-type allowance, and private-access negative mutation\n");
   } finally { rmSync(work, { recursive: true, force: true }); }
 }
 

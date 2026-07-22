@@ -15,9 +15,9 @@ import {
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import {
   SubmitResult,
-  type Message,
-  type ReceiveRecord
+  type Message
 } from '@zlink-systems/zlink';
+import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException,
   type ZLinkRouteChannelOptions

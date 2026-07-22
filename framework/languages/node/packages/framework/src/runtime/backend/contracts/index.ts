@@ -4,15 +4,22 @@ import type {
   RequestCallback,
   RequestResult,
   SendFlagsValue,
-  MeshNode,
-  MeshNodeStatus,
-  MeshPeerEntry,
-  ReadyBatch,
-  ReceiveBatch,
+  SubmitResult,
   TopicMessage,
   MonitorEventType,
   MessageLike
 } from '@zlink-systems/zlink';
+import type {
+  MeshNodeStatus,
+  MeshOperationId,
+  MeshPeerEntry,
+  MeshPublisher,
+  ReadyBatch,
+  ReadyRecord,
+  ReceiveBatch,
+  ServiceSpot,
+  StreamSessionService
+} from '../../foundation/service-runtime-contracts';
 import type {
   RoutingId,
   ZLinkSubmitResult
@@ -28,11 +35,126 @@ export const ZLINK_BACKEND_SPOT_NODE_MODE_ALL = 3 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_ONLY = 0x00000001;
 export const ZLINK_BACKEND_SPOT_ROUTE_BRIDGE_ROUTE_WITH_CHANNEL_INBOUND = 0x00000003;
 
-export type ZLinkBackendMeshNode = MeshNode;
 export type ZLinkBackendMeshNodeStatus = MeshNodeStatus;
 export type ZLinkBackendMeshPeerEntry = MeshPeerEntry;
 export type ZLinkBackendReadyBatch = ReadyBatch;
 export type ZLinkBackendReceiveBatch = ReceiveBatch;
+
+export interface ZLinkBackendMeshNode {
+  setRoutingId(routingId: unknown): void;
+  setBind(endpoint: string): void;
+  start(): void;
+  shutdown(timeoutMs: number): RequestResult;
+  close(): void;
+  addChannelName(name: string): void;
+  setChannelWeight(name: string, weight: number): void;
+  connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint;
+  removePeerConnection(intentId: bigint): void;
+  disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void;
+  sendToNode(
+    targetRid: unknown,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number }
+  ): SubmitResult;
+  requestToNode(
+    targetRid: unknown,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }
+  ): MeshOperationId;
+  sendToChannel(
+    channelName: string,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number }
+  ): SubmitResult;
+  requestToChannel(
+    channelName: string,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }
+  ): MeshOperationId;
+  status(): MeshNodeStatus;
+  peers(): MeshPeerEntry[];
+  peerChannels(
+    peerRid: unknown,
+    lifecycleGeneration: bigint
+  ): { readonly names: string[]; readonly weights: number[] };
+  createPublisher(): MeshPublisher;
+  createSpot(): ServiceSpot;
+  entrySpot(): ServiceSpot;
+  getOrCreateSpot(routingId: unknown): { readonly spot: ServiceSpot; readonly created: boolean };
+  createActor(
+    actorId: string,
+    parts?: MessageLike | readonly MessageLike[]
+  ): ZLinkBackendActorRef;
+  actorLookup(actorId: string): {
+    readonly actor: ZLinkBackendActorRef;
+    readonly spotRid: unknown;
+    readonly spotGeneration: bigint;
+    readonly membershipEpoch: bigint;
+  };
+  lookupRemoteActor(targetNodeRid: unknown, actorId: string, timeoutMs?: number): MeshOperationId;
+  destroyActor(actor: ZLinkBackendActorRef, timeoutMs?: number): MeshOperationId;
+  joinActorSpot(
+    actor: ZLinkBackendActorRef,
+    targetNodeRid: unknown,
+    targetSpotRid: unknown,
+    targetSpotGeneration: bigint,
+    parts?: MessageLike | readonly MessageLike[],
+    timeoutMs?: number
+  ): MeshOperationId;
+  joinActorEntrySpot(
+    actor: ZLinkBackendActorRef,
+    targetNodeRid: unknown,
+    parts?: MessageLike | readonly MessageLike[],
+    timeoutMs?: number
+  ): MeshOperationId;
+  sendToActor(
+    actor: ZLinkBackendActorRef,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number }
+  ): SubmitResult;
+  requestToActor(
+    actor: ZLinkBackendActorRef,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }
+  ): MeshOperationId;
+  actorSendToActor(
+    source: ZLinkBackendActorRef,
+    target: ZLinkBackendActorRef,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number }
+  ): SubmitResult;
+  actorRequestToActor(
+    source: ZLinkBackendActorRef,
+    target: ZLinkBackendActorRef,
+    parts: MessageLike | readonly MessageLike[],
+    options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }
+  ): MeshOperationId;
+  sendActorBoundSession(
+    actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
+    parts: MessageLike | readonly MessageLike[],
+    flags?: number
+  ): SubmitResult;
+  closeActorBoundSession(
+    actor: ZLinkBackendActorRef,
+    expectedBindingGeneration: bigint,
+    timeoutMs?: number
+  ): MeshOperationId;
+  leaveActor(
+    actor: ZLinkBackendActorRef,
+    expectedMembershipEpoch: bigint,
+    timeoutMs?: number
+  ): MeshOperationId;
+  setReadyHandler(handler: (readyDomains: number) => number): void;
+  createReadyBatch(capacity: number): ReadyBatch;
+  createReceiveBatch(messageCapacity: number, partCapacity: number, byteCapacity: number): ReceiveBatch;
+  drainReady(
+    domains: number,
+    batch: ReadyBatch,
+    flags?: number
+  ): { readonly ok: boolean; readonly hasResidue: boolean; readonly records: readonly ReadyRecord[] };
+  createStreamSessionService(stream: unknown): StreamSessionService;
+}
 
 export enum ZLinkBackendSpotDispatchEvent {
   SubscribeReadable = 1,
@@ -391,6 +513,8 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
   /** Core lifecycle generation when this object adapts a formal RouteMesh Spot. */
   readonly lifecycleGeneration?: bigint;
   setRoutingId(routingId: RoutingId): void;
+  status(): { readonly routingId: RoutingId; readonly lifecycleGeneration: bigint };
+  close(): void;
   setSubscription(channelName: string, topic: string): void;
   subscribe(result: TopicMessage, flags: ZLinkBackendRecvFlags): boolean;
   recvActorLifecycle(flags: ZLinkBackendRecvFlags): unknown | null;

@@ -11,7 +11,6 @@ import systems.zlink.contracts.errors.ZlinkHandlerException;
 import systems.zlink.contracts.errors.HandlerResult;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.RuntimeResources;
@@ -75,12 +74,6 @@ public final class NativeTimer implements ZlinkTimer {
             throw new ZlinkConfigException(ConfigResult.INVALID_HANDLE);
         }
         TIMERS.put(handle.address(), this);
-    }
-
-    public static ZlinkTimer fromSpot(Spot spot) {
-        Objects.requireNonNull(spot, "spot");
-        MemorySegment handle = Native.spotTimerNew(InternalAccess.spotHandle(spot));
-        return new NativeTimer(handle, true);
     }
 
     static ZlinkTimer fromBorrowedHandle(MemorySegment handle) {

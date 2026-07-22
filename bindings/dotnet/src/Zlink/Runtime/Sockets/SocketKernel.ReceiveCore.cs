@@ -77,17 +77,16 @@ internal sealed partial class SocketKernel
     }
 
     private bool ReceiveRoutedParts(int flags,
-        out RoutingIdSnapshot routingId, out RoutingIdSnapshot spotRid,
+        out RoutingIdSnapshot routingId,
         out ulong requestSeq, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData = false)
     {
         routingId = default;
-        spotRid = default;
         requestSeq = 0;
         singlePart = null;
         parts = null;
         if (_policy.UsesRouterRoutedReceiveEnvelope)
-            return ReceiveRouterParts(flags, out routingId, out spotRid,
+            return ReceiveRouterParts(flags, out routingId,
                 out requestSeq, out singlePart,
                 out parts, allowNoData);
 
@@ -151,14 +150,13 @@ internal sealed partial class SocketKernel
     }
 
     private bool ReceiveRouterParts(int flags,
-        out RoutingIdSnapshot routingId, out RoutingIdSnapshot spotRid,
+        out RoutingIdSnapshot routingId,
         out ulong requestSeq, out Message? singlePart,
         out MultipartMessageCollection? parts, bool allowNoData)
     {
         var nativeParts = Array.Empty<ZlinkMsg>();
         var nativePartCount = 0;
         routingId = default;
-        spotRid = default;
         requestSeq = 0;
         singlePart = null;
         parts = null;
@@ -201,8 +199,6 @@ internal sealed partial class SocketKernel
                 if (nativePartCount == 0)
                 {
                     routingId = RoutingIdSnapshot.FromPointer(sourceNodeRid);
-                    // Core 10.0.0 removed the spot rid from the ROUTER recv
-                    // envelope; the source spot rid is no longer reported here.
                     requestSeq = receivedRequestSeq;
                 }
 

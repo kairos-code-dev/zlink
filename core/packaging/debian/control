@@ -15,7 +15,7 @@ Build-Depends: debhelper (>= 9),
 Standards-Version: 3.9.8
 Homepage: https://github.com/kairos-code-dev/zlink
 
-Package: libzlink10
+Package: libzlink11
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Pre-Depends: ${misc:Pre-Depends}
@@ -28,18 +28,18 @@ Description: lightweight messaging kernel (shared library)
  .
  This package contains the libzlink shared library.
 
-Package: libzlink10-dev
+Package: libzlink11-dev
 Architecture: any
 Section: libdevel
-Depends: libzlink10 (= ${binary:Version}), ${misc:Depends},
+Depends: libzlink11 (= ${binary:Version}), ${misc:Depends},
  libnorm-dev,
  libpgm-dev,
  libunwind-dev | libunwind8-dev | libunwind7-dev,
  libnss3-dev,
  libgnutls28-dev | libgnutls-dev,
  libbsd-dev,
-Conflicts: libzlink-dev, libzlink6-dev, libzlink5-dev
-Replaces: libzlink6-dev, libzlink5-dev
+Conflicts: libzlink-dev, libzlink10-dev, libzlink6-dev, libzlink5-dev
+Replaces: libzlink10-dev, libzlink6-dev, libzlink5-dev
 Provides: libzlink-dev
 Multi-Arch: same
 Description: lightweight messaging kernel (development files)
@@ -50,11 +50,11 @@ Description: lightweight messaging kernel (development files)
  .
  This package contains the Zlink development libraries and header files.
 
-Package: libzlink10-dbg
+Package: libzlink11-dbg
 Architecture: any
 Priority: extra
 Section: debug
-Depends: libzlink10 (= ${binary:Version}), ${misc:Depends}
+Depends: libzlink11 (= ${binary:Version}), ${misc:Depends}
 Multi-Arch: same
 Description: lightweight messaging kernel (debugging symbols)
  zlink is a modern messaging library that provides asynchronous message

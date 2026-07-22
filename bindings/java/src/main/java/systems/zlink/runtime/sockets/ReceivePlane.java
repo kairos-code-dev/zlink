@@ -43,12 +43,12 @@ final class ReceivePlane {
             return false;
         }
         if (!frame.more()) {
-            ContractAccess.receivedPopulateRoutedSinglePart(result, null, null,
-                frame, 0L, false, null, null);
+            ContractAccess.receivedPopulateRoutedSinglePart(result, null, frame,
+                0L, false, null, null);
             return true;
         }
 
-        Received fresh = InternalAccess.receivedLazy((byte[]) null, null, frame,
+        Received fresh = InternalAccess.receivedLazy((byte[]) null, frame,
             new BasicReceiveCursor(flags.getValue()), 0L, false, null, null);
         ContractAccess.receivedAdoptFrom(result, fresh);
         return true;
@@ -198,10 +198,10 @@ final class ReceivePlane {
                     InternalAccess.messageFinishReceive(frame, hasMore);
                     if (!hasMore) {
                         ContractAccess.receivedPopulateRoutedSinglePart(result,
-                            null, null, frame, 0L, false, null, null);
+                            null, frame, 0L, false, null, null);
                     } else {
                         Received fresh = InternalAccess.receivedLazy(
-                            (byte[]) null, null, frame,
+                            (byte[]) null, frame,
                             new BasicReceiveCursor(
                                 ReceiveFlag.DONTWAIT.getValue()),
                             0L, false, null, null);
@@ -252,7 +252,7 @@ final class ReceivePlane {
             }
         };
         Received received = InternalAccess.receivedLazy(
-            routingId, null, firstPart, cursor, 0L, false,
+            routingId, firstPart, cursor, 0L, false,
             null, onTerminal);
         ref[0] = received;
         return registerLazyReceive(received, hasMore);

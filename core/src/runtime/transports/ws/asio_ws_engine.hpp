@@ -100,9 +100,6 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     int push_one_then_decode_and_push (msg_t *msg_);
 
     int process_command_message (msg_t *msg_);
-    int produce_ping_message (msg_t *msg_);
-    int process_heartbeat_message (msg_t *msg_);
-    int produce_pong_message (msg_t *msg_);
     void set_last_error (uint8_t code_, const char *reason_);
     void send_error_frame (uint8_t code_, const char *reason_);
 
@@ -268,14 +265,9 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     size_t _peer_routing_id_size;
 
     bool _subscription_required;
-    int _heartbeat_timeout;
-    std::vector<unsigned char> _heartbeat_ctx;
 
     //  Routing ID message
     msg_t _routing_id_msg;
-
-    //  PONG message (for heartbeat)
-    msg_t _pong_msg;
 
 #if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;
@@ -288,16 +280,10 @@ class asio_ws_engine_t ZLINK_FINAL : public i_engine
     //  Timer IDs
     enum
     {
-        handshake_timer_id = 0x40,
-        heartbeat_ivl_timer_id = 0x80,
-        heartbeat_timeout_timer_id = 0x81,
-        heartbeat_ttl_timer_id = 0x82
+        handshake_timer_id = 0x40
     };
 
     bool _has_handshake_timer;
-    bool _has_ttl_timer;
-    bool _has_timeout_timer;
-    bool _has_heartbeat_timer;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_engine_t)
 };

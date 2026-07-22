@@ -43,7 +43,7 @@ export interface ContextOptions {
   removeThreadAffinity(cpu: number): void;
 }
 
-/** A messaging context: the factory and owner of sockets and services. */
+/** A messaging context: the factory and owner of sockets and event sources. */
 export interface Context {
   /** The context-wide options facade. */
   readonly options: ContextOptions;

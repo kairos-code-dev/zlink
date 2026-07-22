@@ -20,6 +20,10 @@ Payload data moves between socket semantics and engines through pipe queues.
 Each connection is pinned to one I/O thread, so multiple I/O threads do not
 mutate one connection's engine state concurrently.
 
+The `send`/`publish`/`send_rid` hot paths can be called concurrently on the
+supported handle types. Low-frequency control paths serialize for correctness.
+Receive remains single-consumer unless a formal API states otherwise.
+
 ## 3. Callbacks
 
 Socket-message and transport-monitor callbacks run on the thread defined by

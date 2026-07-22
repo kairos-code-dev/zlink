@@ -34,9 +34,7 @@ public sealed class test_socket_surface
         string[] hiddenRuntimeTypeNames =
         {
             "Systems.Zlink.Context",
-            "Systems.Zlink.SocketBase",
-            "Systems.Zlink.MeshNode",
-            "Systems.Zlink.Spot"
+            "Systems.Zlink.SocketBase"
         };
 
         string[] exportedTypeNames = typeof(Zlink).Assembly.GetExportedTypes()
@@ -50,38 +48,6 @@ public sealed class test_socket_surface
             typeName => typeName.StartsWith(
                 "Systems.Zlink.Runtime.",
                 StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void context_exposes_mesh_node()
-    {
-        Assert.Equal(typeof(IMeshNode),
-            typeof(IContext).GetMethod(
-                nameof(IContext.CreateMeshNode),
-                Type.EmptyTypes)!.ReturnType);
-        Assert.Equal(typeof(IMeshNode),
-            typeof(IContext).GetMethod(
-                nameof(IContext.CreateMeshNode),
-                new[] { typeof(MeshNodeOptions) })!.ReturnType);
-
-    }
-
-    [Fact]
-    public void mesh_node_exposes_pull_dispatch_and_spot_factories()
-    {
-        Assert.True(HasPublicInstanceMethod(
-            typeof(IMeshNode),
-            nameof(IMeshNode.DrainReady),
-            typeof(MeshReadyDomains),
-            typeof(MeshReadyBatch),
-            typeof(RecvFlags)));
-        Assert.Equal(typeof(ISpot),
-            typeof(IMeshNode).GetMethod(nameof(IMeshNode.CreateSpot))!.ReturnType);
-        Assert.Equal(typeof(ISpot),
-            typeof(IMeshNode).GetMethod(nameof(IMeshNode.EntrySpot))!.ReturnType);
-        Assert.Equal(typeof(ISpot),
-            typeof(IMeshNode).GetMethod(nameof(IMeshNode.GetOrCreateSpot))!
-                .ReturnType);
     }
 
     [Fact]

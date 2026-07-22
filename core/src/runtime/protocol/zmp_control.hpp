@@ -23,33 +23,12 @@ namespace zmp_control
 const size_t hello_min_body_size = 3;
 const size_t hello_max_body_size = 3 + 255;
 
-enum heartbeat_action_kind_t
-{
-    heartbeat_action_none = 0,
-    heartbeat_action_send_ack
-};
-
 enum command_message_kind_t
 {
     command_message_invalid = 0,
-    command_message_heartbeat,
     command_message_ready,
     command_message_error,
     command_message_data_after_ready
-};
-
-struct heartbeat_action_t
-{
-    heartbeat_action_t () :
-        kind (heartbeat_action_none), ttl_ds (0), ctx (NULL), ctx_len (0), error_reason (NULL)
-    {
-    }
-
-    heartbeat_action_kind_t kind;
-    uint16_t ttl_ds;
-    const unsigned char *ctx;
-    size_t ctx_len;
-    const char *error_reason;
 };
 
 struct hello_parse_result_t
@@ -356,8 +335,6 @@ inline command_message_kind_t classify_command_message (msg_t *msg_,
     }
 
     const uint8_t type = *(static_cast<const uint8_t *> (msg_->data ()));
-    if (type == zmp_control_heartbeat || type == zmp_control_heartbeat_ack)
-        return command_message_heartbeat;
     if (type == zmp_control_ready)
         return command_message_ready;
     if (type == zmp_control_error)
@@ -403,112 +380,6 @@ inline int parse_error_frame (msg_t *msg_, uint8_t *code_out_, const char **erro
     return -1;
 }
 
-inline int build_heartbeat_ping (msg_t *msg_, uint16_t ttl_ds_)
-{
-    if (!msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const size_t ctx_len = 0;
-    const size_t size = 4 + ctx_len;
-    int rc = msg_->init_size (size);
-    errno_assert (rc == 0);
-    msg_->set_flags (msg_t::command);
-
-    unsigned char *data = static_cast<unsigned char *> (msg_->data ());
-    data[0] = zmp_control_heartbeat;
-    put_uint16 (data + 1, ttl_ds_);
-    data[3] = static_cast<unsigned char> (ctx_len);
-    return 0;
-}
-
-inline int build_heartbeat_ack (msg_t *msg_, const std::vector<unsigned char> &ctx_)
-{
-    if (!msg_) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    const size_t ctx_len = ctx_.size ();
-    const size_t size = 2 + ctx_len;
-    int rc = msg_->init_size (size);
-    errno_assert (rc == 0);
-    msg_->set_flags (msg_t::command);
-
-    unsigned char *data = static_cast<unsigned char *> (msg_->data ());
-    data[0] = zmp_control_heartbeat_ack;
-    data[1] = static_cast<unsigned char> (ctx_len);
-    if (ctx_len > 0)
-        memcpy (data + 2, &ctx_[0], ctx_len);
-    return 0;
-}
-
-inline int parse_heartbeat (msg_t *msg_, uint16_t local_ttl_ds_, heartbeat_action_t *action_out_)
-{
-    if (!msg_ || !action_out_) {
-        errno = EFAULT;
-        return -1;
-    }
-    *action_out_ = heartbeat_action_t ();
-
-    if (msg_->size () < 1) {
-        action_out_->error_reason = "heartbeat too short";
-        errno = EPROTO;
-        return -1;
-    }
-
-    const unsigned char *data = static_cast<const unsigned char *> (msg_->data ());
-    const uint8_t type = data[0];
-
-    if (type == zmp_control_heartbeat) {
-        if (msg_->size () == 1)
-            return 0;
-        if (msg_->size () < 4) {
-            action_out_->error_reason = "heartbeat too short";
-            errno = EPROTO;
-            return -1;
-        }
-
-        const uint16_t remote_ttl_ds = get_uint16 (data + 1);
-        const size_t ctx_len = data[3];
-        if (ctx_len > 16) {
-            action_out_->error_reason = "heartbeat ctx too long";
-            errno = EPROTO;
-            return -1;
-        }
-        if (msg_->size () != 4 + ctx_len) {
-            action_out_->error_reason = "heartbeat length mismatch";
-            errno = EPROTO;
-            return -1;
-        }
-
-        action_out_->kind = heartbeat_action_send_ack;
-        action_out_->ttl_ds = zmp_effective_ttl_ds (local_ttl_ds_, remote_ttl_ds);
-        action_out_->ctx = data + 4;
-        action_out_->ctx_len = ctx_len;
-        return 0;
-    }
-
-    if (type == zmp_control_heartbeat_ack) {
-        if (msg_->size () < 2) {
-            action_out_->error_reason = "heartbeat ack too short";
-            errno = EPROTO;
-            return -1;
-        }
-        const size_t ctx_len = data[1];
-        if (msg_->size () != 2 + ctx_len) {
-            action_out_->error_reason = "heartbeat ack invalid";
-            errno = EPROTO;
-            return -1;
-        }
-        return 0;
-    }
-
-    action_out_->error_reason = "unknown control";
-    errno = EPROTO;
-    return -1;
-}
 }
 }
 

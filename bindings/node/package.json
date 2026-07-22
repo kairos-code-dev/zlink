@@ -1,6 +1,6 @@
 {
   "name": "@zlink-systems/zlink",
-  "version": "10.6.0",
+  "version": "11.0.0",
   "description": "zlink Node.js bindings \u2014 high-performance async messaging library",
   "license": "MPL-2.0",
   "author": "Zlink Systems",
@@ -14,16 +14,19 @@
     "node": ">=22"
   },
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }
   },
   "files": [
     "dist/**/*",
-    "prebuilds/linux-x64/**/*",
+    "prebuilds/**/*",
+    "provenance/**/*",
     "native/src/**/*",
     "scripts/verify_prebuilds.js",
     "scripts/install.js",
@@ -35,7 +38,7 @@
   "scripts": {
     "install": "node scripts/install.js",
     "clean": "rm -rf dist dist-tools",
-    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/generate_esm_wrapper.js && tsc -p tsconfig.tools.json && ln -sfn ../dist dist-tools/dist",
     "verify:prebuilds": "node scripts/verify_prebuilds.js",
     "rebuild-native": "node-gyp configure build",
     "perf:single": "./perf/single/run_benchmarks.sh",
@@ -49,8 +52,10 @@
     "presamples": "npm run build && npm run rebuild-native",
     "samples": "./samples/run_samples.sh"
   },
+  "dependencies": {
+    "@types/node": "^22.15.30"
+  },
   "devDependencies": {
-    "@types/node": "^22.15.30",
     "node-gyp": "^12.4.0",
     "typescript": "^5.8.3"
   }

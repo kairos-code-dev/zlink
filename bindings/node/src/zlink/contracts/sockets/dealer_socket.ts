@@ -12,10 +12,6 @@ import type { DealerSocketOptions } from './socket_options';
 export interface DealerSocket extends PairSocket {
   /** The DEALER-specific typed options facade. */
   readonly options: DealerSocketOptions;
-  /** Return the logical channel name set for this socket. */
-  getChannelName(): string;
-  /** Set the logical channel name used to identify this socket in routing and discovery. */
-  setChannelName(channelName: string): void;
   /**
    * Set the routing id that identifies this DEALER to its peers. Apply before
    * connecting so peers observe it from the first message.

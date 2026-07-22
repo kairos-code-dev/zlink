@@ -37,8 +37,6 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     void error (error_reason_t reason_) ZLINK_OVERRIDE;
     int decode_and_push (msg_t *msg_) ZLINK_OVERRIDE;
     int process_command_message (msg_t *msg_) ZLINK_OVERRIDE;
-    int produce_ping_message (msg_t *msg_) ZLINK_OVERRIDE;
-    int process_heartbeat_message (msg_t *msg_) ZLINK_OVERRIDE;
     bool build_gather_header (const msg_t &msg_,
                               unsigned char *buffer_,
                               size_t buffer_size_,
@@ -51,7 +49,6 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     bool process_handshake_input ();
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);
-    int produce_pong_message (msg_t *msg_);
     int push_one_then_decode (msg_t *msg_);
     void set_last_error (uint8_t code_, const char *reason_);
     void send_error_frame (uint8_t code_, const char *reason_);
@@ -71,8 +68,6 @@ class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
     size_t _peer_routing_id_size;
 
     bool _subscription_required;
-    int _heartbeat_timeout;
-    std::vector<unsigned char> _heartbeat_ctx;
     uint8_t _last_error_code;
     std::string _last_error_reason;
 

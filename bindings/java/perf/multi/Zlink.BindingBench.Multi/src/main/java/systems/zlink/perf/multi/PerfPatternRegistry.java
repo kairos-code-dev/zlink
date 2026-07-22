@@ -37,18 +37,6 @@ final class PerfPatternRegistry {
         (config, serverRole) -> serverRole
             ? PerfMultiPubSub.runServer(config)
             : PerfMultiPubSub.runClient(config),
-        "SPOT",
-        (config, serverRole) -> serverRole
-            ? PerfMultiSpot.runServer(config)
-            : PerfMultiSpot.runClient(config),
-        "SPOT_REQREP",
-        (config, serverRole) -> serverRole
-            ? PerfMultiSpotReqRep.runServer(config)
-            : PerfMultiSpotReqRep.runClient(config),
-        "SPOT_SENDSEND",
-        (config, serverRole) -> serverRole
-            ? PerfMultiSpotSendSend.runServer(config)
-            : PerfMultiSpotSendSend.runClient(config),
         "STREAM",
         (config, serverRole) -> serverRole
             ? PerfMultiStream.runServer(config)

@@ -9,8 +9,8 @@ import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.RequestOperation;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.RequestOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 import systems.zlink.runtime.messaging.MessageOperations;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +36,6 @@ final class NativeDealerSocket extends NativeSocketBase implements DealerSocket 
     public void disconnectRid(RoutingId routingId) {
         runtime().disconnectRid(routingId);
     }
-    public String getChannelName() { return runtime().getChannelName(); }
     public void setRoutingId(RoutingId rid) { runtime().setRoutingId(rid); }
     public RoutingId getRoutingId() { return runtime().getRoutingId(); }
 

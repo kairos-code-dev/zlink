@@ -9,7 +9,6 @@ MIN_RATIO="${ZLINK_PERF_MIN_RATIO:-0.80}"
 
 TEST_NAMES=(
   test_thread_safe_scaling_raw
-  test_thread_safe_scaling_spot
 )
 
 usage() {

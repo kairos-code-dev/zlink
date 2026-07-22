@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Public surface contract gate for Core 10.0.0.
+"""Public surface contract gate for Core 11 raw runtime.
 
 Verifies that the installed public header closure and the built shared
 library expose exactly the C surface defined by the formal spec under
-core/doc/spec/core/, and that every identifier removed by the 10.0.0
-contract is absent.
+core/doc/spec/core/.
 
 Checks:
   1. Korean and English formal spec files carry identical C blocks.
@@ -12,17 +11,14 @@ Checks:
      formal function, and no function outside the formal set.
   3. Formal types, enum types, enumerators, struct fields and macros are
      all present in the header closure.
-  4. Removed identifiers are absent, with exact-kind validation for approved
-     same-spelling replacements.
-  5. Dynamic exports of libzlink match the formal function set exactly
+  4. Dynamic exports of libzlink match the formal function set exactly
      (no headerless internal exports).
-  6. Debian, RPM and NuGet metadata match the CMake version and SONAME.
+  5. Debian, RPM and NuGet metadata match the CMake version and SONAME.
 
 Usage: check_public_surface.py <repo_root> <libzlink_path>
 Exit code 0 on success, 1 on contract violation.
 """
 
-import json
 import pathlib
 import re
 import subprocess
@@ -209,36 +205,7 @@ def main():
         for kind in KINDS:
             root_headers[kind].update(parsed[kind])
 
-    driver_entry = "zlink/service/instance_spot_driver.h"
-    driver_path = root / "core" / "include" / driver_entry
-    if not driver_path.exists():
-        failures.append(f"driver header missing: core/include/{driver_entry}")
-        driver_closure = []
-    else:
-        driver_closure = header_closure(root, driver_entry)
     headers = {kind: set(root_headers[kind]) for kind in KINDS}
-    for path in driver_closure:
-        parsed = parse_c_surface(path.read_text())
-        for kind in KINDS:
-            headers[kind].update(parsed[kind])
-
-    driver_identifiers = parse_c_surface(driver_path.read_text()) if driver_path.exists() else {
-        kind: set() for kind in KINDS
-    }
-    leaked_driver = {
-        kind: sorted(
-            identifier
-            for identifier in driver_identifiers[kind] & root_headers[kind]
-            if kind != "MACRO" or not INFRA_MACROS.match(identifier)
-        )
-        for kind in KINDS
-        if any(
-            kind != "MACRO" or not INFRA_MACROS.match(identifier)
-            for identifier in driver_identifiers[kind] & root_headers[kind]
-        )
-    }
-    if leaked_driver:
-        failures.append(f"root zlink.h closure exposes Instance driver SPI: {leaked_driver}")
     headers["MACRO"] = {
         m for m in headers["MACRO"] if not INFRA_MACROS.match(m)
     }
@@ -257,23 +224,6 @@ def main():
         if missing:
             failures.append(f"header missing formal {kind} ({len(missing)}): "
                             f"{sorted(missing)[:8]} ...")
-
-    removed = json.loads(
-        (root / "core" / "tests" / "contract" /
-         "removed-identifiers-10.0.0.json").read_text()
-    )
-    for kind in KINDS:
-        leftovers = set(removed.get(kind, ())) & headers[kind]
-        if leftovers:
-            failures.append(f"removed {kind} still declared ({len(leftovers)}): "
-                            f"{sorted(leftovers)[:8]} ...")
-    for identifier, allowed_kind in removed.get("REUSED_IDENTIFIER", {}).items():
-        declared_as = {kind for kind in KINDS if identifier in headers[kind]}
-        if declared_as != {allowed_kind}:
-            failures.append(
-                f"reused identifier {identifier} declared as {sorted(declared_as)}, "
-                f"expected only {allowed_kind}"
-            )
 
     check_packaging_metadata(root, failures)
 

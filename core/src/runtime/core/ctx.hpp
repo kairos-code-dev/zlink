@@ -29,7 +29,7 @@ class io_thread_t;
 class socket_base_t;
 class reaper_t;
 class pipe_t;
-class service_control_runtime_t;
+class control_runtime_t;
 class ctx_termination_test_access_t;
 
 //  Context object encapsulates all the global state associated with
@@ -108,7 +108,7 @@ class ctx_t ZLINK_FINAL
     ~ctx_t ();
 
     bool valid () const;
-    service_control_runtime_t *service_control_runtime ();
+    control_runtime_t *control_runtime ();
     void
     start_thread (thread_t &thread_, thread_fn *tfn_, void *arg_, const char *name_ = NULL) const;
     const thread_ctx_t &thread_context () const;
@@ -123,7 +123,7 @@ class ctx_t ZLINK_FINAL
 
     bool start ();
     bool start_runtime_locked ();
-    service_control_runtime_t *ensure_service_runtime ();
+    control_runtime_t *ensure_control_runtime ();
     void teardown_runtime ();
     void flush_pending_inproc_locked ();
     bool begin_shutdown_locked (bool allow_fork_cleanup_);

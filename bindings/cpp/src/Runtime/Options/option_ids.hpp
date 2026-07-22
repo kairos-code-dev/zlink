@@ -42,9 +42,6 @@ enum class socket_option_id : int
     submit_retry_mode = 12343,
     submit_retry_timeout = 12344,
     submit_retry_attempts = 12345,
-    heartbeat_ivl = 12321,
-    heartbeat_ttl = 12322,
-    heartbeat_timeout = 12323,
     connect_timeout = 12324,
     rid_duplicate_policy = 12339
 };

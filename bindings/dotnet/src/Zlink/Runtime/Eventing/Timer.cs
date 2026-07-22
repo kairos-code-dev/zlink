@@ -108,29 +108,6 @@ internal sealed class Timer : NativeOwner, IZlinkTimer
         return ValueTask.CompletedTask;
     }
 
-    public static Timer FromSpot(Spot spot)
-    {
-        if (spot == null)
-            throw new ArgumentNullException(nameof(spot));
-
-        var handle = NativeMethods.zlink_spot_timer_new(spot.Handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return new Timer(handle, true);
-    }
-
-    internal static Timer? FromDispatchSubject(IntPtr handle)
-    {
-        if (handle == IntPtr.Zero)
-            return null;
-
-        if (TimersByHandle.TryGetValue(handle, out var weak)
-            && weak.TryGetTarget(out var timer))
-            return timer;
-
-        return new Timer(handle, false);
-    }
-
     internal void Start(ulong intervalNs, ulong repeatCount)
     {
         EnsureNotDisposed();

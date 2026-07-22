@@ -4,9 +4,9 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.ReplyOperation;
-import systems.zlink.contracts.service.spot.RequestOperation;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.ReplyOperation;
+import systems.zlink.contracts.messaging.RequestOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 
 /** Routes messages to peers addressed by routing id; the request/reply server side. */
 public interface RouterSocket extends Socket {

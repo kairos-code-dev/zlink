@@ -75,7 +75,6 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
 struct router_recv_metadata_tls_t
 {
     zlink_routing_id_t source_rid;
-    zlink_routing_id_t source_spot_rid;
 };
 
 router_recv_metadata_tls_t &router_recv_metadata_tls ();
@@ -83,7 +82,6 @@ router_recv_metadata_tls_t &router_recv_metadata_tls ();
 int validate_request_parts (zlink_msg_t *parts_, size_t part_count_);
 int dispatch_router_message (socket_request_reply_state_t *state_,
                              const zlink_routing_id_t *source_node_rid_,
-                             const zlink_routing_id_t *source_spot_rid_,
                              uint64_t request_seq_,
                              zlink_msg_t *parts_,
                              size_t part_count_);
@@ -96,7 +94,6 @@ int dispatch_dealer_message (socket_request_reply_state_t *state_,
 uint64_t allocate_dealer_reply_token (socket_request_reply_state_t *state_);
 int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 const zlink_routing_id_t **source_node_rid_out_,
-                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
@@ -104,7 +101,6 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 int timeout_ms_);
 int recv_router_message_direct (socket_handle_t handle_,
                                 const zlink_routing_id_t **source_node_rid_out_,
-                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,

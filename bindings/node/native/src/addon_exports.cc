@@ -3,7 +3,6 @@
 #include "addon_exports.h"
 
 #include "addon_core_api.h"
-#include "addon_spot_api.h"
 
 #define ZLINK_METHOD(js_name, native_fn)                                                           \
     {                                                                                              \
@@ -64,8 +63,6 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("socketGetOpt", socket_getopt),
       ZLINK_METHOD ("socketSetSubscription", socket_set_subscription),
       ZLINK_METHOD ("socketUnsetSubscription", socket_unset_subscription),
-      ZLINK_METHOD ("socketSetChannelName", socket_set_channel_name),
-      ZLINK_METHOD ("socketGetChannelName", socket_get_channel_name),
       ZLINK_METHOD ("handleSetRoutingId", handle_set_routing_id),
       ZLINK_METHOD ("handleGetRoutingId", handle_get_routing_id),
       ZLINK_METHOD ("dealerRequest", dealer_request),
@@ -99,7 +96,6 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("pollEventsFd", poll_events_fd),
       ZLINK_METHOD ("pollerWaitInto", poller_wait_into),
       ZLINK_METHOD ("timerNew", timer_new),
-      ZLINK_METHOD ("spotTimerNew", spot_timer_new),
       ZLINK_METHOD ("timerDestroy", timer_destroy),
       ZLINK_METHOD ("timerStart", timer_start),
       ZLINK_METHOD ("timerStop", timer_stop),
@@ -114,105 +110,6 @@ void define_core_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("atomicCounterDec", atomic_counter_dec),
       ZLINK_METHOD ("atomicCounterValue", atomic_counter_value),
       ZLINK_METHOD ("atomicCounterDestroy", atomic_counter_destroy),
-    };
-    define_exports (env, exports, descs, sizeof (descs) / sizeof (*descs));
-}
-
-void define_spot_exports (napi_env env, napi_value exports)
-{
-    napi_property_descriptor descs[] = {
-      // MeshNode lifecycle
-      ZLINK_METHOD ("meshNodeNew", mesh_node_new),
-      ZLINK_METHOD ("meshNodeSetBind", mesh_node_set_bind),
-      ZLINK_METHOD ("meshNodeStart", mesh_node_start),
-      ZLINK_METHOD ("meshNodeShutdown", mesh_node_shutdown),
-      ZLINK_METHOD ("meshNodeDestroy", mesh_node_destroy),
-      ZLINK_METHOD ("meshNodeAddChannelName", mesh_node_add_channel_name),
-      ZLINK_METHOD ("meshNodeSetChannelWeight", mesh_node_set_channel_weight),
-      // Peers
-      ZLINK_METHOD ("meshNodeConnectPeer", mesh_node_connect_peer),
-      ZLINK_METHOD ("meshNodeRemovePeerConnection", mesh_node_remove_peer_connection),
-      ZLINK_METHOD ("meshNodeDisconnectPeer", mesh_node_disconnect_peer),
-      // Node / channel messaging
-      ZLINK_METHOD ("meshNodeSendToNode", mesh_node_send_to_node),
-      ZLINK_METHOD ("meshNodeRequestToNode", mesh_node_request_to_node),
-      ZLINK_METHOD ("meshNodeSendToChannel", mesh_node_send_to_channel),
-      ZLINK_METHOD ("meshNodeRequestToChannel", mesh_node_request_to_channel),
-      // Options / introspection
-      ZLINK_METHOD ("meshNodeSetOption", mesh_node_set_option),
-      ZLINK_METHOD ("meshNodeGetOption", mesh_node_get_option),
-      ZLINK_METHOD ("meshNodeStatus", mesh_node_status),
-      ZLINK_METHOD ("meshNodePeers", mesh_node_peers),
-      ZLINK_METHOD ("meshNodePeerChannels", mesh_node_peer_channels),
-      ZLINK_METHOD ("meshNodeMonitorOpen", mesh_node_monitor_open),
-      ZLINK_METHOD ("meshNodeMonitorRecv", mesh_node_monitor_recv),
-      ZLINK_METHOD ("meshNodeMonitorStatus", mesh_node_monitor_status),
-      ZLINK_METHOD ("meshNodeMonitorClose", mesh_node_monitor_close),
-      // Publisher
-      ZLINK_METHOD ("meshNodePublisherNew", mesh_node_publisher_new),
-      ZLINK_METHOD ("meshNodePublisherPublish", mesh_node_publisher_publish),
-      ZLINK_METHOD ("meshNodePublisherPublishAsync", mesh_node_publisher_publish_async),
-      ZLINK_METHOD ("meshNodePublisherPublishCancel", mesh_node_publisher_publish_cancel),
-      ZLINK_METHOD ("meshNodePublisherDestroy", mesh_node_publisher_destroy),
-      // Pull dispatch
-      ZLINK_METHOD ("meshNodeSetReadyHandler", mesh_node_set_ready_handler),
-      ZLINK_METHOD ("meshNodeUnsetReadyHandler", mesh_node_unset_ready_handler),
-      ZLINK_METHOD ("meshReadyBatchNew", mesh_ready_batch_new),
-      ZLINK_METHOD ("meshReadyBatchReset", mesh_ready_batch_reset),
-      ZLINK_METHOD ("meshReadyBatchDestroy", mesh_ready_batch_destroy),
-      ZLINK_METHOD ("meshNodeDrainReady", mesh_node_drain_ready),
-      ZLINK_METHOD ("meshReadyBatchTakeClaim", mesh_ready_batch_take_claim),
-      ZLINK_METHOD ("meshClaimRelease", mesh_claim_release),
-      ZLINK_METHOD ("meshReceiveBatchNew", mesh_receive_batch_new),
-      ZLINK_METHOD ("meshReceiveBatchReset", mesh_receive_batch_reset),
-      ZLINK_METHOD ("meshReceiveBatchDestroy", mesh_receive_batch_destroy),
-      ZLINK_METHOD ("meshClaimRecvBatch", mesh_claim_recv_batch),
-      ZLINK_METHOD ("meshReply", mesh_reply),
-      // Spot
-      ZLINK_METHOD ("spotNew", spot_new),
-      ZLINK_METHOD ("meshNodeEntrySpot", mesh_node_entry_spot),
-      ZLINK_METHOD ("meshNodeSpotLookup", mesh_node_spot_lookup),
-      ZLINK_METHOD ("meshNodeSpotGetOrNew", mesh_node_spot_get_or_new),
-      ZLINK_METHOD ("spotDestroy", spot_destroy),
-      ZLINK_METHOD ("spotStatus", spot_status),
-      ZLINK_METHOD ("spotSendToChannel", spot_send_to_channel),
-      ZLINK_METHOD ("spotRequestToChannel", spot_request_to_channel),
-      ZLINK_METHOD ("spotSendToSpot", spot_send_to_spot),
-      ZLINK_METHOD ("spotRequestToSpot", spot_request_to_spot),
-      ZLINK_METHOD ("spotPublish", spot_publish),
-      ZLINK_METHOD ("spotSetSubscription", spot_set_subscription),
-      ZLINK_METHOD ("spotUnsetSubscription", spot_unset_subscription),
-      // Actor
-      ZLINK_METHOD ("meshNodeActorNew", mesh_node_actor_new),
-      ZLINK_METHOD ("meshNodeActorLookup", mesh_node_actor_lookup),
-      ZLINK_METHOD ("meshNodeActorLookupRemote", mesh_node_actor_lookup_remote),
-      ZLINK_METHOD ("meshNodeActorDestroy", mesh_node_actor_destroy),
-      ZLINK_METHOD ("meshNodeActorJoinSpot", mesh_node_actor_join_spot),
-      ZLINK_METHOD ("meshNodeActorJoinEntrySpot", mesh_node_actor_join_entry_spot),
-      ZLINK_METHOD ("meshNodeActorLeaveSpot", mesh_node_actor_leave_spot),
-      ZLINK_METHOD ("actorJoinReply", actor_join_reply),
-      ZLINK_METHOD ("meshNodeSendToActor", mesh_node_send_to_actor),
-      ZLINK_METHOD ("meshNodeRequestToActor", mesh_node_request_to_actor),
-      ZLINK_METHOD ("actorSendToActor", actor_send_to_actor),
-      ZLINK_METHOD ("actorRequestToActor", actor_request_to_actor),
-      // Actor transfer fence
-      ZLINK_METHOD ("meshNodeActorTransferPrepare", mesh_node_actor_transfer_prepare),
-      ZLINK_METHOD ("meshNodeActorTransferCommit", mesh_node_actor_transfer_commit),
-      ZLINK_METHOD ("meshNodeActorTransferActivate", mesh_node_actor_transfer_activate),
-      ZLINK_METHOD ("meshNodeActorTransferAbort", mesh_node_actor_transfer_abort),
-      // Stream session service
-      ZLINK_METHOD ("streamSessionServiceNew", stream_session_service_new),
-      ZLINK_METHOD ("streamSessionServiceStart", stream_session_service_start),
-      ZLINK_METHOD ("streamSessionServiceShutdown", stream_session_service_shutdown),
-      ZLINK_METHOD ("streamSessionServiceDestroy", stream_session_service_destroy),
-      ZLINK_METHOD ("streamSessionServiceStatus", stream_session_service_status),
-      ZLINK_METHOD ("streamSessionBindActor", stream_session_bind_actor),
-      ZLINK_METHOD ("streamSessionUnbindActor", stream_session_unbind_actor),
-      ZLINK_METHOD ("streamSessionBindings", stream_session_bindings),
-      ZLINK_METHOD ("streamSessionSendToActor", stream_session_send_to_actor),
-      ZLINK_METHOD ("streamSessionRequestToActor", stream_session_request_to_actor),
-      ZLINK_METHOD ("meshNodeActorSendBoundSession", mesh_node_actor_send_bound_session),
-      ZLINK_METHOD ("meshNodeActorCloseBoundSession", mesh_node_actor_close_bound_session),
     };
     define_exports (env, exports, descs, sizeof (descs) / sizeof (*descs));
 }

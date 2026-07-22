@@ -13,7 +13,7 @@ import type {
   ReplySubmitOperation,
   SendOperation,
   SendSubmitOperation,
-} from '../../contracts/service';
+} from '../../contracts/messaging';
 
 export type SendInvoker = (parts: OperationPayloadValue<MessageLike>, flags: SendFlags) => boolean;
 export type PublishInvoker = (

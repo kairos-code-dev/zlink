@@ -14,7 +14,7 @@
 #include "api/socket/part_helper_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "core/ctx.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 #include "sockets/common/socket_close_ops.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
@@ -24,7 +24,7 @@ namespace
 {
 void monitor_debug_logf (const char *fmt_, ...)
 {
-    if (!std::getenv ("ZLINK_DEBUG_SPOT_SHUTDOWN"))
+    if (!std::getenv ("ZLINK_DEBUG_MONITOR_SHUTDOWN"))
         return;
     std::fprintf (stderr, "[monitor-close] ");
     va_list args;
@@ -59,8 +59,8 @@ void stop_monitor_handler_state (monitor_handler_state_t *state_)
 
     state_->stop.store (true, std::memory_order_release);
     if (state_->socket) {
-        zlink::service_control_runtime_t *runtime =
-          state_->socket->get_ctx ()->service_control_runtime ();
+        zlink::control_runtime_t *runtime =
+          state_->socket->get_ctx ()->control_runtime ();
         if (runtime && state_->dispatch_task_id != 0)
             (void) runtime->remove_task (state_->dispatch_task_id);
     }
@@ -76,8 +76,8 @@ void stop_monitor_handler_worker (monitor_handler_state_t *state_)
     if (state_->socket)
         state_->socket->stop ();
     if (state_->socket) {
-        zlink::service_control_runtime_t *runtime =
-          state_->socket->get_ctx ()->service_control_runtime ();
+        zlink::control_runtime_t *runtime =
+          state_->socket->get_ctx ()->control_runtime ();
         if (runtime && state_->dispatch_task_id != 0)
             (void) runtime->remove_task (state_->dispatch_task_id);
     }
@@ -111,8 +111,8 @@ void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
         return;
 
     zlink::socket_base_t *socket = state_->socket;
-    zlink::service_control_runtime_t *runtime =
-      socket ? socket->get_ctx ()->service_control_runtime () : NULL;
+    zlink::control_runtime_t *runtime =
+      socket ? socket->get_ctx ()->control_runtime () : NULL;
     const uint64_t dispatch_task_id = state_->dispatch_task_id;
     state_->stop.store (true, std::memory_order_release);
     zlink::socket_base_t *raw_monitor_source = raw_monitor_snapshot_subject (state_);
@@ -343,7 +343,7 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
 
     //  The handler must be visible before the dispatch task's first tick (a
     //  tick that sees no handler drops the event it already consumed), so
-    //  publish first — but restore the previous registration on any task
+    //  publish first ??but restore the previous registration on any task
     //  failure so a failed call leaves the handle exactly as it was and no
     //  allocation failure escapes the C surface.
     //  dispatch_sync covers publication through dispatch_task_id storage:
@@ -365,7 +365,7 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
     if (socket_handler_ && state->dispatch_task_id == 0) {
         int failure_errno = 0;
         uint64_t task_id = 0;
-        zlink::service_control_runtime_t *runtime = socket_->get_ctx ()->service_control_runtime ();
+        zlink::control_runtime_t *runtime = socket_->get_ctx ()->control_runtime ();
         if (!runtime) {
             failure_errno = ETERM;
         } else {

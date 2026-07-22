@@ -16,9 +16,4 @@
     <ProjectReference Include="../../common/Zlink.BindingBench.Common/Zlink.BindingBench.Common.csproj"
       SkipGetTargetFrameworkProperties="true" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="src/PerfMultiSpotClient.cs" />
-    <Compile Remove="src/PerfMultiSpotReqRep.cs" />
-    <Compile Remove="src/PerfMultiSpotServer.cs" />
-  </ItemGroup>
 </Project>

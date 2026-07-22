@@ -47,6 +47,9 @@ scripts/local-package/
   build-wsl.sh
   build-windows.ps1
   publish-all-wsl.sh
+  core/
+    build-wsl.sh
+    test-build-wsl.sh
   native/
     update-zlink-libs.sh
     sync-local-core-libs.sh
@@ -56,6 +59,37 @@ scripts/local-package/
   java/
   node/
 ```
+
+Core 11 package는 bindings package와 별도로 만든다. 이미 build한 Core candidate만 versioned install
+prefix에 설치하며 외부로 배포하지 않는다. repository `VERSION`, CMake build version, package manifest,
+설치된 runtime의 `zlink_version()`은 모두 같은 `11.x.y`여야 한다. 값이 다르면 package를 만들지 않는다.
+
+```bash
+./scripts/local-package/core/test-build-wsl.sh --self-test --dry-run \
+  --evidence /absolute/path/core-package-tooling-self-test.json
+./scripts/local-package/core/build-wsl.sh --build-dir core/build \
+  --output-root /absolute/path/local-package-root \
+  --candidate-manifest /absolute/path/V11-M3-CORE-VERIFY.json \
+  --review-evidence /absolute/path/V11-R2-result.json \
+  --evidence /absolute/path/core-package.json
+```
+
+Core package 기본 install 구조는 `<output-root>/install/zlink-core/<version>/`이다. Core 11 package에는
+raw C header와 runtime만 포함하며 `include/zlink/service/`는 포함하지 않는다. clean C consumer는 package
+prefix 밖의 header와 library 환경 변수를 제거한 상태에서 compile, link, load하고 runtime version까지
+manifest와 비교한다. Package 생성과 consumer 검증은 review를 통과한 `V11-M3-CORE-VERIFY` candidate
+manifest의 absolute path를 반드시 받는다. Candidate의 base revision, 현재 Core 파일 hash와 aggregate hash를
+다시 검증하고 이 값을 package provenance에 기록하므로, commit하지 않은 candidate를 기존 `HEAD`에서 만든
+산출물로 잘못 표시하지 않는다. 또한 `V11-R2`가 `passed`로 기록된 review evidence를 함께 받고, 그 문서가
+승인한 candidate manifest SHA-256과 package 입력이 정확히 같은지 확인한다.
+
+Candidate의 direct input은 review 시점의 spec·ledger provenance를 봉인한다. Review가 진행되면 ledger status와
+증거 문구는 정상적으로 바뀌므로 package 단계에서는 direct input의 schema·path·봉인 hash 형식만 검증한다.
+반면 candidate files와 Core changed path는 현재 worktree의 내용·mode·base hash와 계속 정확히 같아야 한다.
+이 구분으로 review 이후 ledger 갱신은 허용하면서 reviewed source나 tooling 변경은 계속 거부한다.
+
+`output-root`, candidate manifest와 evidence 경로는 dot segment가 없는 canonical absolute path여야 한다.
+Script는 삭제할 install prefix가 canonical output root 아래인지 확인한 뒤 해당 version directory만 교체한다.
 
 ## WSL 사용법
 

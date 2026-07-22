@@ -10,10 +10,7 @@ import type {
 } from '../eventing/monitor_raw';
 import type {
   SubscriptionEntry
-} from '../../contracts/service';
-import type {
-  ActorRefRaw
-} from './binding_service_types';
+} from '../../contracts/messaging';
 
 export type NativeHandle = unknown;
 export type NativeBuffer = Buffer;
@@ -25,7 +22,6 @@ export type NativeRequestCallback = (
 ) => void;
 
 export type {
-  ActorRefRaw,
   MonitorEventValueRaw,
   MonitorStatusRaw,
   NativeReceivedRaw,

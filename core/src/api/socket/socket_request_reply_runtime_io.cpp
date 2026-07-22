@@ -25,7 +25,6 @@ const size_t stack_request_reply_part_capacity = 8;
 
 int queue_router_message (socket_request_reply_state_t *state_,
                           const zlink_routing_id_t *source_node_rid_,
-                          const zlink_routing_id_t *source_spot_rid_,
                           uint64_t request_seq_,
                           zlink_msg_t *parts_,
                           size_t part_count_)
@@ -43,14 +42,10 @@ int queue_router_message (socket_request_reply_state_t *state_,
     unsigned char seq_buf[8];
     zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
     const routing_id_frame_view_t source_node = routing_id_frame_view (source_node_rid_);
-    const routing_id_frame_view_t source_spot = routing_id_frame_view (source_spot_rid_);
     zlink::socket_base_t *queue_tx = state_->recv_queue.tx_socket ();
     if (zlink::internal_pair_queue::send_buffer_frame (queue_tx, source_node.data, source_node.size,
                                                        ZLINK_SNDMORE)
           != 0
-        || zlink::internal_pair_queue::send_buffer_frame (queue_tx, source_spot.data,
-                                                          source_spot.size, ZLINK_SNDMORE)
-             != 0
         || zlink::internal_pair_queue::send_buffer_frame (queue_tx, seq_buf, sizeof (seq_buf),
                                                           ZLINK_SNDMORE)
              != 0) {
@@ -158,7 +153,6 @@ int queue_dealer_message (socket_request_reply_state_t *state_,
 
 int dispatch_router_message (socket_request_reply_state_t *state_,
                              const zlink_routing_id_t *source_node_rid_,
-                             const zlink_routing_id_t *source_spot_rid_,
                              uint64_t request_seq_,
                              zlink_msg_t *parts_,
                              size_t part_count_)
@@ -167,8 +161,7 @@ int dispatch_router_message (socket_request_reply_state_t *state_,
         errno = EFAULT;
         return -1;
     }
-    return queue_router_message (state_, source_node_rid_, source_spot_rid_, request_seq_, parts_,
-                                 part_count_);
+    return queue_router_message (state_, source_node_rid_, request_seq_, parts_, part_count_);
 }
 
 int dispatch_dealer_message (socket_request_reply_state_t *state_,
@@ -198,15 +191,14 @@ int validate_request_parts (zlink_msg_t *parts_, size_t part_count_)
 
 int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                 const zlink_routing_id_t **source_node_rid_out_,
-                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
                                 int flags_,
                                 int timeout_ms_)
 {
-    if (!queue_ || !queue_->rx_socket () || !source_node_rid_out_ || !source_spot_rid_out_
-        || !request_seq_out_ || !parts_out_ || !part_count_out_) {
+    if (!queue_ || !queue_->rx_socket () || !source_node_rid_out_ || !request_seq_out_
+        || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -227,10 +219,6 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
                                    deadline_ms)
         != 0)
         return control_frames.fail (errno);
-    if (zlink::internal_pair_queue::recv_followup_with_retry (queue_rx, &control_frames.source_spot,
-                                                              flags_)
-        != 0)
-        return control_frames.fail (errno);
     if (zlink::internal_pair_queue::recv_followup_with_retry (queue_rx, &control_frames.seq, flags_)
         != 0)
         return control_frames.fail (errno);
@@ -241,9 +229,7 @@ int recv_internal_router_queue (zlink::internal_pair_queue::queue_t *queue_,
 
     router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
     zlink::copy_routing_id_from_msg (control_frames.source_node, &metadata.source_rid);
-    zlink::copy_routing_id_from_msg (control_frames.source_spot, &metadata.source_spot_rid);
     *source_node_rid_out_ = &metadata.source_rid;
-    *source_spot_rid_out_ = &metadata.source_spot_rid;
     *request_seq_out_ = zlink::request_reply::decode_u64_be (
       static_cast<const unsigned char *> (zlink_msg_data (&control_frames.seq)));
     control_frames.close ();
@@ -387,14 +373,13 @@ int export_router_payload_parts (zlink_msg_t *parts_,
 
 int recv_router_message_direct (socket_handle_t handle_,
                                 const zlink_routing_id_t **source_node_rid_out_,
-                                const zlink_routing_id_t **source_spot_rid_out_,
                                 uint64_t *request_seq_out_,
                                 zlink_msg_t **parts_out_,
                                 size_t *part_count_out_,
                                 int flags_)
 {
-    if (!handle_.socket || !source_node_rid_out_ || !source_spot_rid_out_ || !request_seq_out_
-        || !parts_out_ || !part_count_out_) {
+    if (!handle_.socket || !source_node_rid_out_ || !request_seq_out_ || !parts_out_
+        || !part_count_out_) {
         errno = EFAULT;
         return -1;
     }
@@ -430,9 +415,7 @@ int recv_router_message_direct (socket_handle_t handle_,
 
         router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
         assign_routing_id_compact (&metadata.source_rid, source_rid);
-        metadata.source_spot_rid.size = 0;
         *source_node_rid_out_ = &metadata.source_rid;
-        *source_spot_rid_out_ = &metadata.source_spot_rid;
         *request_seq_out_ = 0;
         return zlink::recv_tls_view::commit_reserved_single (parts_out_, part_count_out_);
     }
@@ -487,9 +470,7 @@ int recv_router_message_direct (socket_handle_t handle_,
 
     router_recv_metadata_tls_t &metadata = router_recv_metadata_tls ();
     metadata.source_rid = source_rid;
-    memset (&metadata.source_spot_rid, 0, sizeof (metadata.source_spot_rid));
     *source_node_rid_out_ = &metadata.source_rid;
-    *source_spot_rid_out_ = &metadata.source_spot_rid;
     return export_router_payload_parts (raw_parts.data (), raw_parts.size (), start_index,
                                         parts_out_, part_count_out_);
 }

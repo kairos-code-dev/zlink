@@ -75,7 +75,6 @@ struct router_control_frames_t
     router_control_frames_t () : active (true)
     {
         zlink_msg_init (&source_node);
-        zlink_msg_init (&source_spot);
         zlink_msg_init (&seq);
     }
 
@@ -86,7 +85,6 @@ struct router_control_frames_t
         if (!active)
             return;
         zlink_msg_close (&source_node);
-        zlink_msg_close (&source_spot);
         zlink_msg_close (&seq);
         active = false;
     }
@@ -100,7 +98,6 @@ struct router_control_frames_t
     }
 
     zlink_msg_t source_node;
-    zlink_msg_t source_spot;
     zlink_msg_t seq;
     bool active;
 };

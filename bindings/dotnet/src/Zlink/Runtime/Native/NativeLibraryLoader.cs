@@ -8,7 +8,7 @@ namespace Systems.Zlink.Runtime.Native;
 internal static class NativeLibraryLoader
 {
     private const string LinuxUnversionedName = "libzlink.so";
-    private const string LinuxSoname = "libzlink.so.10";
+    private const string LinuxSoname = "libzlink.so.11";
 
     private static readonly object Sync = new();
     private static readonly ConcurrentDictionary<string, bool> ExportCache = new();
@@ -47,7 +47,8 @@ internal static class NativeLibraryLoader
                 return;
             }
 
-            if (TryLoadWellKnownNames(out _handle)) ValidateRequiredExports();
+            throw new DllNotFoundException(
+                "The packaged Core 11 runtime was not found. Set ZLINK_LIBRARY_PATH only when testing an approved Core 11 runtime directly.");
         }
     }
 
@@ -83,15 +84,6 @@ internal static class NativeLibraryLoader
         if (string.IsNullOrWhiteSpace(path))
             return false;
         return TryLoad(path, out handle);
-    }
-
-    private static bool TryLoadWellKnownNames(out IntPtr handle)
-    {
-        foreach (var name in GetWellKnownNames())
-            if (TryLoad(name, out handle))
-                return true;
-        handle = IntPtr.Zero;
-        return false;
     }
 
     private static bool TryLoadPackagedCandidates(out IntPtr handle)
@@ -181,9 +173,6 @@ internal static class NativeLibraryLoader
         foreach (var libName in libNames)
         {
             yield return Path.Combine(baseDir, "runtimes", rid, "native", libName);
-            yield return Path.Combine(baseDir, rid, "native", libName);
-            yield return Path.Combine(baseDir, "native", libName);
-            yield return Path.Combine(baseDir, libName);
         }
     }
 
@@ -202,15 +191,6 @@ internal static class NativeLibraryLoader
         var entryBase = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
         if (!string.IsNullOrEmpty(entryBase) && seen.Add(entryBase))
             yield return entryBase;
-    }
-
-    private static string[] GetWellKnownNames()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return new[] { "zlink", "zlink.dll" };
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return new[] { "zlink", "libzlink.dylib" };
-        return new[] { "zlink", LinuxUnversionedName, LinuxSoname };
     }
 
     private static string GetRid()

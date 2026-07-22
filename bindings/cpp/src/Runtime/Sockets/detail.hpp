@@ -9,7 +9,6 @@
 #include "../Core/operation_detail.hpp"
 #include "../Messaging/received_access.hpp"
 #include "../Native/native_receive.hpp"
-#include "../Service/spot_access.hpp"
 
 #include <cstring>
 #include <memory>

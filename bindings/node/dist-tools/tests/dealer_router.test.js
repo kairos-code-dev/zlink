@@ -40,7 +40,6 @@ test('router recv fills caller-provided Received with routing metadata', () => {
     const received = new zlink.Received();
     assert.equal(router.recv(received), true);
     assert.ok(received.routingId);
-    assert.equal(received.spotRid, null);
     assert.equal(received.requestSeq, null);
     assert.equal(received.singlePartOrThrow().data().toString(), 'payload');
     dealer.close();

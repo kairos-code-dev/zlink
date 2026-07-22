@@ -3,17 +3,29 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import {spawnSync} from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, '..');
+const inventoryRepositoryPath =
+  'framework/doc/contract-inventory/route-mesh-v11-core-service-migration-inventory.json';
 const inventoryPath = process.env.ZLINK_V11_MIGRATION_INVENTORY_PATH
   ? path.resolve(process.env.ZLINK_V11_MIGRATION_INVENTORY_PATH)
-  : path.join(
-    repositoryRoot,
-    'framework/doc/contract-inventory/route-mesh-v11-core-service-migration-inventory.json');
+  : path.join(repositoryRoot, inventoryRepositoryPath);
+
+// The reviewed inventory is also the immutable historical source for the Core
+// service surface after M3 removes its headers and exports.  Only these two
+// sections participate in the digest, so later reviewed classifications for
+// bindings and Framework files do not rewrite Core 10.x history.
+const reviewedCoreBaselineSha256 =
+  'dfb2ad5fb2ec1e53d11f13e56a358ad7c0030ff5109b7082b677653faf8be8c9';
+const reviewedCoreRemovalFilesRevision =
+  '1de8f43917d7c8d3d0f26dadf97c9f83ede79228';
+const reviewedCoreRemovalFilesSha256 =
+  'f8a9d9c576d9d93596db31cb3251875f0429e2cf6829a749f399143ef3baf3f0';
 
 const ledgerPath =
   'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md';
@@ -63,6 +75,7 @@ const actionDefinitions = Object.freeze({
   'retain-read-only-archive': {scope: 'whole-file', meaning: 'Retain the file only as a read-only Core 10.x archive.'},
   'retain-reviewed-raw-boundary-or-non-service-usage': {scope: 'whole-file', meaning: 'Retain the reviewed raw or unrelated document.'},
   'review-binding-package-tooling-before-package-execution': {scope: 'whole-file', meaning: 'Retain the package tool and review it before package execution.'},
+  'review-core-package-tooling-before-package-execution': {scope: 'whole-file', meaning: 'Retain the Core package tool and review it before the Core 11 raw-only package gate.'},
   'rewrite-as-core-11-raw-only-guide-and-remove-service-reference': {scope: 'partial-file', meaning: 'Retain the guide and rewrite only its service-dependent content.'},
   'rewrite-as-core-11-raw-only-internals-and-remove-service-design': {scope: 'partial-file', meaning: 'Retain the internals document and remove only the service design.'},
   'rewrite-formal-contract-as-core-11-raw-only-contract': {scope: 'partial-file', meaning: 'Retain the formal document and replace only its service contract.'},
@@ -838,11 +851,12 @@ function symbolDisposition(file, symbol) {
   return 'target-contract';
 }
 
-function corePublicSymbolRecords() {
+function discoverCurrentCorePublicSymbolRecords() {
   const records = [];
   for (const file of [...coreServiceHeaders, ...coreSupportHeaders]) {
     if (!fs.existsSync(path.join(repositoryRoot, file))) {
-      throw new Error(`required public header is missing: ${file}`);
+      if (coreServiceHeaders.includes(file)) continue;
+      throw new Error(`required raw public header is missing: ${file}`);
     }
     const symbols = publicHeaderSymbols(file);
     if (coreServiceHeaders.includes(file) && symbols.length === 0) {
@@ -863,6 +877,130 @@ function corePublicSymbolRecords() {
     }
   }
   return records.sort((left, right) => left.id.localeCompare(right.id, 'en'));
+}
+
+function loadReviewedCoreBaseline() {
+  if (!fs.existsSync(inventoryPath)) {
+    throw new Error([
+      `reviewed Core service baseline is missing: ${relativePath(inventoryPath)}`,
+      'Restore the reviewed inventory; --write must not reconstruct removed Core service history from the current tree.',
+    ].join('\n'));
+  }
+  let inventory;
+  try {
+    inventory = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`reviewed Core service baseline is not valid JSON: ${error.message}`);
+  }
+  const baseline = {
+    corePublicSymbols: inventory.corePublicSymbols,
+    coreExportSymbols: inventory.coreExportSymbols,
+  };
+  if (!Array.isArray(baseline.corePublicSymbols)
+      || !Array.isArray(baseline.coreExportSymbols)) {
+    throw new Error('reviewed Core service baseline sections are missing');
+  }
+  const digest = crypto.createHash('sha256').update(stableJson(baseline)).digest('hex');
+  if (digest !== reviewedCoreBaselineSha256) {
+    throw new Error([
+      'reviewed Core service baseline digest differs from the sealed value',
+      `expected=${reviewedCoreBaselineSha256}`,
+      `actual=${digest}`,
+    ].join('\n'));
+  }
+  return baseline;
+}
+
+function selectReviewedCoreRemovalFiles(inventory) {
+  return (inventory.files ?? []).filter(record => record.scope === 'core'
+    && ['V11-M3-CORE-REMOVE', 'V11-M3-CORE-CLEAN'].includes(record.removalGate));
+}
+
+function verifyReviewedCoreRemovalFiles(records, source) {
+  const digest = crypto.createHash('sha256').update(stableJson(records)).digest('hex');
+  if (digest !== reviewedCoreRemovalFilesSha256) {
+    throw new Error([
+      `reviewed Core removal-file baseline differs at ${source}`,
+      `expected=${reviewedCoreRemovalFilesSha256}`,
+      `actual=${digest}`,
+    ].join('\n'));
+  }
+  return records;
+}
+
+function loadReviewedCoreRemovalFiles() {
+  const current = JSON.parse(fs.readFileSync(inventoryPath, 'utf8'));
+  const currentRecords = selectReviewedCoreRemovalFiles(current);
+  const currentDigest = crypto.createHash('sha256')
+    .update(stableJson(currentRecords)).digest('hex');
+  if (currentDigest === reviewedCoreRemovalFilesSha256) return currentRecords;
+
+  const result = spawnSync('git', [
+    '-C', repositoryRoot,
+    'show',
+    `${reviewedCoreRemovalFilesRevision}:${inventoryRepositoryPath}`,
+  ], {maxBuffer: 64 * 1024 * 1024});
+  if (result.error || result.status !== 0) {
+    throw new Error([
+      'reviewed Core removal-file baseline is incomplete in the working inventory',
+      `the pinned provenance revision ${reviewedCoreRemovalFilesRevision} is unavailable`,
+      result.error?.message ?? result.stderr?.toString('utf8').trim() ?? '',
+    ].filter(Boolean).join('\n'));
+  }
+  let pinned;
+  try {
+    pinned = JSON.parse(result.stdout.toString('utf8'));
+  } catch (error) {
+    throw new Error(`pinned Core removal-file baseline is not valid JSON: ${error.message}`);
+  }
+  return verifyReviewedCoreRemovalFiles(
+    selectReviewedCoreRemovalFiles(pinned),
+    `${reviewedCoreRemovalFilesRevision}:${inventoryRepositoryPath}`);
+}
+
+function recordIdentity(record) {
+  return JSON.stringify(record);
+}
+
+function validateCoreSurfaceState(baseline, current, label) {
+  const baselineValues = baseline.map(recordIdentity);
+  const currentValues = current.map(recordIdentity);
+  const matchesBaseline = baselineValues.length === currentValues.length
+    && baselineValues.every((value, index) => value === currentValues[index]);
+  if (matchesBaseline) return 'reviewed-baseline-present';
+  if (current.length === 0) return 'removed';
+  const baselineIds = new Set(baseline.map(record => record.id));
+  const currentIds = new Set(current.map(record => record.id));
+  const added = current.filter(record => !baselineIds.has(record.id)).map(record => record.id);
+  const removed = baseline.filter(record => !currentIds.has(record.id)).map(record => record.id);
+  const changed = current.filter(record => baselineIds.has(record.id)
+    && recordIdentity(record) !== recordIdentity(baseline.find(item => item.id === record.id)))
+    .map(record => record.id);
+  throw new Error([
+    `${label} is neither the sealed baseline nor fully removed`,
+    added.length ? `added (${added.length}): ${added.slice(0, 10).join(', ')}` : '',
+    removed.length ? `removed (${removed.length}): ${removed.slice(0, 10).join(', ')}` : '',
+    changed.length ? `changed (${changed.length}): ${changed.slice(0, 10).join(', ')}` : '',
+  ].filter(Boolean).join('\n'));
+}
+
+function validateCoreSurfaceStateSelfTests(baseline) {
+  if (validateCoreSurfaceState(baseline, baseline, 'self-test') !== 'reviewed-baseline-present'
+      || validateCoreSurfaceState(baseline, [], 'self-test') !== 'removed') {
+    throw new Error('Core removal-state self-test rejected a valid terminal state');
+  }
+  for (const mutation of [
+    baseline.slice(1),
+    [...baseline, {...baseline[0], id: `${baseline[0].id}:negative-mutation`}],
+  ]) {
+    let rejected = false;
+    try {
+      validateCoreSurfaceState(baseline, mutation, 'negative mutation');
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error('Core removal-state negative mutation was not rejected');
+  }
 }
 
 function exportedServiceSymbolRecords(publicSymbols) {
@@ -1012,7 +1150,8 @@ function validateCoreServiceDocumentationReviews(repositoryFiles) {
   const withoutZmpGuide = new Map(coreServiceDocumentationReviews);
   withoutZmpGuide.delete(zmpGuide);
   const removedAllowlistEntry = discoverUnreviewedCoreServiceDocuments(
-    [zmpGuide], withoutZmpGuide);
+    [zmpGuide], withoutZmpGuide,
+    file => file === zmpGuide ? 'A SPOT routed envelope carries service metadata.' : '');
   if (!removedAllowlistEntry.includes(zmpGuide)) {
     throw new Error('Core document negative mutation did not detect the unreviewed SPOT ZMP envelope');
   }
@@ -1726,7 +1865,7 @@ function validateInventoryDiscoverySelfTests() {
   }
 }
 
-function fileRecords(repositoryFiles) {
+function fileRecords(repositoryFiles, reviewedCoreRemovalFiles) {
   validateCoreServiceDocumentationReviews(repositoryFiles);
   validateCompletedCoreRawSpecRewrites();
   validateInventoryDiscoverySelfTests();
@@ -1765,6 +1904,17 @@ function fileRecords(repositoryFiles) {
     if (seen.has(record.id)) throw new Error(`duplicate historical classification: ${record.file}`);
     seen.add(record.id);
     records.push(record);
+  }
+  const byId = new Map(records.map(record => [record.id, record]));
+  for (const record of reviewedCoreRemovalFiles) {
+    const current = byId.get(record.id);
+    if (current && recordIdentity(current) !== recordIdentity(record)) {
+      throw new Error(`reviewed Core removal-file classification changed: ${record.id}`);
+    }
+    if (!current) {
+      records.push(record);
+      seen.add(record.id);
+    }
   }
   return records.sort((left, right) => left.id.localeCompare(right.id, 'en'));
 }
@@ -1964,9 +2114,62 @@ function validateRecordSet(records, section) {
 
 function generateInventory() {
   const repositoryFiles = readRepositoryFiles();
-  const corePublicSymbols = corePublicSymbolRecords();
-  const coreExportSymbols = exportedServiceSymbolRecords(corePublicSymbols);
-  const files = fileRecords(repositoryFiles);
+  const reviewedCoreBaseline = loadReviewedCoreBaseline();
+  const reviewedCoreRemovalFiles = loadReviewedCoreRemovalFiles();
+  const currentCorePublicSymbols = discoverCurrentCorePublicSymbolRecords();
+  const currentCoreExportSymbols = exportedServiceSymbolRecords(currentCorePublicSymbols);
+  validateCoreSurfaceStateSelfTests(reviewedCoreBaseline.corePublicSymbols);
+  validateCoreSurfaceStateSelfTests(reviewedCoreBaseline.coreExportSymbols);
+  const reviewedServiceHeaderSymbols = reviewedCoreBaseline.corePublicSymbols
+    .filter(record => coreServiceHeaders.includes(record.file));
+  const currentServiceHeaderSymbols = currentCorePublicSymbols
+    .filter(record => coreServiceHeaders.includes(record.file));
+  const serviceHeaderSymbolState = validateCoreSurfaceState(
+    reviewedServiceHeaderSymbols,
+    currentServiceHeaderSymbols,
+    'current Core service-header symbol surface');
+  // These records are service fragments formerly declared in otherwise raw
+  // support headers (mesh monitor, channel name, heartbeat options, and the
+  // mesh poller source).  The support headers themselves remain mandatory.
+  const reviewedSupportHeaderServiceSymbols = reviewedCoreBaseline.corePublicSymbols
+    .filter(record => coreSupportHeaders.includes(record.file));
+  const currentSupportHeaderServiceSymbols = currentCorePublicSymbols
+    .filter(record => coreSupportHeaders.includes(record.file));
+  const supportHeaderServiceSymbolState = validateCoreSurfaceState(
+    reviewedSupportHeaderServiceSymbols,
+    currentSupportHeaderServiceSymbols,
+    'current service fragments in Core raw support headers');
+  const exportSurfaceState = validateCoreSurfaceState(
+    reviewedCoreBaseline.coreExportSymbols,
+    currentCoreExportSymbols,
+    'current Core service export surface');
+  const presentServiceHeaders = coreServiceHeaders.filter(file =>
+    fs.existsSync(path.join(repositoryRoot, file)));
+  const serviceHeaderState = presentServiceHeaders.length === coreServiceHeaders.length
+    ? 'reviewed-baseline-present'
+    : presentServiceHeaders.length === 0
+      ? 'removed'
+      : 'partial-removal';
+  if (serviceHeaderState === 'partial-removal') {
+    throw new Error(`Core service headers are partially removed: ${presentServiceHeaders.join(', ')}`);
+  }
+  if (new Set([
+    serviceHeaderSymbolState,
+    supportHeaderServiceSymbolState,
+    exportSurfaceState,
+    serviceHeaderState,
+  ]).size !== 1) {
+    throw new Error([
+      'Core service headers, declarations, and exports are in inconsistent transition states',
+      `headers=${serviceHeaderState}`,
+      `serviceHeaderSymbols=${serviceHeaderSymbolState}`,
+      `supportHeaderServiceSymbols=${supportHeaderServiceSymbolState}`,
+      `exports=${exportSurfaceState}`,
+    ].join('\n'));
+  }
+  const corePublicSymbols = reviewedCoreBaseline.corePublicSymbols;
+  const coreExportSymbols = reviewedCoreBaseline.coreExportSymbols;
+  const files = fileRecords(repositoryFiles, reviewedCoreRemovalFiles);
   const bindingPublicDeclarations = bindingProjectionDeclarationRecords(files);
   const bindingProjectionUnits = bindingProjectionUnitRecords(files);
   const bindingCoreSymbolReferences = bindingCoreReferenceRecords(files, corePublicSymbols);
@@ -2003,6 +2206,28 @@ function generateInventory() {
     scope: {
       coreServiceHeaders,
       coreSupportHeaders,
+      reviewedCoreBaseline: {
+        source: relativePath(inventoryPath),
+        sections: ['corePublicSymbols', 'coreExportSymbols'],
+        sha256: reviewedCoreBaselineSha256,
+        policy: 'The sealed reviewed records preserve Core 10.x removal provenance after the source headers and exports are deleted. The current tree may match this baseline or contain zero Core service surface; partial transitions and mutations fail generation.',
+      },
+      reviewedCoreRemovalFiles: {
+        sourceRevision: reviewedCoreRemovalFilesRevision,
+        source: relativePath(inventoryPath),
+        selection: 'scope=core and removalGate in {V11-M3-CORE-REMOVE,V11-M3-CORE-CLEAN}',
+        records: reviewedCoreRemovalFiles.length,
+        sha256: reviewedCoreRemovalFilesSha256,
+        policy: 'The sealed records remain in files after deletion so every removed Core service file keeps its reviewed disposition, action, owners, and gates.',
+      },
+      currentCoreServiceSurface: {
+        state: serviceHeaderSymbolState,
+        serviceHeadersPresent: presentServiceHeaders.length,
+        serviceHeaderSymbolsPresent: currentServiceHeaderSymbols.length,
+        supportHeadersPresent: coreSupportHeaders.length,
+        supportHeaderServiceSymbolsPresent: currentSupportHeaderServiceSymbols.length,
+        exportsPresent: currentCoreExportSymbols.length,
+      },
       bindingLanguages: Object.keys(bindingDefinitions),
       frameworkConsumerLanguages: Object.keys(frameworkDefinitions),
       legacyBindings: Object.keys(legacyBindingRoots),
@@ -2023,6 +2248,7 @@ function generateInventory() {
       coreFormalRawRewriteNegativeMutations: 1,
       fileRoutingNegativeMutations: fileRoutingNegativeMutationCount,
       corePublicHeaderNegativeMutations: 2,
+      coreRemovalStateNegativeMutations: 4,
       broadServiceMarkerDiscovery: 'Known Core, binding, Framework runtime, CI, and local-package roots are scanned. A marked file without a routing classification is a generation error.',
       targetSpec: `${targetSpecRoot}/README.ko.md`,
       targetInternals: `${targetInternalsRoot}/README.ko.md`,
@@ -2061,6 +2287,7 @@ function generateInventory() {
       coreFormalRawRewriteNegativeMutations: 1,
       fileRoutingNegativeMutations: fileRoutingNegativeMutationCount,
       corePublicHeaderNegativeMutations: 2,
+      coreRemovalStateNegativeMutations: 4,
       unclassifiedServiceFiles: 0,
     },
     corePublicSymbols,

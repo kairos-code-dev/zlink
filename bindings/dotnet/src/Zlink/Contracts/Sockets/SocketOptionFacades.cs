@@ -155,39 +155,6 @@ public partial class CommonSocketOptions
     }
 
     /// <summary>
-    ///     Gets or sets the interval between heartbeat pings on an idle connection;
-    ///     null disables heartbeats.
-    /// </summary>
-    public TimeSpan? HeartbeatInterval
-    {
-        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatIvl));
-        set => Socket.SetOption(SocketOptions.HeartbeatIvl,
-            EncodeDuration(value, nameof(value)));
-    }
-
-    /// <summary>
-    ///     Gets or sets how long the remote peer should consider this connection
-    ///     alive without a heartbeat; null leaves it unset.
-    /// </summary>
-    public TimeSpan? HeartbeatTtl
-    {
-        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTtl));
-        set => Socket.SetOption(SocketOptions.HeartbeatTtl,
-            EncodeDuration(value, nameof(value)));
-    }
-
-    /// <summary>
-    ///     Gets or sets how long to wait for a heartbeat reply before treating the
-    ///     connection as dead; null falls back to the heartbeat interval.
-    /// </summary>
-    public TimeSpan? HeartbeatTimeout
-    {
-        get => DecodeDuration(Socket.GetOption(SocketOptions.HeartbeatTimeout));
-        set => Socket.SetOption(SocketOptions.HeartbeatTimeout,
-            EncodeDuration(value, nameof(value)));
-    }
-
-    /// <summary>
     ///     Gets or sets whether IPv6 connections are enabled.
     /// </summary>
     public bool IPv6

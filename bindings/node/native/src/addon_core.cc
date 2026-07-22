@@ -5,7 +5,7 @@
 #include "addon_monitor_status_values.h"
 #include "addon_message_values.h"
 #include "addon_message_parts.h"
-#include "addon_spot_request_callbacks.h"
+#include "addon_request_callbacks.h"
 #include "addon_submit_results.h"
 #include "addon_tsfn_slots.h"
 #include <algorithm>
@@ -263,7 +263,6 @@ int subscribe_parts (void *sock,
 
 int router_recv_parts (void *router,
                        zlink_routing_id_t *peer_rid,
-                       zlink_routing_id_t *spot_rid,
                        uint64_t *request_seq,
                        std::vector<zlink_msg_t> *parts,
                        int32_t flags)
@@ -275,7 +274,6 @@ int router_recv_parts (void *router,
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
 
     copy_routing_id (peer_rid, NULL);
-    copy_routing_id (spot_rid, NULL);
     if (request_seq)
         *request_seq = 0;
     if (parts)
@@ -289,7 +287,6 @@ int router_recv_parts (void *router,
     }
 
     copy_routing_id (peer_rid, peer_rid_ptr);
-    copy_routing_id (spot_rid, NULL);
     if (!parts) {
         zlink_msg_close (&first_part);
         errno = EFAULT;
@@ -442,7 +439,6 @@ napi_value create_recv_message_value (napi_env env,
 
 napi_value create_router_recv_message_value (napi_env env,
                                              const zlink_routing_id_t &routing_id,
-                                             const zlink_routing_id_t *spot_routing_id,
                                              uint64_t request_seq,
                                              zlink_msg_t *parts,
                                              size_t part_count)
@@ -455,13 +451,6 @@ napi_value create_router_recv_message_value (napi_env env,
         napi_create_bigint_uint64 (env, request_seq, &request_seq_value);
     }
     napi_set_named_property (env, obj, "requestSeq", request_seq_value);
-    napi_value spot_rid_value;
-    if (spot_routing_id && spot_routing_id->size > 0) {
-        spot_rid_value = create_routing_id_value (env, *spot_routing_id);
-    } else {
-        napi_get_null (env, &spot_rid_value);
-    }
-    napi_set_named_property (env, obj, "spotRid", spot_rid_value);
     return obj;
 }
 
@@ -740,7 +729,7 @@ void stream_on_packet_slot (void *stream_,
     close_messages ();
 
     // This callback runs on the Core socket I/O thread. Waiting for the JS
-    // queue here can prevent the same I/O thread from delivering MeshNode
+    // queue here can prevent the same I/O thread from delivering another
     // request completions needed by the session dispatch that consumes this
     // packet. The TSFN queue is unbounded and preserves FIFO order, while the
     // framework serializes dispatch per session, so enqueue without blocking
@@ -2205,41 +2194,6 @@ napi_value socket_unset_subscription (napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value socket_set_channel_name (napi_env env, napi_callback_info info)
-{
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external (env, argv[0], &sock);
-    std::string channel_name = get_string (env, argv[1]);
-    int rc = zlink_socket_set_channel_name (sock, channel_name.c_str ());
-    if (rc != 0)
-        return throw_last_error (env, "socketSetChannelName failed");
-    napi_value ok;
-    napi_get_undefined (env, &ok);
-    return ok;
-}
-
-napi_value socket_get_channel_name (napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external (env, argv[0], &sock);
-    char channel_name[256];
-    size_t channel_name_len = 0;
-    memset (channel_name, 0, sizeof (channel_name));
-    int rc =
-      zlink_socket_get_channel_name (sock, channel_name, sizeof (channel_name), &channel_name_len);
-    if (rc != 0)
-        return throw_last_error (env, "socketGetChannelName failed");
-    napi_value out;
-    napi_create_string_utf8 (env, channel_name, static_cast<size_t> (channel_name_len), &out);
-    return out;
-}
-
 napi_value handle_set_routing_id (napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -2418,16 +2372,14 @@ napi_value router_recv_message (napi_env env, napi_callback_info info)
         napi_get_value_int32 (env, argv[1], &flags);
 
     zlink_routing_id_t peer_rid;
-    zlink_routing_id_t spot_rid;
     uint64_t request_seq = 0;
     std::vector<zlink_msg_t> parts;
-    int rc = router_recv_parts (router, &peer_rid, &spot_rid, &request_seq, &parts, flags);
+    int rc = router_recv_parts (router, &peer_rid, &request_seq, &parts, flags);
     if (rc != ZLINK_RECV_OK)
         return throw_last_error (env, "routerRecvMessage failed");
 
     napi_value out =
-      create_router_recv_message_value (env, peer_rid, spot_rid.size > 0 ? &spot_rid : NULL,
-                                        request_seq, parts.data (), parts.size ());
+      create_router_recv_message_value (env, peer_rid, request_seq, parts.data (), parts.size ());
     close_msg_vector (parts);
     return out;
 }
@@ -2441,10 +2393,9 @@ napi_value router_try_recv_message (napi_env env, napi_callback_info info)
     napi_get_value_external (env, argv[0], &router);
 
     zlink_routing_id_t peer_rid;
-    zlink_routing_id_t spot_rid;
     uint64_t request_seq = 0;
     std::vector<zlink_msg_t> parts;
-    int rc = router_recv_parts (router, &peer_rid, &spot_rid, &request_seq, &parts,
+    int rc = router_recv_parts (router, &peer_rid, &request_seq, &parts,
                                 ZLINK_RECV_FLAGS_DONTWAIT);
     if (rc != ZLINK_RECV_OK) {
         if (zlink_errno () == EAGAIN) {
@@ -2456,8 +2407,7 @@ napi_value router_try_recv_message (napi_env env, napi_callback_info info)
     }
 
     napi_value out =
-      create_router_recv_message_value (env, peer_rid, spot_rid.size > 0 ? &spot_rid : NULL,
-                                        request_seq, parts.data (), parts.size ());
+      create_router_recv_message_value (env, peer_rid, request_seq, parts.data (), parts.size ());
     close_msg_vector (parts);
     return out;
 }
@@ -3088,21 +3038,6 @@ napi_value timer_new (napi_env env, napi_callback_info info)
     void *timer = zlink_timer_new ();
     if (!timer)
         return throw_last_error (env, "timer_new failed");
-    napi_value out;
-    napi_create_external (env, timer, NULL, NULL, &out);
-    return out;
-}
-
-napi_value spot_timer_new (napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external (env, argv[0], &spot);
-    void *timer = zlink_spot_timer_new (spot);
-    if (!timer)
-        return throw_last_error (env, "spot_timer_new failed");
     napi_value out;
     napi_create_external (env, timer, NULL, NULL, &out);
     return out;

@@ -10,8 +10,7 @@ internal enum SendResult
 }
 
 /// <summary>
-///     The outcome of a MeshNode/spot/actor submit. Maps to
-///     <c>zlink_submit_result_t</c>.
+///     The outcome reported when a socket operation is submitted.
 /// </summary>
 public enum SubmitResult
 {

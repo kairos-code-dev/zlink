@@ -109,14 +109,6 @@ void test_typed_raw_socket_options ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (stream, ZLINK_OPT_IPV6, &value, &size));
     TEST_ASSERT_EQUAL_INT (1, value);
 
-    value = 2500;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, sizeof (value)));
-    value = 0;
-    size = sizeof (value);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (dealer, ZLINK_OPT_HEARTBEAT_IVL, &value, &size));
-    TEST_ASSERT_EQUAL_INT (2500, value);
-
     value = 0;
     size = sizeof (value);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_option (xpub, ZLINK_OPT_TYPE, &value, &size));
@@ -273,24 +265,19 @@ void test_option_owner_map_matches_domains ()
 {
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_SNDHWM));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
-                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT));
-
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_BINDTODEVICE));
 
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
-                           zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL));
 #ifdef ZLINK_HAVE_TLS
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_TLS_CERT));
 #endif
 
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_TOPICS_COUNT));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_LAST_ENDPOINT));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_unknown,
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_BLOCKY));
@@ -305,26 +292,24 @@ void test_option_owner_map_matches_domains ()
                            zlink::option_owner_of (ZLINK_INTERNAL_OPT_SUBMIT_RETRY_ATTEMPTS));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_transport_network,
                            zlink::common_option_owner_of (ZLINK_OPT_TCP_NODELAY));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_protocol_metadata,
-                           zlink::common_option_owner_of (ZLINK_OPT_HEARTBEAT_TTL));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::common_option_owner_of (ZLINK_OPT_LAST_ENDPOINT));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_unknown,
                            zlink::common_option_owner_of (ZLINK_OPT_BLOCKY));
 
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::router_option_owner_of (ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
                            zlink::router_option_owner_of (ZLINK_ROUTER_OPT_WEIGHT));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_PROBE));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
                            zlink::dealer_option_owner_of (ZLINK_DEALER_OPT_WEIGHT));
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
                            zlink::stream_option_owner_of (ZLINK_STREAM_OPT_NOTIFY));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::pub_option_owner_of (ZLINK_PUB_OPT_MANUAL_LAST_VALUE));
-    TEST_ASSERT_EQUAL_INT (zlink::options_owner_service_specific,
+    TEST_ASSERT_EQUAL_INT (zlink::options_owner_socket_specific,
                            zlink::sub_option_owner_of (ZLINK_SUB_OPT_TOPICS_COUNT));
 
     TEST_ASSERT_EQUAL_INT (
@@ -345,10 +330,7 @@ void test_option_owner_map_matches_domains ()
     TEST_ASSERT_EQUAL_STRING (
       "transport-network",
       zlink::option_owner_name (zlink::option_owner_of (ZLINK_INTERNAL_OPT_TCP_NODELAY)));
-    TEST_ASSERT_EQUAL_STRING (
-      "protocol-metadata",
-      zlink::option_owner_name (zlink::option_owner_of (ZLINK_INTERNAL_OPT_HEARTBEAT_TTL)));
-    TEST_ASSERT_EQUAL_STRING ("service-specific", zlink::option_owner_name (zlink::option_owner_of (
+    TEST_ASSERT_EQUAL_STRING ("socket-specific", zlink::option_owner_name (zlink::option_owner_of (
                                                     ZLINK_INTERNAL_OPT_TOPICS_COUNT)));
 }
 

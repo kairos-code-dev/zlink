@@ -165,12 +165,8 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (fd_t fd_,
     _hello_send_size (0),
     _peer_routing_id_size (0),
     _subscription_required (false),
-    _heartbeat_timeout (0),
     _current_timer_id (-1),
-    _has_handshake_timer (false),
-    _has_ttl_timer (false),
-    _has_timeout_timer (false),
-    _has_heartbeat_timer (false)
+    _has_handshake_timer (false)
 {
     WS_ENGINE_DBG ("Constructor: fd=%d, client=%d", fd_, is_client_);
 
@@ -179,15 +175,6 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (fd_t fd_,
 
     rc = _routing_id_msg.init ();
     errno_assert (rc == 0);
-
-    rc = _pong_msg.init ();
-    errno_assert (rc == 0);
-
-    if (_options.heartbeat_interval > 0) {
-        _heartbeat_timeout = _options.heartbeat_timeout;
-        if (_heartbeat_timeout == -1)
-            _heartbeat_timeout = _options.heartbeat_interval;
-    }
 
     //  Initialize greeting buffers
     memset (_hello_recv, 0, sizeof (_hello_recv));
@@ -263,12 +250,8 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
     _hello_send_size (0),
     _peer_routing_id_size (0),
     _subscription_required (false),
-    _heartbeat_timeout (0),
     _current_timer_id (-1),
     _has_handshake_timer (false),
-    _has_ttl_timer (false),
-    _has_timeout_timer (false),
-    _has_heartbeat_timer (false),
     _ssl_context (std::move (ssl_context_))
 {
     WS_ENGINE_DBG ("Constructor: fd=%d, client=%d (custom transport)", fd_, is_client_);
@@ -278,15 +261,6 @@ zlink::asio_ws_engine_t::asio_ws_engine_t (
 
     rc = _routing_id_msg.init ();
     errno_assert (rc == 0);
-
-    rc = _pong_msg.init ();
-    errno_assert (rc == 0);
-
-    if (_options.heartbeat_interval > 0) {
-        _heartbeat_timeout = _options.heartbeat_timeout;
-        if (_heartbeat_timeout == -1)
-            _heartbeat_timeout = _options.heartbeat_interval;
-    }
 
     //  Initialize greeting buffers
     memset (_hello_recv, 0, sizeof (_hello_recv));
@@ -332,9 +306,6 @@ zlink::asio_ws_engine_t::~asio_ws_engine_t ()
     errno_assert (rc == 0);
 
     rc = _routing_id_msg.close ();
-    errno_assert (rc == 0);
-
-    rc = _pong_msg.close ();
     errno_assert (rc == 0);
 
     if (_metadata != NULL) {
@@ -435,7 +406,6 @@ void zlink::asio_ws_engine_t::start_zmp_handshake ()
     _ready_sent = false;
     _ready_received = false;
     _ready_send.clear ();
-    _heartbeat_ctx.clear ();
     _last_error_code = 0;
     _last_error_reason.clear ();
 
@@ -566,11 +536,6 @@ void zlink::asio_ws_engine_t::on_read_complete (const boost::system::error_code 
 
         _last_error_code = 0;
         _last_error_reason.clear ();
-
-        if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
-            add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-            _has_heartbeat_timer = true;
-        }
 
         //  Notify session that engine is ready
         if (_session) {
@@ -1392,21 +1357,6 @@ void zlink::asio_ws_engine_t::terminate ()
         _has_handshake_timer = false;
     }
 
-    if (_has_ttl_timer) {
-        cancel_timer (heartbeat_ttl_timer_id);
-        _has_ttl_timer = false;
-    }
-
-    if (_has_timeout_timer) {
-        cancel_timer (heartbeat_timeout_timer_id);
-        _has_timeout_timer = false;
-    }
-
-    if (_has_heartbeat_timer) {
-        cancel_timer (heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = false;
-    }
-
     //  Close transport - this will cause pending async ops to fail
     if (_transport) {
         _transport->close ();
@@ -1527,16 +1477,6 @@ void zlink::asio_ws_engine_t::on_timer (int id_, const boost::system::error_code
     if (id_ == handshake_timer_id) {
         _has_handshake_timer = false;
         error (timeout_error);
-    } else if (id_ == heartbeat_ivl_timer_id) {
-        _next_msg = &asio_ws_engine_t::produce_ping_message;
-        restart_output ();
-        add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-    } else if (id_ == heartbeat_ttl_timer_id) {
-        _has_ttl_timer = false;
-        error (timeout_error);
-    } else if (id_ == heartbeat_timeout_timer_id) {
-        _has_timeout_timer = false;
-        error (timeout_error);
     }
 }
 
@@ -1558,16 +1498,6 @@ int zlink::asio_ws_engine_t::pull_and_encode (msg_t *msg_)
 
 int zlink::asio_ws_engine_t::decode_and_push (msg_t *msg_)
 {
-    if (_has_timeout_timer) {
-        _has_timeout_timer = false;
-        cancel_timer (heartbeat_timeout_timer_id);
-    }
-
-    if (_has_ttl_timer) {
-        _has_ttl_timer = false;
-        cancel_timer (heartbeat_ttl_timer_id);
-    }
-
     if (msg_->flags () & msg_t::command) {
         const int rc = process_command_message (msg_);
         if (rc < 0)
@@ -1607,8 +1537,6 @@ int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
 {
     const char *error_reason = NULL;
     switch (zmp_control::classify_command_message (msg_, _ready_received, &error_reason)) {
-        case zmp_control::command_message_heartbeat:
-            return process_heartbeat_message (msg_);
         case zmp_control::command_message_ready:
             return process_ready_message (msg_);
         case zmp_control::command_message_error:
@@ -1620,51 +1548,6 @@ int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
             set_last_error (zmp_error_internal, error_reason ? error_reason : "invalid control");
             return -1;
     }
-}
-
-int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
-{
-    zmp_control::build_heartbeat_ping (msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
-
-    _next_msg = &asio_ws_engine_t::pull_msg_from_session;
-    if (!_has_timeout_timer && _heartbeat_timeout > 0) {
-        add_timer (_heartbeat_timeout, heartbeat_timeout_timer_id);
-        _has_timeout_timer = true;
-    }
-
-    return 0;
-}
-
-int zlink::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
-{
-    zmp_control::heartbeat_action_t action;
-    if (zmp_control::parse_heartbeat (msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
-        != 0) {
-        set_last_error (zmp_error_internal, action.error_reason);
-        return -1;
-    }
-
-    if (action.kind == zmp_control::heartbeat_action_send_ack) {
-        if (!_has_ttl_timer && action.ttl_ds > 0) {
-            add_timer (static_cast<int> (action.ttl_ds) * 100, heartbeat_ttl_timer_id);
-            _has_ttl_timer = true;
-        }
-
-        _heartbeat_ctx.assign (action.ctx, action.ctx + action.ctx_len);
-        _next_msg = &asio_ws_engine_t::produce_pong_message;
-        restart_output ();
-        return 0;
-    }
-
-    return 0;
-}
-
-int zlink::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
-{
-    zmp_control::build_heartbeat_ack (msg_, _heartbeat_ctx);
-    _heartbeat_ctx.clear ();
-    _next_msg = &asio_ws_engine_t::pull_msg_from_session;
-    return 0;
 }
 
 #endif // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

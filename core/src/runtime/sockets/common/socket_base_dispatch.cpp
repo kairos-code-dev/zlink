@@ -380,7 +380,7 @@ void zlink::socket_base_t::notify_send_ready_if_armed ()
     }
 }
 
-int zlink::socket_base_t::sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_)
+int zlink::socket_base_t::sub_dispatch_start (sub_io_handler_fn callback_, void *userdata_)
 {
     LIBZLINK_UNUSED (callback_);
     LIBZLINK_UNUSED (userdata_);

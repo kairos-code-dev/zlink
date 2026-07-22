@@ -74,7 +74,7 @@ enum message_snapshot_flags_t
     MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES = 1 << 1
 };
 
-// Core 10.0.0 exposes no message property API, so the binding derives its
+// The Core raw API exposes no message property API, so the binding derives its
 // synthetic routed identity properties itself and avoids repeated native
 // property probes on every data-only receive.
 inline napi_value create_message_properties_snapshot (napi_env env,
@@ -113,7 +113,7 @@ inline napi_value create_message_snapshot_value (napi_env env,
     // A freshly received message is solely owned by the binding, so its
     // reference count is always 1 on the receive path and the "refCount" field
     // is omitted. Only query the library when a caller explicitly asks for the
-    // count to be surfaced (e.g. the spot snapshot path).
+    // count to be surfaced by an explicit diagnostic path.
     int refcnt = 1;
     if (flags & MESSAGE_SNAPSHOT_ALWAYS_REF_COUNT) {
         zlink_config_result_t refcnt_err = ZLINK_CONFIG_OK;

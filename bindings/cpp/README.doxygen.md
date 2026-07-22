@@ -19,7 +19,7 @@ bindings/cpp/doxygen/html/index.html
 ## Scope
 
 - Public C++20 contract headers in `include/zlink/`
-- Contract projections for core, messaging, sockets, eventing, service, and errors
+- Contract projections for core, messaging, sockets, eventing, and errors
 - Runtime-backed public types (`context_t`, `socket_t`, `message_t`, `poller_t`, etc.)
 - `context_t::options()` exposes the typed `context_options_t` facade
 - `message_t` diagnostics expose `ref_count()`

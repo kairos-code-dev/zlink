@@ -3,7 +3,6 @@
 #include "utils/precompiled.hpp"
 
 #include "api/core/config_result_internal.hpp"
-#include "api/mesh/mesh_api_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
 #include "utils/err.hpp"
 
@@ -86,11 +85,6 @@ zlink::option_target_t zlink::resolve_option_target (void *handle_)
         return target;
     }
 
-    if (zlink::mesh::classify_handle (handle_) != zlink::mesh::handle_none) {
-        target.kind = option_target_service;
-        return target;
-    }
-
     target.socket = as_socket (handle_);
     if (target.socket)
         target.kind = option_target_socket;
@@ -111,14 +105,8 @@ zlink_set_option (void *handle_, zlink_option_t option_, const void *optval_, si
     }
 
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink::mesh::set_common_option (handle_, socket_option, optval_, optvallen_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
-        if (descriptor->service_only) {
+        if (descriptor->unsupported_on_socket) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
@@ -138,14 +126,8 @@ zlink_get_option (void *handle_, zlink_option_t option_, void *optval_, size_t *
     const int socket_option = descriptor->internal_option;
 
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink::mesh::get_common_option (handle_, socket_option, optval_, optvallen_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
-        if (descriptor->service_only) {
+        if (descriptor->unsupported_on_socket) {
             errno = EINVAL;
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         }
@@ -159,12 +141,6 @@ zlink_get_option (void *handle_, zlink_option_t option_, void *optval_, size_t *
 zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, size_t size_)
 {
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink::mesh::set_routing_id (handle_, data_, size_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
         const int type = socket_type_of (target.socket);
         if (type == ZLINK_CORE_SOCKET_STREAM) {
@@ -186,11 +162,6 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
     }
 
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (zlink::mesh::get_routing_id (handle_, out_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
         size_t size = sizeof (out_->data);
         const int rc =
@@ -208,37 +179,10 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
 
-zlink_config_result_t zlink_socket_set_channel_name (void *socket_, const char *channel_name_)
-{
-    zlink::socket_base_t *socket = as_socket (socket_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (
-      socket->set_channel_name_metadata (channel_name_));
-}
-
-zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
-                                                     char *channel_name_buf_,
-                                                     size_t channel_name_capacity_,
-                                                     size_t *channel_name_len_out_)
-{
-    zlink::socket_base_t *socket = as_socket (socket_);
-    if (!socket)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (socket->get_channel_name_metadata (
-      channel_name_buf_, channel_name_capacity_, channel_name_len_out_));
-}
-
 zlink_config_result_t
 zlink_set_tls_server (void *handle_, const char *cert_, const char *key_, int require_client_cert_)
 {
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink::mesh::set_tls_server (handle_, cert_, key_, require_client_cert_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
         if (!cert_ || !key_) {
             errno = EFAULT;
@@ -263,12 +207,6 @@ zlink_config_result_t
 zlink_set_tls_client (void *handle_, const char *ca_cert_, const char *hostname_, int trust_system_)
 {
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink::mesh::set_tls_client (handle_, ca_cert_, hostname_, trust_system_));
-    }
-
     if (target.kind == zlink::option_target_socket) {
         if (!ca_cert_ || !hostname_) {
             errno = EFAULT;

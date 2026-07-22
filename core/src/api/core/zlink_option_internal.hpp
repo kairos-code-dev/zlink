@@ -13,7 +13,7 @@ struct option_descriptor_t
 {
     int public_option;
     int internal_option;
-    bool service_only;
+    bool unsupported_on_socket;
 };
 
 namespace zlink
@@ -23,7 +23,6 @@ class socket_base_t;
 enum option_target_kind_t
 {
     option_target_invalid = 0,
-    option_target_service,
     option_target_socket
 };
 

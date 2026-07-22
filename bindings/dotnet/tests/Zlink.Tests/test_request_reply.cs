@@ -421,9 +421,6 @@ namespace Systems.Zlink.Tests;
         using var serverB = ctx.CreateDealerSocket();
         using var client = ctx.CreateDealerSocket();
 
-        serverA.SetChannelName("profile.mesh");
-        serverB.SetChannelName("profile.mesh");
-        client.SetChannelName("profile.mesh");
         serverA.Options.PeerWeight = 100;
         serverB.Options.PeerWeight = 100;
         client.Options.PeerWeight = 100;

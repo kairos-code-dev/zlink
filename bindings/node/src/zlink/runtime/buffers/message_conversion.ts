@@ -41,7 +41,7 @@ export { normalizeOperationPayload as normalizeMessageLikePayload };
 
 export function messageFromNativeBuffer(buffer: Buffer | null | undefined): Message {
   // HOT PATH: native callbacks already transfer payload ownership to a JS
-  // Buffer. Build the public Message facade directly so STREAM/actor callbacks
+  // Buffer. Build the public Message facade directly so STREAM callbacks
   // do not allocate an intermediate snapshot object for every received part.
   return messageFromOwnedBuffer(buffer ?? Buffer.alloc(0));
 }

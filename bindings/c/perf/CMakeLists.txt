@@ -87,7 +87,6 @@ endfunction()
     add_current_bench_single(perf_dealer_router_reqrep single/src/perf_dealer_router_reqrep.cpp)
     add_current_bench_single(perf_router_router single/src/perf_router_router.cpp)
     add_current_bench_single(perf_router_router_reqrep single/src/perf_router_router_reqrep.cpp)
-    add_current_bench_single(perf_spot_pubsub single/src/perf_spot_pubsub.cpp)
 
     add_executable(
         perf_stream_client
@@ -149,21 +148,6 @@ endfunction()
             LABELS "perf-metric"
             TIMEOUT 30)
     endif()
-    foreach(spot_pattern IN ITEMS spot_pubsub spot_reqrep spot_sendsend)
-        string(TOUPPER "${spot_pattern}" spot_pattern_upper)
-        add_current_bench_multi(
-            comp_src_${spot_pattern}_server
-            multi/src/perf_multi_spot_server.cpp)
-        add_current_bench_multi(
-            comp_src_${spot_pattern}_client
-            multi/src/perf_multi_spot_client.cpp)
-        target_compile_definitions(
-            comp_src_${spot_pattern}_server PRIVATE
-            PERF_SPOT_PATTERN_NAME="MULTI_${spot_pattern_upper}")
-        target_compile_definitions(
-            comp_src_${spot_pattern}_client PRIVATE
-            PERF_SPOT_PATTERN_NAME="MULTI_${spot_pattern_upper}")
-    endforeach()
     add_current_bench_multi(comp_src_stream_server
                            multi/src/perf_multi_stream_server.cpp)
 target_compile_definitions(comp_src_stream_server PRIVATE

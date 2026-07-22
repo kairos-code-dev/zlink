@@ -306,9 +306,6 @@ resolve_single_build_targets() {
       ROUTER_ROUTER_REQREP)
         targets+=("cpp_perf_router_router_reqrep")
         ;;
-      SPOT)
-        targets+=("cpp_perf_spot")
-        ;;
     esac
   done
 

@@ -113,38 +113,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         socketCore.disconnect(endpoint);
     }
 
-    public void setChannelName(String channelName) {
-        Objects.requireNonNull(channelName, "channelName");
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.socketSetChannelName(handle,
-              NativeHelpers.toCString(arena, channelName));
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-            }
-        }
-    }
-
-    public String getChannelName() {
-        ensureOpen();
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buffer = arena.allocate(256);
-            MemorySegment lengthOut = arena.allocate(ValueLayout.JAVA_LONG);
-            int rc = Native.socketGetChannelName(handle, buffer, 256,
-              lengthOut);
-            if (rc != 0) {
-                throw ZlinkException.fromLastError(
-                  systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-            }
-            int len = (int) lengthOut.get(ValueLayout.JAVA_LONG, 0);
-            if (len <= 0) {
-                return "";
-            }
-            return NativeHelpers.fromCString(buffer, len);
-        }
-    }
-
     public void attachStreamPacket(StreamFramedPacketHandler handler) {
         socketCore.attachStreamPacket(handler);
     }
@@ -591,7 +559,6 @@ final class NativeSocketRuntime implements AutoCloseable {
     void closeInternal() {
         if (handle != null && handle.address() != 0) {
             RequestProgressPump.stopSocketProgress(handle);
-            RequestProgressPump.stopSpotProgress(handle);
             if (own) {
                 int rc = Native.close(handle);
                 if (rc != 0)

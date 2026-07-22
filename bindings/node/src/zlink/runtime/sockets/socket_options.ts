@@ -130,12 +130,6 @@ export class CommonSocketOptions {
   set tcpNoDelay(value: boolean) { this.writeBool(SocketOption.TCP_NODELAY, value); }
   get tcpKeepalive(): number { return this.readInt32(SocketOption.TCP_KEEPALIVE, 'tcpKeepalive'); }
   set tcpKeepalive(value: number) { this.writeInt32(SocketOption.TCP_KEEPALIVE, value, 'tcpKeepalive'); }
-  get heartbeatInterval(): number { return this.readInt32(SocketOption.HEARTBEAT_IVL, 'heartbeatInterval'); }
-  set heartbeatInterval(value: number) { this.writeInt32(SocketOption.HEARTBEAT_IVL, value, 'heartbeatInterval'); }
-  get heartbeatTtl(): number { return this.readInt32(SocketOption.HEARTBEAT_TTL, 'heartbeatTtl'); }
-  set heartbeatTtl(value: number) { this.writeInt32(SocketOption.HEARTBEAT_TTL, value, 'heartbeatTtl'); }
-  get heartbeatTimeout(): number { return this.readInt32(SocketOption.HEARTBEAT_TIMEOUT, 'heartbeatTimeout'); }
-  set heartbeatTimeout(value: number) { this.writeInt32(SocketOption.HEARTBEAT_TIMEOUT, value, 'heartbeatTimeout'); }
   get maxMsgSize(): bigint { return readInt64Option(this._socket.getSockOptRaw(SocketOption.MAXMSGSIZE), 'maxMsgSize'); }
   set maxMsgSize(value: bigint) { this._socket.setSockOptRaw(SocketOption.MAXMSGSIZE, int64Buffer(value, 'maxMsgSize')); }
   get lastEndpoint(): string { return readStringOption(this._socket.getSockOptRaw(SocketOption.LAST_ENDPOINT)); }

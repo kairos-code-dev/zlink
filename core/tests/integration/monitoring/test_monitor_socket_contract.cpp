@@ -543,18 +543,6 @@ void raw_client_handler (const zlink_routing_id_t *source_rid_,
     probe->cv.notify_all ();
 }
 
-void typed_router_client_handler (const zlink_routing_id_t *source_rid_,
-                                  const zlink_routing_id_t *source_spot_rid_,
-                                  uint64_t request_seq_,
-                                  zlink_msg_t *parts_,
-                                  size_t part_count_,
-                                  void *)
-{
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
-    TEST_ASSERT_EQUAL_UINT64 (0, request_seq_);
-    raw_client_handler (source_rid_, parts_, part_count_, NULL);
-}
-
 void pubsub_subscribe_handler (const zlink_routing_id_t *source_rid_,
                                const char *topic_,
                                size_t topic_len_,

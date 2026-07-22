@@ -3,7 +3,7 @@
 #include "../testutil_unity.hpp"
 
 #include "core/ctx.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 #include "sockets/common/socket_base.hpp"
 
 namespace
@@ -111,16 +111,16 @@ void test_ctx_io_thread_selection_respects_affinity ()
     TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
 }
 
-void test_ctx_service_runtime_bootstraps_runtime_resources_once ()
+void test_ctx_control_runtime_bootstraps_runtime_resources_once ()
 {
     zlink::ctx_t *ctx = new zlink::ctx_t;
     TEST_ASSERT_NOT_NULL (ctx);
 
-    zlink::service_control_runtime_t *first = ctx->service_control_runtime ();
+    zlink::control_runtime_t *first = ctx->control_runtime ();
     TEST_ASSERT_NOT_NULL (first);
     TEST_ASSERT_NOT_NULL (ctx->get_reaper ());
 
-    zlink::service_control_runtime_t *second = ctx->service_control_runtime ();
+    zlink::control_runtime_t *second = ctx->control_runtime ();
     TEST_ASSERT_EQUAL_PTR (first, second);
 
     TEST_ASSERT_SUCCESS_ERRNO (ctx->terminate ());
@@ -135,6 +135,6 @@ extern "C" int main ()
     RUN_TEST (test_ctx_reuses_released_socket_slot);
     RUN_TEST (test_ctx_inproc_endpoint_registry_tracks_owner);
     RUN_TEST (test_ctx_io_thread_selection_respects_affinity);
-    RUN_TEST (test_ctx_service_runtime_bootstraps_runtime_resources_once);
+    RUN_TEST (test_ctx_control_runtime_bootstraps_runtime_resources_once);
     return UNITY_END ();
 }

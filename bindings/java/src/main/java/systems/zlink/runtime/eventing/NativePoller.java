@@ -10,7 +10,6 @@ import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.contracts.errors.ZlinkException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -24,15 +23,10 @@ import java.util.Objects;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.DurationConversions;
-import systems.zlink.runtime.nativeapi.RequestProgressPump;
 
 public final class NativePoller implements Poller {
-    private static final int MASK_POLLIN = PollEventFlags.POLLIN.mask();
-    private static final int MASK_POLLOUT = PollEventFlags.POLLOUT.mask();
-    private static final int MASK_POLLCOMPLETION = 32;
     private final List<PollItem> items = new ArrayList<>();
     private final Map<Long, Integer> socketIndexes = new HashMap<>();
-    private final Map<Long, Integer> spotIndexes = new HashMap<>();
     private MemorySegment handle;
     private Arena waitArena;
     private MemorySegment waitEvents = MemorySegment.NULL;
@@ -51,10 +45,6 @@ public final class NativePoller implements Poller {
 
     public void add(Socket socket, long slot, PollEventFlags... events) {
         addSocket(socket, combine(events), slot);
-    }
-
-    public void add(Spot spot, long slot, PollEventFlags... events) {
-        addSpot(spot, combine(events), slot);
     }
 
     public void addFd(int fd, long slot, PollEventFlags... events) {
@@ -91,42 +81,6 @@ public final class NativePoller implements Poller {
         items.get(index).events = mask;
     }
 
-    public void modify(Spot spot, PollEventFlags... events) {
-        ensureOpen();
-        Objects.requireNonNull(spot, "spot");
-        int index = findSpot(InternalAccess.spotHandle(spot));
-        if (index < 0)
-            throw new IllegalArgumentException("spot is not registered");
-        int mask = combine(events);
-        PollItem item = items.get(index);
-        boolean nextSpotPub = spotPollUsesPubPlane(mask);
-        int rc;
-        if (item.spotPub == nextSpotPub) {
-            rc = item.spotPub
-                ? Native.pollerModifySpotPub(handle, InternalAccess.spotHandle(spot),
-                    mask)
-                : Native.pollerModifySpotSub(handle, InternalAccess.spotHandle(spot),
-                    mask);
-        } else {
-            rc = item.spotPub
-                ? Native.pollerRemoveSpotPub(handle, InternalAccess.spotHandle(spot))
-                : Native.pollerRemoveSpotSub(handle, InternalAccess.spotHandle(spot));
-            if (rc == 0) {
-                rc = nextSpotPub
-                    ? Native.pollerAddSpotPub(handle, InternalAccess.spotHandle(spot),
-                        item.userData(), mask)
-                    : Native.pollerAddSpotSub(handle, InternalAccess.spotHandle(spot),
-                        item.userData(), mask);
-            }
-            item.spotPub = nextSpotPub;
-        }
-        if (rc != 0)
-            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        unregisterExternalProgress(item);
-        item.events = mask;
-        registerExternalProgress(item);
-    }
-
     public void modifyFd(int fd, PollEventFlags... events) {
         ensureOpen();
         int index = findFd(fd);
@@ -149,27 +103,7 @@ public final class NativePoller implements Poller {
         if (rc != 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
         PollItem removed = items.remove(index);
-        unregisterExternalProgress(removed);
         socketIndexes.remove(removed.handle.address());
-        refreshIndexesFrom(index);
-        return true;
-    }
-
-    public boolean remove(Spot spot) {
-        ensureOpen();
-        Objects.requireNonNull(spot, "spot");
-        int index = findSpot(InternalAccess.spotHandle(spot));
-        if (index < 0)
-            return false;
-        PollItem item = items.get(index);
-        int rc = item.spotPub
-            ? Native.pollerRemoveSpotPub(handle, InternalAccess.spotHandle(spot))
-            : Native.pollerRemoveSpotSub(handle, InternalAccess.spotHandle(spot));
-        if (rc != 0)
-            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        PollItem removed = items.remove(index);
-        unregisterExternalProgress(removed);
-        spotIndexes.remove(removed.handle.address());
         refreshIndexesFrom(index);
         return true;
     }
@@ -182,7 +116,7 @@ public final class NativePoller implements Poller {
         int rc = Native.pollerRemoveFd(handle, fd);
         if (rc != 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        unregisterExternalProgress(items.remove(index));
+        items.remove(index);
         return true;
     }
 
@@ -195,7 +129,7 @@ public final class NativePoller implements Poller {
         int rc = Native.pollerRemoveZlinkTimer(handle, InternalAccess.timerHandle(timer));
         if (rc != 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        unregisterExternalProgress(items.remove(index));
+        items.remove(index);
         return true;
     }
 
@@ -207,10 +141,8 @@ public final class NativePoller implements Poller {
         handle = Native.pollerNew();
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        unregisterAllExternalProgress();
         items.clear();
         socketIndexes.clear();
-        spotIndexes.clear();
     }
 
     public int size() {
@@ -250,7 +182,6 @@ public final class NativePoller implements Poller {
             return;
         Native.pollerDestroy(handle);
         handle = MemorySegment.NULL;
-        unregisterAllExternalProgress();
         items.clear();
         closeWaitArena();
     }
@@ -296,48 +227,6 @@ public final class NativePoller implements Poller {
         items.add(item);
     }
 
-    private void addSpot(Spot spot, int events, long slot) {
-        ensureOpen();
-        Objects.requireNonNull(spot, "spot");
-        validateSlot(slot);
-        boolean spotPub = spotPollUsesPubPlane(events);
-        PollItem item = PollItem.spot(InternalAccess.spotHandle(spot), events, slot,
-            spotPub);
-        int rc = spotPub
-            ? Native.pollerAddSpotPub(handle, InternalAccess.spotHandle(spot),
-                item.userData(), events)
-            : Native.pollerAddSpotSub(handle, InternalAccess.spotHandle(spot),
-                item.userData(), events);
-        if (rc != 0)
-            throw ZlinkException.fromLastError(systems.zlink.contracts.errors.ErrorCategory.CONFIG);
-        registerExternalProgress(item);
-        spotIndexes.putIfAbsent(InternalAccess.spotHandle(spot).address(), items.size());
-        items.add(item);
-    }
-
-    private static boolean spotPollUsesPubPlane(int events) {
-        return (events & MASK_POLLOUT) != 0
-            && (events & (MASK_POLLIN | MASK_POLLCOMPLETION)) == 0;
-    }
-
-    private static void registerExternalProgress(PollItem item) {
-        if (item.isSpot && (item.events & MASK_POLLCOMPLETION) != 0) {
-            RequestProgressPump.acquireExternalSpotProgress(item.handle);
-        }
-    }
-
-    private static void unregisterExternalProgress(PollItem item) {
-        if (item.isSpot && (item.events & MASK_POLLCOMPLETION) != 0) {
-            RequestProgressPump.releaseExternalSpotProgress(item.handle);
-        }
-    }
-
-    private void unregisterAllExternalProgress() {
-        for (PollItem item : items) {
-            unregisterExternalProgress(item);
-        }
-    }
-
     private void ensureOpen() {
         if (handle == null || handle.address() == 0)
             throw new IllegalStateException("poller is closed");
@@ -373,19 +262,12 @@ public final class NativePoller implements Poller {
         return -1;
     }
 
-    private int findSpot(MemorySegment spotHandle) {
-        return spotIndexes.getOrDefault(spotHandle.address(), -1);
-    }
-
     private void refreshIndexesFrom(int start) {
         for (int i = start; i < items.size(); i++) {
             PollItem item = items.get(i);
             if (item.kind != PollSourceKind.SOCKET)
                 continue;
-            if (item.isSpot)
-                spotIndexes.put(item.handle.address(), i);
-            else
-                socketIndexes.put(item.handle.address(), i);
+            socketIndexes.put(item.handle.address(), i);
         }
     }
 
@@ -406,40 +288,27 @@ public final class NativePoller implements Poller {
         private final int fd;
         private int events;
         private final long slot;
-        private final boolean isSpot;
-        private boolean spotPub;
-
         private PollItem(PollSourceKind kind, MemorySegment handle, int fd,
-                         int events, long slot, boolean isSpot,
-                         boolean spotPub) {
+                         int events, long slot) {
             this.kind = kind;
             this.handle = handle;
             this.fd = fd;
             this.events = events;
             this.slot = slot;
-            this.isSpot = isSpot;
-            this.spotPub = spotPub;
         }
 
         static PollItem socket(MemorySegment handle, int events, long slot) {
             return new PollItem(PollSourceKind.SOCKET, handle, 0, events,
-                slot, false, false);
-        }
-
-        static PollItem spot(MemorySegment handle, int events, long slot,
-                             boolean spotPub) {
-            return new PollItem(PollSourceKind.SOCKET, handle, 0, events,
-                slot, true, spotPub);
+                slot);
         }
 
         static PollItem fd(int fd, int events, long slot) {
             return new PollItem(PollSourceKind.FD, MemorySegment.NULL, fd,
-                events, slot, false, false);
+                events, slot);
         }
 
         static PollItem timer(MemorySegment handle, long slot) {
-            return new PollItem(PollSourceKind.TIMER, handle, 0, 0, slot,
-                false, false);
+            return new PollItem(PollSourceKind.TIMER, handle, 0, 0, slot);
         }
 
         MemorySegment userData() {

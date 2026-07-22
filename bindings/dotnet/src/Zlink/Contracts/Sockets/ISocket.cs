@@ -40,12 +40,6 @@ public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
     ISocketMonitor MonitorOpen(SocketEvent events = SocketEvent.All);
 
     /// <summary>
-    ///     Sets the logical channel name used to identify this socket in routing
-    ///     and service discovery.
-    /// </summary>
-    void SetChannelName(string channelName);
-
-    /// <summary>
     ///     Configures this socket as a TLS server. Apply before binding.
     /// </summary>
     /// <param name="certPath">Path to the server certificate (PEM).</param>
@@ -73,7 +67,7 @@ public interface ISocket : IZlinkSocket, IDisposable, IAsyncDisposable
     /// <summary>
     ///     Closes the socket and releases its native resources; further operations
     ///     throw. Unlike <see cref="IDisposable.Dispose" />, this closes the native
-    ///     socket even when a discovery service is attached.
+    ///     socket immediately.
     /// </summary>
     void Close();
 }

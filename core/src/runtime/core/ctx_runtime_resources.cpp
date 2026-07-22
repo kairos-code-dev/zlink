@@ -11,7 +11,7 @@
 #include "core/mailbox.hpp"
 #include "core/io_thread.hpp"
 #include "core/reaper.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 
 namespace
 {
@@ -20,7 +20,7 @@ const int term_and_reaper_threads_count = 2;
 }
 
 zlink::ctx_runtime_resources_t::ctx_runtime_resources_t () :
-    _reaper (NULL), _service_control_runtime (NULL)
+    _reaper (NULL), _control_runtime (NULL)
 {
 }
 
@@ -36,7 +36,7 @@ bool zlink::ctx_runtime_resources_t::start_locked (ctx_t &ctx_,
           slot_count, io_thread_count_ + term_and_reaper_threads_count, &term_mailbox_))
         return false;
 
-    if (!start_reaper_locked (ctx_, socket_registry_) || !start_service_runtime_locked (ctx_)
+    if (!start_reaper_locked (ctx_, socket_registry_) || !start_control_runtime_locked (ctx_)
         || !start_io_threads_locked (ctx_, socket_registry_, io_thread_count_)) {
         cleanup_failed_start_locked (ctx_, socket_registry_);
         return false;
@@ -49,10 +49,10 @@ void zlink::ctx_runtime_resources_t::teardown (ctx_t &ctx_, ctx_socket_registry_
 {
     LIBZLINK_UNUSED (ctx_);
 
-    if (_service_control_runtime) {
-        _service_control_runtime->stop ();
-        delete _service_control_runtime;
-        _service_control_runtime = NULL;
+    if (_control_runtime) {
+        _control_runtime->stop ();
+        delete _control_runtime;
+        _control_runtime = NULL;
     }
     _io_thread_registry.stop_all ();
     _io_thread_registry.destroy_all ();
@@ -63,9 +63,9 @@ void zlink::ctx_runtime_resources_t::teardown (ctx_t &ctx_, ctx_socket_registry_
     socket_registry_.clear ();
 }
 
-zlink::service_control_runtime_t *zlink::ctx_runtime_resources_t::service_control_runtime () const
+zlink::control_runtime_t *zlink::ctx_runtime_resources_t::control_runtime () const
 {
-    return _service_control_runtime;
+    return _control_runtime;
 }
 
 zlink::object_t *zlink::ctx_runtime_resources_t::reaper_object () const
@@ -111,15 +111,15 @@ bool zlink::ctx_runtime_resources_t::start_reaper_locked (ctx_t &ctx_,
     return true;
 }
 
-bool zlink::ctx_runtime_resources_t::start_service_runtime_locked (ctx_t &ctx_)
+bool zlink::ctx_runtime_resources_t::start_control_runtime_locked (ctx_t &ctx_)
 {
-    _service_control_runtime = new (std::nothrow) service_control_runtime_t (&ctx_, "service-ctrl");
-    if (!_service_control_runtime) {
+    _control_runtime = new (std::nothrow) control_runtime_t (&ctx_, "core-ctrl");
+    if (!_control_runtime) {
         errno = ENOMEM;
         return false;
     }
 
-    return _service_control_runtime->start ();
+    return _control_runtime->start ();
 }
 
 bool zlink::ctx_runtime_resources_t::start_io_threads_locked (

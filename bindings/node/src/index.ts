@@ -31,13 +31,9 @@ import {
   RuntimeXSubSocket,
 } from './zlink/runtime/sockets';
 import {
-  RuntimeMeshNode,
-} from './zlink/runtime/service';
-import {
   asPublicContract,
   asRuntimeContext,
   asRuntimeSocket,
-  asRuntimeSpot,
 } from './zlink/runtime/public_bridge';
 import type {
   AtomicCounter,
@@ -48,8 +44,6 @@ import type {
   PollEvents,
   PubSocket,
   RouterSocket,
-  MeshNode,
-  Spot,
   Stopwatch,
   StreamSocket,
   SubSocket,
@@ -96,13 +90,6 @@ export function createStreamSocket(ctx: Context): StreamSocket {
   return asPublicContract<StreamSocket>(new RuntimeStreamSocket(asRuntimeContext(ctx)));
 }
 
-export function createMeshNode(
-  ctx: Context,
-  options?: { meshName?: string; trustProfile?: string }
-): MeshNode {
-  return asPublicContract<MeshNode>(new RuntimeMeshNode(asRuntimeContext(ctx), options));
-}
-
 export function createPoller(): Poller {
   return asPublicContract<Poller>(new RuntimePoller());
 }
@@ -113,10 +100,6 @@ export function createPollEvents(capacity: number): PollEvents {
 
 export function createTimer(): Timer {
   return asPublicContract<Timer>(new RuntimeTimer());
-}
-
-export function createTimerFromSpot(spot: Spot): Timer {
-  return asPublicContract<Timer>(RuntimeTimer.fromSpot(asRuntimeSpot(spot)));
 }
 
 export function createThread(handler: () => void): Thread {

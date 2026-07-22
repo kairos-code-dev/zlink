@@ -79,12 +79,21 @@ copy_public_headers() {
 
   mkdir -p "${dir}"
   mkdir -p "${dir}/zlink"
-  mkdir -p "${dir}/zlink/service"
+
+  # Core 11 owns only the raw C headers. Remove the retired service tree and
+  # replace each Core-owned lowercase group without touching binding-owned
+  # trees such as the C++ Contracts directory.
+  rm -rf "${dir}/zlink/service"
+  rm -f "${dir}/zlink.h" "${dir}/zlink_enum.h" "${dir}/zlink_errno.h"
   rm -f "${dir}"/zlink/*.h
-  rm -f "${dir}"/zlink/service/*.h
   cp -f "${ROOT_DIR}"/core/include/*.h "${dir}/"
   cp -f "${ROOT_DIR}"/core/include/zlink/*.h "${dir}/zlink/"
-  cp -f "${ROOT_DIR}"/core/include/zlink/service/*.h "${dir}/zlink/service/"
+  for source_group in "${ROOT_DIR}"/core/include/zlink/*/; do
+    [[ -d "${source_group}" ]] || continue
+    group="$(basename "${source_group}")"
+    rm -rf "${dir}/zlink/${group}"
+    cp -a "${source_group}" "${dir}/zlink/${group}"
+  done
 }
 
 copy_libs() {

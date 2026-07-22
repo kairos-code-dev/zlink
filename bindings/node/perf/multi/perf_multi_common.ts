@@ -66,21 +66,9 @@ function resolveMultiConnectConcurrency(clientCount) {
   return clientCount >= 10000 ? 1024 : 128;
 }
 
-function resolveMultiSpotReadySettleMs() {
-  const configured = Number(process.env.PERF_MULTI_SPOT_READY_SETTLE_MS);
-  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 5000;
-}
-
-function resolveMultiSpotControlSettleMs() {
-  const configured = Number(process.env.PERF_MULTI_SPOT_CONTROL_SETTLE_MS);
-  return Number.isFinite(configured) && configured >= 0 ? Math.trunc(configured) : 25;
-}
-
 module.exports = {
   benchmarkEndpoint,
   parseMultiArgs: parseArgs,
   reservePort,
-  resolveMultiConnectConcurrency,
-  resolveMultiSpotControlSettleMs,
-  resolveMultiSpotReadySettleMs
+  resolveMultiConnectConcurrency
 };

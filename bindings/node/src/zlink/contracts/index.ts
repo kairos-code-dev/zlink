@@ -5,4 +5,3 @@ export * from './eventing';
 export * from './core';
 export * from './messaging';
 export * from './errors';
-export * from './service';

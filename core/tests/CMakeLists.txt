@@ -61,8 +61,7 @@ option(
   OFF)
 
 if(ZLINK_CORE_BUILD_BINDING_INTEGRATION_TESTS
-   AND EXISTS "${ZLINK_REPO_ROOT}/bindings/c/CMakeLists.txt"
-   AND NOT TARGET perf_spot)
+   AND EXISTS "${ZLINK_REPO_ROOT}/bindings/c/CMakeLists.txt")
   set(ZLINK_C_REGISTER_CTEST OFF CACHE BOOL
       "Do not let bindings/c register duplicate CTest entries from core/tests"
       FORCE)
@@ -88,13 +87,7 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_ctx_destroy
   ${INTEGRATION_TEST_ROOT}/test_ctx_options
   ${INTEGRATION_TEST_ROOT}/test_socket_null
-  ${INTEGRATION_TEST_ROOT}/test_heartbeats
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
-  ${INTEGRATION_TEST_ROOT}/test_mesh_node_basic
-  ${INTEGRATION_TEST_ROOT}/test_mesh_peer_admission
-  ${INTEGRATION_TEST_ROOT}/test_mesh_monitor_matrix
-  ${INTEGRATION_TEST_ROOT}/test_mesh_stress
-  ${INTEGRATION_TEST_ROOT}/test_mesh_lifecycle_contracts
   ${INTEGRATION_TEST_ROOT}/test_backpressure_matrix
   ${INTEGRATION_TEST_ROOT}/test_backpressure_oneway_matrix
   ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send
@@ -313,16 +306,6 @@ if(WIN32)
   list(REMOVE_ITEM tests ${INTEGRATION_TEST_ROOT}/test_many_sockets)
 endif()
 
-# Multi-peer topology bench (S4-27): built like a test, registered with a
-# small default peer count; PERF_MESH_PEERS overrides for recorded sweeps.
-if(NOT WIN32)
-  add_executable(bench_mesh_topology ${CMAKE_CURRENT_SOURCE_DIR}/bench/bench_mesh_topology.cpp)
-  target_link_libraries(bench_mesh_topology ${TESTUTIL_LIB})
-  add_test(NAME bench_mesh_topology COMMAND ${CMAKE_COMMAND} -E env "PERF_MESH_PEERS=16"
-           $<TARGET_FILE:bench_mesh_topology>)
-  set_tests_properties(bench_mesh_topology PROPERTIES TIMEOUT 180 LABELS "bench")
-endif()
-
 foreach(test_source ${tests})
   get_filename_component(test ${test_source} NAME)
   # target_sources not supported before CMake 3.1
@@ -376,12 +359,6 @@ foreach(test_source ${tests})
         ${test}
         PROPERTIES
           TIMEOUT 180)
-    endif()
-    if(${test} STREQUAL "test_mesh_peer_admission")
-      set_tests_properties(
-        ${test}
-        PROPERTIES
-          TIMEOUT 30)
     endif()
     if(${test} STREQUAL "test_router_handover")
       set_tests_properties(
@@ -469,9 +446,6 @@ if(TARGET test_scenario_stream_zmq)
 endif()
 
 # override timeout for these tests
-if(TARGET test_heartbeats)
-  set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
-endif()
 if(TARGET test_reconnect_ivl)
   set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 endif()
@@ -874,7 +848,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_asio_ssl
     test_abstract_ipc
     test_hwm_pubsub
-    test_heartbeats
     test_monitor_enhanced
     test_msg_ffn
     test_msg_flags

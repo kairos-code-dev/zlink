@@ -9,15 +9,15 @@ namespace zlink
 {
 // Owner map for the shared options_t storage bag.
 // This keeps the storage layout stable while making the validation/apply
-// owner explicit in code. Service-local options still live behind service
-// seams and should not be routed through the central options_t bag.
+// owner explicit in code. Socket-specific options remain behind their socket
+// implementations and should not be routed through the central options_t bag.
 enum options_owner_t
 {
     options_owner_unknown = 0,
     options_owner_core_socket,
     options_owner_transport_network,
     options_owner_protocol_metadata,
-    options_owner_service_specific
+    options_owner_socket_specific
 };
 
 // Shared-bag fields that are not exposed as direct getsockopt/setsockopt
@@ -33,12 +33,12 @@ enum options_bag_field_t
 };
 
 // Internal owner lookup for options that are still routed through the shared
-// options_t bag. Options handled by ctx/runtime or service/socket seams before
+// options_t bag. Options handled by ctx/runtime or socket implementations before
 // reaching options_t are intentionally outside this lookup.
 options_owner_t option_owner_of (int option_);
 options_owner_t option_owner_of_bag_field (options_bag_field_t field_);
 
-// Public option-surface owner helpers. These keep service/socket seam options
+// Public option-surface owner helpers. These keep socket-specific options
 // explicit even when their internal numeric ids overlap with shared-bag
 // options (for example XPUB manual last value and TLS verify).
 options_owner_t common_option_owner_of (zlink_option_t option_);

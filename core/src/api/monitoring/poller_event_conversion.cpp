@@ -112,16 +112,6 @@ int poller_fill_public_event_from_registration (
         return 0;
     }
 
-    if (registration_->subject_kind == poller_subject_mesh_node) {
-        event_out_->source_kind = ZLINK_POLLER_SOURCE_MESH_NODE;
-        event_out_->socket = registration_->subject;
-        event_out_->fd = 0;
-        event_out_->timer = NULL;
-        event_out_->user_data = registration_->user_data;
-        event_out_->events = native_.events;
-        return 0;
-    }
-
     event_out_->source_kind = ZLINK_POLLER_SOURCE_FD;
     event_out_->socket = NULL;
     event_out_->fd = native_.fd;

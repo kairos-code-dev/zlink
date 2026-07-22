@@ -61,12 +61,6 @@ class common_socket_options_t
     void tcp_no_delay (bool value);
     tcp_keepalive_mode_t tcp_keepalive () const;
     void tcp_keepalive (tcp_keepalive_mode_t value);
-    std::chrono::milliseconds heartbeat_interval () const;
-    void heartbeat_interval (std::chrono::milliseconds value);
-    std::chrono::milliseconds heartbeat_ttl () const;
-    void heartbeat_ttl (std::chrono::milliseconds value);
-    std::chrono::milliseconds heartbeat_timeout () const;
-    void heartbeat_timeout (std::chrono::milliseconds value);
     rid_duplicate_policy_t rid_duplicate_policy () const;
     void rid_duplicate_policy (rid_duplicate_policy_t value);
     byte_size_t max_message_size () const;

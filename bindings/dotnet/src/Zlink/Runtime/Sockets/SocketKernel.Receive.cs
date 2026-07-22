@@ -174,27 +174,26 @@ internal sealed partial class SocketKernel
     {
         var allowNoData = (flags & DontWaitFlag) != 0;
         if (!ReceiveRoutedParts(flags, out var routingId,
-                out var spotRid, out var requestSeq,
+                out var requestSeq,
                 out var singlePart, out var parts,
                 allowNoData))
             return false;
         PopulateRoutedReceivedInto(result, singlePart, parts, routingId,
-            spotRid, requestSeq);
+            requestSeq);
         return true;
     }
 
     private void PopulateRoutedReceivedInto(Received result,
         Message? singlePart, MultipartMessageCollection? parts,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong requestSeq)
+        RoutingIdSnapshot routingId, ulong requestSeq)
     {
         if (requestSeq == 0)
         {
             if (singlePart != null)
-                result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
+                result.PopulateRoutedSinglePart(singlePart, routingId,
                     null, null, sendKernel: this);
             else
-                result.PopulateRoutedMultipart(parts!, routingId, spotRid,
+                result.PopulateRoutedMultipart(parts!, routingId,
                     null, null, sendKernel: this);
             return;
         }
@@ -217,11 +216,11 @@ internal sealed partial class SocketKernel
         };
 
         if (singlePart != null)
-            result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
+            result.PopulateRoutedSinglePart(singlePart, routingId,
                 requestSeq, replyHandler, CreateRoutedSendHandler(routingId),
                 CreateRoutedSendSingleHandler(routingId));
         else
-            result.PopulateRoutedMultipart(parts!, routingId, spotRid,
+            result.PopulateRoutedMultipart(parts!, routingId,
                 requestSeq, replyHandler, CreateRoutedSendHandler(routingId),
                 CreateRoutedSendSingleHandler(routingId));
     }

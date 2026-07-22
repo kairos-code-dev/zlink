@@ -192,7 +192,7 @@ validate_uint() {
 normalize_pattern_csv() {
   local raw="${1:-}"
   if [[ "${raw}" == "ALL" ]]; then
-    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP,SPOT"
+    printf '%s' "PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,DEALER_ROUTER_REQREP,ROUTER_ROUTER,ROUTER_ROUTER_REQREP"
     return
   fi
 
@@ -207,7 +207,6 @@ allowed = {
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
-    "SPOT",
 }
 
 items = []
@@ -229,26 +228,17 @@ PY
 pattern_supports_transport() {
   local pattern="${1:-}"
   local transport="${2:-}"
-  case "${pattern}" in
-    SPOT)
-      [[ "${transport}" =~ ^(tcp|tls|ws|wss)$ ]]
-      ;;
-    *)
-      if [[ "$(uname -s)" == "Windows_NT" || "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
-        [[ "${transport}" =~ ^(tcp|tls|ws|wss|inproc)$ ]]
-      else
-        [[ "${transport}" =~ ^(tcp|tls|ws|wss|inproc|ipc)$ ]]
-      fi
-      ;;
-  esac
+  _="${pattern}"
+  if [[ "$(uname -s)" == "Windows_NT" || "$(uname -s)" =~ ^(MINGW|MSYS|CYGWIN) ]]; then
+    [[ "${transport}" =~ ^(tcp|tls|ws|wss|inproc)$ ]]
+  else
+    [[ "${transport}" =~ ^(tcp|tls|ws|wss|inproc|ipc)$ ]]
+  fi
 }
 
 default_transports_for_pattern() {
   local pattern="${1:-}"
-  if [[ "${pattern}" == "SPOT" ]]; then
-    printf '%s' "tcp,tls,ws,wss"
-    return
-  fi
+  _="${pattern}"
 
   if [[ "$(uname -s)" == "Linux" ]]; then
     printf '%s' "tcp,tls,ws,wss,inproc,ipc"

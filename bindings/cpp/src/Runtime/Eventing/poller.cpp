@@ -6,7 +6,6 @@
 #include <Runtime/Eventing/poller_item_registry.hpp>
 #include <Runtime/Eventing/poller_socket_cache.hpp>
 #include <Runtime/Eventing/timer_access.hpp>
-#include <Runtime/Service/spot_access.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 
 #include <zlink.h>
@@ -429,11 +428,6 @@ void poller_t::add (timer_t &timer_, std::uintptr_t slot_)
     _impl->add_timer (timer_, slot_);
 }
 
-void poller_t::add (service::spot_t &spot_, poll_event_flag_t events_, std::uintptr_t slot_)
-{
-    _impl->add_socket (zlink::detail::native_handle (spot_), events_, slot_, true);
-}
-
 void poller_t::add (socket_monitor_t &monitor_, poll_event_flag_t events_, std::uintptr_t slot_)
 {
     _impl->add_socket (zlink::detail::native_handle (monitor_), events_, slot_, true);
@@ -464,11 +458,6 @@ void poller_t::modify (socket_t &socket_, poll_event_flag_t events_)
 bool poller_t::remove (timer_t &timer_)
 {
     return _impl->remove_timer (timer_);
-}
-
-bool poller_t::remove (service::spot_t &spot_)
-{
-    return _impl->remove_socket (zlink::detail::native_handle (spot_));
 }
 
 bool poller_t::remove (socket_monitor_t &monitor_)

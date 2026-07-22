@@ -99,7 +99,7 @@ if (-not $ResultsTag) {
 if ($env:PERF_ALLOW_MULTI -eq "1") {
     throw "multi benchmarks are handled by bindings\\c\\perf\\run_benchmarks_multi.ps1."
 }
-$SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER", "SPOT_PUBSUB")
+$SinglePatterns = @("PAIR", "PUBSUB", "DEALER_DEALER", "DEALER_ROUTER", "ROUTER_ROUTER")
 $SinglePatternSet = @{}
 foreach ($name in $SinglePatterns) { $SinglePatternSet[$name] = $true }
 

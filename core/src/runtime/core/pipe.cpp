@@ -65,12 +65,13 @@ int zlink::pipepair (object_t *parents_[2],
         upipe2 = new (std::nothrow) upipe_normal_t ();
     alloc_assert (upipe2);
 
-    //  Every pipepair represents one process-local physical route. Inproc
-    //  routes do not have an engine to assign a transport connection id, so
-    //  allocate one here. Session-backed routes replace it with the engine's
-    //  actual connection id when the engine becomes ready.
+    //  Inproc routes have no engine to assign a connection id, so allocate
+    //  one here. A session-backed route remains unbound until its engine is
+    //  ready. Messages queued before that first binding keep id 0 and belong
+    //  to the first transport; later nonzero ids still isolate reconnects.
     const std::shared_ptr<transport_lifetime_t> transport_lifetime =
-      std::make_shared<transport_lifetime_t> (allocate_connection_id ());
+      std::make_shared<transport_lifetime_t> (
+        session_pipe_ ? 0 : allocate_connection_id ());
 
     pipes_[0] = new (std::nothrow)
       pipe_t (parents_[0], upipe1, upipe2, hwms_[1], hwms_[0], conflate_[0],
@@ -659,7 +660,7 @@ void zlink::pipe_t::process_pipe_term ()
                     _endpoint_pair.identifier ().c_str ());
 
     //  Peer-induced termination is logically one-shot. During cascading
-    //  service/socket teardown we can observe a duplicate term command after
+    //  socket teardown we can observe a duplicate term command after
     //  we've already transitioned into a peer-terminated state; treat that as
     //  an idempotent no-op instead of asserting.
     if (_state == waiting_for_delimiter) {

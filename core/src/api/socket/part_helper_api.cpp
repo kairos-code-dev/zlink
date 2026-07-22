@@ -30,12 +30,7 @@ bool send_family_requires_routed_scope (zlink::part_helper_internal::send_family
     using namespace zlink::part_helper_internal;
     return family_ == send_family_send_rid || family_ == send_family_router_request
            || family_ == send_family_dealer_request || family_ == send_family_dealer_request_frame
-           || family_ == send_family_router_reply || family_ == send_family_spot_send_channel
-           || family_ == send_family_spot_request_channel
-           || family_ == send_family_spot_request_spot || family_ == send_family_spot_request_router
-           || family_ == send_family_spot_send_spot || family_ == send_family_spot_reply_spot
-           || family_ == send_family_spot_reply_router || family_ == send_family_router_request_spot
-           || family_ == send_family_router_reply_spot || family_ == send_family_router_send_spot
+           || family_ == send_family_router_reply
            || family_ == send_family_dealer_reply;
 }
 
@@ -81,13 +76,11 @@ zlink::part_helper_internal::recv_sequence_state_t::recv_sequence_state_t () :
     source_socket (NULL),
     owner_thread (),
     return_source_rid_as_null (true),
-    return_source_spot_rid_as_null (true),
     request_seq (0),
     message_type (0),
     next_part_index (0)
 {
     memset (&source_node_rid, 0, sizeof (source_node_rid));
-    memset (&source_spot_rid, 0, sizeof (source_spot_rid));
 }
 
 int zlink::part_helper_internal::validate_send_flags (zlink_send_flags_t flags_)
@@ -221,7 +214,6 @@ int zlink::part_helper_internal::stage_recv_sequence (const std::shared_ptr<hand
                                                       recv_family_t family_,
                                                       zlink::socket_base_t *source_socket_,
                                                       const zlink_routing_id_t *source_node_rid_,
-                                                      const zlink_routing_id_t *source_spot_rid_,
                                                       uint64_t request_seq_,
                                                       zlink_msg_t *parts_,
                                                       size_t part_count_,
@@ -242,22 +234,19 @@ int zlink::part_helper_internal::stage_recv_sequence (const std::shared_ptr<hand
     state_->recv.family = family_;
     state_->recv.source_socket = source_socket_;
     state_->recv.owner_thread = owner_thread_;
-    set_recv_metadata (&state_->recv, source_node_rid_, source_spot_rid_, request_seq_);
+    set_recv_metadata (&state_->recv, source_node_rid_, request_seq_);
     return buffer_recv_parts (&state_->recv, parts_, part_count_);
 }
 
 void zlink::part_helper_internal::set_recv_metadata (recv_sequence_state_t *recv_,
                                                      const zlink_routing_id_t *source_node_rid_,
-                                                     const zlink_routing_id_t *source_spot_rid_,
                                                      uint64_t request_seq_)
 {
     if (!recv_)
         return;
 
     recv_->return_source_rid_as_null = source_node_rid_ == NULL;
-    recv_->return_source_spot_rid_as_null = source_spot_rid_ == NULL;
     copy_routing_id (source_node_rid_, &recv_->source_node_rid);
-    copy_routing_id (source_spot_rid_, &recv_->source_spot_rid);
     recv_->request_seq = request_seq_;
     recv_->message_type = 0;
 }
@@ -323,7 +312,6 @@ int zlink::part_helper_internal::take_recv_part (const std::shared_ptr<handle_st
 void zlink::part_helper_internal::export_recv_metadata (
   const std::shared_ptr<handle_state_t> &state_,
   const zlink_routing_id_t **source_node_rid_out_,
-  const zlink_routing_id_t **source_spot_rid_out_,
   uint64_t *request_seq_out_)
 {
     if (!state_)
@@ -333,10 +321,6 @@ void zlink::part_helper_internal::export_recv_metadata (
     if (source_node_rid_out_) {
         *source_node_rid_out_ =
           state_->recv.return_source_rid_as_null ? NULL : &state_->recv.source_node_rid;
-    }
-    if (source_spot_rid_out_) {
-        *source_spot_rid_out_ =
-          state_->recv.return_source_spot_rid_as_null ? NULL : &state_->recv.source_spot_rid;
     }
     if (request_seq_out_)
         *request_seq_out_ = state_->recv.request_seq;
@@ -590,12 +574,9 @@ int zlink::part_helper_internal::prepare_recv_step (
         state->recv.source_socket = source_socket_;
         state->recv.owner_thread = current_thread;
         state->recv.return_source_rid_as_null = true;
-        state->recv.return_source_spot_rid_as_null = true;
         state->recv.request_seq = 0;
-        state->recv.channel_name.clear ();
         state->recv.topic_id.clear ();
         memset (&state->recv.source_node_rid, 0, sizeof (state->recv.source_node_rid));
-        memset (&state->recv.source_spot_rid, 0, sizeof (state->recv.source_spot_rid));
         *first_part_out_ = true;
     } else {
         if (state->recv.family != family_ || state->recv.owner_thread != current_thread) {

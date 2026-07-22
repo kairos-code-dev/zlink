@@ -116,9 +116,6 @@ $DefaultPatterns = @(
     "ROUTER_ROUTER_REQREP",
     "ROUTER_ROUTER_ONEWAY",
     "PUBSUB",
-    "SPOT_PUBSUB",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM"
 )
 

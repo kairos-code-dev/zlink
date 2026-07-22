@@ -63,16 +63,6 @@ public interface IDealerSocket : IMessageSocket
     RoutingId GetRoutingId();
 
     /// <summary>
-    ///     Set the logical channel name used by this socket.
-    /// </summary>
-    new void SetChannelName(string channelName);
-
-    /// <summary>
-    ///     Get the logical channel name used by this socket.
-    /// </summary>
-    string GetChannelName();
-
-    /// <summary>
     ///     Begins a request: add parts on the returned builder, then submit and
     ///     await a reply. Request parts are consumed on a successful submit (see
     ///     <see cref="SendOperation" /> for the ownership contract).

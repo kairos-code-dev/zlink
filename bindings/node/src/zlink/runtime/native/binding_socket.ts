@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import type {
-  ActorRefRaw,
   NativeHandle,
   NativeReceivedRaw,
   NativeRequestCallback,
@@ -41,7 +40,6 @@ export interface SocketNativeBinding {
   socketConnect: (socket: NativeHandle, endpoint: string) => void;
   socketDisconnect: (socket: NativeHandle, endpoint: string) => void;
   socketDisconnectRid: (socket: NativeHandle, routingId: Buffer) => void;
-  socketGetChannelName: (socket: NativeHandle) => string;
   socketGetOpt: (socket: NativeHandle, option: number) => Buffer;
   socketNew: (ctx: NativeHandle, type: number) => NativeHandle;
   socketPublish: (
@@ -86,7 +84,6 @@ export interface SocketNativeBinding {
     routingId: Buffer,
     parts: readonly unknown[]
   ) => number;
-  socketSetChannelName: (socket: NativeHandle, channelName: string) => void;
   socketSetOpt: (socket: NativeHandle, option: number, value: Buffer) => void;
   socketSetSubscription: (socket: NativeHandle, topic: string) => void;
   socketSetTlsClient: (

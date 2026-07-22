@@ -37,7 +37,7 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
-SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP", "SPOT_SENDSEND")
+SPOT_CONTROL_PATTERNS = ()
 PATTERN_ALIASES = {
     "STREAM": ("STREAM",),
     "STREAMS": STREAM_VARIANT_PATTERNS,
@@ -53,9 +53,6 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER": "router_router",
     "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "PUBSUB": "pubsub",
-    "SPOT": "spot",
-    "SPOT_REQREP": "spot_reqrep",
-    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
@@ -63,8 +60,6 @@ ECHO_PATTERNS = {
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM",
 }
 
@@ -85,7 +80,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
-    ("perf_spot", "SPOT"),
 ]
 MULTI_COMPARISONS = [
     ("cpp_comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -94,9 +88,6 @@ MULTI_COMPARISONS = [
     ("cpp_comp_src_router_router_client", "ROUTER_ROUTER"),
     ("cpp_comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("cpp_comp_src_pubsub_client", "PUBSUB"),
-    ("cpp_comp_src_spot_client", "SPOT"),
-    ("cpp_comp_src_spot_reqrep_client", "SPOT_REQREP"),
-    ("cpp_comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -107,9 +98,6 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER": ("recv",),
     "ROUTER_ROUTER_REQREP": ("recv",),
     "PUBSUB": ("recv",),
-    "SPOT": ("recv",),
-    "SPOT_REQREP": ("recv",),
-    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -1713,7 +1701,6 @@ def _prepare_case_env(
 
     if pattern_name in SPOT_CONTROL_PATTERNS:
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
-        set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
     if pattern_name in STREAM_VARIANT_PATTERNS:
         stream_timeout_ms = parse_env_int("PERF_STREAM_TIMEOUT_MS", 0)

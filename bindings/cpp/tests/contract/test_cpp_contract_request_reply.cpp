@@ -2,7 +2,7 @@
 
 #include "support.hpp"
 
-#include <Runtime/Service/request_submitter.hpp>
+#include <Runtime/Messaging/request_submitter.hpp>
 
 #include <cerrno>
 #include <chrono>
@@ -35,12 +35,10 @@ std::vector<zlink::message_t> make_multipart_request ()
 }
 
 // The core takes the reply handler as the marker of the FINAL part: the submission that
-// carries it is the one that builds the request spec. `zlink_spot_request_*_part` rejects a
-// non-final part carrying a handler with EINVAL
-// (core/src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp,
-// validate_request_part_handler), and the socket path requires the handler on the final part.
+// carries it is the one that builds the request spec. The raw socket path requires the
+// handler on the final part.
 // A submitter that attaches the handler to every part therefore cannot send a multipart
-// request at all — which is what this asserts against.
+// request at all ??which is what this asserts against.
 void assert_multipart_request_submitter_attaches_reply_handler_to_final_part_only (
   const std::vector<recorded_request_part_t> &submissions_)
 {
@@ -63,7 +61,7 @@ void test_multipart_request_callback_submitter_attaches_reply_handler_to_final_p
     std::vector<recorded_request_part_t> submissions;
     bool completed = false;
 
-    const bool submitted = zlink::service::detail::submit_request_parts_callback (
+    const bool submitted = zlink::detail::submit_request_parts_callback (
       parts,
       [&completed] (zlink::request_result_t result, std::vector<zlink::message_t> replies) {
           assert (result == zlink::request_result_t::not_found);
@@ -91,7 +89,7 @@ void test_multipart_request_awaitable_submitter_attaches_reply_handler_to_final_
     std::vector<recorded_request_part_t> submissions;
 
     zlink::async_result_t<std::vector<zlink::message_t>> result =
-      zlink::service::detail::submit_request_parts_awaitable (
+      zlink::detail::submit_request_parts_awaitable (
         parts, [] {},
         [&submissions] (zlink_msg_t *part_out, zlink_part_flag_t part_flag,
                         zlink_reply_handler_fn callback, void *userdata) {

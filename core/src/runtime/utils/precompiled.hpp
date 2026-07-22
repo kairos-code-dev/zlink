@@ -26,9 +26,6 @@
 #define ucred sockpeercred
 #endif
 
-// Public definitions used by the Core implementation. The driver header must
-// precede zlink.h because the root header intentionally closes ZLINK_EXPORT.
-#include "../include/zlink/service/instance_spot_driver.h"
 // 0MQ definitions and exported functions
 #include "../include/zlink.h"
 #include "core/internal_errno.hpp"

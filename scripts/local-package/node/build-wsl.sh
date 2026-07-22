@@ -6,82 +6,77 @@ repo_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
 artifact_root="${ZLINK_LOCAL_PACKAGE_ROOT:-$repo_root/.artifacts/wsl}"
 out_dir="$artifact_root/npm"
 bindings_dir="$repo_root/bindings/node"
-package_mode="${ZLINK_NODE_PACKAGE_MODE:-source}"
-package_version="$(node -p "require('$bindings_dir/package.json').version")"
-core_version="$(sed -n 's/^LIBZLINK_VERSION=//p' "$repo_root/VERSION")"
-if ! [[ "$core_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Unable to resolve Core version from VERSION" >&2
+core_prefix="${ZLINK_CORE_INSTALL_PREFIX:-}"
+approved_core_provenance_sha256="${ZLINK_APPROVED_CORE_PROVENANCE_SHA256:-}"
+
+if [[ "$core_prefix" != /* ]]; then
+  echo "ZLINK_CORE_INSTALL_PREFIX must name an absolute installed Core 11 package prefix" >&2
   exit 2
 fi
-core_major="${core_version%%.*}"
+core_prefix="$(readlink -f "$core_prefix")"
+export ZLINK_CORE_INSTALL_PREFIX="$core_prefix"
 
-mkdir -p "$out_dir"
+if [[ ! "$approved_core_provenance_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "ZLINK_APPROVED_CORE_PROVENANCE_SHA256 must contain the reviewed Core package provenance SHA-256" >&2
+  exit 2
+fi
+
+package_version="$(node -p "require('$bindings_dir/package.json').version")"
+core_version="$(node "$bindings_dir/scripts/resolve_core.js" version)"
+core_library="$(node "$bindings_dir/scripts/resolve_core.js" library)"
+core_manifest="$core_prefix/share/zlink/core-package-provenance.json"
+actual_core_provenance_sha256="$(sha256sum "$core_manifest" | awk '{print $1}')"
+if [[ "$actual_core_provenance_sha256" != "$approved_core_provenance_sha256" ]]; then
+  echo "Installed Core provenance does not match the R2-approved package" >&2
+  exit 1
+fi
+if [[ "$package_version" != 11.* || "$package_version" != "$core_version" ]]; then
+  echo "Node package $package_version must match installed Core 11 version $core_version" >&2
+  exit 1
+fi
 
 host_arch="$(uname -m)"
 case "$host_arch" in
-  x86_64|amd64)
-    node_arch="x64"
-    ;;
-  aarch64|arm64)
-    node_arch="arm64"
-    ;;
-  *)
-    echo "Unsupported Node local package host architecture: $host_arch" >&2
-    exit 2
-    ;;
+  x86_64|amd64) node_arch="x64" ;;
+  aarch64|arm64) node_arch="arm64" ;;
+  *) echo "Unsupported Node local package host architecture: $host_arch" >&2; exit 2 ;;
 esac
 
+mkdir -p "$out_dir"
 (
   cd "$bindings_dir"
-  if [ "${ZLINK_SKIP_NPM_CI:-false}" != "true" ]; then
-    npm ci
-  fi
+  cleanup_generated_package_inputs() {
+    rm -rf prebuilds provenance
+  }
+  trap cleanup_generated_package_inputs EXIT
+  ZLINK_SKIP_NATIVE_INSTALL=1 npm ci
   npm run build
   npm run rebuild-native
-  mkdir -p "prebuilds/linux-$node_arch"
-  cp "build/Release/zlink.node" "prebuilds/linux-$node_arch/zlink.node"
-  soname_path="prebuilds/linux-$node_arch/libzlink.so.$core_major"
-  soname_tmp="$soname_path.tmp"
-  if [ -f "prebuilds/linux-$node_arch/libzlink.so.$core_version" ]; then
-    cp "prebuilds/linux-$node_arch/libzlink.so.$core_version" "$soname_tmp"
-    rm -f "$soname_path"
-    mv -f "$soname_tmp" "$soname_path"
-  elif [ -f "native/linux-$node_arch/libzlink.so.$core_version" ]; then
-    cp "native/linux-$node_arch/libzlink.so.$core_version" "$soname_tmp"
-    rm -f "$soname_path"
-    mv -f "$soname_tmp" "$soname_path"
-  fi
-  if [ ! -f "$soname_path" ] || [ -L "$soname_path" ]; then
-    echo "Node package requires a regular SONAME runtime file: $soname_path" >&2
-    exit 2
-  fi
-  case "$package_mode" in
-    source)
-      ;;
-    prebuild)
-      ZLINK_CORE_VERSION="$core_version" npm run verify:prebuilds
-      ;;
-    *)
-      echo "Unknown ZLINK_NODE_PACKAGE_MODE: $package_mode" >&2
-      echo "Expected source or prebuild" >&2
-      exit 2
-      ;;
-  esac
+
+  prebuild_dir="prebuilds/linux-$node_arch"
+  rm -rf prebuilds provenance
+  mkdir -p "$prebuild_dir" provenance
+  cp build/Release/zlink.node "$prebuild_dir/zlink.node"
+  cp "$core_library" "$prebuild_dir/libzlink.so.$core_version"
+  cp "$core_library" "$prebuild_dir/libzlink.so.${core_version%%.*}"
+  cp "$core_manifest" provenance/core-package-provenance.json
+
+  ZLINK_CORE_VERSION="$core_version" npm run verify:prebuilds
   package_file="$(npm pack --pack-destination "$out_dir" "$@" | tail -n 1)"
 
   consumer_dir="$(mktemp -d)"
-  trap 'rm -rf "$consumer_dir"' EXIT
   (
+    trap 'rm -rf "$consumer_dir"' EXIT
     cd "$consumer_dir"
     npm init -y >/dev/null
     npm install "$out_dir/$package_file" >/dev/null
-    node -e "require('@zlink-systems/zlink')"
+    node -e "const z=require('@zlink-systems/zlink'); if(!z.createContext) process.exit(1)"
+    node --input-type=module -e "import { createContext } from '@zlink-systems/zlink'; if(!createContext) process.exit(1)"
   )
   rm -rf "$consumer_dir"
-  trap - EXIT
   echo "$package_file"
 )
 
 echo "-- Node local npm tarball output: $out_dir"
 echo "-- Node binding package version: $package_version"
-echo "-- Bundled Core native version: $core_version"
+echo "-- Installed Core package: $core_prefix"

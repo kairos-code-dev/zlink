@@ -7,7 +7,7 @@ import systems.zlink.runtime.nativeapi.ContractAccess;
 
 import systems.zlink.contracts.core.Context;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 import systems.zlink.runtime.messaging.MessageOperations;
 
 final class NativePubSocket extends NativeSocketBase implements PubSocket {

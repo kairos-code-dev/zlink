@@ -9,7 +9,7 @@
 
 namespace
 {
-const bool spot_direct_route_trace_on = zlink::debug_env_enabled ("ZLINK_DEBUG_SPOT_DIRECT_ROUTE");
+const bool router_route_trace_on = zlink::debug_env_enabled ("ZLINK_DEBUG_ROUTER_ROUTE");
 
 enum session_push_trace_event_t
 {
@@ -23,7 +23,7 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
                                        zlink::msg_t *msg_,
                                        session_push_trace_event_t event_)
 {
-    if (!spot_direct_route_trace_on || !socket_
+    if (!router_route_trace_on || !socket_
         || socket_->socket_type () != ZLINK_CORE_SOCKET_ROUTER)
         return;
 
@@ -32,7 +32,7 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
             static std::atomic<int> g_router_command_logs (0);
             if (g_router_command_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
                 std::fprintf (
-                  stderr, "[spot-direct] session push command socket=%d size=%zu flags=%u\n",
+                  stderr, "[router-route] session push command socket=%d size=%zu flags=%u\n",
                   socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
             break;
         }
@@ -41,7 +41,7 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
             if (g_router_payload_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
                 std::fprintf (
                   stderr,
-                  "[spot-direct] session push payload socket=%d size=%zu flags=%u more=%d "
+                  "[router-route] session push payload socket=%d size=%zu flags=%u more=%d "
                   "routing_id=%d\n",
                   socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
                   (msg_->flags () & zlink::msg_t::more) != 0 ? 1 : 0,
@@ -53,7 +53,7 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
             if (g_router_write_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
                 std::fprintf (
                   stderr,
-                  "[spot-direct] session wrote pipe socket=%d size=%zu flags=%u more=%d "
+                  "[router-route] session wrote pipe socket=%d size=%zu flags=%u more=%d "
                   "routing_id=%d\n",
                   socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()),
                   (msg_->flags () & zlink::msg_t::more) != 0 ? 1 : 0,
@@ -64,7 +64,7 @@ inline void trace_router_session_push (zlink::socket_base_t *socket_,
             static std::atomic<int> g_router_write_fail_logs (0);
             if (g_router_write_fail_logs.fetch_add (1, std::memory_order_acq_rel) < 64)
                 std::fprintf (
-                  stderr, "[spot-direct] session pipe write failed socket=%d size=%zu flags=%u\n",
+                  stderr, "[router-route] session pipe write failed socket=%d size=%zu flags=%u\n",
                   socket_->socket_id (), msg_->size (), static_cast<unsigned> (msg_->flags ()));
             break;
         }

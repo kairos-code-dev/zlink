@@ -16,3 +16,4 @@ export {
   SubscriptionEvent,
 } from './subscription_event';
 export type * from './operations';
+export type * from './handlers';

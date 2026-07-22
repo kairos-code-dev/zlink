@@ -36,7 +36,7 @@ function receiveAndQueueReplies(router, pending) {
     if (!router.recv(received, zlink.RecvFlags.DontWait)) {
       break;
     }
-    if (!received.routingId || received.spotRid || received.requestSeq) {
+    if (!received.routingId || received.requestSeq) {
       continue;
     }
     const routingId = received.routingId;

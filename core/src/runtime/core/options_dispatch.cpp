@@ -32,7 +32,7 @@ int zlink::options_t::setsockopt (int option_, const void *optval_, size_t optva
                 == 0)
                 return 0;
             break;
-        case options_owner_service_specific:
+        case options_owner_socket_specific:
         case options_owner_unknown:
         default:
             break;
@@ -65,7 +65,7 @@ int zlink::options_t::getsockopt (int option_, void *optval_, size_t *optvallen_
                 == 0)
                 return 0;
             break;
-        case options_owner_service_specific:
+        case options_owner_socket_specific:
         case options_owner_unknown:
         default:
             break;

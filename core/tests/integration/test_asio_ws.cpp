@@ -521,7 +521,7 @@ void test_zlink_ws_pair_message ()
 }
 
 //  A STREAM socket with packet dispatch remains writable by routing id from
-//  service threads. This is the path used when Mesh bound-session ingress
+//  socket threads. This is the path used when bound-session ingress
 //  forwards a complete framework frame to a WebSocket client.
 void test_zlink_ws_stream_packet_handler_routed_send ()
 {

@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 
 /** A publisher that also surfaces subscriber subscription events. */
 public interface XPubSocket extends Socket {

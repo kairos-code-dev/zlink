@@ -15,12 +15,6 @@ internal sealed class ContextOptions : IContextOptions
         _context = context;
     }
 
-    internal int SpotWorkerThreads
-    {
-        get => _context.GetOption(ContextOption.SpotWorkerThreads);
-        set => _context.SetOption(ContextOption.SpotWorkerThreads, value);
-    }
-
     public int IoThreads
     {
         get => _context.GetOption(ContextOption.IoThreads);

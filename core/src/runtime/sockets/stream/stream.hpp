@@ -67,7 +67,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_, int flags_) ZLINK_OVERRIDE;
     std::recursive_mutex *api_sync_mutex () ZLINK_OVERRIDE;
 
-    //  Internal session-service observation. These methods expose only live
+    //  Internal session observation. These methods expose only live
     //  transport membership inside Core; they are not public socket APIs.
     void peer_routing_ids (std::vector<zlink_routing_id_t> *out_);
     void set_session_observer (session_observer_fn observer_, void *userdata_);

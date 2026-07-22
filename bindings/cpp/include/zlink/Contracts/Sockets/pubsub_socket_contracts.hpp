@@ -61,7 +61,7 @@ class pub_socket_t : public publisher_socket_t
   public:
     explicit pub_socket_t (context_t &ctx_);
 
-    service::send_operation_t publish (const std::string &topic_id_);
+    send_operation_t publish (const std::string &topic_id_);
 
     void set_send_ready_handler (std::function<void ()> handler_)
     {
@@ -132,7 +132,7 @@ class xpub_socket_t : public publisher_socket_t
   public:
     explicit xpub_socket_t (context_t &ctx_);
 
-    service::send_operation_t publish (const std::string &topic_id_);
+    send_operation_t publish (const std::string &topic_id_);
 
     void set_send_ready_handler (std::function<void ()> handler_)
     {

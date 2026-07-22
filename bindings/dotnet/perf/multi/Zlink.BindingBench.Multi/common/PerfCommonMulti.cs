@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using Systems.Zlink;
 
@@ -62,17 +61,6 @@ internal static partial class PerfRunner
         return MultiClientPollTimeoutMs;
     }
 
-    internal static int ResolveMultiSpotControlStabilizeMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_CONTROL_STABILIZE_MS",
-            1000);
-    }
-
-    internal static int ResolveMultiSpotControlSettleMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25);
-    }
-
     internal static string MultiEndpointFor(string transport, string name,
         PerfOptions options)
     {
@@ -80,124 +68,6 @@ internal static partial class PerfRunner
         if (bindPort > 0)
             return $"{transport}://127.0.0.1:{bindPort}";
         return EndpointFor(transport, name);
-    }
-
-    // ITEM 3 (MULTI_SPOT fix): the registry API exposes no resolved
-    // endpoint readback after a wildcard bind, so a "tcp://127.0.0.1:*"
-    // bind cannot be reused as the connect target (discovery.ConnectRegistry
-    // and the READY advertisement need a concrete address). Reserve a
-    // concrete free TCP port up front so the SAME endpoint string is valid
-    // for registry.Bind, the server's own discovery.ConnectRegistry, and the
-    // client (via the READY line). Mirrors C, whose registry endpoints are
-    // concrete addresses the discovery layer reuses verbatim.
-    internal static int ReserveFreeTcpPort()
-    {
-        var listener = new System.Net.Sockets.TcpListener(
-            System.Net.IPAddress.Loopback, 0);
-        listener.Start();
-        try
-        {
-            return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        finally
-        {
-            listener.Stop();
-        }
-    }
-
-    // ITEM 3 (MULTI_SPOT fix): registry connection is
-    // non-blocking; immediately after registry.Bind the registry PUB socket
-    // is not yet connectable and the call returns EAGAIN (errno 11, code
-    // 604). C's discovery layer tolerates this via its connect/retry loop;
-    // reproduce that here with a bounded retry so MULTI_SPOT is actually
-    // exercised instead of being misreported as UNSUPPORTED.
-    internal static void ConnectRegistryWithRetry(dynamic discovery,
-        string registryPubEndpoint, int timeoutMs)
-    {
-        int budget = Math.Max(2000, timeoutMs);
-        var sw = Stopwatch.StartNew();
-        ZlinkException? last = null;
-        while (sw.ElapsedMilliseconds < budget)
-        {
-            try
-            {
-                discovery.ConnectRegistry(registryPubEndpoint);
-                return;
-            }
-            catch (ZlinkException ex) when (PerfShared.IsWouldBlock(
-                       ex.NativeErrno) || PerfShared.IsInterrupted(
-                       ex.NativeErrno))
-            {
-                last = ex;
-                Thread.Sleep(20);
-            }
-        }
-        if (last != null)
-            throw last;
-        discovery.ConnectRegistry(registryPubEndpoint);
-    }
-
-    internal static string MultiRegistryEndpoint(string transport,
-        PerfOptions options)
-    {
-        int bindPort = options.ServerBindPort;
-        if (bindPort > 0)
-            return $"{transport}://127.0.0.1:{bindPort}";
-        // Preserve the original data-plane transport scheme (parity with the
-        // prior MultiEndpointFor behaviour) but pin a concrete loopback port
-        // so the Bind endpoint string can be reused verbatim for
-        // discovery.ConnectRegistry and the READY advertisement.
-        return $"{transport}://127.0.0.1:{ReserveFreeTcpPort()}";
-    }
-
-    internal static string BindSpotNodeWithRetry(ISpotNode node,
-        string transport, string endpointName, PerfOptions options)
-    {
-        const int maxAttempts = 8;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            string endpoint = MultiEndpointFor(transport, endpointName,
-                options);
-            try
-            {
-                node.SetPubBind(endpoint);
-                return node.LastEndpoint;
-            }
-            catch (ZlinkException ex) when (options.ServerBindPort <= 0
-                                            && IsAddressInUse(ex.NativeErrno)
-                                            && attempt < maxAttempts)
-            {
-                Thread.Sleep(10 * attempt);
-            }
-        }
-
-        string finalEndpoint = MultiEndpointFor(transport, endpointName,
-            options);
-        node.SetPubBind(finalEndpoint);
-        return node.LastEndpoint;
-    }
-
-    private static bool IsAddressInUse(int errno)
-    {
-        return errno is 98 or 48 or 502;
-    }
-
-    internal static string MultiSpotChannelName(string registryEndpoint)
-    {
-        var builder = new StringBuilder("bench-svc");
-        foreach (char ch in registryEndpoint)
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                builder.Append(char.ToLowerInvariant(ch));
-            }
-            else if (builder[^1] != '-')
-            {
-                builder.Append('-');
-            }
-        }
-
-        return builder.ToString().TrimEnd('-');
     }
 
     internal static bool IsMonitorReady(MonitorEventType eventValue)
@@ -319,30 +189,6 @@ internal static partial class PerfRunner
         socket.Options.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
     }
 
-    internal static void ApplyMultiSpotSocketOptions(ISpot spot,
-        PerfOptions options)
-    {
-        int sndTimeo = ResolveMultiSndTimeoutMs(options);
-        int rcvTimeo = ResolveMultiRcvTimeoutMs(options);
-
-        spot.Linger = TimeSpan.Zero;
-        if (ManualSocketOverridesEnabled())
-        {
-            int sndHwm = options.ResolveMultiHwm("PERF_MULTI_SNDHWM");
-            int rcvHwm = options.ResolveMultiHwm("PERF_MULTI_RCVHWM");
-            if (sndHwm > 0)
-                spot.SendHighWaterMark = sndHwm;
-            if (rcvHwm > 0)
-                spot.ReceiveHighWaterMark = rcvHwm;
-            if (options.MultiSndBuf > 0)
-                spot.SendBufferSize = options.MultiSndBuf;
-            if (options.MultiRcvBuf > 0)
-                spot.ReceiveBufferSize = options.MultiRcvBuf;
-        }
-        spot.SendTimeout = TimeSpan.FromMilliseconds(sndTimeo);
-        spot.ReceiveTimeout = TimeSpan.FromMilliseconds(rcvTimeo);
-    }
-
     internal static void ApplyAutoHwmMsgUnit(IContext ctx, int msgSize)
     {
         if (msgSize <= 0)
@@ -399,82 +245,6 @@ internal static partial class PerfRunner
             SocketTypeName(socketType),
             snapshotFromMonitor ? "monitor_snapshot" : "option_fallback",
             fields);
-    }
-
-    internal static void PrintSpotNodeAutoHwmSnapshot(ISpotNode node,
-        string label, string transport, int msgSize)
-    {
-        if (!AutoHwmDetailEnabled())
-            return;
-
-        SpotNodeSocketEntry[] entries;
-        try
-        {
-            entries = node.InternalSockets();
-        }
-        catch (ZlinkException)
-        {
-            return;
-        }
-
-        bool controlOnly = label.Contains("control",
-            StringComparison.OrdinalIgnoreCase);
-        foreach (SpotNodeSocketEntry entry in entries)
-        {
-            if (!entry.AutoHwmVisible)
-                continue;
-            if (controlOnly
-                && entry.SocketName != "peer_ctrl_pub"
-                && entry.SocketName != "peer_ctrl_sub")
-            {
-                continue;
-            }
-
-            MonitorStatus snapshot = entry.MonitorStatus;
-            var fields = AutoHwmSnapshotFields.FromSnapshot(snapshot);
-            string owner = entry.Owner == SpotNodeSocketOwner.Node
-                ? "node"
-                : "spot";
-            string scope = entry.Owner == SpotNodeSocketOwner.Node
-                ? "shared"
-                : "per-spot";
-            string socketType = SocketTypeName(entry.SocketType);
-            string pattern = AutoHwmEnvOrDefault("PERF_MULTI_PATTERN",
-                "unknown");
-            string component = AutoHwmEnvOrDefault("PERF_MULTI_COMPONENT",
-                "process");
-            string detail =
-                "AUTO_HWM_DETAIL"
-                + $",pattern={pattern}"
-                + $",transport={transport}"
-                + $",component={component}"
-                + $",label={entry.SocketName}"
-                + $",owner={owner}"
-                + $",owner_id={entry.OwnerId}"
-                + $",socket={entry.SocketName}"
-                + $",socket_type={socketType}"
-                + $",msg_size={msgSize}"
-                + ",source=spotnode_snapshot"
-                + $",enabled={BoolInt(snapshot.AutoHwmEnabled)}"
-                + $",role={AutoHwmRoleName(snapshot.AutoHwmRole)}"
-                + $",role_id={snapshot.AutoHwmRole}"
-                + $",profile={AutoHwmProfileName(snapshot.AutoHwmProfile)}"
-                + $",profile_id={(uint)snapshot.AutoHwmProfile}"
-                + $",policy_class={AutoHwmPolicyClassName(snapshot.AutoHwmPolicyClass)}"
-                + $",policy_class_id={snapshot.AutoHwmPolicyClass}"
-                + $",unit_budget_bytes={snapshot.AutoHwmUnitBudgetBytes}"
-                + $",size_cap={snapshot.AutoHwmSizeCap}"
-                + $",scope={scope}"
-                + $",sndhwm={fields.SndHwm}"
-                + $",rcvhwm={fields.RcvHwm}"
-                + $",socket_message_slots={snapshot.AutoHwmSocketMessageSlots}"
-                + $",effective_message_bytes={snapshot.AutoHwmEffectiveMessageBytes}"
-                + $",effective_sndbuf={AutoHwmSndbufDisplay(socketType, snapshot.AutoHwmRole, fields.EffectiveSndbuf)}"
-                + $",effective_rcvbuf={AutoHwmRcvbufDisplay(socketType, snapshot.AutoHwmRole, fields.EffectiveRcvbuf)}"
-                + $",last_recalc_reason={AutoHwmRecalcReasonName(snapshot.AutoHwmLastRecalcReason)}";
-
-            WriteAutoHwmDetailLine(detail);
-        }
     }
 
     private static void PrintAutoHwmDetailLine(string label, string transport,
@@ -591,13 +361,7 @@ internal static partial class PerfRunner
 
     private static int BoolInt(bool value) => value ? 1 : 0;
 
-    // Byte-identical port of perf_multi_runtime.hpp
-    // perf_auto_hwm_send_side_visible / perf_auto_hwm_recv_side_visible.
-    // A SUB/XSUB carrying recv_ingress|control never sends; a PUB/XPUB
-    // carrying spot_data|control never receives. The C multi benchmark
-    // emits effective_sndbuf=0 / effective_rcvbuf=0 for those inactive
-    // directions (sndhwm/rcvhwm stay raw), so the AUTO_HWM_DETAIL line and
-    // the resulting report tables match the C reference exactly.
+    // Keep buffer visibility consistent with the raw socket direction.
     private static bool AutoHwmSendSideVisible(string socketType, uint role)
     {
         string roleName = AutoHwmRoleName(role);
@@ -611,7 +375,7 @@ internal static partial class PerfRunner
     {
         string roleName = AutoHwmRoleName(role);
         if ((socketType == "pub" || socketType == "xpub")
-            && (roleName == "spot_data" || roleName == "control"))
+            && roleName == "control")
             return false;
         return true;
     }
@@ -635,7 +399,6 @@ internal static partial class PerfRunner
             2 => "routed",
             3 => "fanout",
             4 => "recv_ingress",
-            5 => "spot_data",
             6 => "peer_queue",
             7 => "stream",
             _ => "none",
@@ -655,7 +418,6 @@ internal static partial class PerfRunner
         => policyClass switch
         {
             1 => "fanout",
-            2 => "spot_data",
             3 => "recv_ingress",
             4 => "routed",
             5 => "peer_queue",
@@ -755,8 +517,7 @@ internal static partial class PerfRunner
 
     internal static int ResolveMultiOnewayLatencySampleStride()
     {
-        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_SAMPLE_STRIDE",
-            PerfEnv.ReadPositive("PERF_MULTI_SPOT_LATENCY_SAMPLE_STRIDE", 32));
+        return PerfEnv.ReadPositive("PERF_MULTI_ONEWAY_LATENCY_SAMPLE_STRIDE", 32);
     }
 
     internal static bool IsCoreStreamServerTransport(string transport)

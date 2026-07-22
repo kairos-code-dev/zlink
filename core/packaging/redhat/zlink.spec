@@ -8,9 +8,9 @@
 %else
 %define DRAFTS no
 %endif
-%define lib_name libzlink10
+%define lib_name libzlink11
 Name:          zlink
-Version:       10.6.0
+Version:       11.0.0
 Release:       1%{?dist}
 Summary:       The Zlink messaging library
 Group:         Development/Libraries/C and C++

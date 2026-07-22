@@ -840,7 +840,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
-      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
     cmake --build "${OFFICIAL_BUILD_DIR}" --config Release --target \
       cpp_comp_src_dealer_dealer_server \
@@ -855,12 +854,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_router_router_reqrep_client \
       cpp_comp_src_pubsub_server \
       cpp_comp_src_pubsub_client \
-      cpp_comp_src_spot_server \
-      cpp_comp_src_spot_client \
-      cpp_comp_src_spot_sendsend_server \
-      cpp_comp_src_spot_sendsend_client \
-      cpp_comp_src_spot_reqrep_server \
-      cpp_comp_src_spot_reqrep_client \
       cpp_comp_src_stream_server
   else
     cmake -S "${CMAKE_SOURCE_DIR}" -B "${OFFICIAL_BUILD_DIR}" \
@@ -869,7 +862,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       -DENABLE_LTO=OFF \
       -DZLINK_CORE_DIR="${ROOT_DIR}/core" \
       -DZLINK_CPP_CORE_BUILD_DIR="${ROOT_DIR}/core/build" \
-      -DZLINK_CPP_USE_CORE_BUILD_RUNTIME=ON \
       -DZLINK_CPP_BUILD_BENCHMARKS=ON
     bash "${NORMALIZE_TIMESTAMPS_SH}" "${OFFICIAL_BUILD_DIR}"
     cmake --build "${OFFICIAL_BUILD_DIR}" --target \
@@ -885,12 +877,6 @@ if [[ "${BUILD_MODE}" != "reuse" ]]; then
       cpp_comp_src_router_router_reqrep_client \
       cpp_comp_src_pubsub_server \
       cpp_comp_src_pubsub_client \
-      cpp_comp_src_spot_server \
-      cpp_comp_src_spot_client \
-      cpp_comp_src_spot_sendsend_server \
-      cpp_comp_src_spot_sendsend_client \
-      cpp_comp_src_spot_reqrep_server \
-      cpp_comp_src_spot_reqrep_client \
       cpp_comp_src_stream_server
   fi
 fi

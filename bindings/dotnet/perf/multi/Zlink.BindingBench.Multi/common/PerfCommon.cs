@@ -17,9 +17,7 @@ internal static partial class PerfRunner
             || normalized == "DEALER_ROUTER_REQREP"
             || normalized == "ROUTER_ROUTER"
             || normalized == "ROUTER_ROUTER_REQREP"
-            || normalized == "STREAM"
-            || normalized == "SPOT_REQREP"
-            || normalized == "SPOT_SENDSEND";
+            || normalized == "STREAM";
     }
 
     internal static void PrintResult(string pattern, string transport, int size,

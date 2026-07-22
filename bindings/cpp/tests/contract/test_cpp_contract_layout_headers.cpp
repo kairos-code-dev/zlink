@@ -10,8 +10,6 @@
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
 #include <zlink/Contracts/Messaging/subscription_event.hpp>
 #include <zlink/Contracts/Messaging/topic_message.hpp>
-#include <zlink/Contracts/Service/actor.hpp>
-#include <zlink/Contracts/Service/mesh_node.hpp>
 #include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
 #include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
 #include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
@@ -38,10 +36,6 @@ static_assert (std::is_class<zlink::router_socket_t>::value,
                "public projection must expose router_socket_t");
 static_assert (std::is_class<zlink::socket_monitor_t>::value,
                "public projection must expose socket_monitor_t");
-static_assert (std::is_class<zlink::mesh_node_status_t>::value,
-               "public projection must expose mesh_node_status_t");
-static_assert (std::is_class<zlink::service::spot_t>::value,
-               "public projection must expose service::spot_t");
 static_assert (std::is_class<zlink::timer_t>::value, "public projection must expose timer_t");
 static_assert (std::is_class<zlink::atomic_counter_t>::value,
                "public projection must expose atomic_counter_t");

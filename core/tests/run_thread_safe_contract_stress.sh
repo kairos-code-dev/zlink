@@ -10,11 +10,6 @@ REPEAT_COUNT=1000
 TEST_NAMES=(
   test_monitor_enhanced
   test_monitor_perf_contract
-  test_spot_service_introspection_pub_sub_options
-  test_spot_service_introspection_callback_recv_regression
-  test_spot_service_introspection_recv_model_regression
-  test_spot_service_introspection_default_handle_owner
-  test_spot_service_introspection_snapshots
 )
 
 usage() {

@@ -153,8 +153,7 @@ typedef enum zlink_recv_result_t
 } zlink_recv_result_t;
 
 /*  Handler registration result (301+).                                      */
-/*  Applies to recv_handler, send_ready_handler, mesh ready handler and      */
-/*  monitor_handler.                                                          */
+/*  Applies to recv_handler, send_ready_handler, and monitor_handler.        */
 typedef enum zlink_handler_result_t
 {
     ZLINK_HANDLER_OK = 0,
@@ -203,7 +202,7 @@ typedef enum zlink_connect_result_t
 
 /*  Configuration result (701+).                                             */
 /*  Applies to set/get_option, set/get_routing_id, set_tls,                  */
-/*  set/unset_subscription, subscription_at, and service configuration.       */
+/*  set/unset_subscription, and subscription_at.                             */
 typedef enum zlink_config_result_t
 {
     ZLINK_CONFIG_OK = 0,

@@ -4,7 +4,7 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 
 /** Exchanges framed packets with raw TCP peers. */
 public interface StreamSocket extends Socket {

@@ -2,7 +2,7 @@
 
 import type { SubscriptionEvent, TopicMessage } from '../messaging';
 import type { SendOperation } from '../messaging';
-import type { SubscriptionEntry } from '../service';
+import type { SubscriptionEntry } from '../messaging';
 import type { RecvFlags } from './socket_constants';
 import type { PubSocketOptions, SubSocketOptions } from './socket_options';
 import type { ConnectableSocket } from './socket';
@@ -18,8 +18,6 @@ export interface PubSocket extends ConnectableSocket {
    * back-pressure. The callback runs on a background dispatch thread.
    */
   setSendReadyHandler(handler: () => void): void;
-  /** Set the logical channel name used to identify this socket in routing and discovery. */
-  setChannelName(channelName: string): void;
 }
 
 /** XPUB socket: like PUB, but also surfaces subscriber subscription and unsubscription events. */
@@ -41,8 +39,6 @@ export interface SubSocket extends ConnectableSocket {
   unsetSubscription(filter: string): void;
   /** Return the active subscription at `index`, or null when out of range. */
   subscriptionAt(index: number): SubscriptionEntry | null;
-  /** Set the logical channel name used to identify this socket in routing and discovery. */
-  setChannelName(channelName: string): void;
   /**
    * Receive the next matching topic message into `result`; false when
    * `RecvFlags.DontWait` is set and none is available.

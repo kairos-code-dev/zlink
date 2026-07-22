@@ -10,23 +10,11 @@ import {
   recvNativeError,
 } from '../errors/native_errors';
 import { requireNative } from '../native/native';
-import { getNativeHandle, NativeHandle } from '../handles/native_handle';
-import { RuntimeSpot as Spot } from '../service';
+import { NativeHandle } from '../handles/native_handle';
 
 export class Timer extends NativeHandle {
-  private static readonly CREATE_TOKEN = Symbol('Timer.fromNative');
-
-  constructor();
-  /** @internal */
-  constructor(token: symbol, native: unknown);
-  constructor(token?: symbol, native?: unknown) {
-    super(token === Timer.CREATE_TOKEN ? native : requireNative().timerNew());
-  }
-
-  static fromSpot(spot: Spot): Timer {
-    return new Timer(Timer.CREATE_TOKEN, configCall('spot timer creation failed', () =>
-      requireNative().spotTimerNew(getNativeHandle(spot))
-    ));
+  constructor() {
+    super(requireNative().timerNew());
   }
 
   start(intervalNs: bigint, repeatCount: bigint): void {

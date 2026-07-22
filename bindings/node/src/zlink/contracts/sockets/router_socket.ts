@@ -26,8 +26,6 @@ export interface RouterSocket extends ConnectableSocket {
    * back-pressure. The callback runs on a background dispatch thread.
    */
   setSendReadyHandler(handler: () => void): void;
-  /** Set the logical channel name used to identify this socket in routing and discovery. */
-  setChannelName(channelName: string): void;
   /**
    * Set the routing id that identifies this ROUTER to its peers. Apply before
    * connecting so peers observe it from the first message.

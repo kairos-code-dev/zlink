@@ -79,22 +79,6 @@ class asio_engine_t : public i_engine
         LIBZLINK_UNUSED (msg_);
         return -1;
     }
-    virtual int produce_ping_message (msg_t *msg_)
-    {
-        LIBZLINK_UNUSED (msg_);
-        return -1;
-    }
-    virtual int process_heartbeat_message (msg_t *msg_)
-    {
-        LIBZLINK_UNUSED (msg_);
-        return -1;
-    }
-    virtual int produce_pong_message (msg_t *msg_)
-    {
-        LIBZLINK_UNUSED (msg_);
-        return -1;
-    }
-
     //  Build protocol-specific header for gather write.
     //  Returns true on success and sets header_size_.
     virtual bool build_gather_header (const msg_t &msg_,
@@ -170,17 +154,6 @@ class asio_engine_t : public i_engine
 
     //  True if handshake timer is running.
     bool _has_handshake_timer;
-
-    //  Heartbeat stuff
-    enum
-    {
-        heartbeat_ivl_timer_id = 0x80,
-        heartbeat_timeout_timer_id = 0x81,
-        heartbeat_ttl_timer_id = 0x82
-    };
-    bool _has_ttl_timer;
-    bool _has_timeout_timer;
-    bool _has_heartbeat_timer;
 
     const std::string _peer_address;
 

@@ -35,8 +35,6 @@ function invalidSendContextError(): SubmitError {
 export class Received extends MessagePartsEnvelope {
   /** The source routing id, or null when the receive path provides none. */
   routingId: RoutingId | null;
-  /** The source spot routing id, or null when not from a spot route. */
-  spotRid: RoutingId | null;
   /** The request sequence, present when this envelope can be replied to. */
   requestSeq: bigint | null;
   private _replyContext: ReplyContext | null;
@@ -49,7 +47,6 @@ export class Received extends MessagePartsEnvelope {
     }
     super();
     this.routingId = null;
-    this.spotRid = null;
     this.requestSeq = null;
     this._replyContext = null;
     this._sendContext = null;

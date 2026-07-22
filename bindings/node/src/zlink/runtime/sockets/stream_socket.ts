@@ -34,7 +34,7 @@ import type {
   SendOperation,
   SocketSendReadyHandler,
   StreamPacketHandler,
-} from '../../contracts/service';
+} from '../../contracts/messaging';
 
 const native = requireNative();
 

@@ -3,11 +3,11 @@
 namespace Systems.Zlink;
 
 /// <summary>
-///     A messaging context: the factory and owner of sockets and SPOT nodes.
+///     A messaging context: the factory and owner of sockets.
 /// </summary>
 /// <remarks>
-///     Every socket and spot node created here is owned by the caller and must be
-///     disposed. Disposing the context terminates anything still open under it.
+///     Every socket created here is owned by the caller and must be disposed.
+///     Disposing the context terminates anything still open under it.
 /// </remarks>
 public interface IContext : IDisposable, IAsyncDisposable
 {
@@ -55,16 +55,6 @@ public interface IContext : IDisposable, IAsyncDisposable
     ///     Creates a stream socket.
     /// </summary>
     IStreamSocket CreateStreamSocket();
-
-    /// <summary>
-    ///     Creates a RouteMesh node hosted by this context.
-    /// </summary>
-    IMeshNode CreateMeshNode();
-
-    /// <summary>
-    ///     Creates a RouteMesh node with the given <paramref name="options" />.
-    /// </summary>
-    IMeshNode CreateMeshNode(MeshNodeOptions options);
 
     /// <summary>
     ///     Terminates the context, interrupting blocking operations on its sockets

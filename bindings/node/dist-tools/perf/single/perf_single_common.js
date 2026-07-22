@@ -3,11 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.configureTlsServer = exports.configureTlsClient = exports.applyAutoHwmMsgUnit = void 0;
 exports.applyContextPolicy = applyContextPolicy;
-exports.applySpotNodeAdmission = applySpotNodeAdmission;
 exports.applySocketPolicy = applySocketPolicy;
 exports.routedLargeMessageSocketPolicy = routedLargeMessageSocketPolicy;
 exports.emitSingleSocketHwmDetail = emitSingleSocketHwmDetail;
-exports.emitSpotNodeHwmDetail = emitSpotNodeHwmDetail;
 exports.benchmarkEndpoint = benchmarkEndpoint;
 exports.closeSenderWorker = closeSenderWorker;
 exports.drainRouterRecvInto = drainRouterRecvInto;
@@ -111,27 +109,6 @@ function routedLargeMessageSocketPolicy(options = {}, msgSize) {
         policySocketOverrides: true,
     };
 }
-function applySpotNodeAdmission(node, options = {}) {
-    const manualOverrides = manualSocketOverridesEnabled('single');
-    if (!manualOverrides) {
-        return;
-    }
-    const hwm = Number.isFinite(options.hwm)
-        ? options.hwm
-        : integerEnv('PERF_SINGLE_HWM', NaN);
-    const sendHwm = Number.isFinite(options.sendHwm)
-        ? options.sendHwm
-        : integerEnv('PERF_SINGLE_SNDHWM', hwm);
-    const recvHwm = Number.isFinite(options.recvHwm)
-        ? options.recvHwm
-        : integerEnv('PERF_SINGLE_RCVHWM', hwm);
-    if (Number.isFinite(sendHwm) && sendHwm > 0) {
-        node.pubsubHwm = sendHwm;
-    }
-    if (Number.isFinite(recvHwm) && recvHwm > 0) {
-        node.routerHwm = recvHwm;
-    }
-}
 function socketTypeName(socket) {
     if (typeof socket.setPacketHandler === 'function')
         return 'stream';
@@ -208,41 +185,6 @@ function emitSingleSocketHwmDetail(socket, pattern, transport, component, msgSiz
     }
     finally {
         monitor?.close();
-    }
-}
-function emitSpotNodeHwmDetail(node, pattern, transport, component, msgSize) {
-    if (!node || typeof node.internalSockets !== 'function') {
-        return;
-    }
-    try {
-        const entries = node.internalSockets();
-        let index = 0;
-        for (const entry of entries) {
-            const snapshot = entry.snapshot;
-            if (!entry.autoHwmVisible || !singleAutoHwmSnapshotVisible(snapshot)) {
-                continue;
-            }
-            console.log('AUTO_HWM_DETAIL'
-                + `,pattern=${pattern}`
-                + `,transport=${transport}`
-                + `,component=${component}`
-                + `,msg_size=${msgSize}`
-                + `,owner=${entry.ownerName || 'node'}`
-                + `,owner_id=${entry.ownerId ?? index}`
-                + `,socket=${entry.socketName || component}`
-                + `,socket_type=${entry.socketType}`
-                + `,role=${autoHwmRoleName(snapshot.autoHwmRole)}`
-                + `,sndhwm=${snapshot.autoHwmAppliedSndHwm}`
-                + `,rcvhwm=${snapshot.autoHwmAppliedRcvHwm}`
-                + `,effective_message_bytes=${snapshot.autoHwmEffectiveMessageBytes}`
-                + `,effective_sndbuf=${snapshot.autoHwmEffectiveSndBuf}`
-                + `,effective_rcvbuf=${snapshot.autoHwmEffectiveRcvBuf}`
-                + `,socket_message_slots=${snapshot.autoHwmSocketMessageSlots}`);
-            index += 1;
-        }
-    }
-    catch (err) {
-        // Diagnostic only.
     }
 }
 function applyContextPolicy(ctx) {
@@ -788,13 +730,11 @@ async function closeSenderWorker(worker) {
 module.exports = {
     applyAutoHwmMsgUnit,
     applyContextPolicy,
-    applySpotNodeAdmission,
     applySocketPolicy,
     routedLargeMessageSocketPolicy,
     configureTlsClient,
     configureTlsServer,
     emitSingleSocketHwmDetail,
-    emitSpotNodeHwmDetail,
     benchmarkEndpoint,
     closeSenderWorker,
     drainRouterRecvInto,

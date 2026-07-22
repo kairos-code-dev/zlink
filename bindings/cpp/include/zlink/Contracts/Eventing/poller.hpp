@@ -14,11 +14,6 @@
 namespace zlink
 {
 
-namespace service
-{
-class spot_t;
-} // namespace service
-
 /**
  * @brief Multiplexes sockets, file descriptors, and timers.
  * @note The caller owns this resource and must call close() when done.
@@ -38,7 +33,6 @@ class poller_t
     bool valid () const noexcept;
     int size () const;
 
-    void add (service::spot_t &spot_, poll_event_flag_t events_, std::uintptr_t slot_);
     void add (socket_monitor_t &monitor_, poll_event_flag_t events_, std::uintptr_t slot_);
     void add (socket_t &socket_, poll_event_flag_t events_, std::uintptr_t slot_);
 
@@ -49,7 +43,6 @@ class poller_t
     void modify (socket_monitor_t &monitor_, poll_event_flag_t events_);
     void modify (socket_t &socket_, poll_event_flag_t events_);
 
-    bool remove (service::spot_t &spot_);
     bool remove (socket_monitor_t &monitor_);
     bool remove (socket_t &socket_);
 

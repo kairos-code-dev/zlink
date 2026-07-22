@@ -8,14 +8,6 @@ int zlink::options_setsockopt_protocol_metadata (
   options_t *self_, int option_, const void *optval_, size_t optvallen_, bool is_int_, int value_)
 {
     switch (option_) {
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
-            value_ = value_ / 100;
-            if (is_int_ && value_ >= 0 && value_ <= UINT16_MAX) {
-                self_->heartbeat_ttl = static_cast<uint16_t> (value_);
-                return 0;
-            }
-            break;
-
 #ifdef ZLINK_HAVE_TLS
         case ZLINK_INTERNAL_OPT_TLS_CERT:
             return options_do_setsockopt_string_allow_empty_strict (optval_, optvallen_,
@@ -63,13 +55,6 @@ int zlink::options_getsockopt_protocol_metadata (
   const options_t *self_, int option_, void *optval_, size_t *optvallen_, bool is_int_, int *value_)
 {
     switch (option_) {
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
-            if (is_int_) {
-                *value_ = self_->heartbeat_ttl * 100;
-                return 0;
-            }
-            break;
-
 #ifdef ZLINK_HAVE_TLS
         case ZLINK_INTERNAL_OPT_TLS_CERT:
             return do_getsockopt (optval_, optvallen_, self_->tls_cert);

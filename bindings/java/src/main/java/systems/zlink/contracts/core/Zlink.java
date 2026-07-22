@@ -7,7 +7,6 @@ import systems.zlink.contracts.eventing.Poller;
 import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.contracts.service.spot.Spot;
 import java.time.Duration;
 
 /**
@@ -39,10 +38,6 @@ public final class Zlink {
 
     public static ZlinkTimer createTimer() {
         return ContractAccess.createTimer();
-    }
-
-    public static ZlinkTimer createTimer(Spot spot) {
-        return ContractAccess.createTimer(spot);
     }
 
     static int errno() {

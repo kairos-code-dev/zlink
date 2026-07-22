@@ -100,9 +100,6 @@ int main ()
       "zlink_router_request_part",
       "zlink_router_reply_part",
       "submit_borrowed_message_array",
-      "zlink_mesh_node_send_to_node",
-      "zlink_spot_send_to_channel",
-      "zlink_actor_send_to_actor",
     };
     for (const auto &symbol : required_part_symbols)
         assert (all.find (symbol) != std::string::npos);

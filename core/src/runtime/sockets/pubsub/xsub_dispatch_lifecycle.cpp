@@ -6,7 +6,7 @@
 #include "sockets/pubsub/xsub_dispatch_internal.hpp"
 #include "core/io_thread.hpp"
 
-int zlink::xsub_t::sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_)
+int zlink::xsub_t::sub_dispatch_start (sub_io_handler_fn callback_, void *userdata_)
 {
     if (!callback_) {
         errno = EINVAL;

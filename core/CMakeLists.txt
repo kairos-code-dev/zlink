@@ -8,7 +8,7 @@ if(POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif()
 
-project(zlink VERSION 10.6.0 LANGUAGES C CXX)
+project(zlink VERSION 11.0.0 LANGUAGES C CXX)
 
 # Internal repo targets still include the public header from core/include.
 # Define a build-only macro so in-tree code can access private build-only
@@ -298,6 +298,7 @@ if(NOT WITH_OPENPGM_MODE STREQUAL "OFF")
       set(OPENPGM_PKGCONFIG_NAME
           ${OPENPGM_PKGCONFIG_NAME}
           CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
+
           FORCE)
       message(STATUS "${OPENPGM_PKGCONFIG_NAME} found - PGM/EPGM transports enabled")
       set(ZLINK_HAVE_OPENPGM 1)
@@ -598,6 +599,7 @@ if(MSVC)
                                            # delete them all
     zlink_check_cxx_flag_prepend("/wd26439") # This kind of function may not throw. Declare it 'noexcept'
     zlink_check_cxx_flag_prepend("/wd26447") # The function is declared 'noexcept' but calls function '...' which may
+
                                            # throw exceptions
     zlink_check_cxx_flag_prepend("/wd26433") # Function '...' should be marked with 'override'
     zlink_check_cxx_flag_prepend("/wd26409") # Avoid calling new and delete explicitly, use std::make_unique<T> instead
@@ -875,43 +877,18 @@ set(api-socket-sources
     src/api/socket/socket_request_reply_internal.cpp
     src/api/socket/socket_request_reply_router_control.cpp
     src/api/socket/socket_request_reply_router_api.cpp
-    src/api/mesh/mesh_api.cpp
-    src/api/mesh/mesh_node_api.cpp
-    src/api/mesh/mesh_dispatch_api.cpp
-    src/api/mesh/mesh_messaging_api.cpp
-    src/api/mesh/mesh_actor_api.cpp
-    src/api/mesh/mesh_transfer_api.cpp
-    src/api/mesh/mesh_monitor_api.cpp
-    src/api/mesh/mesh_stream_session_api.cpp
-    src/runtime/services/mesh/mesh_runtime.cpp
-    src/runtime/services/mesh/mesh_wire.cpp
-    src/runtime/services/mesh/mesh_wire_admission.cpp
-    src/runtime/services/mesh/mesh_wire_codec.cpp
-    src/runtime/services/mesh/mesh_wire_ingress.cpp
     src/api/socket/socket_request_reply_router_state.cpp
-    src/runtime/services/control/service_control_runtime.cpp
+    src/runtime/core/control_runtime.cpp
     src/api/socket/socket_request_reply_api.cpp
     src/api/socket/socket_request_reply_pending_api.cpp
     src/api/socket/socket_request_reply_submit_api.cpp
     src/api/socket/socket_api.cpp)
 
-set(api-service-sources
-    )
-
-set(api-spot-sources
-    )
-
-set(api-actor-sources
-    )
-
 set(api-sources
     ${api-core-sources}
     ${api-message-sources}
     ${api-monitoring-sources}
-    ${api-socket-sources}
-    ${api-service-sources}
-    ${api-spot-sources}
-    ${api-actor-sources})
+    ${api-socket-sources})
 
 set(core-sources
     src/runtime/core/msg.cpp
@@ -960,30 +937,12 @@ set(protocol-sources
     src/runtime/protocol/metadata.cpp
     src/runtime/protocol/decoder_allocators.cpp)
 
-set(runtime-service-control-sources
-)
-
-set(runtime-service-common-sources
-    )
-
-set(runtime-service-actor-sources
-    )
-
-set(runtime-service-spot-sources
-    )
-
-set(service-sources
-    ${runtime-service-control-sources}
-    ${runtime-service-common-sources}
-    ${runtime-service-actor-sources}
-    ${runtime-service-spot-sources})
-
 set(socket-common-sources
     src/runtime/sockets/common/socket_close_ops.cpp
     src/runtime/sockets/common/socket_base.cpp
     src/runtime/sockets/common/socket_base_api.cpp
     src/runtime/sockets/common/socket_base_request_reply_bridge.cpp
-    src/runtime/sockets/common/socket_base_service_attachment.cpp
+    src/runtime/sockets/common/socket_base_control.cpp
     src/runtime/sockets/common/socket_base_dispatch.cpp
     src/runtime/sockets/common/socket_dispatch_context.cpp
     src/runtime/sockets/common/socket_dispatch_bridge.cpp
@@ -1107,7 +1066,6 @@ set(sources
     ${api-sources}
     ${core-sources}
     ${protocol-sources}
-    ${service-sources}
     ${socket-sources}
     ${engine-sources}
     ${transport-sources}
@@ -1117,7 +1075,7 @@ if(ZLINK_HAVE_OPENPGM)
   list(APPEND sources ${transport-pgm-sources})
 endif()
 
-# Keep include roots explicit. Category includes use api/, services/, sockets/
+# Keep include roots explicit. Category includes use api/, core/, and sockets/
 # prefixes; precompiled headers are included through utils/precompiled.hpp.
 include_directories(
     src
@@ -1165,18 +1123,11 @@ endif()
 
 set(public_headers include/zlink.h include/zlink_enum.h include/zlink_errno.h)
 set(public_contract_subheaders
-    include/zlink/common.h
-    include/zlink/service/common.h)
+    include/zlink/common.h)
 set(public_contract_group_headers
     include/zlink/core/api.h
     include/zlink/eventing/api.h
     include/zlink/message/api.h
-    include/zlink/service/dispatch.h
-    include/zlink/service/mesh_node.h
-    include/zlink/service/actor.h
-    include/zlink/service/spot.h
-    include/zlink/service/instance_spot_driver.h
-    include/zlink/service/stream_session.h
     include/zlink/socket/api.h)
 
 set(readme-docs
@@ -1198,6 +1149,7 @@ list(APPEND sources ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
 set(prefix ${CMAKE_INSTALL_PREFIX})
 set(exec_prefix ${prefix})
 set(libdir ${prefix}/${CMAKE_INSTALL_LIBDIR})
+
 set(includedir ${prefix}/${CMAKE_INSTALL_INCLUDEDIR})
 set(VERSION ${ZLINK_VERSION_MAJOR}.${ZLINK_VERSION_MINOR}.${ZLINK_VERSION_PATCH})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/libzlink.pc.in ${CMAKE_CURRENT_BINARY_DIR}/libzlink.pc @ONLY)
@@ -1368,7 +1320,7 @@ else()
     # version of the package.
     set_target_properties(
       libzlink PROPERTIES COMPILE_DEFINITIONS "DLL_EXPORT" PUBLIC_HEADER "${public_headers}" VERSION "${ZLINK_VERSION}"
-                        SOVERSION "10" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
+                        SOVERSION "11" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
     # Only the public zlink_* C API may be visible from the shared library.
     # Internal C++ and bundled third-party symbols (for example boost::asio)
     # otherwise interpose a consumer's own copies at load time, which crashes
@@ -1498,6 +1450,7 @@ if(BUILD_STATIC)
   target_link_libraries(libzlink-static ${CMAKE_THREAD_LIBS_INIT})
   if(ZLINK_HAVE_ASIO_SSL)
     target_link_libraries(libzlink-static OpenSSL::SSL OpenSSL::Crypto)
+
     if(WIN32)
       target_link_libraries(libzlink-static crypt32)
     endif()
@@ -1624,9 +1577,6 @@ endforeach()
 install(
   FILES include/zlink/common.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink)
-install(
-  FILES include/zlink/service/common.h
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink/service)
 
 foreach(group_header ${public_contract_group_headers})
   get_filename_component(group_header_dir "${group_header}" DIRECTORY)

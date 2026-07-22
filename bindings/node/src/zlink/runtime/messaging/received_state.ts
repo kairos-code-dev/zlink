@@ -21,7 +21,6 @@ export interface SendContext {
 interface ReceivedState {
   parts: Message[];
   routingId: RoutingId | null;
-  spotRid: RoutingId | null;
   requestSeq: bigint | null;
   _replyContext: ReplyContext | null;
   _sendContext: SendContext | null;
@@ -31,7 +30,6 @@ export function createReceived(
   parts: readonly Message[],
   routingId: RoutingId | null = null,
   requestSeq: bigint | null = null,
-  spotRid: RoutingId | null = null,
   replyContext: ReplyContext | null = null,
   sendContext: SendContext | null = null
 ): Received {
@@ -41,7 +39,6 @@ export function createReceived(
     freezeMessageParts(parts),
     routingId,
     requestSeq,
-    spotRid,
     replyContext,
     sendContext
   );
@@ -53,7 +50,6 @@ export function replaceReceived(
   parts: Message[],
   routingId: RoutingId | null = null,
   requestSeq: bigint | null = null,
-  spotRid: RoutingId | null = null,
   replyContext: ReplyContext | null = null,
   sendContext: SendContext | null = null
 ): void {
@@ -66,7 +62,6 @@ export function replaceReceived(
   }
   state.parts = Object.isFrozen(parts) ? parts : freezeOwnedMessageParts(parts);
   state.routingId = routingId;
-  state.spotRid = spotRid;
   state.requestSeq = requestSeq;
   state._replyContext = replyContext;
   state._sendContext = sendContext;

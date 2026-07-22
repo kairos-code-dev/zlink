@@ -128,11 +128,6 @@ int zlink::socket_base_t::connect (const char *endpoint_uri_)
     return connect_internal (endpoint_uri_);
 }
 
-int zlink::socket_base_t::service_attachment_connect (const char *endpoint_uri_)
-{
-    return connect_internal (endpoint_uri_);
-}
-
 int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
 {
     if (unlikely (_ctx_terminated)) {
@@ -342,8 +337,15 @@ void zlink::socket_base_t::add_endpoint (const endpoint_uri_pair_t &endpoint_pai
     endpoint_runtime ().endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (
       endpoint_pair_.identifier (), endpoint_pipe_t (endpoint_, pipe_, endpoint_pair_.local_type));
 
-    if (pipe_ != NULL)
-        pipe_->set_endpoint_pair (endpoint_pair_);
+    if (pipe_ != NULL) {
+        endpoint_uri_pair_t pipe_endpoint_pair = endpoint_pair_;
+        //  add_endpoint receives the placeholder made before a connect
+        //  attempt has a physical transport. Keep endpoint bookkeeping on
+        //  the pipe, but leave its shared transport identity unbound until
+        //  session_base_t installs the engine endpoint.
+        pipe_endpoint_pair.connection_id = 0;
+        pipe_->set_endpoint_pair (ZLINK_MOVE (pipe_endpoint_pair));
+    }
 }
 
 int zlink::socket_base_t::term_endpoint_internal (const char *endpoint_uri_)
@@ -447,9 +449,4 @@ int zlink::socket_base_t::term_peer_rid (const zlink_routing_id_t *peer_rid_)
         return -1;
 
     return xterm_peer_rid (peer_rid_);
-}
-
-int zlink::socket_base_t::service_attachment_term_endpoint (const char *endpoint_uri_)
-{
-    return term_endpoint_internal (endpoint_uri_);
 }

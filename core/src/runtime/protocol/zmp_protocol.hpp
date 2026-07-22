@@ -24,8 +24,6 @@ const unsigned char zmp_flag_mask = 0x1f;
 
 //  Control Frame Types
 const unsigned char zmp_control_hello = 0x01;
-const unsigned char zmp_control_heartbeat = 0x02;
-const unsigned char zmp_control_heartbeat_ack = 0x03;
 const unsigned char zmp_control_ready = 0x04;
 const unsigned char zmp_control_error = 0x05;
 
@@ -58,15 +56,6 @@ inline const char *zmp_error_reason (uint8_t code_)
         default:
             return "unknown error";
     }
-}
-
-inline uint16_t zmp_effective_ttl_ds (uint16_t local_ttl_ds_, uint16_t remote_ttl_ds_)
-{
-    if (local_ttl_ds_ == 0)
-        return remote_ttl_ds_;
-    if (remote_ttl_ds_ == 0)
-        return 0;
-    return local_ttl_ds_ < remote_ttl_ds_ ? local_ttl_ds_ : remote_ttl_ds_;
 }
 
 } // namespace zlink

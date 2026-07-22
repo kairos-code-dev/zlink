@@ -64,12 +64,12 @@ namespace zlink
 {
 class address_t;
 struct multipart_send_facade_t;
-typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
-                                        const char *topic_,
-                                        size_t topic_len_,
-                                        zlink_msg_t *parts_,
-                                        size_t part_count_,
-                                        void *userdata_);
+typedef void (*sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
+                                   const char *topic_,
+                                   size_t topic_len_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_,
+                                   void *userdata_);
 
 struct socket_request_reply_bridge_t
 {
@@ -126,8 +126,6 @@ class socket_base_t : public own_t,
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
     int term_peer_rid (const zlink_routing_id_t *peer_rid_);
-    int service_attachment_connect (const char *endpoint_uri_);
-    int service_attachment_term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
     // Internal helper for logical multipart wrappers that already hold the
     // public send scope for the whole transaction.
@@ -174,7 +172,7 @@ class socket_base_t : public own_t,
     bool recv_source_rid_capture_requested () const;
     void invoke_send_ready_handler ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
-    virtual int sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_);
+    virtual int sub_dispatch_start (sub_io_handler_fn callback_, void *userdata_);
     virtual int sub_dispatch_stop ();
     virtual bool sub_dispatch_active () const;
     virtual int xpub_dispatch_start ();
@@ -298,13 +296,6 @@ class socket_base_t : public own_t,
     std::shared_ptr<part_helper_internal::handle_state_t>
     set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
-    int set_channel_name_metadata (const char *channel_name_);
-    int get_channel_name_metadata (char *channel_name_buf_,
-                                   size_t channel_name_capacity_,
-                                   size_t *channel_name_len_out_) const;
-    int ensure_channel_name_metadata (const char *channel_name_);
-    void lock_channel_name_metadata ();
-    bool has_channel_name_metadata () const;
 
     bool is_ctx_terminated () const;
 
@@ -586,8 +577,6 @@ class socket_base_t : public own_t,
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_attempts;
     alignas (64) std::atomic<uint64_t> _auto_hwm_send_blocked_attempts;
     uint32_t _local_peer_weight;
-    std::string _channel_name;
-    bool _channel_name_locked;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 };

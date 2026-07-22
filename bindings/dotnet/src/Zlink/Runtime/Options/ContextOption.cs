@@ -15,7 +15,6 @@ internal enum ContextOption
     ThreadAffinityCpuRemove = 8,
     ThreadNamePrefix = 9,
     Blocky = 10,
-    SpotWorkerThreads = 11,
     AutoHwmEnabled = 12,
     AutoHwmRecalcDebounce = 14,
     AutoHwmProfile = 17,

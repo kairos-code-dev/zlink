@@ -23,16 +23,6 @@ internal static class RequestProgressPump
         return Attach(handle, task);
     }
 
-    internal static Task<T> AttachSpot<T>(IntPtr handle, Task<T> task)
-    {
-        return Attach(handle, task);
-    }
-
-    internal static ProgressLease AttachSpotCallback(IntPtr handle)
-    {
-        return Attach(handle);
-    }
-
     internal static ProgressLease AttachSocketCallback(IntPtr handle)
     {
         return Attach(handle);
@@ -173,8 +163,8 @@ internal static class RequestProgressPump
             finally
             {
                 if (poller != IntPtr.Zero)
-                    // The progress worker does not own the socket or spot
-                    // handle. During teardown the owner can close that handle
+                    // The progress worker does not own the socket handle.
+                    // During teardown the owner can close that handle
                     // before this idle worker exits, especially on slower CI
                     // runners. Destroying the private poller is enough to drop
                     // its registrations; passing the possibly closed handle

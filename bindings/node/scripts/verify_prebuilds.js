@@ -12,18 +12,21 @@ const prebuildRoot = path.join(packageRoot, 'prebuilds');
 const packageVersion = JSON.parse(
   fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')
 ).version;
-const repositoryVersionFile = path.resolve(packageRoot, '..', '..', 'VERSION');
-const repositoryCoreVersion = fs.existsSync(repositoryVersionFile)
-  ? fs.readFileSync(repositoryVersionFile, 'utf8').match(/^LIBZLINK_VERSION=(\d+\.\d+\.\d+)$/m)?.[1]
+const provenancePath = path.join(packageRoot, 'provenance', 'core-package-provenance.json');
+const provenance = fs.existsSync(provenancePath)
+  ? JSON.parse(fs.readFileSync(provenancePath, 'utf8'))
   : undefined;
-const coreVersion = process.env.ZLINK_CORE_VERSION || repositoryCoreVersion;
+const coreVersion = process.env.ZLINK_CORE_VERSION || provenance?.version;
 if (!coreVersion || !/^\d+\.\d+\.\d+$/.test(coreVersion)) {
-  throw new Error('ZLINK_CORE_VERSION must be X.Y.Z when the repository VERSION file is unavailable');
+  throw new Error('Core 11 package provenance or ZLINK_CORE_VERSION=X.Y.Z is required');
 }
-if (process.env.ZLINK_CORE_VERSION && repositoryCoreVersion &&
-    process.env.ZLINK_CORE_VERSION !== repositoryCoreVersion) {
+if (!/^11\./.test(coreVersion)) {
+  throw new Error(`prebuild verification requires Core 11.x, found ${coreVersion}`);
+}
+if (process.env.ZLINK_CORE_VERSION && provenance?.version &&
+    process.env.ZLINK_CORE_VERSION !== provenance.version) {
   throw new Error(
-    `ZLINK_CORE_VERSION=${process.env.ZLINK_CORE_VERSION} does not match VERSION=${repositoryCoreVersion}`
+    `ZLINK_CORE_VERSION=${process.env.ZLINK_CORE_VERSION} does not match provenance=${provenance.version}`
   );
 }
 const coreMajor = coreVersion.split('.')[0];

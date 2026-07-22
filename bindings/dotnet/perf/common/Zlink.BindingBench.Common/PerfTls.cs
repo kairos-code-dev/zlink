@@ -49,34 +49,6 @@ public static class PerfTls
         ConfigureTlsServerIfNeeded(receiver, transport, verbose);
     }
 
-    public static void ConfigureSpotTlsPublisherIfNeeded(ISpotNode spotNode,
-        string transport, bool verbose = true)
-    {
-        ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
-    }
-
-    public static void ConfigureSpotTlsSubscriberIfNeeded(ISpotNode spotNode,
-        string transport, bool verbose = true)
-    {
-        ConfigureSpotNodeTlsIfNeeded(spotNode, transport, verbose);
-    }
-
-    public static void ConfigureSpotNodeTlsIfNeeded(ISpotNode spotNode,
-        string transport, bool verbose = true)
-    {
-        if (!IsSecureTransport(transport))
-            return;
-        if (!TryResolvePerfTlsPaths(out string certPath, out string keyPath,
-                out string caPath))
-        {
-            throw new InvalidOperationException(verbose
-                ? "TLS certificate files not found under bindings/dotnet/tests/certs"
-                : "TLS certificate files not found.");
-        }
-        spotNode.SetTlsServer(certPath, keyPath);
-        spotNode.SetTlsClient(caPath, "localhost");
-    }
-
     public static bool TryResolvePerfTlsPaths(out string certPath,
         out string keyPath, out string caPath)
     {

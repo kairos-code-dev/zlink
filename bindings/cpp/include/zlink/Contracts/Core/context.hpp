@@ -17,9 +17,9 @@ struct context_access_t;
 } // namespace detail
 
 /**
- * @brief A messaging context: the factory and owner of sockets and services.
+ * @brief A messaging context: the factory and owner of sockets.
  *
- * @note Every socket and service created from a context is owned by the caller
+ * @note Every socket created from a context is owned by the caller
  *       and must be closed before the context is terminated.  Calling term()
  *       interrupts blocking operations on all sockets created from it.
  */

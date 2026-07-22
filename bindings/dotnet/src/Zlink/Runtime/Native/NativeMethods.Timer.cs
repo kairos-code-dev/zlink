@@ -8,9 +8,6 @@ internal static partial class NativeMethods
     internal static extern IntPtr zlink_timer_new();
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_timer_new(IntPtr spot);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_timer_destroy(ref IntPtr timer);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

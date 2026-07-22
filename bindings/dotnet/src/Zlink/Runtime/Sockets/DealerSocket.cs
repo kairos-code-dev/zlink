@@ -33,16 +33,6 @@ internal sealed class DealerSocket : MessageSocketBase, IDealerSocket
         return RoutingId.From(Kernel.GetOption(SocketOptions.RoutingId));
     }
 
-    public new void SetChannelName(string channelName)
-    {
-        SetChannelNameCore(channelName);
-    }
-
-    public new string GetChannelName()
-    {
-        return GetChannelNameCore();
-    }
-
     /// <summary>
     ///     Start a dealer request (operation builder).
     /// </summary>

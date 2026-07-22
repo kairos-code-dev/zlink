@@ -14,6 +14,10 @@ const prebuiltAddon = path.join(
   'zlink.node'
 );
 
+if (process.env.ZLINK_SKIP_NATIVE_INSTALL === '1') {
+  process.exit(0);
+}
+
 // Published packages carry platform prebuilds. A source checkout may not, so
 // retain node-gyp as the development fallback without rebuilding consumers.
 if (fs.existsSync(prebuiltAddon)) {

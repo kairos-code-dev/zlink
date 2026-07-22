@@ -51,8 +51,6 @@ napi_value socket_setopt (napi_env env, napi_callback_info info);
 napi_value socket_getopt (napi_env env, napi_callback_info info);
 napi_value socket_set_subscription (napi_env env, napi_callback_info info);
 napi_value socket_unset_subscription (napi_env env, napi_callback_info info);
-napi_value socket_set_channel_name (napi_env env, napi_callback_info info);
-napi_value socket_get_channel_name (napi_env env, napi_callback_info info);
 napi_value handle_set_routing_id (napi_env env, napi_callback_info info);
 napi_value handle_get_routing_id (napi_env env, napi_callback_info info);
 napi_value dealer_request (napi_env env, napi_callback_info info);
@@ -89,7 +87,6 @@ napi_value poll_events_fd (napi_env env, napi_callback_info info);
 napi_value poller_wait_into (napi_env env, napi_callback_info info);
 
 napi_value timer_new (napi_env env, napi_callback_info info);
-napi_value spot_timer_new (napi_env env, napi_callback_info info);
 napi_value timer_destroy (napi_env env, napi_callback_info info);
 napi_value timer_start (napi_env env, napi_callback_info info);
 napi_value timer_stop (napi_env env, napi_callback_info info);

@@ -4,7 +4,7 @@
 
 #include "core/auto_hwm_policy.hpp"
 #include "core/ctx.hpp"
-#include "runtime/services/control/service_control_runtime.hpp"
+#include "runtime/core/control_runtime.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/clock.hpp"
 
@@ -18,7 +18,7 @@ void zlink::ctx_t::ensure_auto_hwm_recalc_task_started ()
     if (_auto_hwm.recalc_task_id () != 0)
         return;
 
-    service_control_runtime_t *runtime = service_control_runtime ();
+    control_runtime_t *runtime = control_runtime ();
     if (!runtime)
         return;
 
@@ -32,7 +32,7 @@ void zlink::ctx_t::stop_auto_hwm_recalc_task ()
     if (task_id == 0)
         return;
 
-    service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
+    control_runtime_t *runtime = _runtime_resources.control_runtime ();
     if (runtime)
         (void) runtime->remove_task (task_id);
 }
@@ -53,7 +53,7 @@ void zlink::ctx_t::schedule_auto_hwm_recalculate ()
         if (debounce_ms > 0) {
             ensure_auto_hwm_recalc_task_started ();
             if (_auto_hwm.recalc_task_id () != 0) {
-                service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
+                control_runtime_t *runtime = _runtime_resources.control_runtime ();
                 if (runtime)
                     (void) runtime->wakeup_task (_auto_hwm.recalc_task_id ());
             }

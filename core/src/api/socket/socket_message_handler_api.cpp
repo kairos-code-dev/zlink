@@ -95,12 +95,6 @@ zlink_send_ready_handler (void *s_, zlink_send_ready_handler_fn handler_, void *
     }
 
     const zlink::option_target_t target = zlink::resolve_option_target (s_);
-    if (target.kind == zlink::option_target_service) {
-        //  Raw send-ready callbacks stay a socket-only surface in 10.0.0.
-        errno = ENOTSUP;
-        return ZLINK_HANDLER_NOT_SUPPORTED;
-    }
-
     if (target.kind == zlink::option_target_socket)
         return zlink::handler_result_internal::from_rc (
           socket_send_ready_handler_internal (s_, handler_, userdata_));

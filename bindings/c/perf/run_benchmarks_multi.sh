@@ -8,7 +8,7 @@ DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,ROUTER_ROUTER_ONEWAY,PUBSUB,SPOT_PUBSUB,SPOT_REQREP,SPOT_SENDSEND,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,ROUTER_ROUTER_ONEWAY,PUBSUB,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
 MSG_SIZES="${PERF_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}"
@@ -341,7 +341,7 @@ Usage: bindings/c/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,ROUTER_ROUTER_ONEWAY,PUBSUB,SPOT_PUBSUB,SPOT_REQREP,SPOT_SENDSEND,STREAM
+  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,ROUTER_ROUTER_ONEWAY,PUBSUB,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -374,7 +374,6 @@ Options:
   --transports LIST      Comma-separated transports.
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override client count (default: 100, stream=10000).
-                         For Spot patterns this is the peer MeshNode process count.
   --hwm N                Debug-only override PERF_MULTI_HWM.
                          Requires PERF_MULTI_ALLOW_MANUAL_SOCKET_OVERRIDES=1.
   --send-hwm N           Debug-only override PERF_MULTI_SNDHWM (fallback: --hwm).
@@ -493,15 +492,6 @@ resolve_multi_build_targets() {
         ;;
       PUBSUB)
         targets+=("comp_src_pubsub_server" "comp_src_pubsub_client")
-        ;;
-      SPOT_PUBSUB)
-        targets+=("comp_src_spot_pubsub_server" "comp_src_spot_pubsub_client")
-        ;;
-      SPOT_REQREP)
-        targets+=("comp_src_spot_reqrep_server" "comp_src_spot_reqrep_client")
-        ;;
-      SPOT_SENDSEND)
-        targets+=("comp_src_spot_sendsend_server" "comp_src_spot_sendsend_client")
         ;;
       STREAM)
         targets+=("comp_src_stream_server" "perf_stream_client")

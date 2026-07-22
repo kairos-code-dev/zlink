@@ -11,5 +11,7 @@ for test_file in dist-tools/tests/*.test.js; do
   run_node_job 120 node --test "$test_file"
 done
 
-"$ROOT_DIR/samples/run_samples.sh"
-"$ROOT_DIR/../javascript/samples/run_samples.sh"
+if [[ "${ZLINK_BINDING_RAW_TEST_ONLY:-0}" != "1" ]]; then
+  "$ROOT_DIR/samples/run_samples.sh"
+  "$ROOT_DIR/../javascript/samples/run_samples.sh"
+fi

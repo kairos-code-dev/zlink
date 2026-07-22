@@ -5,7 +5,6 @@
 static napi_value init (napi_env env, napi_value exports)
 {
     define_core_exports (env, exports);
-    define_spot_exports (env, exports);
     return exports;
 }
 

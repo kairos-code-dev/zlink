@@ -16,6 +16,11 @@
 
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+if(@WITH_TLS@)
+  find_dependency(OpenSSL)
+endif()
+
 if(NOT TARGET libzlink AND NOT TARGET libzlink-static)
   include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 

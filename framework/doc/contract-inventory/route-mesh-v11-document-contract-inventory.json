@@ -457,7 +457,7 @@
           "removal-first 순서로 진행한다.",
           "M3 Core removal/review/package",
           "M4 bindings removal/review/package",
-          "M5 fail-closed scaffold/foundation/review"
+          "M5 private binding port/foundation/review"
         ]
       },
       {
@@ -471,13 +471,13 @@
         ]
       },
       {
-        "id": "fail-closed-scaffold",
+        "id": "runtime-first-foundation",
         "path": "route-mesh-11.0.0-execution-ledger.ko.md",
         "required_fragments": [
-          "`RuntimeNotReady`로 즉시 실패하는 compile scaffold만 허용한다.",
-          "fake success, fake reply",
-          "required E2E를 완료나",
-          "required scenario가 실행 대상으로 등록됨"
+          "binding-facing port를 먼저 구현한다.",
+          "production scaffold를 만드는 작업이 아니다.",
+          "sample·E2E는 source·registration을 보존한 채 `pending`으로 유지한다.",
+          "M7에서 기존 E2E와 sample을 순서대로"
         ]
       },
       {

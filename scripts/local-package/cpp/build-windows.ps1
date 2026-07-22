@@ -39,8 +39,14 @@ if ($env:ZLINK_CPP_INSTALL_PREFIX) {
     $InstallPrefix = Join-Path $ArtifactRoot "install/zlink-cpp/$PackageVersion"
 }
 
+if (-not $env:ZLINK_CORE_INSTALL_PREFIX -or -not [System.IO.Path]::IsPathRooted($env:ZLINK_CORE_INSTALL_PREFIX)) {
+    Write-Error "ZLINK_CORE_INSTALL_PREFIX must name an absolute installed Core 11 package prefix"
+}
+$CorePrefix = $env:ZLINK_CORE_INSTALL_PREFIX
+
 cmake -S (Join-Path $RepoRoot "bindings/cpp") -B $BuildDir `
     -DCMAKE_INSTALL_PREFIX="$InstallPrefix" `
+    -DZLINK_CPP_CORE_PACKAGE_PREFIX="$CorePrefix" `
     -DZLINK_CPP_BUILD_TESTS=OFF `
     -DZLINK_CPP_BUILD_SAMPLES=OFF
 if ($LASTEXITCODE -ne 0) {

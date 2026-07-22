@@ -15,7 +15,6 @@ public sealed partial class Received
     private SocketKernel? _sendKernel;
     private RoutingIdSnapshot _sendRoutingIdSnapshot;
     private ReceivedSendSingleHandler? _sendSingleHandler;
-    private RoutingIdSnapshot _sendSpotRidSnapshot;
     private Message? _singlePart;
 
     private Received()
@@ -23,79 +22,66 @@ public sealed partial class Received
     }
 
     internal Received(RoutingId? routingId, Message[] parts,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
         : this(routingId, MultipartMessageCollection.FromMessages(parts),
-            requestSeq, spotRid, replyHandler)
+            requestSeq, replyHandler)
     {
     }
 
     internal Received(RoutingId? routingId, MultipartMessageCollection parts,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
     {
         _routingId = routingId;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
     internal Received(byte[]? routingIdBytes, Message[] parts,
-        ulong? requestSeq = null,
-        byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
         : this(routingIdBytes, MultipartMessageCollection.FromMessages(parts),
-            requestSeq, spotRidBytes, replyHandler)
+            requestSeq, replyHandler)
     {
     }
 
     internal Received(byte[]? routingIdBytes, MultipartMessageCollection parts,
-        ulong? requestSeq = null,
-        byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
     {
         _routingIdSnapshot = RoutingIdSnapshot.FromBytes(routingIdBytes);
-        _metadata = ReceivedMetadata.Create(
-            RoutingIdSnapshot.FromBytes(spotRidBytes), requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
     internal Received(RoutingId? routingId, Message singlePart,
-        ulong? requestSeq = null, RoutingId? spotRid = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
     {
         _routingId = routingId;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
     }
 
     internal Received(byte[]? routingIdBytes, Message singlePart,
-        ulong? requestSeq = null,
-        byte[]? spotRidBytes = null,
-        ReceivedReplyHandler? replyHandler = null)
+        ulong? requestSeq = null, ReceivedReplyHandler? replyHandler = null)
     {
         _routingIdSnapshot = RoutingIdSnapshot.FromBytes(routingIdBytes);
-        _metadata = ReceivedMetadata.Create(
-            RoutingIdSnapshot.FromBytes(spotRidBytes), requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
     }
 
     internal Received(RoutingIdSnapshot routingId,
         Message singlePart, ulong? requestSeq = null,
-        RoutingIdSnapshot spotRid = default,
         ReceivedReplyHandler? replyHandler = null)
     {
         _routingIdSnapshot = routingId;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _singlePart = singlePart ?? throw new ArgumentNullException(nameof(singlePart));
     }
 
     internal Received(RoutingIdSnapshot routingId,
         MultipartMessageCollection parts, ulong? requestSeq = null,
-        RoutingIdSnapshot spotRid = default,
         ReceivedReplyHandler? replyHandler = null)
     {
         _routingIdSnapshot = routingId;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _parts = parts ?? MultipartMessageCollection.FromMessages(Array.Empty<Message>());
     }
 
@@ -165,21 +151,9 @@ public sealed partial class Received
 
     private sealed class ReceivedMetadata
     {
-        private RoutingId? _spotRid;
-        private RoutingIdSnapshot _spotRidSnapshot;
-
-        private ReceivedMetadata(RoutingId? spotRid, ulong? requestSeq,
+        private ReceivedMetadata(ulong? requestSeq,
             ReceivedReplyHandler? replyHandler)
         {
-            _spotRid = spotRid;
-            RequestSeq = requestSeq;
-            ReplyHandler = replyHandler;
-        }
-
-        private ReceivedMetadata(RoutingIdSnapshot spotRid, ulong? requestSeq,
-            ReceivedReplyHandler? replyHandler)
-        {
-            _spotRidSnapshot = spotRid;
             RequestSeq = requestSeq;
             ReplyHandler = replyHandler;
         }
@@ -188,29 +162,11 @@ public sealed partial class Received
 
         internal ReceivedReplyHandler? ReplyHandler { get; }
 
-        internal RoutingId? SpotRid
+        internal static ReceivedMetadata? Create(ulong? requestSeq,
+            ReceivedReplyHandler? replyHandler)
         {
-            get
-            {
-                if (_spotRidSnapshot.HasValue)
-                    _spotRid ??= _spotRidSnapshot.ToRoutingId();
-                return _spotRid;
-            }
-        }
-
-        internal static ReceivedMetadata? Create(RoutingId? spotRid,
-            ulong? requestSeq, ReceivedReplyHandler? replyHandler)
-        {
-            return spotRid.HasValue || requestSeq.HasValue || replyHandler != null
-                ? new ReceivedMetadata(spotRid, requestSeq, replyHandler)
-                : null;
-        }
-
-        internal static ReceivedMetadata? Create(RoutingIdSnapshot spotRid,
-            ulong? requestSeq, ReceivedReplyHandler? replyHandler)
-        {
-            return spotRid.HasValue || requestSeq.HasValue || replyHandler != null
-                ? new ReceivedMetadata(spotRid, requestSeq, replyHandler)
+            return requestSeq.HasValue || replyHandler != null
+                ? new ReceivedMetadata(requestSeq, replyHandler)
                 : null;
         }
     }

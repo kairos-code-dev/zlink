@@ -28,12 +28,6 @@ export interface CommonSocketOptions {
   tcpNoDelay: boolean;
   /** TCP keep-alive: -1 OS default, 0 off, 1 on. */
   tcpKeepalive: number;
-  /** Interval, in ms, between heartbeat pings on an idle connection. */
-  heartbeatInterval: number;
-  /** How long, in ms, the remote keeps the connection alive without a heartbeat. */
-  heartbeatTtl: number;
-  /** How long, in ms, to wait for a heartbeat reply before treating the connection as dead. */
-  heartbeatTimeout: number;
   /** Maximum inbound message size in bytes; -1n means no limit. */
   maxMsgSize: bigint;
   /** The concrete endpoint the socket last bound to (resolves wildcards). */

@@ -118,8 +118,7 @@ public sealed record PerfOptions(
             0,
             0,
             0,
-            PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1),
-            0);
+            PerfEnv.ReadPositive("PERF_SINGLE_PUBSUB_XPUB_NODROP", 1));
     }
 
     public static PerfOptions CreateMulti(PerfExecutionKind kind, string pattern,

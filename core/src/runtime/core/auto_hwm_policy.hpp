@@ -17,7 +17,7 @@ enum auto_hwm_role_t
     auto_hwm_role_routed = 2,
     auto_hwm_role_fanout = 3,
     auto_hwm_role_recv_ingress = 4,
-    auto_hwm_role_spot_data = 5,
+    auto_hwm_role_connection_data = 5,
     auto_hwm_role_peer_queue = 6,
     auto_hwm_role_stream = 7
 };
@@ -26,7 +26,7 @@ enum auto_hwm_policy_class_t
 {
     auto_hwm_policy_none = 0,
     auto_hwm_policy_fanout = 1,
-    auto_hwm_policy_spot_data = 2,
+    auto_hwm_policy_connection_data = 2,
     auto_hwm_policy_recv_ingress = 3,
     auto_hwm_policy_routed = 4,
     auto_hwm_policy_peer_queue = 5,
@@ -38,7 +38,7 @@ enum auto_hwm_scope_t
 {
     auto_hwm_scope_none = 0,
     auto_hwm_scope_shared = 1,
-    auto_hwm_scope_per_spot = 2
+    auto_hwm_scope_per_connection = 2
 };
 
 enum

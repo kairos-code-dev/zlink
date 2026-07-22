@@ -198,7 +198,7 @@ function parseCommonArgs(argv, defaults) {
 function resolveSinglePatternNames(pattern) {
   const normalized = String(pattern || 'ALL').trim().toUpperCase();
   return normalized === 'ALL'
-    ? ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'DEALER_ROUTER_REQREP', 'ROUTER_ROUTER', 'ROUTER_ROUTER_REQREP', 'SPOT']
+    ? ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'DEALER_ROUTER_REQREP', 'ROUTER_ROUTER', 'ROUTER_ROUTER_REQREP']
     : normalized.split(',').map((value) => value.trim().toUpperCase()).filter(Boolean);
 }
 
@@ -218,9 +218,6 @@ function resolveMultiPatternNames(pattern) {
       'MULTI_DEALER_ROUTER',
       'MULTI_ROUTER_ROUTER',
       'MULTI_PUBSUB',
-      'MULTI_SPOT',
-      'MULTI_SPOT_REQREP',
-      'MULTI_SPOT_SENDSEND',
       'MULTI_STREAM'
     ]
     : normalized.split(',').map(normalizeMultiPatternName).filter(Boolean);

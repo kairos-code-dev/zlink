@@ -44,20 +44,20 @@ class received_t
     message_t single_part_or_throw ();
     /// Send context (routing_id) is encapsulated. Returns an
     /// operation builder; accumulate payload via `.message(...)`.
-    service::send_operation_t send ();
+    send_operation_t send ();
     /// Reply context (routing_id, request_seq) is encapsulated.
     /// Returns an operation builder; accumulate reply payload via
     /// `.message(...)`. Submit throws if there is no valid reply context.
-    service::reply_operation_t reply ();
+    reply_operation_t reply ();
     void close ();
 
   private:
     friend class socket_t;
     friend class router_socket_t;
-    friend class service::send_operation_t;
-    friend class service::send_submit_operation_t;
-    friend class service::reply_operation_t;
-    friend class service::reply_submit_operation_t;
+    friend class send_operation_t;
+    friend class send_submit_operation_t;
+    friend class reply_operation_t;
+    friend class reply_submit_operation_t;
     friend struct detail::received_access_t;
 
     enum class send_context_kind_t

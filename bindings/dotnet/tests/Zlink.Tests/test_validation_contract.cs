@@ -87,8 +87,6 @@ public sealed class test_validation_contract
         using var dealer = ctx.CreateDealerSocket();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            dealer.SetChannelName(overlong));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
             ctx.Options.ThreadNamePrefix = new string('a', 17));
     }
 

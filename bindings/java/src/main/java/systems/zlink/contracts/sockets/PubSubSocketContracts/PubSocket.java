@@ -3,7 +3,7 @@
 package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 
 /** A topic-filtered publisher that drops messages with no matching subscriber. */
 public interface PubSocket extends Socket {

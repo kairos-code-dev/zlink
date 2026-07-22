@@ -10,11 +10,6 @@ GENERATOR_ARGS=()
 TEST_NAMES=(
   test_monitor_enhanced
   test_monitor_perf_contract
-  test_spot_service_introspection_pub_sub_options
-  test_spot_service_introspection_callback_recv_regression
-  test_spot_service_introspection_recv_model_regression
-  test_spot_service_introspection_default_handle_owner
-  test_spot_service_introspection_snapshots
 )
 
 usage() {
@@ -65,7 +60,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DENABLE_TSAN=ON
 
 cmake --build "${BUILD_DIR}" -j"$(nproc)" \
-  --target test_monitor_enhanced test_monitor_perf_contract test_spot_service_introspection
+  --target test_monitor_enhanced test_monitor_perf_contract
 
 for test_name in "${TEST_NAMES[@]}"; do
   echo "=== TSAN ${test_name} ==="

@@ -189,109 +189,6 @@ void test_zmp_error_invalid_hello ()
     test_context_socket_close (server);
 }
 
-void test_zmp_heartbeat_ttl_min ()
-{
-    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
-    int ttl_local_ms = 300;
-#if defined ZLINK_HAVE_WINDOWS
-    // Windows scheduling/timer granularity can delay TTL handling.
-    ttl_local_ms = 1000;
-#endif
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (server, ZLINK_OPT_HEARTBEAT_TTL, &ttl_local_ms, sizeof (ttl_local_ms)));
-
-    char endpoint[MAX_SOCKET_STRING];
-    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-
-    fd_t raw = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
-    TEST_ASSERT_NOT_EQUAL (retired_fd, raw);
-    set_recv_timeout (raw, 200);
-
-    unsigned char hello_body[3];
-    hello_body[0] = zlink::zmp_control_hello;
-    hello_body[1] = ZLINK_SOCKET_PAIR;
-    hello_body[2] = 0;
-    TEST_ASSERT_TRUE (send_zmp_control (raw, hello_body, sizeof (hello_body)));
-
-    unsigned char ready_body[1];
-    ready_body[0] = zlink::zmp_control_ready;
-    TEST_ASSERT_TRUE (send_zmp_control (raw, ready_body, sizeof (ready_body)));
-
-    bool closed = false;
-    bool saw_hello = false;
-    bool saw_ready = false;
-    for (int i = 0; i < 4 && !(saw_hello && saw_ready) && !closed; ++i) {
-        unsigned char flags = 0;
-        std::vector<unsigned char> body;
-        if (!read_zmp_frame (raw, flags, body, closed))
-            continue;
-        if ((flags & zlink::zmp_flag_control) && !body.empty ()) {
-            if (body[0] == zlink::zmp_control_hello)
-                saw_hello = true;
-            if (body[0] == zlink::zmp_control_ready)
-                saw_ready = true;
-        }
-    }
-
-    unsigned char heartbeat[5];
-    heartbeat[0] = zlink::zmp_control_heartbeat;
-    zlink::put_uint16 (heartbeat + 1, 20); // remote TTL 2s (deciseconds)
-    heartbeat[3] = 1;
-    heartbeat[4] = 'A';
-    TEST_ASSERT_TRUE (send_zmp_control (raw, heartbeat, sizeof (heartbeat)));
-
-    int recv_timeout_ms = 1200;
-    int recv_attempts = 6;
-#if defined ZLINK_HAVE_WINDOWS
-    recv_timeout_ms = 3000;
-    recv_attempts = 10;
-#endif
-    set_recv_timeout (raw, recv_timeout_ms);
-    bool saw_error = false;
-    for (int i = 0; i < recv_attempts && !saw_error && !closed; ++i) {
-        unsigned char flags = 0;
-        std::vector<unsigned char> body;
-        if (!read_zmp_frame (raw, flags, body, closed))
-            continue;
-        if ((flags & zlink::zmp_flag_control) && !body.empty ()) {
-            if (body[0] == zlink::zmp_control_error)
-                saw_error = true;
-        }
-    }
-#if defined ZLINK_HAVE_WINDOWS
-    // Windows timers/scheduling can delay TTL-driven disconnect/error.
-    if (!saw_error && !closed) {
-        msleep (200);
-        set_recv_timeout (raw, recv_timeout_ms);
-        for (int i = 0; i < recv_attempts && !saw_error && !closed; ++i) {
-            unsigned char flags = 0;
-            std::vector<unsigned char> body;
-            if (!read_zmp_frame (raw, flags, body, closed))
-                continue;
-            if ((flags & zlink::zmp_flag_control) && !body.empty ()) {
-                if (body[0] == zlink::zmp_control_error)
-                    saw_error = true;
-            }
-        }
-    }
-#endif
-
-#if defined ZLINK_HAVE_WINDOWS
-    if (!(saw_error || closed)) {
-        TEST_IGNORE_MESSAGE ("Skipping TTL min assertion on Windows due timer jitter");
-        close (raw);
-        test_context_socket_close (server);
-        return;
-    }
-#endif
-
-    TEST_ASSERT_TRUE_MESSAGE (saw_error || closed,
-                              "expected timeout disconnect within local TTL window");
-
-    close (raw);
-    test_context_socket_close (server);
-}
-
 int main (void)
 {
     UNITY_BEGIN ();
@@ -299,7 +196,6 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_zmp_error_invalid_hello);
-    RUN_TEST (test_zmp_heartbeat_ttl_min);
 
     return UNITY_END ();
 }

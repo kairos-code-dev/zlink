@@ -76,22 +76,6 @@ public static class PerfSocketIo
         }
     }
 
-    public static int Publish(ISpot spot, string topic, ReadOnlySpan<byte> payload,
-        SendFlags flags = SendFlags.None)
-    {
-        Message message = CreatePooledMessage(payload);
-        try
-        {
-            if (spot.Publish(topic).Message(message).Flags(flags).Submit())
-                return payload.Length;
-            return 0;
-        }
-        finally
-        {
-            message.Dispose();
-        }
-    }
-
     private static Message CreatePooledMessage(ReadOnlySpan<byte> payload)
     {
         // HOT PATH: a successful submit consumes the payload, but the caller

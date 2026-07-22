@@ -1,29 +1,6 @@
 @PACKAGE_INIT@
 
-get_filename_component(
-  ZLINK_CPP_PACKAGE_PREFIX
-  "${CMAKE_CURRENT_LIST_DIR}/../../../"
-  ABSOLUTE)
-
-function(zlink_cpp_define_native_runtime target_name)
-  if(TARGET "${target_name}")
-    return()
-  endif()
-
-  add_library("${target_name}" SHARED IMPORTED)
-  if(WIN32)
-    set_target_properties("${target_name}" PROPERTIES
-      IMPORTED_LOCATION "${ZLINK_CPP_PACKAGE_PREFIX}/bin/zlink.dll")
-  elseif(APPLE)
-    set_target_properties("${target_name}" PROPERTIES
-      IMPORTED_LOCATION "${ZLINK_CPP_PACKAGE_PREFIX}/lib/libzlink.dylib")
-  else()
-    set_target_properties("${target_name}" PROPERTIES
-      IMPORTED_LOCATION "${ZLINK_CPP_PACKAGE_PREFIX}/lib/libzlink.so")
-  endif()
-endfunction()
-
-zlink_cpp_define_native_runtime(zlink-native)
-zlink_cpp_define_native_runtime(zlink-core-build-runtime)
+include(CMakeFindDependencyMacro)
+find_dependency(zlink 11 CONFIG)
 
 include("${CMAKE_CURRENT_LIST_DIR}/zlink_cppTargets.cmake")

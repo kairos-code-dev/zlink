@@ -92,12 +92,6 @@ internal static class SocketOptions
     public static SocketOptionKey<int> RouteValueMaxSize { get; } =
         Int(SocketOption.RouteValueMaxSize);
 
-    public static SocketOptionKey<int> DiscoverySpotOwnerSync { get; } =
-        Int(SocketOption.DiscoverySpotOwnerSync);
-
-    public static SocketOptionKey<int> DiscoveryActorRouteSync { get; } =
-        Int(SocketOption.DiscoveryActorRouteSync);
-
     public static SocketOptionKey<int> SubmitRetryMode { get; } =
         Int(SocketOption.SubmitRetryMode);
 
@@ -154,15 +148,6 @@ internal static class SocketOptions
 
     public static SocketOptionKey<int> InvertMatching { get; } =
         Int(SocketOption.InvertMatching);
-
-    public static SocketOptionKey<int> HeartbeatIvl { get; } =
-        Int(SocketOption.HeartbeatIvl);
-
-    public static SocketOptionKey<int> HeartbeatTtl { get; } =
-        Int(SocketOption.HeartbeatTtl);
-
-    public static SocketOptionKey<int> HeartbeatTimeout { get; } =
-        Int(SocketOption.HeartbeatTimeout);
 
     public static SocketOptionKey<int> XPubVerboser { get; } =
         Int(SocketOption.XPubVerboser);

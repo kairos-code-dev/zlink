@@ -62,7 +62,6 @@ int resolve_single_send_timeout_ms ();
 int resolve_single_recv_timeout_ms ();
 int resolve_single_pubsub_recv_timeout_ms ();
 int resolve_single_pubsub_ready_settle_ms ();
-int resolve_single_spot_ready_settle_ms ();
 int resolve_single_connect_ready_timeout_ms ();
 int resolve_single_socket_hwm (bool send_);
 zlink::auto_hwm_profile resolve_single_ctx_auto_hwm_profile ();
@@ -380,12 +379,6 @@ inline bool is_transient_send_errno (int err_)
     return err_ == EINTR || err_ == EAGAIN || err_ == EWOULDBLOCK || err_ == ETIMEDOUT;
 }
 
-inline bool is_transient_spot_publish_errno (int err_)
-{
-    return is_transient_send_errno (err_) || err_ == ENOTCONN || err_ == EHOSTUNREACH
-           || err_ == ENETUNREACH;
-}
-
 inline bool is_transient_routed_send_errno (int err_)
 {
     return is_transient_send_errno (err_) || err_ == ENOTCONN || err_ == EHOSTUNREACH
@@ -473,40 +466,6 @@ inline bool publish_payload_blocking_retry (zlink::pub_socket_t &publisher_,
     return false;
 }
 
-inline bool publish_payload_blocking (zlink::service::spot_t &spot_,
-                                      const std::string &topic_,
-                                      const void *data_,
-                                      size_t size_)
-{
-    zlink::message_t msg = message_from_payload (data_, size_);
-    if (!msg.valid ())
-        return false;
-    try {
-        return spot_.publish (topic_).message (msg).submit ();
-    }
-    catch (const zlink::binding_error_t &err) {
-        errno = err.internal_errno ();
-        return false;
-    }
-}
-
-inline bool publish_payload_blocking_retry (zlink::service::spot_t &spot_,
-                                            const std::string &topic_,
-                                            const void *data_,
-                                            size_t size_,
-                                            int max_retries_ = 100)
-{
-    for (int retry = 0; retry < max_retries_; ++retry) {
-        if (publish_payload_blocking (spot_, topic_, data_, size_))
-            return true;
-        if (!is_transient_spot_publish_errno (errno))
-            return false;
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-    errno = EAGAIN;
-    return false;
-}
-
 // C-faithful DONTWAIT send (mirrors bindings/c/perf single
 // perf_single_one_way.hpp send_socket_active_message with
 // retry_on_eagain=true). Returns:
@@ -577,11 +536,6 @@ inline bool publish_stop_token_blocking (zlink::pub_socket_t &publisher_, const 
 {
     return publish_payload_blocking_retry (publisher_, topic_, k_stop_token,
                                            std::strlen (k_stop_token));
-}
-
-inline bool publish_stop_token_blocking (zlink::service::spot_t &spot_, const std::string &topic_)
-{
-    return publish_payload_blocking_retry (spot_, topic_, k_stop_token, std::strlen (k_stop_token));
 }
 
 #include "perf_single_report.hpp"

@@ -100,49 +100,11 @@ The bounded reservoirs used for p95 and p99 protect measurement metadata only.
 They do not change queue HWM, send timing, receive count, or mean-latency
 aggregation.
 
-## Core 10.0.0 Spot Patterns
+## Core 10.x archive
 
-Single supports `SPOT_PUBSUB`. Multi supports `SPOT_PUBSUB`, `SPOT_REQREP`,
-and `SPOT_SENDSEND`.
-
-For multi Spot, `--clients N` means N peer processes. Each peer process owns one
-MeshNode and one entry Spot and connects only to the hub MeshNode. The hub owns
-one MeshNode and one entry Spot, so the measured topology is one hub MeshNode
-managing N peer connections. The peer processes do not connect to one another.
-
-Each peer context uses one I/O thread by default because it owns one MeshNode
-and one hub connection. This is the baseline topology, not an OOM throttle.
-Set `PERF_MULTI_SPOT_NODE_IO_THREADS` explicitly for an I/O-thread comparison.
-The hub and every peer recalculate context auto-HWM from the current message
-size before each active phase.
-
-`MULTI_ROUTER_ROUTER_ONEWAY` is the direction-matched baseline for
-`MULTI_SPOT_PUBSUB`. Its hub owns one context and one ROUTER socket. Each of
-the N peer processes owns one context and one ROUTER socket with one I/O
-thread. The hub sends each active record once to every peer, and throughput is
-the sum of the active records received by all peers.
-
-Use `run_spot_paired_gate.py` for the formal Spot-to-ROUTER comparison. It
-alternates Spot-first and ROUTER-first order for each cell, fixes both roles to
-one I/O thread, computes five-run medians, and fails a cell when throughput is
-below 90% or mean, p95, or p99 latency exceeds 1.25 times the matched ROUTER
-result.
-
-```bash
-python3 bindings/c/perf/run_spot_paired_gate.py
-```
-
-The tool rejects a stale or changing `core/build` runtime and writes the
-runtime path, runtime SHA-256, source-tree SHA-256, raw runs, and cell verdicts
-under `bindings/c/perf/results/multi/paired/`. Before measuring, it always
-rebuilds the selected benchmark targets in the official `bindings/c/build`
-directory; this prevents `--reuse-build` from accepting stale harness binaries.
-Use `--dry-run` to inspect the exact matrix without building or measuring.
-`--perf-record` records descendant process stacks when the host provides Linux
-`perf`. Use `--time-verbose` to record low-overhead GNU `time -v` process-tree
-CPU time, maximum resident set size, faults, and context switches next to each
-raw run. Those aggregate measurements can identify CPU or memory pressure, but
-they do not replace a call-stack profile.
+Files already present under `baseline/` are a read-only Core 10.x archive.
+Core 11 benchmark runs write only to `results/`; the runners neither update nor
+select the archive as an active baseline.
 
 ## Auto-HWM Profile Sweep
 

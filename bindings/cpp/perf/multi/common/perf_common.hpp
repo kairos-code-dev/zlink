@@ -4,8 +4,6 @@
 #include "perf_common_multi.hpp"
 #include "perf_handshake.hpp"
 #include "perf_metric_header.hpp"
-#include "perf_spot_control.hpp"
-#include "perf_spot_handshake.hpp"
 #include "perf_tls.hpp"
 #include "perf_socket_option_helpers.hpp"
 #include "../../common/perf_latency_sampler.hpp"
@@ -424,119 +422,6 @@ inline void emit_auto_hwm_detail (SocketLike &socket,
               << ",send_blocked_ratio_ppm=" << snapshot.auto_hwm_send_blocked_ratio_ppm
               << ",deferred_sndhwm=" << snapshot.auto_hwm_deferred_sndhwm
               << ",deferred_rcvhwm=" << snapshot.auto_hwm_deferred_rcvhwm << std::endl;
-}
-
-inline const char *spot_socket_type_name (zlink::spot_node_socket_type_t socket_type)
-{
-    switch (socket_type) {
-        case zlink::spot_node_socket_type_t::pair:
-            return "pair";
-        case zlink::spot_node_socket_type_t::dealer:
-            return "dealer";
-        case zlink::spot_node_socket_type_t::router:
-            return "router";
-        case zlink::spot_node_socket_type_t::stream:
-            return "stream";
-        case zlink::spot_node_socket_type_t::pub:
-            return "pub";
-        case zlink::spot_node_socket_type_t::xpub:
-            return "xpub";
-        case zlink::spot_node_socket_type_t::sub:
-            return "sub";
-        case zlink::spot_node_socket_type_t::xsub:
-            return "xsub";
-        default:
-            return "unknown";
-    }
-}
-
-inline const char *spot_socket_owner_name (zlink::spot_node_socket_owner_t owner)
-{
-    switch (owner) {
-        case zlink::spot_node_socket_owner_t::node:
-            return "node";
-        case zlink::spot_node_socket_owner_t::spot:
-            return "spot";
-        default:
-            return "unknown";
-    }
-}
-
-inline void emit_spot_node_auto_hwm_snapshot (zlink::service::spot_node_t &node,
-                                              const std::string &transport,
-                                              size_t msg_size)
-{
-    if (!auto_hwm_detail_enabled ())
-        return;
-
-    std::vector<zlink::spot_node_socket_entry_t> entries;
-    try {
-        entries = node.internal_sockets ();
-    }
-    catch (const zlink::config_error_t &) {
-        return;
-    }
-
-    const std::string pattern = auto_hwm_env_or_default ("PERF_MULTI_PATTERN", "unknown");
-    const std::string transport_value =
-      transport.empty () ? auto_hwm_env_or_default ("PERF_MULTI_TRANSPORT", "unknown") : transport;
-
-    static std::mutex mutex;
-    static std::set<std::string> emitted;
-    for (const zlink::spot_node_socket_entry_t &entry : entries) {
-        if (!entry.auto_hwm_visible ())
-            continue;
-        const zlink::monitor_status_t &snapshot = entry.monitor_status ();
-        const std::string socket = entry.socket_name ();
-        if (socket == "internal_receiver")
-            continue;
-        const std::string socket_type = spot_socket_type_name (entry.socket_type ());
-        const uint32_t role = snapshot.auto_hwm_role;
-        int32_t effective_sndbuf = snapshot.auto_hwm_effective_sndbuf;
-        int32_t effective_rcvbuf = snapshot.auto_hwm_effective_rcvbuf;
-        if ((socket_type == "pub" || socket_type == "xpub") && (role == 1 || role == 5))
-            effective_rcvbuf = 0;
-        if ((socket_type == "sub" || socket_type == "xsub") && (role == 1 || role == 4))
-            effective_sndbuf = 0;
-        const std::string key =
-          pattern + "|" + transport_value + "|" + socket + "|" + std::to_string (msg_size) + "|"
-          + std::to_string (static_cast<int> (entry.owner ())) + "|"
-          + std::to_string (entry.owner_id ()) + "|"
-          + std::to_string (static_cast<int> (entry.socket_type ())) + "|"
-          + std::to_string (snapshot.auto_hwm_applied_sndhwm) + "|"
-          + std::to_string (snapshot.auto_hwm_applied_rcvhwm) + "|"
-          + std::to_string (effective_sndbuf) + "|" + std::to_string (effective_rcvbuf);
-        {
-            std::lock_guard<std::mutex> lock (mutex);
-            if (emitted.find (key) != emitted.end ())
-                continue;
-            emitted.insert (key);
-        }
-
-        std::cout << "AUTO_HWM_DETAIL" << ",pattern=" << pattern << ",transport=" << transport_value
-                  << ",component=spotnode" << ",label=" << socket
-                  << ",owner=" << spot_socket_owner_name (entry.owner ())
-                  << ",owner_id=" << entry.owner_id () << ",socket=" << socket
-                  << ",socket_type=" << socket_type << ",msg_size=" << msg_size
-                  << ",source=spotnode_snapshot"
-                  << ",enabled=" << (snapshot.auto_hwm_enabled ? 1 : 0)
-                  << ",role=" << auto_hwm_role_name (snapshot.auto_hwm_role)
-                  << ",role_id=" << snapshot.auto_hwm_role
-                  << ",profile=" << auto_hwm_profile_name (snapshot.auto_hwm_profile)
-                  << ",profile_id=" << snapshot.auto_hwm_profile
-                  << ",policy_class=" << auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
-                  << ",policy_class_id=" << snapshot.auto_hwm_policy_class
-                  << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
-                  << ",size_cap=" << snapshot.auto_hwm_size_cap << ",scope=shared"
-                  << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-                  << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-                  << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
-                  << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
-                  << ",effective_sndbuf=" << effective_sndbuf
-                  << ",effective_rcvbuf=" << effective_rcvbuf << ",last_recalc_reason="
-                  << auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
-                  << std::endl;
-    }
 }
 
 template <typename SocketLike>

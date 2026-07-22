@@ -30,7 +30,6 @@ export interface NativeReceivedRaw {
   parts: MessageSnapshot[];
   routingId?: Buffer | null;
   requestSeq?: bigint | null;
-  spotRid?: Buffer | null;
 }
 
 export interface NativeTopicMessageRaw {
@@ -82,7 +81,6 @@ export function materializeReceived(
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
-    wrapNativeRoutingId(raw.spotRid ?? null),
     hasReplyableRequestSeq(requestSeq) && reply
       ? {
           beginReply() {
@@ -119,7 +117,6 @@ export function materializeReceivedInto(
     materializeParts(raw.parts),
     wrapNativeRoutingId(raw.routingId ?? null),
     requestSeq,
-    wrapNativeRoutingId(raw.spotRid ?? null),
     hasReplyableRequestSeq(requestSeq) && reply
       ? {
           beginReply() {

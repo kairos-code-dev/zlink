@@ -63,6 +63,43 @@ C, Python, Go와 Rust bindings는 Core 10.x의 마지막 지원 조합에 격리
 10. SPEC 선행 gate가 완료되지 않아도 담당 범위의 문서 작성과 자체 검증은 병렬로 진행할 수 있다.
     다만 모든 선행 ID가 `완료`가 되기 전에는 해당 행을 `검토 준비 완료`, `리뷰 중`, `완료`로
     전환하거나 독립 review를 시작하지 않는다.
+11. 기존 Framework public interface, sample과 E2E source는 migration 불변 입력이다. 명시적으로 승인한
+    새 공개 기능을 추가할 때만 새 sample·E2E를 추가하며, Core service runtime 이관을 이유로 기존 source,
+    scenario ID나 실행 registration을 수정·삭제하지 않는다.
+12. Core service ABI를 대체하는 public·private binding service API를 만들지 않는다. Framework 내부에
+    private binding-facing port를 두고 해당 언어 binding의 설치된 public raw API만 호출한다.
+13. Framework service runtime이 완성되기 전에는 기존 sample·E2E를 실행해 완료를 판정하지 않는다.
+    이 구간은 Core raw regression, binding raw contract, protocol fixture와 Framework internal contract test만
+    실행한다.
+14. Framework runtime 구현 중 기존 sample·E2E가 compile 또는 run에 실패해도 source를 수정하지 않는다.
+    원인은 private binding-facing port, runtime implementation 또는 package 연결에서 수정한다.
+15. 전체 runtime과 production placeholder 제거가 끝난 뒤 기존 E2E를 먼저 실행하고, E2E가 통과한 뒤 기존
+    sample을 source 변경 없이 compile·run한다.
+
+### 2.1 Runtime-first 실행 순서
+
+RouteMesh 11.0 migration은 다음 순서를 바꾸지 않는다.
+
+1. Core 11 raw runtime과 regression·sanitizer 결과를 고정한다.
+2. Core 11 local package와 Framework runtime이 필요로 하는 최소 raw binding package를 만든다.
+3. 각 Framework 언어에서 기존 public interface와 호출 구조를 그대로 유지하고, 그 뒤에 private
+   binding-facing port를 연결한다. 이 port는 설치된 public raw binding API만 사용한다.
+4. 언어별 vertical slice에서 기존 interface의 실제 동작을 먼저 복구한다. Protocol codec,
+   transport·session, liveness, routing·registry, Spot·Actor lifecycle과 maintenance를 순서대로 연결하되,
+   기존 Framework source의 구조 변경은 동작 복구에 필요한 최소 범위로 제한한다.
+5. 각 vertical slice가 internal unit·contract·protocol regression을 통과하면 다음 기능으로 진행한다.
+   네 언어의 기존 interface가 모두 동작하고 production placeholder가 0인 것을 확인한 뒤에만 중복 상태
+   기계나 adapter를 통합하는 후속 refactoring을 수행한다. Refactoring은 동작 복구의 선행 조건이 아니다.
+6. 기존 E2E를 source·scenario·registration 변경 없이 실행한다.
+7. E2E 통과 뒤 기존 sample을 source·registration 변경 없이 compile·run한다.
+
+M4까지는 sample·E2E source와 registration의 Git diff 0만 확인하고 실행하지 않는다. M5·M6는 internal
+runtime contract만 완료 증거로 사용한다. 최초 runtime candidate의 기존 E2E와 sample 실행 결과는 M7이
+소유하고, final package 조합의 재검증 결과는 M9가 소유한다.
+
+이 순서에서 보존하는 interface는 Framework public API다. 제거 대상인 Core service ABI나 binding service
+projection을 compatibility layer로 되살리지 않는다. 기존 Framework interface의 구현은 private port 뒤에서
+raw binding 조합으로 교체한다. 따라서 sample과 E2E 호출부는 바꾸지 않고 runtime 구현만 교체할 수 있다.
 
 ## 3. Codex profile과 병렬 lane
 
@@ -105,7 +142,10 @@ checklist를 보완하지 않는다. 각 ID를 시작할 때 다음 순서로 �
 
 1. 담당 row의 선행 ID가 모두 `완료`인지 확인한다.
 2. 아래 authoritative source 표에서 계약을 읽는 목적을 확인하고 해당 정식 spec·internals·exact interface를
-   읽는다. 이 문서들은 목표 계약의 정본이며 진행 절차를 위임하는 plan이 아니다.
+   먼저 읽는다. Framework runtime 구현 row는 `target-internals`의 대응 문서가 연결한 보존된 Core service
+   구현과 test snapshot도 함께 읽는다. 새 runtime을 처음부터 별도로 설계하지 않고 기존 구현의 component
+   분리, state machine, algorithm, ordering·ownership과 failure 처리를 언어별 runtime에 맞게 옮긴다. 정식
+   문서가 목표 계약의 정본이며 보존된 Core service 구현은 구현의 기준 자료다.
 3. §3.4의 같은 ID execution card에서 수정 가능한 path, 필수 명령, 산출물과 증거 위치를 확인한다.
 4. 명시한 path 밖의 변경이 필요하면 작업을 확장하지 않고 담당 row 증거 칸에 사유와 영향 ID를 기록한다.
 5. 필수 명령의 전체 command line, exit code, candidate manifest와 결과 path를 담당 row의 증거 칸에 기록한다.
@@ -131,6 +171,7 @@ manifest에 포함된 파일과 당시 content digest를 기준으로 결과를 
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js의 정확한 public signature와 package owner |
 | [Service 공개 계약 migration crosswalk](target-spec/README.ko.md) | Core service 의미와 Framework 정식 spec의 소유 위치를 누락 없이 대조하는 표 |
 | [Service runtime 구현 crosswalk](target-internals/README.ko.md) | 정식 internals와 Core 10 구현을 네 runtime의 protocol, queue, ownership, fencing, recovery와 resource 작업에 연결하는 표 |
+| 보존된 Core service 구현·test snapshot | 기존 component 경계, type 관계, state machine, algorithm, queue·lock 순서, 오류·종료 처리. 새 runtime은 이를 언어별 구조와 raw binding 경계에 맞게 이관하며 목표 의미가 spec·internals와 다를 때만 해당 차이를 적용하지 않음 |
 | [Service wire schema](../../../../framework/runtime/protocol/service-wire-v1.schema.json) | Command·field·bound·encoding과 생성 상수의 단일 wire 정본 |
 | [공통 E2E 계약](../../framework/common/e2e/README.ko.md)과 이 ledger §14 | 공통 scenario ID, 방향성 조합, race·crash·functional 완료 조건 |
 | [Local package 규칙](../../../../scripts/local-package/README.ko.md) | version 고정 지점, local/internal output, clean consumer와 provenance |
@@ -240,12 +281,12 @@ self-test를 추가한다. 이후 card가 이 명령을 요구하면 runner가 �
 | `ORACLE` | `scripts/v11/run-oracle.sh --manifest framework/testdata/v11/oracle/oracle-manifest-v1.json --scenario <exact-scenario-id> --output <absolute-trace.json>`; oracle는 child process로만 실행하고 normalized trace를 출력 | `V11-M2-ORACLE` |
 | `ROW-GATE` | `scripts/v11/run-ledger-gate.sh --id <exact-ledger-id> --candidate-manifest <absolute-candidate.json> --owned-path-manifest <absolute-owned-paths.json> --evidence <absolute-result.json>`; candidate와 owned-path schema로 provenance·freshness·exit, 변경 path가 §3.4 소유 범위 안인지와 `git diff --check -- <owned paths>` 결과를 검증 | `V11-M2-READY` |
 | `REMOVE` | `scripts/v11/verify-removal.sh --scope <core|binding:cpp|binding:dotnet|binding:jvm|binding:node|framework:cpp|framework:dotnet|framework:jvm|framework:node|common> --inventory framework/doc/contract-inventory/route-mesh-v11-core-service-migration-inventory.json --evidence <absolute-result.json>`; export·include·generated·build·package와 runtime load를 검사 | `V11-M2-READY` |
-| `CORE-PKG` | `scripts/local-package/core/build-wsl.sh --build-dir core/build --output-root <absolute-local-root> --evidence <absolute-result.json>`; Core install tree와 provenance를 만들고 `scripts/v11/verify-core-package-consumer.sh --prefix <absolute-core-install-prefix> --evidence <absolute-result.json>`로 빈 C consumer를 검증 | `V11-M3-CORE-CLEAN` |
+| `CORE-PKG` | `scripts/local-package/core/build-wsl.sh --build-dir core/build --candidate-manifest <absolute-V11-M3-CORE-VERIFY-candidate.json> --review-evidence <absolute-V11-R2-result.json> --output-root <absolute-local-root> --evidence <absolute-result.json>`; R2가 exact candidate SHA를 승인한 install tree·provenance를 만들고 `scripts/v11/verify-core-package-consumer.sh --prefix <absolute-core-install-prefix> --candidate-manifest <absolute-V11-M3-CORE-VERIFY-candidate.json> --review-evidence <absolute-V11-R2-result.json> --evidence <absolute-result.json>`로 빈 C consumer를 검증 | `V11-M3-CORE-CLEAN` |
 | `CORE-PKG-TEST` | `scripts/local-package/core/test-build-wsl.sh --self-test --dry-run --evidence <absolute-result.json>`; install artifact를 발행하지 않고 service header copy 0, argument·manifest·clean C consumer fixture를 검증 | `V11-M3-CORE-CLEAN` |
 | `BIND-PKG-TEST` | `scripts/local-package/<cpp|dotnet|java|node>/verify-consumer.sh --self-test --dry-run --evidence <absolute-result.json>`; ID suffix `JVM`은 `java`를 선택한다. Package를 발행하지 않고 각 lane이 소유한 package metadata·resolver·public-only consumer fixture를 검증 | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` |
 | `WIRE-GEN` | `node framework/runtime/protocol/generate-service-wire-constants.mjs --schema framework/runtime/protocol/service-wire-v1.schema.json <--write|--check>`; C++·C#·Java·TypeScript 생성물의 source schema revision과 drift를 검증 | `V11-M5-PROTOCOL` |
 | `TRACE` | `node scripts/generate-v11-public-contract-trace.mjs <--write|--check>`; `framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json`의 member identity, disposition, POSD decision, spec·test·E2E·package owner와 implementation ledger ID를 deterministic하게 검증 | `SPEC-06` |
-| `V11-E2E` | `scripts/v11/run-cross-language-e2e.sh --slice <topology|stateful|maintenance|full> --matrix 4x4 --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; §14 ID를 그대로 사용하고 required skip을 실패로 처리 | `V11-M6A-E2E` |
+| `V11-E2E` | `scripts/v11/run-cross-language-e2e.sh --slice <topology|stateful|maintenance|full> --matrix 4x4 --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; §14 ID를 그대로 사용하고 required skip을 실패로 처리 | `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M9-E2E-4X4` |
 | `V11-SMOKE` | `scripts/v11/run-smoke.sh --kind <functional|perf> --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; perf는 §15 최소 operation·provenance·cleanup만 판정 | `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` |
 | `FW-PKG` | `scripts/local-package/framework/build-wsl.sh <cpp|dotnet|jvm|node> --binding-manifest <absolute-binding-manifest.json> --output-root <absolute-local-root> --evidence <absolute-result.json>`; persistent Framework package를 만들고 package version·Core·binding provenance를 기록 | `V11-M8-CLEAN-COMMON` |
 | `FW-PKG-TEST` | `scripts/local-package/framework/test-build-wsl.sh --language <cpp|dotnet|jvm|node> --self-test --dry-run --evidence <absolute-result.json>`; persistent package를 발행하지 않고 package manifest·provenance·clean consumer fixture를 검증 | `V11-M8-CLEAN-COMMON` |
@@ -283,7 +324,7 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 | `V11-M2-RAW-CPP`, `V11-M2-RAW-DN`, `V11-M2-RAW-JVM`, `V11-M2-RAW-NODE` | Core raw spec과 현재 binding public surface | `bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`의 read-only probe·gap 결과 | 언어별 binding build·test, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M2-BIND-READINESS` | 네 raw probe와 machine inventory | bindings·package·C/Python/Go/Rust 격리 manifest | `INV`, inventory 기반 binding no-hit probe, 공통 | 담당 row와 `<ID>` result |
 | `V11-M2-READY` | M2 전체 evidence와 package 규칙 | `scripts/v11/run-ledger-gate.sh`, schema, `verify-removal.sh`; removal-first candidate contract | `ROW-GATE`, `REMOVE`, `DOC`, `INV`, `WIRE`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `V11-M3-PERF-LEGACY` | §15와 oracle manifest | `bindings/c/perf`; active Spot 입력 제거·10.x archive 격리 | `REMOVE --scope common`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-M3-PERF-LEGACY` | §15와 oracle manifest | `bindings/c/perf`, `scripts/v11/run-perf-legacy.mjs`; active Spot 입력 제거·10.x archive 격리와 재현 가능한 evidence 생성 | `REMOVE --scope common`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M3-CORE-REMOVE` | Core raw 공개·내부 경계와 Core removal manifest | `core/include`, `core/src`, `core/tests`, Core build manifest; service·ZMP heartbeat 제거 | `CORE`, `REMOVE --scope core`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M3-CORE-CLEAN` | POSD·DDD 원칙, M3 removal diff | Core raw source·test·build, `scripts/local-package/core/`, `scripts/local-package/native/sync-local-core-libs.sh`, `scripts/v11/verify-core-package-consumer.sh`; aggregate·unused cleanup과 review 대상 package tooling | `CORE`, `CORE-PKG-TEST`, `REMOVE --scope core`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M3-CORE-VERIFY` | Core raw spec과 final M3 candidate | Core build·ASAN result, raw test evidence, migration inventory JSON·generator·verifier | `CORE`, `CORE-ASAN`, `CORE-PKG-TEST`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
@@ -293,15 +334,15 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 | `V11-M4-PKG-CPP`, `V11-M4-PKG-DN`, `V11-M4-PKG-JVM`, `V11-M4-PKG-NODE` | `V11-R3` approved revisions와 review된 package tooling | source·tooling 수정 없음; `.artifacts/wsl`의 C++ install·NuGet·Maven·tgz와 provenance | 대응 `BIND-PKG`, `ROW-GATE`, 공통 | 각 담당 row, approved revision·artifact SHA-256과 각 `<ID>` result |
 | `V11-M4-CONSUMER-JOIN` | 네 local binding package와 중앙 Framework version 지점 | clean consumer workspace·resolution manifest | 네 `BIND-PKG`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M5-PROTOCOL` | wire schema, target-internals `02`·`08`, service liveness spec | schema·generator·golden·negative fixture와 internal `livenessProbe`·`livenessAck` | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `ROW-GATE`, `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE` | 해당 exact interface, 새 binding package, target-internals `01` | 각 Framework runtime·test·build; adapter 제거와 fail-closed scaffold | 대응 `FW-CPP`·`FW-DN`·`FW-JVM`·`FW-NODE`, `REMOVE --scope framework:<lang>`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
+| `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE` | 해당 exact interface, 새 binding package, target-internals `01` | 각 Framework private binding-facing port·internal compile contract; Core adapter·production placeholder·fake data 0 | 대응 Framework internal contract, `REMOVE --scope framework:<lang>`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | target-internals `01`·`02`·`03`·`08`, wire schema | 각 Framework transport·codec·operation·resource source와 unit test | 대응 Framework command, `WIRE`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M5-FOUND-JOIN` | 네 foundation evidence와 required E2E catalog | codec cross-language fixture·pending scenario manifest, migration inventory JSON·generator·verifier | `WIRE`, `INV`, `ROW-GATE`, 공통 | 담당 row, pending·completed·skipped count와 `<ID>` result |
 | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | target spec `01`·`02`·`07`·`08`, internals `01`·`03`·`07`·`08`, exact topology interface | 각 Framework topology·dispatch·Location·liveness source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6A-E2E` | §14 topology·liveness scenario와 공통 E2E config | `scripts/v11/run-cross-language-e2e.sh`, topology fixtures·runner, migration inventory reconcile | `V11-E2E --slice topology`, `E2E-CURRENT`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-M6A-E2E` | §14 topology·liveness scenario와 공통 E2E config | topology fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | target spec `03`~`06`, internals `03`·`04`·`06`·`08`, exact object interface | 각 Framework Spot·Actor·STREAM·Instance source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6B-E2E` | §14 stateful scenario와 공통 E2E config | stateful fixtures·runner·directional result, migration inventory reconcile | `V11-E2E --slice stateful`, `E2E-CURRENT`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-M6B-E2E` | §14 stateful scenario와 공통 E2E config | stateful fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | target spec `07`·`08`, internals `05`·`07`·`08`, exact maintenance·monitoring·host interface | 각 Framework maintenance·monitoring·hosting source·contract test | 대응 Framework command, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M6C-E2E` | §14 maintenance·hosting scenario와 공통 E2E config | maintenance·crash·hosting fixtures·runner, migration inventory reconcile | `V11-E2E --slice maintenance`, `E2E-CURRENT`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
+| `V11-M6C-E2E` | §14 maintenance·hosting scenario와 공통 E2E config | maintenance·crash·hosting fixture·runner source·ID·registration 불변 manifest | scenario drift 0, 완료·skip 0·pending count 고정, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M6-SCAFFOLD-ZERO` | 네 Framework source와 required scenario manifest | production scaffold·placeholder·fake data·pending registration 검사 결과 | Framework scope 네 `REMOVE`, `INV`, `ROW-GATE`, 공통 | 담당 row, 모든 금지 count 0과 `<ID>` result |
 | `V11-M7-CONTRACT` | 공통 spec, 다섯 exact interface | 네 language contract suite와 public declaration comparison | 네 Framework command, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M7-RACE-CRASH` | §14.2와 target-internals `05`·`08` | race·phase crash·pause·resource test와 seed manifest | `V11-E2E --slice full`, `ROW-GATE`, 공통 | 담당 row, seed·반복·결과와 `<ID>` result |
@@ -325,22 +366,27 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 SPEC-01..06 -> V11-R1 -> M2 oracle/readiness
             -> M3 Core removal/review/package
             -> M4 bindings removal/review/package
-            -> M5 fail-closed scaffold/foundation/review
+            -> M5 private binding port/foundation/review
             -> M6A topology -> M6B stateful -> M6C maintenance
-            -> M7 correctness/E2E/smoke -> M8 Framework cleanup/review
+            -> M6 production placeholder zero
+            -> M7 existing E2E -> existing samples -> correctness/smoke
+            -> M8 Framework cleanup/review
             -> M9 final package/re-proof/E2E/smoke/docs/review
 ```
 
-정식 spec과 exact interface를 확정하기 전에 구현을 시작하지 않는다. 구현은 제거할 Core service를 유지한 채
-새 Framework를 덧붙이는 방식이 아니라 removal-first 순서로 진행한다. Frozen Core 10 service source와 test는
-기존 상태 기계, queue, wire encoding, ordering과 오류 처리의 읽기 전용 구현 기준으로 사용한다. 계약이 유지된
-기능은 이 구현을 각 언어 runtime에 포팅하고, 11.0에서 변경한 의미만 정식 spec·internals·schema를 기준으로
-구현한다. 동작 결과는 별도 Core 10 process의 normalized trace와 대조한다. 새 Core·bindings·Framework
-candidate는 oracle artifact를 compile, link 또는 load하지 않는다.
+정식 spec과 exact interface를 확정하기 전에 구현을 시작하지 않는다. 제거 전 Core service 구현과 test는
+별도 snapshot에 이미 보존되어 있으며, 이 보존본을 상태 기계, queue, wire encoding, ordering과 오류 처리의
+읽기 전용 구현 기준으로 사용한다. Framework runtime을 처음부터 각각 새로 설계하지 않고 계약이 유지된
+component와 algorithm을 각 언어 runtime에 포팅한다. 11.0에서 변경한 의미만 정식 spec·internals·schema를
+기준으로 바꾼다. 보존 snapshot은 Core 11에 다시 포함하거나 runtime dependency로 유지하지 않는다. 실제
+migration은 removal-first 순서로 진행한다. 동작 결과는 별도 Core 10 process의 normalized trace와 대조한다.
+새 Core·bindings·Framework candidate는 oracle artifact를 compile, link 또는 load하지 않는다.
 
 Core와 bindings는 각각 제거·POSD·DDD review가 끝난 뒤에만 version을 올리고 local/internal package를 만든다.
-그 package를 입력으로 네 Framework runtime을 같은 계약 snapshot에서 병렬 구현하며 각 기능 block의 E2E와
-독립 review에서 합류한다.
+그 package를 입력으로 네 Framework runtime의 private binding-facing port와 service runtime을 같은 계약
+snapshot에서 병렬 구현한다. M5·M6는 internal contract와 독립 review에서 합류하고, topology·stateful·
+maintenance runtime과 production placeholder 제거가 모두 끝난 뒤 M7에서 기존 E2E와 sample을 순서대로
+실행한다.
 
 ## 5. SPEC — 구현 전 계약 확정
 
@@ -355,7 +401,7 @@ SPEC은 모든 구현 stage보다 우선한다. `V11-R1`이 완료되기 전에�
 | `SPEC-04` | 다섯 언어 exact interface | CPP·DN·JVM·NODE contract lanes, `P-DEEP` | `SPEC-02` | 완료 | C++, .NET, Java, Kotlin, Node.js public member parity 100%, Java·Kotlin 별도 ABI 확정 | Exact 문서 56개의 fence 178개를 package contract 160·application example 15·documentation support 3으로 분류하고 package declaration owner 1,575개와 canonical member 6,069개를 검증했다. C++ 10/33/345, .NET 18/41/311, Java 9/25/444, Kotlin 9/20/45, Node.js 10/41/430(문서/package fence/owner)이며 duplicate·unknown owner·forbidden exact surface는 0건이다. |
 | `SPEC-05` | Service·maintenance protocol과 major invariants | protocol·architecture lanes, `P-DEEP` | `SPEC-02`, `SPEC-03` | 완료 | frame·field·version·error·상한, lifecycle·authority·ordering·recovery 불변 조건 승인 | `WIRE` exit 0: schema 37 command·132 type·4 flag·24 bound, durable fixture 3개, logical·JSON·authority-key fixture 각 1개, negative self-test 124개. Formal·target termination outcome·reason drift, stale generation과 semantic drift 0건을 `DOC`의 termination mutation 3건과 함께 확인했다. |
 | `SPEC-06` | POSD API review와 contract·E2E·package 추적표 | architecture·E2E lanes, `P-DEEP` | `SPEC-02`, `SPEC-03`, `SPEC-04`, `SPEC-05` | 완료 | 비자명 API마다 대안 2개, caller 부담·정보 은닉 판단, 모든 계약의 test·package owner 존재 | POSD decision 60개와 canonical trace member 6,069개를 deterministic checker로 검증했다. Exact signature 1,945, canonical signature 238, reviewed override 230, intentional removal 912, unclassified·ambiguous·unknown owner 0, negative mutation 15건이다. Instance Spot·async submit verifier와 E2E `M01~M68`, liveness `L01~L06`, race `RACE01~RACE38` 112개가 각각 한 owner에 연결됐다. |
-| `V11-R1` | SPEC 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `SPEC-01`, `SPEC-02`, `SPEC-03`, `SPEC-04`, `SPEC-05`, `SPEC-06` | 완료(사용자 승인) | 두 독립 reviewer의 finding을 모두 반영하고 post-fix machine gate 통과 | Base `86258cb9a3ec`, candidate `.artifacts/v11/spec-review-candidate.json`은 repository path·mode·base/current SHA-256을 가진 255개 파일과 direct fixture 19개를 고정한다. 1회차 finding 16건과 2회차 고유 finding 5건을 모두 반영한 뒤 `DOC`, `INV`, `WIRE`, `TRACE`, `INSTANCE`, `SUBMIT`, candidate check와 `git diff --check`가 모두 exit 0이었다. 2026-07-21 사용자가 추가 review를 종료하고 구현 전 계약을 승인했으므로 3회차는 실행하지 않았다. Aggregate와 승인 기록은 candidate와 `.artifacts/v11/evidence/V11-R1/`이 소유하며 ledger 본문에 복제하지 않는다. |
+| `V11-R1` | SPEC 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `SPEC-01`, `SPEC-02`, `SPEC-03`, `SPEC-04`, `SPEC-05`, `SPEC-06` | 완료 | 두 독립 reviewer의 finding을 모두 반영하고 post-fix machine gate 통과 | Base `86258cb9a3ec`, candidate `.artifacts/v11/spec-review-candidate.json`은 repository path·mode·base/current SHA-256을 가진 255개 파일과 direct fixture 19개를 고정한다. 1회차 finding 16건과 2회차 고유 finding 5건을 모두 반영한 뒤 `DOC`, `INV`, `WIRE`, `TRACE`, `INSTANCE`, `SUBMIT`, candidate check와 `git diff --check`가 모두 exit 0이었다. 2026-07-21 사용자가 추가 review를 종료하고 구현 전 계약을 승인했으므로 3회차는 실행하지 않았다. Aggregate와 승인 기록은 candidate와 `.artifacts/v11/evidence/V11-R1/`이 소유하며 ledger 본문에 복제하지 않는다. |
 
 ### 5.1 무손실 이관 inventory
 
@@ -373,7 +419,7 @@ SPEC은 모든 구현 stage보다 우선한다. `V11-R1`이 완료되기 전에�
 | C++·.NET·Java·Node.js bindings의 service wrapper·generated symbol·test | Core 11 package를 기준으로 projection을 제거하고 일반 raw socket 사용자에게도 유효한 public capability만 보완 | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` |
 | C, Python, Go와 Rust bindings | 10.x oracle 조합에 격리. Core 11 build·package·CI와 호환 표기에서 제외하고 새 candidate가 link·load하지 않음 | `V11-M2-BIND-READINESS`, `V11-M9-RAW-FINAL` |
 | C++·.NET·Java·Kotlin·Node.js Framework public surface | 정식 exact interface에 승인한 11.0 계약을 반영하고 Java·Kotlin은 JVM runtime 하나를 공유 | `SPEC-04`, `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE`, `V11-M6-SCAFFOLD-ZERO` |
-| Sample, common E2E, race·crash test와 hosting integration | Public contract 경로로 topology·stateful object·maintenance·liveness를 검증하고 private adapter를 두지 않음 | `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-JOIN`, `V11-M9-E2E-4X4` |
+| Sample, common E2E, race·crash test와 hosting integration | M6에서 source·ID·registration 불변과 pending catalog를 확인하고, M7에서 public contract 경로로 topology·stateful object·maintenance·liveness를 실제 검증하며 private adapter를 두지 않음 | `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M7-SAMPLES`, `V11-M7-JOIN`, `V11-M9-E2E-4X4` |
 | `bindings/c/perf`의 active Spot suite | 10.x oracle trace를 봉인한 뒤 active Spot source·target·pattern·parser·CI 입력을 제거. Raw socket perf와 읽기 전용 10.x archive는 유지 | `V11-M2-ORACLE`, `V11-M3-PERF-LEGACY`, §15 |
 | Core·binding·Framework 문서와 package metadata | 정식 spec·internals와 target crosswalk를 구현에 맞춰 검증하고 제거한 service API 링크·version·package 입력을 정리 | `V11-M9-DOCS`, `V11-R7` |
 
@@ -395,7 +441,7 @@ Allowlist에서 기존 ZMP guide를 제거하는 변이와 새 service guide를 
 |---|---|---|
 | 통합 구현 계획 | 언어별 runtime 경계, stage 선행 조건, package·rollback·cleanup gate | 이 ledger의 §1·§4·§6~§19, [v11 README](README.ko.md) |
 | Core service 이관 inventory | Core spec 절·공개 symbol·binding projection·dirty 변경의 처리, raw capability proof | [Core 원문 no-loss 표](target-spec/README.ko.md#3-core-service-원문-no-loss-표), [Core internals no-loss 표](target-internals/README.ko.md#3-core-service-internals-no-loss-mapping), `route-mesh-v11-core-service-migration-inventory.json`, `SPEC-01`, `V11-M2-CORE-READINESS`, `V11-M2-BIND-READINESS` |
-| Core socket heartbeat 계획 | ZMP heartbeat option·frame·engine timer·binding projection 제거와 Framework internal liveness command·lease·transport monitor의 분리 | Core raw 정식 spec·internals, §5.5, `V11-M3-CORE-VERIFY`, `V11-M5-PROTOCOL`, `V11-M6A-E2E`, `V11-M9-RAW-FINAL` |
+| Core socket heartbeat 계획 | ZMP heartbeat option·frame·engine timer·binding projection 제거와 Framework internal liveness command·lease·transport monitor의 분리 | Core raw 정식 spec·internals, §5.5, `V11-M3-CORE-VERIFY`, `V11-M5-PROTOCOL`, `V11-M6A-E2E`, `V11-M7-E2E-4X4`, `V11-M9-RAW-FINAL` |
 | Service 성능 test 이관 계획 | 세 Framework smoke workload, fail-closed provenance, Core 10.x archive와 active suite 분리, 정량 성능 비목표 | `V11-M2-ORACLE`, `V11-M3-PERF-LEGACY`, §12의 `V11-M7-SMOKE-PERF`, §15 |
 | Stateful rolling maintenance 초안 | Host 상태·종료 결과, preflight, authority CAS, checkpoint, transfer·recovery·object별 규칙 | [Location과 maintenance](target-spec/07-location-maintenance.ko.md), [Actor](target-spec/04-actor.ko.md), [Instance Spot](target-spec/06-instance-spot.ko.md), [STREAM](target-spec/05-stream-session.ko.md), [maintenance internals](target-internals/05-maintenance-recovery.ko.md), §11·§14 |
 | 통합 public-contract 문서 묶음 | 다섯 언어 public member 전수 범위, 의도적 delta 분류, public raw dependency와 package 검증 | 언어별 `interfaces/`, 아래 public member trace, `SPEC-04`, `SPEC-06`, `V11-M2-RAW-CPP`, `V11-M2-RAW-DN`, `V11-M2-RAW-JVM`, `V11-M2-RAW-NODE`, `V11-M9-PKG-CPP`, `V11-M9-PKG-DN`, `V11-M9-PKG-JVM`, `V11-M9-PKG-NODE` |
@@ -457,14 +503,14 @@ Member trace는 다음 공개 범주를 빠짐없이 포함한다.
 
 | 범주 | 계약 owner | 구현·package owner |
 |---|---|---|
-| Host lifecycle, bootstrap와 hosting | `05-framework-api`, target `01`·`07`·`08`, 언어별 `configuration-host`·`monitoring` | `V11-M5-FOUND-JOIN`, `V11-M6C-E2E`, `V11-M9-PKG-CPP`, `V11-M9-PKG-DN`, `V11-M9-PKG-JVM`, `V11-M9-PKG-NODE` |
-| Topology, discovery와 RID allocation | target `01`·`07`, 언어별 topology·location·allocation | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE`, `V11-M6A-E2E` |
-| Messaging, handler와 execution context | target `02`, 언어별 common-runtime·channel-messaging | `V11-M5-FOUND-JOIN`, `V11-M6A-E2E` |
-| Spot와 Instance Spot | target `03`·`06`, 언어별 spots | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE`, `V11-M6B-E2E` |
-| Actor와 transfer | target `04`·`07`, 언어별 actors·location-maintenance | `V11-M6B-E2E`, `V11-M6C-E2E` |
-| STREAM과 bound session | target `05`, 언어별 stream-session | `V11-M6B-E2E`, `V11-M6C-E2E` |
-| Location authority, checkpoint와 target eligibility | target `07`, 언어별 location-maintenance | `V11-M6A-E2E`, `V11-M6C-E2E` |
-| Observability, diagnostics와 error | target `08`, 언어별 monitoring | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE`, `V11-M6C-E2E` |
+| Host lifecycle, bootstrap와 hosting | `05-framework-api`, target `01`·`07`·`08`, 언어별 `configuration-host`·`monitoring` | `V11-M5-FOUND-JOIN`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M9-PKG-CPP`, `V11-M9-PKG-DN`, `V11-M9-PKG-JVM`, `V11-M9-PKG-NODE` |
+| Topology, discovery와 RID allocation | target `01`·`07`, 언어별 topology·location·allocation | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE`, `V11-M6A-E2E`, `V11-M7-E2E-4X4` |
+| Messaging, handler와 execution context | target `02`, 언어별 common-runtime·channel-messaging | `V11-M5-FOUND-JOIN`, `V11-M6A-E2E`, `V11-M7-E2E-4X4` |
+| Spot와 Instance Spot | target `03`·`06`, 언어별 spots | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE`, `V11-M6B-E2E`, `V11-M7-E2E-4X4` |
+| Actor와 transfer | target `04`·`07`, 언어별 actors·location-maintenance | `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` |
+| STREAM과 bound session | target `05`, 언어별 stream-session | `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` |
+| Location authority, checkpoint와 target eligibility | target `07`, 언어별 location-maintenance | `V11-M6A-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` |
+| Observability, diagnostics와 error | target `08`, 언어별 monitoring | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` |
 
 ### 5.3 SPEC에서 고정할 major invariants
 
@@ -512,10 +558,12 @@ Member trace는 다음 공개 범주를 빠짐없이 포함한다.
 
 ### 5.4 Core 포팅 입력과 v11 protocol delta
 
-각 기능 lane은 구현을 시작하기 전에 frozen Core 10 source·test의 관련 type, state transition과 failure case를
-inventory record에 연결한다. Core 10 구현과 정식 spec이 다르면 spec이 우선하고 차이를 해당 lane evidence에
-기록한다. 한 언어 구현을 새 기준으로 삼아 나머지 언어가 순차적으로 따라가지 않고, 네 runtime이 같은 Core
-reference와 계약 snapshot에서 병렬로 포팅한다.
+각 기능 lane은 구현을 시작하기 전에 보존된 Core service 구현·test snapshot의 관련 component, type,
+state machine, algorithm과 failure case를 inventory record에 연결한다. 새 Framework runtime을 독립적인
+greenfield 구현으로 만들지 않고 기존 구현을 해당 언어의 memory·concurrency model과 public raw binding 경계에
+맞게 포팅한다. 보존된 구현과 정식 spec이 다르면 spec이 우선하고 차이를 해당 lane evidence에 기록한다. 한
+언어 구현을 새 기준으로 삼아 나머지 언어가 순차적으로 따라가지 않고, 네 runtime이 같은 Core reference와
+계약 snapshot에서 병렬로 포팅한다.
 
 현재 Core wire에서 그대로 보존하는 값은 command ID `1..4`, `16..39`, magic `ZM`, wire major `1`과 flag
 `0x01`·`0x02`·`0x04`다. 다음 항목은 현재 Core 구현 완료 증거가 아니라 v11 runtime에서 새로 구현하고
@@ -665,14 +713,14 @@ library 경로를 주입하지 않으며 build·link manifest와 실제 load 목
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M2-ORACLE` | Core 10.x oracle baseline과 normalized trace 봉인 | baseline·E2E lane, `P-DELIVERY` | `V11-R1` | 대기 | frozen artifact provenance, 별도 process protocol, 대표 정상·오류 trace와 archive 제외 규칙 통과 | — |
-| `V11-M2-CORE-READINESS` | Core service·ZMP heartbeat 제거 manifest와 raw 보존 경계 확인 | Core·inventory lanes, `P-SCAN` | `V11-R1` | 대기 | service와 heartbeat option·frame·timer·test 분류 100%, generic timer·monitor·PGM disposition 미분류 0 | — |
-| `V11-M2-RAW-CPP` | C++ binding raw capability 확인 | C++ binding lane, `P-DELIVERY` | `V11-R1` | 대기 | 현재 설치 package에서 multipart·monitor·STREAM·ready·shutdown capability와 보완 목록 확정 | — |
-| `V11-M2-RAW-DN` | .NET binding raw capability 확인 | .NET binding lane, `P-DELIVERY` | `V11-R1` | 대기 | public assembly만 사용해 raw capability와 보완 목록 확정, reflection·internal P/Invoke 접근 0 | — |
-| `V11-M2-RAW-JVM` | Java binding raw capability 확인 | JVM binding lane, `P-DELIVERY` | `V11-R1` | 대기 | public package만 사용해 raw capability와 보완 목록 확정, package-private·JNI 직접 접근 0 | — |
-| `V11-M2-RAW-NODE` | Node binding raw capability 확인 | Node binding lane, `P-DELIVERY` | `V11-R1` | 대기 | package export·`.d.ts`로 raw capability와 보완 목록 확정, addon 내부 접근 0 | — |
-| `V11-M2-BIND-READINESS` | 네 bindings projection·package와 10.x 전용 binding 격리 확인 | binding·package inventory lane, `P-SCAN` | `V11-M2-RAW-CPP`, `V11-M2-RAW-DN`, `V11-M2-RAW-JVM`, `V11-M2-RAW-NODE` | 대기 | 제거·보완·보존 파일 미분류 0, C·Python·Go·Rust service·heartbeat projection은 10.x `Retain/OutOfScopeV11`로 격리되고 Core 11 입력·호환 metadata에서 제외됨 | — |
-| `V11-M2-READY` | Removal-first 착수 gate | coordinator, `P-DEEP` | `V11-M2-ORACLE`, `V11-M2-CORE-READINESS`, `V11-M2-BIND-READINESS` | 대기 | 새 candidate의 oracle compile·link·load 0, Framework 기능 변경 0, Core 제거 입력 완결 | — |
+| `V11-M2-ORACLE` | Core 10.x oracle baseline과 normalized trace 봉인 | baseline·E2E lane, `P-DELIVERY` | `V11-R1` | 완료 | frozen artifact provenance, 별도 process protocol, 대표 정상·오류 trace와 archive 제외 규칙 통과 | SHA로 고정한 Core 10 executable을 child process로 실행해 `M17`·`M12` normalized trace를 생성했다. `ORACLE` self-test·`DOC`·`DIFF-OWNED` exit 0. 증거: `.artifacts/v11/evidence/V11-M2-ORACLE/result.json` |
+| `V11-M2-CORE-READINESS` | Core service·ZMP heartbeat 제거 manifest와 raw 보존 경계 확인 | Core·inventory lanes, `P-SCAN` | `V11-R1` | 완료 | service와 heartbeat option·frame·timer·test 분류 100%, generic timer·monitor·PGM disposition 미분류 0 | Core 832건을 분류했고 ZMP heartbeat 22건, generic timer 8건, raw monitor 4건, PGM 1건의 disposition과 negative mutation 2건을 검증했다. 미분류 0, `INV`·`DOC`·readiness self-test·`DIFF-OWNED` exit 0. 증거: `.artifacts/v11/evidence/V11-M2-CORE-READINESS/result.json` |
+| `V11-M2-RAW-CPP` | C++ binding raw capability 확인 | C++ binding lane, `P-DELIVERY` | `V11-R1` | 완료 | 현재 설치 package에서 multipart·monitor·STREAM·ready·shutdown capability와 보완 목록 확정 | public header의 다섯 raw capability와 targeted binding build·contract test가 통과했고 `ROW-GATE` exit 0이다. 전체 service runner의 ABI drift는 `V11-M4-BIND-CPP` 이슈로 분리했다. 증거: `.artifacts/v11/evidence/V11-M2-RAW-CPP/result.json` |
+| `V11-M2-RAW-DN` | .NET binding raw capability 확인 | .NET binding lane, `P-DELIVERY` | `V11-R1` | 완료 | public assembly만 사용해 raw capability와 보완 목록 확정, reflection·internal P/Invoke 접근 0 | public assembly의 다섯 raw capability와 targeted binding test가 통과했고 reflection·internal P/Invoke 접근 0, `ROW-GATE` exit 0이다. service sample namespace 충돌은 `V11-M4-BIND-DN` 이슈로 분리했다. 증거: `.artifacts/v11/evidence/V11-M2-RAW-DN/result.json` |
+| `V11-M2-RAW-JVM` | Java binding raw capability 확인 | JVM binding lane, `P-DELIVERY` | `V11-R1` | 완료 | public package만 사용해 raw capability와 보완 목록 확정, package-private·JNI 직접 접근 0 | public jar의 다섯 raw capability와 targeted binding test가 통과했고 package-private·JNI 직접 접근 0, `ROW-GATE` exit 0이다. service sample lifecycle 문제는 `V11-M4-BIND-JVM`·`V11-M7-SAMPLES` 이슈로 분리했다. 증거: `.artifacts/v11/evidence/V11-M2-RAW-JVM/result.json` |
+| `V11-M2-RAW-NODE` | Node binding raw capability 확인 | Node binding lane, `P-DELIVERY` | `V11-R1` | 완료 | package export·`.d.ts`로 raw capability와 보완 목록 확정, addon 내부 접근 0 | public root export·`.d.ts`의 다섯 raw capability, addon 내부 접근 0, raw test 18/18과 `ROW-GATE`가 통과했다. legacy service test의 internal module 의존은 `V11-M4-BIND-NODE` 이슈로 분리했다. 증거: `.artifacts/v11/evidence/V11-M2-RAW-NODE/result.json` |
+| `V11-M2-BIND-READINESS` | 네 bindings projection·package와 10.x 전용 binding 격리 확인 | binding·package inventory lane, `P-SCAN` | `V11-M2-RAW-CPP`, `V11-M2-RAW-DN`, `V11-M2-RAW-JVM`, `V11-M2-RAW-NODE` | 완료 | 제거·보완·보존 파일 미분류 0, C·Python·Go·Rust service·heartbeat projection은 10.x `Retain/OutOfScopeV11`로 격리되고 Core 11 입력·호환 metadata에서 제외됨 | binding·legacy 8개 언어의 분류에서 raw capability 누락·legacy disposition 불일치·compatibility claim이 모두 0이며 `INV`·self-test·`ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-M2-BIND-READINESS/result.json` |
+| `V11-M2-READY` | Removal-first 착수 gate | coordinator, `P-DEEP` | `V11-M2-ORACLE`, `V11-M2-CORE-READINESS`, `V11-M2-BIND-READINESS` | 완료 | 새 candidate의 oracle compile·link·load 0, Framework 기능 변경 0, Core 제거 입력 완결 | canonical schema 3종과 `ROW-GATE`·`REMOVE`를 구현했다. self-test 2종, 선행 M2 artifact 7개의 개별 `ROW-GATE`, `DOC`·`INV`·`WIRE`·`DIFF-OWNED`와 READY 자체 `ROW-GATE`가 모두 exit 0이다. 실제 source·package no-hit은 M3·M4 post-removal gate가 판정한다. 증거: `.artifacts/v11/evidence/V11-M2-READY/result.json` |
 
 Raw capability가 부족하면 M4에서 일반 raw socket 사용자에게도 유효한 public API로 보완한다. Framework 전용
 helper, private header, JNI·N-API 직접 호출과 설치되지 않는 symbol은 추가하지 않는다. 10.x oracle와의 대조는
@@ -686,12 +734,12 @@ M3는 Core service header·export·source·test·active perf와 ZMP heartbeat op
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M3-PERF-LEGACY` | Core service active perf 제거와 10.x archive 격리 | perf lane, `P-SCAN` | `V11-M2-READY` | 대기 | Spot source·target·runner pattern 0, raw perf 유지, oracle archive가 active baseline으로 선택되지 않음 | — |
-| `V11-M3-CORE-REMOVE` | Core service와 ZMP heartbeat header·export·source·test·build 제거 | Core lane, `P-DEEP` | `V11-M3-PERF-LEGACY` | 대기 | service surface 0, heartbeat public·internal option·frame codec·engine timer·test 0, generic timer·monitor 유지 | — |
-| `V11-M3-CORE-CLEAN` | Core POSD·DDD와 unused code, Core package tooling 정리 | Core cleanup lane, `P-DEEP` | `V11-M3-CORE-REMOVE` | 대기 | service aggregate·compat facade·pass-through·끊긴 build 입력 0, service header copy 0, Core package·clean C consumer tooling self-test 통과 | — |
-| `V11-M3-CORE-VERIFY` | Core raw 회귀·sanitizer, package tooling와 oracle 격리 재검증 | Core test·inventory coordinator, `P-DELIVERY` | `V11-M3-CORE-CLEAN` | 대기 | clean build, full raw suite·sanitizer·package tooling self-test 통과, inventory reconcile, ZMP heartbeat 잔여와 oracle link·load 0 | — |
-| `V11-R2` | Core 제거·POSD·DDD 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M3-CORE-VERIFY` | 대기 | I1·I2·I3, raw 보존과 제거 범위 review clean | — |
-| `V11-M3-CORE-PKG` | Core 11 version와 local/internal package 실행 | Core package lane, `P-DELIVERY` | `V11-R2` | 대기 | review한 source·tooling revision을 수정하지 않고 11.0.0 install artifact 생성, clean C consumer·provenance 통과, 외부 배포 0 | — |
+| `V11-M3-PERF-LEGACY` | Core service active perf 제거와 10.x archive 격리 | perf lane, `P-SCAN` | `V11-M2-READY` | 완료 | Spot source·target·runner pattern 0, raw perf 유지, oracle archive가 active baseline으로 선택되지 않음 | active Spot source 3개와 paired gate·test 2개를 제거했다. raw perf unit 37/37, 대표 raw target build, archive isolation, `REMOVE --scope common`, `DOC`, `DIFF-OWNED`, `ROW-GATE`가 모두 exit 0이다. 증거: `.artifacts/v11/evidence/V11-M3-PERF-LEGACY/result.json` |
+| `V11-M3-CORE-REMOVE` | Core service와 ZMP heartbeat header·export·source·test·build 제거 | Core lane, `P-DEEP` | `V11-M3-PERF-LEGACY` | 완료 | service surface 0, heartbeat public·internal option·frame codec·engine timer·test 0, generic timer·monitor 유지 | service public header 7개와 Mesh API·runtime source, service test·build 입력을 제거했다. 독립 audit의 Spot·ChannelName state, service-named seam, stale build/test 입력과 `REMOVE` field 오탐 4건을 모두 수정했다. full build 100%, raw targeted 45/45, `REMOVE --scope core` 722 records·violations 0, post-fix audit clean, `DIFF-CHECK`와 `ROW-GATE`가 모두 exit 0이다. optional full lane의 비소유 환경 실패는 result의 issues에 분리했다. 증거: `.artifacts/v11/evidence/V11-M3-CORE-REMOVE/result.json` |
+| `V11-M3-CORE-CLEAN` | Core POSD·DDD와 unused code, Core package tooling 정리 | Core cleanup lane, `P-DEEP` | `V11-M3-CORE-REMOVE` | 완료 | service aggregate·compat facade·pass-through·끊긴 build 입력 0, service header copy 0, Core package·clean C consumer tooling self-test 통과 | stale internal service seam과 service-only guide 6개를 제거하고 Core 문서 39개를 raw-only로 고쳤다. Package tooling은 service header 재복사를 차단하고 네 version 지점과 clean C consumer를 검증한다. Canonical clean build, unittest 18/18, integration 42/42, regression 20/20, `CORE-PKG-TEST`, `REMOVE` 722 records·violations 0, `DOC`, `DIFF-OWNED`가 통과했다. `ROW-GATE`가 1MB 초과 base inventory에서 Node 기본 buffer로 종료되는 결함도 128MB 명시 상한으로 수정하고 self-test·candidate 182 files 검증을 통과했다. 증거: `.artifacts/v11/evidence/V11-M3-CORE-CLEAN/result.json` |
+| `V11-M3-CORE-VERIFY` | Core raw 회귀·sanitizer, package tooling와 oracle 격리 재검증 | Core test·inventory coordinator, `P-DELIVERY` | `V11-M3-CORE-CLEAN` | 완료 | clean build, full raw suite·sanitizer·package tooling self-test 통과, inventory reconcile, ZMP heartbeat 잔여와 oracle link·load 0 | 첫 transport 전 ID 0 queue와 reconnect 이후 nonzero stale 차단을 분리해 reconnect/connect 회귀를 수정했고 weighted reactivation fixture는 표준 pipe termination protocol로 정리했다. Core 11 clean build에서 unittest 18/18, integration 42/42, regression 20/20, exact 11.0.0 ASAN 80/80·sanitizer finding 0과 SONAME 11을 확인했다. Package tooling은 base revision과 candidate record에서 격리 build snapshot을 materialize하며 hash 변이, stale build, version·SONAME 변이를 거부한다. C++ consumer가 찾은 OpenSSL transitive dependency 선언을 포함해 final candidate 204 files·Core changed path 193개를 봉인한다. 병렬 binding delta의 inventory reconcile은 `V11-M4-BIND-JOIN`에 인계한다. 증거: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/result.json` |
+| `V11-R2` | Core 제거·POSD·DDD 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M3-CORE-VERIFY` | 완료 | I1·I2·I3, raw 보존과 제거 범위 review clean | 첫 C++ installed-package configure가 exported OpenSSL dependency 선언 누락을 찾아 Core config에 conditional `find_dependency(OpenSSL)`을 추가했다. 최종 SHA `06d72dab…`에 대해 두 reviewer가 blocking finding 0·clean/approved를 기록했고 package audit은 isolated build·C consumer와 외부 CMake `find_package(zlink)`·OpenSSL target·link·run을 통과했다. R2 `ROW-GATE` 3 files·5 commands 통과. 증거: `.artifacts/v11/evidence/V11-R2/result.json` |
+| `V11-M3-CORE-PKG` | Core 11 version와 local/internal package 실행 | Core package lane, `P-DELIVERY` | `V11-R2` | 완료 | review한 source·tooling revision을 수정하지 않고 11.0.0 install artifact 생성, clean C consumer·provenance 통과, 외부 배포 0 | R2 승인 SHA `06d72dab…`를 isolated Release build해 기존 local prefix를 교체했다. Provenance 18 files, clean C consumer, runtime 11.0.0·SONAME 11, service header 0과 transitive OpenSSL CMake consumer가 통과했다. Provenance SHA-256 `7146fc20…`, runtime SHA-256 `6e950f27…`, 외부 배포 0. 증거: `.artifacts/v11/evidence/V11-M3-CORE-PKG/result.json` |
 
 Core review 뒤 source가 바뀌면 package를 만들기 전에 영향받는 raw test와 review를 다시 실행한다. 제거한 service
 symbol을 fake export나 빈 구현으로 남겨 bindings build를 통과시키지 않는다.
@@ -702,45 +750,73 @@ symbol을 fake export나 빈 구현으로 남겨 bindings build를 통과시키�
 M2에서 확인한 raw capability를 보완하고 POSD·DDD와 사용되지 않는 wrapper·generated code를 정리한다. 각 언어
 package는 통합 bindings review가 끝난 뒤에만 local/internal 위치에 배포한다.
 
+M4의 test 범위는 raw binding contract와 clean package consumer로 제한한다. 기존 Framework public
+sample·E2E source와 실행 registration은 Git 기준으로 보존하고 이 stage에서는 실행하지 않는다. Binding test
+runner가 sample이나 Framework E2E를 함께 실행하면 raw-only subset을 별도 command로 선택하되, 이를 이유로
+기존 runner registration을 삭제하지 않는다.
+
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M4-BIND-CPP` | C++ projection 제거·raw 보완·cleanup | C++ binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 대기 | service·heartbeat member·generated symbol 0, public raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | — |
-| `V11-M4-BIND-DN` | .NET projection 제거·raw 보완·cleanup | .NET binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 대기 | service·heartbeat member·generated P/Invoke 0, public raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | — |
-| `V11-M4-BIND-JVM` | Java projection 제거·raw 보완·cleanup | JVM binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 대기 | service·heartbeat member·generated JNI 0, `build.gradle`의 Core source·Boost include 0, installed Core package-only raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | — |
-| `V11-M4-BIND-NODE` | Node projection 제거·raw 보완·cleanup | Node binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 대기 | service·heartbeat export·generated addon projection 0, public ESM·CJS export와 raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | — |
-| `V11-M4-BIND-JOIN` | Bindings 제거·raw proof 합류 | binding coordinator, `P-DELIVERY` | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` | 대기 | 네 언어 service projection과 ZMP heartbeat option projection 0, public raw capability 결과 일치 | — |
-| `V11-R3` | Bindings 제거·POSD·DDD 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M4-BIND-JOIN` | 대기 | public raw 경계, generated output, package input과 제거 범위 review clean | — |
-| `V11-M4-PKG-CPP` | C++ binding 11 local/internal package | C++ package lane, `P-DELIVERY` | `V11-R3` | 대기 | review revision package와 clean CMake consumer 통과, 외부 배포 0 | — |
-| `V11-M4-PKG-DN` | .NET binding 11 local/internal package | .NET package lane, `P-DELIVERY` | `V11-R3` | 대기 | review revision NuGet과 public-only clean consumer 통과, 외부 배포 0 | — |
-| `V11-M4-PKG-JVM` | Java binding 11 local/internal package | JVM package lane, `P-DELIVERY` | `V11-R3` | 대기 | review revision Maven artifact·module metadata·clean consumer 통과, 외부 배포 0 | — |
-| `V11-M4-PKG-NODE` | Node binding 11 local/internal package | Node package lane, `P-DELIVERY` | `V11-R3` | 대기 | review revision tgz·ESM·CJS·`.d.ts` clean consumer 통과, 외부 배포 0 | — |
-| `V11-M4-CONSUMER-JOIN` | 새 bindings package 합류 | package coordinator, `P-SCAN` | `V11-M4-PKG-CPP`, `V11-M4-PKG-DN`, `V11-M4-PKG-JVM`, `V11-M4-PKG-NODE` | 대기 | 중앙 Framework 참조 version 고정, clean consumer provenance와 Core payload 일치 | — |
+| `V11-M4-BIND-CPP` | C++ projection 제거·raw 보완·cleanup | C++ binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 완료 | service·heartbeat member·generated symbol 0, public raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | Raw contract 10/10, final removal 6 records·violations 0과 actual external CMake consumer가 통과했다. Package gate는 승인된 Core provenance·candidate, version 11.0.0과 SONAME 11을 강제한다. Sample/E2E 변경·실행은 0이며 final candidate 121 files의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-BIND-CPP/ledger-result.json` |
+| `V11-M4-BIND-DN` | .NET projection 제거·raw 보완·cleanup | .NET binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 완료 | service·heartbeat member·generated P/Invoke 0, public raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | Exact Core 11.0.0으로 127/127, final removal 7 records·violations 0과 isolated NuGet consumer가 통과했다. 기존 local native payload를 output으로 복사하는 item과 ambient fallback, 사용처 없는 service snapshot helper를 제거했고 실제 loaded runtime SHA·SONAME을 검증한다. Sample/E2E 변경·실행은 0이며 final candidate 101 files의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-BIND-DN/ledger-result.json` |
+| `V11-M4-BIND-JVM` | Java projection 제거·raw 보완·cleanup | JVM binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 완료 | service·heartbeat member·generated JNI 0, `build.gradle`의 Core source·Boost include 0, installed Core package-only raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | Raw tests 64/64, final removal 9 records·violations 0과 isolated Maven consumer가 통과했다. 승인된 Core candidate·runtime SHA·SONAME을 POM·module metadata와 JAR provenance에서 검증한다. Sample runner는 Git 기준으로 복구했고 sample/E2E source diff·실행은 0이다. Final candidate 186 files의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-BIND-JVM/ledger-result.json` |
+| `V11-M4-BIND-NODE` | Node projection 제거·raw 보완·cleanup | Node binding lane, `P-DEEP` | `V11-M3-CORE-PKG` | 완료 | service·heartbeat export·generated addon projection 0, public ESM·CJS export와 raw proof·clean build·test, package metadata·consumer tooling self-test 통과 | Registration을 유지한 raw-only selector로 build·typecheck·native rebuild와 raw test 8 files·failure 0·sample execution 0을 다시 기록했다. Linux resolver를 SONAME 11로 고정했고 package build 뒤 generated `prebuilds`·provenance가 source에 남지 않도록 정리했다. Final removal 17 records·violations 0, exact Core provenance gate와 ESM·CJS·type consumer tooling이 통과했으며 candidate `9cbfaee1…`의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-BIND-NODE/ledger-result.json` |
+| `V11-M4-BIND-JOIN` | Bindings 제거·raw proof 합류 | binding coordinator, `P-DELIVERY` | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` | 완료 | 네 언어 service projection과 ZMP heartbeat option projection 0, public raw capability 결과 일치 | Final inventory 1,826 records·package tooling 38 paths와 joined removal C++ 6, .NET 7, JVM 9, Node 17 records·violations 0을 확인했다. 네 child candidate를 final inventory와 actual package consumer evidence로 다시 봉인했고 join `ROW-GATE`가 통과했다. Immutable sample/E2E는 M7 owner로 유지한다. 증거: `.artifacts/v11/evidence/V11-M4-BIND-JOIN/result.json` |
+| `V11-R3` | Bindings 제거·POSD·DDD 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M4-BIND-JOIN` | 완료 | public raw 경계, generated output, package input과 제거 범위 review clean | 두 독립 reviewer와 package audit가 C++ `b765413a…`, .NET `70aca597…`, JVM `00e3248f…`, Node `9cbfaee1…`, join `a3b8a1a0…`를 승인했다. Actual CMake·NuGet·Maven consumer, Node package consumer tooling, Core provenance·candidate·runtime SHA·SONAME 11, sample/E2E diff 0과 row freshness를 확인했고 blocking finding은 0이다. R3 candidate `8ce37cf7…`의 `ROW-GATE`가 통과했다. 증거: `.artifacts/v11/evidence/V11-R3/result.json` |
+| `V11-M4-PKG-CPP` | C++ binding 11 local/internal package | C++ package lane, `P-DELIVERY` | `V11-R3` | 완료 | review revision package와 clean CMake consumer 통과, 외부 배포 0 | R3 승인 source를 CMake prefix에 다시 설치하고 exact package configure·compile·link·load·run을 확인했다. Package tree SHA-256은 `a37a40c7…`, 외부 배포는 0이며 `ROW-GATE` 1 file·4 commands가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-PKG-CPP/result.json` |
+| `V11-M4-PKG-DN` | .NET binding 11 local/internal package | .NET package lane, `P-DELIVERY` | `V11-R3` | 완료 | review revision NuGet과 public-only clean consumer 통과, 외부 배포 0 | `Systems.Zlink.11.0.0.nupkg` SHA-256 `727ba451…`과 isolated public-only consumer restore·build·run, loaded Core 11 SHA·SONAME을 확인했다. 외부 배포는 0이며 `ROW-GATE` 1/4가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-PKG-DN/result.json` |
+| `V11-M4-PKG-JVM` | Java binding 11 local/internal package | JVM package lane, `P-DELIVERY` | `V11-R3` | 완료 | review revision Maven artifact·module metadata·clean consumer 통과, 외부 배포 0 | Maven `systems.zlink:zlink:11.0.0`을 생성해 clean Gradle consumer로 resolve·compile·run했다. JAR SHA-256은 `7c2b21cc…`이며 POM·module metadata와 Core provenance가 일치한다. 외부 배포 0, `ROW-GATE` 1/4가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-PKG-JVM/result.json` |
+| `V11-M4-PKG-NODE` | Node binding 11 local/internal package | Node package lane, `P-DELIVERY` | `V11-R3` | 완료 | review revision tgz·ESM·CJS·`.d.ts` clean consumer 통과, 외부 배포 0 | `zlink-systems-zlink-11.0.0.tgz` SHA-256 `81e1ce89…`를 clean npm consumer에 설치해 CJS·ESM import와 type export를 확인했다. 외부 배포 0, `ROW-GATE` 1 file·6 commands가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-PKG-NODE/result.json` |
+| `V11-M4-CONSUMER-JOIN` | 새 bindings package 합류 | package coordinator, `P-SCAN` | `V11-M4-PKG-CPP`, `V11-M4-PKG-DN`, `V11-M4-PKG-JVM`, `V11-M4-PKG-NODE` | 완료 | 중앙 Framework 참조 version 고정, clean consumer provenance와 Core payload 일치 | C++·.NET·JVM·Node 중앙 binding version을 11.0.0으로 고정했고 Node workspace manifest와 lockfile도 같은 tgz를 해석한다. CMake tree `a37a40c7…`, NuGet `727ba451…`, Maven JAR `7c2b21cc…`, npm tgz `81e1ce89…`와 Core payload provenance를 resolution manifest에서 확인했다. Candidate `02b85a71…`의 `ROW-GATE` 8 files·8 commands가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-CONSUMER-JOIN/result.json` |
 
-## 9. M5 — Fail-closed scaffold와 runtime foundation
+## 9. M5 — Private binding-facing port와 runtime foundation
 
-M5는 Framework가 사용하던 Core service adapter를 먼저 제거한다. 빌드를 유지해야 하는 미구현 branch는
-`RuntimeNotReady`로 즉시 실패하는 compile scaffold만 허용한다. 이 scaffold는 fake success, fake reply,
-임의 descriptor·location·snapshot data를 반환하지 않는다. M5는 build-only gate이므로 required E2E를 완료나
-skip으로 기록하지 않고 `pending`으로 유지한다.
+M5는 Framework가 사용하던 Core service adapter를 제거하고, 각 언어 Framework 내부에 private
+binding-facing port를 먼저 구현한다. 이 port는 binding API를 그대로 전달하는 facade가 아니라 service
+runtime이 필요한 raw transport 동작과 binding type 변환을 내부에 감춘다. 해당 언어 binding의 설치된 public
+raw API만 호출하며 Framework public interface, binding public service API와 공통 private C SPI를 추가하지 않는다.
+
+구현은 기존 Framework public interface에서 안쪽으로 진행한다. 먼저 기존 method·callback·lifecycle이 private
+port를 통해 호출되도록 최소 연결을 만들고, 해당 interface의 동작을 internal contract로 확인한다. 이 단계에서
+기존 Framework public class를 새 abstraction으로 일괄 교체하거나 호출자 코드를 새 runtime 형태에 맞춰
+변경하지 않는다. 네 언어에서 동작이 복구된 뒤 중복이 확인될 때만 같은 언어 내부에서 refactoring한다.
+
+각 M5·M6 runtime row는 구현 전에 관련 Framework 정식 spec, 해당 언어 exact interface, 공통 internals와
+`target-internals` crosswalk를 읽는다. Crosswalk가 가리키는 보존된 Core service 구현·test snapshot에서
+component 분리, state machine, algorithm, ordering, ownership, timeout·shutdown·recovery failure case를 확인하고
+row evidence에 참고한 snapshot revision과 path를 기록한다. 이 구현을 언어별 runtime 구조로 포팅하되 제거한
+Core service symbol에 다시 의존하지 않는다. Spec 또는 internals와 다른 부분만 목표 문서를 적용하고 차이를
+evidence에 남긴다.
+
+`V11-M5-SCAFFOLD-*`는 기존 ID를 유지하지만 production scaffold를 만드는 작업이 아니다. 이 row는 private
+port와 기존 public Framework API 사이의 compile 연결, 제거한 Core adapter 참조 0과 production
+`RuntimeNotReady`·fake data 0을 검증한다. M5는 protocol fixture와 internal contract만 실행하고 기존
+sample·E2E는 source·registration을 보존한 채 `pending`으로 유지한다.
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
 | `V11-M5-PROTOCOL` | Protocol 생성 상수·codec·golden foundation | protocol lane, `P-DEEP` | `V11-M4-CONSUMER-JOIN` | 대기 | schema의 livenessProbe `5`·livenessAck `6` 포함 생성물, probe ID echo·canonical frame·malformed fixture와 네 decoder 입력 확정 | — |
-| `V11-M5-SCAFFOLD-CPP` | C++ service adapter 제거와 fail-closed compile scaffold | C++ lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | 제거 projection 참조 0, 미구현 호출은 `RuntimeNotReady`, build 통과, fake data 0 | — |
-| `V11-M5-SCAFFOLD-DN` | .NET service adapter 제거와 fail-closed compile scaffold | .NET lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | 제거 projection·reflection 0, 미구현 호출은 `RuntimeNotReady`, build 통과, fake data 0 | — |
-| `V11-M5-SCAFFOLD-JVM` | JVM service adapter 제거와 fail-closed compile scaffold | JVM lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | 제거 projection·JNI 우회 0, Java·Kotlin build 통과, fake data 0 | — |
-| `V11-M5-SCAFFOLD-NODE` | Node service adapter 제거와 fail-closed compile scaffold | Node lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | 제거 projection·addon 우회 0, package build 통과, fake data 0 | — |
+| `V11-M5-SCAFFOLD-CPP` | C++ private binding-facing port와 기존 public API 연결 | C++ lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | public raw binding-only port, 제거 projection 참조·production placeholder·fake data 0, internal compile contract 통과 | — |
+| `V11-M5-SCAFFOLD-DN` | .NET private binding-facing port와 기존 public API 연결 | .NET lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | public binding-only port, reflection·제거 projection·production placeholder·fake data 0, internal compile contract 통과 | — |
+| `V11-M5-SCAFFOLD-JVM` | JVM private binding-facing port와 Java·Kotlin public API 연결 | JVM lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | public Java binding-only port, JNI 우회·제거 projection·production placeholder·fake data 0, internal compile contract 통과 | — |
+| `V11-M5-SCAFFOLD-NODE` | Node private binding-facing port와 기존 public API 연결 | Node lane, `P-DELIVERY` | `V11-M4-CONSUMER-JOIN` | 대기 | public package-only port, private addon 우회·제거 projection·production placeholder·fake data 0, internal compile contract 통과 | — |
 | `V11-M5-FOUND-CPP` | C++ transport·codec·operation foundation | C++ lane, `P-DEEP` | `V11-M5-PROTOCOL`, `V11-M5-SCAFFOLD-CPP` | 대기 | public binding-only gateway, codec·completion·clock·resource unit proof 통과 | — |
 | `V11-M5-FOUND-DN` | .NET transport·codec·operation foundation | .NET lane, `P-DEEP` | `V11-M5-PROTOCOL`, `V11-M5-SCAFFOLD-DN` | 대기 | public binding-only gateway, codec·Task completion·clock·resource unit proof 통과 | — |
 | `V11-M5-FOUND-JVM` | JVM transport·codec·operation foundation | JVM lane, `P-DEEP` | `V11-M5-PROTOCOL`, `V11-M5-SCAFFOLD-JVM` | 대기 | Java binding-only gateway, codec·executor·coroutine·resource unit proof 통과 | — |
 | `V11-M5-FOUND-NODE` | Node transport·codec·operation foundation | Node lane, `P-DEEP` | `V11-M5-PROTOCOL`, `V11-M5-SCAFFOLD-NODE` | 대기 | public package-only gateway, codec·Promise·event-loop resource unit proof 통과 | — |
-| `V11-M5-FOUND-JOIN` | Foundation 합류와 pending E2E 감사 | foundation coordinator, `P-DELIVERY` | `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | 대기 | 네 codec golden·negative fixture 일치, required E2E 완료·skip 0이고 모두 pending | — |
-| `V11-R4` | Runtime foundation 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M5-FOUND-JOIN` | 대기 | schema, public binding 경계, fail-closed와 resource ownership review clean | — |
+| `V11-M5-FOUND-JOIN` | Foundation 합류와 pending E2E 감사 | foundation coordinator, `P-DELIVERY` | `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | 대기 | 네 codec golden·negative fixture 일치, required E2E `executed=0`, `skipped=0`, `pending=required` | — |
+| `V11-R4` | Runtime foundation 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M5-FOUND-JOIN` | 대기 | schema, public binding 경계, production placeholder 0과 resource ownership review clean | — |
 
 ## 10. M6 — Framework vertical slice 네 병렬 lane
 
-각 slice는 C++·.NET·JVM·Node.js가 같은 spec·schema revision에서 병렬로 구현하고, 공통 scenario ID를 사용하는
-E2E와 독립 review에서 합류한다. 한 언어 구현을 다른 언어가 source 수준에서 포팅하지 않는다.
+각 slice는 C++·.NET·JVM·Node.js가 같은 spec·schema revision에서 기존 public interface의 실제 동작을
+각각 복구하고 internal contract와 독립 review에서 합류한다. 언어별 lane은 transport부터 public operation까지
+하나의 vertical slice를 완성한 뒤 다음 기능으로 진행한다. 한 언어 구현을 다른 언어가 source 수준에서
+포팅하지 않으며, 동작 검증 전에 공통 abstraction을 만들기 위한 대규모 통합 refactoring을 수행하지 않는다.
+M6의 `*-E2E` ID는 기존
+ID와 dependency graph를 유지하지만 이 stage에서 기존 E2E process를 실행하지 않는다. 각 row는 공통 scenario
+source·ID·registration hash가 바뀌지 않았고 required scenario가 `pending`인지 확인하며, 실제 실행은 세 slice와
+`V11-M6-SCAFFOLD-ZERO`가 모두 끝난 뒤 M7이 소유한다.
 
 ### 10.1 M6A — Topology, dispatch, Location과 liveness
 
@@ -750,7 +826,7 @@ E2E와 독립 review에서 합류한다. 한 언어 구현을 다른 언어가 s
 | `V11-M6A-DN` | .NET topology·dispatch·Location·liveness | .NET lane, `P-DEEP` | `V11-R4` | 대기 | topology·mailbox·CAS·Task terminal winner·liveness contract 통과 | — |
 | `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness | JVM lane, `P-DEEP` | `V11-R4` | 대기 | Java·Kotlin API, CAS·executor·coroutine·reconnect contract 통과 | — |
 | `V11-M6A-NODE` | Node topology·dispatch·Location·liveness | Node lane, `P-DEEP` | `V11-R4` | 대기 | topology·CAS·Promise·event-loop·reconnect contract 통과 | — |
-| `V11-M6A-E2E` | Topology slice 합류 E2E | E2E lane, `P-DELIVERY` | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 대기 | Config 3 `PS-F1~F5`와 Config 5 `RL-E1~E5`: manual·automatic classic fanout의 publisher별 전용 SUB socket·first-valid-receive barrier·publisher→subscriber periodic one-way beacon·application delivery 0, application filter와 reserved subscription 분리, unrelated-topic traffic 중 false timeout 0, exact reserved topic public publish 거부·같은 prefix 추가 byte 허용, malformed reserved 2-frame record의 protocol error·해당 publisher 즉시 not-ready, raw monitor와 bidirectional probe·ACK 통과 | — |
+| `V11-M6A-E2E` | Topology E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 대기 | Config 3 `PS-F1~F5`, Config 5 `RL-E1~E5` source·ID·registration drift 0, required scenario 완료·skip 0이고 모두 pending | — |
 | `V11-R5A` | Topology slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6A-E2E` | 대기 | topology·dispatch·authority·liveness의 I1·I2·I3 review clean | — |
 
 Framework service runtime은 제거한 Core heartbeat option을 설정하지 않는다. Raw monitor는 orderly disconnect를
@@ -767,7 +843,7 @@ Fanout subscriber는 publisher별 전용 SUB socket을 사용하며 reserved bea
 | `V11-M6B-DN` | .NET stateful object runtime | .NET lane, `P-DEEP` | `V11-R5A` | 대기 | turn·membership·session·Instance Task 경쟁 contract 통과 | — |
 | `V11-M6B-JVM` | JVM stateful object runtime | JVM lane, `P-DEEP` | `V11-R5A` | 대기 | Java·Kotlin turn·membership·session·Instance contract 통과 | — |
 | `V11-M6B-NODE` | Node stateful object runtime | Node lane, `P-DEEP` | `V11-R5A` | 대기 | turn·membership·session·Instance Promise 경쟁 contract 통과 | — |
-| `V11-M6B-E2E` | Stateful slice 합류 E2E | E2E lane, `P-DELIVERY` | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | 대기 | Spot·Actor·bound STREAM·Instance, cold activation·one-submit·stale owner 방향성 cell 통과 | — |
+| `V11-M6B-E2E` | Stateful E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | 대기 | Spot·Actor·bound STREAM·Instance·cold activation·one-submit·stale owner scenario source·ID·registration drift 0, 완료·skip 0이고 모두 pending | — |
 | `V11-R5B` | Stateful slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6B-E2E` | 대기 | mailbox ordering, ownership·fencing·resource의 I1·I2·I3 review clean | — |
 
 ### 10.3 M6C — Maintenance, monitoring과 hosting
@@ -782,9 +858,9 @@ route를 만들지 않는다.
 | `V11-M6C-DN` | .NET maintenance·monitoring·ASP.NET | .NET lane, `P-DEEP` | `V11-R5B` | 대기 | CAS·lease·Task race·terminal observation·ASP.NET shutdown contract 통과 | — |
 | `V11-M6C-JVM` | JVM maintenance·monitoring·Spring | JVM lane, `P-DEEP` | `V11-R5B` | 대기 | Java·Kotlin lifecycle·coroutine·Spring metadata와 shutdown contract 통과 | — |
 | `V11-M6C-NODE` | Node maintenance·monitoring·NestJS | Node lane, `P-DEEP` | `V11-R5B` | 대기 | Promise·event-loop recovery·terminal observation·NestJS cleanup contract 통과 | — |
-| `V11-M6C-E2E` | Maintenance slice 합류 E2E | E2E lane, `P-DELIVERY` | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | 대기 | Retire·Shutdown, transfer·crash recovery·remote fencing·hosting 방향성 cell 통과 | — |
+| `V11-M6C-E2E` | Maintenance E2E 불변 입력·pending 등록 확인 | E2E catalog lane, `P-SCAN` | `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | 대기 | Retire·Shutdown·transfer·crash recovery·remote fencing·hosting scenario source·ID·registration drift 0, 완료·skip 0이고 모두 pending | — |
 | `V11-R5C` | Maintenance slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6C-E2E` | 대기 | lifecycle·authority·recovery·observability·hosting의 I1·I2·I3 review clean | — |
-| `V11-M6-SCAFFOLD-ZERO` | Fail-closed scaffold 제거 gate | inventory·contract lane, `P-SCAN` | `V11-R5C` | 대기 | production scaffold branch·`RuntimeNotReady` placeholder·fake data 0, required scenario가 실행 대상으로 등록됨 | — |
+| `V11-M6-SCAFFOLD-ZERO` | Production placeholder 제거와 E2E 실행 준비 gate | inventory·contract lane, `P-SCAN` | `V11-R5C` | 대기 | production scaffold branch·`RuntimeNotReady` placeholder·fake data 0, 기존 required scenario source·ID·registration drift 0이고 실행 대상으로 등록됨 | — |
 
 `V11-M6-SCAFFOLD-ZERO`가 끝나기 전에는 M7 correctness를 시작하지 않는다. M5에서 pending으로 둔 required
 scenario를 skip이나 과거 결과로 닫지 않고 현재 candidate로 실행한다.
@@ -794,20 +870,26 @@ scenario를 skip이나 과거 결과로 닫지 않고 현재 candidate로 실행
 M7은 service 의미가 Core 10.x 구현 없이 네 Framework runtime에서 성립하는지 검증한다. Oracle은 별도 process의
 normalized trace 비교에만 사용하며 candidate process의 dependency가 될 수 없다.
 
+M7은 기존 E2E를 먼저 실행하고 E2E가 통과한 뒤 기존 sample을 실행한다. 두 lane 모두 migration 시작 전
+source·scenario·registration을 그대로 사용한다. 새 공개 기능을 승인해 추가한 항목을 제외하면 E2E·sample
+source diff가 있거나 required registration이 줄어든 candidate는 실행 전에 실패한다.
+
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
 | `V11-M7-CONTRACT` | 다섯 public contract와 네 runtime contract test | contract·language lanes, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | exact interface·source·test 일치, required contract skipped 0 | — |
 | `V11-M7-RACE-CRASH` | 동시성·수명·crash·recovery suite | race·recovery lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO` | 대기 | §14.2 race, transfer phase crash, pause fencing과 resource cleanup 통과 | — |
-| `V11-M7-E2E-4X4` | 방향성 cross-language `4 x 4` E2E | E2E lane, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | required service·maintenance caller→server cell, negative frame와 crash scenario skipped 0 | — |
-| `V11-M7-SAMPLES` | C++·.NET·Java·Kotlin·Node sample 검증 | sample·language lanes, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | public API만 사용, 표준 topology·typed JSON·hosting startup와 cleanup 통과 | — |
+| `V11-M7-E2E-4X4` | 기존 방향성 cross-language `4 x 4` E2E | E2E lane, `P-DELIVERY` | `V11-M6-SCAFFOLD-ZERO` | 대기 | source·scenario·registration drift 0, required service·maintenance caller→server cell, negative frame와 crash scenario skipped 0 | — |
+| `V11-M7-SAMPLES` | 기존 C++·.NET·Java·Kotlin·Node sample 검증 | sample·language lanes, `P-DELIVERY` | `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH` | 대기 | source·registration drift 0, public API만 사용, 표준 topology·typed JSON·hosting startup와 cleanup 통과 | 잘못 삭제된 언어 sample 75개와 수정된 Node sample support/runner 3개를 Git에서 복구했다. C++/.NET/JVM/Node registration audit도 손실 0이며 실제 compile·run은 Framework runtime과 기존 E2E 완료 뒤 시작한다. 증거: `.artifacts/v11/evidence/V11-M4-SAMPLE-RECOVERY/` |
 | `V11-M7-SMOKE-FUNCTIONAL` | Liveness·maintenance functional smoke | integration lane, `P-DELIVERY` | `V11-M7-CONTRACT`, `V11-M7-E2E-4X4`, `V11-M7-SAMPLES` | 대기 | reconnect·Retire·Shutdown·transfer·recovery와 resource cleanup 통과 | — |
 | `V11-M7-SMOKE-PERF` | Service·Core raw performance smoke-only | perf lane, `P-DELIVERY` | `V11-M7-CONTRACT`, `V11-M7-E2E-4X4`, `V11-M7-SAMPLES` | 대기 | 네 runtime·Kotlin consumer·Core raw 최소 workload, provenance와 cleanup 통과; 수치 판정 없음 | — |
 | `V11-M7-JOIN` | 전체 correctness 합류 | release test coordinator, `P-DEEP` | `V11-M7-RACE-CRASH`, `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` | 대기 | contract·race·crash·`4 x 4`·sample·functional·perf smoke 누락과 skip 0 | — |
 
 ## 12. M8 — Framework POSD·DDD와 unused cleanup
 
-M8은 Framework에 남은 pass-through adapter, 중복 state machine, fail-closed scaffold와 사용되지 않는 source,
-test·sample·generated output·build·package 입력을 정리한다. Core와 bindings 제거를 이 단계로 미루지 않는다.
+M8은 Framework에 남은 pass-through adapter, 중복 state machine과 사용되지 않는 source·test·sample·generated
+output·build·package 입력을 정리하고 production scaffold·placeholder·fake data의 잔여와 재발이 0인지 다시
+검증한다. Core와 bindings 제거를 이 단계로 미루지 않는다. Production placeholder 제거도 M6 gate 이후로
+미루지 않는다.
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
@@ -1151,8 +1233,9 @@ M4의 한 binding lane이 실패하면 해당 lane candidate만 폐기할 수 �
 대체하지 않으며 Core service projection을 되살리지 않는다. 네 lane이 `V11-R3`를 통과하기 전에는 binding
 package를 배포하지 않는다.
 
-M5 이후 Framework 기능이 준비되지 않았으면 `RuntimeNotReady`로 실패 상태를 유지한다. Test를 통과시키기 위한
-fake success·data, shadow backend, private binding 접근이나 compatibility facade로 전환하지 않는다.
+M5·M6의 중간 candidate는 public E2E·sample·release 대상으로 사용하지 않는다. 아직 완성되지 않은 operation은
+internal contract에서 명시적인 실패로 유지하되 production public path에 `RuntimeNotReady` placeholder를 넣지 않는다.
+Test를 통과시키기 위한 fake success·data, shadow backend, private binding 접근이나 compatibility facade로 전환하지 않는다.
 Local/internal package 조합이 섞인 상태를 release candidate로 사용하지 않는다.
 
 Protocol schema나 public contract 의미가 바뀌면 영향받는 생성물, runtime lane, fixture와 방향성 E2E만 다시
@@ -1182,7 +1265,8 @@ Review 축은 다음과 같다.
 3. 5회차부터 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 gate를 통과하지 못한다.
 4. 5회차 이후 `Low` finding만 남으면 위치, 영향과 처리 결정을 증거 칸에 기록하고 clean으로 종료할 수 있다.
 5. 정확성, 공개 계약, data loss, race, security, package mismatch와 제거 누락을 선호 문제로 낮추지 않는다.
-6. 두 reviewer가 clean을 기록한 뒤 해당 stage의 required test·E2E·consumer를 다시 실행한다.
+6. 두 reviewer가 clean을 기록한 뒤 해당 stage가 소유한 required gate를 다시 실행한다. M5·M6 review는 internal
+   contract와 E2E pending catalog audit만 재실행하며, 최초 실제 E2E는 M7, final package 재검증은 M9가 소유한다.
 7. 이후 source가 바뀌면 의미와 직접 의존 범위만 다시 review한다. Hash 변화만으로 전체 review를 처음부터
    시작하지 않는다.
 
@@ -1202,7 +1286,7 @@ Review 축은 다음과 같다.
 - [ ] Topology, messaging, Spot, Actor, Instance Spot, STREAM과 stateful maintenance가 네 runtime에 구현됐다.
 - [ ] Required contract·race·crash·recovery와 방향이 있는 `4 x 4` E2E가 skipped 없이 통과했다.
 - [ ] Core service와 네 bindings service projection이 제거됐다.
-- [ ] Fail-closed compile scaffold, `RuntimeNotReady` placeholder와 fake success·data branch가 production code에 남지 않았다.
+- [ ] Production scaffold, `RuntimeNotReady` placeholder와 fake success·data branch가 production code에 남지 않았다.
 - [ ] Core generic timer·monitor와 raw transport 회귀는 유지되고 제거한 ZMP heartbeat 잔여가 없다.
 - [ ] 제거 API 때문에 참조가 끊긴 source·test·sample·build·package 입력이 남지 않았다.
 - [ ] Final local/internal package와 clean consumer가 통과했고 외부 배포가 없다.

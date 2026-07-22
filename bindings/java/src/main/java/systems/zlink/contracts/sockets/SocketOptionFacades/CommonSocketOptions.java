@@ -269,33 +269,6 @@ public class CommonSocketOptions {
         ContractAccess.socketSetOption(socket, SocketOptions.TCP_MAXRT, value);
     }
 
-    public Duration heartbeatInterval() {
-        return Duration.ofMillis(ContractAccess.socketGetOption(socket, SocketOptions.HEARTBEAT_IVL));
-    }
-
-    public void heartbeatInterval(Duration value) {
-        Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_IVL, DurationConversions.toIntMillis(value, "value"));
-    }
-
-    public Duration heartbeatTtl() {
-        return Duration.ofMillis(ContractAccess.socketGetOption(socket, SocketOptions.HEARTBEAT_TTL));
-    }
-
-    public void heartbeatTtl(Duration value) {
-        Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TTL, DurationConversions.toIntMillis(value, "value"));
-    }
-
-    public Duration heartbeatTimeout() {
-        return Duration.ofMillis(ContractAccess.socketGetOption(socket, SocketOptions.HEARTBEAT_TIMEOUT));
-    }
-
-    public void heartbeatTimeout(Duration value) {
-        Objects.requireNonNull(value, "value");
-        ContractAccess.socketSetOption(socket, SocketOptions.HEARTBEAT_TIMEOUT, DurationConversions.toIntMillis(value, "value"));
-    }
-
     boolean conflate() {
         return ContractAccess.socketGetOption(socket, SocketOptions.CONFLATE) != 0;
     }

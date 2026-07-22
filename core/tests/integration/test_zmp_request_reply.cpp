@@ -388,54 +388,6 @@ void capture_reply (zlink_request_result_t result_,
     probe->cv.notify_all ();
 }
 
-void reply_from_router_handler (const zlink_routing_id_t *peer_rid_,
-                                const zlink_routing_id_t *source_spot_rid_,
-                                uint64_t request_seq_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                void *userdata_)
-{
-    request_handler_probe_t *probe = static_cast<request_handler_probe_t *> (userdata_);
-    if (!probe)
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock (probe->mutex);
-        probe->invoked = true;
-        probe->request_seq = request_seq_;
-        probe->peer_rid_value = *peer_rid_;
-        TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
-        probe->peer_rid.assign (reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
-        probe->request_payload = part_count_ > 0 ? msg_to_string (&parts_[0]) : std::string ();
-    }
-    probe->cv.notify_all ();
-}
-
-void capture_router_request_event (const zlink_routing_id_t *peer_rid_,
-                                   const zlink_routing_id_t *source_spot_rid_,
-                                   uint64_t request_seq_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   void *userdata_)
-{
-    multi_request_probe_t *probe = static_cast<multi_request_probe_t *> (userdata_);
-    if (!probe)
-        return;
-
-    request_event_t event;
-    event.request_seq = request_seq_;
-    event.peer_rid_value = *peer_rid_;
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
-    event.peer_rid.assign (reinterpret_cast<const char *> (peer_rid_->data), peer_rid_->size);
-    event.request_payload = part_count_ > 0 ? msg_to_string (&parts_[0]) : std::string ();
-
-    {
-        std::lock_guard<std::mutex> lock (probe->mutex);
-        probe->events.push_back (event);
-    }
-    probe->cv.notify_all ();
-}
-
 void send_captured_reply (void *router_,
                           request_handler_probe_t *handler_probe_,
                           const char *reply_payload_)

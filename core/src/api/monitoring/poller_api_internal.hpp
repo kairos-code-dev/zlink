@@ -26,8 +26,7 @@ enum poller_subject_kind_t
     poller_subject_fd,
     poller_subject_timer,
     poller_subject_socket_request_completion,
-    poller_subject_router_request_completion,
-    poller_subject_mesh_node
+    poller_subject_router_request_completion
 };
 
 //  Validates the public recv flags word for helper receive entry points.

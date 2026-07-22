@@ -152,9 +152,6 @@ zlink::asio_engine_t::asio_engine_t (fd_t fd_,
     _output_stopped (false),
     _endpoint_uri_pair (endpoint_uri_pair_),
     _has_handshake_timer (false),
-    _has_ttl_timer (false),
-    _has_timeout_timer (false),
-    _has_heartbeat_timer (false),
     _peer_address (get_peer_address (fd_)),
     _has_handshake_stage (true),
     _transport_adapter (),
@@ -366,21 +363,6 @@ void zlink::asio_engine_t::unplug ()
     if (_has_handshake_timer) {
         cancel_timer (handshake_timer_id);
         _has_handshake_timer = false;
-    }
-
-    if (_has_ttl_timer) {
-        cancel_timer (heartbeat_ttl_timer_id);
-        _has_ttl_timer = false;
-    }
-
-    if (_has_timeout_timer) {
-        cancel_timer (heartbeat_timeout_timer_id);
-        _has_timeout_timer = false;
-    }
-
-    if (_has_heartbeat_timer) {
-        cancel_timer (heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = false;
     }
 
     //  Cancel pending async operations by closing the transport
@@ -1767,16 +1749,6 @@ const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 
 int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
-    if (_has_timeout_timer) {
-        _has_timeout_timer = false;
-        cancel_timer (heartbeat_timeout_timer_id);
-    }
-
-    if (_has_ttl_timer) {
-        _has_ttl_timer = false;
-        cancel_timer (heartbeat_ttl_timer_id);
-    }
-
     if (msg_->flags () & msg_t::command) {
         process_command_message (msg_);
     }
@@ -1929,16 +1901,6 @@ void zlink::asio_engine_t::on_timer (int id_, const boost::system::error_code &e
     if (id_ == handshake_timer_id) {
         _has_handshake_timer = false;
         //  handshake timer expired before handshake completed, so engine fail
-        error (timeout_error);
-    } else if (id_ == heartbeat_ivl_timer_id) {
-        _next_msg = &asio_engine_t::produce_ping_message;
-        restart_output ();
-        add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-    } else if (id_ == heartbeat_ttl_timer_id) {
-        _has_ttl_timer = false;
-        error (timeout_error);
-    } else if (id_ == heartbeat_timeout_timer_id) {
-        _has_timeout_timer = false;
         error (timeout_error);
     }
 }

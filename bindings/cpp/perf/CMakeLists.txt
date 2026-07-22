@@ -85,10 +85,7 @@ add_cpp_single_bench(cpp_perf_router_router
   "${PERF_ROOT_DIR}/single/src/perf_router_router.cpp")
 add_cpp_single_bench(cpp_perf_router_router_reqrep
   "${PERF_ROOT_DIR}/single/src/perf_router_router_reqrep.cpp")
-add_cpp_single_bench(cpp_perf_spot
-  "${PERF_ROOT_DIR}/single/src/perf_spot.cpp")
-
-# Multi server suite (8 binaries)
+# Multi server suite
 add_cpp_multi_server_bench(cpp_comp_src_dealer_dealer_server
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_dealer_router_server
@@ -101,17 +98,11 @@ add_cpp_multi_server_bench(cpp_comp_src_router_router_reqrep_server
   "${PERF_ROOT_DIR}/multi/src/perf_router_router_reqrep_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_pubsub_server
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_server.cpp")
-add_cpp_multi_server_bench(cpp_comp_src_spot_server
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_server.cpp")
-add_cpp_multi_server_bench(cpp_comp_src_spot_sendsend_server
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_sendsend_server.cpp")
-add_cpp_multi_server_bench(cpp_comp_src_spot_reqrep_server
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_reqrep_server.cpp")
 add_cpp_multi_server_bench(cpp_comp_src_stream_server
   "${PERF_ROOT_DIR}/multi/src/perf_stream_server.cpp")
 configure_perf_target(cpp_comp_src_stream_server "multi")
 
-# Multi client suite (6 binaries)
+# Multi client suite
 add_cpp_multi_client_bench(cpp_comp_src_dealer_dealer_client
   "${PERF_ROOT_DIR}/multi/src/perf_dealer_dealer_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_dealer_router_client
@@ -124,24 +115,7 @@ add_cpp_multi_client_bench(cpp_comp_src_router_router_reqrep_client
   "${PERF_ROOT_DIR}/multi/src/perf_router_router_reqrep_client.cpp")
 add_cpp_multi_client_bench(cpp_comp_src_pubsub_client
   "${PERF_ROOT_DIR}/multi/src/perf_pubsub_client.cpp")
-add_cpp_multi_client_bench(cpp_comp_src_spot_client
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_client.cpp")
-add_cpp_multi_client_bench(cpp_comp_src_spot_sendsend_client
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_sendsend_client.cpp")
-add_cpp_multi_client_bench(cpp_comp_src_spot_reqrep_client
-  "${PERF_ROOT_DIR}/multi/src/perf_spot_reqrep_client.cpp")
-
 if(ZLINK_CPP_REGISTER_CTEST AND UNIX AND NOT WIN32)
-  add_test(NAME perf_cpp_single_spot_runtime_smoke
-    COMMAND /bin/bash -lc
-      "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=30 ${PERF_ROOT_DIR}/run_binding_single.sh --reuse-build --pattern SPOT --transports tcp --msg-sizes 64 --duration 1 --runs 1 --results-tag ctest_cpp_single_spot_runtime_smoke"
-  )
-  set_tests_properties(perf_cpp_single_spot_runtime_smoke PROPERTIES
-    LABELS "perf-regression"
-    TIMEOUT 120
-    WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
-  )
-
   add_test(NAME perf_cpp_multi_dealer_dealer_runtime_smoke
     COMMAND /bin/bash -lc
       "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=20 ${PERF_ROOT_DIR}/run_binding_multi.sh --reuse-build --pattern DEALER_DEALER --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --connect-concurrency 2 --results-tag ctest_cpp_multi_dealer_dealer_runtime_smoke"
@@ -152,33 +126,4 @@ if(ZLINK_CPP_REGISTER_CTEST AND UNIX AND NOT WIN32)
     WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
   )
 
-  add_test(NAME perf_cpp_multi_spot_runtime_smoke
-    COMMAND /bin/bash -lc
-      "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=30 ${PERF_ROOT_DIR}/run_binding_multi.sh --reuse-build --pattern SPOT --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --connect-concurrency 2 --results-tag ctest_cpp_multi_spot_runtime_smoke"
-  )
-  set_tests_properties(perf_cpp_multi_spot_runtime_smoke PROPERTIES
-    LABELS "perf-regression"
-    TIMEOUT 120
-    WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
-  )
-
-  add_test(NAME perf_cpp_multi_spot_sendsend_runtime_smoke
-    COMMAND /bin/bash -lc
-      "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=30 ${PERF_ROOT_DIR}/run_binding_multi.sh --reuse-build --pattern SPOT_SENDSEND --transports tcp --msg-sizes 64 --duration 1 --runs 1 --clients 2 --connect-concurrency 2 --results-tag ctest_cpp_multi_spot_sendsend_runtime_smoke"
-  )
-  set_tests_properties(perf_cpp_multi_spot_sendsend_runtime_smoke PROPERTIES
-    LABELS "perf-regression"
-    TIMEOUT 120
-    WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
-  )
-
-  add_test(NAME perf_cpp_multi_spot_reqrep_large_runtime_smoke
-    COMMAND /bin/bash -lc
-      "PERF_FAIL_FAST=1 PERF_TIMEOUT_SECONDS=30 ${PERF_ROOT_DIR}/run_binding_multi.sh --reuse-build --pattern SPOT_REQREP --transports ws --msg-sizes 131072 --duration 1 --runs 1 --clients 16 --connect-concurrency 16 --results-tag ctest_cpp_multi_spot_reqrep_large_runtime_smoke"
-  )
-  set_tests_properties(perf_cpp_multi_spot_reqrep_large_runtime_smoke PROPERTIES
-    LABELS "perf-regression"
-    TIMEOUT 120
-    WORKING_DIRECTORY "${ZLINK_REPO_ROOT_DIR}"
-  )
 endif()

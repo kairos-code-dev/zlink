@@ -65,15 +65,7 @@ public final class Native {
     private static final MethodHandle MH_DISCONNECT = downcall("zlink_disconnect",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISCONNECT_RID = downcall("zlink_disconnect_rid",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));    private static final MethodHandle MH_SOCKET_SET_CHANNEL_NAME = downcall(
-            "zlink_socket_set_channel_name",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SOCKET_GET_CHANNEL_NAME = downcall(
-            "zlink_socket_get_channel_name",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-                    ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_RECV_HANDLER = downcall(
             "zlink_recv_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -289,9 +281,6 @@ public final class Native {
 
     private static final MethodHandle MH_TIMER_NEW = downcall("zlink_timer_new",
       FunctionDescriptor.of(ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_TIMER_NEW = downcall(
-      "zlink_spot_timer_new",
-      FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_TIMER_DESTROY = downcall(
       "zlink_timer_destroy",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
@@ -532,30 +521,6 @@ public final class Native {
             return (int) MH_DISCONNECT_RID.invokeExact(socket, peerRid);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_disconnect_rid failed", t);
-        }
-    }
-
-    public static int socketSetChannelName(MemorySegment socket,
-                                           MemorySegment channelName) {
-        try {
-            return (int) MH_SOCKET_SET_CHANNEL_NAME.invokeExact(socket,
-                channelName);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_set_channel_name failed",
-              t);
-        }
-    }
-
-    public static int socketGetChannelName(MemorySegment socket,
-                                           MemorySegment channelNameOut,
-                                           long channelNameCapacity,
-                                           MemorySegment channelNameLenOut) {
-        try {
-            return (int) MH_SOCKET_GET_CHANNEL_NAME.invokeExact(socket,
-                channelNameOut, channelNameCapacity, channelNameLenOut);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_socket_get_channel_name failed",
-              t);
         }
     }
 
@@ -1242,14 +1207,6 @@ public final class Native {
         }
     }
 
-    public static MemorySegment spotTimerNew(MemorySegment spot) {
-        try {
-            return (MemorySegment) MH_SPOT_TIMER_NEW.invokeExact(spot);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_timer_new failed", t);
-        }
-    }
-
     public static int timerDestroy(MemorySegment timer) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
@@ -1433,20 +1390,6 @@ public final class Native {
         return NativePollerSymbols.pollerAdd(poller, socket, userData, events);
     }
 
-    public static int pollerAddSpotSub(MemorySegment poller,
-                                        MemorySegment spotSub,
-                                        MemorySegment userData,
-                                        int events) {
-        return NativePollerSymbols.pollerAdd(poller, spotSub, userData, events);
-    }
-
-    public static int pollerAddSpotPub(MemorySegment poller,
-                                        MemorySegment spotPub,
-                                        MemorySegment userData,
-                                        int events) {
-        return NativePollerSymbols.pollerAdd(poller, spotPub, userData, events);
-    }
-
     public static int pollerAddReceiver(MemorySegment poller,
                                          MemorySegment receiver,
                                          MemorySegment userData,
@@ -1469,18 +1412,6 @@ public final class Native {
         return NativePollerSymbols.pollerModify(poller, socket, events);
     }
 
-    public static int pollerModifySpotSub(MemorySegment poller,
-                                           MemorySegment spotSub,
-                                           int events) {
-        return NativePollerSymbols.pollerModify(poller, spotSub, events);
-    }
-
-    public static int pollerModifySpotPub(MemorySegment poller,
-                                           MemorySegment spotPub,
-                                           int events) {
-        return NativePollerSymbols.pollerModify(poller, spotPub, events);
-    }
-
     public static int pollerModifyReceiver(MemorySegment poller,
                                             MemorySegment receiver,
                                             int events) {
@@ -1493,16 +1424,6 @@ public final class Native {
 
     public static int pollerRemove(MemorySegment poller, MemorySegment socket) {
         return NativePollerSymbols.pollerRemove(poller, socket);
-    }
-
-    public static int pollerRemoveSpotSub(MemorySegment poller,
-                                           MemorySegment spotSub) {
-        return NativePollerSymbols.pollerRemove(poller, spotSub);
-    }
-
-    public static int pollerRemoveSpotPub(MemorySegment poller,
-                                           MemorySegment spotPub) {
-        return NativePollerSymbols.pollerRemove(poller, spotPub);
     }
 
     public static int pollerRemoveReceiver(MemorySegment poller,

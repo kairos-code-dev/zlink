@@ -136,8 +136,6 @@ inline const char *perf_auto_hwm_role_name (uint32_t role_)
             return "fanout";
         case 4:
             return "recv_ingress";
-        case 5:
-            return "spot_data";
         case 6:
             return "peer_queue";
         case 7:
@@ -168,8 +166,6 @@ inline const char *perf_auto_hwm_policy_class_name (uint32_t policy_class_)
     switch (policy_class_) {
         case 1:
             return "fanout";
-        case 2:
-            return "spot_data";
         case 3:
             return "recv_ingress";
         case 4:
@@ -249,7 +245,7 @@ inline bool perf_auto_hwm_recv_side_visible (uint32_t socket_type_, uint32_t rol
 {
     const char *role_name = perf_auto_hwm_role_name (role_);
     if ((socket_type_ == ZLINK_SOCKET_PUB || socket_type_ == ZLINK_SOCKET_XPUB)
-        && (std::strcmp (role_name, "spot_data") == 0 || std::strcmp (role_name, "control") == 0))
+        && std::strcmp (role_name, "control") == 0)
         return false;
     return true;
 }

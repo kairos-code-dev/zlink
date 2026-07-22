@@ -3,10 +3,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${ROOT_DIR}/../tools/local_core_runtime.sh"
-zlink_export_local_core_runtime
-zlink_sync_linux_native_dir "${ROOT_DIR}/src/main/resources/native/linux-x86_64"
-zlink_sync_linux_native_dir "${ROOT_DIR}/build/resources/main/native/linux-x86_64"
+[[ "${ZLINK_CORE_PACKAGE_PREFIX:-}" = /* ]] || {
+  echo "ZLINK_CORE_PACKAGE_PREFIX must name the approved Core 11 install prefix" >&2
+  exit 2
+}
 TASKS=(
   ":test"
   ":integrationTest"

@@ -21,6 +21,23 @@ void tearDown ()
 
 namespace
 {
+class pipe_cleanup_sink_t : public zlink::i_pipe_events
+{
+  public:
+    pipe_cleanup_sink_t () : terminated_count (0) {}
+
+    void read_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void write_activated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void hiccuped (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_peer_terminated (zlink::pipe_t *) ZLINK_OVERRIDE {}
+    void pipe_terminated (zlink::pipe_t *) ZLINK_OVERRIDE
+    {
+        ++terminated_count;
+    }
+
+    int terminated_count;
+};
+
 void *create_sync_socket (int type_)
 {
     void *socket = zlink_socket (get_test_context (), static_cast<zlink_socket_type_t> (type_));
@@ -266,8 +283,9 @@ void test_weighted_dealer_preserves_peer_weight_after_backpressure ()
 
 void test_weighted_lb_reactivation_keeps_configured_weight ()
 {
-    zlink::object_t parent (NULL, 0);
-    zlink::object_t *parents[] = {&parent, &parent};
+    void *owner_handle = create_sync_socket (ZLINK_SOCKET_PAIR);
+    zlink::object_t *owner = static_cast<zlink::object_t *> (owner_handle);
+    zlink::object_t *parents[] = {owner, owner};
     const int hwms[] = {1, 1};
     const bool conflate[] = {false, false};
     zlink::pipe_t *first_pair[2];
@@ -276,6 +294,12 @@ void test_weighted_lb_reactivation_keeps_configured_weight ()
       zlink::pipepair (parents, first_pair, hwms, conflate));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink::pipepair (parents, second_pair, hwms, conflate));
+
+    pipe_cleanup_sink_t cleanup_sink;
+    first_pair[0]->set_event_sink (&cleanup_sink);
+    first_pair[1]->set_event_sink (&cleanup_sink);
+    second_pair[0]->set_event_sink (&cleanup_sink);
+    second_pair[1]->set_event_sink (&cleanup_sink);
 
     zlink::lb_t lb;
     lb.attach (first_pair[0]);
@@ -307,6 +331,20 @@ void test_weighted_lb_reactivation_keeps_configured_weight ()
     TEST_ASSERT_SUCCESS_ERRNO (message.close ());
     lb.pipe_terminated (first_pair[0]);
     lb.pipe_terminated (second_pair[0]);
+
+    // Removing a pipe from lb_t drops only the scheduler reference. Complete
+    // the normal peer handshake so command references and both ypipes are
+    // released by the same protocol used by runtime-owned pipes.
+    first_pair[0]->terminate (false);
+    first_pair[1]->terminate (false);
+    second_pair[0]->terminate (false);
+    second_pair[1]->terminate (false);
+    int events = 0;
+    size_t events_size = sizeof (events);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_get_option (owner_handle, ZLINK_OPT_EVENTS, &events, &events_size));
+    TEST_ASSERT_EQUAL_INT (4, cleanup_sink.terminated_count);
+    close_sync_socket (owner_handle);
 }
 
 int main ()

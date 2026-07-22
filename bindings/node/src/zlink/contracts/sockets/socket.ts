@@ -2,7 +2,7 @@
 
 import type { MonitorSocket } from '../eventing';
 import type { RoutingId } from '../core';
-import type { SocketMonitorHandler } from '../service';
+import type { SocketMonitorHandler } from '../messaging';
 import type { DealerSocket } from './dealer_socket';
 import type { PairSocket } from './pair_socket';
 import type { PubSocket, SubSocket, XPubSocket, XSubSocket } from './pubsub_sockets';

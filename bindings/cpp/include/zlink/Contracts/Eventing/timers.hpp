@@ -13,10 +13,6 @@ namespace zlink
 {
 
 class timer_t;
-namespace service
-{
-class spot_t;
-} // namespace service
 namespace detail
 {
 struct timer_access_t;
@@ -39,8 +35,6 @@ class timer_t
 
     timer_t (const timer_t &) = delete;
     timer_t &operator= (const timer_t &) = delete;
-
-    static timer_t from_spot (service::spot_t &spot_);
 
     bool valid () const noexcept;
 

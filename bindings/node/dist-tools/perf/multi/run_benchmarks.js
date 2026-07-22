@@ -69,47 +69,6 @@ async function spawnMeasuredPair(runner, options) {
     const metrics = primaryMetricsFromResultLines(options.pattern, options.msgSize, lines);
     return { lines, metrics };
 }
-// C parity: bindings/c/perf/run_comparison.py run_sizes_test
-// (~3062-3088). MULTI_SPOT's active pass saturates the receiver, so its
-// reported latency is the backpressured tail (~2400ms in node, not
-// semantically comparable to C's ~0.75ms). C runs a second, clean
-// latency-only pass (PERF_MULTI_SPOT_LATENCY_ONLY=1) where the publisher
-// paces itself and the receiver stays unsaturated, then merges by
-// overriding ONLY latency/latency_p95/latency_p99 from the clean pass
-// into the active-pass metrics (throughput/bandwidth keep the active
-// values). PERF_MULTI_SPOT_CLEAN_LATENCY defaults to 1; set 0 to skip.
-function spotCleanLatencyEnabled() {
-    const raw = process.env.PERF_MULTI_SPOT_CLEAN_LATENCY;
-    if (raw === undefined || raw === '') {
-        return true;
-    }
-    return raw !== '0';
-}
-async function applySpotCleanLatency(patternName, runner, caseOptions, metrics) {
-    if (patternName !== 'MULTI_SPOT' || !metrics || !spotCleanLatencyEnabled()) {
-        return metrics;
-    }
-    const { lines, metrics: cleanMetrics } = await spawnMeasuredPair(runner, {
-        ...caseOptions,
-        extraEnv: {
-            ...(caseOptions.extraEnv || {}),
-            PERF_MULTI_SPOT_LATENCY_ONLY: '1',
-            PERF_MULTI_SPOT_CLEAN_LATENCY: '0'
-        }
-    });
-    if (!cleanMetrics) {
-        const reason = hasUnsupportedToken(lines)
-            ? 'unsupported'
-            : (hasSkipToken(lines) ? 'skip' : 'no_metrics');
-        throw new Error(`spot clean-latency pass failed: ${reason}`);
-    }
-    return {
-        ...metrics,
-        latency: cleanMetrics.latency,
-        latency_p95: cleanMetrics.latency_p95,
-        latency_p99: cleanMetrics.latency_p99
-    };
-}
 function isUnsupported(error) {
     return errorText(error).toLowerCase().includes('protocol not supported');
 }
@@ -311,7 +270,7 @@ async function main() {
                             emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'fail', null)}`);
                             continue;
                         }
-                        const metrics = await applySpotCleanLatency(patternName, runner, caseOptions, activeMetrics);
+                        const metrics = activeMetrics;
                         samples.get(msgSize).push(metrics);
                         emitSizeSection(msgSize, rowIndent);
                         emit(`${rowIndent}${multiTableRowLine(patternName, msgSize, 'success', {

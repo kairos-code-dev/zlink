@@ -23,8 +23,7 @@ public final class RequestProgressPump {
     private static final int POLLER_EVENT_BATCH = 64;
     private static final long IDLE_KEEPALIVE_NANOS = 1_000_000_000L;
     private static final int POLL_RECHECK_TIMEOUT_MS = 10;
-    private static final ConcurrentMap<Key, Pump> PUMPS = new ConcurrentHashMap<>();
-    private static final ConcurrentMap<Key, AtomicInteger> EXTERNAL_PROGRESS =
+    private static final ConcurrentMap<Long, Pump> PUMPS =
         new ConcurrentHashMap<>();
 
     private RequestProgressPump() {
@@ -33,93 +32,40 @@ public final class RequestProgressPump {
     public static void trackSocketRequest(CompletableFuture<?> future,
                                           MemorySegment socketHandle,
                                           String threadName) {
-        track(future, socketHandle, threadName, Kind.SOCKET);
-    }
-
-    public static void trackSpotRequest(CompletableFuture<?> future,
-                                        MemorySegment socketHandle,
-                                        String threadName) {
-        track(future, socketHandle, threadName, Kind.SPOT);
+        track(future, socketHandle, threadName);
     }
 
     public static void stopSocketProgress(MemorySegment socketHandle) {
-        stopProgress(socketHandle, Kind.SOCKET);
-    }
-
-    public static void stopSpotProgress(MemorySegment socketHandle) {
-        stopProgress(socketHandle, Kind.SPOT);
+        stopProgress(socketHandle);
     }
 
     private static void track(CompletableFuture<?> future,
                               MemorySegment handle,
-                              String threadName,
-                              Kind kind) {
+                              String threadName) {
         Objects.requireNonNull(future, "future");
         Objects.requireNonNull(handle, "handle");
         if (future.isDone() || handle.address() == 0) {
             return;
         }
-        Key key = new Key(kind, handle.address());
-        AtomicInteger external = EXTERNAL_PROGRESS.get(key);
-        if (external != null && external.get() > 0) {
-            return;
-        }
+        long key = handle.address();
         Pump pump = PUMPS.computeIfAbsent(key,
             ignored -> new Pump(key, handle, threadName));
         pump.track(future);
     }
 
-    public static void acquireExternalSpotProgress(MemorySegment socketHandle) {
-        acquireExternalProgress(socketHandle, Kind.SPOT);
-    }
-
-    public static void releaseExternalSpotProgress(MemorySegment socketHandle) {
-        releaseExternalProgress(socketHandle, Kind.SPOT);
-    }
-
-    private static void acquireExternalProgress(MemorySegment socketHandle,
-                                                Kind kind) {
+    private static void stopProgress(MemorySegment socketHandle) {
         Objects.requireNonNull(socketHandle, "socketHandle");
         if (socketHandle.address() == 0)
             return;
-        Key key = new Key(kind, socketHandle.address());
-        EXTERNAL_PROGRESS.computeIfAbsent(key, ignored -> new AtomicInteger())
-            .incrementAndGet();
-    }
-
-    private static void releaseExternalProgress(MemorySegment socketHandle,
-                                                Kind kind) {
-        Objects.requireNonNull(socketHandle, "socketHandle");
-        if (socketHandle.address() == 0)
-            return;
-        Key key = new Key(kind, socketHandle.address());
-        AtomicInteger count = EXTERNAL_PROGRESS.get(key);
-        if (count != null && count.decrementAndGet() <= 0) {
-            EXTERNAL_PROGRESS.remove(key, count);
-        }
-    }
-
-    private static void stopProgress(MemorySegment socketHandle, Kind kind) {
-        Objects.requireNonNull(socketHandle, "socketHandle");
-        if (socketHandle.address() == 0)
-            return;
-        Key key = new Key(kind, socketHandle.address());
+        long key = socketHandle.address();
         Pump pump = PUMPS.remove(key);
         if (pump != null) {
             pump.stopAndWait();
         }
     }
 
-    private enum Kind {
-        SOCKET,
-        SPOT
-    }
-
-    private record Key(Kind kind, long address) {
-    }
-
     private static final class Pump {
-        private final Key key;
+        private final long key;
         private final MemorySegment socketHandle;
         private final String threadName;
         private final AtomicInteger pending = new AtomicInteger();
@@ -127,7 +73,7 @@ public final class RequestProgressPump {
         private final AtomicBoolean stopping = new AtomicBoolean();
         private volatile Thread thread;
 
-        private Pump(Key key, MemorySegment socketHandle, String threadName) {
+        private Pump(long key, MemorySegment socketHandle, String threadName) {
             this.key = key;
             this.socketHandle = socketHandle;
             this.threadName = threadName;

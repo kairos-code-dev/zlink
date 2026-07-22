@@ -27,20 +27,9 @@ enum send_family_t
     send_family_publish,
     send_family_router_request,
     send_family_dealer_request,
-    send_family_spot_send_channel,
-    send_family_spot_publish,
-    send_family_spot_request_channel,
-    send_family_spot_request_spot,
-    send_family_spot_request_router,
-    send_family_spot_send_spot,
-    send_family_spot_reply_spot,
-    send_family_spot_reply_router,
     send_family_router_reply,
     send_family_dealer_request_frame,
-    send_family_dealer_reply,
-    send_family_router_request_spot,
-    send_family_router_reply_spot,
-    send_family_router_send_spot
+    send_family_dealer_reply
 };
 
 enum recv_family_t
@@ -48,10 +37,8 @@ enum recv_family_t
     recv_family_none = 0,
     recv_family_basic,
     recv_family_subscribe,
-    recv_family_spot_subscribe,
     recv_family_router,
-    recv_family_dealer,
-    recv_family_spot
+    recv_family_dealer
 };
 
 struct send_sequence_spec_t
@@ -96,12 +83,9 @@ struct recv_sequence_state_t
     zlink::socket_base_t *source_socket;
     std::thread::id owner_thread;
     bool return_source_rid_as_null;
-    bool return_source_spot_rid_as_null;
     zlink_routing_id_t source_node_rid;
-    zlink_routing_id_t source_spot_rid;
     uint64_t request_seq;
     uint8_t message_type;
-    std::string channel_name;
     std::string topic_id;
     std::vector<zlink_msg_t> buffered_parts;
     size_t next_part_index;
@@ -135,14 +119,12 @@ int stage_recv_sequence (const std::shared_ptr<handle_state_t> &state_,
                          recv_family_t family_,
                          zlink::socket_base_t *source_socket_,
                          const zlink_routing_id_t *source_node_rid_,
-                         const zlink_routing_id_t *source_spot_rid_,
                          uint64_t request_seq_,
                          zlink_msg_t *parts_,
                          size_t part_count_,
                          std::thread::id owner_thread_);
 void set_recv_metadata (recv_sequence_state_t *recv_,
                         const zlink_routing_id_t *source_node_rid_,
-                        const zlink_routing_id_t *source_spot_rid_,
                         uint64_t request_seq_);
 int buffer_recv_parts (recv_sequence_state_t *recv_, zlink_msg_t *parts_, size_t part_count_);
 int take_recv_part (recv_sequence_state_t *recv_,
@@ -153,7 +135,6 @@ int take_recv_part (const std::shared_ptr<handle_state_t> &state_,
                     zlink_part_flag_t *has_more_out_);
 void export_recv_metadata (const std::shared_ptr<handle_state_t> &state_,
                            const zlink_routing_id_t **source_node_rid_out_,
-                           const zlink_routing_id_t **source_spot_rid_out_,
                            uint64_t *request_seq_out_);
 void reset_send_sequence (send_sequence_state_t *state_);
 void reset_recv_sequence (recv_sequence_state_t *state_);

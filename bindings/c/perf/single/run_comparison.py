@@ -8,7 +8,6 @@ import datetime
 import os
 import platform
 import re
-import shutil
 import statistics
 import subprocess
 import sys
@@ -33,7 +32,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
-    "SPOT_PUBSUB",
 ]
 
 PATTERN_TO_BINARY = {
@@ -44,7 +42,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER_REQREP": "perf_dealer_router_reqrep",
     "ROUTER_ROUTER": "perf_router_router",
     "ROUTER_ROUTER_REQREP": "perf_router_router_reqrep",
-    "SPOT_PUBSUB": "perf_spot_pubsub",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -55,7 +52,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-STREAM_TRANSPORT_PATTERNS = {"SPOT_PUBSUB"}
+STREAM_TRANSPORT_PATTERNS = set()
 STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
@@ -398,26 +395,6 @@ def parse_raw_csv_list(value: str, cast_fn=str) -> List:
         except ValueError:
             return []
     return items
-
-
-def is_default_full_matrix(args: argparse.Namespace, patterns: List[str]) -> bool:
-    if args.pattern.upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
-        return False
-    env_transports = env_get("PERF_TRANSPORTS").strip()
-    if env_transports and parse_raw_csv_list(env_transports) != DEFAULT_SOCKET_TRANSPORTS:
-        return False
-    env_msg_sizes = env_get("PERF_MSG_SIZES").strip()
-    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != DEFAULT_MSG_SIZES_STANDARD:
-        return False
-    return list(patterns) == DEFAULT_PATTERNS
-
-
-def copy_successful_full_run_to_baseline(result_file: str) -> str:
-    baseline_dir = os.path.join(PERF_DIR, "baseline")
-    os.makedirs(baseline_dir, exist_ok=True)
-    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
-    shutil.copy2(result_file, baseline_file)
-    return baseline_file
 
 
 def enforce_file_retention(
@@ -1434,9 +1411,6 @@ def main() -> int:
     completion_status = (
         "complete" if expected_result_lines == actual_result_lines else "partial"
     )
-    should_update_baseline = completion_status == "complete" and is_default_full_matrix(
-        args, patterns
-    )
 
     print_effective_options("result", effective_options)
     if any(record.status == "success" for record in combo_results.values()):
@@ -1458,9 +1432,6 @@ def main() -> int:
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
-    if should_update_baseline:
-        baseline_file = copy_successful_full_run_to_baseline(result_file)
-        print(f"Updated baseline file: {baseline_file}")
     if completion_status != "complete":
         return 1
     return 0

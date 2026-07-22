@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(zlink_cpp VERSION 10.6.0 LANGUAGES CXX)
+project(zlink_cpp VERSION 11.0.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -10,51 +10,12 @@ get_filename_component(ZLINK_REPO_ROOT_DIR "${ZLINK_CPP_BINDINGS_DIR}/../.." ABS
 set(ZLINK_CORE_DIR "${ZLINK_REPO_ROOT_DIR}/core" CACHE PATH "Path to zlink core")
 set(ZLINK_CPP_CORE_BUILD_DIR "${ZLINK_REPO_ROOT_DIR}/core/build" CACHE PATH
     "Path to an existing zlink core build directory")
-option(
-  ZLINK_CPP_USE_CORE_BUILD_RUNTIME
-  "Prefer core/build runtime over the bundled C++ native runtime"
-  OFF
-)
+set(ZLINK_CPP_CORE_PACKAGE_PREFIX "" CACHE PATH
+    "Path to an installed Zlink 11 Core package")
 set(ZLINK_CPP_STANDALONE FALSE)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   set(ZLINK_CPP_STANDALONE TRUE)
 endif()
-
-function(zlink_cpp_resolve_native_layout out_dir_var out_lib_var)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-      set(_subdir "linux-aarch64")
-    else()
-      set(_subdir "linux-x86_64")
-    endif()
-    set(_libname "libzlink.so")
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
-      set(_subdir "darwin-aarch64")
-    else()
-      set(_subdir "darwin-x86_64")
-    endif()
-    set(_libname "libzlink.dylib")
-  elseif(WIN32)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64|arm64)$")
-      set(_subdir "windows-aarch64")
-    else()
-      set(_subdir "windows-x86_64")
-    endif()
-    set(_libname "zlink.dll")
-  else()
-    set(_subdir "")
-    set(_libname "")
-  endif()
-
-  if(_subdir)
-    set(${out_dir_var} "${CMAKE_CURRENT_LIST_DIR}/native/${_subdir}" PARENT_SCOPE)
-    set(${out_lib_var} "${CMAKE_CURRENT_LIST_DIR}/native/${_subdir}/${_libname}" PARENT_SCOPE)
-  else()
-    set(${out_dir_var} "" PARENT_SCOPE)
-    set(${out_lib_var} "" PARENT_SCOPE)
-  endif()
-endfunction()
 
 function(zlink_cpp_resolve_core_build_layout out_dir_var out_lib_var)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -98,17 +59,17 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
     return()
   endif()
 
-  zlink_cpp_resolve_native_layout(_native_dir _native_lib)
-
-  if(NOT ZLINK_CPP_USE_CORE_BUILD_RUNTIME AND _native_lib AND EXISTS "${_native_lib}")
-    if(NOT TARGET zlink-native)
-      add_library(zlink-native SHARED IMPORTED GLOBAL)
-      set_target_properties(zlink-native PROPERTIES
-        IMPORTED_LOCATION "${_native_lib}"
-      )
+  if(ZLINK_CPP_CORE_PACKAGE_PREFIX)
+    find_package(zlink 11 CONFIG REQUIRED
+      PATHS "${ZLINK_CPP_CORE_PACKAGE_PREFIX}"
+      NO_DEFAULT_PATH)
+    if(NOT TARGET libzlink)
+      message(FATAL_ERROR "The installed Core package does not export libzlink")
     endif()
-    set(${out_target_var} zlink-native PARENT_SCOPE)
-    set(${out_runtime_dir_var} "${_native_dir}" PARENT_SCOPE)
+    get_target_property(_package_runtime libzlink IMPORTED_LOCATION)
+    get_filename_component(_package_runtime_dir "${_package_runtime}" DIRECTORY)
+    set(${out_target_var} libzlink PARENT_SCOPE)
+    set(${out_runtime_dir_var} "${_package_runtime_dir}" PARENT_SCOPE)
     return()
   endif()
 
@@ -118,6 +79,7 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
       add_library(zlink-core-build-runtime SHARED IMPORTED GLOBAL)
       set_target_properties(zlink-core-build-runtime PROPERTIES
         IMPORTED_LOCATION "${_core_build_lib}"
+        INTERFACE_INCLUDE_DIRECTORIES "${ZLINK_CORE_DIR}/include"
       )
     endif()
     set(${out_target_var} zlink-core-build-runtime PARENT_SCOPE)
@@ -125,22 +87,10 @@ function(zlink_cpp_ensure_core_target out_target_var out_runtime_dir_var)
     return()
   endif()
 
-  if(_native_lib AND EXISTS "${_native_lib}")
-    if(NOT TARGET zlink-native)
-      add_library(zlink-native SHARED IMPORTED GLOBAL)
-      set_target_properties(zlink-native PROPERTIES
-        IMPORTED_LOCATION "${_native_lib}"
-      )
-    endif()
-    set(${out_target_var} zlink-native PARENT_SCOPE)
-    set(${out_runtime_dir_var} "${_native_dir}" PARENT_SCOPE)
-    return()
-  endif()
-
   message(FATAL_ERROR
     "No zlink core runtime found for this platform. "
-    "Expected an existing libzlink target, bundled native runtime "
-    "${_native_lib}, or a core build under ${ZLINK_CPP_CORE_BUILD_DIR}.")
+    "Expected an installed Core 11 package, an existing libzlink target, "
+    "or a targeted source build under ${ZLINK_CPP_CORE_BUILD_DIR}.")
 endfunction()
 
 zlink_cpp_ensure_core_target(ZLINK_CPP_CORE_TARGET ZLINK_CPP_RUNTIME_DIR)
@@ -155,6 +105,9 @@ add_library(zlink_cpp STATIC
   src/Runtime/Eventing/timers.cpp
   src/Runtime/Messaging/message.cpp
   src/Runtime/Messaging/received.cpp
+  src/Runtime/Messaging/reply_operations.cpp
+  src/Runtime/Messaging/request_reply.cpp
+  src/Runtime/Messaging/send_operations.cpp
   src/Runtime/Options/dealer_socket_options.cpp
   src/Runtime/Options/pubsub_socket_options.cpp
   src/Runtime/Options/router_socket_options.cpp
@@ -167,21 +120,11 @@ add_library(zlink_cpp STATIC
   src/Runtime/Sockets/pubsub.cpp
   src/Runtime/Sockets/router.cpp
   src/Runtime/Sockets/stream.cpp
-  src/Runtime/Service/actor.cpp
-  src/Runtime/Service/dispatch.cpp
-  src/Runtime/Service/reply_operations.cpp
-  src/Runtime/Service/request_reply.cpp
-  src/Runtime/Service/send_operations.cpp
-  src/Runtime/Service/spot.cpp
-  src/Runtime/Service/mesh_node.cpp
-  src/Runtime/Service/stream_session.cpp
 )
 add_library(zlink::cpp ALIAS zlink_cpp)
 
 target_include_directories(zlink_cpp
   PUBLIC
-    $<BUILD_INTERFACE:${ZLINK_CORE_DIR}/include>
-    $<BUILD_INTERFACE:${ZLINK_CORE_DIR}/external/boost>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
   PRIVATE
@@ -189,7 +132,7 @@ target_include_directories(zlink_cpp
 )
 target_link_libraries(zlink_cpp PUBLIC
   $<BUILD_INTERFACE:${ZLINK_CPP_CORE_TARGET}>
-  $<INSTALL_INTERFACE:zlink-native>)
+  $<INSTALL_INTERFACE:libzlink>)
 target_compile_features(zlink_cpp PUBLIC cxx_std_20)
 set_target_properties(zlink_cpp PROPERTIES
   EXPORT_NAME cpp
@@ -203,27 +146,6 @@ install(TARGETS zlink_cpp
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-get_target_property(ZLINK_CPP_RUNTIME_LIBRARY
-  ${ZLINK_CPP_CORE_TARGET}
-  IMPORTED_LOCATION)
-if(ZLINK_CPP_RUNTIME_LIBRARY AND EXISTS "${ZLINK_CPP_RUNTIME_LIBRARY}")
-  if(WIN32)
-    install(FILES "${ZLINK_CPP_RUNTIME_LIBRARY}"
-      DESTINATION ${CMAKE_INSTALL_BINDIR})
-  elseif(APPLE)
-    file(GLOB ZLINK_CPP_RUNTIME_LIBRARY_FILES
-      "${ZLINK_CPP_RUNTIME_DIR}/libzlink*.dylib"
-      "${ZLINK_CPP_RUNTIME_DIR}/libzlink*.dylib.*")
-    install(FILES ${ZLINK_CPP_RUNTIME_LIBRARY_FILES}
-      DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  else()
-    file(GLOB ZLINK_CPP_RUNTIME_LIBRARY_FILES
-      "${ZLINK_CPP_RUNTIME_DIR}/libzlink.so"
-      "${ZLINK_CPP_RUNTIME_DIR}/libzlink.so.*")
-    install(FILES ${ZLINK_CPP_RUNTIME_LIBRARY_FILES}
-      DESTINATION ${CMAKE_INSTALL_LIBDIR})
-  endif()
-endif()
 install(DIRECTORY include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp"
@@ -400,10 +322,9 @@ if(ZLINK_CPP_BUILD_TESTS)
     test_cpp_contract_request_reply.cpp
     test_cpp_contract_options.cpp
     test_cpp_contract_monitor.cpp
-    test_cpp_contract_actor_header.cpp
+    test_cpp_contract_raw_capability.cpp
     test_cpp_contract_layout_headers.cpp
     test_cpp_contract_behavior.cpp
-    test_cpp_contract_borrowed_service_parts.cpp
     test_cpp_contract_optimization_guard.cpp
   )
   foreach(test_source IN LISTS ZLINK_CPP_CONTRACT_TEST_SOURCES)
@@ -414,9 +335,6 @@ if(ZLINK_CPP_BUILD_TESTS)
     )
   endforeach()
   target_include_directories(test_cpp_contract_request_reply PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/src
-  )
-  target_include_directories(test_cpp_contract_borrowed_service_parts PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/src
   )
 

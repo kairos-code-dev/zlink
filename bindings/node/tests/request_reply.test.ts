@@ -11,8 +11,6 @@ test('request-reply helpers expose canonical socket accessors', () => {
 
   assert.equal(typeof routerSocket.request, 'function');
   assert.equal(typeof routerSocket.reply, 'function');
-  assert.equal(typeof routerSocket.requestToSpot, 'function');
-  assert.equal(typeof routerSocket.replyToSpot, 'function');
   assert.equal(typeof routerSocket.recv, 'function');
   assert.equal(routerSocket.onReceive, undefined);
   assert.equal(typeof dealerSocket.request, 'function');
@@ -53,36 +51,15 @@ test('router recv and reply still work through the canonical socket surface', ()
   ctx.close();
 });
 
-test('reply helpers reject non-none flags when the core lacks reply flag support', () => {
+test('router reply rejects unsupported non-none flags', () => {
   const ctx = zlink.createContext();
   const routerSocket = zlink.createRouterSocket(ctx);
-  const spotNode = zlink.createSpotNode(ctx);
-  const spot = spotNode.createSpot();
   const routingId = zlink.RoutingId.from(Buffer.from('peer'));
-  const spotRoutingId = zlink.RoutingId.from(Buffer.from('spot'));
 
   assert.throws(
     () => routerSocket.reply(routingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(),
     (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
   );
-  assert.throws(
-    () => routerSocket.replyToSpot(routingId, spotRoutingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(),
-    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
-  );
-  assert.equal(typeof spot.sendToSpot, 'function');
-  assert.equal(typeof spot.replyToSpot, 'function');
-  assert.equal(typeof spot.replyToRouter, 'function');
-  assert.throws(
-    () => spot.replyToSpot(routingId, spotRoutingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(),
-    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
-  );
-  assert.throws(
-    () => spot.replyToRouter(routingId, 1n).message('pong').flags(zlink.SendFlags.DontWait).submit(),
-    (error) => error instanceof zlink.SubmitError && error.result === zlink.SubmitResult.NotSupported
-  );
-
-  spot.close();
-  spotNode.close();
   routerSocket.close();
   ctx.close();
 });

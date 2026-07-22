@@ -116,15 +116,6 @@ Recommended per-test budget:
 - `e2e` binary: target `<= 30s`, hard review above `60s`
 - `regression`: no default budget, but explicit purpose is required
 
-SPOT default note:
-
-- Default SPOT coverage keeps only the fast functional scenarios:
-  `peer_tcp`, `multi_publisher`, `node_child_interop`, `sub_handler_basic`,
-  `recv_handle_isolation`, `node_discovery_interop`, and the reduced
-  `service_introspection` split cases.
-- Large transport matrices, repeated WSS/TLS permutations, and historical
-  first-delivery flakes are intentionally excluded from the default lane.
-
 ## Writing Tests
 
 - Add new internal logic tests under `core/tests/unittest/`.
@@ -146,13 +137,7 @@ SPOT default note:
   are tied to benchmark/source-stack fixtures under `bindings/c/bench/`.
 - `test_thread_safe_scaling_contract` is a split-case wrapper executable only.
   Its top-level CTest entry is intentionally not registered; use the
-  `test_thread_safe_scaling_raw` and `test_thread_safe_scaling_spot` cases
-  instead.
-- `test_spot_node_discovery_direct_and_child_interop` remains in
-  `core/tests/e2e/spot/test_spot_pubsub_scenario.cpp` as the only discovery
-  scenario in the default SPOT set. Larger multi-node/discovery stress cases
-  were removed from the default lane and should return only as targeted
-  regression coverage.
+  `test_thread_safe_scaling_raw` cases instead.
 - heavy process benchmark coverage should not stay in the default lane unless
   it is the single representative smoke for that pattern.
 - `run_thread_safe_contract_stress.sh` repeats the selected thread-safe
@@ -166,12 +151,11 @@ SPOT default note:
   the remaining execution guide. It repeatedly runs `codex exec`, tells Codex
   to continue from the first incomplete guide item, and stops only on exact
   sentinel output (`미적용 사항이 없습니다.` or `사용자 입력 필요: ...`).
-- The stress lane currently covers monitor contract regressions and the
-  representative SPOT monitor/readiness lifecycle cases that are still
+- The stress lane currently covers raw monitor contract regressions that are
   registered in CTest.
-- `run_thread_safe_contract_perf.sh` executes the raw/spot 1/4/16/64 handle
+- `run_thread_safe_contract_perf.sh` executes the raw 1/4/16/64 handle
   scaling contract cases with a configurable acceptance ratio.
 - `run_thread_safe_contract_tsan.sh` configures a dedicated TSan build and
-  runs the same monitor/SPOT thread-safe regression lane against that build
+  runs the same raw monitor thread-safe regression lane against that build
   tree.
 - CURVE/libsodium and GSSAPI are not supported in zlink.

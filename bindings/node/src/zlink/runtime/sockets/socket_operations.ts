@@ -38,7 +38,7 @@ import {
 import type {
   SubscriptionEntry,
   SendOperation,
-} from '../../contracts/service';
+} from '../../contracts/messaging';
 import {
   PublishOperation,
   RuntimeSendOperation,

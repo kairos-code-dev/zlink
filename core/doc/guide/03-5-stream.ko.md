@@ -25,11 +25,6 @@ external raw client  <---- RAW 바이트 스트림 (framing 없음) ---->  STREA
 
 > STREAM은 zlink 내부 소켓(PAIR/PUB/SUB/DEALER/ROUTER)과 직접 호환되지 않는다.
 
-> **client session을 Actor에 연결하기.** STREAM 서버는 mesh Actor의 진입점 역할도
-> 할 수 있다. STREAM socket에 STREAM session service를 붙이고 client session을
-> Actor에 bind하면 session 트래픽이 그 Actor와 이어진다. session-to-Actor 전체 흐름은
-> [Actor 가이드](07-4-actor.ko.md)를 참고한다.
-
 ---
 
 ## 2. 서버 생성/바인드

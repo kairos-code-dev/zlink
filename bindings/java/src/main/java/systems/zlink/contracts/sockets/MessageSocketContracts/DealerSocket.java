@@ -4,8 +4,8 @@ package systems.zlink.contracts.sockets;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.RequestOperation;
-import systems.zlink.contracts.service.spot.SendOperation;
+import systems.zlink.contracts.messaging.RequestOperation;
+import systems.zlink.contracts.messaging.SendOperation;
 
 /** A socket that load-balances sends across its connected peers and can issue routed requests. */
 public interface DealerSocket extends Socket {
@@ -14,7 +14,6 @@ public interface DealerSocket extends Socket {
     void unbind(String endpoint);
     void disconnect(String endpoint);
     void disconnectRid(RoutingId routingId);
-    String getChannelName();
     void setRoutingId(RoutingId rid);
     RoutingId getRoutingId();
     SendOperation send();

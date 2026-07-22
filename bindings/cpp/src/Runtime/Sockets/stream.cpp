@@ -6,7 +6,7 @@
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
 #include <Runtime/Sockets/socket_callback_state.hpp>
-#include <Runtime/Service/spot_state.hpp>
+#include <Runtime/Messaging/operation_state.hpp>
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
 
 namespace zlink
@@ -17,13 +17,13 @@ stream_socket_t::stream_socket_t (context_t &ctx_) :
 {
 }
 
-service::send_operation_t stream_socket_t::send (const routing_id_t &target_rid_)
+send_operation_t stream_socket_t::send (const routing_id_t &target_rid_)
 {
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_routed_send;
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::operation_kind_t::raw_routed_send;
     state_ptr->raw.socket = detail::native_handle (*this);
     state_ptr->raw.target.first_rid = target_rid_;
-    return service::send_operation_t (std::move (state_ptr));
+    return send_operation_t (std::move (state_ptr));
 }
 
 int stream_socket_t::recv (received_t &out_, recv_flags_t flags_)

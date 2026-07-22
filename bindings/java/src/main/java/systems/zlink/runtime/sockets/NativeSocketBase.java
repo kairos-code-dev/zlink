@@ -178,8 +178,6 @@ abstract class NativeSocketBase implements Socket {
         return runtime;
     }
 
-    public void setChannelName(String channelName) { runtime.setChannelName(channelName); }
-
     public CommonSocketOptions options() { return options; }
     public SocketMonitor monitorOpen() { return runtime.monitorOpen(); }
     public SocketMonitor monitorOpen(MonitorEventType... events) { return runtime.monitorOpen(events); }

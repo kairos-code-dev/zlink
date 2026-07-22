@@ -3,7 +3,7 @@
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
 import type { SendOperation } from '../messaging';
-import type { StreamPacketHandler } from '../service';
+import type { StreamPacketHandler } from '../messaging';
 import type { RecvFlags } from './socket_constants';
 import type { StreamSocketOptions } from './socket_options';
 import type { Socket } from './socket';

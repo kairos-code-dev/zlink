@@ -55,7 +55,6 @@ export interface EventingNativeBinding {
     capacity: number,
     timeoutMs: number
   ) => number;
-  spotTimerNew: (spot: NativeHandle) => NativeHandle;
   stopwatchIntermediate: (watch: NativeHandle) => number;
   stopwatchStart: () => NativeHandle;
   stopwatchStop: (watch: NativeHandle) => number;

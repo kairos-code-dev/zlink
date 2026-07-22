@@ -6,7 +6,7 @@
 #include "core/c_api_copy_internal.hpp"
 #include "core/ctx.hpp"
 #include "core/send_internal.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 #include "sockets/common/socket_base.hpp"
 #include "utils/debug_log.hpp"
 #include "utils/sleep.hpp"
@@ -191,7 +191,7 @@ int zlink::socket_base_t::monitor (const char *endpoint_,
         stop_monitor (false);
     else {
         monitor.reset_worker_state ();
-        service_control_runtime_t *runtime = get_ctx ()->service_control_runtime ();
+        control_runtime_t *runtime = get_ctx ()->control_runtime ();
         const uint64_t task_id =
           runtime ? runtime->add_periodic_task (&socket_base_t::monitor_task_main, this, 10, true)
                   : 0;
@@ -532,7 +532,7 @@ zlink::socket_base_t::detach_monitor_socket (bool send_monitor_stopped_event_)
         }
 
         if (monitor.task_id != 0) {
-            service_control_runtime_t *runtime = get_ctx ()->service_control_runtime ();
+            control_runtime_t *runtime = get_ctx ()->control_runtime ();
             if (runtime)
                 (void) runtime->remove_task (monitor.task_id);
         }

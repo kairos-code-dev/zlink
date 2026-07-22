@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import type { BaseSocket, Context, Spot } from '../contracts';
+import type { BaseSocket, Context } from '../contracts';
 import type { RuntimeContext } from './core/context';
 import { NativeHandle } from './handles/native_handle';
 import type { RuntimeBaseSocket } from './sockets';
-import type { RuntimeSpot } from './service';
 
 function assertRuntimeHandle(value: unknown, name: string): asserts value is NativeHandle {
   if (!(value instanceof NativeHandle)) {
@@ -20,11 +19,6 @@ export function asRuntimeContext(ctx: Context): RuntimeContext {
 export function asRuntimeSocket(socket: BaseSocket): RuntimeBaseSocket {
   assertRuntimeHandle(socket, 'socket');
   return socket as unknown as RuntimeBaseSocket;
-}
-
-export function asRuntimeSpot(spot: Spot): RuntimeSpot {
-  assertRuntimeHandle(spot, 'spot');
-  return spot as unknown as RuntimeSpot;
 }
 
 export function asPublicContract<T>(value: unknown): T {

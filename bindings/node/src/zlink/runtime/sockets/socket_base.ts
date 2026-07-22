@@ -14,7 +14,7 @@ import {
 import { validateCString } from '../options/validation';
 import { RoutingId } from '../../contracts';
 import { type MonitorEventType } from '../../contracts/eventing';
-import type { SocketSendReadyHandler } from '../../contracts/service';
+import type { SocketSendReadyHandler } from '../../contracts/messaging';
 import { normalizeRoutingId } from '../core/routing_id';
 import { MonitorSocket } from '../eventing/monitor_socket';
 
@@ -103,16 +103,6 @@ export class SocketBase extends NativeHandle {
     });
     this._native = null;
   }
-}
-
-export function configureSocketChannelName(socket: SocketBase, channelName: string): void {
-  const normalized = validateCString(channelName, 'channelName', Number.MAX_SAFE_INTEGER);
-  configCall('channel name set failed', () => {
-    requireNative().socketSetChannelName(
-      getNativeHandle(socket),
-      normalized
-    );
-  });
 }
 
 export class ConnectableSocket extends SocketBase {

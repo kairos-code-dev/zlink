@@ -52,7 +52,7 @@ class xsub_t : public socket_base_t
     bool xhas_in () ZLINK_FINAL;
     void xdispatch_io () ZLINK_OVERRIDE;
     void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
-    int sub_dispatch_start (spot_sub_io_handler_fn callback_, void *userdata_) ZLINK_OVERRIDE;
+    int sub_dispatch_start (sub_io_handler_fn callback_, void *userdata_) ZLINK_OVERRIDE;
     int sub_dispatch_stop () ZLINK_OVERRIDE;
     bool sub_dispatch_active () const ZLINK_OVERRIDE;
     int xsocket_msg_dispatch (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
@@ -116,7 +116,7 @@ class xsub_t : public socket_base_t
     std::atomic<bool> _has_empty_subscription;
 
     std::atomic<bool> _dispatch_active;
-    std::atomic<spot_sub_io_handler_fn> _dispatch_callback;
+    std::atomic<sub_io_handler_fn> _dispatch_callback;
     std::atomic<void *> _dispatch_userdata;
     std::atomic<uint32_t> _dispatch_inflight;
     std::atomic<bool> _dispatch_pending;

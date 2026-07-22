@@ -16,12 +16,6 @@
 #include <zlink/common.h>
 #include <zlink/core/api.h>
 #include <zlink/message/api.h>
-#include <zlink/service/common.h>
-#include <zlink/service/dispatch.h>
-#include <zlink/service/mesh_node.h>
-#include <zlink/service/spot.h>
-#include <zlink/service/actor.h>
-#include <zlink/service/stream_session.h>
 #include <zlink/socket/api.h>
 #include <zlink/eventing/api.h>
 

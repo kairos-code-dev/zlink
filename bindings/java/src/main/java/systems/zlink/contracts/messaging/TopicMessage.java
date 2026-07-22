@@ -5,13 +5,12 @@ package systems.zlink.contracts.messaging;
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.Spot;
 import systems.zlink.runtime.nativeapi.ContractAccess;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** Topic-aware recv result used by raw SUB and unified Spot subscribe paths. */
+/** Topic-aware recv result used by raw subscription paths. */
 public final class TopicMessage implements AutoCloseable {
     private RoutingId routingId;
     private String topic;

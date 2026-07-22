@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System.ComponentModel;
-using System.Text;
 using Systems.Zlink.Runtime.Native;
 using Systems.Zlink.Runtime.Sockets.Internal;
 
@@ -49,11 +48,6 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
         {
             throw ZlinkException.CreateConfigException(ex.NativeErrno);
         }
-    }
-
-    public void SetChannelName(string channelName)
-    {
-        SetChannelNameCore(channelName);
     }
 
     public void SetTlsServer(string certPath, string keyPath,
@@ -178,28 +172,5 @@ internal abstract class SocketBase : ISocket, ISocketOptionEndpoint
     }
 
     SocketType ISocketOptionEndpoint.SocketType => Kernel.Type;
-
-    internal void SetChannelNameCore(string channelName)
-    {
-        BoundaryValidation.ValidateFixedUtf8(channelName, nameof(channelName));
-        var rc = NativeMethods.zlink_socket_set_channel_name(Handle, channelName);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-    }
-
-    internal string GetChannelNameCore()
-    {
-        var buffer = new byte[256];
-        var rc = NativeMethods.zlink_socket_get_channel_name(Handle, buffer,
-            (nuint)buffer.Length, out var length);
-        if (rc != 0)
-            throw ZlinkException.CreateConfigException(NativeMethods.zlink_errno());
-        return Encoding.UTF8.GetString(buffer, 0, checked((int)length));
-    }
-
-    internal string GetChannelName()
-    {
-        return GetChannelNameCore();
-    }
 
 }

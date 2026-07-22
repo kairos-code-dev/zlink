@@ -138,7 +138,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_basic, handle.socket,
-          expose_source_rid ? &source_rid : NULL, NULL, 0, parts, part_count,
+          expose_source_rid ? &source_rid : NULL, 0, parts, part_count,
           std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
@@ -156,8 +156,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
             return zlink::recv_result_internal::from_errno (errno);
         }
         if (source_rid_out_) {
-            zlink::part_helper_internal::export_recv_metadata (helper_state, source_rid_out_, NULL,
-                                                               NULL);
+            zlink::part_helper_internal::export_recv_metadata (helper_state, source_rid_out_, NULL);
         }
         zlink::part_helper_internal::complete_recv_step (helper_state, *has_more_out_);
         return ZLINK_RECV_OK;
@@ -222,7 +221,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_basic, handle.socket, &source_rid,
-          NULL, 0, parts, part_count, std::this_thread::get_id ());
+          0, parts, part_count, std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
@@ -247,8 +246,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
     }
 
     if (source_rid_out_) {
-        zlink::part_helper_internal::export_recv_metadata (helper_state, source_rid_out_, NULL,
-                                                           NULL);
+        zlink::part_helper_internal::export_recv_metadata (helper_state, source_rid_out_, NULL);
     }
     zlink::part_helper_internal::complete_recv_step (helper_state, *has_more_out_);
     return ZLINK_RECV_OK;

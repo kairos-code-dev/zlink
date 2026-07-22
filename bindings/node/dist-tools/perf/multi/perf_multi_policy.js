@@ -18,18 +18,6 @@ const MULTI_PATTERN_RUNNERS = {
         server: 'perf_multi_pubsub_server.js',
         client: 'perf_multi_pubsub_client.js'
     },
-    MULTI_SPOT: {
-        server: 'perf_multi_spot_server.js',
-        client: 'perf_multi_spot_client.js'
-    },
-    MULTI_SPOT_REQREP: {
-        server: 'perf_multi_spot_reqrep_server.js',
-        client: 'perf_multi_spot_reqrep_client.js'
-    },
-    MULTI_SPOT_SENDSEND: {
-        server: 'perf_multi_spot_sendsend_server.js',
-        client: 'perf_multi_spot_sendsend_client.js'
-    },
     MULTI_STREAM: {
         server: 'perf_multi_stream_server.js',
         client: null
@@ -40,9 +28,6 @@ const POLICY_TRANSPORTS = {
     MULTI_DEALER_ROUTER: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_ROUTER_ROUTER: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_PUBSUB: ['tcp', 'tls', 'ws', 'wss'],
-    MULTI_SPOT: ['tcp', 'tls', 'ws', 'wss'],
-    MULTI_SPOT_REQREP: ['tcp', 'tls', 'ws', 'wss'],
-    MULTI_SPOT_SENDSEND: ['tcp', 'tls', 'ws', 'wss'],
     MULTI_STREAM: ['tcp', 'tls', 'ws', 'wss']
 };
 function patternMsgSizes(patternName, requestedSizes) {

@@ -148,15 +148,6 @@ void test_metadata_add_basic_properties ()
     TEST_ASSERT_EQUAL_STRING ("RID", out["Routing-Id"].c_str ());
 }
 
-void test_effective_ttl ()
-{
-    TEST_ASSERT_EQUAL_UINT16 (30, zlink::zmp_effective_ttl_ds (0, 30));
-    TEST_ASSERT_EQUAL_UINT16 (20, zlink::zmp_effective_ttl_ds (20, 30));
-    TEST_ASSERT_EQUAL_UINT16 (20, zlink::zmp_effective_ttl_ds (50, 20));
-    TEST_ASSERT_EQUAL_UINT16 (0, zlink::zmp_effective_ttl_ds (50, 0));
-    TEST_ASSERT_EQUAL_UINT16 (0, zlink::zmp_effective_ttl_ds (0, 0));
-}
-
 void test_shared_message_allocator_size_checks_overflow ()
 {
     std::size_t allocation_size = 0;
@@ -193,7 +184,6 @@ int main (void)
     RUN_TEST (test_metadata_parse_valid);
     RUN_TEST (test_metadata_parse_invalid);
     RUN_TEST (test_metadata_add_basic_properties);
-    RUN_TEST (test_effective_ttl);
     RUN_TEST (test_shared_message_allocator_size_checks_overflow);
 
     zlink::shutdown_network ();

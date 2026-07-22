@@ -347,9 +347,6 @@ allowed = {
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
     "PUBSUB",
-    "SPOT",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM",
 }
 
@@ -357,8 +354,7 @@ if raw == "ALL":
     print(
         "MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,"
         "MULTI_DEALER_ROUTER_REQREP,MULTI_ROUTER_ROUTER_REQREP,"
-        "MULTI_PUBSUB,MULTI_SPOT,MULTI_SPOT_REQREP,"
-        "MULTI_SPOT_SENDSEND,MULTI_STREAM"
+        "MULTI_PUBSUB,MULTI_STREAM"
     )
     raise SystemExit(0)
 
@@ -476,7 +472,7 @@ default_clients_for_pattern() {
 pattern_uses_control_pipe() {
   local pattern="${1:-}"
   case "${pattern}" in
-    MULTI_DEALER_DEALER|MULTI_PUBSUB|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND|MULTI_STREAM)
+    MULTI_DEALER_DEALER|MULTI_PUBSUB|MULTI_STREAM)
       return 0
       ;;
     *)
@@ -763,8 +759,6 @@ echo_patterns = {
     "MULTI_ROUTER_ROUTER",
     "MULTI_ROUTER_ROUTER_REQREP",
     "MULTI_STREAM",
-    "MULTI_SPOT_REQREP",
-    "MULTI_SPOT_SENDSEND",
 }
 metrics = {}
 size = ""
@@ -1886,7 +1880,7 @@ for (( run_index=1; run_index<=RUNS; run_index++ )); do
     IFS=',' read -r -a msg_sizes <<< "${pattern_msg_sizes}"
     pattern_kind="one-way"
     case "${pattern}" in
-      MULTI_DEALER_ROUTER|MULTI_DEALER_ROUTER_REQREP|MULTI_ROUTER_ROUTER|MULTI_ROUTER_ROUTER_REQREP|MULTI_STREAM|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND)
+      MULTI_DEALER_ROUTER|MULTI_DEALER_ROUTER_REQREP|MULTI_ROUTER_ROUTER|MULTI_ROUTER_ROUTER_REQREP|MULTI_STREAM)
         pattern_kind="echo"
         ;;
     esac

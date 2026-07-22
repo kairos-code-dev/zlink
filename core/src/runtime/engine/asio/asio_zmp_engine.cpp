@@ -37,7 +37,6 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
     _hello_send_size (0),
     _peer_routing_id_size (0),
     _subscription_required (false),
-    _heartbeat_timeout (0),
     _last_error_code (0)
 {
     init_zmp_engine ();
@@ -58,7 +57,6 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (fd_t fd_,
     _hello_send_size (0),
     _peer_routing_id_size (0),
     _subscription_required (false),
-    _heartbeat_timeout (0),
     _last_error_code (0)
 {
     init_zmp_engine ();
@@ -82,7 +80,6 @@ zlink::asio_zmp_engine_t::asio_zmp_engine_t (
     _hello_send_size (0),
     _peer_routing_id_size (0),
     _subscription_required (false),
-    _heartbeat_timeout (0),
     _last_error_code (0),
     _ssl_context (std::move (ssl_context_))
 {
@@ -101,12 +98,6 @@ void zlink::asio_zmp_engine_t::init_zmp_engine ()
     _process_msg =
       static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::decode_and_push);
 
-    if (_options.heartbeat_interval > 0) {
-        _heartbeat_timeout = _options.heartbeat_timeout;
-        if (_heartbeat_timeout == -1)
-            _heartbeat_timeout = _options.heartbeat_interval;
-    }
-
     memset (_hello_recv, 0, sizeof (_hello_recv));
     memset (_hello_send, 0, sizeof (_hello_send));
     memset (_peer_routing_id, 0, sizeof (_peer_routing_id));
@@ -114,7 +105,6 @@ void zlink::asio_zmp_engine_t::init_zmp_engine ()
     _ready_send.clear ();
     _ready_sent = false;
     _ready_received = false;
-    _heartbeat_ctx.clear ();
     _last_error_code = 0;
     _last_error_reason.clear ();
 }
@@ -235,11 +225,6 @@ bool zlink::asio_zmp_engine_t::handshake ()
 
     if (!_ready_received)
         return false;
-
-    if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
-        add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = true;
-    }
 
     if (_has_handshake_stage) {
         session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
@@ -407,27 +392,8 @@ int zlink::asio_zmp_engine_t::process_error_message (msg_t *msg_)
     return -1;
 }
 
-int zlink::asio_zmp_engine_t::produce_pong_message (msg_t *msg_)
-{
-    zmp_control::build_heartbeat_ack (msg_, _heartbeat_ctx);
-    _heartbeat_ctx.clear ();
-    _next_msg =
-      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::pull_msg_from_session);
-    return 0;
-}
-
 int zlink::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
 {
-    if (_has_timeout_timer) {
-        _has_timeout_timer = false;
-        cancel_timer (heartbeat_timeout_timer_id);
-    }
-
-    if (_has_ttl_timer) {
-        _has_ttl_timer = false;
-        cancel_timer (heartbeat_ttl_timer_id);
-    }
-
     const unsigned char msg_flags = msg_->flags ();
     if (msg_flags & msg_t::command) {
         const int rc = process_command_message (msg_);
@@ -464,8 +430,6 @@ int zlink::asio_zmp_engine_t::process_command_message (msg_t *msg_)
 {
     const char *error_reason = NULL;
     switch (zmp_control::classify_command_message (msg_, _ready_received, &error_reason)) {
-        case zmp_control::command_message_heartbeat:
-            return process_heartbeat_message (msg_);
         case zmp_control::command_message_ready:
             return process_ready_message (msg_);
         case zmp_control::command_message_error:
@@ -477,45 +441,6 @@ int zlink::asio_zmp_engine_t::process_command_message (msg_t *msg_)
             set_last_error (zmp_error_internal, error_reason ? error_reason : "invalid control");
             return -1;
     }
-}
-
-int zlink::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
-{
-    zmp_control::build_heartbeat_ping (msg_, static_cast<uint16_t> (_options.heartbeat_ttl));
-
-    _next_msg =
-      static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::pull_msg_from_session);
-    if (!_has_timeout_timer && _heartbeat_timeout > 0) {
-        add_timer (_heartbeat_timeout, heartbeat_timeout_timer_id);
-        _has_timeout_timer = true;
-    }
-
-    return 0;
-}
-
-int zlink::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
-{
-    zmp_control::heartbeat_action_t action;
-    if (zmp_control::parse_heartbeat (msg_, static_cast<uint16_t> (_options.heartbeat_ttl), &action)
-        != 0) {
-        set_last_error (zmp_error_internal, action.error_reason);
-        return -1;
-    }
-
-    if (action.kind == zmp_control::heartbeat_action_send_ack) {
-        if (!_has_ttl_timer && action.ttl_ds > 0) {
-            add_timer (static_cast<int> (action.ttl_ds) * 100, heartbeat_ttl_timer_id);
-            _has_ttl_timer = true;
-        }
-
-        _heartbeat_ctx.assign (action.ctx, action.ctx + action.ctx_len);
-        _next_msg =
-          static_cast<int (asio_engine_t::*) (msg_t *)> (&asio_zmp_engine_t::produce_pong_message);
-        restart_output ();
-        return 0;
-    }
-
-    return 0;
 }
 
 bool zlink::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,

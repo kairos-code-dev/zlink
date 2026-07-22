@@ -30,14 +30,10 @@ internal static class SocketInterop
     {
         if (socket == null)
             throw new ArgumentNullException(paramName);
-        return socket switch
-        {
-            SocketBase concrete => concrete.Handle,
-            Spot spot => spot.Handle,
-            _ => throw new ArgumentException(
-                "socket must be a concrete zlink socket or spot instance",
-                paramName)
-        };
+        if (socket is not SocketBase concrete)
+            throw new ArgumentException(
+                "socket must be a concrete zlink socket instance", paramName);
+        return concrete.Handle;
     }
 
     internal static DealerSocket RequireDealerSocket(IDealerSocket socket,
@@ -72,17 +68,6 @@ internal static class SocketInterop
         if (socket is not PubSocket concrete)
             throw new ArgumentException(
                 "socket must be a concrete zlink pub socket instance",
-                paramName);
-        return concrete;
-    }
-
-    internal static Spot RequireSpot(ISpot spot, string paramName)
-    {
-        if (spot == null)
-            throw new ArgumentNullException(paramName);
-        if (spot is not Spot concrete)
-            throw new ArgumentException(
-                "spot must be a concrete zlink spot instance",
                 paramName);
         return concrete;
     }

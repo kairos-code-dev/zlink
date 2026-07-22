@@ -211,10 +211,10 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         receiveCallbackArena = null;
     }
 
-    // zlink_socket_msg_handler_fn upcall. Core 10.0.0 delivers callback receive
+    // zlink_socket_msg_handler_fn upcall. The Core raw API delivers callback receive
     // only for raw STREAM subjects, which carry no request/reply metadata, so
     // the callback shape is (source_rid, parts, part_count, userdata) with no
-    // spot rid and no request sequence. Ownership of the parts vector transfers
+    // request sequence. Ownership of the parts vector transfers
     // to us; snapshotReceive materialises and closes it exactly once.
     private void handleReceiveCallback(MemorySegment sourceRid,
                                        MemorySegment parts,
@@ -256,9 +256,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     private void dispatchReceive(SocketMessageHandler handler,
                                  CallbackReceivedData snapshot) {
         RoutingId nodeRid = snapshot.nodeRid();
-        // STREAM callback receive has no spot rid, request sequence, or reply
+        // STREAM callback receive has no request sequence or reply
         // channel; deliver a plain routed Received keyed only by the source rid.
-        try (Received received = InternalAccess.received(nodeRid, null,
+        try (Received received = InternalAccess.received(nodeRid,
             snapshot.parts(), true, 0L, false, null)) {
             handler.onMessage(received);
         } catch (RuntimeException ex) {
@@ -269,7 +269,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     /**
      * Variant of {@link #recvDirectOnceImpl} for caller-provided storage.
      *
-     * <p>HOT PATH: single-part routed messages without spot/request metadata
+     * <p>HOT PATH: single-part routed messages without request metadata
      * populate {@code target} via {@link Received#populateRoutedSinglePart},
      * avoiding the fresh {@link Received} allocation used by the fallback path.
      * Other paths use the existing receive-and-adopt flow.
@@ -307,10 +307,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 // Routed echo hot path: populate caller storage in place.
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = null;
                 firstPartConsumed = true;
                 ContractAccess.receivedPopulateRoutedSinglePart(target,
-                    nodeRidBytes, spotRidBytes, firstPart, 0L, false, null,
+                    nodeRidBytes, firstPart, 0L, false, null,
                     null);
                 if (nodeRidBytes != null) {
                     socket.attachSendSender(target);
@@ -343,10 +342,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         Received fresh;
         if (!hasMore) {
             RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
-            RoutingId spotRid = null;
-            fresh = InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
+            fresh = InternalAccess.receivedLazy(nodeRid, firstPart,
                 null, requestSequence, true,
-                replySender(nodeRid, spotRid, requestSequence),
+                replySender(nodeRid, requestSequence),
                 null);
         } else {
             ArrayList<Message> parts = new ArrayList<>();
@@ -356,16 +354,14 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (requestSequence == 0L) {
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = null;
-                fresh = InternalAccess.received(nodeRidBytes, spotRidBytes,
-                    partsArray, true, 0L, false, null, null);
+                fresh = InternalAccess.received(nodeRidBytes, partsArray,
+                    true, 0L, false, null, null);
             } else {
                 RoutingId nodeRid =
                     NativeRoutingIds.readOut(sourceNodeRidOut);
-                RoutingId spotRid = null;
-                fresh = InternalAccess.received(nodeRid, spotRid, partsArray,
+                fresh = InternalAccess.received(nodeRid, partsArray,
                     true, requestSequence, true,
-                    replySender(nodeRid, spotRid, requestSequence),
+                    replySender(nodeRid, requestSequence),
                     null);
             }
         }
@@ -418,17 +414,15 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 if (requestSequence == 0L) {
                     byte[] nodeRidBytes =
                         NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                    byte[] spotRidBytes = null;
-                    return InternalAccess.receivedLazy(nodeRidBytes, spotRidBytes,
-                        firstPart, null,
+                    return InternalAccess.receivedLazy(nodeRidBytes, firstPart,
+                        null,
                         0L, false, null, null);
                 }
                 RoutingId nodeRid =
                     NativeRoutingIds.readOut(sourceNodeRidOut);
-                RoutingId spotRid = null;
-                return InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
+                return InternalAccess.receivedLazy(nodeRid, firstPart,
                     null, requestSequence, true,
-                    replySender(nodeRid, spotRid, requestSequence),
+                    replySender(nodeRid, requestSequence),
                     null);
             }
 
@@ -440,15 +434,13 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (requestSequence == 0L) {
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes = null;
-                return InternalAccess.received(nodeRidBytes, spotRidBytes,
-                    partsArray, true, 0L, false, null, null);
+                return InternalAccess.received(nodeRidBytes, partsArray, true,
+                    0L, false, null, null);
             }
             RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
-            RoutingId spotRid = null;
-            return InternalAccess.received(nodeRid, spotRid, partsArray, true,
+            return InternalAccess.received(nodeRid, partsArray, true,
                 requestSequence, true,
-                replySender(nodeRid, spotRid, requestSequence),
+                replySender(nodeRid, requestSequence),
                 null);
         } finally {
             if (!firstPartConsumed) {
@@ -498,7 +490,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     }
 
     private BiConsumer<java.util.List<Message>, SendFlags> replySender(
-      RoutingId nodeRid, RoutingId spotRid, long requestSequence) {
+      RoutingId nodeRid, long requestSequence) {
         if (requestSequence == 0L) {
             return null;
         }

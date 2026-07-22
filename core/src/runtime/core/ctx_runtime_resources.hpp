@@ -12,7 +12,7 @@ class ctx_socket_registry_t;
 class mailbox_t;
 class object_t;
 class reaper_t;
-class service_control_runtime_t;
+class control_runtime_t;
 
 class ctx_runtime_resources_t
 {
@@ -26,7 +26,7 @@ class ctx_runtime_resources_t
                        int io_thread_count_);
     void teardown (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_);
 
-    service_control_runtime_t *service_control_runtime () const;
+    control_runtime_t *control_runtime () const;
     object_t *reaper_object () const;
     void stop_reaper ();
 
@@ -36,13 +36,13 @@ class ctx_runtime_resources_t
   private:
     void cleanup_failed_start_locked (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_);
     bool start_reaper_locked (ctx_t &ctx_, ctx_socket_registry_t &socket_registry_);
-    bool start_service_runtime_locked (ctx_t &ctx_);
+    bool start_control_runtime_locked (ctx_t &ctx_);
     bool start_io_threads_locked (ctx_t &ctx_,
                                   ctx_socket_registry_t &socket_registry_,
                                   int io_thread_count_);
 
     reaper_t *_reaper;
-    service_control_runtime_t *_service_control_runtime;
+    control_runtime_t *_control_runtime;
     ctx_io_thread_registry_t _io_thread_registry;
 };
 }

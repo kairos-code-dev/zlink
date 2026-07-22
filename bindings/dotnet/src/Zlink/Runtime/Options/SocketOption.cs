@@ -36,9 +36,6 @@ internal enum SocketOption
     HandshakeIvl = 0x301D,
     Blocky = 0x301E,
     InvertMatching = 0x3020,
-    HeartbeatIvl = 0x3021,
-    HeartbeatTtl = 0x3022,
-    HeartbeatTimeout = 0x3023,
     ConnectTimeout = 0x3024,
     TcpMaxRt = 0x3025,
     MulticastMaxTpdu = 0x3026,
@@ -56,8 +53,6 @@ internal enum SocketOption
     RouteValueMaxSize = 0x3032,
     RidDuplicatePolicy = 0x3033,
     AutoHwmMsgUnitBytes = 0x3034,
-    DiscoverySpotOwnerSync = 0x3035,
-    DiscoveryActorRouteSync = 0x3036,
     SubmitRetryMode = 0x3037,
     SubmitRetryTimeout = 0x3038,
     SubmitRetryAttempts = 0x3039,
@@ -80,9 +75,4 @@ internal enum SocketOption
     StreamNotify = 0x3501,
     SubTopicsCount = 0x3400,
     UseFd = 0x7F000005
-}
-
-internal enum SpotOption
-{
-    RequestTimeout = 0x3701
 }

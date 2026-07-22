@@ -50,7 +50,7 @@ void format_routing_id_debug (const zlink_routing_id_t *rid_, char *buf_, size_t
 int zlink::router_t::xsend (msg_t *msg_)
 {
     // Public send enters this path through socket_public_send_scope_t. Do not
-    // add lock_socket_msg_dispatch() here: SPOT route echo hot paths call
+    // add lock_socket_msg_dispatch() here: routed echo hot paths call
     // router send for every small message, and a second socket-level mutex
     // serializes those sends. Pipe teardown still updates router pipe state
     // under lock_socket_msg_dispatch() in xpipe_terminated().
@@ -74,12 +74,6 @@ int zlink::router_t::xsend (msg_t *msg_)
                 _current_out = out_pipe->pipe;
                 _current_out_connection_id =
                   _current_out->get_transport_connection_id ();
-                if (_current_out_connection_id == 0) {
-                    _current_out = NULL;
-                    _more_out = false;
-                    errno = EHOSTUNREACH;
-                    return -1;
-                }
 
                 const pipe_write_status_t write_status = _current_out->check_write_status ();
                 if (write_status != pipe_write_ready) {
@@ -194,12 +188,6 @@ int zlink::router_t::xsend_routed (const zlink_routing_id_t *target_rid_,
         _current_out = out_pipe->pipe;
         _current_out_connection_id =
           _current_out->get_transport_connection_id ();
-        if (_current_out_connection_id == 0) {
-            _current_out = NULL;
-            _more_out = false;
-            errno = EHOSTUNREACH;
-            return -1;
-        }
         if (expected_connection_id_ != 0
             && _current_out_connection_id != expected_connection_id_) {
             _current_out = NULL;

@@ -8,12 +8,8 @@
 #endif
 
 #include "api/monitoring/timer_api_internal.hpp"
-#include "api/mesh/mesh_api_internal.hpp"
-
-timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_node_) :
+timer_handle_t::timer_handle_t () :
     tag (0x74696d72),
-    backend (backend_),
-    owner_node (owner_node_),
     scheduler (NULL),
     destroyed (false),
     running (false),
@@ -40,13 +36,7 @@ scheduler_state_t::scheduler_state_t () :
 
 namespace
 {
-// Keep the two scheduler families separate.
-// Generic timers and Spot timers may share utility code, but they must not
-// collapse into a single backend because their ownership and scaling model are
-// different.
 std::shared_ptr<scheduler_state_t> g_global_scheduler (new scheduler_state_t ());
-std::mutex g_spot_scheduler_map_mutex;
-spot_scheduler_map_t g_spot_schedulers;
 }
 
 uint64_t monotonic_now_ns ()
@@ -120,7 +110,7 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 
             if (handler) {
                 timer_->receive_callback_active = true;
-            } else if (zlink::mesh::spot_timer_tick_allowed (timer_)) {
+            } else {
                 timer_->fired_counts.push_back (fire_count);
                 ensure_timer_signal_locked (timer_);
                 timer_->recv_cv.notify_one ();
@@ -139,15 +129,8 @@ void scheduler_fire_timer (timer_handle_t *timer_)
         }
     }
 
-    if (handler) {
-        //  A Spot-owned timer's handler is mutually exclusive with the owning
-        //  Spot's application claim handler and is skipped entirely once the
-        //  owning generation ended.
-        if (zlink::mesh::spot_timer_enter_turn (timer_)) {
-            handler (timer_, fire_count, handler_userdata);
-            zlink::mesh::spot_timer_leave_turn (timer_);
-        }
-    }
+    if (handler)
+        handler (timer_, fire_count, handler_userdata);
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);
@@ -228,25 +211,10 @@ void ensure_scheduler_started (const std::shared_ptr<scheduler_state_t> &schedul
     scheduler_->started = true;
 }
 
-std::shared_ptr<scheduler_state_t> resolve_spot_scheduler (void *owner_node_)
-{
-    std::lock_guard<std::mutex> lock (g_spot_scheduler_map_mutex);
-    spot_scheduler_map_t::iterator it = g_spot_schedulers.find (owner_node_);
-    if (it != g_spot_schedulers.end ())
-        return it->second;
-
-    std::shared_ptr<scheduler_state_t> scheduler (new scheduler_state_t ());
-    g_spot_schedulers[owner_node_] = scheduler;
-    return scheduler;
-}
-
 std::shared_ptr<scheduler_state_t> scheduler_for_timer (timer_handle_t *timer_)
 {
     if (!timer_)
         return std::shared_ptr<scheduler_state_t> ();
-
-    if (timer_->backend == timer_handle_t::backend_spot_node_scheduler)
-        return resolve_spot_scheduler (timer_->owner_node);
     return g_global_scheduler;
 }
 
@@ -265,21 +233,4 @@ void stop_timer_scheduler (timer_handle_t *timer_)
     scheduler_lock.unlock ();
     scheduler->cv.notify_all ();
     timer_->recv_cv.notify_all ();
-}
-
-void zlink_timer_release_spot_node_scheduler (void *owner_node_)
-{
-    std::shared_ptr<scheduler_state_t> scheduler;
-    {
-        std::lock_guard<std::mutex> lock (g_spot_scheduler_map_mutex);
-        spot_scheduler_map_t::iterator it = g_spot_schedulers.find (owner_node_);
-        if (it == g_spot_schedulers.end ())
-            return;
-        scheduler = it->second;
-        g_spot_schedulers.erase (it);
-    }
-    std::lock_guard<std::mutex> lock (scheduler->mutex);
-    if (scheduler->active_timers == 0 && scheduler->schedule.empty ())
-        scheduler->shutdown_requested = true;
-    scheduler->cv.notify_all ();
 }

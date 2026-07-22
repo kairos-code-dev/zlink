@@ -511,7 +511,7 @@ int zlink::xsub_t::dispatch_message (msg_t *msg_, pipe_t *pipe_)
         }
     }
 
-    spot_sub_io_handler_fn callback = _dispatch_callback.load (std::memory_order_acquire);
+    sub_io_handler_fn callback = _dispatch_callback.load (std::memory_order_acquire);
     if (!_dispatch_active.load (std::memory_order_acquire) || !callback) {
         close_dispatch_frames (&_dispatch_parts);
         return 0;

@@ -18,7 +18,7 @@
 #include "core/io_thread.hpp"
 #include "core/reaper.hpp"
 #include "core/pipe.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 #include "utils/err.hpp"
 #include "utils/heap_owner.hpp"
 #include "utils/random.hpp"
@@ -105,9 +105,9 @@ bool zlink::ctx_t::valid () const
     return _term_mailbox.valid ();
 }
 
-zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
+zlink::control_runtime_t *zlink::ctx_t::control_runtime ()
 {
-    return ensure_service_runtime ();
+    return ensure_control_runtime ();
 }
 
 void zlink::ctx_t::start_thread (thread_t &thread_,

@@ -13,7 +13,7 @@ import {
   MonitorEvent,
   type MonitorStatus,
 } from '../../contracts/eventing';
-import type { SocketMonitorHandler } from '../../contracts/service';
+import type { SocketMonitorHandler } from '../../contracts/messaging';
 import { createMonitorEvent } from './monitor_event_state';
 import { materializeMonitorStatus } from './monitor_status';
 import type { MonitorEventValueRaw, MonitorStatusRaw } from './monitor_raw';

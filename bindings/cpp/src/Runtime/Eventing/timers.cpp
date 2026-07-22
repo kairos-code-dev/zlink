@@ -3,7 +3,6 @@
 #include <zlink/Contracts/Eventing/timers.hpp>
 
 #include <Runtime/Eventing/timer_access.hpp>
-#include <Runtime/Service/spot_access.hpp>
 
 #include <zlink.h>
 
@@ -58,20 +57,6 @@ timer_t &timer_t::operator= (timer_t &&other) noexcept
     }
     _impl = std::move (other._impl);
     return *this;
-}
-
-timer_t timer_t::from_spot (service::spot_t &spot_)
-{
-    timer_t out;
-    if (out._impl->handle) {
-        void *tmp = out._impl->handle;
-        (void) zlink_timer_destroy (&tmp);
-        out._impl->handle = nullptr;
-    }
-    out._impl->handle = zlink_spot_timer_new (zlink::detail::native_handle (spot_));
-    if (!out._impl->handle)
-        throw config_error_t (config_result_t::invalid_handle, zlink_errno ());
-    return out;
 }
 
 bool timer_t::valid () const noexcept

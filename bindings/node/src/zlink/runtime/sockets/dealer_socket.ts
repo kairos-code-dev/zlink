@@ -7,7 +7,6 @@ import {
   MessageSocket,
   RuntimeRequestOperation,
 } from './socket_operations';
-import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall } from '../errors/native_errors';
 import { getNativeHandle } from '../handles/native_handle';
@@ -16,19 +15,11 @@ import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
 import { RoutingId, type Message, type MessageLike } from '../../contracts';
 import { SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
-import type { RequestCallback, RequestOperation } from '../../contracts/service';
+import type { RequestCallback, RequestOperation } from '../../contracts/messaging';
 
 export class DealerSocket extends MessageSocket {
   readonly options: DealerSocketOptions;
   constructor(ctx: Context) { super(ctx, NativeSocketType.DEALER); this.options = DealerSocketOptions.create(this); }
-  getChannelName(): string {
-    return configCall('channel name get failed', () =>
-      requireNative().socketGetChannelName(getNativeHandle(this)) as string
-    );
-  }
-  setChannelName(channelName: string): void {
-    configureSocketChannelName(this, channelName);
-  }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {

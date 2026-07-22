@@ -29,7 +29,6 @@ public sealed partial class Received : IDisposable
         _sendHandler = null;
         _sendKernel = null;
         _sendRoutingIdSnapshot = default;
-        _sendSpotRidSnapshot = default;
         MessageType = ReceivedMessageType.Raw;
         _closed = false;
     }
@@ -53,8 +52,7 @@ public sealed partial class Received : IDisposable
         ResetForReuse();
         _parts = MultipartMessageCollection.FromMessages(parts);
         MessageType = messageType;
-        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
-            replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
     }
 
     internal void PopulateMessageEnvelopeSingle(Message singlePart,
@@ -64,13 +62,12 @@ public sealed partial class Received : IDisposable
         ResetForReuse();
         _singlePart = singlePart;
         MessageType = messageType;
-        _metadata = ReceivedMetadata.Create(default(RoutingId?), requestSeq,
-            replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
     }
 
     internal void PopulateRoutedSinglePart(Message singlePart,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        RoutingIdSnapshot routingId, ulong? requestSeq,
+        ReceivedReplyHandler? replyHandler,
         ReceivedSendHandler? sendHandler = null,
         ReceivedSendSingleHandler? sendSingleHandler = null,
         SocketKernel? sendKernel = null)
@@ -79,15 +76,15 @@ public sealed partial class Received : IDisposable
         _singlePart = singlePart;
         _routingIdSnapshot = routingId;
         MessageType = ReceivedMessageType.Raw;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
-        SetSendContext(sendKernel, routingId, spotRid);
+        SetSendContext(sendKernel, routingId);
     }
 
     internal void PopulateRoutedMultipart(MultipartMessageCollection parts,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid,
-        ulong? requestSeq, ReceivedReplyHandler? replyHandler,
+        RoutingIdSnapshot routingId, ulong? requestSeq,
+        ReceivedReplyHandler? replyHandler,
         ReceivedSendHandler? sendHandler = null,
         ReceivedSendSingleHandler? sendSingleHandler = null,
         SocketKernel? sendKernel = null)
@@ -96,10 +93,10 @@ public sealed partial class Received : IDisposable
         _parts = parts;
         _routingIdSnapshot = routingId;
         MessageType = ReceivedMessageType.Raw;
-        _metadata = ReceivedMetadata.Create(spotRid, requestSeq, replyHandler);
+        _metadata = ReceivedMetadata.Create(requestSeq, replyHandler);
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
-        SetSendContext(sendKernel, routingId, spotRid);
+        SetSendContext(sendKernel, routingId);
     }
 
     internal void SetSendHandler(ReceivedSendHandler? sendHandler,
@@ -107,16 +104,14 @@ public sealed partial class Received : IDisposable
     {
         _sendKernel = null;
         _sendRoutingIdSnapshot = default;
-        _sendSpotRidSnapshot = default;
         _sendSingleHandler = sendSingleHandler;
         _sendHandler = sendHandler;
     }
 
     internal void SetSendContext(SocketKernel? sendKernel,
-        RoutingIdSnapshot routingId, RoutingIdSnapshot spotRid)
+        RoutingIdSnapshot routingId)
     {
         _sendKernel = sendKernel;
         _sendRoutingIdSnapshot = routingId;
-        _sendSpotRidSnapshot = spotRid;
     }
 }

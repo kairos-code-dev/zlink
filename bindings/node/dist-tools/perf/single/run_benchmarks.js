@@ -14,13 +14,10 @@ const PATTERNS = {
     DEALER_ROUTER: { script: 'perf_dealer_router.js' },
     DEALER_ROUTER_REQREP: { script: 'perf_dealer_router_reqrep.js' },
     ROUTER_ROUTER: { script: 'perf_router_router.js' },
-    ROUTER_ROUTER_REQREP: { script: 'perf_router_router_reqrep.js' },
-    SPOT: { script: 'perf_spot.js' }
+    ROUTER_ROUTER_REQREP: { script: 'perf_router_router_reqrep.js' }
 };
-function policyTransports(pattern) {
-    const raw = pattern === 'SPOT'
-        ? ['tcp', 'tls', 'ws', 'wss']
-        : ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
+function policyTransports(_pattern) {
+    const raw = ['tcp', 'tls', 'ws', 'wss', 'inproc', 'ipc'];
     if (process.platform === 'win32') {
         return raw.filter((transport) => transport !== 'ipc');
     }
@@ -75,8 +72,8 @@ function buildPinnedSpawn(command, args, options) {
         args: ['-c', '0', command, ...args]
     };
 }
-function isPlatformSkip(pattern, transport) {
-    return process.platform === 'win32' && transport === 'ipc' && pattern !== 'SPOT';
+function isPlatformSkip(_pattern, transport) {
+    return process.platform === 'win32' && transport === 'ipc';
 }
 function isUnsupportedLines(lines) {
     return lines.some((line) => line.startsWith('UNSUPPORTED,'));
@@ -228,12 +225,9 @@ async function main() {
         emit('');
         emit(line);
     };
-    // C single timeout_sec: max(30, dur*6+15); SPOT also max(dur*12+60).
+    // C single timeout policy for raw socket patterns.
     const durationSeconds = Number(process.env.PERF_SINGLE_DURATION_SECONDS || options.duration);
     let timeoutSeconds = Math.max(30, durationSeconds * 6 + 15);
-    if (names.includes('SPOT')) {
-        timeoutSeconds = Math.max(timeoutSeconds, durationSeconds * 12 + 60);
-    }
     const timeoutOverride = Number(process.env.PERF_SINGLE_TIMEOUT_SECONDS || 0);
     if (Number.isFinite(timeoutOverride) && timeoutOverride > 0) {
         timeoutSeconds = Math.trunc(timeoutOverride);

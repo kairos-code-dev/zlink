@@ -4,12 +4,8 @@ package systems.zlink.contracts.eventing;
 
 /** Identifies what a monitored source is. */
 public enum MonitorSourceKind {
-    /** A plain socket. */
-    SOCKET(1),
-    /** The publish side of a spot. */
-    SPOT_PUB(3),
-    /** The subscribe side of a spot. */
-    SPOT_SUB(4);
+    /** A raw socket. */
+    SOCKET(1);
 
     private final int value;
 

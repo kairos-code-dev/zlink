@@ -1,10 +1,10 @@
 plugins {
-    id 'java'
+    id 'java-library'
     id 'maven-publish'
 }
 
 group = 'systems.zlink'
-version = '10.6.3'
+version = '11.0.0'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
@@ -17,14 +17,35 @@ def nativeOs = System.getProperty('os.name').toLowerCase()
 def nativeArch = System.getProperty('os.arch').toLowerCase()
 def nativeBridgeSupported = nativeOs.contains('linux')
     && ['amd64', 'x86_64'].contains(nativeArch)
-def configuredCoreBuildDir = System.getenv('ZLINK_CORE_BUILD_DIR')
-def coreBuildDir = configuredCoreBuildDir != null && !configuredCoreBuildDir.trim().isEmpty()
-    ? new File(projectDir.parentFile.parentFile, configuredCoreBuildDir)
-    : new File(projectDir.parentFile.parentFile, 'core/build')
+def configuredCorePackagePrefix = System.getenv('ZLINK_CORE_PACKAGE_PREFIX')
+def configuredCorePackageSummary = System.getenv('ZLINK_CORE_PACKAGE_SUMMARY')
+def approvedCorePackage = configuredCorePackageSummary != null
+    && !configuredCorePackageSummary.trim().isEmpty()
+    ? new groovy.json.JsonSlurper().parseText(configuredCorePackageSummary)
+    : null
+def corePackagePrefix = configuredCorePackagePrefix != null
+    && !configuredCorePackagePrefix.trim().isEmpty()
+    ? new File(configuredCorePackagePrefix).absoluteFile
+    : null
 def generatedNativeResourcesDir = layout.buildDirectory.dir(
     'generated/zlink-native-resources/main')
 def bridgeOutputDir = layout.buildDirectory.dir(
     'generated/zlink-native-resources/main/native/linux-x86_64')
+
+['apiElements', 'runtimeElements'].each { configurationName ->
+    configurations.named(configurationName) {
+        attributes {
+            attribute(Attribute.of('systems.zlink.core.version', String), '11.0.0')
+            attribute(Attribute.of('systems.zlink.core.soname', String),
+                'libzlink.so.11')
+            attribute(Attribute.of('systems.zlink.core.provenance-sha256', String),
+                approvedCorePackage?.provenanceSha256 ?: 'unverified')
+            attribute(Attribute.of(
+                'systems.zlink.core.candidate-manifest-sha256', String),
+                approvedCorePackage?.candidate?.manifestSha256 ?: 'unverified')
+        }
+    }
+}
 
 sourceSets {
     main {
@@ -37,8 +58,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly 'io.netty:netty-buffer:4.1.100.Final'
-    runtimeOnly 'io.netty:netty-buffer:4.1.100.Final'
+    api 'io.netty:netty-buffer:4.1.100.Final'
     testImplementation 'io.netty:netty-buffer:4.1.100.Final'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
@@ -46,52 +66,99 @@ dependencies {
 
 tasks.register('buildZlinkJavaBridge', Exec) {
     onlyIf { nativeBridgeSupported }
-    def repoRoot = projectDir.parentFile.parentFile
     def source = new File(projectDir, 'native/src/zlink_java_reqrep_bridge.c')
     def outputDir = bridgeOutputDir.get().asFile
     def output = new File(outputDir, 'libzlink_java_bridge.so')
-    def linkDir = new File(coreBuildDir, 'lib')
     def javaHome = System.getProperty('java.home')
     def jniIncludeDir = new File(javaHome, 'include')
     def jniOsIncludeDir = new File(jniIncludeDir, 'linux')
     inputs.file(source)
-    inputs.dir(new File(repoRoot, 'core/include'))
-    inputs.dir(new File(repoRoot, 'core/src'))
-    inputs.dir(new File(repoRoot, 'core/external/boost'))
-    inputs.files(fileTree(coreBuildDir) {
-        include '*.h'
-        include '**/*.h'
-        include 'lib/libzlink.so'
-        include 'lib/libzlink.so.*'
-        include 'libzlink.pc'
-        exclude '**/tests/**'
-    })
-    inputs.dir(linkDir)
+    if (corePackagePrefix != null) {
+        inputs.dir(new File(corePackagePrefix, 'include'))
+        inputs.dir(new File(corePackagePrefix, 'lib'))
+        inputs.file(new File(corePackagePrefix,
+            'share/zlink/core-package-provenance.json'))
+    }
     inputs.dir(jniIncludeDir)
     inputs.dir(jniOsIncludeDir)
-    outputs.file(output)
+    outputs.files(output,
+        new File(outputDir, 'libzlink.so'),
+        new File(generatedNativeResourcesDir.get().asFile,
+            'META-INF/zlink/core-package-provenance.json'))
     doFirst {
+        if (corePackagePrefix == null || !corePackagePrefix.isAbsolute()) {
+            throw new GradleException(
+                'ZLINK_CORE_PACKAGE_PREFIX must name an absolute Core 11 install prefix')
+        }
+        def includeDir = new File(corePackagePrefix, 'include')
+        def linkDir = new File(corePackagePrefix, 'lib')
+        def runtime = new File(linkDir, 'libzlink.so')
+        def manifest = new File(corePackagePrefix,
+            'share/zlink/core-package-provenance.json')
+        if (!new File(includeDir, 'zlink.h').isFile()
+            || new File(includeDir, 'zlink/service').exists()
+            || !runtime.isFile() || !manifest.isFile()) {
+            throw new GradleException(
+                'Core package is incomplete or contains the removed service surface')
+        }
+        def metadata = new groovy.json.JsonSlurper().parse(manifest)
+        def publishingPackage = gradle.taskGraph.allTasks.any {
+            it.name.startsWith('publish')
+        }
+        if (publishingPackage && approvedCorePackage == null) {
+            throw new GradleException(
+                'ZLINK_CORE_PACKAGE_SUMMARY must identify the verified Core package')
+        }
+        def manifestSha256 = java.security.MessageDigest.getInstance('SHA-256')
+            .digest(manifest.bytes).encodeHex().toString()
+        def runtimeSha256 = java.security.MessageDigest.getInstance('SHA-256')
+            .digest(runtime.bytes).encodeHex().toString()
+        if (metadata.version != '11.0.0') {
+            throw new GradleException('Core package must report version 11.0.0')
+        }
+        def approved = approvedCorePackage
+        if (approved != null && (approved.version != '11.0.0'
+            || approved.prefix != corePackagePrefix.canonicalPath
+            || approved.provenanceSha256 != manifestSha256
+            || approved.runtime.sha256 != runtimeSha256
+            || approved.runtime.soname != 'libzlink.so.11'
+            || metadata.candidate.ledgerId != approved.candidate.ledgerId
+            || metadata.candidate.baseRevision != approved.candidate.baseRevision
+            || metadata.candidate.manifestSha256 != approved.candidate.manifestSha256
+            || metadata.candidate.aggregateSha256 != approved.candidate.aggregateSha256
+            || metadata.candidate.approvalEvidenceSha256
+                != approved.candidate.approvalEvidenceSha256)) {
+            throw new GradleException(
+                'Core package no longer matches its approved exact provenance')
+        }
         outputDir.mkdirs()
+        copy {
+            from runtime
+            into outputDir
+            rename { 'libzlink.so' }
+        }
+        copy {
+            from manifest
+            into new File(generatedNativeResourcesDir.get().asFile,
+                'META-INF/zlink')
+        }
+        commandLine 'c++',
+            '-shared',
+            '-fPIC',
+            '-std=c++17',
+            '-O2',
+            '-pthread',
+            '-I', includeDir.absolutePath,
+            '-I', jniIncludeDir.absolutePath,
+            '-I', jniOsIncludeDir.absolutePath,
+            '-L', linkDir.absolutePath,
+            '-Wl,-rpath,$ORIGIN',
+            '-Wl,--no-undefined',
+            '-o', output.absolutePath,
+            source.absolutePath,
+            '-Wl,--no-as-needed',
+            '-lzlink'
     }
-    commandLine 'c++',
-        '-shared',
-        '-fPIC',
-        '-std=c++17',
-        '-O2',
-        '-pthread',
-        '-I', new File(repoRoot, 'core/include').absolutePath,
-        '-I', new File(repoRoot, 'core/src').absolutePath,
-        '-I', new File(repoRoot, 'core/external/boost').absolutePath,
-        '-I', coreBuildDir.absolutePath,
-        '-I', jniIncludeDir.absolutePath,
-        '-I', jniOsIncludeDir.absolutePath,
-        '-L', linkDir.absolutePath,
-        '-Wl,-rpath,$ORIGIN',
-        '-Wl,--no-undefined',
-        '-o', output.absolutePath,
-        source.absolutePath,
-        '-Wl,--no-as-needed',
-        '-lzlink'
 }
 
 processResources {
@@ -174,6 +241,18 @@ publishing {
                         url = 'https://github.com/kairos-code-dev/zlink/blob/main/LICENSE'
                     }
                 }
+                properties = [
+                    'zlink.core.version': '11.0.0',
+                    'zlink.core.soname': 'libzlink.so.11',
+                    'zlink.core.provenance-sha256':
+                        approvedCorePackage?.provenanceSha256 ?: 'unverified',
+                    'zlink.core.candidate-ledger-id':
+                        approvedCorePackage?.candidate?.ledgerId ?: 'unverified',
+                    'zlink.core.candidate-manifest-sha256':
+                        approvedCorePackage?.candidate?.manifestSha256 ?: 'unverified',
+                    'zlink.core.candidate-aggregate-sha256':
+                        approvedCorePackage?.candidate?.aggregateSha256 ?: 'unverified'
+                ]
             }
         }
     }

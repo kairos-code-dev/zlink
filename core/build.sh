@@ -6,7 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 NORMALIZE_TIMESTAMPS_SH="${SCRIPT_DIR}/tools/normalize_build_timestamps.sh"
-export TMPDIR=/tmp
+export TMPDIR="${TMPDIR:-/tmp}"
+BUILD_JOBS="${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}"
 MAKE_BIN="$(command -v gmake || command -v make)"
 
 echo "=== Clean Build ==="
@@ -25,7 +26,7 @@ fi
 
 echo "=== Build ==="
 bash "${NORMALIZE_TIMESTAMPS_SH}" "${BUILD_DIR}"
-cmake --build "${BUILD_DIR}" -j"$(nproc)"
+cmake --build "${BUILD_DIR}" -j"${BUILD_JOBS}"
 
 echo "=== Run Tests ==="
 bash "${SCRIPT_DIR}/tests/run_test_lanes.sh" \

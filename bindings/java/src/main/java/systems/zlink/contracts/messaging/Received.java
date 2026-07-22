@@ -4,12 +4,12 @@ package systems.zlink.contracts.messaging;
 
 import systems.zlink.contracts.errors.ZlinkRecvException;
 import systems.zlink.contracts.sockets.RecvResult;
-import systems.zlink.contracts.service.spot.ReplyOperation;
-import systems.zlink.contracts.service.spot.ReplySubmitOperation;
+import systems.zlink.contracts.messaging.ReplyOperation;
+import systems.zlink.contracts.messaging.ReplySubmitOperation;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.service.spot.SendOperation;
-import systems.zlink.contracts.service.spot.SendSubmitOperation;
+import systems.zlink.contracts.messaging.SendOperation;
+import systems.zlink.contracts.messaging.SendSubmitOperation;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.ContractAccess;
@@ -63,12 +63,10 @@ public final class Received implements AutoCloseable {
     private BiConsumer<List<Message>, SendFlags> replySender;
     private BiFunction<List<Message>, SendFlags, Boolean> sendSender;
     private byte[] routingIdBytes;
-    private byte[] spotRidBytes;
     private Runnable onTerminalState;
     private ArrayList<Message> realizedParts;
     private ContractAccess.ReceivedPartCursor cursor;
     private RoutingId routingId;
-    private RoutingId spotRid;
     private List<Message> partsView;
     private boolean closed;
 
@@ -80,79 +78,76 @@ public final class Received implements AutoCloseable {
             }
 
             @Override
-            public Received create(RoutingId routingId, RoutingId spotRid,
-                                   Message[] parts, boolean trustedParts,
+            public Received create(RoutingId routingId, Message[] parts,
+                                   boolean trustedParts,
                                    long requestSeq, boolean hasRequestSeq,
                                    BiConsumer<List<Message>, SendFlags> replySender) {
-                return new Received(routingId, spotRid, parts, trustedParts,
+                return new Received(routingId, parts, trustedParts,
                     requestSeq, hasRequestSeq, replySender);
             }
 
             @Override
-            public Received create(RoutingId routingId, RoutingId spotRid,
-                                   Message[] parts, boolean trustedParts,
+            public Received create(RoutingId routingId, Message[] parts,
+                                   boolean trustedParts,
                                    long requestSeq, boolean hasRequestSeq,
                                    BiConsumer<List<Message>, SendFlags> replySender,
                                    Runnable onTerminalState) {
-                return new Received(routingId, spotRid, parts, trustedParts,
+                return new Received(routingId, parts, trustedParts,
                     requestSeq, hasRequestSeq, replySender, onTerminalState);
             }
 
             @Override
-            public Received create(byte[] routingIdBytes, byte[] spotRidBytes,
-                                   Message[] parts, boolean trustedParts,
+            public Received create(byte[] routingIdBytes, Message[] parts,
+                                   boolean trustedParts,
                                    long requestSeq, boolean hasRequestSeq,
                                    BiConsumer<List<Message>, SendFlags> replySender,
                                    Runnable onTerminalState) {
-                return new Received(routingIdBytes, spotRidBytes, parts,
-                    trustedParts, requestSeq, hasRequestSeq, replySender,
+                return new Received(routingIdBytes, parts, trustedParts,
+                    requestSeq, hasRequestSeq, replySender,
                     onTerminalState);
             }
 
             @Override
-            public Received create(RoutingId routingId, RoutingId spotRid,
-                                   Message[] parts, long requestSeq,
+            public Received create(RoutingId routingId, Message[] parts,
+                                   long requestSeq,
                                    boolean hasRequestSeq,
                                    BiConsumer<List<Message>, SendFlags> replySender) {
-                return new Received(routingId, spotRid, parts, true,
+                return new Received(routingId, parts, true,
                     requestSeq, hasRequestSeq, replySender);
             }
 
             @Override
-            public Received createLazy(byte[] routingIdBytes, byte[] spotRidBytes,
-                                       Message firstPart,
+            public Received createLazy(byte[] routingIdBytes, Message firstPart,
                                        ContractAccess.ReceivedPartCursor cursor,
                                        long requestSeq, boolean hasRequestSeq,
                                        BiConsumer<List<Message>, SendFlags> replySender,
                                        Runnable onTerminalState) {
-                return new Received(routingIdBytes, spotRidBytes, firstPart,
-                    cursor, requestSeq, hasRequestSeq, replySender,
+                return new Received(routingIdBytes, firstPart, cursor,
+                    requestSeq, hasRequestSeq, replySender,
                     onTerminalState);
             }
 
             @Override
-            public Received createLazy(RoutingId routingId, RoutingId spotRid,
-                                       Message firstPart,
+            public Received createLazy(RoutingId routingId, Message firstPart,
                                        ContractAccess.ReceivedPartCursor cursor,
                                        long requestSeq, boolean hasRequestSeq,
                                        BiConsumer<List<Message>, SendFlags> replySender,
                                        Runnable onTerminalState) {
-                return new Received(routingId, spotRid, firstPart, cursor,
+                return new Received(routingId, firstPart, cursor,
                     requestSeq, hasRequestSeq, replySender, onTerminalState);
             }
 
             @Override
             public void populateRoutedSinglePart(Received received,
                                                  byte[] routingIdBytes,
-                                                 byte[] spotRidBytes,
                                                  Message singlePart,
                                                  long requestSequence,
                                                  boolean hasRequestSequence,
                                                  BiConsumer<List<Message>,
                                                      SendFlags> replySender,
                                                  Runnable onTerminalState) {
-                received.populateRoutedSinglePart(routingIdBytes, spotRidBytes,
-                    singlePart, requestSequence, hasRequestSequence,
+                received.populateRoutedSinglePart(routingIdBytes, singlePart,
+                    requestSequence, hasRequestSequence,
                     replySender, onTerminalState);
             }
 
@@ -192,12 +187,10 @@ public final class Received implements AutoCloseable {
         this.replySender = null;
         this.sendSender = null;
         this.routingIdBytes = null;
-        this.spotRidBytes = null;
         this.onTerminalState = null;
         this.realizedParts = null;
         this.cursor = null;
         this.routingId = null;
-        this.spotRid = null;
         this.partsView = null;
         this.closed = false;
     }
@@ -210,7 +203,6 @@ public final class Received implements AutoCloseable {
      * {@link Received} and then closing/adopting it for every routed message.
      */
     void populateRoutedSinglePart(byte[] routingIdBytes,
-                                  byte[] spotRidBytes,
                                   Message singlePart,
                                   long requestSequence,
                                   boolean hasRequestSequence,
@@ -232,9 +224,7 @@ public final class Received implements AutoCloseable {
         cursor = null;
         this.closed = false;
         this.routingId = null;
-        this.spotRid = null;
         this.routingIdBytes = routingIdBytes;
-        this.spotRidBytes = spotRidBytes;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -268,12 +258,10 @@ public final class Received implements AutoCloseable {
         this.replySender = source.replySender;
         this.sendSender = source.sendSender;
         this.routingIdBytes = source.routingIdBytes;
-        this.spotRidBytes = source.spotRidBytes;
         this.onTerminalState = source.onTerminalState;
         this.realizedParts = source.realizedParts;
         this.cursor = source.cursor;
         this.routingId = source.routingId;
-        this.spotRid = source.spotRid;
         this.partsView = source.partsView;
 
         // Detach source so its own close() / finalizer is a no-op.
@@ -282,49 +270,45 @@ public final class Received implements AutoCloseable {
         source.replySender = null;
         source.sendSender = null;
         source.routingIdBytes = null;
-        source.spotRidBytes = null;
         source.onTerminalState = null;
         source.realizedParts = null;
         source.cursor = null;
         source.routingId = null;
-        source.spotRid = null;
         source.partsView = null;
         source.closed = true;
     }
 
     public Received(RoutingId routingId, Message[] parts) {
-        this(routingId, null, parts, false, 0L, false, null);
+        this(routingId, parts, false, 0L, false, null);
     }
 
     public Received(byte[] routingIdBytes, Message[] parts) {
-        this(routingIdBytes, null, parts, false, 0L, false, null);
+        this(routingIdBytes, parts, false, 0L, false, null);
     }
 
     Received(RoutingId routingId, Message[] parts, boolean trustedParts) {
-        this(routingId, null, parts, trustedParts, 0L, false, null);
+        this(routingId, parts, trustedParts, 0L, false, null);
     }
 
     Received(byte[] routingIdBytes, Message[] parts, boolean trustedParts) {
-        this(routingIdBytes, null, parts, trustedParts, 0L, false, null);
+        this(routingIdBytes, parts, trustedParts, 0L, false, null);
     }
 
-    Received(RoutingId routingId, RoutingId spotRid, Message[] parts,
-             boolean trustedParts, long requestSequence,
+    Received(RoutingId routingId, Message[] parts, boolean trustedParts,
+             long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender) {
-        this(routingId, spotRid, parts, trustedParts, requestSequence,
+        this(routingId, parts, trustedParts, requestSequence,
             hasRequestSequence, replySender, null);
     }
 
-    Received(RoutingId routingId, RoutingId spotRid, Message[] parts,
-             boolean trustedParts, long requestSequence,
+    Received(RoutingId routingId, Message[] parts, boolean trustedParts,
+             long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = routingId;
-        this.spotRid = spotRid;
         this.routingIdBytes = null;
-        this.spotRidBytes = null;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -338,23 +322,21 @@ public final class Received implements AutoCloseable {
         this.cursor = null;
     }
 
-    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message[] parts,
-             boolean trustedParts, long requestSequence,
+    Received(byte[] routingIdBytes, Message[] parts, boolean trustedParts,
+             long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender) {
-        this(routingIdBytes, spotRidBytes, parts, trustedParts, requestSequence,
+        this(routingIdBytes, parts, trustedParts, requestSequence,
             hasRequestSequence, replySender, null);
     }
 
-    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message[] parts,
-             boolean trustedParts, long requestSequence,
+    Received(byte[] routingIdBytes, Message[] parts, boolean trustedParts,
+             long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = null;
-        this.spotRid = null;
         this.routingIdBytes = routingIdBytes;
-        this.spotRidBytes = spotRidBytes;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -368,21 +350,19 @@ public final class Received implements AutoCloseable {
         this.cursor = null;
     }
 
-    Received(RoutingId routingId, RoutingId spotRid, Message singlePart,
+    Received(RoutingId routingId, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender) {
-        this(routingId, spotRid, singlePart, requestSequence, hasRequestSequence,
+        this(routingId, singlePart, requestSequence, hasRequestSequence,
             replySender, null);
     }
 
-    Received(RoutingId routingId, RoutingId spotRid, Message singlePart,
+    Received(RoutingId routingId, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = routingId;
-        this.spotRid = spotRid;
         this.routingIdBytes = null;
-        this.spotRidBytes = null;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -393,21 +373,19 @@ public final class Received implements AutoCloseable {
         this.cursor = null;
     }
 
-    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message singlePart,
+    Received(byte[] routingIdBytes, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender) {
-        this(routingIdBytes, spotRidBytes, singlePart, requestSequence,
+        this(routingIdBytes, singlePart, requestSequence,
             hasRequestSequence, replySender, null);
     }
 
-    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message singlePart,
+    Received(byte[] routingIdBytes, Message singlePart,
              long requestSequence, boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = null;
-        this.spotRid = null;
         this.routingIdBytes = routingIdBytes;
-        this.spotRidBytes = spotRidBytes;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -418,15 +396,13 @@ public final class Received implements AutoCloseable {
         this.cursor = null;
     }
 
-    Received(byte[] routingIdBytes, byte[] spotRidBytes, Message firstPart,
+    Received(byte[] routingIdBytes, Message firstPart,
              ContractAccess.ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = null;
-        this.spotRid = null;
         this.routingIdBytes = routingIdBytes;
-        this.spotRidBytes = spotRidBytes;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -437,15 +413,13 @@ public final class Received implements AutoCloseable {
         this.cursor = cursor;
     }
 
-    Received(RoutingId routingId, RoutingId spotRid, Message firstPart,
+    Received(RoutingId routingId, Message firstPart,
              ContractAccess.ReceivedPartCursor cursor, long requestSequence,
              boolean hasRequestSequence,
              BiConsumer<List<Message>, SendFlags> replySender,
              Runnable onTerminalState) {
         this.routingId = routingId;
-        this.spotRid = spotRid;
         this.routingIdBytes = null;
-        this.spotRidBytes = null;
         this.requestSequence = requestSequence;
         this.hasRequestSequence = hasRequestSequence;
         this.replySender = replySender;
@@ -473,17 +447,6 @@ public final class Received implements AutoCloseable {
         if (resolved == null)
             throw new ZlinkRecvException(RecvResult.NO_DATA);
         return resolved;
-    }
-
-    public Optional<RoutingId> spotRid() {
-        return Optional.ofNullable(spotRidOrNull());
-    }
-
-    RoutingId spotRidOrNull() {
-        if (spotRid == null && spotRidBytes != null) {
-            spotRid = ContractAccess.routingIdFromTrusted(spotRidBytes);
-        }
-        return spotRid;
     }
 
     /** Returns the owned parts as an immutable view without copying. */

@@ -166,8 +166,6 @@ inline bool is_echo_pattern (const std::string &pattern)
            || normalized == "ROUTER_ROUTER_SENDSEND"
            || normalized == "DEALER_ROUTER_REQREP"
            || normalized == "ROUTER_ROUTER_REQREP"
-           || normalized == "SPOT_REQREP"
-           || normalized == "SPOT_SENDSEND"
            || normalized == "STREAM";
 }
 

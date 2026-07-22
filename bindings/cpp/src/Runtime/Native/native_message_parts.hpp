@@ -294,7 +294,7 @@ inline int submit_message_parts_close_on_failure (std::vector<message_t> &parts_
 
 //  Builds a borrowed, zero-copy native view over @p parts_ and runs @p body_.
 //
-//  Service send/request/reply/create carry parts as borrowed/read-only: Core
+//  Send/request/reply operations carry parts as borrowed/read-only: Core
 //  keeps caller ownership on both success and failure and copies synchronously
 //  what it needs. Unlike the raw-socket move/consume path this adapter never
 //  moves, mutates, or invalidates the caller's messages. Each temporary native

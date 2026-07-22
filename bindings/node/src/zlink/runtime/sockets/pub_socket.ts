@@ -4,14 +4,10 @@ import { PubSocketOptions } from './socket_options';
 import {
   PublisherSocket,
 } from './socket_operations';
-import { configureSocketChannelName } from './socket_base';
 import type { RuntimeContext as Context } from '../core/context';
 import { SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 
 export class PubSocket extends PublisherSocket {
   readonly options: PubSocketOptions;
   constructor(ctx: Context) { super(ctx, NativeSocketType.PUB); this.options = PubSocketOptions.create(this); }
-  setChannelName(channelName: string): void {
-    configureSocketChannelName(this, channelName);
-  }
 }

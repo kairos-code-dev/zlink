@@ -39,7 +39,7 @@ class pair_socket_t : public message_socket_t
   public:
     explicit pair_socket_t (context_t &ctx_);
 
-    service::send_operation_t send ();
+    send_operation_t send ();
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
@@ -67,7 +67,7 @@ class dealer_socket_t : public message_socket_t
   public:
     explicit dealer_socket_t (context_t &ctx_);
 
-    service::send_operation_t send ();
+    send_operation_t send ();
 
     // Receive one message into a caller-provided received_t.
     // Returns 0 on success, a recv_result_t value on receive failure or no data, and -1 only for binding-local failure with errno set.
@@ -80,15 +80,11 @@ class dealer_socket_t : public message_socket_t
         socket_t::set_send_ready_handler (std::move (handler_));
     }
 
-    service::request_operation_t request ();
+    request_operation_t request ();
 
     void set_routing_id (const routing_id_t &routing_id_);
 
     void get_routing_id (routing_id_t &routing_id_) const;
-
-    void channel_name (const std::string &value_);
-
-    std::string channel_name () const;
 
     dealer_socket_options_t options () { return dealer_socket_options_t (*this); }
 

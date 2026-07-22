@@ -26,13 +26,5 @@ internal static partial class NativeMethods
         IntPtr userData);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal unsafe delegate void ZlinkSpotSubHandlerDelegate(
-        byte* topic,
-        nuint topicLen,
-        IntPtr parts,
-        nuint partCount,
-        IntPtr userData);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkFreeFnDelegate(IntPtr data, IntPtr hint);
 }

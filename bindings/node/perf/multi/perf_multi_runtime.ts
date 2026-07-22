@@ -88,17 +88,6 @@ function applySocketPolicy(
   }
 }
 
-function applySpotNodeAdmission(node) {
-  if (!manualSocketOverridesEnabled('multi')) {
-    return;
-  }
-  const hwm = integerEnv('PERF_MULTI_HWM', 1000);
-  const sendHwm = integerEnv('PERF_MULTI_SNDHWM', hwm);
-  const recvHwm = integerEnv('PERF_MULTI_RCVHWM', hwm);
-  node.pubsubHwm = sendHwm;
-  node.routerHwm = recvHwm;
-}
-
 function resolveMultiIoThreads(role, pattern) {
   const normalizedRole = String(role || '').trim().toLowerCase();
   const roleKey = normalizedRole === 'server' ? 'SERVER' : 'CLIENT';
@@ -223,24 +212,6 @@ async function waitForConnectionReadyCount(
   } finally {
     monitor.close();
   }
-}
-
-async function waitForSpotNodeConnectedPeerCount(
-  node,
-  expectedCount,
-  timeoutMs = integerEnvPair('PERF_MULTI_CONNECT_READY_TIMEOUT_MS', 'PERF_CONNECT_READY_TIMEOUT_MS', 5000)
-) {
-  const targetCount = Math.max(1, Math.trunc(expectedCount || 1));
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (node.status().connectedPeerCount >= targetCount) {
-      return;
-    }
-    await sleepMs(1);
-  }
-  throw new Error(
-    `spot node connected peer timeout after ${timeoutMs}ms (${node.status().connectedPeerCount}/${targetCount})`
-  );
 }
 
 function trySocketSend(socket, ...args) {
@@ -445,7 +416,6 @@ module.exports = {
   POLLCOMPLETION,
   applyContextPolicy,
   applyAutoHwmMsgUnit,
-  applySpotNodeAdmission,
   applySocketPolicy,
   createCallbackEventWaiter,
   createSocketEventWaiter,
@@ -465,6 +435,5 @@ module.exports = {
   waitForRunnerControlConnected,
   waitForRunnerStart,
   waitForConnectionReadyCount,
-  waitForConnectionReady,
-  waitForSpotNodeConnectedPeerCount
+  waitForConnectionReady
 };

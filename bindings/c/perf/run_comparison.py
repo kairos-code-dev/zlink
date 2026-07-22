@@ -8,7 +8,6 @@ import os
 import platform
 import queue
 import re
-import shutil
 import statistics
 import subprocess
 import sys
@@ -56,9 +55,6 @@ PATTERN_SUFFIX = {
     "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "ROUTER_ROUTER_ONEWAY": "router_router_oneway",
     "PUBSUB": "pubsub",
-    "SPOT_PUBSUB": "spot_pubsub",
-    "SPOT_REQREP": "spot_reqrep",
-    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
@@ -66,8 +62,6 @@ ECHO_PATTERNS = {
     "ROUTER_ROUTER_SENDSEND",
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER_REQREP",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = set()
@@ -78,7 +72,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
-    ("perf_spot_pubsub", "SPOT_PUBSUB"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -88,13 +81,9 @@ MULTI_COMPARISONS = [
     ("comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("comp_src_router_router_oneway_client", "ROUTER_ROUTER_ONEWAY"),
     ("comp_src_pubsub_client", "PUBSUB"),
-    ("comp_src_spot_pubsub_client", "SPOT_PUBSUB"),
-    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
-    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
-MULTI_SPOT_PATTERNS = {"SPOT_PUBSUB", "SPOT_REQREP", "SPOT_SENDSEND"}
 SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_DEALER": ("recv",),
     "DEALER_ROUTER_SENDSEND": ("recv",),
@@ -103,9 +92,6 @@ SUPPORTED_MULTI_RECV_MODES = {
     "ROUTER_ROUTER_REQREP": ("recv",),
     "ROUTER_ROUTER_ONEWAY": ("recv",),
     "PUBSUB": ("recv",),
-    "SPOT_PUBSUB": ("recv",),
-    "SPOT_REQREP": ("recv",),
-    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -826,9 +812,9 @@ _AUTO_HWM_DETAIL_ROWS = []
 _AUTO_HWM_DETAIL_TABLE_SEEN = set()
 
 
-def emit_spot_diag_line(line):
+def emit_benchmark_diag_line(line):
     stripped = (line or "").strip()
-    if stripped.startswith(("SPOT_DIAG,", "MATCHED_DIAG,")):
+    if stripped.startswith("MATCHED_DIAG,"):
         print(stripped, flush=True)
 
 
@@ -907,7 +893,7 @@ def _auto_hwm_active_hwm_fields(row):
     role = (row.get("role") or "").lower()
     send_active = True
     recv_active = True
-    if socket_type in ("pub", "xpub") and role in ("spot_data", "control"):
+    if socket_type in ("pub", "xpub") and role == "control":
         recv_active = False
     if socket_type in ("sub", "xsub") and role in ("recv_ingress", "control"):
         send_active = False
@@ -1573,7 +1559,7 @@ def run_sizes_test_stream_shared(
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
         emit_auto_hwm_detail_line(line)
-        emit_spot_diag_line(line)
+        emit_benchmark_diag_line(line)
         if pattern_name == "PUBSUB" and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -1821,7 +1807,7 @@ def run_sizes_test_stream_shared(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
-            emit_spot_diag_line(line)
+            emit_benchmark_diag_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -2135,7 +2121,7 @@ def run_sizes_test_split(
     def append_server_stdout_line(line):
         server_stdout_buffer.append(line)
         emit_auto_hwm_detail_line(line)
-        emit_spot_diag_line(line)
+        emit_benchmark_diag_line(line)
         if pattern_name in ("PUBSUB", "DEALER_DEALER") and line.startswith("PHASE_ACTIVE,"):
             try:
                 phase_size = int(line.split(",", 1)[1])
@@ -2431,7 +2417,7 @@ def run_sizes_test_split(
         def on_client_stdout_line(line):
             pump_server_output_nonblocking()
             emit_auto_hwm_detail_line(line)
-            emit_spot_diag_line(line)
+            emit_benchmark_diag_line(line)
             client_endpoint = parse_client_endpoint(line)
             if use_control_plane and client_endpoint:
                 try:
@@ -3852,21 +3838,6 @@ def build_effective_option_items(args, selected_patterns):
                 ),
             ]
         )
-        if selected_patterns and any(p in MULTI_SPOT_PATTERNS for p in selected_patterns):
-            items.append(
-                (
-                    "spot_peer_node_io_threads",
-                    str(
-                        max(
-                            1,
-                            parse_env_int(
-                                "PERF_MULTI_SPOT_NODE_IO_THREADS",
-                                1,
-                            ),
-                        )
-                    ),
-                )
-            )
     else:
         base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
         sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
@@ -3927,30 +3898,6 @@ def parse_raw_csv_list(value, cast_fn=str):
         except ValueError:
             return []
     return items
-
-
-def is_default_full_matrix(args, selected_patterns):
-    if args["pattern_request"].upper() != "ALL" and os.getenv("PERF_FULL_MATRIX", "") != "1":
-        return False
-    env_transports = os.environ.get("PERF_TRANSPORTS", "").strip()
-    if env_transports and parse_raw_csv_list(env_transports) != ["tcp", "tls", "ws", "wss"]:
-        return False
-    env_msg_sizes = os.environ.get("PERF_MSG_SIZES", "").strip()
-    if env_msg_sizes and parse_raw_csv_list(env_msg_sizes, int) != DEFAULT_MULTI_MSG_SIZES:
-        return False
-    env_stream_msg_sizes = os.environ.get("PERF_STREAM_MSG_SIZES", "").strip()
-    if env_stream_msg_sizes and parse_raw_csv_list(env_stream_msg_sizes, int) != DEFAULT_MULTI_STREAM_MSG_SIZES:
-        return False
-    expected_patterns = [pattern for _, pattern in MULTI_COMPARISONS]
-    return list(selected_patterns) == expected_patterns
-
-
-def copy_successful_full_run_to_baseline(result_file):
-    baseline_dir = os.path.join(SCRIPT_DIR, "baseline")
-    os.makedirs(baseline_dir, exist_ok=True)
-    baseline_file = os.path.join(baseline_dir, os.path.basename(result_file))
-    shutil.copy2(result_file, baseline_file)
-    return baseline_file
 
 
 def resolve_results_max_files():
@@ -4511,9 +4458,6 @@ def main():
         emit_result_lines(current_results)
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
-    should_update_baseline = run_status == "complete" and is_default_full_matrix(
-        args, selected_patterns
-    )
     preserve_result_file = bool(args["results_tag"] or args["result_file"])
     if not preserve_result_file:
         max_files = resolve_results_max_files()
@@ -4550,9 +4494,6 @@ def main():
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
     result_log_fh.close()
-    if should_update_baseline:
-        baseline_file = copy_successful_full_run_to_baseline(result_file)
-        print(f"Updated baseline file: {baseline_file}")
     if run_status != "complete":
         raise SystemExit(1)
     raise SystemExit(0)

@@ -9,7 +9,6 @@ import systems.zlink.contracts.eventing.MonitorSourceKind;
 import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.sockets.RidDuplicatePolicy;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.service.spot.SpotKind;
 import java.util.EnumSet;
 
 /**
@@ -117,18 +116,12 @@ public final class EnumCodecs {
     public static MonitorSourceKind monitorSourceKindFromValue(int value) {
         return switch (value) {
             case 1 -> MonitorSourceKind.SOCKET;
-            case 3 -> MonitorSourceKind.SPOT_PUB;
-            case 4 -> MonitorSourceKind.SPOT_SUB;
             default -> throw invalid("MonitorSourceKind", value);
         };
     }
 
     public static int monitorSourceKindValue(MonitorSourceKind value) {
-        return switch (value) {
-            case SOCKET -> 1;
-            case SPOT_PUB -> 3;
-            case SPOT_SUB -> 4;
-        };
+        return 1;
     }
 
     public static int pollEventFlagValue(PollEventFlags value) {
@@ -200,15 +193,6 @@ public final class EnumCodecs {
             case 0x1007 -> SocketType.XSUB;
             case 0x1008 -> SocketType.STREAM;
             default -> throw invalid("SocketType", value);
-        };
-    }
-
-    public static SpotKind spotKindFromValue(int value) {
-        return switch (value) {
-            case 0 -> SpotKind.INVALID;
-            case 1 -> SpotKind.ENTRY;
-            case 2 -> SpotKind.USER;
-            default -> throw invalid("SpotKind", value);
         };
     }
 

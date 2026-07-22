@@ -400,8 +400,6 @@ inline const char *single_auto_hwm_role_name (uint32_t role_)
             return "fanout";
         case 4:
             return "recv_ingress";
-        case 5:
-            return "spot_data";
         case 6:
             return "peer_queue";
         case 7:

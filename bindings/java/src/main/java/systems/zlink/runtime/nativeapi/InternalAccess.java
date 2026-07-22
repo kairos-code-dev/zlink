@@ -12,11 +12,6 @@ import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.service.spot.MeshNode;
-import systems.zlink.contracts.service.spot.ReadyBatch;
-import systems.zlink.contracts.service.spot.ReceiveBatch;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.StreamSessionService;
 import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RecvFlags;
@@ -25,11 +20,8 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.runtime.sockets.SocketOptionKey;
 import systems.zlink.contracts.sockets.DealerSocket;
-import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.runtime.eventing.NativeTimer;
 import systems.zlink.runtime.sockets.SocketMessageHandler;
-import systems.zlink.runtime.service.spot.NativeSpot;
-import systems.zlink.runtime.service.spot.NativeMeshNode;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
@@ -49,9 +41,6 @@ import java.util.function.BiFunction;
 public final class InternalAccess {
     private static volatile ContextAccess contextAccess;    private static volatile SocketAccess socketAccess;
     private static volatile RuntimeSocketAccess runtimeSocketAccess;
-    private static volatile SpotAccess spotAccess;
-    private static volatile MeshNodeAccess meshNodeAccess;
-    private static volatile DispatchAccess dispatchAccess;
     private static volatile TimerAccess timerAccess;
     private static volatile MonitorAccess monitorAccess;
 
@@ -106,29 +95,6 @@ public final class InternalAccess {
                          long requestSequence, List<Message> parts);
     }
 
-    public interface SpotAccess {
-        MemorySegment handle(Spot spot);
-    }
-
-    public interface MeshNodeAccess {
-        MemorySegment handle(MeshNode node);
-
-        StreamSessionService createStreamSessionService(MeshNode node,
-                                                        StreamSocket stream);
-    }
-
-    public interface DispatchAccess {
-        ReadyBatch newReadyBatch(int recordCapacity);
-
-        ReceiveBatch newReceiveBatch(int messageCapacity, int partCapacity,
-                                     int byteCapacity);
-
-        void reply(byte[] token, List<Message> parts, int flags);
-
-        void actorJoinReply(byte[] token, int decision, List<Message> parts,
-                            int flags);
-    }
-
     public interface TimerAccess {
         MemorySegment handle(ZlinkTimer timer);
 
@@ -149,18 +115,6 @@ public final class InternalAccess {
 
     public static void register(RuntimeSocketAccess access) {
         runtimeSocketAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(SpotAccess access) {
-        spotAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(MeshNodeAccess access) {
-        meshNodeAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(DispatchAccess access) {
-        dispatchAccess = Objects.requireNonNull(access, "access");
     }
 
     public static void register(TimerAccess access) {
@@ -244,40 +198,6 @@ public final class InternalAccess {
     public static void socketSetRouterIntOption(Socket socket, int option,
                                                 int value) {
         socketAccess().setRouterIntOption(socket, option, value);
-    }
-
-    public static MemorySegment spotHandle(Spot spot) {
-        return spotAccess().handle(spot);
-    }
-
-    public static MemorySegment meshNodeHandle(MeshNode node) {
-        return meshNodeAccess().handle(node);
-    }
-
-    public static StreamSessionService createStreamSessionService(
-            MeshNode node, StreamSocket stream) {
-        return meshNodeAccess().createStreamSessionService(node, stream);
-    }
-
-    public static ReadyBatch dispatchNewReadyBatch(int recordCapacity) {
-        return dispatchAccess().newReadyBatch(recordCapacity);
-    }
-
-    public static ReceiveBatch dispatchNewReceiveBatch(int messageCapacity,
-                                                       int partCapacity,
-                                                       int byteCapacity) {
-        return dispatchAccess().newReceiveBatch(messageCapacity, partCapacity,
-            byteCapacity);
-    }
-
-    public static void dispatchReply(byte[] token, List<Message> parts,
-                                     int flags) {
-        dispatchAccess().reply(token, parts, flags);
-    }
-
-    public static void dispatchActorJoinReply(byte[] token, int decision,
-                                              List<Message> parts, int flags) {
-        dispatchAccess().actorJoinReply(token, decision, parts, flags);
     }
 
     public static ZlinkTimer timerFromBorrowedHandle(MemorySegment handle) {
@@ -383,75 +303,64 @@ public final class InternalAccess {
         return ContractAccess.received(routingId, parts);
     }
 
-    public static Received received(RoutingId routingId,
-                                    RoutingId spotRid,
-                                    Message[] parts,
+    public static Received received(RoutingId routingId, Message[] parts,
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
-        return ContractAccess.received(routingId, spotRid, parts, requestSeq,
+        return ContractAccess.received(routingId, parts, requestSeq,
             hasRequestSeq, replySender);
     }
 
-    public static Received received(RoutingId routingId,
-                                    RoutingId spotRid,
-                                    Message[] parts,
+    public static Received received(RoutingId routingId, Message[] parts,
                                     boolean trustedParts,
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender) {
-        return ContractAccess.received(routingId, spotRid, parts, trustedParts,
+        return ContractAccess.received(routingId, parts, trustedParts,
             requestSeq, hasRequestSeq, replySender);
     }
 
-    public static Received received(RoutingId routingId,
-                                    RoutingId spotRid,
-                                    Message[] parts,
+    public static Received received(RoutingId routingId, Message[] parts,
                                     boolean trustedParts,
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender,
                                     Runnable onTerminalState) {
-        return ContractAccess.received(routingId, spotRid, parts, trustedParts,
+        return ContractAccess.received(routingId, parts, trustedParts,
             requestSeq, hasRequestSeq, replySender, onTerminalState);
     }
 
-    public static Received received(byte[] routingIdBytes,
-                                    byte[] spotRidBytes,
-                                    Message[] parts,
+    public static Received received(byte[] routingIdBytes, Message[] parts,
                                     boolean trustedParts,
                                     long requestSeq,
                                     boolean hasRequestSeq,
                                     BiConsumer<List<Message>, SendFlags> replySender,
                                     Runnable onTerminalState) {
-        return ContractAccess.received(routingIdBytes, spotRidBytes, parts,
+        return ContractAccess.received(routingIdBytes, parts,
             trustedParts, requestSeq, hasRequestSeq, replySender,
             onTerminalState);
     }
 
     public static Received receivedLazy(byte[] routingIdBytes,
-                                        byte[] spotRidBytes,
                                         Message firstPart,
                                         ReceivedPartCursor cursor,
                                         long requestSeq,
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return ContractAccess.receivedLazy(routingIdBytes, spotRidBytes,
-            firstPart, cursor, requestSeq, hasRequestSeq, replySender,
+        return ContractAccess.receivedLazy(routingIdBytes, firstPart, cursor,
+            requestSeq, hasRequestSeq, replySender,
             onTerminalState);
     }
 
-    public static Received receivedLazy(RoutingId routingId,
-                                        RoutingId spotRid,
-                                        Message firstPart,
+    public static Received receivedLazy(RoutingId routingId, Message firstPart,
                                         ReceivedPartCursor cursor,
                                         long requestSeq,
                                         boolean hasRequestSeq,
                                         BiConsumer<List<Message>, SendFlags> replySender,
                                         Runnable onTerminalState) {
-        return ContractAccess.receivedLazy(routingId, spotRid, firstPart,
-            cursor, requestSeq, hasRequestSeq, replySender, onTerminalState);
+        return ContractAccess.receivedLazy(routingId, firstPart, cursor,
+            requestSeq, hasRequestSeq, replySender, onTerminalState);
     }
 
     public static TopicMessage topicMessage(RoutingId routingId,
@@ -593,21 +502,6 @@ public final class InternalAccess {
         if (runtimeSocketAccess == null)
             load("systems.zlink.runtime.sockets.NativeDealerRequestSupport");
         return require(runtimeSocketAccess, Socket.class);
-    }
-
-    private static SpotAccess spotAccess() {
-        if (spotAccess == null) load(NativeSpot.class);
-        return require(spotAccess, NativeSpot.class);
-    }
-
-    private static MeshNodeAccess meshNodeAccess() {
-        if (meshNodeAccess == null) load(NativeMeshNode.class);
-        return require(meshNodeAccess, NativeMeshNode.class);
-    }
-
-    private static DispatchAccess dispatchAccess() {
-        if (dispatchAccess == null) load(NativeMeshNode.class);
-        return require(dispatchAccess, NativeMeshNode.class);
     }
 
     private static TimerAccess timerAccess() {

@@ -3,7 +3,7 @@
 #include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
 #include <Runtime/Sockets/detail.hpp>
 #include <Runtime/Sockets/socket_access.hpp>
-#include <Runtime/Service/spot_state.hpp>
+#include <Runtime/Messaging/operation_state.hpp>
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
 
 namespace zlink
@@ -13,28 +13,28 @@ pub_socket_t::pub_socket_t (context_t &ctx_) : publisher_socket_t (ctx_, socket_
 {
 }
 
-service::send_operation_t pub_socket_t::publish (const std::string &topic_id_)
+send_operation_t pub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_publish;
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::operation_kind_t::raw_publish;
     state_ptr->raw.socket = detail::native_handle (*this);
     state_ptr->raw.topic = topic_id_;
-    return service::send_operation_t (std::move (state_ptr));
+    return send_operation_t (std::move (state_ptr));
 }
 
 xpub_socket_t::xpub_socket_t (context_t &ctx_) : publisher_socket_t (ctx_, socket_type::xpub)
 {
 }
 
-service::send_operation_t xpub_socket_t::publish (const std::string &topic_id_)
+send_operation_t xpub_socket_t::publish (const std::string &topic_id_)
 {
     detail::validate_no_embedded_null (topic_id_, "topic");
-    auto state_ptr = service::detail::acquire_state ();
-    state_ptr->kind = service::detail::spot_operation_kind_t::raw_publish;
+    auto state_ptr = detail::acquire_state ();
+    state_ptr->kind = detail::operation_kind_t::raw_publish;
     state_ptr->raw.socket = detail::native_handle (*this);
     state_ptr->raw.topic = topic_id_;
-    return service::send_operation_t (std::move (state_ptr));
+    return send_operation_t (std::move (state_ptr));
 }
 
 int xpub_socket_t::receive_subscription_event (subscription_event_t &out_, recv_flags_t flags_)

@@ -23,12 +23,5 @@
 #include "zlink/Contracts/Eventing/poller.hpp"
 #include "zlink/Contracts/Eventing/poll_event.hpp"
 #include "zlink/Contracts/Eventing/timers.hpp"
-#include "zlink/Contracts/Service/mesh_node_models.hpp"
-#include "zlink/Contracts/Service/actor_models.hpp"
-#include "zlink/Contracts/Service/dispatch.hpp"
-#include "zlink/Contracts/Service/mesh_node.hpp"
-#include "zlink/Contracts/Service/spot.hpp"
-#include "zlink/Contracts/Service/actor.hpp"
-#include "zlink/Contracts/Service/stream_session.hpp"
 
 #endif

@@ -4,7 +4,7 @@
 #include "message.hpp"
 #include "request_result.hpp"
 #include "../Sockets/results.hpp"
-#include "../Service/operation_builder_base.hpp"
+#include "operation_builder_base.hpp"
 
 #include <chrono>
 #include <functional>
@@ -140,20 +140,18 @@ class router_socket_t;
 class stream_socket_t;
 class xpub_socket_t;
 
-namespace service
-{
 namespace detail
 {
-struct spot_operation_state_t;
+struct operation_state_t;
 } // namespace detail
 
 /// @brief Accepts further parts, flags, and the terminal submit of a send builder.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t).
 class send_submit_operation_t : private detail::operation_builder_base_t<
-                                  detail::spot_operation_state_t,
+                                  detail::operation_state_t,
                                   detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -180,10 +178,10 @@ class send_submit_operation_t : private detail::operation_builder_base_t<
  *       moved into the transport and left invalid; on failure ownership returns to the caller.
  */
 class send_operation_t : private detail::operation_builder_base_t<
-                           detail::spot_operation_state_t,
+                           detail::operation_state_t,
                            detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -205,8 +203,6 @@ class send_operation_t : private detail::operation_builder_base_t<
     friend class zlink::stream_socket_t;
     friend class zlink::pub_socket_t;
     friend class zlink::xpub_socket_t;
-    friend class spot_t;
-    friend class mesh_node_t;
     friend class zlink::received_t;
 };
 
@@ -215,10 +211,10 @@ class request_callback_submit_operation_t;
 /// @brief Accepts further parts, timeout, flags, and the terminal submit of a request.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
 class request_submit_operation_t : private detail::operation_builder_base_t<
-                                     detail::spot_operation_state_t,
+                                     detail::operation_state_t,
                                      detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -243,10 +239,10 @@ class request_submit_operation_t : private detail::operation_builder_base_t<
 
 /// @brief Builds a request: add the request parts, then submit and await a reply.
 class request_operation_t : private detail::operation_builder_base_t<
-                              detail::spot_operation_state_t,
+                              detail::operation_state_t,
                               detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -261,18 +257,16 @@ class request_operation_t : private detail::operation_builder_base_t<
     using base_t::release_state_ptr;
     using base_t::state;
 
-    friend class spot_t;
-    friend class mesh_node_t;
     friend class zlink::dealer_socket_t;
     friend class zlink::router_socket_t;
 };
 
 /// @brief Callback-submission stage of a request builder (reached after flags()).
 class request_callback_submit_operation_t : private detail::operation_builder_base_t<
-                                              detail::spot_operation_state_t,
+                                              detail::operation_state_t,
                                               detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -297,10 +291,10 @@ class request_callback_submit_operation_t : private detail::operation_builder_ba
 /// @brief Accepts further parts, flags, and the terminal submit of a reply builder.
 /// @note Parts are consumed on a successful submit (see @ref send_operation_t for the ownership model).
 class reply_submit_operation_t : private detail::operation_builder_base_t<
-                                   detail::spot_operation_state_t,
+                                   detail::operation_state_t,
                                    detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -322,10 +316,10 @@ class reply_submit_operation_t : private detail::operation_builder_base_t<
 
 /// @brief Builds a reply to a received request: add the reply parts, then submit().
 class reply_operation_t : private detail::operation_builder_base_t<
-                            detail::spot_operation_state_t,
+                            detail::operation_state_t,
                             detail::pooled_operation_state_policy_t>
 {
-    using base_t = detail::operation_builder_base_t<detail::spot_operation_state_t,
+    using base_t = detail::operation_builder_base_t<detail::operation_state_t,
                                                     detail::pooled_operation_state_policy_t>;
 
   public:
@@ -340,11 +334,8 @@ class reply_operation_t : private detail::operation_builder_base_t<
     using base_t::release_state_ptr;
     using base_t::state;
 
-    friend class spot_t;
-    friend class mesh_node_t;
     friend class zlink::received_t;
     friend class zlink::router_socket_t;
 };
 
-} // namespace service
 } // namespace zlink

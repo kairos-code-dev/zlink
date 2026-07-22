@@ -110,9 +110,6 @@ public sealed class test_optimization_guard
         var nativeResourceContracts = new HashSet<string>(
             StringComparer.Ordinal)
         {
-            nameof(MeshReadyBatch),
-            nameof(MeshClaim),
-            nameof(MeshReceiveBatch),
             nameof(SubmitResult)
         };
 

@@ -176,24 +176,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
         else:
             self.assertIn("ipc", pair_transports)
 
-    def test_default_full_matrix_allows_explicit_default_overrides(self):
-        args = type("Args", (), {"pattern": "ALL"})()
-        default_sizes = ",".join(str(size) for size in RC.DEFAULT_MSG_SIZES_STANDARD)
-        default_transports = ",".join(RC.DEFAULT_SOCKET_TRANSPORTS)
-        with EnvPatch(
-            updates={
-                "PERF_MSG_SIZES": default_sizes,
-                "PERF_TRANSPORTS": default_transports,
-            },
-            remove=["PERF_FULL_MATRIX"],
-        ):
-            self.assertTrue(RC.is_default_full_matrix(args, RC.DEFAULT_PATTERNS))
-        with EnvPatch(
-            updates={"PERF_TRANSPORTS": "tcp,tls,ws,wss"},
-            remove=["PERF_MSG_SIZES", "PERF_FULL_MATRIX"],
-        ):
-            self.assertFalse(RC.is_default_full_matrix(args, RC.DEFAULT_PATTERNS))
-
     def test_auto_hwm_detail_lines_are_rendered(self):
         pubsub_tcp_line = (
             "AUTO_HWM_DETAIL,pattern=PUBSUB,transport=tcp,component=publisher,"

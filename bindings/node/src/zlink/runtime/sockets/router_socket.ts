@@ -8,7 +8,6 @@ import {
   RuntimeRequestOperation,
   RoutedMessageSocket,
 } from './socket_operations';
-import { configureSocketChannelName } from './socket_base';
 import { normalizeReplyFlags } from './socket_submit_errors';
 import type { RuntimeContext as Context } from '../core/context';
 import { configCall, submitNativeError } from '../errors/native_errors';
@@ -22,16 +21,13 @@ import type {
   ReplyOperation,
   RequestCallback,
   RequestOperation,
-} from '../../contracts/service';
+} from '../../contracts/messaging';
 
 const native = requireNative();
 
 export class RouterSocket extends RoutedMessageSocket {
   readonly options: RouterSocketOptions;
   constructor(ctx: Context) { super(ctx, NativeSocketType.ROUTER); this.options = RouterSocketOptions.create(this); }
-  setChannelName(channelName: string): void {
-    configureSocketChannelName(this, channelName);
-  }
   setRoutingId(routingId: RoutingId): void {
     const normalizedRoutingId = normalizeRoutingId(routingId);
     configCall('routing id set failed', () => {

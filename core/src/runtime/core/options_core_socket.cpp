@@ -146,20 +146,6 @@ int zlink::options_setsockopt_core_socket (
             }
             break;
 
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
-            if (is_int_ && value_ >= 0) {
-                self_->heartbeat_interval = value_;
-                return 0;
-            }
-            break;
-
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
-            if (is_int_ && value_ >= 0) {
-                self_->heartbeat_timeout = value_;
-                return 0;
-            }
-            break;
-
         default:
             break;
     }
@@ -303,18 +289,6 @@ int zlink::options_getsockopt_core_socket (
         case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
             if (is_int_) {
                 *value_ = self_->peer_weight;
-                return 0;
-            }
-            break;
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
-            if (is_int_) {
-                *value_ = self_->heartbeat_interval;
-                return 0;
-            }
-            break;
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
-            if (is_int_) {
-                *value_ = self_->heartbeat_timeout;
                 return 0;
             }
             break;

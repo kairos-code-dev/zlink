@@ -123,8 +123,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_, uint32_t tid_, int sid_) :
     _auto_hwm_deferred_rcvhwm (-1),
     _auto_hwm_send_attempts (0),
     _auto_hwm_send_blocked_attempts (0),
-    _local_peer_weight (100),
-    _channel_name_locked (false)
+    _local_peer_weight (100)
 {
     _term_pipe_acks_registered = 0;
     _term_pipe_acks_received = 0;
@@ -463,9 +462,9 @@ bool zlink::socket_base_t::decode_peer_weight_command (const zlink::msg_t &msg_,
 
 void zlink::socket_base_t::stop ()
 {
-    //  Publish termination before queueing the administrative command. Mesh
-    //  owns one ROUTER that may have an ingress receiver and a blocked sender
-    //  on different threads. Either thread can consume the command mailbox
+    //  Publish termination before queueing the administrative command. A
+    //  ROUTER may have a receiver and a blocked sender on different threads.
+    //  Either thread can consume the command mailbox
     //  edge, so an additional wake plus the shared atomic state makes both
     //  blocking paths observe ETERM. The command still performs the ordinary
     //  monitor shutdown on the socket thread.

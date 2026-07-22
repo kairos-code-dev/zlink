@@ -111,17 +111,6 @@ internal static partial class PerfRunner
             1000);
     }
 
-    internal static int ResolveSingleSpotReadySettleMs()
-    {
-        return PerfEnv.ReadNonNegative("PERF_SINGLE_SPOT_READY_SETTLE_MS",
-            1000);
-    }
-
-    internal static int ResolveSpotReadyTimeoutMs()
-    {
-        return ResolveSingleConnectReadyTimeoutMs();
-    }
-
     internal static int SendBlocking(IMessageSocket socket,
         ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
@@ -301,35 +290,6 @@ internal static partial class PerfRunner
             {
                 sender.Options.SendTimeout = null;
                 if (PerfSocketIo.Publish(sender, topic, StopToken.Bytes,
-                        SendFlags.None) > 0)
-                    return;
-            }
-            catch (ZlinkException ex)
-                when (PerfShared.IsTransientBackpressure(ex.NativeErrno))
-            {
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine(
-                    $"{tag} stop-token publish failed: {ex.Message}");
-                return;
-            }
-
-            Thread.Sleep(1);
-        }
-
-        Console.Error.WriteLine($"{tag} stop-token publish failed");
-    }
-
-    internal static void PublishSpotStopTokenBlocking(ISpot spot, string topic,
-        string tag)
-    {
-        for (int retry = 0; retry < 100; retry++)
-        {
-            try
-            {
-                spot.SendTimeout = null;
-                if (PerfSocketIo.Publish(spot, topic, StopToken.Bytes,
                         SendFlags.None) > 0)
                     return;
             }

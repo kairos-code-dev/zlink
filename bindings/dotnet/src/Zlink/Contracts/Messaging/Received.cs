@@ -50,11 +50,6 @@ public sealed partial class Received : IDisposable
     }
 
     /// <summary>
-    ///     Gets the source spot routing id when the envelope came from a spot route.
-    /// </summary>
-    public RoutingId? SpotRid => _metadata?.SpotRid;
-
-    /// <summary>
     ///     Gets the request sequence when this envelope can be replied to.
     /// </summary>
     public ulong? RequestSeq => _metadata?.RequestSeq;

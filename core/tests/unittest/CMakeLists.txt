@@ -16,11 +16,9 @@ set(unittests
     unittest_socket_runtime
     unittest_typed_option
     unittest_public_contract_headers
-    unittest_instance_spot_abi
-    unittest_instance_spot_wire
     unittest_request_timeout_scheduler
     unittest_result_enum_mapping
-    unittest_service_control_runtime)
+    unittest_control_runtime)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)
@@ -67,9 +65,6 @@ foreach(test ${unittests})
   endif()
 
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
-  if(${test} MATCHES "^unittest_instance_spot_(abi|wire)$")
-    set_tests_properties(${test} PROPERTIES TIMEOUT 30)
-  endif()
   set_tests_properties(${test} PROPERTIES LABELS "unittest;parallel-safe")
 
   # Unit tests link through testutil-static and the static core library only.

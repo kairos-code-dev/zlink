@@ -157,20 +157,4 @@ public final class NativeLayouts {
     public static final long MONITOR_REMOTE_OFFSET = MONITOR_EVENT_LAYOUT.byteOffset(
             PathElement.groupElement("remote_addr"));
 
-
-    public static final int ACTOR_ID_MAX = 256;
-
-    public static final MemoryLayout ACTOR_REF_LAYOUT =
-            MemoryLayout.structLayout(
-                    ROUTING_ID_LAYOUT.withName("node_rid"),
-                    MemoryLayout.sequenceLayout(ACTOR_ID_MAX,
-                            ValueLayout.JAVA_BYTE).withName("actor_id"),
-                    ValueLayout.JAVA_LONG_UNALIGNED.withName("generation"));
-    public static final long ACTOR_REF_NODE_RID_OFFSET =
-            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("node_rid"));
-    public static final long ACTOR_REF_ACTOR_ID_OFFSET =
-            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("actor_id"));
-    public static final long ACTOR_REF_GENERATION_OFFSET =
-            ACTOR_REF_LAYOUT.byteOffset(PathElement.groupElement("generation"));
-
 }

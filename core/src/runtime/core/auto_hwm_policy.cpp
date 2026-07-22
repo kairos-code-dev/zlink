@@ -34,15 +34,15 @@ struct connection_bucket_hwm_t
 
 const uint32_t unlimited_peer_bucket = UINT32_MAX;
 
-const connection_bucket_hwm_t spot_connection_buckets[] = {
+const connection_bucket_hwm_t connection_buckets[] = {
   {64, 64, 128, 256, 512},
   {128, 64, 64, 128, 256},
   {512, 32, 32, 64, 128},
   {2048, 16, 16, 32, 64},
   {unlimited_peer_bucket, 8, 8, 16, 32}};
 
-const uint32_t spot_connection_bucket_count =
-  sizeof spot_connection_buckets / sizeof spot_connection_buckets[0];
+const uint32_t connection_bucket_count =
+  sizeof connection_buckets / sizeof connection_buckets[0];
 
 uint32_t clamp_size_to_u32 (size_t value_)
 {
@@ -93,7 +93,7 @@ uint32_t basis_hwm_for_class (zlink_auto_hwm_profile_t profile_,
     const profile_hwm_t hwm = profile_hwm (profile_);
     switch (policy_class_) {
         case zlink::auto_hwm_policy_fanout:
-        case zlink::auto_hwm_policy_spot_data:
+        case zlink::auto_hwm_policy_connection_data:
         case zlink::auto_hwm_policy_routed:
         case zlink::auto_hwm_policy_recv_ingress:
         case zlink::auto_hwm_policy_peer_queue:
@@ -133,7 +133,7 @@ uint32_t routed_small_message_cap_for_profile (zlink_auto_hwm_profile_t profile_
 
 bool connection_bucket_policy_class (zlink::auto_hwm_policy_class_t policy_class_)
 {
-    return policy_class_ == zlink::auto_hwm_policy_spot_data
+    return policy_class_ == zlink::auto_hwm_policy_connection_data
            || policy_class_ == zlink::auto_hwm_policy_recv_ingress
            || policy_class_ == zlink::auto_hwm_policy_routed;
 }
@@ -157,48 +157,48 @@ uint32_t bucket_hwm_for_profile (const connection_bucket_hwm_t &bucket_,
 uint32_t connection_bucket_hwm_4k (zlink_auto_hwm_profile_t profile_, uint32_t connections_)
 {
     const uint32_t peers = std::max<uint32_t> (connections_, 1u);
-    for (uint32_t i = 0; i != spot_connection_bucket_count; ++i) {
-        if (peers <= spot_connection_buckets[i].max_peers)
-            return bucket_hwm_for_profile (spot_connection_buckets[i], profile_);
+    for (uint32_t i = 0; i != connection_bucket_count; ++i) {
+        if (peers <= connection_buckets[i].max_peers)
+            return bucket_hwm_for_profile (connection_buckets[i], profile_);
     }
     return bucket_hwm_for_profile (
-      spot_connection_buckets[spot_connection_bucket_count - 1],
+      connection_buckets[connection_bucket_count - 1],
       profile_);
 }
 
 uint32_t connection_bucket_index_for_connections (uint32_t connections_)
 {
     const uint32_t peers = std::max<uint32_t> (connections_, 1u);
-    for (uint32_t i = 0; i != spot_connection_bucket_count; ++i) {
-        if (peers <= spot_connection_buckets[i].max_peers)
+    for (uint32_t i = 0; i != connection_bucket_count; ++i) {
+        if (peers <= connection_buckets[i].max_peers)
             return i;
     }
-    return spot_connection_bucket_count - 1;
+    return connection_bucket_count - 1;
 }
 
 uint32_t connection_bucket_hwm_4k_by_index (zlink_auto_hwm_profile_t profile_,
                                             uint32_t bucket_index_)
 {
-    if (bucket_index_ >= spot_connection_bucket_count)
-        bucket_index_ = spot_connection_bucket_count - 1;
-    return bucket_hwm_for_profile (spot_connection_buckets[bucket_index_], profile_);
+    if (bucket_index_ >= connection_bucket_count)
+        bucket_index_ = connection_bucket_count - 1;
+    return bucket_hwm_for_profile (connection_buckets[bucket_index_], profile_);
 }
 
 uint32_t connection_bucket_upper_hysteresis_threshold (uint32_t bucket_index_)
 {
-    if (bucket_index_ >= spot_connection_bucket_count
-        || spot_connection_buckets[bucket_index_].max_peers == unlimited_peer_bucket) {
+    if (bucket_index_ >= connection_bucket_count
+        || connection_buckets[bucket_index_].max_peers == unlimited_peer_bucket) {
         return unlimited_peer_bucket;
     }
-    const uint32_t max_peers = spot_connection_buckets[bucket_index_].max_peers;
+    const uint32_t max_peers = connection_buckets[bucket_index_].max_peers;
     return max_peers + ((max_peers + 3u) / 4u);
 }
 
 uint32_t connection_bucket_lower_hysteresis_threshold (uint32_t bucket_index_)
 {
-    if (bucket_index_ == 0 || bucket_index_ >= spot_connection_bucket_count)
+    if (bucket_index_ == 0 || bucket_index_ >= connection_bucket_count)
         return 0;
-    const uint32_t previous_max_peers = spot_connection_buckets[bucket_index_ - 1].max_peers;
+    const uint32_t previous_max_peers = connection_buckets[bucket_index_ - 1].max_peers;
     return (previous_max_peers * 3u) / 4u;
 }
 
@@ -211,7 +211,7 @@ uint32_t connection_bucket_index_with_hysteresis (uint32_t connections_,
 
     const uint32_t peers = std::max<uint32_t> (connections_, 1u);
     const uint32_t normal_index = connection_bucket_index_for_connections (peers);
-    if (previous_bucket_index_ >= spot_connection_bucket_count)
+    if (previous_bucket_index_ >= connection_bucket_count)
         return normal_index;
     if (previous_bucket_index_ == normal_index)
         return normal_index;
@@ -371,8 +371,8 @@ zlink::auto_hwm_policy_class_t zlink::auto_hwm_policy_class_for_role (auto_hwm_r
             return auto_hwm_policy_routed;
         case auto_hwm_role_fanout:
             return auto_hwm_policy_fanout;
-        case auto_hwm_role_spot_data:
-            return auto_hwm_policy_spot_data;
+        case auto_hwm_role_connection_data:
+            return auto_hwm_policy_connection_data;
         case auto_hwm_role_recv_ingress:
             return auto_hwm_policy_recv_ingress;
         case auto_hwm_role_peer_queue:

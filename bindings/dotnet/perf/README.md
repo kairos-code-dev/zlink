@@ -35,13 +35,13 @@ from `bindings/README.md` for CLI names, defaults, result file naming, and the
 `## Effective Options (start)` report header.
 
 - single:
-  - patterns: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`, `SPOT`
+  - patterns: `PAIR`, `PUBSUB`, `DEALER_DEALER`, `DEALER_ROUTER`, `ROUTER_ROUTER`
   - public receive surface: `recv`
-  - default transports: raw=`tcp,tls,ws,wss,inproc,ipc` on Linux and `tcp,tls,ws,wss,inproc` on Windows, SPOT=`tcp,tls,ws,wss`
+  - default transports: `tcp,tls,ws,wss,inproc,ipc` on Linux and `tcp,tls,ws,wss,inproc` on Windows
   - default sizes: `64,256,1024,65536,131072,262144`
 - multi:
   - entrypoint: `./perf/run_benchmarks_multi.sh`
-  - default patterns: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_SPOT`, `MULTI_STREAM`
+  - default patterns: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_STREAM`
   - public receive surface: `recv`
   - default transports: `tcp,tls,ws,wss`
   - default clients: `100` and `10000` for `MULTI_STREAM`
@@ -83,9 +83,7 @@ active window uses the same tiered-runtime policy as `doc/perf/PERF_POLICY.md`.
 Multi uses `PERF_IO_THREADS=4` by default for both server and client processes,
 matching the C multi policy. Benchmark processes set the current message size
 as `Context.Options.AutoHwmMessageUnitBytes` and then call context auto-HWM
-recalculation before active measurement. SPOT benchmark handles do not expose
-or set per-socket message-unit overrides; their internal sockets use the same
-context HWM configuration path.
+recalculation before active measurement.
 
 ## Results
 
@@ -114,18 +112,6 @@ and include the required metrics:
 The report also includes a markdown summary table for each pattern / transport /
 run group so the output remains readable without dropping the canonical
 `RESULT,current,...` lines.
-
-## SPOT One-Way Latency
-
-`MULTI_SPOT` reports active-phase latency from the timestamp carried in the
-one-way payload. The active phase intentionally drives the sender hard, so the
-reported value includes queue residence time when the receiver cannot drain as
-fast as the publisher fills the path.
-
-The .NET runner currently relies on SPOT dispatch callbacks for this path.
-That keeps the benchmark on public binding APIs, but it does not match the C
-runner's extra receive-worker drain path. Because of that, one-way SPOT latency
-can be much higher than C even when every size completes successfully.
 
 ## Review Notes
 

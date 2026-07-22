@@ -7,7 +7,7 @@
 #endif
 
 #include "core/ctx.hpp"
-#include "services/control/service_control_runtime.hpp"
+#include "core/control_runtime.hpp"
 
 namespace
 {
@@ -28,7 +28,7 @@ bool zlink::ctx_t::start_runtime_locked ()
     return true;
 }
 
-zlink::service_control_runtime_t *zlink::ctx_t::ensure_service_runtime ()
+zlink::control_runtime_t *zlink::ctx_t::ensure_control_runtime ()
 {
     int last_errno = ENOTSUP;
     for (int attempt = 0; attempt < ctx_bootstrap_retry_count; ++attempt) {
@@ -38,7 +38,7 @@ zlink::service_control_runtime_t *zlink::ctx_t::ensure_service_runtime ()
             errno = ETERM;
             return NULL;
         }
-        service_control_runtime_t *runtime = _runtime_resources.service_control_runtime ();
+        control_runtime_t *runtime = _runtime_resources.control_runtime ();
         if (runtime) {
             _slot_sync.unlock ();
             return runtime;
@@ -50,7 +50,7 @@ zlink::service_control_runtime_t *zlink::ctx_t::ensure_service_runtime ()
         }
 
         const bool started = start_runtime_locked ();
-        runtime = _runtime_resources.service_control_runtime ();
+        runtime = _runtime_resources.control_runtime ();
         last_errno = errno;
         _slot_sync.unlock ();
         if (started && runtime)

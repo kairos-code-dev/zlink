@@ -79,7 +79,6 @@ enum class rid_duplicate_policy_t : int
 };
 
 class routing_id_t;
-class actor_ref_t;
 class received_t;
 class topic_message_t;
 class socket_t;
@@ -90,9 +89,6 @@ class stream_socket_t;
 class pub_socket_t;
 class xpub_socket_t;
 class timer_t;
-namespace service
-{
-class spot_t;
 class send_operation_t;
 class send_submit_operation_t;
 class request_operation_t;
@@ -100,8 +96,6 @@ class request_submit_operation_t;
 class request_callback_submit_operation_t;
 class reply_operation_t;
 class reply_submit_operation_t;
-} // namespace service
-
 /// @brief Strongly-typed I/O thread count for context creation.
 class io_thread_count_t
 {

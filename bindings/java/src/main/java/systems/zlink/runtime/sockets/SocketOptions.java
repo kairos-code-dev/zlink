@@ -161,15 +161,6 @@ public final class SocketOptions {
     public static final SocketOptionKey<Integer> INVERT_MATCHING =
       SocketOptionKey.int32("INVERT_MATCHING", SocketOption.INVERT_MATCHING,
         true, true);
-    public static final SocketOptionKey<Integer> HEARTBEAT_IVL =
-      SocketOptionKey.int32("HEARTBEAT_IVL", SocketOption.HEARTBEAT_IVL,
-        true, true);
-    public static final SocketOptionKey<Integer> HEARTBEAT_TTL =
-      SocketOptionKey.int32("HEARTBEAT_TTL", SocketOption.HEARTBEAT_TTL,
-        true, true);
-    public static final SocketOptionKey<Integer> HEARTBEAT_TIMEOUT =
-      SocketOptionKey.int32("HEARTBEAT_TIMEOUT", SocketOption.HEARTBEAT_TIMEOUT,
-        true, true);
     public static final SocketOptionKey<Integer> XPUB_VERBOSER =
       SocketOptionKey.int32("XPUB_VERBOSER", SocketOption.XPUB_VERBOSER,
         true, true);
@@ -243,8 +234,7 @@ public final class SocketOptions {
         CONNECT_ROUTING_ID, CONNECT_ROUTING_ID_BYTES,
         HANDSHAKE_IVL, XPUB_NODROP, BLOCKY, XPUB_MANUAL,
         XPUB_WELCOME_MSG, XPUB_WELCOME_MSG_BYTES,
-        STREAM_NOTIFY, INVERT_MATCHING, HEARTBEAT_IVL,
-        HEARTBEAT_TTL, HEARTBEAT_TIMEOUT, XPUB_VERBOSER,
+        STREAM_NOTIFY, INVERT_MATCHING, XPUB_VERBOSER,
         CONNECT_TIMEOUT, TCP_MAXRT, MULTICAST_MAXTPDU, USE_FD,
         BINDTODEVICE,
         TLS_CERT, TLS_KEY, TLS_CA, TLS_VERIFY,

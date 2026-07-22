@@ -57,16 +57,6 @@ internal sealed class Context : NativeOwner, IContext
         return new StreamSocket(this);
     }
 
-    public IMeshNode CreateMeshNode()
-    {
-        return new MeshNode(this, null);
-    }
-
-    public IMeshNode CreateMeshNode(MeshNodeOptions options)
-    {
-        return new MeshNode(this, options);
-    }
-
     public void Shutdown()
     {
         EnsureNotDisposed();

@@ -9,7 +9,6 @@
 #include "api/message/handler_result_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
-#include "api/mesh/mesh_api_internal.hpp"
 
 timer_handle_t *as_timer_handle (void *timer_)
 {
@@ -66,11 +65,9 @@ void timer_handle_release_poller_ref (timer_handle_t *timer_)
 
 void *zlink_timer_new (void)
 {
-    // Generic timers stay on the generic timer scheduler backend. They must not
-    // run on socket I/O threads, and they must not reuse the service timer
-    // scheduler path.
-    std::unique_ptr<timer_handle_t> timer (
-      new (std::nothrow) timer_handle_t (timer_handle_t::backend_global_scheduler));
+    // Generic timers stay on the timer scheduler backend and do not run on
+    // socket I/O threads.
+    std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t ());
     if (!timer) {
         errno = ENOMEM;
         return NULL;
@@ -81,33 +78,6 @@ void *zlink_timer_new (void)
     }
 
     std::shared_ptr<scheduler_state_t> scheduler = global_timer_scheduler ();
-    timer->scheduler = scheduler.get ();
-    {
-        std::lock_guard<std::mutex> lock (scheduler->mutex);
-        ++scheduler->active_timers;
-    }
-    ensure_scheduler_started (scheduler);
-    return timer.release ();
-}
-
-void *zlink_spot_timer_new (void *spot_)
-{
-    return zlink::mesh::spot_timer_new (spot_);
-}
-
-void *zlink_timer_new_for_spot_node (void *owner_node_)
-{
-    std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t (
-      timer_handle_t::backend_spot_node_scheduler, owner_node_));
-    if (!timer) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    if (!timer->signaler.valid ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    std::shared_ptr<scheduler_state_t> scheduler = scheduler_for_timer (timer.get ());
     timer->scheduler = scheduler.get ();
     {
         std::lock_guard<std::mutex> lock (scheduler->mutex);
@@ -143,10 +113,6 @@ zlink_close_result_t zlink_timer_destroy (void **timer_p_)
     //  fire's completion needs that lock to decrement scheduler_busy_refs.
     scheduler_lock.unlock ();
     timer_lock.unlock ();
-    //  A Spot-owned turn may be parked waiting for the owning Spot's
-    //  application claim (possibly held by this very caller): cancel it so
-    //  the fire can finish without running the handler.
-    zlink::mesh::spot_timer_cancel (timer);
     timer_lock.lock ();
     while (timer->scheduler_busy_refs > 0)
         timer->cv.wait (timer_lock);
@@ -162,10 +128,6 @@ zlink_close_result_t zlink_timer_destroy (void **timer_p_)
             scheduler->shutdown_requested = true;
     }
     scheduler->cv.notify_all ();
-
-    //  A Spot-owned timer releases its reference on the owning Spot
-    //  generation; a plain timer is a no-op here.
-    zlink::mesh::spot_timer_closed (timer);
 
     delete timer;
     *timer_p_ = NULL;

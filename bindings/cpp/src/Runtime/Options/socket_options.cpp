@@ -175,45 +175,6 @@ void common_socket_options_t::tcp_keepalive (tcp_keepalive_mode_t value)
                                           static_cast<int> (value));
 }
 
-std::chrono::milliseconds common_socket_options_t::heartbeat_interval () const
-{
-    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
-      detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_ivl));
-}
-
-void common_socket_options_t::heartbeat_interval (std::chrono::milliseconds value)
-{
-    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
-                                          detail::socket_option_id::heartbeat_ivl,
-                                          detail::native_option_ms (value));
-}
-
-std::chrono::milliseconds common_socket_options_t::heartbeat_ttl () const
-{
-    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
-      detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_ttl));
-}
-
-void common_socket_options_t::heartbeat_ttl (std::chrono::milliseconds value)
-{
-    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
-                                          detail::socket_option_id::heartbeat_ttl,
-                                          detail::native_option_ms (value));
-}
-
-std::chrono::milliseconds common_socket_options_t::heartbeat_timeout () const
-{
-    return std::chrono::milliseconds (detail::get_typed_option_value<int> (
-      detail::native_option_handle (_socket), detail::socket_option_id::heartbeat_timeout));
-}
-
-void common_socket_options_t::heartbeat_timeout (std::chrono::milliseconds value)
-{
-    detail::set_typed_option_value<int> (detail::native_option_handle (_socket),
-                                          detail::socket_option_id::heartbeat_timeout,
-                                          detail::native_option_ms (value));
-}
-
 rid_duplicate_policy_t common_socket_options_t::rid_duplicate_policy () const
 {
     return static_cast<rid_duplicate_policy_t> (detail::get_typed_option_value<int> (

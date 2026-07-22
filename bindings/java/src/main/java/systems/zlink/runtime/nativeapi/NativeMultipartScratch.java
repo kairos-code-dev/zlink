@@ -10,7 +10,6 @@ import systems.zlink.contracts.messaging.Message;
 
 final class NativeMultipartScratch {
     final MemorySegment nodeRidPtrOut;
-    final MemorySegment spotRidPtrOut;
     final MemorySegment seqOut;
     final MemorySegment hasMoreOut;
     private MemorySegment parts = MemorySegment.NULL;
@@ -19,7 +18,6 @@ final class NativeMultipartScratch {
     NativeMultipartScratch() {
         Arena auto = Arena.ofAuto();
         nodeRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
-        spotRidPtrOut = auto.allocate(ValueLayout.ADDRESS);
         seqOut = auto.allocate(ValueLayout.JAVA_LONG);
         hasMoreOut = auto.allocate(ValueLayout.JAVA_INT);
     }

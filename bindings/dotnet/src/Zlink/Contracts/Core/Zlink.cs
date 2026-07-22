@@ -92,16 +92,6 @@ public static partial class Zlink
     }
 
     /// <summary>
-    ///     Creates a timer bound to <paramref name="spot" />'s event loop, so its
-    ///     callbacks run on the spot's dispatch thread. The caller owns the
-    ///     returned timer and must dispose it.
-    /// </summary>
-    public static IZlinkTimer CreateTimer(ISpot spot)
-    {
-        return Timer.FromSpot(SocketInterop.RequireSpot(spot, nameof(spot)));
-    }
-
-    /// <summary>
     ///     Reports whether the native library was built with the named capability.
     /// </summary>
     public static bool Has(string capability)

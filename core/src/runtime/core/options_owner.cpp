@@ -27,8 +27,6 @@ zlink::options_owner_t common_option_owner_lookup (zlink_option_t option_)
         case ZLINK_OPT_SUBMIT_RETRY_MODE:
         case ZLINK_OPT_SUBMIT_RETRY_TIMEOUT:
         case ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS:
-        case ZLINK_OPT_HEARTBEAT_IVL:
-        case ZLINK_OPT_HEARTBEAT_TIMEOUT:
         case ZLINK_OPT_ZMP_METADATA:
         case ZLINK_OPT_RID_DUPLICATE_POLICY:
             return zlink::options_owner_core_socket;
@@ -52,7 +50,6 @@ zlink::options_owner_t common_option_owner_lookup (zlink_option_t option_)
         case ZLINK_OPT_TCP_NODELAY:
             return zlink::options_owner_transport_network;
 
-        case ZLINK_OPT_HEARTBEAT_TTL:
         case ZLINK_OPT_TLS_CERT:
         case ZLINK_OPT_TLS_KEY:
         case ZLINK_OPT_TLS_CA:
@@ -66,7 +63,7 @@ zlink::options_owner_t common_option_owner_lookup (zlink_option_t option_)
         case ZLINK_OPT_FD:
         case ZLINK_OPT_EVENTS:
         case ZLINK_OPT_LAST_ENDPOINT:
-            return zlink::options_owner_service_specific;
+            return zlink::options_owner_socket_specific;
 
         case ZLINK_OPT_BLOCKY:
         default:
@@ -101,8 +98,6 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
         case ZLINK_INTERNAL_OPT_ZMP_METADATA:
         case ZLINK_INTERNAL_OPT_RID_DUPLICATE_POLICY:
         case ZLINK_INTERNAL_OPT_PEER_WEIGHT:
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_IVL:
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TIMEOUT:
             return options_owner_core_socket;
 
         case ZLINK_INTERNAL_OPT_SNDBUF:
@@ -136,9 +131,6 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
             return options_owner_protocol_metadata;
 #endif
 
-        case ZLINK_INTERNAL_OPT_HEARTBEAT_TTL:
-            return options_owner_protocol_metadata;
-
         case ZLINK_INTERNAL_OPT_SUBSCRIBE:
         case ZLINK_INTERNAL_OPT_UNSUBSCRIBE:
         case ZLINK_INTERNAL_OPT_ROUTER_MANDATORY:
@@ -155,7 +147,7 @@ zlink::options_owner_t zlink::option_owner_of (int option_)
         case ZLINK_INTERNAL_OPT_FD:
         case ZLINK_INTERNAL_OPT_EVENTS:
         case ZLINK_INTERNAL_OPT_LAST_ENDPOINT:
-            return options_owner_service_specific;
+            return options_owner_socket_specific;
 
         default:
             return options_owner_unknown;
@@ -189,7 +181,7 @@ zlink::options_owner_t zlink::router_option_owner_of (zlink_router_option_t opti
         case ZLINK_ROUTER_OPT_MANDATORY:
         case ZLINK_ROUTER_OPT_PROBE:
         case ZLINK_ROUTER_OPT_CONNECT_ROUTING_ID:
-            return options_owner_service_specific;
+            return options_owner_socket_specific;
         case ZLINK_ROUTER_OPT_WEIGHT:
             return options_owner_core_socket;
         default:
@@ -201,7 +193,7 @@ zlink::options_owner_t zlink::dealer_option_owner_of (zlink_dealer_option_t opti
 {
     switch (option_) {
         case ZLINK_DEALER_OPT_PROBE:
-            return options_owner_service_specific;
+            return options_owner_socket_specific;
         case ZLINK_DEALER_OPT_WEIGHT:
             return options_owner_core_socket;
         default:
@@ -231,7 +223,7 @@ zlink::options_owner_t zlink::pub_option_owner_of (int option_)
         case ZLINK_PUB_OPT_TOPICS_COUNT:
         case ZLINK_PUB_OPT_APPROVE_SUBSCRIBE:
         case ZLINK_PUB_OPT_REJECT_SUBSCRIBE:
-            return options_owner_service_specific;
+            return options_owner_socket_specific;
         default:
             return options_owner_unknown;
     }
@@ -241,7 +233,7 @@ zlink::options_owner_t zlink::sub_option_owner_of (int option_)
 {
     switch (option_) {
         case ZLINK_SUB_OPT_TOPICS_COUNT:
-            return options_owner_service_specific;
+            return options_owner_socket_specific;
         default:
             return options_owner_unknown;
     }
@@ -256,8 +248,8 @@ const char *zlink::option_owner_name (options_owner_t owner_)
             return "transport-network";
         case options_owner_protocol_metadata:
             return "protocol-metadata";
-        case options_owner_service_specific:
-            return "service-specific";
+        case options_owner_socket_specific:
+            return "socket-specific";
         default:
             return "unknown";
     }

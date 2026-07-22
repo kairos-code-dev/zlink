@@ -90,25 +90,19 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             else:
                 os.environ["PERF_MULTI_MATCHED_BASELINE"] = previous
 
-    def test_spot_diagnostic_lines_are_preserved_without_becoming_results(self):
+    def test_matched_diagnostic_lines_are_preserved_without_becoming_results(self):
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            RC.emit_spot_diag_line(
-                "SPOT_DIAG,current,MULTI_SPOT_PUBSUB,tcp,64,"
-                "role=hub,pending_bytes=0\n"
+            RC.emit_benchmark_diag_line(
+                "RESULT,current,MULTI_ROUTER_ROUTER_REQREP,tcp,64,throughput,1\n"
             )
-            RC.emit_spot_diag_line(
-                "RESULT,current,MULTI_SPOT_PUBSUB,tcp,64,throughput,1\n"
-            )
-            RC.emit_spot_diag_line(
+            RC.emit_benchmark_diag_line(
                 "MATCHED_DIAG,current,MULTI_ROUTER_ROUTER_REQREP,tcp,64,"
                 "role=peers,processes=100,contexts=100,sockets=100\n"
             )
         self.assertEqual(
             output.getvalue(),
             (
-                "SPOT_DIAG,current,MULTI_SPOT_PUBSUB,tcp,64,"
-                "role=hub,pending_bytes=0\n"
                 "MATCHED_DIAG,current,MULTI_ROUTER_ROUTER_REQREP,tcp,64,"
                 "role=peers,processes=100,contexts=100,sockets=100\n"
             ),
@@ -161,30 +155,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ),
             [],
         )
-
-    def test_default_full_matrix_allows_explicit_default_overrides(self):
-        old_env = os.environ.copy()
-        try:
-            os.environ["PERF_TRANSPORTS"] = "tcp,tls,ws,wss"
-            os.environ["PERF_MSG_SIZES"] = "64,256,1024,4096,65536,131072"
-            os.environ["PERF_STREAM_MSG_SIZES"] = "64,256,1024,65536"
-            patterns = [pattern for _, pattern in RC.MULTI_COMPARISONS]
-            self.assertTrue(
-                RC.is_default_full_matrix(
-                    {"pattern_request": "ALL"},
-                    patterns,
-                )
-            )
-            os.environ["PERF_TRANSPORTS"] = "tcp,tls"
-            self.assertFalse(
-                RC.is_default_full_matrix(
-                    {"pattern_request": "ALL"},
-                    patterns,
-                )
-            )
-        finally:
-            os.environ.clear()
-            os.environ.update(old_env)
 
     def test_multi_connect_concurrency_header_uses_multi_env_name(self):
         old_allow_multi = RC.ALLOW_MULTI

@@ -543,7 +543,8 @@ final class SocketCore {
     }
 
     private static Received materializeReceived(CallbackReceivedData snapshot) {
-        return InternalAccess.received(snapshot.routingId(), null, snapshot.parts(), true, 0L, false, null);
+        return InternalAccess.received(snapshot.routingId(), snapshot.parts(),
+            true, 0L, false, null);
     }
 
     private RoutingId readRoutingId(MemorySegment sourceRid) {

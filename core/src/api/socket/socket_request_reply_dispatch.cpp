@@ -40,7 +40,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
                 != 0)
                 zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         } else {
-            if (dispatch_router_message (state, source_rid_, NULL, 0, parts_, part_count_) != 0)
+            if (dispatch_router_message (state, source_rid_, 0, parts_, part_count_) != 0)
                 zlink::request_reply::close_request_reply_parts (parts_, part_count_);
         }
         return;
@@ -56,7 +56,7 @@ void socket_request_reply_dispatch (const zlink_routing_id_t *source_rid_,
             }
         } else if (state->socket_type == ZLINK_CORE_SOCKET_ROUTER
                    && zlink::valid_routing_id (source_rid_)) {
-            if (dispatch_router_message (state, source_rid_, NULL, envelope.request_seq,
+            if (dispatch_router_message (state, source_rid_, envelope.request_seq,
                                          envelope.payload_parts, envelope.payload_part_count)
                 != 0) {
                 zlink::request_reply::close_request_reply_parts (parts_, part_count_);

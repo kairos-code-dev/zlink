@@ -33,7 +33,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
-    "SPOT",
 ]
 
 PATTERN_TO_BINARY = {
@@ -44,7 +43,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER_REQREP": "perf_dealer_router_reqrep",
     "ROUTER_ROUTER": "perf_router_router",
     "ROUTER_ROUTER_REQREP": "perf_router_router_reqrep",
-    "SPOT": "perf_spot",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -55,9 +53,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
-    "SPOT",
 }
 STREAM_SIZE_PATTERNS = set()
 
@@ -583,11 +579,7 @@ def run_cmake_build(cmake_build_dir: str, targets: List[str]) -> int:
 
 
 def select_transports(pattern: str) -> List[str]:
-    base = (
-        DEFAULT_SPOT_TRANSPORTS
-        if pattern in STREAM_TRANSPORT_PATTERNS
-        else DEFAULT_SOCKET_TRANSPORTS
-    )
+    base = DEFAULT_SOCKET_TRANSPORTS
     env_transports = parse_env_list("PERF_TRANSPORTS", str)
     if not env_transports:
         return list(base)

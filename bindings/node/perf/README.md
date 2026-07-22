@@ -23,13 +23,11 @@ Current implemented scope:
   - `DEALER_DEALER`
   - `DEALER_ROUTER`
   - `ROUTER_ROUTER`
-  - `SPOT`
 - multi patterns:
   - `MULTI_DEALER_DEALER`
   - `MULTI_DEALER_ROUTER`
   - `MULTI_ROUTER_ROUTER`
   - `MULTI_PUBSUB`
-  - `MULTI_SPOT`
   - `MULTI_STREAM`
 
 Current alignment notes:
@@ -46,8 +44,6 @@ Current alignment notes:
   stream client fanout at `1000` by default. Override it with
   `PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX` or `PERF_STREAM_NON_TCP_CLIENTS_MAX`
   when a run intentionally needs higher non-TCP concurrency.
-- SPOT benchmarks use `createPublisher()` when external code publishes into
-  the local SPOT topic plane.
 - result files are written under the shared `perf/results/{single,multi}/report`
   layout required by policy
 - benchmark code is split by pattern file, and the entry scripts select the

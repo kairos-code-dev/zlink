@@ -190,17 +190,7 @@ public enum MonitorSourceKind
     /// <summary>
     ///     A plain socket.
     /// </summary>
-    Socket = 1,
-
-    /// <summary>
-    ///     The publish side of a spot.
-    /// </summary>
-    SpotPub = 3,
-
-    /// <summary>
-    ///     The subscribe side of a spot.
-    /// </summary>
-    SpotSub = 4
+    Socket = 1
 }
 
 /// <summary>

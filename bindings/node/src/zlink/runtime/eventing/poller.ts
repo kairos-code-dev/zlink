@@ -23,10 +23,9 @@ import { requireNative } from '../native/native';
 import { flagsToMask } from '../sockets/socket_options';
 import { PollEvents } from './poll_events';
 import { Timer } from './timer';
-import type { RuntimeSpot as Spot } from '../service';
 import type { RuntimeBaseSocket as BaseSocket } from '../sockets';
 
-type BasePollable = BaseSocket | Spot;
+type BasePollable = BaseSocket;
 
 function validateSlot(slot: number): number {
   if (!Number.isSafeInteger(slot) || slot < 0) {

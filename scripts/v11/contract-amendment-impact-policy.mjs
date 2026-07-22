@@ -10,7 +10,62 @@ export const semanticMemberKey = member => [
   member.kind,
 ].join('\0');
 
+const portableOwner = ownerIdentity => {
+  const simple = ownerIdentity.split(/::|\./u).at(-1) ?? ownerIdentity;
+  return normalize(simple)
+    .replace(/^izlink|^zlink/gu, '')
+    .replace(/t$/gu, '');
+};
+
+export const removedMemberParityKey = member => {
+  const owner = portableOwner(member.ownerIdentity);
+  const name = normalize(member.memberName);
+  if (member.language === 'kotlin' && /package|extensionskt/u.test(owner)) {
+    return `kotlin-logical.${name}.${member.kind}`;
+  }
+  if (/entryspotoptions/u.test(owner) && /^(?:set)?routingid$/u.test(name)) {
+    return 'entry-spot-options.routing-id';
+  }
+  if (/meshnodebuilder/u.test(owner) && name === 'setentryspotroutingid') {
+    return 'entry-spot-options.routing-id';
+  }
+  if (/instancespotfactoryoptions/u.test(owner) && name === 'maxactiveinstances') {
+    return 'instance-spot-factory-options.max-active-instances';
+  }
+  if (/instancespotfactoryoptions/u.test(owner) && /activationtimeout(?:ms)?/u.test(name)) {
+    return 'instance-spot-factory-options.activation-timeout';
+  }
+  if (/meshnodebuilder/u.test(owner) && /^(?:add)?actorfactory$/u.test(name)) {
+    return 'mesh-node-builder.actor-factory-registration';
+  }
+  if (/meshNodeDescriptor/i.test(owner) && name === 'spottypes') {
+    return 'mesh-node-descriptor.spot-types';
+  }
+  if (/objectcapability/u.test(owner) && name === 'available') {
+    return 'object-capability.available';
+  }
+  return `${owner}.${name}.${member.kind}`;
+};
+
+export const replacementParitySignature = behavior => JSON.stringify({
+  decisions: [...behavior.decisionCoverage].sort(),
+  coverage: behavior.replacementCoverage
+    .map(id => id.replace(/:(?:cpp|dotnet|java|node)$/u, ':<runtime>'))
+    .sort(),
+});
+
 const runtimeLanguage = language => language === 'kotlin' ? 'java' : language;
+
+export const closedCatchAllExpectations = {
+  'kotlin-reviewed-contract-set': {
+    count: 148,
+    identitySetSha256: '1e10d4fb966a38f49265f4cc2f34feb21e3f164f196f1bb8c455efd12a2d0a68',
+  },
+  'node-reviewed-contract-set': {
+    count: 59,
+    identitySetSha256: '8dba9a58fd81c96453072ce5d5410f0bd4b5315f9910539324a9d46af76504f5',
+  },
+};
 
 const rules = [
   {
@@ -71,14 +126,59 @@ const rules = [
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
   {
-    id: 'global-authority-key',
-    matches: value => /actorlocationkey|spotlocationkey|authoritysnapshot/u.test(value),
-    decisions: ['CA-D01', 'CA-D02'],
+    id: 'actor-global-authority-key',
+    matches: value => /actorlocationkey|authoritysnapshot.*actor/u.test(value),
+    decisions: ['CA-D01'],
     coverage: member => [`regression:add:global-authority-key:${runtimeLanguage(member.language)}`],
   },
   {
+    id: 'spot-global-authority-key',
+    matches: value => /spotlocationkey|authoritysnapshot.*spot/u.test(value),
+    decisions: ['CA-D02'],
+    coverage: member => [`regression:add:global-authority-key:${runtimeLanguage(member.language)}`],
+  },
+  {
+    id: 'instance-spot-activation-timeout',
+    matches: value => /instancespotfactoryoptions.*(?:activationtimeout|fromseconds)/u.test(value),
+    decisions: ['CA-D04', 'CA-D10'],
+    coverage: () => ['e2e:add:global-spot-explicit-create'],
+  },
+  {
+    id: 'instance-spot-options-record-helper',
+    matches: value => /instancespotfactoryoptions.*(?:equals|hashcode|tostring)/u.test(value),
+    decisions: ['CA-D29'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'instance-spot-options-constructor',
+    matches: value => /instancespotfactoryoptions.*instancespotfactoryoptions/u.test(value),
+    decisions: ['CA-D04', 'CA-D10', 'CA-D23'],
+    coverage: () => [
+      'e2e:add:global-spot-explicit-create',
+      'e2e:add:placement-capacity-weight-affinity',
+    ],
+  },
+  {
+    id: 'instance-spot-active-capacity',
+    matches: value => /instancespotfactoryoptions.*maxactiveinstances/u.test(value),
+    decisions: ['CA-D23'],
+    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+  },
+  {
+    id: 'mesh-node-spot-types',
+    matches: value => /meshNodeDescriptor.*spotTypes/i.test(value),
+    decisions: ['CA-D14'],
+    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+  },
+  {
+    id: 'object-capability-availability',
+    matches: value => /objectcapability.*available/u.test(value),
+    decisions: ['CA-D23'],
+    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+  },
+  {
     id: 'placement-policy',
-    matches: value => /placement|affinity|capacity|weight|spottypes|objectcapability/u.test(value)
+    matches: value => /placement|affinity|capacity|weight/u.test(value)
       && !/zlinksocket/u.test(value),
     decisions: ['CA-D14', 'CA-D22', 'CA-D23'],
     coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
@@ -96,49 +196,74 @@ const rules = [
     coverage: () => ['e2e:add:forwarding-bounds'],
   },
   {
+    id: 'actor-factory-registration',
+    matches: value => /meshnodebuilder.*(?:add)?actorfactory/u.test(value),
+    decisions: ['CA-D14', 'CA-D18', 'CA-D28'],
+    coverage: () => ['sample:add:remote-object-create'],
+  },
+  {
+    id: 'actor-client-messaging',
+    matches: value => /actorclient.*(?:requesttoactor|sendtoactor)/u.test(value),
+    decisions: ['CA-D01', 'CA-D26'],
+    coverage: () => ['e2e:add:global-actor-remote-create'],
+  },
+  {
     id: 'actor-fluent-create',
-    matches: value => /actorfactory|actormanager.*create|actormanager.*getorcreate|requesttoactor|sendtoactor/u.test(value),
+    matches: value => /actormanager.*create|actormanager.*getorcreate/u.test(value),
     decisions: ['CA-D01', 'CA-D04', 'CA-D09'],
     coverage: () => ['e2e:add:global-actor-remote-create'],
   },
   {
     id: 'spot-fluent-create',
-    matches: (value, member) => /spotfactory|spotmanager.*create|spotmanager.*getorcreate|spotcreate/u.test(value)
-      && !/meshnodebuilder|nestmeshnodebuilder/u.test(normalize(member.ownerIdentity)),
+    matches: (value, member) => /spotmanager.*create|spotmanager.*getorcreate|spotcreate/u.test(value)
+      && !/meshnodebuilder|nestmeshnodebuilder/u.test(normalize(member.ownerIdentity))
+      && !/maxactiveinstances/u.test(value),
     decisions: ['CA-D02', 'CA-D04', 'CA-D09'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
   {
     id: 'closed-object-role',
-    matches: value => /addentryspot|configureentryspot|entryspotoptions|meshnodebuilder.*add.*spot/u.test(value),
+    matches: value => /addentryspot|configureentryspot|entryspotoptions|meshnodebuilder.*add.*spot/u.test(value)
+      && !/entryspotoptions.*routingid|setentryspotroutingid/u.test(value),
     decisions: ['CA-D18', 'CA-D28'],
     coverage: () => ['sample:add:remote-object-create'],
   },
   {
     id: 'operational-location-query',
-    matches: value => /peerlocationresolver|listlivepeers|locationextensions|locationruntimequery|list.*location|listtopology|listmeshnode/u.test(value)
+    matches: value => /peerlocationresolver|listlivepeers|locationruntimequery|list.*location|listtopology|listmeshnode/u.test(value)
       && !/resolve.*handle/u.test(value),
     decisions: ['CA-D26'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'fixed-entry-routing-id',
-    matches: value => /setentryspotroutingid/u.test(value),
+    matches: value => /entryspotoptions.*routingid|setentryspotroutingid/u.test(value),
     decisions: ['CA-D19'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'kotlin-reviewed-contract-set',
     matches: (value, member) => member.language === 'kotlin'
-      && /zlinkframeworkextensionskt|zlinksuspending|zlinkdispatchoptionsextensionskt|package/u.test(value)
-      && !/actorfactory|actorref|findactor|listlivepeers|list.*location|listtopology|listmeshnode|resolve.*handle/u.test(value),
+      && /extensionskt|zlinksuspending|package/u.test(value),
     decisions: ['CA-D29'],
     coverage: () => ['public-behavior:formal-contract-parity:kotlin'],
   },
   {
+    id: 'actor-location-filter',
+    matches: value => /actorlocationfilter/u.test(value),
+    decisions: ['CA-D01', 'CA-D26'],
+    coverage: () => ['e2e:add:global-actor-remote-create'],
+  },
+  {
+    id: 'spot-location-filter',
+    matches: value => /spotlocationfilter/u.test(value),
+    decisions: ['CA-D02', 'CA-D26'],
+    coverage: () => ['e2e:add:global-spot-explicit-create'],
+  },
+  {
     id: 'node-reviewed-contract-set',
     matches: (value, member) => member.language === 'node'
-      && /zlinksocket|zlinkspotevent|zlinkspotlocationfilter|zlinkactorlocationfilter|zlinkdecoratormetadata|zlinkframeworkerrorkindvalues|zlinkspotactorrequest|zlinkspotactorreplyoptions|zlinkspotpeer|zlinksession|zlinkactorjoinresult|iszlinkframeworkerrorretriablebydefault/i.test(value),
+      && /zlinksocket|zlinkspotevent|zlinkdecoratormetadata|zlinkframeworkerrorkindvalues|zlinkspotactorrequest|zlinkspotactorreplyoptions|zlinkspotpeer|zlinksession|zlinkactorjoinresult|iszlinkframeworkerrorretriablebydefault/i.test(value),
     decisions: ['CA-D29'],
     coverage: () => ['public-behavior:formal-contract-parity:node'],
   },
@@ -158,7 +283,11 @@ const rules = [
 
 export function auditRemovedMemberBehavior(member) {
   const value = normalize(`${member.ownerIdentity}.${member.memberName}`);
-  const matches = rules.filter(candidate => candidate.matches(value, member));
+  const kotlinReviewedRule = rules.find(rule => rule.id === 'kotlin-reviewed-contract-set');
+  const candidates = kotlinReviewedRule.matches(value, member)
+    ? [kotlinReviewedRule]
+    : rules.filter(rule => rule !== kotlinReviewedRule);
+  const matches = candidates.filter(candidate => candidate.matches(value, member));
   if (matches.length !== 1) {
     return {
       state: matches.length === 0 ? 'unmatched' : 'ambiguous',

@@ -9,7 +9,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   auditRemovedMemberBehavior,
+  closedCatchAllExpectations,
   removedMemberBehavior,
+  removedMemberParityKey,
+  replacementParitySignature,
   semanticMemberKey,
 } from './contract-amendment-impact-policy.mjs';
 
@@ -378,6 +381,46 @@ if (invalidRemovalPolicies.length > 0) {
 const signatureReplacementCount = publicMemberRemovals.filter(member =>
   additionsBySemanticMember.get(semanticMemberKey(member))?.length).length;
 const behaviorReplacementCount = publicMemberRemovals.length - signatureReplacementCount;
+const behaviorByIdentity = new Map();
+const parityGroups = new Map();
+for (const member of publicMemberRemovals) {
+  if (additionsBySemanticMember.get(semanticMemberKey(member))?.length) continue;
+  const behavior = removedMemberBehavior(member);
+  behaviorByIdentity.set(member.identity, behavior);
+  const key = removedMemberParityKey(member);
+  if (!parityGroups.has(key)) parityGroups.set(key, []);
+  parityGroups.get(key).push({member, behavior});
+}
+const crossLanguageParityGroups = [...parityGroups.entries()].filter(([, group]) =>
+  new Set(group.map(item => item.member.language)).size > 1);
+const sourceJvmParityGroups = [...parityGroups.entries()].filter(([, group]) =>
+  group.every(item => item.member.language === 'kotlin')
+    && new Set(group.map(item => item.member.ownerIdentity)).size > 1);
+const auditedParityGroups = [...new Map([
+  ...crossLanguageParityGroups,
+  ...sourceJvmParityGroups,
+]).entries()];
+const parityMismatches = auditedParityGroups.filter(([, group]) =>
+  new Set(group.map(item => replacementParitySignature(item.behavior))).size > 1);
+if (parityMismatches.length > 0) {
+  throw new Error(`removed-member language parity mismatch: ${parityMismatches.map(([key]) => key).join(', ')}`);
+}
+const behaviorRuleCounts = Object.fromEntries([...behaviorByIdentity.values()]
+  .reduce((counts, behavior) => {
+    counts.set(behavior.ruleId, (counts.get(behavior.ruleId) ?? 0) + 1);
+    return counts;
+  }, new Map()).entries().toArray()
+  .sort(([left], [right]) => left.localeCompare(right, 'en')));
+for (const [ruleId, expected] of Object.entries(closedCatchAllExpectations)) {
+  const identities = publicMemberRemovals.filter(member =>
+    behaviorByIdentity.get(member.identity)?.ruleId === ruleId)
+    .map(member => member.identity).sort((left, right) => left.localeCompare(right, 'en'));
+  const identitySetSha256 = sha256(stableJson(identities));
+  if (identities.length !== expected.count || identitySetSha256 !== expected.identitySetSha256) {
+    throw new Error(`closed catch-all set changed without review: ${ruleId}`
+      + ` count=${identities.length} sha256=${identitySetSha256}`);
+  }
+}
 for (const member of publicMemberAdds) {
   const memberPath = member.exactInterface;
   entries.push({
@@ -419,7 +462,7 @@ for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node']) {
 for (const member of publicMemberRemovals) {
   const baselinePath = member.exactInterface;
   const replacements = additionsBySemanticMember.get(semanticMemberKey(member)) ?? [];
-  const behavior = replacements.length === 0 ? removedMemberBehavior(member) : null;
+  const behavior = replacements.length === 0 ? behaviorByIdentity.get(member.identity) : null;
   entries.push({
     id: publicMemberId('remove', member),
     kind: 'public-member',
@@ -544,6 +587,12 @@ const manifest = {
       behavior: behaviorReplacementCount,
       unmatched: 0,
       ambiguous: 0,
+      crossLanguageGroups: crossLanguageParityGroups.length,
+      sourceJvmGroups: sourceJvmParityGroups.length,
+      auditedParityGroups: auditedParityGroups.length,
+      parityMismatches: 0,
+      behaviorByRule: behaviorRuleCounts,
+      closedCatchAll: closedCatchAllExpectations,
     },
   },
   state: 'pending-disabled-by-contract-amendment',

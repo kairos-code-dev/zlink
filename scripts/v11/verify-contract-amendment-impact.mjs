@@ -8,7 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
+  closedCatchAllExpectations,
   removedMemberBehavior,
+  removedMemberParityKey,
+  replacementParitySignature,
   semanticMemberKey,
 } from './contract-amendment-impact-policy.mjs';
 
@@ -205,6 +208,45 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const expectedSignatureReplacementCount = expectedRemoved.filter(member =>
     additionsBySemanticMember.get(semanticMemberKey(member))?.length).length;
   const expectedBehaviorReplacementCount = expectedRemoved.length - expectedSignatureReplacementCount;
+  const behaviorByIdentity = new Map();
+  const parityGroups = new Map();
+  for (const member of expectedRemoved) {
+    if (additionsBySemanticMember.get(semanticMemberKey(member))?.length) continue;
+    const behavior = removedMemberBehavior(member);
+    behaviorByIdentity.set(member.identity, behavior);
+    const key = removedMemberParityKey(member);
+    if (!parityGroups.has(key)) parityGroups.set(key, []);
+    parityGroups.get(key).push({member, behavior});
+  }
+  const crossLanguageParityGroups = [...parityGroups.entries()].filter(([, group]) =>
+    new Set(group.map(item => item.member.language)).size > 1);
+  const sourceJvmParityGroups = [...parityGroups.entries()].filter(([, group]) =>
+    group.every(item => item.member.language === 'kotlin')
+      && new Set(group.map(item => item.member.ownerIdentity)).size > 1);
+  const auditedParityGroups = [...new Map([
+    ...crossLanguageParityGroups,
+    ...sourceJvmParityGroups,
+  ]).entries()];
+  const policyParityMismatches = auditedParityGroups.filter(([, group]) =>
+    new Set(group.map(item => replacementParitySignature(item.behavior))).size > 1);
+  if (policyParityMismatches.length > 0) {
+    fail(`reviewed removal policy has language parity mismatches: ${policyParityMismatches.map(([key]) => key).join(', ')}`);
+  }
+  const expectedBehaviorRuleCounts = Object.fromEntries([...behaviorByIdentity.values()]
+    .reduce((counts, behavior) => {
+      counts.set(behavior.ruleId, (counts.get(behavior.ruleId) ?? 0) + 1);
+      return counts;
+    }, new Map()).entries().toArray()
+    .sort(([left], [right]) => left.localeCompare(right, 'en')));
+  for (const [ruleId, expected] of Object.entries(closedCatchAllExpectations)) {
+    const identities = expectedRemoved.filter(member =>
+      behaviorByIdentity.get(member.identity)?.ruleId === ruleId)
+      .map(member => member.identity).sort((left, right) => left.localeCompare(right, 'en'));
+    if (identities.length !== expected.count
+        || sha256(stableJson(identities)) !== expected.identitySetSha256) {
+      fail(`closed catch-all identity set differs from reviewed set: ${ruleId}`);
+    }
+  }
   const traceDelta = manifest.publicContractTraceDelta;
   if (traceDelta?.path !== traceRelativePath
       || traceDelta?.baselineSha256 !== sha256(baselineTraceSource)
@@ -214,7 +256,15 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
       || traceDelta?.replacementPolicy?.signature !== expectedSignatureReplacementCount
       || traceDelta?.replacementPolicy?.behavior !== expectedBehaviorReplacementCount
       || traceDelta?.replacementPolicy?.unmatched !== 0
-      || traceDelta?.replacementPolicy?.ambiguous !== 0) {
+      || traceDelta?.replacementPolicy?.ambiguous !== 0
+      || traceDelta?.replacementPolicy?.crossLanguageGroups !== crossLanguageParityGroups.length
+      || traceDelta?.replacementPolicy?.sourceJvmGroups !== sourceJvmParityGroups.length
+      || traceDelta?.replacementPolicy?.auditedParityGroups !== auditedParityGroups.length
+      || traceDelta?.replacementPolicy?.parityMismatches !== 0
+      || stableJson(traceDelta?.replacementPolicy?.behaviorByRule)
+        !== stableJson(expectedBehaviorRuleCounts)
+      || stableJson(traceDelta?.replacementPolicy?.closedCatchAll)
+        !== stableJson(closedCatchAllExpectations)) {
     fail('publicContractTraceDelta does not match the approved baseline/current trace files');
   }
   const publicEntries = manifest.entries.filter(entry => entry.kind === 'public-member');
@@ -240,7 +290,9 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     }
     if (disposition === 'remove') {
       const signatureReplacements = additionsBySemanticMember.get(semanticMemberKey(member)) ?? [];
-      const behavior = signatureReplacements.length === 0 ? removedMemberBehavior(member) : null;
+      const behavior = signatureReplacements.length === 0
+        ? behaviorByIdentity.get(member.identity)
+        : null;
       const expectedReplacementKind = signatureReplacements.length > 0 ? 'signature' : 'behavior';
       const expectedReplacementRule = signatureReplacements.length > 0
         ? 'exact-semantic-member'
@@ -265,6 +317,19 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   expectedRemoved.forEach(member => assertTraceMember(member, 'remove'));
   if (publicEntries.length !== expectedAdded.length + expectedRemoved.length) {
     fail('public-member inventory contains entries outside the exact trace delta');
+  }
+  for (const [key, group] of auditedParityGroups) {
+    const actualSignatures = group.map(({member}) => {
+      const entry = publicEntries.find(candidate => candidate.disposition === 'remove'
+        && candidate.memberIdentity === member.identity);
+      return entry ? replacementParitySignature({
+        decisionCoverage: entry.decisionCoverage,
+        replacementCoverage: entry.replacementCoverage,
+      }) : '<missing>';
+    });
+    if (new Set(actualSignatures).size !== 1) {
+      fail(`removed semantic member differs across languages: ${key}`);
+    }
   }
   const parityCoverage = manifest.entries.filter(entry => entry.kind === 'public-behavior'
     && entry.id.startsWith('public-behavior:formal-contract-parity:'));
@@ -351,12 +416,30 @@ function selfTest(manifest) {
         entry.kind === 'public-member' && entry.disposition === 'remove');
       removal.decisionCoverage = ['CA-D99'];
     },
+    candidate => {
+      const removal = candidate.entries.find(entry => entry.kind === 'public-member'
+        && entry.disposition === 'remove'
+        && /EntrySpotOptions.*routingId|entry_spot_options_t\.routing_id/u.test(entry.memberIdentity));
+      removal.decisionCoverage = ['CA-D18', 'CA-D28'];
+    },
+    candidate => {
+      const removals = candidate.entries.filter(entry => entry.kind === 'public-member'
+        && entry.disposition === 'remove' && entry.language === 'kotlin'
+        && entry.memberName === 'listMeshNodes');
+      if (removals.length < 2) throw new Error('source/JVM parity mutation requires listMeshNodes representations');
+      removals[0].decisionCoverage = ['CA-D26'];
+    },
+    candidate => {
+      const removal = candidate.entries.find(entry =>
+        entry.replacementRule === 'node-reviewed-contract-set');
+      removal.replacementRule = 'spot-location-filter';
+    },
   ];
-  for (const mutate of mutations) {
+  for (const [index, mutate] of mutations.entries()) {
     const candidate = structuredClone(manifest);
     mutate(candidate);
     if (validateManifest(candidate, 'quarantine', {checkFiles: false}).length === 0) {
-      throw new Error('impact verifier negative self-test accepted an invalid mutation');
+      throw new Error(`impact verifier negative self-test accepted invalid mutation ${index + 1}`);
     }
   }
   const hashCandidate = structuredClone(manifest);

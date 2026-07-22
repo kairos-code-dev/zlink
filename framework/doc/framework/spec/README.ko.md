@@ -35,7 +35,7 @@ internals 문서가 소유한다.
 | `1x` | [10 Channel topology](server/10-channel-topology.ko.md) · [11 Channel 메시징](server/11-channel-messaging.ko.md) · [12 ClientServer Channel](server/12-client-server-channel.ko.md) · [13 Network listener identity](server/13-network-listener-identity.ko.md) |
 | `2x` | [20 Spot 메시징](server/20-spot-messaging.ko.md) · [21 MeshNode](server/21-mesh-node.ko.md) · [22 Actor 모델](server/22-actor-model.ko.md) · [23 Spot Actor](server/23-spot-actor.ko.md) · [24 Spot 주소 메시징](server/24-spot-address-messaging.ko.md) · [25 Stage wrapper](server/25-stage-wrapper-on-spot.ko.md) |
 | `3x` | [30 STREAM 서버 세션](server/30-stream-session.ko.md) · [31 Session Actor dispatch](server/31-session-actor-dispatch.ko.md) |
-| `4x` | [40 Location runtime](server/40-location-runtime.ko.md) · [41 Redis location store](server/41-location-store-redis.ko.md) |
+| `4x` | [40 Location runtime](server/40-location-runtime.ko.md) · [41 Redis Location Store](server/41-location-store-redis.ko.md) · [42 Redis Transfer Store](server/42-transfer-store-redis.ko.md) |
 | `5x` | [50 Runtime monitoring](server/50-runtime-monitoring.ko.md) · [51 Runtime metrics](server/51-runtime-metrics.ko.md) · [52 Message flow tracing](server/52-message-flow-tracing.ko.md) · [53 Flow correlation](server/53-flow-correlation.ko.md) · [54 Host retirement와 shutdown](server/54-graceful-drain-handoff.ko.md) · [55 Transport liveness](server/55-transport-liveness.ko.md) |
 
 언어별 정확한 server public API는 [server/languages](server/languages/README.ko.md)가 소유한다.

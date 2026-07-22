@@ -5,10 +5,10 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 RouteMesh MeshNode와 Instance Spot type 집계, ClientServer Channel과
+이 문서는 ZLink Framework 11.0.0에서 RouteMesh MeshNode와 global Actor·Spot placement 집계, ClientServer Channel과
 automatic classic fanout subscriber의 상태를 snapshot과 typed event로 관찰하는 공통 공개 계약을 정의한다.
 이 문서는 “운영자가 peer·server·fanout publisher readiness, channel 선택, multicast backpressure·drop,
-Instance activation, application·infrastructure mailbox와 host 종료 진행을 어떤 안정된 표면으로 확인하는가?”라는
+object placement·activation, application·infrastructure mailbox와 host 종료 진행을 어떤 안정된 표면으로 확인하는가?”라는
 질문에 답한다.
 
 집계 계기 이름은 [51 Runtime metrics](51-runtime-metrics.ko.md), 메시지 한 건의 trace는
@@ -29,12 +29,12 @@ snapshot의 필드와 state enum을 host lifecycle에 맞춰 바꾸거나 모든
 
 | 영역 | 공개 관찰 값 |
 |---|---|
-| MeshNode | MeshName, RID, lifecycle generation, descriptor revision, endpoint, service state, descriptor source set |
+| MeshNode | MeshName, RID, lifecycle generation, descriptor revision, endpoint, service state, descriptor source set, object role, placement weight |
 | Peer | RID, lifecycle generation, descriptor revision, endpoint, admission state, ready, service state, ChannelName set, last failure |
 | Channel | ChannelName, local weight, ready member 수, 선택 가능 여부 |
 | Logical Multicast | submit·backpressure·drop 누계, remote·local snapshot/admitted/dropped 수 |
 | Mailbox | application·infrastructure domain별 active turn과 pending work 수 |
-| Instance Spot | type별 active·activating·closing 수, pending message·byte 수와 최근 activation outcome |
+| Object placement | Actor·User Spot·Instance Spot의 kind·stable type별 active·pending·maximum capacity, reservation failure와 최근 placement outcome |
 | Location | store configured 여부, ready·degraded state, 마지막 성공·실패 시각 |
 | Host termination | intent, runtime state, deadline, sealed work, blocker, pending request·transfer·STREAM barrier 수와 terminal result |
 
@@ -72,6 +72,12 @@ event는 실제 native disconnect 또는 15초 inbound timeout을 관찰한 뒤 
 RID와 endpoint는 진단 snapshot에 포함할 수 있지만 metric label로 사용하지 않는다. snapshot은 호출이
 끝난 뒤에도 안전한 immutable value이며 native handle이나 caller buffer를 보유하지 않는다.
 
+Operational query는 global ActorId 또는 SpotRid의 current ref를 exact 조회하거나 object kind·stable type별 current
+authority를 page로 열거한다. Page size는 1..1000이고 encoded 결과는 4 MiB 이하다. Query item은 global ID,
+ObjectGeneration, MeshName, NodeRid, state와 stable type을 제공한다. 이 query는 application messaging target 목록이나
+placement selector가 아니며 unbounded list를 제공하지 않는다. Missing, Creating과 Store failure를 monitoring
+runtime의 negative cache에 보관하지 않는다.
+
 snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 MeshNode, 같은 ClientServer Channel 또는
 같은 automatic fanout Channel에서 더 큰 sequence가 더 나중의 상태를 뜻한다. 서로 다른 source의 sequence를
 전역 시계처럼 비교하지 않는다.
@@ -89,8 +95,10 @@ snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 Mes
 | `zlink.runtime.mesh_node.multicast_backpressured` | Logical Multicast admission이 backpressure를 반환 |
 | `zlink.runtime.mesh_node.multicast_dropped` | local 또는 remote target별 drop 발생 |
 | `zlink.runtime.mesh_node.mailbox_changed` | application 또는 infrastructure mailbox 상태 변경 |
+| `zlink.runtime.object.placement_changed` | create reservation, Ready·abort, capacity exhaustion 또는 transfer로 object placement 집계가 변경 |
+| `zlink.runtime.mesh_node.routing_id_conflict` | automatic RID descriptor owner claim이 active conflict로 실패 |
 | `zlink.runtime.host.termination_changed` | Retire·Shutdown intent, runtime state, sealed-work 또는 terminal result 변경 |
-| `zlink.runtime.transfer.changed` | Actor·Instance Spot transfer phase 또는 recovery 상태 변경 |
+| `zlink.runtime.transfer.changed` | Standalone Actor·User Spot aggregate·Instance Spot transfer phase 또는 recovery 상태 변경 |
 | `zlink.runtime.client_server.state_changed` | ClientServer local role, lifecycle 또는 ready state 변경 |
 | `zlink.runtime.client_server.server_changed` | server generation, revision, endpoint, weight, ready 또는 service state 변경 |
 | `zlink.runtime.fanout.publisher_changed` | automatic subscriber의 publisher 연결 대상, ready·disconnected·reconnecting 상태, draining 제외 또는 stale candidate 제외가 변경 |
@@ -106,11 +114,11 @@ variant로 표현한다. 해당 event에 필요한 경우에만 peer RID, lifecy
 mailbox domain, message kind, remote·local snapshot/admitted/dropped count, reason과 service state를 추가한다. Payload와
 application metadata를 event에 복사하지 않는다.
 
-Instance placement·activation 실패를 위한 별도 public event identifier는 추가하지 않는다. One-way 실패는
-[message flow tracing](52-message-flow-tracing.ko.md)의 기존 `zlink.message_flow` event에서
-`surface=instance_spot`, `outcome=dropped`로 기록한다. Location state 변화는 기존
-`zlink.runtime.location.store_changed`를 사용한다. Snapshot은 등록된 Instance type별 집계만 제공하고
-Spot RID, owner ID와 authority generation을 목록으로 노출하지 않는다.
+Placement event는 object kind, stable type, outcome, reason, capacity delta와 현재 node aggregate만 제공한다.
+Global ActorId, SpotRid, owner token과 generation은 event나 metric label에 넣지 않는다. 개별 create·message 실패는
+[message flow tracing](52-message-flow-tracing.ko.md)의 기존 `zlink.message_flow` event와 operation result에서
+관찰한다. RID conflict event는 retry attempt, configured prefix와 terminal 여부를 제공하지만 생성한 RID 후보는
+metric label에 넣지 않는다.
 
 | Fanout event variant | Identifier | 필수 payload |
 |---|---|---|
@@ -146,6 +154,7 @@ discriminated union 또는 variant로 이 닫힌 관계를 보존한다.
 | Descriptor source | `manual`, `redis`, `manual_and_redis` |
 | Store state | `not_configured`, `ready`, `degraded`, `stopped` |
 | Multicast reason | `backpressure`, `send_timeout`, `target_closed`, `shutdown` |
+| Placement outcome | `reserved`, `ready`, `aborted`, `capacity_exhausted`, `owner_stale`, `store_failed` |
 
 정확한 오류 객체와 언어별 casing은 언어별 공개 인터페이스 문서가 정한다.
 `Framework runtime state`는 host 종료를, `MeshNode service state`는 MeshNode lifecycle을 나타낸다. 두
@@ -193,6 +202,7 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
   요청하면 구성 오류다.
 - observer queue capacity가 0 이하이면 호출 인자 오류다.
 - Redis location store가 없는 runtime은 location event를 만들지 않고 snapshot의 store state를 `not_configured`로 반환한다.
+- Object role이 `Client` 또는 `Server`인데 Redis location store가 없으면 monitoring을 시작하기 전에 host startup이 실패한다.
 - metric·trace 활성화 여부와 runtime snapshot 사용 가능 여부를 묶지 않는다.
 
 ## 7. 검증 요구
@@ -218,7 +228,7 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
 - observer 하나를 취소하거나 close해도 다른 observer, automatic connection, manual endpoint 집합과
   message dispatch가 유지되며 취소한 observer에는 새 event가 전달되지 않는다.
 - snapshot의 RID, endpoint, topic, Actor ID와 Spot RID가 metric label로 복사되지 않는다.
-- Instance activation 집계가 `Activating`, `Ready`, `Closing`과 pending message·byte를 구분하며 Spot RID를
-  공개 monitoring label이나 목록으로 만들지 않는다.
-- One-way Instance activation 실패가 별도 request나 replay를 만들지 않고 기존 message flow drop event로
-  관찰된다.
+- Actor·User Spot·Instance Spot placement 집계가 active·pending·maximum capacity를 kind·stable type별로 구분한다.
+- Placement weight 0, capacity exhaustion과 reservation recovery가 descriptor projection 및 event와 일치한다.
+- Operational query가 1000 item·4 MiB bound를 지키고 global ID의 current location만 반환한다.
+- ActorId, SpotRid, owner token과 generation이 event 또는 metric label에 포함되지 않는다.

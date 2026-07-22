@@ -16,7 +16,7 @@ and pipes.
 +------------------------------------------------------+
 | ZMP or raw engines                                   |
 +------------------------------------------------------+
-| TCP, IPC, inproc, WebSocket, TLS, PGM transports     |
+| TCP, IPC, inproc, WebSocket, TLS transports          |
 +------------------------------------------------------+
 ```
 

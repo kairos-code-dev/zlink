@@ -389,9 +389,9 @@ ZLINK_EXPORT bool zlink_has (const char *capability_);
 ```
 
 `capability_` is a non-NULL, NUL-terminated string that the function does not
-retain. `"tcp"` always returns `true`. `"ipc"`, `"tls"`, `"ws"`, `"wss"`,
-`"pgm"`, and `"epgm"` return `true` only when that capability is present in
-the build. Any other string returns `false`.
+retain. `"tcp"` always returns `true`. `"ipc"`, `"tls"`, `"ws"`, and `"wss"`
+return `true` only when that capability is present in the build. Any other
+string returns `false`.
 
 **Thread safety:** Does not mutate global state and may be called from any
 thread.

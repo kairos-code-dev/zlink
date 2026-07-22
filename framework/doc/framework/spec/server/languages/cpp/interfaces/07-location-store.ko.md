@@ -15,6 +15,8 @@ struct location_options_t {
     std::chrono::milliseconds store_failure_grace{30000};
     std::chrono::milliseconds owner_lease_fencing_margin{5000};
     std::chrono::milliseconds owner_lease_renew_timeout{3000};
+    std::chrono::milliseconds route_cache_max_age{15000};
+    std::chrono::milliseconds transfer_forwarding_window{30000};
 };
 
 } // namespace zlink::framework
@@ -23,21 +25,16 @@ struct location_options_t {
 Store 등록과 location option member는
 [Configuration과 host](02-configuration-host.ko.md)의 `zlink_framework_options_t`가 소유한다.
 
-Store는 host마다 하나만 등록한다. 자동 discovery, fanout publisher descriptor 게시, Instance Spot address,
-remote Spot·Actor 위치, routing ID 자동 할당 또는 Actor transfer를 설정했는데 필요한 capability가 없으면 host는 socket
+Store는 host마다 하나만 등록한다. Object role `client`·`server`, automatic discovery, fanout publisher descriptor
+게시, global Spot·Actor 위치 또는 transfer를 설정했는데 필요한 capability가 없으면 host는 socket
 bind 전에 구성 오류로 종료한다. Store를 등록하지 않은 fanout publisher는 manual endpoint 대상으로
-동작한다. Manual peer, manual fanout publisher·subscriber와 process-local Spot·Actor만 사용하는 host는
-store 없이 시작할 수 있다.
+동작한다. Object role `none`인 explicit manual topology만 Store 없이 시작할 수 있으며 manager, factory와 hidden
+local Actor·Spot runtime을 만들지 않는다.
 
-Store가 없는 Actor는 runtime-local opaque authority와 handle만 사용하며 같은 process 안에서만 메시지를
-주고받는다. Remote directory·resolve, distributed join과 session binding, transfer·relocation을 구성하거나
-호출하면 configuration 또는 operation error로 거부한다. Durable authority와 owner generation은 Store-backed
-Actor에만 요구한다. 이 제한을 바꾸는 caller option은 없다.
-
-Duration option은 모두 양수여야 한다. Location Store와 owner lease runtime을 사용하는 모든 host는 routing ID
-자동 할당 여부와 관계없이 `owner_lease_renew_interval + owner_lease_renew_timeout < owner_lease_ttl -
-owner_lease_fencing_margin`을 만족해야 한다. 위 기본값은 이 관계를 만족한다. Routing slot도 같은 host token과
-deadline을 사용하며 별도 fencing margin 의미를 만들지 않는다.
+Lease와 polling duration은 양수여야 한다. Location Store와 owner lease runtime을 사용하는 모든 host는
+`owner_lease_renew_interval + owner_lease_renew_timeout < owner_lease_ttl - owner_lease_fencing_margin`을
+만족해야 한다. Route cache와 forwarding duration은 0이면 각각 비활성화한다. 둘 다 양수이면
+`transfer_forwarding_window >= route_cache_max_age + 5s`를 만족해야 한다.
 
 `store_failure_grace`는 discovery reconcile과 새 outbound connect에만 적용한다. Store failure 동안 마지막 stable
 desired set을 grace까지 고정하고 existing admitted transport에는 service liveness를 계속 적용한다. Grace 뒤에는
@@ -171,7 +168,11 @@ struct peer_location_filter_t {
     std::optional<std::string> endpoint;
 };
 
-enum class placement_object_kind_t { actor = 1, instance_spot = 2 };
+enum class placement_object_kind_t {
+    actor = 1,
+    user_spot = 2,
+    instance_spot = 3
+};
 enum class maintenance_policy_kind_t {
     disabled = 1,
     recreate = 2,
@@ -196,6 +197,9 @@ struct mesh_node_descriptor_t {
     std::set<std::string> spot_types;
     std::int64_t application_version;
     std::vector<object_capability_t> object_capabilities;
+    object_role_t object_role = object_role_t::none;
+    std::uint8_t placement_weight = 100;
+    object_capacity_options_t object_capacity{};
     std::optional<std::string> maintenance_wave;
     framework_runtime_state_t state;
     std::string security_identity;
@@ -255,9 +259,7 @@ struct spot_location_t {
     std::chrono::system_clock::time_point updated_at{};
 };
 struct spot_location_key_t {
-    std::string mesh_name;
-    zlink::routing_id_t spot_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
+    spot_rid_t spot_rid;
 };
 
 struct spot_location_filter_t {
@@ -283,7 +285,7 @@ struct actor_location_t {
     std::int64_t lease_generation = 0;
     std::chrono::system_clock::time_point updated_at{};
 };
-struct actor_location_key_t { std::string mesh_name; std::string actor_id; };
+struct actor_location_key_t { actor_id_t actor_id; };
 
 struct actor_location_filter_t {
     std::optional<std::string> mesh_name;
@@ -441,21 +443,20 @@ option은 제공하지 않는다. Framework reconciler는 scope change stamp를 
 적용하고 다르면 부분 결과를 버리고 first page부터 다시 읽는다. Page 조립과 retry는 Framework 내부 동작이며
 application에 별도 reconciliation API를 제공하지 않는다.
 
-Entry·User·Instance Spot owner state는 `(MeshName, SpotRid)`에서 파생한 하나의 opaque authority key를
-공유한다. User Spot create와 Instance cold claim은 같은 row에 `new_object` compare-exchange를 수행하므로
-kind conflict와 object generation 증가가 원자적으로 결정된다. `spot_location_t`는 Framework가 authority
+User·Instance Spot owner state는 global SpotRid에서 파생한 하나의 opaque authority key를 공유한다. Manager
+Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 pending capacity를 원자적으로
+결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
 payload와 page를 decode해서 만드는 운영 조회 projection이며 provider write·remove·resolve interface가 아니다.
 Provider는 Spot kind, type, owner state와 Actor transfer phase를 해석하지 않는다.
-`spot_location_t::spot_generation`, Spot handle generation과 `actor_ref_t::generation`은 provider의
+`spot_ref_t::object_generation()`과 `actor_ref_t::object_generation()`은 provider의
 `object_generation`을 그대로 사용한다. Authority envelope의 `authority_owner_generation`은 authority owner
 이관 fence이고 descriptor·projection의 `lease_generation`은 host lease fence다. 두 generation을 합치거나
 Framework 계산값으로 만들지 않는다.
 Maintenance owner 이관은 `new_owner`로 owner generation만 바꾸고 object generation을 유지한다.
-기존 handle은 유효하며 이전 owner route를 사용하면 runtime이 current authority를 재조회하여 forwarding
-또는 retry한다. Explicit close 후 cold recreate만 `new_object`로 새 object generation을 발급하며,
-이때 이전 handle은 영구적으로 stale다.
+Ref는 immutable location snapshot이며 이전 owner route에서 bounded forwarding mapping만 사용할 수 있다. Exact
+close·destroy·bind는 stale 또는 moving 결과에서 fresh incarnation으로 자동 retry하지 않는다.
 
-## 2.1 Watch, resolve와 runtime query
+## 2.1 Watch와 runtime query
 
 ```cpp
 struct location_watch_filter_t {
@@ -499,34 +500,6 @@ public:
     virtual ~location_change_stamp_store_t() = default;
     virtual task_t<std::int64_t> get_change_stamp(
       location_change_stamp_scope_t scope) = 0;
-};
-
-class peer_location_resolver_t {
-public:
-    virtual ~peer_location_resolver_t() = default;
-    virtual task_t<std::vector<peer_location_t>> list_live_peers(
-      peer_location_filter_t filter) = 0;
-};
-
-class spot_handle_t final {
-public:
-    spot_rid_t spot_rid() const noexcept;
-};
-
-class spot_handle_resolver_t {
-public:
-    virtual ~spot_handle_resolver_t() = default;
-    virtual task_t<std::optional<spot_handle_t>> resolve_spot_handle(
-      std::string mesh_name,
-      spot_rid_t spot_rid) = 0;
-};
-
-class actor_spot_handle_resolver_t {
-public:
-    virtual ~actor_spot_handle_resolver_t() = default;
-    virtual task_t<std::optional<spot_handle_t>> resolve_actor_spot_handle(
-      std::string mesh_name,
-      std::string actor_id) = 0;
 };
 
 class location_readiness_t {
@@ -627,7 +600,8 @@ namespace zlink::framework {
 
 class location_store_t : public mesh_node_location_store_t,
                          public owner_lease_store_t,
-                         public authority_store_t {
+                         public authority_store_t,
+                         public object_creation_store_t {
 public:
     ~location_store_t() override = default;
     virtual task_t<std::int64_t> remove_all_by_owner(
@@ -642,88 +616,13 @@ public:
 capability는 해당 기능을 구성할 때 provider가 추가로 구현한다. Entry·User·Instance Spot owner와 Actor
 transfer state machine은 Framework 내부 payload다. Provider는 payload 형식, Spot kind, phase와 recovery
 cursor를 해석하지 않는다.
-Checkpoint payload 보관은 별도 `checkpoint_store_t` capability이며 Snapshot policy나 accepted journal을
-사용하는 host만 함께 등록한다.
+Transfer payload 보관은 별도 `transfer_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도
+있는 host만 정확히 하나를 함께 등록하며 `Disabled` factory만 있는 same-node host에는 필요하지 않다.
 
 ## 4. 공식 Redis package
 
 ```cpp
 namespace zlink::framework {
-
-enum class routing_id_allocation_member_kind_t {
-    mesh_node,
-    fanout_publisher
-};
-struct routing_id_allocation_member_key_t {
-    routing_id_allocation_member_kind_t kind;
-    std::string name;
-    auto operator<=>(const routing_id_allocation_member_key_t &) const = default;
-};
-struct routing_id_slot_allocation_member_t {
-    routing_id_allocation_member_key_t key;
-    std::string routing_id_prefix;
-};
-struct routing_id_slot_acquire_request_t {
-    std::string group_name;
-    std::vector<routing_id_slot_allocation_member_t> members;
-    std::size_t slot_count;
-    location_owner_token_t owner;
-};
-
-struct routing_id_slot_allocation_t {
-    std::size_t slot;
-    location_owner_token_t owner;
-    std::chrono::system_clock::time_point store_now;
-};
-struct routing_id_slot_acquired_t { routing_id_slot_allocation_t allocation; };
-struct routing_id_slot_group_exhausted_t {};
-struct routing_id_slot_group_configuration_mismatch_t {
-    std::vector<routing_id_slot_allocation_member_t> expected_members;
-    std::size_t expected_slot_count;
-    std::vector<routing_id_slot_allocation_member_t> actual_members;
-    std::size_t actual_slot_count;
-};
-struct routing_id_slot_identity_mode_conflict_t {};
-
-using routing_id_slot_acquire_result_t = std::variant<
-  routing_id_slot_acquired_t,
-  routing_id_slot_group_exhausted_t,
-  routing_id_slot_group_configuration_mismatch_t,
-  routing_id_slot_identity_mode_conflict_t>;
-
-enum class routing_id_slot_release_result_t { released, ignored_stale };
-
-struct routing_id_slot_allocation_snapshot_t {
-    std::string group_name;
-    std::vector<routing_id_slot_allocation_member_t> members;
-    std::size_t slot_count;
-    std::vector<routing_id_slot_allocation_t> allocations;
-    std::chrono::system_clock::time_point store_now;
-};
-
-struct allocated_routing_id_t {
-    std::string group_name;
-    std::size_t slot;
-    std::map<routing_id_allocation_member_key_t, zlink::routing_id_t> routing_ids;
-};
-
-class allocated_routing_id_provider_t {
-public:
-    virtual ~allocated_routing_id_provider_t() = default;
-    virtual task_t<allocated_routing_id_t> wait_for_ready_allocation(
-      std::string group_name) = 0;
-};
-
-class routing_id_slot_allocation_store_t {
-public:
-    virtual task_t<routing_id_slot_acquire_result_t> acquire_routing_id_slot(
-      routing_id_slot_acquire_request_t request) = 0;
-    virtual task_t<routing_id_slot_release_result_t> release_routing_id_slot(
-      std::string group_name, std::size_t slot,
-      location_owner_token_t owner) = 0;
-    virtual task_t<routing_id_slot_allocation_snapshot_t> list_routing_id_slots(
-      std::string group_name) = 0;
-};
 
 } // namespace zlink::framework
 
@@ -737,38 +636,38 @@ struct redis_location_options_t {
     redis_location_options_t &set_key_prefix(std::string value);
 };
 
+struct redis_transfer_options_t {
+    std::string connection_string;
+    std::string key_prefix;
+
+    redis_transfer_options_t &set_connection_string(std::string value);
+    redis_transfer_options_t &set_key_prefix(std::string value);
+};
+
 class redis_location_store_t final : public location_store_t,
                                      public client_server_location_store_t,
                                      public fanout_location_store_t,
                                      public peer_location_store_t,
                                      public route_location_store_t,
-                                     public checkpoint_store_t,
-                                     public routing_id_slot_allocation_store_t,
                                      public location_change_stamp_store_t {
 public:
     explicit redis_location_store_t(redis_location_options_t options);
     ~redis_location_store_t();
 };
 
+class redis_transfer_store_t final : public transfer_store_t {
+public:
+    explicit redis_transfer_store_t(redis_transfer_options_t options);
+    ~redis_transfer_store_t();
+};
+
 } // namespace zlink::framework::locations::redis
 ```
 
-Acquire 결과는 `acquired`, `group exhausted`, `group configuration mismatch`와 `identity mode conflict`
-네 variant로 닫혀 있다. 같은 owner token의 멱등 acquire는 같은 slot과 token을 반환한다. Release는
-group, slot과 owner token이 모두 일치할 때만 `released`이며 stale token은 `ignored_stale`로 현재 claim을
-유지한다. Host는 lifecycle 시작에서 owner lease를 한 번 claim한 뒤 같은 token을 모든 slot acquire
-request에 넘긴다. Provider는 active host token을 slot 배정과 같은 원자 operation에서 확인한다.
-Slot은 별도 TTL이나 token을 발급하지 않고 성공 result에는 입력과 같은 token만 반환한다.
-Startup rollback은 확보한 slot을 먼저 release한 뒤 host lease를 마지막에 release한다. Member 목록은
-kind, name과 routing ID prefix 순서로 정규화한다. MeshNode member의 name은
-MeshName이고 fanout publisher member의 name은 ChannelName이다. 같은 이름도 kind가 다르면 서로 다른
-member다. `slot_count`와 allocation slot은 `1..65535`이고 group member 수는 `1..255`다. 범위를 벗어난
-builder 설정과 acquire request는 startup 또는 provider validation에서 거부한다. Group allocation 목록은 이
-상한 안의 coherent snapshot이므로 page로 나누지 않는다. Readiness provider는 모든 listener bind와 MeshNode 또는 fanout publisher 전용 descriptor
-게시가 끝난 뒤 결과를 반환한다.
-
-`connection_string`과 비어 있지 않은 `key_prefix`는 필수다. Store가 Redis connection을 소유하며 소멸이
-시작된 뒤 새 operation은 closed-store 오류로 완료된다.
+각 options의 `connection_string`과 비어 있지 않은 `key_prefix`는 필수다. 두 Store는 같은 Redis deployment를
+사용할 수 있지만 prefix, connection과 lifecycle을 각각 소유한다. 한 객체가 두 interface를 구현하는 composite
+class는 제공하지 않으며 두 Store 사이 Redis transaction도 요구하지 않는다. 각 Store의 소멸이 시작된 뒤 해당
+Store의 새 operation은 closed-store 오류로 완료된다.
 
 Redis의 ClientServer descriptor kind는 `channel-server`이다. Key는 ChannelName과 ServerRid를
 함께 사용하고 endpoint와 weight, generation, revision, runtime state, security identity, owner 정보를
@@ -786,8 +685,17 @@ contract를 flat set의 cross-product로 해석할 수 없다. `application_vers
 deployment ordinal이다. Object capacity, maintenance wave와 runtime state는
 descriptor revision을 증가시켜 갱신한다. `spot_location_t`는 authority row를 Framework가 decode한
 projection이며 endpoint를 복제하지 않고 owner node RID와 object generation을 보존한다. Redis provider는
-`location_store_t`의 authority CAS와 별도 `checkpoint_store_t`를 모두 구현한다. Spot kind별 write와 Actor
-transfer phase별 Redis operation은 public interface로 제공하지 않는다.
+`redis_location_store_t`는 authority CAS만 구현하고 `redis_transfer_store_t`는 opaque state, accepted journal,
+full inventory와 replay payload만 저장한다. Location Store가 phase, transfer reference와 checksum, canonical
+participant set과 mutation, aggregate generation, membership·aggregate count와 inventory digest를 소유한다.
+Transfer manifest는 payload lookup에만 사용하며 authority가 아니다. Spot kind별 write와 Actor transfer phase별
+Redis operation은 public interface로 제공하지 않는다.
+
+Framework는 transfer root를 먼저 저장하고 canonical inventory digest와 일치하는지 검증한 뒤 Location Store
+CAS로 reference를 공개한다. Root 교체도 새 root 저장과 검증, Location CAS, 이전 reference release, 이전 payload
+delete 순서를 지킨다. Transfer payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
+Transfer Store에서 payload를 삭제한다. 참조된 payload가 없거나 digest가 다르면 `TransferDataLost`로 종료하고 이전 owner로
+rollback하지 않는다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
 ChannelName key set, Spot type set와 object capability의 kind·type·policy·readable contract set은 첫 admission 뒤

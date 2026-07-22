@@ -23,7 +23,7 @@ wrapper가 Spot의 public 등록·메시징·timer·lifecycle 표면을 조합�
 | Actor queue와 Actor 업무 handler | Framework Actor runtime |
 | Actor join·leave와 lifecycle control | Framework Spot·Actor control claim |
 | 입장 권한, stage state, membership 정책과 broadcast 내용 | Stage wrapper 또는 application |
-| domain key에서 SpotHandle을 찾는 정책 | Stage wrapper와 location service |
+| domain key를 global Spot RID에 대응시키는 정책 | Stage wrapper와 application domain store |
 
 Stage wrapper는 transport RID, endpoint, internal queue, native timer handle과 message storage reference를
 public surface에 노출하지 않는다.
@@ -72,8 +72,9 @@ Spot direct, Logical Multicast와 다른 timer callback에 대해 같은 직렬�
 
 ## 6. 생성과 membership
 
-Stage wrapper는 Spot factory에 domain 생성 payload를 전달하고 생성 callback 안에서 초기 Stage state를
-만든다. 동일한 논리 Stage의 중복 생성, admission 권한과 재활성 정책은 domain 규칙으로 결정한다.
+Stage wrapper는 Spot manager의 explicit Create·GetOrCreate에 stable type과 domain 생성 payload를 전달하고 생성
+callback 안에서 초기 Stage state를 만든다. Framework는 global Spot RID의 authority와 중복 factory 실행을
+fence한다. Admission 권한과 재활성 뒤 복원할 업무 상태는 domain 규칙으로 결정한다.
 
 Actor join은 Spot control claim에서 Stage membership 정책을 검사한다. 성공한 membership은 Actor의 현재
 Spot 위치와 Stage가 소유한 member state를 일관되게 갱신한다. transaction, fencing과 transfer barrier는
@@ -89,7 +90,8 @@ Logical Multicast를 Stage member 목록의 durable source로 사용하지 않�
 
 ## 7. Location과 수명
 
-외부 service는 domain key를 SpotHandle로 resolve한 뒤 Stage Spot에 직접 호출한다. owner RID와 endpoint는
+외부 service는 domain key에서 global Spot RID를 얻어 Stage Spot에 메시지를 보낸다. Exact incarnation을
+종료하거나 운영 정보로 표시할 때는 manager lookup이 반환한 `SpotRef`를 사용한다. Owner RID와 endpoint는
 wrapper 상태에 저장하지 않는다. 위치 갱신과 stale route의 의미는
 [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
 

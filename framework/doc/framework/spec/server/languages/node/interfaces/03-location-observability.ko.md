@@ -34,8 +34,24 @@ export declare enum ZLinkFrameworkErrorKind {
     WorkerTimedOut = "workerTimedOut",
     WorkerFailed = "workerFailed",
     ActorLocationStale = "actorLocationStale",
-    ActorCreateRejected = "actorCreateRejected"
+    ActorCreateRejected = "actorCreateRejected",
+    ObjectClientNotConfigured = "objectClientNotConfigured",
+    MeshSelectionRequired = "meshSelectionRequired",
+    MeshNotFound = "meshNotFound",
+    InvalidConfiguration = "invalidConfiguration",
+    AlreadySubmitted = "alreadySubmitted",
+    ActorGenerationStale = "actorGenerationStale",
+    ActorMoving = "actorMoving",
+    DeadlineExceeded = "deadlineExceeded",
+    PlacementCapacityExhausted = "placementCapacityExhausted",
+    RoutingIdConflict = "routingIdConflict",
+    SpotGenerationStale = "spotGenerationStale",
+    SpotMoving = "spotMoving",
+    TransferDataLost = "transferDataLost"
 }
+
+export declare const ZLINK_FRAMEWORK_ERROR_KIND_VALUES:
+    Readonly<Record<ZLinkFrameworkErrorKind, number>>;
 
 export declare class ZLinkFrameworkException extends Error {
     readonly kind: ZLinkFrameworkErrorKind;
@@ -57,7 +73,7 @@ export interface ZLinkFrameworkOptions {
     configureWorker(options: ZLinkWorkerOptions): this;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
     addLocationStore(store: ZLinkLocationStore): this;
-    addCheckpointStore(store: ZLinkCheckpointStore): this;
+    addTransferStore(store: ZLinkTransferStore): this;
     setApplicationVersion(version: bigint): this;
     setMaintenanceWave(waveId: string): this;
     setActorTransferForwardWindow(timeoutMs: number): this;
@@ -112,21 +128,19 @@ export declare enum ZLinkLocationAutoConnectType {
 }
 ```
 
-## 2. Instance Spot 구성과 location change
+`ZLINK_FRAMEWORK_ERROR_KIND_VALUES`는 위 순서대로 `ActorRouteNotFound=0`부터
+`ActorCreateRejected=21`, `ObjectClientNotConfigured=22`, `MeshSelectionRequired=23`,
+`MeshNotFound=24`, `InvalidConfiguration=25`, `AlreadySubmitted=26`,
+`ActorGenerationStale=27`, `ActorMoving=28`, `DeadlineExceeded=29`,
+`PlacementCapacityExhausted=30`, `RoutingIdConflict=31`, `SpotGenerationStale=32`,
+`SpotMoving=33`, `TransferDataLost=34`를 반환한다. `TransferDataLost`는 Location authority가 공개한 Transfer
+payload가 영구적으로 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 이전 owner로 rollback하지
+않는다. 기본 retriable kind는 `RouteNotConnected`, `ActorLocationStale`,
+`ActorMoving`, `DeadlineExceeded`, `PlacementCapacityExhausted`, `SpotMoving`이다.
+
+## 2. Location change
 
 ```ts
-export interface ZLinkInstanceSpotFactoryOptions {
-    readonly maxActiveInstances?: number;
-    readonly activationTimeoutMs?: number;
-}
-
-export interface ZLinkInstanceSpot {
-    readonly context: ZLinkInstanceSpotContext;
-    configure?(): void;
-    onInitialize?(): Promise<void>;
-    onClosing?(): Promise<void>;
-}
-
 export interface ZLinkLocationChanged {
     readonly kind: ZLinkLocationKind;
     readonly key: ZLinkLocationKey;
@@ -630,6 +644,14 @@ export interface ZLinkMeshNodeSnapshot {
     readonly lifecycleGeneration: bigint;
     readonly descriptorRevision: bigint;
     readonly endpoint: string;
+    readonly objectRole: ZLinkObjectRole;
+    readonly placementWeight: number;
+    readonly objectCapacity: {
+        readonly maxActiveObjects: number;
+        readonly maxPendingActivations: number;
+        readonly activeObjects: number;
+        readonly pendingActivations: number;
+    };
     readonly state: ZLinkMeshNodeState;
     readonly sequence: bigint;
     readonly observedAt: Date;

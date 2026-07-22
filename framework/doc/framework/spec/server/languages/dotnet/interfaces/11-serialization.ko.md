@@ -114,3 +114,32 @@ public interface IZLinkHandlerFilter
         CancellationToken cancellationToken);
 }
 ```
+
+## 2. Global object reference JSON
+
+`ActorRef`와 `SpotRef`의 typed JSON contract는 다음 property 이름과 JSON type으로 고정한다. 모든 property는
+required이고 중복 property, `null`, unknown property와 범위를 벗어난 generation을 거부한다. Property 이름은
+case-sensitive다. `objectGeneration`은 unsigned 63-bit 범위를 잃지 않도록 decimal JSON string으로 encode한다.
+`actorId`와 `spotRid`는 global logical ID이고 `meshName`과 `nodeRid`는 조회 시점의 location snapshot이다.
+
+```json
+{
+  "actorId": "player-42",
+  "objectGeneration": "17",
+  "meshName": "game",
+  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
+}
+```
+
+```json
+{
+  "spotRid": "room-42",
+  "objectGeneration": "9",
+  "meshName": "game",
+  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
+}
+```
+
+`objectGeneration`은 `"1"`..`"9223372036854775807"`의 leading-zero 없는 decimal string이다. 숫자 token,
+부호, 소수점과 exponent는 허용하지 않는다. ID와 route string은 각 public type의 validation을 그대로 적용하며
+deserialization에서 normalization하지 않는다.

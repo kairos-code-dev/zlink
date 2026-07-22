@@ -17,16 +17,16 @@ Framework spec이 동작을 정하고 다음 문서가 type, member, generic con
 | [Bound STREAM session](07-bound-stream-session.ko.md) | Actor가 소유한 bound session call |
 | [STREAM session](07-stream-session.ko.md) | STREAM server session과 handler |
 | [Location과 maintenance](08-location-maintenance.ko.md) | descriptor, lease, owner authority와 provider interface |
-| [Authority와 checkpoint](08-authority-checkpoint.ko.md) | opaque authority CAS와 24시간 checkpoint retention |
+| [Authority와 transfer](08-authority-transfer.ko.md) | opaque authority CAS와 24시간 transfer retention |
 | [Location provider와 Redis](08-location-provider-redis.ko.md) | change stamp와 공식 Redis provider |
-| [Routing ID allocation](09-routing-id-allocation.ko.md) | allocation store, result와 readiness provider |
+| [Routing ID identity](09-routing-id-allocation.ko.md) | automatic RID 생성, prefix와 descriptor owner claim |
 | [Host와 topology monitoring](10-topology-monitoring.ko.md) | state, termination, topology snapshot과 metric |
 | [Monitoring과 오류](10-monitoring-errors.ko.md) | monitoring source와 Framework 오류 |
 | [Serialization](11-serialization.ko.md) | typed JSON 기본 경로 |
 | [Dispatch ownership](12-dispatch-ownership.ko.md) | dispatch와 message ownership |
 | [Configuration 예제](13-examples.ko.md) | public builder 사용 예제 |
 
-Application-facing API는 bindings의 service object, native handle, authority version, transfer phase와 checkpoint
+Application-facing API는 bindings의 service object, native handle, authority version, transfer phase와 transfer
 reference를 노출하지 않는다. Framework 구현은 bindings package가 제공하는 public raw socket API만 사용하며
 private member, reflection, native symbol 직접 호출과 Core service C API에 의존하지 않는다.
 

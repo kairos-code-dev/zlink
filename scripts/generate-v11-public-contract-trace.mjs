@@ -516,7 +516,6 @@ const ownershipFor = (config, categoryIds, languageConfig) => {
     formalSpecOwners: uniqueSorted(categories.flatMap(category => category.formalSpecOwners)),
     implementationLedgerIds: uniqueSorted(categories.flatMap(category => category.implementationStages.map(expand))),
     packageGateIds: [languageConfig.packageGate],
-    targetSpecOwners: uniqueSorted(categories.flatMap(category => category.targetSpecOwners)),
   };
 };
 
@@ -528,6 +527,59 @@ const gitText = arguments_ => execFileSync('git', arguments_, {
 
 const memberOwnerNameKey = member =>
   `${member.language}\0${member.ownerIdentity}\0${member.memberName}`;
+
+const blockSimilarity = (left, right) => {
+  const tokens = source => new Set(source.match(/[A-Za-z_][A-Za-z0-9_]*/gu) || []);
+  const leftTokens = tokens(left);
+  const rightTokens = tokens(right);
+  const intersection = [...leftTokens].filter(token => rightTokens.has(token)).length;
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+  return union === 0 ? 1 : intersection / union;
+};
+
+const refreshBlockRoleOverrides = config => {
+  for (const rule of config.blockRoleOverrides || []) {
+    const currentSource = fs.readFileSync(path.join(repositoryRoot, rule.document), 'utf8');
+    const currentBlocks = headedFencedBlocks(currentSource);
+    if (currentBlocks.some(block => sha256(block.source) === rule.sha256)) continue;
+
+    let previousBlock;
+    let previousPeerIndex = -1;
+    for (const revision of ['HEAD', config.baseline?.revision]) {
+      if (!revision) continue;
+      try {
+        const previousSource = gitText(['show', `${revision}:${rule.document}`]);
+        const previousBlocks = headedFencedBlocks(previousSource);
+        previousBlock = previousBlocks.find(block => sha256(block.source) === rule.sha256);
+        if (previousBlock) {
+          previousPeerIndex = previousBlocks
+            .filter(block => block.heading === previousBlock.heading && block.tag === previousBlock.tag)
+            .findIndex(block => block.ordinal === previousBlock.ordinal);
+        }
+      } catch {
+        previousBlock = undefined;
+      }
+      if (previousBlock) break;
+    }
+    if (!previousBlock) {
+      throw new Error(`cannot locate stale block role override source: ${rule.document}#${rule.sha256}`);
+    }
+    const candidates = currentBlocks.filter(block =>
+      block.heading === previousBlock.heading && block.tag === previousBlock.tag);
+    const rankedCandidates = candidates
+      .map(candidate => ({candidate, score: blockSimilarity(previousBlock.source, candidate.source)}))
+      .sort((left, right) => right.score - left.score);
+    const candidate = candidates.length === 1
+      ? candidates[0]
+      : rankedCandidates[0]?.score > rankedCandidates[1]?.score
+        ? rankedCandidates[0].candidate
+        : candidates[previousPeerIndex];
+    if (!candidate) {
+      throw new Error(`block role override refresh ambiguity count=${candidates.length}: ${rule.document}#${rule.sha256}`);
+    }
+    rule.sha256 = sha256(candidate.source);
+  }
+};
 
 const reviewedIdentitySet = (label, review, identities) => {
   const sorted = uniqueSorted(identities);
@@ -619,7 +671,33 @@ const consolidateTargetMembers = members => {
     .sort((left, right) => left.identity.localeCompare(right.identity, 'en'));
 };
 
-const buildTrace = config => {
+const consolidateTargetOwners = owners => {
+  const consolidated = new Map();
+  for (const owner of owners) {
+    const existing = consolidated.get(owner.identity);
+    if (!existing) {
+      consolidated.set(owner.identity, {
+        ...owner,
+        representationSources: [{
+          codeBlockIds: owner.codeBlockIds,
+          exactInterface: owner.exactInterface,
+        }],
+      });
+      continue;
+    }
+    existing.categoryIds = uniqueSorted([...existing.categoryIds, ...owner.categoryIds]);
+    existing.codeBlockIds = uniqueSorted([...existing.codeBlockIds, ...owner.codeBlockIds]);
+    existing.representationSources.push({
+      codeBlockIds: owner.codeBlockIds,
+      exactInterface: owner.exactInterface,
+    });
+  }
+  return [...consolidated.values()]
+    .sort((left, right) => left.identity.localeCompare(right.identity, 'en'));
+};
+
+const buildTrace = (config, {refreshReview = false} = {}) => {
+  if (refreshReview) refreshBlockRoleOverrides(config);
   const decisionIds = new Set(config.decisions.map(decision => decision.id));
   const categoryIds = new Set(config.categories.map(category => category.id));
   const baselineRevision = config.baseline?.revision;
@@ -634,7 +712,7 @@ const buildTrace = config => {
     }));
   const documents = [];
   const codeBlocks = [];
-  const declarationOwners = [];
+  let declarationOwners = [];
   let members = [];
   const targetOwnerIdentities = new Set();
   const ownershipProfiles = new Map();
@@ -741,6 +819,15 @@ const buildTrace = config => {
     }
   }
 
+  declarationOwners = consolidateTargetOwners(declarationOwners);
+  for (const owner of declarationOwners) {
+    const languageConfig = config.languages.find(candidate => candidate.id === owner.language);
+    const packages = packagesForDocument(languageConfig, owner.exactInterface);
+    owner.ownershipProfileId = profileFor(owner.categoryIds, {
+      ...languageConfig,
+      defaultPackages: packages,
+    }).id;
+  }
   members = consolidateTargetMembers(members);
   for (const member of members) {
     const languageConfig = config.languages.find(candidate => candidate.id === member.language);
@@ -870,6 +957,48 @@ const buildTrace = config => {
   const overrideBaselineIdentities = new Set();
   const overrideTargetIdentities = new Set();
   let supersededOverrides = 0;
+  if (refreshReview) {
+    const refreshedOverrides = [];
+    const refreshedTargetIdentities = new Set();
+    for (const override of config.baseline?.memberOverrides || []) {
+      const baseline = baselineByIdentity.get(override.baselineIdentity);
+      if (!baseline || baseline.signatureSha256 !== override.baselineSignatureSha256) {
+        throw new Error(`member override does not name an exact baseline signature: ${override.baselineIdentity || '<missing>'}`);
+      }
+      let target = targetByIdentity.get(override.targetIdentity);
+      if (!target || target.signatureSha256 !== override.targetSignatureSha256) {
+        const candidates = members.filter(member =>
+          memberOwnerNameKey(member) === memberOwnerNameKey(baseline)
+          && !classifiedTarget.has(member.identity)
+          && !refreshedTargetIdentities.has(member.identity));
+        if (candidates.length === 0) continue;
+        if (candidates.length !== 1) {
+          const error = new Error(`override refresh ambiguity count=${candidates.length}: ${baseline.identity}`);
+          error.code = 'TRACE_MEMBER_AMBIGUITY';
+          error.candidates = [{
+            baselineIdentity: baseline.identity,
+            baselineNormalizedSignature: baseline.normalizedSignature,
+            targetCandidates: candidates.map(candidate => ({
+              targetIdentity: candidate.identity,
+              targetSignatureSha256: candidate.signatureSha256,
+              targetNormalizedSignature: candidate.normalizedSignature,
+            })),
+          }];
+          throw error;
+        }
+        [target] = candidates;
+      }
+      if (classifiedTarget.has(target.identity)) continue;
+      refreshedOverrides.push({
+        ...override,
+        targetIdentity: target.identity,
+        targetSignatureSha256: target.signatureSha256,
+      });
+      refreshedTargetIdentities.add(target.identity);
+    }
+    config.baseline.memberOverrides = refreshedOverrides;
+  }
+
   for (const override of config.baseline?.memberOverrides || []) {
     const baseline = baselineByIdentity.get(override.baselineIdentity);
     const target = targetByIdentity.get(override.targetIdentity);
@@ -917,10 +1046,44 @@ const buildTrace = config => {
   }
   const ambiguousMembers = [];
   const newMembers = [];
+  const remainingTargetsByName = new Map();
+  for (const member of members) {
+    if (classifiedTarget.has(member.identity)) continue;
+    const key = memberOwnerNameKey(member);
+    if (!remainingTargetsByName.has(key)) remainingTargetsByName.set(key, []);
+    remainingTargetsByName.get(key).push(member);
+  }
   for (const member of members) {
     if (classifiedTarget.has(member.identity)) continue;
     const baselineCandidates = remainingBaselineByName.get(memberOwnerNameKey(member)) || [];
     if (baselineCandidates.length > 0) {
+      if (refreshReview && baselineCandidates.length === 1
+          && remainingTargetsByName.get(memberOwnerNameKey(member))?.length === 1) {
+        const [baseline] = baselineCandidates;
+        const specReason = 'V11-SIGNATURE-CHANGE';
+        const overrideReason = config.baseline?.overrideReasons?.[specReason];
+        if (typeof overrideReason !== 'string' || overrideReason.trim().length === 0) {
+          throw new Error(`missing reviewed override reason: ${specReason}`);
+        }
+        member.disposition = 'v11-first-implementation';
+        member.dispositionEvidence = 'exact-identity-override';
+        member.baselineIdentity = baseline.identity;
+        member.baselineSignatureSha256 = baseline.signatureSha256;
+        member.specReason = overrideReason;
+        member.specReasonId = specReason;
+        classifiedTarget.add(member.identity);
+        consumedBaseline.add(baseline.identity);
+        config.baseline.memberOverrides.push({
+          baselineIdentity: baseline.identity,
+          baselineSignatureSha256: baseline.signatureSha256,
+          targetIdentity: member.identity,
+          targetSignatureSha256: member.signatureSha256,
+          disposition: 'v11-first-implementation',
+          specReason,
+        });
+        overrideMatches += 1;
+        continue;
+      }
       ambiguousMembers.push({
         targetIdentity: member.identity,
         targetSignatureSha256: member.signatureSha256,
@@ -947,7 +1110,10 @@ const buildTrace = config => {
     'reviewed v11-first member set',
     config.baseline?.reviewedV11FirstMembers,
     newMembers.map(member => `${member.identity}#${member.signatureSha256}`));
-  if (!newMemberReview.matched) {
+  if (refreshReview) {
+    config.baseline.reviewedV11FirstMembers.count = newMemberReview.count;
+    config.baseline.reviewedV11FirstMembers.sha256 = newMemberReview.digest;
+  } else if (!newMemberReview.matched) {
     throw new Error(`${newMemberReview.message}\n`
       + newMemberReview.identities.slice(0, 50).join('\n'));
   }
@@ -964,7 +1130,10 @@ const buildTrace = config => {
     'reviewed intentional-removal member set',
     config.baseline?.reviewedIntentionalRemovals,
     removalCandidates.map(member => `${member.identity}#${member.signatureSha256}`));
-  if (!removalReview.matched) {
+  if (refreshReview) {
+    config.baseline.reviewedIntentionalRemovals.count = removalReview.count;
+    config.baseline.reviewedIntentionalRemovals.sha256 = removalReview.digest;
+  } else if (!removalReview.matched) {
     throw new Error(`${removalReview.message}\n`
       + removalReview.identities.slice(0, 50).join('\n'));
   }
@@ -999,7 +1168,10 @@ const buildTrace = config => {
     'reviewed v11-first declaration-owner set',
     config.baseline?.reviewedV11FirstOwners,
     [...targetOwnerIdentities].filter(identity => !baselineOwnerIdentities.has(identity)));
-  if (!newOwnerReview.matched) throw new Error(newOwnerReview.message);
+  if (refreshReview) {
+    config.baseline.reviewedV11FirstOwners.count = newOwnerReview.count;
+    config.baseline.reviewedV11FirstOwners.sha256 = newOwnerReview.digest;
+  } else if (!newOwnerReview.matched) throw new Error(newOwnerReview.message);
   for (const owner of declarationOwners) {
     if (baselineOwnerIdentities.has(owner.identity)) {
       owner.disposition = 'verified-baseline';
@@ -1130,7 +1302,6 @@ const buildTrace = config => {
       decisionIds: category.decisionIds,
       e2eScenarioIds: category.e2eScenarioIds,
       formalSpecOwners: category.formalSpecOwners,
-      targetSpecOwners: category.targetSpecOwners,
     })),
     decisions: config.decisions,
     opaqueProviderIdentifierMappings: config.opaqueProviderIdentifierMappings,
@@ -1156,7 +1327,6 @@ const validationFailures = trace => {
     'implementationLedgerIds',
     'packageGateIds',
     'packages',
-    'targetSpecOwners',
   ];
   if (trace.schema !== 1 || trace.version !== '11.0.0') fail('trace schema or version differs');
   if (!/^[0-9a-f]{40}$/u.test(trace.baseline?.revision || '')
@@ -1247,7 +1417,7 @@ const validationFailures = trace => {
     for (const decisionId of profile.decisionIds || []) {
       if (!decisions.has(decisionId)) fail(`${kind} uses unknown POSD decision ${decisionId}: ${identity}`);
     }
-    for (const ownerPath of [...(profile.formalSpecOwners || []), ...(profile.targetSpecOwners || [])]) {
+    for (const ownerPath of profile.formalSpecOwners || []) {
       if (!fs.existsSync(path.join(repositoryRoot, ownerPath))) {
         fail(`${kind} refers to a missing spec owner ${ownerPath}: ${identity}`);
       }
@@ -1445,7 +1615,6 @@ const runNegativeSelfTests = trace => {
           id: 'negative-uncovered-category',
           decisionIds: [candidate.decisions[0].id],
           formalSpecOwners: candidate.categories[0].formalSpecOwners,
-          targetSpecOwners: candidate.categories[0].targetSpecOwners,
         });
       },
       expected: /category is uncovered/u,
@@ -1533,15 +1702,44 @@ const runNegativeSelfTests = trace => {
 
 const loadConfig = () => JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const command = process.argv[2];
-if (!['--write', '--check', '--self-test', '--review-candidates'].includes(command)) {
-  process.stderr.write('usage: generate-v11-public-contract-trace.mjs --write|--check|--self-test|--review-candidates\n');
+if (!['--write', '--check', '--self-test', '--review-candidates', '--refresh-review'].includes(command)) {
+  process.stderr.write('usage: generate-v11-public-contract-trace.mjs --write|--check|--self-test|--review-candidates|--refresh-review\n');
   process.exit(2);
 }
 
 try {
   const config = loadConfig();
-  const trace = buildTrace(config);
-  if (command === '--review-candidates') {
+  const trace = buildTrace(config, {refreshReview: command === '--refresh-review'});
+  if (command === '--refresh-review') {
+    const failures = validationFailures(trace);
+    if (failures.length > 0) {
+      const ownerCounts = (trace.declarationOwners || []).reduce((counts, owner) => {
+        counts.set(owner.identity, (counts.get(owner.identity) || 0) + 1);
+        return counts;
+      }, new Map());
+      const duplicateOwners = [...ownerCounts]
+        .filter(([, count]) => count > 1)
+        .map(([identity, count]) => {
+          const records = trace.declarationOwners.filter(owner => owner.identity === identity);
+          return `${identity} (${count}) ${records.map(owner =>
+            `${owner.exactInterface}:${owner.codeBlockIds.map(id => {
+              const block = trace.codeBlocks.find(candidate => candidate.id === id);
+              return `${id}@${block?.startLine}:${block?.heading}`;
+            }).join(',')}`).join(' | ')}`;
+        });
+      throw new Error(`${failures.join('\n')}`
+        + (duplicateOwners.length ? `\nduplicate owners:\n${duplicateOwners.join('\n')}` : ''));
+    }
+    config.baseline.memberOverrides.sort((left, right) =>
+      left.baselineIdentity.localeCompare(right.baselineIdentity, 'en'));
+    fs.writeFileSync(configPath, stableJson(config));
+    process.stdout.write(
+      `v11 public-contract review refreshed:`
+        + ` overrides=${config.baseline.memberOverrides.length}`
+        + ` new_members=${config.baseline.reviewedV11FirstMembers.count}`
+        + ` new_owners=${config.baseline.reviewedV11FirstOwners.count}`
+        + ` removals=${config.baseline.reviewedIntentionalRemovals.count}\n`);
+  } else if (command === '--review-candidates') {
     process.stdout.write(`${stableJson({ambiguities: []})}`);
   } else {
     const failures = validationFailures(trace);
@@ -1580,7 +1778,8 @@ try {
         + ` negative_mutations=${negativeMutations}\n`);
   }
 } catch (error) {
-  if (command === '--review-candidates' && error.code === 'TRACE_MEMBER_AMBIGUITY') {
+  if ((command === '--review-candidates' || command === '--refresh-review')
+      && error.code === 'TRACE_MEMBER_AMBIGUITY') {
     process.stdout.write(stableJson({ambiguities: error.candidates}));
   } else {
     process.stderr.write(`${error.stack || error.message}\n`);

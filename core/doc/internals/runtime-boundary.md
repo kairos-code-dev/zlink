@@ -5,8 +5,8 @@
 Core 11 implements only raw sockets and transports. The public API facade
 validates arguments, handles, and ownership. Socket semantics implement routing
 for PAIR, PUB/SUB, DEALER/ROUTER, and STREAM. Runtime core manages connections,
-sessions, pipes, and I/O threads, while engines implement TCP, WebSocket, PGM,
-and TLS framing.
+sessions, pipes, and I/O threads, while engines implement TCP, WebSocket, and
+TLS framing.
 
 ```text
 +------------------------------+
@@ -66,12 +66,6 @@ Framework service-protocol liveness messages travel as raw application payload.
 Core does not interpret their body or deadline. Each language Framework runtime
 handles them through its infrastructure queue and scheduler.
 
-The PGM sender's `PGM_HEARTBEAT_SPM` setting controls the OpenPGM Source Path
-Message cadence inside the transport. Those packets maintain PGM path and loss
-recovery state; they are neither ZMP commands nor application frames. Core 11
-retains this setting inside the PGM transport and provides no ZMP heartbeat
-option, frame, or engine timer.
-
 The Core 11 source boundary contains no `ZLINK_OPT_HEARTBEAT_IVL`,
 `ZLINK_OPT_HEARTBEAT_TTL`, `ZLINK_OPT_HEARTBEAT_TIMEOUT`,
 `zmp_control_heartbeat`, `zmp_control_heartbeat_ack`, or codec, parser, and engine
@@ -114,8 +108,6 @@ does not implement slow-observer handling, coalescing, or metric policy.
 - Core does not call a Location Store, Checkpoint Store, lease, owner CAS, or
   maintenance recovery operation.
 - Raw engine timers and raw monitors are connection resources.
-- The PGM SPM cadence remains internal to the PGM transport and is not connected
-  to ZMP heartbeat state.
 - Framework uses only public binding APIs and does not depend on private Core
   symbols.
 - Raw-socket options and monitor events are not exposed unchanged as Framework

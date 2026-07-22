@@ -3,14 +3,18 @@
 [인터페이스 목차](README.ko.md) · [Spot 공통 계약](../../../20-spot-messaging.ko.md)
 
 ```java
-public record InstanceSpotAddress(
+public record SpotRef(
+    RoutingId spotRid,
+    long objectGeneration,
     String meshName,
-    String instanceSpotType,
-    RoutingId spotRid) {}
+    RoutingId nodeRid) {}
 
-public record ZLinkInstanceSpotFactoryOptions(
-    int maxActiveInstances,
-    Duration activationTimeout) {}
+public enum ZLinkCreatableSpotKind {
+    USER(1), INSTANCE(2);
+    private final int value;
+    ZLinkCreatableSpotKind(int value) { this.value = value; }
+    public int value() { return value; }
+}
 
 public interface ZLinkInstanceSpot {
     ZLinkInstanceSpotContext context();
@@ -46,56 +50,49 @@ public interface ZLinkInstanceSpotContext {
 ```
 
 Factory registration의 정확한 builder member는 [구성과 host](configuration-host.ko.md)가 소유한다.
-정책을 생략하는 Instance Spot overload는 `Disabled`를 사용한다. User Spot 등록에는 transfer policy를
-추가하지 않는다. 남은 User Spot은 `Retire` preflight를 `Blocked/TransferDisabled`로 끝낸다. Instance Spot
-전용 public `Create`와 `GetOrCreate`를 제공하지 않는다. `InstanceSpotAddress` send/request만 cold activation을
-시작하며 generic Spot resolve는 existing-only다. Maintenance target materialization은 service runtime 내부
-operation이다.
+Actor·User Spot·Instance Spot factory는 explicit transfer policy를 받으며 생략 overload는 제공하지 않는다.
+Manager는 User·Instance kind와 stable type을 받는 global Create·GetOrCreate를 제공한다. 일반 message는
+SpotRid만 받으며 Missing Instance의 최초 creation intent는 manager만 만든다.
 
-Store-backed dynamic User Spot은 authority 내부 `CREATING` row를 `NEW_OBJECT` CAS로 만든 뒤 factory,
-`configure`, `onInitialize`를 완료하고 `READY` CAS를 수행한다. Resolve와 remote messaging은 `READY`만
-사용한다. 실패하면 exact owner fence로 delete하고 결과를 read해 reconcile한다. Delete가 확인될 때까지 같은
-typed failure를 반환하고 hidden retry는 0이며, `MISSING`이 확인된 뒤 다음 caller만 새 create를 시작한다. 이
-barrier를 제어하는 public API는 없다.
+User·Instance Spot은 generic placement reservation으로 `CREATING` authority와 pending capacity를 함께 확보한
+뒤 factory와 initialize를 수행한다. 성공하면 Ready와 active capacity로 commit하고 실패하면 abort한다.
 
 User Spot의 `close()`는 active Actor membership이 있으면 `false`를 반환한다. Spot state, admission과 authority는
 바꾸지 않고 `onClosing`을 호출하거나 Actor를 자동 leave·destroy하지 않는다. Caller는 Actor를 명시적으로
 leave 또는 destroy한 뒤 다시 close한다. Manager에서 Spot이 missing인 경우도 `false`이므로 caller는 사전 read
 없이 두 경우를 구분하지 않는다. Host Shutdown·Retire는 Actor barrier를 끝낸 뒤 Spot cleanup을 수행한다.
 
-Cold address call의 source는 location resolve, eligible target 선택과 `COLD_ACTIVATING` CAS claim을 outbound보다
-먼저 같은 send deadline 안에서 완료한다. Target은 source가 확정한 token과 generation을 다시 검증하고 factory
-activation과 `READY` CAS만 수행하며 target-side claim을 시작하지 않는다. One-way `submit()` 완료는 source
-outbound admission까지 기다리지만 target factory 실행, activation queue 수락과 `READY`는 기다리지 않는다.
+일반 message는 Ready owner만 resolve하며 Missing RID에 creation intent를 만들지 않는다. Owner loss 뒤 Instance
+reactivation은 authority에 저장된 stable type과 initial Mesh를 사용한다.
 
 Cold Instance factory·initialize가 실패하면 durable public `FAILED` state를 게시하지 않는다. Runtime은 local
 failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 reconcile한다. Delete 확인 전 같은 address
 호출은 같은 typed failure를 반환하며 hidden retry는 0이다. `MISSING` 확인 뒤 다음 caller만 새
 `COLD_ACTIVATING` claim을 시작한다. 이 recovery 상태를 조작하는 public API는 없다.
 
+SpotRid는 global logical ID다. `SpotRef.objectGeneration()`은 `1..Long.MAX_VALUE`이고 MeshName·NodeRid는
+조회 시점의 location snapshot이다. Typed JSON은 required property `spotRid`, `objectGeneration`, `meshName`,
+`nodeRid`를 사용하며 generation은 leading-zero 없는 decimal string으로 encode한다. Public handle, resolver와
+unbounded list는 제공하지 않는다. Create/GetOrCreate call은 option 중복을 `INVALID_CONFIGURATION`, submit
+중복을 `ALREADY_SUBMITTED`로 끝낸다.
+
+Ref JSON의 unknown property는 무시하고 duplicate property, required property 누락, 숫자 generation token과
+범위 밖 값은 거부한다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.
 
 ```java
-public interface systems.zlink.framework.spots.ActorSpotHandleResolver {
-  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotHandle>> resolveActorSpotHandle(java.lang.String, java.lang.String);
-}
-public final class systems.zlink.framework.spots.InstanceSpotAddress extends java.lang.Record {
-  public systems.zlink.framework.spots.InstanceSpotAddress(java.lang.String, java.lang.String, systems.zlink.contracts.core.RoutingId);
+public final class systems.zlink.framework.spots.SpotRef extends java.lang.Record {
+  public systems.zlink.framework.spots.SpotRef(systems.zlink.contracts.core.RoutingId, long, java.lang.String, systems.zlink.contracts.core.RoutingId);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public java.lang.String meshName();
-  public java.lang.String instanceSpotType();
   public systems.zlink.contracts.core.RoutingId spotRid();
-}
-public interface systems.zlink.framework.spots.SpotHandle {
-  public abstract java.lang.String meshName();
-  public abstract systems.zlink.contracts.core.RoutingId spotRid();
-}
-public interface systems.zlink.framework.spots.SpotHandleResolver {
-  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotHandle>> resolveSpotHandle(java.lang.String, systems.zlink.contracts.core.RoutingId);
+  public long objectGeneration();
+  public java.lang.String meshName();
+  public systems.zlink.contracts.core.RoutingId nodeRid();
 }
 public interface systems.zlink.framework.spots.ZLinkInstanceSpot {
   public abstract systems.zlink.framework.spots.ZLinkInstanceSpotContext context();
@@ -116,14 +113,6 @@ public interface systems.zlink.framework.spots.ZLinkInstanceSpotContext {
 }
 public interface systems.zlink.framework.spots.ZLinkInstanceSpotHandlerRegistry {
   public abstract void addPacket(java.lang.Class<?>);
-}
-public final class systems.zlink.framework.spots.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.spots.ZLinkInstanceSpotFactoryOptions(int, java.time.Duration);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public int maxActiveInstances();
-  public java.time.Duration activationTimeout();
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorLifecycle<TActor> {
   public abstract systems.zlink.framework.spots.ZLinkEntrySpotContext context();
@@ -200,11 +189,11 @@ public interface systems.zlink.framework.spots.ZLinkSpotContext {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkTimer> addTimer(java.lang.String, java.time.Duration, java.lang.Class<?>, systems.zlink.framework.spots.ZLinkTimerOptions);
 }
 public final class systems.zlink.framework.spots.ZLinkSpotCreateResult extends java.lang.Record {
-  public systems.zlink.framework.spots.ZLinkSpotCreateResult(systems.zlink.contracts.core.RoutingId, systems.zlink.framework.spots.ZLinkSpotCreateState, systems.zlink.framework.messaging.ZLinkMessage);
+  public systems.zlink.framework.spots.ZLinkSpotCreateResult(systems.zlink.framework.spots.SpotRef, systems.zlink.framework.spots.ZLinkSpotCreateState, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public systems.zlink.framework.spots.SpotRef spot();
   public systems.zlink.framework.spots.ZLinkSpotCreateState state();
   public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
@@ -219,13 +208,6 @@ public final class systems.zlink.framework.spots.ZLinkSpotCreateState extends ja
 public interface systems.zlink.framework.spots.ZLinkSpotHandlerRegistry {
   public abstract void addHandler(java.lang.Class<?>);
 }
-public final class systems.zlink.framework.spots.ZLinkSpotInfo extends java.lang.Record {
-  public systems.zlink.framework.spots.ZLinkSpotInfo(systems.zlink.contracts.core.RoutingId);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public systems.zlink.contracts.core.RoutingId spotRid();
-}
 public final class systems.zlink.framework.spots.ZLinkSpotKind extends java.lang.Enum<systems.zlink.framework.spots.ZLinkSpotKind> {
   public static final systems.zlink.framework.spots.ZLinkSpotKind INVALID;
   public static final systems.zlink.framework.spots.ZLinkSpotKind ENTRY;
@@ -236,21 +218,40 @@ public final class systems.zlink.framework.spots.ZLinkSpotKind extends java.lang
   public int value();
   public static systems.zlink.framework.spots.ZLinkSpotKind fromValue(int);
 }
+public final class systems.zlink.framework.spots.ZLinkCreatableSpotKind extends java.lang.Enum<systems.zlink.framework.spots.ZLinkCreatableSpotKind> {
+  public static final systems.zlink.framework.spots.ZLinkCreatableSpotKind USER;
+  public static final systems.zlink.framework.spots.ZLinkCreatableSpotKind INSTANCE;
+  public static systems.zlink.framework.spots.ZLinkCreatableSpotKind[] values();
+  public static systems.zlink.framework.spots.ZLinkCreatableSpotKind valueOf(java.lang.String);
+  public int value();
+}
 public interface systems.zlink.framework.spots.ZLinkSpotManager {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> create(java.lang.String, java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> create(java.lang.String, java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>, systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> create(java.lang.String, java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>, systems.zlink.contracts.core.RoutingId);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> getOrCreate(java.lang.String, java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>, systems.zlink.contracts.core.RoutingId);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> getOrCreate(java.lang.String, java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>, systems.zlink.contracts.core.RoutingId, systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.ZLinkSpotInfo>> find(java.lang.String, systems.zlink.contracts.core.RoutingId);
-  public abstract java.util.concurrent.CompletionStage<java.util.List<systems.zlink.framework.spots.ZLinkSpotInfo>> list(java.lang.String);
-  public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> close(java.lang.String, systems.zlink.contracts.core.RoutingId);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall create(systems.zlink.framework.spots.ZLinkCreatableSpotKind, java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall getOrCreate(systems.zlink.contracts.core.RoutingId, systems.zlink.framework.spots.ZLinkCreatableSpotKind, java.lang.String);
+  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotRef>> find(systems.zlink.contracts.core.RoutingId);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> close(systems.zlink.framework.spots.SpotRef);
+}
+public interface systems.zlink.framework.spots.ZLinkSpotCreateCall {
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall inMesh(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall request(java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall placementProfile(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall affinityKey(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall timeout(java.time.Duration);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
+}
+public interface systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall inMesh(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall request(java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall placementProfile(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall affinityKey(java.lang.String);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall timeout(java.time.Duration);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
 }
 public interface systems.zlink.framework.spots.ZLinkSpotOutbound {
-  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.framework.spots.SpotHandle, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.framework.spots.InstanceSpotAddress, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.framework.spots.SpotHandle, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.framework.spots.InstanceSpotAddress, java.lang.Object);
+  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkPublishCall publish(java.lang.String, java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToChannel(java.lang.String, java.lang.Object);

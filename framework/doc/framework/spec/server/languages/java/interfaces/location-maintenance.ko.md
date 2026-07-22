@@ -16,6 +16,10 @@ public final class ZLinkLocationOptions {
     void setOwnerLeaseFencingMargin(Duration value);
     Duration ownerLeaseRenewTimeout();
     void setOwnerLeaseRenewTimeout(Duration value);
+    Duration routeCacheMaxAge();
+    void setRouteCacheMaxAge(Duration value);
+    Duration transferForwardingWindow();
+    void setTransferForwardingWindow(Duration value);
 }
 
 public final class ZLinkRedisLocationOptions {
@@ -34,9 +38,23 @@ public final class ZLinkRedisLocationStore
                ZLinkPeerLocationStore,
                ZLinkRouteLocationStore,
                ZLinkLocationChangeStampStore,
-               ZLinkRoutingIdSlotAllocationStore,
                AutoCloseable {
     public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options);
+    public void close();
+}
+
+public final class ZLinkRedisTransferOptions {
+    public String connectionString();
+    public ZLinkRedisTransferOptions setConnectionString(String value);
+    public String keyPrefix();
+    public ZLinkRedisTransferOptions setKeyPrefix(String value);
+    public Duration commandTimeout();
+    public ZLinkRedisTransferOptions setCommandTimeout(Duration value);
+}
+
+public final class ZLinkRedisTransferStore
+    implements ZLinkTransferStore, AutoCloseable {
+    public ZLinkRedisTransferStore(ZLinkRedisTransferOptions options);
     public void close();
 }
 ```
@@ -44,21 +62,26 @@ public final class ZLinkRedisLocationStore
 `ZLinkLocationOptions` 기본값은 `ownerLeaseRenewInterval=5초`, `ownerLeaseTtl=15초`,
 `pollingInterval=1초`, `storeFailureGrace=30초`, `ownerLeaseFencingMargin=5초`,
 `ownerLeaseRenewTimeout=3초`다. 첫 값은 Location owner lease 갱신 주기이며 service liveness heartbeat가 아니다.
-Location Store와 owner lease runtime을 사용하는 모든 host는 routing allocation 여부와 관계없이
+`routeCacheMaxAge` 기본값은 15초, `transferForwardingWindow` 기본값은 30초다. 0은 각각 cache 또는
+forwarding을 끈다. 둘 다 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다.
+Location Store와 owner lease runtime을 사용하는 모든 host는
 `ownerLeaseRenewInterval + ownerLeaseRenewTimeout < ownerLeaseTtl - ownerLeaseFencingMargin`을 startup에서
-검증한다. Routing slot도 같은 host token과 deadline을 사용한다.
+검증한다.
+
+공식 Redis extension은 `ZLinkRedisLocationStore`와 `ZLinkRedisTransferStore`를 별도 class와 options로 제공한다.
+한 class가 두 interface를 함께 구현하지 않는다. 두 Store는 같은 Redis deployment를 서로 다른 key prefix로
+사용하거나 서로 다른 Redis를 사용할 수 있다. Connection 공유는 구현 세부 사항이고 correctness 조건이 아니다.
+같은 deployment에서 prefix가 겹치면 socket bind 전에 startup configuration error로 실패한다.
 
 `storeFailureGrace`는 discovery reconcile과 새 outbound connect에만 적용한다. Store failure 동안 마지막 stable
 desired set을 grace까지 고정하고 existing admitted transport에는 service liveness를 계속 적용한다. Grace 뒤에는
 stable store snapshot을 다시 얻기 전까지 새 connection을 만들지 않는다. 이 값은 owner·coordinator lease나 local
 authority deadline을 연장하지 않으며 stateful message, timer, factory와 CAS admission은 마지막 valid monotonic
 lease deadline에서 닫힌다. Recovery는 exact owner token과 stable page set을 재검증한 뒤 diff와 connect를 수행한다.
+Missing route 결과는 negative cache에 저장하지 않는다. 다음 operation은 authority를 다시 조회한다.
 
-Store 없이 만든 Actor의 authority와 handle generation은 runtime-local opaque token이다. 이 Actor는 같은
-process 안에서만 message를 처리한다. Remote directory·resolve, distributed join·session binding,
-transfer·relocation을 구성하거나 호출하면 Framework는 구성 또는 operation 오류로 거부한다. Durable
-authority와 owner generation은 Store-backed Actor에만 적용하며 이 제한을 완화하는 public option은 제공하지
-않는다.
+Object role이 `Client` 또는 `Server`인 MeshNode는 Store가 필수다. `None`은 manager, factory, placement와
+hidden local object runtime을 만들지 않는다.
 
 Store version과 reference는 provider가 발급한 opaque 값이다. Framework는 이를 수치로 비교하거나
 application에 전달하지 않는다.
@@ -75,6 +98,8 @@ public record ZLinkAuthoritySnapshot(
     byte[] payload,
     long objectGeneration,
     long authorityOwnerGeneration,
+    String ownerId,
+    long ownerLeaseGeneration,
     Instant storeNow) implements ZLinkAuthorityReadResult {}
 
 public record ZLinkAuthorityEntry(
@@ -137,30 +162,43 @@ public interface ZLinkAuthorityStore {
         Optional<ZLinkAuthorityScanCursor> cursor,
         int limit,
         ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectReserveResult> reserve(
+        ZLinkObjectReservationRequest request, ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation, byte[] readyPayload,
+        ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation, ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
+        ZLinkAggregatePrepareRequest request, ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
+        ZLinkAggregateFence fence, ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
+        ZLinkAggregateFence fence, ZLinkStoreCancellation cancellation);
 }
 
-public record ZLinkCheckpointStored(
+public record ZLinkTransferStored(
     String reference, Instant expiresAt, Instant storeNow) {}
-public sealed interface ZLinkCheckpointReadResult
-    permits ZLinkCheckpointFound, ZLinkCheckpointMissing {}
-public record ZLinkCheckpointFound(byte[] payload)
-    implements ZLinkCheckpointReadResult {}
-public record ZLinkCheckpointMissing() implements ZLinkCheckpointReadResult {}
-public enum ZLinkCheckpointDeleteResult { DELETED, MISSING }
-public sealed interface ZLinkCheckpointRenewResult
-    permits ZLinkCheckpointRenewed, ZLinkCheckpointRenewMissing {}
-public record ZLinkCheckpointRenewed(Instant expiresAt, Instant storeNow)
-    implements ZLinkCheckpointRenewResult {}
-public record ZLinkCheckpointRenewMissing() implements ZLinkCheckpointRenewResult {}
+public sealed interface ZLinkTransferReadResult
+    permits ZLinkTransferFound, ZLinkTransferMissing {}
+public record ZLinkTransferFound(byte[] payload)
+    implements ZLinkTransferReadResult {}
+public record ZLinkTransferMissing() implements ZLinkTransferReadResult {}
+public enum ZLinkTransferDeleteResult { DELETED, MISSING }
+public sealed interface ZLinkTransferRenewResult
+    permits ZLinkTransferRenewed, ZLinkTransferRenewMissing {}
+public record ZLinkTransferRenewed(Instant expiresAt, Instant storeNow)
+    implements ZLinkTransferRenewResult {}
+public record ZLinkTransferRenewMissing() implements ZLinkTransferRenewResult {}
 
-public interface ZLinkCheckpointStore {
-    CompletionStage<ZLinkCheckpointStored> put(
+public interface ZLinkTransferStore {
+    CompletionStage<ZLinkTransferStored> put(
         byte[] payload, Duration retention, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkCheckpointReadResult> get(
+    CompletionStage<ZLinkTransferReadResult> get(
         String reference, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkCheckpointRenewResult> renew(
+    CompletionStage<ZLinkTransferRenewResult> renew(
         String reference, Duration retention, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkCheckpointDeleteResult> delete(
+    CompletionStage<ZLinkTransferDeleteResult> delete(
         String reference, ZLinkStoreCancellation cancellation);
 }
 
@@ -168,15 +206,108 @@ public interface ZLinkStoreCancellation {
     boolean isCancellationRequested();
 }
 
-public enum ZLinkPlacementObjectKind { ACTOR, INSTANCE_SPOT }
-public enum ZLinkObjectMaintenancePolicyKind { DISABLED, RECREATE, SNAPSHOT }
+public enum ZLinkPlacementObjectKind {
+    ACTOR(1), USER_SPOT(2), INSTANCE_SPOT(3);
+    private final int value;
+    ZLinkPlacementObjectKind(int value) { this.value = value; }
+    public int value() { return value; }
+}
+public enum ZLinkMeshNodeObjectRole {
+    NONE(0), CLIENT(1), SERVER(2);
+    private final int value;
+    ZLinkMeshNodeObjectRole(int value) { this.value = value; }
+    public int value() { return value; }
+}
+public enum ZLinkObjectMaintenancePolicyKind {
+    DISABLED(1), RECREATE(2), SNAPSHOT(3);
+    private final int value;
+    ZLinkObjectMaintenancePolicyKind(int value) { this.value = value; }
+    public int value() { return value; }
+}
 
 public record ZLinkObjectCapability(
     ZLinkPlacementObjectKind objectKind,
     String type,
     ZLinkObjectMaintenancePolicyKind policy,
     Set<String> readableStateContractIds,
-    long available) {}
+    Set<String> placementProfiles,
+    Integer activeLimit,
+    Integer pendingLimit) {}
+
+public record ZLinkPlacementCapacity(
+    int active, int pending, int activeLimit, int pendingLimit) {}
+
+public record ZLinkObjectReservationRequest(
+    ZLinkPlacementObjectKind objectKind, String authorityKey, String stableType,
+    Optional<String> placementProfile, Optional<String> affinityKey,
+    String creationIntentReference, byte[] creationIntentHash,
+    int creationIntentEncodedSize, ZLinkMeshNodeDescriptorKey targetDescriptor,
+    ZLinkLocationOwnerToken targetOwner, int pendingCapacityDelta) {}
+public record ZLinkObjectReservation(
+    String authorityKey, String storeVersion, long objectGeneration,
+    long authorityOwnerGeneration, String reservationVersion,
+    ZLinkMeshNodeDescriptorKey targetDescriptor, ZLinkLocationOwnerToken targetOwner) {}
+public sealed interface ZLinkObjectReserveResult
+    permits ZLinkObjectReserved, ZLinkObjectConflict, ZLinkObjectAlreadyExists,
+            ZLinkObjectTypeMismatch, ZLinkPlacementCapacityExhausted,
+            ZLinkObjectGenerationExhausted {}
+public record ZLinkObjectReserved(ZLinkObjectReservation reservation)
+    implements ZLinkObjectReserveResult {}
+public record ZLinkObjectConflict(ZLinkAuthorityReadResult current)
+    implements ZLinkObjectReserveResult {}
+public record ZLinkObjectAlreadyExists(ZLinkAuthoritySnapshot current)
+    implements ZLinkObjectReserveResult {}
+public record ZLinkObjectTypeMismatch(ZLinkAuthoritySnapshot current)
+    implements ZLinkObjectReserveResult {}
+public record ZLinkPlacementCapacityExhausted() implements ZLinkObjectReserveResult {}
+public record ZLinkObjectGenerationExhausted() implements ZLinkObjectReserveResult {}
+public enum ZLinkObjectCommitResult {
+    COMMITTED(1), ALREADY_COMMITTED(2), STALE(3), GENERATION_EXHAUSTED(4);
+    private final int value;
+    ZLinkObjectCommitResult(int value) { this.value = value; }
+    public int value() { return value; }
+}
+public enum ZLinkObjectAbortResult {
+    ABORTED(1), ALREADY_ABORTED(2), STALE(3);
+    private final int value;
+    ZLinkObjectAbortResult(int value) { this.value = value; }
+    public int value() { return value; }
+}
+
+public record ZLinkAggregateParticipant(
+    String authorityKey, String expectedStoreVersion,
+    ZLinkAuthorityGenerationTransition ownerTransition,
+    byte[] authorityPayload, byte[] membershipMutation) {}
+public record ZLinkAggregatePrepareRequest(
+    UUID aggregateId, long aggregateGeneration,
+    List<ZLinkAggregateParticipant> participants,
+    byte[] inventoryDigest,
+    List<ZLinkObjectReservation> targetReservations,
+    ZLinkLocationOwnerToken targetOwner) {}
+public record ZLinkAggregateFence(UUID aggregateId, long aggregateGeneration) {}
+public sealed interface ZLinkAggregatePrepareResult
+    permits ZLinkAggregatePrepared, ZLinkAggregateAlreadyPrepared,
+            ZLinkAggregateConflict, ZLinkAggregateStale,
+            ZLinkAggregateGenerationExhausted {}
+public record ZLinkAggregatePrepared(ZLinkAggregateFence fence)
+    implements ZLinkAggregatePrepareResult {}
+public record ZLinkAggregateAlreadyPrepared(ZLinkAggregateFence fence)
+    implements ZLinkAggregatePrepareResult {}
+public record ZLinkAggregateConflict() implements ZLinkAggregatePrepareResult {}
+public record ZLinkAggregateStale() implements ZLinkAggregatePrepareResult {}
+public record ZLinkAggregateGenerationExhausted() implements ZLinkAggregatePrepareResult {}
+public enum ZLinkAggregateCommitResult {
+    COMMITTED(1), ALREADY_COMMITTED(2), STALE(3), GENERATION_EXHAUSTED(4);
+    private final int value;
+    ZLinkAggregateCommitResult(int value) { this.value = value; }
+    public int value() { return value; }
+}
+public enum ZLinkAggregateAbortResult {
+    ABORTED(1), ALREADY_ABORTED(2), STALE(3);
+    private final int value;
+    ZLinkAggregateAbortResult(int value) { this.value = value; }
+    public int value() { return value; }
+}
 
 public record ZLinkLocationOwnerToken(String ownerId, long leaseGeneration) {}
 
@@ -228,8 +359,10 @@ public record ZLinkMeshNodeDescriptor(
     String endpoint,
     Map<String, Integer> channelWeights,
     long applicationVersion,
-    Set<String> spotTypes,
     List<ZLinkObjectCapability> objectCapabilities,
+    ZLinkMeshNodeObjectRole objectRole,
+    int placementWeight,
+    ZLinkPlacementCapacity capacity,
     Optional<String> maintenanceWave,
     ZLinkFrameworkRuntimeState state,
     String securityIdentity,
@@ -278,7 +411,7 @@ public record ZLinkSpotLocation(
     String ownerId,
     long leaseGeneration,
     Instant updatedAt) {}
-public record ZLinkSpotLocationKey(String meshName, RoutingId spotRid) {}
+public record ZLinkSpotLocationKey(RoutingId spotRid) {}
 
 public record ZLinkActorLocation(
     String meshName,
@@ -293,7 +426,7 @@ public record ZLinkActorLocation(
     String ownerId,
     long leaseGeneration,
     Instant updatedAt) {}
-public record ZLinkActorLocationKey(String meshName, String actorId) {}
+public record ZLinkActorLocationKey(String actorId) {}
 
 public interface ZLinkMeshNodeLocationStore {
     CompletionStage<ZLinkLocationWriteResult> updateMeshNode(
@@ -331,36 +464,36 @@ public interface ZLinkLocationStore extends
 ```
 
 `ZLinkLocationStore`가 MeshNode descriptor, owner lease와 generic authority capability를 함께 제공한다.
-Entry·User·Instance Spot은 `(MeshName, SpotRid)`에서 파생한 하나의 authority key를 공유한다. User Spot
+User·Instance Spot은 global `SpotRid`에서 파생한 하나의 authority key를 공유한다. User Spot
 create와 Instance cold claim은 같은 row에 `NEW_OBJECT` compare-exchange를 수행하므로 kind conflict와 object
 generation 증가가 원자적으로 결정된다. Actor direct resolve도 canonical authority key를 읽는다. Operational
 Spot·Actor 목록은 Framework가 authority enumeration과 opaque payload를 decode한 projection이며 routing
 authority가 아니다. `ZLinkSpotLocation`은 이 projection type이고 provider write·remove·resolve interface가
-아니다. `ZLinkSpotLocation.spotGeneration`, Spot handle generation과
-`ZLinkActorLocation.actorRef().generation()`은 provider가 반환한 `objectGeneration`을 그대로 사용한다.
+아니다. `ZLinkSpotLocation.spotGeneration`, `SpotRef.objectGeneration()`과
+`ZLinkActorLocation.actorRef().objectGeneration()`은 provider가 반환한 `objectGeneration`을 그대로 사용한다.
 Authority envelope의 `authorityOwnerGeneration`은 authority owner 이관 fence이고 descriptor·projection의
 `leaseGeneration`은 host lease fence다. 두 generation을 합치거나 Framework 계산값으로 만들지 않는다.
 Maintenance owner 이관은 `NEW_OWNER`로 owner generation만 바꾸고 object generation을 유지한다.
-기존 handle은 유효하며 이전 owner route를 사용하면 runtime이 current authority를 재조회하여 forwarding
+기존 ref의 ObjectGeneration은 유지되며 이전 owner route를 사용하면 runtime이 current authority를 재조회하여 forwarding
 또는 retry한다. Explicit close 후 cold recreate만 `NEW_OBJECT`로 새 object generation을 발급하며,
-이때 이전 handle은 영구적으로 stale다.
+이때 이전 ref snapshot은 영구적으로 stale다.
 ClientServer와 fanout은 이 interface가 상속하지 않는 선택 capability이며 Redis provider는 두
 interface를 추가로 구현한다. Host가 별도 `ZLinkAuthorityStore` instance를 등록하는 API는 없다.
 `compareExchange`만 authority payload를 변경한다.
 Unconditional write와 delete는 제공하지 않는다. Provider는
 payload를 해석하지 않고 store clock과 current value를 같은 operation 결과로 반환한다. Authority row는
 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다. Owner·coordinator lease는 별도 token row에
-저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Checkpoint
+저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Transfer
 put과 renew의 retention은 Framework가 24시간으로 전달하며 별도 public setting을 제공하지 않는다. Current
 authority reference를 확인한 coordinator만 renew를 호출하고 missing reference는
-`ZLinkCheckpointRenewMissing` 정상 결과다. `ZLinkCheckpointRenewed`는 provider clock의 새 expiry와 Store
+`ZLinkTransferRenewMissing` 정상 결과다. `ZLinkTransferRenewed`는 provider clock의 새 expiry와 Store
 time을 반환하며 runtime은 local clock으로 provider expiry를 추측하지 않는다.
 
-Framework는 logical checkpoint를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
-logical state ceiling은 256 GiB다. `ZLinkCheckpointStore`의 opaque put/get interface는 바꾸지 않으며 chunk
+Framework는 logical transfer를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
+logical state ceiling은 256 GiB다. `ZLinkTransferStore`의 opaque put/get interface는 바꾸지 않으며 chunk
 크기, 개수와 manifest를 설정하는 public option도 제공하지 않는다. Capture가 ceiling을 넘으면 seal을 되돌려
 normal messaging을 다시 허용하고 Retire 결과를 `BLOCKED`로 종료한다. 일반 message의 negotiated effective
-bound는 checkpoint chunk 크기 때문에 줄이지 않는다.
+bound는 transfer chunk 크기 때문에 줄이지 않는다.
 
 Missing read는 `storeNow`만 반환하고 fake StoreVersion을 갖지 않는다. `compareExchange`는
 `ZLinkAuthorityExpectation`을 받는 overload만 제공한다. `NEW_OBJECT`는
@@ -376,8 +509,8 @@ Authority payload에 generation을 중복 encode하지 않는다.
 Global object generation, authority owner generation 또는 Store revision이 `Long.MAX_VALUE`인 상태에서
 CAS가 새 값을 요구하면 provider는 `ZLinkAuthorityGenerationExhausted`를 반환한다. 이 결과는
 non-retriable이며 row·index·counter를 바꾸거나 값을 소비하지 않는다. 외부 상태가 바뀌지 않은 채 같은 key와
-expectation으로 다시 호출하면 같은 결과를 반환한다. Provider·transport exception 및 routing allocation의
-`ZLinkRoutingIdSlotGroupExhausted`와는 서로 다른 결과다. Framework는 이를 기존 high-level lifecycle 실패로
+expectation으로 다시 호출하면 같은 결과를 반환한다. Provider·transport exception 및
+`ZLinkPlacementCapacityExhausted`와는 서로 다른 결과다. Framework는 이를 기존 high-level lifecycle 실패로
 종료하며 application public error enum을 추가하지 않는다.
 
 Framework가 provider operation에 넘긴 `byte[]`은 반환된 `CompletionStage`가 완료될 때까지 유효하고 내용이
@@ -387,8 +520,21 @@ Mutable buffer를 사용하는 adapter는 public boundary에서 snapshot을 만�
 operation은 provider를 호출하지 않고 I/O와 commit을 수행하지 않는다. Operation이 시작된 뒤 waiter
 cancellation이나 error가 발생하면 commit 여부는 unknown이며 no-commit을 보장하지 않는다. Authority CAS는
 같은 key와 expected StoreVersion을 exact read해 결과를 reconcile한 뒤 필요하면 retry한다. Content-addressed
-checkpoint put은 같은 content를 read·verify한 뒤 retry한다. Authority에 연결되지 않은 committed put은 orphan으로
+transfer put은 같은 content를 read·verify한 뒤 retry한다. Authority에 연결되지 않은 committed put은 orphan으로
 retention까지 유지한 뒤 cleanup한다. 이 동작을 위한 public result는 추가하지 않는다.
+
+모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `RECREATE`도 accepted journal과 recovery payload를
+저장하고 `SNAPSHOT`은 application state를 추가한다. Same-node Actor join에는 Transfer payload를 만들지 않으며
+`DISABLED` cross-node 이동은 capture 전에 거부한다. Runtime은 immutable root와 manifest를 먼저 저장하고
+reference·checksum·retention을 검증한 뒤 Location authority CAS 한 번으로 publish한다. Aggregate prepare의
+`participants`는 Location Store가 소유하는 bounded canonical participant set이고 `inventoryDigest`는 participant별
+mutation까지 포함한 exact 32-byte SHA-256이다. Transfer manifest의 inventory는 payload lookup projection일 뿐
+authority가 아니며 두 digest가 일치해야 restore와 replay를 시작한다.
+
+CAS conflict 전에 저장된 root는 orphan retention으로 제거한다. Root 교체는 new root 저장, Location reference CAS,
+old root cleanup 순서이며 삭제는 Location reference release CAS 뒤 Transfer delete 순서다. 두 Store 사이의 transaction이나
+2PC는 요구하지 않는다. Published reference가 permanent missing이거나 checksum·inventory digest가 다르면
+non-retriable `TransferDataLost`로 seal하며 이전 owner로 rollback하지 않는다.
 
 Framework는 host process lifecycle마다 새 owner ID를 만들고 application이 owner ID를 설정하거나
 이전 lifecycle의 값을 재사용하는 API를 제공하지 않는다. 한 host의 모든
@@ -412,12 +558,6 @@ effective page size는 100이고 명시한 `pageSize`는 `1..1000`이어야 한�
 반환하며 byte limit public option은 제공하지 않는다. Framework reconciler는 scope change stamp를 읽고 모든
 page를 조립한 뒤 stamp를 다시 읽는다. 두 stamp가 같을 때만 full snapshot을 적용하고 다르면 부분 결과를
 버리고 first page부터 다시 읽는다. Page 조립과 retry는 Framework 내부 동작이다.
-Routing ID slot acquire request도 이미 claim한 같은 owner token을 받는다. Provider는 active token을 slot
-배정과 같은 원자 operation에서 확인하고 별도 TTL이나 token을 발급하지 않는다. Startup
-rollback은 slot을 먼저 release한 뒤 host lease를 마지막에 release한다. `slotCount`와 allocation slot은
-`1..65535`이고 group member 수는 `1..255`다. 범위를 벗어난 builder 설정과 acquire request는 거부한다.
-`listRoutingIdSlots`는 이 상한 안에서 group 전체를 한 coherent snapshot으로 반환하며 pagination하지 않는다.
-
 Authority scan의 first page는 empty cursor로 요청한다. Provider는 한 snapshot을 만들고 이어지는 page에
 필요한 모든 상태를 하나의 `ZLinkAuthorityScanCursor`에 담는다. 다음 page는 직전 page의 `nextCursor`
 객체를 해석하거나 다시 조립하지 않고 그대로 넘긴다. Cursor의 UTF-8 encoded 크기는 `1..4096` bytes이며
@@ -433,7 +573,7 @@ Provider가 cursor가 가리키는 scan을 만료시켰으면 이어지는 page 
 한 authority opaque payload의 encoded 크기는 최대 1 MiB다. Scan `limit`은 `1..1000`이고 provider는 encoded
 page 4 MiB에 먼저 도달하면 요청보다 적은 entry와 `nextCursor`를 반환한다. 이 byte limit을 바꾸는
 public option은 없다. Hot authority row는 compact metadata와 replay cursor만 보관하며 complete terminal reply
-bytes는 checkpoint stream에 저장한다.
+bytes는 transfer stream에 저장한다.
 
 MeshNode의 `objectCapabilities`는 Actor와 Instance Spot을 object kind와 type별로 구분하고 maintenance policy,
 읽을 수 있는 state contract ID 집합과 current capacity를 같은 항목에 둔다. Flat type과 state contract set을
@@ -462,6 +602,14 @@ JVM runtime은 owner와 transfer를 같은 authority row에서 `Preparing`, `Cap
 application이 조립하는 owner token을 만들지 않는다. Location owner lease와 service liveness는 서로 다른
 계약이다.
 
+`reserve`, `commit`, `abort`는 Actor, User Spot과 Instance Spot에 공통인 generic object reservation이다.
+Request는 object kind, global authority key, stable type, placement profile·affinity key, creation content
+reference·exact 32-byte SHA-256·encoded size, target descriptor, exact owner token과 pending capacity delta를
+받는다. Encoded request는 최대 1 MiB다. Reserve는 kind·type mismatch와 capacity exhaustion을 closed result로
+구분하고, commit·abort는 같은 reservation에 idempotent하며 다른 fence를 stale로 거부한다. Aggregate operation은
+0이 아닌 128-bit ID, 최대 1024 participant와 encoded 1 MiB bound를 적용하고 owner·membership visibility를
+하나의 commit generation으로 전환한다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.
@@ -481,6 +629,10 @@ public final class systems.zlink.framework.locations.ZLinkLocationOptions {
   public void setOwnerLeaseFencingMargin(java.time.Duration);
   public java.time.Duration ownerLeaseRenewTimeout();
   public void setOwnerLeaseRenewTimeout(java.time.Duration);
+  public java.time.Duration routeCacheMaxAge();
+  public void setRouteCacheMaxAge(java.time.Duration);
+  public java.time.Duration transferForwardingWindow();
+  public void setTransferForwardingWindow(java.time.Duration);
 }
 public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions {
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions();
@@ -491,11 +643,30 @@ public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationOpt
   public java.time.Duration commandTimeout();
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions setCommandTimeout(java.time.Duration);
 }
+public final class systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions {
+  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions();
+  public java.lang.String connectionString();
+  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setConnectionString(java.lang.String);
+  public java.lang.String keyPrefix();
+  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setKeyPrefix(java.lang.String);
+  public java.time.Duration commandTimeout();
+  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setCommandTimeout(java.time.Duration);
+}
 public final class systems.zlink.framework.locations.ZLinkPlacementObjectKind extends java.lang.Enum<systems.zlink.framework.locations.ZLinkPlacementObjectKind> {
   public static final systems.zlink.framework.locations.ZLinkPlacementObjectKind ACTOR;
+  public static final systems.zlink.framework.locations.ZLinkPlacementObjectKind USER_SPOT;
   public static final systems.zlink.framework.locations.ZLinkPlacementObjectKind INSTANCE_SPOT;
   public static systems.zlink.framework.locations.ZLinkPlacementObjectKind[] values();
   public static systems.zlink.framework.locations.ZLinkPlacementObjectKind valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.locations.ZLinkMeshNodeObjectRole extends java.lang.Enum<systems.zlink.framework.locations.ZLinkMeshNodeObjectRole> {
+  public static final systems.zlink.framework.locations.ZLinkMeshNodeObjectRole NONE;
+  public static final systems.zlink.framework.locations.ZLinkMeshNodeObjectRole CLIENT;
+  public static final systems.zlink.framework.locations.ZLinkMeshNodeObjectRole SERVER;
+  public static systems.zlink.framework.locations.ZLinkMeshNodeObjectRole[] values();
+  public static systems.zlink.framework.locations.ZLinkMeshNodeObjectRole valueOf(java.lang.String);
+  public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind extends java.lang.Enum<systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind> {
   public static final systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind DISABLED;
@@ -503,9 +674,10 @@ public final class systems.zlink.framework.locations.ZLinkObjectMaintenancePolic
   public static final systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind SNAPSHOT;
   public static systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind[] values();
   public static systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind valueOf(java.lang.String);
+  public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkObjectCapability extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, java.util.Set<java.lang.String>, long);
+  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, java.util.Set<java.lang.String>, java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -513,10 +685,40 @@ public final class systems.zlink.framework.locations.ZLinkObjectCapability exten
   public java.lang.String type();
   public systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind policy();
   public java.util.Set<java.lang.String> readableStateContractIds();
-  public long available();
+  public java.util.Set<java.lang.String> placementProfiles();
+  public java.lang.Integer activeLimit();
+  public java.lang.Integer pendingLimit();
+}
+public final class systems.zlink.framework.locations.ZLinkPlacementCapacity extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkPlacementCapacity(int, int, int, int);
+  public int active();
+  public int pending();
+  public int activeLimit();
+  public int pendingLimit();
+}
+public final class systems.zlink.framework.locations.ZLinkObjectReservationRequest extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkObjectReservationRequest(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, java.lang.String, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.lang.String, byte[], int, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, systems.zlink.framework.locations.ZLinkLocationOwnerToken, int);
+}
+public final class systems.zlink.framework.locations.ZLinkObjectReservation extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkObjectReservation(java.lang.String, java.lang.String, long, long, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
+}
+public sealed interface systems.zlink.framework.locations.ZLinkObjectReserveResult permits systems.zlink.framework.locations.ZLinkObjectReserved, systems.zlink.framework.locations.ZLinkObjectConflict, systems.zlink.framework.locations.ZLinkObjectAlreadyExists, systems.zlink.framework.locations.ZLinkObjectTypeMismatch, systems.zlink.framework.locations.ZLinkPlacementCapacityExhausted, systems.zlink.framework.locations.ZLinkObjectGenerationExhausted {
+}
+public final class systems.zlink.framework.locations.ZLinkObjectCommitResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkObjectCommitResult> {
+  public static final systems.zlink.framework.locations.ZLinkObjectCommitResult COMMITTED;
+  public static final systems.zlink.framework.locations.ZLinkObjectCommitResult ALREADY_COMMITTED;
+  public static final systems.zlink.framework.locations.ZLinkObjectCommitResult STALE;
+  public static final systems.zlink.framework.locations.ZLinkObjectCommitResult GENERATION_EXHAUSTED;
+  public int value();
+}
+public final class systems.zlink.framework.locations.ZLinkObjectAbortResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkObjectAbortResult> {
+  public static final systems.zlink.framework.locations.ZLinkObjectAbortResult ABORTED;
+  public static final systems.zlink.framework.locations.ZLinkObjectAbortResult ALREADY_ABORTED;
+  public static final systems.zlink.framework.locations.ZLinkObjectAbortResult STALE;
+  public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkMeshNodeDescriptor extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkMeshNodeDescriptor(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.util.Map<java.lang.String, java.lang.Integer>, long, java.util.Set<java.lang.String>, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, java.util.Optional<java.lang.String>, systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState, java.lang.String, java.lang.String, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkMeshNodeDescriptor(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.util.Map<java.lang.String, java.lang.Integer>, long, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, java.util.Optional<java.lang.String>, systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState, java.lang.String, java.lang.String, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -527,8 +729,10 @@ public final class systems.zlink.framework.locations.ZLinkMeshNodeDescriptor ext
   public java.lang.String endpoint();
   public java.util.Map<java.lang.String, java.lang.Integer> channelWeights();
   public long applicationVersion();
-  public java.util.Set<java.lang.String> spotTypes();
   public java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability> objectCapabilities();
+  public systems.zlink.framework.locations.ZLinkMeshNodeObjectRole objectRole();
+  public int placementWeight();
+  public systems.zlink.framework.locations.ZLinkPlacementCapacity capacity();
   public java.util.Optional<java.lang.String> maintenanceWave();
   public systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState state();
   public java.lang.String securityIdentity();
@@ -608,7 +812,7 @@ public interface systems.zlink.framework.locations.ZLinkFanoutLocationStore {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkLocationWriteStatus> removeFanoutPublisher(systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkLocationPage<systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor>> listFanoutPublishers(java.lang.String, systems.zlink.framework.locations.ZLinkPageRequest);
 }
-public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationStore implements systems.zlink.framework.locations.ZLinkLocationStore, systems.zlink.framework.locations.ZLinkClientServerLocationStore, systems.zlink.framework.locations.ZLinkFanoutLocationStore, systems.zlink.framework.locations.ZLinkPeerLocationStore, systems.zlink.framework.locations.ZLinkRouteLocationStore, systems.zlink.framework.locations.ZLinkLocationChangeStampStore, systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationStore, java.lang.AutoCloseable {
+public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationStore implements systems.zlink.framework.locations.ZLinkLocationStore, systems.zlink.framework.locations.ZLinkClientServerLocationStore, systems.zlink.framework.locations.ZLinkFanoutLocationStore, systems.zlink.framework.locations.ZLinkPeerLocationStore, systems.zlink.framework.locations.ZLinkRouteLocationStore, systems.zlink.framework.locations.ZLinkLocationChangeStampStore, java.lang.AutoCloseable {
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationStore(systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkLocationWriteResult> updateMeshNode(systems.zlink.framework.locations.ZLinkMeshNodeDescriptor, systems.zlink.framework.locations.ZLinkLocationWriteIntent);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkLocationWriteStatus> removeMeshNode(systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
@@ -629,15 +833,26 @@ public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationSto
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult> claimOwnerLease(java.lang.String, java.time.Duration);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult> readOwnerLease(java.lang.String);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult> renewOwnerLease(systems.zlink.framework.locations.ZLinkLocationOwnerToken, java.time.Duration);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlot(systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult> releaseRoutingIdSlot(java.lang.String, int, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot> listRoutingIdSlots(java.lang.String);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult> releaseOwnerLease(systems.zlink.framework.locations.ZLinkLocationOwnerToken);
   public java.util.concurrent.CompletionStage<java.lang.Long> removeAllByOwner(systems.zlink.framework.locations.ZLinkLocationOwnerToken);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityReadResult> read(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityWriteResult> compareExchange(java.lang.String, systems.zlink.framework.locations.ZLinkAuthorityExpectation, systems.zlink.framework.locations.ZLinkAuthorityMutation, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityScanResult> list(java.lang.String, java.util.Optional<systems.zlink.framework.locations.ZLinkAuthorityScanCursor>, int, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectReserveResult> reserve(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregatePrepareResult> prepareAggregate(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateCommitResult> commitAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult> abortAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public java.util.concurrent.CompletionStage<java.lang.Long> getChangeStamp(systems.zlink.framework.locations.ZLinkLocationChangeStampScope);
+  public void close();
+}
+public final class systems.zlink.framework.locations.redis.ZLinkRedisTransferStore implements systems.zlink.framework.locations.ZLinkTransferStore, java.lang.AutoCloseable {
+  public systems.zlink.framework.locations.redis.ZLinkRedisTransferStore(systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public void close();
 }
 public interface systems.zlink.framework.locations.ZLinkStoreCancellation {
@@ -655,7 +870,7 @@ public final class systems.zlink.framework.locations.ZLinkAuthorityMissing exten
   public java.time.Instant storeNow();
 }
 public final class systems.zlink.framework.locations.ZLinkAuthoritySnapshot extends java.lang.Record implements systems.zlink.framework.locations.ZLinkAuthorityReadResult {
-  public systems.zlink.framework.locations.ZLinkAuthoritySnapshot(java.lang.String, byte[], long, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkAuthoritySnapshot(java.lang.String, byte[], long, long, java.lang.String, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -663,6 +878,8 @@ public final class systems.zlink.framework.locations.ZLinkAuthoritySnapshot exte
   public byte[] payload();
   public long objectGeneration();
   public long authorityOwnerGeneration();
+  public java.lang.String ownerId();
+  public long ownerLeaseGeneration();
   public java.time.Instant storeNow();
 }
 public final class systems.zlink.framework.locations.ZLinkAuthorityEntry extends java.lang.Record {
@@ -782,9 +999,15 @@ public interface systems.zlink.framework.locations.ZLinkAuthorityStore {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityReadResult> read(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityWriteResult> compareExchange(java.lang.String, systems.zlink.framework.locations.ZLinkAuthorityExpectation, systems.zlink.framework.locations.ZLinkAuthorityMutation, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityScanResult> list(java.lang.String, java.util.Optional<systems.zlink.framework.locations.ZLinkAuthorityScanCursor>, int, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectReserveResult> reserve(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregatePrepareResult> prepareAggregate(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateCommitResult> commitAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult> abortAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointStored extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkCheckpointStored(java.lang.String, java.time.Instant, java.time.Instant);
+public final class systems.zlink.framework.locations.ZLinkTransferStored extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkTransferStored(java.lang.String, java.time.Instant, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -792,62 +1015,50 @@ public final class systems.zlink.framework.locations.ZLinkCheckpointStored exten
   public java.time.Instant expiresAt();
   public java.time.Instant storeNow();
 }
-public sealed interface systems.zlink.framework.locations.ZLinkCheckpointReadResult
-    permits systems.zlink.framework.locations.ZLinkCheckpointFound,
-            systems.zlink.framework.locations.ZLinkCheckpointMissing {
+public sealed interface systems.zlink.framework.locations.ZLinkTransferReadResult
+    permits systems.zlink.framework.locations.ZLinkTransferFound,
+            systems.zlink.framework.locations.ZLinkTransferMissing {
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointFound extends java.lang.Record implements systems.zlink.framework.locations.ZLinkCheckpointReadResult {
-  public systems.zlink.framework.locations.ZLinkCheckpointFound(byte[]);
+public final class systems.zlink.framework.locations.ZLinkTransferFound extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferReadResult {
+  public systems.zlink.framework.locations.ZLinkTransferFound(byte[]);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public byte[] payload();
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkCheckpointReadResult {
-  public systems.zlink.framework.locations.ZLinkCheckpointMissing();
+public final class systems.zlink.framework.locations.ZLinkTransferMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferReadResult {
+  public systems.zlink.framework.locations.ZLinkTransferMissing();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointDeleteResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkCheckpointDeleteResult> {
-  public static final systems.zlink.framework.locations.ZLinkCheckpointDeleteResult DELETED;
-  public static final systems.zlink.framework.locations.ZLinkCheckpointDeleteResult MISSING;
-  public static systems.zlink.framework.locations.ZLinkCheckpointDeleteResult[] values();
-  public static systems.zlink.framework.locations.ZLinkCheckpointDeleteResult valueOf(java.lang.String);
+public final class systems.zlink.framework.locations.ZLinkTransferDeleteResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkTransferDeleteResult> {
+  public static final systems.zlink.framework.locations.ZLinkTransferDeleteResult DELETED;
+  public static final systems.zlink.framework.locations.ZLinkTransferDeleteResult MISSING;
+  public static systems.zlink.framework.locations.ZLinkTransferDeleteResult[] values();
+  public static systems.zlink.framework.locations.ZLinkTransferDeleteResult valueOf(java.lang.String);
 }
-public sealed interface systems.zlink.framework.locations.ZLinkCheckpointRenewResult permits systems.zlink.framework.locations.ZLinkCheckpointRenewed, systems.zlink.framework.locations.ZLinkCheckpointRenewMissing {
+public sealed interface systems.zlink.framework.locations.ZLinkTransferRenewResult permits systems.zlink.framework.locations.ZLinkTransferRenewed, systems.zlink.framework.locations.ZLinkTransferRenewMissing {
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointRenewed extends java.lang.Record implements systems.zlink.framework.locations.ZLinkCheckpointRenewResult {
-  public systems.zlink.framework.locations.ZLinkCheckpointRenewed(java.time.Instant, java.time.Instant);
+public final class systems.zlink.framework.locations.ZLinkTransferRenewed extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferRenewResult {
+  public systems.zlink.framework.locations.ZLinkTransferRenewed(java.time.Instant, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public java.time.Instant expiresAt();
   public java.time.Instant storeNow();
 }
-public final class systems.zlink.framework.locations.ZLinkCheckpointRenewMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkCheckpointRenewResult {
-  public systems.zlink.framework.locations.ZLinkCheckpointRenewMissing();
+public final class systems.zlink.framework.locations.ZLinkTransferRenewMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferRenewResult {
+  public systems.zlink.framework.locations.ZLinkTransferRenewMissing();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public interface systems.zlink.framework.locations.ZLinkCheckpointStore {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkCheckpointStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkCheckpointReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkCheckpointRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkCheckpointDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-}
-public final class systems.zlink.framework.locations.ZLinkAllocatedRoutingId extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkAllocatedRoutingId(java.lang.String, int, java.util.Map<java.lang.String, systems.zlink.contracts.core.RoutingId>);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.lang.String groupName();
-  public int slot();
-  public java.util.Map<java.lang.String, systems.zlink.contracts.core.RoutingId> meshNodeRoutingIds();
-}
-public interface systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAllocatedRoutingId> waitForReadyAllocation(java.lang.String);
+public interface systems.zlink.framework.locations.ZLinkTransferStore {
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
 }
 public interface systems.zlink.framework.locations.ZLinkLocationChangeStampStore {
   public abstract java.util.concurrent.CompletionStage<java.lang.Long> getChangeStamp(systems.zlink.framework.locations.ZLinkLocationChangeStampScope);
@@ -977,86 +1188,6 @@ public interface systems.zlink.framework.locations.ZLinkOwnerLeaseStore {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult> readOwnerLease(java.lang.String);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult> renewOwnerLease(systems.zlink.framework.locations.ZLinkLocationOwnerToken, java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult> releaseOwnerLease(systems.zlink.framework.locations.ZLinkLocationOwnerToken);
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest(java.lang.String, java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember>, int, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.lang.String groupName();
-  public java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember> members();
-  public int slotCount();
-  public systems.zlink.framework.locations.ZLinkLocationOwnerToken owner();
-}
-public interface systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult {
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired(systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation allocation();
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation(int, systems.zlink.framework.locations.ZLinkLocationOwnerToken, java.time.Instant);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public int slot();
-  public systems.zlink.framework.locations.ZLinkLocationOwnerToken owner();
-  public java.time.Instant storeNow();
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember(java.lang.String, java.lang.String);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.lang.String meshName();
-  public java.lang.String routingIdPrefix();
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot(java.lang.String, java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember>, int, java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation>, java.time.Instant);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.lang.String groupName();
-  public java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember> members();
-  public int slotCount();
-  public java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation> allocations();
-  public java.time.Instant storeNow();
-}
-public interface systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationStore {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlot(systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult> releaseRoutingIdSlot(java.lang.String, int, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot> listRoutingIdSlots(java.lang.String);
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupConfigurationMismatch extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupConfigurationMismatch(java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember>, int, java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember>, int);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember> expectedMembers();
-  public int expectedSlotCount();
-  public java.util.List<systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember> actualMembers();
-  public int actualSlotCount();
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotIdentityModeConflict extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult {
-  public systems.zlink.framework.locations.ZLinkRoutingIdSlotIdentityModeConflict();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-}
-public final class systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult> {
-  public static final systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult RELEASED;
-  public static final systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult IGNORED_STALE;
-  public static systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult[] values();
-  public static systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult valueOf(java.lang.String);
 }
 ```
 
@@ -1192,11 +1323,10 @@ public final class systems.zlink.framework.locations.ZLinkActorLocationFilter ex
   public systems.zlink.framework.spots.ZLinkSpotKind locationKind();
 }
 public final class systems.zlink.framework.locations.ZLinkActorLocationKey extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkActorLocationKey(java.lang.String, java.lang.String);
+  public systems.zlink.framework.locations.ZLinkActorLocationKey(java.lang.String);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public java.lang.String meshName();
   public java.lang.String actorId();
 }
 public final class systems.zlink.framework.locations.ZLinkLocationAutoConnectType extends java.lang.Enum<systems.zlink.framework.locations.ZLinkLocationAutoConnectType> {
@@ -1438,11 +1568,10 @@ public final class systems.zlink.framework.locations.ZLinkSpotLocationFilter ext
   public systems.zlink.framework.spots.ZLinkSpotKind spotKind();
 }
 public final class systems.zlink.framework.locations.ZLinkSpotLocationKey extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkSpotLocationKey(java.lang.String, systems.zlink.contracts.core.RoutingId);
+  public systems.zlink.framework.locations.ZLinkSpotLocationKey(systems.zlink.contracts.core.RoutingId);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public java.lang.String meshName();
   public systems.zlink.contracts.core.RoutingId spotRid();
 }
 ```

@@ -17,9 +17,9 @@
 | channel send | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | message submit 결과 |
 | channel request | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | reply, timeout 또는 route 오류 |
 | Logical Multicast | ChannelName의 remote member와 local Spot match | publish admission 결과 |
-| Spot direct | Spot address의 node와 generation | submit 또는 reply 결과 |
-| Instance Spot direct | MeshName·Instance type·Spot RID의 logical address | resolve·activation을 포함한 submit 또는 reply 결과 |
-| Actor direct | ActorRef의 node와 generation | submit 또는 reply 결과 |
+| Spot message | global Spot RID | current Ready authority의 submit 또는 reply 결과 |
+| Actor message | global Actor ID | current Ready authority의 submit 또는 reply 결과 |
+| Object create·get-or-create | global ID·stable type과 optional placement intent | exact ActorRef·SpotRef 또는 typed creation 오류 |
 | classic fanout | 준비된 subscriber 집합 | local publisher transport의 수락 |
 | STREAM | session RID로 식별한 연결 | packet submit 또는 session lifecycle event |
 
@@ -28,10 +28,9 @@
 Node direct는 infrastructure와 명시적 owner routing에 사용한다. target RID가 현재 mesh member가 아니면
 target-not-found 결과를 내고, member이지만 pipe가 준비되지 않았으면 send readiness 한계까지 기다린 뒤
 route-not-connected 결과를 낸다. Node direct operation은 실패한 request를 다른 node에 자동으로 다시
-보내지 않는다.
-다만 SpotHandle direct request에서 handler가 실행되지 않았음이 명확한 stale-target 응답을 받은 경우에는 같은
-논리 Spot의 route를 한 번 갱신하고 한 번 다시 제출할 수 있다. 이 제한된 예외는
-[Spot 주소 메시징 §5](server/24-spot-address-messaging.ko.md)이 소유한다.
+보내지 않는다. Global Spot·Actor message는 cached Ready route와 committed forwarding mapping만 사용한다.
+Forwarding bound 안에서 current owner로 relay할 수 없으면 stale-route 오류로 끝내며 source가 Store를 읽어
+다른 owner에게 같은 operation을 다시 제출하지 않는다.
 
 Channel operation은 ChannelName으로 process-local 송신 경로를 먼저 결정한다. RouteMesh 경로는 호출 순간의
 ready member 가운데 weight가 0보다 큰 하나를 고르고, ClientServer 경로는 ready server 가운데 하나를
@@ -43,8 +42,8 @@ Select-one의 non-blocking submit이 capacity 부족으로 수락되지 않은 �
 target commitment가 아니다. Framework service runtime은 send-ready 이후 성공한 admission 전까지 같은 ChannelName의 현재
 eligible member 가운데 다른 target을 선택할 수 있다. Target은 transport queue가 operation을 수락한 시점에
 확정되며, 그 이후에는 같은 operation을 다른 member에게 replay하지 않는다. Direct call은 이 재선택
-규칙을 사용하지 않는다. Node direct는 RID, Spot·Actor는 handle의 owner와 generation, session은 binding
-token을 유지하며 물리 peer lifecycle generation을 public target identity로 노출하지 않는다.
+규칙을 사용하지 않는다. Node direct는 RID, Spot·Actor는 global ID, session은 binding token을 유지하며 물리
+peer lifecycle generation을 public target identity로 노출하지 않는다.
 
 같은 ChannelName을 여러 물리 송신 경로에 등록할 수 없으므로 호출자는 MeshName이나 ClientServer 종류를
 지정하지 않는다. 같은 process에서 ChannelName을 서로 다른 topology에 등록하면 host startup이
@@ -62,12 +61,10 @@ Framework가 message를 local outbound queue에 받아들였는지를 나타낸�
 유한한 send timeout까지 admission을 기다린다. 이미 수락한 뒤 발생한 one-way 오류는 runtime error sink와
 monitoring으로 보고한다.
 
-InstanceSpotAddress send도 같은 비동기 terminator를 사용한다. Cold route는 source에서 Location Store
-resolve와 eligible target 선택을 거친 뒤 local outbound admission으로 submit을 완료한다. Target-side
-claim과 activation은 그 뒤 수행하며 remote receipt가 없으므로 submit 완료 조건이 아니다. Cache hit도
-같은 public 의미를 유지하므로 cache 상태에 따라 동기 submit을 제공하거나 caller에게 owner node와
-generation을 요구하지 않는다. Local outbound admission 뒤 remote activation이 실패한 one-way message는
-다른 owner에게 replay하지 않고 drop 관측으로 남긴다.
+Global Spot·Actor send도 같은 비동기 terminator를 사용한다. Source는 current Ready authority를 resolve하고
+local outbound admission으로 submit을 완료한다. Cache hit도 같은 public 의미를 유지하므로 cache 상태에 따라
+동기 submit을 제공하거나 caller에게 owner node와 generation을 요구하지 않는다. Message call은 Missing
+object의 creation intent를 만들지 않는다.
 
 유효한 one-way call은 `Submitted`, `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`,
 `Shutdown` 가운데 하나로 완료한다. 잘못된 argument·handle·state와 중복 submit은 local exceptional
@@ -76,15 +73,8 @@ completion이다. Cancellation은 별도 status가 아니며 언어별 cancelled
 
 `request`는 선택한 송신 경로에 reply correlation을 만들고 terminal 결과를 정확히 한 번 전달한다. request timeout은 reply를
 기다리는 시간이다. 전송 단계의 backpressure는 send timeout이 담당한다. route 오류나 timeout으로 끝난
-request를 Framework가 자동 재전송하지 않는다. Spot direct request의 안전한 stale-target refresh는
-handler 미실행을 확인할 수 있을 때 한 번만 허용하며 timeout, cancellation 또는 실행 여부가 불명확한
-실패에는 적용하지 않는다. 언어별 transport 오류는 이 문서의 닫힌 Framework 결과 가운데 하나로 변환하며
+request를 Framework가 자동 재전송하지 않는다. 언어별 transport 오류는 이 문서의 닫힌 Framework 결과 가운데 하나로 변환하며
 transport 전용 결과를 public call에 노출하지 않는다.
-
-InstanceSpotAddress request는 CAS loser가 remote `Ready` owner를 확인한 application pre-admission 단계에서만
-한 번 redirect할 수 있다. Target queue가 수락한 뒤의 실패, 수락 여부가 불명확한 연결 오류와 timeout에는
-다른 owner로 다시 제출하지 않는다. 첫 계약은 remote admission receipt와 자동 request 재제출을 제공하지
-않는다.
 
 다른 RouteMesh 또는 ClientServer Channel로 보낸 request도 같은 단일 terminal completion 규칙을 따른다.
 Spot에서 시작한 경우 Framework는 원래 Spot activation과 generation을 completion record에 보존하고, reply를
@@ -147,18 +137,16 @@ Spot은 MeshNode가 소유하는 logical mailbox다. Spot direct message, Logica
 lifecycle callback은 같은 Spot의 application turn에서 직렬로 처리한다. Node callback이 Spot queue를
 대신 읽지 않는다.
 
-Instance Spot은 Actor membership이 없는 Spot kind다. 등록된 InstanceSpotAddress의 첫 direct call이 location
-owner claim을 시작할 수 있으며, factory와 initialize가 성공하고 location이 `Ready`로 commit된 뒤 Framework
-activation barrier가 열려야 업무 handler가 실행된다. 같은 address에 동시에 도착한 첫 호출은 Location Store
-CAS가 정한 owner 하나와 service runtime의 activation ownership을 통해 factory 실행 하나로 수렴한다. Entry·Domain Spot의 local-only
-Create/GetOrCreate와 기존 SpotHandle의 existing-only 의미는 바꾸지 않는다.
+Instance Spot은 Actor membership이 없는 Spot kind다. Missing object 생성은 manager의 explicit
+Create·GetOrCreate만 시작한다. Location Store reservation이 정한 owner 하나가 factory를 실행하고 location이
+`Ready`로 commit된 뒤 Framework activation barrier를 연다. Creating 경쟁자는 같은 attempt의 terminal 결과에
+합류하며 별도 factory나 message를 시작하지 않는다.
 
-`ActorRef`는 owner node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로 구성하는 immutable
-value다. endpoint, 내부 frame, location row와 Actor type은 `ActorRef`에 넣지 않는다. Framework가
-wire DTO를 제공하는 언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도 인자 없이
-`ActorRef`로 복원한다.
+`ActorRef`와 `SpotRef`는 global ID, ObjectGeneration, 조회 시점의 MeshName과 NodeRid를 담은 immutable location
+snapshot이다. Endpoint, 내부 frame과 runtime resource는 포함하지 않는다. 일반 message는 ref가 아니라 global
+ID를 사용하며 Framework가 current authority를 resolve한다.
 
-Actor message는 ActorRef의 generation과 route epoch를 검증한 뒤 Actor mailbox에 직접 추가한다. Actor
+Actor message는 global Actor ID의 current authority를 resolve한 뒤 Actor mailbox에 직접 추가한다. Actor
 payload는 Spot message queue를 경유하지 않는다. Actor handler는 Actor application turn에서만 실행한다.
 Spot 소유 상태를 읽거나 바꿔야 하면 명시적인 Spot send/request를 제출하고 해당 Spot turn에서 처리한다.
 

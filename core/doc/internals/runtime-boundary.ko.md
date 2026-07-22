@@ -4,7 +4,7 @@
 
 Core 11은 raw socket과 transport만 구현한다. Public API facade는 argument·handle·ownership을 검증하고,
 socket semantic 계층은 PAIR·PUB/SUB·DEALER/ROUTER·STREAM의 routing을 결정한다. Runtime core는
-connection, session, pipe와 I/O thread를 관리하며 engine이 TCP·WebSocket·PGM·TLS framing을 처리한다.
+connection, session, pipe와 I/O thread를 관리하며 engine이 TCP·WebSocket·TLS framing을 처리한다.
 
 ```text
 +------------------------------+
@@ -55,11 +55,6 @@ TCP와 WebSocket engine은 orderly disconnect, read·write failure와 protocol f
 Framework service protocol의 liveness message는 raw application payload로 운반된다. Core는 그 body와 deadline을
 해석하지 않으며 각 언어 Framework runtime이 infrastructure queue와 scheduler에서 처리한다.
 
-PGM sender의 `PGM_HEARTBEAT_SPM` 설정은 OpenPGM이 SPM(Source Path Message) 전송 간격을 정하는 transport
-내부 설정이다. 이 packet은 PGM 경로와 손실 복구를 유지하기 위한 제어 packet이며 ZMP command나 application
-frame이 아니다. Core 11은 이 설정을 PGM transport 안에 유지하며 ZMP heartbeat option·frame·engine timer를
-제공하지 않는다.
-
 Core 11 source boundary에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`,
 `ZLINK_OPT_HEARTBEAT_TIMEOUT`, `zmp_control_heartbeat`, `zmp_control_heartbeat_ack`와 이 값을 처리하는
 codec·parser·engine state가 없다. `heartbeat_ivl_timer_id`, `heartbeat_ttl_timer_id`,
@@ -93,6 +88,5 @@ Core raw monitor queue와 Framework typed observer queue는 서로 다른 resour
 - Core는 Spot·Actor·Instance identity, generation과 activation barrier를 해석하지 않는다.
 - Core는 Location·Checkpoint Store, lease, owner CAS와 maintenance recovery를 호출하지 않는다.
 - Raw engine timer와 raw monitor는 connection resource다.
-- PGM SPM cadence는 PGM transport 내부에 유지하며 ZMP heartbeat state로 연결하지 않는다.
 - Framework는 public binding API만 사용하고 Core private symbol에 의존하지 않는다.
 - Raw socket option과 monitor event는 service public API에 그대로 전달하지 않는다.

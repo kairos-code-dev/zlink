@@ -10,10 +10,35 @@
 ## 1. 공통 식별자와 직렬화 utility
 
 ```ts
+export type ActorId = string;
+export type SpotRid = RoutingId;
+export type ZLinkPlacementProfile = string;
+export type ZLinkAffinityKey = string;
+
 export interface ActorRef {
+    readonly actorId: ActorId;
+    readonly objectGeneration: bigint;
+    readonly meshName: string;
     readonly nodeRid: RoutingId;
-    readonly actorId: string;
-    readonly generation: bigint;
+}
+
+export interface SpotRef {
+    readonly spotRid: SpotRid;
+    readonly objectGeneration: bigint;
+    readonly meshName: string;
+    readonly nodeRid: RoutingId;
+}
+
+export declare enum ZLinkObjectRole {
+    None = "none",
+    Client = "client",
+    Server = "server"
+}
+
+export interface ZLinkObjectPlacementOptions {
+    readonly placementProfiles?: readonly ZLinkPlacementProfile[];
+    readonly maxActiveObjects?: number;
+    readonly maxPendingActivations?: number;
 }
 
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
@@ -31,18 +56,6 @@ export type RoutingId = string;
 export declare function selectDefaultSerializer(registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>): ZLinkMessageSerializer | undefined;
 
 export declare function selectSerializer(value: unknown, registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>, context?: ZLinkSerializerSelectionContext): ZLinkMessageSerializer | undefined;
-
-export interface SpotHandle {
-    readonly meshName: string;
-    readonly spotRid: RoutingId;
-    readonly [spotHandleBrand]: never;
-}
-
-export interface InstanceSpotAddress {
-    readonly meshName: string;
-    readonly instanceSpotType: string;
-    readonly spotRid: RoutingId;
-}
 
 export type Type<T = unknown> = new (...args: never[]) => T;
 ```
@@ -156,27 +169,43 @@ export interface ZLinkMeshNodeBuilder {
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
     routingId(routingId: RoutingId): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
+    setRoutingIdPrefix(prefix: string): this;
+    setPlacementWeight(weight: number): this;
+    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    objects(): ZLinkMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
     peerConnections(): ZLinkMeshPeerConnections;
     setDefaultRequestTimeout(timeoutMs: number): this;
     addRouteSendHandler<TMessage>(handlerType: Type<ZLinkRouteSendHandler<TMessage>>): this;
     addRouteRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRouteRequestHandler<TRequest, TReply>>): this;
-    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+}
+
+export interface ZLinkMeshObjectRoleBuilder {
+    client(): ZLinkMeshObjectClientBuilder;
+    server(): ZLinkMeshObjectServerBuilder;
+}
+
+export interface ZLinkMeshObjectClientBuilder {
+}
+
+export interface ZLinkMeshObjectServerBuilder {
     addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
-    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+    addSpotFactory<TSpot extends ZLinkSpot>(
+        spotType: string,
+        implementation: Type<TSpot>,
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
-        spotType: Type<TSpot>,
-        options?: ZLinkInstanceSpotFactoryOptions,
-        transfer?: ZLinkTransferPolicy<TSpot>): this;
-    actorFactory(actorType: string, factoryType: Type): this;
-    actorFactory<TActor extends ZLinkActor>(
+        implementation: Type<TSpot>,
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TSpot>): this;
+    addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        transfer?: ZLinkTransferPolicy<TActor>): this;
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TActor>): this;
 }
 
 export interface ZLinkNetworkOptions {
@@ -232,18 +261,18 @@ registry나 operation별 state adapter는 제공하지 않는다. Snapshot polic
 같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
 한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
 field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Checkpoint Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
+canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
 root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
 않는다.
 
 Target이 `"activated"`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
 journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고 checkpoint fence를 해제한다.
-`"completed"` 뒤의 target failure는 ordinary owner loss로 처리하며 이전 checkpoint를 transparent replay하지
+authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고 transfer fence를 해제한다.
+`"completed"` 뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer payload를 transparent replay하지
 않는다. 이 barrier를 조작하는 public phase API는 제공하지 않는다.
 
 Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable checkpoint
+호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable transfer
 root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
 하며 exactly-once external side effect를 보장하지 않는다.
@@ -267,6 +296,15 @@ startup을 실패시키며 collection을 truncate·split하거나 descriptor 일
 아닌 BindHost를 사용하고, wildcard BindHost에서는 AdvertiseHost를 반드시 명시한다.
 Automatic discovery listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을
 사용한다. Listener별 host 설정은 root 기본값보다 우선한다.
+
+MeshNode의 기본 object role은 `ZLinkObjectRole.None`이다. `objects().client()`는 global Actor·Spot client와
+manager를 제공하고 `objects().server()`는 그 기능과 factory·Entry Spot hosting을 함께 제공한다. Role을 두 번
+선택하거나 factory를 Server builder 밖에서 등록하면 `InvalidConfiguration`이다. Client 또는 Server role은
+Location Store가 필요하다.
+
+모든 User·Instance Spot과 Actor factory는 transfer policy를 명시해야 한다. 생략을 Disabled로 해석하지 않는다.
+Placement profile은 UTF-8 1..255 bytes이며 factory별 capacity가 없으면 MeshNode의 object capacity를 사용한다.
+Placement weight는 양수이고 active limit은 양수, pending limit은 0 이상이다.
 
 ## 3. Handler metadata와 dispatch option
 

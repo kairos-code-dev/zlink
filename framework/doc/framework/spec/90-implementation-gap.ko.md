@@ -54,7 +54,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.26 | Java/Kotlin | Config 5·7 E2E가 exact RouteMesh runtime options 대신 ChannelName 전용 options를 사용한다 |
 | §12.27 | `.NET`, Java/Kotlin, C++ | Actor location이 Spot lifecycle generation을 보존하지 않아 Spot RID 재사용 뒤 stale membership을 구분할 수 없다 |
 | §12.28 | 전 언어 | STREAM Actor dispatch가 target MeshName을 지정하는 public 설정과 startup 검증을 제공하지 않는다 |
-| §12.29 | 전 언어 | Location provider의 opaque authority CAS와 Checkpoint Store를 transfer coordinator에 연결하지 않아 process 장애 뒤 Actor·Instance transfer를 복구할 수 없다 |
+| §12.29 | 전 언어 | Location provider의 opaque authority CAS와 Transfer Store를 transfer coordinator에 연결하지 않아 process 장애 뒤 Actor·Instance transfer를 복구할 수 없다 |
 | §12.30 | C++ | STREAM TLS server 설정이 client 인증서 요구 여부를 받지 않는다 |
 | §12.31 | 전 언어 | Actor transfer metric이 `mesh_name`, 닫힌 `outcome`과 실패 terminal을 기록하지 않는다 |
 | §12.32 | 전 언어 | 알 수 없는 non-JSON content-type을 decode 전에 거부하지 않는다 |
@@ -140,7 +140,7 @@ caller cancellation과 shutdown을 실행 중인 작업에 전달할 수 없다.
 
 ### 12.24 전 언어 actor join commit 순서
 
-**전 언어 미충족.** [23 §4](server/23-spot-actor.ko.md#4-join-commit)은 admission accept 뒤 location
+**전 언어 미충족.** [23 §4](server/23-spot-actor.ko.md#4-join-의미와-commit-순서)은 admission accept 뒤 location
 authority가 expected Actor ObjectGeneration과 current Spot authority를 비교해 CAS를 먼저 commit하도록 고정한다.
 CAS가 성공한 뒤에만 source `OnLeaveActor`, target membership 공개와 `OnJoinedActor`를 차례로 실행한다.
 CAS 실패에서는 source membership을 그대로 유지해야 한다.
@@ -246,30 +246,31 @@ node가 target MeshName 하나를 등록 시점에 명시하도록 고정한다.
 - 두 STREAM node가 서로 다른 MeshName을 선택하면 resolve·bind·dispatch state를 공유하지 않는다.
 - 다른 MeshName의 ActorRef는 bind 또는 dispatch 전에 target 오류로 거부한다.
 
-### 12.29 전 언어 durable authority와 checkpoint 연결 미구현
+### 12.29 전 언어 durable authority와 Transfer Store 연결 미구현
 
 [Spot Actor §7](server/23-spot-actor.ko.md#7-failure와-recovery)과
 [Redis Location Store §4.2](server/41-location-store-redis.ko.md#42-expectation과-mutation)은 current
 owner와 transfer state를 같은 durable authority에서 원자적으로 전이하고, process 종료 뒤 successor가
-checkpoint와 replay cursor로 처리를 이어 가도록 요구한다.
+immutable transfer root와 replay cursor로 처리를 이어 가도록 요구한다.
 
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
 opaque payload의 read와 expected Store version 기반 compare-exchange를 제공한다. Framework coordinator만
 transfer phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
-policy를 사용하는 host는 accepted journal과 application snapshot을 보존할 Checkpoint Store도 하나 등록한다.
+`Recreate` 또는 `Snapshot` policy를 사용하는 host는 accepted journal, application state와 recovery payload를 보존할
+Transfer Store도 정확히 하나 등록한다.
 
 현재 언어별 source에는 phase별 Actor transfer Store, Instance owner Store, in-memory pending map과 별도 transfer
 adapter가 섞여 있다. 이 구조는 provider에 Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recovery
-규칙을 갖게 만든다. 일부 Node Redis 전이는 존재하지만 공통 opaque authority 계약, durable checkpoint와 process
+규칙을 갖게 만든다. 일부 Node Redis 전이는 존재하지만 공통 opaque authority 계약, durable transfer root와 process
 장애 E2E가 연결되지 않아 목표 기능으로 판단하지 않는다.
 
-각 언어는 공식 Location provider와 Checkpoint Store 구현을 함께 제공하고 다음을 contract test로 고정해야 한다.
+각 언어는 공식 Location Store와 Transfer Store 구현을 별도 class로 제공하고 다음을 contract test로 고정해야 한다.
 
 - Logical authority key는 object kind와 logical identity를 충돌 없이 encode한다.
 - Read는 current payload, opaque Store version, Store time과 조건부 lease expiry를 한 snapshot으로 반환한다.
 - Compare-exchange는 expected version이 current일 때만 owner와 transaction payload를 한 번에 바꾼다.
 - Commit 전 abort와 commit 뒤 recovery는 같은 authority revision과 coordinator lease로 순서를 정한다.
-- Checkpoint reference, checksum과 replay cursor는 authority CAS와 연결되고 orphan payload는 retention expiry가 정리한다.
+- Transfer reference, checksum과 replay cursor는 authority CAS와 연결되고 orphan payload는 retention expiry가 정리한다.
 - 같은 object의 동시 transfer, 늦은 source cleanup과 commit 이후 callback 실패가 committed target을 지우지 않는다.
 
 ### 12.30 C++ STREAM TLS client 인증서 요구 설정 미구현
@@ -391,7 +392,7 @@ gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 �
 - continuity를 준비한 뒤 종료하는 `retire`와 새 transfer 없이 bounded 종료를 수행하는 `shutdown`
 - terminal intent·outcome·reason·result와 Framework runtime state
 - Actor와 Instance Spot factory에 연결하는 typed transfer policy와 Snapshot state adapter
-- opaque authority CAS와 checkpoint provider capability
+- opaque authority CAS와 Transfer Store capability
 - Framework runtime maintenance snapshot과 event
 
 `Retire`와 `Shutdown` 외의 기존 lifecycle 호출을 source compatibility 때문에 유지해야 하면 새 state나 결과를
@@ -511,7 +512,7 @@ lease 만료·drain·재게시 reconcile과 manual publisher/subscriber의 store
 
 정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Drain은 신규 admission을 차단하고 그 전에 수락한
 application turn을 마친 뒤 Actor handoff, STREAM barrier, 남은 local Spot close, location ownership과 peer
-resource cleanup을 순서대로 수행한다. Location row가 제거된 뒤 stale SpotHandle은 remote Spot 생성으로
+resource cleanup을 순서대로 수행한다. Location row가 제거된 뒤 stale route snapshot은 remote Spot 생성으로
 해석하지 않는다.
 
 현재 source·package 차이는 다음과 같다.
@@ -586,12 +587,14 @@ barrier를 구현해야 한다. Contract test는 여섯 submit status, local exc
 validation, cancellation·timeout·shutdown terminal 경합, no late admission과 multicast single-call을 함께
 검증해야 한다.
 
-### 12.44 전 언어 Instance Spot 계약 미구현
+### 12.44 전 언어 global Spot placement 계약 미구현
 
-정식 계약은 `InstanceSpotAddress(MeshName, InstanceSpotType, SpotRid)`의 첫 direct send/request가 등록된
-serving MeshNode를 고르고, Location Store의 원자 claim과 Framework activation barrier를 거쳐 Actor membership이
-없는 Spot을 지연 activation하도록 요구한다. Entry·User Spot의 Create/GetOrCreate는 local-only이고 기존
-SpotHandle은 existing-only인 의미를 유지한다.
+정식 계약은 Spot manager의 명시적인 `Create`와 `GetOrCreate`가 User·Instance Spot의 global Spot RID,
+stable type과 kind를 기준으로 placement를 시작하도록 요구한다. 두 operation은 target node나 endpoint를 받지
+않으며 single-use call로 동작한다. Direct send/request는 global Spot RID만 받아 existing Ready owner를
+resolve한다. Missing Instance Spot의 일반 message는 최초 creation intent를 만들지 않는다. 최초 create가
+기록한 type과 Mesh는 owner loss 뒤 reactivation에 사용한다. 별도 address, resolver와 handle은 제공하지
+않는다.
 
 현재 Core public header와 runtime의 Instance Spot driver, activation token과 binding projection은 10.x 전환 중
 생긴 구현 입력이다. 11.0 목표는 이 service 상태 기계를 Core 또는 공통 C ABI에 유지하지 않는다. 각 언어
@@ -601,9 +604,9 @@ API가 아니며 application이나 일반 binding 사용자에게 노출하지 �
 
 Framework의 현재 차이는 다음과 같다.
 
-- 다섯 언어의 source에는 exact interface가 정한 `InstanceSpotAddress`, actor-free lifecycle, type factory
-  option·builder와 address send/request가 완성되어 있지 않다. Application one-way call은 동기 `TrySubmit`
-  없이 언어별 비동기 submit 하나만 제공해야 한다.
+- 다섯 언어의 source에는 exact interface가 정한 global `SpotRef`, Spot manager create call, actor-free
+  lifecycle, type factory와 Spot RID-only send/request가 완성되어 있지 않다. Application one-way call은 동기
+  `TrySubmit` 없이 언어별 비동기 submit 하나만 제공해야 한다.
 - Java의 기존 Spot interface는 Actor lifecycle을 함께 상속하므로 actor-free base를 분리하지 않으면 모든
   Java Spot factory가 Instance 등록에서 거부된다. Node.js도 일반 Spot과 Instance lifecycle type을 분리해야
   한다.
@@ -611,19 +614,19 @@ Framework의 현재 차이는 다음과 같다.
   snapshot이 구현되어 있지 않거나 Actor·Instance phase별 API로 나뉘어 있다. Instance factory를 등록한
   runtime은 provider의 authority capability를 startup에서 검사해야 하며 MeshNode descriptor에 Instance type,
   transfer policy와 application version capability를 게시해야 한다.
-- Target-side coordinator, eligible-node selection, CAS loser의 pre-admission redirect 1회, Ready-visible ordering,
-  factory 실패 cleanup, lease-derived local admission deadline과 Retire·close 순서가 구현되어 있지 않다.
+- Source coordinator, eligible-node selection, generic reservation, Ready-visible ordering, factory 실패 cleanup,
+  lease-derived local admission deadline, bounded stale-route forwarding과 Retire·close 순서가 구현되어 있지 않다.
 - Activation outcome·duration, pending budget, claim conflict·takeover metric과 `surface=instance_spot` message-flow
   drop 관측이 언어별 runtime에 연결되어 있지 않다.
-- PlayerQuest와 OrderWorkflow sample은 User Spot의 수동 local GetOrCreate·resolve 절차를 사용한다. Instance
-  address 기반 동시 최초 호출, close 뒤 재활성화와 외부 state 복구를 검증하지 않는다.
+- PlayerQuest와 OrderWorkflow sample은 User Spot의 수동 local GetOrCreate·resolve 절차를 사용한다. Global
+  manager create 경쟁, close 뒤 Instance 재활성화와 외부 state 복구를 검증하지 않는다.
 
 구현은 protocol schema, authority fixture와 다섯 언어 exact interface를 먼저 고정한 뒤 C++·.NET·JVM·Node.js
 runtime에서 병렬로 진행한다. Java와 Kotlin은 JVM runtime을 공유하지만 각 public artifact의 signature를 따로
 검증한다. 네 runtime과 cross-language E2E가 같은 동작을 증명한 candidate에서 Core service driver와 네 binding
 projection을 제거한다.
-Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. Background reaper도
-업무 message 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
+Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. 일반 message도
+durable creation intent 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
 
 ## 13. 샘플 계약 차이
 
@@ -701,7 +704,7 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 
 ### 15.5 Actor join 결과의 타입 안전성 차이
 
-[23 §4](server/23-spot-actor.ko.md#4-join-commit)의 actor join 결과는 accepted와 rejected를 구분한 뒤에만
+[23 §4](server/23-spot-actor.ko.md#4-join-의미와-commit-순서)의 actor join 결과는 accepted와 rejected를 구분한 뒤에만
 성공 reply에 접근할 수 있어야 한다. 언어별 exact spec도 rejected 갈래의 값을 `reply`와 다른
 이름으로 정의해 분기 없는 공통 접근을 막는다.
 

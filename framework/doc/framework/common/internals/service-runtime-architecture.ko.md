@@ -3,6 +3,9 @@
 [내부 구조 목차](README.ko.md) · [Framework 개요](../../spec/01-overview.ko.md) ·
 [비동기 실행 계약](../../spec/04-async-execution-policy.ko.md)
 
+이 문서는 RouteMesh 11.0 목표 구조를 설명한다. 현재 구현과의 차이와 완료 상태는
+`framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
+
 ## 1. 책임 경계
 
 Core는 context, message, raw socket, transport, poller, timer와 generic monitor만 제공한다. C++·.NET·JVM·Node.js
@@ -31,6 +34,11 @@ builder와 DTO에 transport handle, frame layout과 scheduling option을 추가�
 
 ## 2. Runtime aggregate
 
+언어별 이름은 달라도 runtime은 host coordinator, raw transport gateway, protocol codec, topology·peer registry,
+mailbox scheduler, operation registry, object runtime, authority coordinator와 observability 책임을 분리한다. Raw
+gateway는 protocol이나 object state를 소유하지 않고 protocol codec은 handler를 호출하지 않는다. Store provider는
+Framework transfer phase와 transfer envelope을 해석하지 않는다.
+
 Process에는 host runtime aggregate 하나가 존재한다. Aggregate는 여러 RouteMesh, ClientServer, fanout과
 STREAM topology를 한 lifecycle로 조정한다. Topology별 runtime은 selection과 monitoring view를
 제공하지만 독립 종료 owner가 아니다.
@@ -50,6 +58,11 @@ Host aggregate는 다음 소유권을 갖는다.
 
 Resource는 만든 aggregate가 닫는다. Application handler, Store provider와 observer가 raw handle이나 reply route를
 보유하지 않는다.
+
+Service identity는 raw handle과 분리한다. Host lifecycle, MeshName·NodeRid·node generation, process-local
+ChannelName, global ActorId·SpotRid와 ObjectGeneration, physical connection ID, 128-bit operation ID를 서로 다른
+identity로 관리한다. `ActorRef`와 `SpotRef`는 current MeshName·NodeRid를 포함한 immutable location snapshot이다.
+Physical connection ID, Store revision과 mailbox claim serial은 public DTO에 나타나지 않는다.
 
 ## 3. Receive와 dispatch
 

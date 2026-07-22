@@ -1,0 +1,63 @@
+{
+  "format": "contract-amendment-v1",
+  "consumers": ["cpp", "dotnet", "jvm", "node"],
+  "descriptor": {
+    "objectRole": "server",
+    "placementWeight": 100,
+    "activeCapacityLimit": 10000,
+    "pendingCapacityLimit": 128,
+    "objectKind": "userSpot",
+    "stableType": "chat-room",
+    "placementProfiles": ["default"],
+    "typeCapacityLimit": 4096
+  },
+  "creationIntent": {
+    "objectKind": "instanceSpot",
+    "globalIdHex": "73706f742d31",
+    "stableType": "presence",
+    "initialMeshName": "main",
+    "placementProfile": "default",
+    "affinityKey": "tenant-42",
+    "requestContentReference": "create/1",
+    "requestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "requestEncodedSize": 1048576,
+    "creationAttempt": "1"
+  },
+  "reservation": {
+    "operationOrder": ["reserve", "commit", "abort"],
+    "pendingCapacityDelta": 1,
+    "objectGeneration": "2",
+    "authorityOwnerGeneration": "3",
+    "targetNodeRidUtf8Fixture": "node-a",
+    "targetNodeGeneration": "4",
+    "targetOwnerLeaseGeneration": "5"
+  },
+  "aggregate": {
+    "aggregateHigh": "0",
+    "aggregateLow": "1",
+    "aggregateGeneration": "6",
+    "participantKinds": ["userSpot", "actor"],
+    "authorityOwner": "location",
+    "canonicalParticipantOrder": ["spot:room-1", "actor:actor-1"],
+    "participantMutations": ["spot-owner-and-membership", "actor-owner-and-membership"],
+    "inventoryDigestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "transferManifestDigestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "transferReferenceUtf8Fixture": "transfer/aggregate-1",
+    "transferChecksumCrc32c": 305419896,
+    "transferManifestAuthority": false,
+    "participantMaximum": 1024,
+    "encodedMaximum": 1048576
+  },
+  "forwarding": {
+    "objectKinds": ["actor", "spot"],
+    "hopMaximum": 8,
+    "queuedMessageMaximum": 1024,
+    "queuedByteMaximum": 16777216,
+    "preserves": ["operationId", "objectGeneration", "payload", "replyRoute"]
+  },
+  "exactRefRoute": {
+    "actor": ["actorId", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
+    "spot": ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"]
+  },
+  "normalInstanceMessageFields": ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"]
+}

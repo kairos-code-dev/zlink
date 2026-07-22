@@ -1,18 +1,22 @@
 # Kotlin Spot 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md)
+[인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
+[Spot 공통 계약](../../../23-spot-actor.ko.md)
 
-Instance Spot은 Java builder를 직접 사용하므로 같은 인자를 전달하는 Kotlin wrapper를 추가하지 않는다.
-User Spot에는 transfer policy가 없으며, Instance factory에서 policy를 생략하면 `Disabled`다. Kotlin address
-extension도 public local-only·existing-only 의미를 바꾸거나 hidden remote `GetOrCreate`를 시작하지 않는다.
+SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID다. 일반 Spot send/request는
+SpotRid만 받는다. `SpotRef(spotRid, objectGeneration, meshName, nodeRid)`는 exact incarnation을 close할 때만
+사용하는 immutable snapshot이다. `objectGeneration`은 `1..Long.MAX_VALUE`이고 JSON에서는 decimal string이다.
+User와 Instance Spot type은 UTF-8 1..255 bytes의 stable exact value다.
+Java enum의 numeric value는 `ZLinkSpotKind.INVALID=0`, `ENTRY=1`, `USER=2`, `INSTANCE=3`이고
+`ZLinkCreatableSpotKind.USER=1`, `INSTANCE=2`다. Kotlin은 ordinal을 계약 값으로 사용하지 않고 `value()`를
+사용한다.
 
-Store-backed dynamic User Spot은 internal `CREATING` row를 `NEW_OBJECT` CAS로 만든 뒤 factory, configure,
-initialize와 `READY` CAS를 수행한다. Resolve와 remote messaging은 `READY`만 사용한다. 실패하면 exact fence로
-delete하고 read로 reconcile하며 확인 전 같은 typed failure와 hidden retry 0을 적용한다. `MISSING` 뒤 다음
-caller만 새 create를 시작한다. User Spot `close()`는 active Actor membership이나 missing이면 `false`다. Active
-membership에서는 state·admission·authority를 바꾸지 않고 closing callback이나 hidden leave·destroy를 실행하지
-않는다. Caller가 명시적으로 leave·destroy한 뒤 다시 close하며 Host Shutdown·Retire는 Actor barrier 뒤 Spot을
-cleanup한다.
+`ZLinkSpotManager.create(spotKind, spotType)`은 RID를 생성하고, `getOrCreate(spotRid, spotKind, spotType)`은
+caller가 정한 RID를 사용한다. 둘 다 Java single-use fluent call을 반환하며 `inMesh`, `request`,
+`placementProfile`, `affinityKey`, `timeout` 뒤 terminal `submit`을 정확히 한 번 호출한다. 중복 option과
+중복 submit, Mesh 선택, type 충돌과 deadline 규칙은 Actor operation과 같다. `Create`에서 Ready object가
+있으면 `SpotCreateFailed`, 다른 kind나 type이면 `SpotTypeMismatch`다. Entry Spot RID는 Framework가 만들며
+public create 대상이 아니다.
 
 ## Kotlin source signature
 
@@ -84,73 +88,17 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
 
 inline fun <reified THandler : Any> ZLinkSpotHandlerRegistry.addHandler()
 
-suspend inline fun <reified TSpot : ZLinkSpot<*>>
-    ZLinkSpotManager.create(meshName: String): ZLinkSpotCreateResult
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
-    meshName: String,
-    request: ZLinkMessage,
-): ZLinkSpotCreateResult
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
-    meshName: String,
-    spotRid: RoutingId,
-): ZLinkSpotCreateResult
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
-    meshName: String,
-    spotRid: RoutingId,
-): ZLinkSpotCreateResult
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
-    meshName: String,
-    spotRid: RoutingId,
-    request: ZLinkMessage,
-): ZLinkSpotCreateResult
-
 fun <TMessage> ZLinkRouteClient.send(
-    target: SpotHandle,
+    spotRid: RoutingId,
     message: TMessage,
 ): ZLinkSendCall
 suspend inline fun <reified TReply> ZLinkRouteClient.request(
-    target: SpotHandle,
+    spotRid: RoutingId,
     message: Message,
 ): TReply
 ```
 
-Lifecycle의 Java `CompletionStage` override는 base class가 final로 구현한다. 위 `protected` member가 application
-subclass의 source 계약이며 coroutine bridge 구현은 공개 계약이 아니다.
-
-Cold address call의 source는 location resolve, eligible target 선택과 `COLD_ACTIVATING` CAS claim을 outbound보다
-먼저 같은 send deadline 안에서 완료한다. Target은 source가 확정한 token과 generation을 다시 검증하고 factory
-activation과 `READY` CAS만 수행하며 target-side claim을 시작하지 않는다. One-way `submit()` 완료는 source
-outbound admission까지 기다리지만 target factory 실행, activation queue 수락과 `READY`는 기다리지 않는다.
-
-Cold Instance factory·initialize failure는 durable public `FAILED` state를 만들지 않는다. Runtime은 local failed
-barrier와 exact fenced delete/read reconcile을 사용한다. Delete 확인 전 같은 typed failure와 hidden retry 0을
-적용하고 `MISSING` 확인 뒤 다음 caller만 새 `COLD_ACTIVATING`을 시작한다. Kotlin public recovery API는 없다.
-
-```kotlin
-fun <TMessage> ZLinkRouteClient.send(
-    target: InstanceSpotAddress,
-    message: TMessage,
-): ZLinkSendCall
-
-fun <TMessage> ZLinkRouteClient.request(
-    target: InstanceSpotAddress,
-    message: TMessage,
-): ZLinkRequestCall
-
-fun <TMessage> ZLinkSpotOutbound.send(
-    target: InstanceSpotAddress,
-    message: TMessage,
-): ZLinkSendCall
-
-fun <TMessage> ZLinkSpotOutbound.request(
-    target: InstanceSpotAddress,
-    message: TMessage,
-): ZLinkRequestCall
-```
-
 ## Exact generated JVM signature
-
-아래 JVM signature는 Kotlin source contract의 generated form이다.
 
 ```java
 public final class systems.zlink.framework.kotlin.ZLinkSpotHandlerRegistryExtensionsKt {
@@ -179,31 +127,13 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor 
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
 }
-public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TMessage> {
-  public abstract java.lang.Object handle(TSpot, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-  public default java.lang.Object handle(TSpot, TMessage, systems.zlink.framework.channels.ZLinkSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-  public static <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TMessage> java.lang.Object handle$suspendImpl(systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler<TSpot, TMessage>, TSpot, TMessage, systems.zlink.framework.channels.ZLinkSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-}
-public final class systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler$DefaultImpls {
-  public static <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TMessage> java.lang.Object handle(systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler<TSpot, TMessage>, TSpot, TMessage, systems.zlink.framework.channels.ZLinkSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-}
-public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler<TSpot, TRequest, TReply> {
-  public abstract java.lang.Object handle(TSpot, TRequest, kotlin.coroutines.Continuation<? super TReply>);
-  public default java.lang.Object handle(TSpot, TRequest, systems.zlink.framework.channels.ZLinkRequestContext, kotlin.coroutines.Continuation<? super TReply>);
-  public static <TSpot, TRequest, TReply> java.lang.Object handle$suspendImpl(systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler<TSpot, TRequest, TReply>, TSpot, TRequest, systems.zlink.framework.channels.ZLinkRequestContext, kotlin.coroutines.Continuation<? super TReply>);
-}
-public final class systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler$DefaultImpls {
-  public static <TSpot, TRequest, TReply> java.lang.Object handle(systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler<TSpot, TRequest, TReply>, TSpot, TRequest, systems.zlink.framework.channels.ZLinkRequestContext, kotlin.coroutines.Continuation<? super TReply>);
-}
-public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler<TSpot, TEvent> {
-  public abstract java.lang.Object handle(TSpot, TEvent, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-  public default java.lang.Object handle(TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-  public static <TSpot, TEvent> java.lang.Object handle$suspendImpl(systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler<TSpot, TEvent>, TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-}
-public final class systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler$DefaultImpls {
-  public static <TSpot, TEvent> java.lang.Object handle(systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler<TSpot, TEvent>, TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
-}
-public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> {
-  public abstract java.lang.Object handle(TSpot, systems.zlink.framework.spots.ZLinkTimerTick, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
+  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.contracts.core.RoutingId, TMessage);
+  public static final <TReply> java.lang.Object request(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.contracts.core.RoutingId, systems.zlink.contracts.messaging.Message, kotlin.coroutines.Continuation<? super TReply>);
 }
 ```
+
+Kotlin은 address DTO, process-local handle, resolver, unbounded directory와 direct create/get-or-create terminal
+extension을 제공하지 않는다. Direct terminal extension은 fluent option과 single-use state를 숨기기 때문이다.
+`close(SpotRef)`는 Missing이면 `false`, generation 불일치는 `SpotGenerationStale`, seal된 이관 구간은
+`SpotMoving`으로 처리한다.

@@ -82,9 +82,9 @@ subpath는 제공하지 않는다. 정확한 계약은
 |---|---|---|
 | channel/fanout/route handler | `providers` + handler 등록 표면 | channel이 그 handler group을 dispatch할 때 |
 | Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | MeshNode·SpotManager가 local Spot을 활성화할 때 |
-| Instance Spot | `providers` + `addInstanceSpotFactory(...)` | 논리 주소의 첫 호출이 선택한 MeshNode에서 activation을 시작할 때 |
+| Instance Spot | `providers` + `addInstanceSpotFactory(...)` | manager가 explicit create intent로 cold activation을 시작할 때 |
 | Spot packet·subscribe·actor·timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 그 Spot 실행 문맥에서 처리할 때 |
-| actor factory | `providers` + MeshNode `actorFactory(...)` | ActorManager가 actor를 생성할 때 |
+| actor factory | `providers` + `addActorFactory(...)` | ActorManager가 actor를 생성할 때 |
 | stream session(또는 factory) | `providers` + `streams` 설정 | stream 연결을 session으로 활성화할 때 |
 
 ### 4.1 Provider token
@@ -113,7 +113,6 @@ subpath는 제공하지 않는다. 정확한 계약은
 | `ZLINK_SPOT_PUBLISHER_CLIENT` | spot publisher 역할 |
 | `ZLINK_ACTOR_CLIENT` | MeshNode와 location store가 모두 등록됨 |
 | `ZLINK_ACTOR_MANAGER` | actor manager가 활성화됨 |
-| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | location store가 하나 이상 등록됨 |
 | `ZLINK_LOCATION_RUNTIME_QUERY` | location store가 하나 이상 등록됨 |
 | `ZLINK_ROUTE_MESH_RUNTIME` | RouteMesh MeshNode가 하나 이상 등록됨 |
 | `ZLINK_CLIENT_SERVER_RUNTIME` | ClientServer Channel이 하나 이상 등록됨 |
@@ -241,26 +240,22 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 | `channel(name).server()` | Logical Multicast 범위와 handler namespace |
 | `channel(name).client()` | server membership이 없는 outbound ChannelName 호출 |
 | `configureSpotPublisher()` | Logical Multicast의 ROUTER 송신 설정 |
-| `configureEntrySpot({ routingId })` | Entry Spot facade 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |
-| `addInstanceSpotFactory(type, TSpot, options?)` | 이 노드가 activation할 수 있는 actor-free Instance Spot 타입 |
+| `addInstanceSpotFactory(type, TSpot, placement, transfer)` | 이 노드가 activation할 수 있는 actor-free Instance Spot 타입 |
 | MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
 중복 등록과 타입 규칙은
 [MeshNode](../../21-mesh-node.ko.md)와 [spot-messaging](../../20-spot-messaging.ko.md)이 소유한다.
 
-### 7.1 Entry Spot routing id의 적용 순서
+### 7.1 Entry Spot identity와 membership
 
-**Entry Spot routing id는 MeshNode가 시작되기 전에 적용해야 한다.** startup 이후 변경은
-잠근다([MeshNode §2](../../21-mesh-node.ko.md)).
+Framework는 MeshNode startup에서 Entry Spot의 global Spot RID를 발급한다. 애플리케이션은 Entry Spot RID를
+구성하거나 변경하지 않는다. Startup은 Entry Spot factory와 handler를 초기화하고 Ready barrier를 완료한 뒤
+descriptor를 게시한다. Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Actor Ready barrier를
+같은 lifecycle에서 완료한다.
 
-1. 등록된 `routingId`와 MeshNode 구성을 검증한다.
-2. MeshNode listener를 시작한다.
-3. discovery와 outbound route를 구성한다.
-4. Entry Spot과 message dispatch를 활성화한다.
-
-이 순서는 Framework runtime의 내부 책임이다. Public interface에는 transport 객체나 runtime handle을
+이 순서는 Framework runtime의 내부 책임이다. Public interface에는 transport 객체, local handle 또는 resolver를
 노출하지 않는다.
 
 Route ingress 규칙은 [spot-messaging §6](../../20-spot-messaging.ko.md)이 소유한다. 수동 outbound
@@ -268,26 +263,22 @@ peer는 route mesh builder의 `connect(...)`로 지정한다.
 
 ### 7.2 Instance Spot 등록
 
-Instance Spot factory는 배포 사이에도 유지되는 type 이름과 actor-free Spot provider를 함께 등록한다. 같은
-MeshNode에서 같은 type 이름이나 같은 provider class를 User Spot factory와 중복 등록하면 socket bind 전에
-구성 오류로 실패한다. 생략한 option field에는 `maxActiveInstances=4096`과
-`activationTimeoutMs=3000`을 적용한다. 명시한 값은 0보다 커야 하며 `0`을 기본값 sentinel로
-사용하지 않는다.
+Instance Spot factory는 배포 사이에도 유지되는 stable type, actor-free Spot provider, placement limit과
+transfer policy를 함께 등록한다. 같은 MeshNode에서 같은 stable type이나 같은 provider class를 User Spot
+factory와 중복 등록하면 socket bind 전에 구성 오류로 실패한다.
 
 Instance Spot provider는 direct packet과 timer handler만 등록할 수 있다. Actor handler나 Logical Multicast
 subscription을 등록하면 location을 `Ready`로 바꾸기 전에 activation이 실패한다. Provider scope는 activation이
 실패하거나 Instance Spot이 닫힐 때 한 번만 정리한다.
 
-논리 주소의 `meshName`과 같은 MeshNode Entry Spot이 source가 된다. Framework는 location resolve와 target
-선택, owner claim을 처리한 뒤 target provider를 resolve한다. Application은 target node, owner token,
-generation이나 retry option을 전달하지 않는다. 이 경로에는 root location store가 필요하며, 등록하지 않으면
-startup validation에서 실패한다.
+Manager의 explicit `create` 또는 `getOrCreate`만 global Spot RID, stable type, kind와 최초 Mesh를 durable
+creation intent로 기록한다. Cold Instance activation과 owner loss 뒤 reactivation은 이 intent를 사용한다.
+일반 message는 Spot RID만 받으며 missing RID에 intent를 만들거나 factory를 시작하지 않는다. Application은
+target node, owner token, generation 또는 retry option을 전달하지 않는다.
 
-Framework runtime은 location이 없는 cold placement transport를 binding의 public raw socket API로
-구성한다. 이 transport는 Framework public interface로 export하지 않는다.
-`Ready` location은 node RID, Spot RID와 `ObjectGeneration`으로 구성한 정식 `SpotHandle` route를
-재사용한다. `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`과 exact owner lease fence는
-Framework 내부에서만 사용하며 application callback에 전달하지 않는다.
+Ready location은 global Spot RID와 exact object generation을 포함하는 immutable `SpotRef`로 관측한다. 일반
+message는 ref가 아니라 Spot RID를 사용하고, exact ref는 close에만 사용한다. Store version과 owner fence는
+Framework 내부에 유지하며 application callback에 전달하지 않는다.
 
 ## 8. STREAM 등록
 
@@ -300,12 +291,10 @@ raw stream의 `write(...)`, `close(...)` 시그니처는
 
 ## 9. Session actor dispatch 등록
 
-계약은 [session-actor-dispatch](../../31-session-actor-dispatch.ko.md)가 소유한다.
-
-| 표면 | 역할 |
-|---|---|
-| STREAM session relay | `EnableActorDispatch(meshName)`에 대응하는 MeshName을 명시한다 |
-| spot handle resolver | spot rid를 user Spot routing id로 푼다. actor가 node 경계를 넘을 수 있으면 등록한다 |
+계약은 [session-actor-dispatch](../../31-session-actor-dispatch.ko.md)가 소유한다. Stream node에서 Actor dispatch를
+활성화하면 runtime이 global Actor ID와 current authority로 route를 결정한다. Application은 MeshName이나 Spot
+resolver를 추가로 등록하지 않는다. Bound-session push는 current connection에만 적용되는 one-way operation이며
+stale binding을 새 connection으로 retarget하지 않는다.
 
 ## 10. Monitoring · Location 등록
 

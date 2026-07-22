@@ -1,15 +1,14 @@
 # .NET Location Store·Redis 공개 인터페이스
 
 [.NET exact interface 목차](README.ko.md) · [Location Runtime](../../../40-location-runtime.ko.md) ·
-[Redis Location Store](../../../41-location-store-redis.ko.md) · [routing ID 자동 할당](09-routing-id-allocation.ko.md)
+[Redis Location Store](../../../41-location-store-redis.ko.md) · [routing ID identity](09-routing-id-allocation.ko.md)
 
 ## 1. 범위
 
 이 문서는 ZLink Framework 11.0.0의 .NET location·authority store 확장 지점의 정확한 공개 인터페이스를
 고정한다. 하나의 store 인스턴스가 MeshNode descriptor, ClientServer server descriptor, fanout publisher
-descriptor, Spot·Actor 위치, owner lease와 Actor·Instance Spot owner authority를 함께 제공한다.
-Routing ID 자동 할당을 사용하면 같은 인스턴스가
-`IZLinkRoutingIdSlotAllocationStore`도 구현해야 한다.
+descriptor, Spot·Actor 위치, owner lease, durable object authority와 placement reservation을 함께 제공한다.
+Routing ID의 active 충돌 확인은 MeshNode descriptor의 owner CAS가 담당하며 별도 slot store를 등록하지 않는다.
 
 Location store는 application 데이터 저장소가 아니다. Framework runtime이 물리 MeshNode의 접속 정보와
 논리 Spot·Actor의 현재 owner를 확인하고 generation으로 오래된 쓰기를 차단할 때만 사용한다.
@@ -25,6 +24,8 @@ public sealed class ZLinkLocationOptions
     public TimeSpan StoreFailureGrace { get; set; } = TimeSpan.FromSeconds(30);
     public TimeSpan OwnerLeaseFencingMargin { get; set; } = TimeSpan.FromSeconds(5);
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
+    public TimeSpan RouteCacheMaxAge { get; set; } = TimeSpan.FromSeconds(15);
+    public TimeSpan TransferForwardingWindow { get; set; } = TimeSpan.FromSeconds(30);
 }
 ```
 
@@ -32,21 +33,16 @@ Root의 `AddLocationStore(IZLinkLocationStore)`와 `ConfigureLocations()` 시그
 [Topology configuration §2](03-configuration-topology.ko.md#2-등록-인터페이스)가 한 번만 선언한다. 이 문서는 두 메서드가
 사용하는 store와 option 타입을 소유한다.
 
-Store는 host마다 정확히 하나만 등록할 수 있다. 자동 discovery, fanout publisher의 descriptor 게시,
-remote Spot·Actor 위치 확인, Instance Spot activation 또는 stateful transfer를 구성했는데 store를 등록하지
-않으면 startup이
+Store는 host마다 정확히 하나만 등록할 수 있다. Object role이 `Client` 또는 `Server`인 MeshNode, automatic
+discovery, fanout publisher descriptor 또는 stateful transfer를 구성했는데 store를 등록하지 않으면 startup이
 `ZLinkConfigurationException`으로 실패한다. Store를 등록하지 않은 fanout publisher는 manual endpoint
-대상으로 동작한다. Manual peer, manual fanout publisher·subscriber와 process-local Spot·Actor만 사용하는
-host는 store를 등록하지 않아도 된다.
+대상으로 동작한다. Object role `None`인 manual MeshNode와 manual fanout publisher·subscriber는 store를 등록하지
+않아도 된다. `None`은 manager, factory, placement와 hidden local object runtime을 만들지 않는다.
 
-Store 없이 만든 Actor의 authority와 handle generation은 runtime-local opaque token이다. 이 Actor는 같은
-process 안에서만 message를 처리한다. Remote directory·resolve, distributed join·session binding,
-transfer·relocation을 구성하거나 호출하면 Framework는 구성 또는 operation 오류로 거부한다. Durable
-authority와 owner generation은 Store-backed Actor에만 적용하며 이 제한을 완화하는 public option은 제공하지
-않는다.
-
-모든 option은 0보다 커야 한다. Location Store와 owner lease runtime을 사용하는 모든 host는 routing ID 자동
-할당 여부와 관계없이 다음 관계를 만족해야 한다.
+Lease와 polling option은 0보다 커야 한다. `RouteCacheMaxAge`와 `TransferForwardingWindow`는 0 이상이다.
+둘 다 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다. 0인 값은 각각 cache 또는 forwarding을
+끈다. 실행 중 변경은 새 cache entry와 새 transfer에만 적용한다. Location Store와 owner lease runtime을 사용하는
+모든 host는 routing ID mode와 관계없이 다음 관계를 만족해야 한다.
 
 ```text
 OwnerLeaseRenewInterval + OwnerLeaseRenewTimeout
@@ -163,11 +159,14 @@ public sealed record ZLinkMeshNodeDescriptor(
     DateTimeOffset UpdatedAt)
 {
     public long ApplicationVersion { get; init; }
-    public IReadOnlySet<string> SpotTypes { get; init; } = new HashSet<string>();
     public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
         = Array.Empty<ZLinkObjectCapability>();
     public string? MaintenanceWave { get; init; }
     public ZLinkFrameworkRuntimeState State { get; init; }
+    public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
+    public int PlacementWeight { get; init; } = 100;
+    public ZLinkPlacementCapacity Capacity { get; init; }
+        = new(0, 0, 10_000, 128);
 }
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
@@ -220,7 +219,6 @@ public sealed record ZLinkSpotLocation(
     DateTimeOffset UpdatedAt);
 
 public readonly record struct ZLinkSpotLocationKey(
-    string MeshName,
     RoutingId SpotRid);
 
 public sealed record ZLinkActorLocation(
@@ -238,13 +236,20 @@ public sealed record ZLinkActorLocation(
     DateTimeOffset UpdatedAt);
 
 public readonly record struct ZLinkActorLocationKey(
-    string MeshName,
     string ActorId);
+
+public enum ZLinkMeshNodeObjectRole
+{
+    None = 0,
+    Client = 1,
+    Server = 2
+}
 
 public enum ZLinkPlacementObjectKind
 {
     Actor = 1,
-    InstanceSpot = 2
+    UserSpot = 2,
+    InstanceSpot = 3
 }
 
 public enum ZLinkObjectMaintenancePolicyKind
@@ -256,24 +261,33 @@ public enum ZLinkObjectMaintenancePolicyKind
 
 public sealed record ZLinkObjectCapability(
     ZLinkPlacementObjectKind ObjectKind,
-    string Type,
+    string StableType,
     ZLinkObjectMaintenancePolicyKind Policy,
     IReadOnlySet<string> ReadableStateContractIds,
-    ulong Available);
+    IReadOnlySet<string> PlacementProfiles,
+    int? ActiveLimit,
+    int? PendingLimit);
+
+public sealed record ZLinkPlacementCapacity(
+    int Active,
+    int Pending,
+    int ActiveLimit,
+    int PendingLimit);
 ```
 
 `ChannelWeights`의 key 집합은 descriptor를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
-`SpotTypes`와 `ObjectCapabilities`의 stable ID는 UTF-8 byte 순서로 정렬한다. Actor와 Instance Spot
-capability는 object kind와 type별 policy, 읽을 수 있는 state contract ID 집합과 현재 capacity를 한 항목에
-함께 둔다. 서로 무관한 type과 state contract를 flat set의 cross-product로 해석할 수 없다.
-`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Weight,
-capacity, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
+Stable type, placement profile과 readable state contract ID는 UTF-8 byte 순서로 정렬한다.
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, profile과 type별 capacity limit을
+한 항목에 함께 둔다. 서로 무관한 type과 state contract를 flat set의 cross-product로 해석할 수 없다.
+`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Channel
+weight, placement weight, active·pending count, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
 MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와 같은 generation의 descriptor가 모두
 유효할 때만 projection을 성공 결과로 사용한다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·readable contract set은 첫 admission 뒤
-해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
+ChannelName key set, object role과 object capability의 kind·type·policy·profile·limit·readable
+contract set은 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
+active·pending count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `DescriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
@@ -395,9 +409,10 @@ Descriptor enumeration은 `ZLinkPageRequest`와 `ZLinkLocationPage<T>`를 사용
 먼저 도달하면 요청보다 적은 item과 다음 token을 반환하며 byte limit public option은 제공하지 않는다.
 Framework reconciler는 scope change stamp를 읽고 모든 page를 조립한 뒤 stamp를 다시 읽는다. 두 stamp가
 같을 때만 full snapshot을 적용하고 다르면 부분 결과를 버리고 first page부터 다시 읽는다. 이 조립과 retry는
-내부 동작이다. SpotHandle과 Actor direct resolve는 Framework가 canonical authority key를 읽고 opaque payload를
+내부 동작이다. Spot과 Actor direct resolve는 Framework가 global canonical authority key를 읽고 opaque payload를
 decode한다. Operational Spot·Actor 목록은 authority enumeration을 decode한 projection이며 routing authority로
-사용하지 않는다. `SpotGeneration`, Spot handle generation과 `ActorRef.Generation`은 provider의
+사용하지 않는다. `ZLinkSpotLocation.SpotGeneration`, `SpotRef.ObjectGeneration`과
+`ActorRef.ObjectGeneration`은 provider의
 `ObjectGeneration`을 그대로 사용한다. Authority envelope의 `AuthorityOwnerGeneration`은 authority owner 이관
 fence이고 descriptor·projection의 `LeaseGeneration`은 host lease fence다. 두 generation을 합치거나
 Framework 계산값으로 만들지 않는다.
@@ -406,13 +421,13 @@ Framework 계산값으로 만들지 않는다.
 판정하지 않는다. Store-backed descriptor에는 exact owner lease·descriptor lifetime token을 사용한다. Manual
 descriptor에는 runtime이 CSPRNG로 만든 nonce를 사용하고 current connection handover fence와 함께 검증한다.
 Application이 값을 선택하는 option은 없다. 순서를 비교하는 값은 `DescriptorRevision`뿐이다. 이 revision이
-`long.MaxValue`인 상태에서 다음 값이 필요하면 host를 `Error`로 seal하고 wrap하지 않는다. Routing slot의
-`GroupExhausted`와 authority·lease generation exhaustion은 서로 다른 결과이며 application callback에는 내부
-lifetime token의 source를 노출하지 않는다.
+`long.MaxValue`인 상태에서 다음 값이 필요하면 host를 `Error`로 seal하고 wrap하지 않는다. Actor authority key는
+`ActorId` 하나이고 Spot authority key는 `SpotRid` 하나다. 두 key에 `MeshName`을 넣지 않으며 projection의
+`MeshName`은 current placement attribute다.
 Maintenance owner 이관은 `NewOwner`로 owner generation만 바꾸고 object generation을 유지한다.
-기존 handle은 유효하며 이전 owner route를 사용하면 runtime이 current authority를 재조회하여 forwarding
-또는 retry한다. Explicit close 후 cold recreate만 `NewObject`로 새 object generation을 발급하며,
-이때 이전 handle은 영구적으로 stale다.
+기존 ref의 object generation은 유지된다. 이전 owner route를 사용하면 runtime이 current authority를 재조회하여
+forwarding 또는 retry한다. Explicit close 후 cold recreate만 `NewObject`로 새 object generation을 발급하며,
+이때 이전 ref snapshot은 영구적으로 stale다.
 
 `ListClientServersAsync`는 같은 ChannelName의 유효한 ClientServer server descriptor를 반환한다. Framework는
 Server RID와 generation을 admission에서 확인하기 전에는 반환된 descriptor를 ready target으로 사용하지
@@ -424,14 +439,14 @@ Server RID와 generation을 admission에서 확인하기 전에는 반환된 des
 subscriber의 connection-intent 계산에 있다. Automatic subscriber는 선택한 모든 endpoint를 연결 대상으로
 사용하며 subscriber row는 게시하지 않는다.
 
-Entry·User·Instance Spot owner state는 `(MeshName, SpotRid)`에서 파생한 하나의 authority key를 공유한다.
-User Spot create와 Instance cold claim은 같은 row에 `NewObject` compare-exchange를 수행하므로 kind conflict와
-object generation 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
+Entry·User·Instance Spot owner state는 global `SpotRid`에서 파생한 하나의 authority key를 공유한다.
+User Spot create와 Instance cold claim은 같은 row에 generic placement reserve를 수행하므로 kind conflict,
+object generation과 capacity 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
 운영 projection이며 provider write·remove·resolve interface가 아니다. Actor transfer도 같은 generic authority
 capability의 별도 key를 사용한다. Provider는 Spot kind, owner state나 transfer phase를 해석하지 않는다.
 
 Application service는 authority provider interface를 직접 호출하지 않는다. Authority key와 payload의 정확한
-구성은 [Authority와 checkpoint](08-authority-checkpoint.ko.md)가 소유한다.
+구성은 [Authority와 transfer](08-authority-transfer.ko.md)가 소유한다.
 
 ## 6. Location operational query
 
@@ -508,15 +523,17 @@ public interface IZLinkLocationRuntimeQuery
 {
     ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
         CancellationToken cancellationToken = default);
-    ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+    ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
         string meshName,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
-    ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
+    ValueTask<ZLinkLocationPage<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
         ZLinkLocationServiceSummaryFilter filter,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 }
 

@@ -65,10 +65,8 @@ public interface ZLinkRouteClient {
         String meshName, RoutingId target, Object request);
     ZLinkSendCall sendToChannel(String channelName, Object message);
     ZLinkRequestCall requestToChannel(String channelName, Object request);
-    ZLinkSendCall sendToSpot(SpotHandle spot, Object message);
-    ZLinkRequestCall requestToSpot(SpotHandle spot, Object request);
-    ZLinkSendCall sendToSpot(InstanceSpotAddress spot, Object message);
-    ZLinkRequestCall requestToSpot(InstanceSpotAddress spot, Object request);
+    ZLinkSendCall sendToSpot(RoutingId spotRid, Object message);
+    ZLinkRequestCall requestToSpot(RoutingId spotRid, Object request);
 }
 
 public interface ZLinkFanoutClient {
@@ -216,14 +214,17 @@ public interface systems.zlink.framework.channels.ZLinkRouteClient {
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.framework.spots.SpotHandle, java.lang.Object);
+  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.framework.spots.SpotHandle, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.framework.spots.InstanceSpotAddress, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.framework.spots.InstanceSpotAddress, java.lang.Object);
+  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions {
+  public abstract systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions mesh(java.lang.String);
   public abstract systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions channel(java.lang.String);
+}
+public interface systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions {
+  public abstract int placementWeight();
+  public abstract void setPlacementWeight(int);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
   public abstract java.lang.String meshName();

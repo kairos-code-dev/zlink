@@ -2,9 +2,10 @@
 
 [C++ exact interface 목차](README.ko.md)
 
-## 1. Instance Spot transfer 등록
+## 1. Spot identity와 transfer 등록
 
-Policy를 생략한 factory 등록은 `transfer_policy_t<TSpot>::disabled()`와 같은 의미다.
+User·Instance Spot factory는 `transfer_policy_t<TSpot>::disabled()`, `recreate()` 또는 `snapshot(...)` 중
+하나를 명시한다. Policy를 생략하는 factory overload는 제공하지 않는다.
 
 Factory 등록 member의 exact declaration은
 [Channel messaging](03-channel-messaging.ko.md)의 `mesh_node_builder_t`가 소유한다.
@@ -23,10 +24,19 @@ enum class spot_kind_t {
     instance = 3
 };
 
-struct instance_spot_address_t {
-    std::string mesh_name;
-    std::string instance_spot_type;
-    spot_rid_t spot_rid;
+using spot_rid_t = zlink::routing_id_t;
+
+class spot_ref_t final {
+public:
+    spot_ref_t(spot_rid_t spot_rid,
+      std::uint64_t object_generation,
+      std::string mesh_name,
+      node_rid_t node_rid);
+
+    const spot_rid_t &spot_rid() const noexcept;
+    std::uint64_t object_generation() const noexcept;
+    std::string_view mesh_name() const noexcept;
+    const node_rid_t &node_rid() const noexcept;
 };
 
 class spot_context_t;
@@ -93,21 +103,11 @@ public:
     channel_client_t outbound() const;
 
     template <typename TCommand>
-    send_call_t send_to_spot(const spot_handle_t &target, TCommand command);
+    send_call_t send_to_spot(spot_rid_t target, TCommand command);
 
     template <typename TReply, typename TRequest>
     request_call_t<TReply> request_to_spot(
-      const spot_handle_t &target,
-      TRequest request);
-
-    template <typename TMessage>
-    send_call_t send_to_spot(
-      const instance_spot_address_t &target,
-      TMessage message);
-
-    template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to_spot(
-      const instance_spot_address_t &target,
+      spot_rid_t target,
       TRequest request);
 
     template <typename TEvent>
@@ -348,8 +348,8 @@ Actor와 Instance Spot의 maintenance 동작은 factory 등록에 연결한 `tra
 restore한다.
 
 C++의 일반 Spot packet과 Actor payload handler는 `spot_context_t::handlers()`가 등록한다. Actor handler는
-mutable Actor와 읽기 전용 handler context만 받으며 mutable Spot을 함께 받지 않는다. Spot 상태 변경은
-`spot_handle_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다. user Spot과 Entry
+mutable Actor와 읽기 전용 handler context만 받으며 mutable Spot을 함께 받지 않는다. Spot 상태 변경 message는
+global `spot_rid_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다. User Spot과 Entry
 Spot은 actor ID와 join request를 받는 `on_actor_join(...)`에서 accept 또는 reject를 반환한다. Commit 이후
 callback은 해당 factory가 만든 concrete Actor reference를 직접 받는다. 따라서 별도 membership DTO를
 lifecycle callback에 끼워 넣지 않는다. Joined, leave와 disconnect callback은 `task_t<void>`를 반환하며
@@ -369,49 +369,36 @@ Multicast subscription 등록 member가 존재하지 않는다. 같은 MeshNode�
 `instance_spot_type`이나 같은 Spot class를 User Spot factory와 Instance factory에 중복 등록해도 socket bind
 전에 설정 오류로 실패한다.
 
-Factory는 activation scope에서 `TSpot` instance를 만든 뒤 `configure(instance_spot_context_t&)`와
+Factory는 explicit manager create 또는 stored creation intent의 reactivation scope에서 `TSpot` instance를 만든 뒤 `configure(instance_spot_context_t&)`와
 `on_initialize()`를 순서대로 호출한다. 빈 `message_t`를 `on_create(...)`에 넘기지 않는다. Location
 `Ready` commit이 성공한 뒤 Framework activation barrier를 열고
 첫 업무 message를 일반 packet handler에 한 번 전달한다. Close에서는 `on_closing()`을 한 번 호출하고
 fencing 조건을 만족하는 location row만 해제한다.
 
-Store-backed dynamic User Spot도 authority 내부 `Creating` row를 `new_object` CAS로 만든 뒤 factory,
-`configure(...)`, `on_initialize()`를 완료하고 `Ready` CAS를 수행한다. Resolve와 remote messaging은
-`Ready`만 사용한다. 실패하면 exact owner fence로 delete하고 결과를 read해 reconcile한다. Delete가 확인될
-때까지 같은 typed failure를 반환하고 숨은 retry를 수행하지 않으며, `Missing`이 확인된 뒤 다음 caller만 새
-create를 시작한다. 이 barrier를 제어하는 public API는 없다.
+User·Instance Spot은 manager의 explicit Create·GetOrCreate만 `Creating` reservation을 시작한다. 일반
+send·request는 missing Spot을 만들지 않는다. Factory와 initialize가 끝난 뒤 generic Store Commit이
+reservation과 pending-to-active capacity를 함께 전환하고 `Ready`를 공개한다. 실패는 exact Abort로 authority와
+pending capacity를 함께 정리한다.
 
-User Spot의 `close()`는 active Actor membership이 있으면 `false`를 반환한다. Spot state, admission과 authority는
-바꾸지 않고 `on_closing()`을 호출하거나 Actor를 자동 leave·destroy하지 않는다. Caller는 Actor를 명시적으로
-leave 또는 destroy한 뒤 다시 close한다. Manager에서 Spot이 missing인 경우도 `false`이므로 caller는 사전
-read 없이 두 경우를 구분하지 않는다. Host Shutdown·Retire는 Actor barrier를 끝낸 뒤 Spot cleanup을 수행한다.
+User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이 있다는 이유만으로
+Retire를 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와
+`instance_spot_context_t::close()`는 context가 보유한 exact current SpotRef를 사용한다.
 
-`instance_spot_factory_options_t{}`는 member initializer를 통해 type별 `4096`과 `3000ms` timeout을
-적용한다. 명시한 두 값은 모두 0보다 커야 하며 `0`을 기본값 sentinel이나 무제한으로
-해석하지 않는다. Activation pending
-message·byte budget과 watchdog은 MeshNode startup configuration이 소유하므로 이 구조체에
-반복하지 않는다.
+일반 User Spot close는 active Actor membership이 하나라도 있으면 `false`로 끝나고 admission과 authority를
+유지한다. Caller가 member Actor의 leave 또는 destroy를 완료한 뒤에만 close할 수 있으며, Framework가 close를
+위해 Actor를 숨겨서 이동하거나 제거하지 않는다. Host Retire는 close와 다르게 User Spot과 current member
+Actor 전체를 bounded aggregate로 이전한다.
 
-`instance_spot_address_t`의 MeshName과 Instance Spot type은 비어 있을 수 없고 UTF-8로 각각 255 byte
-이하여야 하며 Spot RID는 빈 값일 수 없다. Equality와 hash는 세 값을 모두 사용하지만 location uniqueness는
-`(mesh_name, spot_rid)`가 소유한다. Address call은 location I/O와 activation이 필요할 수 있으므로 cache
-상태와 관계없이 `submit()` 또는 request의 `async()`·`yield()`만 사용한다. 동기 즉시 제출 terminator는
-추가하지 않는다. `spot_handle_t`, `spot_manager_t`와 handle overload는 이미 존재하는 Spot만 대상으로 하며 missing
-Spot을 원격에서 만들지 않는다.
+Instance Spot factory는 actor-free lifecycle만 구현한다. 명시적인 manager create 또는 Ready authority에 저장된
+creation intent를 사용한 cold reactivation에서만 factory를 실행하며, 일반 message가 새 creation intent를
+만들지 않는다. Cold Instance로 향하는 one-way call은 resolve와 outbound admission까지 같은 send deadline에
+포함하고 admission 결과에서 완료한다. Request만 activation, handler와 terminal reply까지 기다린다. Target은
+수신 message를 근거로 별도 creation claim을 시작하지 않는다.
 
-Cold address call의 source는 location resolve, eligible target 선택과 `ColdActivating` CAS claim을 outbound보다
-먼저 같은 send deadline 안에서 완료한다. Target은 source가 확정한 token과 generation을 다시 검증하고 factory
-activation과 `Ready` CAS만 수행하며 target-side claim을 시작하지 않는다. One-way `submit()` 완료는 source
-outbound admission까지 기다리지만 target factory 실행, activation queue 수락과 `Ready`는 기다리지 않는다.
-
-Cold activation coordinator와 barrier는 C++ Framework runtime 내부 aggregate다. Core service driver나
-application-facing activation wrapper를 두지 않는다. 내부 구조는
-[C++ runtime architecture](../../../../../cpp/internals/runtime-architecture.ko.md)를 따른다.
-
-Cold Instance factory·initialize가 실패하면 durable public `Failed` state를 게시하지 않는다. Runtime은 local
-failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 reconcile한다. Delete 확인 전 같은 address
-호출은 같은 typed failure를 반환하며 hidden retry 횟수는 0이다. `Missing` 확인 뒤 다음 caller만 새
-`ColdActivating` claim을 시작한다. 이 recovery 상태를 조작하는 public API는 없다.
+`spot_ref_t`는 global SpotRid, non-zero ObjectGeneration과 조회 시점 MeshName·NodeRid를 담은 immutable location
+snapshot이다. 일반 message target으로 사용하지 않으며 별도 handle, resolver와 address type은 제공하지 않는다.
+SpotRid와 stable type은 UTF-8 `1..255` byte exact 값이며 trim, case folding과 Unicode normalization을 적용하지
+않는다. `spot_rid_t`는 Core binding의 RoutingId value semantics를 그대로 사용한다.
 
 ```cpp
 class player_actor_t;
@@ -584,49 +571,54 @@ timer 등록 검증은 [stage-wrapper §4.1](../../../25-stage-wrapper-on-spot.k
 ## 4. SPOT 표면
 
 ```cpp
-struct spot_info_t {
-    spot_rid_t spot_rid;
-    std::string spot_name;
-};
-class spot_manager_t
-{
+class spot_create_call_t {
 public:
-    spot_create_result_t create_spot(std::string mesh_name, std::string spot_name);
-    spot_create_result_t create_spot(
-      std::string mesh_name,
-      std::string spot_name,
-      const message_t &request);
+    spot_create_call_t(spot_create_call_t &&) noexcept;
+    spot_create_call_t &operator=(spot_create_call_t &&) noexcept;
+    spot_create_call_t(const spot_create_call_t &) = delete;
+    spot_create_call_t &operator=(const spot_create_call_t &) = delete;
+
+    spot_create_call_t &in_mesh(std::string mesh_name);
+    spot_create_call_t &creation_request(message_t request);
 
     template <typename TRequest>
-    spot_create_result_t create_spot(
-      std::string mesh_name,
-      std::string spot_name,
-      const TRequest &request);
+    spot_create_call_t &creation_request(TRequest request);
 
-    spot_create_result_t get_or_create_spot(
-      std::string mesh_name,
-      std::string spot_name,
-      spot_rid_t spot_rid);
-    spot_create_result_t get_or_create_spot(
-      std::string mesh_name,
-      std::string spot_name,
+    spot_create_call_t &placement_profile(placement_profile_t profile);
+    spot_create_call_t &affinity_key(affinity_key_t key);
+    spot_create_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<spot_ref_t> submit();
+};
+
+class spot_manager_t {
+public:
+    virtual ~spot_manager_t() = default;
+    virtual spot_create_call_t create(
+      spot_kind_t kind, std::string stable_type) = 0;
+    virtual spot_create_call_t get_or_create(
       spot_rid_t spot_rid,
-      const message_t &request);
+      spot_kind_t kind,
+      std::string stable_type) = 0;
 
-    template <typename TRequest>
-    spot_create_result_t get_or_create_spot(
-      std::string mesh_name,
-      std::string spot_name,
-      spot_rid_t spot_rid,
-      const TRequest &request);
-
-    task_t<std::optional<spot_info_t>> find_spot(
-      std::string mesh_name,
-      spot_rid_t spot_rid) const;
-    task_t<std::vector<spot_info_t>> list_spots(std::string mesh_name) const;
-    task_t<bool> close_spot(std::string mesh_name, spot_rid_t spot_rid);
+    virtual task_t<std::optional<spot_ref_t>> find(spot_rid_t spot_rid) = 0;
+    virtual task_t<bool> close(spot_ref_t spot) = 0;
 };
 ```
+
+`Create`는 Framework가 global SpotRid를 생성하며 User 또는 Instance kind만 받는다. `GetOrCreate`는 caller가
+제공한 global SpotRid를 사용한다. Entry kind를 caller가 제출하면 `invalid_configuration`이다. Call option과
+submit은 각각 한 번만 사용할 수 있다. Existing kind·stable type이 다르면 `spot_type_mismatch`, eligible
+capacity가 없으면 `placement_capacity_exhausted`다.
+
+`Find`는 current Ready SpotRef만 반환하고 생성하지 않는다. `Close`는 exact SpotRef만 변경한다. 같은
+incarnation이 없으면 `false`, 다른 generation이면 `spot_generation_stale`, 이동 중이면 `spot_moving`이다.
+Public list, resolver와 handle은 제공하지 않는다.
+
+## 5. Public trace category
+
+이 문서의 declaration은 public trace의 `spot-instance`와 `actor-transfer` category에 속한다. 공통 의미는
+[Spot address와 messaging](../../../24-spot-address-messaging.ko.md)과
+[Spot·Actor membership](../../../23-spot-actor.ko.md)이 소유한다.
 
 **lifecycle callback의 호출 순서는 [MeshNode §7](../../../21-mesh-node.ko.md)가 소유한다** —
 handler 구성 → 생성 callback → **수락된 경우에만** 초기화 → 종료는 한 번.

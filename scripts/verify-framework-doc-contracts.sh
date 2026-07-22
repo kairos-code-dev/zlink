@@ -48,6 +48,7 @@ const traceLanguages = new Map(
   (traceConfig.languages || []).map(language => [language.id, language]));
 
 const expectedLanguages = ['dotnet', 'cpp', 'java', 'kotlin', 'node'];
+const allowedDuplicateOwners = inventory.allowed_duplicate_declaration_owners || {};
 if (inventory.schema !== 1 || inventory.version !== '11.0.0') {
   fail('v11 document inventory must use schema=1 and version=11.0.0');
 }
@@ -56,6 +57,22 @@ if (JSON.stringify(inventory.languages) !== JSON.stringify(expectedLanguages)) {
 }
 if (!inventory.exact_interfaces || typeof inventory.exact_interfaces !== 'object') {
   fail('v11 document inventory exact_interfaces object is missing');
+}
+for (const [language, owners] of Object.entries(allowedDuplicateOwners)) {
+  if (!expectedLanguages.includes(language) || !owners || typeof owners !== 'object'
+      || Array.isArray(owners)) {
+    fail(`invalid allowed duplicate declaration-owner language: ${language}`);
+    continue;
+  }
+  for (const [name, documents] of Object.entries(owners)) {
+    if (!name || !Array.isArray(documents) || documents.length < 2
+        || new Set(documents).size !== documents.length
+        || documents.some(document => typeof document !== 'string'
+          || !document.startsWith(
+            `framework/doc/framework/spec/server/languages/${language}/interfaces/`))) {
+      fail(`invalid allowed duplicate declaration owner: ${language}: ${name}`);
+    }
+  }
 }
 if (!Array.isArray(inventory.forbidden_public_code_patterns)
     || inventory.forbidden_public_code_patterns.length === 0) {
@@ -69,12 +86,11 @@ for (const key of ['required_repository_file_fragments', 'forbidden_repository_f
     fail(`v11 document inventory ${key} must be an object`);
   }
 }
-if (!Array.isArray(inventory.target_document_sets)
-    || inventory.target_document_sets.length !== 2) {
-  fail('v11 document inventory must contain target-spec and target-internals document sets');
-} else if (JSON.stringify(inventory.target_document_sets.map(set => set.name))
-           !== JSON.stringify(['target-spec', 'target-internals'])) {
-  fail('v11 target document set order must be target-spec then target-internals');
+if (!Array.isArray(inventory.consolidated_internal_document_sets)
+    || inventory.consolidated_internal_document_sets.length !== 1) {
+  fail('v11 document inventory must contain the common-internals document set');
+} else if (inventory.consolidated_internal_document_sets[0].name !== 'common-internals') {
+  fail('v11 consolidated internal document set must be common-internals');
 }
 if (!inventory.plan_consolidation || typeof inventory.plan_consolidation !== 'object') {
   fail('v11 document inventory plan_consolidation object is missing');
@@ -98,7 +114,6 @@ if (JSON.stringify(terminationOwnerPolicy.members)
 
 const expectedTerminationResultContract = {
   formal_path: 'framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md',
-  target_path: 'framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md',
   e2e_path: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
   outcomes: [
     { name: 'Stopped', wire_value: 0, reasons: ['None'] },
@@ -174,7 +189,6 @@ const terminationDocumentFailures = (source, label) => {
 const terminationSources = new Map();
 for (const [label, relative] of [
   ['formal', expectedTerminationResultContract.formal_path],
-  ['target', expectedTerminationResultContract.target_path],
 ]) {
   const absolute = path.join(root, relative);
   if (!fs.existsSync(absolute)) {
@@ -200,8 +214,8 @@ if (!fs.existsSync(terminationE2ePath)) {
 
 const terminationNegativeFixtures = [
   ['Blocked deadline omitted', 'formal', source => source.replace(', `DeadlineExceeded`, `RuntimeNotReady`', ', `RuntimeNotReady`')],
-  ['checkpoint reason widened', 'target', source => source.replace('`StateIncompatible`', '`CheckpointTooLarge`')],
-  ['teardown outcome widened', 'target', source => source.replace('| 2 | `ForceStopped` |', '| 2 | `Failed` |')],
+  ['checkpoint reason widened', 'formal', source => source.replace('`StateIncompatible`', '`CheckpointTooLarge`')],
+  ['teardown outcome widened', 'formal', source => source.replace('| 2 | `ForceStopped` |', '| 2 | `Failed` |')],
 ];
 for (const [fixture, label, mutate] of terminationNegativeFixtures) {
   const source = terminationSources.get(label);
@@ -554,7 +568,27 @@ for (const language of expectedLanguages) {
     fail(`duplicate exact code block: ${message}`);
   }
   const duplicateOwners = duplicateDeclarationOwnerFailures(language, contract);
-  for (const message of duplicateOwners) fail(`duplicate exact declaration owner: ${message}`);
+  const observedAllowedDuplicateOwners = new Set();
+  for (const message of duplicateOwners) {
+    const prefix = `${language}: `;
+    const separator = message.indexOf(': ', prefix.length);
+    const name = separator < 0 ? '' : message.slice(prefix.length, separator);
+    const documents = separator < 0
+      ? []
+      : message.slice(separator + 2).split(', ').sort();
+    const allowedDocuments = allowedDuplicateOwners[language]?.[name];
+    if (!allowedDocuments
+        || JSON.stringify(documents) !== JSON.stringify([...allowedDocuments].sort())) {
+      fail(`duplicate exact declaration owner: ${message}`);
+      continue;
+    }
+    observedAllowedDuplicateOwners.add(name);
+  }
+  for (const name of Object.keys(allowedDuplicateOwners[language] || {})) {
+    if (!observedAllowedDuplicateOwners.has(name)) {
+      fail(`allowed duplicate declaration owner is stale or incomplete: ${language}: ${name}`);
+    }
+  }
   const ownerNames = new Set();
   for (const entry of contract.entries) {
     const code = entry.blocks
@@ -710,11 +744,8 @@ for (const entry of kotlinSourceContract.entries) {
     }
   }
 }
-const kotlinAsFlowOwner =
-  'framework/doc/framework/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md';
-if (kotlinAsFlowDeclarations.length !== 1
-    || kotlinAsFlowDeclarations[0] !== kotlinAsFlowOwner) {
-  fail(`Kotlin asFlow source declaration must have one owner: actual=${kotlinAsFlowDeclarations.join(',') || 'none'}`);
+if (kotlinAsFlowDeclarations.length !== 0) {
+  fail(`Kotlin exact contract must not add an asFlow source wrapper: actual=${kotlinAsFlowDeclarations.join(',')}`);
 }
 const kotlinGeneratedContract = readExactContract(root, 'kotlin', ['java']);
 const kotlinGeneratedAsFlowOwners = [];
@@ -725,9 +756,8 @@ for (const entry of kotlinGeneratedContract.entries) {
     }
   }
 }
-if (kotlinGeneratedAsFlowOwners.length !== 1
-    || kotlinGeneratedAsFlowOwners[0] !== kotlinAsFlowOwner) {
-  fail(`Kotlin generated asFlow signature must have one owner: actual=${kotlinGeneratedAsFlowOwners.join(',') || 'none'}`);
+if (kotlinGeneratedAsFlowOwners.length !== 0) {
+  fail(`Kotlin exact contract must not add a generated asFlow wrapper: actual=${kotlinGeneratedAsFlowOwners.join(',')}`);
 }
 
 const javaTerminationContract = readExactContract(root, 'java', ['java']);
@@ -912,7 +942,7 @@ for (const message of codeFenceFailures(root, allFormalPaths)) fail(`formal code
 for (const message of relativeMarkdownLinkFailures(root, allFormalPaths)) fail(`formal link: ${message}`);
 
 let targetDocumentCount = 0;
-for (const set of inventory.target_document_sets || []) {
+for (const set of inventory.consolidated_internal_document_sets || []) {
   if (!set || typeof set.name !== 'string' || typeof set.directory !== 'string'
       || !Array.isArray(set.required_documents)
       || !Array.isArray(set.readme_required_fragments)
@@ -920,7 +950,7 @@ for (const set of inventory.target_document_sets || []) {
       || !Array.isArray(set.forbidden_code_patterns)
       || !set.required_file_fragments
       || typeof set.required_file_fragments !== 'object') {
-    fail('target document set has an invalid schema');
+    fail('consolidated internal document set has an invalid schema');
     continue;
   }
   const documents = markdownDocumentsUnder(set.directory);
@@ -991,6 +1021,7 @@ if (typeof consolidation.directory !== 'string'
     || !Array.isArray(consolidation.ledger_required_fragments)
     || !Array.isArray(consolidation.allowed_profiles)
     || !Array.isArray(consolidation.required_parallel_review_rows)
+    || !Array.isArray(consolidation.required_xhigh_review_rows)
     || !Array.isArray(consolidation.forbidden_fragments)
     || !Array.isArray(consolidation.required_semantic_owners)
     || !Array.isArray(consolidation.forbidden_legacy_documents)) {
@@ -998,11 +1029,11 @@ if (typeof consolidation.directory !== 'string'
 } else {
   const allowedDocuments = consolidation.allowed_documents;
   const allowedSet = new Set(allowedDocuments);
-  if (allowedDocuments.length !== 24 || allowedSet.size !== allowedDocuments.length
+  if (allowedDocuments.length !== 5 || allowedSet.size !== allowedDocuments.length
       || allowedDocuments.some(relative => typeof relative !== 'string'
         || relative.length === 0 || path.posix.isAbsolute(relative)
         || relative.split('/').includes('..'))) {
-    fail('v11 consolidated plan must declare 24 unique safe relative document paths');
+    fail('v11 consolidated plan must declare 5 unique safe relative document paths');
   }
   const actualDocuments = filesUnder(consolidation.directory)
     .map(relative => path.posix.relative(consolidation.directory, relative));
@@ -1030,11 +1061,11 @@ if (typeof consolidation.directory !== 'string'
       || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
     fail('v11 consolidation must declare 11 unique parallel review row IDs');
   }
-  const ultraReviewRows = new Set(consolidation.required_ultra_review_rows);
-  if (consolidation.required_ultra_review_rows.length !== 1
-      || ultraReviewRows.size !== consolidation.required_ultra_review_rows.length
-      || consolidation.required_ultra_review_rows.some(id => !parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare one ultra parallel review row ID');
+  const xhighReviewRows = new Set(consolidation.required_xhigh_review_rows);
+  if (consolidation.required_xhigh_review_rows.length !== 2
+      || xhighReviewRows.size !== consolidation.required_xhigh_review_rows.length
+      || consolidation.required_xhigh_review_rows.some(id => !parallelReviewRows.has(id))) {
+    fail('v11 consolidation must declare one xhigh parallel review row ID');
   }
   if (consolidation.forbidden_fragments.length === 0
       || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
@@ -1180,7 +1211,7 @@ if (typeof consolidation.directory !== 'string'
         fail(`v11 execution ledger parallel review row is missing: ${id}`);
         continue;
       }
-      const expectedProfile = ultraReviewRows.has(id) ? '`P-ULTRA`' : '`P-DEEP`';
+      const expectedProfile = xhighReviewRows.has(id) ? '`P-XHIGH`' : '`P-DEEP`';
       if (!row.assignmentCell.includes(expectedProfile)
           || !row.assignmentCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
         fail(`v11 execution ledger parallel review assignment differs: ${id}`);
@@ -1580,33 +1611,54 @@ for (const [name, format] of redisFixtures) {
   }
 }
 
-const exactSemanticFixtures = [
-  ['cpp', ['07-location-maintenance.ko.md', '07-location-store.ko.md'],
-    ['authority_generation_exhausted_t', 'owner_lease_generation_exhausted_t',
-      'asynchronous operation이 끝날 때까지', 'opaque equality token', 'Store가 없는 Actor']],
-  ['dotnet', ['08-authority-checkpoint.ko.md', '08-location-maintenance.ko.md'],
-    ['record GenerationExhausted', 'underlying storage는 asynchronous operation이 끝날 때까지',
-      'Global lease generation counter가 `long.MaxValue`', '`LifecycleGeneration`은 0이 아닌 opaque equality token',
-      'Store 없이 만든 Actor']],
-  ['java', ['location-maintenance.ko.md'],
-    ['ZLinkAuthorityGenerationExhausted', 'ZLinkOwnerLeaseGenerationExhausted',
-      '`byte[]`은 반환된 `CompletionStage`가 완료될 때까지', '`lifecycleGeneration`은 0이 아닌 opaque equality token',
-      'Store 없이 만든 Actor']],
-  ['kotlin', ['location-maintenance.ko.md'],
-    ['ZLinkAuthorityGenerationExhausted', 'ZLinkOwnerLeaseGenerationExhausted',
-      '`byte[]`은 `CompletionStage`가 완료될 때까지', '`lifecycleGeneration`은 0이 아닌 opaque equality token',
-      'Store 없이 만든 Actor']],
-  ['node', ['08-location-maintenance.ko.md'],
-    ['kind: "generationExhausted"', '`Uint8Array`는 반환된 Promise가 settle될 때까지',
-      '`Date` 객체', '`lifecycleGeneration`은 0이 아닌 opaque equality token', 'Store 없이 만든 Actor']],
+const amendedObjectSemanticFixtures = [
+  ['cpp', ['04-spots.ko.md', '05-actors.ko.md'], [
+    'global ActorId', 'global SpotRid', 'send(actor_id_t actor_id',
+    'send_to_spot(spot_rid_t target', 'class actor_manager_t', 'class spot_manager_t',
+    'object_generation() const noexcept', 'actor-free lifecycle',
+    'fresh incarnation으로 자동 bind하지 않는다.',
+  ]],
+  ['dotnet', ['05-spots.ko.md', '06-actors.ko.md', '07-stream-session.ko.md'], [
+    'ActorId는 Location Store transaction domain 전체에서 유일한 logical ID',
+    'SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID',
+    'SendToActor<TMessage>(', 'SendToSpot<TMessage>(RoutingId spotRid',
+    'public interface IZLinkActorManager', 'public interface IZLinkSpotManager',
+    'ActorRef.ObjectGeneration', 'SpotRef.ObjectGeneration', 'actor-free lifecycle interface',
+    '다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다.',
+  ]],
+  ['java', ['actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
+    'ActorId는 UTF-8 1..255 bytes의 global logical ID', 'SpotRid는 global logical ID',
+    'sendToActor(java.lang.String, java.lang.Object)',
+    'sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
+    'public interface systems.zlink.framework.actors.ZLinkActorManager',
+    'public interface systems.zlink.framework.spots.ZLinkSpotManager',
+    'ActorRef.objectGeneration()', 'SpotRef.objectGeneration()',
+    '새 ref를 찾아 hidden retry하지 않는다.',
+  ]],
+  ['kotlin', ['README.ko.md', 'actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
+    'global ActorId·SpotRid', 'ID-only 일반',
+    'ZLinkActorManager.create(actorId, actorType)',
+    'ZLinkSpotManager.create(spotKind, spotType)',
+    'ActorRef(actorId, objectGeneration, meshName, nodeRid)',
+    'SpotRef(spotRid, objectGeneration, meshName, nodeRid)',
+    'Framework는 hidden retry나 local fallback을 수행하지 않는다.',
+  ]],
+  ['node', ['01-foundation-configuration.ko.md', '04-spots.ko.md', '05-actors.ko.md'], [
+    '`ActorId`는 Location Store transaction domain 전체에서 유일한 logical ID',
+    'User·Instance SpotRid는 global key',
+    'sendToActor(actorId: ActorId', 'sendToSpot(spotRid: SpotRid',
+    'export interface ZLinkActorManager', 'export interface ZLinkSpotManager',
+    'readonly objectGeneration: bigint', 'export interface ZLinkInstanceSpot {',
+    'Framework는 current ref를 다시 찾아 다른 incarnation을 닫지 않는다.',
+  ]],
 ];
-for (const [language, files, required] of exactSemanticFixtures) {
+for (const [language, files, required] of amendedObjectSemanticFixtures) {
   const directory = path.posix.join(
     'framework/doc/framework/spec/server/languages', language, 'interfaces');
   const source = files.map(name => fs.readFileSync(path.join(root, directory, name), 'utf8')).join('\n');
   for (const fragment of required) {
     if (!source.includes(fragment)) {
-      fail(`${language} generation/lifetime exact contract is missing: ${fragment}`);
+      fail(`${language} amended object contract is missing: ${fragment}`);
     }
   }
   if (/(?:OwnerLeaseFencingMargin|ownerLeaseFencingMargin|owner_lease_fencing_margin)[^\n]{0,80}(?:1초|FromSeconds\(1\)|1000)/u.test(source)) {
@@ -1619,35 +1671,27 @@ for (const [language, files, required] of exactSemanticFixtures) {
   }
 }
 
-const lifecycleSemanticFixtures = [
-  ['cpp', '05-actors.ko.md', '04-spots.ko.md', '02-configuration-host.ko.md'],
-  ['dotnet', '06-actors.ko.md', '05-spots.ko.md', '10-topology-monitoring.ko.md'],
-  ['java', 'actors.ko.md', 'spots.ko.md', 'common-runtime.ko.md'],
-  ['kotlin', 'actors.ko.md', 'spots.ko.md', 'common-runtime.ko.md'],
-  ['node', '05-actors.ko.md', '04-spots.ko.md', '03-location-observability.ko.md'],
-];
-for (const [language, actorFile, spotFile, hostFile] of lifecycleSemanticFixtures) {
-  const directory = path.posix.join(
-    'framework/doc/framework/spec/server/languages', language, 'interfaces');
-  const actor = fs.readFileSync(path.join(root, directory, actorFile), 'utf8');
-  const spot = fs.readFileSync(path.join(root, directory, spotFile), 'utf8');
-  const host = fs.readFileSync(path.join(root, directory, hostFile), 'utf8');
-  if (!/connection-bound one-way/iu.test(actor)) {
-    fail(`${language} Actor lifecycle contract is missing connection-bound one-way`);
-  }
-  if (!actor.includes('Entry Spot member')) {
-    fail(`${language} Actor lifecycle contract is missing Entry Spot membership`);
-  }
-  if (!/(?:hidden|숨은)\s+retry/iu.test(actor)) {
-    fail(`${language} Actor lifecycle contract is missing no-hidden-retry semantics`);
-  }
-  for (const fragment of ['active Actor membership', 'Cold Instance factory']) {
-    if (!spot.includes(fragment)) fail(`${language} Spot lifecycle contract is missing: ${fragment}`);
-  }
-  if (!/Blocked\/DeadlineExceeded|blocked\/deadline_exceeded/u.test(host)
-      || !/ForceStopped\/DeadlineExceeded|force_stopped\/deadline_exceeded/u.test(host)) {
-    fail(`${language} Retire deadline phase contract is incomplete`);
-  }
+const javaSpotsSource = fs.readFileSync(path.join(
+  root,
+  'framework/doc/framework/spec/server/languages/java/interfaces/spots.ko.md'), 'utf8');
+const javaInstanceSpot = javaSpotsSource.match(
+  /public interface ZLinkInstanceSpot\s*\{([\s\S]*?)\n\}/u)?.[1] || '';
+if (!javaInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(javaInstanceSpot)) {
+  fail('java Instance Spot must retain an actor-free exact interface');
+}
+const nodeSpotsSource = fs.readFileSync(path.join(
+  root,
+  'framework/doc/framework/spec/server/languages/node/interfaces/04-spots.ko.md'), 'utf8');
+const nodeInstanceSpot = nodeSpotsSource.match(
+  /export interface ZLinkInstanceSpot\s*\{([\s\S]*?)\n\}/u)?.[1] || '';
+if (!nodeInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(nodeInstanceSpot)) {
+  fail('node Instance Spot must retain an actor-free exact interface');
+}
+const kotlinExactSource = markdownDocumentsUnder(
+  'framework/doc/framework/spec/server/languages/kotlin/interfaces')
+  .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
+if (/ZLinkSuspendingInstanceSpot|ZLinkInstanceSpotActor/u.test(kotlinExactSource)) {
+  fail('Kotlin exact contract adds an actor-bearing Instance Spot wrapper');
 }
 
 if (failures.length) {

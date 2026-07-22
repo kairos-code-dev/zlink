@@ -4,8 +4,9 @@
 
 ## 1. Spot
 
-Spot은 MeshNode가 소유하는 logical mailbox다. `SpotHandle`은 location snapshot과 generation을 보존하지만
-application에 target node RID를 노출하지 않는다.
+SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID다. 일반 message는 SpotRid만 받고
+current authority를 resolve한다. `SpotRef`는 exact incarnation을 닫을 때 사용하는 immutable location
+snapshot이며 runtime resource나 local Spot instance를 소유하지 않는다.
 
 ```csharp
 public enum ZLinkSpotKind
@@ -16,38 +17,17 @@ public enum ZLinkSpotKind
     Instance = 3
 }
 
-public sealed record InstanceSpotAddress(
+public enum ZLinkCreatableSpotKind
+{
+    User = 1,
+    Instance = 2
+}
+
+public readonly record struct SpotRef(
+    RoutingId SpotRid,
+    ulong ObjectGeneration,
     string MeshName,
-    string InstanceSpotType,
-    RoutingId SpotRid);
-
-public sealed record ZLinkInstanceSpotFactoryOptions
-{
-    public int MaxActiveInstances { get; init; } = 4096;
-    public TimeSpan ActivationTimeout { get; init; } = TimeSpan.FromSeconds(3);
-}
-
-public abstract class SpotHandle
-{
-    public abstract string MeshName { get; }
-    public abstract RoutingId SpotRid { get; }
-}
-
-public interface IZLinkSpotHandleResolver
-{
-    ValueTask<SpotHandle?> ResolveSpotHandleAsync(
-        string meshName,
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorSpotHandleResolver
-{
-    ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
-        string meshName,
-        string actorId,
-        CancellationToken cancellationToken = default);
-}
+    RoutingId NodeRid);
 
 public interface IZLinkSpot
 {
@@ -116,10 +96,8 @@ public interface IZLinkInstanceSpotHandlerRegistry
 
 public interface IZLinkSpotOutbound
 {
-    IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
-    IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
-    IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message);
-    IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request);
+    IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message);
+    IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request);
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
@@ -239,11 +217,6 @@ public readonly record struct ZLinkSpotActorJoinResult(
     public static ZLinkSpotActorJoinResult Reject<TReply>(TReply reply);
 }
 
-public interface IZLinkEntrySpotOptions
-{
-    RoutingId RoutingId { get; set; }
-}
-
 public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 {
     IZLinkSpotHandlerRegistry Handlers { get; }
@@ -328,11 +301,9 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
 }
 ```
 
-두 resolver는 대상 MeshName을 명시적으로 받는다. Spot RID와 Actor identity는 서로 다른 MeshName에서
-같을 수 있으므로 등록된 여러 mesh를 순서대로 탐색하거나 첫 번째 결과를 선택하지 않는다. 유효한
-location row가 없으면 `null`을 반환하며, 성공하면 입력한 MeshName이 `SpotHandle.MeshName`에 유지된다.
-owner route와 generation 갱신 규칙은
-[Spot 주소 메시징 §2~3](../../../24-spot-address-messaging.ko.md#2-spothandle과-instancespotaddress)을 따른다.
+Spot과 Actor의 current location 조회는 manager가 global ID로 수행한다. Public resolver와 runtime handle은
+제공하지 않는다. owner route와 generation 갱신 규칙은
+[Spot 주소 메시징](../../../24-spot-address-messaging.ko.md)을 따른다.
 
 Spot handler signatures는 다음과 같다.
 
@@ -412,13 +383,9 @@ Spot 외부 client는 다음 시그니처를 사용한다.
 ```csharp
 public interface IZLinkSpotClient
 {
-    IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
-    IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
-    IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message);
-    IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request);
+    IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message);
+    IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request);
 }
-
-public readonly record struct ZLinkSpotInfo(RoutingId SpotRid);
 
 public enum ZLinkSpotCreateState
 {
@@ -428,74 +395,47 @@ public enum ZLinkSpotCreateState
 }
 
 public readonly record struct ZLinkSpotCreateResult(
-    RoutingId SpotRid,
+    SpotRef Spot,
     ZLinkSpotCreateState State,
     ZLinkMessage? Reply);
 
 public interface IZLinkSpotManager
 {
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        string meshName,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        string meshName,
-        ZLinkMessage request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot, TRequest>(
-        string meshName,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot
-    {
-        // Typed request는 ZLinkMessage overload로 연결한다.
-        return CreateAsync<TSpot>(meshName, ZLinkMessage.From(request), cancellationToken);
-    }
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        string meshName,
+    IZLinkSpotCreateCall Create(
+        ZLinkCreatableSpotKind kind,
+        string spotType);
+    IZLinkSpotGetOrCreateCall GetOrCreate(
         RoutingId spotRid,
-        ZLinkMessage request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot, TRequest>(
-        string meshName,
-        RoutingId spotRid,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot
-    {
-        // Typed request는 ZLinkMessage overload로 연결한다.
-        return GetOrCreateAsync<TSpot>(
-            meshName,
-            spotRid,
-            ZLinkMessage.From(request),
-            cancellationToken);
-    }
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        string meshName,
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotInfo?> FindAsync(
-        string meshName,
+        ZLinkCreatableSpotKind kind,
+        string spotType);
+    ValueTask<SpotRef?> FindAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-        string meshName,
-        CancellationToken cancellationToken = default);
-
     ValueTask<bool> CloseAsync(
-        string meshName,
-        RoutingId spotRid,
+        SpotRef spot,
         CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSpotCreateCall
+{
+    IZLinkSpotCreateCall InMesh(string meshName);
+    IZLinkSpotCreateCall Request(ZLinkMessage request);
+    IZLinkSpotCreateCall Request<TRequest>(TRequest request);
+    IZLinkSpotCreateCall PlacementProfile(string placementProfile);
+    IZLinkSpotCreateCall AffinityKey(string affinityKey);
+    IZLinkSpotCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSpotGetOrCreateCall
+{
+    IZLinkSpotGetOrCreateCall InMesh(string meshName);
+    IZLinkSpotGetOrCreateCall Request(ZLinkMessage request);
+    IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request);
+    IZLinkSpotGetOrCreateCall PlacementProfile(string placementProfile);
+    IZLinkSpotGetOrCreateCall AffinityKey(string affinityKey);
+    IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotPublisherClient
@@ -507,9 +447,9 @@ public interface IZLinkSpotPublisherClient
 }
 ```
 
-`InstanceSpotAddress.MeshName`과 `InstanceSpotType`은 비어 있을 수 없고 UTF-8로 각각 255 byte 이하여야 한다.
-`SpotRid`는 빈 RID일 수 없다. Equality와 hash는 세 값을 모두 사용하지만 location key의 유일성은
-`(MeshName, SpotRid)`가 소유한다. 같은 key에 다른 Instance type이나 User Spot을 함께 둘 수 없다.
+User·Instance SpotRid는 global key다. Stable type은 UTF-8 1..255 bytes이며 case-sensitive exact value로
+비교하고 normalization하지 않는다. `SpotRef.ObjectGeneration`은 1..`long.MaxValue`다. MeshName과 NodeRid는
+조회 시점의 route snapshot이며 identity key에 포함하지 않는다.
 
 `IZLinkInstanceSpot`은 `IZLinkSpot`을 상속하지 않는 actor-free lifecycle interface다. Direct packet과 timer
 handler만 등록할 수 있고 Actor handler나 Logical Multicast subscription을 등록하면 Framework가
@@ -517,35 +457,28 @@ handler만 등록할 수 있고 Actor handler나 Logical Multicast subscription�
 `OnInitializeAsync`, Location `Ready` commit 순서로 실행한다. `OnCreateAsync` 또는 empty
 `ZLinkMessage`를 사용하지 않으며 첫 업무 message는 barrier 뒤 direct handler에 전달한다.
 
-Store-backed dynamic User Spot도 authority 내부 `Creating` row를 `NewObject` CAS로 만든 뒤 factory,
-`Configure`, `OnInitializeAsync`를 완료하고 `Ready` CAS를 수행한다. Resolve와 remote messaging은 `Ready`만
-사용한다. 실패하면 exact owner fence로 delete하고 결과를 read해 reconcile한다. Delete가 확인될 때까지 같은
-typed failure를 반환하고 hidden retry는 0이며, `Missing`이 확인된 뒤 다음 caller만 새 create를 시작한다. 이
-barrier를 제어하는 public API는 없다.
+Store-backed User·Instance Spot도 generic placement reservation으로 `Creating` row와 target pending capacity를
+함께 확보한 뒤 factory, `Configure`, `OnInitializeAsync`를 수행한다. 성공하면 같은 reservation을 `Ready`와
+active capacity로 commit하고 실패하면 abort한다. Resolve와 remote messaging은 `Ready`만 사용한다. CAS loser는
+별도 factory를 시작하지 않으며 exact reservation 결과를 read해 reconcile한다. 이 barrier를 제어하는
+application API는 없다.
 
-User Spot의 `CloseAsync`는 active Actor membership이 있으면 `false`를 반환한다. Spot state, admission과
-authority는 바꾸지 않고 `OnClosingAsync`를 호출하거나 Actor를 자동 leave·destroy하지 않는다. Caller는
-Actor를 명시적으로 leave 또는 destroy한 뒤 다시 close한다. Manager에서 Spot이 missing인 경우도 `false`이므로
-caller는 사전 read 없이 두 경우를 구분하지 않는다. Host Shutdown·Retire는 Actor barrier를 끝낸 뒤 Spot
-cleanup을 수행한다.
+`CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면
+`SpotGenerationStale`, pre-commit seal 중이면 `SpotMoving`이다. User Spot에 Actor membership이 남아 있으면
+`false`이며 Actor를 자동 leave·destroy하지 않는다. Framework는 current ref를 다시 찾아 다른 incarnation을
+닫지 않는다.
 
-Instance address overload가 반환한 `IZLinkSendCall`은 cache 상태와 관계없이 `SubmitAsync()`로만 제출한다.
-Source는 location resolve·eligible target 선택과 `ColdActivating` CAS claim을 outbound보다 먼저 같은 send
-deadline 안에서 완료한다. Target은 source가 확정한 token과 generation을 다시 검증하고 factory activation과
-`Ready` CAS만 수행하며 target-side claim을 시작하지 않는다. `SubmitAsync()`는 source local outbound
-admission까지 기다리지만 target factory 실행, activation queue 수락, `Ready`와 원격 handler 완료는 기다리지
-않는다. Request는
-`IZLinkRequestCall`의 timeout과 비동기 실행 계약을 사용한다. Caller는 target
-node, owner token, generation, `createIfMissing` 또는 retry option을 전달하지 않는다. `IZLinkSpotManager`의
-`CreateAsync<TSpot>`와 `GetOrCreateAsync<TSpot>`는 `IZLinkSpot` User Spot만 받고 `meshName`이 선택한 local
-MeshNode에서만 생성한다. `IZLinkInstanceSpot`을 받는 별도 create overload는 없다. `FindAsync`는 local
-existing-only 조회이고 missing Spot을 만들지 않는다. Remote 위치 조회와 messaging handle 획득은 별도
-resolver가 소유한다.
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
+`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. `InMesh(...)` 선택과 오류, placement option 및 전체
+deadline 규칙은 Actor create와 같다. `Create`는 Framework가 새 global RID를 발급한다. `GetOrCreate`는 같은
+kind·stable type의 Ready 또는 Creating attempt에 합류하고 CAS loser가 별도 factory를 실행하지 않는다. Kind나
+type이 다르면 `SpotTypeMismatch`, deadline 안에 terminal state가 되지 않으면 `DeadlineExceeded`다. Creation
+request는 최대 1 MiB이며 reservation 전에 immutable reference와 hash로 보관한다.
 
-Framework public contract에는 Instance activation driver, native token, owner admission handle과 placement
-SPI를 제공하지 않는다. Runtime은 bindings의 public raw socket API와 Framework가 소유한 location authority를
-조합해 cold activation을 내부에서 수행한다. `InstanceSpotAddress` overload만 missing Instance의 cold
-activation을 허용한다. `SpotHandle`과 `IZLinkSpotManager`는 remote activation을 시작하지 않는다.
+Instance Spot의 최초 create intent만 kind, stable type과 initial Mesh를 기록한다. Ready 이후의 message는
+SpotRid만 사용한다. Owner loss 뒤 reactivation도 저장한 intent를 사용하며 message 호출이 새 intent를 만들지
+않는다. Public activation driver, address, handle, resolver와 unbounded list는 제공하지 않는다. 운영 조회는
+Location runtime의 page size 1..1000, encoded page 4 MiB 이하인 paged query가 소유한다.
 
 Cold Instance factory·initialize가 실패하면 durable public `Failed` state를 게시하지 않는다. Runtime은 local
 failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 reconcile한다. Delete 확인 전 같은 address

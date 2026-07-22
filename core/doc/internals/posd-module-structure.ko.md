@@ -15,7 +15,7 @@ service 의미를 Core helper나 option으로 다시 노출하지 않는다.
 | Socket semantics | socket type별 routing, multipart와 request correlation |
 | Runtime core | context, session, pipe, mailbox command와 lifecycle |
 | Engine | ZMP·RAW framing과 handshake |
-| Transport | TCP, WebSocket, IPC, inproc, PGM과 TLS I/O |
+| Transport | TCP, WebSocket, IPC, inproc과 TLS I/O |
 
 Public API가 transport type이나 protocol parser를 직접 분기하지 않는다. Runtime core는 socket type별 정책을
 알지 않으며 engine은 application payload 의미를 해석하지 않는다.

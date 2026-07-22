@@ -1,7 +1,11 @@
 # Service wire protocol
 
+이 문서는 RouteMesh 11.0 목표 구조를 설명한다. 현재 구현과의 차이와 완료 상태는
+`framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
+
 [내부 구조 목차](README.ko.md) · [Runtime architecture](service-runtime-architecture.ko.md) ·
 [Location runtime](../../spec/server/40-location-runtime.ko.md) ·
+[Redis Transfer Store](../../spec/server/42-transfer-store-redis.ko.md) ·
 [Transport liveness](../../spec/server/55-transport-liveness.ko.md)
 
 ## 1. Schema와 생성 경계
@@ -20,6 +24,11 @@ node framework/runtime/protocol/validate-service-wire-schema.mjs \
 
 Wire major는 `1`이고 required capability는 `framework-service-v11`이다. Schema와 golden fixture가 다르거나
 validator가 undefined type, 중복 ID, 잘못된 enum·bound·conditional field를 발견하면 build를 중단한다.
+
+Location Store canonical authority key도 같은 schema와 golden fixture가 고정한다. Actor key는
+`zla1:a:<byte-length>:<encoded-ActorId>`, Spot key는 `zla1:s:<byte-length>:<encoded-SpotRid>` 형식이다.
+MeshName은 key에 포함하지 않으며 authority payload의 current placement attribute로만 저장한다. Percent encoding은
+RFC 3986 unreserved byte만 그대로 두고 나머지는 uppercase hex로 표현한다.
 
 ## 2. Record framing과 decode
 
@@ -146,7 +155,7 @@ payload가 정확하지 않으면 즉시 protocol error다. Public topic derivat
 ## 6. `framework-json-v1`
 
 Application payload와 Snapshot state는 같은 typed JSON profile을 사용한다. Runtime은 다음 규칙을 모든 언어에
-같게 적용한 뒤 원본 UTF-8 bytes를 전달하거나 checkpoint에 보존한다.
+같게 적용한 뒤 원본 UTF-8 bytes를 전달하거나 transfer envelope에 보존한다.
 
 - UTF-8 BOM은 허용하지 않는다. Property name과 enum name은 대소문자를 구분한다.
 - Property 순서와 의미 없는 whitespace는 의미가 없다. 중복 property와 누락된 required property는 거부한다.
@@ -159,42 +168,40 @@ Application payload와 Snapshot state는 같은 typed JSON profile을 사용한�
 `StateContractId`는 호환되는 typed Snapshot adapter를 선택한다. Serializer를 application option으로 선택하는
 값이 아니다.
 
-## 7. Durable authority와 local creation
+## 7. Durable authority와 explicit creation
 
 Store-backed authority는 provider가 발급한 `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`과 current
 host의 `OwnerId`, `OwnerLeaseGeneration`을 분리해 보존한다. Object generation은 delete 뒤 같은 canonical key로
 새 object를 만들 때만 바뀐다. Authority owner generation은 같은 object의 owner 변경을 fence한다. Host owner
 lease token은 process 전체가 공유한다.
 
-Actor와 User Spot create는 `NewObject` CAS가 final object·owner generation과 `Creating` row를 먼저 만든다. Factory,
-initialize와 Actor의 initial Entry Spot membership이 끝나야 같은 fence로 `Ready` CAS를 수행한다. Resolver와 remote
-messaging은 `Ready`만 노출한다. Entry Spot은 startup initialization을 끝낸 뒤 host가 `Serving`이 되기 전에
-publish한다.
+Actor와 User·Instance Spot manager create는 generic reservation 뒤 `NewObject` CAS로 final object·owner generation과
+`Creating` row를 만든다. Creation record는 object kind, global key, stable type, target descriptor, capacity delta,
+fence와 최대 1 MiB request content reference·hash를 보존한다. Factory, initialize와 initial membership이 끝나야
+같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Manager `Find`와 ID-only messaging은 `Ready`만 사용한다.
+Entry Spot은 startup initialization 뒤 host가 `Serving`이 되기 전에 publish하며 caller가 생성하지 않는다.
 
 Factory 실패는 local barrier를 failed 상태로 seal하고 waiting request를 한 번만 terminal 처리한다. One-way
 operation은 drop event를 기록한다. Runtime은 exact Store version, object·owner generation과 owner lease로 row를
 삭제하고 ambiguous 결과를 read로 reconcile한다. Local registry는 `Missing`을 확인할 때까지 failed 상태를
 유지하며, 그 다음 caller만 새 `NewObject`를 시작할 수 있다.
 
-Store를 사용하지 않는 Actor와 Spot은 runtime-local opaque authority만 가진다. Same-process call은 가능하지만
-remote resolve, distributed join, transfer와 session binding은 제공하지 않는다.
+Object `Client`와 `Server` role은 Location Store를 요구한다. Object `None` role은 authority와 hidden local
+runtime을 만들지 않는다.
 
-## 8. Instance Spot cold activation
+## 8. Instance Spot reactivation
 
-Cold Instance send·request의 source runtime이 target을 선택하고 outbound admission 전에 `NewObject` CAS로
-`ColdActivating` row를 만든다. Target은 owner claim을 수행하지 않는다. Target은 received placement와 current
-authority를 exact 비교한 뒤 factory·initialize를 실행하고 같은 fence로 `Ready`를 commit한다.
+Normal Instance send·request는 global SpotRid만 포함하며 create command가 아니다. Runtime이 사라진 durable
+Instance authority는 stored creation intent로 reactivation한다. Target host는 startup initial scan과 bounded
+background scan에서 자신이 소유한 `Creating` 또는 reactivation authority를 재개한다. Scan과 late control record는
+object key, object·owner generation과 owner lease로 key를 정한 local barrier 하나로 수렴한다. Original application
+payload를 hidden replay하지 않는다.
 
-`ColdActivating` row 자체가 durable activation intent다. Target host는 startup initial scan과 bounded background
-scan에서 자신이 소유한 row를 재개한다. Scan과 늦은 submit은 object key, object·owner generation과 owner lease로
-key를 정한 local barrier 하나로 수렴한다. Source submit이 유실돼도 target은 activation을 복구하지만 original
-application payload를 숨겨서 다시 보내지 않는다.
-
-Activation 실패는 local barrier를 seal하고 request를 한 번만 terminal 처리한 뒤 one-way drop event를 기록한다.
+Reactivation 실패는 local barrier를 seal하고 request를 한 번만 terminal 처리한 뒤 one-way drop event를 기록한다.
 그 다음 exact fenced delete와 read reconcile을 수행한다. Delete 전 process가 종료되면 target scan은 retry-safe
 factory를 다시 실행할 수 있다. `Missing`이 확인되기 전에는 새 activation을 시작하지 않는다.
 
-## 9. Maintenance capture와 checkpoint
+## 9. Maintenance capture와 transfer envelope
 
 Retire seal은 accepted boundary를 고정한다. Source lifetime이 `connectionBound`인 accepted send·request와 모든
 bound-session request는 `Captured` 전에 terminal state까지 drain한다. 이 work는 frozen journal에 기록하지 않는다.
@@ -203,22 +210,27 @@ admission을 복원한다.
 
 Durable frozen record는 `leaseBacked` source만 허용한다. 각 record는 exact source node lifecycle과
 `OwnerId`·`OwnerLeaseGeneration`을 포함하며 replay 전 current authority와 비교한다. Connection lifetime에만 묶인
-record를 checkpoint에 넣는 것은 protocol error다.
+record를 transfer envelope에 넣는 것은 protocol error다.
 
-Framework는 accepted journal과 optional application state를 deterministic `checkpoint-envelope-v1` stream으로
+Framework는 accepted journal과 optional application state를 deterministic `transfer-envelope-v1` stream으로
 encode한다. 모든 immutable chunk를 쓰고 root manifest를 쓴 다음 authority의 `Captured` CAS로 root를 연결한다.
 이 CAS가 durability boundary다. `Captured` 전에 source가 종료되면 transfer를 abort하며 continuity replay를
 보장하지 않는다. CAS에 연결되지 않은 chunk와 manifest는 orphan이다.
 
-Checkpoint root retention은 24시간이고 renew threshold는 12시간이다. `Captured`와 `Prepared` CAS 직전에 complete
+Location Store authority는 phase, `TransferId`, source·target fence, root reference·checksum, bounded canonical
+participant set·mutation·aggregate generation·inventory digest와 replay·completion count를 원자적으로 CAS한다.
+Transfer Store manifest는 participant별 payload를 찾기 위한 같은 inventory digest의 projection이며 owner와
+membership authority가 아니다. 두 Store는 distributed transaction이나 2PC를 사용하지 않는다.
+
+Transfer root retention은 24시간이고 renew threshold는 12시간이다. `Captured`와 `Prepared` CAS 직전에 complete
 tree가 threshold보다 오래 유지되는지 확인하거나 renew한다. Reader는 current authority가 가리키는 root만 읽고
 chunk checksum과 전체 checksum을 streaming으로 검증한다.
 
 ## 10. Transfer, Actor membership과 Ready
 
-`TransferId`는 runtime이 CSPRNG로 만든 non-zero 128-bit 값이다. Active transfer와 retained checkpoint root의 ID가
+`TransferId`는 runtime이 CSPRNG로 만든 non-zero 128-bit 값이다. Active transfer와 retained transfer root의 ID가
 충돌하면 다시 만들며 application에 노출하지 않는다. 같은 transfer에서 target을 바꿀 때는 stable `TransferId`와
-checkpoint를 유지하고 `TargetAttemptGeneration`만 증가시킨다.
+transfer root를 유지하고 `TargetAttemptGeneration`만 증가시킨다.
 
 Authority phase는 다음 순서와 closed owner rule을 따른다.
 
@@ -233,13 +245,13 @@ Preparing..Prepared -> Aborted
 `Preparing`과 `Captured`의 main owner는 source이고 target reservation은 없다. `Prepared`는 source owner와 exact
 target attempt·reservation을 함께 보존한다. `Committed`부터 `Completed`까지 main owner는 current target이다.
 각 transition은 expected `StoreVersion` CAS다. Target replacement는 target attempt, target owner lease와 reservation만
-바꾸며 stable identity와 checkpoint를 바꾸지 않는다.
+바꾸며 stable identity와 transfer root를 바꾸지 않는다.
 
-Actor Retire는 source Entry Spot의 current member만 허용한다. User Spot member Actor가 있으면 preflight를
-`Blocked/TransferDisabled`로 끝내고 state와 admission을 유지한다. Target offer는 initialized target Entry Spot
-identity를 고정한다. `Committed` CAS는 Actor owner, `AuthorityOwnerGeneration`과 current target Entry Spot membership을
-한 번에 바꾼다. Target은 factory·restore, target Entry Spot joined callback, journal replay 순서로 처리한다. Source는
-leave callback과 old Entry membership cleanup을 durable하게 끝낸다.
+User Spot과 member Actor transfer는 non-zero 128-bit aggregate ID와 exact participant inventory를 사용한다.
+Participant는 최대 1024개이고 encoded aggregate는 최대 1 MiB다. Target offer는 Spot과 member Actor의 global
+identity, ObjectGeneration, kind와 capacity reservation을 고정한다. `Committed` CAS는 aggregate owner와 membership
+visibility를 원자적으로 바꾼다. Target은 factory·restore, joined callback과 journal replay 순서로 처리한다. Source는
+leave callback과 old membership cleanup을 durable하게 끝낸다.
 
 `Activated`는 Ready가 아니다. Target application admission은 durable source cleanup, `Completed` CAS, bound-session
 route ACK와 steady authority normalization이 모두 끝날 때까지 닫혀 있다. Abort도 source route ACK와 steady source
@@ -251,14 +263,19 @@ normalization이 끝난 뒤 admission을 복원한다.
 runtime error다. Operation ID는 deduplication identity이고 reply route를 대신하지 않는다. Durable terminal
 identity는 stable `TransferId`와 `OperationId` 조합이다.
 
-Target은 terminal completion과 delivery state를 새 immutable checkpoint root에 쓴 뒤 authority CAS로
+Target은 terminal completion과 delivery state를 새 immutable transfer root에 쓴 뒤 authority CAS로
 `TerminalCompletionCount`와 `PendingRelayCount`를 함께 갱신한다. `replyRelay`는 original reply route와 exact request
 source lease fence를 사용한다. Source는 terminal result를 수락하거나 이미 terminal임을 확인한 뒤 authenticated
 `replyRelayAck`을 보낸다. Physical connection close는 terminal delivery의 증거가 아니다.
 
 `Completed`는 accepted request count와 terminal completion count가 같고 pending relay가 0일 때만 허용한다. Source
-lease가 유효한 동안 ACK를 확인하지 못하면 Retire는 checkpoint와 reply bytes를 retention 동안 보존한 채
+lease가 유효한 동안 ACK를 확인하지 못하면 Retire는 transfer root와 reply bytes를 retention 동안 보존한 채
 `ForceStopped`로 끝난다.
+
+Root replacement는 새 immutable root의 reference·checksum·inventory digest를 검증한 뒤 authority CAS로 연결한다.
+Conflict loser root는 orphan으로 정리한다. Cleanup은 Location authority에서 reference를 release한 뒤 Transfer
+Store delete를 수행한다. Published reference의 permanent missing, checksum mismatch 또는 inventory digest mismatch는
+non-retriable `TransferDataLost`이며 commit된 owner·membership을 source로 rollback하지 않는다.
 
 ## 12. 구현 검증
 
@@ -266,8 +283,10 @@ lease가 유효한 동안 ACK를 확인하지 못하면 Retire는 checkpoint와 
 - 모든 decoder가 allocation 전에 complete length, count, enum, flag와 topology direction을 검사한다.
 - Manual lifecycle token을 숫자 순서로 비교하지 않고 `DescriptorRevision`만 ordering에 사용한다.
 - Application traffic이 probe round-trip deadline을 연장하지 않는다.
-- Connection-bound accepted work가 checkpoint에 들어가지 않는다.
+- Connection-bound accepted work가 transfer envelope에 들어가지 않는다.
 - `Captured` CAS 전 crash를 durable replay로 처리하지 않는다.
+- Transfer root write·verify가 authority CAS보다 먼저이고 authority reference release가 root delete보다 먼저다.
+- Location participant digest와 Transfer manifest digest mismatch가 `TransferDataLost`로 끝난다.
 - Actor transfer commit이 owner와 target Entry Spot membership을 atomic하게 바꾼다.
 - `Activated`에서 Ready를 publish하지 않는다.
 - `framework-json-v1` golden fixture가 네 runtime에서 같은 typed value와 failure를 만든다.

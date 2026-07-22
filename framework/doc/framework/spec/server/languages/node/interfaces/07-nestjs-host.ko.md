@@ -16,8 +16,6 @@ export declare const ZLINK_ACTOR_CLIENT: unique symbol;
 
 export declare const ZLINK_ACTOR_MANAGER: unique symbol;
 
-export declare const ZLINK_ACTOR_SPOT_HANDLE_RESOLVER: unique symbol;
-
 export declare const ZLINK_BOUND_SESSION_FACTORY: unique symbol;
 
 export declare const ZLINK_CHANNEL_CLIENT: unique symbol;
@@ -49,8 +47,6 @@ export declare const ZLINK_NEST_HANDLER_GROUP: unique symbol;
 export declare const ZLINK_ROUTE_CLIENT: unique symbol;
 
 export declare const ZLINK_RUNTIME_EVENT_PUBLISHER: unique symbol;
-
-export declare const ZLINK_SPOT_HANDLE_RESOLVER: unique symbol;
 
 export declare const ZLINK_SPOT_MANAGER: unique symbol;
 
@@ -146,8 +142,7 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
     routingId(routingId: string | undefined): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
+    setRoutingIdPrefix(prefix: string): this;
     enableSubscriber(endpoint?: string | readonly string[]): this;
     addPublishHandler(packetName: string, handlerType: Type): this;
     addHandlerGroup(groupName: string): this;
@@ -167,7 +162,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
     codecs(): ZLinkNestCodecRegistryBuilder;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
     addLocationStore(store: ZLinkLocationStore): this;
-    addCheckpointStore(store: ZLinkCheckpointStore): this;
+    addTransferStore(store: ZLinkTransferStore): this;
     setApplicationVersion(version: bigint): this;
     setMaintenanceWave(waveId: string): this;
     setActorTransferForwardWindow(timeoutMs: number): this;
@@ -215,26 +210,42 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
     routingId(routingId: string | undefined): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
+    setRoutingIdPrefix(prefix: string): this;
+    setPlacementWeight(weight: number): this;
+    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    objects(): ZLinkNestMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
     peerConnections(): ZLinkMeshPeerConnections;
     addSendHandler(packetName: string, handlerType: Type): this;
     addRequestHandler(packetName: string, handlerType: Type): this;
-    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+}
+
+export interface ZLinkNestMeshObjectRoleBuilder extends ZLinkNestFrameworkOptionsBuilder {
+    client(): ZLinkNestMeshObjectClientBuilder;
+    server(): ZLinkNestMeshObjectServerBuilder;
+}
+
+export interface ZLinkNestMeshObjectClientBuilder extends ZLinkNestFrameworkOptionsBuilder {
+}
+
+export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOptionsBuilder {
     addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
-    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+    addSpotFactory<TSpot extends ZLinkSpot>(
+        spotType: string,
+        implementation: Type<TSpot>,
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
-        spotType: Type<TSpot>,
-        options?: ZLinkInstanceSpotFactoryOptions,
-        transfer?: ZLinkTransferPolicy<TSpot>): this;
-    actorFactory(actorType: string, factoryType: Type): this;
-    actorFactory<TActor extends ZLinkActor>(
+        implementation: Type<TSpot>,
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TSpot>): this;
+    addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        transfer?: ZLinkTransferPolicy<TActor>): this;
+        placement: ZLinkObjectPlacementOptions | undefined,
+        transfer: ZLinkTransferPolicy<TActor>): this;
 }
 
 export interface ZLinkNestMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
@@ -309,7 +320,7 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
     bind(port?: number): this;
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
-    enableActorDispatch(meshName: string): this;
+    enableActorDispatch(): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }

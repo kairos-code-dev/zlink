@@ -15,7 +15,6 @@ Spot·Actor 등록과 실행 중 weight 변경의 정확한 C# signature를 이 
 public interface IZLinkFrameworkOptions
 {
     TimeSpan DefaultRequestTimeout { get; set; }
-    TimeSpan ActorTransferForwardWindow { get; set; }
     TimeSpan DefaultSocketSendTimeout { get; set; }
     long ApplicationVersion { get; set; }
     string? MaintenanceWave { get; set; }
@@ -28,7 +27,7 @@ public interface IZLinkFrameworkOptions
     void DisableImplicitHandlerAutoRegistration();
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
     void AddLocationStore(IZLinkLocationStore store);
-    void AddCheckpointStore(IZLinkCheckpointStore store);
+    void AddTransferStore(IZLinkTransferStore store);
     ZLinkLocationOptions ConfigureLocations();
     IZLinkNetworkOptions ConfigureNetwork();
     IZLinkDispatchOptions ConfigureDispatch();
@@ -49,11 +48,12 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder SetBindHost(string bindHost);
     IZLinkMeshNodeBuilder SetAdvertiseHost(string advertiseHost);
     IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId);
-    IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount);
-    IZLinkMeshNodeBuilder UseAllocatedRoutingId(
-        int slotCount,
-        string routingIdPrefix);
-    IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName);
+    IZLinkMeshNodeBuilder SetRoutingIdPrefix(string prefix);
+    IZLinkMeshNodeBuilder SetPlacementWeight(int weight);
+    IZLinkMeshNodeBuilder SetObjectCapacity(
+        int maxActiveObjects,
+        int maxPendingActivations);
+    IZLinkMeshObjectRoleBuilder Objects();
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
     IZLinkMeshPeerConnections PeerConnections { get; }
@@ -70,28 +70,46 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    IZLinkEntrySpotOptions ConfigureEntrySpot();
-    IZLinkMeshNodeBuilder SetEntrySpotRoutingId(RoutingId routingId);
-    IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
-        where TSpot : IZLinkSpot;
-    IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
+}
+
+public interface IZLinkMeshObjectRoleBuilder
+{
+    IZLinkMeshObjectClientBuilder Client();
+    IZLinkMeshObjectServerBuilder Server();
+}
+
+public interface IZLinkMeshObjectClientBuilder
+{
+}
+
+public interface IZLinkMeshObjectServerBuilder
+{
+    IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : class, IZLinkEntrySpot;
+    IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+        string spotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkTransferPolicy<TSpot> transfer)
+        where TSpot : class, IZLinkSpot;
+    IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options = null)
-        where TSpot : class, IZLinkInstanceSpot;
-    IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
-        string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options,
+        ZLinkObjectPlacementOptions? placement,
         ZLinkTransferPolicy<TSpot> transfer)
         where TSpot : class, IZLinkInstanceSpot;
-    IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot;
-    IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
-    IZLinkMeshNodeBuilder AddActorFactory<TActor, TFactory>(
+    IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
+        ZLinkObjectPlacementOptions? placement,
         ZLinkTransferPolicy<TActor> transfer)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
+}
+
+public sealed record ZLinkObjectPlacementOptions
+{
+    public IReadOnlyCollection<string> PlacementProfiles { get; init; }
+        = Array.Empty<string>();
+    public int? MaxActiveObjects { get; init; }
+    public int? MaxPendingActivations { get; init; }
 }
 
 public interface IZLinkNetworkOptions
@@ -166,11 +184,7 @@ public interface IZLinkFanoutChannelBuilder
     IZLinkFanoutChannelBuilder SetBindHost(string bindHost);
     IZLinkFanoutChannelBuilder SetAdvertiseHost(string advertiseHost);
     IZLinkFanoutChannelBuilder SetRoutingId(RoutingId publisherRoutingId);
-    IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount);
-    IZLinkFanoutChannelBuilder UseAllocatedRoutingId(
-        int slotCount,
-        string routingIdPrefix);
-    IZLinkFanoutChannelBuilder SetRoutingIdAllocationGroup(string groupName);
+    IZLinkFanoutChannelBuilder SetRoutingIdPrefix(string prefix);
     IZLinkFanoutChannelBuilder EnableSubscriber();
     IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint);
     IZLinkEndpointConnections SubscriberConnections { get; }
@@ -185,7 +199,7 @@ public interface IZLinkStreamNodeBuilder
     IZLinkStreamNodeBuilder Bind(int port = 0);
     IZLinkStreamNodeBuilder SetBindHost(string bindHost);
     IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
-    IZLinkStreamNodeBuilder EnableActorDispatch(string meshName);
+    IZLinkStreamNodeBuilder EnableActorDispatch();
     IZLinkStreamNodeBuilder SetTlsServer(
         string certificatePath,
         string keyPath,
@@ -230,17 +244,19 @@ reply만 제공하며 연결된 client로 새 업무 호출을 시작하지 않�
 listener 호출 자체를 생략하면 port `0`으로 bind한다. Manual mode에서 endpoint를 다른 discovery source로
 얻지 못하면 listen port와 remote endpoint를 명시한다. Listener별 host 설정은 root 기본값보다 우선한다.
 
-Location store를 등록한 fanout publisher는 고정 Publisher RID와 자동 할당 중 하나를 startup 전에
-선택하고 전용 descriptor를 게시한다. Store가 없는 publisher는 listener endpoint를 수동으로 전달하는
-대상으로 계속 사용할 수 있지만 RID allocation과 automatic discovery 등록은 수행하지 않는다. Endpoint를
+Location store를 등록한 fanout publisher는 Framework가 lifecycle별 RID를 만들고 전용 descriptor를 게시한다.
+Store가 없는 publisher는 fixed RID와 listener endpoint를 수동으로 전달하는 대상으로 계속 사용할 수 있다.
+Endpoint를
 받지 않는 `EnableSubscriber()`는 location store에서 같은 ChannelName의 유효한 publisher를 모두 발견한다.
 `ConnectSubscriber(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 한 fanout
 channel에서 automatic subscriber와 manual subscriber를 함께 설정하면 startup이 실패한다. Automatic
 subscriber는 location store가 필요하지만 manual publisher와 manual subscriber만 사용하는 host에는
 필요하지 않다.
 
-`UseAllocatedRoutingId(...)`의 `slotCount`는 `1..65535`다. 같은 allocation group에 정규화한 MeshNode와
-fanout publisher member를 합쳐 `1..255`개만 둘 수 있으며 범위를 벗어나면 startup 설정 오류다.
+Automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이고 full
+RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대 8회 재시도하며 모두 충돌하면
+`RoutingIdConflict`다. Fixed `SetRoutingId(...)`는 object role과 Store descriptor가 없는 manual topology에서만
+허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
@@ -255,29 +271,32 @@ discovery 결과는 이 handle로 변경하지 않는다.
 추가한다. Scan에 사용하는 method, group과 packet attribute의 정확한 선언은
 [Common runtime](01-common-runtime.ko.md)가 소유한다.
 
-`EnableActorDispatch(meshName)`은 STREAM node가 session Actor dispatch에 사용할 MeshName 하나를 고정한다.
-같은 builder에서 두 번 호출하거나 등록되지 않은 MeshName을 지정하면 startup이 실패한다. Actor dispatch를
-사용하지 않는 STREAM node는 이 메서드를 호출하지 않아도 된다. Session의 `BindAsync(ActorRef)`는 이
-MeshName context를 사용하므로 호출마다 mesh 이름을 받지 않는다.
+`EnableActorDispatch()`는 STREAM node의 Actor dispatch capability만 활성화한다. 같은 host에 object role이
+`Client` 또는 `Server`인 Mesh와 Location Store가 없으면 startup이 실패한다. Global ActorId가 current Mesh와
+owner route를 결정하므로 이 설정은 MeshName을 받지 않는다.
 
 `DefaultRequestTimeout`의 기본값은 30초, `DefaultSocketSendTimeout`의 기본값은 1초다. `Worker`는 bounded
 worker scheduler의 최소·최대 thread 수, idle timeout과 queue 상한을 host startup 전에 설정한다. Raw receive
 batch와 service protocol claim 크기는 public 설정으로 노출하지 않는다.
 
 `ConfigureStreamCompression()`과 `IZLinkStreamCompressionBuilder`는 STREAM payload compression을 고른다.
-이 builder는 service transport lifecycle이나 checkpoint codec을 설정하지 않는다.
+이 builder는 service transport lifecycle이나 transfer codec을 설정하지 않는다.
 
 `ApplicationVersion`은 host 전체에 한 번 설정하며 `0..long.MaxValue` 범위이고 기본값은 `0`이다. 모든 local
 MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfigurationException`으로 거부한다.
 `MaintenanceWave`는 `null`이면 wave exclusion을 사용하지 않는 stable ID다.
 
-Policy를 받지 않는 Actor·Instance factory overload는 `ZLinkTransferPolicy<T>.Disabled`와 같다. Typed
-overload의 `transfer`가 `null`이면 `ArgumentNullException`으로 거부한다. Actor와 Instance Spot만 typed transfer
-policy를 받는다. User Spot용 `AddSpotFactory<TSpot>()`와 Entry Spot 등록에는 transfer parameter를 제공하지
-않는다.
+`Objects()`를 호출하지 않은 MeshNode의 object role은 `None`이다. `Client()`는 manager와 ID-only message
+client를 제공하지만 placement target이 되지 않는다. `Server()`는 Client capability를 포함하며 Entry Spot과
+factory를 등록한다. 두 role은 Location Store가 필수다. Role은 한 번만 선택할 수 있다.
 
-Actor transfer policy는 typed factory overload에서 factory와 함께 등록한다. 별도 transfer adapter registry나
-operation별 policy 입력은 제공하지 않는다.
+Actor·User Spot·Instance Spot factory는 stable type, placement option과 explicit transfer policy를 같은
+registration에서 고정한다. Policy를 생략하는 overload는 없다. Stable type과 placement profile은 UTF-8
+1..255 bytes이고 중복 type은 startup 오류다. Entry Spot RID는 Framework가 발급한다.
+
+Node placement weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending 128이다.
+Type별 limit은 `null`이면 node limit을 공유하고 값이 있으면 1..`int.MaxValue`이며 node limit보다 작은 값을
+적용한다. Capacity를 weight보다 먼저 적용하고 eligible node가 없으면 `PlacementCapacityExhausted`다.
 
 ## 3. Manual peer
 
@@ -295,10 +314,8 @@ public interface IZLinkMeshPeerConnections
 }
 ```
 
-`AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다. Option의
-`MaxActiveInstances`는 0 sentinel을 사용하지 않으며 option 인자를 생략하면 4096을 사용한다.
-`ActivationTimeout`도 0 sentinel을 사용하지 않으며 생략하면 3초를 사용한다.
-Option 객체를 제공하면 두 값은 모두 0보다 커야 하며 0을 sentinel이나 무제한으로 해석하지 않는다.
+`AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다. Type별 active와
+pending limit은 생략할 수 있지만 명시한 값은 1..`int.MaxValue`다.
 같은 MeshNode에서 같은 stable type 또는 같은 implementation class를
 User Spot factory와 Instance factory에 중복 등록할 수 없다. `TSpot`이 닫힌 generic
 `IZLinkSpotActorLifecycle<TActor>`도 구현하면
@@ -373,7 +390,13 @@ public interface IZLinkOutboundRouteConfig
 
 public interface IZLinkRouteMeshRuntimeOptions
 {
+    IZLinkMeshPlacementRuntimeOptions Mesh(string meshName);
     IZLinkMeshChannelRuntimeOptions Channel(string channelName);
+}
+
+public interface IZLinkMeshPlacementRuntimeOptions
+{
+    int PlacementWeight { get; set; }
 }
 
 public interface IZLinkMeshChannelRuntimeOptions
@@ -409,7 +432,8 @@ mailbox의 메시지 수와 byte 수 상한이다. 0은 Framework profile의 유
 `ConfigureRouterSocket()`에서 startup 전에 설정하며, Logical Multicast의 local target drop도 이 공개
 용량 설정을 따른다.
 
-실행 중에는 `Channel(channelName).Weight`만 변경할 수 있다.
+실행 중에는 `Mesh(meshName).PlacementWeight`와 `Channel(channelName).Weight`를 변경할 수 있다.
+두 weight는 서로 독립적이며 node weight는 object create·transfer target selection에만 사용한다.
 ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게 고른다. HWM과 timeout은
 `ConfigureRouterSocket()`에서 startup 전에 설정한다. MeshNode가 지원하지 않는 raw ROUTER option을 이
 interface에 노출하지 않는다.

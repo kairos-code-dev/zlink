@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3656,
-      "sha256": "691d5b8e82312e78f359e75a6c59aa5b2cd37270ea6ca4d28e92609cb97acf36",
+      "count": 3959,
+      "sha256": "d65da94a077093a9d219620aa409c3b1d3c92e9adac6ad8658132675065c55df",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 814,
-      "sha256": "8934babd691cdf530e21f30fc81ddcffed4b0867f83a34eda0de87106fba7477",
+      "count": 936,
+      "sha256": "6378e78bd931f119e1ea2aeec86d83fd6a1d907b0c11219f0d669a27745c212d",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 912,
-      "sha256": "195f08feb6c928924945f1d7d4caefe59a293e05185d52f0280da486b26c77e9",
+      "count": 1206,
+      "sha256": "2adc9c1de77f70456704767249107b8afbca41ff6eab9fee877dd6ec441f3bc6",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -65,6 +65,14 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_location_key_t.actor_id#5866697075a5fed1",
+        "baselineSignatureSha256": "5866697075a5fed16a47ce45f6ced307fec96c8b0f486be3ec0434193245fb00",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_location_key_t.actor_id#c7794d8997b89dd7",
+        "targetSignatureSha256": "c7794d8997b89dd7b0313ec9adfdf16e8dde8e977e589a7d60f6ee8ba2a05843",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_location_t.owner_node_generation#1f5a7fc3b76906a2",
         "baselineSignatureSha256": "1f5a7fc3b76906a247e864a46cfa96a0cf36e9921b986a3fd19c51891429587b",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_location_t.owner_node_generation#de9b2b32b042b1c3",
@@ -99,24 +107,16 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.actor_id#6055e801a1ba8933",
         "baselineSignatureSha256": "6055e801a1ba893339ebb7feb7e95eb5f0325f7feb60d8dd6ab49ae486c09d54",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.actor_id#3583b077083a55b2",
-        "targetSignatureSha256": "3583b077083a55b2fb24b6e4ac782b8cd77f4da89f1da77304260c376daf11f8",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.actor_id#bddafaa3b4715549",
+        "targetSignatureSha256": "bddafaa3b4715549c56d2776178ea59b750c3ac41032f59d407628a48607c8c2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.empty#e220bf0040f0e053",
-        "baselineSignatureSha256": "e220bf0040f0e053c61c563da10538e4cb1def78c784dad91b212c0e1ff8544b",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.empty#706ae24436b100fe",
-        "targetSignatureSha256": "706ae24436b100fe4a81d5925c60038087a705052e694ba5eeb545539cdc8e0d",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.generation#f774805ad9839baf",
-        "baselineSignatureSha256": "f774805ad9839bafb15339808fde0b11ac23e9304ce9f8977c1eb5eab8c1ff87",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.generation#c4a134ed7d8fb6b0",
-        "targetSignatureSha256": "c4a134ed7d8fb6b057cbc9f898af7e159c2478d5fb73ca3f4d53409d21021d8b",
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.actor_ref_t#4f7f3522d803da7d",
+        "baselineSignatureSha256": "4f7f3522d803da7dfc1b30111afbe17a0ae483fb8596487dac4cedbce12c4f9d",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_ref_t.actor_ref_t#6e501f32ccb13c40",
+        "targetSignatureSha256": "6e501f32ccb13c407c1a8f02cbba32104376e0d74ad00c4bcc3f56af4614f37f",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -529,18 +529,18 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_entry_spot#4c385d29a31cdb83",
-        "baselineSignatureSha256": "4c385d29a31cdb83082f0da089651264afc8501240e5c9b159ae20ee79f62483",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_entry_spot#8576cb1f5b6d384f",
-        "targetSignatureSha256": "8576cb1f5b6d384fc1e30c1dec4de3618466c51ce7bee821631c34fe829362de",
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#6815e691e5e6eea7",
+        "baselineSignatureSha256": "6815e691e5e6eea72c016364e7442389b2f838a3e093e4b15adf25f16e2dd8a3",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#fab57737262664cb",
+        "targetSignatureSha256": "fab57737262664cbf8c74ec88f33666511d33e5af59a8bb166660097ec82cf88",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_spot#5f642145ab5d46fa",
-        "baselineSignatureSha256": "5f642145ab5d46fa5e9939c4916f5366d0c2b1640562750ebd28e2902ed0cd28",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_spot#ee3fb6f178dfde0a",
-        "targetSignatureSha256": "ee3fb6f178dfde0ad689725fcfaec7508e277c2d61c613e03009cff641df401e",
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_entry_spot#4c385d29a31cdb83",
+        "baselineSignatureSha256": "4c385d29a31cdb83082f0da089651264afc8501240e5c9b159ae20ee79f62483",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_entry_spot#8576cb1f5b6d384f",
+        "targetSignatureSha256": "8576cb1f5b6d384fc1e30c1dec4de3618466c51ce7bee821631c34fe829362de",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -683,8 +683,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#dca021b9caff2c29",
         "baselineSignatureSha256": "dca021b9caff2c29a3e45a682585324efd0bb5def8c081c3259f58621d4a4c27",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#a41fd15798fbd602",
-        "targetSignatureSha256": "a41fd15798fbd602d0251a0deb880ea0996464bdc241d5aa3f2a8f30e882ce6e",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#9ac0fca51eaaa664",
+        "targetSignatureSha256": "9ac0fca51eaaa6640368bda65e29c8d15701b216c707c7387dbb5ec939a3ebd7",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -699,8 +699,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#af93c76a0468de69",
         "baselineSignatureSha256": "af93c76a0468de692df5890b65b7c47f3f7ee12c8fc777b93e32ce841264230a",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#78c07b88b1f29612",
-        "targetSignatureSha256": "78c07b88b1f2961231181f45aa8b80446d12672052d17364d2121a4996e515ea",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#2b9c7960eb8f6ba4",
+        "targetSignatureSha256": "2b9c7960eb8f6ba4b36ef2b8b610cc931ccc006d76cec1dbe68c60ed03026168",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -761,10 +761,18 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.find#8811a67dd095594f",
+        "baselineSignatureSha256": "8811a67dd095594fe692182071873efe63b22733d142116d7a5c0474c1d9074c",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_manager_t.find#dbf6813bcbdfee29",
+        "targetSignatureSha256": "dbf6813bcbdfee296d58494e6fbe6ede2130b489280d7838ab21612f980660b8",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.relay#7f0d1a45103f1ad3",
         "baselineSignatureSha256": "7f0d1a45103f1ad30e29977f3aa6997daa1b78dc24d65d050465cc9d2b826c6f",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.relay#9084adfbea66381e",
-        "targetSignatureSha256": "9084adfbea66381ebe0c27c29b3958bad08b12626ee3bde2b62076f99668c9c4",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::session_actor_t.relay#d0f0b828c960c0f5",
+        "targetSignatureSha256": "d0f0b828c960c0f5e34eefc0de13866780fcad988b8907110fdd142174a7c62a",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -785,6 +793,14 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#474ecba2939b8aeb",
+        "baselineSignatureSha256": "474ecba2939b8aebc444889adbc6f08333808cd88ef8452e945636d6d06bfb71",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#0341e8f3c7bfd112",
+        "targetSignatureSha256": "0341e8f3c7bfd112435305f2815a903cbb23ed4f82164d2434a33c578e3863d3",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.run_cpu_worker#50a7d6aa843764a7",
         "baselineSignatureSha256": "50a7d6aa843764a77564b87fa08db697a5837c4d198f3f72e2beb63c6156df08",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.run_cpu_worker#006b8d496720b1b0",
@@ -797,6 +813,14 @@
         "baselineSignatureSha256": "544670b9335b951b68bfd05f2a01af638e7b050402ecded3ea1394d6eb7d1fc5",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.run_io_worker#2636f53db336bbaf",
         "targetSignatureSha256": "2636f53db336bbaf70b7647fa37e34ef835d586522cbbad253e8953fc7e5a93f",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#14914b3e0a554dca",
+        "baselineSignatureSha256": "14914b3e0a554dca7574773106b334a4deb7735d3705f92f79bf454d803b9041",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#45bc0e6076bde018",
+        "targetSignatureSha256": "45bc0e6076bde01894ce5234d6a133b9c2a3e47cfa72b104844f6ccf79b796c5",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -841,18 +865,18 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_handle_t.spot_rid#24920f7518708c39",
-        "baselineSignatureSha256": "24920f7518708c39d0dca59a8db6e9ae15ac37d53208fc21f92fed9ce4c90988",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_handle_t.spot_rid#f2bf360c66378a43",
-        "targetSignatureSha256": "f2bf360c66378a43b16ba99cdd719d7668083e894d085c7a9844d79975205067",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_handler_registry_t.add_subscribe#be8169b0a58ee3cb",
         "baselineSignatureSha256": "be8169b0a58ee3cbd857c8ac4807b23d0fd286977c6d24e1ebb95cbf0947db45",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_handler_registry_t.add_subscribe#aa45a7f3ac857291",
         "targetSignatureSha256": "aa45a7f3ac857291d66df501fa478dc40308ef629a48ae7da4577ff6cdbb84ae",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_location_key_t.spot_rid#ace4044ab2e90efe",
+        "baselineSignatureSha256": "ace4044ab2e90efe6d72c059ac6eb9a2010d5ae05154244f16f71e2c61ee2b6c",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_location_key_t.spot_rid#7b059f3cef8b5e9c",
+        "targetSignatureSha256": "7b059f3cef8b5e9c16ca2cb22c7aa65a1e40fdf60c40c47016789e190ed70dcd",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -897,50 +921,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.can_reply#ad83d5d50ecc741f",
-        "baselineSignatureSha256": "ad83d5d50ecc741f41099e8919fc01745da6609f52f1f07078fa92f9ce9229d2",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.can_reply#88b754bfd726bd47",
-        "targetSignatureSha256": "88b754bfd726bd4781b82c12a086fa43ffcfc88a4aeb05795431158e80f347ad",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.metadata#5878a9a99e8a4299",
-        "baselineSignatureSha256": "5878a9a99e8a429947a8b0fd3b838bb0a4b5d623eac813b032cf74935f4c82f2",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.metadata#a9f6e8b48c75e8f9",
-        "targetSignatureSha256": "a9f6e8b48c75e8f9b5f72edcd978db67b6fd50819b39c43e810d631aea6f32ba",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.packet_name#614078ddfe8e88d6",
-        "baselineSignatureSha256": "614078ddfe8e88d60b18770a08aafb2575af8bd10a2113caf93564c80ec3a07e",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_dispatch_context_t.packet_name#47cac2bc682b44d5",
-        "targetSignatureSha256": "47cac2bc682b44d5adadd747ad78b69fdd377263bd83cbb755cd8b6d0e90f3f9",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.error#eb600c3bbe1fbad0",
-        "baselineSignatureSha256": "eb600c3bbe1fbad0e43895ae842a16644bf35a35074f0995d77b8bf4c13082d5",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.error#d61d3619ea8160f9",
-        "targetSignatureSha256": "d61d3619ea8160f9138534fad5d4cb28bd5bf4e8816f3499ecaa079a0d870b9d",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.message#c2f6af8bec673f4d",
-        "baselineSignatureSha256": "c2f6af8bec673f4d278fd1ce8d2af96ecc906e267390796c5f74abf218bde4da",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.message#b9384d549e0614b3",
-        "targetSignatureSha256": "b9384d549e0614b39251593933bd385119b37d64eacaf823a0c29c8af5e164c0",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.native_code#faaae7274006a482",
-        "baselineSignatureSha256": "faaae7274006a482608059b12d71eb134094a5ca970e936b980516439c8a230a",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_error_t.native_code#c4f52f8e3c509a87",
-        "targetSignatureSha256": "c4f52f8e3c509a87a951759629e38472941873b42c46ea6b5541c81b2aff3eee",
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.enable_actor_dispatch#83116a8c08767fba",
+        "baselineSignatureSha256": "83116a8c08767fbacfa41951e4b308ab179912aa54bff78d7277bc5392ac2950",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.enable_actor_dispatch#3bee5e3881ffb4b1",
+        "targetSignatureSha256": "3bee5e3881ffb4b119c13f1fa811e84943aa21edf92462ea10ad753aaf8c93f6",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -957,62 +941,6 @@
         "baselineSignatureSha256": "b3fa03708709af940568e1863b20e875f6964a786837587fa463ca9e7791f779",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.set_tls_server#635cc0a2faed845f",
         "targetSignatureSha256": "635cc0a2faed845f14a4e18652c26f0b3befc7fba65195fab47089be242ae072",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_session_error_t.internal#3bed2cb3a3acf7b6",
-        "baselineSignatureSha256": "3bed2cb3a3acf7b6a8ef408420cc682d5520e26976d354254f528c965612054f",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_session_error_t.internal#8a9d570ead760442",
-        "targetSignatureSha256": "8a9d570ead760442837fcf932ea100348b39bb27655e175808e0bee2b4d5c5b9",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_session_error_t.transport_error#8f06bfaf3b2212ea",
-        "baselineSignatureSha256": "8f06bfaf3b2212ea749139bc6c5b368891963d504fe2486b2c6c4074854d7823",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_session_error_t.transport_error#716cc6c665b8353a",
-        "targetSignatureSha256": "716cc6c665b8353ac1097eaf8bbed0afd1b849136672a38da9f9b0b69f978e73",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.~stream_t#98f45de19e8677df",
-        "baselineSignatureSha256": "98f45de19e8677dfb5344ecc710172c27a03874d328bfcb65c8dd786503794ef",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.~stream_t#bb03206b5ff4e894",
-        "targetSignatureSha256": "bb03206b5ff4e89403e69d81febbc1590c58cd612642e1f7b61d4f6b1860a442",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.close#5d5551a4596e8313",
-        "baselineSignatureSha256": "5d5551a4596e83130e2b0611f3b0e2bd93179707e7b4122fe624468c4d6c55c0",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.close#1042f0d9263da277",
-        "targetSignatureSha256": "1042f0d9263da2779e17b14338f8aab107d25ce3fa3ce95a290b79bd792de7bb",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.reply_packet#9517195bb7b2d9f0",
-        "baselineSignatureSha256": "9517195bb7b2d9f0360322b4941ea34f0ffb28db94221f4cd88dd55e8074f299",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.reply_packet#10ba52ab45ea26eb",
-        "targetSignatureSha256": "10ba52ab45ea26eb4ee32f53643b50b370078d759de0f3bcc40f266246745d10",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.session_id#5015d74c5820c92a",
-        "baselineSignatureSha256": "5015d74c5820c92ad85c849389afee2a305faec4860905d9ad295381660bcd5c",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.session_id#0d91f727134c926e",
-        "targetSignatureSha256": "0d91f727134c926e2ec196041b21831fe5dca31e6d4e8f033647f495209109c7",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.write_packet#75ec07b76bf8f4e1",
-        "baselineSignatureSha256": "75ec07b76bf8f4e1dbb4c8435a04005ebc04f3c762eafa7a9626d8b9baf70d52",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.write_packet#3f839a191307ff7d",
-        "targetSignatureSha256": "3f839a191307ff7dfb5bf2f21d3e714cae733302450f594fa6fa430c24ffa3c0",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1193,6 +1121,14 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.ActorRef#a3d9d8509d9e583c",
+        "baselineSignatureSha256": "a3d9d8509d9e583c246c1ddb74dfbc93db8d9826fac800788dc2b3ab8b027824",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ActorRef.ActorRef#41d30973ad0b6a37",
+        "targetSignatureSha256": "41d30973ad0b6a3787d55d0148e81c92deede137098307b7dc87ccc102e71c34",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActor.Configure#5288ae501bba6c45",
         "baselineSignatureSha256": "5288ae501bba6c4597e845ca18201929cec2a02e9b00fa47bbc2f373a30ca9ba",
         "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActor.Configure#2ffb8d6e19913341",
@@ -1201,10 +1137,26 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorClient.RequestToActor#e214f7651471c75e",
+        "baselineSignatureSha256": "e214f7651471c75e9cfaf9c0ea568620ccb6d909f8f09054a17127fe410a6632",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorClient.RequestToActor#2f302f8f54b54559",
+        "targetSignatureSha256": "2f302f8f54b54559bd3c275e4a0ac945c6d985351edd73bd0423d949771f08f2",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorClient.SendToActor#af03699e035923e5",
+        "baselineSignatureSha256": "af03699e035923e505f5f2acd5b0619df26f87225c55f67ae74471ea3eaa0450",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorClient.SendToActor#08255437390c4236",
+        "targetSignatureSha256": "08255437390c423626ab5db451b118e5556c7e882a5f0c2dc7787088cd389ddc",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinEntrySpot#686a51a05082429a",
         "baselineSignatureSha256": "686a51a05082429a2bb1930dd9040cbfaa84ff02f2fc887774290983e6514358",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinEntrySpot#74d11990b86fe339",
-        "targetSignatureSha256": "74d11990b86fe3398956d6dd655bfe7ba8debba4dd8506de0f8d0958f20b2c62",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinEntrySpot#b804f81447149f40",
+        "targetSignatureSha256": "b804f81447149f40f554618abb17389276752ce39c3f8845576beba1511965b2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1233,10 +1185,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorManager.CreateAsync#94a0c266e307783d",
-        "baselineSignatureSha256": "94a0c266e307783dfba97537028670f08e8c19b8d9cc669a67aead72403568f8",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorManager.CreateAsync#baf223c134f43ac9",
-        "targetSignatureSha256": "baf223c134f43ac9252617eb192053a7c3fbdaeb856d75da4ab5e11acf910864",
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorManager.DestroyAsync#4d21e67b9349a175",
+        "baselineSignatureSha256": "4d21e67b9349a1756596efa2c885386c9c18b75704a48bfbb64001d9cfdb7b58",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorManager.DestroyAsync#4b51379be7dccaea",
+        "targetSignatureSha256": "4b51379be7dccaea731b59a42579ce47750ce82e03f221e98689d81593502ff2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1433,42 +1385,34 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#4f698baf02201f31",
-        "baselineSignatureSha256": "4f698baf02201f314b6bf8bf7f553d4ff8712299ae2b83833f8d193df7ad7b23",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#d6759ee84192efa7",
-        "targetSignatureSha256": "d6759ee84192efa74074f3473c9361b6fd8edf935b30a69761ad942ff767f586",
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#8658bdbd4e4d48c0",
+        "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#423f115b3757cdda",
+        "targetSignatureSha256": "423f115b3757cddaccba28f45bdc7a4b6b34671336c34031d67ef2091221109a",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#8d0bbad49766c3b0",
-        "baselineSignatureSha256": "8d0bbad49766c3b0939222dc9512c1c13e0419f0031a4c36d9c529266ed74810",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#e997742b162ac33d",
-        "targetSignatureSha256": "e997742b162ac33d06194070552e81105bdb8c87e7cb1c0924dea2470a55c360",
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#46ffd8f01f7d1689",
+        "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#23ff1e23b4a2e9bb",
+        "targetSignatureSha256": "23ff1e23b4a2e9bbd5e602b95cc4c4aecf558f02985fc5819e08a2beaa161d07",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#946762b1af2d8002",
-        "baselineSignatureSha256": "946762b1af2d80028d82b53134aa7e9cae5670a945961a40781b0e92539a4bf9",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.CreateAsync#249018ab6b6fd64a",
-        "targetSignatureSha256": "249018ab6b6fd64a99d4bd71b08a44f6e45d28ac795d717ddc8890c26df0b05b",
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#8658bdbd4e4d48c0",
+        "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#423f115b3757cdda",
+        "targetSignatureSha256": "423f115b3757cddaccba28f45bdc7a4b6b34671336c34031d67ef2091221109a",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.GetOrCreateAsync#b35c975b588e700d",
-        "baselineSignatureSha256": "b35c975b588e700d2a19f4b4dff4c74622c9c2d86a4f5a20885e235ec6c06555",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.GetOrCreateAsync#0dfcbc9155458496",
-        "targetSignatureSha256": "0dfcbc91554584965bb3210802dbb4ffd3a87cde3eda8974447d00b9aba18ac8",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.GetOrCreateAsync#c34e4b7d94819d5d",
-        "baselineSignatureSha256": "c34e4b7d94819d5d2f626b0a55baac435b1e7e01b66bc3efdba9c18341324c7e",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotManager.GetOrCreateAsync#b91a493459ebe541",
-        "targetSignatureSha256": "b91a493459ebe54189e4d227b0569dc85b67fe7e088bf447aa72c93a4c0d81c2",
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#46ffd8f01f7d1689",
+        "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#23ff1e23b4a2e9bb",
+        "targetSignatureSha256": "23ff1e23b4a2e9bbd5e602b95cc4c4aecf558f02985fc5819e08a2beaa161d07",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1477,6 +1421,14 @@
         "baselineSignatureSha256": "881a1e5dfe932de2a9877f3be185fc25fc5ffaedf8570ec38301aca6e479ff24",
         "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotPublisherClient.Publish#a5223797c7dea866",
         "targetSignatureSha256": "a5223797c7dea866aa42a1c2c44daf5adf0ed5b55ed25ffe4538951e0760a489",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkStreamNodeBuilder.EnableActorDispatch#785fb29f4cc21048",
+        "baselineSignatureSha256": "785fb29f4cc2104878d8fad438950f727e64c5d501a3f65bc0a1a1986acdb8ac",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkStreamNodeBuilder.EnableActorDispatch#9fe00e4a4a330d66",
+        "targetSignatureSha256": "9fe00e4a4a330d66e7f6e4c51144bcd7c3d521245f8becb6b37835fe6f6b757d",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1513,30 +1465,6 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotAcquireRequest.ZLinkRoutingIdSlotAcquireRequest#7cf3a1149ff51382",
-        "baselineSignatureSha256": "7cf3a1149ff513825dd8fe4d5bb960ed84c28b9e23ce41dbf8d02b4fbe36efa1",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotAcquireRequest.ZLinkRoutingIdSlotAcquireRequest#8a9d76d08d4cc1d6",
-        "targetSignatureSha256": "8a9d76d08d4cc1d63bfc40706cb60653078aec0a76a1cc5b4d0a783f82abe4ee",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotAllocation.ZLinkRoutingIdSlotAllocation#e6aa3c30bae794af",
-        "baselineSignatureSha256": "e6aa3c30bae794afcf4d3897c0d7cd2c6ad63629da55bad5f8cbff10d0f334d5",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotAllocation.ZLinkRoutingIdSlotAllocation#c803e541132a24c8",
-        "targetSignatureSha256": "c803e541132a24c8b599ef0c1051fecba5f0ed943e2426262a807020c2f01d73",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotIdentityModeConflict.ZLinkRoutingIdSlotIdentityModeConflict#28ebc4d35852d677",
-        "baselineSignatureSha256": "28ebc4d35852d677f24c12c89e3a180fe45ae9d9d77ef8f81f0b491f62171628",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRoutingIdSlotIdentityModeConflict.ZLinkRoutingIdSlotIdentityModeConflict#c5c6caa32abb920e",
-        "targetSignatureSha256": "c5c6caa32abb920ed6d6b22fa86bbb2669bfa1e428deafa4b60e965ab6668a37",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocation.ZLinkActorLocation#e2ee089f6f208dec",
         "baselineSignatureSha256": "e2ee089f6f208dec820fed400852a123cfacbfa846755046998f254777d76e33",
         "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocation.ZLinkActorLocation#bfe528c1517a7980",
@@ -1545,18 +1473,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClient.requestToChannel#5f0502ea354872c9",
-        "baselineSignatureSha256": "5f0502ea354872c9e198c8c1ae7d6a0c47e6928f7be21b85bdf27378185521aa",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClient.requestToChannel#393c252cd4e91334",
-        "targetSignatureSha256": "393c252cd4e913349d98ec1a68b5c4c0f67ed6111466611817e907433bea6b15",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClient.sendToChannel#89c51bfa76b8e047",
-        "baselineSignatureSha256": "89c51bfa76b8e047196ee3e68ed4e42824f563e549b17afd440e6dbf15311079",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkClient.sendToChannel#0dfe2277b5238b99",
-        "targetSignatureSha256": "0dfe2277b5238b99feb491e4652c05af5af6a56feeacb839f29cd671493fc7f1",
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocationKey.ZLinkActorLocationKey#feeea813fd7500e5",
+        "baselineSignatureSha256": "feeea813fd7500e5e0cd8c288052147e2d695611e93277cc92fa8241c63d2d72",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocationKey.ZLinkActorLocationKey#9b794e26de1f725a",
+        "targetSignatureSha256": "9b794e26de1f725a2b568bb6c5c1d56cb30f6e6acad0812cf9fc7b2a5215c013",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1569,30 +1489,6 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkOptions.actorTransferForwardWindow#e347c983c1b28de0",
-        "baselineSignatureSha256": "e347c983c1b28de018f48e83bb24c36881496d5bbfbbb1f3b09fd1728480a83d",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkOptions.actorTransferForwardWindow#14582f9f3b0ca941",
-        "targetSignatureSha256": "14582f9f3b0ca94118c55661c23cdf0101f378320a6ba6076cdbd9d3f6aaf771",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkOptions.addStreamNode#621108f4959551b4",
-        "baselineSignatureSha256": "621108f4959551b4e3a902680b46ba7b5d2cb534255ce79edf352c74fbffe1b0",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkFrameworkOptions.addStreamNode#977cb8c70be128e4",
-        "targetSignatureSha256": "977cb8c70be128e464a9e5d9d4af3aa0f77e4fbe560cc469fba3b4e341afa473",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkLocationOwnerToken.ZLinkLocationOwnerToken#ebbb9bf5150e10e6",
-        "baselineSignatureSha256": "ebbb9bf5150e10e6befc8feb27648c7055239942e27645cb5328182f041156f6",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkLocationOwnerToken.ZLinkLocationOwnerToken#376a1dae349114a4",
-        "targetSignatureSha256": "376a1dae349114a4fa3354ff4fe7afc469b35179dc41a01ea093f8a6ac98a47f",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkLocationStore.removeAllByOwner#22925d115ceb73b2",
         "baselineSignatureSha256": "22925d115ceb73b288db3126898f599b2c32affa5566f2005abe1a01b4f02e5e",
         "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkLocationStore.removeAllByOwner#5a366931e5a8c7f6",
@@ -1601,42 +1497,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addActorFactory#cccb4db2013e9a5a",
-        "baselineSignatureSha256": "cccb4db2013e9a5a1e7543437119d30e3dbb3886e54b15e8ce3dc983215371b7",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addActorFactory#b54ef2614da4be29",
-        "targetSignatureSha256": "b54ef2614da4be297967eca253a0531515fbf828556231f4cf14d6c43eeda528",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addEntrySpot#df41411acd18f8f6",
-        "baselineSignatureSha256": "df41411acd18f8f643ab71a09eef13d9233eb59577d5a7d07958df907a8de298",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addEntrySpot#5a847a46b8350cc7",
-        "targetSignatureSha256": "5a847a46b8350cc717253a6c9950c6235a80d258812f8636c09ea6e746847312",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addSpotFactory#2895119212f4d480",
-        "baselineSignatureSha256": "2895119212f4d480709d0765f21b9ef431e17ce7c427d5bff20e4ac9c7c08888",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.addSpotFactory#6dd7718d42a745fb",
-        "targetSignatureSha256": "6dd7718d42a745fb72c752d75b3d40bd9afe26c2b5b669d8da91e3ce6dbb3020",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.useAllocatedRoutingId#8678954db11a6d11",
-        "baselineSignatureSha256": "8678954db11a6d11612d13505c5bd9009c13306dc74200768c340c6a2fbe67b6",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeBuilder.useAllocatedRoutingId#46de6e7581bed6a1",
-        "targetSignatureSha256": "46de6e7581bed6a1ac689d3476bd7bcbe271d9b34d27296196e497338b86d9fd",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#f24a540656544232",
         "baselineSignatureSha256": "f24a540656544232d555d423ba06307116571b552ddc73988c0d43e1d6bb98f8",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#66f65cb99a8fbb2a",
-        "targetSignatureSha256": "66f65cb99a8fbb2a1aee3ad78cdff625bb1a3633d6a3f2c7fd9359a4fc0ac811",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#28d721b57b44bbdc",
+        "targetSignatureSha256": "28d721b57b44bbdc0189d8f810cd1eeddd970be08dbb981e8c38e3827e0b6a71",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1645,22 +1509,6 @@
         "baselineSignatureSha256": "b87768d1df0d0e85585dc8aae6464f9e7d9069fed8fb3a4dff0fe0403eb5af98",
         "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeLocationStore.listMeshNodes#968fbda1351b13ad",
         "targetSignatureSha256": "968fbda1351b13ad80e99a17bbbb59aed7b6a4a22781ff7737470df4368cce0f",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeSocketConfig.setReceiveTimeout#9a3f81133d845afe",
-        "baselineSignatureSha256": "9a3f81133d845afef033c27ae7e873d5062807d09065bb6e30f622f7f16089bb",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeSocketConfig.setReceiveTimeout#9b175ec5134a1369",
-        "targetSignatureSha256": "9b175ec5134a1369b1ff09e44a84f8afec23dfcca468e3b1c193bd4678a09134",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeSocketConfig.setSendTimeout#61436b3d3c66b936",
-        "baselineSignatureSha256": "61436b3d3c66b936b4a8c746b63975913595306cdc66f501f0956e31e549b664",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeSocketConfig.setSendTimeout#8c7da7e12146366b",
-        "targetSignatureSha256": "8c7da7e12146366b53eaa086e6bb529cac905e98aef190c8db6c8adef6e13922",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1681,18 +1529,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToNode#4a447e7b7af7ffa8",
-        "baselineSignatureSha256": "4a447e7b7af7ffa81ef1cc071cefdc7ec9d42fcb905f6aced0468614fa0f6e55",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToNode#be383cef0f5dd712",
-        "targetSignatureSha256": "be383cef0f5dd71262fe3212d60fe6c05503c39ba13c8d5ba594a88bdfd684d1",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#8f7f50e026fb4422",
         "baselineSignatureSha256": "8f7f50e026fb44221b6744d9b0108a314a97dc88048bc7a9196786c6ed5bf8be",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#481c5f3c4afb89d3",
-        "targetSignatureSha256": "481c5f3c4afb89d344de17049b51b8758c4a1b429e070006b0fda4349cd77df7",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#5f39d653d114ff85",
+        "targetSignatureSha256": "5f39d653d114ff859dd554fda61f8c9776c965f82fa0abe170c0c94eb4c43521",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1707,8 +1547,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#d3602cc8ef6f84da",
         "baselineSignatureSha256": "d3602cc8ef6f84da936b709ad3fa3c0ad24f366ebc9505f2d5c4b570ade6b556",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#59a62c54642d581c",
-        "targetSignatureSha256": "59a62c54642d581c84bf054db5c8d18a5eeafbc961ae2778160623709e333e52",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#d753375a78d5e584",
+        "targetSignatureSha256": "d753375a78d5e584068181ad3735f7e4deda1dbebcc7be5828b809c281df4407",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1717,6 +1557,14 @@
         "baselineSignatureSha256": "845cb3c860230b3940cb2a680fb90ddd5f70fbe5300b705360dee731bdd6f6de",
         "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocation.ZLinkSpotLocation#17431f658ecaf1df",
         "targetSignatureSha256": "17431f658ecaf1dfe0aa53772da4a6fcebb161ef46be6b0148ae579ae4f8e3d9",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#19a823936849e151",
+        "baselineSignatureSha256": "19a823936849e151b20be51d712e27b89552494429b91706ad99ef48d9722d75",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#fd1cbcb5feb300ba",
+        "targetSignatureSha256": "fd1cbcb5feb300ba225abdba9b22fa9221a9f116ed2ac725fdfbdf43f34b2154",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1755,16 +1603,40 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#3f9ef0110693c545",
         "baselineSignatureSha256": "3f9ef0110693c545e2615887282a414c9d5f230c956247da2d3f3933917b38f5",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#7d657f4e0f9bca8d",
-        "targetSignatureSha256": "7d657f4e0f9bca8df351fba41d8a37260d03a3f40b63b0d3ae8cefabfe70d3c4",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#01bb0a3f5a46e214",
+        "targetSignatureSha256": "01bb0a3f5a46e214dc0522fa20455e6f4ab6a1a4a97842e371138ce7198bf4d1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#e2406c40ce5dc81e",
         "baselineSignatureSha256": "e2406c40ce5dc81ec589fd442cbefd36c587b90cc727602c2e0f2e9798d92e41",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#3daa39f09b4aa724",
-        "targetSignatureSha256": "3daa39f09b4aa7242379637245cbf26348715915bdfb395832c1ad6fab936899",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#c9c27fce84b4c9b8",
+        "targetSignatureSha256": "c9c27fce84b4c9b83da474cf464e15e6e1116a1773b3bbad29bb43a730588285",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.requestToActorAwait#6bb2b94292617e25",
+        "baselineSignatureSha256": "6bb2b94292617e25fe0cf2dea29bf6750c488520775696376b83950ec8a1a89e",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.requestToActorAwait#3aba1ccc150298f8",
+        "targetSignatureSha256": "3aba1ccc150298f8a3f29a2417ea4e0f04837d91601cbbf55772f21852b231b2",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.requestToActorAwait#d328f2a34023e3a2",
+        "baselineSignatureSha256": "d328f2a34023e3a29b5e611dbfd0a8a993aab05f2cde5c6daf4c3dafcdda4d79",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.requestToActorAwait#8489bbc207db5a71",
+        "targetSignatureSha256": "8489bbc207db5a715dbafadc544250ed3eda40c7437bc043f7bbbdfb524071ba",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#1de1336aaf8b36b6",
+        "baselineSignatureSha256": "1de1336aaf8b36b649762cb127b7f28d8adfdd089c97a6e42a5825983e618ad4",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#e3fa5490fb45305d",
+        "targetSignatureSha256": "e3fa5490fb45305d9996fc1d0db465cff1b9ae469ae3d87ca044d9af3284f86c",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1889,10 +1761,106 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ActorRef.actorId#60f8e4c56d669bdf",
+        "baselineSignatureSha256": "60f8e4c56d669bdf189c687d9990e8bd1133194bf4535b105be6ed290b57b996",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ActorRef.actorId#fd09ccc7eeb2a075",
+        "targetSignatureSha256": "fd09ccc7eeb2a075bad17476562fc17383ae3adf9af203ca180753bd31657a3c",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActor.actorId#60f8e4c56d669bdf",
+        "baselineSignatureSha256": "60f8e4c56d669bdf189c687d9990e8bd1133194bf4535b105be6ed290b57b996",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActor.actorId#fd09ccc7eeb2a075",
+        "targetSignatureSha256": "fd09ccc7eeb2a075bad17476562fc17383ae3adf9af203ca180753bd31657a3c",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorClient.requestToActor#f9adf17a1bc3c42a",
+        "baselineSignatureSha256": "f9adf17a1bc3c42a0430bd186461517b0f06a5bd9d9b770b0c15f371d33ccd43",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorClient.requestToActor#e6fc502b47e677c9",
+        "targetSignatureSha256": "e6fc502b47e677c9fa520c94077b8fe972bda0b74e9327ea194b12d9e2d81e70",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorClient.sendToActor#391bc0a55eef077e",
+        "baselineSignatureSha256": "391bc0a55eef077ec52aa9b8b87c00fbd856289783a16c5f432e3628bb43d128",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorClient.sendToActor#0503da4feddd8f6b",
+        "targetSignatureSha256": "0503da4feddd8f6bc64718a4a7c1378ab77fb3ae789b75d4619fd8f2c0b2a107",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinEntrySpot#774de86dc4b8ab5e",
+        "baselineSignatureSha256": "774de86dc4b8ab5ef987f5984ba531e842f8ce7060f019b24f5c54f7ad0de0e6",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinEntrySpot#e23b4a9f4d174283",
+        "targetSignatureSha256": "e23b4a9f4d174283d6b978d0aa6d37aa58145acb9e366ed3baab923a4a5de1d9",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinSpot#39682c1a51313b3b",
+        "baselineSignatureSha256": "39682c1a51313b3bb2134b7aeafa63a69e03b2a9e30ccc811c42968bee42794a",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinSpot#53ab65a07e58fda4",
+        "targetSignatureSha256": "53ab65a07e58fda4b68fc314e58e92f5a0626e3b8a898af9b32dcaeec08dd6b1",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.spotRid#55d09055d2589f43",
+        "baselineSignatureSha256": "55d09055d2589f43de274c2305deb89e9059300cb30ad80558ef289540bb36fb",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.spotRid#f7c51393a05e05ff",
+        "targetSignatureSha256": "f7c51393a05e05ff3735abe63d92227a22164dc074112c8be37afa616f37bb9d",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorFactory.create#8072d5186299ec59",
         "baselineSignatureSha256": "8072d5186299ec59f823b1b55bec4a45f5885e40f309bc0105a5b53cbe27cd67",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorFactory.create#7e4cc9c017871040",
-        "targetSignatureSha256": "7e4cc9c01787104023a75fc7c203b41d8875ad431eff8513f1ca5e1176861522",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorFactory.create#fc4799a8d77e08b6",
+        "targetSignatureSha256": "fc4799a8d77e08b6f4a2d5e7739846542794966ccb7784ccde820d6335ac7bbf",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorHandlerRegistry.addHandler#ead55d083c6cd83b",
+        "baselineSignatureSha256": "ead55d083c6cd83b2d3a9c4774af7f2b9c8b0ee845eaad3de45acf117aa005a2",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorHandlerRegistry.addHandler#2ed20991a8e03ef6",
+        "targetSignatureSha256": "2ed20991a8e03ef644cedc4b59d4a7f3b570414be5a1daffac7c85f46d9d4fce",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorLocationKey.actorId#60f8e4c56d669bdf",
+        "baselineSignatureSha256": "60f8e4c56d669bdf189c687d9990e8bd1133194bf4535b105be6ed290b57b996",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorLocationKey.actorId#fd09ccc7eeb2a075",
+        "targetSignatureSha256": "fd09ccc7eeb2a075bad17476562fc17383ae3adf9af203ca180753bd31657a3c",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.create#01d70bff68e5649c",
+        "baselineSignatureSha256": "01d70bff68e5649c5104668135280c1aba98d631179fde8f3465f9a0ffbb6697",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.create#a61923886241db36",
+        "targetSignatureSha256": "a61923886241db3666251962f23870b0163a67123d1cbdbb4bf70ca63679dd37",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.find#53c55c3a103ce508",
+        "baselineSignatureSha256": "53c55c3a103ce508963b758a22f126429ee192a7d89bd5d5bf2648bf19a1916a",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.find#f001c642a4a13f7c",
+        "targetSignatureSha256": "f001c642a4a13f7c6c1a059369bd868def115322d52aba51815b25895179d018",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.getOrCreate#ab6df30e9745545f",
+        "baselineSignatureSha256": "ab6df30e9745545fd9c0a8a5f06dc17685a92e617757425c063592d78a4b4644",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorManager.getOrCreate#5b6da5a1435679e8",
+        "targetSignatureSha256": "5b6da5a1435679e80e22ffb82a505f0342cd4f5c182b007f5ec3f663c2390202",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1985,6 +1953,14 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkNestStreamNodeBuilder.enableActorDispatch#bf6167db5216dcfb",
+        "baselineSignatureSha256": "bf6167db5216dcfb46385571c2b3f666f8d9cd859066fb4a37d1f296797681ce",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkNestStreamNodeBuilder.enableActorDispatch#6ced07698047d227",
+        "targetSignatureSha256": "6ced07698047d227c4370a878121afa4fd952ac0bc4e731fdf38a1a02aff0ddc",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkOwnerLeaseStore.renewOwnerLease#24394d2e27fea994",
         "baselineSignatureSha256": "24394d2e27fea994e8f4c63b7075b564b804dcbfd2c373ba10699c5758b5eb44",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkOwnerLeaseStore.renewOwnerLease#20406e03435fe830",
@@ -2017,10 +1993,26 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#e1c58802115d3e92",
+        "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#1289a0d18ed1dc71",
+        "targetSignatureSha256": "1289a0d18ed1dc71e9248efa9817fb6a1b3f7e1ee776f47a4a5778ba722dec98",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToChannel#f29236f3e457f52a",
         "baselineSignatureSha256": "f29236f3e457f52a40be4b79722d28f40e48fced204eb2846e73b217b1dba7b1",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToChannel#9f14261490a3a58c",
         "targetSignatureSha256": "9f14261490a3a58c5a1d115d248c835c1a342e091c3424b1d13bf7f2f53f052e",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#fed98c8705e3e871",
+        "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#7a01a1371331b8da",
+        "targetSignatureSha256": "7a01a1371331b8da011b4b854ae8dc1363df2f1cebc229ecb72a5a0c86dde679",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2033,10 +2025,34 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActor.actorId#60f8e4c56d669bdf",
+        "baselineSignatureSha256": "60f8e4c56d669bdf189c687d9990e8bd1133194bf4535b105be6ed290b57b996",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActor.actorId#fd09ccc7eeb2a075",
+        "targetSignatureSha256": "fd09ccc7eeb2a075bad17476562fc17383ae3adf9af203ca180753bd31657a3c",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActor.relay#682cfae407d0575a",
         "baselineSignatureSha256": "682cfae407d0575a9faf70c5b08995672a230679e767b0d0d493efc12789e357",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActor.relay#fb308c571e7e6678",
         "targetSignatureSha256": "fb308c571e7e66785eba70cdb25a67f7124b621b28779da1d72177bb22c224f8",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActors.bind#edd02b1118298b2a",
+        "baselineSignatureSha256": "edd02b1118298b2a680ff2a7ae1208d0712a6842805d48331c761d8bb55eb663",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActors.bind#fde521f639b1eb9d",
+        "targetSignatureSha256": "fde521f639b1eb9dce0ab38f53a70fcbd0a79de6093c57b845e771361d1d443f",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActors.find#07c003ab7594558d",
+        "baselineSignatureSha256": "07c003ab7594558d7ee2a2b6dbfa3fe89b3a9219ddac2a4f147917c829f86674",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionActors.find#f9a62b423f37c571",
+        "targetSignatureSha256": "f9a62b423f37c5713f69004d4d9ca4501401f1752d56a6489410b5c32cc43f2e",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2049,10 +2065,10 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionSendCall.submit#32d9d155b44aebf4",
-        "baselineSignatureSha256": "32d9d155b44aebf4aca8fb36d24da0eb9fa00d0418f231088633e8650508d3ff",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionSendCall.submit#8d0bc6fad6aa487a",
-        "targetSignatureSha256": "8d0bc6fad6aa487aab9dd730a6c5f3423493939f5b386f50023ac11fed311417",
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotRid#c34da3cbc7d6d188",
+        "baselineSignatureSha256": "c34da3cbc7d6d1881d76489a3e22c8c76ebc6ba7797271dd047f24d463067b61",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotRid#60a629e93142326f",
+        "targetSignatureSha256": "60a629e93142326f7ff55456b519deb1e84d5f581002575345e86cdef022dcf3",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2065,166 +2081,622 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotLocationKey.spotRid#c34da3cbc7d6d188",
+        "baselineSignatureSha256": "c34da3cbc7d6d1881d76489a3e22c8c76ebc6ba7797271dd047f24d463067b61",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotLocationKey.spotRid#60a629e93142326f",
+        "targetSignatureSha256": "60a629e93142326f7ff55456b519deb1e84d5f581002575345e86cdef022dcf3",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.close#baa3c7197766b529",
+        "baselineSignatureSha256": "baa3c7197766b529239c84be3f72246f254b69bbc2ed6f49fee08c281473f1ab",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.close#cb0adf34566a02e5",
+        "targetSignatureSha256": "cb0adf34566a02e5813547934b82e7dd5124a12c15492ddc7a7697110430b373",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.create#662908048a9633f0",
+        "baselineSignatureSha256": "662908048a9633f0ea049ab86d48b333a40c51161d2f35ddcef6312c211d96b1",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.create#b08f60185f57d2c2",
+        "targetSignatureSha256": "b08f60185f57d2c2c3f375074109c3e2e80402c6d94ec94d127a128b57baaf26",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.find#9a633e9ae106ca76",
+        "baselineSignatureSha256": "9a633e9ae106ca761844a710d9b01b4b8e6890cb6b551e3c320620de6d01c112",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.find#e32ef02d72dd0c18",
+        "targetSignatureSha256": "e32ef02d72dd0c18fe714f24fa5734a87332e3892129bd51f59db3910a188ecf",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#248b48c561bc623a",
+        "baselineSignatureSha256": "248b48c561bc623a904e9caa6ccb98cb56bdd2e7ac97f3d86b8c191f3ec601b1",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#de3fe07a2d62cf98",
+        "targetSignatureSha256": "de3fe07a2d62cf984b836077f1c80e78f6f4624aafa37dcce2062d1ad08bf9c3",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#e1c58802115d3e92",
+        "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#1289a0d18ed1dc71",
+        "targetSignatureSha256": "1289a0d18ed1dc71e9248efa9817fb6a1b3f7e1ee776f47a4a5778ba722dec98",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#fed98c8705e3e871",
+        "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#7a01a1371331b8da",
+        "targetSignatureSha256": "7a01a1371331b8da011b4b854ae8dc1363df2f1cebc229ecb72a5a0c86dde679",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotPublisherClient.publish#a35024a1874e690e",
         "baselineSignatureSha256": "a35024a1874e690e3326c6888045fe01d654dbfe6de7aceb7e53cfed71e52d42",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotPublisherClient.publish#d5599eb0d6c0c47b",
         "targetSignatureSha256": "d5599eb0d6c0c47b307e06852d80744fa8e69f983d375f662a9dc7e99f2cf8f9",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkStreamNodeBuilder.enableActorDispatch#bf6167db5216dcfb",
+        "baselineSignatureSha256": "bf6167db5216dcfb46385571c2b3f666f8d9cd859066fb4a37d1f296797681ce",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkStreamNodeBuilder.enableActorDispatch#6ced07698047d227",
+        "targetSignatureSha256": "6ced07698047d227c4370a878121afa4fd952ac0bc4e731fdf38a1a02aff0ddc",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
       }
     ]
   },
   "blockRoleOverrides": [
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "a7cf29ed0b62e2f08d357395fc8390b602176a01a3f842c215df6f5aac75e30d", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "beb09ffc49697afd9b46df980322025f1f3d26db79f9ad7014b3f64a48d603d0", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "b4998ff8be8d7455c7b1f3bcf9e731f78db735e44ca3e4f2818cf6e4b1da5e03", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "f6bbe32f892eec9d783ba5ef4466797799c3f11b13e4c2c6a0210aa301a2be9a", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "33c2e8d8f3585704cf6b5dfb68c8dde32d8bb48f0a58b935f4a119e8b05962e9", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "3fa1a61aca2badabc25648230daaddfbbda4e2944334cf433a44a58a5bdaff9c", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "cd37fa1430109f9003352c88cefdc340b463944deeff970aee78b2acea842391", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md", "sha256": "cf822777470c6bbadb032adf74c871e16df39b36ad53eade7caa947125a28afd", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md", "sha256": "4c9c4c230444594a7dc100a14ba8f02a560a07ddf0280abd8696c43f30ec823f", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md", "sha256": "f60dbd4bb39bc32325c90e19d8a10d71f0e68e1a5dcf52d8fe60f0dccaf2131b", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md", "sha256": "4a599c5e4447b6410c62cbfaff43c5f1557076a0b6304724c77c76ec4c8770e8", "role": "application-example", "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md", "sha256": "e19c1626fcf06b6ab1705b3765bba11f3b1848c355b85f9383ae532f29411550", "role": "application-example", "reason": "The fenced block demonstrates application use and is not a package-owned declaration."},
-    {"document": "framework/doc/framework/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md", "sha256": "3e27b1f099641cc278267dff9d5d4dd25b65ff5d5d0aad6286e1f14e8764e55f", "role": "application-example", "reason": "The fenced block demonstrates application use and is not a package-owned declaration."}
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "a7cf29ed0b62e2f08d357395fc8390b602176a01a3f842c215df6f5aac75e30d",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "beb09ffc49697afd9b46df980322025f1f3d26db79f9ad7014b3f64a48d603d0",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "763cc584a670037b6ae5a11508ca379cc41e15e2b738991e793e35407070dba6",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "f6bbe32f892eec9d783ba5ef4466797799c3f11b13e4c2c6a0210aa301a2be9a",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "33c2e8d8f3585704cf6b5dfb68c8dde32d8bb48f0a58b935f4a119e8b05962e9",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "3fa1a61aca2badabc25648230daaddfbbda4e2944334cf433a44a58a5bdaff9c",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "cd37fa1430109f9003352c88cefdc340b463944deeff970aee78b2acea842391",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "cf822777470c6bbadb032adf74c871e16df39b36ad53eade7caa947125a28afd",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md",
+      "sha256": "4c9c4c230444594a7dc100a14ba8f02a560a07ddf0280abd8696c43f30ec823f",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md",
+      "sha256": "f60dbd4bb39bc32325c90e19d8a10d71f0e68e1a5dcf52d8fe60f0dccaf2131b",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md",
+      "sha256": "4a599c5e4447b6410c62cbfaff43c5f1557076a0b6304724c77c76ec4c8770e8",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md",
+      "sha256": "d804c37a90544dae76e9d69cf2802ab4b520d0847b3b3515a0e242d1dd3d5184",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use and is not a package-owned declaration."
+    },
+    {
+      "document": "framework/doc/framework/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md",
+      "sha256": "3e27b1f099641cc278267dff9d5d4dd25b65ff5d5d0aad6286e1f14e8764e55f",
+      "role": "application-example",
+      "reason": "The fenced block demonstrates application use and is not a package-owned declaration."
+    }
   ],
   "opaqueProviderIdentifierMappings": [
-    {"language": "cpp", "authorityKey": "authority_key_t(std::string)", "storeVersion": "std::string", "checkpointReference": "std::string", "scanCursor": "authority_scan_cursor_t(std::string)", "policy": "Language wrapper only; values remain provider-issued and the runtime performs equality checks without numeric ordering."},
-    {"language": "dotnet", "authorityKey": "ZLinkAuthorityKey(string)", "storeVersion": "string", "checkpointReference": "string", "scanCursor": "ZLinkAuthorityScanCursor(string)", "policy": "Language wrapper only; values remain provider-issued and the runtime performs equality checks without numeric ordering."},
-    {"language": "java", "authorityKey": "String", "storeVersion": "String", "checkpointReference": "String", "scanCursor": "ZLinkAuthorityScanCursor(String)", "policy": "Java uses immutable String values and one cursor record; no additional public provider identifier API is introduced."},
-    {"language": "kotlin", "authorityKey": "java.lang.String", "storeVersion": "java.lang.String", "checkpointReference": "java.lang.String", "scanCursor": "ZLinkAuthorityScanCursor", "policy": "Kotlin reuses the Java provider contract and does not add a duplicate Kotlin wrapper surface."},
-    {"language": "node", "authorityKey": "ZLinkAuthorityKey branded value", "storeVersion": "ZLinkAuthorityStoreVersion branded value", "checkpointReference": "ZLinkCheckpointReference branded value", "scanCursor": "ZLinkAuthorityScanCursor", "policy": "TypeScript brands prevent accidental identifier mixing at compile time without adding runtime protocol fields."}
+    {
+      "language": "cpp",
+      "authorityKey": "authority_key_t(std::string)",
+      "storeVersion": "std::string",
+      "checkpointReference": "std::string",
+      "scanCursor": "authority_scan_cursor_t(std::string)",
+      "policy": "Language wrapper only; values remain provider-issued and the runtime performs equality checks without numeric ordering."
+    },
+    {
+      "language": "dotnet",
+      "authorityKey": "ZLinkAuthorityKey(string)",
+      "storeVersion": "string",
+      "checkpointReference": "string",
+      "scanCursor": "ZLinkAuthorityScanCursor(string)",
+      "policy": "Language wrapper only; values remain provider-issued and the runtime performs equality checks without numeric ordering."
+    },
+    {
+      "language": "java",
+      "authorityKey": "String",
+      "storeVersion": "String",
+      "checkpointReference": "String",
+      "scanCursor": "ZLinkAuthorityScanCursor(String)",
+      "policy": "Java uses immutable String values and one cursor record; no additional public provider identifier API is introduced."
+    },
+    {
+      "language": "kotlin",
+      "authorityKey": "java.lang.String",
+      "storeVersion": "java.lang.String",
+      "checkpointReference": "java.lang.String",
+      "scanCursor": "ZLinkAuthorityScanCursor",
+      "policy": "Kotlin reuses the Java provider contract and does not add a duplicate Kotlin wrapper surface."
+    },
+    {
+      "language": "node",
+      "authorityKey": "ZLinkAuthorityKey branded value",
+      "storeVersion": "ZLinkAuthorityStoreVersion branded value",
+      "checkpointReference": "ZLinkCheckpointReference branded value",
+      "scanCursor": "ZLinkAuthorityScanCursor",
+      "policy": "TypeScript brands prevent accidental identifier mixing at compile time without adding runtime protocol fields."
+    }
   ],
   "languages": [
     {
       "id": "cpp",
-      "acceptedCodeTags": ["cpp"],
-      "defaultPackages": ["zlink-framework-cpp"],
+      "acceptedCodeTags": [
+        "cpp"
+      ],
+      "defaultPackages": [
+        "zlink-framework-cpp"
+      ],
       "packageRules": [],
       "implementationSuffix": "CPP",
       "packageGate": "V11-M9-PKG-CPP",
       "baselineDocuments": [
-        {"path": "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md", "categoryIds": ["topology-discovery", "spot-instance", "actor-transfer", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md", "categoryIds": ["host-lifecycle", "messaging-execution"]},
-        {"path": "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md", "categoryIds": ["host-lifecycle", "messaging-execution"]},
-        {"path": "framework/doc/framework/spec/server/languages/cpp/README.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]}
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "spot-instance",
+            "actor-transfer",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "messaging-execution"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "messaging-execution"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/cpp/README.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        }
       ],
       "baselineSources": [
         {
           "path": "framework/languages/cpp/framework/include/zlink/framework/contracts/streams/stream.hpp",
           "codeTag": "cpp",
           "publicSourceOnly": true,
-          "categoryIds": ["stream-session"]
+          "categoryIds": [
+            "stream-session"
+          ]
         }
       ]
     },
     {
       "id": "dotnet",
-      "acceptedCodeTags": ["csharp"],
-      "defaultPackages": ["Zlink.Framework"],
+      "acceptedCodeTags": [
+        "csharp"
+      ],
+      "defaultPackages": [
+        "Zlink.Framework"
+      ],
       "packageRules": [
         {
           "documentPattern": "/02-configuration-host\\.ko\\.md$",
-          "packages": ["Zlink.Framework", "Zlink.Framework.AspNetCore"]
+          "packages": [
+            "Zlink.Framework",
+            "Zlink.Framework.AspNetCore"
+          ]
         }
       ],
       "implementationSuffix": "DN",
       "packageGate": "V11-M9-PKG-DN",
       "baselineDocuments": [
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md", "categoryIds": ["messaging-execution", "spot-instance", "actor-transfer", "stream-session", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md", "categoryIds": ["topology-discovery", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md", "categoryIds": ["topology-discovery", "spot-instance", "actor-transfer", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/dotnet/README.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]}
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md",
+          "categoryIds": [
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "spot-instance",
+            "actor-transfer",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/dotnet/README.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        }
       ],
       "baselineSources": [
         {
           "path": "framework/languages/dotnet/src/Zlink.Framework/Contracts/Eventing/Contracts.cs",
           "codeTag": "csharp",
           "publicSourceOnly": true,
-          "categoryIds": ["observability-diagnostics"]
+          "categoryIds": [
+            "observability-diagnostics"
+          ]
         }
       ]
     },
     {
       "id": "java",
-      "acceptedCodeTags": ["java"],
-      "defaultPackages": ["systems.zlink:zlink-framework-core"],
+      "acceptedCodeTags": [
+        "java"
+      ],
+      "defaultPackages": [
+        "systems.zlink:zlink-framework-core"
+      ],
       "packageRules": [
         {
           "documentPattern": "/configuration-host\\.ko\\.md$",
-          "packages": ["systems.zlink:zlink-framework-core", "systems.zlink:zlink-framework-spring"]
+          "packages": [
+            "systems.zlink:zlink-framework-core",
+            "systems.zlink:zlink-framework-spring"
+          ]
         }
       ],
       "implementationSuffix": "JVM",
       "packageGate": "V11-M9-PKG-JVM",
       "baselineDocuments": [
-        {"path": "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md", "categoryIds": ["topology-discovery", "spot-instance", "actor-transfer", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md", "categoryIds": ["topology-discovery", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/java/README.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]}
+        {
+          "path": "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "spot-instance",
+            "actor-transfer",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/java/README.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        }
       ],
       "baselineSources": [
         {
           "path": "framework/languages/java/zlink-framework-core/src/main/java/systems/zlink/framework/channels/ZLinkClient.java",
           "codeTag": "java",
           "publicSourceOnly": true,
-          "categoryIds": ["topology-discovery", "messaging-execution"]
+          "categoryIds": [
+            "topology-discovery",
+            "messaging-execution"
+          ]
         }
       ]
     },
     {
       "id": "kotlin",
-      "acceptedCodeTags": ["kotlin", "java"],
-      "defaultPackages": ["systems.zlink:zlink-framework-kotlin"],
+      "acceptedCodeTags": [
+        "kotlin",
+        "java"
+      ],
+      "defaultPackages": [
+        "systems.zlink:zlink-framework-kotlin"
+      ],
       "packageRules": [
         {
           "documentPattern": "/configuration-host\\.ko\\.md$",
-          "packages": ["systems.zlink:zlink-framework-kotlin", "systems.zlink:zlink-framework-spring"]
+          "packages": [
+            "systems.zlink:zlink-framework-kotlin",
+            "systems.zlink:zlink-framework-spring"
+          ]
         }
       ],
       "implementationSuffix": "JVM",
       "packageGate": "V11-M9-PKG-JVM",
       "baselineDocuments": [
-        {"path": "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md", "categoryIds": ["topology-discovery", "spot-instance", "actor-transfer", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/kotlin/README.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]}
+        {
+          "path": "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "spot-instance",
+            "actor-transfer",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/kotlin/README.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        }
       ]
     },
     {
       "id": "node",
-      "acceptedCodeTags": ["ts", "typescript"],
-      "defaultPackages": ["@zlink-systems/framework"],
+      "acceptedCodeTags": [
+        "ts",
+        "typescript"
+      ],
+      "defaultPackages": [
+        "@zlink-systems/framework"
+      ],
       "packageRules": [
         {
           "documentPattern": "/(?:02-channel-messaging|03-location-observability|04-spots|05-actors|06-stream-worker|07-nestjs-host)\\.ko\\.md$",
-          "packages": ["@zlink-systems/framework", "@zlink-systems/nestjs"]
+          "packages": [
+            "@zlink-systems/framework",
+            "@zlink-systems/nestjs"
+          ]
         },
         {
           "documentPattern": "/08-location-maintenance\\.ko\\.md$",
-          "packages": ["@zlink-systems/framework", "@zlink-systems/framework-locations-redis"]
+          "packages": [
+            "@zlink-systems/framework",
+            "@zlink-systems/framework-locations-redis"
+          ]
         }
       ],
       "implementationSuffix": "NODE",
       "packageGate": "V11-M9-PKG-NODE",
       "baselineDocuments": [
-        {"path": "framework/doc/framework/spec/server/languages/node/01-system-structure.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "observability-diagnostics"]},
-        {"path": "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md", "categoryIds": ["topology-discovery", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md", "categoryIds": ["topology-discovery", "spot-instance", "actor-transfer", "location-authority"]},
-        {"path": "framework/doc/framework/spec/server/languages/node/README.ko.md", "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution", "spot-instance", "actor-transfer", "stream-session", "location-authority", "observability-diagnostics"]}
+        {
+          "path": "framework/doc/framework/spec/server/languages/node/01-system-structure.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "observability-diagnostics"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md",
+          "categoryIds": [
+            "topology-discovery",
+            "spot-instance",
+            "actor-transfer",
+            "location-authority"
+          ]
+        },
+        {
+          "path": "framework/doc/framework/spec/server/languages/node/README.ko.md",
+          "categoryIds": [
+            "host-lifecycle",
+            "topology-discovery",
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer",
+            "stream-session",
+            "location-authority",
+            "observability-diagnostics"
+          ]
+        }
       ],
       "baselineSources": [
         {
           "path": "framework/languages/node/packages/framework/src/contracts/Spots/ZLinkSpot.ts",
           "codeTag": "ts",
           "publicSourceOnly": true,
-          "categoryIds": ["messaging-execution", "spot-instance", "actor-transfer"]
+          "categoryIds": [
+            "messaging-execution",
+            "spot-instance",
+            "actor-transfer"
+          ]
         }
       ]
     }
@@ -2232,119 +2704,419 @@
   "categories": [
     {
       "id": "host-lifecycle",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:common-runtime|configuration-host|foundation-configuration|nestjs-host)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:common-runtime|configuration-host|foundation-configuration|nestjs-host)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/05-framework-api.ko.md",
         "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
       ],
-      "targetSpecOwners": [
-        "framework/doc/plan/v11.0/target-spec/01-mesh-node.ko.md",
-        "framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md",
-        "framework/doc/plan/v11.0/target-spec/08-liveness-observability.ko.md"
+      "decisionIds": [
+        "POSD-V11-01",
+        "POSD-V11-09",
+        "POSD-V11-11",
+        "POSD-V11-26",
+        "POSD-V11-32",
+        "POSD-V11-36",
+        "POSD-V11-37",
+        "POSD-V11-45",
+        "POSD-V11-48",
+        "POSD-V11-52",
+        "POSD-V11-53",
+        "POSD-V11-55",
+        "POSD-V11-56",
+        "POSD-V11-57",
+        "POSD-V11-58",
+        "POSD-V11-59",
+        "POSD-V11-60"
       ],
-      "decisionIds": ["POSD-V11-01", "POSD-V11-09", "POSD-V11-11", "POSD-V11-26", "POSD-V11-32", "POSD-V11-36", "POSD-V11-37", "POSD-V11-45", "POSD-V11-48", "POSD-V11-52", "POSD-V11-53", "POSD-V11-55", "POSD-V11-56", "POSD-V11-57", "POSD-V11-58", "POSD-V11-59", "POSD-V11-60"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M01", "V11-E2E-M02", "V11-E2E-M19", "V11-E2E-M20", "V11-E2E-M21", "V11-E2E-M27", "V11-E2E-M45", "V11-E2E-M46", "V11-E2E-M58", "V11-E2E-M67", "V11-RACE-12", "V11-RACE-37"],
-      "implementationStages": ["V11-M6C-{suffix}"]
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M01",
+        "V11-E2E-M02",
+        "V11-E2E-M19",
+        "V11-E2E-M20",
+        "V11-E2E-M21",
+        "V11-E2E-M27",
+        "V11-E2E-M45",
+        "V11-E2E-M46",
+        "V11-E2E-M58",
+        "V11-E2E-M67",
+        "V11-RACE-12",
+        "V11-RACE-37"
+      ],
+      "implementationStages": [
+        "V11-M6C-{suffix}"
+      ]
     },
     {
       "id": "topology-discovery",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:configuration-topology|foundation-configuration|channel-messaging|routing-id-allocation|location-observability|topology-monitoring|common-runtime)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:configuration-topology|foundation-configuration|channel-messaging|routing-id-allocation|location-observability|topology-monitoring|common-runtime)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/10-channel-topology.ko.md",
         "framework/doc/framework/spec/server/12-client-server-channel.ko.md",
         "framework/doc/framework/spec/server/13-network-listener-identity.ko.md",
         "framework/doc/framework/spec/server/40-location-runtime.ko.md"
       ],
-      "targetSpecOwners": [
-        "framework/doc/plan/v11.0/target-spec/01-mesh-node.ko.md",
-        "framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md"
+      "decisionIds": [
+        "POSD-V11-03",
+        "POSD-V11-05",
+        "POSD-V11-15",
+        "POSD-V11-19",
+        "POSD-V11-25",
+        "POSD-V11-28",
+        "POSD-V11-32",
+        "POSD-V11-33",
+        "POSD-V11-36",
+        "POSD-V11-38",
+        "POSD-V11-42",
+        "POSD-V11-43",
+        "POSD-V11-45",
+        "POSD-V11-48",
+        "POSD-V11-50",
+        "POSD-V11-52",
+        "POSD-V11-55",
+        "POSD-V11-56",
+        "POSD-V11-58"
       ],
-      "decisionIds": ["POSD-V11-03", "POSD-V11-05", "POSD-V11-15", "POSD-V11-19", "POSD-V11-25", "POSD-V11-28", "POSD-V11-32", "POSD-V11-33", "POSD-V11-36", "POSD-V11-38", "POSD-V11-42", "POSD-V11-43", "POSD-V11-45", "POSD-V11-48", "POSD-V11-50", "POSD-V11-52", "POSD-V11-55", "POSD-V11-56", "POSD-V11-58"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-L01", "V11-E2E-L02", "V11-E2E-L03", "V11-E2E-L04", "V11-E2E-M16", "V11-E2E-M29", "V11-E2E-M30", "V11-E2E-M31", "V11-E2E-M38", "V11-E2E-M40", "V11-E2E-M47", "V11-E2E-M53", "V11-E2E-M55", "V11-RACE-04", "V11-RACE-14", "V11-RACE-24", "V11-RACE-26"],
-      "implementationStages": ["V11-M6A-{suffix}"]
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-L01",
+        "V11-E2E-L02",
+        "V11-E2E-L03",
+        "V11-E2E-L04",
+        "V11-E2E-M16",
+        "V11-E2E-M29",
+        "V11-E2E-M30",
+        "V11-E2E-M31",
+        "V11-E2E-M38",
+        "V11-E2E-M40",
+        "V11-E2E-M47",
+        "V11-E2E-M53",
+        "V11-E2E-M55",
+        "V11-RACE-04",
+        "V11-RACE-14",
+        "V11-RACE-24",
+        "V11-RACE-26"
+      ],
+      "implementationStages": [
+        "V11-M6A-{suffix}"
+      ]
     },
     {
       "id": "messaging-execution",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:common-runtime|channel-messaging|dispatch-ownership|serialization|foundation-configuration|examples)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:common-runtime|channel-messaging|dispatch-ownership|serialization|foundation-configuration|examples)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/03-message-model.ko.md",
         "framework/doc/framework/spec/04-async-execution-policy.ko.md",
         "framework/doc/framework/spec/server/11-channel-messaging.ko.md"
       ],
-      "targetSpecOwners": ["framework/doc/plan/v11.0/target-spec/02-dispatch.ko.md"],
-      "decisionIds": ["POSD-V11-02", "POSD-V11-03", "POSD-V11-10", "POSD-V11-20", "POSD-V11-32", "POSD-V11-36", "POSD-V11-39", "POSD-V11-40", "POSD-V11-46", "POSD-V11-57", "POSD-V11-58"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M12", "V11-E2E-M25", "V11-E2E-M28", "V11-E2E-M48", "V11-E2E-M56", "V11-RACE-02", "V11-RACE-05", "V11-RACE-27"],
-      "implementationStages": ["V11-M5-FOUND-{suffix}", "V11-M6A-{suffix}"]
+      "decisionIds": [
+        "POSD-V11-02",
+        "POSD-V11-03",
+        "POSD-V11-10",
+        "POSD-V11-20",
+        "POSD-V11-32",
+        "POSD-V11-36",
+        "POSD-V11-39",
+        "POSD-V11-40",
+        "POSD-V11-46",
+        "POSD-V11-57",
+        "POSD-V11-58"
+      ],
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M12",
+        "V11-E2E-M25",
+        "V11-E2E-M28",
+        "V11-E2E-M48",
+        "V11-E2E-M56",
+        "V11-RACE-02",
+        "V11-RACE-05",
+        "V11-RACE-27"
+      ],
+      "implementationStages": [
+        "V11-M5-FOUND-{suffix}",
+        "V11-M6A-{suffix}"
+      ]
     },
     {
       "id": "spot-instance",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:spots|channel-messaging)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:spots|channel-messaging)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/20-spot-messaging.ko.md",
         "framework/doc/framework/spec/server/23-spot-actor.ko.md",
         "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
         "framework/doc/framework/spec/server/25-stage-wrapper-on-spot.ko.md"
       ],
-      "targetSpecOwners": [
-        "framework/doc/plan/v11.0/target-spec/03-spot.ko.md",
-        "framework/doc/plan/v11.0/target-spec/06-instance-spot.ko.md"
+      "decisionIds": [
+        "POSD-V11-06",
+        "POSD-V11-07",
+        "POSD-V11-08",
+        "POSD-V11-10",
+        "POSD-V11-16",
+        "POSD-V11-17",
+        "POSD-V11-20",
+        "POSD-V11-22",
+        "POSD-V11-23",
+        "POSD-V11-31",
+        "POSD-V11-32",
+        "POSD-V11-33",
+        "POSD-V11-47",
+        "POSD-V11-48",
+        "POSD-V11-51",
+        "POSD-V11-55",
+        "POSD-V11-56",
+        "POSD-V11-57",
+        "POSD-V11-58",
+        "POSD-V11-59"
       ],
-      "decisionIds": ["POSD-V11-06", "POSD-V11-07", "POSD-V11-08", "POSD-V11-10", "POSD-V11-16", "POSD-V11-17", "POSD-V11-20", "POSD-V11-22", "POSD-V11-23", "POSD-V11-31", "POSD-V11-32", "POSD-V11-33", "POSD-V11-47", "POSD-V11-48", "POSD-V11-51", "POSD-V11-55", "POSD-V11-56", "POSD-V11-57", "POSD-V11-58", "POSD-V11-59"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M06", "V11-E2E-M07", "V11-E2E-M17", "V11-E2E-M24", "V11-E2E-M57", "V11-E2E-M62", "V11-E2E-M63", "V11-E2E-M65", "V11-RACE-01", "V11-RACE-06", "V11-RACE-28", "V11-RACE-34", "V11-RACE-35"],
-      "implementationStages": ["V11-M6B-{suffix}"]
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M06",
+        "V11-E2E-M07",
+        "V11-E2E-M17",
+        "V11-E2E-M24",
+        "V11-E2E-M57",
+        "V11-E2E-M62",
+        "V11-E2E-M63",
+        "V11-E2E-M65",
+        "V11-RACE-01",
+        "V11-RACE-06",
+        "V11-RACE-28",
+        "V11-RACE-34",
+        "V11-RACE-35"
+      ],
+      "implementationStages": [
+        "V11-M6B-{suffix}"
+      ]
     },
     {
       "id": "actor-transfer",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:actors|spots|bound-stream-session|location-maintenance)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:actors|spots|bound-stream-session|location-maintenance)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/22-actor-model.ko.md",
         "framework/doc/framework/spec/server/23-spot-actor.ko.md",
         "framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md",
         "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
       ],
-      "targetSpecOwners": [
-        "framework/doc/plan/v11.0/target-spec/04-actor.ko.md",
-        "framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md"
+      "decisionIds": [
+        "POSD-V11-04",
+        "POSD-V11-06",
+        "POSD-V11-07",
+        "POSD-V11-08",
+        "POSD-V11-12",
+        "POSD-V11-16",
+        "POSD-V11-18",
+        "POSD-V11-19",
+        "POSD-V11-21",
+        "POSD-V11-22",
+        "POSD-V11-24",
+        "POSD-V11-26",
+        "POSD-V11-27",
+        "POSD-V11-28",
+        "POSD-V11-29",
+        "POSD-V11-30",
+        "POSD-V11-31",
+        "POSD-V11-32",
+        "POSD-V11-34",
+        "POSD-V11-37",
+        "POSD-V11-39",
+        "POSD-V11-40",
+        "POSD-V11-41",
+        "POSD-V11-42",
+        "POSD-V11-44",
+        "POSD-V11-46",
+        "POSD-V11-49",
+        "POSD-V11-51",
+        "POSD-V11-54",
+        "POSD-V11-55",
+        "POSD-V11-56",
+        "POSD-V11-57",
+        "POSD-V11-58"
       ],
-      "decisionIds": ["POSD-V11-04", "POSD-V11-06", "POSD-V11-07", "POSD-V11-08", "POSD-V11-12", "POSD-V11-16", "POSD-V11-18", "POSD-V11-19", "POSD-V11-21", "POSD-V11-22", "POSD-V11-24", "POSD-V11-26", "POSD-V11-27", "POSD-V11-28", "POSD-V11-29", "POSD-V11-30", "POSD-V11-31", "POSD-V11-32", "POSD-V11-34", "POSD-V11-37", "POSD-V11-39", "POSD-V11-40", "POSD-V11-41", "POSD-V11-42", "POSD-V11-44", "POSD-V11-46", "POSD-V11-49", "POSD-V11-51", "POSD-V11-54", "POSD-V11-55", "POSD-V11-56", "POSD-V11-57", "POSD-V11-58"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M04", "V11-E2E-M05", "V11-E2E-M08", "V11-E2E-M13", "V11-E2E-M14", "V11-E2E-M18", "V11-E2E-M33", "V11-E2E-M35", "V11-E2E-M37", "V11-E2E-M39", "V11-E2E-M42", "V11-E2E-M43", "V11-E2E-M49", "V11-E2E-M50", "V11-E2E-M51", "V11-E2E-M52", "V11-E2E-M54", "V11-E2E-M61", "V11-E2E-M64", "V11-E2E-M66", "V11-E2E-M68", "V11-RACE-03", "V11-RACE-07", "V11-RACE-11", "V11-RACE-13", "V11-RACE-15", "V11-RACE-16", "V11-RACE-17", "V11-RACE-19", "V11-RACE-20", "V11-RACE-21", "V11-RACE-22", "V11-RACE-23", "V11-RACE-25", "V11-RACE-30", "V11-RACE-32", "V11-RACE-33", "V11-RACE-36", "V11-RACE-38"],
-      "implementationStages": ["V11-M6B-{suffix}", "V11-M6C-{suffix}"]
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M04",
+        "V11-E2E-M05",
+        "V11-E2E-M08",
+        "V11-E2E-M13",
+        "V11-E2E-M14",
+        "V11-E2E-M18",
+        "V11-E2E-M33",
+        "V11-E2E-M35",
+        "V11-E2E-M37",
+        "V11-E2E-M39",
+        "V11-E2E-M42",
+        "V11-E2E-M43",
+        "V11-E2E-M49",
+        "V11-E2E-M50",
+        "V11-E2E-M51",
+        "V11-E2E-M52",
+        "V11-E2E-M54",
+        "V11-E2E-M61",
+        "V11-E2E-M64",
+        "V11-E2E-M66",
+        "V11-E2E-M68",
+        "V11-RACE-03",
+        "V11-RACE-07",
+        "V11-RACE-11",
+        "V11-RACE-13",
+        "V11-RACE-15",
+        "V11-RACE-16",
+        "V11-RACE-17",
+        "V11-RACE-19",
+        "V11-RACE-20",
+        "V11-RACE-21",
+        "V11-RACE-22",
+        "V11-RACE-23",
+        "V11-RACE-25",
+        "V11-RACE-30",
+        "V11-RACE-32",
+        "V11-RACE-33",
+        "V11-RACE-36",
+        "V11-RACE-38"
+      ],
+      "implementationStages": [
+        "V11-M6B-{suffix}",
+        "V11-M6C-{suffix}"
+      ]
     },
     {
       "id": "stream-session",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:stream-session|bound-stream-session|stream-worker)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:stream-session|bound-stream-session|stream-worker)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/30-stream-session.ko.md",
         "framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md"
       ],
-      "targetSpecOwners": ["framework/doc/plan/v11.0/target-spec/05-stream-session.ko.md"],
-      "decisionIds": ["POSD-V11-04", "POSD-V11-08", "POSD-V11-12", "POSD-V11-32", "POSD-V11-39", "POSD-V11-41", "POSD-V11-46", "POSD-V11-49", "POSD-V11-57"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M26", "V11-RACE-10"],
-      "implementationStages": ["V11-M6B-{suffix}"]
+      "decisionIds": [
+        "POSD-V11-04",
+        "POSD-V11-08",
+        "POSD-V11-12",
+        "POSD-V11-32",
+        "POSD-V11-39",
+        "POSD-V11-41",
+        "POSD-V11-46",
+        "POSD-V11-49",
+        "POSD-V11-57"
+      ],
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M26",
+        "V11-RACE-10"
+      ],
+      "implementationStages": [
+        "V11-M6B-{suffix}"
+      ]
     },
     {
       "id": "location-authority",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:authority-checkpoint|location-maintenance|location-provider-redis|location-store|routing-id-allocation|location-observability)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:authority-transfer|location-maintenance|location-provider-redis|location-store|routing-id-allocation|location-observability)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/40-location-runtime.ko.md",
         "framework/doc/framework/spec/server/41-location-store-redis.ko.md",
+        "framework/doc/framework/spec/server/42-transfer-store-redis.ko.md",
         "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
       ],
-      "targetSpecOwners": ["framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md"],
-      "decisionIds": ["POSD-V11-06", "POSD-V11-07", "POSD-V11-11", "POSD-V11-12", "POSD-V11-17", "POSD-V11-19", "POSD-V11-25", "POSD-V11-26", "POSD-V11-27", "POSD-V11-28", "POSD-V11-29", "POSD-V11-32", "POSD-V11-33", "POSD-V11-34", "POSD-V11-35", "POSD-V11-37", "POSD-V11-38", "POSD-V11-41", "POSD-V11-42", "POSD-V11-43", "POSD-V11-44", "POSD-V11-45", "POSD-V11-47", "POSD-V11-48", "POSD-V11-49", "POSD-V11-50", "POSD-V11-51", "POSD-V11-52", "POSD-V11-54", "POSD-V11-55", "POSD-V11-56", "POSD-V11-57", "POSD-V11-58"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-M03", "V11-E2E-M09", "V11-E2E-M10", "V11-E2E-M11", "V11-E2E-M15", "V11-E2E-M22", "V11-E2E-M23", "V11-E2E-M32", "V11-E2E-M34", "V11-E2E-M36", "V11-E2E-M41", "V11-E2E-M44", "V11-E2E-M59", "V11-E2E-M60", "V11-RACE-18", "V11-RACE-29", "V11-RACE-31"],
-      "implementationStages": ["V11-M6A-{suffix}", "V11-M6C-{suffix}"]
+      "decisionIds": [
+        "POSD-V11-06",
+        "POSD-V11-07",
+        "POSD-V11-11",
+        "POSD-V11-12",
+        "POSD-V11-17",
+        "POSD-V11-19",
+        "POSD-V11-25",
+        "POSD-V11-26",
+        "POSD-V11-27",
+        "POSD-V11-28",
+        "POSD-V11-29",
+        "POSD-V11-32",
+        "POSD-V11-33",
+        "POSD-V11-34",
+        "POSD-V11-35",
+        "POSD-V11-37",
+        "POSD-V11-38",
+        "POSD-V11-41",
+        "POSD-V11-42",
+        "POSD-V11-43",
+        "POSD-V11-44",
+        "POSD-V11-45",
+        "POSD-V11-47",
+        "POSD-V11-48",
+        "POSD-V11-49",
+        "POSD-V11-50",
+        "POSD-V11-51",
+        "POSD-V11-52",
+        "POSD-V11-54",
+        "POSD-V11-55",
+        "POSD-V11-56",
+        "POSD-V11-57",
+        "POSD-V11-58"
+      ],
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-M03",
+        "V11-E2E-M09",
+        "V11-E2E-M10",
+        "V11-E2E-M11",
+        "V11-E2E-M15",
+        "V11-E2E-M22",
+        "V11-E2E-M23",
+        "V11-E2E-M32",
+        "V11-E2E-M34",
+        "V11-E2E-M36",
+        "V11-E2E-M41",
+        "V11-E2E-M44",
+        "V11-E2E-M59",
+        "V11-E2E-M60",
+        "V11-RACE-18",
+        "V11-RACE-29",
+        "V11-RACE-31"
+      ],
+      "implementationStages": [
+        "V11-M6A-{suffix}",
+        "V11-M6C-{suffix}"
+      ]
     },
     {
       "id": "observability-diagnostics",
-      "documentPatterns": ["/README\\.ko\\.md$", "/(?:[0-9]+-)?(?:monitoring|monitoring-errors|topology-monitoring|location-observability|common-runtime|channel-messaging)\\.ko\\.md$"],
+      "documentPatterns": [
+        "/README\\.ko\\.md$",
+        "/(?:[0-9]+-)?(?:monitoring|monitoring-errors|topology-monitoring|location-observability|common-runtime|channel-messaging)\\.ko\\.md$"
+      ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/50-runtime-monitoring.ko.md",
         "framework/doc/framework/spec/server/51-runtime-metrics.ko.md",
@@ -2352,18 +3124,39 @@
         "framework/doc/framework/spec/server/53-flow-correlation.ko.md",
         "framework/doc/framework/spec/server/55-transport-liveness.ko.md"
       ],
-      "targetSpecOwners": ["framework/doc/plan/v11.0/target-spec/08-liveness-observability.ko.md"],
-      "decisionIds": ["POSD-V11-01", "POSD-V11-11", "POSD-V11-13", "POSD-V11-14", "POSD-V11-15", "POSD-V11-25", "POSD-V11-32", "POSD-V11-59", "POSD-V11-60"],
-      "contractTestOwners": ["V11-M7-CONTRACT"],
-      "e2eScenarioIds": ["V11-E2E-L05", "V11-E2E-L06", "V11-RACE-08", "V11-RACE-09"],
-      "implementationStages": ["V11-M6C-{suffix}"]
+      "decisionIds": [
+        "POSD-V11-01",
+        "POSD-V11-11",
+        "POSD-V11-13",
+        "POSD-V11-14",
+        "POSD-V11-15",
+        "POSD-V11-25",
+        "POSD-V11-32",
+        "POSD-V11-59",
+        "POSD-V11-60"
+      ],
+      "contractTestOwners": [
+        "V11-M7-CONTRACT"
+      ],
+      "e2eScenarioIds": [
+        "V11-E2E-L05",
+        "V11-E2E-L06",
+        "V11-RACE-08",
+        "V11-RACE-09"
+      ],
+      "implementationStages": [
+        "V11-M6C-{suffix}"
+      ]
     }
   ],
   "decisions": [
     {
       "id": "POSD-V11-01",
       "subject": "Service runtime placement",
-      "alternatives": ["shared native C runtime", "one runtime per Framework language"],
+      "alternatives": [
+        "shared native C runtime",
+        "one runtime per Framework language"
+      ],
       "selected": "one runtime per Framework language",
       "callerBurden": "Application code uses the language's Task, coroutine, Promise and DI lifecycle without a second C lifecycle API.",
       "informationHiding": "Each runtime keeps scheduling, ownership and resource cleanup inside its language package."
@@ -2371,7 +3164,10 @@
     {
       "id": "POSD-V11-02",
       "subject": "Handler topology context",
-      "alternatives": ["MeshName on every handler context", "MeshName and source RID only on direct-node contexts"],
+      "alternatives": [
+        "MeshName on every handler context",
+        "MeshName and source RID only on direct-node contexts"
+      ],
       "selected": "MeshName and source RID only on direct-node contexts",
       "callerBurden": "Channel and Spot handlers do not receive transport topology data they cannot act on.",
       "informationHiding": "The runtime owns ChannelName-to-topology routing."
@@ -2379,7 +3175,10 @@
     {
       "id": "POSD-V11-03",
       "subject": "Channel target selection",
-      "alternatives": ["MeshName plus ChannelName", "process-local unique ChannelName"],
+      "alternatives": [
+        "MeshName plus ChannelName",
+        "process-local unique ChannelName"
+      ],
       "selected": "process-local unique ChannelName",
       "callerBurden": "A caller selects a logical target with one name.",
       "informationHiding": "Physical RouteMesh or ClientServer lookup stays inside the runtime."
@@ -2387,7 +3186,10 @@
     {
       "id": "POSD-V11-04",
       "subject": "Actor transfer timing",
-      "alternatives": ["Actor-specific transfer timeout plus forwarding window", "forwarding window plus host deadline"],
+      "alternatives": [
+        "Actor-specific transfer timeout plus forwarding window",
+        "forwarding window plus host deadline"
+      ],
       "selected": "forwarding window plus host deadline",
       "callerBurden": "The application does not coordinate two overlapping transfer deadlines.",
       "informationHiding": "The host operation owns the terminal time bound."
@@ -2395,7 +3197,10 @@
     {
       "id": "POSD-V11-05",
       "subject": "Channel role builder",
-      "alternatives": ["shared settings before role selection", "Client and Server role-specific builders"],
+      "alternatives": [
+        "shared settings before role selection",
+        "Client and Server role-specific builders"
+      ],
       "selected": "Client and Server role-specific builders",
       "callerBurden": "A Client cannot be configured with Server-only weight or handlers.",
       "informationHiding": "Invalid role states cannot be represented."
@@ -2403,7 +3208,10 @@
     {
       "id": "POSD-V11-06",
       "subject": "Location owner authority",
-      "alternatives": ["provider methods for every phase", "opaque expected-version CAS"],
+      "alternatives": [
+        "provider methods for every phase",
+        "opaque expected-version CAS"
+      ],
       "selected": "opaque expected-version CAS",
       "callerBurden": "Store providers implement one concurrency primitive instead of the Framework state machine.",
       "informationHiding": "Transfer phases remain owned by the Framework runtime."
@@ -2411,7 +3219,10 @@
     {
       "id": "POSD-V11-07",
       "subject": "Transfer policy ownership",
-      "alternatives": ["separate adapter registry", "typed policy attached to the factory"],
+      "alternatives": [
+        "separate adapter registry",
+        "typed policy attached to the factory"
+      ],
       "selected": "typed policy attached to the factory",
       "callerBurden": "Type creation and state policy are configured in one place.",
       "informationHiding": "The runtime does not expose a second transfer registry."
@@ -2419,7 +3230,10 @@
     {
       "id": "POSD-V11-08",
       "subject": "Transfer initiation",
-      "alternatives": ["one public operation per object", "host Retire operation"],
+      "alternatives": [
+        "one public operation per object",
+        "host Retire operation"
+      ],
       "selected": "host Retire operation",
       "callerBurden": "Applications do not assemble target, phase and retry order.",
       "informationHiding": "The runtime owns the distributed transfer state machine."
@@ -2427,7 +3241,10 @@
     {
       "id": "POSD-V11-09",
       "subject": "Host termination",
-      "alternatives": ["extend Drain with policy variants", "Retire and Shutdown"],
+      "alternatives": [
+        "extend Drain with policy variants",
+        "Retire and Shutdown"
+      ],
       "selected": "Retire and Shutdown",
       "callerBurden": "The caller chooses continuity or bounded termination without configuring hidden relocation behavior.",
       "informationHiding": "Object cleanup and force-stop sequencing remain internal."
@@ -2435,7 +3252,10 @@
     {
       "id": "POSD-V11-10",
       "subject": "One-way submission",
-      "alternatives": ["TrySubmit plus asynchronous submit", "asynchronous submit only"],
+      "alternatives": [
+        "TrySubmit plus asynchronous submit",
+        "asynchronous submit only"
+      ],
       "selected": "asynchronous submit only",
       "callerBurden": "Cold resolve and bounded admission do not create a second public call state.",
       "informationHiding": "The runtime owns lookup and admission waiting."
@@ -2443,7 +3263,10 @@
     {
       "id": "POSD-V11-11",
       "subject": "Remote maintenance endpoint",
-      "alternatives": ["fixed Framework HTTP route", "hosting or application endpoint"],
+      "alternatives": [
+        "fixed Framework HTTP route",
+        "hosting or application endpoint"
+      ],
       "selected": "hosting or application endpoint",
       "callerBurden": "Authentication and deployment targeting use the application's existing hosting policy.",
       "informationHiding": "The Framework does not publish a second unaffiliated control endpoint."
@@ -2451,7 +3274,10 @@
     {
       "id": "POSD-V11-12",
       "subject": "Transfer data",
-      "alternatives": ["Checkpoint Store for every transfer byte", "peer staging plus durable Checkpoint Store"],
+      "alternatives": [
+        "Checkpoint Store for every transfer byte",
+        "peer staging plus durable Checkpoint Store"
+      ],
       "selected": "peer staging plus durable Checkpoint Store",
       "callerBurden": "Applications provide typed state without choosing transport and recovery storage per operation.",
       "informationHiding": "The runtime owns staging, replay cursor and duplicate removal."
@@ -2459,7 +3285,10 @@
     {
       "id": "POSD-V11-13",
       "subject": "Core raw contract documentation",
-      "alternatives": ["duplicate Core raw contract in the v11 target", "Core formal spec as the only raw contract"],
+      "alternatives": [
+        "duplicate Core raw contract in the v11 target",
+        "Core formal spec as the only raw contract"
+      ],
       "selected": "Core formal spec as the only raw contract",
       "callerBurden": "Binding authors have one raw contract to inspect.",
       "informationHiding": "The v11 plan records migration ownership without creating a second raw API source."
@@ -2467,7 +3296,10 @@
     {
       "id": "POSD-V11-14",
       "subject": "Transport liveness responsibility",
-      "alternatives": ["retain Core ZMP heartbeat and its public socket options", "remove ZMP heartbeat and implement topology-specific internal Framework liveness"],
+      "alternatives": [
+        "retain Core ZMP heartbeat and its public socket options",
+        "remove ZMP heartbeat and implement topology-specific internal Framework liveness"
+      ],
       "selected": "remove ZMP heartbeat and implement topology-specific internal Framework liveness",
       "callerBurden": "Applications do not configure probe values or treat unrelated inbound traffic as service health.",
       "informationHiding": "Each current connection admits Ready, keeps at most one outstanding periodic probe and refreshes only on its matching ACK."
@@ -2475,7 +3307,10 @@
     {
       "id": "POSD-V11-15",
       "subject": "Fanout publisher failure attribution",
-      "alternatives": ["share one SUB socket and expose publisher identity in application or wire metadata", "use one internal SUB socket per publisher endpoint"],
+      "alternatives": [
+        "share one SUB socket and expose publisher identity in application or wire metadata",
+        "use one internal SUB socket per publisher endpoint"
+      ],
       "selected": "use one internal SUB socket per publisher endpoint",
       "callerBurden": "Application events and handler metadata do not carry transport publisher identity.",
       "informationHiding": "The fanout runtime attributes timeout and reconnect state to the owning socket without adding a public routing field."
@@ -2483,7 +3318,10 @@
     {
       "id": "POSD-V11-16",
       "subject": "Spot lifecycle capability split",
-      "alternatives": ["one eight-callback lifecycle interface for every Spot kind", "base lifecycle plus Actor capability, Entry-only create capability and actor-free Instance interface"],
+      "alternatives": [
+        "one eight-callback lifecycle interface for every Spot kind",
+        "base lifecycle plus Actor capability, Entry-only create capability and actor-free Instance interface"
+      ],
       "selected": "base lifecycle plus Actor capability, Entry-only create capability and actor-free Instance interface",
       "callerBurden": "Each Spot kind implements only callbacks that can occur for that kind; Instance Spot exposes Configure, Initialize and Closing only.",
       "informationHiding": "Actor membership and Entry creation stay in opt-in capabilities instead of leaking into every factory type."
@@ -2491,7 +3329,10 @@
     {
       "id": "POSD-V11-17",
       "subject": "Instance activation control surface",
-      "alternatives": ["public or Core C target, token and begin-commit-close activation lifecycle", "InstanceSpotAddress messaging plus factory registration with internal claim, fencing and barrier state"],
+      "alternatives": [
+        "public or Core C target, token and begin-commit-close activation lifecycle",
+        "InstanceSpotAddress messaging plus factory registration with internal claim, fencing and barrier state"
+      ],
       "selected": "InstanceSpotAddress messaging plus factory registration with internal claim, fencing and barrier state",
       "callerBurden": "Applications submit by logical address and register a factory without sequencing claim or activation phases.",
       "informationHiding": "Owner ID, generation, epoch and native activation token remain private to each Framework runtime."
@@ -2499,7 +3340,10 @@
     {
       "id": "POSD-V11-18",
       "subject": "Actor reference identity",
-      "alternatives": ["include Actor type in every reference and snapshot", "use node RID, Actor ID and generation only"],
+      "alternatives": [
+        "include Actor type in every reference and snapshot",
+        "use node RID, Actor ID and generation only"
+      ],
       "selected": "use node RID, Actor ID and generation only",
       "callerBurden": "Callers preserve one canonical reference shape across languages and do not supply type metadata when restoring a snapshot.",
       "informationHiding": "Actor type validation stays with the registered factory and authority record."
@@ -2507,7 +3351,10 @@
     {
       "id": "POSD-V11-19",
       "subject": "Spot resolver identity",
-      "alternatives": ["infer the process-local mesh from a RID or Actor ID", "require MeshName with the logical identifier"],
+      "alternatives": [
+        "infer the process-local mesh from a RID or Actor ID",
+        "require MeshName with the logical identifier"
+      ],
       "selected": "require MeshName with the logical identifier",
       "callerBurden": "A resolver call identifies the same logical key in every host and language.",
       "informationHiding": "The runtime selects the current node and physical route after resolving the mesh-scoped key."
@@ -2515,7 +3362,10 @@
     {
       "id": "POSD-V11-20",
       "subject": "C++ runtime extension surface",
-      "alternatives": ["publish registries, invokers, serializer state and raw physical routes", "publish typed configuration and call facades with private runtime wiring"],
+      "alternatives": [
+        "publish registries, invokers, serializer state and raw physical routes",
+        "publish typed configuration and call facades with private runtime wiring"
+      ],
       "selected": "publish typed configuration and call facades with private runtime wiring",
       "callerBurden": "Applications register typed handlers and submit logical calls without constructing dispatch or codec state.",
       "informationHiding": "DI resolution, serializer selection, raw routing and invocation tables remain inside the C++ runtime."
@@ -2523,7 +3373,11 @@
     {
       "id": "POSD-V11-21",
       "subject": "Actor placement ownership",
-      "alternatives": ["accept caller-provided node and route hints", "select an arbitrary remote target from capacity", "create on the current host's MeshName-selected local MeshNode"],
+      "alternatives": [
+        "accept caller-provided node and route hints",
+        "select an arbitrary remote target from capacity",
+        "create on the current host's MeshName-selected local MeshNode"
+      ],
       "selected": "create on the current host's MeshName-selected local MeshNode",
       "callerBurden": "Actor creation supplies MeshName, Actor ID and Actor type without node RID or route hints.",
       "informationHiding": "Create and get-or-create never start distributed placement or hidden remote creation."
@@ -2531,7 +3385,10 @@
     {
       "id": "POSD-V11-22",
       "subject": "C++ Spot lifecycle typing",
-      "alternatives": ["detect lifecycle methods by duck typing", "use Actor-typed virtual base classes with constrained registration"],
+      "alternatives": [
+        "detect lifecycle methods by duck typing",
+        "use Actor-typed virtual base classes with constrained registration"
+      ],
       "selected": "use Actor-typed virtual base classes with constrained registration",
       "callerBurden": "A Spot implementation gets compile-time errors for missing or invalid lifecycle callbacks.",
       "informationHiding": "Factory registration does not infer roles from names, files or runtime method tables."
@@ -2539,7 +3396,10 @@
     {
       "id": "POSD-V11-23",
       "subject": "Instance Spot registration capability",
-      "alternatives": ["share the Actor-capable registry and reject invalid registrations at activation", "provide a packet-only Instance registry"],
+      "alternatives": [
+        "share the Actor-capable registry and reject invalid registrations at activation",
+        "provide a packet-only Instance registry"
+      ],
       "selected": "provide a packet-only Instance registry",
       "callerBurden": "Instance code cannot request Actor or subscription capabilities that the runtime will reject.",
       "informationHiding": "Actor membership and Logical Multicast registration never enter the Instance activation path."
@@ -2547,7 +3407,10 @@
     {
       "id": "POSD-V11-24",
       "subject": "Actor membership fencing",
-      "alternatives": ["expose a callback-specific membership counter", "use provider ownerGeneration for membership writes and objectGeneration for route identity"],
+      "alternatives": [
+        "expose a callback-specific membership counter",
+        "use provider ownerGeneration for membership writes and objectGeneration for route identity"
+      ],
       "selected": "use provider ownerGeneration for membership writes and objectGeneration for route identity",
       "callerBurden": "Lifecycle callbacks receive Actor identity without coordinating an extra counter.",
       "informationHiding": "Expected StoreVersion, ownerGeneration checks and CAS retry policy remain runtime state."
@@ -2555,7 +3418,10 @@
     {
       "id": "POSD-V11-25",
       "subject": "Host lifecycle owner lease",
-      "alternatives": ["one lease per descriptor and routing slot", "one process-lifecycle owner token shared by descriptors, authorities and routing slots"],
+      "alternatives": [
+        "one lease per descriptor and routing slot",
+        "one process-lifecycle owner token shared by descriptors, authorities and routing slots"
+      ],
       "selected": "one process-lifecycle owner token shared by descriptors, authorities and routing slots",
       "callerBurden": "Applications do not create, reuse or coordinate owner IDs across registrations.",
       "informationHiding": "The runtime owns the six common duration values, validates renew interval plus timeout below TTL minus OwnerLeaseFencingMargin for every owner-lease host, and keeps routing slots on the same deadline."
@@ -2563,7 +3429,11 @@
     {
       "id": "POSD-V11-26",
       "subject": "Checkpoint retention after authority commit",
-      "alternatives": ["permanently promote a reference after CAS", "store without TTL and enumerate orphan checkpoints", "renew a fixed 24-hour provider lease while the authority reference is current"],
+      "alternatives": [
+        "permanently promote a reference after CAS",
+        "store without TTL and enumerate orphan checkpoints",
+        "renew a fixed 24-hour provider lease while the authority reference is current"
+      ],
       "selected": "renew a fixed 24-hour provider lease while the authority reference is current",
       "callerBurden": "Applications do not configure retention or run an orphan reaper.",
       "informationHiding": "The owner or recovery coordinator renews only the current reference; missing renewal is a closed provider result."
@@ -2571,7 +3441,10 @@
     {
       "id": "POSD-V11-27",
       "subject": "Actor location source of truth",
-      "alternatives": ["maintain a typed Actor location row beside transfer authority", "store owner location and transfer state in one opaque authority row"],
+      "alternatives": [
+        "maintain a typed Actor location row beside transfer authority",
+        "store owner location and transfer state in one opaque authority row"
+      ],
       "selected": "store owner location and transfer state in one opaque authority row",
       "callerBurden": "Actor directory and Spot-handle resolution use one logical identity without reconciling two records.",
       "informationHiding": "Providers expose generic paged authority enumeration; the Framework decodes operational list projections and never uses them as routing authority."
@@ -2579,7 +3452,10 @@
     {
       "id": "POSD-V11-28",
       "subject": "Placement capability description",
-      "alternatives": ["publish independent type, state-contract and capacity collections", "publish one object-kind and type keyed capability record"],
+      "alternatives": [
+        "publish independent type, state-contract and capacity collections",
+        "publish one object-kind and type keyed capability record"
+      ],
       "selected": "publish one object-kind and type keyed capability record",
       "callerBurden": "Target eligibility is read from one record instead of constructing invalid cross-products.",
       "informationHiding": "Policy, readable state contracts and capacity stay bound to the factory capability that owns them."
@@ -2587,7 +3463,10 @@
     {
       "id": "POSD-V11-29",
       "subject": "Authority generation allocation",
-      "alternatives": ["derive per-key counters and retain permanent tombstones", "use provider-domain global objectGeneration, authorityOwnerGeneration and storeRevision counters"],
+      "alternatives": [
+        "derive per-key counters and retain permanent tombstones",
+        "use provider-domain global objectGeneration, authorityOwnerGeneration and storeRevision counters"
+      ],
       "selected": "use provider-domain global objectGeneration, authorityOwnerGeneration and storeRevision counters",
       "callerBurden": "Framework runtimes select preserve, new-owner or new-object without inventing counters or coordinating a second write.",
       "informationHiding": "Delete removes the row; only active snapshot scans may retain bounded temporary deletion metadata."
@@ -2595,7 +3474,10 @@
     {
       "id": "POSD-V11-30",
       "subject": "Actor lookup and creation surface",
-      "alternatives": ["let ActorDirectory ensure an Actor without a type", "keep ActorDirectory read-only and require Actor type on local ActorManager creation"],
+      "alternatives": [
+        "let ActorDirectory ensure an Actor without a type",
+        "keep ActorDirectory read-only and require Actor type on local ActorManager creation"
+      ],
       "selected": "keep ActorDirectory read-only and require Actor type on local ActorManager creation",
       "callerBurden": "A caller uses one existing-only logical lookup and supplies type only when it explicitly creates an Actor.",
       "informationHiding": "Actor type is fixed in authority after factory selection and is not duplicated in ActorRef or directory identity."
@@ -2603,7 +3485,10 @@
     {
       "id": "POSD-V11-31",
       "subject": "Actor membership leave initiator",
-      "alternatives": ["let Actor context mutate its own membership", "let the owning Spot context remove its typed Actor"],
+      "alternatives": [
+        "let Actor context mutate its own membership",
+        "let the owning Spot context remove its typed Actor"
+      ],
       "selected": "let the owning Spot context remove its typed Actor",
       "callerBurden": "Spot code initiates membership changes through the same owner that serializes membership callbacks.",
       "informationHiding": "Actor context does not gain a second registration or membership authority surface."
@@ -2611,7 +3496,10 @@
     {
       "id": "POSD-V11-32",
       "subject": "Cross-language ordinal range",
-      "alternatives": ["expose the full unsigned 64-bit range and define JVM bit reinterpretation", "use the common positive signed 64-bit range"],
+      "alternatives": [
+        "expose the full unsigned 64-bit range and define JVM bit reinterpretation",
+        "use the common positive signed 64-bit range"
+      ],
       "selected": "use the common positive signed 64-bit range",
       "callerBurden": "Every language compares object, authority-owner and lease generation, revision and sequence as a non-negative public value.",
       "informationHiding": "Providers and runtimes stop at exhaustion instead of leaking wrap or language-specific reinterpretation."
@@ -2619,7 +3507,10 @@
     {
       "id": "POSD-V11-33",
       "subject": "Spot kind and owner authority",
-      "alternatives": ["separate User and Instance Spot rows", "one authority key for MeshName and SpotRid"],
+      "alternatives": [
+        "separate User and Instance Spot rows",
+        "one authority key for MeshName and SpotRid"
+      ],
       "selected": "one authority key for MeshName and SpotRid",
       "callerBurden": "Callers use one Spot identity and receive an atomic kind conflict instead of reconciling two stores.",
       "informationHiding": "The provider CAS allocates objectGeneration while the runtime validates Spot kind and type."
@@ -2627,7 +3518,10 @@
     {
       "id": "POSD-V11-34",
       "subject": "Authority durability",
-      "alternatives": ["expire authority with the owner lease", "keep authority durable until explicit fenced delete"],
+      "alternatives": [
+        "expire authority with the owner lease",
+        "keep authority durable until explicit fenced delete"
+      ],
       "selected": "keep authority durable until explicit fenced delete",
       "callerBurden": "Recovery does not depend on refreshing an application-visible authority TTL.",
       "informationHiding": "Owner and coordinator leases remain separate token rows and cannot mutate authority on expiry."
@@ -2635,7 +3529,10 @@
     {
       "id": "POSD-V11-35",
       "subject": "Authority recovery enumeration",
-      "alternatives": ["public scan ID, watermark and cursor tuple", "one provider-issued opaque scan cursor"],
+      "alternatives": [
+        "public scan ID, watermark and cursor tuple",
+        "one provider-issued opaque scan cursor"
+      ],
       "selected": "one provider-issued opaque scan cursor",
       "callerBurden": "The runtime passes one immutable continuation value unchanged and cannot combine invalid scan positions.",
       "informationHiding": "The provider keeps all snapshot state behind a non-empty cursor bounded to 4096 encoded bytes; the runtime discards partial results on ScanExpired and exact-reads every candidate before CAS."
@@ -2643,7 +3540,10 @@
     {
       "id": "POSD-V11-36",
       "subject": "Complete message size bound",
-      "alternatives": ["fixed 16 MiB or live mutable local limit", "startup-normalized peer-negotiated effective bound"],
+      "alternatives": [
+        "fixed 16 MiB or live mutable local limit",
+        "startup-normalized peer-negotiated effective bound"
+      ],
       "selected": "startup-normalized peer-negotiated effective bound",
       "callerBurden": "A caller configures one startup value and does not synchronize live peer limits.",
       "informationHiding": "The runtime exchanges normalized bounds internally and enforces the minimum before allocation."
@@ -2651,7 +3551,10 @@
     {
       "id": "POSD-V11-37",
       "subject": "Large checkpoint representation",
-      "alternatives": ["expose chunk controls or reduce normal message size", "fixed internal 64 MiB chunks and root manifest"],
+      "alternatives": [
+        "expose chunk controls or reduce normal message size",
+        "fixed internal 64 MiB chunks and root manifest"
+      ],
       "selected": "fixed internal 64 MiB chunks and root manifest",
       "callerBurden": "Checkpoint Store providers keep one opaque put and get surface without format options.",
       "informationHiding": "The runtime enforces 4096 chunks and a 256 GiB logical ceiling with reversible seal rollback."
@@ -2659,7 +3562,10 @@
     {
       "id": "POSD-V11-38",
       "subject": "Routing slot lease ownership",
-      "alternatives": ["issue a second slot lease", "atomically validate the existing host owner token"],
+      "alternatives": [
+        "issue a second slot lease",
+        "atomically validate the existing host owner token"
+      ],
       "selected": "atomically validate the existing host owner token",
       "callerBurden": "A host does not renew two lease systems for the same lifecycle.",
       "informationHiding": "The provider keeps the bounded coherent group snapshot and validates slot 1..65535 and members 1..255."
@@ -2667,7 +3573,10 @@
     {
       "id": "POSD-V11-39",
       "subject": "Session Actor relay reply capability",
-      "alternatives": ["infer a current request from Actor state", "transfer an explicit dispatch context"],
+      "alternatives": [
+        "infer a current request from Actor state",
+        "transfer an explicit dispatch context"
+      ],
       "selected": "transfer an explicit dispatch context",
       "callerBurden": "Actor code relays one typed request without constructing correlation or retry state.",
       "informationHiding": "The runtime owns terminal-once reply correlation and admission failure mapping."
@@ -2675,7 +3584,10 @@
     {
       "id": "POSD-V11-40",
       "subject": "Transfer state JSON compatibility",
-      "alternatives": ["byte-canonical application JSON or message-specific codec registration", "frameworkJsonV1 semantic profile keyed by stateContractId"],
+      "alternatives": [
+        "byte-canonical application JSON or message-specific codec registration",
+        "frameworkJsonV1 semantic profile keyed by stateContractId"
+      ],
       "selected": "frameworkJsonV1 semantic profile keyed by stateContractId",
       "callerBurden": "Adapters exchange typed state without registering per-message codecs or reproducing canonical bytes.",
       "informationHiding": "Only internal manifest, chunk and envelope bytes are canonical; application checkpoint bytes stay opaque."
@@ -2683,7 +3595,10 @@
     {
       "id": "POSD-V11-41",
       "subject": "Transfer completion admission barrier",
-      "alternatives": ["open the target at Activated", "keep ingress sealed through source cleanup and Completed CAS"],
+      "alternatives": [
+        "open the target at Activated",
+        "keep ingress sealed through source cleanup and Completed CAS"
+      ],
       "selected": "keep ingress sealed through source cleanup and Completed CAS",
       "callerBurden": "Applications do not coordinate phase gates or defend against two active owners.",
       "informationHiding": "Restore, replay and bound-session routes remain staged until the runtime opens Ready ingress."
@@ -2691,7 +3606,10 @@
     {
       "id": "POSD-V11-42",
       "subject": "Owner lease lookup and cleanup",
-      "alternatives": ["publish an unbounded lease snapshot and owner-ID-only cleanup", "exact read and token-fenced bulk cleanup"],
+      "alternatives": [
+        "publish an unbounded lease snapshot and owner-ID-only cleanup",
+        "exact read and token-fenced bulk cleanup"
+      ],
       "selected": "exact read and token-fenced bulk cleanup",
       "callerBurden": "Providers implement one bounded identity lookup and cannot delete a newer owner's records.",
       "informationHiding": "The runtime retains the exact owner token through admission and cleanup."
@@ -2699,7 +3617,10 @@
     {
       "id": "POSD-V11-43",
       "subject": "Descriptor reconciliation",
-      "alternatives": ["unbounded provider lists or partial page updates", "bounded pages assembled under a stable scope change stamp"],
+      "alternatives": [
+        "unbounded provider lists or partial page updates",
+        "bounded pages assembled under a stable scope change stamp"
+      ],
       "selected": "bounded pages assembled under a stable scope change stamp",
       "callerBurden": "Applications do not merge pages or observe half-applied topology snapshots.",
       "informationHiding": "The runtime retries when before and after stamps differ and providers own opaque continuation tokens."
@@ -2707,7 +3628,10 @@
     {
       "id": "POSD-V11-44",
       "subject": "Authority hot-row resource budget",
-      "alternatives": ["store terminal replies in unbounded authority payloads", "bound payload and pages while streaming reply bytes through checkpoints"],
+      "alternatives": [
+        "store terminal replies in unbounded authority payloads",
+        "bound payload and pages while streaming reply bytes through checkpoints"
+      ],
       "selected": "bound payload and pages while streaming reply bytes through checkpoints",
       "callerBurden": "Providers implement fixed 1 MiB row and 4 MiB page budgets without public byte tuning.",
       "informationHiding": "Hot rows contain compact metadata and replay cursors while complete terminal replies remain checkpoint data."
@@ -2715,7 +3639,10 @@
     {
       "id": "POSD-V11-45",
       "subject": "Admitted descriptor mutation",
-      "alternatives": ["accept every field update after admission", "freeze identity fields and fence mutable fields by revision"],
+      "alternatives": [
+        "accept every field update after admission",
+        "freeze identity fields and fence mutable fields by revision"
+      ],
       "selected": "freeze identity fields and fence mutable fields by revision",
       "callerBurden": "Operators update declared runtime state without reconstructing identity or resolving mixed revisions.",
       "informationHiding": "The provider rejects stale or identity-changing updates before they alter discovery state."
@@ -2723,7 +3650,10 @@
     {
       "id": "POSD-V11-46",
       "subject": "Transferred terminal reply acknowledgement",
-      "alternatives": ["expose reply acknowledgement to Actor code", "use one internal replyRelayAck barrier"],
+      "alternatives": [
+        "expose reply acknowledgement to Actor code",
+        "use one internal replyRelayAck barrier"
+      ],
       "selected": "use one internal replyRelayAck barrier",
       "callerBurden": "Application handlers complete a reply once without coordinating relay durability.",
       "informationHiding": "Internal command 46 carries only transferId, operationId, the exact request-source owner and node fence, and status; ACK or stored source-lease expiry, never connection close, supplies terminal accounting."
@@ -2731,7 +3661,10 @@
     {
       "id": "POSD-V11-47",
       "subject": "Instance cold activation claim",
-      "alternatives": ["let the target claim after outbound", "resolve and claim ColdActivating at the source before outbound"],
+      "alternatives": [
+        "let the target claim after outbound",
+        "resolve and claim ColdActivating at the source before outbound"
+      ],
       "selected": "resolve and claim ColdActivating at the source before outbound",
       "callerBurden": "One send deadline covers target selection, claim and source outbound admission.",
       "informationHiding": "The target only revalidates the token and generation, activates and commits Ready."
@@ -2739,7 +3672,10 @@
     {
       "id": "POSD-V11-48",
       "subject": "Derived descriptor registration budget",
-      "alternatives": ["truncate or split oversized registration", "validate the fully derived descriptor atomically at startup"],
+      "alternatives": [
+        "truncate or split oversized registration",
+        "validate the fully derived descriptor atomically at startup"
+      ],
       "selected": "validate the fully derived descriptor atomically at startup",
       "callerBurden": "Configuration fails before bind instead of publishing an incomplete capability view.",
       "informationHiding": "The runtime enforces 1 MiB encoded, 1024 capability and 1024 readable-contract bounds without partial publish."
@@ -2747,7 +3683,10 @@
     {
       "id": "POSD-V11-49",
       "subject": "Transfer session and target reservations",
-      "alternatives": ["reuse host lease as every transient reservation", "keep internal token-fenced session-owner and target-reservation leases"],
+      "alternatives": [
+        "reuse host lease as every transient reservation",
+        "keep internal token-fenced session-owner and target-reservation leases"
+      ],
       "selected": "keep internal token-fenced session-owner and target-reservation leases",
       "callerBurden": "Applications do not renew or order transient transfer reservations.",
       "informationHiding": "The runtime binds both internal leases to current owner and authority generations and releases them at terminal barriers."
@@ -2755,7 +3694,10 @@
     {
       "id": "POSD-V11-50",
       "subject": "MeshNode auto-connect resolver surface",
-      "alternatives": ["publish a .NET-only unbounded live-node resolver", "keep auto-connect resolution internal and use the bounded provider page contract"],
+      "alternatives": [
+        "publish a .NET-only unbounded live-node resolver",
+        "keep auto-connect resolution internal and use the bounded provider page contract"
+      ],
       "selected": "keep auto-connect resolution internal and use the bounded provider page contract",
       "callerBurden": "All languages expose the same operational query surface instead of one parity exception.",
       "informationHiding": "Stable-stamp page assembly remains inside the runtime auto-connect reconciler."
@@ -2763,7 +3705,10 @@
     {
       "id": "POSD-V11-51",
       "subject": "Maintenance callback retry semantics",
-      "alternatives": ["promise exactly-once factory capture and restore", "define attempt-level at-least-once callbacks under an exact current fence"],
+      "alternatives": [
+        "promise exactly-once factory capture and restore",
+        "define attempt-level at-least-once callbacks under an exact current fence"
+      ],
       "selected": "define attempt-level at-least-once callbacks under an exact current fence",
       "callerBurden": "Application capture and restoration are retry-safe and do not depend on an exposed transfer ID.",
       "informationHiding": "Only the current owner and attempt may commit completion or open admission; stale callbacks may overlap but cannot commit."
@@ -2771,7 +3716,10 @@
     {
       "id": "POSD-V11-52",
       "subject": "Location Store failure grace",
-      "alternatives": ["extend owner authority deadlines during Store failure", "freeze only the last stable discovery desired set for new-connect reconciliation"],
+      "alternatives": [
+        "extend owner authority deadlines during Store failure",
+        "freeze only the last stable discovery desired set for new-connect reconciliation"
+      ],
       "selected": "freeze only the last stable discovery desired set for new-connect reconciliation",
       "callerBurden": "Existing transport follows service liveness while new connections wait for a stable recovered snapshot.",
       "informationHiding": "Stateful admission still closes at the last valid monotonic lease deadline; recovery revalidates owner token and full page set before diff and connect."
@@ -2779,7 +3727,10 @@
     {
       "id": "POSD-V11-53",
       "subject": "Deprecated C++ drain result mapping",
-      "alternatives": ["retain non-isomorphic legacy failure reasons", "map every allowed Shutdown terminal reason one-to-one"],
+      "alternatives": [
+        "retain non-isomorphic legacy failure reasons",
+        "map every allowed Shutdown terminal reason one-to-one"
+      ],
       "selected": "map every allowed Shutdown terminal reason one-to-one",
       "callerBurden": "A legacy drain caller receives one closed reason that preserves the Shutdown terminal cause without guessing.",
       "informationHiding": "The facade delegates to the shared Shutdown operation and does not recreate obsolete publish or owner-cleanup phases."
@@ -2787,7 +3738,10 @@
     {
       "id": "POSD-V11-54",
       "subject": "Asynchronous provider storage and cancellation",
-      "alternatives": ["let callers infer buffer retention and cancellation commit semantics", "fix storage lifetime and reconcile unknown completion inside the runtime"],
+      "alternatives": [
+        "let callers infer buffer retention and cancellation commit semantics",
+        "fix storage lifetime and reconcile unknown completion inside the runtime"
+      ],
       "selected": "fix storage lifetime and reconcile unknown completion inside the runtime",
       "callerBurden": "Providers receive one completion-bounded input lifetime and never expose an ambiguous commit result to applications.",
       "informationHiding": "The runtime snapshots mutable boundaries, reconciles CAS and content-addressed puts, and cleans unlinked commits by retention."
@@ -2795,7 +3749,10 @@
     {
       "id": "POSD-V11-55",
       "subject": "Monotonic generation exhaustion",
-      "alternatives": ["wrap or reuse exhausted generation values", "return a closed non-retriable result without mutation"],
+      "alternatives": [
+        "wrap or reuse exhausted generation values",
+        "return a closed non-retriable result without mutation"
+      ],
       "selected": "return a closed non-retriable result without mutation",
       "callerBurden": "A provider reports exhaustion without requiring applications to distinguish counter implementation details.",
       "informationHiding": "Authority CAS and owner lease claim own separate closed exhaustion results; routing allocation remains distinct."
@@ -2803,7 +3760,10 @@
     {
       "id": "POSD-V11-56",
       "subject": "Opaque lifecycle source and storeless Actor boundary",
-      "alternatives": ["expose ordered lifecycle counters and caller-selected sources", "keep equality tokens and source selection inside the runtime"],
+      "alternatives": [
+        "expose ordered lifecycle counters and caller-selected sources",
+        "keep equality tokens and source selection inside the runtime"
+      ],
       "selected": "keep equality tokens and source selection inside the runtime",
       "callerBurden": "Callers compare no lifecycle numbers and cannot accidentally use a storeless Actor as a distributed object.",
       "informationHiding": "Store-backed fences, manual nonces and process-local authority share no new public union or option."
@@ -2811,7 +3771,10 @@
     {
       "id": "POSD-V11-57",
       "subject": "Pre-Captured drain and transferable membership",
-      "alternatives": ["capture incomplete connection-bound work or User Spot membership", "drain terminal work and require source Entry membership before capture"],
+      "alternatives": [
+        "capture incomplete connection-bound work or User Spot membership",
+        "drain terminal work and require source Entry membership before capture"
+      ],
       "selected": "drain terminal work and require source Entry membership before capture",
       "callerBurden": "Retire returns the existing blocked result before changing authority when continuity cannot be proven.",
       "informationHiding": "The runtime owns journal eligibility, atomic NewOwner membership replacement and durable cleanup ordering."
@@ -2819,7 +3782,10 @@
     {
       "id": "POSD-V11-58",
       "subject": "Object creation publication barrier",
-      "alternatives": ["publish objects while factory or initialization is incomplete", "publish Ready only after fenced construction and initialization"],
+      "alternatives": [
+        "publish objects while factory or initialization is incomplete",
+        "publish Ready only after fenced construction and initialization"
+      ],
       "selected": "publish Ready only after fenced construction and initialization",
       "callerBurden": "Resolvers observe either a complete object or the existing typed failure without hidden retries.",
       "informationHiding": "Creating, ColdActivating and fenced delete reconciliation remain internal state."
@@ -2827,7 +3793,10 @@
     {
       "id": "POSD-V11-59",
       "subject": "User Spot close with active membership",
-      "alternatives": ["implicitly move or destroy Actor members during close", "return false without changing Spot or Actor state"],
+      "alternatives": [
+        "implicitly move or destroy Actor members during close",
+        "return false without changing Spot or Actor state"
+      ],
       "selected": "return false without changing Spot or Actor state",
       "callerBurden": "The caller uses the existing boolean and explicitly resolves Actor membership before retrying close.",
       "informationHiding": "The runtime does not expose an additional InUse result or hidden membership operation."
@@ -2835,7 +3804,10 @@
     {
       "id": "POSD-V11-60",
       "subject": "Retire deadline phase semantics",
-      "alternatives": ["collapse every deadline into forced termination", "distinguish pre-seal blocked timeout from post-seal forced timeout"],
+      "alternatives": [
+        "collapse every deadline into forced termination",
+        "distinguish pre-seal blocked timeout from post-seal forced timeout"
+      ],
       "selected": "distinguish pre-seal blocked timeout from post-seal forced timeout",
       "callerBurden": "The existing outcome and reason pair tells operators whether admission changed.",
       "informationHiding": "Preflight and teardown remain internal phases and require no new enum values."
@@ -2866,212 +3838,391 @@
     {
       "id": "REMOVED-CHANNEL-MESH-OVERLOAD",
       "identityStem": "MeshName+ChannelName channel-call overload",
-      "categoryIds": ["topology-discovery", "messaging-execution"],
-      "decisionIds": ["POSD-V11-03"]
+      "categoryIds": [
+        "topology-discovery",
+        "messaging-execution"
+      ],
+      "decisionIds": [
+        "POSD-V11-03"
+      ]
     },
     {
       "id": "REMOVED-CHANNELNAME-BUILDER-ALIAS",
       "identityStem": "ChannelName builder alias",
-      "categoryIds": ["topology-discovery"],
-      "decisionIds": ["POSD-V11-05"]
+      "categoryIds": [
+        "topology-discovery"
+      ],
+      "decisionIds": [
+        "POSD-V11-05"
+      ]
     },
     {
       "id": "REMOVED-PRE-ROLE-SERVER-SETTINGS",
       "identityStem": "pre-role weight and handler settings",
-      "categoryIds": ["topology-discovery"],
-      "decisionIds": ["POSD-V11-05"]
+      "categoryIds": [
+        "topology-discovery"
+      ],
+      "decisionIds": [
+        "POSD-V11-05"
+      ]
     },
     {
       "id": "REMOVED-PHASE-STORES-AND-ADAPTERS",
       "identityStem": "phase-specific Store and transfer adapter surface",
-      "categoryIds": ["spot-instance", "actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-06", "POSD-V11-07"]
+      "categoryIds": [
+        "spot-instance",
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-06",
+        "POSD-V11-07"
+      ]
     },
     {
       "id": "REMOVED-TRY-SUBMIT",
       "identityStem": "synchronous TrySubmit surface",
-      "categoryIds": ["messaging-execution", "spot-instance"],
-      "decisionIds": ["POSD-V11-10"]
+      "categoryIds": [
+        "messaging-execution",
+        "spot-instance"
+      ],
+      "decisionIds": [
+        "POSD-V11-10"
+      ]
     },
     {
       "id": "REMOVED-MESH-DRAIN-POLICY",
       "identityStem": "MeshNode drain policy surface",
-      "categoryIds": ["host-lifecycle", "actor-transfer"],
-      "decisionIds": ["POSD-V11-09"]
+      "categoryIds": [
+        "host-lifecycle",
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-09"
+      ]
     },
     {
       "id": "REMOVED-UNIFIED-SPOT-LIFECYCLE",
       "identityStem": "unified eight-callback Spot lifecycle surface",
-      "categoryIds": ["spot-instance", "actor-transfer"],
-      "decisionIds": ["POSD-V11-16"]
+      "categoryIds": [
+        "spot-instance",
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-16"
+      ]
     },
     {
       "id": "REMOVED-INSTANCE-ACTIVATION-CONTROL",
       "identityStem": "public Instance target, activation token and begin-commit-close lifecycle",
-      "categoryIds": ["spot-instance", "location-authority"],
-      "decisionIds": ["POSD-V11-17"]
+      "categoryIds": [
+        "spot-instance",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-17"
+      ]
     },
     {
       "id": "REMOVED-TYPE-BEARING-ACTOR-REFERENCE",
       "identityStem": "Actor type field and typed snapshot restoration in ActorRef",
-      "categoryIds": ["actor-transfer"],
-      "decisionIds": ["POSD-V11-18"]
+      "categoryIds": [
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-18"
+      ]
     },
     {
       "id": "REMOVED-MESHLESS-SPOT-RESOLVER",
       "identityStem": "RID-only or Actor-ID-only Spot resolver overload",
-      "categoryIds": ["topology-discovery", "actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-19"]
+      "categoryIds": [
+        "topology-discovery",
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-19"
+      ]
     },
     {
       "id": "REMOVED-CPP-RUNTIME-WIRING-SURFACE",
       "identityStem": "C++ public invoker serializer registry raw handler and physical Spot route surface",
-      "categoryIds": ["messaging-execution", "spot-instance"],
-      "decisionIds": ["POSD-V11-20"]
+      "categoryIds": [
+        "messaging-execution",
+        "spot-instance"
+      ],
+      "decisionIds": [
+        "POSD-V11-20"
+      ]
     },
     {
       "id": "REMOVED-ACTOR-PLACEMENT-HINT",
       "identityStem": "caller-provided Actor node and route placement hint",
-      "categoryIds": ["actor-transfer"],
-      "decisionIds": ["POSD-V11-21"]
+      "categoryIds": [
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-21"
+      ]
     },
     {
       "id": "REMOVED-DUCK-TYPED-CPP-SPOT-LIFECYCLE",
       "identityStem": "unconstrained C++ Spot registration and empty lifecycle tag base",
-      "categoryIds": ["spot-instance", "actor-transfer"],
-      "decisionIds": ["POSD-V11-22"]
+      "categoryIds": [
+        "spot-instance",
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-22"
+      ]
     },
     {
       "id": "REMOVED-INSTANCE-SUPERSET-REGISTRY",
       "identityStem": "Actor-capable shared handler registry on Instance Spot context",
-      "categoryIds": ["spot-instance"],
-      "decisionIds": ["POSD-V11-23"]
+      "categoryIds": [
+        "spot-instance"
+      ],
+      "decisionIds": [
+        "POSD-V11-23"
+      ]
     },
     {
       "id": "REMOVED-MEMBERSHIP-CAS-CALLBACK-DATA",
       "identityStem": "membership epoch and expected CAS fields in Actor lifecycle callback data",
-      "categoryIds": ["actor-transfer"],
-      "decisionIds": ["POSD-V11-24"]
+      "categoryIds": [
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-24"
+      ]
     },
     {
       "id": "REMOVED-AD-HOC-LOCATION-OPTIONS",
       "identityStem": "heartbeat-named lease interval paging observed mesh and physical Spot route options",
-      "categoryIds": ["topology-discovery", "location-authority", "observability-diagnostics"],
-      "decisionIds": ["POSD-V11-25"]
+      "categoryIds": [
+        "topology-discovery",
+        "location-authority",
+        "observability-diagnostics"
+      ],
+      "decisionIds": [
+        "POSD-V11-25"
+      ]
     },
     {
       "id": "REMOVED-TYPED-ACTOR-LOCATION-SPI",
       "identityStem": "typed Actor location provider update remove and resolve surface",
-      "categoryIds": ["actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-27"]
+      "categoryIds": [
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-27"
+      ]
     },
     {
       "id": "REMOVED-FLAT-OBJECT-CAPABILITY-SETS",
       "identityStem": "independent Actor type Instance type state contract and capacity collections",
-      "categoryIds": ["topology-discovery", "actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-28"]
+      "categoryIds": [
+        "topology-discovery",
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-28"
+      ]
     },
     {
       "id": "REMOVED-FRAMEWORK-INVENTED-AUTHORITY-GENERATION",
       "identityStem": "Framework-generated owner and object counters outside provider CAS",
-      "categoryIds": ["actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-29"]
+      "categoryIds": [
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-29"
+      ]
     },
     {
       "id": "REMOVED-ACTOR-DIRECTORY-ENSURE",
       "identityStem": "type-ambiguous ActorDirectory ensure and hidden remote creation surface",
-      "categoryIds": ["actor-transfer"],
-      "decisionIds": ["POSD-V11-21", "POSD-V11-30"]
+      "categoryIds": [
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-21",
+        "POSD-V11-30"
+      ]
     },
     {
       "id": "REMOVED-ACTOR-CONTEXT-MEMBERSHIP-OWNER",
       "identityStem": "ActorContext handler registry and self-leave surface",
-      "categoryIds": ["spot-instance", "actor-transfer"],
-      "decisionIds": ["POSD-V11-31"]
+      "categoryIds": [
+        "spot-instance",
+        "actor-transfer"
+      ],
+      "decisionIds": [
+        "POSD-V11-31"
+      ]
     },
     {
       "id": "REMOVED-LIVE-MAX-MESSAGE-SIZE",
       "identityStem": "live MeshNode maximum-message runtime setter",
-      "categoryIds": ["host-lifecycle", "topology-discovery", "messaging-execution"],
-      "decisionIds": ["POSD-V11-36"]
+      "categoryIds": [
+        "host-lifecycle",
+        "topology-discovery",
+        "messaging-execution"
+      ],
+      "decisionIds": [
+        "POSD-V11-36"
+      ]
     },
     {
       "id": "REMOVED-OWNER-LEASE-LIST",
       "identityStem": "unbounded owner lease list and snapshot surface",
-      "categoryIds": ["topology-discovery", "location-authority"],
-      "decisionIds": ["POSD-V11-42"]
+      "categoryIds": [
+        "topology-discovery",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-42"
+      ]
     },
     {
       "id": "REMOVED-UNBOUNDED-DESCRIPTOR-LISTS",
       "identityStem": "unbounded provider descriptor and peer list surface",
-      "categoryIds": ["topology-discovery", "location-authority"],
-      "decisionIds": ["POSD-V11-43"]
+      "categoryIds": [
+        "topology-discovery",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-43"
+      ]
     },
     {
       "id": "REMOVED-TYPED-SPOT-LOCATION-SPI",
       "identityStem": "typed Spot location provider update remove and resolve surface",
-      "categoryIds": ["spot-instance", "location-authority"],
-      "decisionIds": ["POSD-V11-33"]
+      "categoryIds": [
+        "spot-instance",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-33"
+      ]
     },
     {
       "id": "REMOVED-AUTHORITY-TTL",
       "identityStem": "authority row lease expiry and lease duration fields",
-      "categoryIds": ["actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-34"]
+      "categoryIds": [
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-34"
+      ]
     },
     {
       "id": "REMOVED-PER-KEY-GENERATION-TOMBSTONE",
       "identityStem": "per-key authority counter and permanent version tombstone",
-      "categoryIds": ["actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-29"]
+      "categoryIds": [
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-29"
+      ]
     },
     {
       "id": "REMOVED-PUBLIC-CHECKPOINT-CHUNK-CONTROL",
       "identityStem": "public checkpoint chunk size count and manifest configuration",
-      "categoryIds": ["host-lifecycle", "actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-37"]
+      "categoryIds": [
+        "host-lifecycle",
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-37"
+      ]
     },
     {
       "id": "REMOVED-TRANSFER-PHASE-CONTROL",
       "identityStem": "public Activated Completed Ready and reply acknowledgement controls",
-      "categoryIds": ["actor-transfer", "stream-session", "location-authority"],
-      "decisionIds": ["POSD-V11-41", "POSD-V11-46"]
+      "categoryIds": [
+        "actor-transfer",
+        "stream-session",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-41",
+        "POSD-V11-46"
+      ]
     },
     {
       "id": "REMOVED-PUBLIC-TRANSFER-SUBLEASES",
       "identityStem": "public session-owner and target-reservation lease surface",
-      "categoryIds": ["actor-transfer", "stream-session", "location-authority"],
-      "decisionIds": ["POSD-V11-49"]
+      "categoryIds": [
+        "actor-transfer",
+        "stream-session",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-49"
+      ]
     },
     {
       "id": "REMOVED-DOTNET-LIVE-MESH-NODE-RESOLVER",
       "identityStem": ".NET-only unbounded live MeshNode resolver surface",
-      "categoryIds": ["topology-discovery", "location-authority"],
-      "decisionIds": ["POSD-V11-50"]
+      "categoryIds": [
+        "topology-discovery",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-50"
+      ]
     },
     {
       "id": "REMOVED-ROUTING-ID-FENCING-MARGIN-NAME",
       "identityStem": "routing-allocation-specific lease fencing margin name",
-      "categoryIds": ["host-lifecycle", "topology-discovery", "location-authority"],
-      "decisionIds": ["POSD-V11-25"]
+      "categoryIds": [
+        "host-lifecycle",
+        "topology-discovery",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-25"
+      ]
     },
     {
       "id": "REMOVED-GENERIC-AUTHORITY-OWNER-GENERATION-NAME",
       "identityStem": "generic OwnerGeneration authority metadata field name",
-      "categoryIds": ["actor-transfer", "location-authority"],
-      "decisionIds": ["POSD-V11-24", "POSD-V11-29"]
+      "categoryIds": [
+        "actor-transfer",
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-24",
+        "POSD-V11-29"
+      ]
     },
     {
       "id": "REMOVED-COMPOSITE-AUTHORITY-SCAN-POSITION",
       "identityStem": "public authority scan ID watermark and cursor position fields",
-      "categoryIds": ["location-authority"],
-      "decisionIds": ["POSD-V11-35"]
+      "categoryIds": [
+        "location-authority"
+      ],
+      "decisionIds": [
+        "POSD-V11-35"
+      ]
     },
     {
       "id": "REMOVED-STALE-CPP-DRAIN-FAILURE-REASONS",
       "identityStem": "deprecated C++ drain publish-state and owner-cleanup failure reasons",
-      "categoryIds": ["host-lifecycle"],
-      "decisionIds": ["POSD-V11-53"]
+      "categoryIds": [
+        "host-lifecycle"
+      ],
+      "decisionIds": [
+        "POSD-V11-53"
+      ]
     }
   ]
 }

@@ -73,6 +73,17 @@ endpoint를 같은 descriptor revision에 기록한다. Endpoint만 바꾸고 �
 RouteMesh, ClientServer와 classic fanout이 같은 process에 있어도 각 listener는 자기 descriptor와 lifecycle generation을
 소유한다. 한쪽 endpoint 변경을 다른 topology의 generation 또는 descriptor 변경으로 해석하지 않는다.
 
+Automatic discovery에 참여하는 RouteMesh MeshNode의 RID는 MeshNode lifecycle마다 Framework가 새로 만든 opaque
+transport identity다. Caller는 ASCII `[A-Za-z0-9._-]` 1..64자의 진단 prefix만 지정할 수 있고, Framework는
+128-bit CSPRNG 값을 32자리 lowercase hex로 encode해 `prefix-<suffix>`를 만든다. Full RID는 255 bytes 이하다.
+Prefix와 RID를 application identity, placement, shard나 stable host 이름으로 해석하지 않는다.
+
+MeshNode descriptor owner CAS는 `(MeshName, RID)`의 active conflict를 확인한다. Framework는 충돌할 때 새 RID를
+최대 8회 만들고 계속 충돌하면 `RoutingIdConflict`로 startup을 실패한다. Replacement MeshNode lifecycle은
+endpoint가 같아도 새 RID를 사용한다. Fixed MeshNode RID는 descriptor와 automatic discovery를 사용하지 않는
+explicit manual RouteMesh topology에서만 허용한다. ClientServer와 classic fanout identity는 각 topology의 별도
+계약을 따른다.
+
 Kubernetes에서는 Pod IP 또는 Pod별 DNS 이름을 AdvertiseHost로 사용할 수 있다. 개별 RID와 server identity,
 weight, admission과 drain을 관찰해야 하는 listener는 여러 Pod를 하나의 일반 Service 가상 주소로 대신하지
 않고 개별 Pod endpoint를 발견할 수 있어야 한다.
@@ -85,4 +96,6 @@ weight, admission과 drain을 관찰해야 하는 listener는 여러 Pod를 하�
 - Wildcard host와 port `0`이 remote endpoint나 location record에 남지 않는다.
 - RouteMesh, ClientServer와 fanout endpoint가 서로 다른 descriptor 종류에 기록되고 Spot·Actor row에 복제되지 않는다.
 - Advertised endpoint가 바뀐 재시작에서 새 generation만 ready가 된다.
+- Automatic MeshNode가 prefix와 random suffix 형식의 RID를 사용하고 active conflict를 최대 8회 재시도한다.
+- Replacement MeshNode lifecycle이 새 RID를 사용하며 fixed RID와 automatic discovery를 함께 설정할 수 없다.
 - 같은 container port를 사용하는 여러 Pod가 서로 다른 AdvertiseHost로 직접 연결된다.

@@ -10,7 +10,7 @@
 | [Configuration과 host](interfaces/02-configuration-host.ko.md) | ASP.NET Core 등록, package 경계, DI와 startup |
 | [Topology configuration](interfaces/03-configuration-topology.ko.md) | RouteMesh·ClientServer·fanout builder와 runtime option |
 | [Location과 maintenance](interfaces/08-location-maintenance.ko.md) | descriptor, owner authority와 Instance location |
-| [Authority와 checkpoint](interfaces/08-authority-checkpoint.ko.md) | opaque CAS와 24시간 Checkpoint Store |
+| [Authority와 transfer](interfaces/08-authority-transfer.ko.md) | opaque CAS와 24시간 Transfer Store |
 | [Host monitoring](interfaces/10-topology-monitoring.ko.md) | host state, Retire·Shutdown result, snapshot과 event |
 
 Stream connector client는 별도 package이며
@@ -25,10 +25,10 @@ Stream connector client는 별도 package이며
 - Node direct handler와 ChannelName handler는 서로 다른 interface family를 사용한다.
 - typed payload는 JSON을 기본으로 직렬화한다. JSON 사용을 위해 message type마다 codec을 등록하지 않는다.
 - metadata는 handler에 변경할 수 없는 `ZLinkMessageMetadata` snapshot으로 전달한다.
-- 자동 discovery와 분산 location 기능을 사용하는 host는 Redis location store instance를 명시적으로
-  등록한다.
-- Instance Spot은 actor-free factory를 MeshNode에 등록하고 `InstanceSpotAddress` direct call로만 지연
-  activation한다. `IZLinkSpotManager`는 local User Spot만 생성한다.
+- Object role은 MeshNode마다 `None`, `Client`, `Server` 중 하나이며 Client와 Server는 Redis location store
+  instance를 명시적으로 등록한다.
+- Actor·User Spot·Instance Spot의 일반 message는 global ID만 받는다. Manager create는 stable type과 optional
+  Mesh·placement를 받고 remote placement를 수행하며 exact mutation은 `ActorRef` 또는 `SpotRef`를 받는다.
 - Host lifecycle은 `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
 - Framework service runtime은 bindings의 public raw socket API만 사용하고 Core service C API, private SPI,
   reflection과 native symbol 직접 호출을 사용하지 않는다.

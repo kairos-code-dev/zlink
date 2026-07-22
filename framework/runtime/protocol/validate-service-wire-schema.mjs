@@ -27,6 +27,7 @@ const INTEGER_ENCODINGS = new Map([
   ["i64", [-9223372036854775808n, 9223372036854775807n]],
 ]);
 const VECTOR_COMPARISONS = new Set([
+  "canonical-authority-key-bytes",
   "utf-8-bytes",
   "wire-value-then-utf-8-bytes",
   "unsigned-wire-value",
@@ -95,6 +96,27 @@ function validateSchema(schema) {
       fail(`$.bounds[${entry.__index}].value`, `bound ${name} must be a positive safe integer or decimal string`);
     }
   }
+  const amendmentBounds = new Map([
+    ["creationIntentBytes", 1048576n],
+    ["maintenanceAggregateParticipants", 1024n],
+    ["maintenanceAggregateBytes", 1048576n],
+    ["routeForwardHopCount", 8n],
+    ["routeForwardMessages", 1024n],
+    ["routeForwardBytes", 16777216n],
+    ["routingIdCollisionAttempts", 8n],
+    ["nodeActiveCapacityDefault", 10000n],
+    ["nodePendingCapacityDefault", 128n],
+    ["objectTypeCapacityMaximum", 2147483647n],
+  ]);
+  for (const [name, expected] of amendmentBounds) {
+    const entry = bounds.get(name);
+    if (entry === undefined) {
+      fail("$.bounds", `missing amendment bound ${name}`);
+    } else if (toBigInt(entry.value) !== expected) {
+      fail(`$.bounds[${entry.__index}].value`,
+        `bound ${name} must equal ${expected}`);
+    }
+  }
 
   const flags = buildNamedMap(schema.flags, "flags", "$.flags", fail);
   const flagBits = new Map();
@@ -156,8 +178,8 @@ function validateSchema(schema) {
   validateAuthorityStoreGenerationProfile(schema.authorityStoreGenerationProfile, fail);
   validateAuthorityStoreDurabilityProfile(schema.authorityStoreDurabilityProfile, fail);
   validateOwnerLeaseAuthorityProfile(schema.ownerLeaseAuthorityProfile, fail);
-  validateCheckpointRetentionPolicy(schema.checkpointRetentionPolicy, fail);
-  validateCheckpointStorageProfile(schema.checkpointStorageProfile, fail);
+  validateTransferRetentionPolicy(schema.transferRetentionPolicy, fail);
+  validateTransferStorageProfile(schema.transferStorageProfile, fail);
   validateFrameworkJsonV1Profile(schema.frameworkJsonV1Profile, fail);
   validateMaintenanceAdmissionProfile(schema.maintenanceAdmissionProfile, fail);
   validateTerminationResultProfile(schema.terminationResultProfile, fail);
@@ -1038,9 +1060,10 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         {
           operationKind: "maintenanceTransfer",
           objectKinds: ["actor", "spot"],
-          spotKinds: ["instance"],
+          spotKinds: ["user", "instance"],
           transferState: "present",
           transferPhase: "non-none",
+          userAuthorityStates: ["transferring"],
           instanceAuthorityStates: ["transferring"],
           instancePhaseStates: {
             transferring: [
@@ -1061,7 +1084,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     ["spot-authority-aggregate-integrity", {
       authorityObjectType: "authority-object-identity",
       canonicalKeyKind: "spot",
-      canonicalKeyComponents: ["meshName", "spotRid"],
+      canonicalKeyComponents: ["spotRid"],
       spotKinds: ["entry", "user", "instance"],
       singleAuthoritativeRow: true,
       typedSpotLocation: "framework-decoded-projection-not-separate-authority",
@@ -1074,8 +1097,8 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       kindTransition: "requires-prior-row-delete-then-new-object-cas-on-same-key",
       providerPayloadInterpretation: "forbidden",
     }],
-    ["checkpoint-journal-integrity", {
-      checkpointType: "checkpoint-envelope-v1",
+    ["transfer-journal-integrity", {
+      transferType: "transfer-envelope-v1",
       progressField: "participantProgress",
       journalField: "journal",
       completionField: "terminalCompletions",
@@ -1088,12 +1111,12 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       terminalCompletionMustMatchRequestRecord: true,
       requestReplayBinding: "operation-id-exact-request-source-fence-and-reply-route-id-are-one-immutable-accepted-record-identity",
       operationIdRole: "dedupe-identity-never-a-reply-route-substitute",
-      authorityCheckpointAtomicity: {
+      authorityTransferAtomicity: {
         mutationEvents: ["completion-append", "replyRelayAck", "requestSourceLeaseExpired"],
-        writeOrder: "new-immutable-checkpoint-root-then-one-expected-store-version-authority-cas",
-        casFields: ["checkpoint-reference", "checkpoint-checksum", "terminalCompletionCount", "pendingRelayCount"],
-        terminalCompletionCount: "equals-referenced-checkpoint-terminal-completion-entry-count",
-        pendingRelayCount: "equals-referenced-checkpoint-deliveryState-pending-count",
+        writeOrder: "new-immutable-transfer-root-then-one-expected-store-version-authority-cas",
+        casFields: ["transfer-reference", "transfer-checksum", "terminalCompletionCount", "pendingRelayCount"],
+        terminalCompletionCount: "equals-referenced-transfer-terminal-completion-entry-count",
+        pendingRelayCount: "equals-referenced-transfer-deliveryState-pending-count",
         completedGate: "accepted-request-count-equals-terminal-completion-count-and-pending-relay-count-zero",
         deliveryStateTransition: "pending-to-terminalReceived-or-alreadyTerminal-or-sourceLeaseExpired-only",
         mismatch: "recovery-error-and-completed-forbidden",
@@ -1102,6 +1125,46 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         "nodeRequest", "channelRequest", "spotRequest", "actorRequest", "instanceSpotActivation",
       ],
       instanceRequestDiscriminator: "request",
+    }],
+    ["location-transfer-storage-integrity", {
+      locationAuthorityOwns: [
+        "descriptor-and-owner-lease",
+        "object-authority-and-reservation",
+        "aggregate-generation-and-canonical-participant-mutations",
+        "inventory-digest-and-transfer-reference",
+        "participant-replay-cursors-and-terminal-completion-count",
+      ],
+      transferRootRole: "immutable-payload-lookup-projection-never-authority",
+      publicationOrder: [
+        "write-all-immutable-transfer-chunks",
+        "write-immutable-transfer-root-manifest",
+        "read-and-verify-complete-root-from-transfer-provider",
+        "one-location-expected-store-version-cas-publishes-reference-checksum-replay-and-completion-counts",
+      ],
+      aggregateAuthority: {
+        format: "maintenance-aggregate-v1",
+        participantOrder: "canonical-authority-key-bytes",
+        atomicFields: [
+          "aggregateId",
+          "aggregateGeneration",
+          "participants-and-mutations",
+          "inventoryDigestSha256",
+          "transferReference-and-checksum",
+        ],
+        transferManifestDigest: "must-equal-location-authority-inventory-digest",
+        manifestAuthority: "forbidden",
+      },
+      replacement: "write-and-verify-new-root-before-one-location-authority-cas-replaces-reference-and-counts",
+      orphanCleanup: "unpublished-or-replaced-root-is-not-authority-and-is-deleted-or-expires",
+      deleteOrder: "release-or-replace-location-authority-reference-before-idempotent-transfer-root-delete",
+      backend: "location-and-transfer-providers-may-use-different-backends-connections-and-failure-domains",
+      clock: "retention-and-renewal-use-transfer-provider-storeNow-and-expiresAt-only",
+      publishedPayloadMissing: {
+        failureCode: "transferDataLost",
+        retriable: false,
+        rollback: "forbidden",
+        publication: "Ready-and-Completed-forbidden",
+      },
     }],
     ["reply-relay-context-integrity", {
       command: "replyRelay",
@@ -1123,18 +1186,18 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         identity: ["stable-transfer-id", "operation-id"],
         requestSource: "authenticated-exact-source-owner-lease-node-rid-and-generation",
         statuses: ["terminalReceived", "alreadyTerminal"],
-        targetPersistence: "checkpoint-root-cas-before-ack-effect",
+        targetPersistence: "transfer-root-cas-before-ack-effect",
         targetRetry: "retransmit-same-terminal-across-connection-replacement-until-ack-or-exact-request-source-owner-lease-expiry",
         sourceDuplicate: "reply-already-terminal-still-emits-alreadyTerminal-ack",
         completionGate: "pending-relay-count-zero-and-each-accepted-request-has-authenticated-ack-or-store-confirmed-exact-request-source-owner-lease-expiry",
         physicalConnectionClose: "never-terminal-proof",
-        retireWhileSourceLeaseValid: "forceStopped-and-retain-checkpoint-root-and-reply-bytes-for-retention-window",
+        retireWhileSourceLeaseValid: "forceStopped-and-retain-transfer-root-and-reply-bytes-for-retention-window",
       },
       terminalOwnership: "stable-transfer-id-and-operation-id-once-independent-of-target-attempt",
       replyRoute: "request-only",
     }],
     ["instance-placement-authority-fence", {
-      placementType: "instance-placement-v1",
+      routeType: "instance-route-fence-v1",
       requestBoundFields: [
         "targetNodeRid",
         "targetNodeGeneration",
@@ -1195,27 +1258,27 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         {
           phase: "preparing",
           after: ["local-admission-seal", "accepted-boundaries-fixed"],
-          checkpoint: "absent",
+          transfer: "absent",
           targetReservation: "absent",
         },
         {
           phase: "captured",
-          after: ["immutable-checkpoint-put"],
-          checkpoint: "present",
+          after: ["immutable-transfer-put"],
+          transfer: "present",
           targetReservation: "absent",
         },
         {
           phase: "prepared",
           after: ["transfer-reserved-ack-validated"],
-          checkpoint: "present",
+          transfer: "present",
           targetReservation: "present",
         },
       ],
       closedOwnerTargetRules: {
         preparingAndCaptured: "main-owner-is-immutable-source-target-attempt-token-and-reservation-absent",
-        prepared: "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-checkpoint-present",
-        committedThroughCompleted: "main-owner-is-exact-current-target-and-same-attempt-reservation-checkpoint-present",
-        aborted: "main-owner-is-source-until-session-abort-ack-checkpoint-orphan-cleanup-and-steady-source-normalization",
+        prepared: "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-transfer-present",
+        committedThroughCompleted: "main-owner-is-exact-current-target-and-same-attempt-reservation-transfer-present",
+        aborted: "main-owner-is-source-until-session-abort-ack-transfer-orphan-cleanup-and-steady-source-normalization",
       },
       preparedToCommitted: "one-newOwner-cas",
       sourceFence: "source-owner-id-lease-generation-node-rid-and-generation-immutable-through-terminal",
@@ -1301,6 +1364,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
           workerFailed: "internalError",
           actorLocationStale: "conflict",
           actorCreateRejected: "rejected",
+          transferDataLost: "internalError",
         },
       },
       unknownFailureCode: "protocol-error-before-application-dispatch",
@@ -1342,7 +1406,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         boundSession: "participant-id-from-2-in-ascending-session-rid-order-with-nonzero-binding-generation",
         sessionOwnerRoute: "node-rid-lifecycle-generation-owner-id-and-lease-generation-match-current-descriptor-and-host-lease-before-seal-or-route-switch",
         sessionRid: "unique-within-transfer-transaction",
-        stability: "same-id-and-fence-for-checkpoint-recovery-and-retransmit",
+        stability: "same-id-and-fence-for-transfer-recovery-and-retransmit",
       },
       cardinality: {
         actor: "exactly-one-objectMailbox-and-zero-or-one-boundSession",
@@ -1401,7 +1465,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       identity: ["stable-transfer-id", "target-attempt-generation", "object-identity"],
       prepare: {
         phase: "captured",
-        checkpoint: "required",
+        transfer: "required",
         requirements: "exact-participant-set-and-checked-message-byte-sums",
       },
       offer: "nonzero-capacity-and-empty-participant-vector",
@@ -1433,7 +1497,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
           proposedTargetAttemptGeneration: "current-target-attempt-generation-plus-one",
         },
       },
-      requirementsSource: "exact-current-checkpoint-participant-inventory",
+      requirementsSource: "exact-current-transfer-participant-inventory",
       sequence: [
         "initiator-transferPrepare",
         "candidate-transferReady-offer",
@@ -1443,7 +1507,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       ],
       replacementCas: "after-ack-atomically-replace-target-attempt-generation-target-and-reservation-prepared-stays-prepared-post-commit-resets-to-committed",
       oldTargetFence: "old-target-attempt-generation-or-authority-store-version-rejected",
-      checkpointIdentity: "stable-transfer-id-checkpoint-root-and-journal-never-rewritten-only-for-target-replacement",
+      transferIdentity: "stable-transfer-id-transfer-root-and-journal-never-rewritten-only-for-target-replacement",
       targetActivationRetry: "factory-and-restore-are-at-least-once-across-attempts-and-stale-attempts-may-overlap",
       targetCommitFence: "only-current-exact-owner-and-target-attempt-may-commit-completion-or-open-admission",
       callbackContract: "retry-safe-no-exactly-once-external-side-effect-guarantee-and-no-public-transfer-id",
@@ -1472,7 +1536,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         "session-owner-reversible-ingress-seal",
         "session-owner-sessionTransferSealed-high-water",
         "source-receives-every-sequence-through-high-water",
-        "source-captured-checkpoint",
+        "source-captured-transfer",
         "target-restores-and-replays-through-high-water",
         "target-stage-bound-session-route-without-switch-or-unseal",
         "durable-source-cleanup-state-cas",
@@ -1485,7 +1549,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       ],
       participantIdentity: "session-owner-node-rid-generation-owner-id-lease-generation-session-rid-binding-generation",
       recordSequence: "bound-session-actorSend-or-actorRequest-sourceSessionSequence",
-      checkpointRelation: "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
+      transferRelation: "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
       commitFence: "binding-generation-actor-object-generation-previous-and-target-owner-generation-session-owner-node-generation",
       sessionOwnerLeaseFence: "owner-id-and-lease-generation-exact-descriptor-and-current-host-lease-read",
       senderAdmissionDeadline: "local-monotonic-deadline-derived-from-last-successful-host-lease-read",
@@ -1510,8 +1574,8 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       targetEffect: "validate-durable-source-cleanup-state-and-notify-finalization-once",
       cleanupGate: "target-activation-complete-and-durable-source-cleanup-state-terminal",
       servingGate: "completed-authority-cas-then-bound-session-route-acks-before-application-admission-or-ready-publish",
-      replacementWindow: "all-nonterminal-phases-before-completed-from-immutable-checkpoint",
-      afterCompletedFailure: "ordinary-owner-loss-never-replay-retired-transfer-checkpoint",
+      replacementWindow: "all-nonterminal-phases-before-completed-from-immutable-transfer",
+      afterCompletedFailure: "ordinary-owner-loss-never-replay-retired-transfer-transfer",
       finalization: "after-completed-and-bound-session-route-acks-cas-maintenance-authority-to-steady-without-transfer-before-ready-projection",
       resolverProjection: "maintenance-transfer-authority-is-never-ready-even-when-target-owner-is-recorded",
       duplicate: "idempotent-by-stable-transfer-id-and-durable-source-cleanup-state-target-attempt-is-only-a-peer-fence",
@@ -1600,7 +1664,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     }],
     ["durable-operation-identity-integrity", {
       transferId: "runtime-generated-nonzero-128-bit-csprng",
-      transferIdScope: "unique-across-active-and-retained-checkpoint-roots-collision-rejected-and-regenerated",
+      transferIdScope: "unique-across-active-and-retained-transfer-roots-collision-rejected-and-regenerated",
       operationId: "nonzero-unique-within-source-owner-lifecycle-for-terminal-dedupe",
       replyRouteId: "nonzero-unique-within-source-owner-lifecycle-for-correlation-only",
       counterWrapOrReuse: "forbidden-terminal-runtime-error",
@@ -1625,6 +1689,20 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       failure: "failed-sealed-local-barrier-exact-fenced-delete-and-read-reconcile-next-caller-only-newObject",
       lateCallback: "stale-fence-no-mutation",
       entrySpot: "startup-initialization-complete-before-host-serving-and-publication",
+    }],
+    ["contract-amendment-limit-integrity", {
+      creationIntentBytesMaximum: { $bound: "creationIntentBytes" },
+      aggregateParticipantsMaximum: { $bound: "maintenanceAggregateParticipants" },
+      aggregateEncodedBytesMaximum: { $bound: "maintenanceAggregateBytes" },
+      aggregateId: "nonzero-128-bit",
+      forwardingHopCountMaximum: { $bound: "routeForwardHopCount" },
+      forwardingQueuedMessagesMaximum: { $bound: "routeForwardMessages" },
+      forwardingQueuedBytesMaximum: { $bound: "routeForwardBytes" },
+      routingIdEntropyBits: 128,
+      routingIdCollisionAttemptsMaximum: { $bound: "routingIdCollisionAttempts" },
+      nodeActiveCapacityDefault: { $bound: "nodeActiveCapacityDefault" },
+      nodePendingCapacityDefault: { $bound: "nodePendingCapacityDefault" },
+      objectTypeCapacityMaximum: { $bound: "objectTypeCapacityMaximum" },
     }],
     ["actor-retire-membership-integrity", {
       transferable: "source-entry-spot-current-member-only",
@@ -1652,11 +1730,11 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       },
       overflow: "atomic-configuration-failure-never-truncate-split-or-publish-partial",
     }],
-    ["checkpoint-application-state-integrity", {
-      stateType: "checkpoint-application-state",
+    ["transfer-application-state-integrity", {
+      stateType: "transfer-application-state",
       recreate: "hasState-false-no-contract-serializer-or-payload",
       snapshot: "hasState-true-nonempty-contract-frameworkJsonV1-and-nonempty-payload",
-      checkpointPresence: "every-transfer-including-empty-recreate-writes-one-deterministic-envelope",
+      transferPresence: "every-transfer-including-empty-recreate-writes-one-deterministic-envelope",
       storage: "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
       chunking: "ordered-byte-stream-may-split-within-a-frozen-record",
       unknownSerializer: "protocol-error-before-restore",
@@ -1664,7 +1742,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     ["framework-json-v1-integrity", {
       profile: "frameworkJsonV1Profile",
       applicationPayloadBytes: "opaque-after-profile-validation-no-byte-canonicalization",
-      checkpointStateBytes: "opaque-after-profile-validation-no-byte-canonicalization",
+      transferStateBytes: "opaque-after-profile-validation-no-byte-canonicalization",
       stateContractId: "asserts-target-adapter-semantic-compatibility",
       goldenFixture: "golden/framework-json-v1.json",
     }],
@@ -1945,7 +2023,7 @@ const FIXTURE_ENUMS = {
   actorAuthorityState: new Map([[0, "creating"], [1, "ready"]]),
   authorityState: new Map([[1, "coldActivating"], [2, "ready"], [3, "closing"], [4, "transferring"]]),
   frozenSourceKind: new Map([[1, "node"], [2, "spot"], [3, "actor"], [4, "boundSession"]]),
-  checkpointSerializer: new Map([[1, "frameworkJsonV1"]]),
+  transferSerializer: new Map([[1, "frameworkJsonV1"]]),
   transferPhase: new Map([
     [0, "none"], [1, "preparing"], [2, "captured"], [3, "prepared"], [4, "committed"],
     [5, "activating"], [6, "activated"], [7, "cleaning"], [8, "completed"], [9, "aborted"],
@@ -2134,7 +2212,7 @@ function decodeCompletionVector(reader) {
   return completions;
 }
 
-function decodeCheckpointPointer(reader) {
+function decodeTransferRootPointer(reader) {
   const present = reader.u8();
   const body = new FixtureReader(reader.bytesOf(reader.u16()));
   if (present === 0) {
@@ -2142,7 +2220,7 @@ function decodeCheckpointPointer(reader) {
     return null;
   }
   if (present !== 1) {
-    throw new Error("checkpoint pointer has invalid presence flag");
+    throw new Error("transfer pointer has invalid presence flag");
   }
   const decoded = {
     referenceUtf8Fixture: body.text16(),
@@ -2261,6 +2339,7 @@ function decodeGoldenBody(formatName, bytes) {
       object: decodeAuthorityObject(reader),
       ownerId: reader.text8(),
       ownerLeaseGeneration: reader.u64(),
+      ownerMeshName: reader.text8(),
       ownerNodeRidUtf8Fixture: reader.text8(),
       ownerNodeGeneration: reader.u64(),
       transferState: null,
@@ -2286,7 +2365,7 @@ function decodeGoldenBody(formatName, bytes) {
         coordinatorNodeRidUtf8Fixture: transferBody.text8(),
         coordinatorNodeGeneration: transferBody.u64(),
         phase: fixtureEnum(FIXTURE_ENUMS.transferPhase, transferBody.u8(), "transfer phase"),
-        checkpoint: decodeCheckpointPointer(transferBody),
+        transferRoot: decodeTransferRootPointer(transferBody),
         applicationVersion: transferBody.i64(),
         participantProgress: decodeParticipantProgress(transferBody),
         terminalCompletionCount: transferBody.u32(),
@@ -2301,15 +2380,16 @@ function decodeGoldenBody(formatName, bytes) {
       throw new Error("authority transfer state has invalid presence flag");
     }
     transferBody.end();
-  } else if (formatName === "checkpoint-data-chunk-v1") {
+  } else if (formatName === "transfer-data-chunk-v1") {
     decoded = {
       order: reader.u32(),
       dataHex: reader.bytes32().toString("hex"),
     };
-  } else if (formatName === "checkpoint-manifest-v1") {
+  } else if (formatName === "transfer-manifest-v1") {
     const logicalFormatVersion = reader.u8();
     const totalLength = reader.u64();
     const totalChecksumCrc32c = reader.u32();
+    const inventoryDigestSha256Hex = reader.bytesOf(reader.u8()).toString("hex");
     const count = reader.u32();
     const chunks = [];
     for (let index = 0; index < count; index += 1) {
@@ -2320,8 +2400,14 @@ function decodeGoldenBody(formatName, bytes) {
         checksumCrc32c: reader.u32(),
       });
     }
-    decoded = { logicalFormatVersion, totalLength, totalChecksumCrc32c, chunks };
-  } else if (formatName === "checkpoint-envelope-v1") {
+    decoded = {
+      logicalFormatVersion,
+      totalLength,
+      totalChecksumCrc32c,
+      inventoryDigestSha256Hex,
+      chunks,
+    };
+  } else if (formatName === "transfer-envelope-v1") {
     const transferHigh = reader.u64();
     const transferLow = reader.u64();
     const object = decodeTransferObject(reader);
@@ -2336,14 +2422,14 @@ function decodeGoldenBody(formatName, bytes) {
         hasState: true,
         stateContractId: stateBody.text8(),
         serializer: fixtureEnum(
-          FIXTURE_ENUMS.checkpointSerializer,
+          FIXTURE_ENUMS.transferSerializer,
           stateBody.u8(),
-          "checkpoint serializer",
+          "transfer serializer",
         ),
         payloadUtf8Fixture: stateBody.bytes64().toString("utf8"),
       };
     } else {
-      throw new Error("checkpoint application state has invalid presence flag");
+      throw new Error("transfer application state has invalid presence flag");
     }
     stateBody.end();
     decoded = {
@@ -2451,13 +2537,13 @@ function encodeCompletionVector(writer, completions) {
   }
 }
 
-function encodeCheckpointPointer(writer, checkpoint) {
+function encodeTransferRootPointer(writer, transferRoot) {
   const body = new FixtureWriter();
-  if (checkpoint !== null) {
-    body.text16(checkpoint.referenceUtf8Fixture).u32(checkpoint.checksumCrc32c);
+  if (transferRoot !== null) {
+    body.text16(transferRoot.referenceUtf8Fixture).u32(transferRoot.checksumCrc32c);
   }
   const bytes = body.finish();
-  writer.u8(checkpoint === null ? 0 : 1).u16(bytes.length).raw(bytes);
+  writer.u8(transferRoot === null ? 0 : 1).u16(bytes.length).raw(bytes);
 }
 
 function encodeInstancePlacement(writer, placement) {
@@ -2532,6 +2618,7 @@ function encodeGoldenBody(formatName, decoded) {
     ));
     encodeAuthorityObject(writer, decoded.object);
     writer.text8(decoded.ownerId).u64(decoded.ownerLeaseGeneration)
+      .text8(decoded.ownerMeshName)
       .text8(decoded.ownerNodeRidUtf8Fixture)
       .u64(decoded.ownerNodeGeneration);
     const transfer = new FixtureWriter();
@@ -2552,7 +2639,7 @@ function encodeGoldenBody(formatName, decoded) {
         .text8(decoded.transferState.coordinatorNodeRidUtf8Fixture)
         .u64(decoded.transferState.coordinatorNodeGeneration)
         .u8(fixtureEnumValue(FIXTURE_ENUMS.transferPhase, decoded.transferState.phase, "transfer phase"));
-      encodeCheckpointPointer(transfer, decoded.transferState.checkpoint);
+      encodeTransferRootPointer(transfer, decoded.transferState.transferRoot);
       transfer.i64(decoded.transferState.applicationVersion);
       encodeParticipantProgress(transfer, decoded.transferState.participantProgress);
       transfer.u32(decoded.transferState.terminalCompletionCount)
@@ -2567,7 +2654,7 @@ function encodeGoldenBody(formatName, decoded) {
     writer.u8(decoded.transferState === null ? 0 : 1).u32(bytes.length).raw(bytes);
     return writer.finish();
   }
-  if (formatName === "checkpoint-envelope-v1") {
+  if (formatName === "transfer-envelope-v1") {
     writer.u64(decoded.transferHigh).u64(decoded.transferLow);
     encodeTransferObject(writer, decoded.object);
     writer.i64(decoded.applicationVersion);
@@ -2575,9 +2662,9 @@ function encodeGoldenBody(formatName, decoded) {
     if (decoded.applicationState.hasState) {
       state.text8(decoded.applicationState.stateContractId)
         .u8(fixtureEnumValue(
-          FIXTURE_ENUMS.checkpointSerializer,
+          FIXTURE_ENUMS.transferSerializer,
           decoded.applicationState.serializer,
-          "checkpoint serializer",
+          "transfer serializer",
         ))
         .bytes64(Buffer.from(decoded.applicationState.payloadUtf8Fixture, "utf8"));
     }
@@ -2588,14 +2675,17 @@ function encodeGoldenBody(formatName, decoded) {
     encodeCompletionVector(writer, decoded.terminalCompletions);
     return writer.finish();
   }
-  if (formatName === "checkpoint-data-chunk-v1") {
+  if (formatName === "transfer-data-chunk-v1") {
     writer.u32(decoded.order).bytes32(Buffer.from(decoded.dataHex, "hex"));
     return writer.finish();
   }
-  if (formatName === "checkpoint-manifest-v1") {
+  if (formatName === "transfer-manifest-v1") {
+    const inventoryDigest = Buffer.from(decoded.inventoryDigestSha256Hex, "hex");
     writer.u8(decoded.logicalFormatVersion)
       .u64(decoded.totalLength)
       .u32(decoded.totalChecksumCrc32c)
+      .u8(inventoryDigest.length)
+      .raw(inventoryDigest)
       .u32(decoded.chunks.length);
     for (const chunk of decoded.chunks) {
       writer.u32(chunk.order)
@@ -2652,7 +2742,7 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
         || decoded.object?.spotKind !== "instance"
         || decoded.object?.authorityState !== "transferring"
         || decoded.transferState === null
-        || decoded.transferState.checkpoint === null
+        || decoded.transferState.transferRoot === null
         || decoded.transferState.participantProgress.length === 0
         || decoded.transferState.terminalCompletionCount === 0) {
       fail(location, "authority golden must exercise compact transferring Instance authority");
@@ -2665,23 +2755,24 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
     }
     return;
   }
-  if (formatName === "checkpoint-data-chunk-v1") {
+  if (formatName === "transfer-data-chunk-v1") {
     if (!Number.isSafeInteger(decoded.order) || decoded.order !== 0
         || typeof decoded.dataHex !== "string" || !/^(?:[0-9a-f]{2})+$/.test(decoded.dataHex)) {
-      fail(location, "checkpoint chunk golden must exercise the first non-empty immutable chunk");
+      fail(location, "transfer chunk golden must exercise the first non-empty immutable chunk");
     }
     return;
   }
-  if (formatName === "checkpoint-manifest-v1") {
+  if (formatName === "transfer-manifest-v1") {
     if (decoded.logicalFormatVersion !== 1 || decoded.chunks.length !== 1
+        || !/^[0-9a-f]{64}$/.test(decoded.inventoryDigestSha256Hex)
         || decoded.chunks[0].order !== 0
         || BigInt(decoded.totalLength) !== BigInt(decoded.chunks[0].length)
         || decoded.chunks[0].referenceUtf8Fixture.length === 0) {
-      fail(location, "checkpoint manifest golden must contain one ordered chunk matching total length");
+      fail(location, "transfer manifest golden must contain one ordered chunk matching total length");
     }
     return;
   }
-  if (formatName !== "checkpoint-envelope-v1") {
+  if (formatName !== "transfer-envelope-v1") {
     return;
   }
   const progress = decoded.participantProgress;
@@ -2689,7 +2780,7 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
       || decoded.applicationState.serializer !== "frameworkJsonV1"
       || decoded.applicationState.stateContractId.length === 0
       || decoded.applicationState.payloadUtf8Fixture.length === 0) {
-    fail(location, "checkpoint golden must exercise the closed Snapshot application state case");
+    fail(location, "transfer golden must exercise the closed Snapshot application state case");
   }
   validateGoldenOrder(progress, (entry) => [entry.participantId], `${location}.participantProgress`, fail);
   validateGoldenOrder(
@@ -2705,7 +2796,7 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
     fail,
   );
   if (decoded.journal.length === 0 || decoded.terminalCompletions.length === 0 || progress.length === 0) {
-    fail(location, "checkpoint golden must contain progress, a frozen request and a completion");
+    fail(location, "transfer golden must contain progress, a frozen request and a completion");
     return;
   }
   for (const entry of decoded.journal) {
@@ -2818,10 +2909,10 @@ function validateGoldenFixtures(schema, schemaPath) {
   return schema.durableFormats.length;
 }
 
-function validateCheckpointLogicalFixture(schema, schemaPath) {
+function validateTransferLogicalFixture(schema, schemaPath) {
   const errors = [];
   const fail = (location, message) => errors.push(`${location}: ${message}`);
-  const profile = schema.checkpointLogicalStreamFormat;
+  const profile = schema.transferLogicalStreamFormat;
   const fixturePath = path.resolve(path.dirname(schemaPath), profile.goldenFixture);
   let fixture;
   try {
@@ -2832,7 +2923,7 @@ function validateCheckpointLogicalFixture(schema, schemaPath) {
   const location = `fixture:${profile.name}`;
   if (fixture.format !== profile.name
       || JSON.stringify(fixture.consumers) !== JSON.stringify(["cpp", "dotnet", "jvm", "node"])) {
-    fail(location, "must identify the logical checkpoint and all four runtime consumers");
+    fail(location, "must identify the logical transfer and all four runtime consumers");
   }
   if (fixture.durabilityBoundary !== schema.maintenanceAdmissionProfile.durableReplayBoundary) {
     fail(`${location}.durabilityBoundary`, "must begin only after the complete root is linked by Captured CAS");
@@ -2853,13 +2944,17 @@ function validateCheckpointLogicalFixture(schema, schemaPath) {
 
       const chunkFixture = JSON.parse(fs.readFileSync(path.resolve(
         path.dirname(schemaPath),
-        schema.checkpointStorageProfile.chunkFormat === "checkpoint-data-chunk-v1"
-          ? "golden/checkpoint-data-chunk-v1.json" : "",
+        schema.transferStorageProfile.chunkFormat === "transfer-data-chunk-v1"
+          ? "golden/transfer-data-chunk-v1.json" : "",
       ), "utf8"));
       const manifestFixture = JSON.parse(fs.readFileSync(path.resolve(
         path.dirname(schemaPath),
-        schema.checkpointStorageProfile.manifestFormat === "checkpoint-manifest-v1"
-          ? "golden/checkpoint-manifest-v1.json" : "",
+        schema.transferStorageProfile.manifestFormat === "transfer-manifest-v1"
+          ? "golden/transfer-manifest-v1.json" : "",
+      ), "utf8"));
+      const amendmentFixture = JSON.parse(fs.readFileSync(path.resolve(
+        path.dirname(schemaPath),
+        "golden/contract-amendment-v1.json",
       ), "utf8"));
       const chunkBytes = Buffer.from(chunkFixture.decoded.dataHex, "hex");
       const manifest = manifestFixture.decoded;
@@ -2870,6 +2965,12 @@ function validateCheckpointLogicalFixture(schema, schemaPath) {
           || BigInt(manifest.chunks[0].length) !== BigInt(bytes.length)
           || manifest.chunks[0].checksumCrc32c !== crc32c(bytes)) {
         fail(location, "logical bytes, immutable chunk and root manifest length/checksum relation must match exactly");
+      }
+      if (manifest.inventoryDigestSha256Hex !== amendmentFixture.aggregate.inventoryDigestSha256Hex
+          || amendmentFixture.aggregate.transferManifestDigestSha256Hex
+            !== amendmentFixture.aggregate.inventoryDigestSha256Hex
+          || amendmentFixture.aggregate.transferManifestAuthority !== false) {
+        fail(location, "Location aggregate and lookup-only Transfer manifest inventory digests must match exactly");
       }
     } catch (error) {
       fail(`${location}.logicalHex`, error.message);
@@ -2998,18 +3099,17 @@ function decodeAuthorityKeyComponent(encoded) {
   return Buffer.from(bytes);
 }
 
-function encodeAuthorityKey(kind, meshBytes, identityBytes) {
+function encodeAuthorityKey(kind, identityBytes) {
   const discriminator = kind === "actor" ? "a" : kind === "spot" ? "s" : null;
   if (discriminator === null) {
     throw new Error(`unknown authority key kind ${kind}`);
   }
-  return `zla1:${discriminator}:${meshBytes.length}:${encodeAuthorityKeyComponent(meshBytes)}`
-    + `:${identityBytes.length}:${encodeAuthorityKeyComponent(identityBytes)}`;
+  return `zla1:${discriminator}:${identityBytes.length}:${encodeAuthorityKeyComponent(identityBytes)}`;
 }
 
 function decodeAuthorityKey(encoded) {
   const parts = encoded.split(":");
-  if (parts.length !== 6 || parts[0] !== "zla1" || !["a", "s"].includes(parts[1])) {
+  if (parts.length !== 4 || parts[0] !== "zla1" || !["a", "s"].includes(parts[1])) {
     throw new Error("authority key must use the exact prefix, kind and component order");
   }
   const parseLength = (value) => {
@@ -3022,24 +3122,22 @@ function decodeAuthorityKey(encoded) {
     }
     return parsed;
   };
-  const meshLength = parseLength(parts[2]);
-  const identityLength = parseLength(parts[4]);
-  const meshBytes = decodeAuthorityKeyComponent(parts[3]);
-  const identityBytes = decodeAuthorityKeyComponent(parts[5]);
-  if (meshBytes.length !== meshLength || identityBytes.length !== identityLength) {
-    throw new Error("authority key raw byte length does not match its declared length");
+  const identityLength = parseLength(parts[2]);
+  const identityBytes = decodeAuthorityKeyComponent(parts[3]);
+  if (identityLength < 1 || identityLength > 255) {
+    throw new Error("authority identity must contain 1..255 raw bytes");
   }
-  if (!Buffer.from(meshBytes.toString("utf8"), "utf8").equals(meshBytes)) {
-    throw new Error("authority key MeshName must be valid UTF-8");
+  if (identityBytes.length !== identityLength) {
+    throw new Error("authority key raw byte length does not match its declared length");
   }
   if (parts[1] === "a" && !Buffer.from(identityBytes.toString("utf8"), "utf8").equals(identityBytes)) {
     throw new Error("authority key Actor ID must be valid UTF-8");
   }
   const objectKind = parts[1] === "a" ? "actor" : "spot";
-  if (encodeAuthorityKey(objectKind, meshBytes, identityBytes) !== encoded) {
+  if (encodeAuthorityKey(objectKind, identityBytes) !== encoded) {
     throw new Error("authority key is not in canonical encoding");
   }
-  return { objectKind, meshBytes, identityBytes };
+  return { objectKind, identityBytes };
 }
 
 function validateAuthorityKeyFixtureData(fixture, location, fail) {
@@ -3050,31 +3148,39 @@ function validateAuthorityKeyFixtureData(fixture, location, fail) {
   if (JSON.stringify(fixture.consumers) !== JSON.stringify(["cpp", "dotnet", "jvm", "node"])) {
     fail(`${location}.consumers`, "must list cpp, dotnet, jvm and node in canonical order");
   }
-  if (!Array.isArray(fixture.cases)
-      || JSON.stringify(fixture.cases.map((entry) => entry?.objectKind))
-        !== JSON.stringify(["actor", "spot"])) {
-    fail(`${location}.cases`, "must contain one Actor and one shared Spot key in canonical order");
+  if (!Array.isArray(fixture.cases) || fixture.cases.length < 2
+      || !fixture.cases.some((entry) => entry?.objectKind === "actor")
+      || !fixture.cases.some((entry) => entry?.objectKind === "spot")
+      || fixture.cases.findIndex((entry) => entry?.objectKind === "spot")
+        < fixture.cases.map((entry) => entry?.objectKind).lastIndexOf("actor")) {
+    fail(`${location}.cases`, "must contain Actor cases followed by shared Spot cases");
     return;
   }
+  const encodedKeys = new Set();
   fixture.cases.forEach((entry, index) => {
     const caseLocation = `${location}.cases[${index}]`;
-    if (typeof entry.meshNameUtf8 !== "string"
-        || typeof entry.identityHex !== "string"
+    if (typeof entry.identityHex !== "string"
         || !/^(?:[0-9a-f]{2})+$/.test(entry.identityHex)
         || typeof entry.encoded !== "string") {
-      fail(caseLocation, "must provide MeshName, lowercase identity hex and encoded key");
+      fail(caseLocation, "must provide lowercase identity hex and encoded key");
       return;
     }
-    const meshBytes = Buffer.from(entry.meshNameUtf8, "utf8");
     const identityBytes = Buffer.from(entry.identityHex, "hex");
+    if (entry.objectKind === "spot"
+        && JSON.stringify(entry.sharedBySpotKinds) !== JSON.stringify(["entry", "user", "instance"])) {
+      fail(caseLocation, "Spot key must be shared by Entry, User and Instance kinds");
+    }
     try {
       const decoded = decodeAuthorityKey(entry.encoded);
       if (decoded.objectKind !== entry.objectKind
-          || !decoded.meshBytes.equals(meshBytes)
           || !decoded.identityBytes.equals(identityBytes)
-          || encodeAuthorityKey(entry.objectKind, meshBytes, identityBytes) !== entry.encoded) {
+          || encodeAuthorityKey(entry.objectKind, identityBytes) !== entry.encoded) {
         fail(caseLocation, "does not match the canonical semantic value");
       }
+      if (encodedKeys.has(entry.encoded)) {
+        fail(caseLocation, "duplicates a canonical authority key");
+      }
+      encodedKeys.add(entry.encoded);
     } catch (error) {
       fail(`${caseLocation}.encoded`, error.message);
     }
@@ -3113,25 +3219,25 @@ function validateTransferStateMachine(machine, commands, types, fail) {
     {
       phase: "preparing",
       after: ["local-admission-seal", "accepted-boundaries-fixed"],
-      checkpoint: "absent",
+      transfer: "absent",
       targetReservation: "absent",
     },
     {
       phase: "captured",
-      after: ["immutable-checkpoint-put"],
-      checkpoint: "present",
+      after: ["immutable-transfer-put"],
+      transfer: "present",
       targetReservation: "absent",
     },
     {
       phase: "prepared",
       after: ["transfer-reserved-ack-validated"],
-      checkpoint: "present",
+      transfer: "present",
       targetReservation: "present",
     },
   ];
   if (JSON.stringify(machine.authorityCommitOrder) !== JSON.stringify(expectedCommitOrder)) {
     fail("$.transferStateMachine.authorityCommitOrder",
-      "must CAS Preparing after the local seal, Captured after checkpoint Put, then Prepared after target reservation");
+      "must CAS Preparing after the local seal, Captured after transfer Put, then Prepared after target reservation");
   }
   const transitionSet = new Set();
   if (!Array.isArray(machine.transitions)) {
@@ -3252,7 +3358,7 @@ function validateTransferStateMachine(machine, commands, types, fail) {
       phases: ["prepared", "committed", "activating"],
       duplicate: "idempotent-by-stable-transfer-id-target-attempt-generation-participant-sequence",
       reorder: "stage-by-participant-sequence",
-      loss: "recover-from-checkpoint-or-retransmit",
+      loss: "recover-from-transfer-or-retransmit",
     }],
     ["transferAck", {
       command: "transferAck",
@@ -3386,7 +3492,7 @@ function validateServiceInvariants(schema, types, fail) {
     "handlerNotFound", "routeHandlerNotFound", "actorDispatchHandlerNotFound",
     "payloadDecodeFailed", "routeNotConnected", "requestTargetNotFound", "requestRejected",
     "requestProtocolError", "requestFailed", "workerQueueFull", "workerTimedOut", "workerFailed",
-    "actorLocationStale", "actorCreateRejected",
+    "actorLocationStale", "actorCreateRejected", "transferDataLost",
   ].map((name, value) => ({ name, value }));
   if (frameworkError?.encoding !== "u32"
       || JSON.stringify(frameworkError.values) !== JSON.stringify(expectedFrameworkErrors)) {
@@ -3574,21 +3680,124 @@ function validateServiceInvariants(schema, types, fail) {
       || envelopeRuntimeBound?.absoluteMaximum?.$bound !== "wireU32CompleteMessageBytes") {
     fail("$.types", "application envelope must use negotiated runtime and absolute u32 bounds");
   }
-  requireFields(types.get("instance-placement-v1")?.body, [
+  requireFields(types.get("instance-route-fence-v1")?.body, [
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "targetSpotRid", $ref: "rid" },
     { name: "authority", $ref: "authority-generation-fence" },
-    { name: "instanceType", $ref: "text8" },
-  ], "$.types", "Instance placement must carry the exact internal authority fence without public codec identity");
+  ], "$.types", "Instance route must carry the exact internal authority fence without creation intent");
+  requireFields(commands.get("instanceSpot")?.body, [
+    { name: "route", $ref: "instance-route-fence-v1" },
+    { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
+    { name: "sourceNodeRid", $ref: "rid" },
+    { name: "sourceSpotRid", $ref: "optional-rid" },
+    { name: "operationKind", $ref: "instance-operation-kind" },
+    { name: "operation", $ref: "operation-id" },
+    { name: "replyRoute", $ref: "instance-reply-route" },
+  ], "$.commands", "normal Instance operation must carry exact route and no creation intent");
+
+  const creationIntent = types.get("object-creation-intent-v1");
+  requireFields(creationIntent?.body, [
+    { name: "key", $ref: "object-creation-key" },
+    { name: "stableType", $ref: "text8" },
+    { name: "initialMeshName", $ref: "text8" },
+    { name: "placementProfile", $ref: "optional-text8" },
+    { name: "affinityKey", $ref: "optional-text8" },
+    { name: "requestContentReference", $ref: "creation-content-reference" },
+    { name: "requestSha256", $ref: "sha256-bytes" },
+    { name: "requestEncodedSize", $ref: "creation-request-size" },
+    { name: "creationAttempt", $ref: "nonzero-u64" },
+  ], "$.types", "creation intent must preserve immutable type, placement, content reference and hash");
+  if (creationIntent?.maximumEncodedBytes?.$bound !== "creationIntentBytes") {
+    fail("$.types", "creation intent must use the 1 MiB amendment bound");
+  }
+  const creationContentReference = types.get("creation-content-reference");
+  if (creationContentReference?.lengthType?.$ref !== "u16"
+      || creationContentReference?.maximumBytes?.$bound !== "creationContentReferenceBytes") {
+    fail("$.types", "creation content references must remain separate from transfer references");
+  }
+  requireFields(types.get("object-reservation-fence")?.fields, [
+    { name: "reservationId", $ref: "text8" },
+    { name: "expectedStoreVersion", $ref: "authority-store-version" },
+    { name: "objectGeneration", $ref: "nonzero-u64" },
+    { name: "authorityOwnerGeneration", $ref: "nonzero-u64" },
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
+    { name: "targetOwnerId", $ref: "text8" },
+    { name: "targetOwnerLeaseGeneration", $ref: "nonzero-u64" },
+    { name: "pendingCapacityDelta", $ref: "nonzero-u32" },
+  ], "$.types", "generic reservation must carry exact object, target owner and capacity fences");
+  const reservation = types.get("generic-object-reservation-v1");
+  if (JSON.stringify((reservation?.cases ?? []).map((entry) => entry.when))
+      !== JSON.stringify([
+        { operationKind: "reserve" },
+        { operationKind: "commit" },
+        { operationKind: "abort" },
+      ])) {
+    fail("$.types", "generic reservation must be the closed Reserve, Commit or Abort operation");
+  }
+  const aggregate = types.get("maintenance-aggregate-v1");
+  if (aggregate?.maximumEncodedBytes?.$bound !== "maintenanceAggregateBytes"
+      || types.get("aggregate-participant-vector")?.maximumItems?.$bound
+        !== "maintenanceAggregateParticipants") {
+    fail("$.types", "maintenance aggregate must use the 1 MiB and 1024 participant bounds");
+  }
+  requireFields(types.get("maintenance-aggregate-participant-v1")?.fields, [
+    { name: "object", $ref: "transfer-object-identity" },
+    { name: "expectedStoreVersion", $ref: "authority-store-version" },
+    { name: "mutation", $ref: "aggregate-participant-mutation-bytes" },
+  ], "$.types", "Location aggregate participants must bind canonical object, version and mutation");
+  requireFields(aggregate?.body, [
+    { name: "aggregateId", $ref: "aggregate-id" },
+    { name: "aggregateGeneration", $ref: "nonzero-u64" },
+    { name: "ownerSpot", $ref: "spot-ref" },
+    { name: "participants", $ref: "aggregate-participant-vector" },
+    { name: "inventoryDigestSha256", $ref: "sha256-bytes" },
+    { name: "transferRoot", $ref: "transfer-root-pointer" },
+  ], "$.types", "Location aggregate must own canonical participants, generation and inventory digest");
+  const aggregateVector = types.get("aggregate-participant-vector");
+  if (aggregateVector?.item?.$ref !== "maintenance-aggregate-participant-v1"
+      || JSON.stringify(aggregateVector?.constraints) !== JSON.stringify([
+        { kind: "sorted", field: "object", comparison: "canonical-authority-key-bytes" },
+        { kind: "unique", field: "object" },
+      ])) {
+    fail("$.types", "Location aggregate participants must be canonical, bounded and unique");
+  }
+  const transferObjectKinds = (types.get("transfer-object-identity")?.cases ?? [])
+    .map((entry) => entry.when?.objectKind);
+  if (JSON.stringify(transferObjectKinds)
+      !== JSON.stringify(["actor", "userSpot", "instanceSpot"])) {
+    fail("$.types", "transfer inventory must include Actor, User Spot and Instance Spot");
+  }
+  requireFields(types.get("spot-route-fence")?.fields, [
+    { name: "spot", $ref: "spot-ref" },
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
+    { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
+  ], "$.types", "Spot route fence must carry exact ref, node and authority generations");
+  const forwardMapping = types.get("route-forward-mapping-v1");
+  requireFields(forwardMapping?.body, [
+    { name: "source", $ref: "forward-route" },
+    { name: "target", $ref: "forward-route" },
+    { name: "hopCount", $ref: "u8" },
+    { name: "queuedMessages", $ref: "u32" },
+    { name: "queuedBytes", $ref: "u32" },
+    { name: "originalOperation", $ref: "operation-id" },
+    { name: "originalReplyRouteId", $ref: "nonzero-u64" },
+  ], "$.types", "forward mapping must preserve exact route, queue accounting and reply identity");
+  if (forwardMapping?.maximumEncodedBytes?.$bound !== "routeForwardBytes") {
+    fail("$.types", "forward mapping must use the bounded queue byte limit");
+  }
 
   requireFields(types.get("actor-route-fence")?.fields, [
     { name: "actor", $ref: "actor-ref" },
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
-  ], "$.types", "Actor route fence must pair ActorRef with the expected authority owner generation");
+  ], "$.types", "Actor route fence must pair ActorRef with exact node and authority generations");
   requireFields(types.get("spot-ref")?.fields, [
     { name: "spotRid", $ref: "rid" },
-    { name: "spotGeneration", $ref: "nonzero-u64" },
+    { name: "objectGeneration", $ref: "nonzero-u64" },
   ], "$.types", "Spot reference must pair a non-empty RID with a non-zero generation");
   requireFields(types.get("spot-membership")?.fields, [
     { name: "spot", $ref: "spot-ref" },
@@ -3731,9 +3940,9 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "requiredMessages", $ref: "ordinal-or-zero" },
     { name: "requiredBytes", $ref: "ordinal-or-zero" },
     { name: "requirements", $ref: "participant-vector" },
-    { name: "checkpoint", $ref: "checkpoint-pointer" },
+    { name: "transferRoot", $ref: "transfer-root-pointer" },
     { name: "applicationVersion", $ref: "application-version" },
-  ], "$.commands", "transferPrepare must carry the exact sealed inventory and durable checkpoint pointer");
+  ], "$.commands", "transferPrepare must carry the exact sealed inventory and durable transfer pointer");
   requireFields(commands.get("transferReady")?.body, [
     { name: "transfer", $ref: "transfer-id" },
     { name: "targetAttemptGeneration", $ref: "nonzero-u64" },
@@ -3897,6 +4106,13 @@ function validateServiceInvariants(schema, types, fail) {
     fail("$.types", "descriptor capabilities must contain the protocol-required capability");
   }
   const descriptor = types.get("descriptor-extension");
+  if (JSON.stringify(types.get("object-role")?.values) !== JSON.stringify([
+    { name: "none", value: 0 },
+    { name: "client", value: 1 },
+    { name: "server", value: 2 },
+  ])) {
+    fail("$.types", "object role must be the closed None, Client or Server enum");
+  }
   if (descriptor?.maximumEncodedBytes?.$bound !== "descriptorEnvelopeBytes"
       || JSON.stringify((descriptor?.fields ?? []).map(({ id, name, $ref, required }) => ({
         id, name, $ref, required,
@@ -3907,6 +4123,12 @@ function validateServiceInvariants(schema, types, fail) {
         { id: 4, name: "statefulCapabilities", $ref: "stateful-capability-vector", required: false },
         { id: 5, name: "maintenanceWave", $ref: "optional-text8", required: false },
         { id: 6, name: "protocolCapabilities", $ref: "sorted-text8-vector", required: true },
+        { id: 7, name: "objectRole", $ref: "object-role", required: true },
+        { id: 8, name: "placementWeight", $ref: "u32", required: true },
+        { id: 9, name: "activeCapacityLimit", $ref: "object-capacity-limit", required: true },
+        { id: 10, name: "pendingCapacityLimit", $ref: "object-pending-capacity-limit", required: true },
+        { id: 11, name: "activeCapacityUsed", $ref: "u32", required: true },
+        { id: 12, name: "pendingCapacityUsed", $ref: "u32", required: true },
       ])) {
     fail("$.types", "descriptor extension must use the bounded per-object capability model");
   }
@@ -3914,13 +4136,16 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "objectKind", $ref: "stateful-object-kind" },
     { name: "type", $ref: "text8" },
     { name: "transferPolicy", $ref: "transfer-policy-kind" },
+    { name: "placementProfiles", $ref: "sorted-text8-vector" },
+    { name: "activeCapacityLimit", $ref: "object-capacity-limit" },
+    { name: "pendingCapacityLimit", $ref: "object-pending-capacity-limit" },
     { name: "readableStateContractIds", $ref: "sorted-text8-vector" },
     { name: "available", $ref: "ordinal-or-zero" },
   ], "$.types", "stateful capability must keep kind, type, policy, readers and capacity in one record");
-  const checkpointReference = types.get("checkpoint-reference");
-  if (checkpointReference?.lengthType?.$ref !== "u16"
-      || checkpointReference?.maximumBytes?.$bound !== "checkpointReferenceBytes") {
-    fail("$.types", "checkpoint references must use their separate bounded text type");
+  const transferReference = types.get("transfer-reference");
+  if (transferReference?.lengthType?.$ref !== "u16"
+      || transferReference?.maximumBytes?.$bound !== "transferReferenceBytes") {
+    fail("$.types", "transfer references must use their separate bounded text type");
   }
   requireFields(types.get("authority-generation-fence")?.fields, [
     { name: "objectGeneration", $ref: "nonzero-u64" },
@@ -3948,6 +4173,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "object", $ref: "authority-object-identity" },
     { name: "ownerId", $ref: "text8" },
     { name: "ownerLeaseGeneration", $ref: "nonzero-u64" },
+    { name: "ownerMeshName", $ref: "text8" },
     { name: "ownerNodeRid", $ref: "rid" },
     { name: "ownerNodeGeneration", $ref: "nonzero-u64" },
     { name: "transferState", $ref: "authority-transfer-state" },
@@ -3975,7 +4201,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "coordinatorNodeRid", $ref: "rid" },
     { name: "coordinatorNodeGeneration", $ref: "nonzero-u64" },
     { name: "phase", $ref: "transfer-phase" },
-    { name: "checkpoint", $ref: "checkpoint-pointer" },
+    { name: "transferRoot", $ref: "transfer-root-pointer" },
     { name: "applicationVersion", $ref: "application-version" },
     { name: "participantProgress", $ref: "participant-progress-vector" },
     { name: "terminalCompletionCount", $ref: "u32" },
@@ -4112,25 +4338,32 @@ function validateServiceInvariants(schema, types, fail) {
       !== "framework-error-code") {
     fail("$.types", "frozen completion must use the stable Framework failure code");
   }
-  const checkpointEnvelope = types.get("checkpoint-envelope-v1");
-  if (checkpointEnvelope?.fields?.find((field) => field.name === "applicationState")?.$ref
-      !== "checkpoint-application-state"
-      || (checkpointEnvelope?.fields ?? []).some((field) => [
+  const transferEnvelope = types.get("transfer-envelope-v1");
+  if (transferEnvelope?.fields?.find((field) => field.name === "applicationState")?.$ref
+      !== "transfer-application-state"
+      || (transferEnvelope?.fields ?? []).some((field) => [
         "capturedStoreTimeMs", "stateContractId", "serializerIdentity",
       ].includes(field.name))) {
-    fail("$.types", "checkpoint application state must use the closed Recreate or Snapshot union");
+    fail("$.types", "transfer application state must use the closed Recreate or Snapshot union");
   }
-  const checkpointState = types.get("checkpoint-application-state");
-  const recreateState = checkpointState?.cases?.find((entry) => entry.when?.hasState === "false");
-  const snapshotState = checkpointState?.cases?.find((entry) => entry.when?.hasState === "true");
-  if (checkpointState?.bodyLengthType?.$ref !== "u64"
+  requireFields(types.get("transfer-manifest-v1")?.fields, [
+    { name: "logicalFormatVersion", $ref: "u8", constant: 1 },
+    { name: "totalLength", $ref: "transfer-logical-length" },
+    { name: "totalChecksumCrc32c", $ref: "u32" },
+    { name: "inventoryDigestSha256", $ref: "sha256-bytes" },
+    { name: "chunks", $ref: "transfer-chunk-vector-v1" },
+  ], "$.types", "Transfer manifest must carry a lookup-only digest matching Location authority inventory");
+  const transferState = types.get("transfer-application-state");
+  const recreateState = transferState?.cases?.find((entry) => entry.when?.hasState === "false");
+  const snapshotState = transferState?.cases?.find((entry) => entry.when?.hasState === "true");
+  if (transferState?.bodyLengthType?.$ref !== "u64"
       || JSON.stringify(recreateState?.fields) !== "[]"
       || JSON.stringify(fieldShape(snapshotState?.fields)) !== JSON.stringify([
         { name: "stateContractId", $ref: "text8" },
-        { name: "serializer", $ref: "checkpoint-serializer-kind", constant: "frameworkJsonV1" },
+        { name: "serializer", $ref: "transfer-serializer-kind", constant: "frameworkJsonV1" },
         { name: "payload", $ref: "durable-state-blob" },
       ])) {
-    fail("$.types", "checkpoint state must be a closed Recreate or framework JSON Snapshot union");
+    fail("$.types", "transfer state must be a closed Recreate or framework JSON Snapshot union");
   }
   const relayContext = types.get("reply-relay-context");
   if (JSON.stringify((relayContext?.cases ?? []).map((entry) => entry.when))
@@ -4501,8 +4734,8 @@ function validateAuthorityKeyFormat(format, fail) {
     prefix: "zla1",
     separator: ":",
     kindDiscriminators: [
-      { objectKind: "actor", wire: "a", components: ["meshName", "actorId"] },
-      { objectKind: "spot", wire: "s", components: ["meshName", "spotRid"] },
+      { objectKind: "actor", wire: "a", components: ["actorId"] },
+      { objectKind: "spot", wire: "s", components: ["spotRid"] },
     ],
     componentLayout: "decimal-raw-byte-length-colon-percent-encoded-bytes",
     componentRawBytesMinimum: 1,
@@ -4510,7 +4743,7 @@ function validateAuthorityKeyFormat(format, fail) {
     decimalLength: "base10-no-leading-zero",
     escaping: "rfc3986-unreserved-literal-otherwise-uppercase-percent-hex",
     unicodeNormalization: "none",
-    maximumEncodedBytes: 1546,
+    maximumEncodedBytes: 776,
     goldenFixture: "golden/authority-key-v1.json",
   };
   if (!isObject(format) || JSON.stringify(format) !== JSON.stringify(expected)) {
@@ -4658,7 +4891,7 @@ function validateOwnerLeaseAuthorityProfile(profile, fail) {
   }
 }
 
-function validateCheckpointRetentionPolicy(policy, fail) {
+function validateTransferRetentionPolicy(policy, fail) {
   const expected = {
     retentionMs: 86400000,
     renewThresholdMs: 43200000,
@@ -4678,27 +4911,35 @@ function validateCheckpointRetentionPolicy(policy, fail) {
       "idempotent-delete-no-longer-referenced-manifest-and-all-chunks",
     ],
     reader: "current-authority-reference-only",
-    recoveryHorizon: "continuous-store-or-coordinator-unavailability-at-or-beyond-retention-is-terminal-checkpoint-missing-loss",
+    providerClock: "transfer-storeNow-and-expiresAt-independent-of-location-provider-clock",
+    recoveryHorizon: "permanent-published-root-missing-is-non-retriable-TransferDataLost-no-rollback",
     publicOption: "forbidden",
   };
   if (!isObject(policy) || JSON.stringify(policy) !== JSON.stringify(expected)) {
-    fail("$.checkpointRetentionPolicy", "must use the fixed renewable 24-hour checkpoint lease and bounded recovery horizon");
+    fail("$.transferRetentionPolicy", "must use the fixed renewable 24-hour transfer lease and bounded recovery horizon");
   }
 }
 
-function validateCheckpointStorageProfile(profile, fail) {
+function validateTransferStorageProfile(profile, fail) {
   const expected = {
-    logicalStreamType: "checkpoint-envelope-v1",
-    manifestFormat: "checkpoint-manifest-v1",
-    chunkFormat: "checkpoint-data-chunk-v1",
+    logicalStreamType: "transfer-envelope-v1",
+    manifestFormat: "transfer-manifest-v1",
+    chunkFormat: "transfer-data-chunk-v1",
     chunkDataMaximumBytes: 67108864,
     chunkCountMaximum: 4096,
     logicalMaximumBytes: 274877906944,
     manifestFields: [
       "logicalFormatVersion", "totalLength", "totalChecksumCrc32c",
+      "inventoryDigestSha256",
       "ordered-chunk-reference-length-checksum",
     ],
-    writeOrder: ["all-immutable-chunks", "immutable-root-manifest", "authority-reference-cas"],
+    writeOrder: [
+      "all-immutable-chunks", "immutable-root-manifest", "read-and-verify-complete-root",
+      "location-authority-reference-cas",
+    ],
+    authority: "forbidden-payload-lookup-projection-only",
+    backend: "may-differ-from-location-store",
+    clock: "transfer-provider-storeNow-and-expiresAt-only",
     writeFailure: "unreferenced-chunks-or-manifest-are-orphans-never-authority",
     emptyTransfer: "deterministic-zero-data-manifest-with-no-chunks",
     streaming: "chunk-validated-and-incrementally-decoded-with-bounded-memory",
@@ -4706,7 +4947,7 @@ function validateCheckpointStorageProfile(profile, fail) {
     oversize: "reversible-seal-rollback-and-blocked-state-incompatible-before-draining",
   };
   if (!isObject(profile) || JSON.stringify(profile) !== JSON.stringify(expected)) {
-    fail("$.checkpointStorageProfile", "must define the bounded manifest and immutable checkpoint chunk contract");
+    fail("$.transferStorageProfile", "must define the bounded manifest and immutable transfer chunk contract");
   }
 }
 
@@ -4743,11 +4984,11 @@ function validateMaintenanceAdmissionProfile(profile, fail) {
     reversibleSeal: "hold-new-submissions-without-admission-result",
     sizingSnapshot: "exact-participant-boundaries-messages-and-bytes-after-seal",
     timerAdmissionSeal: "stop-new-tick-admission-and-wait-all-pre-seal-accepted-timer-turns",
-    acceptedTimerTurns: "drain-on-source-before-checkpoint-and-exclude-from-journal-boundary",
+    acceptedTimerTurns: "drain-on-source-before-transfer-and-exclude-from-journal-boundary",
     futureTimerSchedule: "not-transferred-recreated-only-by-target-lifecycle-or-snapshot-state",
     requestDrainBeforeCaptured: "all-connectionBound-accepted-work-and-boundSession-requests-must-be-terminal-and-are-never-journaled",
     requestDrainFailure: "abort-before-captured-retire-blocked-transferDisabled-and-restore-admission",
-    phaseOrder: ["preparing-cas", "checkpoint-put", "captured-cas", "target-reserve", "prepared-cas"],
+    phaseOrder: ["preparing-cas", "transfer-put", "captured-cas", "target-reserve", "prepared-cas"],
     durableReplayBoundary: "complete-root-linked-by-captured-cas",
     sourceCrashBeforeCaptured: "fenced-abort-no-maintenance-continuity-original-request-uses-normal-connection-failure-timeout-or-cancellation-terminal",
     unlinkedPutAfterCrash: "orphan-cleanup-never-replay-authority",
@@ -4839,7 +5080,7 @@ function validateTerminationResultProfile(profile, fail) {
 
   const exactFields = {
     undefinedPair: "protocol-error",
-    checkpointCeilingBeforeDraining: "Blocked/StateIncompatible",
+    transferCeilingBeforeDraining: "Blocked/StateIncompatible",
     preCapturedDeadline: "Blocked/DeadlineExceeded",
     postCapturedDeadline: "ForceStopped/DeadlineExceeded",
     teardownFailure: "ForceStopped/TeardownFailed",
@@ -4955,7 +5196,7 @@ function runSelfTests(schema) {
     }],
     ["discriminator case value mismatch", (candidate) => {
       const identity = candidate.types.find((type) => type.name === "transfer-object-identity");
-      identity.cases[1].when.objectKind = "userSpot";
+      identity.cases[1].when.objectKind = "spot";
     }],
     ["closed wire union without case length", (candidate) => {
       const identity = candidate.types.find((type) => type.name === "transfer-object-identity");
@@ -5105,8 +5346,8 @@ function runSelfTests(schema) {
       envelope.body.splice(2, 0, { name: "codecIdentity", $ref: "serializer-identity" });
     }],
     ["Instance message contract restored", (candidate) => {
-      const placement = candidate.types.find((type) => type.name === "instance-placement-v1");
-      placement.body.push({ name: "messageContractId", $ref: "text8" });
+      const route = candidate.types.find((type) => type.name === "instance-route-fence-v1");
+      route.body.push({ name: "messageContractId", $ref: "text8" });
     }],
     ["participant progress ordering removed", (candidate) => {
       const progress = candidate.types.find((type) => type.name === "participant-progress-vector");
@@ -5137,6 +5378,55 @@ function runSelfTests(schema) {
       constraint.rules.find((rule) => rule.operationKind === "coldActivation")
         .authorityStates.push("closing");
     }],
+    ["creation intent bound widened", (candidate) => {
+      const bound = candidate.bounds.find((entry) => entry.name === "creationIntentBytes");
+      bound.value += 1;
+    }],
+    ["maintenance aggregate bound widened", (candidate) => {
+      const bound = candidate.bounds.find((entry) => entry.name === "maintenanceAggregateBytes");
+      bound.value += 1;
+    }],
+    ["forwarding hop bound widened", (candidate) => {
+      const bound = candidate.bounds.find((entry) => entry.name === "routeForwardHopCount");
+      bound.value += 1;
+    }],
+    ["node pending capacity default changed", (candidate) => {
+      const bound = candidate.bounds.find((entry) => entry.name === "nodePendingCapacityDefault");
+      bound.value += 1;
+    }],
+    ["creation intent loses content hash", (candidate) => {
+      const intent = candidate.types.find((type) => type.name === "object-creation-intent-v1");
+      intent.body = intent.body.filter((field) => field.name !== "requestSha256");
+    }],
+    ["creation intent reuses transfer reference", (candidate) => {
+      const intent = candidate.types.find((type) => type.name === "object-creation-intent-v1");
+      intent.body.find((field) => field.name === "requestContentReference").$ref =
+        "transfer-reference";
+    }],
+    ["normal Instance operation carries stable type", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "instanceSpot");
+      command.body.splice(1, 0, { name: "stableType", $ref: "text8" });
+    }],
+    ["generic reservation loses capacity fence", (candidate) => {
+      const fence = candidate.types.find((type) => type.name === "object-reservation-fence");
+      fence.fields.pop();
+    }],
+    ["User Spot aggregate inventory removed", (candidate) => {
+      const identity = candidate.types.find((type) => type.name === "transfer-object-identity");
+      identity.cases = identity.cases.filter((entry) => entry.when.objectKind !== "userSpot");
+    }],
+    ["descriptor object role removed", (candidate) => {
+      const extension = candidate.types.find((type) => type.name === "descriptor-extension");
+      extension.fields = extension.fields.filter((field) => field.name !== "objectRole");
+    }],
+    ["Spot exact route loses node generation", (candidate) => {
+      const route = candidate.types.find((type) => type.name === "spot-route-fence");
+      route.fields = route.fields.filter((field) => field.name !== "targetNodeGeneration");
+    }],
+    ["global authority loses owner Mesh", (candidate) => {
+      const authority = candidate.types.find((type) => type.name === "authority-payload-v1");
+      authority.fields = authority.fields.filter((field) => field.name !== "ownerMeshName");
+    }],
     ["maintenance Instance uses cold activation state", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
         (entry) => entry.kind === "authority-operation-state-integrity",
@@ -5148,9 +5438,9 @@ function runSelfTests(schema) {
       const operation = candidate.types.find((type) => type.name === "authority-operation-kind");
       operation.values.shift();
     }],
-    ["checkpoint cross-vector rule weakened", (candidate) => {
+    ["transfer cross-vector rule weakened", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
-        (entry) => entry.kind === "checkpoint-journal-integrity",
+        (entry) => entry.kind === "transfer-journal-integrity",
       );
       delete constraint.sequenceAtOrBelowAcceptedBoundary;
     }],
@@ -5164,13 +5454,51 @@ function runSelfTests(schema) {
       const transferControl = candidate.types.find((type) => type.name === "transfer-control-data");
       transferControl.fields.push({ name: "finalSequence", $ref: "u64" });
     }],
-    ["checkpoint reference bound widened", (candidate) => {
-      const reference = candidate.types.find((type) => type.name === "checkpoint-reference");
+    ["transfer reference bound widened", (candidate) => {
+      const reference = candidate.types.find((type) => type.name === "transfer-reference");
       reference.maximumBytes = { $bound: "blobBytes" };
+    }],
+    ["transfer manifest loses inventory digest", (candidate) => {
+      const manifest = candidate.types.find((type) => type.name === "transfer-manifest-v1");
+      manifest.fields = manifest.fields.filter((field) => field.name !== "inventoryDigestSha256");
+    }],
+    ["Location aggregate permits Transfer manifest authority", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.aggregateAuthority.manifestAuthority = "allowed";
+    }],
+    ["Location aggregate weakens inventory digest match", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.aggregateAuthority.inventoryDigestMatch = "optional";
+    }],
+    ["published Transfer loss becomes retriable", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "location-transfer-storage-integrity",
+      );
+      constraint.publishedPayloadMissing.retriable = true;
+    }],
+    ["TransferDataLost failure omitted", (candidate) => {
+      const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
+      errorCodes.values = errorCodes.values.filter(
+        (entry) => entry.name !== "transferDataLost",
+      );
+    }],
+    ["TransferDataLost mapping changed", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "terminal-failure-integrity",
+      );
+      constraint.typedFrameworkFailure.exactResultByFailureCode.transferDataLost = "unavailable";
     }],
     ["authority aggregate bound omitted", (candidate) => {
       const transfer = candidate.types.find((type) => type.name === "authority-transfer-state");
       delete transfer.maximumEncodedBytes;
+    }],
+    ["Location aggregate loses Transfer root", (candidate) => {
+      const aggregate = candidate.types.find((type) => type.name === "maintenance-aggregate-v1");
+      aggregate.body = aggregate.body.filter((field) => field.name !== "transferRoot");
     }],
     ["transfer TLV narrowed to u16", (candidate) => {
       const extension = candidate.types.find((type) => type.name === "transfer-extension");
@@ -5190,12 +5518,12 @@ function runSelfTests(schema) {
     ["authority key escaping changed", (candidate) => {
       candidate.authorityKeyFormat.escaping = "lowercase-percent-hex";
     }],
-    ["checkpoint renew result loses store clock", (candidate) => {
-      candidate.checkpointRetentionPolicy.renewResult = "renewed-or-missing";
+    ["transfer renew result loses store clock", (candidate) => {
+      candidate.transferRetentionPolicy.renewResult = "renewed-or-missing";
     }],
     ["maintenance reserves before seal", (candidate) => {
       candidate.maintenanceAdmissionProfile.phaseOrder = [
-        "target-reserve", "preparing-cas", "checkpoint-put", "captured-cas", "prepared-cas",
+        "target-reserve", "preparing-cas", "transfer-put", "captured-cas", "prepared-cas",
       ];
     }],
     ["maintenance claims durable replay before Captured", (candidate) => {
@@ -5213,12 +5541,12 @@ function runSelfTests(schema) {
       );
       blocked.reasons.push("TeardownFailed");
     }],
-    ["termination checkpoint reason widened", (candidate) => {
-      candidate.terminationResultProfile.reasons.push({ name: "CheckpointTooLarge", wireValue: 9 });
+    ["termination transfer reason widened", (candidate) => {
+      candidate.terminationResultProfile.reasons.push({ name: "TransferTooLarge", wireValue: 9 });
     }],
-    ["termination checkpoint ceiling pair changed", (candidate) => {
-      candidate.terminationResultProfile.checkpointCeilingBeforeDraining =
-        "Blocked/CheckpointTooLarge";
+    ["termination transfer ceiling pair changed", (candidate) => {
+      candidate.terminationResultProfile.transferCeilingBeforeDraining =
+        "Blocked/TransferTooLarge";
     }],
     ["termination teardown outcome changed", (candidate) => {
       candidate.terminationResultProfile.teardownFailure = "Failed/TeardownFailed";
@@ -5248,11 +5576,11 @@ function runSelfTests(schema) {
       const delivery = candidate.types.find((type) => type.name === "completion-delivery-state");
       delivery.values[3].name = "sourceConnectionClosed";
     }],
-    ["authority checkpoint relay count atomicity removed", (candidate) => {
+    ["authority transfer relay count atomicity removed", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
-        (entry) => entry.kind === "checkpoint-journal-integrity",
+        (entry) => entry.kind === "transfer-journal-integrity",
       );
-      delete constraint.authorityCheckpointAtomicity.pendingRelayCount;
+      delete constraint.authorityTransferAtomicity.pendingRelayCount;
     }],
     ["authority phase owner shape weakened", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
@@ -5290,8 +5618,8 @@ function runSelfTests(schema) {
       );
       constraint.mutableOnly.push("normalizedEffectiveMaxMessageBytes");
     }],
-    ["staged checkpoint can link without renew", (candidate) => {
-      candidate.checkpointRetentionPolicy.preLinkGate = "skip";
+    ["staged transfer can link without renew", (candidate) => {
+      candidate.transferRetentionPolicy.preLinkGate = "skip";
     }],
     ["target replacement claims exactly once callbacks", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
@@ -5360,12 +5688,12 @@ function runGoldenFixtureSelfTests(schema, schemaPath) {
           reencode(format, candidate);
         }],
       );
-    } else if (format.name === "checkpoint-data-chunk-v1") {
+    } else if (format.name === "transfer-data-chunk-v1") {
       tests.push(["empty chunk", (candidate) => {
         candidate.decoded.dataHex = "";
         reencode(format, candidate);
       }]);
-    } else if (format.name === "checkpoint-manifest-v1") {
+    } else if (format.name === "transfer-manifest-v1") {
       tests.push(
         ["semantic relation", (candidate) => {
           candidate.decoded.totalLength = "391";
@@ -5416,6 +5744,23 @@ function runAuthorityKeyFixtureSelfTests(schema, schemaPath) {
         candidate.consumers[1], candidate.consumers[0],
       ];
     }],
+    ["legacy Mesh component", (candidate) => {
+      candidate.cases[0].encoded = "zla1:a:4:main:7:user%3A42";
+    }],
+    ["empty global identity", (candidate) => {
+      candidate.cases[0].identityHex = "";
+      candidate.cases[0].encoded = "zla1:a:0:";
+    }],
+    ["global identity exceeds 255 bytes", (candidate) => {
+      candidate.cases[0].identityHex = "61".repeat(256);
+      candidate.cases[0].encoded = `zla1:a:256:${"a".repeat(256)}`;
+    }],
+    ["Actor and Spot domain collision", (candidate) => {
+      const actor = candidate.cases.find((entry) => entry.objectKind === "actor");
+      const spot = candidate.cases.find((entry) => entry.objectKind === "spot");
+      spot.identityHex = actor.identityHex;
+      spot.encoded = actor.encoded;
+    }],
   ];
   for (const [label, mutate] of tests) {
     const candidate = clone(fixture);
@@ -5425,6 +5770,112 @@ function runAuthorityKeyFixtureSelfTests(schema, schemaPath) {
       (location, message) => errors.push(`${location}: ${message}`));
     if (errors.length === 0) {
       throw new Error(`negative self-test did not fail: authority-key-v1: ${label}`);
+    }
+  }
+  return tests.length;
+}
+
+function validateContractAmendmentFixtureData(fixture, location, fail) {
+  const expected = {
+    format: "contract-amendment-v1",
+    consumers: ["cpp", "dotnet", "jvm", "node"],
+    descriptor: {
+      objectRole: "server", placementWeight: 100, activeCapacityLimit: 10000,
+      pendingCapacityLimit: 128, objectKind: "userSpot", stableType: "chat-room",
+      placementProfiles: ["default"], typeCapacityLimit: 4096,
+    },
+    creationIntent: {
+      objectKind: "instanceSpot", globalIdHex: "73706f742d31", stableType: "presence",
+      initialMeshName: "main", placementProfile: "default", affinityKey: "tenant-42",
+      requestContentReference: "create/1",
+      requestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      requestEncodedSize: 1048576, creationAttempt: "1",
+    },
+    reservation: {
+      operationOrder: ["reserve", "commit", "abort"], pendingCapacityDelta: 1,
+      objectGeneration: "2", authorityOwnerGeneration: "3",
+      targetNodeRidUtf8Fixture: "node-a", targetNodeGeneration: "4",
+      targetOwnerLeaseGeneration: "5",
+    },
+    aggregate: {
+      aggregateHigh: "0", aggregateLow: "1", aggregateGeneration: "6",
+      participantKinds: ["userSpot", "actor"],
+      authorityOwner: "location",
+      canonicalParticipantOrder: ["spot:room-1", "actor:actor-1"],
+      participantMutations: ["spot-owner-and-membership", "actor-owner-and-membership"],
+      inventoryDigestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      transferManifestDigestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      transferReferenceUtf8Fixture: "transfer/aggregate-1",
+      transferChecksumCrc32c: 305419896,
+      transferManifestAuthority: false,
+      participantMaximum: 1024,
+      encodedMaximum: 1048576,
+    },
+    forwarding: {
+      objectKinds: ["actor", "spot"], hopMaximum: 8, queuedMessageMaximum: 1024,
+      queuedByteMaximum: 16777216,
+      preserves: ["operationId", "objectGeneration", "payload", "replyRoute"],
+    },
+    exactRefRoute: {
+      actor: ["actorId", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
+      spot: ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
+    },
+    normalInstanceMessageFields: [
+      "spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration",
+      "authorityOwnerGeneration",
+    ],
+  };
+  if (JSON.stringify(fixture) !== JSON.stringify(expected)) {
+    fail(location, "must match the exact CA-D01..D30 amendment fixture");
+  }
+}
+
+function validateContractAmendmentFixture(schemaPath) {
+  const fixturePath = path.resolve(path.dirname(schemaPath), "golden/contract-amendment-v1.json");
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  const errors = [];
+  validateContractAmendmentFixtureData(fixture, fixturePath,
+    (location, message) => errors.push(`${location}: ${message}`));
+  if (errors.length > 0) {
+    throw new SchemaValidationError(errors);
+  }
+  return 1;
+}
+
+function runContractAmendmentFixtureSelfTests(schemaPath) {
+  const fixturePath = path.resolve(path.dirname(schemaPath), "golden/contract-amendment-v1.json");
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  const tests = [
+    ["normal message restores stable type", (candidate) => {
+      candidate.normalInstanceMessageFields.push("stableType");
+    }],
+    ["aggregate drops User Spot", (candidate) => {
+      candidate.aggregate.participantKinds.shift();
+    }],
+    ["aggregate and Transfer manifest digest diverge", (candidate) => {
+      candidate.aggregate.transferManifestDigestSha256Hex = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    }],
+    ["aggregate drops Transfer reference", (candidate) => {
+      delete candidate.aggregate.transferReferenceUtf8Fixture;
+    }],
+    ["aggregate drops Transfer checksum", (candidate) => {
+      delete candidate.aggregate.transferChecksumCrc32c;
+    }],
+    ["reservation changes operation order", (candidate) => {
+      candidate.reservation.operationOrder.reverse();
+    }],
+    ["exact ref drops generation", (candidate) => {
+      candidate.exactRefRoute.actor.splice(1, 1);
+    }],
+  ];
+  for (const [label, mutate] of tests) {
+    const candidate = clone(fixture);
+    mutate(candidate);
+    const errors = [];
+    validateContractAmendmentFixtureData(candidate, `contract-amendment-self-test:${label}`,
+      (location, message) => errors.push(`${location}: ${message}`));
+    if (errors.length === 0) {
+      throw new Error(`negative self-test did not fail: contract-amendment-v1: ${label}`);
     }
   }
   return tests.length;
@@ -5469,19 +5920,22 @@ if (process.argv[1] && scriptPath === path.resolve(process.argv[1])) {
     }
     const summary = validateSchema(schema);
     const fixtureCount = validateGoldenFixtures(schema, schemaPath);
-    const logicalFixtureCount = validateCheckpointLogicalFixture(schema, schemaPath);
+    const logicalFixtureCount = validateTransferLogicalFixture(schema, schemaPath);
     const jsonFixtureCount = validateFrameworkJsonFixture(schema, schemaPath);
     const authorityKeyFixtureCount = validateAuthorityKeyFixture(schema, schemaPath);
+    const amendmentFixtureCount = validateContractAmendmentFixture(schemaPath);
     const selfTestCount = selfTest
       ? runSelfTests(schema) + runGoldenFixtureSelfTests(schema, schemaPath)
         + runAuthorityKeyFixtureSelfTests(schema, schemaPath)
+        + runContractAmendmentFixtureSelfTests(schemaPath)
       : 0;
     const suffix = selfTest ? `; ${selfTestCount} negative self-tests passed` : "";
     console.log(
       `service wire schema valid: ${summary.commands} commands, ${summary.types} types, `
         + `${summary.flags} flags, ${summary.bounds} bounds, ${fixtureCount} durable fixtures, `
         + `${logicalFixtureCount} logical fixture, ${jsonFixtureCount} JSON fixture, `
-        + `${authorityKeyFixtureCount} authority key fixture${suffix}`,
+        + `${authorityKeyFixtureCount} authority key fixture, `
+        + `${amendmentFixtureCount} amendment fixture${suffix}`,
     );
   } catch (error) {
     printFailure(error);

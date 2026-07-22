@@ -21,11 +21,6 @@
 #if defined ZLINK_HAVE_WS
 #include "transports/ws/asio_ws_connecter.hpp"
 #endif
-#ifdef ZLINK_HAVE_OPENPGM
-#include "transports/pgm/pgm_sender.hpp"
-#include "transports/pgm/pgm_receiver.hpp"
-#endif
-
 #include "core/ctx.hpp"
 
 namespace
@@ -488,36 +483,6 @@ void zlink::session_base_t::start_connecting (bool wait_)
         launch_child (connecter);
         return;
     }
-
-#ifdef ZLINK_HAVE_OPENPGM
-    if (_addr->protocol == protocol_name::pgm || _addr->protocol == protocol_name::epgm) {
-        zlink_assert (
-          options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB
-          || options.type == ZLINK_CORE_SOCKET_SUB || options.type == ZLINK_CORE_SOCKET_XSUB);
-
-        const bool udp_encapsulation = _addr->protocol == protocol_name::epgm;
-
-        if (options.type == ZLINK_CORE_SOCKET_PUB || options.type == ZLINK_CORE_SOCKET_XPUB) {
-            pgm_sender_t *pgm_sender = new (std::nothrow) pgm_sender_t (io_thread, options);
-            alloc_assert (pgm_sender);
-
-            const int rc = pgm_sender->init (udp_encapsulation, _addr->address.c_str ());
-            errno_assert (rc == 0);
-
-            send_attach (this, pgm_sender);
-        } else {
-            pgm_receiver_t *pgm_receiver = new (std::nothrow) pgm_receiver_t (io_thread, options);
-            alloc_assert (pgm_receiver);
-
-            const int rc = pgm_receiver->init (udp_encapsulation, _addr->address.c_str ());
-            errno_assert (rc == 0);
-
-            send_attach (this, pgm_receiver);
-        }
-
-        return;
-    }
-#endif
 
     zlink_assert (false);
 }

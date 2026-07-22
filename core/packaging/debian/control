@@ -5,7 +5,6 @@ Maintainer: zlink Developers <ulalax@kairoscode.dev>
 Build-Depends: debhelper (>= 9),
  dh-autoreconf,
  libnorm-dev,
- libpgm-dev,
  libunwind-dev | libunwind8-dev | libunwind7-dev,
  libnss3-dev,
  libgnutls28-dev | libgnutls-dev,
@@ -33,7 +32,6 @@ Architecture: any
 Section: libdevel
 Depends: libzlink11 (= ${binary:Version}), ${misc:Depends},
  libnorm-dev,
- libpgm-dev,
  libunwind-dev | libunwind8-dev | libunwind7-dev,
  libnss3-dev,
  libgnutls28-dev | libgnutls-dev,

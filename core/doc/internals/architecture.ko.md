@@ -15,7 +15,7 @@ pipe를 통해 I/O thread object와 command 및 message를 교환한다.
 +------------------------------------------------------+
 | ZMP or raw engines                                   |
 +------------------------------------------------------+
-| TCP, IPC, inproc, WebSocket, TLS, PGM transports     |
+| TCP, IPC, inproc, WebSocket, TLS transports          |
 +------------------------------------------------------+
 ```
 

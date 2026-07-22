@@ -32,12 +32,13 @@ Request의 reply 상관관계는 transport가 발급한 operation ID 또는 sess
 application metadata를 reply matching key로 사용하지 않는다. reply는 성공 payload와 framework 오류 중 하나로
 완료되며 같은 request를 두 번 완료할 수 없다.
 
-InstanceSpotAddress 호출도 Send 또는 Request message kind를 사용한다. Cold placement에서
-Framework service runtime은 typed packet name과 원래 operation이 send인지 request인지를 activation operation에
-보존하지만, 첫 업무 payload를 activation callback 인자로 바꾸거나 별도 message type으로 소비하지 않는다.
-Location `Ready` commit과 Framework activation barrier가 끝나면 원래 message를 확정된 generation의 일반 Spot
-direct handler에 한 번 전달한다. ObjectGeneration, AuthorityOwnerGeneration과 owner lease token은 Store
-fencing에만 사용하며 application payload나 handler context에 포함하지 않는다.
+Object creation request는 일반 Send·Request와 다른 manager operation 입력이다. Framework는 typed codec으로
+encode한 최대 1 MiB payload의 immutable content reference와 hash를 placement reservation 전에 durable creation
+intent에 기록한다. Factory는 logical key, ObjectGeneration과 creation attempt를 함께 받아 같은 attempt의
+at-least-once 실행에도 같은 결과로 수렴해야 한다. CAS loser는 creation request를 일반 message로 보내지 않는다.
+Ready commit 또는 fenced failure cleanup이 끝날 때까지 content reference를 유지한다. ObjectGeneration,
+AuthorityOwnerGeneration, attempt와 owner lease token은 Store fencing에만 사용하며 application message payload나
+handler context에 포함하지 않는다.
 
 ## 3. Application metadata
 
@@ -62,7 +63,7 @@ Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Frame
 | 경로 | metadata 전달 |
 |---|---|
 | Node direct와 ChannelName | source snapshot을 선택된 MeshNode의 handler context에 전달한다 |
-| Spot direct와 Instance Spot direct | target Spot의 application claim에 전달한다. Instance activation 전에는 handler에 노출하지 않는다 |
+| Spot | global Spot RID의 current Ready owner에 있는 application claim에 전달한다 |
 | Logical Multicast | 같은 publish snapshot을 각 matching Spot handler에 전달한다 |
 | Actor | Actor handler context에 전달하며 Spot callback을 거치지 않는다 |
 | STREAM session | session send/request context에 전달한다 |
@@ -79,9 +80,10 @@ submit 호출이 반환되기 전까지 outbound builder와 payload는 호출자
 수락하면 필요한 payload와 metadata reference 또는 복사본을 operation lifetime 동안 유지한다. 호출자가
 transport buffer, native message pointer 또는 multipart part의 lifetime을 관리하게 하지 않는다.
 
-Instance activation이 pending인 동안에도 같은 ownership 규칙이 적용된다. Location Store I/O와 factory가
-caller의 payload object나 native buffer 수명에 의존하지 않도록 Framework service runtime이 필요한 immutable
-snapshot을 보유한다. Redirect나 activation 실패 뒤에는 예약한 payload storage를 한 번 해제한다.
+Object creation이 pending인 동안에도 같은 ownership 규칙이 적용된다. Location Store I/O와 factory가 caller의
+payload object나 native buffer 수명에 의존하지 않도록 Framework service runtime이 immutable encoded payload를
+content store에 고정한다. Ready 또는 fenced failure 뒤에는 해당 attempt가 소유한 payload storage를 한 번
+해제한다.
 
 payload 최대 크기는 대상 transport의 `MaxMessageSize`를 따른다. 전체 message가 제한을 넘으면 일부 part를
 전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 target별 제출과 결과 집계는

@@ -4,15 +4,34 @@
   "cases": [
     {
       "objectKind": "actor",
-      "meshNameUtf8": "main",
       "identityHex": "757365723a3432",
-      "encoded": "zla1:a:4:main:7:user%3A42"
+      "encoded": "zla1:a:7:user%3A42"
+    },
+    {
+      "objectKind": "actor",
+      "identityHex": "557365723a3432",
+      "encoded": "zla1:a:7:User%3A42"
+    },
+    {
+      "objectKind": "actor",
+      "identityHex": "c3a9",
+      "encoded": "zla1:a:2:%C3%A9"
+    },
+    {
+      "objectKind": "actor",
+      "identityHex": "65cc81",
+      "encoded": "zla1:a:3:e%CC%81"
     },
     {
       "objectKind": "spot",
-      "meshNameUtf8": "main",
       "identityHex": "00ff3a",
-      "encoded": "zla1:s:4:main:3:%00%FF%3A",
+      "encoded": "zla1:s:3:%00%FF%3A",
+      "sharedBySpotKinds": ["entry", "user", "instance"]
+    },
+    {
+      "objectKind": "spot",
+      "identityHex": "757365723a3432",
+      "encoded": "zla1:s:7:user%3A42",
       "sharedBySpotKinds": ["entry", "user", "instance"]
     }
   ]

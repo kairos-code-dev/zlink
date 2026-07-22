@@ -10,23 +10,23 @@
 |---|---|
 | [Framework 정식 spec](../../framework/spec/README.ko.md) | Service 공개 동작과 package별 계약의 단일 기준 |
 | [Framework 공통 internals](../../framework/common/internals/README.ko.md) | Protocol, queue, ownership, fencing, recovery와 resource 불변 조건의 단일 기준 |
-| [Service 공개 계약 migration crosswalk](target-spec/README.ko.md) | Core 10 service 의미를 정식 Framework spec의 소유 문서와 연결하는 대조 자료 |
-| [Service runtime 구현 crosswalk](target-internals/README.ko.md) | Core 10 구현·test를 네 언어 runtime의 정식 internals와 구현 lane에 연결하는 대조 자료 |
+| [Core service migration inventory](../../contract-inventory/route-mesh-v11-core-service-migration-inventory.json) | Core 10 service 공개 의미와 구현 입력을 정식 Framework spec·internals owner에 연결하는 machine-readable 대조 자료 |
+| [Framework 공통 internals](../../framework/common/internals/README.ko.md) | 네 언어 service runtime의 정식 내부 구조와 구현 불변 조건 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
 | [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | M5 이후 public contract amendment review까지만 사용하는 임시 설계 입력. 승인 내용을 정식 spec에 흡수한 뒤 삭제한다. |
 | [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | 다섯 언어 exact interface amendment review까지만 사용하는 임시 C# 표현 입력. 승인 내용을 정식 interface에 흡수한 뒤 삭제한다. |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
 
-Target 문서는 정식 계약을 별도로 정의하지 않는다. 정식 문서와 내용이 다르면 정식 spec 또는 정식 internals를
-적용하고, 같은 candidate에서 target crosswalk를 수정한다. 현재 구현과의 차이, review finding, test 결과와
-package 증거는 execution ledger에만 기록한다.
+정식 spec과 정식 internals가 현재 계약과 runtime 구조를 소유한다. Core 10 migration의 no-loss 대조와 분류는
+machine inventory가 소유하고, 현재 구현과의 차이, review finding, test 결과와 package 증거는 execution ledger에
+기록한다.
 
 ## 작업 순서
 
 1. 삭제 전 Core service spec·internals의 각 절과 공개 type·symbol, 구현·test·build·package 입력을 전수
    분류한다.
 2. Framework 정식 spec·internals와 다섯 언어 exact interface에서 공개 의미와 내부 불변 조건을 먼저 확정하고,
-   target crosswalk로 Core 10 의미와 구현 입력이 빠지지 않았는지 확인한다.
+   machine inventory로 Core 10 의미와 구현 입력이 빠지지 않았는지 확인한다.
 3. Core raw-only 경계와 ZMP heartbeat가 없는 transport 계약을 Core 정식 spec·internals에서 확정한다.
 4. 10.x oracle를 별도 process와 normalized trace로 봉인한 뒤 Core service·ZMP heartbeat를 먼저 제거하고,
    POSD·DDD review를 통과한 Core 11 local/internal package를 만든다.

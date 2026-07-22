@@ -16,7 +16,7 @@ helpers or options.
 | Socket semantics | Per-socket routing, multipart behavior, and request correlation |
 | Runtime core | Context, sessions, pipes, mailbox commands, and lifecycle |
 | Engine | ZMP/RAW framing and handshake |
-| Transport | TCP, WebSocket, IPC, inproc, PGM, and TLS I/O |
+| Transport | TCP, WebSocket, IPC, inproc, and TLS I/O |
 
 The public API does not branch on concrete transport or protocol parsers.
 Runtime core does not know per-socket policy, and engines do not interpret

@@ -1,6 +1,7 @@
 # C++ channel messaging exact interface
 
-[C++ exact interface 목차](README.ko.md)
+[C++ exact interface 목차](README.ko.md) · [MeshNode](../../../21-mesh-node.ko.md) ·
+[Framework API](../../../../05-framework-api.ko.md)
 
 ## 1. RouteMesh 등록
 
@@ -85,13 +86,19 @@ struct mesh_node_socket_config_t {
     std::optional<std::chrono::milliseconds> send_timeout;
 };
 
-struct entry_spot_options_t {
-    std::optional<zlink::routing_id_t> routing_id;
+enum class object_role_t : std::uint8_t {
+    none = 0,
+    client = 1,
+    server = 2
 };
 
-struct instance_spot_factory_options_t {
-    std::size_t max_active_instances = 4096;
-    std::chrono::milliseconds activation_timeout{3000};
+struct object_capacity_options_t {
+    std::uint32_t active_limit = 10000;
+    std::uint32_t pending_limit = 128;
+};
+
+struct object_type_capacity_t {
+    std::uint32_t limit;
 };
 
 class mesh_node_builder_t {
@@ -102,12 +109,11 @@ public:
     mesh_node_builder_t &set_bind_host(std::string host);
     mesh_node_builder_t &set_advertise_host(std::string host);
     mesh_node_builder_t &set_routing_id(zlink::routing_id_t routing_id);
-    mesh_node_builder_t &use_allocated_routing_id(
-      std::size_t slot_count,
-      std::string routing_id_prefix = {});
-    mesh_node_builder_t &set_routing_id_allocation_group(std::string group_name);
+    mesh_node_builder_t &set_automatic_routing_id_prefix(std::string prefix);
+    mesh_node_builder_t &set_object_role(object_role_t role);
+    mesh_node_builder_t &set_placement_weight(std::uint8_t weight);
+    mesh_node_builder_t &set_object_capacity(object_capacity_options_t capacity);
     mesh_node_socket_config_t &configure_router_socket();
-    entry_spot_options_t &configure_entry_spot();
     mesh_peer_connections_t &peer_connections();
     mesh_node_builder_t &set_default_request_timeout(std::chrono::milliseconds timeout);
 
@@ -131,35 +137,26 @@ public:
     template <typename TSpot>
       requires std::derived_from<
         TSpot, spot_t<typename TSpot::actor_type>>
-    mesh_node_builder_t &add_spot(std::string spot_name);
-
-    template <typename TSpot>
-      requires std::derived_from<
-        TSpot, spot_t<typename TSpot::actor_type>>
-    mesh_node_builder_t &add_spot(
-      std::string spot_name,
-      std::function<std::shared_ptr<TSpot>()> factory);
+    mesh_node_builder_t &add_spot_factory(
+      std::string stable_type,
+      std::function<std::shared_ptr<TSpot>()> factory,
+      transfer_policy_t<TSpot> transfer,
+      std::optional<object_type_capacity_t> capacity = std::nullopt);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
     mesh_node_builder_t &add_instance_spot_factory(
-      std::string instance_spot_type,
-      instance_spot_factory_options_t options = {});
-
-    template <typename TSpot>
-      requires std::derived_from<TSpot, instance_spot_t>
-    mesh_node_builder_t &add_instance_spot_factory(
-      std::string instance_spot_type,
-      instance_spot_factory_options_t options,
-      transfer_policy_t<TSpot> transfer);
-
-    template <typename TActorFactory>
-    mesh_node_builder_t &add_actor_factory(std::string actor_type);
+      std::string stable_type,
+      std::function<std::shared_ptr<TSpot>()> factory,
+      transfer_policy_t<TSpot> transfer,
+      std::optional<object_type_capacity_t> capacity = std::nullopt);
 
     template <typename TActor, typename TActorFactory>
     mesh_node_builder_t &add_actor_factory(
-      std::string actor_type,
-      transfer_policy_t<TActor> transfer);
+      std::string stable_type,
+      TActorFactory factory,
+      transfer_policy_t<TActor> transfer,
+      std::optional<object_type_capacity_t> capacity = std::nullopt);
 
 };
 
@@ -227,6 +224,13 @@ struct location_runtime_snapshot_t {
     std::optional<std::chrono::system_clock::time_point> last_failure_at;
 };
 
+struct object_capacity_snapshot_t {
+    std::uint32_t active_limit;
+    std::uint32_t pending_limit;
+    std::uint32_t active_count;
+    std::uint32_t pending_count;
+};
+
 struct mesh_node_snapshot_t {
     std::string mesh_name;
     zlink::routing_id_t rid;
@@ -234,6 +238,9 @@ struct mesh_node_snapshot_t {
     std::uint64_t descriptor_revision;
     std::string endpoint;
     mesh_node_state_t state;
+    object_role_t object_role;
+    std::uint8_t placement_weight;
+    object_capacity_snapshot_t object_capacity;
     std::uint64_t sequence;
     std::chrono::system_clock::time_point observed_at;
     std::vector<std::string> descriptor_sources;
@@ -449,8 +456,20 @@ Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wild
 listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을 사용한다.
 Listener별 host 설정은 root 기본값보다 우선한다.
 
-`use_allocated_routing_id(...)`의 slot count는 `1..65535`다. 같은 allocation group에 정규화한 MeshNode와
-fanout publisher member를 합쳐 `1..255`개만 둘 수 있으며 범위를 벗어나면 startup 설정 오류다.
+Automatic RID prefix는 `[A-Za-z0-9._-]` 1..64자다. Runtime은 prefix와 CSPRNG 128-bit lowercase hex를
+`prefix-<32 lower hex>`로 조합하고 전체 RID를 255 byte 이하로 제한한다. Active descriptor owner CAS가
+충돌하면 최대 8회 새 suffix로 시도하고 이후 `routing_id_conflict`로 startup을 실패한다. Fixed RID는
+Object role `none`인 explicit manual topology에서만 허용한다.
+
+Object role `server`는 `client` 기능을 포함한다. `client`와 `server`는 Location Store가 필수이며 `none`은
+manager, factory와 hidden local object runtime을 만들지 않는다. Placement weight는 `0..100`, 기본값은 100이고
+0은 새 create·transfer target에서만 제외한다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
+`1..2147483647`이다. Actor·User Spot·Instance Spot factory는 transfer policy를 항상 명시하며 이를 생략하는
+overload는 없다.
+
+Entry Spot RID는 Framework가 startup에서 발급한다. Caller가 RID를 전달하거나 Entry Spot별 option을 구성하는
+public member는 제공하지 않는다. Entry Spot factory 등록과 초기화가 완료된 뒤에만 Framework가 descriptor와
+resolver에 RID를 게시한다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
@@ -490,11 +509,8 @@ public:
     fanout_channel_builder_t &set_advertise_host(std::string host);
     fanout_channel_builder_t &set_routing_id(
       zlink::routing_id_t publisher_routing_id);
-    fanout_channel_builder_t &use_allocated_routing_id(
-      std::size_t slot_count,
-      std::string routing_id_prefix = {});
-    fanout_channel_builder_t &set_routing_id_allocation_group(
-      std::string group_name);
+    fanout_channel_builder_t &set_automatic_routing_id_prefix(
+      std::string prefix);
     fanout_channel_builder_t &enable_subscriber();
     fanout_channel_builder_t &connect(std::string endpoint);
     endpoint_connections_t subscriber_connections();
@@ -526,9 +542,9 @@ queue 상한은 `zlink_framework_options_t::set_max_pending(...)`이 runtime 단
 ClientServer와 Fanout은 서로 다른 물리 topology이므로 같은 process에서 ChannelName을 공유할 수 없다.
 각 topology의 연결 집합과 descriptor는 서로 분리한다.
 
-Location store를 등록한 fanout publisher는 고정 Publisher RID와 자동 할당 중 하나를 startup 전에
+Location store를 등록한 fanout publisher는 fixed Publisher RID와 automatic RID prefix 중 하나를 startup 전에
 선택하고 전용 descriptor를 게시한다. Store가 없는 publisher는 listener endpoint를 수동으로 전달하는
-대상으로 사용할 수 있지만 RID allocation과 automatic discovery 등록은 수행하지 않는다. 인자 없는
+대상으로 사용할 수 있지만 automatic discovery 등록은 수행하지 않는다. 인자 없는
 `enable_subscriber()`는 같은 ChannelName의 유효한 publisher descriptor를 location store에서 조회해 모두
 연결한다. `connect(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 두 subscriber
 mode를 한 channel에 함께 설정하면 startup이 실패한다. Automatic subscriber는 location store가 필요하며,
@@ -590,18 +606,6 @@ public:
     void connect(std::string endpoint);
     void disconnect(std::string endpoint);
     std::vector<std::string> list_connections() const;
-};
-
-class actor_ref_t {
-public:
-    actor_ref_t(node_rid_t node_rid,
-      std::string actor_id,
-      std::uint64_t generation = 1);
-
-    const node_rid_t &node_rid() const noexcept;
-    std::string_view actor_id() const noexcept;
-    std::uint64_t generation() const noexcept;
-    bool empty() const noexcept;
 };
 
 template <typename TReply>
@@ -670,7 +674,20 @@ enum class framework_error_kind_t {
     worker_timed_out = 18,
     worker_failed = 19,
     actor_location_stale = 20,         // retriable
-    actor_create_rejected = 21
+    actor_create_rejected = 21,
+    object_client_not_configured = 22,
+    mesh_selection_required = 23,
+    mesh_not_found = 24,
+    invalid_configuration = 25,
+    already_submitted = 26,
+    actor_generation_stale = 27,
+    actor_moving = 28,                 // retriable
+    deadline_exceeded = 29,            // retriable
+    placement_capacity_exhausted = 30, // retriable
+    routing_id_conflict = 31,
+    spot_generation_stale = 32,
+    spot_moving = 33,                  // retriable
+    transfer_data_lost = 34            // non-retriable
 };
 
 class framework_exception_t : public std::exception {
@@ -679,7 +696,7 @@ public:
     bool is_retriable() const noexcept;
     // 경계 상태(timed_out, shutdown, disconnected, closed, cancelled)는
     // public enum 값이 아니라 이 error_code로 노출한다(common runtime §7.4).
-    // stale Actor ref는 actor_location_stale error kind로 분류한다.
+    // ID-only route stale과 exact-ref generation stale은 서로 다른 kind다.
     std::error_code code() const noexcept;
     const char *what() const noexcept override;
 };
@@ -927,24 +944,11 @@ public:
     channel_request_call_t request_to_channel(std::string channel_name,
       TRequest request);
 
-    // 이미 존재하는 Spot 대상은 불투명한 handle 하나를 사용한다.
-    // Spot RID와 node RID를 나란히 받는 overload는 두지 않는다(공통 스펙 24 §3).
     template <typename TMessage>
-    route_send_call_t send_to_spot(spot_handle_t target, TMessage message);
+    route_send_call_t send_to_spot(spot_rid_t target, TMessage message);
 
     template <typename TRequest>
-    channel_request_call_t request_to_spot(spot_handle_t target, TRequest request);
-
-    // Instance Spot 대상은 owner 정보가 없는 논리 주소를 사용한다.
-    template <typename TMessage>
-    route_send_call_t send_to_spot(
-      const instance_spot_address_t &target,
-      TMessage message);
-
-    template <typename TRequest>
-    channel_request_call_t request_to_spot(
-      const instance_spot_address_t &target,
-      TRequest request);
+    channel_request_call_t request_to_spot(spot_rid_t target, TRequest request);
 };
 
 class route_send_call_t {
@@ -1002,7 +1006,7 @@ capacity가 부족할 때만 해당 operation family의 send timeout까지 기�
 수락할 수 있는데 pending 공간만 가득 찼다는 이유로 `backpressured`를 반환하면 안 된다. `submitted`는 remote
 handler나 subscriber가 실행을 마쳤다는 뜻이 아니다. C++ server call에는 별도 cancellation 인자가 없다.
 반환된 task를 보관하지 않거나 파괴해도 operation이 취소된다고 보장하지 않으며 timeout이나 shutdown 뒤에
-같은 operation을 자동으로 다시 제출하지 않는다. 잘못된 argument·handle·state와 중복 submit은
+같은 operation을 자동으로 다시 제출하지 않는다. 잘못된 argument·state와 중복 submit은
 `submit_status_t`가 아니라 `framework_exception_t`로 완료한다. STREAM reply의 유효한 첫 terminator는
 transport를 시작하기 전에 one-shot reply token을 원자적으로
 claim하고 소비한다. 같은 token에서 만든 두 call이 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고

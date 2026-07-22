@@ -55,14 +55,10 @@ public final class ZLinkFrameworkRuntime
     public ZLinkSpotOutbound spotOutbound();
     public ZLinkSpotPublisherClient spotPublisherClient();
     public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery();
-    public ZLinkAllocatedRoutingIdProvider allocatedRoutingIds();
     public ZLinkLocationReadiness locationReadiness();
     public boolean stopSpotRuntime();
     public ZLinkActorManager actorManager();
-    public ZLinkActorDirectory actorDirectory();
     public ZLinkActorClient actorClient();
-    public SpotHandleResolver spotHandleResolver();
-    public ActorSpotHandleResolver actorSpotHandleResolver();
     public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid);
 
     @Deprecated(since = "11.0", forRemoval = false)
@@ -190,6 +186,19 @@ public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extend
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind WORKER_FAILED;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_LOCATION_STALE;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_CREATE_REJECTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind OBJECT_CLIENT_NOT_CONFIGURED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind MESH_SELECTION_REQUIRED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind MESH_NOT_FOUND;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind INVALID_CONFIGURATION;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ALREADY_SUBMITTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_GENERATION_STALE;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ACTOR_MOVING;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind DEADLINE_EXCEEDED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind PLACEMENT_CAPACITY_EXHAUSTED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTING_ID_CONFLICT;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_GENERATION_STALE;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_MOVING;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind TRANSFER_DATA_LOST;
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
   public int value();
@@ -206,6 +215,14 @@ public class systems.zlink.framework.errors.ZLinkFrameworkException extends java
   public boolean retriable();
 }
 ```
+
+`ZLinkFrameworkErrorKind.value()`는 선언 순서와 무관하게 공통 숫자를 반환한다. 기존 kind 0..21 뒤에
+`OBJECT_CLIENT_NOT_CONFIGURED=22`, `MESH_SELECTION_REQUIRED=23`, `MESH_NOT_FOUND=24`,
+`INVALID_CONFIGURATION=25`, `ALREADY_SUBMITTED=26`, `ACTOR_GENERATION_STALE=27`, `ACTOR_MOVING=28`,
+`DEADLINE_EXCEEDED=29`, `PLACEMENT_CAPACITY_EXHAUSTED=30`, `ROUTING_ID_CONFLICT=31`,
+`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `TRANSFER_DATA_LOST=34`를 고정한다. `fromValue(int)`도 같은
+mapping을 사용한다. `TRANSFER_DATA_LOST`는 Location authority가 공개한 Transfer payload가 영구적으로
+없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.
 
 ## Serializer와 오류 public signature
 

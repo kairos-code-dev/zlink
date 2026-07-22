@@ -228,10 +228,6 @@ if(ENABLE_CAPSH)
   endif()
 endif()
 
-if(ZLINK_HAVE_OPENPGM)
-  list(APPEND tests ${INTEGRATION_TEST_ROOT}/pgm/test_pgm_epgm)
-endif()
-
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZLINK_CUSTOM_PLATFORM_HPP)
@@ -855,7 +851,6 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_pair_ipc
     test_pair_tcp
     test_pair_send_blocking_wakeup
-    test_pgm_smoke
     test_probe_router
     test_proxy
     test_pub_invert_matching

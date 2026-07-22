@@ -17,47 +17,49 @@ Spot은 room, stage, zone처럼 주소와 상태를 가진 논리 인스턴스�
 
 ## 2. Spot과 MeshNode
 
-모든 분산 Spot은 정확히 하나의 MeshName과 owner MeshNode에 속한다. Spot factory, Entry Spot과 Spot
-lifecycle 등록도 해당 MeshNode가 소유한다. Spot direct와 Logical Multicast는 Node·Channel 메시징과 같은
-MeshNode ROUTER를 사용하며 Spot 전용 ROUTER 또는 PUB/SUB mesh를 만들지 않는다.
+User·Instance Spot은 Location Store namespace 전체에서 전역인 logical Spot RID로 식별된다. RID는 RoutingId의
+1..255-byte exact value이며 MeshName은 최초 placement attribute이지 identity key가 아니다. 같은 RID를 서로
+다른 MeshName, Spot kind 또는 stable type에 중복 사용할 수 없다. Entry Spot RID는 Framework가 발급하며 caller가
+create 대상으로 지정하지 않는다.
 
-Entry·Domain Spot 생성과 `GetOrCreate`는 호출을 받은 local MeshNode에서만 수행한다. SpotHandle을 사용하는
-remote Spot resolve와 메시징은 이미 게시된 owner location row를 사용하며, 존재하지 않는 Spot의 serving
-MeshNode를 고르거나 다른 MeshNode에 생성 요청을 전달하지 않는다.
+Spot factory, Entry Spot과 Spot lifecycle 등록은 Object Server role의 MeshNode만 제공한다. Object Client는
+logical create·lookup·message를 시작할 수 있지만 factory나 Entry Spot을 게시하지 않는다. Server는 Client
+capability를 포함한다. Client·Server role은 Location Store를 요구하며, role이 `None`이면 manager, factory와
+hidden local object runtime을 제공하지 않는다.
 
-명시적인 `InstanceSpotAddress`를 사용하는 direct send/request만 이 existing-only 규칙의 예외다. Instance
-Spot은 Actor membership이 없는 별도 Spot kind이며, 첫 주소 호출의 source runtime이 outbound 전 location claim을
-수행하고 target activation을 시작할 수 있다. Caller는 owner node와 generation을 선택하지 않는다. Address, activation, owner fencing과
-재제출 제한은 [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 소유한다.
+Spot direct와 Logical Multicast는 Node·Channel 메시징과 같은 MeshNode ROUTER를 사용하며 Spot 전용 ROUTER 또는
+PUB/SUB mesh를 만들지 않는다. Framework가 logical create에서 eligible remote server를 선택할 수 있지만
+application은 target RID, endpoint와 owner generation을 지정하지 않는다. Instance Spot도 first-message cold
+activation을 사용하지 않고 명시적인 creation intent를 먼저 commit한다. 자세한 identity, creation과
+reactivation은 [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 소유한다.
 
 classic fanout은 별도 PUB/SUB socket 계약이다. 서비스 event fanout과 Spot Logical Multicast는 서로
 다른 기능이며 어느 한쪽이 다른 쪽의 연결이나 구독 상태를 공유하지 않는다.
 
 ## 3. Spot direct
 
-Spot direct send/request는 논리 Spot identity를 대상으로 한다. SpotHandle 호출에서는 Framework가 주소에서
-확인한 owner MeshNode로 한 번 route하고, 수신 MeshNode는 target Spot의 application queue에 payload를
-제출한다. InstanceSpotAddress 호출에서는 location claim과 activation barrier를 먼저 처리하고 `Ready` 뒤 같은
-application queue에 payload를 제출한다. Missing Spot의 cold activation은 Framework service runtime의 Instance
-placement operation만 사용한다. Location Store가 `Ready` owner를 반환하면 Framework는 node RID, Spot RID와
-Spot generation을 받는 exact Spot direct 경로를 사용한다.
+Spot direct send/request는 global Spot RID만 대상으로 받는다. Framework는 positive route cache 또는 Location
+Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner fence를
+target admission에 고정한다. 수신 MeshNode는 target Spot의 application queue에 payload를 제출한다. 일반
+message는 Missing Spot의 type이나 최초 Mesh를 제공하거나 creation을 시작하지 않는다. Ready owner가 없는 기존
+Instance Spot의 reactivation은 authority에 저장한 creation intent를 사용하며 message target은 계속 Spot RID다.
 
 Spot direct send는 비동기 submit 하나만 제공한다. Immediate-only 동기 terminator는 제공하지 않으며, queue가
 일시적으로 가득 차면 owner MeshNode ROUTER의 유한한 send timeout까지 admission을 기다린다. 완료 결과는
 local outbound admission만 나타내고 target Spot handler 실행은 기다리지 않는다. `Submitted`,
 `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`, `Shutdown`의 의미와 cancellation·local
 오류 경계는 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
-Instance cold send도 source outbound admission에서 같은 결과를 완료하며 target activation queue 수락을
-기다리지 않는다. Target runtime은 location owner claim을 수행하지 않는다.
+Reactivation을 포함하는 submit도 source outbound admission에서 같은 결과를 완료하며 target application queue의
+handler 실행을 기다리지 않는다. Target runtime은 location owner claim을 새로 만들지 않고 committed authority를
+검증한다.
 
 - local Spot과 remote Spot은 같은 handler 및 실행 의미를 가진다.
 - 호출자는 owner RID, endpoint 또는 내부 route frame을 조립하지 않는다.
 - Spot direct request를 다른 Spot으로 자동 재전송하지 않는다.
-- owner 변경과 stale 주소 처리 규칙은
+- owner 변경, route cache와 stale route 처리 규칙은
   [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
-- Instance Spot의 첫 message는 lifecycle callback 인자가 아니다. Actor-free lifecycle의 Configure와
-  message 없는 initialize, location `Ready` commit과 Framework activation barrier가 끝난 뒤 일반 direct handler에 한 번
-  전달한다.
+- Instance Spot의 create request는 일반 message가 아니다. Actor-free lifecycle의 Configure와 initialize,
+  location `Ready` commit과 activation barrier가 끝난 뒤부터 일반 direct payload를 수락한다.
 
 ### 3.1 Spot에서 Channel 호출
 
@@ -156,7 +158,8 @@ application claim과 분리한다. application callback이 대기 중이어도 i
 
 ## 6. 실패와 수명
 
-- target Spot이 없거나 owner generation이 맞지 않으면 Spot target 오류로 끝난다.
+- target Spot의 Ready authority가 없으면 Spot target 오류로 끝난다. Exact-ref operation은 location과
+  ObjectGeneration을 구분해 stale 오류를 반환한다.
 - request handler를 찾지 못하거나 decode에 실패했을 때 reply route를 복원할 수 있으면 error reply로
   끝낸다.
 - one-way Spot direct와 Logical Multicast handler 실패는 원래 호출을 request로 바꾸지 않으며 runtime
@@ -174,12 +177,14 @@ one-way와 request completion의 공통 의미는
 Spot direct와 Logical Multicast는 [03 메시지 모델](../03-message-model.ko.md)의 immutable metadata
 snapshot을 사용한다. metadata ownership, 크기와 reply 규칙은 이 문서에서 다시 정의하지 않는다.
 
-관측 정보는 선택된 owner MeshName, ChannelName, origin RID, remote target 수, local match 수, admission 대기·실패,
+관측 정보는 current owner MeshName, ChannelName, origin RID, remote target 수, local match 수, admission 대기·실패,
 drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric label로 사용하지 않는다.
 
 ## 8. 검증 요구
 
 - Spot direct와 Logical Multicast가 MeshNode ROUTER 하나만 사용한다.
+- Spot direct가 global Spot RID만 받고 MeshName, owner RID와 generation을 application에 요구하지 않는다.
+- Missing Instance Spot의 일반 message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.
 - Spot Channel 호출이 ChannelName에 등록된 다른 RouteMesh 또는 ClientServer 송신 경로를 사용하고 원래
   Spot의 `Async`·`Yield`와 generation completion을 보존한다.
 - Logical Multicast가 remote MeshNode마다 한 번만 전송되고 수신 node가 local subscription만 검사한다.

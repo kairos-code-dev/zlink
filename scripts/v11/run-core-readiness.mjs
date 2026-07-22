@@ -87,9 +87,6 @@ function classifyRecord(section, record) {
       ? 'core-10x-perf-archive-retain'
       : 'active-service-perf-remove';
   }
-  if (record.action === 'retain-pgm-heartbeat-spm-as-independent-transport-setting') {
-    return 'pgm-transport-heartbeat-retain';
-  }
   if (record.action === 'retain-or-rename-generic-scheduler-and-remove-service-specific-state'
       || record.action === 'retain-generic-scheduler-regression-and-remove-service-specific-assertions') {
     return 'generic-timer-retain-service-fragment-remove';
@@ -173,14 +170,10 @@ function validate(records, inventory) {
     'zmp-heartbeat-remove',
     'generic-timer-retain-service-fragment-remove',
     'raw-monitor-retain-service-fragment-remove',
-    'pgm-transport-heartbeat-retain',
     'active-service-perf-remove',
     'core-10x-perf-archive-retain',
   ]) {
     if (!classificationCounts[required]) findings.push(`missing-boundary-classification:${required}`);
-  }
-  if (classificationCounts['pgm-transport-heartbeat-retain'] !== 1) {
-    findings.push('pgm-transport-heartbeat-retain-must-have-one-record');
   }
   const heartbeatCounts = countBy(
     records.filter(record => record.classification === 'zmp-heartbeat-remove'),
@@ -378,7 +371,6 @@ function main() {
       unclassifiedSelectedRecords: 0,
       genericTimerBoundaryRecords: expected.summary.recordsByClassification['generic-timer-retain-service-fragment-remove'],
       rawMonitorBoundaryRecords: expected.summary.recordsByClassification['raw-monitor-retain-service-fragment-remove'],
-      pgmTransportBoundaryRecords: expected.summary.recordsByClassification['pgm-transport-heartbeat-retain'],
       negativeMutations: selfTestMutations,
       zmpHeartbeatComponents: expected.summary.zmpHeartbeatRecordsByComponent,
     },

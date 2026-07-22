@@ -54,24 +54,24 @@ Factory registration의 정확한 builder member는
 [구성과 host](configuration-host.ko.md)가 소유한다. Stateful maintenance policy는 Actor factory 등록에
 직접 연결한다. Runtime은 factory가 반환한 Actor를 명시한 `actorClass`로 검사해 type 불일치를 startup
 오류로 반환한다. Factory와 분리된 transfer registry는 제공하지 않는다.
-`Snapshot` adapter는 factory가 만든 instance의 typed state만 capture·restore하며 owner claim, checkpoint
+`Snapshot` adapter는 factory가 만든 instance의 typed state만 capture·restore하며 owner claim, transfer
 envelope, generation과 recovery phase를 받지 않는다.
 
 같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
 한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
 field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Checkpoint Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
+canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
 root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
 않는다.
 
 Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
 journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `COMPLETED` CAS가 성공한 뒤에만 target을 `READY`로 열고 checkpoint fence를 해제한다. `COMPLETED`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 checkpoint를 transparent replay하지 않는다. 이
+authority의 `COMPLETED` CAS가 성공한 뒤에만 target을 `READY`로 열고 transfer fence를 해제한다. `COMPLETED`
+뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer를 transparent replay하지 않는다. 이
 barrier를 조작하는 public phase API는 제공하지 않는다.
 
 Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable checkpoint
+호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable transfer
 root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
 하며 exactly-once external side effect를 보장하지 않는다.
@@ -93,12 +93,9 @@ restore, target `onJoinedActor`, journal replay 뒤에 source `onLeaveActor`와 
 durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이
 순서를 제어하는 public phase API는 없다.
 
-새 distributed Actor는 authority 내부 `CREATING` row를 `NEW_OBJECT` CAS로 만들고 최종
-`ActorRef.generation()`, factory 실행, initial Entry membership과 initialize를 완료한 뒤 `READY` CAS를
-수행한다. Resolver와 remote messaging은 `READY`만 사용한다. Factory나 initialize가 실패하면 exact owner
-fence로 delete하고 결과를 read해 reconcile한다. Delete가 확인될 때까지 같은 typed failure를 반환하고 hidden
-retry는 0이며, `MISSING`이 확인된 뒤 다음 caller만 새 `CREATING`을 시작한다. Entry Spot initialization도 Host
-`SERVING` publication보다 먼저 완료한다. 이 barrier를 위한 public API는 없다.
+새 distributed Actor는 generic placement reservation으로 `CREATING` authority와 target pending capacity를
+함께 확보한 뒤 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을
+`READY`와 active capacity로 commit하고 실패하면 abort한다. CAS loser는 별도 factory를 실행하지 않는다.
 
 ## Exact public member inventory
 
@@ -148,24 +145,14 @@ public interface systems.zlink.framework.actors.ZLinkActorHandlerRegistry {
   public abstract void addHandler(java.lang.Class<?>);
 }
 public final class systems.zlink.framework.actors.ActorRef extends java.lang.Record {
-  public systems.zlink.framework.actors.ActorRef(systems.zlink.contracts.core.RoutingId, java.lang.String, long);
+  public systems.zlink.framework.actors.ActorRef(java.lang.String, long, java.lang.String, systems.zlink.contracts.core.RoutingId);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public systems.zlink.contracts.core.RoutingId nodeRid();
   public java.lang.String actorId();
-  public long generation();
-}
-public final class systems.zlink.framework.actors.ActorRefSnapshot extends java.lang.Record {
-  public systems.zlink.framework.actors.ActorRefSnapshot(systems.zlink.contracts.core.RoutingId, java.lang.String, long);
-  public static systems.zlink.framework.actors.ActorRefSnapshot from(systems.zlink.framework.actors.ActorRef);
-  public systems.zlink.framework.actors.ActorRef toActorRef();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
+  public long objectGeneration();
+  public java.lang.String meshName();
   public systems.zlink.contracts.core.RoutingId nodeRid();
-  public java.lang.String actorId();
-  public long generation();
 }
 public interface systems.zlink.framework.actors.ZLinkActor {
   public abstract java.lang.String actorId();
@@ -173,18 +160,15 @@ public interface systems.zlink.framework.actors.ZLinkActor {
   public default void configure();
 }
 public interface systems.zlink.framework.actors.ZLinkActorClient {
-  public abstract systems.zlink.framework.actors.ZLinkActorSendCall sendToActor(java.lang.String, systems.zlink.framework.actors.ActorRef, java.lang.Object);
-  public abstract systems.zlink.framework.actors.ZLinkActorRequestCall requestToActor(java.lang.String, systems.zlink.framework.actors.ActorRef, java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorSendCall sendToActor(java.lang.String, java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorRequestCall requestToActor(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.actors.ZLinkActorContext {
   public abstract java.lang.String meshName();
   public abstract java.util.Optional<systems.zlink.contracts.core.RoutingId> spotRid();
   public abstract systems.zlink.framework.actors.ZLinkBoundSession boundSession();
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinEntrySpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
-}
-public interface systems.zlink.framework.actors.ZLinkActorDirectory {
-  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.actors.ActorRef>> find(java.lang.String, java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinEntrySpot(java.lang.Object);
 }
 public interface systems.zlink.framework.actors.ZLinkActorJoinCall {
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall timeout(java.time.Duration);
@@ -214,12 +198,29 @@ public sealed interface systems.zlink.framework.actors.ZLinkActorJoinResult<TRep
   public abstract TReply reply();
 }
 public interface systems.zlink.framework.actors.ZLinkActorManager {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> create(java.lang.String, java.lang.String, java.lang.String);
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> create(java.lang.String, java.lang.String, java.lang.String, java.lang.Object);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> create(java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> getOrCreate(java.lang.String, java.lang.String, java.lang.String);
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> getOrCreate(java.lang.String, java.lang.String, java.lang.String, java.lang.Object);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> getOrCreate(java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall create(java.lang.String, java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall getOrCreate(java.lang.String, java.lang.String);
+  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.actors.ActorRef>> find(java.lang.String);
+  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotRef>> findSpot(java.lang.String);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> destroy(systems.zlink.framework.actors.ActorRef);
+}
+public interface systems.zlink.framework.actors.ZLinkActorCreateCall {
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall inMesh(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall request(java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall placementProfile(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall affinityKey(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorCreateCall timeout(java.time.Duration);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> submit();
+}
+public interface systems.zlink.framework.actors.ZLinkActorGetOrCreateCall {
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall inMesh(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall request(java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall placementProfile(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall affinityKey(java.lang.String);
+  public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall timeout(java.time.Duration);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ActorRef> submit();
 }
 public interface systems.zlink.framework.actors.ZLinkActorRequestCall {
   public abstract systems.zlink.framework.actors.ZLinkActorRequestCall timeout(java.time.Duration);
@@ -239,13 +240,16 @@ public interface systems.zlink.framework.actors.ZLinkBoundSessionSendCall {
 }
 ```
 
-Canonical logical identity는 `(MeshName, ActorId)`다. Actor type은 create에서 factory를 선택한 뒤 authority
-payload에 고정하는 immutable lifecycle attribute이며 `ActorRef`나 directory key에 반복하지 않는다. 같은
-MeshName과 Actor ID에는 active type 하나만 존재한다. `getOrCreate`에 전달한 type이 existing authority의 type과
-다르면 type conflict로 실패한다.
+ActorId는 UTF-8 1..255 bytes의 global logical ID다. `ActorRef`는 ActorId, positive signed-63-bit
+ObjectGeneration과 조회 시점의 MeshName·NodeRid를 보존한다. 일반 message는 ActorId만 받고 current authority를
+resolve한다. Destroy와 session bind만 exact ref를 받는다.
 
-`ZLinkActorDirectory`는 MeshName과 Actor ID로 이미 존재하는 logical Actor만 조회한다. Missing Actor를
-생성하거나 remote MeshNode를 선택하지 않는다. Local create와 get-or-create는 `ZLinkActorManager`가 actor
-type을 명시해서 수행한다. MeshName은 현재 host에 등록된 local MeshNode를 선택한다. Existing Actor가 remote
-owner에 있으면 조회 결과를 반환할 수 있지만, missing Actor를 remote owner에 생성하거나 hidden forwarding으로
-만들지 않는다.
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `INVALID_CONFIGURATION`, submit을 두 번
+호출하면 `ALREADY_SUBMITTED`다. `inMesh` 생략 시 object-role Mesh가 하나면 자동 선택하고 0개이면
+`OBJECT_CLIENT_NOT_CONFIGURED`, 둘 이상이면 `MESH_SELECTION_REQUIRED`다. 명시한 Mesh가 없으면
+`MESH_NOT_FOUND`다. Placement profile과 affinity key는 UTF-8 1..255 bytes이며 target RID나 callback을 받지
+않는다. `find`와 `findSpot`은 current Ready ref만 반환하며 directory와 resolver를 제공하지 않는다.
+
+`ActorRef.objectGeneration()`은 `1..Long.MAX_VALUE`다. Typed JSON은 required property `actorId`,
+`objectGeneration`, `meshName`, `nodeRid`를 사용하며 generation은 leading-zero 없는 decimal string으로 encode한다.
+Unknown property는 무시하고 duplicate property, required property 누락, 숫자 token과 범위 밖 값은 거부한다.

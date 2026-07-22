@@ -2,7 +2,7 @@
   "schema": 1,
   "ledgerId": "V11-M2-CORE-READINESS",
   "sourceInventory": "framework/doc/contract-inventory/route-mesh-v11-core-service-migration-inventory.json",
-  "sourceSelectionSha256": "77b6bd4be1024539b333d9e566f8db18801b83bd277c0a4391107d84fcdb77b9",
+  "sourceSelectionSha256": "ae7a29c5ae7844d012c629e2e5dd8c1ae3e850fee946f334edf859021c4ec4ad",
   "policy": {
     "recordIdentity": "exact machine-inventory record id",
     "selectedSections": [
@@ -18,19 +18,17 @@
     "noHitMeaning": "Every selected inventory record has one removal or preservation classification; unknown disposition, missing routing, and missing boundary classes fail."
   },
   "summary": {
-    "totalRecords": 832,
+    "totalRecords": 815,
     "recordsBySection": {
       "coreExportSymbols": 98,
       "corePublicSymbols": 523,
-      "files": 211
+      "files": 194
     },
     "recordsByClassification": {
-      "active-service-perf-remove": 16,
       "core-10x-perf-archive-retain": 18,
       "core-service-remove": 618,
       "core-service-remove-or-rewrite": 102,
       "generic-timer-retain-service-fragment-remove": 8,
-      "pgm-transport-heartbeat-retain": 1,
       "raw-core-retain-service-fragment-remove": 43,
       "raw-monitor-retain-service-fragment-remove": 4,
       "zmp-heartbeat-remove": 22
@@ -42,10 +40,10 @@
       "test": 4
     },
     "recordsByDisposition": {
-      "raw-core-prerequisite": 56,
+      "raw-core-prerequisite": 55,
       "remove": 29,
       "retain-10x-only": 18,
-      "superseded": 324,
+      "superseded": 308,
       "target-contract": 405
     },
     "unclassifiedRecords": 0
@@ -8326,182 +8324,6 @@
       "finalGate": "V11-M9-SMOKE-PERF"
     },
     {
-      "id": "file:bindings/c/perf/CMakeLists.txt",
-      "section": "files",
-      "file": "bindings/c/perf/CMakeLists.txt",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/multi/common/perf_multi_metrics.hpp",
-      "section": "files",
-      "file": "bindings/c/perf/multi/common/perf_multi_metrics.hpp",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/multi/src/perf_multi_spot_client.cpp",
-      "section": "files",
-      "file": "bindings/c/perf/multi/src/perf_multi_spot_client.cpp",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/multi/src/perf_multi_spot_server.cpp",
-      "section": "files",
-      "file": "bindings/c/perf/multi/src/perf_multi_spot_server.cpp",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/multi/tests/test_perf_multi_metrics.cpp",
-      "section": "files",
-      "file": "bindings/c/perf/multi/tests/test_perf_multi_metrics.cpp",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/multi/tests/test_spot_paired_gate.py",
-      "section": "files",
-      "file": "bindings/c/perf/multi/tests/test_spot_paired_gate.py",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/README.md",
-      "section": "files",
-      "file": "bindings/c/perf/README.md",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_benchmarks_multi.ps1",
-      "section": "files",
-      "file": "bindings/c/perf/run_benchmarks_multi.ps1",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_benchmarks_multi.sh",
-      "section": "files",
-      "file": "bindings/c/perf/run_benchmarks_multi.sh",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_benchmarks.ps1",
-      "section": "files",
-      "file": "bindings/c/perf/run_benchmarks.ps1",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_benchmarks.sh",
-      "section": "files",
-      "file": "bindings/c/perf/run_benchmarks.sh",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_comparison.py",
-      "section": "files",
-      "file": "bindings/c/perf/run_comparison.py",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/run_spot_paired_gate.py",
-      "section": "files",
-      "file": "bindings/c/perf/run_spot_paired_gate.py",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/single/run_comparison.py",
-      "section": "files",
-      "file": "bindings/c/perf/single/run_comparison.py",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/single/src/perf_spot_pubsub.cpp",
-      "section": "files",
-      "file": "bindings/c/perf/single/src/perf_spot_pubsub.cpp",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
-      "id": "file:bindings/c/perf/single/tests/test_multi_run_comparison_policy.py",
-      "section": "files",
-      "file": "bindings/c/perf/single/tests/test_multi_run_comparison_policy.py",
-      "scope": "shared-perf",
-      "classification": "active-service-perf-remove",
-      "disposition": "superseded",
-      "action": "remove-after-oracle-baseline-sealed",
-      "removalGate": "V11-M3-PERF-LEGACY",
-      "finalGate": "V11-M9-SMOKE-PERF"
-    },
-    {
       "id": "file:core/CMakeLists.txt",
       "section": "files",
       "file": "core/CMakeLists.txt",
@@ -10129,17 +9951,6 @@
       "disposition": "raw-core-prerequisite",
       "action": "remove-service-reference",
       "removalGate": "V11-M3-CORE-CLEAN",
-      "finalGate": "V11-M9-RAW-FINAL"
-    },
-    {
-      "id": "file:core/src/runtime/transports/pgm/pgm_socket.cpp",
-      "section": "files",
-      "file": "core/src/runtime/transports/pgm/pgm_socket.cpp",
-      "scope": "core",
-      "classification": "pgm-transport-heartbeat-retain",
-      "disposition": "raw-core-prerequisite",
-      "action": "retain-pgm-heartbeat-spm-as-independent-transport-setting",
-      "removalGate": "V11-M3-CORE-VERIFY",
       "finalGate": "V11-M9-RAW-FINAL"
     },
     {

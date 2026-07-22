@@ -73,10 +73,13 @@ ready 상태로 유지한다. 중복 연결을 정리하는 내부 선택 규칙
 - endpoint와 security identity
 - protocol version과 필수 capability
 
-MeshName 또는 trust profile이 다르거나 같은 generation의 RID가 중복되면 admission하지 않는다. 더 높은
-generation은 해당 RID의 이전 pipe를 drain한 뒤 ready member가 된다.
+MeshName 또는 trust profile이 다르거나 같은 lifecycle identity의 RID가 중복되면 admission하지 않는다.
+Lifecycle generation은 non-zero opaque equality token이며 숫자 크기로 새 lifecycle을 판단하지 않는다. Automatic
+MeshNode replacement는 새 RID와 새 token을 사용한다. Fixed RID manual topology의 재연결은 configured intent,
+authenticated connection handover와 service liveness가 이전 pipe 종료를 확정한 뒤 다른 token을 ready로 만든다.
+이전 token의 늦은 frame과 event는 current connection을 변경하지 못한다.
 
-lifecycle generation은 같은 RID의 재시작만 구분한다. descriptor revision은 같은 lifecycle 안의 mutable
+Descriptor revision은 같은 lifecycle 안의 mutable
 weight snapshot을 구분하며 1 이상에서 단조 증가한다. weight를 바꾸면 owner는 revision을 증가시키고
 Redis descriptor와 admitted peer control에 같은 snapshot을 게시한다. peer는 같은 lifecycle generation의
 더 큰 revision만 적용하고 channel ready index를 원자적으로 교체한다. update가 유실되어도 다음 Redis

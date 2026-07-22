@@ -24,13 +24,6 @@ BuildRequires:  autoconf automake libtool glib2-devel libbsd-devel
 BuildRequires:  e2fsprogs-devel
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 %endif
-%bcond_with pgm
-%if %{with pgm}
-BuildRequires:  openpgm-devel
-%define PGM yes
-%else
-%define PGM no
-%endif
 %bcond_with nss
 %if %{with nss}
 %if 0%{?suse_version}
@@ -87,10 +80,6 @@ This package contains the Zlink shared library.
 Summary:  Development files and static library for the Zlink library
 Group:    Development/Libraries
 Requires: %{lib_name} = %{version}-%{release}, pkgconfig
-%bcond_with pgm
-%if %{with pgm}
-Requires:  openpgm-devel
-%endif
 %bcond_with nss
 %if %{with nss}
 %if 0%{?suse_version}
@@ -119,17 +108,11 @@ This package contains Zlink related development libraries and header files.
 %prep
 %setup -q
 
-# Sed version number of openpgm into configure
-%global openpgm_pc $(basename %{_libdir}/pkgconfig/openpgm*.pc .pc)
-sed -i "s/openpgm-[0-9].[0-9]/%{openpgm_pc}/g" \
-    configure*
-
 %build
 # Workaround for automake < 1.14 bug
 mkdir -p config
 autoreconf -fi
 %configure --enable-drafts=%{DRAFTS} \
-    --with-pgm=%{PGM} \
     --with-nss=%{NSS} \
     --with-tls=%{TLS} \
     %{?_with_pic} \

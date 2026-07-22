@@ -5,135 +5,175 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 RouteMesh에 참여하는 MeshNode의 공통 공개 계약을 정의한다.
-MeshNode는 물리 연결, 논리 channel membership, Node·Channel 메시징, Spot·Actor와 STREAM session이
-공유하는 server-side runtime이다.
+이 문서는 ZLink Framework 11.0.0에서 RouteMesh에 참여하는 MeshNode의 identity, object role, placement
+capability와 startup 계약을 정의한다. MeshNode는 물리 연결과 logical channel membership을 제공하며,
+Framework object runtime은 이 transport 위에서 Actor와 Spot의 전역 logical identity를 current owner route로
+연결한다.
 
 ## 2. Identity와 membership
 
-MeshNode 하나는 다음 identity를 가진다.
+MeshNode 하나는 다음 identity와 설정을 가진다.
 
 | 항목 | 계약 |
 |---|---|
-| MeshName | 물리 RouteMesh와 RID namespace를 구분하는 immutable 이름 하나 |
-| Routing ID | 같은 RouteMesh에서 MeshNode를 식별하는 값 하나 |
-| Endpoint | peer가 연결할 ROUTER endpoint 하나 |
+| MeshName | 물리 RouteMesh와 descriptor namespace를 구분하는 immutable 이름 |
+| Routing ID | MeshNode lifecycle 동안 유지되는 opaque transport identity |
+| Endpoint | peer가 연결할 ROUTER endpoint |
 | ChannelName set | 0개 이상의 immutable Server membership |
-| Instance Spot type set | startup 전에 등록한 0개 이상의 immutable factory type |
-| Lifecycle generation | 같은 RID로 다시 시작한 MeshNode를 구분하는 단조 증가 값 |
-| Descriptor revision | 같은 lifecycle 안에서 channel weight snapshot 변경을 구분하는 단조 증가 값 |
+| Object role | `None`, `Client`, `Server` 가운데 startup 전에 고정한 값 |
+| Lifecycle generation | 같은 transport identity의 lifecycle을 구분하는 non-zero fence |
+| Descriptor revision | 같은 lifecycle에서 mutable descriptor snapshot 변경을 구분하는 non-zero 값 |
 
-같은 process에는 같은 MeshName의 MeshNode를 하나만 등록할 수 있다. 서로 다른 MeshName의 MeshNode는
-여러 개 등록할 수 있으며 mesh 사이의 자동 relay는 없다. `ChannelName`은 별도 socket이나 endpoint를
-만들지 않는다. Descriptor를 게시한 뒤 Server membership이나 Instance Spot type을 추가하거나 제거할 수 없다. Node direct 호출이나
-다른 process의 ChannelName target 호출만 수행하는 MeshNode는 Server membership 없이 등록할 수 있다.
+MeshName은 ActorId나 SpotRid의 identity key가 아니다. ActorId와 User·Instance SpotRid는 Location Store
+transaction domain 전체에서 각각 전역 key이며, MeshName은 initial placement와 현재 물리 route의 attribute다.
 
-## 3. 등록과 startup
+같은 process에는 같은 MeshName의 MeshNode를 하나만 등록할 수 있다. 서로 다른 MeshName의 MeshNode는 여러 개
+등록할 수 있고 mesh 사이의 transport relay는 자동으로 만들지 않는다. `ChannelName`은 별도 socket이나
+endpoint를 만들지 않는다. Descriptor를 게시한 뒤 membership, object role, factory와 type capability는 바꿀 수
+없다.
+
+## 3. Routing ID
+
+Automatic discovery를 사용하는 MeshNode의 RID는 Framework가 매 lifecycle마다 새로 만든다. Caller는 진단에
+사용할 prefix만 지정할 수 있으며 생략하면 Framework가 listener 종류에 맞는 기본 prefix를 사용한다.
+
+- Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자다.
+- Full RID는 `prefix-<32 lowercase hex>` 형식이며 UTF-8 encoded 크기는 255 bytes 이하다.
+- Suffix는 128-bit CSPRNG 값이다. Prefix와 suffix를 placement, shard, stable application identity로 해석하지
+  않는다.
+- Descriptor owner CAS가 `(MeshName, RID)`의 active owner 충돌을 확인한다. 충돌하면 새 suffix로 최대 8회
+  시도하고, 모두 충돌하면 startup을 `RoutingIdConflict`로 끝낸다.
+- Replacement lifecycle은 이전 RID를 재사용하지 않고 새 RID를 만든다.
+
+Fixed RID는 Location Store descriptor와 automatic discovery를 사용하지 않는 explicit manual topology에서만
+허용한다. Object role이 `Client` 또는 `Server`이거나 automatic mode와 fixed RID를 함께 설정하면 startup
+configuration error다.
+
+## 4. Object role과 registration
+
+Object role은 MeshNode마다 한 번 선택한다.
+
+| Role | Logical object operation | Local factory와 Entry Spot | Placement target |
+|---|---|---|---|
+| `None` | 제공하지 않음 | 없음 | 제외 |
+| `Client` | create, find와 message 시작 가능 | 없음 | 제외 |
+| `Server` | `Client` capability 포함 | 등록한 type을 host함 | eligible type에 포함 |
+
+`Client`와 `Server`는 Location Store가 필수다. `None`은 manager, factory, placement와 hidden local object
+runtime을 만들지 않는다. Factory와 Entry Spot 등록은 `Server` builder만 제공한다. Entry Spot RID는 Framework가
+발급하며 caller가 생성하거나 fixed RID를 지정하지 않는다.
+
+Actor, User Spot과 Instance Spot factory는 stable type과 transfer policy를 반드시 등록한다. Stable type은 UTF-8
+1..255 bytes, case-sensitive exact value이며 normalization하지 않는다. 언어 class FQN은 wire와 Store identity로
+사용하지 않는다. 같은 object kind와 stable type의 중복 등록은 startup 오류다. Transfer policy는 `Disabled`,
+`Recreate`, `Snapshot` 가운데 하나이며 생략하는 overload나 compatibility default를 제공하지 않는다.
+
+## 5. Placement capability
+
+Object Server descriptor는 node-wide placement weight, node capacity와 등록한 type별 capability를 게시한다.
+
+- Placement weight는 0..100이고 기본값은 100이다. Channel weight와 분리한다. 0은 신규 create와 transfer
+  target에서만 제외하며 existing traffic과 이미 완료된 reservation은 취소하지 않는다.
+- Node capacity 기본값은 active 10,000, pending 128이다.
+- Type별 limit은 생략하면 node limit을 공유한다. 명시하면 1..`2^31-1`이고 node limit보다 작은 값을 적용한다.
+- Active·pending capacity filter를 weight보다 먼저 적용한다. Eligible node가 없으면
+  `PlacementCapacityExhausted`다.
+- Startup builder, runtime option, descriptor와 monitoring snapshot은 같은 weight·capacity 값을 사용한다.
+
+Logical create는 optional `PlacementProfile`과 `AffinityKey`만 caller placement input으로 받는다. 두 값은 UTF-8
+1..255 bytes의 stable value다. Capability, region·zone과 deployment 정책은 Server가 등록한 profile 안에서
+해석한다. Caller가 target RID, predicate나 placement callback을 넘기는 표면은 제공하지 않는다.
+
+Framework는 `Serving` 상태, current owner lease, type capability, placement profile, capacity와 weight를 사용해
+target을 선택한다. 선택 결과는 generic placement reservation으로 확정하며 application에 target RID나 owner
+token 선택을 요구하지 않는다. `GetOrCreate`가 Ready object를 찾은 경우 current owner의 capacity와 weight를 다시
+적용하지 않는다.
+
+## 6. 등록과 startup
 
 Framework는 다음 순서로 MeshNode를 시작한다.
 
-1. MeshName, RID, endpoint, channel set, handler와 Spot·Actor 등록을 검증한다. Instance factory type 중복,
-   Actor capability, type별 limit과 activation timeout도 이 단계에서 검사한다.
-2. Redis location store를 사용하는 경우 routing ID allocation과 lease를 확보한다.
-3. MeshNode ROUTER를 bind하고 실제 endpoint를 확정한다.
-4. Service runtime이 manual peer intent 또는 같은 MeshName의 location descriptor를 peer connection intent로 조정한다.
-5. peer admission, local subscription과 handler 준비가 끝난 뒤 channel 선택 대상으로 공개한다.
+1. MeshName, object role, routing mode, endpoint, channel set, factory, stable type, policy, placement option과
+   capacity를 검증한다.
+2. Location Store가 필요한 role이면 host owner lease를 확보하고 automatic RID의 descriptor owner CAS를
+   완료한다.
+3. ROUTER를 bind하고 actual advertised endpoint를 확정한다.
+4. Complete descriptor를 게시하고 peer connection intent를 계산한다.
+5. Peer admission, local handler와 object runtime 준비가 끝난 뒤 `Serving`과 신규 selection을 공개한다.
 
-자동 discovery, 분산 Spot·Actor 주소, InstanceSpotAddress와 Actor transfer를 사용하는 host는 공식 Redis location store를
-명시적으로 등록해야 한다. 등록하지 않으면 startup이 실패한다. Manual mode는 endpoint 또는 expected RID와
-endpoint를 application이 모두 제공한다. 두 mode는 연결 방법만 다르고 admission 이후 메시징 의미는 같다.
+Object role을 사용하는 host는 Location Store를 명시적으로 등록해야 한다. Manual mode는 endpoint 또는 expected
+RID와 endpoint를 application이 모두 제공하며 object runtime을 제공하지 않는다.
 
-## 4. Peer admission
+## 7. Peer admission과 메시징
 
-연결된 peer는 MeshName, RID, lifecycle generation, descriptor revision, immutable Server ChannelName set,
-channel별 weight와 security identity를 handshake에서 교환한다. ChannelName set은 비어 있을 수 있다.
-MeshName 또는 trust profile이 다르거나 같은 generation의 RID가
-중복되면 admission하지 않는다. 더 높은 generation은 해당 RID의 이전 pipe를 drain한 뒤 선택 대상에
-포함한다.
+Peer는 MeshName, RID, lifecycle generation, descriptor revision, immutable ChannelName set과 security identity를
+handshake에서 교환한다. MeshName 또는 trust profile이 다르거나 같은 lifecycle identity의 중복 pipe이면
+admission하지 않는다. Lifecycle generation은 non-zero opaque equality token이며 숫자 크기로 비교하지 않는다.
+Manual topology의 fixed RID 재연결은 configured intent, authenticated connection handover와 service liveness가
+이전 pipe 종료를 확정한 뒤 다른 token을 selection 대상에 포함한다. 양쪽에서 동시에 연결해도 하나의 ready
+connection으로 수렴한다.
 
-Channel weight를 실행 중 바꾸면 lifecycle generation은 유지하고 descriptor revision만 증가시킨다.
-MeshNode는 같은 revision의 descriptor를 location store와 admitted peer에 게시한다. peer는 더 큰 revision의
-전체 weight snapshot만 적용하며 중간 revision을 받지 못해도 다음 snapshot으로 수렴한다. weight 변경은
-connection 재생성이나 application message replay를 일으키지 않는다.
+Handshake는 channel별 weight도 전달한다. Channel weight를 실행 중 바꾸면 lifecycle generation은 유지하고
+descriptor revision만 증가한다. Peer는 더 큰 revision의 complete weight snapshot만 적용한다. Weight 변경은
+connection 재생성이나 application message replay를 일으키지 않으며 node-wide placement weight를 바꾸지 않는다.
 
-양쪽에서 동시에 연결을 시도해도 같은 RID와 lifecycle generation의 peer는 ready 연결 하나로 수렴한다.
-Application은 내부 initiator 선택이나 중복 pipe를 관찰하거나 설정하지 않는다.
-
-## 5. 메시징
-
-| 대상 | 선택과 전달 |
+| Target | Selection과 delivery |
 |---|---|
-| Node direct | 같은 MeshName의 target RID 하나로 전송 |
-| Channel | process-local ChannelName route가 이 MeshNode를 선택한 경우, 같은 MeshName의 ready Server member 하나를 positive weight round-robin으로 선택 |
-| Logical Multicast | target ChannelName의 ready member 전체와 조건부 local Spot subscription에 전달 |
-| Spot direct | location runtime이 확인한 owner MeshNode와 Spot RID로 전송 |
-| Instance Spot direct | address의 MeshName·Instance type·Spot RID를 유지하고 location claim이 정한 owner로 전송 |
-| Actor direct | ActorRef의 owner route와 generation을 검증해 Actor application queue로 전송 |
+| Node direct | 같은 MeshName의 exact target RID로 한 번 제출 |
+| Channel | 같은 MeshName의 ready Server member 가운데 positive channel weight 비율로 한 node를 선택 |
+| Logical Multicast | target ChannelName의 ready remote node 전체와 조건부 local Spot subscription에 전달 |
+| Actor direct | global ActorId의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
+| Spot direct | global SpotRid의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
 
-선택과 submit은 한 operation이다. 선택한 RID 목록을 application에 반환한 뒤 별도 send를 요구하지 않는다.
-Node·Channel·Spot·Actor의 send/request는 같은 MeshNode ROUTER를 사용한다. classic fanout은 별도
-PUB/SUB socket 계약이며 MeshNode membership과 합치지 않는다.
+Selection과 submit은 하나의 operation이다. 선택한 RID 목록을 application에 반환한 뒤 별도 send를 요구하지 않는다.
+Node·Channel·Actor·Spot의 send와 request는 같은 MeshNode ROUTER를 사용한다. Classic fanout은 별도 PUB/SUB socket
+계약이며 MeshNode membership과 합치지 않는다.
 
-## 6. Handler와 dispatch
+Node direct는 exact MeshName과 RID가 operation 의미에 포함되는 infrastructure·진단 또는 manual topology에
+사용한다. 여러 node가 제공하는 application request는 ChannelName으로 선택한다. Actor와 Spot 메시징은 global
+ActorId 또는 SpotRid를 target으로 사용하며 NodeRid와 MeshName을 caller target으로 받지 않는다.
 
-ChannelName handler와 RID direct route handler는 서로 다른 namespace를 사용한다. Channel handler context는
-ChannelName과 reply에 필요한 source identity를 내부에 보존하되 MeshName이나 물리 route 선택을 업무 코드에
-노출하지 않는다. Route handler context는 direct route의 MeshName과 source RID를 제공한다.
+Application payload는 owner의 application turn에서 직렬로 처리한다. Completion, send-ready, location reconcile,
+reservation과 transfer control은 infrastructure task에서 계속 진행한다. Transport readiness callback에서 application
+handler를 직접 실행하지 않는다.
 
-각 언어 service runtime은 application과 infrastructure domain을 독립적으로 진행한다. Node, Spot과 Actor
-payload는 각 owner의 application turn에서 직렬로 처리하고 completion, send-ready와 transfer control은
-infrastructure task에서 계속 진행한다. Transport readiness event에서 application callback을 직접 실행하지 않는다.
+ChannelName handler와 RID direct handler는 서로 다른 namespace를 사용한다. Channel handler context는
+ChannelName과 reply source identity를 내부에 보존하며 MeshName이나 물리 route 선택을 업무 코드에 노출하지
+않는다. RID direct handler context는 direct route의 MeshName과 source RID를 제공한다.
 
-## 7. Spot과 Actor
-
-Entry Spot, Domain Spot factory, Instance Spot factory와 maintenance policy를 포함한 Actor factory는 MeshNode
-registration에 속한다. Spot
-생성·조회·종료, Actor lifecycle, location transparency와 handler 의미는 각각
-[20 SPOT 메시징](20-spot-messaging.ko.md), [22 Actor 모델](22-actor-model.ko.md),
-[23 Spot Actor](23-spot-actor.ko.md)이 소유한다.
-
-Instance factory는 actor-free lifecycle만 구현하며 direct packet과 timer handler를 등록할 수 있다. Type별
-option을 생략하면 local MeshNode와 type마다 `MaxActiveInstances=4096`, `ActivationTimeout=3초`를
-사용한다. Option을 명시하면 두 값은 모두 0보다 커야 하며 0을 sentinel로 사용하지 않는다. Instance
-pending message·byte budget과 activation deadline은 MeshNode service runtime이 소유하며 type별 public option으로
-반복하지 않는다.
-
-Automatic discovery descriptor는 immutable Instance Spot type set을 게시한다. Placement는 같은 MeshName에서
-serving 상태이고 drain 중이 아니며 요청 type을 제공하는 node만 후보로 사용한다. Candidate selection
-algorithm은 public 계약이 아니며 correctness는 Location Store CAS가 확정한 owner 하나와 target activation
-barrier가 보장한다.
-
-Spot Logical Multicast는 `(ChannelName, topic filter)` subscription을 node-local로 검사한다. 송신 MeshNode는
-target channel의 remote node마다 routed message를 한 번 제출한다. 수신 MeshNode는 local match마다 같은
-immutable message storage의 reference를 확보해 Spot queue에 넣는다.
+Spot Logical Multicast는 `(ChannelName, topic filter)` subscription을 node-local로 검사한다. 송신 MeshNode는 target
+channel의 remote node마다 routed message를 한 번 제출한다. 수신 MeshNode는 local match마다 같은 immutable message
+storage의 reference를 확보해 Spot queue에 넣는다.
 
 ## 8. Drain과 종료
 
-`Retire` 또는 `Shutdown`이 `Draining`으로 전환하면 새 Channel·Logical Multicast 선택과 Instance placement
-후보에서 MeshNode를 즉시 제외한다. 이미 수용한 message, active application claim, completion, Actor transfer와
-STREAM session barrier는 deadline까지 진행한다. 종료 순서는
-[54 Graceful Drain](54-graceful-drain-handoff.ko.md)이 소유한다.
+`Draining` node는 새 Channel selection, create와 transfer target에서 제외한다. 이미 reservation을 완료한 create,
+accepted message, completion과 transfer barrier는 정해진 deadline과 fence에 따라 terminal 상태까지 진행한다.
+종료와 handoff 순서는 [54 Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)이 소유한다.
 
-`Shutdown`은 새 stateful transfer를 시작하지 않는다. Drain 전에 수락한 Instance activation을 deadline까지
-처리하고 Framework admission seal과 current location authority를 확인해 `Closing`과 release를 수행한다.
-`Retire`는 existing Actor·Instance owner에 type별 maintenance policy를 적용하고 target activation이 commit된 뒤
-source resource를 정리한다. Public local create나 stale handle 요청을 remote materialization으로 바꾸지 않는다.
+`Shutdown`은 새 transfer를 시작하지 않는다. `Retire`는 등록한 policy에 따라 Actor, User Spot aggregate와 Instance
+Spot을 이전한다. Node weight 0 또는 drain 전환은 existing object를 숨겨서 다시 만들거나 application payload를
+다른 owner에 새 operation으로 제출하는 근거가 아니다.
 
 ## 9. 관측
 
-status와 event는 MeshName, RID, lifecycle generation, local endpoint, channel membership, peer admission,
-application/infrastructure backlog, multicast submit·drop과 drain state를 제공한다. topic, Actor ID와 Spot RID
-같은 고카디널리티 값은 metric label로 사용하지 않는다.
+Snapshot과 event는 MeshName, RID, lifecycle generation, endpoint, object role, node-wide placement weight,
+active·pending·maximum capacity, capability, reservation failure와 drain state를 제공한다. RID와 endpoint는 진단
+값이며 metric label에는 사용하지 않는다. 세부 계약은 [50 Runtime Monitoring](50-runtime-monitoring.ko.md)이
+소유한다.
 
 ## 10. 검증 요구
 
-- 같은 process의 중복 MeshName과 잘못된 Client·Server 역할 구성이 startup에서 실패한다.
-- Server membership이 없는 MeshNode가 Node direct와 outbound Channel 호출을 수행할 수 있다.
-- 서로 다른 MeshName 사이에 peer와 channel member가 섞이지 않는다.
-- channel select-one이 weight와 drain을 반영하고 RID direct에는 영향을 주지 않는다.
-- Logical Multicast가 remote node당 한 번 전송되고 node-local Spot queue가 storage를 공유한다.
-- Application turn의 single-owner 실행, infrastructure progress와 lost-wakeup 방지가 검증된다.
-- classic fanout-only와 STREAM-only host는 MeshNode를 만들지 않는다.
-- Instance factory type set이 descriptor와 일치하고 startup 뒤 변경되지 않는다.
-- 같은 Instance type·class의 중복 등록, Actor-capable factory와 잘못된 limit이 startup에서 실패한다.
-- draining node가 새 Instance placement target이 되지 않고 accepted activation만 deadline까지 진행한다.
+- 같은 process의 중복 MeshName과 잘못된 object role 구성이 startup에서 실패한다.
+- `None`, `Client`, `Server`가 manager, factory와 placement capability를 계약대로 제한한다.
+- Object role과 Location Store, automatic discovery와 fixed RID의 잘못된 조합이 startup에서 실패한다.
+- Automatic RID가 prefix와 128-bit random suffix 형식을 따르고 active conflict를 최대 8회 재시도한다.
+- Replacement lifecycle이 새 RID를 사용한다.
+- Stable type 중복과 policy 생략이 startup에서 실패한다.
+- Capacity가 weight보다 먼저 적용되고 weight 0이 existing object와 accepted reservation을 취소하지 않는다.
+- Channel weight 변경이 placement weight를 바꾸지 않는다.
+- Channel select-one이 channel weight와 drain을 반영하고 Node direct에는 영향을 주지 않는다.
+- Logical Multicast가 remote node마다 한 번 전송되고 node-local Spot queue가 immutable storage를 공유한다.
+- ChannelName handler와 RID direct handler namespace 및 context가 구분된다.
+- Draining node가 새 placement target이 되지 않고 accepted operation은 terminal 상태까지 진행한다.
+- Actor·Spot application 호출이 NodeRid나 owner token을 target으로 요구하지 않는다.

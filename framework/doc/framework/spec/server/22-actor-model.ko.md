@@ -17,12 +17,19 @@ MeshNode route와 admission은 [21 MeshNode](21-mesh-node.ko.md), Spot membershi
 
 ## 2. Identity와 상태 축
 
-Actor는 MeshName과 논리 Actor ID로 식별되는 stateful object다. Actor type은 create가 사용할 factory를
-선택하고 해당 lifecycle에 고정되는 immutable attribute다. 같은 MeshName과 Actor ID에 서로 다른 active
-type을 둘 수 없다. `ActorRef`는 owner node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로
-구성하는 immutable value다. endpoint, 내부 route frame, location row와 Actor type은 `ActorRef`에 넣지
-않는다. Framework가 wire DTO를 제공하는 언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도
-인자 없이 `ActorRef`로 복원한다.
+Actor는 Location Store namespace 전체에서 전역인 논리 `ActorId`로 식별되는 stateful object다. `ActorId`는
+UTF-8 1..255 bytes의 case-sensitive exact value다. Framework는 Unicode normalization이나 case folding을
+적용하지 않는다. MeshName은 최초 placement를 선택하는 attribute이며 identity key가 아니다. 같은
+`ActorId`를 MeshName별로 중복 생성할 수 없다.
+
+Actor type은 UTF-8 1..255 bytes의 stable name이며 create가 사용할 factory를 선택한다. 언어 class 이름이나
+generic type 이름을 Store와 wire identity로 사용하지 않는다. 같은 server에 같은 stable type을 중복
+등록하면 startup 오류다.
+
+`ActorRef`는 `ActorId`, non-zero unsigned 63-bit `ObjectGeneration`, 현재 `MeshName`, 현재 `NodeRid`를 담는
+immutable location snapshot이다. `ActorRef`는 메시지 target이 아니며 위치가 바뀌면 stale할 수 있다.
+ObjectGeneration은 JSON에서 decimal string으로 표현한다. 별도 `ActorRefSnapshot` public type은 제공하지
+않는다.
 
 Actor의 상태는 다음 두 축을 독립적으로 관리한다.
 
@@ -72,12 +79,16 @@ fencing은 [23 Spot Actor](23-spot-actor.ko.md)가 정한다.
 
 ## 5. 메시징
 
-Actor send/request는 MeshName context와 ActorRef로 대상을 지정한다. Framework는 MeshName, ActorRef의
-owner route와 generation을 검증한 뒤 해당 MeshNode의 Actor queue로 전달한다. local과 remote Actor의 handler 및
-completion 의미는 같다.
+Actor send/request는 global `ActorId`만 대상으로 받는다. Framework는 positive route cache 또는 Location
+Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner fence를
+target admission에 고정한다. local과 remote Actor의 handler 및 completion 의미는 같다.
 
-- 호출자는 owner RID나 현재 Spot RID를 별도 인자로 넘기지 않는다.
-- 같은 Actor ID의 더 높은 generation이 확인되면 오래된 route를 사용하지 않는다.
+- 호출자는 MeshName, `ActorRef`, owner RID나 현재 Spot RID를 messaging target으로 넘기지 않는다.
+- Missing, Creating과 Store failure는 negative cache에 저장하지 않는다. Positive Ready cache도 current owner
+  lease의 local admission deadline과 공개 `RouteCacheMaxAge` 안에서만 사용한다.
+- Higher StoreVersion, stale result 또는 Store recovery event를 확인하면 positive cache를 즉시 invalidate한다.
+- Resolve 뒤 destroy와 recreate가 발생해도 진행 중인 이전 generation operation을 새 generation으로
+  retarget하지 않는다.
 - request를 보낸 뒤 timeout이나 실행 여부를 알 수 없는 실패가 발생하면 자동 재전송하지 않는다.
 - Actor direct 메시징은 bound session을 만들거나 바꾸지 않는다.
 
@@ -87,16 +98,36 @@ key를 중복 등록하면 startup 오류다. handler 등록의 정확한 타입
 
 ## 6. Lifecycle
 
-Actor factory는 MeshNode에 Actor type별로 등록한다. 같은 MeshNode에서 같은 Actor type의 factory를 둘
-이상 등록하면 startup 오류다. Actor 생성은 identity와 generation을 확보하고 Entry Spot membership을
-설정한 뒤 신규 payload admission을 연다.
+Object Server는 Actor stable type, factory와 `Disabled`, `Recreate`, `Snapshot` 중 하나의 transfer policy를
+함께 등록한다. 생략 policy overload와 compatibility default는 제공하지 않는다. Snapshot policy는 stable
+state contract와 typed state adapter를 같은 등록에서 요구한다.
 
-Host-level Actor manager의 create와 GetOrCreate는 MeshName, Actor type과 Actor ID를 명시하고 호출한 local
-MeshNode에서만 factory를 실행한다. Caller가 target node나 endpoint를 지정하지 않으며 Framework가 다른
-MeshNode를 선택하거나 remote create를 전달하지 않는다. Actor directory는 existing-only 조회만 제공한다.
-Missing Actor 조회는 empty 결과로 끝나며 factory나 placement를 시작하지 않는다. 다른 MeshNode에서 Actor를
-만들어야 하면 application이 그 node의 public endpoint나 Entry Spot에 업무 request를 보내고, 그 node의
-handler가 local Actor manager를 호출한다.
+Actor manager의 `Create`와 `GetOrCreate`는 required `ActorId`와 stable Actor type을 받는 single-use fluent
+call이다. `InMesh`, encoded creation request, `PlacementProfile`, `AffinityKey`와 timeout은 선택 항목이다.
+`PlacementProfile`과 `AffinityKey`는 UTF-8 1..255 bytes의 stable value이며 caller가 target RID, predicate,
+factory class 또는 placement callback을 지정할 수 없다. 같은 option을 두 번 설정하면
+`InvalidConfiguration`, terminal submit을 두 번 실행하면 `AlreadySubmitted`다. Terminal submit을 시작할 때
+resolve, reservation, factory와 Ready barrier 전체에 적용할 end-to-end deadline 하나를 고정한다.
+
+`InMesh`를 지정하면 해당 Mesh를 사용한다. 생략했을 때 object Client 또는 Server role을 가진 Mesh가 하나면
+자동 선택한다. 후보가 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한 Mesh가
+없으면 `MeshNotFound`로 끝난다. Framework는 role, registered type, placement profile, active·pending capacity를
+먼저 검사하고 남은 후보를 node-wide placement weight로 선택한다. Caller가 target node나 endpoint를 고르지
+않는다.
+
+Encoded creation request는 최대 1 MiB다. Reservation 전에 immutable content reference와 hash를 durable
+creation intent에 기록하며 Ready 또는 fenced failure cleanup까지 유지한다. Authority CAS winner만 request를
+factory에 전달한다. Factory는 `(ActorId, ObjectGeneration, creation attempt)` 기준 at-least-once로 실행될 수
+있으므로 retry-safe해야 한다.
+
+Exclusive `Create`에서 같은 type의 Ready object가 있으면 `ActorAlreadyExists`, 다른 type이면
+`ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready 또는 Creating attempt에 합류하고 같은 incarnation의
+`ActorRef`를 반환한다. Creating CAS loser는 다른 target에서 factory를 시작하지 않는다. Deadline까지 같은
+attempt가 terminal state가 되지 않으면 `DeadlineExceeded`로 끝나며 다음 call이 exact authority를
+reconcile한다.
+
+Manager `Find(ActorId)`는 current Ready authority의 `ActorRef`를 반환하며 creation을 시작하지 않는다. 별도
+Actor directory는 제공하지 않는다.
 
 Actor를 user Spot으로 옮기는 join·leave·transfer는
 [23 Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다. 이동 중에 수락한 payload를 이전 Spot
@@ -106,11 +137,12 @@ Actor 종료는 신규 payload admission을 닫고 session binding과 location o
 session의 연결 종료만으로 Actor를 자동 종료하거나 Spot에서 자동 leave하지 않는다. lifecycle 종료의
 정확한 허용 상태와 transaction은 [23 Spot Actor](23-spot-actor.ko.md)가 소유한다.
 
-Actor destroy는 Entry Spot context에서만 요청할 수 있다. Actor가 user Spot에 있으면 먼저 leave 또는
-Entry Spot join을 완료해 Entry Spot으로 이동해야 한다. Destroy는 membership 이동이 아니므로 성공 과정에서
-`OnLeaveActor`를 다시 호출하지 않는다. 신규 payload admission을 닫고 진행 중인 lifecycle 작업을 정리한
-뒤 session binding, location ownership, Actor reference와 Framework registry를 제거한다. 이미 제거된 같은
-Actor instance에 대한 중복 destroy는 성공으로 끝나며 lifecycle callback을 다시 만들지 않는다.
+Actor destroy는 exact `ActorRef`를 받는다. Actor가 user Spot에 있으면 먼저 leave 또는 Entry Spot join을
+완료해야 한다. Destroy는 membership 이동이 아니므로 성공 과정에서 `OnLeaveActor`를 다시 호출하지 않는다.
+신규 payload admission을 닫고 진행 중인 lifecycle 작업을 정리한 뒤 session binding, location ownership과
+registry를 제거한다. 같은 incarnation이 이미 없으면 idempotent `false`, 같은 ID의 다른 generation이 있으면
+`ActorGenerationStale`, 이동 seal 중이면 `ActorMoving`으로 끝난다. Framework는 current ref를 다시 찾아 새
+incarnation을 종료하지 않는다.
 
 ## 7. Session binding
 
@@ -125,15 +157,15 @@ disconnect와 request correlation의 전체 계약은
 
 ## 8. 실패와 관측
 
-- 호출의 MeshName에 local route가 없거나 ActorRef의 owner route가 다른 mesh에 속하면 구성 또는 target 오류다.
-- Actor가 없거나 generation이 맞지 않으면 Actor target 오류다.
+- logical ID의 Ready authority가 없으면 Actor target 오류다. Exact-ref operation에서 mapping이 없으면
+  `ActorLocationStale`, generation이 다르면 `ActorGenerationStale`, pre-commit seal 중이면 `ActorMoving`이다.
 - handler 없음, decode 실패와 application 예외는 request이면 복원 가능한 reply route로 오류를
   반환하고, one-way이면 runtime 관측 경로에 기록한다.
 - bound session이 필요한 작업에 유효한 binding이 없으면 session-not-bound 오류다.
 - drain 중에는 신규 Actor 생성과 신규 membership 배정을 막고 이미 수락한 Actor turn과 control
   transaction은 deadline까지 진행한다.
 
-관측 정보는 MeshName, Actor type, queue와 control backlog, generation, membership state,
+관측 정보는 current MeshName, Actor type, queue와 control backlog, generation, membership state,
 session-binding state와 dispatch 결과를 구분해야 한다. Actor ID는 metric label로 사용하지 않는다.
 
 ## 9. 검증 요구
@@ -144,4 +176,7 @@ session-binding state와 dispatch 결과를 구분해야 한다. Actor ID는 met
 - 같은 Actor의 payload가 ingress 종류와 무관하게 Actor queue 수락 순서대로 실행된다.
 - Actor handler가 mutable Spot state에 직접 접근하지 않고 명시적인 Spot 호출을 사용한다.
 - session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.
-- 서로 다른 MeshName의 ActorRef와 MeshNode route가 섞이지 않는다.
+- 같은 ActorId를 서로 다른 MeshName에 중복 생성하지 않는다.
+- Actor messaging이 ActorId만 받고 owner route와 generation을 application에 요구하지 않는다.
+- concurrent create의 CAS loser가 factory를 추가로 실행하지 않고 같은 attempt에 합류한다.
+- destroy가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.

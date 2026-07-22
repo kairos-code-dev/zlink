@@ -1,5 +1,8 @@
 # Transport liveness runtime
 
+이 문서는 RouteMesh 11.0 목표 구조를 설명한다. 현재 구현과의 차이와 완료 상태는
+`framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
+
 [내부 구조 목차](README.ko.md) · [Service wire protocol](service-wire-protocol.ko.md) ·
 [Transport liveness 계약](../../spec/server/55-transport-liveness.ko.md) ·
 [Core raw 내부 경계](../../../../../core/doc/internals/runtime-boundary.ko.md)
@@ -118,7 +121,7 @@ Ready state를 재사용하지 않는다. Fanout은 전용 SUB socket을 새로 
 
 Connection loss와 request reply가 경쟁하면 correlation owner가 terminal result 하나만 완료한다. Transport가
 request를 수락하지 않았음이 확정되면 route failure로 끝낸다. 수락 여부가 불명확하거나 이미 수락된 request를
-다른 peer에 숨겨서 다시 제출하지 않는다. One-way operation도 connection loss 때문에 다른 target으로 자동
+다른 peer에 숨겨서 다시 제출하지 않는다. one-way operation도 connection loss 때문에 다른 target으로 자동
 재제출하지 않는다.
 
 ## 7. 종료와 cleanup

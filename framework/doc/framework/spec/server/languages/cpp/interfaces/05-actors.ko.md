@@ -1,13 +1,33 @@
 # C++ Actor exact interface
 
-[C++ exact interface 목차](README.ko.md)
+[C++ exact interface 목차](README.ko.md) · [Actor model](../../../22-actor-model.ko.md) ·
+[Spot·Actor membership](../../../23-spot-actor.ko.md)
 
-## 1. Typed maintenance
-
-Actor의 stateful host maintenance는 factory 등록에 typed transfer policy를 연결한다. Application은
-maintenance transaction 내부 단계나 checkpoint payload 형식을 직접 다루지 않는다.
+## 1. Identity와 maintenance policy
 
 ```cpp
+namespace zlink::framework {
+
+class actor_id_t final {
+public:
+    explicit actor_id_t(std::string value);
+    std::string_view value() const noexcept;
+    auto operator<=>(const actor_id_t &) const = default;
+};
+
+class actor_ref_t final {
+public:
+    actor_ref_t(actor_id_t actor_id,
+      std::uint64_t object_generation,
+      std::string mesh_name,
+      node_rid_t node_rid);
+
+    const actor_id_t &actor_id() const noexcept;
+    std::uint64_t object_generation() const noexcept;
+    std::string_view mesh_name() const noexcept;
+    const node_rid_t &node_rid() const noexcept;
+};
+
 template <typename TInstance, typename TState>
 class transfer_state_adapter_t {
 public:
@@ -33,84 +53,34 @@ public:
     static transfer_policy_t snapshot(std::string state_contract_id);
 };
 
+} // namespace zlink::framework
 ```
 
-Factory 등록 member의 exact declaration은
-[Channel messaging](03-channel-messaging.ko.md)의 `mesh_node_builder_t`가 소유한다.
+`actor_id_t`는 UTF-8 `1..255` byte exact global identity다. Constructor는 invalid 값을
+`std::invalid_argument`로 거부하고 trim, case folding과 Unicode normalization을 적용하지 않는다.
+`actor_ref_t`는 global ActorId, non-zero `1..9223372036854775807` ObjectGeneration과 조회 시점의
+MeshName·NodeRid를 담는 immutable location snapshot이다. 일반 message target으로 사용하지 않는다. 별도
+`actor_ref_snapshot_t`는 제공하지 않는다.
 
-Application adapter는 typed 업무 상태만 capture·restore한다. Authority payload, checkpoint reference,
-retention, transfer phase와 mailbox sequence는 받지 않는다.
+모든 Actor factory는 `transfer_policy_t<TActor>`를 명시한다. 정상 relocation과 host maintenance가 같은 policy를
+사용하며 same-node relocation도 우회하지 않는다. Snapshot adapter는 typed application state만 다루고 authority,
+transfer reference, transfer phase와 operation ID를 받지 않는다.
 
-같은 `state_contract_id`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
-한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
-field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Checkpoint Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
-root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
-않는다.
-
-Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
-journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 checkpoint fence를 해제한다. `Completed`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 checkpoint를 transparent replay하지 않는다. 이
-barrier를 조작하는 public phase API는 제공하지 않는다.
-
-Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable checkpoint
-root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
-admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
-하며 exactly-once external side effect를 보장하지 않는다.
-
-Transferred terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
-transfer ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
-status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
-accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
-
-Source는 connection-bound one-way를 포함해 admission한 모든 connection-bound work가 terminal accounting에
-도달한 뒤에만 `Captured`를 commit한다. Durable accepted journal은 exact owner lease가 있는 source에서만
-사용한다. Pre-`Captured` drain이 deadline 안에 끝나지 않으면 transfer를 abort하고 host Retire를
-`blocked/transfer_disabled`로 끝낸다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
-
-Transferable Actor는 source Entry Spot member여야 한다. User Spot member가 하나라도 남아 있으면 Retire
-preflight는 `blocked/transfer_disabled`이고 source authority와 admission을 바꾸지 않는다. `new_owner` CAS는
-owner, authority owner generation과 current Spot을 target Entry identity로 원자적으로 바꾼다. Target factory와
-restore, target `on_actor_joined`, journal replay 뒤에 source `on_leave_actor`와 old Entry membership 제거를
-durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이
-순서를 제어하는 public phase API는 없다.
-
-새 distributed Actor는 authority 내부 `Creating` row를 `new_object` CAS로 만들고 최종 `actor_ref_t`
-generation, factory 실행, initial Entry membership과 initialize를 완료한 뒤 `Ready` CAS를 수행한다. Resolver와
-remote messaging은 `Ready`만 사용한다. Factory나 initialize가 실패하면 exact owner fence로 delete하고 결과를
-read해 reconcile한다. Delete가 확인될 때까지 같은 typed failure를 반환하고 숨은 retry를 수행하지 않으며,
-`Missing`이 확인된 뒤 다음 caller만 새 `Creating`을 시작한다. Entry Spot initialization도 Host `Serving`
-publication보다 먼저 완료한다. 이 barrier를 위한 public API는 없다.
-
-## 2. Actor 표면
+## 2. ID-only messaging
 
 ```cpp
-struct actor_ref_snapshot_t
-{
-    node_rid_t    node_rid;
-    std::string   actor_id;
-    std::uint64_t generation = 0;
+namespace zlink::framework {
 
-    static actor_ref_snapshot_t from (const actor_ref_t &);
-    actor_ref_t to_actor_ref() const;
-};
-
-struct actor_join_reply_t;                // join 결과
-class actor_send_call_t
-{
+class actor_send_call_t {
 public:
-    using metadata_map_t = std::map<std::string, std::string>;
-
     actor_send_call_t &metadata(std::string key, std::string value);
     task_t<submit_result_t> submit();
 };
 
-class actor_request_call_t
-{
+class actor_request_call_t {
 public:
     actor_request_call_t &timeout(std::chrono::milliseconds timeout);
+    actor_request_call_t &metadata(std::string key, std::string value);
 
     template <typename TReply>
     task_t<TReply> async();
@@ -122,123 +92,114 @@ public:
     task_t<message_t> yield_message();
 };
 
-class actor_client_t
-{
+class actor_client_t {
 public:
     virtual ~actor_client_t() = default;
 
     template <typename TMessage>
-    actor_send_call_t send_to_actor(
-      std::string mesh_name,
-      actor_ref_t actor_ref,
-      TMessage message);
+    actor_send_call_t send(actor_id_t actor_id, TMessage message);
 
     template <typename TRequest>
-    actor_request_call_t request_to_actor(
-      std::string mesh_name,
-      actor_ref_t actor_ref,
-      TRequest request);
+    actor_request_call_t request(actor_id_t actor_id, TRequest request);
 };
 
-class actor_directory_t
-{
+} // namespace zlink::framework
+```
+
+Actor send와 request는 global `actor_id_t`만 target으로 받는다. MeshName, ActorRef, owner NodeRid와 current
+SpotRid를 받는 overload는 없다. Runtime은 positive Ready route만 cache하고 negative cache를 두지 않는다.
+Stale route는 `actor_location_stale`, exact-ref generation mismatch는 `actor_generation_stale`로 구분한다.
+
+## 3. Single-use manager operation
+
+```cpp
+namespace zlink::framework {
+
+class actor_create_call_t {
 public:
-    virtual ~actor_directory_t() = default;
-    virtual task_t<std::optional<actor_ref_t>> find(
-      std::string mesh_name,
-      std::string actor_id) = 0;
+    actor_create_call_t(actor_create_call_t &&) noexcept;
+    actor_create_call_t &operator=(actor_create_call_t &&) noexcept;
+    actor_create_call_t(const actor_create_call_t &) = delete;
+    actor_create_call_t &operator=(const actor_create_call_t &) = delete;
+
+    actor_create_call_t &in_mesh(std::string mesh_name);
+    actor_create_call_t &creation_request(message_t request);
+
+    template <typename TCreation>
+    actor_create_call_t &creation_request(TCreation request);
+
+    actor_create_call_t &placement_profile(placement_profile_t profile);
+    actor_create_call_t &affinity_key(affinity_key_t key);
+    actor_create_call_t &timeout(std::chrono::milliseconds timeout);
+    task_t<actor_ref_t> submit();
 };
 
-class actor_manager_t
-{
+class actor_manager_t {
 public:
     virtual ~actor_manager_t() = default;
-    virtual task_t<actor_ref_t> create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type) = 0;
-    virtual task_t<actor_ref_t> create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type,
-      message_t create_request) = 0;
-
-    template <typename TCreation>
-    task_t<actor_ref_t> create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type,
-      TCreation create_request);
-
-    virtual task_t<actor_ref_t> get_or_create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type) = 0;
-    virtual task_t<actor_ref_t> get_or_create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type,
-      message_t create_request) = 0;
-
-    template <typename TCreation>
-    task_t<actor_ref_t> get_or_create(
-      std::string mesh_name,
-      std::string actor_id,
-      std::string actor_type,
-      TCreation create_request);
+    virtual actor_create_call_t create(
+      actor_id_t actor_id, std::string stable_type) = 0;
+    virtual actor_create_call_t get_or_create(
+      actor_id_t actor_id, std::string stable_type) = 0;
+    virtual task_t<std::optional<actor_ref_t>> find(actor_id_t actor_id) = 0;
+    virtual task_t<bool> destroy(actor_ref_t actor) = 0;
 };
+
+} // namespace zlink::framework
+```
+
+Call object는 option마다 최대 한 번 설정하고 `submit()`도 한 번만 호출한다. Duplicate option은
+`invalid_configuration`, 두 번째 submit은 `already_submitted`다. `in_mesh`를 생략했을 때 object role Mesh가
+하나면 자동 선택하고, 0개면 `object_client_not_configured`, 여러 개면 `mesh_selection_required`다. Unknown
+Mesh는 `mesh_not_found`다.
+
+`Create`는 existing identity에 `actor_already_exists`를 반환한다. `GetOrCreate`는 같은 stable type의 Ready 또는
+Creating attempt에 합류하고 type이 다르면 `actor_type_mismatch`다. Deadline은 resolve, reservation, factory와
+Ready 전체에 적용한다. `Find`는 Ready ref만 반환하며 생성하지 않는다. `Destroy`는 exact ActorRef만 변경한다.
+같은 incarnation이 없으면 `false`, 다른 generation은 `actor_generation_stale`, 이동 중이면 `actor_moving`이다.
+Public Actor directory와 local Actor bind overload는 제공하지 않는다.
+
+Actor creation은 selected owner MeshNode의 Entry Spot membership을 Ready barrier 안에서 함께 확정한다. Actor
+업무 payload는 membership 종류와 관계없이 Actor queue로 직접 전달하며 Entry Spot callback을 경유하지 않는다.
+Original creation payload와 일반 message는 다른 owner나 새 incarnation으로 hidden retry하지 않는다. Caller가
+timeout, cancellation 또는 moving 결과를 받으면 새 operation을 명시적으로 시작해야 한다.
+
+## 4. STREAM exact-ref binding
+
+```cpp
+namespace zlink::framework {
+
 class session_actor_t {
 public:
-    ~session_actor_t();
-    session_actor_t(session_actor_t &&) noexcept;
-    session_actor_t &operator=(session_actor_t &&) noexcept;
-    session_actor_t(const session_actor_t &) = default;
-    session_actor_t &operator=(const session_actor_t &) = default;
-
     const actor_ref_t &ref() const noexcept;
-    std::string_view actor_id() const noexcept;
-    task_t<submit_result_t> relay(const zlink::message_t &payload);
+    task_t<submit_result_t> relay(const message_t &payload);
     task_t<submit_result_t> relay(
       const stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload);
+      const message_t &payload);
     task_t<void> notify_disconnected();
 };
 
 class session_actor_manager_t {
 public:
-    ~session_actor_manager_t();
-    session_actor_manager_t(session_actor_manager_t &&) noexcept;
-    session_actor_manager_t &operator=(session_actor_manager_t &&) noexcept;
-    session_actor_manager_t(const session_actor_manager_t &) = default;
-    session_actor_manager_t &operator=(const session_actor_manager_t &) = default;
-
     std::vector<session_actor_t> bound() const;
-    std::optional<session_actor_t> find(std::string actor_id) const;
+    std::optional<session_actor_t> find(actor_id_t actor_id) const;
     request_call_t<session_actor_t> bind(actor_ref_t actor_ref);
     request_call_t<session_actor_t> bind_or_get(actor_ref_t actor_ref);
 };
+
+} // namespace zlink::framework
 ```
 
-**`generation`이 stale actor ref를 걸러낸다.** identity와 authority의 의미는
-[spot-actor §1](../../../23-spot-actor.ko.md#1-identity와-authority)이 소유한다. Forwarding window가
-끝난 old ref의 실패 의미는
-[spot-actor §8](../../../23-spot-actor.ko.md#8-stale-route와-forwarding)이 소유한다.
+Bind는 caller가 제출한 exact ActorRef 위치로 한 번만 control request를 보낸다. Stale·moving 결과에서 global
+ActorId를 다시 lookup하거나 fresh incarnation으로 자동 bind하지 않는다. `find(...)`는 해당 STREAM session에
+이미 bind된 Actor만 조회하며 global Actor directory가 아니다.
 
-Canonical logical identity는 `(MeshName, ActorId)`다. Actor type은 create에서 factory를 선택한 뒤 authority
-payload에 고정하는 immutable lifecycle attribute이며 `actor_ref_t`나 directory key에 반복하지 않는다. 같은
-MeshName과 Actor ID에는 active type 하나만 존재한다. Get-or-create에 전달한 type이 existing authority의 type과
-다르면 type conflict로 실패한다.
+현재 STREAM binding을 통한 one-way push는 connection-bound operation이다. 유효한 binding이 없거나 connection
+generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Framework가 다른 session을 찾아 다시
+제출하지 않는다. Connection 종료는 Actor의 Spot membership을 바꾸거나 Actor를 자동 종료하지 않는다.
 
-`actor_directory_t`는 MeshName과 Actor ID로 이미 존재하는 logical Actor만 조회한다. Missing Actor를
-생성하거나 remote MeshNode를 선택하지 않는다. Local create와 get-or-create는 `actor_manager_t`가 소유하며
-반드시 actor type을 받는다. `mesh_name`은 현재 host에 등록된 local MeshNode를 선택한다.
-Existing Actor가 remote owner에 있으면 `find(...)`와 get-or-create가 그 `actor_ref_t`를 반환할 수 있지만,
-missing Actor를 remote owner에 생성하거나 hidden forwarding으로 만들지 않는다.
+## 5. Public trace category
 
-`session_actor_manager_t`는 현재 session에 bind된 Actor 목록·조회와 bind만 제공한다. Actor create·
-get-or-create는 `actor_manager_t`가 소유하고 Actor에서 session으로 send·close하는 표면은
-Actor context의 `bound_session_t`가 소유한다. `relay(dispatch, payload)`는 explicit current STREAM
-dispatch context를 받고 즉시 request reply capability를 runtime에 이전한다. Submitted면 Actor의 typed
-reply가 original STREAM correlation을 terminal-once로 완료하고 admission failure면 Framework가 같은
-correlation을 typed failure로 완료한다. Caller는 별도 reply·retry를 하지 않는다. One-way
-dispatch context는 reply capability가 없으므로 admission만 반환한다.
+이 문서의 declaration은 public trace의 `actor-transfer` category에 속한다. 공통 의미는
+[Actor model](../../../22-actor-model.ko.md), [Spot·Actor membership](../../../23-spot-actor.ko.md)과
+[Session Actor dispatch](../../../31-session-actor-dispatch.ko.md)가 소유한다.

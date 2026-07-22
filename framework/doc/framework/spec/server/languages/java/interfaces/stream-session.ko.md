@@ -5,6 +5,11 @@
 STREAM session, Actor binding과 relay는 JVM service runtime이 소유한다. Java binding의 public stream socket과
 raw frame API만 사용하며 Core session service나 private JNI SPI를 public 또는 internal dependency로 삼지 않는다.
 
+Session bind는 exact `ActorRef`를 한 번 제출한다. Active forwarding mapping이 없으면 `ACTOR_LOCATION_STALE`,
+generation이 다르면 `ACTOR_GENERATION_STALE`, pre-commit seal 중이면 `ACTOR_MOVING`이다. Framework는 Store에서
+새 ref를 찾아 hidden retry하지 않는다. `enableActorDispatch()`는 MeshName을 받지 않으며 startup에 Object
+Client 또는 Server role과 Location Store가 필요하다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.
@@ -26,7 +31,6 @@ public interface systems.zlink.framework.streams.ZLinkSessionActor {
 }
 public interface systems.zlink.framework.streams.ZLinkSessionActors {
   public abstract java.util.List<systems.zlink.framework.streams.ZLinkSessionActor> bound();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.streams.ZLinkSessionActor> bind(systems.zlink.framework.actors.ZLinkActor);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.streams.ZLinkSessionActor> bind(systems.zlink.framework.actors.ActorRef);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.streams.ZLinkSessionActor> bindOrGet(systems.zlink.framework.actors.ActorRef);
   public abstract java.util.Optional<systems.zlink.framework.streams.ZLinkSessionActor> find(java.lang.String);

@@ -37,13 +37,8 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zlink_has ("wss"));
 #endif
 
-#if defined(ZLINK_HAVE_OPENPGM)
-    TEST_ASSERT_TRUE (zlink_has ("pgm"));
-    TEST_ASSERT_TRUE (zlink_has ("epgm"));
-#else
     TEST_ASSERT_TRUE (!zlink_has ("pgm"));
     TEST_ASSERT_TRUE (!zlink_has ("epgm"));
-#endif
 
     // TIPC is removed
     TEST_ASSERT_TRUE (!zlink_has ("tipc"));

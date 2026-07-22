@@ -186,10 +186,5 @@ bool zlink_has (const char *capability_)
     if (strcmp (capability_, zlink::protocol_name::tls) == 0)
         return true;
 #endif
-#ifdef ZLINK_HAVE_OPENPGM
-    if (strcmp (capability_, zlink::protocol_name::pgm) == 0
-        || strcmp (capability_, zlink::protocol_name::epgm) == 0)
-        return true;
-#endif
     return false;
 }

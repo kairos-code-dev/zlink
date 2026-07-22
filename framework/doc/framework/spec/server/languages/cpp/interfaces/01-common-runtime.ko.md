@@ -107,11 +107,11 @@ pending operation 저장소, dispatch 순서와 native transport adapter는 공�
 않는다. 공개 facade가 상태를 유지해야 할 때도 사용자는 그 상태의 자료구조나 처리 순서를 알 필요가
 없어야 한다.
 
-공개 `route_client_t`와 `route_send_call_t`는 node와 Spot을 대상으로 하는 typed 호출을
-제공한다. 이미 존재하는 Spot은 불투명한 handle을 사용하고 Instance Spot은 MeshName, stable type과 Spot RID로
-구성한 논리 주소를 사용한다. request 계열은 `channel_request_call_t`을 반환한다. 사용자는 target
-MeshNode, location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location
-claim과 serializer 선택은 framework가 처리한다.
+공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot RID를 대상으로 하는 typed 호출을
+제공한다. User Spot과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
+타입을 제공하지 않는다. request 계열은 `channel_request_call_t`을 반환한다. 사용자는 target MeshNode,
+location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location claim과
+serializer 선택은 framework가 처리한다.
 
 일반 request는 `request_to_node(...).timeout(...).async<TReply>()`로 typed reply를 받는다.
 `.metadata(key, value)`로 설정한 값은 application metadata 계약에 따라 snapshot되며, transport
@@ -152,6 +152,29 @@ declaration은 [exact interface 목차](README.ko.md)에서 지정한 단 하나
 소유한다.
 
 ## 4. Common result, coroutine과 message
+
+Object placement에 사용하는 문자열은 서로 바꿔 쓸 수 없는 value type으로 고정한다.
+
+```cpp
+namespace zlink::framework {
+
+class placement_profile_t final {
+public:
+    explicit placement_profile_t(std::string value);
+    std::string_view value() const noexcept;
+};
+
+class affinity_key_t final {
+public:
+    explicit affinity_key_t(std::string value);
+    std::string_view value() const noexcept;
+};
+
+} // namespace zlink::framework
+```
+
+두 값은 UTF-8 `1..255` byte exact 값이다. Constructor는 empty, invalid UTF-8과 255 byte 초과를
+`std::invalid_argument`로 거부한다. Trim, case folding과 Unicode normalization을 적용하지 않는다.
 
 ```cpp
 namespace zlink::framework {

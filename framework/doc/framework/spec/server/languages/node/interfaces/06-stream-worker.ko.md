@@ -92,7 +92,7 @@ export interface ZLinkStreamNodeBuilder {
     bind(port?: number): this;
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
-    enableActorDispatch(meshName: string): this;
+    enableActorDispatch(): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }

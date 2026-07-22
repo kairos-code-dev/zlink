@@ -4,26 +4,17 @@
 
 ## 1. Actor
 
-Actor direct message는 MeshName context와 ActorRef의 owner route·generation을 사용한다. Actor handler는
-Spot이 소유한 registry에 등록한다.
+ActorId는 Location Store transaction domain 전체에서 유일한 logical ID다. UTF-8 encoded 크기는
+1..255 bytes이고 case-sensitive exact value로 비교하며 normalization하지 않는다. 일반 Actor message는
+ActorId만 받고 current authority를 resolve한다. `ActorRef`는 exact incarnation을 변경하거나 session에
+bind할 때 사용하는 immutable location snapshot이다.
 
 ```csharp
-public readonly struct ActorRef
-{
-    public ActorRef(RoutingId nodeRid, string actorId, ulong generation);
-    public RoutingId NodeRid { get; }
-    public string ActorId { get; }
-    public ulong Generation { get; }
-}
-
-public sealed record ActorRefSnapshot(
-    RoutingId NodeRid,
+public readonly record struct ActorRef(
     string ActorId,
-    ulong Generation)
-{
-    public static ActorRefSnapshot From(ActorRef actorRef);
-    public ActorRef ToActorRef();
-}
+    ulong ObjectGeneration,
+    string MeshName,
+    RoutingId NodeRid);
 
 public interface IZLinkActor
 {
@@ -47,13 +38,11 @@ public interface IZLinkActorContext
         return JoinSpot(spotRid, ZLinkMessage.From(request));
     }
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        RoutingId spotNodeRid,
         ZLinkMessage request);
     IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
-        RoutingId spotNodeRid,
         TRequest request)
     {
-        return JoinEntrySpot(spotNodeRid, ZLinkMessage.From(request));
+        return JoinEntrySpot(ZLinkMessage.From(request));
     }
 }
 
@@ -116,67 +105,52 @@ public abstract class ZLinkTransferPolicy<TInstance>
 public interface IZLinkActorClient
 {
     IZLinkActorSendCall SendToActor<TMessage>(
-        string meshName,
-        ActorRef actor,
+        string actorId,
         TMessage message);
     IZLinkActorRequestCall RequestToActor<TRequest>(
-        string meshName,
-        ActorRef actor,
+        string actorId,
         TRequest request);
 }
 
 public interface IZLinkActorManager
 {
-    ValueTask<ActorRef> CreateAsync(
-        string meshName,
+    IZLinkActorCreateCall Create(
         string actorId,
-        string actorType,
+        string actorType);
+    IZLinkActorGetOrCreateCall GetOrCreate(
+        string actorId,
+        string actorType);
+    ValueTask<ActorRef?> FindAsync(
+        string actorId,
         CancellationToken cancellationToken = default);
-    ValueTask<ActorRef> CreateAsync(
-        string meshName,
+    ValueTask<SpotRef?> FindSpotAsync(
         string actorId,
-        string actorType,
-        ZLinkMessage createRequest,
         CancellationToken cancellationToken = default);
-    ValueTask<ActorRef> CreateAsync<TRequest>(
-        string meshName,
-        string actorId,
-        string actorType,
-        TRequest createRequest,
-        CancellationToken cancellationToken = default)
-    {
-        return CreateAsync(
-            meshName,
-            actorId,
-            actorType,
-            ZLinkMessage.From(createRequest),
-            cancellationToken);
-    }
-    ValueTask<ActorRef> GetOrCreateAsync(
-        string meshName,
-        string actorId,
-        string actorType,
+    ValueTask<bool> DestroyAsync(
+        ActorRef actor,
         CancellationToken cancellationToken = default);
-    ValueTask<ActorRef> GetOrCreateAsync(
-        string meshName,
-        string actorId,
-        string actorType,
-        ZLinkMessage createRequest,
-        CancellationToken cancellationToken = default);
-    ValueTask<ActorRef> GetOrCreateAsync<TRequest>(
-        string meshName,
-        string actorId,
-        string actorType,
-        TRequest createRequest,
-        CancellationToken cancellationToken = default)
-    {
-        return GetOrCreateAsync(
-            meshName,
-            actorId,
-            actorType,
-            ZLinkMessage.From(createRequest),
-            cancellationToken);
-    }
+}
+
+public interface IZLinkActorCreateCall
+{
+    IZLinkActorCreateCall InMesh(string meshName);
+    IZLinkActorCreateCall Request(ZLinkMessage request);
+    IZLinkActorCreateCall Request<TRequest>(TRequest request);
+    IZLinkActorCreateCall PlacementProfile(string placementProfile);
+    IZLinkActorCreateCall AffinityKey(string affinityKey);
+    IZLinkActorCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ActorRef> Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorGetOrCreateCall
+{
+    IZLinkActorGetOrCreateCall InMesh(string meshName);
+    IZLinkActorGetOrCreateCall Request(ZLinkMessage request);
+    IZLinkActorGetOrCreateCall Request<TRequest>(TRequest request);
+    IZLinkActorGetOrCreateCall PlacementProfile(string placementProfile);
+    IZLinkActorGetOrCreateCall AffinityKey(string affinityKey);
+    IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ActorRef> Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
@@ -271,24 +245,24 @@ Typed state policy는 Actor factory registration이 소유한다. `Disabled`는 
 host `Retire`를 차단한다. `Recreate`는 target factory로 같은
 logical identity를 다시 만들고 application state를 복구하지 않는다. `Snapshot`은 adapter가 typed state만
 capture·restore하며 `stateContractId`는 비어 있을 수 없고 UTF-8 255 byte 이하여야 한다. Adapter는 raw bytes,
-checkpoint reference, accepted journal, transfer phase, source·target owner와 Store CAS version을 받지 않는다.
+transfer reference, accepted journal, transfer phase, source·target owner와 Store CAS version을 받지 않는다.
 
 같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
 한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
 field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Checkpoint Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
+canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
 root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
 않는다.
 
 Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
 journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 checkpoint fence를 해제한다. `Completed`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 checkpoint를 transparent replay하지 않는다. 이
+authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 transfer fence를 해제한다. `Completed`
+뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer를 transparent replay하지 않는다. 이
 barrier를 조작하는 public phase API는 제공하지 않는다.
 
 Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `RestoreAsync(...)`를 at-least-once
 호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `CaptureAsync(...)`도 immutable
-checkpoint root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을
+transfer root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을
 commit하고 admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는
 retry-safe해야 하며 exactly-once external side effect를 보장하지 않는다.
 
@@ -309,35 +283,35 @@ restore, target `OnJoinedActorAsync`, journal replay 뒤에 source `OnLeaveActor
 제거를 durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다.
 이 순서를 제어하는 public phase API는 없다.
 
-새 distributed Actor는 authority 내부 `Creating` row를 `NewObject` CAS로 만들고 최종 `ActorRef.Generation`,
-factory 실행, initial Entry membership과 initialize를 완료한 뒤 `Ready` CAS를 수행한다. Resolver와 remote
-messaging은 `Ready`만 사용한다. Factory나 initialize가 실패하면 exact owner fence로 delete하고 결과를 read해
-reconcile한다. Delete가 확인될 때까지 같은 typed failure를 반환하고 hidden retry는 0이며, `Missing`이
-확인된 뒤 다음 caller만 새 `Creating`을 시작한다. Entry Spot initialization도 Host `Serving` publication보다
-먼저 완료한다. 이 barrier를 위한 public API는 없다.
+새 distributed Actor는 generic placement reservation이 authority의 `Creating` row와 target pending capacity를
+함께 확보한 뒤 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을
+`Ready`와 active capacity로 commit하고, 실패하면 abort한다. Resolve와 remote messaging은 `Ready`만 사용한다.
+CAS loser는 별도 factory를 시작하지 않으며 exact reservation 결과를 read해 reconcile한다. Entry Spot
+initialization도 Host `Serving` publication보다 먼저 완료한다. 이 barrier를 위한 application API는 없다.
 
 Actor factory와 transfer policy는
 [Topology configuration](03-configuration-topology.ko.md)의 `AddActorFactory<TActor,TFactory>(...)` 한 호출에서
-등록한다. Policy를 받지 않는 builder overload는 `Disabled` registration으로 동작한다.
+등록한다. Policy를 생략하는 overload는 제공하지 않는다.
 
-## 2. Actor directory
+Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
+`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. Terminal 호출 시 resolve, reservation, factory와 Ready
+barrier 전체에 적용할 deadline 하나를 확정한다. `InMesh(...)`를 생략했을 때 object-role Mesh가 하나이면
+그 Mesh를 사용하고, 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 명시한 Mesh가
+없으면 `MeshNotFound`다. `PlacementProfile`과 `AffinityKey`는 UTF-8 1..255 bytes이며 target RID, predicate와
+callback을 지정하지 않는다.
 
-Canonical logical identity는 `(MeshName, ActorId)`다. Actor type은 create에서 factory를 선택한 뒤 authority
-payload에 고정하는 immutable lifecycle attribute이며 `ActorRef`나 directory key에 반복하지 않는다. 같은
-MeshName과 Actor ID에는 active type 하나만 존재한다. `GetOrCreateAsync`에 전달한 type이 existing authority의
-type과 다르면 type conflict로 실패한다.
+`Create`는 같은 ActorId의 Ready incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
+`ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready 또는 Creating attempt에 합류하며 CAS loser는 별도
+factory를 실행하지 않는다. Creating attempt가 deadline 안에 끝나지 않으면 `DeadlineExceeded`다. Creation
+request는 최대 1 MiB이고 reservation 전에 immutable reference와 hash를 기록한다. Factory는 같은 ID,
+ObjectGeneration과 creation attempt에 대해 retry-safe해야 한다.
 
-Directory는 MeshName과 Actor ID로 이미 존재하는 logical identity만 조회한다. Missing Actor를 만들지 않으며
-target MeshNode를 선택하지 않는다. Local create와 get-or-create는 `IZLinkActorManager`가 actor type을
-명시해서 수행한다. 이때 MeshName은 현재 host에 등록된 local MeshNode를 선택하며 remote creation이나 hidden
-forwarding을 시작하지 않는다.
+`FindAsync(actorId)`는 current Ready `ActorRef`만 반환한다. `FindSpotAsync(actorId)`는 current User Spot
+membership의 `SpotRef`만 반환한다. 별도 Actor directory와 public handle·resolver는 제공하지 않는다.
+`DestroyAsync(actorRef)`는 exact incarnation만 종료한다. 해당 incarnation이 없으면 `false`, generation이
+다르면 `ActorGenerationStale`, pre-commit seal 중이면 `ActorMoving`이며 current ref를 찾아 hidden retry하지
+않는다.
 
-```csharp
-public interface IZLinkActorDirectory
-{
-    ValueTask<ActorRef?> FindAsync(
-        string meshName,
-        string actorId,
-        CancellationToken cancellationToken = default);
-}
-```
+`ActorRef.ObjectGeneration`은 1..`long.MaxValue`다. `MeshName`과 `NodeRid`는 조회 시점의 route snapshot이며
+logical identity에는 포함되지 않는다. Transfer 뒤에도 ActorId와 ObjectGeneration은 유지되고 새 location을
+가진 ref가 발급된다. 일반 messaging은 ref route를 고정하지 않는다.

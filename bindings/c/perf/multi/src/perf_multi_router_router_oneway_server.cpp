@@ -50,14 +50,12 @@ bool send_to_peer (void *server,
     return rc == ZLINK_SUBMIT_OK;
 }
 
-bool send_fanout (void *server,
-                  const std::vector<zlink_routing_id_t> &targets,
-                  std::vector<char> *payload,
-                  size_t msg_size,
-                  uint32_t run_id,
-                  uint64_t sequence,
-                  perf_multi_metric::phase_t phase,
-                  bool require_all)
+bool send_active_fanout (void *server,
+                         const std::vector<zlink_routing_id_t> &targets,
+                         std::vector<char> *payload,
+                         size_t msg_size,
+                         uint32_t run_id,
+                         uint64_t sequence)
 {
     if (!server || !payload)
         return false;
@@ -66,26 +64,73 @@ bool send_fanout (void *server,
     if (payload->size () < payload_size)
         return false;
     std::memset (payload->data (), 'r', payload_size);
-    if (!perf_multi_metric::stamp_payload (payload->data (), payload_size, run_id, phase,
-                                           msg_size, sequence,
+    if (!perf_multi_metric::stamp_payload (payload->data (), payload_size, run_id,
+                                           perf_multi_metric::phase_active, msg_size, sequence,
                                            perf_multi_metric::now_ns ()))
         return false;
 
     bool admitted = false;
     for (size_t i = 0; i < targets.size (); ++i) {
         if (send_to_peer (server, targets[i], payload->data (), payload_size,
-                          require_all ? ZLINK_SEND_FLAGS_NONE
-                                      : ZLINK_SEND_FLAGS_DONTWAIT)) {
+                          ZLINK_SEND_FLAGS_DONTWAIT)) {
             admitted = true;
             continue;
         }
         const int err = zlink_errno ();
-        if (!require_all
-            && (err == EAGAIN || err == EINTR || err == EHOSTUNREACH || err == ENOTCONN))
+        if (err == EAGAIN || err == EINTR || err == EHOSTUNREACH || err == ENOTCONN)
             continue;
         return false;
     }
-    return require_all || admitted;
+    return admitted;
+}
+
+bool send_cooldown_to_all (void *server,
+                           const std::vector<zlink_routing_id_t> &targets,
+                           std::vector<char> *payload,
+                           size_t msg_size,
+                           uint32_t run_id,
+                           uint64_t *sequence)
+{
+    if (!server || !payload || !sequence)
+        return false;
+
+    const size_t payload_size =
+      std::max<size_t> (msg_size, perf_multi_metric::header_size ());
+    if (payload->size () < payload_size)
+        return false;
+    std::memset (payload->data (), 'r', payload_size);
+    if (!perf_multi_metric::stamp_payload (payload->data (), payload_size, run_id,
+                                           perf_multi_metric::phase_cooldown, msg_size,
+                                           (*sequence)++, perf_multi_metric::now_ns ()))
+        return false;
+
+    std::vector<bool> pending (targets.size (), true);
+    size_t pending_count = targets.size ();
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (25);
+
+    while (pending_count > 0 && std::chrono::steady_clock::now () < deadline) {
+        bool admitted = false;
+        for (size_t i = 0; i < targets.size (); ++i) {
+            if (!pending[i])
+                continue;
+            if (!send_to_peer (server, targets[i], payload->data (), payload_size,
+                               ZLINK_SEND_FLAGS_DONTWAIT)) {
+                const int err = zlink_errno ();
+                if (err != EAGAIN && err != EINTR && err != EHOSTUNREACH
+                    && err != ENOTCONN)
+                    return false;
+                continue;
+            }
+            pending[i] = false;
+            --pending_count;
+            admitted = true;
+        }
+        if (!admitted)
+            std::this_thread::yield ();
+    }
+
+    return pending_count == 0;
 }
 
 int run_server (const std::string &lib_name, const std::string &transport)
@@ -185,15 +230,12 @@ int run_server (const std::string &lib_name, const std::string &transport)
           + std::chrono::seconds (std::max (1, settings.duration_seconds));
         while (!perf_stop_requested ().load (std::memory_order_acquire)
                && std::chrono::steady_clock::now () < deadline) {
-            if (!send_fanout (server, targets, &payload, msg_size, run_id, sequence++,
-                              perf_multi_metric::phase_active, false)) {
+            if (!send_active_fanout (server, targets, &payload, msg_size, run_id,
+                                     sequence++)) {
                 std::this_thread::yield ();
             }
         }
-        for (int i = 0; i < 8 && ok; ++i) {
-            ok = send_fanout (server, targets, &payload, msg_size, run_id, sequence++,
-                              perf_multi_metric::phase_cooldown, true);
-        }
+        ok = send_cooldown_to_all (server, targets, &payload, msg_size, run_id, &sequence);
     }
 
     perf_stop_requested ().store (true, std::memory_order_release);

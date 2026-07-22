@@ -1,0 +1,19 @@
+{
+  "format": "transfer-manifest-v1",
+  "consumers": ["cpp", "dotnet", "jvm", "node"],
+  "encodedHex": "5a4c544d01000000004b010000000000000186a9c22ecb20000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f000000010000000000076368756e6b2d300000000000000186a9c22ecb09d29da3",
+  "decoded": {
+    "logicalFormatVersion": 1,
+    "totalLength": "390",
+    "totalChecksumCrc32c": 2848075467,
+    "inventoryDigestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "chunks": [
+      {
+        "order": 0,
+        "referenceUtf8Fixture": "chunk-0",
+        "length": "390",
+        "checksumCrc32c": 2848075467
+      }
+    ]
+  }
+}

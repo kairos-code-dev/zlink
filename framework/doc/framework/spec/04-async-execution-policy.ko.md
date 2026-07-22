@@ -12,6 +12,9 @@ cancellation과 timer 계약을 정의한다. 대상 독자는 언어별 비동�
 ### 1.1 Submit, Async와 Yield
 
 Call object는 operation 종류에 맞는 terminator만 제공하며 같은 call에서 terminator를 두 번 실행할 수 없다.
+Object create·get-or-create fluent call도 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`,
+terminal submit을 두 번 실행하면 `AlreadySubmitted`로 끝난다. Terminal submit을 시작할 때 resolve, durable
+request, reservation, factory와 Ready barrier 전체에 적용할 하나의 end-to-end deadline을 고정한다.
 
 | terminator | 수락 뒤 완료 의미 | owner turn |
 |---|---|---|
@@ -46,11 +49,9 @@ microtask는 Framework scheduler hop으로 계산하지 않는다. Queue 용량�
 Pending admission을 보관하는 bounded 공간까지 가득 차면 기다림을 시작하지 않고 `Backpressured`로
 완료한다.
 
-InstanceSpotAddress send는 Location Store resolve와 eligible target 선택이 필요해도 같은 async-only
-terminator를 사용한다. Cache된 `Ready` route가 있는 경우에도 별도 동기 terminator를 제공하지 않는다.
-Caller가 관찰하는 submit 대기는 address resolve와 target 선택부터 source local outbound admission까지만
-포함한다. Target-side claim, activation queue 수락, factory와 handler 실행은 submit 완료 조건이 아니다.
-그 뒤 remote claim·activation이 실패하면 이미 완료한 submit 결과를 바꾸지 않고 drop 관측으로 남긴다.
+Global Spot·Actor send도 같은 async-only terminator를 사용한다. Cache된 `Ready` route가 있는 경우에도 별도
+동기 terminator를 제공하지 않는다. Caller가 관찰하는 submit 대기는 current Ready authority resolve부터 source
+local outbound admission까지만 포함한다. 그 뒤 remote handler 실행은 submit 완료 조건이 아니다.
 
 유효한 call은 pending 공간을 확인하기 전에 해당 family가 실제로 사용하는 admission primitive를
 non-blocking 방식으로 정확히 한 번 호출한다. Remote 경로는 transport submit을 사용하고, local 경로는
@@ -78,18 +79,12 @@ request·join call, worker submit과 lifecycle submit도 이 one-way call 계약
 아니다. 각 언어의 local exception 또는 exceptional completion으로 처리한다. Timeout, cancellation 또는
 shutdown 뒤에는 operation을 자동으로 다시 제출하지 않는다.
 
-Direct pending admission은 Node direct RID, Spot·Actor handle의 owner와 generation, session binding token처럼
-호출자가 지정한 논리 target identity를 유지한다. 물리 peer lifecycle generation은 public commitment가
-아니다. Send-ready 또는 peer lifecycle signal 뒤 재시도할 때는 그 identity의 현재 route만 사용하며
-다른 RID·owner·Spot generation·Actor generation·binding token으로 전환하지 않는다. Target이 제거되었거나
-handle generation이 바뀌면 `TargetNotFound`, 재시도 시점에 해당 identity의 route가 없으면
+Direct pending admission은 Node direct RID, global Spot·Actor ID와 session binding token처럼 호출자가 지정한
+논리 target identity를 유지한다. 물리 peer lifecycle generation은 public commitment가 아니다. Send-ready 또는
+peer lifecycle signal 뒤 재시도할 때는 그 identity의 current authority route만 사용하며 다른 RID·global ID나
+binding token으로 전환하지 않는다. Target authority가 없으면 `TargetNotFound`, 재시도 시점에 route가 없으면
 `RouteNotConnected`로 한 번 완료한다. Route는 유지되지만 capacity가 deadline까지 회복되지
 않은 경우만 `TimedOut`이다.
-
-InstanceSpotAddress는 node와 generation 대신 `(MeshName, InstanceSpotType, SpotRid)`를 public identity로
-유지한다. Location CAS loser가 application pre-admission 단계에서 remote `Ready` owner를 확인한 경우에만
-같은 address의 winning owner로 한 번 redirect할 수 있다. Target queue가 수락한 뒤에는 owner를 바꾸지 않으며,
-수락 여부가 불명확한 실패에도 같은 operation을 다시 제출하지 않는다.
 
 RouteMesh·ClientServer select-one ChannelName의 첫 capacity rejection은 target commitment가 아니다. Framework
 service runtime은 성공한 admission 전까지 같은 ChannelName의 현재 eligible member를 다시 선택할 수 있고,
@@ -124,8 +119,7 @@ One-way admission deadline은 operation이 실제로 사용하는 outbound socke
 
 | Operation family | deadline owner | 기본 규칙 |
 |---|---|---|
-| RouteMesh node·channel, Spot, Actor | 선택한 MeshNode ROUTER send timeout | 설정이 없으면 1초 |
-| Instance Spot | 같은 MeshName source MeshNode의 ROUTER send timeout | address resolve·eligible target 선택에 사용한 시간을 포함하며 설정이 없으면 1초. Target-side claim·activation 시간은 one-way submit deadline에 포함하지 않음 |
+| RouteMesh node·channel, Spot, Actor | 선택한 MeshNode ROUTER send timeout | global object route resolve 시간을 포함하며 설정이 없으면 1초 |
 | ClientServer | client DEALER send timeout | 설정이 없으면 1초 |
 | Logical Multicast | 선택한 MeshNode ROUTER의 target별 send timeout | commit된 publish transaction의 각 remote target에 적용한다 |
 | classic fanout | publisher socket send timeout | 설정이 없으면 1초 |
@@ -154,11 +148,10 @@ Request는 reply, remote 오류, timeout, cancellation 또는 shutdown 가운데
 rollback하지 않는다. 늦게 도착한 reply는 application handler에 다시 전달하지 않고 correlation state를
 정리한다.
 
-InstanceSpotAddress request timeout은 location resolve, target placement, owner claim, activation queue 대기,
-handler와 reply 전체를 포함한다. Source는 앞 단계에서 사용한 시간을 뺀 잔여 시간만 다음 단계에 전달한다.
-짧은 request가 만료되어도 같은 shared activation의 send와 더 긴 request를 abort하지 않는다. 첫 계약은
-remote target의 미수락을 증명하는 receipt를 제공하지 않으므로 timeout이나 연결 실패 뒤 다른 owner에게
-request를 자동 재제출하지 않는다.
+Global object request timeout은 current Ready authority resolve, outbound admission, handler와 reply 전체를
+포함한다. Source는 앞 단계에서 사용한 시간을 뺀 잔여 시간만 다음 단계에 전달한다. Remote target의
+미수락을 증명하는 receipt가 없으므로 timeout이나 연결 실패 뒤 다른 owner에게 request를 자동 재제출하지
+않는다.
 
 같은 handler turn에서 보낸 request를 기다릴 수 있다. reply completion과 send-ready 같은 infrastructure
 작업은 application turn과 분리되어 진행되므로 해당 Spot이나 Actor의 다음 application message를 실행하지
@@ -188,10 +181,10 @@ user callback과 exception mapping은 application turn에서 처리한다. Compl
 transfer control과 shutdown barrier는 infrastructure task에서 처리한다. Application handler가 대기 중이어도
 infrastructure task를 진행할 수 있어야 한다.
 
-Instance placement와 activation도 infrastructure task에서 처리한다. Location Store CAS가 확정한 owner만 factory를
-실행한다. ObjectGeneration과 AuthorityOwnerGeneration은 Store fencing에만 사용한다. `Ready` commit 뒤 owner
-lease에서 계산한 admission deadline을 적용하고 Framework activation barrier를 열기 전에는 first message를
-application turn에 제공하지 않는다.
+Object placement와 activation도 infrastructure task에서 처리한다. Location Store reservation이 확정한 owner만
+factory를 실행한다. AuthorityOwnerGeneration과 owner lease는 Store와 runtime fencing에만 사용한다.
+ObjectGeneration은 public ref와 exact-incarnation mutation·session bind에서도 사용한다. `Ready` commit 뒤 owner
+lease에서 계산한 admission deadline을 적용하고 Framework activation barrier를 연다.
 
 Handler가 예외를 반환하면 send handler는 오류 observer와 metric에 기록한다. Request handler는 같은
 request의 framework 오류 reply를 생성한다. 오류 observer의 실패는 원래 dispatch 결과를 바꾸지 않는다.
@@ -233,7 +226,7 @@ MeshNode가 drain을 시작하면 새 ChannelName 선택과 Logical Multicast ta
 application record, request completion, Actor transfer와 STREAM barrier는 shutdown deadline까지 진행한다.
 Deadline 뒤에는 남은 claim을 revoke하고 대기 중인 operation을 shutdown 결과로 완료한다.
 
-Draining MeshNode는 새 Instance placement 후보에서도 제외된다. Pending activation은 drain deadline과 Framework
+Draining MeshNode는 새 object placement 후보에서도 제외된다. Pending activation은 drain deadline과 Framework
 activation deadline 가운데 먼저 도달한 경계에서 request를 한 번 terminal 완료하고 one-way payload를 drop 처리한다.
 Cancellation, timeout, shutdown과 activation barrier 개방이 경쟁해도 pending operation과 payload reservation을
 한 번만 정리한다.
@@ -248,7 +241,7 @@ callback을 실행하지 않는다. cancel은 해당 generation 이후 callback�
 강제로 중단하지 않는다. 반복 timer가 handler 실행보다 빠르게 만료되어도 같은 key의 callback을 동시에
 실행하지 않으며, 중복 만료를 한 번의 pending record로 합칠 수 있다.
 
-Instance Spot timer는 service runtime이 current owner lease와 admission deadline을 확인한 뒤에만 admission할 수
+Spot timer는 service runtime이 current owner lease와 admission deadline을 확인한 뒤에만 admission할 수
 있다. Lease 갱신이 멈추어 monotonic deadline을 넘으면 Framework process가 일시 정지된 상태였더라도 재개 후
 새 tick을 queue에 넣거나 callback을 시작하지 않는다. 이전 object·owner authority의 pending tick도
 실행하지 않는다.

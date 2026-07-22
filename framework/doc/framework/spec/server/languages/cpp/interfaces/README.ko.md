@@ -10,16 +10,16 @@ Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, 
 |---|---|
 | [Common runtime](01-common-runtime.ko.md) | `dispatch`, `errors`, `messaging`, `codecs`, `workers` |
 | [Configuration과 host](02-configuration-host.ko.md) | `configuration`, `http`, host·DI·module·lifecycle |
-| [Channel messaging](03-channel-messaging.ko.md) | `channels`, `handlers`, RouteMesh·ClientServer·fanout builder와 호출 |
-| [Spots](04-spots.ko.md) | `spots`, `timers`, Entry·User·Instance Spot |
-| [Actors](05-actors.ko.md) | `actors`, Actor lifecycle·messaging·transfer |
+| [Channel messaging](03-channel-messaging.ko.md) | `channels`, `handlers`, topology builder, object role·capacity·weight와 automatic RID |
+| [Spots](04-spots.ko.md) | global SpotRid·SpotRef, ID-only messaging, manager create와 exact close |
+| [Actors](05-actors.ko.md) | global ActorId·ActorRef, ID-only messaging, manager create와 exact mutation·bind |
 | [STREAM session](06-stream-session.ko.md) | `streams`, packet session과 bound session 연동 |
-| [Location Store·Redis](07-location-store.ko.md) | Location record·store capability와 Redis provider |
-| [Maintenance provider](07-location-maintenance.ko.md) | authority·checkpoint provider capability |
+| [Location Store·Redis](07-location-store.ko.md) | Location record, descriptor·capacity와 Redis provider |
+| [Maintenance provider](07-location-maintenance.ko.md) | authority, generic creation Reserve·Commit·Abort와 Transfer capability |
 | [Monitoring](08-monitoring.ko.md) | `monitoring`, `eventing`, snapshot·event·health |
 
 `zlink/framework.hpp`는 위 installed header를 모으는 facade다. Application-facing API에는 Core service
-handle, claim, receive batch, reply token, service liveness command와 authority/checkpoint 내부 transaction을
+handle, claim, receive batch, reply token, service liveness command와 authority/transfer 내부 transaction을
 노출하지 않는다. Framework runtime은 설치된 C++ binding의 public raw socket API만 사용한다.
 
 Public generation, revision, epoch와 sequence ordinal의 유효 범위는

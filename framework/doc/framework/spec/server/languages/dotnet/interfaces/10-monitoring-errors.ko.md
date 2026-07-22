@@ -60,7 +60,20 @@ public enum ZLinkFrameworkErrorKind
     WorkerTimedOut = 18,
     WorkerFailed = 19,
     ActorLocationStale = 20,
-    ActorCreateRejected = 21
+    ActorCreateRejected = 21,
+    ObjectClientNotConfigured = 22,
+    MeshSelectionRequired = 23,
+    MeshNotFound = 24,
+    InvalidConfiguration = 25,
+    AlreadySubmitted = 26,
+    ActorGenerationStale = 27,
+    ActorMoving = 28,
+    DeadlineExceeded = 29,
+    PlacementCapacityExhausted = 30,
+    RoutingIdConflict = 31,
+    SpotGenerationStale = 32,
+    SpotMoving = 33,
+    TransferDataLost = 34
 }
 
 public sealed class ZLinkFrameworkException : Exception
@@ -81,7 +94,9 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 ```
 
 `Kind`의 숫자 값과 기본 재시도 의미는 [공통 Framework API](../../../../05-framework-api.ko.md#13-오류-kind)와
-같다. Remote framework error는 `ZLinkFrameworkException`으로 전달한다.
+같다. `TransferDataLost`는 Location authority가 공개한 Transfer reference의 payload를 영구적으로 찾을 수
+없거나 checksum·inventory digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이 오류에서
+이전 owner로 rollback하지 않는다. Remote framework error는 `ZLinkFrameworkException`으로 전달한다.
 ## 7. Eventing과 metric identity
 
 ```csharp

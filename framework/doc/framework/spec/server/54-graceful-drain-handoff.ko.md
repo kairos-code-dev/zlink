@@ -69,6 +69,11 @@ Outcome wire 값은 `Stopped=0`, `Blocked=1`, `ForceStopped=2`다. Reason wire �
 `DeadlineExceeded=5`, `TransferFailed=6`, `TeardownFailed=7`, `RuntimeNotReady=8`이다. 정의하지 않은 outcome과
 reason 조합은 protocol 오류다.
 
+Published Location authority가 가리키는 Transfer root의 permanent missing, checksum mismatch 또는 inventory digest
+mismatch는 object-level non-retriable `TransferDataLost`다. 진행 중인 `Retire` 결과는
+`ForceStopped/TransferFailed`로 끝내고 monitoring error detail에 `TransferDataLost`를 보존한다. Commit된 owner와
+membership을 source로 rollback하지 않는다.
+
 | Operation | 계약 |
 |---|---|
 | `Retire(deadline, cancellation)` | 모든 local stateful object의 continuity를 preflight한 뒤 admission seal, transfer와 host 종료를 하나의 operation으로 수행함 |
@@ -110,9 +115,9 @@ termination operation이 시작되지 않았으므로 application은 조건을 �
 1. Barrier가 새 Spot·Actor 생성, join, Instance placement, session binding과 inbound transfer를 inventory와
    직렬화한다.
 2. 모든 local MeshNode의 Actor, Spot, timer, session과 진행 중인 infrastructure operation을 inventory한다.
-3. Location authority, 필요한 Checkpoint Store와 target descriptor의 lease를 확인한다.
-4. 각 Actor와 Instance Spot의 transfer policy, state contract compatibility와 target의 bounded headroom을
-   확인한다. Exact inventory가 아직 없으므로 final reservation은 만들지 않는다.
+3. Location authority, 필요한 Transfer Store와 target descriptor의 lease를 확인한다.
+4. Standalone Actor, User Spot aggregate와 Instance Spot의 transfer policy, state contract compatibility와 target의
+   bounded headroom을 확인한다. Exact inventory가 아직 없으므로 final reservation은 만들지 않는다.
 5. Target이 `Serving`이고 application version, type capability, maintenance wave와 bounded capacity를
    모두 만족하는지 확인한다.
 
@@ -134,12 +139,13 @@ Preflight가 성공하면 다음 순서를 한 번만 수행한다.
 1. Host maintenance barrier가 모든 local component의 신규 application·timer admission을 reversible하게 seal한다.
    이 시점에는 아직 `Draining` descriptor를 publish하지 않는다.
 2. Seal 전에 accept한 handler와 timer turn을 완료하고 object별 exact participant boundary와 byte count를 고정한다.
-3. 각 object를 `Preparing → Captured`로 진행해 immutable checkpoint root를 authority에 연결한다.
+3. 각 object를 `Preparing → Captured`로 진행해 immutable transfer root를 authority에 연결한다.
 4. Exact inventory로 target offer·accept·reservation ACK를 완료하고 `Prepared` authority를 CAS한다. Preflight의
    headroom 확인을 final reservation으로 사용하지 않는다.
 5. 모든 대상 object가 `Prepared`가 되면 host state와 descriptor를 `Draining`으로 publish하고 remote selector가
    해당 host를 제외하도록 bounded convergence를 기다린다.
-6. Prepared target으로 Actor와 Instance Spot transfer, durable source cleanup과 Completed CAS를 진행한다.
+6. Prepared target으로 standalone Actor, User Spot aggregate와 Instance Spot transfer, durable source cleanup과
+   Completed CAS를 진행한다.
 7. Bound STREAM route commit·ACK와 maintenance authority의 steady normalization을 끝낸 뒤 target admission을 연다.
 8. Local Spot, owner authority와 descriptor lease를 current fence로 정리한다.
 9. ClientServer listener, fanout publisher, peer connection과 raw transport resource를 닫는다.
@@ -150,12 +156,12 @@ Preflight가 성공하면 다음 순서를 한 번만 수행한다.
 transfer의 durable recovery는 source host의 `ForceStopped` 완료와 독립적으로 계속될 수 있다.
 
 Store failure가 admission seal 전에 발생하면 preflight를 `Blocked/StoreUnavailable`로 끝낸다. `Draining`
-전환 뒤 authority 또는 checkpoint 진행이 실패하면 `ForceStopped/TransferFailed`, descriptor·owner cleanup이나
-checkpoint 삭제를 확인할 수 없으면 `ForceStopped/TeardownFailed`로 끝낸다. 이 처리보다 deadline이 먼저
+전환 뒤 authority 또는 transfer root 진행이 실패하면 `ForceStopped/TransferFailed`, descriptor·owner cleanup이나
+transfer root 삭제를 확인할 수 없으면 `ForceStopped/TeardownFailed`로 끝낸다. 이 처리보다 deadline이 먼저
 끝나면 reason은 `DeadlineExceeded`다. `StoreUnavailable`은 `ForceStopped` reason으로 사용하지 않는다.
 
 Deadline이 preflight 또는 reversible seal·Captured CAS 전 단계에서 끝나면 source authority와 admission을 원래
-상태로 복원하고 `Blocked/DeadlineExceeded`로 끝낸다. Captured CAS가 checkpoint root를 authority에 연결한 뒤에는
+상태로 복원하고 `Blocked/DeadlineExceeded`로 끝낸다. Captured CAS가 transfer root를 authority에 연결한 뒤에는
 accepted journal durability가 시작되므로 deadline을 이유로 `Blocked`로 되돌리지 않는다. 이 시점 이후 deadline은
 bounded teardown과 recovery handoff를 수행한 뒤 `ForceStopped/DeadlineExceeded`로 한 번만 완료한다.
 
@@ -174,7 +180,7 @@ transfer control과 STREAM barrier가 같은 ROUTER connection을 사용할 수 
 4. 새 object transfer를 시작하지 않고 local Actor·Spot, owner record, listener와 transport를 정리한다.
 5. Deadline 안에 끝나면 `Stopped/None`, 끝나지 않으면 bounded teardown 뒤 `ForceStopped`를 완료한다.
 
-`Shutdown`은 logical continuity를 보장하지 않는다. `Disabled` object, 호환 가능한 target 부재와 checkpoint
+`Shutdown`은 logical continuity를 보장하지 않는다. `Disabled` object, 호환 가능한 target 부재와 Transfer Store
 provider 부재는 `Shutdown`을 차단하지 않는다. Hardware failure나 SIGKILL로 operation을 실행할 수 없는
 경우의 owner recovery는 [40 Location runtime](40-location-runtime.ko.md)의 lease와 durable authority를 따른다.
 
@@ -205,20 +211,30 @@ reader와 runtime event handler는 termination progress를 막는 claim을 소�
 
 ## 7. STREAM barrier
 
-Actor와 Instance Spot transfer는 [40 Location runtime](40-location-runtime.ko.md)의 owner·transfer authority
-CAS를 사용한다. `Retire`는 type 등록의 `Disabled`, `Recreate`, `Snapshot` policy를 적용한다.
+Standalone Actor, User Spot aggregate와 Instance Spot transfer는
+[40 Location runtime](40-location-runtime.ko.md)의 owner·transfer authority CAS를 사용한다. `Retire`는 type
+등록의 `Disabled`, `Recreate`, `Snapshot` policy를 적용한다.
 
 - `Disabled` object가 남아 있으면 preflight를 `TransferDisabled`로 차단한다.
-- `Recreate`는 target factory를 같은 logical ID로 실행하며 application state section 없이 accepted journal만
-  checkpoint envelope에 기록한다.
-- `Snapshot`은 typed adapter가 capture한 application state와 seal 전 accepted journal을 Checkpoint Store에
+- `Recreate`는 target factory를 같은 logical ID로 실행하며 application state section 없이 accepted journal과
+  recovery payload를 transfer envelope에 기록한다.
+- `Snapshot`은 typed adapter가 capture한 application state와 seal 전 accepted journal을 Transfer Store에
   기록하고 target activation 전에 restore한다.
-- Entry Spot은 transfer하지 않고 target node startup에서 구성한다.
-- User Spot은 transfer policy를 받지 않는다. Preflight linearization point에 User Spot instance가 하나라도
-  남아 있으면 `TransferDisabled`로 host `Retire`를 차단한다. Runtime은 class shape, field나 Actor membership으로
-  state가 없는 Actor container인지 추론하지 않는다.
-- Instance Spot의 public activation은 `InstanceSpotAddress` send·request만 시작하고 `Resolve`는 existing owner만
-  반환한다. `Retire`가 수행하는 target materialization은 address cold activation과 다른 maintenance transaction이다.
+- Entry Spot은 transfer하지 않고 target node startup에서 Framework가 새 identity로 구성한다.
+- User Spot은 Spot과 preflight linearization point의 member Actor 전체를 하나의 transfer aggregate로 처리한다.
+  Spot과 각 Actor에 등록한 policy·state contract를 함께 검사하며 participant 하나라도 `Disabled`이거나 호환
+  target을 찾을 수 없으면 commit 전에 전체 aggregate를 `TransferDisabled`로 차단한다.
+- User Spot aggregate는 non-zero 128-bit aggregate ID, 최대 1024 participant와 encoded 최대 1 MiB record를
+  사용한다. Spot owner, Actor owner와 membership은 한 commit generation에서 함께 전환한다. Commit 전 실패는
+  source aggregate 전체를 유지하고, commit 뒤 실패는 일부 participant를 source로 되돌리지 않고 target aggregate
+  recovery를 계속한다.
+- Cross-node Actor `JoinSpot`·`JoinEntrySpot`은 target proposal, shared policy preflight, source seal, durable capture, target reservation과
+  prepare, owner·membership aggregate commit, restore·callback·ACK 순서로 진행한다. Commit 전 실패는 source owner와
+  membership을 유지하고 commit 뒤 실패는 target recovery를 계속한다. Same-node join은 relocation이 아니므로
+  transfer policy로 차단하지 않는다.
+- Instance Spot의 public activation은 Manager의 명시적인 create intent만 시작한다. 일반 message와 find는 existing
+  authority를 사용하며 hidden create를 시작하지 않는다. `Retire` target materialization은 logical create와 다른
+  maintenance transaction이다.
 
 Bound STREAM connection 자체는 이동하지 않는다. Actor owner commit 뒤 session relay authority와 binding
 generation을 갱신하고 stale packet과 reply를 거부한다. Runtime timer handle과 callback continuation도
@@ -266,7 +282,8 @@ transfer 진행을 막지 않는다.
 
 - `Retire` preflight blocker가 있으면 host state가 `Serving`이고 모든 local admission이 유지된다.
 - Multi-Mesh host의 preflight와 admission seal이 all-or-none으로 동작한다.
-- `Retire` 성공은 supported Actor·Instance Spot continuity, session barrier와 host cleanup을 모두 완료한다.
+- `Retire` 성공은 supported standalone Actor·User Spot aggregate·Instance Spot continuity, session barrier와 host
+  cleanup을 모두 완료한다.
 - `Shutdown`은 새 transfer를 시작하지 않고 `Stopped` 또는 `ForceStopped`로 유한 완료된다.
 - 기본 deadline은 30초이며 caller cancellation은 waiter만 끝낸다.
 - Concurrent `Retire` waiter는 같은 preflight attempt를 공유하지만 `Blocked` result는 host terminal로 저장하지
@@ -281,7 +298,8 @@ transfer 진행을 막지 않는다.
   `ForceStopped/DeadlineExceeded`로 끝난다.
 - Store failure가 seal 전에는 `Blocked/StoreUnavailable`, seal 뒤에는 단계에 따라
   `ForceStopped/TransferFailed|TeardownFailed`로 끝난다.
-- User Spot instance가 하나라도 남아 있으면 state 유무를 추론하지 않고 `Retire`를 차단한다.
+- User Spot과 member Actor가 하나의 bounded aggregate로 preflight·commit되고 partial owner·membership이 공개되지
+  않는다.
 - `Serving`이 아닌 node는 새 ChannelName, Logical Multicast, Instance placement와 transfer target에서 제외된다.
 - 이미 수락한 request는 reply·error·timeout·shutdown 가운데 하나로 한 번만 끝난다.
 - Application callback이 대기 중이어도 infrastructure completion과 termination barrier가 진행된다.
@@ -291,7 +309,7 @@ transfer 진행을 막지 않는다.
 - Target은 Activated 뒤에도 sealed이며 durable source cleanup, Completed, bound-session route ACK와 steady
   normalization 뒤에만 Ready다.
 - Precommit abort는 durable Aborted CAS 전에 session route를 되돌리거나 source admission을 열지 않는다.
-- Instance maintenance transfer가 address cold activation이나 stale `SpotHandle`의 hidden create를 시작하지 않는다.
+- Instance maintenance transfer가 logical create나 stale ref의 hidden create를 시작하지 않는다.
 - Store failure와 deadline 경쟁에서도 terminal result는 한 번만 완료된다.
 - `FrameworkRuntimeState`, outcome, reason, event와 metric 값이 공통 wire 값 및 실제 terminal result와 일치한다.
 - ClientServer와 fanout cleanup이 MeshNode descriptor나 Spot·Actor authority를 잘못 변경하지 않는다.

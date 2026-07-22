@@ -6,13 +6,11 @@
 public interface ZLinkFrameworkOptions {
     Duration defaultRequestTimeout();
     void setDefaultRequestTimeout(Duration timeout);
-    Duration actorTransferForwardWindow();
-    void setActorTransferForwardWindow(Duration window);
     ZLinkCodecRegistryBuilder codecs();
     void addHandlersFromPackageOf(Class<?> markerType);
     ZLinkMetadataPolicyBuilder configureMetadata();
     void addLocationStore(ZLinkLocationStore store);
-    void addCheckpointStore(ZLinkCheckpointStore store);
+    void addTransferStore(ZLinkTransferStore store);
     void setApplicationVersion(long version);
     void setMaintenanceWave(String waveId);
     ZLinkLocationOptions configureLocations();
@@ -70,9 +68,10 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder setBindHost(String host);
     ZLinkMeshNodeBuilder setAdvertiseHost(String host);
     ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
-    ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount);
-    ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount, String prefix);
-    ZLinkMeshNodeBuilder setRoutingIdAllocationGroup(String groupName);
+    ZLinkMeshNodeBuilder setRoutingIdPrefix(String prefix);
+    ZLinkMeshNodeBuilder setPlacementWeight(int weight);
+    ZLinkMeshNodeBuilder setObjectCapacity(int maxActiveObjects, int maxPendingActivations);
+    ZLinkMeshObjectRoleBuilder objects();
     ZLinkMeshNodeSocketConfig configureRouterSocket();
     ZLinkSpotPublisherConfig configureSpotPublisher();
     ZLinkMeshPeerConnections peerConnections();
@@ -88,30 +87,35 @@ public interface ZLinkMeshNodeBuilder {
         Class<TRequest> requestType,
         Class<TReply> replyType);
 
-    ZLinkEntrySpotOptions configureEntrySpot();
-    ZLinkMeshNodeBuilder addSpotFactory(Class<? extends ZLinkSpot> spotClass);
-    ZLinkMeshNodeBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
-    <TSpot extends ZLinkInstanceSpot> ZLinkMeshNodeBuilder addInstanceSpotFactory(
-        String instanceSpotType,
-        Class<TSpot> spotClass);
-    <TSpot extends ZLinkInstanceSpot> ZLinkMeshNodeBuilder addInstanceSpotFactory(
-        String instanceSpotType,
-        Class<TSpot> spotClass,
-        ZLinkInstanceSpotFactoryOptions options);
-    <TSpot extends ZLinkInstanceSpot> ZLinkMeshNodeBuilder addInstanceSpotFactory(
-        String instanceSpotType,
-        Class<TSpot> spotClass,
-        ZLinkInstanceSpotFactoryOptions options,
-        ZLinkTransferPolicy<TSpot> transfer);
-    ZLinkMeshNodeBuilder addActorFactory(
-        String actorType,
-        Class<? extends ZLinkActorFactory> factoryClass);
-    <TActor extends ZLinkActor> ZLinkMeshNodeBuilder addActorFactory(
+}
+
+public interface ZLinkMeshObjectRoleBuilder {
+    ZLinkMeshObjectClientBuilder client();
+    ZLinkMeshObjectServerBuilder server();
+}
+
+public interface ZLinkMeshObjectClientBuilder {}
+
+public interface ZLinkMeshObjectServerBuilder {
+    ZLinkMeshObjectServerBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
+    <TSpot extends ZLinkSpot> ZLinkMeshObjectServerBuilder addSpotFactory(
+        String spotType, Class<TSpot> spotClass,
+        ZLinkObjectPlacementOptions placement, ZLinkTransferPolicy<TSpot> transfer);
+    <TSpot extends ZLinkInstanceSpot> ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
+        String instanceSpotType, Class<TSpot> spotClass,
+        ZLinkObjectPlacementOptions placement, ZLinkTransferPolicy<TSpot> transfer);
+    <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String actorType,
         Class<TActor> actorClass,
         Class<? extends ZLinkActorFactory> factoryClass,
+        ZLinkObjectPlacementOptions placement,
         ZLinkTransferPolicy<TActor> transfer);
 }
+
+public record ZLinkObjectPlacementOptions(
+    Set<String> placementProfiles,
+    Integer maxActiveObjects,
+    Integer maxPendingActivations) {}
 
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
@@ -120,10 +124,7 @@ public interface FanoutChannelBuilder {
     FanoutChannelBuilder setBindHost(String host);
     FanoutChannelBuilder setAdvertiseHost(String host);
     FanoutChannelBuilder setRoutingId(RoutingId publisherRoutingId);
-    FanoutChannelBuilder useAllocatedRoutingId(int slotCount);
-    FanoutChannelBuilder useAllocatedRoutingId(
-        int slotCount, String routingIdPrefix);
-    FanoutChannelBuilder setRoutingIdAllocationGroup(String groupName);
+    FanoutChannelBuilder setRoutingIdPrefix(String prefix);
     FanoutChannelBuilder enableSubscriber();
     FanoutChannelBuilder enableSubscriber(String endpoint);
     ZLinkEndpointConnections subscriberConnections();
@@ -131,14 +132,22 @@ public interface FanoutChannelBuilder {
 }
 ```
 
-두 인자 Actor factory overload는 `Disabled` policy를 사용한다. Stateful maintenance policy를 등록할 때는
-네 인자 overload를 사용한다. Runtime은 factory가 반환한 Actor를
-`actorClass`로 검사하고, Snapshot adapter의 instance type과 함께 startup에 검증한다. 별도 factory interface를
-추가하지 않고 type 검증 복잡성을 runtime이 처리한다.
+Object role을 생략하면 `None`이다. `client()`는 global object operation만 제공하고 placement target이 되지
+않으며 `server()`는 Client capability와 Entry Spot·factory registration을 제공한다. Client와 Server는
+Location Store가 필수다. Actor·User Spot·Instance Spot factory는 stable type과 explicit transfer policy를
+반드시 받으며 policy를 생략하는 overload는 없다.
+
+Node placement weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending 128이다.
+Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Integer.MAX_VALUE`이며 node limit보다 작은 값을
+적용한다. Placement profile은 UTF-8 1..255 bytes다. Capacity filter를 weight보다 먼저 적용한다.
+`enableActorDispatch()`는 인자가 없으며 global ActorId가 Mesh를 resolve한다.
 
 Location provider는 `ZLinkLocationStore`를 통해 descriptor·location 기능과 authority CAS capability를 함께
 제공한다. 별도 `ZLinkAuthorityStore` instance를 host에 등록하지 않는다. `Recreate` 또는 `Snapshot` policy를
-사용하는 host는 `ZLinkCheckpointStore`를 하나 등록한다.
+하나라도 등록한 host는 `ZLinkTransferStore`를 정확히 하나 등록한다. `Disabled` factory와 same-node join만 사용하는
+host는 Transfer Store가 없어도 된다. Missing 또는 duplicate Store registration은 socket bind 전에 startup
+configuration error다. Location과 Transfer capability를 함께 등록하는 API와 Redis 전용 registration helper는
+제공하지 않는다.
 
 `ApplicationVersion`은 `0..Long.MAX_VALUE` 범위의 배포 순번이다. 음수는 startup validation에서 거부한다.
 Application traffic과 무관한 5초 periodic probe와 같은 current connection의 matching ACK 15초 deadline은
@@ -158,8 +167,9 @@ effective bound를 complete message allocation 전에 적용한다. 이 negotiat
 선택한다. 음수는 startup 설정 오류다. Logical Multicast의 local target도 이 용량 제한으로 admission을
 판단한다.
 
-`useAllocatedRoutingId(...)`의 `slotCount`는 `1..65535`다. 같은 allocation group에 정규화한 MeshNode와
-fanout publisher member를 합쳐 `1..255`개만 둘 수 있으며 범위를 벗어나면 startup 설정 오류다.
+Automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이며 active
+owner 충돌은 새 suffix로 최대 8회 재시도한다. Fixed RID는 object role과 Store descriptor가 없는 manual
+topology에서만 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
@@ -195,9 +205,7 @@ public interface systems.zlink.framework.configuration.FanoutChannelBuilder {
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setBindHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setAdvertiseHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setRoutingId(systems.zlink.contracts.core.RoutingId);
-  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder useAllocatedRoutingId(int);
-  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder useAllocatedRoutingId(int, java.lang.String);
-  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setRoutingIdAllocationGroup(java.lang.String);
+  public abstract systems.zlink.framework.configuration.FanoutChannelBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder enableSubscriber();
   public abstract systems.zlink.framework.configuration.FanoutChannelBuilder enableSubscriber(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkEndpointConnections subscriberConnections();
@@ -242,10 +250,6 @@ public interface systems.zlink.framework.configuration.ZLinkEndpointConnections 
   public abstract void connect(java.lang.String);
   public abstract void disconnect(java.lang.String);
   public abstract java.util.List<java.lang.String> listConnections();
-}
-public interface systems.zlink.framework.configuration.ZLinkEntrySpotOptions {
-  public abstract systems.zlink.contracts.core.RoutingId routingId();
-  public abstract void setRoutingId(systems.zlink.contracts.core.RoutingId);
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig {
   public abstract long maxMessageSize();
@@ -343,7 +347,7 @@ public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String, boolean);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder registerSession(java.lang.Class<? extends systems.zlink.framework.streams.ZLinkSession>);
-  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder enableActorDispatch(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder enableActorDispatch();
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder addSessionPacketHandler(java.lang.Class<?>);
 }
 public final class systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkUnhandledDispatchAction> {
@@ -439,12 +443,10 @@ public final class systems.zlink.framework.configuration.ZLinkDispatchMessageKin
 public interface systems.zlink.framework.configuration.ZLinkFrameworkOptions {
   public abstract java.time.Duration defaultRequestTimeout();
   public abstract void setDefaultRequestTimeout(java.time.Duration);
-  public abstract java.time.Duration actorTransferForwardWindow();
-  public abstract void setActorTransferForwardWindow(java.time.Duration);
   public abstract systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder codecs();
   public abstract void addHandlersFromPackageOf(java.lang.Class<?>);
   public abstract systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder configureMetadata();
-  public abstract void addCheckpointStore(systems.zlink.framework.locations.ZLinkCheckpointStore);
+  public abstract void addTransferStore(systems.zlink.framework.locations.ZLinkTransferStore);
   public abstract void setApplicationVersion(long);
   public abstract void setMaintenanceWave(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteMesh(java.lang.String);
@@ -479,23 +481,34 @@ public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setBindHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setAdvertiseHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingId(systems.zlink.contracts.core.RoutingId);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder useAllocatedRoutingId(int);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder useAllocatedRoutingId(int, java.lang.String);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdAllocationGroup(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig configureRouterSocket();
   public abstract systems.zlink.framework.configuration.ZLinkSpotPublisherConfig configureSpotPublisher();
   public abstract systems.zlink.framework.configuration.ZLinkMeshPeerConnections peerConnections();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setDefaultRequestTimeout(java.time.Duration);
   public abstract <THandler extends systems.zlink.framework.channels.ZLinkRouteSendHandler<TMessage>, TMessage> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteSendHandler(java.lang.Class<THandler>, java.lang.Class<TMessage>);
   public abstract <THandler extends systems.zlink.framework.channels.ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteRequestHandler(java.lang.Class<THandler>, java.lang.Class<TRequest>, java.lang.Class<TReply>);
-  public abstract systems.zlink.framework.configuration.ZLinkEntrySpotOptions configureEntrySpot();
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addSpotFactory(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpot<?>>);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.spots.ZLinkInstanceSpotFactoryOptions);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.spots.ZLinkInstanceSpotFactoryOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TSpot>);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addActorFactory(java.lang.String, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>);
-  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
+}
+public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder client();
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder server();
+}
+public interface systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder {
+}
+public interface systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TSpot>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TSpot>);
+  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
+}
+public final class systems.zlink.framework.configuration.ZLinkObjectPlacementOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkObjectPlacementOptions(java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
+  public java.util.Set<java.lang.String> placementProfiles();
+  public java.lang.Integer maxActiveObjects();
+  public java.lang.Integer maxPendingActivations();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowOutcome extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowOutcome> {
   public static final systems.zlink.framework.configuration.ZLinkMessageFlowOutcome RECEIVED;

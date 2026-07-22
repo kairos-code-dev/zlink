@@ -1,22 +1,41 @@
 # Kotlin 구성과 host 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Java 구성](../../java/interfaces/configuration-host.ko.md)
+[인터페이스 목차](README.ko.md) · [Java 구성](../../java/interfaces/configuration-host.ko.md) ·
+[MeshNode 공통 계약](../../../21-mesh-node.ko.md)
 
-Kotlin은 Java `ZLinkFrameworkOptions`와 builder를 그대로 사용한다. `ApplicationVersion`은 Kotlin `Long`이며
-음수를 허용하지 않는다. Service liveness는 application traffic과 무관하게 5초마다 probe를 보내고 같은
-current connection의 matching ACK를 15초 안에 받아야 한다. 다른 inbound frame은 deadline을 충족하지 않는다.
-공유 JVM runtime이 이 profile을 적용하고 Kotlin DSL option으로 다시 노출하지 않는다.
+Kotlin application은 Java builder를 직접 사용한다. Kotlin DSL은 receiver와 reified type으로 실제 중복을
+줄이는 경우에만 제공하며 Java contract에 없는 역할, factory default, allocation provider를 만들지 않는다.
 
-MeshNode의 `maxMessageSize`, `mailboxMessageBudget`와 `mailboxByteBudget`도 Java startup configuration을
-그대로 사용하며 Kotlin runtime setter나 별도 DSL option으로 반복하지 않는다. 정규화한 message bound의
-internal negotiation, `0`이 선택하는 유한 mailbox profile과 startup validation은 Java 계약과 같다.
+MeshNode의 object role은 `None`, `Client`, `Server` 중 하나다. `objects()`를 호출하지 않으면 `None`,
+`client()`는 outbound manager와 resolve를 제공하고 `server()`는 Client 기능과 factory·Entry registration을
+함께 제공한다. Client와 Server는 Location Store가 필요하다. None에는 object manager나 factory가 없다.
+한 node에서 role을 중복 선택하면 startup configuration error다.
 
-Fully encoded MeshNode descriptor 1 MiB, Spot type·stateful object capability collection 각 1024개와 capability별
-readable state contract ID 1024개 상한도 Java 계약을 그대로 적용한다. 공유 runtime은 완성된 descriptor를
-socket bind 전에 원자적으로 검증하며 truncate·split·partial publish하지 않는다.
+`ZLinkFrameworkOptions.addLocationStore(...)`와 `addTransferStore(...)`는 Java public member를 그대로 사용한다.
+`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있으면 Transfer Store를 정확히 하나 등록해야 하며 missing·duplicate는
+socket bind 전에 configuration error다. `DISABLED` factory와 same-node join만 사용하는 host에는 Transfer Store가
+필수가 아니다. 두 capability를 묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
+완료 가능한 모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `RECREATE`도 accepted journal과 recovery
+payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한다. Same-node Actor join은 Transfer payload를
+만들지 않고, `DISABLED` cross-node 이동은 capture 전에 거부한다.
 
-같은 인자를 Java builder로 전달하기만 하는 wrapper는 만들지 않는다. DSL은 receiver와 reified type으로
-중복을 실제로 줄이는 경우에만 제공한다.
+다음 Java builder member는 Kotlin에서 property 변환 없이 같은 JVM signature로 직접 호출한다.
+
+```java
+public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
+}
+public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder client();
+  public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder server();
+}
+public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder enableActorDispatch();
+}
+```
 
 ## Kotlin source signature
 
@@ -34,14 +53,33 @@ inline fun ZLinkFrameworkOptions.configureDispatch(
 fun ZLinkFrameworkOptions.configureStreamCompression(
     configure: ZLinkStreamCompressionBuilder.() -> Unit,
 ): ZLinkFrameworkOptions
+
+inline fun <reified TActor, reified TFactory>
+    ZLinkMeshObjectServerBuilder.actorFactory(
+        actorType: String,
+        placement: ZLinkObjectPlacementOptions?,
+        transfer: ZLinkTransferPolicy<TActor>,
+    ): ZLinkMeshObjectServerBuilder
+    where TActor : ZLinkActor,
+          TFactory : ZLinkActorFactory
 ```
 
-`CoroutineScope`를 받는 overload는 application이 제공한 scope의 종료를 존중한다. Framework가 만든 callback
-bridge가 별도 public scope 또는 executor 설정을 노출하지 않는다.
+`placement`은 nullable이지만 `transfer`에는 default가 없다. Placement option은 placement profile collection,
+type별 `maxActiveObjects`, `maxPendingActivations`만 가진다. Node default는 active 10000, pending 128이고
+type override 범위는 1..`Int.MAX_VALUE`다. Effective capacity는 node와 type 값 중 작은 값이다. Node placement
+weight는 0..100이고 기본값은 100이다. Channel weight와 별개이며 runtime update와 descriptor snapshot에
+같은 값을 사용한다.
+
+MeshNode와 Store-backed fanout publisher의 automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는
+ASCII `[A-Za-z0-9._-]` 1..64자이고 full RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대
+8회 재시도하고 모두 충돌하면 `RoutingIdConflict`다. Fixed RID는 object role이나 automatic Store descriptor가
+없는 manual topology에서만 사용할 수 있다. Slot count, allocation group과 public allocation provider는 없다.
+
+모든 Actor, User Spot, Instance Spot factory는 stable type, optional typed placement와 명시적인
+`Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
+생성하지 않는다. `ZLinkStreamNodeBuilder.enableActorDispatch()`는 인자가 없고 global ID가 Mesh를 결정한다.
 
 ## Exact generated JVM signature
-
-아래 JVM signature는 Kotlin source contract의 generated form이다.
 
 ```java
 public final class systems.zlink.framework.kotlin.ZLinkCoroutineHandlerOptionsKt {
@@ -50,54 +88,9 @@ public final class systems.zlink.framework.kotlin.ZLinkCoroutineHandlerOptionsKt
 }
 public final class systems.zlink.framework.kotlin.ZLinkDispatchOptionsExtensionsKt {
   public static final systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.Unit>);
-  public static final systems.zlink.framework.configuration.ZLinkDispatchOptions onMessageFlow(systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkMessageFlowEvent, kotlin.Unit>);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshNodeBuilder, java.lang.String, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
-  public static systems.zlink.framework.configuration.ZLinkMeshNodeBuilder actorFactory$default(systems.zlink.framework.configuration.ZLinkMeshNodeBuilder, java.lang.String, systems.zlink.framework.actors.ZLinkTransferPolicy, int, java.lang.Object);
-  public static final <TInstance, TState, TAdapter extends systems.zlink.framework.actors.ZLinkTransferStateAdapter<TInstance, TState>> systems.zlink.framework.actors.ZLinkTransferPolicy<TInstance> snapshotTransfer(java.lang.String);
-  public static final <TReply> java.lang.Object awaitReply(systems.zlink.framework.channels.ZLinkRequestCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object awaitReply(systems.zlink.framework.channels.ZLinkRequestCall, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object yieldReply(systems.zlink.framework.channels.ZLinkRequestCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object yieldReply(systems.zlink.framework.channels.ZLinkRequestCall, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object awaitReply(systems.zlink.framework.actors.ZLinkActorRequestCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object awaitReply(systems.zlink.framework.actors.ZLinkActorRequestCall, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object yieldReply(systems.zlink.framework.actors.ZLinkActorRequestCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object yieldReply(systems.zlink.framework.actors.ZLinkActorRequestCall, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object requestToActorAwait(systems.zlink.framework.actors.ZLinkActorClient, java.lang.String, systems.zlink.framework.actors.ActorRef, java.lang.Object, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object requestToActorAwait(systems.zlink.framework.actors.ZLinkActorClient, java.lang.String, systems.zlink.framework.actors.ActorRef, java.lang.Object, kotlin.coroutines.Continuation<? super TReply>);
-  public static final java.lang.Object findActor(systems.zlink.framework.actors.ZLinkActorDirectory, java.lang.String, java.lang.String, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ActorRef>);
-  public static final systems.zlink.framework.actors.ActorRefSnapshot snapshot(systems.zlink.framework.actors.ActorRef);
-  public static final systems.zlink.framework.actors.ActorRef actorRef(systems.zlink.framework.actors.ActorRefSnapshot);
-  public static final java.lang.Object isPeerReady(systems.zlink.framework.locations.ZLinkLocationReadiness, java.lang.String, systems.zlink.framework.locations.ZLinkLocationRole, systems.zlink.contracts.core.RoutingId, kotlin.coroutines.Continuation<? super java.lang.Boolean>);
-  public static java.lang.Object isPeerReady$default(systems.zlink.framework.locations.ZLinkLocationReadiness, java.lang.String, systems.zlink.framework.locations.ZLinkLocationRole, systems.zlink.contracts.core.RoutingId, kotlin.coroutines.Continuation, int, java.lang.Object);
-  public static final java.lang.Object bindOrGetActor(systems.zlink.framework.streams.ZLinkSessionActors, systems.zlink.framework.actors.ActorRef, kotlin.coroutines.Continuation<? super systems.zlink.framework.streams.ZLinkSessionActor>);
-  public static final java.lang.Object awaitJoinCallVoid(systems.zlink.framework.actors.ZLinkActorJoinCall, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<java.lang.Void>>);
-  public static final <TReply> java.lang.Object awaitJoinCall(systems.zlink.framework.actors.ZLinkActorJoinCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>>);
-  public static final <TReply> java.lang.Object awaitJoinCallReified(systems.zlink.framework.actors.ZLinkActorJoinCall, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>>);
-  public static final java.lang.Object yieldJoinCallVoid(systems.zlink.framework.actors.ZLinkActorJoinCall, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<java.lang.Void>>);
-  public static final <TReply> java.lang.Object yieldJoinCall(systems.zlink.framework.actors.ZLinkActorJoinCall, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>>);
-  public static final <TReply> java.lang.Object yieldJoinCallReified(systems.zlink.framework.actors.ZLinkActorJoinCall, kotlin.coroutines.Continuation<? super systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>>);
-  public static final <T> java.lang.Object yieldWorker(systems.zlink.framework.spots.ZLinkWorkerCall<T>, kotlin.coroutines.Continuation<? super T>);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkClient, java.lang.String, TMessage);
-  public static final <TReply> java.lang.Object request(systems.zlink.framework.channels.ZLinkClient, java.lang.String, systems.zlink.contracts.messaging.Message, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TEvent> systems.zlink.framework.channels.ZLinkFanoutPublishCall publishToTopic(systems.zlink.framework.channels.ZLinkFanoutClient, java.lang.String, java.lang.String, TEvent);
-  public static final <TEvent> systems.zlink.framework.channels.ZLinkFanoutPublishCall publishToTopic(systems.zlink.framework.channels.ZLinkFanoutClient, java.lang.String, TEvent);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, systems.zlink.contracts.core.RoutingId, TMessage);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, TMessage);
-  public static final <TReply> java.lang.Object request(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, systems.zlink.contracts.core.RoutingId, systems.zlink.contracts.messaging.Message, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TReply> java.lang.Object request(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, systems.zlink.contracts.messaging.Message, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.framework.spots.SpotHandle, TMessage);
-  public static final <TReply> java.lang.Object request(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.framework.spots.SpotHandle, systems.zlink.contracts.messaging.Message, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.framework.spots.InstanceSpotAddress, TMessage);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkRequestCall request(systems.zlink.framework.channels.ZLinkRouteClient, systems.zlink.framework.spots.InstanceSpotAddress, TMessage);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkSendCall send(systems.zlink.framework.spots.ZLinkSpotOutbound, systems.zlink.framework.spots.InstanceSpotAddress, TMessage);
-  public static final <TMessage> systems.zlink.framework.channels.ZLinkRequestCall request(systems.zlink.framework.spots.ZLinkSpotOutbound, systems.zlink.framework.spots.InstanceSpotAddress, TMessage);
-  public static final <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> java.lang.Object create(systems.zlink.framework.spots.ZLinkSpotManager, java.lang.String, kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
-  public static final <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> java.lang.Object create(systems.zlink.framework.spots.ZLinkSpotManager, java.lang.String, systems.zlink.framework.messaging.ZLinkMessage, kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
-  public static final <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> java.lang.Object create(systems.zlink.framework.spots.ZLinkSpotManager, java.lang.String, systems.zlink.contracts.core.RoutingId, kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
-  public static final <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> java.lang.Object getOrCreate(systems.zlink.framework.spots.ZLinkSpotManager, java.lang.String, systems.zlink.contracts.core.RoutingId, kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
-  public static final <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> java.lang.Object getOrCreate(systems.zlink.framework.spots.ZLinkSpotManager, java.lang.String, systems.zlink.contracts.core.RoutingId, systems.zlink.framework.messaging.ZLinkMessage, kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
+  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
   public static final systems.zlink.framework.configuration.ZLinkFrameworkOptions configureStreamCompression(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder, kotlin.Unit>);
 }
 ```

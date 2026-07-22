@@ -38,10 +38,6 @@ static const char wss[] = "wss";
 #ifdef ZLINK_HAVE_TLS
 static const char tls[] = "tls";
 #endif
-#ifdef ZLINK_HAVE_OPENPGM
-static const char pgm[] = "pgm";
-static const char epgm[] = "epgm";
-#endif
 #if defined ZLINK_HAVE_IPC
 static const char ipc[] = "ipc";
 #endif

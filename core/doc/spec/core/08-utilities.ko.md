@@ -376,8 +376,8 @@ ZLINK_EXPORT bool zlink_has (const char *capability_);
 ```
 
 `capability_`는 NUL로 끝나는 non-NULL 문자열이며 함수는 이 문자열을 보관하지 않습니다. `"tcp"`는 항상
-`true`입니다. `"ipc"`, `"tls"`, `"ws"`, `"wss"`, `"pgm"`, `"epgm"`은 해당 기능을 포함해 build한
-경우에만 `true`입니다. 다른 문자열은 `false`입니다.
+`true`입니다. `"ipc"`, `"tls"`, `"ws"`, `"wss"`는 해당 기능을 포함해 build한 경우에만
+`true`입니다. 다른 문자열은 `false`입니다.
 
 **스레드 안전성:** 전역 상태를 바꾸지 않으며 모든 스레드에서 호출할 수 있습니다.
 

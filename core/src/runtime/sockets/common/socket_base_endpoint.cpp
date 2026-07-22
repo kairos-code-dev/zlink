@@ -33,10 +33,6 @@
 #include "transports/tls/wss_address.hpp"
 #endif
 
-#ifdef ZLINK_HAVE_OPENPGM
-#include "transports/pgm/pgm_socket.hpp"
-#endif
-
 int zlink::socket_base_t::parse_uri (const char *uri_, std::string &scheme_, std::string &path_)
 {
     zlink_assert (uri_ != NULL);
@@ -74,9 +70,6 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
 #ifdef ZLINK_HAVE_TLS
         && protocol_ != protocol_name::tls
 #endif
-#ifdef ZLINK_HAVE_OPENPGM
-        && protocol_ != protocol_name::pgm && protocol_ != protocol_name::epgm
-#endif
     ) {
         errno = EPROTONOSUPPORT;
         return -1;
@@ -104,15 +97,6 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
     if (protocol == protocol_name::inproc)
         return bind_inproc_endpoint (endpoint_uri_);
-
-#ifdef ZLINK_HAVE_OPENPGM
-    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
-        rc = connect (endpoint_uri_);
-        if (rc != -1)
-            options.connected = true;
-        return rc;
-    }
-#endif
 
     io_thread_t *io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
@@ -227,28 +211,10 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         return -1;
     }
 
-#ifdef ZLINK_HAVE_OPENPGM
-    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
-        struct pgm_addrinfo_t *res = NULL;
-        uint16_t port_number = 0;
-        rc = pgm_socket_t::init_address (address.c_str (), &res, &port_number);
-        if (res != NULL)
-            pgm_freeaddrinfo (res);
-        if (rc != 0 || port_number == 0) {
-            LIBZLINK_DELETE (paddr);
-            return -1;
-        }
-    }
-#endif
-
     session_base_t *session = session_base_t::create (io_thread, true, this, options, paddr);
     errno_assert (session);
 
-#ifdef ZLINK_HAVE_OPENPGM
-    const bool subscribe_to_all = protocol == protocol_name::pgm || protocol == protocol_name::epgm;
-#else
     const bool subscribe_to_all = false;
-#endif
     pipe_t *newpipe = NULL;
 
     if (options.immediate != 1 || subscribe_to_all) {

@@ -87,8 +87,8 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 | `zlink.transfer.completed` | counter | `{transfer}` | `mesh_name`, `object_kind`, `policy`, `outcome` | transfer terminal 결과 누계 |
 | `zlink.transfer.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | prepare부터 terminal phase까지의 시간 |
 | `zlink.transfer.recovered` | counter | `{transfer}` | `mesh_name`, `object_kind` | recovery coordinator가 이어서 처리한 transfer 수 |
-| `zlink.transfer.journal.messages` | histogram | `{message}` | `mesh_name`, `object_kind` | checkpoint에 포함한 accepted message 수 |
-| `zlink.checkpoint.bytes` | histogram | `By` | `mesh_name`, `object_kind`, `state_contract` | immutable checkpoint envelope 크기 |
+| `zlink.transfer.journal.messages` | histogram | `{message}` | `mesh_name`, `object_kind` | transfer envelope에 포함한 accepted message 수 |
+| `zlink.transfer.bytes` | histogram | `By` | `mesh_name`, `object_kind`, `state_contract` | immutable transfer envelope 크기 |
 | `zlink.stream.connections.active` | updown | `{connection}` | `transport` | 현재 STREAM session 수 |
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | STREAM session open 누계 |
 | `zlink.stream.connections.closed` | counter | `{connection}` | `transport`, `close_reason` | STREAM session close 누계 |
@@ -142,7 +142,7 @@ Activation `outcome`은 `ready|rejected|conflict|timed_out|shutdown|store_failur
 `record_kind`는 `mesh_node_descriptor|client_server_server_descriptor|fanout_publisher_descriptor|spot|instance_spot|actor`,
 `scope_kind`는 `mesh|channel`의 닫힌 값이다. MeshNode·Spot·Actor record는 `mesh`와 MeshName을,
 ClientServer server·fanout publisher descriptor는 `channel`과 ChannelName을 `scope_name`에 기록한다.
-`operation`은 `read|compare_exchange|checkpoint_put|checkpoint_get|checkpoint_delete|lease_renew|release`, fanout
+`operation`은 `read|compare_exchange|transfer_put|transfer_get|transfer_delete|lease_renew|release`, fanout
 `reason`은 `backpressure|target_closed|shutdown`이다. classic fanout의 packet name과 내부 transport
 filter 값은 metric label로 기록하지 않는다.
 

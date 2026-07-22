@@ -40,9 +40,10 @@ MeshNode 위의 메시징은 대상 선택 방식으로 구분한다.
 - channel send/request는 ChannelName으로 process-local 송신 경로를 찾고, 그 RouteMesh member 또는
   ClientServer server 가운데 ready target 하나를 선택한다.
 - Spot Logical Multicast는 ChannelName의 remote MeshNode와 node-local Spot subscription을 대상으로 한다.
-- Spot direct와 Actor direct는 address와 generation을 검증한 owner mailbox로 전달한다.
-- Instance Spot direct는 MeshName·Instance type·Spot RID로 만든 논리 주소를 사용한다. 유효한 owner가 없으면
-  Framework가 location claim과 actor-free Spot activation을 수행한 뒤 같은 Spot application queue에 전달한다.
+- Spot과 Actor message는 global Spot RID 또는 Actor ID를 사용한다. Framework는 current Ready authority를
+  resolve하고 owner mailbox로 전달한다.
+- Spot·Actor create와 get-or-create는 manager의 명시적인 operation이다. Framework는 object role, capacity,
+  placement profile과 node-wide weight로 target을 선택하고 Ready barrier 뒤 immutable ref를 반환한다.
 
 선택과 submit은 하나의 operation이다. application은 peer 목록이나 선택된 RID를 받아 별도 send를
 반복하지 않는다.
@@ -83,8 +84,8 @@ service protocol frame은 application callback에 노출하지 않는다.
 
 자동 discovery는 location store의 descriptor와 lease를 사용한다. RouteMesh는 같은 MeshName의 MeshNode
 descriptor를 찾고, ClientServer client는 같은 ChannelName의 전용 server descriptor를 찾는다. 두
-descriptor를 서로 대신 사용하지 않는다. 분산 discovery, Spot·Actor location, Instance Spot activation 또는
-Actor transfer를 사용하는 host는 공식 Redis location store instance를 명시적으로 등록한다.
+descriptor를 서로 대신 사용하지 않는다. Object Client·Server role이나 분산 discovery를 사용하는 host는
+공식 Redis location store instance를 명시적으로 등록한다.
 
 manual peer는 endpoint 또는 expected RID와 endpoint를 application이 제공하는 연결 intent다. manual peer도
 자동 discovery peer와 같은 MeshName, RID, ChannelName, generation과 security admission을 통과한다.

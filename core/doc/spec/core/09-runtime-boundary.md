@@ -16,7 +16,7 @@ Core 11.0 provides the following capabilities through its public C ABI:
 - Message allocation, ownership, multipart frames, and routing IDs
 - PAIR, PUB, SUB, XPUB, XSUB, DEALER, ROUTER, and STREAM raw sockets
 - Bind, connect, disconnect, endpoint, and connection lifecycle
-- TCP, WebSocket, PGM, and TLS transports
+- TCP, WebSocket, and TLS transports
 - Classic PUB/SUB and raw STREAM
 - Raw-socket monitoring, generic events, poll, and pollers
 - Generic timers, threads, stopwatches, atomic counters, and proxies
@@ -57,12 +57,6 @@ Framework implements service-connection liveness messages, Location-owner
 leases, and STREAM-session ping/pong. Core neither interprets those service
 messages nor decides whether an application handler can process work.
 
-The Source Path Message (SPM) used by the PGM transport for reliable multicast
-is an internal OpenPGM path and recovery control packet; it is neither an
-application payload nor a ZMP command. Core 11 retains the PGM transport's SPM
-cadence and provides no raw-socket ZMP heartbeat option. Framework does not
-interpret SPM as service liveness.
-
 The Core 11 public-option set does not include `ZLINK_OPT_HEARTBEAT_IVL`,
 `ZLINK_OPT_HEARTBEAT_TTL`, or `ZLINK_OPT_HEARTBEAT_TIMEOUT`. The raw ZMP command
 set does not include `zmp_control_heartbeat` or `zmp_control_heartbeat_ack`.
@@ -97,8 +91,6 @@ Core 11.0 public-surface verification must establish all of the following:
 - Raw-socket, generic poller/timer, and socket-monitor contract tests pass.
 - The raw-option and ZMP-command inventories agree with the formal socket and
   protocol specifications.
-- The PGM SPM transport cadence remains present and is not classified as a ZMP
-  heartbeat option or command.
 - Framework runtimes use only the public Core raw surface.
 - Core public APIs and implementation contain no ChannelName, service dispatch,
   Spot, Actor, transfer, or maintenance semantics.

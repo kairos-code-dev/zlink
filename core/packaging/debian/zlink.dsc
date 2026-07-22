@@ -6,7 +6,7 @@ Version: 11.0.0-0.1
 Maintainer: zlink Developers <ulalax@kairoscode.dev>
 Homepage: https://github.com/kairos-code-dev/zlink
 Standards-Version: 3.9.8
-Build-Depends: debhelper (>= 9), dh-autoreconf, libpgm-dev, libnorm-dev, libunwind-dev | libunwind8-dev | libunwind7-dev, libnss3-dev, libgnutls28-dev | libgnutls-dev, libbsd-dev, pkg-config, asciidoc-base | asciidoc, xmlto
+Build-Depends: debhelper (>= 9), dh-autoreconf, libnorm-dev, libunwind-dev | libunwind8-dev | libunwind7-dev, libnss3-dev, libgnutls28-dev | libgnutls-dev, libbsd-dev, pkg-config, asciidoc-base | asciidoc, xmlto
 Package-List:
  libzlink11-dev deb libdevel optional arch=any
  libzlink11 deb libs optional arch=any

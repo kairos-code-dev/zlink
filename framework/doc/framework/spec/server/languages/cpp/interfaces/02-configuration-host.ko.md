@@ -361,13 +361,13 @@ mesh.add_entry_spot<session_entry_spot_t>();
 
 options.add_stream_node(sample_names_t::stream_name)
   .bind(7500)
-  .enable_actor_dispatch(sample_names_t::application_mesh)
+  .enable_actor_dispatch()
   .register_session<client_session_t>()
 ```
 
-`enable_actor_dispatch(mesh_name)`은 session Actor dispatch에 사용할 local MeshNode를
-MeshName으로 선택한다. Actor dispatch를 사용하지 않는 STREAM node는 호출하지 않는다.
-같은 builder에서 두 번 호출하거나 등록되지 않은 MeshName을 지정하면 startup이 실패한다.
+`enable_actor_dispatch()`는 session Actor dispatch에 global ActorId lookup과 exact ActorRef bind를 사용하도록
+설정한다. Target MeshName을 받거나 첫 MeshNode에서 추론하지 않는다. Actor dispatch를 사용하지 않는 STREAM
+node는 호출하지 않는다. 같은 builder에서 두 번 호출하면 startup이 실패한다.
 `register_session<TSession>()`은 `.NET`의 `RegisterSession<TSession>()`에 맞춘 typed session
 등록 표면이다. `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service
 collection에 stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을
@@ -529,12 +529,17 @@ public:
     zlink_framework_options_t &handler_coroutine_workers(
       std::size_t worker_count);
     std::size_t handler_coroutine_workers() const noexcept;
-    zlink_framework_options_t &add_checkpoint_store(
-      std::shared_ptr<checkpoint_store_t> store);
+    zlink_framework_options_t &add_transfer_store(
+      std::shared_ptr<transfer_store_t> store);
 };
 
 } // namespace zlink::framework
 ```
+
+Location runtime을 사용하는 application은 `add_location_store(...)`로 Location Store를 정확히 하나 등록한다.
+`Recreate` 또는 `Snapshot` factory가 하나라도 있으면 `add_transfer_store(...)`로 Transfer Store도 정확히 하나
+등록한다. `Disabled` factory만 있는 same-node 구성에는 Transfer Store가 필요하지 않다. 필요한 Store가 없거나
+같은 capability가 중복 등록되면 Framework는 socket bind 전에 configuration error로 종료한다.
 
 Application version과 maintenance wave는 host 전체에 한 번 설정한다. Version은 기본값 0인 non-negative
 signed 64-bit deployment ordinal이고 모든 local MeshNode가 같은 값을 게시한다. Empty optional wave는

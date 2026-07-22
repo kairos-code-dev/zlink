@@ -17,7 +17,8 @@
     { "name": "metadataBytes", "value": 1024 },
     { "name": "packetNameBytes", "value": 255 },
     { "name": "contentTypeBytes", "value": 255 },
-    { "name": "checkpointReferenceBytes", "value": 4096 },
+    { "name": "transferReferenceBytes", "value": 4096 },
+    { "name": "creationContentReferenceBytes", "value": 4096 },
     { "name": "authorityStoreVersionBytes", "value": 4096 },
     { "name": "wireU32CompleteMessageBytes", "value": 4294967295 },
     { "name": "applicationPayloadAbsoluteBytes", "value": 4294966774 },
@@ -26,14 +27,24 @@
     { "name": "authorityEnvelopeBytes", "value": 1048576 },
     { "name": "descriptorPageBytes", "value": 4194304 },
     { "name": "authorityScanPageBytes", "value": 4194304 },
-    { "name": "checkpointChunkBytes", "value": 67108864 },
-    { "name": "checkpointChunkEnvelopeBytes", "value": 67108886 },
-    { "name": "checkpointChunkCount", "value": 4096 },
-    { "name": "checkpointLogicalBytes", "value": 274877906944 },
-    { "name": "checkpointManifestBytes", "value": 33554432 },
+    { "name": "transferChunkBytes", "value": 67108864 },
+    { "name": "transferChunkEnvelopeBytes", "value": 67108886 },
+    { "name": "transferChunkCount", "value": 4096 },
+    { "name": "transferLogicalBytes", "value": 274877906944 },
+    { "name": "transferManifestBytes", "value": 33554432 },
     { "name": "transferControlEnvelopeBytes", "value": 1048576 },
     { "name": "applicationVersionMax", "value": "9223372036854775807" },
-    { "name": "weightMax", "value": 100 }
+    { "name": "weightMax", "value": 100 },
+    { "name": "creationIntentBytes", "value": 1048576 },
+    { "name": "maintenanceAggregateParticipants", "value": 1024 },
+    { "name": "maintenanceAggregateBytes", "value": 1048576 },
+    { "name": "routeForwardHopCount", "value": 8 },
+    { "name": "routeForwardMessages", "value": 1024 },
+    { "name": "routeForwardBytes", "value": 16777216 },
+    { "name": "routingIdCollisionAttempts", "value": 8 },
+    { "name": "nodeActiveCapacityDefault", "value": 10000 },
+    { "name": "nodePendingCapacityDefault", "value": 128 },
+    { "name": "objectTypeCapacityMaximum", "value": 2147483647 }
   ],
   "flags": [
     {
@@ -66,7 +77,7 @@
       "source": "source-operation-table"
     },
     {
-      "name": "durableCheckpointPresent",
+      "name": "durableTransferPresent",
       "valueKind": "boolean",
       "source": "current-transfer-authority"
     },
@@ -87,7 +98,7 @@
       },
       "then": {
         "contextEquals": {
-          "name": "durableCheckpointPresent",
+          "name": "durableTransferPresent",
           "value": true
         }
       }
@@ -113,9 +124,10 @@
         {
         "operationKind": "maintenanceTransfer",
         "objectKinds": ["actor", "spot"],
-        "spotKinds": ["instance"],
+        "spotKinds": ["user", "instance"],
         "transferState": "present",
         "transferPhase": "non-none",
+        "userAuthorityStates": ["transferring"],
         "instanceAuthorityStates": ["transferring"],
         "instancePhaseStates": {
           "transferring": ["preparing", "captured", "prepared", "committed", "activating", "activated", "cleaning", "completed", "aborted"]
@@ -134,7 +146,7 @@
       "kind": "spot-authority-aggregate-integrity",
       "authorityObjectType": "authority-object-identity",
       "canonicalKeyKind": "spot",
-      "canonicalKeyComponents": ["meshName", "spotRid"],
+      "canonicalKeyComponents": ["spotRid"],
       "spotKinds": ["entry", "user", "instance"],
       "singleAuthoritativeRow": true,
       "typedSpotLocation": "framework-decoded-projection-not-separate-authority",
@@ -148,8 +160,8 @@
       "providerPayloadInterpretation": "forbidden"
     },
     {
-      "kind": "checkpoint-journal-integrity",
-      "checkpointType": "checkpoint-envelope-v1",
+      "kind": "transfer-journal-integrity",
+      "transferType": "transfer-envelope-v1",
       "progressField": "participantProgress",
       "journalField": "journal",
       "completionField": "terminalCompletions",
@@ -162,12 +174,12 @@
       "terminalCompletionMustMatchRequestRecord": true,
       "requestReplayBinding": "operation-id-exact-request-source-fence-and-reply-route-id-are-one-immutable-accepted-record-identity",
       "operationIdRole": "dedupe-identity-never-a-reply-route-substitute",
-      "authorityCheckpointAtomicity": {
+      "authorityTransferAtomicity": {
         "mutationEvents": ["completion-append", "replyRelayAck", "requestSourceLeaseExpired"],
-        "writeOrder": "new-immutable-checkpoint-root-then-one-expected-store-version-authority-cas",
-        "casFields": ["checkpoint-reference", "checkpoint-checksum", "terminalCompletionCount", "pendingRelayCount"],
-        "terminalCompletionCount": "equals-referenced-checkpoint-terminal-completion-entry-count",
-        "pendingRelayCount": "equals-referenced-checkpoint-deliveryState-pending-count",
+        "writeOrder": "new-immutable-transfer-root-then-one-expected-store-version-authority-cas",
+        "casFields": ["transfer-reference", "transfer-checksum", "terminalCompletionCount", "pendingRelayCount"],
+        "terminalCompletionCount": "equals-referenced-transfer-terminal-completion-entry-count",
+        "pendingRelayCount": "equals-referenced-transfer-deliveryState-pending-count",
         "completedGate": "accepted-request-count-equals-terminal-completion-count-and-pending-relay-count-zero",
         "deliveryStateTransition": "pending-to-terminalReceived-or-alreadyTerminal-or-sourceLeaseExpired-only",
         "mismatch": "recovery-error-and-completed-forbidden"
@@ -180,6 +192,47 @@
         "instanceSpotActivation"
       ],
       "instanceRequestDiscriminator": "request"
+    },
+    {
+      "kind": "location-transfer-storage-integrity",
+      "locationAuthorityOwns": [
+        "descriptor-and-owner-lease",
+        "object-authority-and-reservation",
+        "aggregate-generation-and-canonical-participant-mutations",
+        "inventory-digest-and-transfer-reference",
+        "participant-replay-cursors-and-terminal-completion-count"
+      ],
+      "transferRootRole": "immutable-payload-lookup-projection-never-authority",
+      "publicationOrder": [
+        "write-all-immutable-transfer-chunks",
+        "write-immutable-transfer-root-manifest",
+        "read-and-verify-complete-root-from-transfer-provider",
+        "one-location-expected-store-version-cas-publishes-reference-checksum-replay-and-completion-counts"
+      ],
+      "aggregateAuthority": {
+        "format": "maintenance-aggregate-v1",
+        "participantOrder": "canonical-authority-key-bytes",
+        "atomicFields": [
+          "aggregateId",
+          "aggregateGeneration",
+          "participants-and-mutations",
+          "inventoryDigestSha256",
+          "transferReference-and-checksum"
+        ],
+        "transferManifestDigest": "must-equal-location-authority-inventory-digest",
+        "manifestAuthority": "forbidden"
+      },
+      "replacement": "write-and-verify-new-root-before-one-location-authority-cas-replaces-reference-and-counts",
+      "orphanCleanup": "unpublished-or-replaced-root-is-not-authority-and-is-deleted-or-expires",
+      "deleteOrder": "release-or-replace-location-authority-reference-before-idempotent-transfer-root-delete",
+      "backend": "location-and-transfer-providers-may-use-different-backends-connections-and-failure-domains",
+      "clock": "retention-and-renewal-use-transfer-provider-storeNow-and-expiresAt-only",
+      "publishedPayloadMissing": {
+        "failureCode": "transferDataLost",
+        "retriable": false,
+        "rollback": "forbidden",
+        "publication": "Ready-and-Completed-forbidden"
+      }
     },
     {
       "kind": "reply-relay-context-integrity",
@@ -202,19 +255,19 @@
         "identity": ["stable-transfer-id", "operation-id"],
         "requestSource": "authenticated-exact-source-owner-lease-node-rid-and-generation",
         "statuses": ["terminalReceived", "alreadyTerminal"],
-        "targetPersistence": "checkpoint-root-cas-before-ack-effect",
+        "targetPersistence": "transfer-root-cas-before-ack-effect",
         "targetRetry": "retransmit-same-terminal-across-connection-replacement-until-ack-or-exact-request-source-owner-lease-expiry",
         "sourceDuplicate": "reply-already-terminal-still-emits-alreadyTerminal-ack",
         "completionGate": "pending-relay-count-zero-and-each-accepted-request-has-authenticated-ack-or-store-confirmed-exact-request-source-owner-lease-expiry",
         "physicalConnectionClose": "never-terminal-proof",
-        "retireWhileSourceLeaseValid": "forceStopped-and-retain-checkpoint-root-and-reply-bytes-for-retention-window"
+        "retireWhileSourceLeaseValid": "forceStopped-and-retain-transfer-root-and-reply-bytes-for-retention-window"
       },
       "terminalOwnership": "stable-transfer-id-and-operation-id-once-independent-of-target-attempt",
       "replyRoute": "request-only"
     },
     {
       "kind": "instance-placement-authority-fence",
-      "placementType": "instance-placement-v1",
+      "routeType": "instance-route-fence-v1",
       "requestBoundFields": [
         "targetNodeRid",
         "targetNodeGeneration",
@@ -278,27 +331,27 @@
         {
           "phase": "preparing",
           "after": ["local-admission-seal", "accepted-boundaries-fixed"],
-          "checkpoint": "absent",
+          "transfer": "absent",
           "targetReservation": "absent"
         },
         {
           "phase": "captured",
-          "after": ["immutable-checkpoint-put"],
-          "checkpoint": "present",
+          "after": ["immutable-transfer-put"],
+          "transfer": "present",
           "targetReservation": "absent"
         },
         {
           "phase": "prepared",
           "after": ["transfer-reserved-ack-validated"],
-          "checkpoint": "present",
+          "transfer": "present",
           "targetReservation": "present"
         }
       ],
       "closedOwnerTargetRules": {
         "preparingAndCaptured": "main-owner-is-immutable-source-target-attempt-token-and-reservation-absent",
-        "prepared": "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-checkpoint-present",
-        "committedThroughCompleted": "main-owner-is-exact-current-target-and-same-attempt-reservation-checkpoint-present",
-        "aborted": "main-owner-is-source-until-session-abort-ack-checkpoint-orphan-cleanup-and-steady-source-normalization"
+        "prepared": "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-transfer-present",
+        "committedThroughCompleted": "main-owner-is-exact-current-target-and-same-attempt-reservation-transfer-present",
+        "aborted": "main-owner-is-source-until-session-abort-ack-transfer-orphan-cleanup-and-steady-source-normalization"
       },
       "preparedToCommitted": "one-newOwner-cas",
       "sourceFence": "source-owner-id-lease-generation-node-rid-and-generation-immutable-through-terminal",
@@ -383,7 +436,8 @@
           "workerTimedOut": "internalError",
           "workerFailed": "internalError",
           "actorLocationStale": "conflict",
-          "actorCreateRejected": "rejected"
+          "actorCreateRejected": "rejected",
+          "transferDataLost": "internalError"
         }
       },
       "unknownFailureCode": "protocol-error-before-application-dispatch",
@@ -427,7 +481,7 @@
         "boundSession": "participant-id-from-2-in-ascending-session-rid-order-with-nonzero-binding-generation",
         "sessionOwnerRoute": "node-rid-lifecycle-generation-owner-id-and-lease-generation-match-current-descriptor-and-host-lease-before-seal-or-route-switch",
         "sessionRid": "unique-within-transfer-transaction",
-        "stability": "same-id-and-fence-for-checkpoint-recovery-and-retransmit"
+        "stability": "same-id-and-fence-for-transfer-recovery-and-retransmit"
       },
       "cardinality": {
         "actor": "exactly-one-objectMailbox-and-zero-or-one-boundSession",
@@ -487,7 +541,7 @@
       "identity": ["stable-transfer-id", "target-attempt-generation", "object-identity"],
       "prepare": {
         "phase": "captured",
-        "checkpoint": "required",
+        "transfer": "required",
         "requirements": "exact-participant-set-and-checked-message-byte-sums"
       },
       "offer": "nonzero-capacity-and-empty-participant-vector",
@@ -520,7 +574,7 @@
           "proposedTargetAttemptGeneration": "current-target-attempt-generation-plus-one"
         }
       },
-      "requirementsSource": "exact-current-checkpoint-participant-inventory",
+      "requirementsSource": "exact-current-transfer-participant-inventory",
       "sequence": [
         "initiator-transferPrepare",
         "candidate-transferReady-offer",
@@ -530,7 +584,7 @@
       ],
       "replacementCas": "after-ack-atomically-replace-target-attempt-generation-target-and-reservation-prepared-stays-prepared-post-commit-resets-to-committed",
       "oldTargetFence": "old-target-attempt-generation-or-authority-store-version-rejected",
-      "checkpointIdentity": "stable-transfer-id-checkpoint-root-and-journal-never-rewritten-only-for-target-replacement",
+      "transferIdentity": "stable-transfer-id-transfer-root-and-journal-never-rewritten-only-for-target-replacement",
       "targetActivationRetry": "factory-and-restore-are-at-least-once-across-attempts-and-stale-attempts-may-overlap",
       "targetCommitFence": "only-current-exact-owner-and-target-attempt-may-commit-completion-or-open-admission",
       "callbackContract": "retry-safe-no-exactly-once-external-side-effect-guarantee-and-no-public-transfer-id",
@@ -561,7 +615,7 @@
         "session-owner-reversible-ingress-seal",
         "session-owner-sessionTransferSealed-high-water",
         "source-receives-every-sequence-through-high-water",
-        "source-captured-checkpoint",
+        "source-captured-transfer",
         "target-restores-and-replays-through-high-water",
         "target-stage-bound-session-route-without-switch-or-unseal",
         "durable-source-cleanup-state-cas",
@@ -574,7 +628,7 @@
       ],
       "participantIdentity": "session-owner-node-rid-generation-owner-id-lease-generation-session-rid-binding-generation",
       "recordSequence": "bound-session-actorSend-or-actorRequest-sourceSessionSequence",
-      "checkpointRelation": "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
+      "transferRelation": "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
       "commitFence": "binding-generation-actor-object-generation-previous-and-target-owner-generation-session-owner-node-generation",
       "sessionOwnerLeaseFence": "owner-id-and-lease-generation-exact-descriptor-and-current-host-lease-read",
       "senderAdmissionDeadline": "local-monotonic-deadline-derived-from-last-successful-host-lease-read",
@@ -600,8 +654,8 @@
       "targetEffect": "validate-durable-source-cleanup-state-and-notify-finalization-once",
       "cleanupGate": "target-activation-complete-and-durable-source-cleanup-state-terminal",
       "servingGate": "completed-authority-cas-then-bound-session-route-acks-before-application-admission-or-ready-publish",
-      "replacementWindow": "all-nonterminal-phases-before-completed-from-immutable-checkpoint",
-      "afterCompletedFailure": "ordinary-owner-loss-never-replay-retired-transfer-checkpoint",
+      "replacementWindow": "all-nonterminal-phases-before-completed-from-immutable-transfer",
+      "afterCompletedFailure": "ordinary-owner-loss-never-replay-retired-transfer-transfer",
       "finalization": "after-completed-and-bound-session-route-acks-cas-maintenance-authority-to-steady-without-transfer-before-ready-projection",
       "resolverProjection": "maintenance-transfer-authority-is-never-ready-even-when-target-owner-is-recorded",
       "duplicate": "idempotent-by-stable-transfer-id-and-durable-source-cleanup-state-target-attempt-is-only-a-peer-fence",
@@ -685,7 +739,7 @@
     {
       "kind": "durable-operation-identity-integrity",
       "transferId": "runtime-generated-nonzero-128-bit-csprng",
-      "transferIdScope": "unique-across-active-and-retained-checkpoint-roots-collision-rejected-and-regenerated",
+      "transferIdScope": "unique-across-active-and-retained-transfer-roots-collision-rejected-and-regenerated",
       "operationId": "nonzero-unique-within-source-owner-lifecycle-for-terminal-dedupe",
       "replyRouteId": "nonzero-unique-within-source-owner-lifecycle-for-correlation-only",
       "counterWrapOrReuse": "forbidden-terminal-runtime-error",
@@ -712,6 +766,21 @@
       "failure": "failed-sealed-local-barrier-exact-fenced-delete-and-read-reconcile-next-caller-only-newObject",
       "lateCallback": "stale-fence-no-mutation",
       "entrySpot": "startup-initialization-complete-before-host-serving-and-publication"
+    },
+    {
+      "kind": "contract-amendment-limit-integrity",
+      "creationIntentBytesMaximum": { "$bound": "creationIntentBytes" },
+      "aggregateParticipantsMaximum": { "$bound": "maintenanceAggregateParticipants" },
+      "aggregateEncodedBytesMaximum": { "$bound": "maintenanceAggregateBytes" },
+      "aggregateId": "nonzero-128-bit",
+      "forwardingHopCountMaximum": { "$bound": "routeForwardHopCount" },
+      "forwardingQueuedMessagesMaximum": { "$bound": "routeForwardMessages" },
+      "forwardingQueuedBytesMaximum": { "$bound": "routeForwardBytes" },
+      "routingIdEntropyBits": 128,
+      "routingIdCollisionAttemptsMaximum": { "$bound": "routingIdCollisionAttempts" },
+      "nodeActiveCapacityDefault": { "$bound": "nodeActiveCapacityDefault" },
+      "nodePendingCapacityDefault": { "$bound": "nodePendingCapacityDefault" },
+      "objectTypeCapacityMaximum": { "$bound": "objectTypeCapacityMaximum" }
     },
     {
       "kind": "actor-retire-membership-integrity",
@@ -742,11 +811,11 @@
       "overflow": "atomic-configuration-failure-never-truncate-split-or-publish-partial"
     },
     {
-      "kind": "checkpoint-application-state-integrity",
-      "stateType": "checkpoint-application-state",
+      "kind": "transfer-application-state-integrity",
+      "stateType": "transfer-application-state",
       "recreate": "hasState-false-no-contract-serializer-or-payload",
       "snapshot": "hasState-true-nonempty-contract-frameworkJsonV1-and-nonempty-payload",
-      "checkpointPresence": "every-transfer-including-empty-recreate-writes-one-deterministic-envelope",
+      "transferPresence": "every-transfer-including-empty-recreate-writes-one-deterministic-envelope",
       "storage": "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
       "chunking": "ordered-byte-stream-may-split-within-a-frozen-record",
       "unknownSerializer": "protocol-error-before-restore"
@@ -755,7 +824,7 @@
       "kind": "framework-json-v1-integrity",
       "profile": "frameworkJsonV1Profile",
       "applicationPayloadBytes": "opaque-after-profile-validation-no-byte-canonicalization",
-      "checkpointStateBytes": "opaque-after-profile-validation-no-byte-canonicalization",
+      "transferStateBytes": "opaque-after-profile-validation-no-byte-canonicalization",
       "stateContractId": "asserts-target-adapter-semantic-compatibility",
       "goldenFixture": "golden/framework-json-v1.json"
     },
@@ -779,8 +848,8 @@
     "prefix": "zla1",
     "separator": ":",
     "kindDiscriminators": [
-      { "objectKind": "actor", "wire": "a", "components": ["meshName", "actorId"] },
-      { "objectKind": "spot", "wire": "s", "components": ["meshName", "spotRid"] }
+      { "objectKind": "actor", "wire": "a", "components": ["actorId"] },
+      { "objectKind": "spot", "wire": "s", "components": ["spotRid"] }
     ],
     "componentLayout": "decimal-raw-byte-length-colon-percent-encoded-bytes",
     "componentRawBytesMinimum": 1,
@@ -788,7 +857,7 @@
     "decimalLength": "base10-no-leading-zero",
     "escaping": "rfc3986-unreserved-literal-otherwise-uppercase-percent-hex",
     "unicodeNormalization": "none",
-    "maximumEncodedBytes": 1546,
+    "maximumEncodedBytes": 776,
     "goldenFixture": "golden/authority-key-v1.json"
   },
   "authorityStoreAccessProfile": {
@@ -901,7 +970,7 @@
     "delayedOperation": "stale-no-mutation",
     "overflow": "claim-or-takeover-GenerationExhausted-non-retriable-no-row-index-or-counter-mutation-or-consumption-renew-and-release-excluded"
   },
-  "checkpointRetentionPolicy": {
+  "transferRetentionPolicy": {
     "retentionMs": 86400000,
     "renewThresholdMs": 43200000,
     "leaseOwner": "current-authority-owner-or-recovery-coordinator",
@@ -920,18 +989,22 @@
       "idempotent-delete-no-longer-referenced-manifest-and-all-chunks"
     ],
     "reader": "current-authority-reference-only",
-    "recoveryHorizon": "continuous-store-or-coordinator-unavailability-at-or-beyond-retention-is-terminal-checkpoint-missing-loss",
+    "providerClock": "transfer-storeNow-and-expiresAt-independent-of-location-provider-clock",
+    "recoveryHorizon": "permanent-published-root-missing-is-non-retriable-TransferDataLost-no-rollback",
     "publicOption": "forbidden"
   },
-  "checkpointStorageProfile": {
-    "logicalStreamType": "checkpoint-envelope-v1",
-    "manifestFormat": "checkpoint-manifest-v1",
-    "chunkFormat": "checkpoint-data-chunk-v1",
+  "transferStorageProfile": {
+    "logicalStreamType": "transfer-envelope-v1",
+    "manifestFormat": "transfer-manifest-v1",
+    "chunkFormat": "transfer-data-chunk-v1",
     "chunkDataMaximumBytes": 67108864,
     "chunkCountMaximum": 4096,
     "logicalMaximumBytes": 274877906944,
-    "manifestFields": ["logicalFormatVersion", "totalLength", "totalChecksumCrc32c", "ordered-chunk-reference-length-checksum"],
-    "writeOrder": ["all-immutable-chunks", "immutable-root-manifest", "authority-reference-cas"],
+    "manifestFields": ["logicalFormatVersion", "totalLength", "totalChecksumCrc32c", "inventoryDigestSha256", "ordered-chunk-reference-length-checksum"],
+    "writeOrder": ["all-immutable-chunks", "immutable-root-manifest", "read-and-verify-complete-root", "location-authority-reference-cas"],
+    "authority": "forbidden-payload-lookup-projection-only",
+    "backend": "may-differ-from-location-store",
+    "clock": "transfer-provider-storeNow-and-expiresAt-only",
     "writeFailure": "unreferenced-chunks-or-manifest-are-orphans-never-authority",
     "emptyTransfer": "deterministic-zero-data-manifest-with-no-chunks",
     "streaming": "chunk-validated-and-incrementally-decoded-with-bounded-memory",
@@ -964,11 +1037,11 @@
     "reversibleSeal": "hold-new-submissions-without-admission-result",
     "sizingSnapshot": "exact-participant-boundaries-messages-and-bytes-after-seal",
     "timerAdmissionSeal": "stop-new-tick-admission-and-wait-all-pre-seal-accepted-timer-turns",
-    "acceptedTimerTurns": "drain-on-source-before-checkpoint-and-exclude-from-journal-boundary",
+    "acceptedTimerTurns": "drain-on-source-before-transfer-and-exclude-from-journal-boundary",
     "futureTimerSchedule": "not-transferred-recreated-only-by-target-lifecycle-or-snapshot-state",
     "requestDrainBeforeCaptured": "all-connectionBound-accepted-work-and-boundSession-requests-must-be-terminal-and-are-never-journaled",
     "requestDrainFailure": "abort-before-captured-retire-blocked-transferDisabled-and-restore-admission",
-    "phaseOrder": ["preparing-cas", "checkpoint-put", "captured-cas", "target-reserve", "prepared-cas"],
+    "phaseOrder": ["preparing-cas", "transfer-put", "captured-cas", "target-reserve", "prepared-cas"],
     "durableReplayBoundary": "complete-root-linked-by-captured-cas",
     "sourceCrashBeforeCaptured": "fenced-abort-no-maintenance-continuity-original-request-uses-normal-connection-failure-timeout-or-cancellation-terminal",
     "unlinkedPutAfterCrash": "orphan-cleanup-never-replay-authority",
@@ -999,7 +1072,7 @@
       { "outcome": "ForceStopped", "reasons": ["DeadlineExceeded", "TransferFailed", "TeardownFailed"] }
     ],
     "undefinedPair": "protocol-error",
-    "checkpointCeilingBeforeDraining": "Blocked/StateIncompatible",
+    "transferCeilingBeforeDraining": "Blocked/StateIncompatible",
     "preCapturedDeadline": "Blocked/DeadlineExceeded",
     "postCapturedDeadline": "ForceStopped/DeadlineExceeded",
     "teardownFailure": "ForceStopped/TeardownFailed"
@@ -1102,11 +1175,11 @@
       "maximum": "9223372036854775807"
     },
     {
-      "name": "checkpoint-logical-length",
+      "name": "transfer-logical-length",
       "kind": "integer",
       "encoding": "u64",
       "minimum": 0,
-      "maximum": { "$bound": "checkpointLogicalBytes" }
+      "maximum": { "$bound": "transferLogicalBytes" }
     },
     {
       "name": "application-version",
@@ -1157,6 +1230,20 @@
       "encoding": "utf-8",
       "nul": "forbidden",
       "zeroLengthMeaning": "absent"
+    },
+    {
+      "name": "sha256-bytes",
+      "kind": "length-prefixed-bytes",
+      "lengthType": { "$ref": "u8" },
+      "minimumBytes": 32,
+      "maximumBytes": 32
+    },
+    {
+      "name": "creation-request-size",
+      "kind": "integer",
+      "encoding": "u32",
+      "minimum": 0,
+      "maximum": { "$bound": "creationIntentBytes" }
     },
     {
       "name": "text16",
@@ -1299,8 +1386,33 @@
       "encoding": "u8",
       "values": [
         { "name": "actor", "value": 1 },
-        { "name": "instanceSpot", "value": 2 }
+        { "name": "userSpot", "value": 2 },
+        { "name": "instanceSpot", "value": 3 }
       ]
+    },
+    {
+      "name": "object-role",
+      "kind": "enum",
+      "encoding": "u8",
+      "values": [
+        { "name": "none", "value": 0 },
+        { "name": "client", "value": 1 },
+        { "name": "server", "value": 2 }
+      ]
+    },
+    {
+      "name": "object-capacity-limit",
+      "kind": "integer",
+      "encoding": "u32",
+      "minimum": 1,
+      "maximum": { "$bound": "objectTypeCapacityMaximum" }
+    },
+    {
+      "name": "object-pending-capacity-limit",
+      "kind": "integer",
+      "encoding": "u32",
+      "minimum": 0,
+      "maximum": { "$bound": "objectTypeCapacityMaximum" }
     },
     {
       "name": "authority-object-kind",
@@ -1328,7 +1440,8 @@
       "values": [
         { "name": "creating", "value": 0 },
         { "name": "ready", "value": 1 },
-        { "name": "closing", "value": 2 }
+        { "name": "closing", "value": 2 },
+        { "name": "transferring", "value": 3 }
       ]
     },
     {
@@ -1351,7 +1464,7 @@
       ]
     },
     {
-      "name": "checkpoint-serializer-kind",
+      "name": "transfer-serializer-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1652,7 +1765,8 @@
         { "name": "workerTimedOut", "value": 19 },
         { "name": "workerFailed", "value": 20 },
         { "name": "actorLocationStale", "value": 21 },
-        { "name": "actorCreateRejected", "value": 22 }
+        { "name": "actorCreateRejected", "value": 22 },
+        { "name": "transferDataLost", "value": 23 }
       ]
     },
     {
@@ -1717,7 +1831,7 @@
       "kind": "struct",
       "fields": [
         { "name": "actorId", "$ref": "text8" },
-        { "name": "generation", "$ref": "nonzero-u64" }
+        { "name": "objectGeneration", "$ref": "nonzero-u64" }
       ]
     },
     {
@@ -1725,7 +1839,7 @@
       "kind": "struct",
       "fields": [
         { "name": "spotRid", "$ref": "rid" },
-        { "name": "spotGeneration", "$ref": "nonzero-u64" }
+        { "name": "objectGeneration", "$ref": "nonzero-u64" }
       ]
     },
     {
@@ -1822,11 +1936,204 @@
       "trailingBytes": "forbidden"
     },
     {
+      "name": "object-creation-key",
+      "kind": "conditional-union",
+      "discriminators": [
+        { "name": "objectKind", "source": "wire", "$ref": "stateful-object-kind" }
+      ],
+      "bodyLengthType": { "$ref": "u16" },
+      "bodyLengthCovers": "selected-case",
+      "cases": [
+        { "when": { "objectKind": "actor" },
+          "fields": [{ "name": "actorId", "$ref": "text8" }] },
+        { "when": { "objectKind": "userSpot" },
+          "fields": [{ "name": "spotRid", "$ref": "rid" }] },
+        { "when": { "objectKind": "instanceSpot" },
+          "fields": [{ "name": "spotRid", "$ref": "rid" }] }
+      ],
+      "otherwise": "protocol-error",
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "object-creation-intent-v1",
+      "kind": "versioned-length-delimited",
+      "version": { "$ref": "u8", "constant": 1 },
+      "length": { "$ref": "u32", "covers": "body" },
+      "maximumEncodedBytes": { "$bound": "creationIntentBytes" },
+      "body": [
+        { "name": "key", "$ref": "object-creation-key" },
+        { "name": "stableType", "$ref": "text8" },
+        { "name": "initialMeshName", "$ref": "text8" },
+        { "name": "placementProfile", "$ref": "optional-text8" },
+        { "name": "affinityKey", "$ref": "optional-text8" },
+        { "name": "requestContentReference", "$ref": "creation-content-reference" },
+        { "name": "requestSha256", "$ref": "sha256-bytes" },
+        { "name": "requestEncodedSize", "$ref": "creation-request-size" },
+        { "name": "creationAttempt", "$ref": "nonzero-u64" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "object-reservation-fence",
+      "kind": "struct",
+      "fields": [
+        { "name": "reservationId", "$ref": "text8" },
+        { "name": "expectedStoreVersion", "$ref": "authority-store-version" },
+        { "name": "objectGeneration", "$ref": "nonzero-u64" },
+        { "name": "authorityOwnerGeneration", "$ref": "nonzero-u64" },
+        { "name": "targetNodeRid", "$ref": "rid" },
+        { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "targetOwnerId", "$ref": "text8" },
+        { "name": "targetOwnerLeaseGeneration", "$ref": "nonzero-u64" },
+        { "name": "pendingCapacityDelta", "$ref": "nonzero-u32" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "generic-reservation-operation-kind",
+      "kind": "enum",
+      "encoding": "u8",
+      "values": [
+        { "name": "reserve", "value": 1 },
+        { "name": "commit", "value": 2 },
+        { "name": "abort", "value": 3 }
+      ]
+    },
+    {
+      "name": "generic-object-reservation-v1",
+      "kind": "conditional-union",
+      "discriminators": [
+        { "name": "operationKind", "source": "wire", "$ref": "generic-reservation-operation-kind" }
+      ],
+      "bodyLengthType": { "$ref": "u32" },
+      "bodyLengthCovers": "selected-case",
+      "maximumEncodedBytes": { "$bound": "creationIntentBytes" },
+      "cases": [
+        { "when": { "operationKind": "reserve" }, "fields": [
+          { "name": "intent", "$ref": "object-creation-intent-v1" },
+          { "name": "fence", "$ref": "object-reservation-fence" }
+        ] },
+        { "when": { "operationKind": "commit" }, "fields": [
+          { "name": "key", "$ref": "object-creation-key" },
+          { "name": "fence", "$ref": "object-reservation-fence" }
+        ] },
+        { "when": { "operationKind": "abort" }, "fields": [
+          { "name": "key", "$ref": "object-creation-key" },
+          { "name": "fence", "$ref": "object-reservation-fence" }
+        ] }
+      ],
+      "otherwise": "protocol-error",
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "aggregate-id",
+      "kind": "struct",
+      "fields": [
+        { "name": "high", "$ref": "u64" },
+        { "name": "low", "$ref": "u64" }
+      ],
+      "constraints": [{ "kind": "not-both-zero" }]
+    },
+    {
+      "name": "aggregate-participant-mutation-bytes",
+      "kind": "length-prefixed-bytes",
+      "lengthType": { "$ref": "u32" },
+      "minimumBytes": 1,
+      "maximumBytes": { "$bound": "maintenanceAggregateBytes" }
+    },
+    {
+      "name": "maintenance-aggregate-participant-v1",
+      "kind": "struct",
+      "fields": [
+        { "name": "object", "$ref": "transfer-object-identity" },
+        { "name": "expectedStoreVersion", "$ref": "authority-store-version" },
+        { "name": "mutation", "$ref": "aggregate-participant-mutation-bytes" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "aggregate-participant-vector",
+      "kind": "vector",
+      "countType": { "$ref": "u16" },
+      "maximumItems": { "$bound": "maintenanceAggregateParticipants" },
+      "item": { "$ref": "maintenance-aggregate-participant-v1" },
+      "constraints": [
+        { "kind": "sorted", "field": "object", "comparison": "canonical-authority-key-bytes" },
+        { "kind": "unique", "field": "object" }
+      ]
+    },
+    {
+      "name": "maintenance-aggregate-v1",
+      "kind": "versioned-length-delimited",
+      "version": { "$ref": "u8", "constant": 1 },
+      "length": { "$ref": "u32", "covers": "body" },
+      "maximumEncodedBytes": { "$bound": "maintenanceAggregateBytes" },
+      "body": [
+        { "name": "aggregateId", "$ref": "aggregate-id" },
+        { "name": "aggregateGeneration", "$ref": "nonzero-u64" },
+        { "name": "ownerSpot", "$ref": "spot-ref" },
+        { "name": "participants", "$ref": "aggregate-participant-vector" },
+        { "name": "inventoryDigestSha256", "$ref": "sha256-bytes" },
+        { "name": "transferRoot", "$ref": "transfer-root-pointer" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
       "name": "actor-route-fence",
       "kind": "struct",
       "fields": [
         { "name": "actor", "$ref": "actor-ref" },
+        { "name": "targetNodeRid", "$ref": "rid" },
+        { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "spot-route-fence",
+      "kind": "struct",
+      "fields": [
+        { "name": "spot", "$ref": "spot-ref" },
+        { "name": "targetNodeRid", "$ref": "rid" },
+        { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "forward-route",
+      "kind": "conditional-union",
+      "discriminators": [
+        { "name": "objectKind", "source": "wire", "$ref": "authority-object-kind" }
+      ],
+      "bodyLengthType": { "$ref": "u16" },
+      "bodyLengthCovers": "selected-case",
+      "cases": [
+        { "when": { "objectKind": "actor" },
+          "fields": [{ "name": "actor", "$ref": "actor-route-fence" }] },
+        { "when": { "objectKind": "spot" },
+          "fields": [{ "name": "spot", "$ref": "spot-route-fence" }] }
+      ],
+      "otherwise": "protocol-error",
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "route-forward-mapping-v1",
+      "kind": "versioned-length-delimited",
+      "version": { "$ref": "u8", "constant": 1 },
+      "length": { "$ref": "u32", "covers": "body" },
+      "maximumEncodedBytes": { "$bound": "routeForwardBytes" },
+      "body": [
+        { "name": "source", "$ref": "forward-route" },
+        { "name": "target", "$ref": "forward-route" },
+        { "name": "hopCount", "$ref": "u8", "minimum": 1,
+          "maximum": { "$bound": "routeForwardHopCount" } },
+        { "name": "queuedMessages", "$ref": "u32", "minimum": 0,
+          "maximum": { "$bound": "routeForwardMessages" } },
+        { "name": "queuedBytes", "$ref": "u32", "minimum": 0,
+          "maximum": { "$bound": "routeForwardBytes" } },
+        { "name": "originalOperation", "$ref": "operation-id" },
+        { "name": "originalReplyRouteId", "$ref": "nonzero-u64" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -1854,12 +2161,21 @@
         },
         {
           "when": {
+            "objectKind": "userSpot"
+          },
+          "fields": [
+            { "name": "spot", "$ref": "spot-ref" },
+            { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+          ]
+        },
+        {
+          "when": {
             "objectKind": "instanceSpot"
           },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
             { "name": "spotRid", "$ref": "rid" },
-            { "name": "spotGeneration", "$ref": "nonzero-u64" }
+            { "name": "objectGeneration", "$ref": "nonzero-u64" }
           ]
         }
       ],
@@ -2005,11 +2321,20 @@
       ]
     },
     {
-      "name": "checkpoint-reference",
+      "name": "creation-content-reference",
       "kind": "length-prefixed-text",
       "lengthType": { "$ref": "u16" },
       "minimumBytes": 1,
-      "maximumBytes": { "$bound": "checkpointReferenceBytes" },
+      "maximumBytes": { "$bound": "creationContentReferenceBytes" },
+      "encoding": "utf-8",
+      "nul": "forbidden"
+    },
+    {
+      "name": "transfer-reference",
+      "kind": "length-prefixed-text",
+      "lengthType": { "$ref": "u16" },
+      "minimumBytes": 1,
+      "maximumBytes": { "$bound": "transferReferenceBytes" },
       "encoding": "utf-8",
       "nul": "forbidden"
     },
@@ -2159,6 +2484,9 @@
         { "name": "objectKind", "$ref": "stateful-object-kind" },
         { "name": "type", "$ref": "text8" },
         { "name": "transferPolicy", "$ref": "transfer-policy-kind" },
+        { "name": "placementProfiles", "$ref": "sorted-text8-vector" },
+        { "name": "activeCapacityLimit", "$ref": "object-capacity-limit" },
+        { "name": "pendingCapacityLimit", "$ref": "object-pending-capacity-limit" },
         { "name": "readableStateContractIds", "$ref": "sorted-text8-vector" },
         { "name": "available", "$ref": "ordinal-or-zero" }
       ]
@@ -2199,7 +2527,14 @@
           "constraints": [
             { "kind": "contains-protocol-required-capability" }
           ]
-        }
+        },
+        { "id": 7, "name": "objectRole", "$ref": "object-role", "required": true },
+        { "id": 8, "name": "placementWeight", "$ref": "u32", "required": true,
+          "minimum": 0, "maximum": { "$bound": "weightMax" } },
+        { "id": 9, "name": "activeCapacityLimit", "$ref": "object-capacity-limit", "required": true },
+        { "id": 10, "name": "pendingCapacityLimit", "$ref": "object-pending-capacity-limit", "required": true },
+        { "id": 11, "name": "activeCapacityUsed", "$ref": "u32", "required": true },
+        { "id": 12, "name": "pendingCapacityUsed", "$ref": "u32", "required": true }
       ],
       "encodingOrder": "ascending-field-id",
       "duplicateField": "protocol-error",
@@ -2511,8 +2846,7 @@
         {
           "when": { "destinationKind": "spot" },
           "fields": [
-            { "name": "targetSpotRid", "$ref": "rid" },
-            { "name": "targetSpotGeneration", "$ref": "nonzero-u64" }
+            { "name": "targetSpot", "$ref": "spot-route-fence" }
           ]
         },
         {
@@ -2619,8 +2953,8 @@
         { "id": 2, "name": "sourceNodeGeneration", "$ref": "nonzero-u64", "required": true },
         { "id": 3, "name": "targetNodeGeneration", "$ref": "nonzero-u64", "required": true },
         { "id": 4, "name": "reservationGeneration", "$ref": "nonzero-u64", "required": true },
-        { "id": 5, "name": "checkpointReference", "$ref": "checkpoint-reference", "required": false },
-        { "id": 6, "name": "checkpointChecksumCrc32c", "$ref": "u32", "required": false },
+        { "id": 5, "name": "transferReference", "$ref": "transfer-reference", "required": false },
+        { "id": 6, "name": "transferChecksumCrc32c", "$ref": "u32", "required": false },
         { "id": 7, "name": "stateContractId", "$ref": "text8", "required": false },
         { "id": 8, "name": "applicationVersion", "$ref": "application-version", "required": true },
         {
@@ -2634,20 +2968,20 @@
         {
           "when": {
             "contextEquals": {
-              "name": "durableCheckpointPresent",
+              "name": "durableTransferPresent",
               "value": true
             }
           },
-          "require": ["checkpointReference", "checkpointChecksumCrc32c"]
+          "require": ["transferReference", "transferChecksumCrc32c"]
         },
         {
           "when": {
             "contextEquals": {
-              "name": "durableCheckpointPresent",
+              "name": "durableTransferPresent",
               "value": false
             }
           },
-          "forbid": ["checkpointReference", "checkpointChecksumCrc32c", "stateContractId"]
+          "forbid": ["transferReference", "transferChecksumCrc32c", "stateContractId"]
         },
         {
           "when": {
@@ -2656,7 +2990,7 @@
               "value": true
             }
           },
-          "require": ["checkpointReference", "checkpointChecksumCrc32c", "stateContractId"]
+          "require": ["transferReference", "transferChecksumCrc32c", "stateContractId"]
         },
         {
           "when": {
@@ -2766,16 +3100,14 @@
         {
           "when": { "recordKind": "spotSend" },
           "fields": [
-            { "name": "targetSpotRid", "$ref": "rid" },
-            { "name": "targetSpotGeneration", "$ref": "nonzero-u64" },
+            { "name": "targetSpot", "$ref": "spot-route-fence" },
             { "name": "payload", "$ref": "application-payload-envelope-v1" }
           ]
         },
         {
           "when": { "recordKind": "spotRequest" },
           "fields": [
-            { "name": "targetSpotRid", "$ref": "rid" },
-            { "name": "targetSpotGeneration", "$ref": "nonzero-u64" },
+            { "name": "targetSpot", "$ref": "spot-route-fence" },
             { "name": "payload", "$ref": "application-payload-envelope-v1" }
           ]
         },
@@ -2830,7 +3162,7 @@
         {
           "when": { "recordKind": "instanceSpotActivation" },
           "fields": [
-            { "name": "placement", "$ref": "instance-placement-v1" },
+            { "name": "route", "$ref": "instance-route-fence-v1" },
             { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
             { "name": "operationKind", "$ref": "instance-operation-kind" },
             { "name": "payload", "$ref": "application-payload-envelope-v1" }
@@ -2938,7 +3270,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "instance-placement-v1",
+      "name": "instance-route-fence-v1",
       "kind": "versioned-length-delimited",
       "version": {
         "$ref": "u8",
@@ -2952,25 +3284,24 @@
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "targetSpotRid", "$ref": "rid" },
-        { "name": "authority", "$ref": "authority-generation-fence" },
-        { "name": "instanceType", "$ref": "text8" }
+        { "name": "authority", "$ref": "authority-generation-fence" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "checkpoint-pointer",
+      "name": "transfer-root-pointer",
       "kind": "conditional-union",
       "discriminators": [
-        { "name": "hasCheckpoint", "source": "wire", "$ref": "bool8" }
+        { "name": "hasTransfer", "source": "wire", "$ref": "bool8" }
       ],
       "bodyLengthType": { "$ref": "u16" },
       "bodyLengthCovers": "selected-case",
       "cases": [
-        { "when": { "hasCheckpoint": "false" }, "fields": [] },
+        { "when": { "hasTransfer": "false" }, "fields": [] },
         {
-          "when": { "hasCheckpoint": "true" },
+          "when": { "hasTransfer": "true" },
           "fields": [
-            { "name": "reference", "$ref": "checkpoint-reference" },
+            { "name": "reference", "$ref": "transfer-reference" },
             { "name": "checksumCrc32c", "$ref": "u32" }
           ]
         }
@@ -3008,7 +3339,7 @@
             { "name": "coordinatorNodeRid", "$ref": "rid" },
             { "name": "coordinatorNodeGeneration", "$ref": "nonzero-u64" },
             { "name": "phase", "$ref": "transfer-phase" },
-            { "name": "checkpoint", "$ref": "checkpoint-pointer" },
+            { "name": "transferRoot", "$ref": "transfer-root-pointer" },
             { "name": "applicationVersion", "$ref": "application-version" },
             { "name": "participantProgress", "$ref": "participant-progress-vector" },
             { "name": "terminalCompletionCount", "$ref": "u32" },
@@ -3028,6 +3359,7 @@
         { "name": "object", "$ref": "authority-object-identity" },
         { "name": "ownerId", "$ref": "text8" },
         { "name": "ownerLeaseGeneration", "$ref": "nonzero-u64" },
+        { "name": "ownerMeshName", "$ref": "text8" },
         { "name": "ownerNodeRid", "$ref": "rid" },
         { "name": "ownerNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "transferState", "$ref": "authority-transfer-state" }
@@ -3064,50 +3396,51 @@
       "kind": "length-prefixed-bytes",
       "lengthType": { "$ref": "u32" },
       "minimumBytes": 0,
-      "maximumBytes": { "$bound": "checkpointChunkBytes" }
+      "maximumBytes": { "$bound": "transferChunkBytes" }
     },
     {
       "name": "durable-state-blob",
       "kind": "length-prefixed-bytes",
       "lengthType": { "$ref": "u64" },
       "minimumBytes": 1,
-      "maximumBytes": { "$bound": "checkpointLogicalBytes" }
+      "maximumBytes": { "$bound": "transferLogicalBytes" }
     },
     {
-      "name": "checkpoint-chunk-entry-v1",
+      "name": "transfer-chunk-entry-v1",
       "kind": "struct",
       "fields": [
         { "name": "order", "$ref": "u32" },
-        { "name": "reference", "$ref": "checkpoint-reference" },
+        { "name": "reference", "$ref": "transfer-reference" },
         { "name": "length", "$ref": "nonzero-u64" },
         { "name": "checksumCrc32c", "$ref": "u32" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "checkpoint-chunk-vector-v1",
+      "name": "transfer-chunk-vector-v1",
       "kind": "vector",
       "countType": { "$ref": "u32" },
-      "maximumItems": { "$bound": "checkpointChunkCount" },
-      "item": { "$ref": "checkpoint-chunk-entry-v1" },
+      "maximumItems": { "$bound": "transferChunkCount" },
+      "item": { "$ref": "transfer-chunk-entry-v1" },
       "constraints": [
         { "kind": "sorted", "field": "order", "comparison": "unsigned-wire-value" },
         { "kind": "unique", "field": "order" }
       ]
     },
     {
-      "name": "checkpoint-manifest-v1",
+      "name": "transfer-manifest-v1",
       "kind": "struct",
       "fields": [
         { "name": "logicalFormatVersion", "$ref": "u8", "constant": 1 },
-        { "name": "totalLength", "$ref": "checkpoint-logical-length" },
+        { "name": "totalLength", "$ref": "transfer-logical-length" },
         { "name": "totalChecksumCrc32c", "$ref": "u32" },
-        { "name": "chunks", "$ref": "checkpoint-chunk-vector-v1" }
+        { "name": "inventoryDigestSha256", "$ref": "sha256-bytes" },
+        { "name": "chunks", "$ref": "transfer-chunk-vector-v1" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "checkpoint-data-chunk-v1",
+      "name": "transfer-data-chunk-v1",
       "kind": "struct",
       "fields": [
         { "name": "order", "$ref": "u32" },
@@ -3116,21 +3449,21 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "checkpoint-application-state",
+      "name": "transfer-application-state",
       "kind": "conditional-union",
       "discriminators": [
         { "name": "hasState", "source": "wire", "$ref": "bool8" }
       ],
       "bodyLengthType": { "$ref": "u64" },
       "bodyLengthCovers": "selected-case",
-      "maximumEncodedBytes": { "$bound": "checkpointLogicalBytes" },
+      "maximumEncodedBytes": { "$bound": "transferLogicalBytes" },
       "cases": [
         { "when": { "hasState": "false" }, "fields": [] },
         {
           "when": { "hasState": "true" },
           "fields": [
             { "name": "stateContractId", "$ref": "text8" },
-            { "name": "serializer", "$ref": "checkpoint-serializer-kind", "constant": "frameworkJsonV1" },
+            { "name": "serializer", "$ref": "transfer-serializer-kind", "constant": "frameworkJsonV1" },
             { "name": "payload", "$ref": "durable-state-blob" }
           ]
         }
@@ -3139,13 +3472,13 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "checkpoint-envelope-v1",
+      "name": "transfer-envelope-v1",
       "kind": "struct",
       "fields": [
         { "name": "transfer", "$ref": "transfer-id" },
         { "name": "object", "$ref": "transfer-object-identity" },
         { "name": "applicationVersion", "$ref": "application-version" },
-        { "name": "applicationState", "$ref": "checkpoint-application-state" },
+        { "name": "applicationState", "$ref": "transfer-application-state" },
         { "name": "participantProgress", "$ref": "participant-progress-vector" },
         { "name": "journal", "$ref": "journal-vector" },
         { "name": "terminalCompletions", "$ref": "request-completion-vector" }
@@ -3173,50 +3506,50 @@
       "providerInterpretation": "opaque-bytes"
     },
     {
-      "name": "checkpoint-data-chunk-v1",
-      "magic": [90, 76, 67, 67],
+      "name": "transfer-data-chunk-v1",
+      "magic": [90, 76, 84, 67],
       "formatVersion": 1,
       "flags": 0,
       "byteOrder": "big-endian",
       "bodyLengthType": { "$ref": "u32" },
-      "maximumEncodedBytes": { "$bound": "checkpointChunkEnvelopeBytes" },
-      "body": { "$ref": "checkpoint-data-chunk-v1" },
+      "maximumEncodedBytes": { "$bound": "transferChunkEnvelopeBytes" },
+      "body": { "$ref": "transfer-data-chunk-v1" },
       "checksum": {
         "algorithm": "crc32c-castagnoli",
         "encoding": "u32-big-endian",
         "coverage": "magic-through-body",
         "position": "trailing"
       },
-      "goldenFixture": "golden/checkpoint-data-chunk-v1.json",
+      "goldenFixture": "golden/transfer-data-chunk-v1.json",
       "providerInterpretation": "opaque-bytes"
     },
     {
-      "name": "checkpoint-manifest-v1",
-      "magic": [90, 76, 67, 77],
+      "name": "transfer-manifest-v1",
+      "magic": [90, 76, 84, 77],
       "formatVersion": 1,
       "flags": 0,
       "byteOrder": "big-endian",
       "bodyLengthType": { "$ref": "u32" },
-      "maximumEncodedBytes": { "$bound": "checkpointManifestBytes" },
-      "body": { "$ref": "checkpoint-manifest-v1" },
+      "maximumEncodedBytes": { "$bound": "transferManifestBytes" },
+      "body": { "$ref": "transfer-manifest-v1" },
       "checksum": {
         "algorithm": "crc32c-castagnoli",
         "encoding": "u32-big-endian",
         "coverage": "magic-through-body",
         "position": "trailing"
       },
-      "goldenFixture": "golden/checkpoint-manifest-v1.json",
+      "goldenFixture": "golden/transfer-manifest-v1.json",
       "providerInterpretation": "opaque-bytes"
     }
   ],
-  "checkpointLogicalStreamFormat": {
-    "name": "checkpoint-envelope-v1",
+  "transferLogicalStreamFormat": {
+    "name": "transfer-envelope-v1",
     "encoding": "canonical-big-endian-field-stream-without-monolithic-provider-envelope",
-    "body": { "$ref": "checkpoint-envelope-v1" },
-    "maximumBytes": { "$bound": "checkpointLogicalBytes" },
+    "body": { "$ref": "transfer-envelope-v1" },
+    "maximumBytes": { "$bound": "transferLogicalBytes" },
     "chunkSplit": "any-byte-boundary-including-within-frozen-record",
     "replay": "bounded-incremental-decode-without-whole-stream-allocation",
-    "goldenFixture": "golden/checkpoint-envelope-v1.json"
+    "goldenFixture": "golden/transfer-envelope-v1.json"
   },
   "commands": [
     {
@@ -3349,8 +3682,7 @@
       "requiredFlags": [],
       "body": [
         { "name": "sourceSpotRid", "$ref": "rid" },
-        { "name": "targetSpotRid", "$ref": "rid" },
-        { "name": "targetSpotGeneration", "$ref": "nonzero-u64" }
+        { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
       "payload": "required",
       "payloadType": { "$ref": "application-payload-envelope-v1" }
@@ -3364,8 +3696,7 @@
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
         { "name": "sourceSpotRid", "$ref": "rid" },
-        { "name": "targetSpotRid", "$ref": "rid" },
-        { "name": "targetSpotGeneration", "$ref": "nonzero-u64" }
+        { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
       "payload": "required",
       "payloadType": { "$ref": "application-payload-envelope-v1" }
@@ -3473,8 +3804,7 @@
         { "name": "correlation", "$ref": "nonzero-u64" },
         { "name": "actor", "$ref": "actor-route-fence" },
         { "name": "entry", "$ref": "bool8" },
-        { "name": "targetSpotRid", "$ref": "rid" },
-        { "name": "targetSpotGeneration", "$ref": "nonzero-u64" }
+        { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
       "payload": "optional",
       "payloadType": { "$ref": "application-payload-envelope-v1" }
@@ -3642,7 +3972,7 @@
       "allowedFlags": ["metadata"],
       "requiredFlags": [],
       "body": [
-        { "name": "placement", "$ref": "instance-placement-v1" },
+        { "name": "route", "$ref": "instance-route-fence-v1" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceSpotRid", "$ref": "optional-rid" },
@@ -3672,7 +4002,7 @@
         { "name": "requiredMessages", "$ref": "ordinal-or-zero" },
         { "name": "requiredBytes", "$ref": "ordinal-or-zero" },
         { "name": "requirements", "$ref": "participant-vector" },
-        { "name": "checkpoint", "$ref": "checkpoint-pointer" },
+        { "name": "transferRoot", "$ref": "transfer-root-pointer" },
         { "name": "applicationVersion", "$ref": "application-version" }
       ],
       "payload": "forbidden"
@@ -3799,19 +4129,19 @@
       {
         "phase": "preparing",
         "after": ["local-admission-seal", "accepted-boundaries-fixed"],
-        "checkpoint": "absent",
+        "transfer": "absent",
         "targetReservation": "absent"
       },
       {
         "phase": "captured",
-        "after": ["immutable-checkpoint-put"],
-        "checkpoint": "present",
+        "after": ["immutable-transfer-put"],
+        "transfer": "present",
         "targetReservation": "absent"
       },
       {
         "phase": "prepared",
         "after": ["transfer-reserved-ack-validated"],
-        "checkpoint": "present",
+        "transfer": "present",
         "targetReservation": "present"
       }
     ],
@@ -3902,7 +4232,7 @@
         "phases": ["prepared", "committed", "activating"],
         "duplicate": "idempotent-by-stable-transfer-id-target-attempt-generation-participant-sequence",
         "reorder": "stage-by-participant-sequence",
-        "loss": "recover-from-checkpoint-or-retransmit"
+        "loss": "recover-from-transfer-or-retransmit"
       },
       {
         "command": "transferAck",

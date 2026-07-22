@@ -50,18 +50,13 @@ export interface ZLinkEntrySpotContext<TActor extends ZLinkActor = ZLinkActor, T
     destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkEntrySpotOptions {
-    routingId?: RoutingId;
-}
-
 export interface ZLinkFanoutChannelBuilder {
     enablePublisher(endpoint: string): this;
     enablePublisher(port?: number): this;
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
     routingId(publisherRoutingId: RoutingId): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
+    setRoutingIdPrefix(prefix: string): this;
     enableSubscriber(): this;
     enableSubscriber(endpoint: string): this;
     subscriberConnections(): ZLinkEndpointConnections;
@@ -76,6 +71,11 @@ export interface ZLinkFanoutPublishCall {
     submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }
 ```
+
+Entry Spot의 RID는 Framework가 MeshNode startup에서 발급한다. 애플리케이션은 Entry Spot RID를 구성값으로
+제공하지 않는다. Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Actor Ready barrier를 같은
+lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 직접 전달되며 Entry Spot callback을
+경유하지 않는다.
 
 `ZLinkFanoutClient.publish(...)`는 typed event의 packet name을 topic으로 사용하는 호출과 topic을 명시하는
 호출을 함께 제공한다. `ZLinkFanoutPublishCall`은 local publisher transport의 bounded admission만
@@ -191,10 +191,6 @@ export interface ZLinkPeerLocationKey {
     readonly endpoint?: string;
 }
 
-export interface ZLinkPeerLocationResolver {
-    listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
-}
-
 export interface ZLinkPollingMonitoringRegistration {
     readonly sourceName: string;
     readonly intervalMs: number;
@@ -266,10 +262,8 @@ export interface ZLinkRouteClient {
     requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
     requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
-    sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
-    requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
-    sendToSpot(target: InstanceSpotAddress, message: unknown): ZLinkSendCall;
-    requestToSpot(target: InstanceSpotAddress, request: unknown): ZLinkRequestCall;
+    sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSendCall;
+    requestToSpot(spotRid: SpotRid, request: unknown): ZLinkRequestCall;
 }
 
 export interface ZLinkRouteConfig {
@@ -447,7 +441,7 @@ export interface ZLinkSession {
 }
 
 export interface ZLinkSessionActor {
-    readonly actorId: string;
+    readonly actorId: ActorId;
     readonly ref: ActorRef;
     relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
     relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage,
@@ -457,9 +451,9 @@ export interface ZLinkSessionActor {
 
 export interface ZLinkSessionActors {
     readonly bound: readonly ZLinkSessionActor[];
-    bind(actor: ZLinkActor | ActorRef, signal?: AbortSignal): Promise<ZLinkSessionActor>;
+    bind(actor: ActorRef, signal?: AbortSignal): Promise<ZLinkSessionActor>;
     bindOrGet(actor: ActorRef, signal?: AbortSignal): Promise<ZLinkSessionActor>;
-    find(actorId: string): ZLinkSessionActor | undefined;
+    find(actorId: ActorId): ZLinkSessionActor | undefined;
 }
 
 export interface ZLinkSessionClient {

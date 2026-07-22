@@ -2,219 +2,247 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mode="${1:---check}"
 
-node - "$repo_root" <<'NODE'
+node - "$repo_root" "$mode" <<'NODE'
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
+
 const root = process.argv[2];
-const { readExactContract } = require(
+const mode = process.argv[3];
+if (!['--check', '--self-test'].includes(mode)) {
+  process.stderr.write('usage: verify-framework-instance-spot-contracts.sh [--check|--self-test]\n');
+  process.exit(2);
+}
+
+const {readExactContract} = require(
   path.join(root, 'scripts/lib/framework-contract-documents.cjs'));
 const languages = ['dotnet', 'cpp', 'java', 'kotlin', 'node'];
 const tags = {
-  dotnet: ['csharp'], cpp: ['cpp'], java: ['java'],
-  kotlin: ['kotlin', 'java'], node: ['ts', 'typescript'],
+  dotnet: ['csharp'],
+  cpp: ['cpp'],
+  java: ['java'],
+  kotlin: ['kotlin', 'java'],
+  node: ['ts', 'typescript'],
 };
-const failures = [];
-const fail = message => failures.push(message);
 
-function read(relative) {
+const read = relative => {
   const absolute = path.join(root, relative);
-  if (!fs.existsSync(absolute)) {
-    fail(`missing Instance Spot formal contract: ${relative}`);
-    return '';
-  }
+  if (!fs.existsSync(absolute)) throw new Error(`missing contract document: ${relative}`);
   return fs.readFileSync(absolute, 'utf8');
-}
+};
+const normalized = source => source.replace(/\s+/gu, ' ').trim();
 
 const formalFixtures = [
   {
     path: 'framework/doc/framework/spec/05-framework-api.ko.md',
     required: [
       'actor-free Instance Spot factory',
-      'InstanceSpotAddress는 `MeshName`, `InstanceSpotType`, `SpotRid`만 가진다',
-      '`MaxActiveInstances=4096`',
-      '`ActivationTimeout=3초`',
-      'Caller는 `createIfMissing`, target node, owner token, generation이나 retry option을 전달하지 않는다'
-    ]
+      'Instance Spot은 actor-free lifecycle을 사용하며 Actor handler, Actor membership과 Logical Multicast subscription을 등록할 수 없다.',
+      'Actor manager와 Spot manager는 global ID를 받는 `Create`, `GetOrCreate`, `Find` family를 제공한다.',
+      'Public object handle, directory, resolver와 unbounded list는 제공하지 않는다.',
+      '| exact SpotRef close |',
+    ],
   },
   {
     path: 'framework/doc/framework/spec/server/20-spot-messaging.ko.md',
     required: [
-      'Instance cold send도 source outbound admission에서 같은 결과를 완료하며',
-      'target activation queue 수락을\n기다리지 않는다',
-      'Target runtime은 location owner claim을 수행하지 않는다'
-    ]
+      '명시적인 creation intent를 먼저 commit한다.',
+      'message target은 계속 Spot RID다.',
+      'Instance Spot queue에는 direct payload와 timer callback만 추가한다.',
+      'Missing Instance Spot의 일반 message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.',
+    ],
   },
   {
     path: 'framework/doc/framework/spec/server/24-spot-address-messaging.ko.md',
     required: [
-      '동기\n`TrySubmit`이나 cache 상태에 따라 의미가 달라지는 호출은 제공하지 않는다',
-      'Location을 `Ready`로 commit하고 barrier를 연 뒤 첫 message를 일반 Spot application queue에 한 번 제출한다',
-      'target queue admission 뒤 다른 owner에게 숨은 retry를 수행하지 않는다',
-      'Instance Spot은 application이 target MeshNode를 선택하는 별도 `Create`\u00b7`GetOrCreate` operation을 제공하지'
-    ]
+      '`SpotHandle`, 별도 resolver handle과 `InstanceSpotAddress`는 제공하지 않는다.',
+      '## 3. Create와 GetOrCreate',
+      '일반 send·request는 type이나 Mesh를 입력으로 받지 않으며 Missing RID의 최초 creation intent를 만들지 않는다.',
+      'Public `Close`는 exact `SpotRef`를 받는다.',
+      'Create·GetOrCreate가 target RID와 endpoint를 application에 요구하지 않는다.',
+    ],
   },
   {
     path: 'framework/doc/framework/spec/server/40-location-runtime.ko.md',
     required: [
-      'Source coordinator가 target 선택과 authority claim을 소유하고 target runtime은 exact fence 검증',
-      'Target은 exact authority, target node lifecycle과 host lease를 다시 확인한다. Target이 authority를 claim하지',
-      'Serving 전 initial authority scan과',
-      'MeshNode descriptor의 Instance capability는\n등록한 type, transfer policy',
-      'ObjectGeneration, AuthorityOwnerGeneration과 새 StoreVersion',
-      'current OwnerId와 OwnerLeaseGeneration',
-      'Public callback에 TransferId를\n노출하지 않는다'
-    ]
+      'Manager의 명시적인 `Create` 또는 `GetOrCreate`로 생성한다.',
+      'User·Instance Spot의 `Create`는 Framework가 SpotRid를 발급하고, `GetOrCreate`는 caller의 SpotRid와 stable type을',
+      'creation intent와 target pending capacity를 하나의 atomic',
+      '일반 message와 find가 Missing Instance Spot을 hidden create하지 않는다.',
+    ],
   },
-  {
-    path: 'framework/doc/framework/spec/server/51-runtime-metrics.ko.md',
-    required: [
-      'zlink.instance_spot.activations',
-      'zlink.instance_spot.activation.duration',
-      'zlink.instance_spot.pending.messages',
-      'zlink.instance_spot.pending.bytes',
-      'zlink.instance_spot.claim.conflicts',
-      'zlink.instance_spot.takeovers'
-    ]
-  }
 ];
-for (const fixture of formalFixtures) {
-  const source = read(fixture.path);
-  for (const fragment of fixture.required) {
-    if (!source.includes(fragment)) fail(`formal contract is missing ${fragment}: ${fixture.path}`);
-  }
-}
 
-const contracts = new Map(languages.map(language => [
-  language, readExactContract(root, language, tags[language]),
-]));
 const projections = {
   dotnet: [
-    'public sealed record InstanceSpotAddress(',
-    'public sealed record ZLinkInstanceSpotFactoryOptions',
+    'public readonly record struct SpotRef(',
+    'RoutingId SpotRid, ulong ObjectGeneration, string MeshName, RoutingId NodeRid',
     'public interface IZLinkInstanceSpot',
-    'AddInstanceSpotFactory<TSpot>',
-    'public interface IZLinkAuthorityStore',
-    'public interface IZLinkLocationStore :',
-    'source local outbound admission'
+    'public interface IZLinkInstanceSpotHandlerRegistry',
+    'IZLinkSendCall SendToSpot<TMessage>(RoutingId spotRid, TMessage message);',
+    'IZLinkRequestCall RequestToSpot<TRequest>(RoutingId spotRid, TRequest request);',
+    'public interface IZLinkSpotManager',
+    'IZLinkSpotCreateCall Create(',
+    'IZLinkSpotGetOrCreateCall GetOrCreate(',
+    'ValueTask<bool> CloseAsync( SpotRef spot,',
   ],
   cpp: [
-    'struct instance_spot_address_t',
-    'struct instance_spot_factory_options_t',
+    'using spot_rid_t = zlink::routing_id_t;',
+    'class spot_ref_t final',
+    'std::uint64_t object_generation() const noexcept;',
     'class instance_spot_t {',
-    'add_instance_spot_factory(',
-    'class authority_store_t',
-    'class location_store_t : public mesh_node_location_store_t,',
-    'local outbound admission'
+    'class instance_spot_handler_registry_t {',
+    'send_call_t send_to_spot(spot_rid_t target, TCommand command);',
+    'request_call_t<TReply> request_to_spot( spot_rid_t target, TRequest request);',
+    'class spot_manager_t {',
+    'virtual spot_create_call_t create(',
+    'virtual spot_create_call_t get_or_create(',
+    'virtual task_t<bool> close(spot_ref_t spot) = 0;',
   ],
   java: [
-    'public record InstanceSpotAddress(',
-    'public record ZLinkInstanceSpotFactoryOptions(',
+    'public record SpotRef(',
+    'RoutingId spotRid, long objectGeneration, String meshName, RoutingId nodeRid',
     'public interface ZLinkInstanceSpot',
-    'addInstanceSpotFactory(',
-    'public interface ZLinkAuthorityStore',
-    'public interface ZLinkLocationStore extends'
+    'public interface ZLinkInstanceSpotHandlerRegistry',
+    'ZLinkSpotManager { public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall create(',
+    'ZLinkSpotGetOrCreateCall getOrCreate(',
+    'close(systems.zlink.framework.spots.SpotRef);',
+    'sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);',
+    'requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);',
   ],
   kotlin: [
-    'Instance Spot은 Java builder를 직접 사용하므로',
-    'target: InstanceSpotAddress',
-    'Kotlin은 Java `ZLinkAuthorityStore`',
-    'Actor·Instance phase별 Store나 application이 transfer phase를 조립하는 extension을 추가하지 않는다'
+    'SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID다.',
+    '`SpotRef(spotRid, objectGeneration, meshName, nodeRid)`는 exact incarnation을 close할 때만',
+    '`ZLinkSpotManager.create(spotKind, spotType)`은 RID를 생성하고, `getOrCreate(spotRid, spotKind, spotType)`은',
+    'Kotlin은 address DTO, process-local handle, resolver, unbounded directory와 direct create/get-or-create terminal extension을 제공하지 않는다.',
+    '`close(SpotRef)`는 Missing이면 `false`, generation 불일치는 `SpotGenerationStale`',
   ],
   node: [
-    'export interface InstanceSpotAddress',
-    'export interface ZLinkInstanceSpotFactoryOptions',
-    'export interface ZLinkInstanceSpot',
-    'addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>',
-    'export interface ZLinkAuthorityStore',
-    'export interface ZLinkLocationStore extends',
-    'source local outbound admission까지 기다리지만'
-  ]
+    'export type SpotRid = RoutingId;',
+    'export interface SpotRef { readonly spotRid: SpotRid; readonly objectGeneration: bigint; readonly meshName: string; readonly nodeRid: RoutingId;',
+    'export interface ZLinkInstanceSpot {',
+    'export interface ZLinkInstanceSpotHandlerRegistry {',
+    'sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSendCall;',
+    'requestToSpot(spotRid: SpotRid, request: unknown): ZLinkRequestCall;',
+    'export interface ZLinkSpotManager {',
+    'create(kind: ZLinkCreatableSpotKind, spotType: string): ZLinkSpotCreateCall;',
+    'getOrCreate( spotRid: SpotRid, kind: ZLinkCreatableSpotKind, spotType: string): ZLinkSpotGetOrCreateCall;',
+    'close(spot: SpotRef, signal?: AbortSignal): Promise<boolean>;',
+  ],
 };
-for (const [language, fragments] of Object.entries(projections)) {
-  const source = contracts.get(language).source;
-  const normalizedSource = source.replace(/\s+/gu, ' ');
-  for (const fragment of fragments) {
-    const normalizedFragment = fragment.replace(/\s+/gu, ' ');
-    if (!normalizedSource.includes(normalizedFragment)) {
-      fail(`${language} Instance Spot projection is missing: ${normalizedFragment}`);
+
+const forbiddenRules = [
+  {
+    label: 'legacy Instance Spot address',
+    pattern: /\b(?:InstanceSpotAddress|instance_spot_address_t)\b/u,
+    sample: 'public interface InstanceSpotAddress {}',
+  },
+  {
+    label: 'process-local Spot handle',
+    pattern: /\b(?:SpotHandle|ZLinkSpotHandle|IZLinkSpotHandle|spot_handle_t)\b/u,
+    sample: 'class spot_handle_t {};',
+  },
+  {
+    label: 'public Spot resolver',
+    pattern: /\b(?:ZLinkSpotResolver|IZLinkSpotResolver|SpotResolver|spot_resolver_t|resolveSpot|resolve_spot)\b/u,
+    sample: 'interface ZLinkSpotResolver {}',
+  },
+  {
+    label: 'local-only Spot lifecycle',
+    pattern: /\b(?:CreateLocalSpot|GetOrCreateLocalSpot|createLocalSpot|getOrCreateLocalSpot|create_local_spot|get_or_create_local_spot)\b/u,
+    sample: 'createLocalSpot(type);',
+  },
+  {
+    label: 'first-message creation switch',
+    pattern: /\b(?:CreateIfMissing|createIfMissing|create_if_missing)\b/u,
+    sample: 'sendToSpot(id, message, createIfMissing);',
+  },
+  {
+    label: 'legacy Instance-specific lifecycle operation',
+    pattern: /\b(?:CreateInstanceSpot|GetOrCreateInstanceSpot|createInstanceSpot|getOrCreateInstanceSpot|create_instance_spot|get_or_create_instance_spot)\b/u,
+    sample: 'createInstanceSpot(type);',
+  },
+  {
+    label: 'target-selecting Spot create',
+    pattern: /(?:IZLinkSpotCreateCall\s+Create|ZLinkSpotCreateCall\s+create|spot_create_call_t\s+create)\s*\([^)]*\b(?:NodeRid|nodeRid|node_rid|targetNode|target_node|endpoint)\b[^)]*\)/su,
+    sample: 'ZLinkSpotCreateCall create(NodeRid targetNode, String type);',
+  },
+];
+
+const contracts = new Map(languages.map(language => [
+  language,
+  readExactContract(root, language, tags[language]),
+]));
+
+const missingProjectionFailures = (language, source) => projections[language]
+  .filter(fragment => !normalized(source).includes(normalized(fragment)))
+  .map(fragment => `${language} exact interface is missing "${normalized(fragment)}"`);
+const forbiddenContractFailures = (language, code) => forbiddenRules
+  .filter(rule => rule.pattern.test(code))
+  .map(rule => `${language} exact interface exposes ${rule.label}`);
+
+const failures = [];
+for (const fixture of formalFixtures) {
+  const source = normalized(read(fixture.path));
+  for (const fragment of fixture.required) {
+    if (!source.includes(normalized(fragment))) {
+      failures.push(`formal contract is missing "${normalized(fragment)}": ${fixture.path}`);
     }
   }
-  const code = contracts.get(language).code;
-  if (/\b(?:TrySubmit|trySubmit|try_submit)\s*(?:<[^>]*>)?\s*\(/.test(code)) {
-    fail(`${language} Instance Spot public declarations expose TrySubmit`);
-  }
-  if (/\bzlink_(?:instance_spot|spot_(?:send|request)_to_instance)[a-z0-9_]*\s*\(/.test(code)) {
-    fail(`${language} exact contract exposes removed Core Instance service ABI`);
-  }
-  if (/\b(?:IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore|ZLinkInstanceSpotStore)\b/.test(code)) {
-    fail(`${language} exact contract exposes a phase-specific Instance Store`);
-  }
-  if (/\b(?:CreateInstanceSpot|GetOrCreateInstanceSpot|createInstanceSpot|getOrCreateInstanceSpot|create_instance_spot|get_or_create_instance_spot)\b/.test(code)) {
-    fail(`${language} exact contract exposes a target-selecting Instance lifecycle operation`);
-  }
-  if (language === 'cpp' && /class\s+instance_spot_t\s*:\s*public\s+spot_t\b/.test(code)) {
-    fail('cpp actor-free Instance Spot still inherits the User Spot actor-capable base');
+}
+
+for (const language of languages) {
+  const contract = contracts.get(language);
+  failures.push(...missingProjectionFailures(language, contract.source));
+  failures.push(...forbiddenContractFailures(language, contract.code));
+}
+
+const actorFreeRules = [
+  ['dotnet', /interface\s+IZLinkInstanceSpot\s*:\s*IZLinkSpot\b/su],
+  ['cpp', /class\s+instance_spot_t\s*:\s*public\s+spot_t\b/su],
+  ['java', /interface\s+ZLinkInstanceSpot\s+extends\s+ZLinkSpot\b/su],
+  ['node', /interface\s+ZLinkInstanceSpot\s+extends\s+ZLinkSpot\b/su],
+];
+for (const [language, pattern] of actorFreeRules) {
+  if (pattern.test(contracts.get(language).code)) {
+    failures.push(`${language} Instance Spot lifecycle inherits the actor-capable Spot interface`);
   }
 }
 
-function requireAddress(source, pattern, fields, language) {
-  const match = pattern.exec(source);
-  if (!match) {
-    fail(`${language} InstanceSpotAddress declaration is missing`);
-    return;
-  }
-  const body = match[1];
-  let previous = -1;
-  for (const field of fields) {
-    const index = body.indexOf(field);
-    if (index < 0 || index <= previous) {
-      fail(`${language} InstanceSpotAddress must preserve only MeshName, type and Spot RID order`);
-      break;
-    }
-    previous = index;
-  }
-  if (/owner|generation|epoch|nodeRid|node_rid|createIfMissing|create_if_missing/i.test(body)) {
-    fail(`${language} InstanceSpotAddress leaks placement or authority state`);
-  }
-}
-requireAddress(
-  contracts.get('dotnet').source,
-  /public sealed record InstanceSpotAddress\(([\s\S]*?)\);/,
-  ['string MeshName', 'string InstanceSpotType', 'RoutingId SpotRid'], 'dotnet');
-requireAddress(
-  contracts.get('cpp').source,
-  /struct instance_spot_address_t\s*\{([\s\S]*?)\};/,
-  ['std::string mesh_name', 'std::string instance_spot_type', 'spot_rid_t spot_rid'], 'cpp');
-requireAddress(
-  contracts.get('java').source,
-  /public record InstanceSpotAddress\(([\s\S]*?)\)\s*\{\}/,
-  ['String meshName', 'String instanceSpotType', 'RoutingId spotRid'], 'java');
-requireAddress(
-  contracts.get('node').source,
-  /export interface InstanceSpotAddress\s*\{([\s\S]*?)\}/,
-  ['meshName: string', 'instanceSpotType: string', 'spotRid: RoutingId'], 'node');
-
-const authorityOperations = {
-  dotnet: ['ReadAuthorityAsync', 'CompareExchangeAuthorityAsync'],
-  cpp: ['read_authority', 'compare_exchange_authority'],
-  java: ['read(', 'compareExchange('],
-  node: ['readAuthority(', 'compareExchangeAuthority('],
-};
-for (const [language, operations] of Object.entries(authorityOperations)) {
-  const source = contracts.get(language).source;
-  for (const operation of operations) {
-    if (!source.includes(operation)) fail(`${language} opaque authority store is missing ${operation}`);
-  }
-}
-
-if (failures.length) {
+if (failures.length > 0) {
   process.stderr.write(`${failures.map(message => `FAIL: ${message}`).join('\n')}\n`);
   process.exit(1);
 }
+
+let negativeMutations = 0;
+if (mode === '--self-test') {
+  for (const rule of forbiddenRules) {
+    const rejected = forbiddenContractFailures('negative', rule.sample)
+      .some(failure => failure.includes(rule.label));
+    if (!rejected) {
+      throw new Error(`negative self-test did not reject ${rule.label}`);
+    }
+    negativeMutations += 1;
+  }
+  for (const language of languages) {
+    const fragment = normalized(projections[language][0]);
+    const source = normalized(contracts.get(language).source);
+    const mutated = source.split(fragment).join('');
+    if (!missingProjectionFailures(language, mutated)
+      .some(failure => failure.includes(fragment))) {
+      throw new Error(`negative self-test did not reject missing ${language} required projection`);
+    }
+    negativeMutations += 1;
+  }
+}
+
 process.stdout.write(
-  `INSTANCE SPOT DOC CONTRACTS CLEAN languages=${languages.length}`
-  + ` formal_documents=${formalFixtures.length} address_fields=12 authority_operations=8\n`);
+  `INSTANCE SPOT CONTRACTS CLEAN languages=${languages.length}`
+  + ` formal_documents=${formalFixtures.length}`
+  + ` required_fragments=${Object.values(projections).flat().length}`
+  + ` forbidden_rules=${forbiddenRules.length}`
+  + ` negative_mutations=${negativeMutations}\n`);
 NODE

@@ -76,7 +76,6 @@
 #cmakedefine ZLINK_HAVE_TLS
 #cmakedefine ZLINK_HAVE_TIPC
 
-#cmakedefine ZLINK_HAVE_OPENPGM
 #cmakedefine ZLINK_HAVE_NORM
 #cmakedefine ZLINK_HAVE_VMCI
 

@@ -62,19 +62,18 @@ Framework를 등록하면 다음 service가 public DI surface로 제공된다.
 | service | lifetime | 책임 |
 |---|---|---|
 | `IZLinkRouteClient` | singleton | Node direct와 ChannelName send/request |
-| `IZLinkSpotClient` | singleton | resolved Spot과 Instance logical address direct send/request |
+| `IZLinkSpotClient` | singleton | global SpotRid direct send/request |
 | `IZLinkSpotManager` | singleton | Spot 생성, resolve와 종료 |
 | `IZLinkSpotPublisherClient` | singleton | Spot Logical Multicast publish |
 | `IZLinkFanoutClient` | singleton | classic fanout ChannelName에 typed event publish |
-| `IZLinkActorClient` | singleton | ActorRef direct send/request |
+| `IZLinkActorClient` | singleton | global ActorId direct send/request |
 | `IZLinkActorManager` | singleton | Actor 생성, resolve와 종료 |
-| `IZLinkRouteMeshRuntimeOptions` | singleton | ChannelName weight 조회·설정 |
+| `IZLinkRouteMeshRuntimeOptions` | singleton | Mesh placement weight와 ChannelName weight 조회·설정 |
 | `IZLinkFrameworkRuntime` | singleton | host state, readiness, `Retire`와 `Shutdown` |
 | `IZLinkRouteMeshRuntime` | singleton | MeshNode snapshot과 typed event |
 | `IZLinkClientServerRuntime` | singleton | ClientServer Channel snapshot과 typed event |
 | `IZLinkFanoutRuntime` | singleton | automatic fanout Channel snapshot과 publisher lifecycle event |
 | `IZLinkMessageFlowRuntime` | singleton | message flow mode와 observer event |
-| `IZLinkAllocatedRoutingIdProvider` | singleton | 준비된 allocation 결과 조회 |
 
 등록되지 않은 MeshName이나 runtime capability를 조회하면 `ZLinkConfigurationException`이 발생한다.
 Channel send/request의 등록되지 않은 ChannelName은 `RequestTargetNotFound`로 완료한다.
@@ -91,13 +90,15 @@ services.AddZLinkFramework(options =>
 {
     options.AddLocationStore(
         new ZLinkRedisLocationStore(redisOptions)); // Location record, lease와 owner authority를 함께 맡는다.
-    options.AddCheckpointStore(checkpointStore);    // transfer envelope을 opaque bytes로 보관한다.
+    options.AddTransferStore(
+        new ZLinkRedisTransferStore(transferOptions)); // immutable transfer payload를 별도 capability로 보관한다.
 });
 ```
 
-Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`는
-`IZLinkLocationStore` instance 하나를 받는다. 이 instance가 authority CAS를 반드시 제공하며 routing ID slot
-allocation을 사용하면 allocation capability도 같은 instance가 구현해야 한다.
+Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`와 `AddTransferStore(...)`는
+각 interface instance를 하나씩 받는다. Location instance는 authority CAS와 generic placement
+Reserve·Commit·Abort를 반드시 제공하며 Transfer instance는 immutable payload operation만 제공한다. 한 instance가
+두 capability를 함께 구현하는 것을 공식 Redis 계약으로 제공하지 않는다.
 
 Manual peer만 사용하고 분산 location 기능을 사용하지 않는 MeshNode는 location store 없이 시작할 수 있다.
 Manual peer도 MeshName, RID, lifecycle generation, ChannelName set과 security identity admission을 통과한다.
@@ -123,12 +124,14 @@ Host는 network bind 전에 다음 조건을 검증한다.
 - wildcard BindHost를 사용할 때 connect 가능한 AdvertiseHost
 - 같은 owner namespace의 handler key 중복
 - Spot, Actor와 STREAM factory의 owner 관계
-- Instance Spot의 stable type·구현 class 중복, actor-free lifecycle interface, type별 active 상한과 activation timeout
-- Instance Spot을 사용할 때 location store 등록과 MeshName별 source Entry Spot 단일성
+- Object role의 중복 선택, Client·Server role의 Location Store 등록과 None role의 factory 부재
+- Actor·User Spot·Instance Spot의 stable type·구현 class 중복, explicit transfer policy와 type별 capacity
+- Node placement weight·active/pending capacity와 placement profile 범위
 - Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
-- `Snapshot` policy의 state contract ID·adapter type과 Checkpoint Store 등록
+- `Snapshot` policy의 state contract ID·adapter type
+- `Recreate` 또는 `Snapshot` factory가 하나라도 있을 때 Transfer Store가 정확히 하나 등록되었는지 여부
 - 자동 discovery 또는 분산 location 기능에 필요한 store instance
-- 자동 routing ID와 fixed routing ID의 동시 설정
+- automatic discovery·object role과 fixed routing ID의 잘못된 조합, RID prefix 형식
 - TLS certificate, key와 trust 설정
 
 검증 실패는 `ZLinkConfigurationException`으로 host startup을 실패시킨다. Runtime을 first call에서 만들지
@@ -136,9 +139,10 @@ Host는 network bind 전에 다음 조건을 검증한다.
 
 ## 8. Runtime option
 
-Channel weight의 public runtime option은
+Mesh placement weight와 Channel weight의 public runtime option은
 [Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다. 실행 중에는
-ChannelName으로 선택한 local Server의 `Weight`만 설정할 수 있다. `MaxMessageSize`를 포함한 transport
+MeshName으로 node placement weight를, ChannelName으로 local Server의 `Weight`를 설정할 수 있다. 두 값은
+서로 다른 selection에 적용한다. `MaxMessageSize`를 포함한 transport
 option은 startup 전에만 설정하며 runtime setter를 제공하지 않는다.
 
 Framework service liveness는 application traffic과 무관하게 5초마다 probe를 보내고 같은 current connection의

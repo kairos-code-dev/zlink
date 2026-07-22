@@ -5,7 +5,6 @@
   "languages": ["dotnet", "cpp", "java", "kotlin", "node"],
   "termination_result_contract": {
     "formal_path": "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md",
-    "target_path": "framework/doc/plan/v11.0/target-spec/07-location-maintenance.ko.md",
     "e2e_path": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
     "outcomes": [
       { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
@@ -45,11 +44,25 @@
         "public interface IZLinkMeshChannelRoleBuilder",
         "public interface IZLinkSendCall",
         "public interface IZLinkSpotActorLifecycle<TActor>",
-        "public sealed record InstanceSpotAddress(",
+        "public readonly record struct ActorRef(",
+        "public readonly record struct SpotRef(",
+        "public interface IZLinkActorManager",
+        "public interface IZLinkSpotManager",
+        "ReserveAsync(",
+        "SetRoutingIdPrefix(string prefix)",
         "public interface IZLinkLocationStore",
+        "void AddTransferStore(IZLinkTransferStore store);",
+        "public interface IZLinkTransferStore",
+        "public sealed class ZLinkRedisTransferStore",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
-      ]
+      ],
+      "forbidden_file_fragments": {
+        "05-spots.ko.md": ["InstanceSpotAddress", "public abstract class SpotHandle", "IZLinkSpotHandleResolver"],
+        "06-actors.ko.md": ["IZLinkActorDirectory", "IZLinkActorSpotHandleResolver"],
+        "08-authority-transfer.ko.md": ["ReservePlacementAsync(", "CommitPlacementAsync(", "AbortPlacementAsync(", "Checkpoint"],
+        "09-routing-id-allocation.ko.md": ["IZLinkRoutingIdSlot", "IZLinkAllocatedRoutingIdProvider"]
+      }
     },
     "cpp": {
       "code_tags": ["cpp"],
@@ -60,11 +73,24 @@
         "class mesh_channel_builder_t",
         "class send_call_t",
         "on_actor_join(",
-        "struct instance_spot_address_t",
+        "class actor_ref_t final",
+        "class spot_ref_t final",
+        "class actor_manager_t",
+        "class spot_manager_t",
+        "task_t<object_reserve_result_t> reserve(",
+        "set_automatic_routing_id_prefix(std::string prefix)",
         "class location_store_t",
+        "std::shared_ptr<transfer_store_t> store);",
+        "class transfer_store_t",
+        "class redis_transfer_store_t",
         "client_server_server_state_t",
         "fanout_publisher_connection_state_t"
-      ]
+      ],
+      "forbidden_file_fragments": {
+        "04-spots.ko.md": ["instance_spot_address_t", "spot_handle_t", "spot_handle_resolver_t"],
+        "05-actors.ko.md": ["actor_directory_t", "actor_spot_handle_resolver_t"],
+        "07-location-store.ko.md": ["routing_id_slot_allocation", "allocated_routing_id_provider_t", "Checkpoint"]
+      }
     },
     "java": {
       "code_tags": ["java"],
@@ -75,8 +101,16 @@
         "interface ZLinkMeshChannelBuilder",
         "ZLinkSendCall {",
         "ZLinkSpotActorLifecycle<TActor extends",
-        "record InstanceSpotAddress(",
+        "public final class systems.zlink.framework.actors.ActorRef",
+        "public final class systems.zlink.framework.spots.SpotRef",
+        "public interface systems.zlink.framework.actors.ZLinkActorManager",
+        "public interface systems.zlink.framework.spots.ZLinkSpotManager",
+        "ZLinkObjectReserveResult> reserve(",
+        "setRoutingIdPrefix(java.lang.String)",
         "interface ZLinkLocationStore",
+        "void addTransferStore(ZLinkTransferStore store);",
+        "interface ZLinkTransferStore",
+        "class ZLinkRedisTransferStore",
         "public interface ZLinkRuntimeQuery",
         "public record ZLinkFrameworkRuntimeSnapshot(",
         "public record ZLinkFrameworkRuntimeEvent(",
@@ -120,6 +154,23 @@
         ]
       },
       "forbidden_file_fragments": {
+        "actors.ko.md": [
+          "ZLinkActorDirectory",
+          "ZLinkActorSpotHandleResolver"
+        ],
+        "spots.ko.md": [
+          "InstanceSpotAddress",
+          "public interface systems.zlink.framework.spots.SpotHandle {",
+          "ZLinkSpotHandleResolver"
+        ],
+        "location-maintenance.ko.md": [
+          "ZLinkRoutingIdSlot",
+          "ZLinkAllocatedRoutingIdProvider",
+          "reservePlacement(",
+          "commitPlacement(",
+          "abortPlacement(",
+          "Checkpoint"
+        ],
         "configuration-host.ko.md": [
           "systems.zlink.framework.runtime.internal",
           "systems.zlink.framework.spring.ZLinkFrameworkAutoConfiguration",
@@ -139,24 +190,27 @@
         "Kotlin은 Java의 `ZLinkMeshNodeState`",
         "fun ZLinkMeshNodeBuilder.channel(",
         "CompletionStage<T>.await()",
+        "fun ZLinkDispatchOptions.onMessageFlow(",
         "onActorJoinSuspending(",
-        "target: InstanceSpotAddress",
+        "actor: ActorRef",
+        "protected abstract suspend fun createActor(",
+        "protected abstract suspend fun reserveSuspending(",
         "class ZLinkSuspendingLocationStore",
+        "class ZLinkSuspendingTransferStore",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
       "required_file_fragments": {
-        "location-maintenance.ko.md": [
-          "fun <T> Publisher<T>.asFlow(): Flow<T>",
-          "Flow<T> asFlow(java.util.concurrent.Flow$Publisher<T>)"
-        ],
         "monitoring.ko.md": [
-          "[Location과 maintenance](location-maintenance.ko.md)가 소유하는 공통 `asFlow()` bridge",
+          "fun ZLinkDispatchOptions.onMessageFlow(",
           "Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clientServerRuntime()`과",
           "bean은 해당 Java accessor의 반환값과 reference identity가 같다."
         ]
       },
       "forbidden_file_fragments": {
+        "actors.ko.md": ["ZLinkActorDirectory", "ZLinkActorSpotHandleResolver"],
+        "spots.ko.md": ["InstanceSpotAddress", "target: SpotHandle,", "ZLinkSpotHandleResolver"],
+        "location-maintenance.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider", "reservePlacementSuspending(", "commitPlacementSuspending(", "abortPlacementSuspending(", "Checkpoint"],
         "monitoring.ko.md": [
           "fun <T> Publisher<T>.asFlow(): Flow<T>"
         ]
@@ -171,10 +225,38 @@
         "export interface ZLinkMeshChannelBuilder",
         "export interface ZLinkSendCall",
         "export interface ZLinkSpotActorLifecycle",
-        "export interface InstanceSpotAddress",
+        "export interface ZLinkInstanceSpot {",
+        "readonly context: ZLinkInstanceSpotContext;",
+        "sendToSpot(spotRid: SpotRid",
+        "export interface ActorRef",
+        "export interface SpotRef",
+        "export interface ZLinkActorManager",
+        "export interface ZLinkSpotManager",
+        "export interface ZLinkObjectReserveRequest",
+        "setRoutingIdPrefix(prefix: string)",
         "export interface ZLinkLocationStore",
+        "addTransferStore(store: ZLinkTransferStore): this",
+        "export interface ZLinkTransferStore",
+        "export declare class ZLinkRedisTransferStore",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
+      ],
+      "forbidden_file_fragments": {
+        "01-foundation-configuration.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {"],
+        "04-spots.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {", "ZLinkSpotHandleResolver"],
+        "05-actors.ko.md": ["ZLinkActorDirectory", "ZLinkActorSpotHandleResolver"],
+        "08-location-maintenance.ko.md": ["Checkpoint"],
+        "09-routing-id-allocation.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider"]
+      }
+    }
+  },
+  "allowed_duplicate_declaration_owners": {
+    "kotlin": {
+      "systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt": [
+        "framework/doc/framework/spec/server/languages/kotlin/interfaces/actors.ko.md",
+        "framework/doc/framework/spec/server/languages/kotlin/interfaces/configuration-host.ko.md",
+        "framework/doc/framework/spec/server/languages/kotlin/interfaces/spots.ko.md",
+        "framework/doc/framework/spec/server/languages/kotlin/interfaces/stream-session.ko.md"
       ]
     }
   },
@@ -204,100 +286,33 @@
     "\\b(?:IZLinkActorTransferStore|actor_transfer_store_t|ZLinkActorTransferStore|IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore|IZLinkActorTransferAdapter|actor_transfer_adapter_t|ZLinkActorTransferAdapter)\\b",
     "\\bzlink_(?:mesh_node|instance_spot|spot)_[a-z0-9_]+\\s*\\("
   ],
-  "target_document_sets": [
+  "consolidated_internal_document_sets": [
     {
-      "name": "target-spec",
-      "directory": "framework/doc/plan/v11.0/target-spec",
+      "name": "common-internals",
+      "directory": "framework/doc/framework/common/internals",
       "required_documents": [
         "README.ko.md",
-        "01-mesh-node.ko.md",
-        "02-dispatch.ko.md",
-        "03-spot.ko.md",
-        "04-actor.ko.md",
-        "05-stream-session.ko.md",
-        "06-instance-spot.ko.md",
-        "07-location-maintenance.ko.md",
-        "08-liveness-observability.ko.md",
-        "09-core-raw-runtime-boundary.ko.md"
+        "service-runtime-architecture.ko.md",
+        "service-wire-protocol.ko.md",
+        "mailbox-dispatch-runtime.ko.md",
+        "stateful-maintenance-runtime.ko.md",
+        "stream-session-runtime.ko.md",
+        "transport-liveness-runtime.ko.md",
+        "service-monitoring-runtime.ko.md",
+        "concurrency-resource-runtime.ko.md"
       ],
       "readme_required_fragments": [
-        "Framework Service 11.0 공개 계약 migration crosswalk",
-        "정식 spec과 이 묶음의 내용이 다르면 정식 spec을 적용",
-        "Core Service 원문 no-loss 표",
-        "`core/doc/spec/core/service/`",
-        "C ABI type layout",
-        "private Core C ABI와 binding 내부 진입점은 두지 않는다.",
-        "`01-mesh-node`",
-        "`02-dispatch`",
-        "`03-spot`",
-        "`04-actor`",
-        "`05-stream-session`"
+        "Framework 공통 내부 구조",
+        "application public API가 아니다",
+        "Service runtime architecture",
+        "Mailbox and dispatch",
+        "Stateful maintenance",
+        "STREAM session",
+        "Concurrency and resources",
+        "Core raw runtime boundary"
       ],
       "required_file_fragments": {
-        "07-location-maintenance.ko.md": [
-          "| 0 | `Stopped` | `None` |",
-          "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `TransferDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |",
-          "| 2 | `ForceStopped` | `DeadlineExceeded`, `TransferFailed`, `TeardownFailed` |",
-          "`ForceStopped/TeardownFailed`"
-        ],
-        "08-liveness-observability.ko.md": [
-          "RouteMesh와 ClientServer",
-          "fanout",
-          "전용 SUB socket",
-          "one-way",
-          "beacon",
-          "probe·ACK를 사용하지 않는다.",
-          "Beacon은 ACK, application dispatch"
-        ],
-        "09-core-raw-runtime-boundary.ko.md": [
-          "Core raw runtime 정본",
-          "core/doc/spec/core/09-runtime-boundary.ko.md",
-          "계약을 다시 정의하지 않는다"
-        ]
-      },
-      "aggregate_required_fragments": [
-        "Retire",
-        "Shutdown",
-        "Instance Spot",
-        "service liveness"
-      ],
-      "forbidden_code_patterns": [
-        "\\bzlink_(?:mesh_node|mesh_spot|mesh_actor|mesh_stream_session|instance_spot|spot)_[a-z0-9_]+\\s*\\("
-      ]
-    },
-    {
-      "name": "target-internals",
-      "directory": "framework/doc/plan/v11.0/target-internals",
-      "required_documents": [
-        "README.ko.md",
-        "01-runtime-architecture.ko.md",
-        "02-wire-protocol.ko.md",
-        "03-mailbox-dispatch.ko.md",
-        "04-stateful-object-runtime.ko.md",
-        "05-maintenance-recovery.ko.md",
-        "06-stream-session-runtime.ko.md",
-        "07-liveness-monitoring.ko.md",
-        "08-concurrency-resources.ko.md",
-        "09-core-raw-runtime-boundary.ko.md"
-      ],
-      "readme_required_fragments": [
-        "RouteMesh 11 service runtime 구현 crosswalk",
-        "정식 internals 또는 schema와 이 묶음의 내용이 다르면 정식 문서를 적용",
-        "Core service C ABI를 다시 만들거나",
-        "Core service internals no-loss mapping",
-        "§1 Source layout and boundaries",
-        "§2 Object model",
-        "§3 Mailbox, ready and claim",
-        "§4 Request, reply and completion",
-        "§5 Wire",
-        "§6 Logical multicast",
-        "§7 Actor and transfer fence",
-        "§8 Monitor",
-        "§9 Locks and threads",
-        "§10 STREAM"
-      ],
-      "required_file_fragments": {
-        "07-liveness-monitoring.ko.md": [
+        "transport-liveness-runtime.ko.md": [
           "RouteMesh와 ClientServer",
           "fanout",
           "전용 SUB socket",
@@ -306,10 +321,11 @@
           "ACK를 보내지 않",
           "publisher만 not-ready"
         ],
-        "09-core-raw-runtime-boundary.ko.md": [
-          "Core raw runtime internals 정본",
-          "core/doc/internals/runtime-boundary.ko.md",
-          "구조를 다시 정의하지 않는다"
+        "stateful-maintenance-runtime.ko.md": [
+          "global ActorId",
+          "global SpotRid",
+          "aggregate",
+          "reservation"
         ]
       },
       "aggregate_required_fragments": [
@@ -329,27 +345,8 @@
       "README.ko.md",
       "actor-spot-remote-placement-and-node-identity-change-proposal.ko.md",
       "dotnet-remote-placement-public-contract-change-sketch.ko.md",
-      "route-mesh-11.0.0-execution-ledger.ko.md",
-      "target-spec/README.ko.md",
-      "target-spec/01-mesh-node.ko.md",
-      "target-spec/02-dispatch.ko.md",
-      "target-spec/03-spot.ko.md",
-      "target-spec/04-actor.ko.md",
-      "target-spec/05-stream-session.ko.md",
-      "target-spec/06-instance-spot.ko.md",
-      "target-spec/07-location-maintenance.ko.md",
-      "target-spec/08-liveness-observability.ko.md",
-      "target-spec/09-core-raw-runtime-boundary.ko.md",
-      "target-internals/README.ko.md",
-      "target-internals/01-runtime-architecture.ko.md",
-      "target-internals/02-wire-protocol.ko.md",
-      "target-internals/03-mailbox-dispatch.ko.md",
-      "target-internals/04-stateful-object-runtime.ko.md",
-      "target-internals/05-maintenance-recovery.ko.md",
-      "target-internals/06-stream-session-runtime.ko.md",
-      "target-internals/07-liveness-monitoring.ko.md",
-      "target-internals/08-concurrency-resources.ko.md",
-      "target-internals/09-core-raw-runtime-boundary.ko.md"
+      "route-mesh-11.0.0-contract-amendment-impact.json",
+      "route-mesh-11.0.0-execution-ledger.ko.md"
     ],
     "ledger_required_fragments": [
       "진행 문서는 이 ledger 하나만 유지한다",
@@ -365,7 +362,7 @@
     ],
     "allowed_profiles": [
       "P-DEEP",
-      "P-ULTRA",
+      "P-XHIGH",
       "P-DELIVERY",
       "P-SCAN"
     ],
@@ -382,11 +379,14 @@
       "V11-R6",
       "V11-R7"
     ],
-    "required_ultra_review_rows": [
+    "required_xhigh_review_rows": [
+      "V11-R4A",
       "V11-R5D"
     ],
     "forbidden_fragments": [
-      "gpt-5.6-sol",
+      "gpt-5.6 ultra",
+      "P-ULTRA",
+      "Codex ultra",
       "gpt-5.6-luna"
     ],
     "required_semantic_owners": [
@@ -420,12 +420,12 @@
         "required_fragments": [
           "## 3. Codex profile과 병렬 lane",
           "| `P-DEEP` | `gpt-5.6 high` |",
-          "| `P-ULTRA` | `gpt-5.6 ultra` |",
+          "| `P-XHIGH` | `gpt-5.6-sol xhigh` |",
           "| `P-DELIVERY` | `gpt-5.6 medium` |",
           "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
-          "`xhigh`나 `max`는 재현되지 않은 race",
-          "`P-ULTRA`는 `V11-R5D`에서 의무적으로 사용한다.",
-          "그 밖의 row에서 `ultra`는",
+          "`xhigh`는 재현되지 않은 race",
+          "`P-XHIGH`는 `V11-R4A`와 `V11-R5D`에서 의무적으로 사용한다.",
+          "그 밖의 row에서 `xhigh`를 임의로 사용하는 경우",
           "임의로 사용하는 경우 상향 이유와 조정 범위는",
           "실제 사용한 model,",
           "Java와 Kotlin은 Java binding과 JVM service runtime 하나를 공유한다."
@@ -597,8 +597,8 @@
         "`OwnerId`·`OwnerLeaseGeneration`",
         "`replyRelay`",
         "`replyRelayAck`",
-        "Instance Spot cold activation",
-        "Actor Retire",
+        "stored creation intent",
+        "non-zero 128-bit aggregate ID",
         "`Captured` CAS"
       ],
       "forbidden_fragments": [
@@ -621,8 +621,8 @@
     },
     {
       "path": "framework/doc/framework/spec/05-framework-api.ko.md",
-      "required_fragments": ["ChannelName", "InstanceSpotAddress", "Retire", "Shutdown"],
-      "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate"]
+      "required_fragments": ["ChannelName", "global Actor", "Object role", "Retire", "Shutdown"],
+      "forbidden_fragments": ["InstanceSpotAddress는 `MeshName`", "ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate"]
     },
     {
       "path": "framework/doc/framework/spec/server/10-channel-topology.ko.md",
@@ -636,13 +636,13 @@
     },
     {
       "path": "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
-      "required_fragments": ["InstanceSpotAddress", "activation barrier", "address cold activation"],
-      "forbidden_fragments": ["ReleaseAndRecreate"]
+      "required_fragments": ["global SpotRid", "creation intent", "activation barrier"],
+      "forbidden_fragments": ["InstanceSpotAddress의 첫", "address cold activation", "ReleaseAndRecreate"]
     },
     {
       "path": "framework/doc/framework/spec/server/40-location-runtime.ko.md",
-      "required_fragments": ["Instance Spot authority row", "owner lease", "CAS"],
-      "forbidden_fragments": []
+      "required_fragments": ["global ActorId", "global SpotRid", "owner lease", "Reserve", "Commit", "Abort"],
+      "forbidden_fragments": ["Instance Spot authority row"]
     },
     {
       "path": "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md",

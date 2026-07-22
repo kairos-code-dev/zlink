@@ -16,7 +16,7 @@ Core 11.0은 다음 기능을 공개 C ABI로 제공한다.
 - message allocation, ownership, multipart frame과 routing ID
 - PAIR, PUB, SUB, XPUB, XSUB, DEALER, ROUTER와 STREAM raw socket
 - bind, connect, disconnect, endpoint와 connection lifecycle
-- TCP, WebSocket, PGM과 TLS transport
+- TCP, WebSocket과 TLS transport
 - classic PUB/SUB와 raw STREAM
 - raw socket monitor, generic event, poll과 poller
 - generic timer, thread, stopwatch, atomic counter와 proxy
@@ -51,11 +51,6 @@ TCP 재전송 상한을 설정하거나 자신의 application protocol로 상태
 Framework service connection의 liveness message, Location owner lease와 STREAM session ping·pong은 Framework가
 처리한다. Core는 이 service message를 해석하거나 application handler의 처리 가능 상태를 판정하지 않는다.
 
-PGM transport가 신뢰성 있는 multicast 전송을 위해 사용하는 SPM(Source Path Message)은 OpenPGM transport
-내부의 경로·복구 제어 packet이며 application payload나 ZMP command로 전달되지 않는다. Core 11은 PGM
-transport의 SPM 전송 주기를 유지하며 raw socket ZMP heartbeat option은 제공하지 않는다. Framework도 SPM을
-service liveness로 해석하지 않는다.
-
 Core 11 공개 option 집합에는 `ZLINK_OPT_HEARTBEAT_IVL`, `ZLINK_OPT_HEARTBEAT_TTL`과
 `ZLINK_OPT_HEARTBEAT_TIMEOUT`이 포함되지 않는다. Raw ZMP command 집합에도 `zmp_control_heartbeat`와
 `zmp_control_heartbeat_ack`가 없다. 같은 값을 alias, deprecated option 또는 compatibility command로
@@ -85,7 +80,6 @@ Core 11.0 public surface 검증은 다음 조건을 만족해야 한다.
 - Public header와 exported symbol에 Framework 전용 C SPI와 service compatibility facade가 없다.
 - raw socket, generic poller·timer와 socket monitor contract test가 통과한다.
 - raw option과 ZMP command inventory가 정식 socket·protocol spec과 일치한다.
-- PGM SPM transport 주기는 유지되며 ZMP heartbeat option·command로 분류되지 않는다.
 - Framework runtime은 Core public raw surface만 사용한다.
 - Core public API와 implementation에 ChannelName, service dispatch, Spot, Actor, transfer와 maintenance 의미가
   없다.

@@ -1,6 +1,6 @@
 # C++ STREAM session exact interface
 
-[C++ exact interface 목차](README.ko.md)
+[C++ exact interface 목차](README.ko.md) · [Session Actor dispatch](../../../31-session-actor-dispatch.ko.md)
 
 ## 1. Public session surface
 
@@ -154,8 +154,7 @@ public:
       std::string certificate_file,
       std::string private_key_file,
       bool require_client_certificate);
-    stream_node_options_builder_t &enable_actor_dispatch(
-      std::string mesh_name);
+    stream_node_options_builder_t &enable_actor_dispatch();
     stream_node_options_builder_t &register_session(std::string session_name);
 
     template <typename TSession>
@@ -169,6 +168,9 @@ public:
 metadata·compression·`submit()` member는 [Channel messaging](03-channel-messaging.ko.md)의 call family와
 같은 admission 계약을 유지한다.
 Session callback은 받은 `stream_t`의 `actors()`로 해당 session의 Actor binding manager에 접근한다.
+Actor dispatch는 global ActorId lookup과 exact `actor_ref_t` bind를 사용하므로 target MeshName 또는 local Actor
+overload를 등록하지 않는다. Object role `client`·`server`와 Location Store가 없으면 startup이
+`object_client_not_configured`로 실패한다.
 Handshake failure는 session이 만들어지기 전 runtime monitoring에만 기록되며 `on_error(...)`에
 전달하지 않는다.
 

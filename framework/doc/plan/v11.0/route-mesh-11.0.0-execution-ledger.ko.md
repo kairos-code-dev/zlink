@@ -127,15 +127,14 @@ model을 사용할 수 없으면 대체 model과 이유를 기록하며 조용�
 | Profile | 기본 model·effort | 적용 범위 |
 |---|---|---|
 | `P-DEEP` | `gpt-5.6 high` | 공개 계약·POSD, 동시성·ownership·recovery, 독립 review |
-| `P-ULTRA` | `gpt-5.6 ultra` | Final E2E·sample spec처럼 public contract와 다섯 언어 coverage를 함께 판단하는 교차 영역 독립 review |
+| `P-XHIGH` | `gpt-5.6-sol xhigh` | Final E2E·sample spec처럼 public contract와 다섯 언어 coverage를 함께 판단하는 교차 영역 독립 review |
 | `P-DELIVERY` | `gpt-5.6 medium` | 일반 기능 구현, E2E, package, smoke와 consumer 검증 |
 | `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` | manifest·링크·inventory, 범위 분류와 read-heavy scan |
 
 `P-SCAN`은 단순 수집·no-hit 검사에 `low`를 사용하고 분류 판단이 필요하면 `medium`을 사용한다.
-`xhigh`나 `max`는 재현되지 않은 race, protocol·ABI 판단 또는 최종 통합 감사를 기본 effort로
-종료할 수 없을 때만 상향한다. `P-ULTRA`는 `V11-R5D`에서 의무적으로 사용한다. 그 밖의 row에서 `ultra`는
-지원 model로 최종 교차 영역 감사를 수행하거나 proactive multi-agent orchestration을 하나의 작업에서 직접
-조정해야 할 때만 선택한다. 임의로 사용하는 경우 상향 이유와 조정 범위는 해당 행의 증거 칸에 기록한다.
+`xhigh`는 재현되지 않은 race, protocol·ABI 판단 또는 최종 통합 감사를 high effort로 종료할 수 없을 때
+사용한다. `P-XHIGH`는 `V11-R4A`와 `V11-R5D`에서 의무적으로 사용한다.
+그 밖의 row에서 `xhigh`를 임의로 사용하는 경우 상향 이유와 조정 범위는 해당 행의 증거 칸에 기록한다.
 
 병렬 실행의 단일 소유자와 합류 gate는 다음과 같다.
 
@@ -156,9 +155,9 @@ model을 사용할 수 없으면 대체 model과 이유를 기록하며 조용�
 checklist를 보완하지 않는다. 각 ID를 시작할 때 다음 순서로 이 문서 안에서 실행 정보를 확인한다.
 
 1. 담당 row의 선행 ID가 모두 `완료`인지 확인한다.
-2. 아래 authoritative source 표에서 계약을 읽는 목적을 확인하고 해당 정식 spec·internals·exact interface를
-   먼저 읽는다. Framework runtime 구현 row는 `target-internals`의 대응 문서가 연결한 보존된 Core service
-   구현과 test snapshot도 함께 읽는다. 새 runtime을 처음부터 별도로 설계하지 않고 기존 구현의 component
+2. 아래 authoritative source 표에서 계약을 읽는 목적을 확인하고 해당 정식 spec·common internals·exact
+   interface를 먼저 읽는다. Framework runtime 구현 row는 migration machine inventory가 연결한 보존된 Core
+   service 구현과 test snapshot도 함께 읽는다. 새 runtime을 처음부터 별도로 설계하지 않고 기존 구현의 component
    분리, state machine, algorithm, ordering·ownership과 failure 처리를 언어별 runtime에 맞게 옮긴다. 정식
    문서가 목표 계약의 정본이며 보존된 Core service 구현은 구현의 기준 자료다.
 3. §3.4의 같은 ID execution card에서 수정 가능한 path, 필수 명령, 산출물과 증거 위치를 확인한다.
@@ -183,11 +182,10 @@ manifest에 포함된 파일과 당시 content digest를 기준으로 결과를 
 | [Core 11 raw 공개 경계](../../../../core/doc/spec/core/09-runtime-boundary.ko.md) | Core에 남길 raw C ABI, 제거할 service·ZMP heartbeat 공개 표면과 ownership |
 | [Core 11 raw 내부 경계](../../../../core/doc/internals/runtime-boundary.ko.md) | 제거할 engine·timer·state와 남길 generic transport·timer·monitor 구조 |
 | [Framework 공통·server 정식 spec](../../framework/spec/README.ko.md) | Application이 관찰하는 topology, messaging, object, maintenance, liveness와 오류 계약 |
+| [Framework 공통 service internals](../../framework/common/internals/README.ko.md) | 네 언어 runtime이 공유할 protocol, mailbox, stateful object, maintenance, session, liveness와 resource 목표 구조. M6 완료 전 target model 표기는 ledger 구현 gap과 함께 해석함 |
 | [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js의 정확한 public signature와 package owner |
 | [Actor·Spot remote placement와 node identity 변경 제안](actor-spot-remote-placement-and-node-identity-change-proposal.ko.md) | `V11-R4A`까지만 사용하는 임시 설계 입력. 승인 내용은 정식 spec·exact interface·protocol에 흡수하고 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
 | [.NET remote placement public contract 변경 초안](dotnet-remote-placement-public-contract-change-sketch.ko.md) | `V11-R4A`까지만 사용하는 임시 .NET 표현 입력. 다섯 언어 정식 계약과 disposition을 확정한 뒤 `V11-CA-DRAFT-RETIRE`에서 이 문서와 표 항목을 제거함 |
-| [Service 공개 계약 migration crosswalk](target-spec/README.ko.md) | Core service 의미와 Framework 정식 spec의 소유 위치를 누락 없이 대조하는 표 |
-| [Service runtime 구현 crosswalk](target-internals/README.ko.md) | 정식 internals와 Core 10 구현을 네 runtime의 protocol, queue, ownership, fencing, recovery와 resource 작업에 연결하는 표 |
 | 보존된 Core service 구현·test snapshot | 기존 component 경계, type 관계, state machine, algorithm, queue·lock 순서, 오류·종료 처리. 새 runtime은 이를 언어별 구조와 raw binding 경계에 맞게 이관하며 목표 의미가 spec·internals와 다를 때만 해당 차이를 적용하지 않음 |
 | [Service wire schema](../../../../framework/runtime/protocol/service-wire-v1.schema.json) | Command·field·bound·encoding과 생성 상수의 단일 wire 정본 |
 | [공통 E2E 계약](../../framework/common/e2e/README.ko.md)과 이 ledger §14 | 공통 scenario ID, 방향성 조합, race·crash·functional 완료 조건 |
@@ -303,7 +301,7 @@ self-test를 추가한다. 이후 card가 이 명령을 요구하면 runner가 �
 | `CORE-PKG` | `scripts/local-package/core/build-wsl.sh --build-dir core/build --candidate-manifest <absolute-V11-M3-CORE-VERIFY-candidate.json> --review-evidence <absolute-V11-R2-result.json> --output-root <absolute-local-root> --evidence <absolute-result.json>`; R2가 exact candidate SHA를 승인한 install tree·provenance를 만들고 `scripts/v11/verify-core-package-consumer.sh --prefix <absolute-core-install-prefix> --candidate-manifest <absolute-V11-M3-CORE-VERIFY-candidate.json> --review-evidence <absolute-V11-R2-result.json> --evidence <absolute-result.json>`로 빈 C consumer를 검증 | `V11-M3-CORE-CLEAN` |
 | `CORE-PKG-TEST` | `scripts/local-package/core/test-build-wsl.sh --self-test --dry-run --evidence <absolute-result.json>`; install artifact를 발행하지 않고 service header copy 0, argument·manifest·clean C consumer fixture를 검증 | `V11-M3-CORE-CLEAN` |
 | `BIND-PKG-TEST` | `scripts/local-package/<cpp|dotnet|java|node>/verify-consumer.sh --self-test --dry-run --evidence <absolute-result.json>`; ID suffix `JVM`은 `java`를 선택한다. Package를 발행하지 않고 각 lane이 소유한 package metadata·resolver·public-only consumer fixture를 검증 | `V11-M4-BIND-CPP`, `V11-M4-BIND-DN`, `V11-M4-BIND-JVM`, `V11-M4-BIND-NODE` |
-| `WIRE-GEN` | `node framework/runtime/protocol/generate-service-wire-constants.mjs --schema framework/runtime/protocol/service-wire-v1.schema.json <--write|--check>`; C++·C#·Java·TypeScript 생성물의 source schema revision과 drift를 검증 | `V11-M5-PROTOCOL` |
+| `WIRE-GEN` | `node framework/runtime/protocol/generate-service-wire-assets.mjs --schema framework/runtime/protocol/service-wire-v1.schema.json <--write|--check>`; C++·C#·Java·TypeScript 생성물과 golden fixture의 source schema revision·drift를 검증 | `V11-M5-PROTOCOL` |
 | `TRACE` | `node scripts/generate-v11-public-contract-trace.mjs <--write|--check>`; `framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json`의 member identity, disposition, POSD decision, spec·test·E2E·package owner와 implementation ledger ID를 deterministic하게 검증 | `SPEC-06` |
 | `AMENDMENT-IMPACT` | `scripts/v11/verify-contract-amendment-impact.sh --manifest framework/doc/plan/v11.0/route-mesh-11.0.0-contract-amendment-impact.json --mode <quarantine|finalized> --evidence <absolute-result.json>`; 모든 영향 항목의 baseline·approved hash, disposition, spec·runtime·activation owner를 검증하고 quarantine을 skip·pass로 집계하지 않음 | `V11-CA-IMPACT` |
 | `M6-RUNTIME` | `scripts/v11/run-framework-runtime-regression.sh --language <cpp|dotnet|jvm|node> --candidate-manifest <absolute-candidate.json> --evidence <absolute-result.json>`; sample·E2E project와 task를 실행 graph에서 제외하고 compile, public declaration snapshot, internal unit·contract·resource·protocol regression만 실행 | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` |
@@ -332,11 +330,11 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 
 | ID | Authoritative input | Owned source·test·package path와 산출물 | 필수 명령·runner | 완료 증거 |
 |---|---|---|---|---|
-| `SPEC-01` | migration machine inventory, target README no-loss 표 | inventory JSON·generator·verifier; 미분류 0 inventory | `INV`, `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `SPEC-02` | Framework 공통·server spec, target-spec `01~08` | `framework/doc/framework/spec/`, `target-spec/`; 완결된 service 공개 계약 | `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `SPEC-03` | Core raw 공개·내부 경계, target `09` 참조 | Core `09-runtime-boundary` 한국어·영문, 관련 inventory; raw-only·ZMP heartbeat 제거 계약 | `DOC`, `INV`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
+| `SPEC-01` | migration machine inventory와 정식 Framework owner | inventory JSON·generator·verifier; 미분류 0 inventory | `INV`, `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
+| `SPEC-02` | Framework 공통·server spec | `framework/doc/framework/spec/`; 완결된 service 공개 계약 | `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
+| `SPEC-03` | Core raw 공개·내부 경계 | Core `09-runtime-boundary` 한국어·영문, 관련 inventory; raw-only·ZMP heartbeat 제거 계약 | `DOC`, `INV`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
 | `SPEC-04` | 다섯 언어 exact interface README와 기능별 interface | `framework/doc/framework/spec/server/languages/*/interfaces/`; member trace | `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `SPEC-05` | target-internals `01~08`, wire schema, formal service wire internals | `target-internals/`, `framework/runtime/protocol/`, `framework/doc/framework/common/internals/service-wire-protocol.ko.md`, golden·negative fixture; schema·target·formal semantic drift 0 | `WIRE`, `DOC`, `DIFF-OWNED` | 담당 row, schema·target·formal 대조 결과와 `<ID>` result |
+| `SPEC-05` | Framework 공통 service internals와 wire schema | `framework/doc/framework/common/internals/`, `framework/runtime/protocol/`, golden·negative fixture; schema·formal semantic drift 0 | `WIRE`, `DOC`, `DIFF-OWNED` | 담당 row, schema·formal 대조 결과와 `<ID>` result |
 | `SPEC-06` | §5.2·§5.6, 다섯 exact interface, §14 scenario | `route-mesh-v11-public-contract-trace.json`, deterministic generator·checker와 ledger member trace; ctor·overload·generic·callback·enum·extension·export 누락 0 | `TRACE --write`, `TRACE --check`, `DOC`, `INV`, `DIFF-OWNED` | 담당 row, member·owner·disposition·implementation ID 미분류 0과 `<ID>` result |
 | `V11-R1`, `V11-R2`, `V11-R3`, `V11-R4`, `V11-R4A`, `V11-R5A`, `V11-R5B`, `V11-R5C`, `V11-R6` | 직접 선행 row의 candidate·evidence, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex·Claude 독립 finding과 수렴 결과 | §18 독립 review, `DOC`, `INV`, `DIFF-OWNED`; protocol 영향 시 `WIRE` | 담당 review row, 두 reviewer 결과와 `<ID>` result |
 | `V11-R7` | final candidate revision, 직접 선행 row의 evidence, §18 | source 수정 없음; reviewed base→final candidate 전체 snapshot | §18 독립 review, `DOC`, `INV`, `WIRE`, `DIFF-SNAPSHOT` | final review row, 두 reviewer 결과와 `<ID>` result |
@@ -354,29 +352,29 @@ Group card의 `<lang>`은 runtime wildcard가 아니라 ID suffix에 따른 다�
 | `V11-M4-BIND-JOIN` | 네 binding candidate·raw proof | 통합 removal·capability manifest, migration inventory JSON·generator·verifier | binding scope 네 `REMOVE`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M4-PKG-CPP`, `V11-M4-PKG-DN`, `V11-M4-PKG-JVM`, `V11-M4-PKG-NODE` | `V11-R3` approved revisions와 review된 package tooling | source·tooling 수정 없음; `.artifacts/wsl`의 C++ install·NuGet·Maven·tgz와 provenance | 대응 `BIND-PKG`, `ROW-GATE`, 공통 | 각 담당 row, approved revision·artifact SHA-256과 각 `<ID>` result |
 | `V11-M4-CONSUMER-JOIN` | 네 local binding package와 중앙 Framework version 지점 | clean consumer workspace·resolution manifest | 네 `BIND-PKG`, `INV`, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
-| `V11-M5-PROTOCOL` | wire schema, target-internals `02`·`08`, service liveness spec | schema·generator·golden·negative fixture와 internal `livenessProbe`·`livenessAck` | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `ROW-GATE`, `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
-| `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE` | 해당 exact interface, 새 binding package, target-internals `01` | 각 Framework private binding-facing port, 보존 public value type ownership과 internal compile contract; 새 port의 Core adapter·production placeholder·fake data 0. 기존 service owner 실행 경로의 제거는 M6 vertical slice와 `V11-M6-SCAFFOLD-ZERO`가 소유 | 대응 Framework M5 internal contract, 신규 owned path의 forbidden-reference audit, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
-| `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | target-internals `01`·`02`·`03`·`08`, wire schema | 각 Framework transport·codec·operation·resource source와 unit test | 대응 Framework command, `WIRE`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
+| `V11-M5-PROTOCOL` | wire schema, 공통 service wire·resource internals, service liveness spec | schema·generator·golden·negative fixture와 internal `livenessProbe`·`livenessAck` | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `ROW-GATE`, `DOC`, `DIFF-OWNED` | 담당 row와 `<ID>` result |
+| `V11-M5-SCAFFOLD-CPP`, `V11-M5-SCAFFOLD-DN`, `V11-M5-SCAFFOLD-JVM`, `V11-M5-SCAFFOLD-NODE` | 해당 exact interface, 새 binding package, 공통 service runtime architecture | 각 Framework private binding-facing port, 보존 public value type ownership과 internal compile contract; 새 port의 Core adapter·production placeholder·fake data 0. 기존 service owner 실행 경로의 제거는 M6 vertical slice와 `V11-M6-SCAFFOLD-ZERO`가 소유 | 대응 Framework M5 internal contract, 신규 owned path의 forbidden-reference audit, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
+| `V11-M5-FOUND-CPP`, `V11-M5-FOUND-DN`, `V11-M5-FOUND-JVM`, `V11-M5-FOUND-NODE` | 공통 service runtime·wire·mailbox·resource internals, wire schema | 각 Framework transport·codec·operation·resource source와 unit test | 대응 Framework command, `WIRE`, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
 | `V11-M5-FOUND-JOIN` | 네 foundation evidence와 required E2E catalog | codec cross-language fixture·pending scenario manifest, migration inventory JSON·generator·verifier | `WIRE`, `INV`, `ROW-GATE`, 공통 | 담당 row, pending·completed·skipped count와 `<ID>` result |
 | `V11-CA-DECISION` | 두 contract 변경 제안, POSD 공개 경계, M5 foundation evidence | global identity·remote create·placement·reservation·handover·failure의 결정 기록과 proposal open item disposition | `DOC`, `TRACE --check`, `ROW-GATE`, 공통 | open item 미결정 0, 대안·선택 이유·정식 spec owner와 `<ID>` result |
-| `V11-CA-SPEC` | 승인한 amendment decision, Framework 공통·server 정식 spec | `framework/doc/framework/spec/`, `target-spec/`; 변경된 목표 계약과 migration crosswalk | `DOC`, `TRACE --write`, `TRACE --check`, `ROW-GATE`, 공통 | identity·placement·failure 의미의 미분류 0과 `<ID>` result |
+| `V11-CA-SPEC` | 승인한 amendment decision, Framework 공통·server 정식 spec·common internals | `framework/doc/framework/spec/`, `framework/doc/framework/common/internals/`; 변경된 목표 계약과 runtime model. 두 임시 target 문서 디렉터리와 repository link는 0 | `DOC`, `TRACE --write`, `TRACE --check`, `ROW-GATE`, 공통 | identity·placement·failure 의미, runtime owner와 migration 입력의 미분류 0과 `<ID>` result |
 | `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE` | 승인한 amendment spec, 다섯 언어 exact interface | 대응 exact interface와 public declaration trace. JVM row는 Java·Kotlin을 함께 소유 | `DOC`, `TRACE --write`, `TRACE --check`, `ROW-GATE`, 공통 | public member parity·표현 차이 미분류 0과 각 `<ID>` result |
-| `V11-CA-PROTOCOL` | 승인한 amendment spec, wire schema, target-internals | placement reservation·aggregate transfer·route·identity command와 schema·generated constant·golden·negative fixture | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `DOC`, `ROW-GATE`, 공통 | formal·schema·fixture semantic drift 0과 `<ID>` result |
+| `V11-CA-PROTOCOL` | 승인한 amendment spec·common internals와 wire schema | placement reservation·aggregate transfer·route·identity command와 schema·generated constant·golden·negative fixture | `WIRE-GEN --write`, `WIRE-GEN --check`, `WIRE`, `DOC`, `ROW-GATE`, 공통 | formal·schema·fixture semantic drift 0과 `<ID>` result |
 | `V11-CA-IMPACT` | 승인한 amendment spec, baseline E2E·sample·registration·regression catalog | `route-mesh-11.0.0-contract-amendment-impact.json`, verifier와 self-test; 각 항목의 baseline hash·disposition·owner·activation stage | `AMENDMENT-IMPACT --mode quarantine`, `DOC`, `INV`, `ROW-GATE`, 공통 | 미분류 0, `pending-disabled-by-contract-amendment` 수, executed·skipped 0과 `<ID>` result |
 | `V11-CA-JOIN` | amendment spec·네 exact interface·protocol·impact evidence | amendment candidate aggregate와 public contract trace·impact manifest reconcile | `DOC`, `INV`, `WIRE`, `TRACE --check`, `AMENDMENT-IMPACT --mode quarantine`, `ROW-GATE`, 공통 | 정식 계약·언어·wire·E2E·sample·regression owner 누락 0과 `<ID>` result |
 | `V11-CA-DRAFT-RETIRE` | `V11-R4A`가 승인한 amendment candidate와 두 임시 변경 제안 | 두 proposal 삭제, 이 README·ledger의 임시 link 제거와 decision disposition 요약 | `DOC`, `TRACE --check`, `AMENDMENT-IMPACT --mode quarantine`, `ROW-GATE`, 공통 | 채택 내용의 formal spec·exact interface·protocol owner 누락 0, 미채택·수정 이유 미기록 0, 두 proposal과 repository link 0, `<ID>` result |
-| `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | amended formal spec·exact interface, target internals `01`·`03`·`07`·`08`, 보존된 Core service 구현·test | 각 Framework topology·dispatch·Location·liveness source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
-| `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | amended formal spec·exact interface, target internals `03`·`04`·`06`·`08`, 보존된 Core service 구현·test | 각 Framework Spot·Actor·STREAM·Instance source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
-| `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | amended formal spec·exact interface, target internals `05`·`07`·`08`, 보존된 Core service 구현·test | 각 Framework maintenance·monitoring·hosting source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | amended formal spec·exact interface, 공통 topology·dispatch·liveness internals, 보존된 Core service 구현·test | 각 Framework topology·dispatch·Location·liveness source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6B-CPP`, `V11-M6B-DN`, `V11-M6B-JVM`, `V11-M6B-NODE` | amended formal spec·exact interface, 공통 mailbox·stateful object·STREAM·resource internals, 보존된 Core service 구현·test | 각 Framework Spot·Actor·STREAM·Instance source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
+| `V11-M6C-CPP`, `V11-M6C-DN`, `V11-M6C-JVM`, `V11-M6C-NODE` | amended formal spec·exact interface, 공통 maintenance·monitoring·resource internals, 보존된 Core service 구현·test | 각 Framework maintenance·monitoring·hosting source와 deterministic internal contract test | 대응 `M6-RUNTIME`, `ROW-GATE`, 공통 | E2E·sample 실행 0, internal regression 누락 0과 각 `<ID>` result |
 | `V11-M6-SCAFFOLD-ZERO` | 네 Framework runtime과 amendment impact manifest | production scaffold·placeholder·fake data와 quarantine 실행 graph 검사 결과 | Framework scope 네 `REMOVE`, `AMENDMENT-IMPACT --mode quarantine`, `INV`, `ROW-GATE`, 공통 | production 금지 count 0, sample·E2E source 삭제·임시 우회 0과 `<ID>` result |
 | `V11-E2E-SPEC-FINAL` | approved amendment, completed runtime, impact manifest, 공통 E2E 계약 | `framework/doc/framework/common/e2e/`, §14와 impact manifest의 approved scenario·registration hash | `DOC`, `TRACE --write`, `TRACE --check`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required scenario·negative·race·matrix owner와 acceptance 누락 0 |
 | `V11-SAMPLE-SPEC-FINAL` | approved amendment, completed runtime, impact manifest, 공통 sample spec | `framework/doc/framework/common/sample/`과 impact manifest의 approved sample·registration hash | `DOC`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | 다섯 언어 sample의 public 흐름·marker·owner 누락 0 |
-| `V11-R5D` | final E2E·sample spec candidate, finalized impact manifest, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex ultra·Claude Sonnet 독립 finding과 수렴 evidence | §18 독립 review, `DOC`, `TRACE --check`, `AMENDMENT-IMPACT --mode finalized`, `INV`, `DIFF-OWNED` | assertion 약화·coverage 손실·언어 parity gap 0, 두 reviewer 결과와 `<ID>` result |
+| `V11-R5D` | final E2E·sample spec candidate, finalized impact manifest, §18의 I1·I2·I3·D1·D2 | source 수정 없음; Codex `gpt-5.6-sol xhigh`·Claude Sonnet 독립 finding과 수렴 evidence | §18 독립 review, `DOC`, `TRACE --check`, `AMENDMENT-IMPACT --mode finalized`, `INV`, `DIFF-OWNED` | assertion 약화·coverage 손실·언어 parity gap 0, 두 reviewer 결과와 `<ID>` result |
 | `V11-M6A-E2E` | final E2E·sample spec, topology·liveness impact 항목 | topology fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice topology`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
 | `V11-M6B-E2E` | final E2E·sample spec, stateful object impact 항목 | stateful fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice stateful`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
 | `V11-M6C-E2E` | final E2E·sample spec, maintenance·hosting impact 항목 | maintenance·hosting fixture·runner·registration의 승인 변경과 실제 directional result | `V11-E2E --slice maintenance`, `AMENDMENT-IMPACT --mode finalized`, `ROW-GATE`, 공통 | required skip 0, 발견한 runtime gap 0과 `<ID>` result |
 | `V11-M7-CONTRACT` | amended common spec, 다섯 exact interface | 네 language contract suite와 public declaration comparison | 네 Framework command, `ROW-GATE`, 공통 | required contract skipped 0과 `<ID>` result |
-| `V11-M7-RACE-CRASH` | §14.2와 target-internals `05`·`08` | race·phase crash·pause·resource test와 seed manifest | `V11-E2E --slice full`, `ROW-GATE`, 공통 | 담당 row, seed·반복·결과와 `<ID>` result |
+| `V11-M7-RACE-CRASH` | §14.2와 공통 maintenance·concurrency resource internals | race·phase crash·pause·resource test와 seed manifest | `V11-E2E --slice full`, `ROW-GATE`, 공통 | 담당 row, seed·반복·결과와 `<ID>` result |
 | `V11-M7-E2E-4X4` | final E2E spec과 approved impact manifest | full directional matrix result | `V11-E2E --slice full`, `E2E-CURRENT`, `ROW-GATE`, 공통 | 담당 row, required/skipped cell과 `<ID>` result |
 | `V11-M7-SAMPLES` | final sample spec과 approved impact manifest | 다섯 언어 sample source·build·run evidence | `SAMPLES`, 언어별 Framework command, `ROW-GATE`, 공통 | 담당 row와 `<ID>` result |
 | `V11-M7-SMOKE-FUNCTIONAL`, `V11-M7-SMOKE-PERF` | §14 functional, §15 perf smoke-only | v11 smoke runner·result schema·provenance | 대응 `V11-SMOKE`; perf row는 `RAW-PERF-SMOKE`도 실행, `ROW-GATE`, 공통 | 각 담당 row와 각 `<ID>` result |
@@ -405,7 +403,7 @@ SPEC-01..06 -> V11-R1 -> M2 oracle/readiness
             -> M6B stateful runtime/review
             -> M6C maintenance runtime/review
             -> M6 production placeholder zero
-            -> final E2E/sample spec -> ultra/Sonnet independent review
+            -> final E2E/sample spec -> gpt-5.6-sol xhigh/Sonnet independent review
             -> topology E2E -> stateful E2E -> maintenance E2E
             -> M7 full E2E/race -> samples -> correctness/smoke
             -> M8 Framework cleanup/review
@@ -451,7 +449,7 @@ SPEC은 모든 구현 stage보다 우선한다. `V11-R1`이 완료되기 전에�
 
 | 현재 소유 영역 | 11.0 처리 | 구현·제거 gate |
 |---|---|---|
-| `core/include/zlink/service/{common,dispatch,mesh_node,spot,actor,stream_session,instance_spot_driver}.h` | Application이 관찰하는 의미는 Framework 정식 spec이 소유한다. `target-spec/`은 migration 대조 자료로 유지하고 C ABI type·token·함수는 제거 | `SPEC-01`, `SPEC-02`, `SPEC-03`, `V11-M3-CORE-REMOVE` |
+| `core/include/zlink/service/{common,dispatch,mesh_node,spot,actor,stream_session,instance_spot_driver}.h` | Application이 관찰하는 의미는 Framework 정식 spec이 소유하고 구현 구조는 공통 service internals가 소유한다. C ABI type·token·함수는 제거 | `SPEC-01`, `SPEC-02`, `SPEC-03`, `V11-M3-CORE-REMOVE` |
 | `core/include/zlink/eventing/api.h`의 Spot timer·Mesh monitor, `socket/api.h`의 ChannelName, `zlink_enum.h`의 MeshNode poller source, `zlink.h`, install header와 `libzlink.vers` | Generic timer·raw monitor·raw poller는 유지하고 service 결합 type·symbol·include만 제거 | `SPEC-03`, `V11-M3-CORE-REMOVE` |
 | `core/src/api/mesh/`, `core/src/runtime/services/mesh/` | Protocol·mailbox·Actor·Spot·transfer·monitor 불변 조건은 정본과 oracle trace로 보존하고 source는 먼저 제거 | `SPEC-05`, `V11-M2-ORACLE`, `V11-M3-CORE-REMOVE` |
 | `service_control_runtime`, Spot timer seam, ChannelName option·socket field와 service build 입력 | Raw 사용자에게 필요한 generic scheduler·timer·request 경로는 유지하고 service 전용 state와 target만 제거 | `SPEC-03`, `V11-M3-CORE-CLEAN` |
@@ -462,7 +460,7 @@ SPEC은 모든 구현 stage보다 우선한다. `V11-R1`이 완료되기 전에�
 | C++·.NET·Java·Kotlin·Node.js Framework public surface | 초기 exact interface evidence는 이력으로 유지한다. M5 이후 amendment에서 global identity·remote placement 계약과 다섯 언어 표현을 다시 고정하며 Java·Kotlin은 JVM runtime 하나를 공유 | `SPEC-04`, `V11-CA-SPEC`, `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-M6-SCAFFOLD-ZERO` |
 | Sample, common E2E, race·crash test와 hosting integration | Amendment impact manifest에서 `retain`·`amend`·`replace`·`add`·`remove`와 대체 coverage를 먼저 확정한다. Runtime 중에는 source·registration을 보존하고 실행만 격리하며, runtime 완료 뒤 spec을 확정하고 topology→stateful→maintenance→full matrix→sample 순서로 활성화한다 | `V11-CA-IMPACT`, `V11-E2E-SPEC-FINAL`, `V11-SAMPLE-SPEC-FINAL`, `V11-M6A-E2E`, `V11-M6B-E2E`, `V11-M6C-E2E`, `V11-M7-E2E-4X4`, `V11-M7-RACE-CRASH`, `V11-M7-SAMPLES`, `V11-M7-JOIN`, `V11-M9-E2E-4X4` |
 | `bindings/c/perf`의 active Spot suite | 10.x oracle trace를 봉인한 뒤 active Spot source·target·pattern·parser·CI 입력을 제거. Raw socket perf와 읽기 전용 10.x archive는 유지 | `V11-M2-ORACLE`, `V11-M3-PERF-LEGACY`, §15 |
-| Core·binding·Framework 문서와 package metadata | 정식 spec·internals와 target crosswalk를 구현에 맞춰 검증하고 제거한 service API 링크·version·package 입력을 정리 | `V11-M9-DOCS`, `V11-R7` |
+| Core·binding·Framework 문서와 package metadata | 정식 spec·common internals를 구현에 맞춰 검증하고 제거한 service API 링크·version·package 입력을 정리 | `V11-M9-DOCS`, `V11-R7` |
 
 Core 제거 inventory는 최소한 `zlink_mesh_node_*`, ready·receive batch와 claim·reply, `zlink_spot_*`, Actor,
 Instance Spot, STREAM session, Mesh monitor와 Spot timer symbol family를 각각 펼쳐 기록한다. Prefix 하나를 완료
@@ -481,15 +479,15 @@ Allowlist에서 기존 ZMP guide를 제거하는 변이와 새 service guide를 
 | 대조한 입력 | 고유하게 확인할 내용 | 현재 단일 소유자 |
 |---|---|---|
 | 통합 구현 계획 | 언어별 runtime 경계, stage 선행 조건, package·rollback·cleanup gate | 이 ledger의 §1·§4·§6~§19, [v11 README](README.ko.md) |
-| Core service 이관 inventory | Core spec 절·공개 symbol·binding projection·dirty 변경의 처리, raw capability proof | [Core 원문 no-loss 표](target-spec/README.ko.md#3-core-service-원문-no-loss-표), [Core internals no-loss 표](target-internals/README.ko.md#3-core-service-internals-no-loss-mapping), `route-mesh-v11-core-service-migration-inventory.json`, `SPEC-01`, `V11-M2-CORE-READINESS`, `V11-M2-BIND-READINESS` |
+| Core service 이관 inventory | Core spec 절·공개 symbol·binding projection·dirty 변경의 처리, raw capability proof | `route-mesh-v11-core-service-migration-inventory.json`, 정식 Framework spec·common internals owner, `SPEC-01`, `V11-M2-CORE-READINESS`, `V11-M2-BIND-READINESS` |
 | Core socket heartbeat 계획 | ZMP heartbeat option·frame·engine timer·binding projection 제거와 Framework internal liveness command·lease·transport monitor의 분리 | Core raw 정식 spec·internals, §5.5, `V11-M3-CORE-VERIFY`, `V11-M5-PROTOCOL`, `V11-M6A-E2E`, `V11-M7-E2E-4X4`, `V11-M9-RAW-FINAL` |
 | Service 성능 test 이관 계획 | 세 Framework smoke workload, fail-closed provenance, Core 10.x archive와 active suite 분리, 정량 성능 비목표 | `V11-M2-ORACLE`, `V11-M3-PERF-LEGACY`, §12의 `V11-M7-SMOKE-PERF`, §15 |
-| Stateful rolling maintenance 초안 | Host 상태·종료 결과, preflight, authority CAS, checkpoint, transfer·recovery·object별 규칙 | [Location과 maintenance](target-spec/07-location-maintenance.ko.md), [Actor](target-spec/04-actor.ko.md), [Instance Spot](target-spec/06-instance-spot.ko.md), [STREAM](target-spec/05-stream-session.ko.md), [maintenance internals](target-internals/05-maintenance-recovery.ko.md), §11·§14 |
+| Stateful rolling maintenance 초안 | Host 상태·종료 결과, preflight, authority CAS, checkpoint, transfer·recovery·object별 규칙 | [Location runtime](../../framework/spec/server/40-location-runtime.ko.md), [Actor](../../framework/spec/server/22-actor-model.ko.md), [Spot Actor](../../framework/spec/server/23-spot-actor.ko.md), [STREAM](../../framework/spec/server/31-session-actor-dispatch.ko.md), [stateful maintenance internals](../../framework/common/internals/stateful-maintenance-runtime.ko.md), §11·§14 |
 | 통합 public-contract 문서 묶음 | 다섯 언어 public member 전수 범위, 의도적 delta 분류, public raw dependency와 package 검증 | 언어별 `interfaces/`, 아래 public member trace, `SPEC-04`, `SPEC-06`, `V11-M2-RAW-CPP`, `V11-M2-RAW-DN`, `V11-M2-RAW-JVM`, `V11-M2-RAW-NODE`, `V11-M9-PKG-CPP`, `V11-M9-PKG-DN`, `V11-M9-PKG-JVM`, `V11-M9-PKG-NODE` |
-| Stateful maintenance public-contract 문서 묶음 | `Retire`·`Shutdown`, typed transfer policy, authority·checkpoint와 언어별 비동기 표현 | [Location과 maintenance](target-spec/07-location-maintenance.ko.md), 다섯 언어 exact `configuration-host`·`location-maintenance`·`monitoring`, `SPEC-04` |
+| Stateful maintenance public-contract 문서 묶음 | `Retire`·`Shutdown`, typed transfer policy, authority·checkpoint와 언어별 비동기 표현 | [Location runtime](../../framework/spec/server/40-location-runtime.ko.md), [Host maintenance](../../framework/spec/server/54-graceful-drain-handoff.ko.md), 다섯 언어 exact `configuration-host`·`location-maintenance`·`monitoring`, `SPEC-04` |
 
-진행 문서는 이 ledger 하나만 유지한다. `README`, `target-spec`, `target-internals`와 언어별
-exact interface는 각각 탐색, 공개 계약, 내부 구조와 signature를 소유하므로 진행 문서로 세지 않는다.
+진행 문서는 이 ledger 하나만 유지한다. Framework spec, common internals와 언어별 exact interface는 각각
+공개 계약, 내부 구조와 signature를 소유하며 진행 상태와 migration 이력을 포함하지 않는다.
 
 ### 5.2 SPEC-04 exact interface 감사 증거
 
@@ -824,8 +822,8 @@ vertical slice가 기능 단위로 수행하며 `V11-M6-SCAFFOLD-ZERO`에서 잔
 Framework public class를 새 abstraction으로 일괄 교체하거나 호출자 코드를 새 runtime 형태에 맞춰 변경하지
 않는다. 네 언어에서 동작이 복구된 뒤 중복이 확인될 때만 같은 언어 내부에서 refactoring한다.
 
-각 M5·M6 runtime row는 구현 전에 관련 Framework 정식 spec, 해당 언어 exact interface, 공통 internals와
-`target-internals` crosswalk를 읽는다. Crosswalk가 가리키는 보존된 Core service 구현·test snapshot에서
+각 M5·M6 runtime row는 구현 전에 관련 Framework 정식 spec, 해당 언어 exact interface와 공통 internals를
+읽는다. Migration machine inventory가 가리키는 보존된 Core service 구현·test snapshot에서
 component 분리, state machine, algorithm, ordering, ownership, timeout·shutdown·recovery failure case를 확인하고
 row evidence에 참고한 snapshot revision과 path를 기록한다. 이 구현을 언어별 runtime 구조로 포팅하되 제거한
 Core service symbol에 다시 의존하지 않는다. Spec 또는 internals와 다른 부분만 목표 문서를 적용하고 차이를
@@ -860,17 +858,68 @@ Framework runtime source를 구현하지 않는다.
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-CA-DECISION` | Global identity·remote placement 공개 경계 결정 | architecture·contract lane, `P-DEEP` | `V11-R4` | 대기 | 두 제안의 open item 미결정 0, 대안·POSD 판단·정식 owner 확정 | — |
-| `V11-CA-SPEC` | Framework 공통·server 정식 spec amendment | contract lane, `P-DEEP` | `V11-CA-DECISION` | 대기 | identity·remote create·placement·reservation·handover·failure 의미와 target crosswalk 누락 0 | — |
-| `V11-CA-IFACE-CPP` | C++ exact interface amendment | C++ contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | C++ public signature·example·trace가 amended spec과 일치 | — |
-| `V11-CA-IFACE-DN` | .NET exact interface amendment | .NET contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | .NET public signature·example·trace가 amended spec과 일치 | — |
-| `V11-CA-IFACE-JVM` | Java·Kotlin exact interface amendment | JVM contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | Java·Kotlin public signature·example·trace가 amended spec과 일치 | — |
-| `V11-CA-IFACE-NODE` | Node.js exact interface amendment | Node contract lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | Node.js public signature·example·trace가 amended spec과 일치 | — |
-| `V11-CA-PROTOCOL` | Placement·identity protocol과 fixture amendment | protocol lane, `P-DEEP` | `V11-CA-SPEC` | 대기 | schema·generated constant·golden·negative fixture와 formal 의미 drift 0 | — |
-| `V11-CA-IMPACT` | E2E·sample·regression 영향 목록과 실행 격리 | E2E·sample·regression lanes, `P-DELIVERY` | `V11-CA-SPEC` | 대기 | 모든 항목 baseline hash·disposition·owner·activation stage 분류, `pending-disabled-by-contract-amendment`, executed·skipped 0 | — |
-| `V11-CA-JOIN` | Contract amendment 합류 | amendment coordinator, `P-DELIVERY` | `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-CA-PROTOCOL`, `V11-CA-IMPACT` | 대기 | 정식 spec·다섯 interface·wire·impact manifest·trace의 미분류와 semantic drift 0 | — |
-| `V11-R4A` | Contract amendment 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-CA-JOIN` | 대기 | public contract·protocol·영향 disposition·대체 coverage의 I1·I2·I3 review clean | — |
+| `V11-CA-DECISION` | Global identity·remote placement 공개 경계 결정 | architecture·contract lane, `P-DEEP` | `V11-R4` | 완료 | 두 제안과 Store amendment의 open item 미결정 0, 대안·POSD 판단·정식 owner 확정 | `CA-D01~CA-D36`으로 global identity, placement, generic reservation과 Location·Transfer Store 분리 결정을 고정했다. Location canonical participant authority와 Transfer lookup manifest, write-before-CAS publication, 별도 Redis class, `TransferDataLost=34`까지 미결정 0이다. |
+| `V11-CA-SPEC` | Framework 공통 spec·common internals 통합 | contract·internals lanes, `P-DEEP` | `V11-CA-DECISION` | 완료 | identity·remote create·placement·reservation·handover·failure 의미와 runtime owner 누락 0, 임시 target 문서·link 0 | 36개 결정을 공통 Framework spec과 common internals의 정식 owner에 반영하고 `42-transfer-store-redis.ko.md`를 추가했다. `target-spec`, `target-internals`는 mapping을 inventory·trace에 반영한 뒤 삭제했다. `DOC`은 formal documents 137개와 semantic owner 10개를 검증했다. |
+| `V11-CA-IFACE-CPP` | C++ exact interface amendment | C++ contract lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | C++ public signature·example·trace가 amended spec과 일치 | Global ID manager, generic reservation, 별도 `transfer_store_t`·`redis_transfer_store_t`, `inventory_digest_t`, `transfer_data_lost=34`를 exact interface에 반영했다. Scoped link·code fence·diff 검증과 전체 `DOC`이 통과했다. |
+| `V11-CA-IFACE-DN` | .NET exact interface amendment | .NET contract lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | .NET public signature·example·trace가 amended spec과 일치 | Global ID manager, generic reservation, `IZLinkTransferStore`, `ZLinkRedisTransferStore`, `InventoryDigest`, `TransferDataLost=34`를 exact interface에 반영했다. `Checkpoint` 공개 용어 0과 전체 `DOC`을 확인했다. |
+| `V11-CA-IFACE-JVM` | Java·Kotlin exact interface amendment | JVM contract lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | Java·Kotlin public signature·example·trace가 amended spec과 일치 | Java exact Store·Redis class와 Kotlin suspending Transfer adapter를 분리하고 `inventoryDigest`, `TRANSFER_DATA_LOST=34`, registration·publication 순서를 고정했다. Java/Kotlin semantic negative mutation 7개와 전체 `DOC`이 통과했다. |
+| `V11-CA-IFACE-NODE` | Node.js exact interface amendment | Node contract lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | Node.js public signature·example·trace가 amended spec과 일치 | Global ID manager, generic reservation, `ZLinkTransferStore`, `ZLinkRedisTransferStore`, `inventoryDigest`, `TransferDataLost=34`를 exact interface에 반영했다. Scoped link·code fence·diff 검증과 전체 `DOC`이 통과했다. |
+| `V11-CA-PROTOCOL` | Placement·identity protocol과 fixture amendment | protocol lane, `P-DEEP` | `V11-CA-DECISION` | 완료 | schema·generated constant·golden·negative fixture와 formal 의미 drift 0 | WIRE self-test가 37 commands, 151 types, 35 bounds, durable fixture 3개와 negative mutation 154개를 통과했다. Checkpoint protocol 용어 0, Transfer manifest lookup-only digest와 Location aggregate authority, creation content reference 분리를 검증했다. |
+| `V11-CA-IMPACT` | E2E·sample·regression 영향 목록과 실행 격리 | E2E·sample·regression lanes, `P-DELIVERY` | `V11-CA-DECISION` | 완료 | 모든 항목 baseline hash·disposition·owner·activation stage 분류, `pending-disabled-by-contract-amendment`, executed·skipped 0 | Store 분리 대체 coverage를 포함한 691개를 stable ID로 분류했다. Quarantine verifier가 pending 675개, executed 0, skipped 0과 negative mutation 6개를 확인했고 `.artifacts/v11/evidence/V11-CA-IMPACT/result.json`에 기록했다. E2E·sample source diff는 0이다. |
+| `V11-CA-JOIN` | Contract amendment 합류 | amendment coordinator, `P-DELIVERY` | `V11-CA-SPEC`, `V11-CA-IFACE-CPP`, `V11-CA-IFACE-DN`, `V11-CA-IFACE-JVM`, `V11-CA-IFACE-NODE`, `V11-CA-PROTOCOL`, `V11-CA-IMPACT` | 완료 | 정식 spec·다섯 interface·wire·impact manifest·trace의 미분류와 semantic drift 0 | `DOC`, `INV`, `TRACE --check`, `WIRE`, `WIRE-GEN --check`, `AMENDMENT-IMPACT --mode quarantine --self-test`, Instance Spot contract와 `git diff --check`를 통과했다. Trace는 documents 56, owners 1622, members 6078, unclassified·ambiguous·unknown 0이다. |
+| `V11-R4A` | Contract amendment 독립 review | Codex xhigh review lane, `P-XHIGH` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-CA-JOIN` | 대기 | public contract·protocol·영향 disposition·대체 coverage의 I1·I2·I3 review clean | — |
 | `V11-CA-DRAFT-RETIRE` | 임시 contract 변경 제안 흡수 확인과 삭제 | contract coordinator, `P-DELIVERY` | `V11-R4A` | 대기 | 채택 내용은 정식 spec·exact interface·protocol에 모두 존재하고 E2E·sample 영향은 manifest에 분류되며, 미채택·수정 결정은 ledger에 이유가 기록되고 두 proposal과 link가 repository에서 0 | — |
+
+#### 9.1.1 Contract amendment decision register
+
+아래 결정은 두 임시 proposal과 Store amendment의 open item을 합친 정식 spec 작성 입력이다. `CA-D01~D36`에 미결정 상태를
+허용하지 않는다. 각 결정은 caller가 target node, owner fence, Store transaction과 retry state machine을
+조합하지 않게 하는 방향을 선택했다. 언어별 표현은 달라도 identity, option, deadline, closed result와
+failure 의미는 같아야 한다.
+
+| ID | 비교한 대안 | 선택한 계약 | 정식 owner |
+|---|---|---|---|
+| `CA-D01` | `(MeshName, ActorId)` key / Store namespace global `ActorId` | `ActorId` 하나를 global key로 사용한다. UTF-8 1..255 bytes, case-sensitive exact equality이며 normalization과 case folding을 하지 않는다. MeshName은 initial placement attribute다. `ActorRef`는 `{ActorId, ObjectGeneration, MeshName, NodeRid}` location snapshot이고 message target이 아니다. JSON generation은 decimal string이다. | Framework API, Actor model, Location runtime, 다섯 Actor·serialization interface |
+| `CA-D02` | Mesh별 Spot RID / global Spot RID | User·Instance Spot은 RoutingId의 1..255-byte exact value를 global logical key로 사용한다. `SpotRef`는 `{SpotRid, ObjectGeneration, MeshName, NodeRid}` snapshot이며 generation JSON은 decimal string이다. `Create`는 RID를 생성하고 `GetOrCreate`는 caller RID와 stable type을 받는다. 다른 kind·type은 `SpotTypeMismatch`다. Entry Spot RID는 Framework가 발급하며 caller create 대상이 아니다. | Spot messaging, Spot Actor, Location runtime, 다섯 Spot·serialization interface |
+| `CA-D03` | 암묵적인 default Mesh / 명시적인 ambiguity failure | `InMesh`가 있으면 그 Mesh를 사용한다. 생략했을 때 object role Mesh가 하나면 자동 선택하고, 0개면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한 Mesh가 없으면 `MeshNotFound`로 끝낸다. | Framework API, MeshNode, Actor·Spot interface, error interface |
+| `CA-D04` | overload 조합·재사용 builder / single-use fluent call | `Create`·`GetOrCreate`는 required identity·stable type을 받고 Mesh·request·placement·timeout을 option으로 받는다. 같은 option의 두 번째 설정은 `InvalidConfiguration`, 두 번째 terminal submit은 `AlreadySubmitted`다. Terminal call 시작 시 하나의 end-to-end deadline을 고정한다. | Framework API, Actor·Spot interface, async policy |
+| `CA-D05` | Bind source의 Store refresh·hidden retry / exact ActorRef 한 번 제출 | Session bind는 `ActorId + ObjectGeneration`을 고정한다. Active forwarding만 relay하며 mapping 없음은 `ActorLocationStale`, generation 불일치는 `ActorGenerationStale`, pre-commit seal은 `ActorMoving`이다. Local Actor overload와 hidden retry를 제거한다. | Actor model, Session Actor dispatch, 다섯 STREAM interface |
+| `CA-D06` | STREAM에 MeshName 고정 / global object capability enable | `EnableActorDispatch()`는 Mesh 인자가 없다. Object Client 또는 Server role과 Location Store가 하나 이상 구성됐는지 startup에서 확인한다. Global ID가 Mesh를 resolve하며 multi-Mesh 자체는 오류가 아니다. | Session Actor dispatch, configuration·STREAM interface |
+| `CA-D07` | Actor를 먼저 이동 / proposal 뒤 atomic relocation | Cross-node join은 target proposal → shared policy preflight → source seal → durable capture → target reservation·prepare → owner와 membership aggregate commit → restore·callbacks·ACK 순서다. Commit 전 실패는 source를 유지하고 commit 뒤 실패는 target recovery를 계속한다. | Spot Actor, maintenance, protocol |
+| `CA-D08` | Join 전용 policy / factory에 고정한 공통 policy | Actor·User Spot·Instance Spot factory는 `Disabled`, `Recreate`, `Snapshot` 중 하나를 반드시 등록한다. Join과 maintenance가 같은 policy·state contract를 사용한다. Same-node join은 relocation이 아니므로 policy로 차단하지 않는다. | Framework API, Spot Actor, configuration·maintenance interface |
+| `CA-D09` | create 경쟁을 caller에게 노출 / authority attempt에 합류 | Exclusive `Create`는 Ready existing이면 `AlreadyExists`, 다른 type이면 `TypeMismatch`다. `GetOrCreate`는 같은 type의 Ready 또는 Creating attempt에 합류해 같은 ref를 반환한다. CAS loser는 다른 factory를 시작하지 않는다. | Actor·Spot lifecycle, Location runtime, manager interface |
+| `CA-D10` | CAS loser가 새 owner 재선택 / 같은 attempt의 bounded wait | Creation terminal call의 deadline은 resolve, reservation, factory와 Ready barrier 전체를 포함한다. Creating loser는 같은 attempt를 관찰하고 deadline이면 `DeadlineExceeded`로 끝내며 새 create를 시작하지 않는다. 다음 call은 exact authority를 reconcile한다. | Actor·Spot lifecycle, async policy, Location runtime |
+| `CA-D11` | source memory payload / durable creation intent | Encoded creation request는 최대 1 MiB다. Reservation 전 immutable content reference와 hash를 creation intent에 기록하고 Ready 또는 fenced failure cleanup까지 유지한다. CAS winner만 payload를 사용하며 factory는 `(logical key, ObjectGeneration, attempt)` 기준 at-least-once·retry-safe다. Loser는 payload를 message로 바꾸지 않는다. | Message model, Actor·Spot lifecycle, Location Store, protocol |
+| `CA-D12` | Spot generation 비공개 / public exact generation | `SpotRef.ObjectGeneration`을 공개한다. 값은 non-zero unsigned 63-bit conceptual value이며 언어 exact interface는 손실 없이 표현하고 JSON은 decimal string을 사용한다. Close·stale fence에 사용한다. | Spot messaging, common contracts, 다섯 Spot interface |
+| `CA-D13` | implementation class 이름 / stable User Spot type | User·Instance Spot type은 UTF-8 1..255 bytes의 case-sensitive stable name이다. Normalization하지 않고 언어 class FQN을 wire·Store identity로 사용하지 않는다. 같은 server에 duplicate stable type을 등록하면 startup 오류다. | Framework API, Spot messaging, configuration interface |
+| `CA-D14` | 자유 형식 selector / 작은 typed placement surface | Create call은 optional `PlacementProfile`과 `AffinityKey`만 받는다. 둘 다 UTF-8 1..255 bytes stable value다. Required capability, region·zone과 deployment 정책은 server가 등록한 profile 내부에서 해석하며 caller callback·target RID·predicate를 받지 않는다. | Framework API, MeshNode, Location runtime, manager·configuration interface |
+| `CA-D15` | participant별 visible CAS / bounded aggregate commit | User Spot과 member Actor는 non-zero 128-bit aggregate ID, 최대 1024 participant와 encoded 최대 1 MiB의 aggregate record를 사용한다. Generic Store transaction이 owner·membership visibility를 한 commit generation으로 전환한다. Commit 전 partial owner를 resolve하지 않으며 commit 뒤에는 전체 target recovery만 허용한다. | Spot Actor, Location runtime·Store, maintenance, protocol |
+| `CA-D16` | cache를 hidden fixed profile로 고정 / 운영 가능한 두 public duration | `RouteCacheMaxAge` 기본 15초와 `TransferForwardingWindow` 기본 30초를 공통 Location option으로 공개한다. 둘 다 0이면 cache·forwarding을 끈다. 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다. Runtime 변경은 새 entry와 새 transfer에만 적용한다. | Framework API, Location runtime, configuration interface |
+| `CA-D17` | stale hop마다 Store 조회 / committed mapping chain | Relay는 committed source→target mapping만 사용하고 Store를 읽지 않는다. AuthorityOwnerGeneration은 hop마다 증가해야 하며 최대 8 hops다. Mapping 하나의 대기열은 1024 message·16 MiB 이하이고 negotiated message bound도 함께 지킨다. Original operation ID, generation, payload와 reply route를 보존하고 loop·bound 초과는 stale-route error다. | Actor·Spot messaging, Location runtime, protocol·monitoring |
+| `CA-D18` | transfer policy 생략 overload / explicit policy | 모든 object Server factory는 policy를 명시한다. 생략 overload와 compatibility default를 두지 않는다. 이동을 지원하지 않아도 `Disabled`를 등록한다. | Framework API, 다섯 configuration interface |
+| `CA-D19` | fixed RID 전면 제거 / manual topology에 한정 | Fixed Routing ID는 Location Store descriptor와 automatic discovery를 사용하지 않는 explicit manual topology에서만 허용한다. Object Client·Server 또는 automatic mode와 함께 설정하면 startup 오류다. | MeshNode, network identity, 다섯 routing configuration interface |
+| `CA-D20` | slot allocation 유지 / prefix+random lifecycle RID | Public slot count·group, allocation Store·provider와 result type을 제거한다. Automatic RID는 diagnostic prefix와 128-bit CSPRNG lowercase hex suffix를 사용한다. | MeshNode, Location Store, 다섯 routing interface |
+| `CA-D21` | 별도 RID provider / descriptor owner CAS 재사용 | Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이고 full RID는 `prefix-<32 lowercase hex>`이며 255 bytes 이하이다. Descriptor owner CAS가 `(MeshName, RID)` active conflict를 확인한다. 최대 8회 새 RID를 만들고 계속 충돌하면 `RoutingIdConflict`로 startup을 실패한다. Replacement lifecycle은 새 RID를 사용한다. | MeshNode, Location Store, protocol·monitoring |
+| `CA-D22` | Channel weight 합성 / node-wide Router weight | Placement weight는 Channel weight와 분리한 0..100 값이며 기본 100이다. 0은 신규 placement·transfer target에서만 제외한다. Reservation이 완료된 attempt와 existing traffic은 이후 weight 변경으로 취소하지 않는다. Startup builder, runtime option, descriptor와 snapshot이 같은 값을 사용한다. | MeshNode, Location runtime·Store, configuration·monitoring interface |
+| `CA-D23` | capacity 미설정 / finite node·type capacity | Object Server 기본 node capacity는 active 10,000·pending 128이다. Stable type별 limit은 생략하면 node limit을 공유하고 명시하면 1..`2^31-1` 범위에서 더 작은 limit을 적용한다. Active·pending filter가 weight보다 먼저이며 exhaustion은 `PlacementCapacityExhausted`다. Reservation recovery가 stale pending을 exact fence로 회수한다. | MeshNode, Location runtime·Store, configuration·monitoring interface |
+| `CA-D24` | 두 CAS와 compensation / generic atomic reservation | Store는 object-specific method 대신 generic `Reserve`, `Commit`, `Abort` closed operation을 제공한다. Reservation은 object kind·global key·stable type·target descriptor·capacity delta와 exact owner fence를 가진다. TTL을 두지 않고 Creating authority와 target owner lease로 recovery·takeover·abort한다. | Location runtime·Store, Redis provider, 다섯 provider interface |
+| `CA-D25` | `InstanceSpotAddress` first-message activation / explicit create intent | `InstanceSpotAddress`와 관련 message overload를 제거한다. Manager create/get-or-create가 global SpotRid, stable type와 initial Mesh를 authority에 기록한다. Ready owner가 없을 때 reactivation은 저장한 intent를 사용하고 일반 message가 type·Mesh를 새로 제공하지 않는다. | Spot address messaging, Location runtime, 다섯 Spot·messaging interface |
+| `CA-D26` | directory·handle surface 유지 / manager와 operational query로 통합 | Actor directory, Spot handle·resolver, Actor-Spot handle resolver와 unbounded list를 제거한다. Manager `Find(global ID)`와 current Spot query, page size 1..1000·encoded 4 MiB 이하의 operational query로 대체한다. Entry registration은 Object Server builder가 소유한다. | Framework API, Actor·Spot·Location spec, 다섯 interface |
+| `CA-D27` | ID-only destroy·close / exact ref mutation | Destroy와 Close는 exact ref를 받는다. 같은 incarnation이 이미 없으면 idempotent `false`, 다른 generation은 stale-generation error, moving은 typed moving error다. Current ref를 다시 찾아 새 incarnation을 종료하지 않는다. | Actor·Spot lifecycle, manager·error interface |
+| `CA-D28` | Client·Server 독립 flag와 local fallback / closed object role | MeshNode role은 `None`, `Client`, `Server` 중 하나며 Server가 Client capability를 포함한다. Client·Server는 Location Store가 필수다. None은 manager·factory·placement를 제공하지 않고 hidden local object runtime도 만들지 않는다. Factory는 Server builder에서만 등록한다. | Framework API, MeshNode, Location runtime, 다섯 configuration·DI interface |
+| `CA-D29` | .NET source를 새 정본으로 승격 / formal spec parity 유지 | Current source-only member는 계약 근거로 사용하지 않는다. Formal common spec과 다섯 exact interface를 한 candidate에서 갱신하고 Kotlin extension·JVM ABI snapshot까지 별도 검증한다. Gap은 implementation row가 소유한다. | 다섯 exact interface, public contract trace |
+| `CA-D30` | Missing·Creating·Store failure negative cache / negative cache 없음 | Missing, Creating과 Store failure를 cache하지 않는다. Positive Ready cache도 current owner lease의 local admission deadline까지만 유효하다. Store recovery 또는 higher StoreVersion·stale result가 있으면 즉시 invalidate하고 다음 operation이 exact resolve한다. | Location runtime·Store, monitoring |
+| `CA-D31` | Location Store가 transfer payload까지 소유 / Location·Transfer capability 분리 | Location Store는 owner·location·generation, transfer phase·TransferId·source·target fence, transfer reference·checksum, placement reservation과 aggregate authority를 소유한다. Transfer Store는 application state, accepted journal, reply·replay·recovery payload를 immutable chunk·root로 저장한다. Actor·Spot별 Store interface는 추가하지 않는다. | Framework API, Location runtime, Location·Transfer Redis spec, 다섯 provider interface |
+| `CA-D32` | Transfer manifest를 participant authority로 사용 / Location canonical participant set을 authority로 사용 | Location aggregate가 bounded canonical participant set, participant별 mutation, aggregate generation과 inventory digest를 한 transaction에서 commit한다. Transfer manifest는 participant payload 탐색용 projection이며 authority가 아니다. Target은 Location participant set과 Transfer manifest의 canonical digest가 같을 때만 restore한다. | Spot Actor, Location runtime·Store, Transfer Store, protocol |
+| `CA-D33` | Store capability 묶음 등록 / 별도 public interface와 등록 | Root는 Location Store와 Transfer Store를 별도 public API로 등록하며 capability마다 최대 하나만 허용한다. Location 기능을 사용하는 host는 Location Store가 정확히 하나 필요하다. `Recreate` 또는 `Snapshot` factory가 하나라도 있으면 Transfer Store가 정확히 하나 필요하고, `Disabled` factory와 same-node join만 사용하는 host에는 필요하지 않다. Missing·duplicate는 socket bind 전에 startup configuration error다. `Disabled` cross-node 이동은 payload capture 전에 거부한다. | Framework API, 다섯 configuration interface |
+| `CA-D34` | Redis composite class / 별도 Redis implementation class | 공식 Redis package는 Location Store와 Transfer Store의 concrete class를 따로 제공한다. 같은 Redis deployment·cluster를 서로 다른 key prefix로 사용할 수 있고 별도 Redis로 분리할 수도 있다. Client connection 공유와 disposal 방식은 언어별 구현이 소유하며 공통 correctness 조건이 아니다. | Location Redis spec, Transfer Redis spec, 다섯 Redis interface |
+| `CA-D35` | Cross-store transaction·2PC / immutable payload 뒤 Location CAS publication | Runtime은 Transfer root를 먼저 저장하고 reference·checksum·retention을 검증한 뒤 Location authority 또는 aggregate CAS로 공개한다. CAS 전 실패·conflict payload는 orphan retention 또는 idempotent delete로 제거한다. Root 교체는 새 root 저장→Location reference CAS→이전 root 정리, 삭제는 Location reference 해제 CAS→Transfer payload 삭제 순서다. Cross-store transaction과 2PC를 요구하지 않는다. | Location runtime, Transfer Store, protocol·recovery internals |
+| `CA-D36` | Checkpoint public vocabulary / Transfer vocabulary와 data-loss terminal | Public·protocol vocabulary의 Checkpoint Store·reference·root·envelope을 Transfer로 바꾼다. `Snapshot`, `CaptureAsync`, `RestoreAsync`는 application state policy·callback 이름이므로 유지한다. Published reference의 payload가 영구적으로 없으면 이전 owner로 rollback하지 않고 non-retriable `TransferDataLost`로 끝낸다. Creation intent content reference는 transfer reference와 다른 Location reservation 입력이다. | Framework API, maintenance·monitoring, protocol, 다섯 exact interface |
+
+`CA-D16`은 두 값을 공개하지만 invalid 조합을 runtime에 넘기지 않는다. `CA-D23`의 기본 capacity는 deployment가
+별도 설정 없이도 bounded pending admission을 갖게 하며, 더 큰 값을 선택하면 descriptor와 Store reservation이
+같은 값을 게시·검증한다. `CA-D11`, `CA-D15`, `CA-D17`, `CA-D21`의 byte·count bound는 protocol schema의
+정식 bound로 추가하고 네 runtime이 같은 negative fixture를 사용한다.
 
 Impact manifest는 public member, E2E scenario, sample, 실행 registration과 회귀 test를 각각 독립 항목으로
 기록한다. 각 항목은 stable ID·path, baseline hash, `retain`·`amend`·`replace`·`add`·`remove`, 새 acceptance
@@ -956,12 +1005,12 @@ diff 0을 유지한다.
 |---|---|---|---|---|---|---|
 | `V11-E2E-SPEC-FINAL` | Amended contract 기준 공통 E2E spec 확정 | E2E·contract lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO`, `V11-CA-IMPACT` | 대기 | scenario·negative·race·directional matrix와 approved hash·runtime owner 누락 0 | — |
 | `V11-SAMPLE-SPEC-FINAL` | Amended contract 기준 공통 sample spec 확정 | sample·contract lanes, `P-DEEP` | `V11-M6-SCAFFOLD-ZERO`, `V11-CA-IMPACT` | 대기 | public 사용 흐름·역할·message·marker와 다섯 언어 owner 누락 0 | — |
-| `V11-R5D` | Final E2E·sample spec 독립 review | Codex ultra review lane, `P-ULTRA` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-E2E-SPEC-FINAL`, `V11-SAMPLE-SPEC-FINAL` | 대기 | public contract 일치, assertion 약화·coverage 손실·미분류 impact 0, 대체 scenario와 다섯 언어 sample parity의 I1·I2·I3 review clean | — |
+| `V11-R5D` | Final E2E·sample spec 독립 review | Codex xhigh review lane, `P-XHIGH` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-E2E-SPEC-FINAL`, `V11-SAMPLE-SPEC-FINAL` | 대기 | public contract 일치, assertion 약화·coverage 손실·미분류 impact 0, 대체 scenario와 다섯 언어 sample parity의 I1·I2·I3 review clean | — |
 | `V11-M6A-E2E` | Topology·liveness E2E 활성화와 gap 해소 | E2E·topology runtime lanes, `P-DELIVERY` | `V11-R5D` | 대기 | Config 3 `PS-F1~F5`, Config 5 `RL-E1~E5`와 amended placement scenario를 현재 candidate에서 실행, required skip·runtime gap 0 | — |
 | `V11-M6B-E2E` | Stateful object E2E 활성화와 gap 해소 | E2E·stateful runtime lanes, `P-DELIVERY` | `V11-M6A-E2E` | 대기 | Spot·Actor·bound STREAM·Instance·remote create·global identity·stale owner scenario required skip·runtime gap 0 | — |
 | `V11-M6C-E2E` | Maintenance·hosting E2E 활성화와 gap 해소 | E2E·maintenance runtime lanes, `P-DELIVERY` | `V11-M6B-E2E` | 대기 | Retire·Shutdown·aggregate transfer·crash recovery·remote fencing·hosting scenario required skip·runtime gap 0 | — |
 
-`V11-R5D`에서 Codex `ultra`와 Claude Sonnet은 같은 candidate를 독립적으로 검토하고 finding을 §18 규칙으로
+`V11-R5D`에서 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet은 같은 candidate를 독립적으로 검토하고 finding을 §18 규칙으로
 수렴한다. 두 reviewer가 clean을 기록하고 post-review `DOC`, `TRACE`, `AMENDMENT-IMPACT --mode finalized`가
 통과하기 전에는 E2E source·registration을 변경하거나 `V11-M6A-E2E`를 시작하지 않는다.
 
@@ -1377,8 +1426,9 @@ Review 축은 다음과 같다.
 4. 5회차 이후 `Low` finding만 남으면 위치, 영향과 처리 결정을 증거 칸에 기록하고 clean으로 종료할 수 있다.
 5. 정확성, 공개 계약, data loss, race, security, package mismatch와 제거 누락을 선호 문제로 낮추지 않는다.
 6. 두 reviewer가 clean을 기록한 뒤 해당 stage가 소유한 required gate를 다시 실행한다. M5 review는 internal
-   contract와 기존 pending catalog를, `V11-R4A`는 amended formal contract·protocol·impact manifest를 재검증한다.
-   M6 runtime review는 internal regression과 execution quarantine만 재실행한다. `V11-R5D`는 Codex `ultra`와
+   contract와 기존 pending catalog를, `V11-R4A`는 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet으로 amended formal
+   contract·protocol·impact manifest를 재검증한다.
+   M6 runtime review는 internal regression과 execution quarantine만 재실행한다. `V11-R5D`는 Codex `gpt-5.6-sol xhigh`와
    Claude Sonnet이 final E2E·sample spec, impact disposition과 coverage를 독립 review하고 post-review gate를
    재실행한다. 최초 실제 E2E는 `V11-R5D` 뒤 `V11-M6A-E2E`가 시작하고, full matrix는 M7, final package
    재검증은 M9가 소유한다.
@@ -1408,7 +1458,7 @@ Review 축은 다음과 같다.
 - [ ] Runtime 구현 중 E2E·sample은 실행 graph에서만 격리됐고 source 삭제·임시 우회·skip·성공 처리가 없었다.
 - [ ] Runtime 완료 뒤 공통 E2E·sample spec을 확정하고 topology→stateful object→maintenance 순서로 E2E를
   활성화해 각 묶음의 runtime gap을 0으로 만들었다.
-- [ ] Final E2E·sample spec이 `V11-R5D`에서 Codex `ultra`와 Claude Sonnet의 독립 review와 post-review gate를
+- [ ] Final E2E·sample spec이 `V11-R5D`에서 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet의 독립 review와 post-review gate를
   통과한 뒤에만 E2E source·registration 변경과 실행을 시작했다.
 - [ ] Required contract·race·crash·recovery와 방향이 있는 `4 x 4` E2E가 skipped 없이 통과했다.
 - [ ] 전체 E2E 뒤 다섯 언어 sample이 approved source·registration과 public API만 사용해 compile·run됐다.

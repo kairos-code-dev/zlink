@@ -172,6 +172,14 @@ public sealed record ZLinkMeshNodeSnapshot(
     ZLinkLocationRuntimeSnapshot Location)
 {
     public long ApplicationVersion { get; init; }
+    public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
+    public int PlacementWeight { get; init; }
+    public ZLinkPlacementCapacity ObjectCapacity { get; init; }
+        = new(0, 0, 10_000, 128);
+    public ulong PlacementReservationFailureCount { get; init; }
+    public string? LastPlacementReservationFailure { get; init; }
+    public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
+        = Array.Empty<ZLinkObjectCapability>();
     public IReadOnlyList<ZLinkInstanceSpotTypeSnapshot> InstanceSpots { get; init; }
         = Array.Empty<ZLinkInstanceSpotTypeSnapshot>();
 }

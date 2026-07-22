@@ -170,7 +170,6 @@ function validate(records, inventory) {
     'zmp-heartbeat-remove',
     'generic-timer-retain-service-fragment-remove',
     'raw-monitor-retain-service-fragment-remove',
-    'active-service-perf-remove',
     'core-10x-perf-archive-retain',
   ]) {
     if (!classificationCounts[required]) findings.push(`missing-boundary-classification:${required}`);

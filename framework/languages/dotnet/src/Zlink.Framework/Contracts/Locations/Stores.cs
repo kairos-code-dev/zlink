@@ -118,6 +118,67 @@ public interface IZLinkActorLocationStore
 /// </summary>
 public interface IZLinkOwnerLeaseStore
 {
+    async ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
+        string ownerId,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        var renewed = await RenewOwnerLeaseAsync(
+            ownerId,
+            default,
+            leaseTtl,
+            cancellationToken).ConfigureAwait(false);
+        return new ZLinkOwnerLeaseClaimResult.Claimed(
+            new ZLinkLocationOwnerToken(ownerId, 1),
+            renewed.LeaseExpiresAt,
+            renewed.StoreNow);
+    }
+
+    async ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await ListOwnerLeasesAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var lease = snapshot.Leases.FirstOrDefault(value =>
+            string.Equals(value.OwnerId, ownerId, StringComparison.Ordinal));
+        return lease is null || lease.LeaseExpiresAt <= snapshot.StoreNow
+            ? new ZLinkOwnerLeaseReadResult.Missing()
+            : new ZLinkOwnerLeaseReadResult.Found(
+                new ZLinkLocationOwnerToken(
+                    ownerId,
+                    lease.LeaseGeneration == 0
+                        ? 1
+                        : lease.LeaseGeneration),
+                lease.LeaseExpiresAt,
+                snapshot.StoreNow);
+    }
+
+    async ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        var renewed = await RenewOwnerLeaseAsync(
+            token.OwnerId,
+            default,
+            leaseTtl,
+            cancellationToken).ConfigureAwait(false);
+        return new ZLinkOwnerLeaseRenewResult.Renewed(
+            renewed.LeaseExpiresAt,
+            renewed.StoreNow);
+    }
+
+    async ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        CancellationToken cancellationToken = default)
+    {
+        return await RemoveOwnerLeaseAsync(token.OwnerId, cancellationToken)
+            .ConfigureAwait(false)
+            ? ZLinkOwnerLeaseReleaseResult.Released
+            : ZLinkOwnerLeaseReleaseResult.Stale;
+    }
+
     /// <summary>
     /// Upsert: creates the lease row when absent, extends it when present.
     /// Called once per heartbeat interval per runtime instance. The caller

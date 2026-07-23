@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Configuration.Builders;
@@ -9,6 +10,82 @@ namespace Zlink.Framework.UnitTests;
 
 public sealed class RelocationRuntimeTests
 {
+    [Fact]
+    public async Task Authority_relocation_uses_exact_owner_and_capacity_fence_with_opaque_payloads()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "source-owner",
+                TimeSpan.FromMinutes(1)));
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "target-owner",
+                TimeSpan.FromMinutes(1)));
+        var key = new ZLinkAuthorityKey("actor:mesh:actor-1");
+        var creating = new byte[] { 0x11, 0x00, 0xff };
+        var ready = new byte[] { 0x22, 0x00, 0xfe };
+        var reservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                new ZLinkObjectReservationRequest(
+                    ZLinkPlacementObjectKind.Actor,
+                    key,
+                    "Game.Actor",
+                    null,
+                    null,
+                    "intent-1",
+                    SHA256.HashData("intent-1"u8),
+                    8,
+                    new ZLinkMeshNodeDescriptorKey(
+                        "mesh",
+                        RoutingId.From("source")),
+                    source.Token,
+                    creating,
+                    1)));
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(reservation.Reservation, ready));
+        Assert.Equal(ready, committed.Snapshot.Payload.ToArray());
+
+        var capacity = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await store.ReserveRelocationCapacityAsync(
+                new ZLinkRelocationCapacityReservationRequest(
+                    Guid.NewGuid(),
+                    key,
+                    committed.Snapshot.StoreVersion,
+                    ZLinkPlacementObjectKind.Actor,
+                    "Game.Actor",
+                    new ZLinkMeshNodeDescriptorKey(
+                        "mesh",
+                        RoutingId.From("source")),
+                    source.Token,
+                    new ZLinkMeshNodeDescriptorKey(
+                        "mesh",
+                        RoutingId.From("target")),
+                    target.Token,
+                    1)));
+        var opaque = new byte[] { 0xde, 0xad, 0x00, 0xbe, 0xef };
+        var moved = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                new ZLinkAuthorityExpectation.Found(
+                    committed.Snapshot.StoreVersion),
+                new ZLinkAuthorityMutation.Put(
+                    opaque,
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    target.Token,
+                    capacity.Fence)));
+
+        Assert.Equal(opaque, moved.Snapshot.Payload.ToArray());
+        Assert.Equal(target.Token.OwnerId, moved.Snapshot.OwnerId);
+        Assert.Equal(
+            target.Token.LeaseGeneration,
+            moved.Snapshot.OwnerLeaseGeneration);
+        Assert.Equal(
+            ZLinkRelocationCapacityAbortResult.AlreadyCommitted,
+            await store.AbortRelocationCapacityAsync(capacity.Fence));
+    }
+
     [Fact]
     public void PublicRelocationContractsMatchTargetShape()
     {
@@ -382,6 +459,7 @@ public sealed class RelocationRuntimeTests
             "target-owner",
             9,
             new byte[] { 8, 8 },
+            null,
             envelope);
 
     private static ZLinkManagedMeshNode NewNode(
@@ -521,16 +599,15 @@ public sealed class RelocationRuntimeTests
                     new ZLinkAuthorityCompareExchangeResult.Conflict(
                         new ZLinkAuthorityReadResult.Missing(DateTimeOffset.UtcNow)));
             var put = Assert.IsType<ZLinkAuthorityMutation.Put>(mutation);
-            Assert.True(ZLinkRelocationAuthorityPayloadCodec.TryDecode(
-                put.Payload.Span,
-                out var publication));
+            var targetOwner = Assert.IsType<ZLinkLocationOwnerToken>(
+                put.TargetOwner);
             var snapshot = new ZLinkAuthoritySnapshot(
                 "v1",
                 put.Payload,
                 1,
                 1,
-                publication.TargetOwnerId,
-                publication.TargetOwnerLeaseGeneration,
+                targetOwner.OwnerId,
+                targetOwner.LeaseGeneration,
                 DateTimeOffset.UtcNow);
             _snapshots[key.Value] = snapshot;
             if (ThrowAfterCommit)

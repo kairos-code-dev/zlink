@@ -53,15 +53,77 @@ internal static class ZLinkRedisAuthorityScripts
         if not canIncrement(redis.call('HGET', KEYS[1], 'revision')) then
             return {'exhausted', nowMs}
         end
-        local version = redis.call('HINCRBY', KEYS[1], 'revision', 1)
         if ARGV[4] == 'delete' then
+            local version = redis.call('HINCRBY', KEYS[1], 'revision', 1)
             for index = 2, 8 do redis.call('HDEL', KEYS[index], key) end
             redis.call('SREM', KEYS[9], key)
             return {'deleted', nowMs, version}
         end
 
+        local transition = ARGV[6]
+        if transition == 'preserve' then
+            if not current or ARGV[7] ~= '' then
+                return {'invalid', nowMs}
+            end
+        elseif transition == 'new-owner' or transition == 'new-object' then
+            local lease = redis.call('GET', KEYS[10])
+            local leaseGeneration =
+                lease and string.match(lease, '([^|]*)|') or nil
+            if ARGV[7] == '' or not leaseGeneration
+                or leaseGeneration ~= ARGV[8] then
+                if not current then return {'conflict-missing', nowMs} end
+                return {
+                    'conflict-found', nowMs, current,
+                    redis.call('HGET', KEYS[3], key),
+                    redis.call('HGET', KEYS[4], key),
+                    redis.call('HGET', KEYS[5], key),
+                    redis.call('HGET', KEYS[6], key),
+                    redis.call('HGET', KEYS[7], key)
+                }
+            end
+            if transition == 'new-owner' and not current
+                or transition == 'new-object' and current then
+                return {'invalid', nowMs}
+            end
+            if transition == 'new-owner'
+                and (redis.call('HGET', KEYS[11], 'status') ~= 'reserved'
+                    or redis.call('HGET', KEYS[11], 'key') ~= key
+                    or redis.call('HGET', KEYS[11], 'targetOwner') ~= ARGV[7]
+                    or redis.call('HGET', KEYS[11], 'targetGeneration') ~= ARGV[8]) then
+                return {
+                    'conflict-found', nowMs, current,
+                    redis.call('HGET', KEYS[3], key),
+                    redis.call('HGET', KEYS[4], key),
+                    redis.call('HGET', KEYS[5], key),
+                    redis.call('HGET', KEYS[6], key),
+                    redis.call('HGET', KEYS[7], key)
+                }
+            end
+            if not canIncrement(redis.call('HGET', KEYS[1], 'owner'))
+                or transition == 'new-object'
+                and not canIncrement(redis.call('HGET', KEYS[1], 'object')) then
+                return {'exhausted', nowMs}
+            end
+        else
+            return {'invalid', nowMs}
+        end
+
+        local version = redis.call('HINCRBY', KEYS[1], 'revision', 1)
         redis.call('HSET', KEYS[2], key, version)
         redis.call('HSET', KEYS[3], key, ARGV[5])
+        if transition == 'new-object' then
+            redis.call('HSET', KEYS[4], key,
+                redis.call('HINCRBY', KEYS[1], 'object', 1))
+        end
+        if transition == 'new-owner' or transition == 'new-object' then
+            redis.call('HSET', KEYS[5], key,
+                redis.call('HINCRBY', KEYS[1], 'owner', 1))
+            redis.call('HSET', KEYS[6], key, ARGV[7])
+            redis.call('HSET', KEYS[7], key, ARGV[8])
+        end
+        if transition == 'new-owner' then
+            redis.call('HSET', KEYS[11], 'status', 'committed')
+        end
         redis.call('SADD', KEYS[9], key)
         return {
             'stored', nowMs, version,
@@ -71,6 +133,56 @@ internal static class ZLinkRedisAuthorityScripts
             redis.call('HGET', KEYS[6], key),
             redis.call('HGET', KEYS[7], key)
         }
+        """;
+
+    internal const string ReserveRelocationCapacity = Prologue + """
+
+        local existing = redis.call('HGET', KEYS[4], 'signature')
+        if existing then
+            if existing == ARGV[1] then
+                return {'already', nowMs, ARGV[2]}
+            end
+            return {'conflict', nowMs}
+        end
+        local version = redis.call('HGET', KEYS[1], ARGV[3])
+        if not version or version ~= ARGV[4]
+            or redis.call('HGET', KEYS[2], ARGV[3]) ~= ARGV[5]
+            or redis.call('HGET', KEYS[3], ARGV[3]) ~= ARGV[6] then
+            return {'conflict', nowMs}
+        end
+        local sourceLease = redis.call('GET', KEYS[5])
+        local sourceGeneration =
+            sourceLease and string.match(sourceLease, '([^|]*)|') or nil
+        local targetLease = redis.call('GET', KEYS[6])
+        local targetGeneration =
+            targetLease and string.match(targetLease, '([^|]*)|') or nil
+        if not sourceGeneration or sourceGeneration ~= ARGV[6] then
+            return {'conflict', nowMs}
+        end
+        if not targetGeneration or targetGeneration ~= ARGV[8] then
+            return {'target-unavailable', nowMs}
+        end
+        redis.call('HSET', KEYS[4],
+            'signature', ARGV[1],
+            'fence', ARGV[2],
+            'status', 'reserved',
+            'key', ARGV[3],
+            'version', ARGV[4],
+            'sourceOwner', ARGV[5],
+            'sourceGeneration', ARGV[6],
+            'targetOwner', ARGV[7],
+            'targetGeneration', ARGV[8])
+        return {'reserved', nowMs, ARGV[2]}
+        """;
+
+    internal const string AbortRelocationCapacity = Prologue + """
+
+        local status = redis.call('HGET', KEYS[1], 'status')
+        if not status then return {'stale', nowMs} end
+        if status == 'committed' then return {'committed', nowMs} end
+        if status == 'aborted' then return {'already', nowMs} end
+        redis.call('HSET', KEYS[1], 'status', 'aborted')
+        return {'aborted', nowMs}
         """;
 
     internal const string StartScan = Prologue + """
@@ -131,7 +243,10 @@ internal static class ZLinkRedisAuthorityScripts
                 redis.call('HGET', KEYS[7], key)
             }
         end
-        if redis.call('EXISTS', KEYS[9]) == 0 then
+        local lease = redis.call('GET', KEYS[9])
+        local leaseGeneration =
+            lease and string.match(lease, '([^|]*)|') or nil
+        if not leaseGeneration or leaseGeneration ~= ARGV[4] then
             return {'owner-stale', nowMs}
         end
         if not canIncrement(redis.call('HGET', KEYS[1], 'revision'))
@@ -227,23 +342,63 @@ internal static class ZLinkRedisAuthorityScripts
         local status = redis.call('HGET', KEYS[9], 'status')
         if status == 'prepared' then return {'already', nowMs} end
         if status then return {'stale', nowMs} end
-        if redis.call('EXISTS', KEYS[10]) == 0 then
+        local targetLeaseValue = redis.call('GET', KEYS[10])
+        local targetLeaseGeneration =
+            targetLeaseValue and string.match(targetLeaseValue, '([^|]*)|')
+            or nil
+        if not targetLeaseGeneration
+            or targetLeaseGeneration ~= ARGV[2] then
             return {'conflict', nowMs}
         end
         local count = tonumber(ARGV[3])
-        local offset = 4
+        local reservationCount = tonumber(ARGV[4])
+        local offset = 5
+        local newOwnerCount = 0
         for index = 0, count - 1 do
             local key = ARGV[offset + index * 5]
             local expected = ARGV[offset + index * 5 + 1]
             if redis.call('HGET', KEYS[1], key) ~= expected then
                 return {'conflict', nowMs}
             end
+            if ARGV[offset + index * 5 + 2] == '2' then
+                newOwnerCount = newOwnerCount + 1
+            end
+        end
+        if reservationCount ~= newOwnerCount then
+            return {'conflict', nowMs}
+        end
+        local seen = {}
+        for index = 1, reservationCount do
+            local capacityKey = KEYS[10 + index]
+            local reservedKey = redis.call('HGET', capacityKey, 'key')
+            if not reservedKey or seen[reservedKey]
+                or redis.call('HGET', capacityKey, 'status') ~= 'reserved'
+                or redis.call('HGET', capacityKey, 'targetOwner') ~= ARGV[1]
+                or redis.call('HGET', capacityKey, 'targetGeneration') ~= ARGV[2] then
+                return {'conflict', nowMs}
+            end
+            local matched = false
+            for participant = 0, count - 1 do
+                local base = offset + participant * 5
+                if ARGV[base] == reservedKey and ARGV[base + 2] == '2'
+                    and ARGV[base + 1]
+                    == redis.call('HGET', capacityKey, 'version') then
+                    matched = true
+                end
+            end
+            if not matched then return {'conflict', nowMs} end
+            seen[reservedKey] = true
         end
         redis.call('HSET', KEYS[9],
             'status', 'prepared',
             'targetOwner', ARGV[1],
             'targetLease', ARGV[2],
-            'count', count)
+            'count', count,
+            'reservationCount', reservationCount)
+        for index = 1, reservationCount do
+            redis.call('HSET', KEYS[9],
+                'capacityKey:' .. index, KEYS[10 + index])
+        end
         for index = 0, count - 1 do
             local base = offset + index * 5
             redis.call('HSET', KEYS[9],
@@ -286,6 +441,8 @@ internal static class ZLinkRedisAuthorityScripts
         end
         local targetOwner = redis.call('HGET', KEYS[9], 'targetOwner')
         local targetLease = redis.call('HGET', KEYS[9], 'targetLease')
+        local reservationCount =
+            tonumber(redis.call('HGET', KEYS[9], 'reservationCount') or '0')
         for index = 0, count - 1 do
             local key = redis.call('HGET', KEYS[9], 'key:' .. index)
             local transition = redis.call('HGET', KEYS[9], 'transition:' .. index)
@@ -302,6 +459,11 @@ internal static class ZLinkRedisAuthorityScripts
                 redis.call('HSET', KEYS[6], key, targetLease)
             end
         end
+        for index = 1, reservationCount do
+            local capacityKey =
+                redis.call('HGET', KEYS[9], 'capacityKey:' .. index)
+            redis.call('HSET', capacityKey, 'status', 'committed')
+        end
         redis.call('HSET', KEYS[9], 'status', 'committed')
         return {'committed', nowMs}
         """;
@@ -311,6 +473,15 @@ internal static class ZLinkRedisAuthorityScripts
         local status = redis.call('HGET', KEYS[1], 'status')
         if status == 'aborted' then return {'already', nowMs} end
         if status ~= 'prepared' then return {'stale', nowMs} end
+        local reservationCount =
+            tonumber(redis.call('HGET', KEYS[1], 'reservationCount') or '0')
+        for index = 1, reservationCount do
+            local capacityKey =
+                redis.call('HGET', KEYS[1], 'capacityKey:' .. index)
+            if redis.call('HGET', capacityKey, 'status') == 'reserved' then
+                redis.call('HSET', capacityKey, 'status', 'aborted')
+            end
+        end
         redis.call('HSET', KEYS[1], 'status', 'aborted')
         return {'aborted', nowMs}
         """;

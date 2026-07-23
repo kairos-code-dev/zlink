@@ -176,9 +176,68 @@ internal static class ZLinkRedisLocationScripts
     /// </summary>
     internal const string RenewLease = Prologue + """
 
-        redis.call('SET', KEYS[1], ARGV[2] .. '|' .. nowMs, 'PX', ARGV[3])
+        local value = redis.call('GET', KEYS[1])
+        local generation = value and string.match(value, '([^|]*)|') or nil
+        if not generation then
+            generation = redis.call('HINCRBY', KEYS[3], 'lease', 1)
+        end
+        redis.call('SET', KEYS[1],
+            generation .. '|' .. ARGV[2] .. '|' .. nowMs,
+            'PX', ARGV[3])
         redis.call('SADD', KEYS[2], ARGV[1])
-        return nowMs
+        return {nowMs, generation}
+        """;
+
+    internal const string ClaimLease = Prologue + """
+
+        if redis.call('EXISTS', KEYS[1]) == 1 then
+            return {'conflict', nowMs}
+        end
+        local current = redis.call('HGET', KEYS[3], 'lease')
+        if current and current == '9223372036854775807' then
+            return {'exhausted', nowMs}
+        end
+        local generation = redis.call('HINCRBY', KEYS[3], 'lease', 1)
+        redis.call('SET', KEYS[1],
+            generation .. '||' .. nowMs,
+            'PX', ARGV[2])
+        redis.call('SADD', KEYS[2], ARGV[1])
+        return {'claimed', nowMs, generation}
+        """;
+
+    internal const string ReadLease = Prologue + """
+
+        local value = redis.call('GET', KEYS[1])
+        local pttl = redis.call('PTTL', KEYS[1])
+        if not value or pttl < 0 then return {'missing', nowMs} end
+        local generation = string.match(value, '([^|]*)|')
+        return {'found', nowMs, generation, pttl}
+        """;
+
+    internal const string RenewExactLease = Prologue + """
+
+        local value = redis.call('GET', KEYS[1])
+        local generation = value and string.match(value, '([^|]*)|') or nil
+        if not generation or generation ~= ARGV[1] then
+            return {'stale', nowMs}
+        end
+        local nodeRid = string.match(value, '[^|]*|([^|]*)|') or ''
+        redis.call('SET', KEYS[1],
+            generation .. '|' .. nodeRid .. '|' .. nowMs,
+            'PX', ARGV[2])
+        return {'renewed', nowMs}
+        """;
+
+    internal const string ReleaseExactLease = Prologue + """
+
+        local value = redis.call('GET', KEYS[1])
+        local generation = value and string.match(value, '([^|]*)|') or nil
+        if not generation or generation ~= ARGV[2] then
+            return {'stale', nowMs}
+        end
+        redis.call('DEL', KEYS[1])
+        redis.call('SREM', KEYS[2], ARGV[1])
+        return {'released', nowMs}
         """;
 
     /// <summary>
@@ -249,9 +308,7 @@ internal static class ZLinkRedisLocationScripts
                     local renewedExpiry = nowMs + tonumber(ARGV[4])
                     redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
                         currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
-                    local leaseValue = redis.call('GET', KEYS[2])
-                    local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-                    redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+                    redis.call('PEXPIRE', KEYS[2], ARGV[4])
                     redis.call('SADD', KEYS[3], ARGV[3])
                     return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
                 end
@@ -281,9 +338,7 @@ internal static class ZLinkRedisLocationScripts
         redis.call('HSET', KEYS[1],
             'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
             ownerField, selected)
-        local leaseValue = redis.call('GET', KEYS[2])
-        local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-        redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+        redis.call('PEXPIRE', KEYS[2], ARGV[4])
         redis.call('SADD', KEYS[3], ARGV[3])
         return {'acquired', selected, generation, expiresAt, nowMs}
         """;

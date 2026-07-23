@@ -9,6 +9,7 @@ internal sealed record ZLinkRelocationPublicationRequest(
     string TargetOwnerId,
     long TargetOwnerLeaseGeneration,
     ReadOnlyMemory<byte> ApplicationAuthorityPayload,
+    ZLinkRelocationCapacityFence? RelocationCapacityFence,
     ZLinkRelocationEnvelope Envelope);
 
 internal sealed record ZLinkPublishedRelocation(
@@ -76,7 +77,14 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
                     request.Expectation,
                     new ZLinkAuthorityMutation.Put(
                         publishedPayload,
-                        request.GenerationTransition),
+                        request.GenerationTransition,
+                        request.GenerationTransition
+                        == ZLinkAuthorityGenerationTransition.Preserve
+                            ? null
+                            : new ZLinkLocationOwnerToken(
+                                request.TargetOwnerId,
+                                request.TargetOwnerLeaseGeneration),
+                        request.RelocationCapacityFence),
                     cancellationToken)
                 .ConfigureAwait(false);
             switch (result)
@@ -248,6 +256,15 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
             throw new ArgumentOutOfRangeException(
                 nameof(request),
                 "The target owner lease generation must be positive.");
+        if (request.GenerationTransition
+                == ZLinkAuthorityGenerationTransition.NewOwner
+            && request.RelocationCapacityFence is null
+            || request.GenerationTransition
+                != ZLinkAuthorityGenerationTransition.NewOwner
+            && request.RelocationCapacityFence is not null)
+            throw new ArgumentException(
+                "Only NewOwner publication requires a relocation capacity fence.",
+                nameof(request));
         if (request.ApplicationAuthorityPayload.Length > 1024 * 1024)
             throw new ArgumentOutOfRangeException(
                 nameof(request),

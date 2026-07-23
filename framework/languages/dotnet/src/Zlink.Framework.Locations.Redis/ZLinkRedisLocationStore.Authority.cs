@@ -47,12 +47,7 @@ public sealed partial class ZLinkRedisLocationStore
         if (mutation is ZLinkAuthorityMutation.Put put)
         {
             ValidateAuthorityPayload(put.Payload);
-            if (put.GenerationTransition
-                != ZLinkAuthorityGenerationTransition.Preserve)
-            {
-                throw new InvalidOperationException(
-                    "The public authority mutation does not carry the target owner fence required by NewOwner or NewObject.");
-            }
+            ValidateAuthorityMutation(put, expectation);
         }
 
         var expectationName = expectation is ZLinkAuthorityExpectation.Missing
@@ -67,16 +62,41 @@ public sealed partial class ZLinkRedisLocationStore
         var payload = mutation is ZLinkAuthorityMutation.Put value
             ? value.Payload.ToArray()
             : [];
+        var transition = mutation is ZLinkAuthorityMutation.Put putValue
+            ? putValue.GenerationTransition switch
+            {
+                ZLinkAuthorityGenerationTransition.Preserve => "preserve",
+                ZLinkAuthorityGenerationTransition.NewOwner => "new-owner",
+                ZLinkAuthorityGenerationTransition.NewObject => "new-object",
+                _ => throw new ArgumentOutOfRangeException(nameof(mutation))
+            }
+            : string.Empty;
+        var targetOwner = mutation is ZLinkAuthorityMutation.Put
+            {
+                TargetOwner: { } owner
+            }
+            ? owner
+            : default;
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.CompareExchange,
-                    AuthorityKeys(),
+                    AuthorityKeys(
+                        targetOwner.OwnerId,
+                        mutation is ZLinkAuthorityMutation.Put
+                        {
+                            RelocationCapacityFence: { } capacityFence
+                        }
+                            ? capacityFence.Value
+                            : null),
                     [
                         key.Value,
                         expectationName,
                         expectedVersion,
                         mutationName,
-                        payload
+                        payload,
+                        transition,
+                        targetOwner.OwnerId ?? string.Empty,
+                        targetOwner.LeaseGeneration
                     ]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -96,6 +116,8 @@ public sealed partial class ZLinkRedisLocationStore
                     Snapshot(result, 2, now))),
             "exhausted" =>
                 new ZLinkAuthorityCompareExchangeResult.GenerationExhausted(),
+            "invalid" => throw new InvalidOperationException(
+                "Redis rejected an inconsistent authority mutation."),
             _ => throw new InvalidOperationException(
                 $"Unknown Redis authority compare-exchange result '{status}'.")
         };
@@ -200,9 +222,9 @@ public sealed partial class ZLinkRedisLocationStore
                     ],
                     [
                         request.Key.Value,
-                        Encoding.UTF8.GetBytes(request.CreationIntentReference),
+                        request.CreatingPayload.ToArray(),
                         request.TargetOwner.OwnerId,
-                        request.TargetOwner.Generation,
+                        request.TargetOwner.LeaseGeneration,
                         request.TargetDescriptor.MeshName,
                         request.TargetDescriptor.Rid.ToHex()
                     ]).ConfigureAwait(false))!,
@@ -235,6 +257,93 @@ public sealed partial class ZLinkRedisLocationStore
                 reservationVersion,
                 request.TargetDescriptor,
                 request.TargetOwner));
+    }
+
+    public async ValueTask<ZLinkRelocationCapacityReserveResult>
+        ReserveRelocationCapacityAsync(
+            ZLinkRelocationCapacityReservationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        ValidateRelocationCapacityRequest(request);
+        var fence = new ZLinkRelocationCapacityFence(
+            request.ReservationId.ToString("N"));
+        var signature = string.Join(
+            "\n",
+            request.Key.Value,
+            request.ExpectedStoreVersion,
+            (int)request.ObjectKind,
+            request.StableType,
+            request.SourceDescriptor.MeshName,
+            request.SourceDescriptor.Rid.ToHex(),
+            request.SourceOwner.OwnerId,
+            request.SourceOwner.LeaseGeneration,
+            request.TargetDescriptor.MeshName,
+            request.TargetDescriptor.Rid.ToHex(),
+            request.TargetOwner.OwnerId,
+            request.TargetOwner.LeaseGeneration,
+            request.CapacityDelta);
+        var result = await ExecuteAsync(
+                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
+                    ZLinkRedisAuthorityScripts.ReserveRelocationCapacity,
+                    [
+                        _keys.AuthorityVersionsKey(),
+                        _keys.AuthorityOwnerIdsKey(),
+                        _keys.AuthorityOwnerLeaseGenerationsKey(),
+                        _keys.AuthorityRelocationCapacityKey(fence.Value),
+                        _keys.LeaseKey(request.SourceOwner.OwnerId),
+                        _keys.LeaseKey(request.TargetOwner.OwnerId)
+                    ],
+                    [
+                        signature,
+                        fence.Value,
+                        request.Key.Value,
+                        request.ExpectedStoreVersion,
+                        request.SourceOwner.OwnerId,
+                        request.SourceOwner.LeaseGeneration,
+                        request.TargetOwner.OwnerId,
+                        request.TargetOwner.LeaseGeneration
+                    ]).ConfigureAwait(false))!,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return (string)result[0]! switch
+        {
+            "reserved" => new ZLinkRelocationCapacityReserveResult.Reserved(
+                fence),
+            "already" => new ZLinkRelocationCapacityReserveResult.AlreadyReserved(
+                fence),
+            "target-unavailable" =>
+                new ZLinkRelocationCapacityReserveResult.TargetUnavailable(),
+            "conflict" => new ZLinkRelocationCapacityReserveResult.Conflict(
+                await ReadAuthorityAsync(request.Key, cancellationToken)
+                    .ConfigureAwait(false)),
+            var status => throw new InvalidOperationException(
+                $"Unknown relocation capacity reserve result '{status}'.")
+        };
+    }
+
+    public async ValueTask<ZLinkRelocationCapacityAbortResult>
+        AbortRelocationCapacityAsync(
+            ZLinkRelocationCapacityFence fence,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fence.Value);
+        var result = await ExecuteAsync(
+                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
+                    ZLinkRedisAuthorityScripts.AbortRelocationCapacity,
+                    [_keys.AuthorityRelocationCapacityKey(fence.Value)],
+                    []).ConfigureAwait(false))!,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return (string)result[0]! switch
+        {
+            "aborted" => ZLinkRelocationCapacityAbortResult.Aborted,
+            "already" => ZLinkRelocationCapacityAbortResult.AlreadyAborted,
+            "committed" =>
+                ZLinkRelocationCapacityAbortResult.AlreadyCommitted,
+            "stale" => ZLinkRelocationCapacityAbortResult.Stale,
+            var status => throw new InvalidOperationException(
+                $"Unknown relocation capacity abort result '{status}'.")
+        };
     }
 
     public async ValueTask<ZLinkObjectCommitResult> CommitAsync(
@@ -303,11 +412,12 @@ public sealed partial class ZLinkRedisLocationStore
             request.AggregateId,
             request.AggregateGeneration);
         var arguments = new List<RedisValue>(
-            3 + request.Participants.Count * 5)
+            4 + request.Participants.Count * 5)
         {
             request.TargetOwner.OwnerId,
-            request.TargetOwner.Generation,
-            request.Participants.Count
+            request.TargetOwner.LeaseGeneration,
+            request.Participants.Count,
+            request.TargetReservations.Count
         };
         foreach (var participant in request.Participants)
         {
@@ -321,7 +431,10 @@ public sealed partial class ZLinkRedisLocationStore
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.PrepareAggregate,
-                    AggregateKeys(fence, request.TargetOwner.OwnerId),
+                    AggregateKeys(fence, request.TargetOwner.OwnerId)
+                        .Concat(request.TargetReservations.Select(value =>
+                            _keys.AuthorityRelocationCapacityKey(value.Value)))
+                        .ToArray(),
                     [.. arguments]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -383,7 +496,9 @@ public sealed partial class ZLinkRedisLocationStore
         };
     }
 
-    private RedisKey[] AuthorityKeys() =>
+    private RedisKey[] AuthorityKeys(
+        string? targetOwnerId,
+        string? relocationCapacityFence) =>
     [
         _keys.AuthorityCountersKey(),
         _keys.AuthorityVersionsKey(),
@@ -393,7 +508,14 @@ public sealed partial class ZLinkRedisLocationStore
         _keys.AuthorityOwnerIdsKey(),
         _keys.AuthorityOwnerLeaseGenerationsKey(),
         _keys.AuthorityMembershipsKey(),
-        _keys.AuthorityIndexKey()
+        _keys.AuthorityIndexKey(),
+        string.IsNullOrEmpty(targetOwnerId)
+            ? _keys.LeaseKey("__unused__")
+            : _keys.LeaseKey(targetOwnerId),
+        string.IsNullOrEmpty(relocationCapacityFence)
+            ? _keys.AuthorityRelocationCapacityKey("__unused__")
+            : _keys.AuthorityRelocationCapacityKey(
+                relocationCapacityFence)
     ];
 
     private RedisKey[] ReservationKeys(string reservationVersion) =>
@@ -472,6 +594,34 @@ public sealed partial class ZLinkRedisLocationStore
             throw new ArgumentOutOfRangeException(nameof(payload));
     }
 
+    private static void ValidateAuthorityMutation(
+        ZLinkAuthorityMutation.Put put,
+        ZLinkAuthorityExpectation expectation)
+    {
+        var preserve =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.Preserve;
+        var newOwner =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner;
+        var newObject =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewObject;
+        if (!preserve && !newOwner && !newObject
+            || preserve && (put.TargetOwner is not null
+                            || put.RelocationCapacityFence is not null
+                            || expectation is not ZLinkAuthorityExpectation.Found)
+            || newOwner && (put.TargetOwner is null
+                            || put.RelocationCapacityFence is null
+                            || expectation is not ZLinkAuthorityExpectation.Found)
+            || newObject && (put.TargetOwner is null
+                             || put.RelocationCapacityFence is not null
+                             || expectation is not ZLinkAuthorityExpectation.Missing)
+            || put.TargetOwner is { } owner
+            && (string.IsNullOrWhiteSpace(owner.OwnerId)
+                || owner.LeaseGeneration <= 0))
+            throw new ArgumentException(
+                "Authority mutation transition, expectation, and target owner are inconsistent.",
+                nameof(put));
+    }
+
     private static void ValidateReservationRequest(
         ZLinkObjectReservationRequest request)
     {
@@ -482,9 +632,26 @@ public sealed partial class ZLinkRedisLocationStore
             request.CreationIntentReference);
         if (request.CreationIntentHash.Length != 32
             || request.CreationIntentEncodedSize is < 0 or > 1024 * 1024
+            || request.CreatingPayload.Length > 1024 * 1024
             || request.PendingCapacityDelta <= 0
-            || request.TargetOwner.Generation is 0 or > long.MaxValue)
+            || request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
+    }
+
+    private static void ValidateRelocationCapacityRequest(
+        ZLinkRelocationCapacityReservationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ReservationId == Guid.Empty
+            || string.IsNullOrWhiteSpace(request.Key.Value)
+            || string.IsNullOrWhiteSpace(request.ExpectedStoreVersion)
+            || string.IsNullOrWhiteSpace(request.StableType)
+            || request.SourceOwner.LeaseGeneration <= 0
+            || request.TargetOwner.LeaseGeneration <= 0
+            || request.CapacityDelta <= 0)
+            throw new ArgumentException(
+                "The relocation capacity reservation is invalid.",
+                nameof(request));
     }
 
     private static void ValidateAggregateRequest(

@@ -91,7 +91,9 @@ public sealed class RedisAuthorityRelocationTests(
                     committed.Snapshot.StoreVersion),
                 new ZLinkAuthorityMutation.Put(
                     "updated"u8.ToArray(),
-                    ZLinkAuthorityGenerationTransition.Preserve)));
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    null)));
         Assert.Equal(
             committed.Snapshot.ObjectGeneration,
             preserved.Snapshot.ObjectGeneration);
@@ -139,6 +141,29 @@ public sealed class RedisAuthorityRelocationTests(
         }
 
         var aggregateId = Guid.NewGuid();
+        var capacityFences = new List<ZLinkRelocationCapacityFence>();
+        for (var index = 0; index < keys.Length; index++)
+        {
+            var capacity = Assert.IsType<
+                ZLinkRelocationCapacityReserveResult.Reserved>(
+                await store.ReserveRelocationCapacityAsync(
+                    new ZLinkRelocationCapacityReservationRequest(
+                        Guid.NewGuid(),
+                        keys[index],
+                        snapshots[index].StoreVersion,
+                        ZLinkPlacementObjectKind.Actor,
+                        "Game.Actor",
+                        new ZLinkMeshNodeDescriptorKey(
+                            "game",
+                            RoutingId.From("source")),
+                        source,
+                        new ZLinkMeshNodeDescriptorKey(
+                            "game",
+                            RoutingId.From("target")),
+                        target,
+                        1)));
+            capacityFences.Add(capacity.Fence);
+        }
         var prepare = Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
             await store.PrepareAggregateAsync(
                 new ZLinkAggregatePrepareRequest(
@@ -155,7 +180,7 @@ public sealed class RedisAuthorityRelocationTests(
                                 $"membership-{index}")))
                         .ToArray(),
                     SHA256.HashData("inventory"u8),
-                    [],
+                    capacityFences,
                     target)));
 
         Assert.Equal(
@@ -166,7 +191,9 @@ public sealed class RedisAuthorityRelocationTests(
             var found = Assert.IsType<ZLinkAuthorityReadResult.Found>(
                 await store.ReadAuthorityAsync(key));
             Assert.Equal(target.OwnerId, found.Snapshot.OwnerId);
-            Assert.Equal(target.Generation, checked((ulong)found.Snapshot.OwnerLeaseGeneration));
+            Assert.Equal(
+                target.LeaseGeneration,
+                found.Snapshot.OwnerLeaseGeneration);
         }
     }
 
@@ -187,5 +214,6 @@ public sealed class RedisAuthorityRelocationTests(
                 "game",
                 RoutingId.From(owner.OwnerId)),
             owner,
+            System.Text.Encoding.UTF8.GetBytes($"creating:{identity}"),
             1);
 }

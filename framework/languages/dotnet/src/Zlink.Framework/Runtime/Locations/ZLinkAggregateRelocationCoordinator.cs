@@ -14,7 +14,7 @@ internal sealed record ZLinkAggregateRelocationRequest(
     Guid AggregateId,
     ulong AggregateGeneration,
     IReadOnlyList<ZLinkAggregateRelocationParticipant> Participants,
-    IReadOnlyList<ZLinkObjectReservation> TargetReservations,
+    IReadOnlyList<ZLinkRelocationCapacityFence> TargetReservations,
     ZLinkLocationOwnerToken TargetOwner);
 
 internal sealed record ZLinkAggregateRelocationPublished(

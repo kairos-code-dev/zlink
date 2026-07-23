@@ -27,6 +27,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     private Task? _heartbeatLoop;
     private RoutingId _nodeRid;
     private string _ownerId = Guid.NewGuid().ToString("n");
+    private ZLinkLocationOwnerToken? _ownerToken;
     private bool _started;
     private bool _ownerCleanedForDrain;
     private int _disposeState;
@@ -57,6 +58,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     /// generation cannot become live again.</summary>
     internal string OwnerId => _ownerId;
 
+    internal ZLinkLocationOwnerToken OwnerToken =>
+        _ownerToken
+        ?? throw new InvalidOperationException(
+            "The location runtime has not claimed its owner lease.");
+
     internal string? LastError => Volatile.Read(ref _health).LastError;
 
     internal ZLinkLocationRuntimeHealth GetHealthSnapshot() => Volatile.Read(ref _health);
@@ -82,6 +88,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 
             _nodeRid = nodeRid;
             _ownerId = Guid.NewGuid().ToString("n");
+            _ownerToken = null;
             _ownerCleanedForDrain = false;
 
             // Register liveness before any row write so readers joining rows
@@ -141,8 +148,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 if (!_ownerCleanedForDrain)
                 {
                     await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
-                    await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
-                        .ConfigureAwait(false);
+                    if (_ownerToken is { } token)
+                        _ = await _ownerLeaseStore.ReleaseOwnerLeaseAsync(
+                                token,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    _ownerToken = null;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -194,8 +205,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 
             try
             {
-                await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
-                    .ConfigureAwait(false);
+                if (_ownerToken is { } token)
+                    _ = await _ownerLeaseStore.ReleaseOwnerLeaseAsync(
+                            token,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                _ownerToken = null;
             }
             catch
             {
@@ -319,7 +334,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         return await ExecuteRemoveAsync(
                 () => _spotStore.RemoveSpotAsync(
                     key,
-                    new ZLinkLocationOwnerToken(OwnerId, generation),
+                    new ZLinkLocationOwnerToken(
+                        OwnerId,
+                        checked((long)generation)),
                     cancellationToken),
                 ZLinkLocationKind.Spot,
                 ZLinkLocationKeyCodec.EncodeSpotKey(key),
@@ -335,7 +352,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         return await ExecuteRemoveAsync(
                 () => _actorStore.RemoveActorAsync(
                     key,
-                    new ZLinkLocationOwnerToken(OwnerId, generation),
+                    new ZLinkLocationOwnerToken(
+                        OwnerId,
+                        checked((long)generation)),
                     cancellationToken),
                 ZLinkLocationKind.Actor,
                 ZLinkLocationKeyCodec.EncodeActorKey(key),
@@ -351,7 +370,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         return await ExecuteRemoveAsync(
                 () => _meshNodeStore.RemoveMeshNodeAsync(
                     key,
-                    new ZLinkLocationOwnerToken(OwnerId, generation),
+                    new ZLinkLocationOwnerToken(
+                        OwnerId,
+                        checked((long)generation)),
                     cancellationToken),
                 ZLinkLocationKind.MeshNode,
                 ZLinkLocationKeyCodec.EncodeMeshNodeKey(key),
@@ -368,14 +389,38 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             using var operation = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken,
                 deadline.Token);
-            var result = await _ownerLeaseStore.RenewOwnerLeaseAsync(
-                    OwnerId,
-                    _nodeRid,
-                    _options.OwnerLeaseTtl,
-                    operation.Token)
-                .AsTask()
-                .WaitAsync(deadline.Token)
-                .ConfigureAwait(false);
+            ZLinkOwnerLeaseRenewResult.Renewed result;
+            if (_ownerToken is null)
+            {
+                var claim = await _ownerLeaseStore.ClaimOwnerLeaseAsync(
+                        OwnerId,
+                        _options.OwnerLeaseTtl,
+                        operation.Token)
+                    .AsTask()
+                    .WaitAsync(deadline.Token)
+                    .ConfigureAwait(false);
+                if (claim is not ZLinkOwnerLeaseClaimResult.Claimed claimed)
+                    throw new InvalidOperationException(
+                        $"Owner lease claim failed with '{claim.GetType().Name}'.");
+                _ownerToken = claimed.Token;
+                result = new ZLinkOwnerLeaseRenewResult.Renewed(
+                    claimed.LeaseExpiresAt,
+                    claimed.StoreNow);
+            }
+            else
+            {
+                var renewal = await _ownerLeaseStore.RenewOwnerLeaseAsync(
+                        _ownerToken.Value,
+                        _options.OwnerLeaseTtl,
+                        operation.Token)
+                    .AsTask()
+                    .WaitAsync(deadline.Token)
+                    .ConfigureAwait(false);
+                if (renewal is not ZLinkOwnerLeaseRenewResult.Renewed renewed)
+                    throw new InvalidOperationException(
+                        "The owner lease token became stale.");
+                result = renewed;
+            }
             UpdateHealth(
                 health => health with
                 {
@@ -384,7 +429,10 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                     LeaseError = null
                 });
 
-            OwnerLeaseRenewed?.Invoke(result);
+            OwnerLeaseRenewed?.Invoke(
+                new ZLinkOwnerLeaseRenewal(
+                    result.LeaseExpiresAt,
+                    result.StoreNow));
 
             return true;
         }

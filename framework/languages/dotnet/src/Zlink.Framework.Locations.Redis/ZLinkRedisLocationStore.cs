@@ -165,6 +165,64 @@ public sealed partial class ZLinkRedisLocationStore :
             .ConfigureAwait(false);
     }
 
+    public async ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
+        string ownerId,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        if (leaseTtl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(leaseTtl));
+        return await ExecuteAsync(
+                database => _commands.ClaimOwnerLeaseAsync(
+                    database,
+                    ownerId,
+                    leaseTtl),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        return await ExecuteAsync(
+                database => _commands.ReadOwnerLeaseAsync(database, ownerId),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token.OwnerId);
+        if (token.LeaseGeneration <= 0 || leaseTtl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(token));
+        return await ExecuteAsync(
+                database => _commands.RenewOwnerLeaseAsync(
+                    database,
+                    token,
+                    leaseTtl),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token.OwnerId);
+        if (token.LeaseGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(token));
+        return await ExecuteAsync(
+                database => _commands.ReleaseOwnerLeaseAsync(database, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async ValueTask<bool> RemoveOwnerLeaseAsync(
         string ownerId,
         CancellationToken cancellationToken = default)

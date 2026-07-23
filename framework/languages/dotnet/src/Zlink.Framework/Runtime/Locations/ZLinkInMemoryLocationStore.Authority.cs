@@ -10,6 +10,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ReservationState> _authorityReservations =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RelocationCapacityState>
+        _relocationCapacityReservations = new(StringComparer.Ordinal);
     private readonly Dictionary<ZLinkAggregateFence, AggregateState> _authorityAggregates = [];
     private long _authorityRevision;
     private long _authorityObjectGeneration;
@@ -69,18 +71,49 @@ internal sealed partial class ZLinkInMemoryLocationStore
 
             var put = (ZLinkAuthorityMutation.Put)mutation;
             ValidateAuthorityPayload(put.Payload);
+            ValidateAuthorityMutation(put, expectation);
             var needsObject = put.GenerationTransition
                               == ZLinkAuthorityGenerationTransition.NewObject;
             var needsOwner = put.GenerationTransition is
                 ZLinkAuthorityGenerationTransition.NewObject
                 or ZLinkAuthorityGenerationTransition.NewOwner;
+            if (needsOwner
+                && !MatchesLiveOwnerLease(
+                    put.TargetOwner!.Value,
+                    now))
+            {
+                return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
+                    new ZLinkAuthorityCompareExchangeResult.Conflict(
+                        current is null
+                            ? new ZLinkAuthorityReadResult.Missing(now)
+                            : new ZLinkAuthorityReadResult.Found(
+                                current with { StoreNow = now })));
+            }
+            if (put.GenerationTransition
+                    == ZLinkAuthorityGenerationTransition.NewOwner
+                && (!_relocationCapacityReservations.TryGetValue(
+                        put.RelocationCapacityFence.GetValueOrDefault().Value,
+                        out var capacity)
+                    || capacity.Status != RelocationCapacityStatus.Reserved
+                    || capacity.Request.Key != key
+                    || capacity.Request.TargetOwner
+                    != put.TargetOwner.GetValueOrDefault()))
+            {
+                return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
+                    new ZLinkAuthorityCompareExchangeResult.Conflict(
+                        new ZLinkAuthorityReadResult.Found(
+                            current! with { StoreNow = now })));
+            }
             if (!CanIncrement(_authorityRevision)
                 || needsObject && !CanIncrement(_authorityObjectGeneration)
                 || needsOwner && !CanIncrement(_authorityOwnerGeneration))
                 return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
                     new ZLinkAuthorityCompareExchangeResult.GenerationExhausted());
 
-            var owner = ResolveMutationOwner(put, current);
+            var owner = put.TargetOwner
+                        ?? new ZLinkLocationOwnerToken(
+                            current!.OwnerId,
+                            current.OwnerLeaseGeneration);
             var stored = new ZLinkAuthoritySnapshot(
                 Next(ref _authorityRevision).ToString(),
                 put.Payload.ToArray(),
@@ -91,9 +124,12 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     ? checked((ulong)Next(ref _authorityOwnerGeneration))
                     : current!.AuthorityOwnerGeneration,
                 owner.OwnerId,
-                checked((long)owner.Generation),
+                owner.LeaseGeneration,
                 now);
             _authorities[key.Value] = stored;
+            if (put.RelocationCapacityFence is { } capacityFence)
+                _relocationCapacityReservations[capacityFence.Value].Status =
+                    RelocationCapacityStatus.Committed;
             return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
                 new ZLinkAuthorityCompareExchangeResult.Stored(stored));
         }
@@ -174,6 +210,10 @@ internal sealed partial class ZLinkInMemoryLocationStore
             if (_authorities.TryGetValue(request.Key.Value, out var existing))
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     new ZLinkObjectReserveResult.AlreadyExists(existing));
+            if (!MatchesLiveOwnerLease(request.TargetOwner, now))
+                return ValueTask.FromResult<ZLinkObjectReserveResult>(
+                    new ZLinkObjectReserveResult.Conflict(
+                        new ZLinkAuthorityReadResult.Missing(now)));
             if (!CanIncrement(_authorityRevision)
                 || !CanIncrement(_authorityObjectGeneration)
                 || !CanIncrement(_authorityOwnerGeneration))
@@ -183,11 +223,11 @@ internal sealed partial class ZLinkInMemoryLocationStore
             var reservationVersion = Guid.NewGuid().ToString("N");
             var snapshot = new ZLinkAuthoritySnapshot(
                 Next(ref _authorityRevision).ToString(),
-                Encoding.UTF8.GetBytes(request.CreationIntentReference),
+                request.CreatingPayload.ToArray(),
                 checked((ulong)Next(ref _authorityObjectGeneration)),
                 checked((ulong)Next(ref _authorityOwnerGeneration)),
                 request.TargetOwner.OwnerId,
-                checked((long)request.TargetOwner.Generation),
+                request.TargetOwner.LeaseGeneration,
                 now);
             _authorities[request.Key.Value] = snapshot;
             var reservation = new ZLinkObjectReservation(
@@ -310,12 +350,117 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     || current.StoreVersion != participant.ExpectedStoreVersion))
                 return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
                     new ZLinkAggregatePrepareResult.Conflict());
+            var relocatingKeys = request.Participants
+                .Where(static participant =>
+                    participant.OwnerTransition
+                    == ZLinkAuthorityGenerationTransition.NewOwner)
+                .Select(static participant => participant.Key)
+                .ToHashSet();
+            if (request.TargetReservations.Count != relocatingKeys.Count
+                || request.TargetReservations.Select(static fence => fence.Value)
+                    .Distinct(StringComparer.Ordinal).Count()
+                != request.TargetReservations.Count
+                || !MatchesLiveOwnerLease(
+                    request.TargetOwner,
+                    _time.GetUtcNow())
+                || request.TargetReservations.Any(fence =>
+                    !_relocationCapacityReservations.TryGetValue(
+                        fence.Value,
+                        out var capacity)
+                    || capacity.Status != RelocationCapacityStatus.Reserved
+                    || capacity.Request.TargetOwner != request.TargetOwner
+                    || !relocatingKeys.Contains(capacity.Request.Key)
+                    || !request.Participants.Any(participant =>
+                        participant.Key == capacity.Request.Key
+                        && participant.ExpectedStoreVersion
+                        == capacity.Request.ExpectedStoreVersion)))
+                return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
+                    new ZLinkAggregatePrepareResult.Conflict());
 
             _authorityAggregates[fence] =
                 new AggregateState(request, AggregateStatus.Prepared);
             return ValueTask.FromResult<ZLinkAggregatePrepareResult>(
                 new ZLinkAggregatePrepareResult.Prepared(fence));
         }
+    }
+
+    public ValueTask<ZLinkRelocationCapacityReserveResult>
+        ReserveRelocationCapacityAsync(
+            ZLinkRelocationCapacityReservationRequest request,
+            CancellationToken cancellationToken = default)
+    {
+        ValidateRelocationCapacityRequest(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var fence = new ZLinkRelocationCapacityFence(
+                request.ReservationId.ToString("N"));
+            if (_relocationCapacityReservations.TryGetValue(
+                    fence.Value,
+                    out var existing))
+            {
+                return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                    existing.Request == request
+                        ? new ZLinkRelocationCapacityReserveResult.AlreadyReserved(
+                            fence)
+                        : new ZLinkRelocationCapacityReserveResult.Conflict(
+                            ReadCurrent(request.Key)));
+            }
+            if (!_authorities.TryGetValue(request.Key.Value, out var current)
+                || current.StoreVersion != request.ExpectedStoreVersion
+                || current.OwnerId != request.SourceOwner.OwnerId
+                || current.OwnerLeaseGeneration
+                != request.SourceOwner.LeaseGeneration)
+                return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                    new ZLinkRelocationCapacityReserveResult.Conflict(
+                        ReadCurrent(request.Key)));
+            if (!MatchesLiveOwnerLease(
+                    request.TargetOwner,
+                    _time.GetUtcNow()))
+                return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                    new ZLinkRelocationCapacityReserveResult.TargetUnavailable());
+            _relocationCapacityReservations[fence.Value] =
+                new RelocationCapacityState(
+                    request,
+                    RelocationCapacityStatus.Reserved);
+            return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                new ZLinkRelocationCapacityReserveResult.Reserved(fence));
+        }
+    }
+
+    public ValueTask<ZLinkRelocationCapacityAbortResult>
+        AbortRelocationCapacityAsync(
+            ZLinkRelocationCapacityFence fence,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fence.Value);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!_relocationCapacityReservations.TryGetValue(
+                    fence.Value,
+                    out var state))
+                return ValueTask.FromResult(
+                    ZLinkRelocationCapacityAbortResult.Stale);
+            if (state.Status == RelocationCapacityStatus.Committed)
+                return ValueTask.FromResult(
+                    ZLinkRelocationCapacityAbortResult.AlreadyCommitted);
+            if (state.Status == RelocationCapacityStatus.Aborted)
+                return ValueTask.FromResult(
+                    ZLinkRelocationCapacityAbortResult.AlreadyAborted);
+            state.Status = RelocationCapacityStatus.Aborted;
+            return ValueTask.FromResult(
+                ZLinkRelocationCapacityAbortResult.Aborted);
+        }
+    }
+
+    private ZLinkAuthorityReadResult ReadCurrent(ZLinkAuthorityKey key)
+    {
+        var now = _time.GetUtcNow();
+        return _authorities.TryGetValue(key.Value, out var current)
+            ? new ZLinkAuthorityReadResult.Found(
+                current with { StoreNow = now })
+            : new ZLinkAuthorityReadResult.Missing(now);
     }
 
     public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
@@ -373,6 +518,10 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 };
                 _authorities[participant.Key.Value] = stored;
             }
+            foreach (var capacityFence in
+                     aggregate.Request.TargetReservations)
+                _relocationCapacityReservations[capacityFence.Value].Status =
+                    RelocationCapacityStatus.Committed;
             aggregate.Status = AggregateStatus.Committed;
             return ValueTask.FromResult(ZLinkAggregateCommitResult.Committed);
         }
@@ -392,6 +541,13 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     ZLinkAggregateAbortResult.AlreadyAborted);
             if (aggregate.Status == AggregateStatus.Committed)
                 return ValueTask.FromResult(ZLinkAggregateAbortResult.Stale);
+            foreach (var capacityFence in
+                     aggregate.Request.TargetReservations)
+                if (_relocationCapacityReservations.TryGetValue(
+                        capacityFence.Value,
+                        out var capacity)
+                    && capacity.Status == RelocationCapacityStatus.Reserved)
+                    capacity.Status = RelocationCapacityStatus.Aborted;
             aggregate.Status = AggregateStatus.Aborted;
             return ValueTask.FromResult(ZLinkAggregateAbortResult.Aborted);
         }
@@ -412,24 +568,6 @@ internal sealed partial class ZLinkInMemoryLocationStore
             _ => false
         };
 
-    private static ZLinkLocationOwnerToken ResolveMutationOwner(
-        ZLinkAuthorityMutation.Put put,
-        ZLinkAuthoritySnapshot? current)
-    {
-        if (put.GenerationTransition == ZLinkAuthorityGenerationTransition.Preserve)
-            return new ZLinkLocationOwnerToken(
-                current!.OwnerId,
-                checked((ulong)current.OwnerLeaseGeneration));
-        if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
-                put.Payload.Span,
-                out var relocation))
-            return new ZLinkLocationOwnerToken(
-                relocation.TargetOwnerId,
-                checked((ulong)relocation.TargetOwnerLeaseGeneration));
-        throw new InvalidOperationException(
-            "The authority mutation contract does not carry the target owner fence.");
-    }
-
     private static void ValidateAuthorityKey(ZLinkAuthorityKey key) =>
         ArgumentException.ThrowIfNullOrWhiteSpace(key.Value);
 
@@ -437,6 +575,51 @@ internal sealed partial class ZLinkInMemoryLocationStore
     {
         if (payload.Length > 1024 * 1024)
             throw new ArgumentOutOfRangeException(nameof(payload));
+    }
+
+    private static void ValidateAuthorityMutation(
+        ZLinkAuthorityMutation.Put put,
+        ZLinkAuthorityExpectation expectation)
+    {
+        var preserve =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.Preserve;
+        var newOwner =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner;
+        var newObject =
+            put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewObject;
+        if (!preserve && !newOwner && !newObject)
+            throw new ArgumentOutOfRangeException(nameof(put));
+        if (preserve && (put.TargetOwner is not null
+                         || put.RelocationCapacityFence is not null
+                         || expectation is not ZLinkAuthorityExpectation.Found)
+            || newOwner && (put.TargetOwner is null
+                            || put.RelocationCapacityFence is null
+                            || expectation is not ZLinkAuthorityExpectation.Found)
+            || newObject && (put.TargetOwner is null
+                             || put.RelocationCapacityFence is not null
+                             || expectation is not ZLinkAuthorityExpectation.Missing)
+            || put.TargetOwner is { } owner
+            && (string.IsNullOrWhiteSpace(owner.OwnerId)
+                || owner.LeaseGeneration <= 0))
+            throw new ArgumentException(
+                "Authority mutation transition, expectation, and target owner are inconsistent.",
+                nameof(put));
+    }
+
+    private static void ValidateRelocationCapacityRequest(
+        ZLinkRelocationCapacityReservationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ReservationId == Guid.Empty
+            || string.IsNullOrWhiteSpace(request.Key.Value)
+            || string.IsNullOrWhiteSpace(request.ExpectedStoreVersion)
+            || string.IsNullOrWhiteSpace(request.StableType)
+            || request.SourceOwner.LeaseGeneration <= 0
+            || request.TargetOwner.LeaseGeneration <= 0
+            || request.CapacityDelta <= 0)
+            throw new ArgumentException(
+                "The relocation capacity reservation is invalid.",
+                nameof(request));
     }
 
     private static void ValidateReservationRequest(
@@ -449,8 +632,9 @@ internal sealed partial class ZLinkInMemoryLocationStore
             request.CreationIntentReference);
         if (request.CreationIntentHash.Length != 32
             || request.CreationIntentEncodedSize is < 0 or > 1024 * 1024
+            || request.CreatingPayload.Length > 1024 * 1024
             || request.PendingCapacityDelta <= 0
-            || request.TargetOwner.Generation is 0 or > long.MaxValue)
+            || request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
     }
 
@@ -494,6 +678,22 @@ internal sealed partial class ZLinkInMemoryLocationStore
     {
         internal ZLinkAggregatePrepareRequest Request { get; } = request;
         internal AggregateStatus Status { get; set; } = status;
+    }
+
+    private sealed class RelocationCapacityState(
+        ZLinkRelocationCapacityReservationRequest request,
+        RelocationCapacityStatus status)
+    {
+        internal ZLinkRelocationCapacityReservationRequest Request { get; } =
+            request;
+        internal RelocationCapacityStatus Status { get; set; } = status;
+    }
+
+    private enum RelocationCapacityStatus
+    {
+        Reserved,
+        Committed,
+        Aborted
     }
 
     private enum ReservationStatus

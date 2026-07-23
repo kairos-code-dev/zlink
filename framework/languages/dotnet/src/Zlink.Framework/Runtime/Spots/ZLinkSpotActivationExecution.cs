@@ -466,13 +466,14 @@ internal sealed partial class ZLinkSpotActivation
         }
     }
 
-    private async ValueTask InvokeTimerAsync(
+    private async ValueTask<bool> InvokeTimerAsync(
         ZLinkSpotTimerDescriptor descriptor,
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        if (_timers.IsFrozen) return;
+        if (_timers.IsFrozen) return false;
         await HandlerInvoker.InvokeTimerAsync(descriptor, tick, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     internal async ValueTask<ZLinkSpotRelocationSeal> SealRelocationAsync(
@@ -534,12 +535,12 @@ internal sealed partial class ZLinkSpotActivation
         await ExecuteApplicationSerializedAsync(
                 async static (activation, state, innerCt) =>
                 {
-                    if (activation._timers.IsFrozen) return;
-                    state.Delivered = true;
-                    await activation.InvokeTimerAsync(
-                        state.Descriptor,
-                        state.Tick,
-                        innerCt);
+                    state.Delivered = await activation
+                        .InvokeTimerAsync(
+                            state.Descriptor,
+                            state.Tick,
+                            innerCt)
+                        .ConfigureAwait(false);
                 },
                 state,
                 cancellationToken)

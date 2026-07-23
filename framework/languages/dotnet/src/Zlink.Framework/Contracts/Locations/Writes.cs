@@ -39,12 +39,59 @@ public sealed record ZLinkLocationWriteResult(
 
 public readonly record struct ZLinkLocationOwnerToken(
     string OwnerId,
-    ulong Generation);
+    long LeaseGeneration)
+{
+    public ZLinkLocationOwnerToken(string ownerId, ulong generation)
+        : this(ownerId, checked((long)generation))
+    {
+    }
 
-/// <summary>
-/// Owner lease renewal result. Leases do not have generations, so they do
-/// not reuse <see cref="ZLinkLocationWriteResult"/>.
-/// </summary>
+    public long Generation => LeaseGeneration;
+}
+
+public abstract record ZLinkOwnerLeaseClaimResult
+{
+    private protected ZLinkOwnerLeaseClaimResult() { }
+
+    public sealed record Claimed(
+        ZLinkLocationOwnerToken Token,
+        DateTimeOffset LeaseExpiresAt,
+        DateTimeOffset StoreNow) : ZLinkOwnerLeaseClaimResult;
+
+    public sealed record Conflict : ZLinkOwnerLeaseClaimResult;
+
+    public sealed record GenerationExhausted : ZLinkOwnerLeaseClaimResult;
+}
+
+public abstract record ZLinkOwnerLeaseRenewResult
+{
+    private protected ZLinkOwnerLeaseRenewResult() { }
+
+    public sealed record Renewed(
+        DateTimeOffset LeaseExpiresAt,
+        DateTimeOffset StoreNow) : ZLinkOwnerLeaseRenewResult;
+
+    public sealed record Stale : ZLinkOwnerLeaseRenewResult;
+}
+
+public enum ZLinkOwnerLeaseReleaseResult
+{
+    Released = 0,
+    Stale = 1
+}
+
+public abstract record ZLinkOwnerLeaseReadResult
+{
+    private protected ZLinkOwnerLeaseReadResult() { }
+
+    public sealed record Found(
+        ZLinkLocationOwnerToken Token,
+        DateTimeOffset LeaseExpiresAt,
+        DateTimeOffset StoreNow) : ZLinkOwnerLeaseReadResult;
+
+    public sealed record Missing : ZLinkOwnerLeaseReadResult;
+}
+
 public sealed record ZLinkOwnerLeaseRenewal(
     DateTimeOffset LeaseExpiresAt,
     DateTimeOffset StoreNow);

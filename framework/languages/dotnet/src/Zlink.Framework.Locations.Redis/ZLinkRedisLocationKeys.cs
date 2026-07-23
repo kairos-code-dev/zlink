@@ -58,6 +58,9 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
     public RedisKey AuthorityAggregateKey(ZLinkAggregateFence fence) =>
         $"{prefix}:authority:aggregate:{fence.AggregateId:N}:{fence.AggregateGeneration}";
 
+    public RedisKey AuthorityRelocationCapacityKey(string fence) =>
+        $"{prefix}:authority:relocation-capacity:{fence}";
+
     // Actor transfer authority keys (spec 41 §2/§3.1). actorRowKey is the
     // length-prefixed MeshName + Actor ID; the transfer HASH is per transfer id
     // and P:transfer-by-actor holds the single active transfer id per actor.

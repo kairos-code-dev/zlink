@@ -171,7 +171,10 @@ public sealed record ZLinkOwnerLease(
     string OwnerId,
     RoutingId NodeRid,
     DateTimeOffset LeaseExpiresAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    public long LeaseGeneration { get; init; }
+}
 
 /// <summary>
 /// Owner lease list plus the store's current time. Expiry is judged from

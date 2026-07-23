@@ -18,6 +18,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     private readonly object _gate = new();
     private readonly TimeProvider _time;
     private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
+    private long _ownerLeaseGeneration;
     private readonly RowTable<ZLinkMeshNodeDescriptor> _meshNodes = new();
     private readonly RowTable<ZLinkSpotLocation> _spots = new();
     private readonly RowTable<InstanceSpotLocation> _instanceSpots = new();
@@ -340,8 +341,115 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             var now = _time.GetUtcNow();
             var expiresAt = now + leaseTtl;
-            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, now);
+            var generation = _leases.TryGetValue(ownerId, out var current)
+                ? current.LeaseGeneration
+                : NextOwnerLeaseGeneration();
+            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, now)
+            {
+                LeaseGeneration = generation
+            };
             return ValueTask.FromResult(new ZLinkOwnerLeaseRenewal(expiresAt, now));
+        }
+    }
+
+    public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
+        string ownerId,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOwnerLeaseArguments(ownerId, leaseTtl);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (_leases.TryGetValue(ownerId, out var current)
+                && current.LeaseExpiresAt > now)
+                return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
+                    new ZLinkOwnerLeaseClaimResult.Conflict());
+            if (_ownerLeaseGeneration == long.MaxValue)
+                return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
+                    new ZLinkOwnerLeaseClaimResult.GenerationExhausted());
+
+            var token = new ZLinkLocationOwnerToken(
+                ownerId,
+                ++_ownerLeaseGeneration);
+            var expiresAt = now + leaseTtl;
+            _leases[ownerId] = new ZLinkOwnerLease(
+                ownerId,
+                default,
+                expiresAt,
+                now)
+            {
+                LeaseGeneration = token.LeaseGeneration
+            };
+            return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
+                new ZLinkOwnerLeaseClaimResult.Claimed(
+                    token,
+                    expiresAt,
+                    now));
+        }
+    }
+
+    public ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+        string ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (!_leases.TryGetValue(ownerId, out var lease)
+                || lease.LeaseExpiresAt <= now)
+                return ValueTask.FromResult<ZLinkOwnerLeaseReadResult>(
+                    new ZLinkOwnerLeaseReadResult.Missing());
+            return ValueTask.FromResult<ZLinkOwnerLeaseReadResult>(
+                new ZLinkOwnerLeaseReadResult.Found(
+                    new ZLinkLocationOwnerToken(
+                        ownerId,
+                        lease.LeaseGeneration),
+                    lease.LeaseExpiresAt,
+                    now));
+        }
+    }
+
+    public ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        TimeSpan leaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateOwnerLeaseArguments(token.OwnerId, leaseTtl);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (!MatchesLiveOwnerLease(token, now))
+                return ValueTask.FromResult<ZLinkOwnerLeaseRenewResult>(
+                    new ZLinkOwnerLeaseRenewResult.Stale());
+            var current = _leases[token.OwnerId];
+            var expiresAt = now + leaseTtl;
+            _leases[token.OwnerId] = current with
+            {
+                LeaseExpiresAt = expiresAt,
+                UpdatedAt = now
+            };
+            return ValueTask.FromResult<ZLinkOwnerLeaseRenewResult>(
+                new ZLinkOwnerLeaseRenewResult.Renewed(expiresAt, now));
+        }
+    }
+
+    public ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token.OwnerId);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (!MatchesLiveOwnerLease(token, _time.GetUtcNow()))
+                return ValueTask.FromResult(ZLinkOwnerLeaseReleaseResult.Stale);
+            _leases.Remove(token.OwnerId);
+            return ValueTask.FromResult(ZLinkOwnerLeaseReleaseResult.Released);
         }
     }
 
@@ -450,7 +558,9 @@ internal sealed partial class ZLinkInMemoryLocationStore :
 
             var acquired = new ZLinkRoutingIdSlotAllocation(
                 slot,
-                new ZLinkLocationOwnerToken(request.OwnerId, generation),
+                new ZLinkLocationOwnerToken(
+                    request.OwnerId,
+                    checked((long)generation)),
                 now + request.LeaseTtl,
                 now);
             group.Allocations[slot] = acquired;
@@ -586,7 +696,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             table.Generations.TryGetValue(key, out var current);
             if (!table.Rows.TryGetValue(key, out var row)
                 || ownerOf(row) != owner.OwnerId
-                || current != owner.Generation)
+                || current != checked((ulong)owner.LeaseGeneration))
             {
                 return ZLinkLocationWriteStatus.IgnoredStale;
             }
@@ -621,6 +731,30 @@ internal sealed partial class ZLinkInMemoryLocationStore :
 
     private bool IsOwnerLive(string ownerId, DateTimeOffset now) =>
         _leases.TryGetValue(ownerId, out var lease) && lease.LeaseExpiresAt > now;
+
+    private bool MatchesLiveOwnerLease(
+        ZLinkLocationOwnerToken token,
+        DateTimeOffset now) =>
+        _leases.TryGetValue(token.OwnerId, out var lease)
+        && lease.LeaseExpiresAt > now
+        && lease.LeaseGeneration == token.LeaseGeneration;
+
+    private long NextOwnerLeaseGeneration()
+    {
+        if (_ownerLeaseGeneration == long.MaxValue)
+            throw new InvalidOperationException(
+                "The owner lease generation space was exhausted.");
+        return ++_ownerLeaseGeneration;
+    }
+
+    private static void ValidateOwnerLeaseArguments(
+        string ownerId,
+        TimeSpan leaseTtl)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        if (leaseTtl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(leaseTtl));
+    }
 
     private void Bump(ZLinkLocationChangeScopeKind kind, string? meshName)
     {

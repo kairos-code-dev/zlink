@@ -76,12 +76,94 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         // PX rejects non-positive values; a TTL that low means "already
         // expired", which one millisecond is close enough to.
         var ttlMs = Math.Max(1L, (long)leaseTtl.TotalMilliseconds);
-        var nowMs = (long)await database.ScriptEvaluateAsync(
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
             ZLinkRedisLocationScripts.RenewLease,
-            [keys.LeaseKey(ownerId), keys.LeaseIndexKey()],
-            [ownerId, nodeRid.ToHex(), ttlMs]).ConfigureAwait(false);
+            [
+                keys.LeaseKey(ownerId),
+                keys.LeaseIndexKey(),
+                keys.AuthorityCountersKey()
+            ],
+            [ownerId, nodeRid.ToHex(), ttlMs]).ConfigureAwait(false))!;
+        var nowMs = (long)result[0];
         var storeNow = DateTimeOffset.FromUnixTimeMilliseconds(nowMs);
         return new ZLinkOwnerLeaseRenewal(storeNow + TimeSpan.FromMilliseconds(ttlMs), storeNow);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
+        IDatabase database,
+        string ownerId,
+        TimeSpan leaseTtl)
+    {
+        var ttlMs = Math.Max(1L, (long)leaseTtl.TotalMilliseconds);
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.ClaimLease,
+            [
+                keys.LeaseKey(ownerId),
+                keys.LeaseIndexKey(),
+                keys.AuthorityCountersKey()
+            ],
+            [ownerId, ttlMs]).ConfigureAwait(false))!;
+        var status = (string)result[0]!;
+        var now = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        return status switch
+        {
+            "claimed" => new ZLinkOwnerLeaseClaimResult.Claimed(
+                new ZLinkLocationOwnerToken(ownerId, (long)result[2]),
+                now + TimeSpan.FromMilliseconds(ttlMs),
+                now),
+            "conflict" => new ZLinkOwnerLeaseClaimResult.Conflict(),
+            "exhausted" => new ZLinkOwnerLeaseClaimResult.GenerationExhausted(),
+            _ => throw new InvalidOperationException(
+                $"Unknown owner lease claim result '{status}'.")
+        };
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+        IDatabase database,
+        string ownerId)
+    {
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.ReadLease,
+            [keys.LeaseKey(ownerId)],
+            []).ConfigureAwait(false))!;
+        if ((string)result[0]! == "missing")
+            return new ZLinkOwnerLeaseReadResult.Missing();
+        var now = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        return new ZLinkOwnerLeaseReadResult.Found(
+            new ZLinkLocationOwnerToken(ownerId, (long)result[2]),
+            now + TimeSpan.FromMilliseconds((long)result[3]),
+            now);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+        IDatabase database,
+        ZLinkLocationOwnerToken token,
+        TimeSpan leaseTtl)
+    {
+        var ttlMs = Math.Max(1L, (long)leaseTtl.TotalMilliseconds);
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.RenewExactLease,
+            [keys.LeaseKey(token.OwnerId)],
+            [token.LeaseGeneration, ttlMs]).ConfigureAwait(false))!;
+        if ((string)result[0]! == "stale")
+            return new ZLinkOwnerLeaseRenewResult.Stale();
+        var now = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        return new ZLinkOwnerLeaseRenewResult.Renewed(
+            now + TimeSpan.FromMilliseconds(ttlMs),
+            now);
+    }
+
+    public async ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+        IDatabase database,
+        ZLinkLocationOwnerToken token)
+    {
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.ReleaseExactLease,
+            [keys.LeaseKey(token.OwnerId), keys.LeaseIndexKey()],
+            [token.OwnerId, token.LeaseGeneration]).ConfigureAwait(false))!;
+        return (string)result[0]! == "released"
+            ? ZLinkOwnerLeaseReleaseResult.Released
+            : ZLinkOwnerLeaseReleaseResult.Stale;
     }
 
     public async ValueTask<bool> RemoveOwnerLeaseAsync(IDatabase database, string ownerId)
@@ -132,17 +214,24 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
             var value = (string)entries[i + 1]!;
             var remainingMs = (long)entries[i + 2];
 
-            // Lease values are "nodeRidHex|renewedAtMs"; expiry is computed
+            // Lease values are "leaseGeneration|nodeRidHex|renewedAtMs";
+            // expiry is computed
             // from the store clock plus the remaining Redis TTL, never from
             // an application wall clock.
-            var separator = value.IndexOf('|');
-            var nodeRid = RoutingId.FromHex(value[..separator]);
-            var renewedAt = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(value[(separator + 1)..]));
+            var first = value.IndexOf('|');
+            var second = value.IndexOf('|', first + 1);
+            var generation = long.Parse(value[..first]);
+            var nodeRid = RoutingId.FromHex(value[(first + 1)..second]);
+            var renewedAt = DateTimeOffset.FromUnixTimeMilliseconds(
+                long.Parse(value[(second + 1)..]));
             leases.Add(new ZLinkOwnerLease(
                 ownerId,
                 nodeRid,
                 storeNow + TimeSpan.FromMilliseconds(remainingMs),
-                renewedAt));
+                renewedAt)
+            {
+                LeaseGeneration = generation
+            });
         }
 
         return new ZLinkOwnerLeaseSnapshot(leases, storeNow);
@@ -205,7 +294,9 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[4]);
         return new ZLinkRoutingIdSlotAcquired(new ZLinkRoutingIdSlotAllocation(
             slot,
-            new ZLinkLocationOwnerToken(request.OwnerId, generation),
+            new ZLinkLocationOwnerToken(
+                request.OwnerId,
+                checked((long)generation)),
             expiresAt,
             storeNow));
     }
@@ -245,7 +336,9 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         {
             allocations.Add(new ZLinkRoutingIdSlotAllocation(
                 (int)(long)entries[index],
-                new ZLinkLocationOwnerToken((string)entries[index + 1]!, (ulong)(long)entries[index + 2]),
+                new ZLinkLocationOwnerToken(
+                    (string)entries[index + 1]!,
+                    (long)entries[index + 2]),
                 DateTimeOffset.FromUnixTimeMilliseconds((long)entries[index + 3]),
                 storeNow));
         }

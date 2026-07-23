@@ -83,7 +83,9 @@ public abstract record ZLinkAuthorityMutation
 
     public sealed record Put(
         ReadOnlyMemory<byte> Payload,
-        ZLinkAuthorityGenerationTransition GenerationTransition)
+        ZLinkAuthorityGenerationTransition GenerationTransition,
+        ZLinkLocationOwnerToken? TargetOwner,
+        ZLinkRelocationCapacityFence? RelocationCapacityFence)
         : ZLinkAuthorityMutation;
 
     public sealed record Delete : ZLinkAuthorityMutation;
@@ -95,6 +97,8 @@ public enum ZLinkAuthorityGenerationTransition
     NewOwner = 2,
     NewObject = 3
 }
+
+public readonly record struct ZLinkRelocationCapacityFence(string Value);
 
 public abstract record ZLinkAuthorityCompareExchangeResult
 {
@@ -125,6 +129,7 @@ public sealed record ZLinkObjectReservationRequest(
     int CreationIntentEncodedSize,
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
     ZLinkLocationOwnerToken TargetOwner,
+    ReadOnlyMemory<byte> CreatingPayload,
     int PendingCapacityDelta);
 
 public sealed record ZLinkObjectReservation(
@@ -191,6 +196,46 @@ public abstract record ZLinkObjectAbortResult
     public sealed record GenerationExhausted : ZLinkObjectAbortResult;
 }
 
+public sealed record ZLinkRelocationCapacityReservationRequest(
+    Guid ReservationId,
+    ZLinkAuthorityKey Key,
+    string ExpectedStoreVersion,
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    ZLinkMeshNodeDescriptorKey SourceDescriptor,
+    ZLinkLocationOwnerToken SourceOwner,
+    ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ZLinkLocationOwnerToken TargetOwner,
+    int CapacityDelta);
+
+public abstract record ZLinkRelocationCapacityReserveResult
+{
+    private protected ZLinkRelocationCapacityReserveResult() { }
+
+    public sealed record Reserved(ZLinkRelocationCapacityFence Fence)
+        : ZLinkRelocationCapacityReserveResult;
+
+    public sealed record AlreadyReserved(ZLinkRelocationCapacityFence Fence)
+        : ZLinkRelocationCapacityReserveResult;
+
+    public sealed record Conflict(ZLinkAuthorityReadResult Current)
+        : ZLinkRelocationCapacityReserveResult;
+
+    public sealed record TargetUnavailable
+        : ZLinkRelocationCapacityReserveResult;
+
+    public sealed record PlacementCapacityExhausted
+        : ZLinkRelocationCapacityReserveResult;
+}
+
+public enum ZLinkRelocationCapacityAbortResult
+{
+    Aborted = 1,
+    AlreadyAborted = 2,
+    AlreadyCommitted = 3,
+    Stale = 4
+}
+
 public sealed record ZLinkAggregateParticipant(
     ZLinkAuthorityKey Key,
     string ExpectedStoreVersion,
@@ -203,7 +248,7 @@ public sealed record ZLinkAggregatePrepareRequest(
     ulong AggregateGeneration,
     IReadOnlyList<ZLinkAggregateParticipant> Participants,
     ReadOnlyMemory<byte> InventoryDigest,
-    IReadOnlyList<ZLinkObjectReservation> TargetReservations,
+    IReadOnlyList<ZLinkRelocationCapacityFence> TargetReservations,
     ZLinkLocationOwnerToken TargetOwner);
 
 public readonly record struct ZLinkAggregateFence(
@@ -274,6 +319,16 @@ public interface IZLinkAuthorityStore
     ValueTask<ZLinkObjectAbortResult> AbortAsync(
         ZLinkObjectReservation reservation,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
+        ZLinkRelocationCapacityReservationRequest request,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
+        ZLinkRelocationCapacityFence fence,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
 
     ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
         ZLinkAggregatePrepareRequest request,

@@ -103,6 +103,19 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     }
 
     @Override
+    public void rememberSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long objectGeneration,
+        long authorityOwnerGeneration) {
+        owner.rememberSpotAuthority(
+            targetNodeRid,
+            spotRid,
+            objectGeneration,
+            authorityOwnerGeneration);
+    }
+
+    @Override
     public boolean publish(
         String channelName,
         String topic,

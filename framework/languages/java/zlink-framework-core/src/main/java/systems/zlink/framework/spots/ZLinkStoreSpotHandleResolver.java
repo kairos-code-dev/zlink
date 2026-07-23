@@ -56,6 +56,7 @@ public final class ZLinkStoreSpotHandleResolver
                 row.nodeRid(),
                 row.spotRid(),
                 row.spotGeneration(),
+                row.generation(),
                 row.spotKind())));
     }
 

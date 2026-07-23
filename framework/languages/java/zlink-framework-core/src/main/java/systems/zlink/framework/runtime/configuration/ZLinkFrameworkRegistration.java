@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
@@ -43,6 +44,7 @@ public final class ZLinkFrameworkRegistration {
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Duration actorTransferForwardWindow = Duration.ofSeconds(5);
+    private ZLinkRelocationStore relocationStore;
 
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
@@ -150,6 +152,18 @@ public final class ZLinkFrameworkRegistration {
 
     void setLocationStore(ZLinkLocationStore store) {
         locations.setStoreInstance(store);
+    }
+
+    public ZLinkRelocationStore relocationStore() {
+        return relocationStore;
+    }
+
+    void setRelocationStore(ZLinkRelocationStore store) {
+        if (relocationStore != null) {
+            throw new ZLinkConfigurationException(
+                "relocation store is already registered");
+        }
+        relocationStore = store;
     }
 
     void useVirtualThreadHandlers() {

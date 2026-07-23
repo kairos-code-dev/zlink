@@ -23,4 +23,9 @@ public interface ZLinkSpot<TActor extends ZLinkActor> extends ZLinkSpotActorLife
         return CompletableFuture.completedFuture(null);
     }
 
+    default CompletionStage<Void> onClosing(
+        ZLinkSpotClosingContext context) {
+        return onClosing();
+    }
+
 }

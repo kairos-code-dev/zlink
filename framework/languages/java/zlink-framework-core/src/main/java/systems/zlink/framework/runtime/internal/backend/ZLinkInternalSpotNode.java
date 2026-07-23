@@ -176,6 +176,11 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     ZLinkBackendActorRef actorLookup(String actorId);
 
+    default void rememberActorAuthority(
+        ZLinkBackendActorRef actor,
+        long authorityOwnerGeneration) {
+    }
+
     CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,

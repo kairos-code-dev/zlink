@@ -21,6 +21,13 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
 
     ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode);
 
+    default void rememberSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long objectGeneration,
+        long authorityOwnerGeneration) {
+    }
+
     boolean publish(
         String channelName,
         String topic,

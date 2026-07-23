@@ -122,7 +122,12 @@ public final class ZLinkServiceMailbox implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        if (closed) {
+            return;
+        }
         closed = true;
+        application.clear();
+        infrastructure.clear();
     }
 
     private long allocateClaimSerial() {
@@ -216,6 +221,14 @@ public final class ZLinkServiceMailbox implements AutoCloseable {
             }
             this.messageBudget = messageBudget;
             this.byteBudget = byteBudget;
+        }
+
+        private void clear() {
+            owners.clear();
+            ready.clear();
+            indexed.clear();
+            messages = 0;
+            bytes = 0;
         }
     }
 

@@ -99,8 +99,9 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         Object request,
         Duration timeout,
         Class<TReply> replyType) {
+        ZLinkBackendActorRef actor = toBackendActorRef(actorRef);
         return submitRequestWithRouteRetry(
-                toBackendActorRef(actorRef),
+                actor,
                 packetName,
                 request,
                 timeout,
@@ -155,7 +156,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                         ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
                         "Actor route '" + actorId + "' was not found.");
                 }
-                return toBackendActorRef(row);
+                return rememberAuthority(row);
             });
     }
 
@@ -167,8 +168,15 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                         ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
                         "Actor route '" + actorId + "' became stale.");
                 }
-                return toBackendActorRef(row);
+                return rememberAuthority(row);
             });
+    }
+
+    private ZLinkBackendActorRef rememberAuthority(
+        ZLinkActorLocation row) {
+        ZLinkBackendActorRef actor = toBackendActorRef(row);
+        spotNode.get().rememberActorAuthority(actor, row.generation());
+        return actor;
     }
 
     private CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult>
@@ -177,13 +185,18 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         String packetName,
         Object message) {
         ZLinkBackendActorRef actor = toBackendActorRef(actorRef);
-        List<Message> parts = createPacketParts(ZLinkStreamMessageKind.SEND, Optional.empty(), packetName, message);
+        List<Message> parts = createPacketParts(
+            ZLinkStreamMessageKind.SEND,
+            Optional.empty(),
+            packetName,
+            message);
         ZLinkInternalSpotNode node = spotNode.get();
         return ZLinkSubmitResults.submitAsync(
                 node,
                 ZLinkBackendAdmissionKey.actor(
                     actor.nodeRid(), actor.actorId(), actor.generation()),
-                () -> node.sendToActor(actor, parts, SendFlags.DONT_WAIT),
+                () -> node.sendToActor(
+                    actor, parts, SendFlags.DONT_WAIT),
                 () -> closeAll(parts))
             .exceptionallyCompose(error -> classifyExplicitRefFailure(actorRef, error)
                 .thenCompose(classified -> isStaleActorError(classified)

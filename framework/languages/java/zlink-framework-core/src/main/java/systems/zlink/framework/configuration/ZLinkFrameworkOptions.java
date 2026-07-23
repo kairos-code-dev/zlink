@@ -5,6 +5,7 @@ import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 
 public interface ZLinkFrameworkOptions {
@@ -35,6 +36,8 @@ public interface ZLinkFrameworkOptions {
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
     void addLocationStore(ZLinkLocationStore store);
+
+    void addRelocationStore(ZLinkRelocationStore store);
 
     ZLinkLocationOptions configureLocations();
 

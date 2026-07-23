@@ -19,6 +19,15 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> extends ZLinkSpotActo
         return CompletableFuture.completedFuture(null);
     }
 
+    default CompletionStage<Void> onClosing(
+        ZLinkSpotClosingContext context) {
+        return onClosing();
+    }
+
+    default CompletionStage<Void> onActorRelocated(TActor actor) {
+        return CompletableFuture.completedFuture(null);
+    }
+
     default CompletionStage<Void> onCreateActor(
         TActor actor,
         ZLinkMessage createRequest) {

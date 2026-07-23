@@ -45,6 +45,10 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         new ConcurrentHashMap<>();
     private final Map<String, Long> actorMembershipEpochs =
         new ConcurrentHashMap<>();
+    private final Map<SpotAuthorityKey, Long> spotAuthorities =
+        new ConcurrentHashMap<>();
+    private final Map<ActorAuthorityKey, Long> actorAuthorities =
+        new ConcurrentHashMap<>();
     private final AtomicLong nextGeneration = new AtomicLong(1);
     private final AtomicLong nextRequestSequence = new AtomicLong(1);
     private final AtomicLong nextActorRequestSequence = new AtomicLong(1);
@@ -56,6 +60,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         new ConcurrentHashMap<>();
     private final ZLinkJavaInstanceSpotRegistry instanceSpots =
         new ZLinkJavaInstanceSpotRegistry();
+    private final Map<RoutingId, InstanceAuthority> instanceAuthorities =
+        new ConcurrentHashMap<>();
     private volatile ZLinkJavaRawSpot entrySpot;
     private volatile ZLinkMeshApplicationReceiver applicationReceiver;
 
@@ -244,7 +250,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         String topic,
         List<Message> parts,
         SendFlags flags) {
-        return new PublishDetail(0, 0, 0, 0, 0, 0, 0);
+        return owner.publishLogicalMulticast(
+            null, channelName, topic, new byte[0], parts);
     }
 
     @Override
@@ -254,7 +261,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
-        return publishDetailed(channelName, topic, parts, flags);
+        return owner.publishLogicalMulticast(
+            null, channelName, topic, metadata, parts);
     }
 
     @Override
@@ -271,12 +279,28 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     @Override
     public ZLinkBackendSpot createSpot(RoutingId spotRid) {
         java.util.Objects.requireNonNull(spotRid, "spotRid");
+        return createSpot(spotRid, nextGeneration.getAndIncrement());
+    }
+
+    private ZLinkBackendSpot createSpot(
+        RoutingId spotRid,
+        long lifecycleGeneration) {
+        java.util.Objects.requireNonNull(spotRid, "spotRid");
+        if (lifecycleGeneration <= 0) {
+            throw new IllegalArgumentException(
+                "Spot lifecycle generation must be positive");
+        }
         ZLinkJavaRawSpot created = new ZLinkJavaRawSpot(
-            this, spotRid, nextGeneration.getAndIncrement());
+            this, spotRid, lifecycleGeneration);
         ZLinkJavaRawSpot existing = spots.putIfAbsent(spotRid, created);
         if (existing != null) {
             return existing;
         }
+        rememberSpotAuthority(
+            routingId(),
+            spotRid,
+            lifecycleGeneration,
+            lifecycleGeneration);
         return created;
     }
 
@@ -309,12 +333,27 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         }
         actorSpots.put(actorId, entrySpot().routingId());
         actorMembershipEpochs.put(actorId, 1L);
+        rememberActorAuthority(created, created.generation());
         return created;
     }
 
     @Override
     public ZLinkBackendActorRef actorLookup(String actorId) {
         return actors.get(actorId);
+    }
+
+    @Override
+    public void rememberActorAuthority(
+        ZLinkBackendActorRef actor,
+        long authorityOwnerGeneration) {
+        if (actor == null || authorityOwnerGeneration <= 0) {
+            throw new IllegalArgumentException(
+                "Actor authority generation must be positive");
+        }
+        actorAuthorities.put(
+            new ActorAuthorityKey(
+                actor.nodeRid(), actor.actorId(), actor.generation()),
+            authorityOwnerGeneration);
     }
 
     @Override
@@ -476,6 +515,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         actorSpots.remove(actor.actorId());
         actorMembershipEpochs.remove(actor.actorId());
         streamBindings.remove(actor.actorId());
+        actorAuthorities.remove(new ActorAuthorityKey(
+            actor.nodeRid(), actor.actorId(), actor.generation()));
         return CompletableFuture.completedFuture(null);
     }
 
@@ -609,6 +650,9 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         actorRequests.clear();
         actorRemoteReplies.clear();
         streamBindings.clear();
+        spotAuthorities.clear();
+        actorAuthorities.clear();
+        instanceAuthorities.clear();
         instanceSpots.closeAll();
         owner.close();
     }
@@ -633,6 +677,45 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     void removeSpot(ZLinkJavaRawSpot spot) {
         spots.remove(spot.routingId(), spot);
+        spotAuthorities.remove(new SpotAuthorityKey(
+            routingId(),
+            spot.routingId(),
+            spot.lifecycleGeneration()));
+    }
+
+    void rememberSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long objectGeneration,
+        long authorityOwnerGeneration) {
+        if (targetNodeRid == null
+            || spotRid == null
+            || objectGeneration <= 0
+            || authorityOwnerGeneration <= 0) {
+            throw new IllegalArgumentException(
+                "Spot authority generations must be positive");
+        }
+        spotAuthorities.put(
+            new SpotAuthorityKey(
+                targetNodeRid, spotRid, objectGeneration),
+            authorityOwnerGeneration);
+    }
+
+    long spotAuthorityOwnerGeneration(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long objectGeneration) {
+        return spotAuthorities.getOrDefault(
+            new SpotAuthorityKey(
+                targetNodeRid, spotRid, objectGeneration),
+            0L);
+    }
+
+    long actorAuthorityOwnerGeneration(ZLinkBackendActorRef actor) {
+        return actorAuthorities.getOrDefault(
+            new ActorAuthorityKey(
+                actor.nodeRid(), actor.actorId(), actor.generation()),
+            0L);
     }
 
     boolean enqueueRemoteSpot(
@@ -645,7 +728,12 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             routingId(),
             header.target().spotRid(),
             header.target().spotGeneration());
-        if (target == null) {
+        if (target == null
+            || spotAuthorityOwnerGeneration(
+                routingId(),
+                header.target().spotRid(),
+                header.target().spotGeneration())
+                != header.target().authorityOwnerGeneration()) {
             return false;
         }
         target.enqueueRoute(new systems.zlink.framework.runtime.backend
@@ -668,7 +756,9 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         List<Message> parts,
         Consumer<List<Message>> reply) {
         ZLinkBackendActorRef actor = header.target().actor();
-        if (!isCurrentActor(actor)) {
+        if (!isCurrentActor(actor)
+            || actorAuthorityOwnerGeneration(actor)
+                != header.target().authorityOwnerGeneration()) {
             return false;
         }
         RoutingId targetSpotRid = actorSpots.get(actor.actorId());
@@ -738,11 +828,76 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         activateInstanceSpot(
             RoutingId spotRid,
             String stableType) {
-        return instanceSpots.activate(spotRid, stableType);
+        ZLinkJavaRawSpot current = spots.get(spotRid);
+        long generation = current == null
+            ? nextGeneration.getAndIncrement()
+            : current.lifecycleGeneration();
+        return instanceSpots.activate(spotRid, stableType, generation);
     }
 
     boolean closeInstanceSpot(RoutingId spotRid, long generation) {
         return instanceSpots.close(spotRid, generation);
+    }
+
+    ZLinkBackendSpot localSpot(RoutingId spotRid) {
+        return spots.get(spotRid);
+    }
+
+    void registerInstanceSpotAuthority(
+        String stableType,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        java.util.Objects.requireNonNull(route, "route");
+        if (!routingId().equals(route.targetNodeRid())) {
+            throw new IllegalArgumentException(
+                "Instance authority target is not local");
+        }
+        InstanceAuthority authority =
+            new InstanceAuthority(stableType, route);
+        InstanceAuthority current = instanceAuthorities.putIfAbsent(
+            route.targetSpotRid(), authority);
+        if (current != null && !current.equals(authority)) {
+            throw new IllegalStateException(
+                "Instance Spot authority fence changed without replacement");
+        }
+    }
+
+    boolean enqueueRemoteInstanceSpot(
+        RoutingId sourceNodeRid,
+        ZLinkServiceM6BWireCodec.InstanceSpotMessage header,
+        byte[] metadata,
+        List<Message> parts,
+        Consumer<List<Message>> reply) {
+        InstanceAuthority authority =
+            instanceAuthorities.get(header.route().targetSpotRid());
+        if (authority == null || !authority.route().equals(header.route())) {
+            return false;
+        }
+        ZLinkJavaInstanceSpotRegistry.Activation activation;
+        try {
+            activation = instanceSpots.activate(
+                header.route().targetSpotRid(),
+                authority.stableType(),
+                header.route().objectGeneration()).toCompletableFuture().join();
+        } catch (RuntimeException failure) {
+            return false;
+        }
+        if (!(activation.spot() instanceof ZLinkJavaRawSpot target)
+            || target.lifecycleGeneration()
+                != header.route().objectGeneration()) {
+            return false;
+        }
+        target.enqueueRoute(new systems.zlink.framework.runtime.backend
+            .ZLinkBackendReceived(
+                systems.zlink.framework.runtime.backend
+                    .ZLinkBackendRequestResult.OK,
+                Optional.of(sourceNodeRid),
+                Optional.ofNullable(header.sourceSpotRid()),
+                Optional.ofNullable(header.replyRouteId()),
+                metadata,
+                parts,
+                header.request() ? reply : null,
+                () -> { }));
+        return true;
     }
 
     private boolean dispatchLocalActor(
@@ -797,27 +952,68 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         ZLinkJavaStreamSocket stream) {
     }
 
+    private record InstanceAuthority(
+        String stableType,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        private InstanceAuthority {
+            if (stableType == null || stableType.isBlank()) {
+                throw new IllegalArgumentException(
+                    "Instance Spot stable type is required");
+            }
+        }
+    }
+
+    private record SpotAuthorityKey(
+        RoutingId nodeRid,
+        RoutingId spotRid,
+        long objectGeneration) {
+    }
+
+    private record ActorAuthorityKey(
+        RoutingId nodeRid,
+        String actorId,
+        long objectGeneration) {
+    }
+
     boolean publish(
         ZLinkJavaRawSpot source,
         String channelName,
         String topic,
         byte[] metadata,
         List<Message> parts) {
-        AtomicBoolean delivered = new AtomicBoolean();
+        PublishDetail detail = owner.publishLogicalMulticast(
+            source, channelName, topic, metadata, parts);
+        return detail.admittedLocalSpotCount() > 0
+            || detail.admittedRemoteTargetCount() > 0;
+    }
+
+    MulticastLocalDetail enqueueLogicalMulticast(
+        String channelName,
+        String topic,
+        RoutingId sourceSpotRid,
+        RoutingId sourceNodeRid,
+        byte[] metadata,
+        List<Message> parts) {
+        int snapshot = 0;
+        int admitted = 0;
         for (ZLinkJavaRawSpot target : spots.values()) {
             if (!target.accepts(topic)) {
                 continue;
             }
-            delivered.set(true);
+            snapshot++;
             target.enqueueTopic(new systems.zlink.framework.runtime.backend
                 .ZLinkBackendTopicMessage(
-                    Optional.of(routingId()),
+                    Optional.of(sourceNodeRid),
                     channelName,
                     topic,
                     metadata == null ? new byte[0] : metadata.clone(),
                     ZLinkJavaRawSpot.copy(parts)));
+            admitted++;
         }
-        return delivered.get();
+        return new MulticastLocalDetail(snapshot, admitted);
+    }
+
+    record MulticastLocalDetail(int snapshot, int admitted) {
     }
 
     boolean sendToSpot(

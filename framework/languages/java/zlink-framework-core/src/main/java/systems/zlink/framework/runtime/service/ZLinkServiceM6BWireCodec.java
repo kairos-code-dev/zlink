@@ -167,6 +167,141 @@ public final class ZLinkServiceM6BWireCodec {
             target);
     }
 
+    public byte[] encodeLogicalMulticastHeader(
+        int flags,
+        String channelName,
+        String topic,
+        RoutingId sourceSpotRid) {
+        if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0) {
+            throw protocol("logical multicast contains an unknown flag");
+        }
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_LOGICAL_MULTICAST,
+            flags);
+        writer.text8(channelName, "channelName");
+        writer.text8(topic, "topic");
+        writer.rid(sourceSpotRid, "sourceSpotRid");
+        return writer.toByteArray();
+    }
+
+    public LogicalMulticast decodeLogicalMulticastHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_LOGICAL_MULTICAST
+            || (header.flags() & ~ServiceWireConstants.FLAG_METADATA) != 0) {
+            throw protocol("command is not logical multicast");
+        }
+        LogicalMulticast result = new LogicalMulticast(
+            header.flags(),
+            reader.text8("channelName"),
+            reader.text8("topic"),
+            reader.rid("sourceSpotRid"));
+        reader.end();
+        return result;
+    }
+
+    public byte[] encodeInstanceSpotHeader(InstanceSpotMessage message) {
+        Objects.requireNonNull(message, "message");
+        if ((message.flags() & ~ServiceWireConstants.FLAG_METADATA) != 0
+            || message.sourceNodeGeneration() <= 0
+            || (message.request()
+                != (message.operationHigh() != 0
+                    || message.operationLow() != 0))
+            || message.request() != (message.replyRouteId() != null)
+            || (message.replyRouteId() != null
+                && message.replyRouteId() <= 0)) {
+            throw protocol("invalid Instance Spot message header");
+        }
+        Writer route = new Writer();
+        route.rid(message.route().targetNodeRid(), "targetNodeRid");
+        route.nonzero(
+            message.route().targetNodeGeneration(),
+            "targetNodeGeneration");
+        route.rid(message.route().targetSpotRid(), "targetSpotRid");
+        route.nonzero(
+            message.route().objectGeneration(), "objectGeneration");
+        route.text8(message.route().ownerId(), "ownerId");
+        route.nonzero(
+            message.route().authorityOwnerGeneration(),
+            "authorityOwnerGeneration");
+        route.nonzero(
+            message.route().leaseGeneration(), "leaseGeneration");
+        route.text16(message.route().storeVersion(), "storeVersion");
+        byte[] routeBody = route.toByteArray();
+
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_INSTANCE_SPOT,
+            message.flags());
+        writer.u8(1);
+        writer.u16(routeBody.length);
+        writer.bytes(routeBody);
+        writer.nonzero(
+            message.sourceNodeGeneration(), "sourceNodeGeneration");
+        writer.rid(message.sourceNodeRid(), "sourceNodeRid");
+        writer.optionalRid(message.sourceSpotRid(), "sourceSpotRid");
+        writer.u8(message.request() ? 2 : 1);
+        writer.u64(message.operationHigh());
+        writer.u64(message.operationLow());
+        if (message.replyRouteId() != null) {
+            writer.nonzero(message.replyRouteId(), "replyRouteId");
+        }
+        return writer.toByteArray();
+    }
+
+    public InstanceSpotMessage decodeInstanceSpotHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command() != ServiceWireConstants.COMMAND_INSTANCE_SPOT
+            || (header.flags() & ~ServiceWireConstants.FLAG_METADATA) != 0
+            || reader.u8("instanceRoute.version") != 1) {
+            throw protocol("command is not Instance Spot");
+        }
+        int routeLength = reader.u16("instanceRoute.length");
+        int routeEnd = reader.position() + routeLength;
+        InstanceRouteFence route = new InstanceRouteFence(
+            reader.rid("targetNodeRid"),
+            reader.nonzeroU64("targetNodeGeneration"),
+            reader.rid("targetSpotRid"),
+            reader.nonzeroU64("objectGeneration"),
+            reader.text8("ownerId"),
+            reader.nonzeroU64("authorityOwnerGeneration"),
+            reader.nonzeroU64("leaseGeneration"),
+            reader.text16("storeVersion"));
+        if (reader.position() != routeEnd) {
+            throw protocol("invalid Instance route body length");
+        }
+        long sourceNodeGeneration =
+            reader.nonzeroU64("sourceNodeGeneration");
+        RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
+        RoutingId sourceSpotRid = reader.optionalRid("sourceSpotRid");
+        int operationKind = reader.u8("operationKind");
+        if (operationKind != 1 && operationKind != 2) {
+            throw protocol("unknown Instance operation kind");
+        }
+        long operationHigh = reader.u64("operation.high");
+        long operationLow = reader.u64("operation.low");
+        boolean request = operationKind == 2;
+        if ((!request && (operationHigh != 0 || operationLow != 0))
+            || (request && operationHigh == 0 && operationLow == 0)) {
+            throw protocol("invalid Instance operation identity");
+        }
+        Long replyRouteId = request
+            ? reader.nonzeroU64("replyRouteId")
+            : null;
+        reader.end();
+        return new InstanceSpotMessage(
+            header.flags(),
+            route,
+            sourceNodeGeneration,
+            sourceNodeRid,
+            sourceSpotRid,
+            request,
+            operationHigh,
+            operationLow,
+            replyRouteId);
+    }
+
     public record SpotRouteFence(
         RoutingId spotRid,
         long spotGeneration,
@@ -222,6 +357,56 @@ public final class ZLinkServiceM6BWireCodec {
         }
     }
 
+    public record LogicalMulticast(
+        int flags,
+        String channelName,
+        String topic,
+        RoutingId sourceSpotRid) {
+    }
+
+    public record InstanceRouteFence(
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        RoutingId targetSpotRid,
+        long objectGeneration,
+        String ownerId,
+        long authorityOwnerGeneration,
+        long leaseGeneration,
+        String storeVersion) {
+        public InstanceRouteFence {
+            Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+            Objects.requireNonNull(targetSpotRid, "targetSpotRid");
+            if (targetNodeGeneration <= 0
+                || objectGeneration <= 0
+                || authorityOwnerGeneration <= 0
+                || leaseGeneration <= 0) {
+                throw protocol(
+                    "Instance route generations must be nonzero");
+            }
+            if (ownerId == null || ownerId.isBlank()
+                || storeVersion == null || storeVersion.isBlank()) {
+                throw protocol(
+                    "Instance route owner and store version are required");
+            }
+        }
+    }
+
+    public record InstanceSpotMessage(
+        int flags,
+        InstanceRouteFence route,
+        long sourceNodeGeneration,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSpotRid,
+        boolean request,
+        long operationHigh,
+        long operationLow,
+        Long replyRouteId) {
+        public InstanceSpotMessage {
+            Objects.requireNonNull(route, "route");
+            Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+        }
+    }
+
     private static Writer prefix(int command, int flags) {
         Writer result = new Writer();
         result.u8(ServiceWireConstants.MAGIC_0);
@@ -259,6 +444,14 @@ public final class ZLinkServiceM6BWireCodec {
                 .array());
         }
 
+        void u16(int value) {
+            if (value < 0 || value > 0xffff) {
+                throw protocol("value exceeds u16");
+            }
+            output.write((value >>> 8) & 0xff);
+            output.write(value & 0xff);
+        }
+
         void nonzero(long value, String field) {
             if (value <= 0) {
                 throw protocol(field + " must be nonzero");
@@ -285,6 +478,30 @@ public final class ZLinkServiceM6BWireCodec {
             }
             u8(bytes.length);
             output.writeBytes(bytes);
+        }
+
+        void text16(String value, String field) {
+            byte[] bytes = Objects.requireNonNull(value, field)
+                .getBytes(StandardCharsets.UTF_8);
+            if (bytes.length == 0
+                || bytes.length > 0xffff
+                || value.indexOf('\0') >= 0) {
+                throw protocol(field + " exceeds text16");
+            }
+            u16(bytes.length);
+            output.writeBytes(bytes);
+        }
+
+        void optionalRid(RoutingId value, String field) {
+            if (value == null) {
+                u8(0);
+                return;
+            }
+            rid(value, field);
+        }
+
+        void bytes(byte[] value) {
+            output.writeBytes(value);
         }
 
         byte[] toByteArray() {
@@ -324,10 +541,35 @@ public final class ZLinkServiceM6BWireCodec {
             return value;
         }
 
+        long u64(String field) {
+            require(Long.BYTES, field);
+            long value = input.getLong();
+            if (value < 0) {
+                throw protocol(field + " exceeds supported u64 range");
+            }
+            return value;
+        }
+
+        int u16(String field) {
+            require(Short.BYTES, field);
+            return Short.toUnsignedInt(input.getShort());
+        }
+
         RoutingId rid(String field) {
             int length = u8(field + ".length");
             if (length == 0) {
                 throw protocol(field + " must not be empty");
+            }
+            byte[] bytes = new byte[length];
+            require(length, field);
+            input.get(bytes);
+            return RoutingId.from(bytes);
+        }
+
+        RoutingId optionalRid(String field) {
+            int length = u8(field + ".length");
+            if (length == 0) {
+                return null;
             }
             byte[] bytes = new byte[length];
             require(length, field);
@@ -346,6 +588,18 @@ public final class ZLinkServiceM6BWireCodec {
                 throw protocol(field + " must not be empty");
             }
             return text(length, field);
+        }
+
+        String text16(String field) {
+            int length = u16(field + ".length");
+            if (length == 0) {
+                throw protocol(field + " must not be empty");
+            }
+            return text(length, field);
+        }
+
+        int position() {
+            return input.position();
         }
 
         void end() {

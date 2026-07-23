@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -41,6 +42,22 @@ final class ZLinkServiceOperationRegistryTest {
                 () -> operation.completion().orTimeout(1, TimeUnit.SECONDS).join());
             assertTrue(failure.getCause() instanceof TimeoutException);
             assertFalse(registry.complete(operation.id(), "late reply"));
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void rejectsRegistrationWhenPendingCapacityIsExhausted() {
+        ScheduledExecutorService scheduler =
+            Executors.newSingleThreadScheduledExecutor();
+        try (ZLinkServiceOperationRegistry registry =
+                 new ZLinkServiceOperationRegistry(scheduler, 1)) {
+            registry.register(Duration.ofSeconds(1));
+            assertThrows(
+                RejectedExecutionException.class,
+                () -> registry.register(Duration.ofSeconds(1)));
+            assertEquals(1, registry.pendingCount());
         } finally {
             scheduler.shutdownNow();
         }

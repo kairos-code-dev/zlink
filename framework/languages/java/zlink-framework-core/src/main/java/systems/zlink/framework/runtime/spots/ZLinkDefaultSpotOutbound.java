@@ -187,6 +187,11 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 return duplicate;
             }
             return resolve(target).thenCompose(address -> {
+                backendSpot.rememberSpotAuthority(
+                    address.targetNodeRid(),
+                    address.spotRid(),
+                    address.spotGeneration(),
+                    address.authorityOwnerGeneration());
                 ZLinkSendCall call = routeMeshEnabled
                     ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotRid(),
                         address.spotGeneration(), payload, packetName)
@@ -246,6 +251,11 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
         }
         @Override public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
             CompletionStage<TReply> stage = resolve(target).thenCompose(address -> {
+                backendSpot.rememberSpotAuthority(
+                    address.targetNodeRid(),
+                    address.spotRid(),
+                    address.spotGeneration(),
+                    address.authorityOwnerGeneration());
                 ZLinkRequestCall call = routeMeshEnabled
                     ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotRid(),
                         address.spotGeneration(), payload, packetName, timeout)

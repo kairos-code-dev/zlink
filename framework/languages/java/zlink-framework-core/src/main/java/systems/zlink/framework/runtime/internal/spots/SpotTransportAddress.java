@@ -8,5 +8,20 @@ public record SpotTransportAddress(
     RoutingId targetNodeRid,
     RoutingId spotRid,
     long spotGeneration,
+    long authorityOwnerGeneration,
     ZLinkSpotKind spotKind) {
+    public SpotTransportAddress(
+        String routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long spotGeneration,
+        ZLinkSpotKind spotKind) {
+        this(
+            routerChannelId,
+            targetNodeRid,
+            spotRid,
+            spotGeneration,
+            0L,
+            spotKind);
+    }
 }

@@ -21,6 +21,7 @@ import systems.zlink.framework.configuration.ZLinkWorkerOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.runtime.channels.ChannelBuilders;
 import systems.zlink.framework.runtime.channels.ChannelKind;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
@@ -136,6 +137,12 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public void addLocationStore(ZLinkLocationStore store) {
         registration.setLocationStore(Objects.requireNonNull(store, "store"));
+    }
+
+    @Override
+    public void addRelocationStore(ZLinkRelocationStore store) {
+        registration.setRelocationStore(
+            Objects.requireNonNull(store, "store"));
     }
 
     @Override

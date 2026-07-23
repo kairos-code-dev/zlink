@@ -10,16 +10,31 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Owns request correlation, deadline, and terminal-once completion. */
 public final class ZLinkServiceOperationRegistry implements AutoCloseable {
+    public static final int DEFAULT_MAX_PENDING_OPERATIONS = 65_536;
+
     private final ScheduledExecutorService scheduler;
+    private final int maxPendingOperations;
     private final Map<UUID, Entry<?>> entries = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     public ZLinkServiceOperationRegistry(ScheduledExecutorService scheduler) {
+        this(scheduler, DEFAULT_MAX_PENDING_OPERATIONS);
+    }
+
+    public ZLinkServiceOperationRegistry(
+        ScheduledExecutorService scheduler,
+        int maxPendingOperations) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
+        if (maxPendingOperations <= 0) {
+            throw new IllegalArgumentException(
+                "maxPendingOperations must be positive");
+        }
+        this.maxPendingOperations = maxPendingOperations;
     }
 
     public synchronized <T> Operation<T> register(Duration timeout) {
@@ -29,6 +44,10 @@ public final class ZLinkServiceOperationRegistry implements AutoCloseable {
         }
         if (closed.get()) {
             throw new IllegalStateException("operation registry is closed");
+        }
+        if (entries.size() >= maxPendingOperations) {
+            throw new RejectedExecutionException(
+                "service operation capacity is exhausted");
         }
 
         UUID id = UUID.randomUUID();

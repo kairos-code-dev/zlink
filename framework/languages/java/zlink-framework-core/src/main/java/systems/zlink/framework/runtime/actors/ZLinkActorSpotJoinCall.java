@@ -405,6 +405,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     explicitTargetNode,
                     spotRid,
                     0L,
+                    0L,
                     systems.zlink.framework.spots.ZLinkSpotKind.ENTRY))
                 : resolveHandle(services.remoteAddressResolver(), spotRid)
             .thenCompose(services.remoteAddressResolver()::resolve)
@@ -415,6 +416,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     explicitTargetNode,
                     spotRid,
                     value.spotGeneration(),
+                    value.authorityOwnerGeneration(),
                     value.spotKind())))
             .thenApply(address -> address.orElseThrow(() ->
                 new ZLinkConfigurationException("SPOT transport address was not found: " + spotRid)))
@@ -422,6 +424,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 internalRouteChannel,
                 internalTargetNode,
                 internalTargetNode,
+                0L,
                 0L,
                 systems.zlink.framework.spots.ZLinkSpotKind.ENTRY));
         return resolved.thenCompose(target -> {
@@ -829,6 +832,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             "",
             context.actorRef().nodeRid(),
             spotRid,
+            0L,
             0L,
             systems.zlink.framework.spots.ZLinkSpotKind.USER);
     }

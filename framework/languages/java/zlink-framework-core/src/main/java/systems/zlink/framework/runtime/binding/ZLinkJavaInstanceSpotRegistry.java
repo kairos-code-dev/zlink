@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 
@@ -14,7 +14,8 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
  * direct operation calls this registry; ordinary missing Spot routes do not.
  */
 final class ZLinkJavaInstanceSpotRegistry {
-    private final Map<String, Function<RoutingId, ZLinkBackendSpot>> factories =
+    private final Map<String, BiFunction<RoutingId, Long, ZLinkBackendSpot>>
+        factories =
         new ConcurrentHashMap<>();
     private final Map<RoutingId, String> stableTypes =
         new ConcurrentHashMap<>();
@@ -23,7 +24,7 @@ final class ZLinkJavaInstanceSpotRegistry {
 
     void register(
         String stableType,
-        Function<RoutingId, ZLinkBackendSpot> factory) {
+        BiFunction<RoutingId, Long, ZLinkBackendSpot> factory) {
         requireType(stableType);
         if (factories.putIfAbsent(
             stableType,
@@ -35,8 +36,14 @@ final class ZLinkJavaInstanceSpotRegistry {
 
     CompletionStage<Activation> activate(
         RoutingId spotRid,
-        String requestedType) {
+        String requestedType,
+        long objectGeneration) {
         Objects.requireNonNull(spotRid, "spotRid");
+        if (objectGeneration <= 0) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "Instance Spot object generation must be positive"));
+        }
         String selected = selectType(spotRid, requestedType);
         String recorded = stableTypes.putIfAbsent(spotRid, selected);
         if (recorded != null && !recorded.equals(selected)) {
@@ -46,18 +53,33 @@ final class ZLinkJavaInstanceSpotRegistry {
         }
         CompletableFuture<Activation> current = activations.get(spotRid);
         if (current != null) {
-            return current;
+            return current.thenCompose(activation ->
+                activation.spot().lifecycleGeneration() == objectGeneration
+                    ? CompletableFuture.completedFuture(activation)
+                    : CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "Instance Spot object generation is stale")));
         }
         CompletableFuture<Activation> candidate = new CompletableFuture<>();
         current = activations.putIfAbsent(spotRid, candidate);
         if (current != null) {
-            return current;
+            return current.thenCompose(activation ->
+                activation.spot().lifecycleGeneration() == objectGeneration
+                    ? CompletableFuture.completedFuture(activation)
+                    : CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "Instance Spot object generation is stale")));
         }
         try {
-            ZLinkBackendSpot spot = factories.get(selected).apply(spotRid);
+            ZLinkBackendSpot spot =
+                factories.get(selected).apply(spotRid, objectGeneration);
             if (spot == null) {
                 throw new IllegalStateException(
                     "Instance Spot factory returned null");
+            }
+            if (spot.lifecycleGeneration() != objectGeneration) {
+                throw new IllegalStateException(
+                    "Instance Spot factory returned a stale generation");
             }
             candidate.complete(new Activation(selected, spot));
         } catch (Throwable failure) {

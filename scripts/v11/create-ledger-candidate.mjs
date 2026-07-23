@@ -98,7 +98,7 @@ function currentPaths(ownedPaths) {
   return new Set([
     ...lines(git(['ls-files', '--', ...ownedPaths])),
     ...lines(git(['ls-files', '--others', '--exclude-standard', '--', ...ownedPaths]))
-  ]);
+  ].filter(path => existsSync(resolve(repositoryRoot, path))));
 }
 
 function currentMode(path) {

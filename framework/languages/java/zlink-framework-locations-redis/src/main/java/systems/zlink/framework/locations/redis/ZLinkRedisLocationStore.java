@@ -3,6 +3,7 @@ package systems.zlink.framework.locations.redis;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocation;
@@ -31,9 +32,28 @@ import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkAuthorityReadResult;
+import systems.zlink.framework.locations.ZLinkAuthorityWriteResult;
+import systems.zlink.framework.locations.ZLinkAuthorityExpectation;
+import systems.zlink.framework.locations.ZLinkAuthorityMutation;
+import systems.zlink.framework.locations.ZLinkAuthorityScanCursor;
+import systems.zlink.framework.locations.ZLinkAuthorityScanResult;
+import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
+import systems.zlink.framework.locations.ZLinkObjectReserveResult;
+import systems.zlink.framework.locations.ZLinkObjectReservation;
+import systems.zlink.framework.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.locations.ZLinkObjectAbortResult;
+import systems.zlink.framework.locations.ZLinkAggregatePrepareRequest;
+import systems.zlink.framework.locations.ZLinkAggregatePrepareResult;
+import systems.zlink.framework.locations.ZLinkAggregateFence;
+import systems.zlink.framework.locations.ZLinkAggregateCommitResult;
+import systems.zlink.framework.locations.ZLinkAggregateAbortResult;
+import systems.zlink.framework.locations.ZLinkStoreCancellation;
 
 public final class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
+    ZLinkAuthorityStore,
     ZLinkLocationChangeStampStore,
     ZLinkRoutingIdSlotAllocationStore,
     AutoCloseable {
@@ -42,6 +62,7 @@ public final class ZLinkRedisLocationStore implements
     private final ZLinkRedisLocationScriptsClient scripts;
     private final ZLinkRedisLocationRows rows;
     private final ZLinkRedisLocationStampReader stamps;
+    private final ZLinkRedisAuthorityClient authority;
 
     public ZLinkRedisLocationStore(ZLinkRedisLocationOptions options) {
         ZLinkRedisLocationOptions validated = Objects.requireNonNull(options, "options");
@@ -51,6 +72,7 @@ public final class ZLinkRedisLocationStore implements
         this.scripts = new ZLinkRedisLocationScriptsClient(connection, keys);
         this.rows = new ZLinkRedisLocationRows(connection, keys);
         this.stamps = new ZLinkRedisLocationStampReader(connection, keys);
+        this.authority = new ZLinkRedisAuthorityClient(connection, keys);
     }
 
     @Override
@@ -249,6 +271,74 @@ public final class ZLinkRedisLocationStore implements
     @Override
     public CompletionStage<Long> getChangeStamp(ZLinkLocationChangeStampScope scope) {
         return stamps.getChangeStampAsync(scope);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAuthorityReadResult> read(
+        String key,
+        ZLinkStoreCancellation cancellation) {
+        return authority.read(key, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
+        String key,
+        ZLinkAuthorityExpectation expectation,
+        ZLinkAuthorityMutation mutation,
+        ZLinkStoreCancellation cancellation) {
+        return authority.compareExchange(key, expectation, mutation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAuthorityScanResult> list(
+        String prefix,
+        Optional<ZLinkAuthorityScanCursor> cursor,
+        int limit,
+        ZLinkStoreCancellation cancellation) {
+        return authority.list(prefix, cursor, limit, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkObjectReserveResult> reserve(
+        ZLinkObjectReservationRequest request,
+        ZLinkStoreCancellation cancellation) {
+        return authority.reserve(request, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation,
+        byte[] readyPayload,
+        ZLinkStoreCancellation cancellation) {
+        return authority.commit(reservation, readyPayload, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation,
+        ZLinkStoreCancellation cancellation) {
+        return authority.abort(reservation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
+        ZLinkAggregatePrepareRequest request,
+        ZLinkStoreCancellation cancellation) {
+        return authority.prepareAggregate(request, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
+        ZLinkAggregateFence fence,
+        ZLinkStoreCancellation cancellation) {
+        return authority.commitAggregate(fence, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
+        ZLinkAggregateFence fence,
+        ZLinkStoreCancellation cancellation) {
+        return authority.abortAggregate(fence, cancellation);
     }
 
     @Override

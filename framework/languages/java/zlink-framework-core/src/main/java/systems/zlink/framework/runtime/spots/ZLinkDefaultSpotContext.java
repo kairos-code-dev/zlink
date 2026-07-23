@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
@@ -218,6 +219,29 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
         return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "user", operation);
+    }
+
+    CompletionStage<Void> enqueueAcceptedDispatch(
+        byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
+        return dispatchQueue.enqueueRelocatable(
+            acceptedJournalRecord,
+            operation,
+            relocationRelease);
+    }
+
+    Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySealRelocation() {
+        return dispatchQueue.trySealRelocation();
+    }
+
+    boolean abortRelocation(ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        return dispatchQueue.abortRelocation(seal);
+    }
+
+    Optional<List<ZLinkAsyncSerialQueue.QueuedRecord>> commitRelocation(
+        ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        return dispatchQueue.commitRelocation(seal);
     }
 
     @Override

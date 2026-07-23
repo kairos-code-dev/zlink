@@ -34,6 +34,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
@@ -1252,6 +1253,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public CompletionStage<Void> submitActorDispatch(
         String actorId,
         Supplier<CompletionStage<Void>> operation) {
+        return submitActorDispatch(actorId, null, operation);
+    }
+
+    public CompletionStage<Void> submitActorDispatch(
+        String actorId,
+        byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation) {
         if (dispatches.isCurrent(actorId)) {
             try {
                 return operation.get();
@@ -1267,7 +1275,24 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             }
             turn = dispatches.prepare(actorId);
         }
-        return dispatches.enqueue(turn, operation);
+        return dispatches.enqueue(turn, acceptedJournalRecord, operation);
+    }
+
+    public Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySealActorRelocation(
+        String actorId) {
+        return dispatches.trySeal(actorId);
+    }
+
+    public boolean abortActorRelocation(
+        String actorId,
+        ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        return dispatches.abort(actorId, seal);
+    }
+
+    public Optional<List<ZLinkAsyncSerialQueue.QueuedRecord>> commitActorRelocation(
+        String actorId,
+        ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        return dispatches.commit(actorId, seal);
     }
 
     public <T> CompletionStage<T> runActorDispatchTurn(

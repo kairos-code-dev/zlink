@@ -137,22 +137,26 @@ class ZLinkRedisLocationRowJsonTest {
         JsonNode root = JSON.readTree(Files.readString(fixturePath()));
 
         assertEquals(
-            List.of("owner", "gen", "json", "updatedAtMs", "mesh"),
+            List.of(
+                "payload",
+                "storeVersion",
+                "objectGeneration",
+                "authorityOwnerGeneration",
+                "ownerId",
+                "ownerLeaseGeneration"),
             JSON.convertValue(
                 root.path("hashFields"),
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)));
         JsonNode row = root.path("row");
         assertEquals("actor", row.path("kind").asText());
-        assertEquals("4:game7:actor-1", row.path("key").asText());
+        assertEquals("zla1:a:4:game:7:actor-1", row.path("key").asText());
         JsonNode hash = row.path("hash");
-        assertEquals("actor-owner-a", hash.path("owner").asText());
-        assertEquals("5", hash.path("gen").asText());
-        assertEquals("1721001600000", hash.path("updatedAtMs").asText());
-        assertEquals("game", hash.path("mesh").asText());
-        JsonNode payload = JSON.readTree(hash.path("json").asText());
-        assertEquals("game", payload.path("MeshName").asText());
-        assertEquals(3L, payload.path("SpotGeneration").asLong());
-        assertEquals(7L, payload.path("OwnerNodeGeneration").asLong());
+        assertEquals("opaque-actor-authority-v1", hash.path("payload").asText());
+        assertEquals("101", hash.path("storeVersion").asText());
+        assertEquals("11", hash.path("objectGeneration").asText());
+        assertEquals("4", hash.path("authorityOwnerGeneration").asText());
+        assertEquals("actor-owner-a", hash.path("ownerId").asText());
+        assertEquals("9", hash.path("ownerLeaseGeneration").asText());
     }
 
     private static Path fixturePath() {

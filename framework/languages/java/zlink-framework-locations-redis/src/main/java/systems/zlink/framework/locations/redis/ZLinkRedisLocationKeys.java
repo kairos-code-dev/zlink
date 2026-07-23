@@ -1,5 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import systems.zlink.framework.locations.ZLinkLocationKind;
 
 final class ZLinkRedisLocationKeys {
@@ -47,6 +49,58 @@ final class ZLinkRedisLocationKeys {
 
     String stampKey(String tag, String meshName) {
         return meshName == null ? prefix + ":stamp:" + tag : prefix + ":stamp:" + tag + ":" + meshName;
+    }
+
+    String authorityRowKey(String authorityKey) {
+        return authorityRowKeyPrefix() + encode(authorityKey);
+    }
+
+    String authorityRowKeyPrefix() {
+        return authorityBase() + "row:";
+    }
+
+    String authorityIndexKey() {
+        return authorityBase() + "index";
+    }
+
+    String authorityRevisionKey() {
+        return authorityBase() + "revision";
+    }
+
+    String authorityObjectGenerationKey() {
+        return authorityBase() + "object-generation";
+    }
+
+    String authorityOwnerGenerationKey() {
+        return authorityBase() + "owner-generation";
+    }
+
+    String authorityReservationKey(String authorityKey) {
+        return authorityBase() + "reservation:" + encode(authorityKey);
+    }
+
+    String authorityAggregateKey(java.util.UUID aggregateId) {
+        return authorityBase() + "aggregate:" + aggregateId;
+    }
+
+    String encodedAuthorityKey(String authorityKey) {
+        return encode(authorityKey);
+    }
+
+    String decodeAuthorityKey(String encoded) {
+        return new String(
+            Base64.getUrlDecoder().decode(encoded),
+            StandardCharsets.UTF_8);
+    }
+
+    private String authorityBase() {
+        return prefix + ":{authority}:";
+    }
+
+    private static String encode(String value) {
+        return Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
     static String tagOf(ZLinkLocationKind kind) {

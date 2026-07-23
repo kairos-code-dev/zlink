@@ -147,6 +147,7 @@ final class ZLinkActorSessionCoordinator {
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
         return runtime.submitActorDispatch(
                 actor.actorId(),
+                ZLinkActorAcceptedJournal.encode(actor.actorId(), header, payload),
                 () -> invokeLocalDispatch(
                     localDispatch,
                     new LocalDispatch(actor, joinedSpotRid),

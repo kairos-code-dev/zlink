@@ -53,12 +53,20 @@ public final class ZLinkAsyncSerialQueue {
     public synchronized CompletionStage<Void> enqueueRelocatable(
         byte[] record,
         Supplier<CompletionStage<Void>> operation) {
+        return enqueueRelocatable(record, operation, () -> { });
+    }
+
+    public synchronized CompletionStage<Void> enqueueRelocatable(
+        byte[] record,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
         java.util.Objects.requireNonNull(record, "record");
+        java.util.Objects.requireNonNull(relocationRelease, "relocationRelease");
         if (relocated) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("queue owner has relocated"));
         }
-        return enqueueAccepted(record.clone(), operation);
+        return enqueueAccepted(record.clone(), operation, relocationRelease);
     }
 
     public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
@@ -87,6 +95,13 @@ public final class ZLinkAsyncSerialQueue {
     private CompletionStage<Void> enqueueAccepted(
         byte[] record,
         Supplier<CompletionStage<Void>> operation) {
+        return enqueueAccepted(record, operation, () -> { });
+    }
+
+    private CompletionStage<Void> enqueueAccepted(
+        byte[] record,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
         java.util.Objects.requireNonNull(operation, "operation");
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
@@ -96,6 +111,7 @@ public final class ZLinkAsyncSerialQueue {
             nextSequence++,
             record,
             operation,
+            relocationRelease,
             new CompletableFuture<>(),
             ZLinkFlowContext.current());
         if (record != null && relocation != null) {
@@ -198,8 +214,14 @@ public final class ZLinkAsyncSerialQueue {
         relocation = null;
         relocated = true;
         for (Entry entry : released) {
-            entry.result.complete(null);
-            releaseRelocatedCapacity();
+            try {
+                entry.relocationRelease.run();
+                entry.result.complete(null);
+            } catch (RuntimeException failure) {
+                entry.result.completeExceptionally(failure);
+            } finally {
+                releaseRelocatedCapacity();
+            }
         }
         return Optional.of(held);
     }
@@ -447,6 +469,7 @@ public final class ZLinkAsyncSerialQueue {
         private final long sequence;
         private final byte[] record;
         private final Supplier<CompletionStage<Void>> operation;
+        private final Runnable relocationRelease;
         private final CompletableFuture<Void> result;
         private final ZLinkFlowContext.State flow;
 
@@ -454,11 +477,13 @@ public final class ZLinkAsyncSerialQueue {
             long sequence,
             byte[] record,
             Supplier<CompletionStage<Void>> operation,
+            Runnable relocationRelease,
             CompletableFuture<Void> result,
             ZLinkFlowContext.State flow) {
             this.sequence = sequence;
             this.record = record;
             this.operation = operation;
+            this.relocationRelease = relocationRelease;
             this.result = result;
             this.flow = flow;
         }

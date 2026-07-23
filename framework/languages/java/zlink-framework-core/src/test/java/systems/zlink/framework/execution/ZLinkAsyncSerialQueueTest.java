@@ -309,6 +309,28 @@ final class ZLinkAsyncSerialQueueTest {
             .isCompletedExceptionally());
     }
 
+    @Test
+    void relocationCommitReleasesSourceResourcesWithoutRunningHandler()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        AtomicReference<Boolean> released = new AtomicReference<>(false);
+        AtomicReference<Boolean> ran = new AtomicReference<>(false);
+        ZLinkAsyncSerialQueue.RelocationSeal seal =
+            queue.trySealRelocation().orElseThrow();
+        CompletableFuture<Void> held = queue.enqueueRelocatable(
+            new byte[] {7},
+            () -> {
+                ran.set(true);
+                return CompletableFuture.completedFuture(null);
+            },
+            () -> released.set(true)).toCompletableFuture();
+
+        assertEquals(1, queue.commitRelocation(seal).orElseThrow().size());
+        held.get(3, TimeUnit.SECONDS);
+        assertTrue(released.get());
+        assertFalse(ran.get());
+    }
+
     private static void waitForSize(
         List<String> values,
         int expected) throws Exception {

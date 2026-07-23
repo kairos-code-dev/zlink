@@ -1,6 +1,7 @@
 package systems.zlink.framework.locations.redis;
 
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.codec.StringCodec;
@@ -8,15 +9,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 final class ZLinkRedisLocationConnection {
-    private final ZLinkRedisLocationOptions options;
+    private final RedisURI redisUri;
     private final RedisClient client;
     private CompletableFuture<StatefulRedisConnection<String, String>> connection;
     private CompletionStage<Void> closeStage;
     private boolean closed;
 
     ZLinkRedisLocationConnection(ZLinkRedisLocationOptions options) {
-        this.options = options;
-        this.client = RedisClient.create(options.redisUri());
+        this(options.redisUri());
+    }
+
+    ZLinkRedisLocationConnection(RedisURI redisUri) {
+        this.redisUri = redisUri;
+        this.client = RedisClient.create(redisUri);
     }
 
     CompletionStage<RedisAsyncCommands<String, String>> commands() {
@@ -52,7 +57,7 @@ final class ZLinkRedisLocationConnection {
         }
 
         CompletableFuture<StatefulRedisConnection<String, String>> created =
-            client.connectAsync(StringCodec.UTF8, options.redisUri()).toCompletableFuture();
+            client.connectAsync(StringCodec.UTF8, redisUri).toCompletableFuture();
         connection = created;
         created.whenComplete((ignored, failure) -> {
             if (failure != null) {

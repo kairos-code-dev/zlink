@@ -3,6 +3,8 @@ package systems.zlink.framework.runtime.actors;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -36,7 +38,14 @@ final class ZLinkActorDispatchSerials {
     CompletionStage<Void> enqueue(
         QueuedTurn turn,
         Supplier<CompletionStage<Void>> operation) {
-        return turn.queue.enqueue(() -> {
+        return enqueue(turn, null, operation);
+    }
+
+    CompletionStage<Void> enqueue(
+        QueuedTurn turn,
+        byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation) {
+        Supplier<CompletionStage<Void>> turnOperation = () -> {
             synchronized (this) {
                 activeActorIds.add(turn.actorId);
             }
@@ -46,7 +55,36 @@ final class ZLinkActorDispatchSerials {
                         activeActorIds.remove(turn.actorId);
                     }
                 });
-        });
+        };
+        return acceptedJournalRecord == null
+            ? turn.queue.enqueue(turnOperation)
+            : turn.queue.enqueueRelocatable(
+                acceptedJournalRecord,
+                turnOperation);
+    }
+
+    synchronized Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySeal(
+        String actorId) {
+        ZLinkAsyncSerialQueue queue = queues.get(actorId);
+        return queue == null
+            ? Optional.empty()
+            : queue.trySealRelocation();
+    }
+
+    synchronized boolean abort(
+        String actorId,
+        ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        ZLinkAsyncSerialQueue queue = queues.get(actorId);
+        return queue != null && queue.abortRelocation(seal);
+    }
+
+    synchronized Optional<List<ZLinkAsyncSerialQueue.QueuedRecord>> commit(
+        String actorId,
+        ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        ZLinkAsyncSerialQueue queue = queues.get(actorId);
+        return queue == null
+            ? Optional.empty()
+            : queue.commitRelocation(seal);
     }
 
     <T> CompletionStage<T> runTurn(

@@ -208,8 +208,10 @@ final class SpotActivation
         }
         List<CompletableFuture<Void>> completions = new ArrayList<>(routes.size());
         for (ZLinkBackendReceived received : routes) {
-            completions.add(context.enqueueDispatch(
-                () -> dispatchRouteAsync(received)).toCompletableFuture());
+            completions.add(context.enqueueAcceptedDispatch(
+                ZLinkSpotAcceptedJournal.encode(received),
+                () -> dispatchRouteAsync(received),
+                received::close).toCompletableFuture());
         }
         return CompletableFuture.allOf(
             completions.toArray(CompletableFuture[]::new));

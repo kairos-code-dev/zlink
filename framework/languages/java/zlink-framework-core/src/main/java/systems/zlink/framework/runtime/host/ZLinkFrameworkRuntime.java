@@ -162,6 +162,17 @@ public final class ZLinkFrameworkRuntime
                 this.registration.relocationStore());
         }
         this.locationStores = locationSubsystem.locationStores();
+        if (this.locationStores != null
+            && this.locationStores.authorityStore() != null
+            && this.registration.relocationStore() != null) {
+            runtimeHandlers.add(
+                systems.zlink.framework.runtime.internal.locations
+                    .ZLinkRelocationPublicationCoordinator.class,
+                new systems.zlink.framework.runtime.internal.locations
+                    .ZLinkRelocationPublicationCoordinator(
+                        this.locationStores.authorityStore(),
+                        this.registration.relocationStore()));
+        }
         if (locationSubsystem.enabled()) {
             this.locationRuntime = locationSubsystem.locationRuntime();
             this.locationRuntimeQuery = locationSubsystem.locationRuntimeQuery();

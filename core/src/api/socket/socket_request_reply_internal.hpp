@@ -63,11 +63,14 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
     zlink::socket_base_t *socket;
     int socket_type;
     std::mutex mutex;
+    std::condition_variable internal_dispatch_cv;
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t> pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
     std::unordered_map<uint64_t, dealer_reply_target_t> dealer_reply_targets;
     uint64_t dealer_next_reply_token;
     bool internal_dispatch_installed;
+    bool internal_dispatch_installing;
+    bool closing;
     zlink::internal_pair_queue::queue_t recv_queue;
     zlink::request_completion::queue_state_t completion;
 };

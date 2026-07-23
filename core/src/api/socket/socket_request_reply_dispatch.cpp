@@ -112,25 +112,47 @@ int ensure_internal_dispatch_installed (const std::shared_ptr<socket_request_rep
         errno = EFAULT;
         return -1;
     }
-    if (ensure_recv_queue_ready (state_) != 0)
-        return -1;
-
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    if (state_->internal_dispatch_installed)
-        return 0;
-
-    if (state_->socket->socket_msg_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
+    {
+        std::unique_lock<std::mutex> lock (state_->mutex);
+        while (state_->internal_dispatch_installing)
+            state_->internal_dispatch_cv.wait (lock);
+        if (state_->closing) {
+            errno = ETERM;
+            return -1;
+        }
+        if (state_->internal_dispatch_installed)
+            return 0;
+        if (zlink::internal_pair_queue::ensure (state_->socket->get_ctx (),
+                                                "zlink.router.reqrep.recv",
+                                                &state_->recv_queue)
+            != 0)
+            return -1;
+        state_->internal_dispatch_installing = true;
     }
 
-    if (state_->socket->socket_set_msg_handler_with_userdata (&socket_request_reply_dispatch, NULL,
-                                                              state_.get ())
-        != 0)
-        return -1;
+    int rc = 0;
+    if (state_->socket->socket_msg_dispatch_active ()) {
+        errno = EBUSY;
+        rc = -1;
+    } else {
+        rc = state_->socket->socket_set_msg_handler_with_userdata (
+          &socket_request_reply_dispatch, NULL, state_.get ());
+    }
 
-    state_->internal_dispatch_installed = true;
-    return 0;
+    int saved_errno = rc == 0 ? 0 : errno;
+    {
+        std::lock_guard<std::mutex> lock (state_->mutex);
+        state_->internal_dispatch_installing = false;
+        if (rc == 0)
+            state_->internal_dispatch_installed = true;
+        if (state_->closing) {
+            rc = -1;
+            saved_errno = ETERM;
+        }
+    }
+    state_->internal_dispatch_cv.notify_all ();
+    errno = saved_errno;
+    return rc;
 }
 
 int ensure_recv_queue_ready (const std::shared_ptr<socket_request_reply_state_t> &state_)
@@ -141,6 +163,10 @@ int ensure_recv_queue_ready (const std::shared_ptr<socket_request_reply_state_t>
     }
 
     std::lock_guard<std::mutex> lock (state_->mutex);
+    if (state_->closing) {
+        errno = ETERM;
+        return -1;
+    }
     return zlink::internal_pair_queue::ensure (state_->socket->get_ctx (),
                                                "zlink.router.reqrep.recv", &state_->recv_queue);
 }
@@ -166,6 +192,19 @@ int drain_close_request_reply_socket (socket_handle_t handle_)
     std::shared_ptr<socket_request_reply_state_t> state = handle_.socket->request_reply_state ();
     if (!state)
         return 0;
+
+    bool stop_dispatch = false;
+    {
+        std::unique_lock<std::mutex> lock (state->mutex);
+        state->closing = true;
+        while (state->internal_dispatch_installing)
+            state->internal_dispatch_cv.wait (lock);
+        stop_dispatch = state->internal_dispatch_installed;
+    }
+    if (stop_dispatch && handle_.socket->socket_msg_dispatch_active ()
+        && zlink::socket_base_t::current_socket_msg_dispatch_socket () != handle_.socket) {
+        (void) handle_.socket->socket_msg_dispatch_stop ();
+    }
 
     std::vector<pending_request_t> pending;
     {
@@ -200,24 +239,26 @@ void cleanup_request_reply_socket (socket_handle_t handle_)
     std::vector<std::shared_ptr<zlink::request_timeout::task_t>> timeout_tasks;
     bool close_recv_queue = false;
     std::shared_ptr<socket_request_reply_state_t> state = handle_.socket->request_reply_state ();
-    if (state && state->internal_dispatch_installed
-        && handle_.socket->socket_msg_dispatch_active ()) {
-        (void) handle_.socket->socket_msg_dispatch_stop ();
-    }
     if (state) {
-        std::lock_guard<std::mutex> state_lock (state->mutex);
-        state->internal_dispatch_installed = false;
-        for (std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t>::iterator it =
-               state->pending_requests.begin ();
-             it != state->pending_requests.end (); ++it) {
-            timeout_tasks.push_back (it->second.timeout_task);
+        {
+            std::lock_guard<std::mutex> state_lock (state->mutex);
+            state->internal_dispatch_installed = false;
+            state->internal_dispatch_installing = false;
+            state->closing = true;
+            for (std::unordered_map<pending_key_t, pending_request_t,
+                                    pending_key_hash_t>::iterator it =
+                   state->pending_requests.begin ();
+                 it != state->pending_requests.end (); ++it) {
+                timeout_tasks.push_back (it->second.timeout_task);
+            }
+            state->pending_requests.clear ();
+            state->pending_request_keys_by_seq.clear ();
+            state->pending_sequences.clear ();
+            state->dealer_reply_targets.clear ();
+            close_recv_queue = true;
+            zlink::request_completion::close (&state->completion);
         }
-        state->pending_requests.clear ();
-        state->pending_request_keys_by_seq.clear ();
-        state->pending_sequences.clear ();
-        state->dealer_reply_targets.clear ();
-        close_recv_queue = true;
-        zlink::request_completion::close (&state->completion);
+        state->internal_dispatch_cv.notify_all ();
     }
     if (state && close_recv_queue)
         zlink::internal_pair_queue::close_and_wait (&state->recv_queue);

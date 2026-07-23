@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
+
+#include <vector>
+
 #include "sockets/internal/fq.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
@@ -127,13 +130,25 @@ void zlink::fq_t::arm_dispatch ()
 {
     normalize_state ();
 
-    const pipes_t::size_type limit = _active;
-    for (pipes_t::size_type i = 0; i < limit; ++i) {
-        pipe_t *pipe = _pipes[i];
+    std::vector<pipe_t *> pipes;
+    pipes.reserve (_pipes.size ());
+    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i)
+        pipes.push_back (_pipes[i]);
+
+    for (size_t i = 0; i < pipes.size (); ++i) {
+        pipe_t *pipe = pipes[i];
         if (!pipe)
             continue;
-        pipe->check_read ();
-        deactivate (pipe);
+
+        if (pipe->check_read ()) {
+            // A read-activation command may still be pending when dispatch is
+            // installed. Activate readable inactive pipes immediately so the
+            // installation drain consumes messages already in the pipe.
+            activated (pipe);
+        } else {
+            // Empty active pipes must produce a future read-activation edge.
+            deactivate (pipe);
+        }
     }
 }
 

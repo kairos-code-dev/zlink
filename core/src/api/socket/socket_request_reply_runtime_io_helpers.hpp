@@ -24,6 +24,23 @@ inline void assign_routing_id_compact (zlink_routing_id_t *dest_, const zlink_ro
     zlink::copy_routing_id_from_bytes (src_.data, src_.size, dest_);
 }
 
+inline int effective_recv_timeout_ms (zlink::socket_base_t *socket_,
+                                      zlink_recv_flags_t flags_,
+                                      int *timeout_ms_out_)
+{
+    if (!socket_ || !timeout_ms_out_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if ((flags_ & ZLINK_DONTWAIT) != 0) {
+        *timeout_ms_out_ = 0;
+        return 0;
+    }
+
+    size_t timeout_size = sizeof (*timeout_ms_out_);
+    return socket_->getsockopt (ZLINK_INTERNAL_OPT_RCVTIMEO, timeout_ms_out_, &timeout_size);
+}
+
 struct router_mandatory_scope_t
 {
     router_mandatory_scope_t () : socket (NULL), restore_required (false), original_value (0) {}

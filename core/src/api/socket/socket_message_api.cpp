@@ -47,11 +47,62 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         return zlink::recv_result_internal::from_errno (errno);
     }
 
-    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> request_state =
-      zlink::socket_reqrep_internal::find_request_reply_state (handle);
-
     const int type = socket_type (handle);
     const bool expose_source_rid = type == ZLINK_CORE_SOCKET_STREAM;
+    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> request_state;
+    const bool use_dispatch_queue = type == ZLINK_CORE_SOCKET_DEALER;
+    if (use_dispatch_queue) {
+        request_state =
+          zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
+        if (!request_state
+            || zlink::socket_reqrep_internal::ensure_internal_dispatch_installed (request_state)
+                 != 0
+            || zlink::socket_reqrep_internal::ensure_recv_queue_ready (request_state) != 0)
+            return zlink::recv_result_internal::from_errno (errno);
+        handle.socket->socket_msg_dispatch_drain_pending ();
+    } else {
+        request_state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
+    }
+    zlink::socket_base_t *recv_source_socket =
+      use_dispatch_queue ? request_state->recv_queue.rx_socket () : handle.socket;
+    int receive_timeout_ms = -1;
+    if (use_dispatch_queue
+        && zlink::socket_reqrep_internal::effective_recv_timeout_ms (
+             handle.socket, flags_, &receive_timeout_ms)
+             != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+    zlink::clock_t receive_clock;
+    const uint64_t receive_deadline_ms =
+      receive_timeout_ms > 0
+        ? receive_clock.now_ms () + static_cast<uint64_t> (receive_timeout_ms)
+        : 0;
+    auto remaining_receive_timeout_ms = [&] () -> int {
+        if (receive_timeout_ms <= 0)
+            return receive_timeout_ms;
+        const uint64_t now_ms = receive_clock.now_ms ();
+        return now_ms >= receive_deadline_ms
+                 ? 0
+                 : static_cast<int> (receive_deadline_ms - now_ms);
+    };
+    auto recv_parts_once = [&] (zlink_routing_id_t *source_rid_,
+                                zlink_msg_t **parts_,
+                                size_t *part_count_,
+                                zlink_recv_flags_t recv_flags_) -> int {
+        if (!use_dispatch_queue)
+            return zlink_socket_recv_internal (
+              s_, source_rid_, parts_, part_count_,
+              static_cast<zlink_send_flags_t> (recv_flags_));
+
+        uint8_t message_type = 0;
+        uint64_t request_seq = 0;
+        if (source_rid_)
+            source_rid_->size = 0;
+        const int timeout_ms =
+          (recv_flags_ & ZLINK_DONTWAIT) != 0 ? 0 : remaining_receive_timeout_ms ();
+        return zlink::socket_reqrep_internal::recv_internal_dealer_queue (
+          &request_state->recv_queue, &message_type, &request_seq, parts_, part_count_,
+          static_cast<int> (recv_flags_), timeout_ms);
+    };
     if (type == ZLINK_CORE_SOCKET_PUB || type == ZLINK_CORE_SOCKET_XPUB
         || type == ZLINK_CORE_SOCKET_SUB || type == ZLINK_CORE_SOCKET_XSUB
         || type == ZLINK_CORE_SOCKET_ROUTER) {
@@ -73,7 +124,8 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         zlink::socket_base_t *signal_socket =
           request_state ? zlink::socket_reqrep_internal::completion_signal_socket (request_state)
                         : NULL;
-        const bool wait_for_completion_signal = blocking && signal_socket != NULL;
+        const bool wait_for_completion_signal =
+          blocking && (signal_socket != NULL || use_dispatch_queue);
         const zlink_send_flags_t recv_flags = static_cast<zlink_send_flags_t> (
           wait_for_completion_signal ? (flags_ | ZLINK_DONTWAIT) : flags_);
 
@@ -82,7 +134,8 @@ zlink_recv_result_t zlink_recv_part (void *s_,
             // request completions. Drain before each recv attempt so completed
             // replies are delivered without waiting for another poll timeout.
             drain_socket_reply_completions_for_recv (s_, request_state);
-            if (zlink_socket_recv_internal (s_, &source_rid, &parts, &part_count, recv_flags)
+            if (recv_parts_once (&source_rid, &parts, &part_count,
+                                 static_cast<zlink_recv_flags_t> (recv_flags))
                 == 0) {
                 break;
             }
@@ -91,8 +144,13 @@ zlink_recv_result_t zlink_recv_part (void *s_,
 
             bool input_ready = false;
             bool signal_ready = false;
+            const int wait_timeout_ms = remaining_receive_timeout_ms ();
+            if (wait_timeout_ms == 0) {
+                errno = EAGAIN;
+                return zlink::recv_result_internal::from_errno (errno);
+            }
             const int wait_rc = zlink::request_completion::wait_input_or_signal (
-              handle.socket, signal_socket, -1, &input_ready, &signal_ready);
+              recv_source_socket, signal_socket, wait_timeout_ms, &input_ready, &signal_ready);
             if (wait_rc <= 0) {
                 if (wait_rc == 0)
                     errno = EAGAIN;
@@ -137,7 +195,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         }
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
-          helper_state, zlink::part_helper_internal::recv_family_basic, handle.socket,
+          helper_state, zlink::part_helper_internal::recv_family_basic, recv_source_socket,
           expose_source_rid ? &source_rid : NULL, 0, parts, part_count,
           std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
@@ -170,7 +228,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
     bool first_part = false;
     zlink::socket_base_t *source_socket = NULL;
     if (zlink::part_helper_internal::prepare_recv_step (
-          s_, zlink::part_helper_internal::recv_family_basic, handle.socket, &helper_state,
+          s_, zlink::part_helper_internal::recv_family_basic, recv_source_socket, &helper_state,
           &first_part, &source_socket)
         != 0) {
         return zlink::recv_result_internal::from_errno (errno);
@@ -181,8 +239,7 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         memset (&source_rid, 0, sizeof (source_rid));
-        if (zlink_socket_recv_internal (s_, &source_rid, &parts, &part_count,
-                                        static_cast<zlink_send_flags_t> (flags_))
+        if (recv_parts_once (&source_rid, &parts, &part_count, flags_)
             != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
             return zlink::recv_result_internal::from_errno (errno);
@@ -220,8 +277,8 @@ zlink_recv_result_t zlink_recv_part (void *s_,
         }
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
-          helper_state, zlink::part_helper_internal::recv_family_basic, handle.socket, &source_rid,
-          0, parts, part_count, std::this_thread::get_id ());
+          helper_state, zlink::part_helper_internal::recv_family_basic, recv_source_socket,
+          &source_rid, 0, parts, part_count, std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);

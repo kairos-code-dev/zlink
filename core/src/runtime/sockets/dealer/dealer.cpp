@@ -161,7 +161,9 @@ void zlink::dealer_t::xread_activated (pipe_t *pipe_)
         return;
     zlink::drain_socket_dispatch_loop (
       [this] (msg_t *msg_, pipe_t **pipe_out_) { return recvpipe (msg_, pipe_out_); },
-      [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
+      [this] (msg_t *msg_, pipe_t *pipe_) {
+          return socket_msg_dispatch_from_io (msg_, pipe_);
+      });
 }
 
 void zlink::dealer_t::xwrite_activated (pipe_t *pipe_)
@@ -234,7 +236,9 @@ void zlink::dealer_t::xdispatch_io ()
         return;
     zlink::drain_socket_dispatch_loop (
       [this] (msg_t *msg_, pipe_t **pipe_out_) { return recvpipe (msg_, pipe_out_); },
-      [this] (msg_t *msg_, pipe_t *pipe_) { return xsocket_msg_dispatch (msg_, pipe_); });
+      [this] (msg_t *msg_, pipe_t *pipe_) {
+          return socket_msg_dispatch_from_io (msg_, pipe_);
+      });
 }
 
 int zlink::dealer_t::apply_peer_weight (pipe_t *pipe_, uint32_t weight_)

@@ -112,6 +112,25 @@ int poller_add_hidden_completion_registration (poller_handle_t *poller_,
     return 0;
 }
 
+int poller_add_hidden_receive_registration (poller_handle_t *poller_,
+                                            zlink::socket_base_t *receive_socket_,
+                                            void *subject_,
+                                            void *user_data_,
+                                            const std::shared_ptr<void> &state_ref_)
+{
+    if (!poller_ || !receive_socket_ || !subject_ || !state_ref_) {
+        errno = EFAULT;
+        return -1;
+    }
+    if (poller_add_registration (poller_, receive_socket_, user_data_, ZLINK_POLLIN, subject_,
+                                 poller_subject_socket_request_receive)
+        != 0)
+        return -1;
+    poller_->registrations.back ().state_ref = state_ref_;
+    errno = 0;
+    return 0;
+}
+
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_)
 {
     if (!poller_)

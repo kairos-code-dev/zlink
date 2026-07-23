@@ -104,29 +104,42 @@ static int send_prefix_sequence_once (zlink::socket_base_t *socket_,
                                       int flags_,
                                       zlink::socket_public_send_scope_t &scope_)
 {
+    std::vector<zlink_msg_t> prepared_prefixes (prefix_count_);
+    size_t prepared_count = 0;
+    for (; prepared_count < prefix_count_; ++prepared_count) {
+        if (zlink_msg_init_size (&prepared_prefixes[prepared_count],
+                                 prefixes_[prepared_count].size)
+            != 0) {
+            const int err = errno;
+            for (size_t i = 0; i < prepared_count; ++i)
+                (void) zlink_msg_close (&prepared_prefixes[i]);
+            errno = err;
+            return -1;
+        }
+
+        if (prefixes_[prepared_count].size > 0)
+            memcpy (zlink_msg_data (&prepared_prefixes[prepared_count]),
+                    prefixes_[prepared_count].data, prefixes_[prepared_count].size);
+    }
+
     bool started = rollback_started_;
 
     for (size_t i = 0; i < prefix_count_; ++i) {
-        zlink::msg_t prefix_msg;
-        if (prefix_msg.init_size (prefixes_[i].size) != 0)
-            return -1;
-
-        if (prefixes_[i].size > 0)
-            memcpy (prefix_msg.data (), prefixes_[i].data, prefixes_[i].size);
-
         const bool has_following = (i + 1 < prefix_count_) || part_count_ > 0;
         if (zlink::multipart_send_facade_t::send_scoped (
-              socket_, &prefix_msg,
+              socket_,
+              reinterpret_cast<zlink::msg_t *> (&prepared_prefixes[i]),
               (has_following ? ZLINK_SNDMORE : 0) | flags_ | prefixes_[i].frame_flags, scope_)
             != 0) {
             const int err = errno;
             if (started)
                 (void) zlink::multipart_send_facade_t::rollback_scoped (socket_, scope_);
-            (void) prefix_msg.close ();
+            for (size_t close_index = i; close_index < prefix_count_; ++close_index)
+                (void) zlink_msg_close (&prepared_prefixes[close_index]);
             errno = err;
             return -1;
         }
-        (void) prefix_msg.close ();
+        (void) zlink_msg_close (&prepared_prefixes[i]);
         started = has_following;
     }
 
@@ -248,7 +261,7 @@ int zlink::logical_multipart_send (socket_base_t *socket_,
     }
 
     zlink::socket_public_send_scope_t send_scope =
-      zlink::multipart_send_facade_t::make_scope (socket_, false);
+      zlink::multipart_send_facade_t::make_scope (socket_, true);
     if (!send_scope.acquired ())
         return -1;
 

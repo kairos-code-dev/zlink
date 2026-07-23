@@ -203,9 +203,11 @@ int zlink_poller_wait (void *poller_,
     const uint64_t deadline_ms =
       timeout_ > 0 ? clock.now_ms () + static_cast<uint64_t> (timeout_) : 0;
     while (true) {
-        poller->native_events.resize (static_cast<size_t> (n_events_));
+        const int native_capacity =
+          std::max (n_events_, static_cast<int> (poller->registrations.size ()));
+        poller->native_events.resize (static_cast<size_t> (native_capacity));
         const int rc = poller->poller.wait (
-          poller->native_events.empty () ? NULL : poller->native_events.data (), n_events_,
+          poller->native_events.empty () ? NULL : poller->native_events.data (), native_capacity,
           remaining_timeout_ms (timeout_, clock, deadline_ms));
         if (rc < 0) {
             if (errno == EAGAIN) {
@@ -247,18 +249,55 @@ int zlink_poller_wait (void *poller_,
             if (hidden_rc > 0)
                 continue;
 
+            zlink_poller_event_t candidate;
             if (poller_fill_public_event_from_registration (registration,
-                                                            poller->native_events[i],
-                                                            &events_[public_count])
+                                                            poller->native_events[i], &candidate)
                 != 0) {
                 if (error_out_)
                     *error_out_ = zlink::config_result_internal::from_errno (errno);
                 return -1;
             }
-            ++public_count;
+            if (candidate.events == 0)
+                continue;
+            int duplicate_index = -1;
+            for (int j = 0; j < public_count; ++j) {
+                if (events_[j].source_kind == candidate.source_kind
+                    && events_[j].socket == candidate.socket && events_[j].fd == candidate.fd
+                    && events_[j].timer == candidate.timer) {
+                    duplicate_index = j;
+                    break;
+                }
+            }
+            if (duplicate_index >= 0) {
+                events_[duplicate_index].events =
+                  static_cast<short> (events_[duplicate_index].events | candidate.events);
+            } else if (public_count < n_events_) {
+                events_[public_count++] = candidate;
+            }
         }
 
         if (public_count > 0) {
+            for (int i = 0; i < public_count; ++i) {
+                if (events_[i].source_kind != ZLINK_POLLER_SOURCE_SOCKET
+                    || !events_[i].socket)
+                    continue;
+                const int primary_index = poller_find_registration_index (
+                  poller, events_[i].socket, poller_subject_none);
+                if (primary_index < 0)
+                    continue;
+                const poller_registration_t &primary =
+                  poller->registrations[static_cast<size_t> (primary_index)];
+                const short other_events =
+                  static_cast<short> (primary.events & ~ZLINK_POLLIN);
+                uint32_t ready_events = 0;
+                if (other_events != 0
+                    && static_cast<zlink::socket_base_t *> (primary.socket)
+                           ->get_events (other_events, &ready_events)
+                         == 0) {
+                    events_[i].events =
+                      static_cast<short> (events_[i].events | ready_events);
+                }
+            }
             if (error_out_)
                 *error_out_ = ZLINK_CONFIG_OK;
             return public_count;

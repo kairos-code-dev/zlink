@@ -2,27 +2,22 @@
 
 #include "utils/precompiled.hpp"
 
-#include <limits>
 #include <memory>
-#include <vector>
 
 #include "api/socket/part_helper_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_runtime_io_helpers.hpp"
 #include "api/socket/socket_request_reply_submit_internal.hpp"
 #include "api/socket/socket_request_reply_wait_internal.hpp"
 #include "core/socket_poller.hpp"
-#include "core/recv_internal.hpp"
-#include "core/recv_tls_view.hpp"
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
 namespace
 {
-const size_t stack_request_reply_part_capacity = 8;
-
 struct router_recv_part_metadata_tls_t
 {
     zlink_routing_id_t source_node_rid;
@@ -335,11 +330,14 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
-    bool use_helper_queue = false;
-    if (state) {
-        std::lock_guard<std::mutex> lock (state->mutex);
-        use_helper_queue = state->internal_dispatch_installed;
-    }
+    if (!state || reqrep::ensure_internal_dispatch_installed (state) != 0
+        || reqrep::ensure_recv_queue_ready (state) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+    handle.socket->socket_msg_dispatch_drain_pending ();
+    int receive_timeout_ms = -1;
+    if (reqrep::effective_recv_timeout_ms (handle.socket, flags_, &receive_timeout_ms) != 0)
+        return zlink::recv_result_internal::from_errno (errno);
+
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (dealer_);
     const bool recv_sequence_active =
@@ -348,123 +346,12 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     auto recv_dealer_parts_once = [&] (uint8_t *message_type_out, uint64_t *request_seq_out,
                                        zlink_msg_t **parts_out,
                                        size_t *part_count_out) -> zlink_recv_result_t {
-        if (use_helper_queue) {
-            const int timeout_ms = (flags_ & ZLINK_DONTWAIT) ? 0 : -1;
-            return reqrep::recv_internal_dealer_queue (
-                     &state->recv_queue, message_type_out, request_seq_out, parts_out,
-                     part_count_out, static_cast<int> (flags_), timeout_ms)
-                     == 0
-                   ? ZLINK_RECV_OK
-                   : zlink::recv_result_internal::from_errno (errno);
-        }
-
-        zlink::msg_t current;
-        const int current_init_rc = current.init ();
-        errno_assert (current_init_rc == 0);
-        zlink::pipe_t *source_pipe = NULL;
-        if (handle.socket->recv_pipe (&current, &source_pipe, static_cast<int> (flags_)) != 0)
-            return zlink::recv_result_internal::from_errno (errno);
-
-        std::vector<zlink_msg_t> raw_parts;
-        raw_parts.reserve (stack_request_reply_part_capacity);
-        while (true) {
-            raw_parts.push_back (zlink_msg_t ());
-            zlink_msg_init (&raw_parts.back ());
-            if (reinterpret_cast<zlink::msg_t *> (&raw_parts.back ())->move (current) != 0) {
-                zlink::close_msg_frames (&raw_parts);
-                const int close_rc = current.close ();
-                errno_assert (close_rc == 0);
-                errno = EFAULT;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-
-            if (!zlink::msg_frame_has_more (raw_parts.back ()))
-                break;
-
-            zlink::pipe_t *next_pipe = NULL;
-            zlink_msg_t next;
-            zlink_msg_init (&next);
-            if (handle.socket->recv_pipe (reinterpret_cast<zlink::msg_t *> (&next), &next_pipe, 0)
-                != 0) {
-                zlink_msg_close (&next);
-                zlink::close_msg_frames (&raw_parts);
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-            if (next_pipe != source_pipe) {
-                zlink_msg_close (&next);
-                zlink::close_msg_frames (&raw_parts);
-                errno = EPROTO;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-            if (current.move (*reinterpret_cast<zlink::msg_t *> (&next)) != 0) {
-                zlink_msg_close (&next);
-                zlink::close_msg_frames (&raw_parts);
-                errno = EFAULT;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-        }
-
-        uint8_t message_type = ZLINK_DEALER_MESSAGE_RAW;
-        uint64_t request_seq = 0;
-        size_t start_index = 0;
-        zlink::request_reply::parsed_envelope_t envelope;
-        if (zlink::request_reply::parse_envelope (raw_parts.data (), raw_parts.size (),
-                                                  &envelope)) {
-            start_index = zlink::request_reply::control_part_count;
-            if (envelope.message_type == zlink::request_reply::request_type) {
-                if (!source_pipe) {
-                    zlink::close_msg_frames (&raw_parts);
-                    errno = EPROTO;
-                    return zlink::recv_result_internal::from_errno (errno);
-                }
-                message_type = ZLINK_DEALER_MESSAGE_REQUEST;
-                std::lock_guard<std::mutex> lock (state->mutex);
-                request_seq = reqrep::allocate_dealer_reply_token (state.get ());
-                if (request_seq == 0) {
-                    zlink::close_msg_frames (&raw_parts);
-                    return zlink::recv_result_internal::from_errno (errno);
-                }
-                reqrep::dealer_reply_target_t target;
-                target.pipe = source_pipe;
-                target.request_seq = envelope.request_seq;
-                state->dealer_reply_targets[request_seq] = target;
-            } else {
-                message_type = envelope.message_type == zlink::request_reply::error_reply_type
-                                 ? ZLINK_DEALER_MESSAGE_ERROR_REPLY
-                                 : ZLINK_DEALER_MESSAGE_REPLY;
-                request_seq = envelope.request_seq;
-            }
-            for (size_t i = 0; i < start_index; ++i)
-                zlink_msg_close (&raw_parts[i]);
-        }
-
-        if (start_index >= raw_parts.size ()) {
-            zlink::close_msg_frames (&raw_parts);
-            errno = EPROTO;
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-
-        if (zlink::recv_tls_view::begin (parts_out, part_count_out) != 0) {
-            for (size_t i = start_index; i < raw_parts.size (); ++i)
-                zlink_msg_close (&raw_parts[i]);
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-        for (size_t i = start_index; i < raw_parts.size (); ++i) {
-            if (zlink::recv_tls_view::push (&raw_parts[i]) != 0) {
-                const int saved_errno = errno;
-                zlink::recv_tls_view::abort ();
-                for (size_t j = i; j < raw_parts.size (); ++j)
-                    zlink_msg_close (&raw_parts[j]);
-                errno = saved_errno;
-                return zlink::recv_result_internal::from_errno (errno);
-            }
-        }
-
-        *message_type_out = message_type;
-        *request_seq_out = request_seq;
-        if (zlink::recv_tls_view::commit (parts_out, part_count_out) != 0)
-            return zlink::recv_result_internal::from_errno (errno);
-        return ZLINK_RECV_OK;
+        return reqrep::recv_internal_dealer_queue (
+                 &state->recv_queue, message_type_out, request_seq_out, parts_out,
+                 part_count_out, static_cast<int> (flags_), receive_timeout_ms)
+                 == 0
+               ? ZLINK_RECV_OK
+               : zlink::recv_result_internal::from_errno (errno);
     };
 
     if (!recv_sequence_active) {
@@ -505,8 +392,8 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
           helper_state, zlink::part_helper_internal::recv_family_dealer,
-          use_helper_queue ? state->recv_queue.rx_socket () : handle.socket, NULL, request_seq,
-          parts, part_count, std::this_thread::get_id ());
+          state->recv_queue.rx_socket (), NULL, request_seq, parts, part_count,
+          std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
@@ -528,8 +415,7 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     }
 
     bool first_part = false;
-    zlink::socket_base_t *source_socket =
-      use_helper_queue ? state->recv_queue.rx_socket () : handle.socket;
+    zlink::socket_base_t *source_socket = state->recv_queue.rx_socket ();
     if (zlink::part_helper_internal::prepare_recv_step (
           dealer_, zlink::part_helper_internal::recv_family_dealer, source_socket, &helper_state,
           &first_part, &source_socket)

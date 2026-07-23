@@ -10,6 +10,7 @@
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_submit_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
+#include "core/multipart_send_txn.hpp"
 #include "core/msg.hpp"
 #include "core/pipe.hpp"
 #include "utils/routing_id.hpp"
@@ -137,8 +138,10 @@ zlink_submit_result_t request_part_common (void *handle_,
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (handle_);
     bool helper_state_matches_family = false;
+    bool helper_send_active = false;
     if (helper_state) {
         std::lock_guard<std::mutex> lock (helper_state->mutex);
+        helper_send_active = helper_state->send.active;
         if (helper_state->send.active && helper_state->send.spec.family == family_) {
             spec.request_seq = helper_state->send.spec.request_seq;
             helper_state_matches_family = true;
@@ -195,6 +198,38 @@ zlink_submit_result_t request_part_common (void *handle_,
         zlink::part_helper_internal::consume_send_part (part_);
         errno = EFAULT;
         return zlink::submit_result_internal::from_errno (errno);
+    }
+
+    if (part_flag_ == ZLINK_PART_FINAL && !helper_send_active) {
+        const size_t total_part_count = zlink::request_reply::control_part_count + 1;
+        zlink_msg_t combined[total_part_count];
+        for (size_t i = 0; i < total_part_count; ++i)
+            zlink_msg_init (&combined[i]);
+        if (zlink::request_reply::init_envelope_control_parts (
+              combined, zlink::request_reply::request_type, spec.request_seq)
+              != 0
+            || zlink_msg_move (&combined[zlink::request_reply::control_part_count], part_) != 0) {
+            const int saved_errno = errno;
+            zlink::request_reply::close_built_parts (combined, total_part_count);
+            reqrep::erase_socket_pending_request (request_state, pending_key);
+            zlink::part_helper_internal::consume_send_part (part_);
+            errno = saved_errno;
+            return zlink::submit_result_internal::from_errno (saved_errno);
+        }
+
+        const int send_rc =
+          peer_rid_
+            ? zlink::logical_multipart_send_routed (handle.socket, peer_rid_, combined,
+                                                    total_part_count, flags_)
+            : zlink::logical_multipart_send (handle.socket, combined, total_part_count, flags_);
+        const int saved_errno = errno;
+        zlink::request_reply::close_built_parts (combined, total_part_count);
+        if (send_rc != 0) {
+            reqrep::erase_socket_pending_request (request_state, pending_key);
+            errno = saved_errno;
+            return zlink::submit_result_internal::from_errno (saved_errno);
+        }
+        return ZLINK_SUBMIT_OK;
     }
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> state;

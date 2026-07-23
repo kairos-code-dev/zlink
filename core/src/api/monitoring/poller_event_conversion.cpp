@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "api/monitoring/poller_api_internal.hpp"
+#include "api/socket/socket_request_reply_internal.hpp"
 
 namespace
 {
@@ -92,13 +93,33 @@ int poller_fill_public_event_from_registration (
         return 0;
     }
 
+    if (registration_->subject_kind == poller_subject_socket_request_receive) {
+        event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
+        event_out_->socket = registration_->subject;
+        event_out_->fd = 0;
+        event_out_->timer = NULL;
+        event_out_->user_data = registration_->user_data;
+        event_out_->events = ZLINK_POLLIN;
+        return 0;
+    }
+
     if (registration_->socket) {
         event_out_->source_kind = ZLINK_POLLER_SOURCE_SOCKET;
         event_out_->socket = native_.socket;
         event_out_->fd = native_.fd;
         event_out_->timer = NULL;
         event_out_->user_data = registration_->user_data;
-        event_out_->events = native_.events;
+        short public_events = native_.events;
+        if (registration_->subject_kind == poller_subject_none && registration_->state_ref) {
+            std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
+              std::static_pointer_cast<
+                zlink::socket_reqrep_internal::socket_request_reply_state_t> (
+                registration_->state_ref);
+            std::lock_guard<std::mutex> lock (state->mutex);
+            if (state->internal_dispatch_installed)
+                public_events = static_cast<short> (public_events & ~ZLINK_POLLIN);
+        }
+        event_out_->events = public_events;
         return 0;
     }
 

@@ -50,7 +50,9 @@ socket_request_reply_state_t::socket_request_reply_state_t (zlink::socket_base_t
     socket (socket_),
     socket_type (socket_type_),
     dealer_next_reply_token (1),
-    internal_dispatch_installed (false)
+    internal_dispatch_installed (false),
+    internal_dispatch_installing (false),
+    closing (false)
 {
 }
 
@@ -189,8 +191,7 @@ find_or_create_request_reply_state (socket_handle_t handle_)
         return state;
 
     state.reset (new socket_request_reply_state_t (handle_.socket, socket_type (handle_)));
-    handle_.socket->set_request_reply_state (state);
-    return state;
+    return handle_.socket->set_request_reply_state (state);
 }
 
 std::shared_ptr<socket_request_reply_state_t> find_request_reply_state (socket_handle_t handle_)

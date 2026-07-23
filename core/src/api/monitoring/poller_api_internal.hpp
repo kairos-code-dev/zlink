@@ -25,6 +25,7 @@ enum poller_subject_kind_t
     poller_subject_none = 0,
     poller_subject_fd,
     poller_subject_timer,
+    poller_subject_socket_request_receive,
     poller_subject_socket_request_completion,
     poller_subject_router_request_completion
 };
@@ -128,6 +129,11 @@ int poller_add_hidden_completion_registration (poller_handle_t *poller_,
                                                poller_subject_kind_t subject_kind_,
                                                zlink::request_completion::queue_state_t *queue_,
                                                const std::shared_ptr<void> &state_ref_);
+int poller_add_hidden_receive_registration (poller_handle_t *poller_,
+                                            zlink::socket_base_t *receive_socket_,
+                                            void *subject_,
+                                            void *user_data_,
+                                            const std::shared_ptr<void> &state_ref_);
 int poller_find_registration_index (poller_handle_t *poller_, void *subject_);
 int poller_find_registration_index (poller_handle_t *poller_,
                                     void *subject_,

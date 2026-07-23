@@ -2,10 +2,15 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "api/socket/socket_api_internal.hpp"
+#include "api/socket/socket_request_reply_internal.hpp"
+#include "core/multipart_send_txn.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -127,6 +132,29 @@ zlink_recv_result_t recv_dealer_part_with_retry (void *dealer_,
     }
 
     TEST_FAIL_MESSAGE ("timed out waiting for zlink_dealer_recv_part");
+    return ZLINK_RECV_INTERNAL_ERROR;
+}
+
+zlink_recv_result_t recv_generic_part_with_retry (void *dealer_,
+                                                  zlink_msg_t *part_out_,
+                                                  zlink_part_flag_t *has_more_out_)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    while (std::chrono::steady_clock::now () < deadline) {
+        const zlink_routing_id_t *source_rid = NULL;
+        const zlink_recv_result_t rc =
+          zlink_recv_part (dealer_, &source_rid, part_out_, has_more_out_,
+                           static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
+        if (rc == ZLINK_RECV_OK) {
+            TEST_ASSERT_NULL (source_rid);
+            return rc;
+        }
+        TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        msleep (1);
+    }
+
+    TEST_FAIL_MESSAGE ("timed out waiting for zlink_recv_part");
     return ZLINK_RECV_INTERNAL_ERROR;
 }
 
@@ -518,6 +546,527 @@ void test_dealer_receives_unsolicited_message_after_request_reply ()
 
     test_context_socket_close_zero_linger (dealer);
     test_context_socket_close_zero_linger (router);
+}
+
+void test_concurrent_first_dealer_requests_share_dispatch_install ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "dealer-concurrent", 17));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://zmp-dealer-concurrent-first-install"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://zmp-dealer-concurrent-first-install"));
+    msleep (SETTLE_TIME);
+
+    reply_probe_t reply_a;
+    reply_probe_t reply_b;
+    reply_a.progress_handle = dealer;
+    reply_b.progress_handle = dealer;
+    zlink_submit_result_t submit_a = ZLINK_SUBMIT_INTERNAL_ERROR;
+    zlink_submit_result_t submit_b = ZLINK_SUBMIT_INTERNAL_ERROR;
+    int errno_a = 0;
+    int errno_b = 0;
+    std::mutex gate_mutex;
+    std::condition_variable gate_cv;
+    int ready_count = 0;
+    bool start = false;
+
+    auto submit = [&] (const char *payload_, reply_probe_t *probe_,
+                       zlink_submit_result_t *result_out_, int *errno_out_) {
+        zlink_msg_t request;
+        zlink_msg_init (&request);
+        init_string_part (&request, payload_);
+        {
+            std::unique_lock<std::mutex> lock (gate_mutex);
+            ++ready_count;
+            gate_cv.notify_all ();
+            gate_cv.wait (lock, [&] () { return start; });
+        }
+        *result_out_ =
+          zlink_dealer_request (dealer, &request, 1, &capture_reply, probe_, 0, 3000);
+        *errno_out_ = zlink_errno ();
+    };
+
+    std::thread thread_a (submit, "request-A", &reply_a, &submit_a, &errno_a);
+    std::thread thread_b (submit, "request-B", &reply_b, &submit_b, &errno_b);
+    {
+        std::unique_lock<std::mutex> lock (gate_mutex);
+        gate_cv.wait (lock, [&] () { return ready_count == 2; });
+        start = true;
+    }
+    gate_cv.notify_all ();
+    thread_a.join ();
+    thread_b.join ();
+
+    if (submit_a != ZLINK_SUBMIT_OK)
+        errno = errno_a;
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, submit_a);
+    if (submit_b != ZLINK_SUBMIT_OK)
+        errno = errno_b;
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, submit_b);
+
+    multi_request_probe_t requests;
+    recv_router_request_into_event (router, &requests);
+    recv_router_request_into_event (router, &requests);
+    request_event_t first;
+    request_event_t second;
+    {
+        std::lock_guard<std::mutex> lock (requests.mutex);
+        first = requests.events[0];
+        second = requests.events[1];
+    }
+    send_router_reply_to_event (router, first, "reply-first");
+    send_router_reply_to_event (router, second, "reply-second");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_a));
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_b));
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void run_blocking_dealer_receive_ownership_transition (bool use_dealer_receive_)
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (dealer, "dealer-recv-transition", 22));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://zmp-dealer-recv-ownership-transition"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://zmp-dealer-recv-ownership-transition"));
+    msleep (SETTLE_TIME);
+
+    const zlink_routing_id_t dealer_rid = get_routing_id_value (dealer);
+    std::atomic<bool> recv_started (false);
+    zlink_recv_result_t recv_result = ZLINK_RECV_INTERNAL_ERROR;
+    uint8_t received_message_type = 0xff;
+    uint64_t received_request_seq = std::numeric_limits<uint64_t>::max ();
+    zlink_part_flag_t received_has_more = ZLINK_PART_MORE;
+    bool generic_source_was_null = false;
+    std::string received_payload;
+
+    std::thread recv_thread ([&] () {
+        zlink_msg_t received;
+        zlink_msg_init (&received);
+        recv_started.store (true, std::memory_order_release);
+        if (use_dealer_receive_) {
+            recv_result = zlink_dealer_recv_part (
+              dealer, &received_message_type, &received_request_seq, &received,
+              &received_has_more, static_cast<zlink_recv_flags_t> (0));
+        } else {
+            const zlink_routing_id_t *source_rid = NULL;
+            recv_result = zlink_recv_part (dealer, &source_rid, &received, &received_has_more,
+                                           static_cast<zlink_recv_flags_t> (0));
+            generic_source_was_null = source_rid == NULL;
+        }
+        if (recv_result == ZLINK_RECV_OK) {
+            received_payload.assign (
+              static_cast<const char *> (zlink_msg_data (&received)),
+              zlink_msg_size (&received));
+        }
+        (void) zlink_msg_close (&received);
+    });
+
+    while (!recv_started.load (std::memory_order_acquire))
+        std::this_thread::yield ();
+
+    socket_handle_t handle = as_socket_handle (dealer);
+    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state;
+    bool dispatcher_ready = false;
+    const auto dispatcher_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
+    while (std::chrono::steady_clock::now () < dispatcher_deadline) {
+        state = zlink::socket_reqrep_internal::find_request_reply_state (handle);
+        if (state) {
+            std::lock_guard<std::mutex> lock (state->mutex);
+            dispatcher_ready =
+              state->internal_dispatch_installed && state->recv_queue.rx_socket () != NULL;
+        }
+        if (dispatcher_ready)
+            break;
+        msleep (1);
+    }
+
+    zlink_msg_t request;
+    zlink_msg_init (&request);
+    init_string_part (&request, "request-during-blocking-recv");
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (dealer, &request, 1, &capture_reply, &reply_probe, 0, 3000));
+
+    request_handler_probe_t handler_probe;
+    recv_router_request_into_probe (router, &handler_probe);
+
+    zlink_msg_t unsolicited;
+    zlink_msg_init (&unsolicited);
+    init_string_part (&unsolicited, "unsolicited-during-transition");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &unsolicited, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+
+    recv_thread.join ();
+    send_captured_reply (router, &handler_probe, "reply-after-transition");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+
+    TEST_ASSERT_TRUE_MESSAGE (
+      dispatcher_ready,
+      "blocking DEALER receive did not establish dispatcher ownership before waiting");
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, recv_result);
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, received_has_more);
+    TEST_ASSERT_EQUAL_STRING ("unsolicited-during-transition", received_payload.c_str ());
+    if (use_dealer_receive_) {
+        TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_RAW, received_message_type);
+        TEST_ASSERT_EQUAL_UINT64 (0, received_request_seq);
+    } else {
+        TEST_ASSERT_TRUE (generic_source_was_null);
+    }
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void test_blocking_generic_dealer_recv_owns_dispatch_queue_before_first_request ()
+{
+    run_blocking_dealer_receive_ownership_transition (false);
+}
+
+void test_blocking_typed_dealer_recv_owns_dispatch_queue_before_first_request ()
+{
+    run_blocking_dealer_receive_ownership_transition (true);
+}
+
+void run_dealer_no_input_receive_timeout (bool use_dealer_receive_)
+{
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (dealer);
+    const int timeout_ms = 50;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+
+    zlink_msg_t received;
+    zlink_msg_init (&received);
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    const auto start = std::chrono::steady_clock::now ();
+    zlink_recv_result_t recv_result = ZLINK_RECV_INTERNAL_ERROR;
+    if (use_dealer_receive_) {
+        uint8_t message_type = 0;
+        uint64_t request_seq = 0;
+        recv_result =
+          zlink_dealer_recv_part (dealer, &message_type, &request_seq, &received, &has_more,
+                                  static_cast<zlink_recv_flags_t> (0));
+    } else {
+        const zlink_routing_id_t *source_rid = NULL;
+        recv_result = zlink_recv_part (dealer, &source_rid, &received, &has_more,
+                                       static_cast<zlink_recv_flags_t> (0));
+        TEST_ASSERT_NULL (source_rid);
+    }
+    const long elapsed_ms =
+      static_cast<long> (std::chrono::duration_cast<std::chrono::milliseconds> (
+                           std::chrono::steady_clock::now () - start)
+                           .count ());
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, recv_result);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms >= 20,
+                              "configured DEALER receive timeout returned too early");
+    TEST_ASSERT_TRUE_MESSAGE (elapsed_ms < 1000,
+                              "configured DEALER receive timeout was ignored");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&received));
+    test_context_socket_close_zero_linger (dealer);
+}
+
+void test_generic_dealer_recv_honors_configured_no_input_timeout ()
+{
+    run_dealer_no_input_receive_timeout (false);
+}
+
+void test_typed_dealer_recv_honors_configured_no_input_timeout ()
+{
+    run_dealer_no_input_receive_timeout (true);
+}
+
+void test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue ()
+{
+    const char *endpoint = "inproc://zmp-dealer-generic-dispatch-queue";
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "dealer-generic", 14));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
+    msleep (SETTLE_TIME);
+
+    // Establish the ROUTER route before the request helper installs the
+    // DEALER dispatcher, then leave a multipart raw message queued. Handler
+    // installation may synchronously drain this message and must not reenter
+    // while the request-state mutex is held.
+    zlink_msg_t identify;
+    zlink_msg_init (&identify);
+    init_string_part (&identify, "identify");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part (dealer, &identify, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    const zlink_routing_id_t *peer_rid = NULL;
+    uint64_t raw_seq = 1;
+    zlink_msg_t *identify_parts = NULL;
+    size_t identify_part_count = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_router_recv (router, &peer_rid, &raw_seq, &identify_parts, &identify_part_count, 0));
+    TEST_ASSERT_NOT_NULL (peer_rid);
+    TEST_ASSERT_EQUAL_UINT64 (0, raw_seq);
+    zlink_routing_id_t dealer_rid = *peer_rid;
+    zlink_multipart_close (identify_parts, identify_part_count);
+
+    zlink_msg_t queued_first;
+    zlink_msg_t queued_last;
+    zlink_msg_init (&queued_first);
+    zlink_msg_init (&queued_last);
+    init_string_part (&queued_first, "queued-first");
+    init_string_part (&queued_last, "queued-last");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &queued_first, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_MORE));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &queued_last, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+    msleep (SETTLE_TIME);
+
+    zlink_pollitem_t item = {
+      dealer, 0, static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT), 0};
+    TEST_ASSERT_EQUAL_INT (1, zlink_poll (&item, 1, 3000, NULL));
+    TEST_ASSERT_TRUE ((item.revents & ZLINK_POLLIN) != 0);
+
+    void *poller = zlink_poller_new ();
+    TEST_ASSERT_NOT_NULL (poller);
+    void *const marker = reinterpret_cast<void *> (0x1234);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_poller_add (poller, dealer, marker,
+                        static_cast<short> (ZLINK_POLLIN | ZLINK_POLLOUT)));
+
+    zlink_poller_event_t events[2];
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, events, 2, 3000, NULL));
+    TEST_ASSERT_EQUAL_PTR (dealer, events[0].socket);
+    TEST_ASSERT_EQUAL_PTR (marker, events[0].user_data);
+    TEST_ASSERT_TRUE ((events[0].events & ZLINK_POLLIN) != 0);
+
+    zlink_msg_t request;
+    zlink_msg_init (&request);
+    init_string_part (&request, "request");
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (dealer, &request, 1, &capture_reply, &reply_probe, 0, 3000));
+
+    zlink_msg_t received;
+    zlink_part_flag_t has_more = ZLINK_PART_FINAL;
+    zlink_msg_init (&received);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_MORE, has_more);
+    TEST_ASSERT_EQUAL_STRING ("queued-first", part_to_string_and_close (&received).c_str ());
+    zlink_msg_init (&received);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_EQUAL_STRING ("queued-last", part_to_string_and_close (&received).c_str ());
+
+    zlink_msg_init (&received);
+    const zlink_routing_id_t *source_rid = NULL;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_NO_DATA,
+      zlink_recv_part (dealer, &source_rid, &received, &has_more,
+                       static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&received));
+
+    request_handler_probe_t handler_probe;
+    recv_router_request_into_probe (router, &handler_probe);
+    zlink_msg_t ordered_one;
+    zlink_msg_t ordered_two;
+    zlink_msg_init (&ordered_one);
+    zlink_msg_init (&ordered_two);
+    init_string_part (&ordered_one, "ordered-one");
+    init_string_part (&ordered_two, "ordered-two");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &ordered_one, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &ordered_two, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+    send_captured_reply (router, &handler_probe, "reply");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+
+    zlink_msg_init (&received);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
+    TEST_ASSERT_EQUAL_STRING ("ordered-one", part_to_string_and_close (&received).c_str ());
+    zlink_msg_init (&received);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
+    TEST_ASSERT_EQUAL_STRING ("ordered-two", part_to_string_and_close (&received).c_str ());
+
+    // A queued record remains owned by the internal receive queue across a
+    // transport disconnect and is still consumable before socket close.
+    zlink_msg_t before_disconnect;
+    zlink_msg_init (&before_disconnect);
+    init_string_part (&before_disconnect, "before-disconnect");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &before_disconnect, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+    zlink_msg_t queued_at_close;
+    zlink_msg_init (&queued_at_close);
+    init_string_part (&queued_at_close, "queued-at-close");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &dealer_rid, &queued_at_close, ZLINK_SEND_FLAGS_NONE,
+                           ZLINK_PART_FINAL));
+    TEST_ASSERT_EQUAL_INT (1, zlink_poller_wait (poller, events, 2, 3000, NULL));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_disconnect (dealer, endpoint));
+    zlink_msg_init (&received);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK, recv_generic_part_with_retry (dealer, &received, &has_more));
+    TEST_ASSERT_EQUAL_STRING ("before-disconnect", part_to_string_and_close (&received).c_str ());
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK, zlink_connect (dealer, endpoint));
+    msleep (SETTLE_TIME);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_poller_remove (poller, dealer));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_poller_destroy (&poller));
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
+void test_concurrent_dispatch_install_and_close_terminates_cleanly ()
+{
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (dealer);
+    const int linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_option (dealer, ZLINK_OPT_LINGER, &linger, sizeof (linger)));
+
+    socket_handle_t handle = as_socket_handle (dealer);
+    std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t> state =
+      zlink::socket_reqrep_internal::find_or_create_request_reply_state (handle);
+    TEST_ASSERT_NOT_NULL (state.get ());
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink::socket_reqrep_internal::ensure_completion_queue_ready (state));
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        state->internal_dispatch_installing = true;
+    }
+
+    std::mutex close_mutex;
+    std::condition_variable close_cv;
+    bool close_started = false;
+    bool close_returned = false;
+    int drain_result = -1;
+    std::thread close_thread ([&] () {
+        {
+            std::lock_guard<std::mutex> lock (close_mutex);
+            close_started = true;
+        }
+        close_cv.notify_all ();
+        drain_result =
+          zlink::socket_reqrep_internal::drain_close_request_reply_socket (handle);
+        {
+            std::lock_guard<std::mutex> lock (close_mutex);
+            close_returned = true;
+        }
+        close_cv.notify_all ();
+    });
+
+    {
+        std::unique_lock<std::mutex> lock (close_mutex);
+        close_cv.wait (lock, [&] () { return close_started; });
+        (void) close_cv.wait_for (lock, std::chrono::milliseconds (20),
+                                 [&] () { return close_returned; });
+    }
+    bool returned_before_install_finished = false;
+    {
+        std::lock_guard<std::mutex> lock (close_mutex);
+        returned_before_install_finished = close_returned;
+    }
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        state->internal_dispatch_installing = false;
+    }
+    state->internal_dispatch_cv.notify_all ();
+    close_thread.join ();
+
+    bool installed_after_drain = false;
+    {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        installed_after_drain = state->internal_dispatch_installed;
+    }
+    test_context_socket_close_zero_linger (dealer);
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE (
+      0, returned_before_install_finished ? 1 : 0,
+      "close drain returned before dispatch installation completed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE (
+      0, installed_after_drain ? 1 : 0,
+      "dispatch remained installed after close drain completed");
+    (void) drain_result;
+}
+
+void test_prefixed_multipart_second_prefix_allocation_failure_rolls_back ()
+{
+    void *sender = test_context_socket (ZLINK_SOCKET_DEALER);
+    void *receiver = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (sender);
+    TEST_ASSERT_NOT_NULL (receiver);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (receiver, "inproc://zmp-prefixed-allocation-rollback"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (sender, "inproc://zmp-prefixed-allocation-rollback"));
+    msleep (SETTLE_TIME);
+
+    const unsigned char first_prefix = 0x11;
+    const unsigned char second_prefix = 0x22;
+    zlink_msg_t failed_payload;
+    zlink_msg_init (&failed_payload);
+    init_string_part (&failed_payload, "failed-payload");
+    socket_handle_t sender_handle = as_socket_handle (sender);
+    TEST_ASSERT_EQUAL_INT (
+      -1,
+      zlink::logical_multipart_send_prefixed_frames (
+        sender_handle.socket, &first_prefix, sizeof (first_prefix), 0, &second_prefix,
+        std::numeric_limits<size_t>::max (), 0, &failed_payload, 1, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&failed_payload));
+
+    zlink_msg_t after_failure;
+    zlink_msg_init (&after_failure);
+    init_string_part (&after_failure, "after-failure");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part (sender, &after_failure, ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    zlink_msg_t received;
+    zlink_msg_init (&received);
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      recv_generic_part_with_retry (receiver, &received, &has_more));
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_EQUAL_STRING ("after-failure", part_to_string_and_close (&received).c_str ());
+
+    test_context_socket_close_zero_linger (sender);
+    test_context_socket_close_zero_linger (receiver);
 }
 
 void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
@@ -1215,6 +1764,14 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_dealer_to_router_request_reply_basic);
     RUN_TEST (test_dealer_receives_unsolicited_message_after_request_reply);
+    RUN_TEST (test_concurrent_first_dealer_requests_share_dispatch_install);
+    RUN_TEST (test_blocking_generic_dealer_recv_owns_dispatch_queue_before_first_request);
+    RUN_TEST (test_blocking_typed_dealer_recv_owns_dispatch_queue_before_first_request);
+    RUN_TEST (test_generic_dealer_recv_honors_configured_no_input_timeout);
+    RUN_TEST (test_typed_dealer_recv_honors_configured_no_input_timeout);
+    RUN_TEST (test_dispatcher_dealer_generic_recv_and_poller_preserve_raw_queue);
+    RUN_TEST (test_concurrent_dispatch_install_and_close_terminates_cleanly);
+    RUN_TEST (test_prefixed_multipart_second_prefix_allocation_failure_rolls_back);
     RUN_TEST (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_TEST (test_router_to_router_request_reply_basic);
     RUN_TEST (test_connect_only_router_requester_receives_reply);

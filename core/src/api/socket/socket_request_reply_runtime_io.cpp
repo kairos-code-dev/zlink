@@ -43,22 +43,11 @@ int queue_router_message (socket_request_reply_state_t *state_,
     zlink::request_reply::encode_u64_be (request_seq_, seq_buf);
     const routing_id_frame_view_t source_node = routing_id_frame_view (source_node_rid_);
     zlink::socket_base_t *queue_tx = state_->recv_queue.tx_socket ();
-    if (zlink::internal_pair_queue::send_buffer_frame (queue_tx, source_node.data, source_node.size,
-                                                       ZLINK_SNDMORE)
-          != 0
-        || zlink::internal_pair_queue::send_buffer_frame (queue_tx, seq_buf, sizeof (seq_buf),
-                                                          ZLINK_SNDMORE)
-             != 0) {
-        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
+    if (zlink::logical_multipart_send_prefixed_frames (
+          queue_tx, source_node.data, source_node.size, 0, seq_buf, sizeof (seq_buf), 0, parts_,
+          part_count_, 0)
+        != 0) {
         return -1;
-    }
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (queue_tx->send (reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags) != 0) {
-            zlink::request_reply::consume_send_frames_from (parts_, i, part_count_);
-            return -1;
-        }
     }
     return 0;
 }
@@ -123,30 +112,15 @@ int queue_dealer_message (socket_request_reply_state_t *state_,
     unsigned char seq_buf[8];
     zlink::request_reply::encode_u64_be (exported_request_seq, seq_buf);
     zlink::socket_base_t *queue_tx = state_->recv_queue.tx_socket ();
-    if (zlink::internal_pair_queue::send_buffer_frame (queue_tx, type_buf, sizeof (type_buf),
-                                                       ZLINK_SNDMORE)
-          != 0
-        || zlink::internal_pair_queue::send_buffer_frame (queue_tx, seq_buf, sizeof (seq_buf),
-                                                          ZLINK_SNDMORE)
-             != 0) {
+    if (zlink::logical_multipart_send_prefixed_frames (
+          queue_tx, type_buf, sizeof (type_buf), 0, seq_buf, sizeof (seq_buf), 0, parts_,
+          part_count_, 0)
+        != 0) {
         if (stored_reply_target) {
             std::lock_guard<std::mutex> lock (state_->mutex);
             state_->dealer_reply_targets.erase (exported_request_seq);
         }
-        zlink::request_reply::consume_send_frames_from (parts_, 0, part_count_);
         return -1;
-    }
-
-    for (size_t i = 0; i < part_count_; ++i) {
-        const int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (queue_tx->send (reinterpret_cast<zlink::msg_t *> (&parts_[i]), flags) != 0) {
-            if (stored_reply_target) {
-                std::lock_guard<std::mutex> lock (state_->mutex);
-                state_->dealer_reply_targets.erase (exported_request_seq);
-            }
-            zlink::request_reply::consume_send_frames_from (parts_, i, part_count_);
-            return -1;
-        }
     }
     return 0;
 }

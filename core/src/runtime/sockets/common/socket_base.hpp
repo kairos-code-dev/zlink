@@ -289,7 +289,8 @@ class socket_base_t : public own_t,
     void clear_router_request_reply_state ();
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
     request_reply_state () const;
-    void set_request_reply_state (
+    std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
+    set_request_reply_state (
       const std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> &state_);
     void clear_request_reply_state ();
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;

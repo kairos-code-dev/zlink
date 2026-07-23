@@ -154,8 +154,10 @@ void zlink::socket_base_t::socket_msg_dispatch_drain_pending ()
 
     std::lock_guard<std::recursive_mutex> dispatch_lock (
       dispatch_runtime ().socket_msg_dispatch_sync);
-    if (socket_msg_dispatch_active ())
+    if (socket_msg_dispatch_active ()) {
+        xarm_socket_msg_dispatch ();
         xdispatch_io ();
+    }
 }
 
 int zlink::socket_base_t::socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_)

@@ -54,6 +54,25 @@ export interface ZLinkClientServerConnectionCallbacks {
   readonly reconnectOnTermination?: boolean;
 }
 
+type ClientServerDiscoveryDescriptor =
+  Parameters<ServiceDiscoveryRegistry['admitClientServer']>[0];
+
+interface ClientServerPhysicalConnection {
+  readonly channelName: string;
+  readonly endpoint: string;
+  readonly dealer: ZLinkBackendDealerSocket;
+  readonly monitor: ZLinkBackendSocketMonitor;
+  readonly aliases: Set<string>;
+  readonly callbacksByAlias: Map<string, ZLinkClientServerConnectionCallbacks>;
+  physicalConnectionId: symbol;
+  readyConnectionId?: string;
+  admittedDescriptor?: ClientServerDiscoveryDescriptor;
+  nextProbeAt?: number;
+  deadlineAt?: number;
+  outstandingProbeId?: bigint;
+  admissionAttempt?: symbol;
+}
+
 export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
@@ -65,22 +84,13 @@ export class ZLinkChannelSocketRegistry {
     readonly serverRid: string;
     readonly lifecycleGeneration: bigint;
   }>();
-  private readonly clientServerConnections = new Map<string, {
-    readonly channelName: string;
-    readonly endpoint: string;
-    readonly dealer: ZLinkBackendDealerSocket;
-    readonly monitor: ZLinkBackendSocketMonitor;
-    readonly callbacks: ZLinkClientServerConnectionCallbacks;
-    physicalConnectionId: symbol;
-    nextProbeAt?: number;
-    deadlineAt?: number;
-    outstandingProbeId?: bigint;
-    admissionAttempt?: symbol;
-  }>();
+  private readonly clientServerConnections =
+    new Map<string, ClientServerPhysicalConnection>();
   private readonly clientServerDiscovery = new ServiceDiscoveryRegistry();
   private readonly clientServerReadyIdentities = new Map<string, {
     readonly channelName: string;
     readonly serverRoutingId: string;
+    readonly lifecycleGeneration: bigint;
   }>();
   private readonly clientServerServerDescriptors =
     new Map<string, ZLinkClientServerServerDescriptor>();
@@ -112,7 +122,7 @@ export class ZLinkChannelSocketRegistry {
   async dispose(): Promise<void> {
     const sockets = [
       ...this.clientDealers.values(),
-      ...[...this.clientServerConnections.values()].map(value => value.dealer),
+      ...[...new Set(this.clientServerConnections.values())].map(value => value.dealer),
       ...this.channelRouters.values(),
       ...this.publishers.values(),
       ...this.subscribers.values(),
@@ -292,29 +302,32 @@ export class ZLinkChannelSocketRegistry {
     this.trackSubmitter(dealer);
     const monitor = this.monitoringAdapter.openSocketMonitor(dealer);
     this.ownedMonitors.add(monitor);
-    this.clientServerConnections.set(connectionId, {
+    const connection: ClientServerPhysicalConnection = {
       channelName,
       endpoint,
       dealer,
       monitor,
-      callbacks,
+      aliases: new Set([connectionId]),
+      callbacksByAlias: new Map([[connectionId, callbacks]]),
       physicalConnectionId: Symbol(connectionId)
-    });
+    };
+    this.clientServerConnections.set(connectionId, connection);
     this.ensureClientServerLivenessTimer();
     try {
       monitor.onEvent((event) => {
-        if (!this.clientServerConnections.has(connectionId)) return;
+        if (![...connection.aliases].some(
+          alias => this.clientServerConnections.get(alias) === connection
+        )) return;
         for (const handler of this.clientServerMonitorHandlers.get(channelName) ?? []) {
           handler(event);
         }
         const routingId = event.routingId === undefined ? undefined : String(event.routingId);
         if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady) {
-          const current = this.clientServerConnections.get(connectionId);
-          if (current !== undefined) {
-            current.physicalConnectionId = Symbol(connectionId);
-            current.admissionAttempt = undefined;
+          connection.physicalConnectionId = Symbol(connectionId);
+          connection.admissionAttempt = undefined;
+          for (const currentCallbacks of [...connection.callbacksByAlias.values()]) {
+            currentCallbacks.onTransportReady(routingId ?? '', event.remoteAddr);
           }
-          callbacks.onTransportReady(routingId ?? '', event.remoteAddr);
           return;
         }
         if (event.nativeEvent === ZLinkSocketNativeEventType.Disconnected
@@ -322,12 +335,14 @@ export class ZLinkChannelSocketRegistry {
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedNoDetail
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedProtocol
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedAuth) {
-          const current = this.clientServerConnections.get(connectionId);
-          if (current !== undefined) {
-            current.physicalConnectionId = Symbol(connectionId);
-            current.admissionAttempt = undefined;
+          connection.physicalConnectionId = Symbol(connectionId);
+          connection.admissionAttempt = undefined;
+          if (connection.readyConnectionId !== undefined) {
+            this.removeReadyConnection(connection.readyConnectionId);
           }
-          callbacks.onTerminated(routingId, event.remoteAddr);
+          for (const currentCallbacks of [...connection.callbacksByAlias.values()]) {
+            currentCallbacks.onTerminated(routingId, event.remoteAddr);
+          }
         }
       });
       dealer.connect(endpoint);
@@ -350,15 +365,39 @@ export class ZLinkChannelSocketRegistry {
     const current = this.clientServerConnections.get(connectionId);
     if (current === undefined) return;
     this.clientServerConnections.delete(connectionId);
+    current.aliases.delete(connectionId);
+    current.callbacksByAlias.delete(connectionId);
     const ready = this.clientServerReadyIdentities.get(connectionId);
-    if (ready !== undefined) {
+    this.clientServerReadyIdentities.delete(connectionId);
+    if (ready !== undefined && current.readyConnectionId === connectionId) {
       this.clientServerDiscovery.removeClientServer(
         ready.channelName,
         ready.serverRoutingId,
         connectionId
       );
-      this.clientServerReadyIdentities.delete(connectionId);
+      current.readyConnectionId = undefined;
+      const replacement = current.aliases.values().next().value as string | undefined;
+      if (replacement !== undefined && current.admittedDescriptor !== undefined
+        && this.clientServerDiscovery.admitClientServer(
+          current.admittedDescriptor,
+          replacement
+        )) {
+        current.readyConnectionId = replacement;
+        this.clientServerReadyIdentities.set(replacement, {
+          channelName: current.admittedDescriptor.channelName,
+          serverRoutingId: current.admittedDescriptor.serverRoutingId,
+          lifecycleGeneration: current.admittedDescriptor.lifecycleGeneration
+        });
+      }
     }
+    if (current.aliases.size > 0) return;
+    await this.disposeClientServerPhysical(connectionId, current);
+  }
+
+  private async disposeClientServerPhysical(
+    connectionId: string,
+    current: ClientServerPhysicalConnection
+  ): Promise<void> {
     try {
       current.dealer.disconnect(current.endpoint);
     } catch {
@@ -388,34 +427,51 @@ export class ZLinkChannelSocketRegistry {
   }
 
   admitClientServerConnection(
-    descriptor: Parameters<ServiceDiscoveryRegistry['admitClientServer']>[0],
+    descriptor: ClientServerDiscoveryDescriptor,
     connectionId: string
   ): boolean {
-    if (!this.clientServerConnections.has(connectionId)) return false;
+    const connection = this.clientServerConnections.get(connectionId);
+    if (connection === undefined) return false;
+    if (connection.readyConnectionId !== undefined) {
+      const admitted = this.clientServerDiscovery.admitClientServer(
+        descriptor,
+        connection.readyConnectionId
+      );
+      if (admitted) connection.admittedDescriptor = descriptor;
+      return admitted;
+    }
+    const duplicateId = [...this.clientServerReadyIdentities]
+      .find(([, identity]) =>
+        identity.channelName === descriptor.channelName
+        && identity.serverRoutingId === descriptor.serverRoutingId
+        && identity.lifecycleGeneration === descriptor.lifecycleGeneration)?.[0];
+    if (duplicateId !== undefined) {
+      const shared = this.clientServerConnections.get(duplicateId);
+      if (shared !== undefined && shared !== connection) {
+        this.clientServerConnections.set(connectionId, shared);
+        shared.aliases.add(connectionId);
+        const callbacks = connection.callbacksByAlias.get(connectionId);
+        if (callbacks !== undefined) shared.callbacksByAlias.set(connectionId, callbacks);
+        connection.aliases.clear();
+        connection.callbacksByAlias.clear();
+        void this.disposeClientServerPhysical(connectionId, connection)
+          .catch(error => this.oneWayFailureSink?.(error));
+        return true;
+      }
+    }
     const admitted = this.clientServerDiscovery.admitClientServer(descriptor, connectionId);
     if (admitted) {
       const now = performance.now();
-      const connection = this.clientServerConnections.get(connectionId);
-      if (connection !== undefined) {
-        connection.nextProbeAt = now + CLIENT_SERVER_PROBE_INTERVAL_MS;
-        connection.deadlineAt = now + CLIENT_SERVER_PEER_DEADLINE_MS;
-        connection.outstandingProbeId = undefined;
-      }
-      const duplicates = [...this.clientServerReadyIdentities]
-        .filter(([otherConnectionId, identity]) =>
-          otherConnectionId !== connectionId
-          && identity.channelName === descriptor.channelName
-          && identity.serverRoutingId === descriptor.serverRoutingId)
-        .map(([otherConnectionId]) => otherConnectionId);
+      connection.nextProbeAt = now + CLIENT_SERVER_PROBE_INTERVAL_MS;
+      connection.deadlineAt = now + CLIENT_SERVER_PEER_DEADLINE_MS;
+      connection.outstandingProbeId = undefined;
       this.clientServerReadyIdentities.set(connectionId, {
         channelName: descriptor.channelName,
-        serverRoutingId: descriptor.serverRoutingId
+        serverRoutingId: descriptor.serverRoutingId,
+        lifecycleGeneration: descriptor.lifecycleGeneration
       });
-      for (const duplicate of duplicates) {
-        this.clientServerReadyIdentities.delete(duplicate);
-        void this.closeClientServerConnection(duplicate)
-          .catch(error => this.oneWayFailureSink?.(error));
-      }
+      connection.readyConnectionId = connectionId;
+      connection.admittedDescriptor = descriptor;
     }
     return admitted;
   }
@@ -430,7 +486,16 @@ export class ZLinkChannelSocketRegistry {
       serverRoutingId,
       connectionId
     );
-    if (removed) this.clientServerReadyIdentities.delete(connectionId);
+    if (removed) {
+      this.clientServerReadyIdentities.delete(connectionId);
+      const connection = this.clientServerConnections.get(connectionId);
+      if (connection?.readyConnectionId === connectionId) {
+        connection.readyConnectionId = undefined;
+        connection.deadlineAt = undefined;
+        connection.nextProbeAt = undefined;
+        connection.outstandingProbeId = undefined;
+      }
+    }
     return removed;
   }
 
@@ -585,14 +650,22 @@ export class ZLinkChannelSocketRegistry {
   }
 
   tickClientServerLiveness(nowMs = performance.now()): void {
-    for (const [connectionId, connection] of [...this.clientServerConnections]) {
+    for (const connection of new Set(this.clientServerConnections.values())) {
+      const connectionId = connection.readyConnectionId
+        ?? connection.aliases.values().next().value as string | undefined;
+      if (connectionId === undefined) continue;
       this.drainClientServerControl(connectionId, connection);
       if (connection.deadlineAt === undefined) continue;
       if (nowMs >= connection.deadlineAt) {
         this.removeReadyConnection(connectionId);
-        connection.callbacks.onTerminated(undefined, connection.endpoint);
-        if (connection.callbacks.reconnectOnTermination === true
-          && this.clientServerConnections.get(connectionId) === connection) {
+        const callbacks = [...connection.callbacksByAlias.values()];
+        for (const currentCallbacks of callbacks) {
+          currentCallbacks.onTerminated(undefined, connection.endpoint);
+        }
+        if (callbacks.some(value => value.reconnectOnTermination === true)
+          && [...connection.aliases].some(
+            alias => this.clientServerConnections.get(alias) === connection
+          )) {
           try {
             connection.dealer.disconnect(connection.endpoint);
             connection.dealer.connect(connection.endpoint);
@@ -613,6 +686,11 @@ export class ZLinkChannelSocketRegistry {
       if (nowMs >= peer.deadlineAt) {
         this.clientServerServerPeers.delete(key);
         this.clientServerAdmittedClients.get(peer.channelName)?.delete(peer.routingId);
+        try {
+          this.channelRouters.get(peer.channelName)?.disconnectPeer(peer.routingId);
+        } catch (error) {
+          this.oneWayFailureSink?.(error);
+        }
         continue;
       }
       if (nowMs < peer.nextProbeAt) continue;
@@ -788,6 +866,9 @@ export class ZLinkChannelSocketRegistry {
     this.clientServerReadyIdentities.delete(connectionId);
     const connection = this.clientServerConnections.get(connectionId);
     if (connection !== undefined) {
+      if (connection.readyConnectionId === connectionId) {
+        connection.readyConnectionId = undefined;
+      }
       connection.deadlineAt = undefined;
       connection.nextProbeAt = undefined;
       connection.outstandingProbeId = undefined;

@@ -201,6 +201,73 @@ test('production ClientServer outbound socket selection uses admitted descriptor
   await sockets.dispose();
 });
 
+test('automatic and manual ClientServer sources share one physical connection until the last alias closes', async () => {
+  const createSockets = () => {
+    const registration = internal.createFrameworkRegistration({
+      channels: { orders: { client: { manualConnections: [] } } },
+      locations: { useInMemoryStores: true }
+    });
+    const dealers = [];
+    const sockets = new ZLinkChannelSocketRegistry(
+      registration,
+      {
+        createDealerSocket() {
+          const dealer = fakeDealer(`physical-${dealers.length}`);
+          dealer.disposed = false;
+          dealer.dispose = async () => { dealer.disposed = true; };
+          dealers.push(dealer);
+          return dealer;
+        }
+      },
+      {},
+      {
+        openSocketMonitor() {
+          return { nativeInstance: {}, onEvent() {}, async dispose() {} };
+        }
+      }
+    );
+    return { sockets, dealers };
+  };
+  const descriptor = discoveryDescriptor('server-a', 100);
+
+  const forward = createSockets();
+  forward.sockets.openClientServerConnection(
+    'orders', 'automatic', descriptor.advertisedEndpoint,
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  forward.sockets.openClientServerConnection(
+    'orders', 'manual', descriptor.advertisedEndpoint,
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  assert.equal(forward.sockets.admitClientServerConnection(descriptor, 'automatic'), true);
+  assert.equal(forward.sockets.admitClientServerConnection(descriptor, 'manual'), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(forward.dealers[1].disposed, true);
+  assert.equal(forward.sockets.clientDealerForOutbound('orders'), forward.dealers[0]);
+  await forward.sockets.closeClientServerConnection('manual');
+  assert.equal(forward.dealers[0].disposed, false);
+  assert.equal(forward.sockets.clientDealerForOutbound('orders'), forward.dealers[0]);
+  await forward.sockets.dispose();
+
+  const reverse = createSockets();
+  reverse.sockets.openClientServerConnection(
+    'orders', 'manual', descriptor.advertisedEndpoint,
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  reverse.sockets.openClientServerConnection(
+    'orders', 'automatic', descriptor.advertisedEndpoint,
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  assert.equal(reverse.sockets.admitClientServerConnection(descriptor, 'manual'), true);
+  assert.equal(reverse.sockets.admitClientServerConnection(descriptor, 'automatic'), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reverse.dealers[1].disposed, true);
+  await reverse.sockets.closeClientServerConnection('manual');
+  assert.equal(reverse.dealers[0].disposed, false);
+  assert.equal(reverse.sockets.clientDealerForOutbound('orders'), reverse.dealers[0]);
+  await reverse.sockets.dispose();
+});
+
 test('manual ClientServer endpoints use dedicated monitored admission and reconnect', async () => {
   const endpoint = 'tcp://10.0.0.1:9401';
   const registration = internal.createFrameworkRegistration({
@@ -525,6 +592,8 @@ test('ClientServer server probes each admitted client and fences ACK by routing 
     }
   });
   const sent = [];
+  const disconnected = [];
+  let acceptSend = true;
   const router = {
     nativeInstance: {},
     lastEndpoint: 'tcp://127.0.0.1:9401',
@@ -539,8 +608,9 @@ test('ClientServer server probes each admitted client and fences ACK by routing 
     bind() {},
     send(routingId, message) {
       sent.push({ routingId, frame: Buffer.from(message.data()) });
-      return true;
+      return acceptSend;
     },
+    disconnectPeer(routingId) { disconnected.push(routingId); },
     reply() {},
     async dispose() {}
   };
@@ -571,6 +641,7 @@ test('ClientServer server probes each admitted client and fences ACK by routing 
   sockets.tickClientServerLiveness(base + 5_001);
   const probe = clientServerWire.decodeClientServerControl(sent.at(-1).frame);
   assert.equal(probe.kind, 'livenessProbe');
+  acceptSend = false;
   sockets.tickClientServerLiveness(base + 10_002);
   const retransmit = clientServerWire.decodeClientServerControl(sent.at(-1).frame);
   assert.equal(retransmit.kind, 'livenessProbe');
@@ -585,6 +656,7 @@ test('ClientServer server probes each admitted client and fences ACK by routing 
   }, router), true);
   wrongAck.close();
   sockets.tickClientServerLiveness(base + 15_001);
+  assert.deepEqual(disconnected, ['client-a']);
 
   const beforeUpdate = sent.length;
   sockets.setClientServerServerDescriptor({

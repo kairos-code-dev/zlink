@@ -332,13 +332,6 @@ export class ZLinkClientServerLocationRuntime {
     const current = this.connections.get(connectionId);
     if (current === undefined) return;
     this.connections.delete(connectionId);
-    if (current.state === 'ready') {
-      this.sockets.removeClientServerReady(
-        current.descriptor.channelName,
-        String(current.descriptor.serverRid),
-        connectionId
-      );
-    }
     await this.sockets.closeClientServerConnection(connectionId);
   }
 

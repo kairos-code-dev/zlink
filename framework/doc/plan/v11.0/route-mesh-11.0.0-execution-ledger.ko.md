@@ -1228,6 +1228,19 @@ contract migration으로 분리했고 timeout이 남긴 자식 process는 정리
 source를 변경하거나 실행하지 않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로
 `V11-M6A-NODE` 상태는 계속 `수정 진행`으로 유지한다.
 
+Node ClientServer physical ownership follow-up checkpoint(2026-07-24)에서 automatic과 manual source가
+같은 Server RID·lifecycle을 승인하면 ready target만 중복 제거하는 대신 실제 DEALER와 monitor 하나를
+ref/alias로 공유하도록 보완했다. 어느 source를 먼저 제거해도 남은 alias가 physical connection과
+discovery readiness를 유지하며 마지막 alias에서만 resource를 닫는다. Monitor termination은 physical
+readiness를 먼저 제거한 뒤 source별 callback을 호출해 stale alias가 ready 상태를 다시 게시하지 못하게
+한다. Server peer가 15초 deadline을 넘으면 ROUTER의 `disconnectPeer`로 physical connection을 닫고,
+probe send가 backpressure를 반환해도 deadline 전에는 연결 종료로 판정하지 않으며 5초 뒤 같은 probe ID를
+재전송한다. Workspace typecheck·build, focused ClientServer 16/16, M6A 6/6, changed-source ESLint와
+`git diff --check`가 통과했다. 전체 Node gate는 병렬 Actor runtime의 별도 public method gap 2건에서
+중단됐으며 이 focused 변경의 실패는 없다. Core·bindings와 Sample·E2E source를 변경하거나 실행하지
+않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로 `V11-M6A-NODE` 상태는 계속 `수정 진행`으로
+유지한다.
+
 JVM ClientServer provider checkpoint(2026-07-24)에서 Java public source에 exact
 `ZLinkClientServerServerDescriptor`, key와 선택 capability인 `ZLinkClientServerLocationStore`를 추가하고
 공식 Redis provider가 이를 직접 구현하도록 연결했다. Redis row는 fixture와 같은 field 순서·상태 이름을

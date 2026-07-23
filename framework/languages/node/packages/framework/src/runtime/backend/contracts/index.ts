@@ -367,6 +367,7 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
     flags: ZLinkBackendSendFlags,
     timeoutMs?: number
   ): boolean;
+  disconnectPeer(routingId: RoutingId): void;
   reply(routingId: RoutingId, requestSeq: bigint): ZLinkBackendReplyOperation;
   reply(routingId: RoutingId, requestSeq: bigint, message: Message | readonly Message[]): void;
 }

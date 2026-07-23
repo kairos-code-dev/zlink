@@ -240,12 +240,21 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 `Listen(string endpoint)`, `Bind(string endpoint)`와 `EnablePublisher(string endpoint)`를 제공하며,
 host·port 조합 overload도 같은 listener 설정을 표현한다.
 
-`AddClientServerChannel(channelName)`도 역할을 정확히 한 번 고른다. Client는 등록한 manual endpoint와
-location store에서 자동 발견한 같은 ChannelName의 server endpoint를 모두 연결 대상으로 사용할 수 있다.
+`AddClientServerChannel(channelName)`은 `Client()`와 `Server()` 중 하나 또는 둘 다 등록할 수 있으며 각
+역할은 최대 한 번만 등록한다. Registration key는 `(ChannelName, Role)`이며 Client와 Server는 별도
+registration으로 하나의 ClientServer topology를 공유한다. 같은 역할을 두 번 등록하면 startup이 실패한다.
+RouteMesh ChannelName 충돌 규칙은 그대로
+유지한다. Client는 등록한 manual endpoint와 location store에서 자동 발견한 같은 ChannelName의 server
+endpoint를 모두 연결 대상으로 사용할 수 있다.
 두 source가 같은 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로
 합친다. Automatic과 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound
 connect를 시작하지 않는다. Server는 받은 send/request handler와 request reply만 제공하며 연결된 client로
 새 업무 호출을 시작하지 않는다.
+
+같은 process에 Server 역할도 등록되어 있으면 listener와 service admission을 마친 local Server를 remote
+Server와 같은 candidate 집합에 넣는다. Ready, positive weight, non-draining 조건을 동일하게 적용하고
+local 우선순위나 remote 제외 규칙을 두지 않는다. 선택 뒤에는 Client DEALER에서 Server ROUTER로 실제
+transport message를 전달하며 handler를 직접 호출하지 않는다.
 
 `ConfigureNetwork()`의 기본 BindHost는 `127.0.0.1`이고 AdvertiseHost를 생략하면 non-wildcard BindHost를
 사용한다. Automatic discovery listener는 `Listen()`·`Bind()`·`EnablePublisher()`의 port를 생략하거나

@@ -75,6 +75,20 @@ callback이 거부해 reservation과 authority를 정리했다는 뜻이다. `Re
 식별하며 current Ready location을 보장하지 않는다. Reply는 create callback이 반환한 opaque framework message이고
 `Existing`에서는 비어 있다.
 
+Owner가 다른 MeshNode이면 source는 generic reservation을 만든 뒤 command 47 `userSpotCreate`를 exact target으로
+보낸다. 이 command는 correlation과 terminal-once operation ID, source node RID·lifecycle generation, global
+Spot RID, stable type, provider-issued reservation fence와 하나의 deadline을 전달한다. Reservation fence에는
+expected StoreVersion, ObjectGeneration, AuthorityOwnerGeneration, target node RID·lifecycle generation,
+target owner lease와 pending capacity delta가 모두 들어간다. Creation request bytes는 command payload로 다시
+보내지 않는다. Target은 Location Store의 Pending creation projection에서 reference·hash·encoded size를 exact
+read하고 immutable content를 확인한 뒤에만 factory와 initialize를 실행한다.
+
+Target은 같은 reservation으로 Commit한 결과를 command 20 `reply`로 한 번만 반환한다. 기존 reply의
+`correlation`, `terminalResult`, `failureCode`, operation-specific tail 순서는 바꾸지 않는다. 성공 tail은
+`Existing`·`Created`·`Rejected`와 exact `SpotRef`를 포함한다. `Existing`에는 application reply가 없고
+`Created`와 `Rejected`에는 callback이 만든 reply가 선택적으로 존재할 수 있다. Source는 Location row polling을
+terminal reply로 간주하지 않으며 application packet으로 create control을 흉내 내지 않는다.
+
 Manager `Find(SpotRid)`는 current Ready authority의 `SpotRef`를 반환하며 creation을 시작하지 않는다. Manager가
 제공하는 current Spot query와 page size 1..1000, encoded 4 MiB 이하의 operational query 외에 unbounded list와
 별도 resolver는 제공하지 않는다.
@@ -189,6 +203,18 @@ operation은 closing 또는 stale 결과로 끝난다.
 User Spot에 current Actor membership이 하나라도 있으면 Close는 `false`로 끝나며 admission과 authority를
 유지한다. Framework는 member Actor를 숨겨서 이동하거나 destroy하지 않는다.
 
+Remote owner를 닫을 때 source는 command 48 `userSpotClose`를 current owner로 보낸다. Request는 correlation과
+terminal-once operation ID, source node RID·lifecycle generation, exact `SpotRef`, target node RID·lifecycle
+generation, expected AuthorityOwnerGeneration·StoreVersion과 하나의 deadline을 포함한다. Target은 service
+admission의 peer identity와 target lifecycle을 먼저 확인하고 current User Spot authority를 exact read한다.
+그 다음 object generation, owner generation과 StoreVersion, active Actor membership, `Closing`과 relocation
+상태를 모두 검사한 뒤에만 Closing CAS와 local admission seal을 시작한다.
+
+Command 20의 close 성공 tail은 `closed` bool 하나다. `false`는 같은 incarnation이 이미 없거나 active
+membership 때문에 authority를 유지한 경우에만 사용한다. Stale generation과 moving conflict는 typed failure다.
+Source는 current ref를 다시 찾아 다른 incarnation으로 retarget하지 않으며 Location row polling을 completion으로
+사용하지 않는다.
+
 ## 8. Maintenance materialization
 
 이미 존재하는 Spot owner의 이동은 명시적인 host `Retire` transaction만 시작한다. Object Server factory는
@@ -222,6 +248,8 @@ label로 사용하지 않는다.
 - User Spot Create·GetOrCreate가 target RID와 endpoint를 application에 요구하지 않는다.
 - Spot manager가 Instance Spot create·get-or-create를 제공하지 않는다.
 - Concurrent create가 authority attempt와 factory execution 하나로 수렴한다.
+- Remote User Spot create가 provider reservation과 target lifecycle을 command 47에 고정하고 Pending content를
+  exact read한 뒤 command 20으로 terminal-once 완료한다.
 - `SpotRef`가 public exact generation을 보존하되 messaging target으로 사용되지 않는다.
 - Spot direct 시작 method가 Spot RID만 받고 owner route를 요구하지 않는다.
 - Instance intent가 없는 Missing Spot message가 creation intent를 만들지 않는다.
@@ -236,5 +264,7 @@ label로 사용하지 않는다.
 - Forwarding이 committed mapping과 bounded queue만 사용하고 operation identity를 보존한다.
 - Close가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.
 - User Spot Close가 active membership을 숨겨서 정리하지 않는다.
+- Remote User Spot Close가 exact SpotRef·owner generation·StoreVersion과 target lifecycle을 command 48에
+  고정하고 Location polling이나 application control packet을 completion으로 사용하지 않는다.
 - C++, .NET, JVM과 Node.js가 create 경쟁, logical messaging, cold activation, close와 stale forwarding에서 같은
   terminal 결과를 제공한다.

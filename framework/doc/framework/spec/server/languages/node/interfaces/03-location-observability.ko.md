@@ -704,7 +704,7 @@ export interface ZLinkRouteMeshRuntime {
     isReady(meshName: string): boolean;
 }
 
-export type ZLinkClientServerRole = "client" | "server";
+export type ZLinkClientServerRole = "client" | "server" | "clientAndServer";
 export type ZLinkClientServerServerState =
     | "configured"
     | "connecting"
@@ -811,6 +811,10 @@ export interface ZLinkFanoutRuntime {
 }
 
 ```
+
+같은 ChannelName에 Client와 Server를 함께 등록한 snapshot의 `localRole`은
+`"clientAndServer"`다. 이 값은 `(ChannelName, Role)`의 별도 registration 두 개가 하나의 ClientServer
+topology를 공유한다는 aggregate projection이다. Builder role이나 registration key로 사용할 수 없다.
 
 Host `retire()`에서 deadline이 모든 target의 `Prepared`와 host `Draining` descriptor publication 전에 끝나면
 relocation reference와 reservation을 정리하고 reversible seal을 해제한 뒤 `Blocked/DeadlineExceeded`로 끝난다.

@@ -64,5 +64,55 @@
     "actor": ["actorId", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
     "spot": ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"]
   },
-  "normalInstanceMessageFields": ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"]
+  "normalInstanceMessageFields": ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
+  "terminalServiceOperations": {
+    "commands": {
+      "userSpotCreate": 47,
+      "userSpotClose": 48,
+      "terminalReply": 20,
+      "reservedFirst": 49
+    },
+    "replyEnvelopeFields": ["correlation", "terminalResult", "failureCode", "tail"],
+    "createRequestFields": [
+      "correlation",
+      "operation",
+      "sourceNodeRid",
+      "sourceNodeGeneration",
+      "spotRid",
+      "stableType",
+      "reservation",
+      "deadlineUnixMs"
+    ],
+    "createReservationFences": [
+      "reservationId",
+      "expectedStoreVersion",
+      "objectGeneration",
+      "authorityOwnerGeneration",
+      "targetNodeRid",
+      "targetNodeGeneration",
+      "targetOwnerId",
+      "targetOwnerLeaseGeneration",
+      "pendingCapacityDelta"
+    ],
+    "createTerminalStates": ["existing", "created", "rejected"],
+    "createTerminalTail": ["createResult", "spot"],
+    "createContentSource": "location-pending-creation-exact-read",
+    "closeRequestFields": [
+      "correlation",
+      "operation",
+      "sourceNodeRid",
+      "sourceNodeGeneration",
+      "target",
+      "deadlineUnixMs"
+    ],
+    "closeTargetFences": [
+      "spot",
+      "targetNodeRid",
+      "targetNodeGeneration",
+      "expectedAuthorityOwnerGeneration",
+      "expectedStoreVersion"
+    ],
+    "closeTerminalTail": ["closed"],
+    "terminalOnceIdentity": ["sourceNodeRid", "sourceNodeGeneration", "operation"]
+  }
 }

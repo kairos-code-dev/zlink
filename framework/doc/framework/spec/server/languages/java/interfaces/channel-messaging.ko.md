@@ -99,9 +99,17 @@ Spot direct operation은 global SpotRid만 address로 받고 Spot 전용 fluent 
 사용하므로 type이나 Mesh를 다시 요구하지 않는다. 세부 member와 cold activation 선택 규칙은
 [Java Spot 인터페이스](spots.ko.md)가 소유한다.
 
-`channel(channelName)`과 `addClientServerChannel(channelName)`이 반환하는 builder에서는 `client()` 또는
-`server()`를 정확히 한 번 선택한다. 역할을 선택하기 전에는 weight와 handler를 설정할 수 없으며,
-Server 설정은 각 Server builder에만 존재한다.
+`channel(channelName)`이 반환하는 RouteMesh builder에서는 `client()` 또는 `server()`를 정확히 한 번
+선택한다. `addClientServerChannel(channelName)`의 builder에서는 두 역할 중 하나 또는 둘 다 등록할 수
+있지만 각 역할은 최대 한 번만 등록한다. 같은 ChannelName의 Client와 Server는 하나의 ClientServer
+topology를 공유하지만 `(ChannelName, Role)` key의 별도 registration이다. 같은 역할의 중복 등록은 startup
+오류다. RouteMesh ChannelName 충돌 규칙은 그대로 유지한다. 역할을 선택하기 전에는 weight와 handler를
+설정할 수 없으며, Server 설정은 각 Server builder에만 존재한다.
+
+ClientServer의 local Server도 listener와 service admission을 마친 뒤 remote Server와 같은 candidate
+집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하며 local 우선순위나 remote
+제외 규칙은 없다. Local Server를 선택해도 Client DEALER에서 Server ROUTER로 실제 transport message를
+전달하며 codec, HWM, timeout, cancellation, correlation과 terminal completion을 우회하지 않는다.
 
 `ZLinkFanoutClient.publish(...)`에 내부 liveness용 exact topic byte `01 5A 4C 46 31`을 명시하면 transport를
 시작하지 않고 `ZLinkConfigurationException`을 발생시킨다. Topic을 생략한 overload는 typed event의 packet

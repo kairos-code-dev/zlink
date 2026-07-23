@@ -43,6 +43,8 @@ exports.ServiceWireCommand = {
     sessionRelocationRoute: 44,
     sessionRelocationRouted: 45,
     replyRelayAck: 46,
+    userSpotCreate: 47,
+    userSpotClose: 48,
 };
 exports.ServiceWireFlag = {
     metadata: 1,
@@ -74,5 +76,7 @@ exports.ServiceWireFrameworkErrorCode = {
     workerFailed: 20,
     actorLocationStale: 21,
     actorCreateRejected: 22,
+    spotGenerationStale: 33,
+    spotMoving: 34,
     relocationDataLost: 35,
 };

@@ -43,6 +43,8 @@ public final class ServiceWireConstants {
     public static final int COMMAND_SESSION_RELOCATION_ROUTE = 44;
     public static final int COMMAND_SESSION_RELOCATION_ROUTED = 45;
     public static final int COMMAND_REPLY_RELAY_ACK = 46;
+    public static final int COMMAND_USER_SPOT_CREATE = 47;
+    public static final int COMMAND_USER_SPOT_CLOSE = 48;
     public static final int FLAG_METADATA = 1;
     public static final int FLAG_BOUND_SESSION = 2;
     public static final int FLAG_SOURCE_SPOT_RID = 4;
@@ -70,6 +72,8 @@ public final class ServiceWireConstants {
     public static final long FRAMEWORK_ERROR_WORKER_FAILED = 20L;
     public static final long FRAMEWORK_ERROR_ACTOR_LOCATION_STALE = 21L;
     public static final long FRAMEWORK_ERROR_ACTOR_CREATE_REJECTED = 22L;
+    public static final long FRAMEWORK_ERROR_SPOT_GENERATION_STALE = 33L;
+    public static final long FRAMEWORK_ERROR_SPOT_MOVING = 34L;
     public static final long FRAMEWORK_ERROR_RELOCATION_DATA_LOST = 35L;
     private ServiceWireConstants() {}
 }

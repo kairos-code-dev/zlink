@@ -223,7 +223,8 @@ public interface IZLinkRouteMeshRuntime
 public enum ZLinkClientServerRole
 {
     Client = 1,
-    Server = 2
+    Server = 2,
+    ClientAndServer = 3
 }
 
 public enum ZLinkClientServerServerState
@@ -390,6 +391,9 @@ bounded teardown이 deadline을 넘으면 `ForceStopped/DeadlineExceeded`를 반
 
 `IZLinkClientServerRuntime`은 ChannelName으로 ClientServer snapshot과 event를 제공하며 MeshName을 받지
 않는다. Remote Server RID와 endpoint는 관측 값이고 target 선택 API가 아니다.
+같은 ChannelName에 Client와 Server를 함께 등록하면 `LocalRole`은 `ClientAndServer`다. 이 값은 두
+별도 registration이 하나의 ClientServer topology를 공유한다는 snapshot aggregate projection이다.
+Builder에서 선택하거나 `(ChannelName, Role)` registration key로 사용할 수 없다.
 
 `IZLinkRouteMeshRuntime.IsReady(...)`와 `IZLinkClientServerRuntime.IsReady(...)`는 host
 `FrameworkRuntimeState == Serving` projection과 해당 조회 대상의 ready 조건을 함께

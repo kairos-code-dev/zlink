@@ -32,6 +32,13 @@ Manager create는 coordinator가 target transport 전에 reservation을 획득�
 message를 포함한 activation envelope를 target에 제출하고, target runtime이 local exact instance가 없을 때
 자신을 owner로 reservation을 획득한다.
 
+Remote User Spot manager create는 reservation 뒤 별도 terminal service operation을 exact target에 보낸다.
+이 operation은 source와 target node lifecycle, global Spot key·stable type, provider-issued reservation과
+StoreVersion, deadline을 고정한다. Target은 Pending creation content를 Location Store에서 exact read한 뒤
+factory·initialize·Commit을 실행한다. Location row polling이나 application control packet은 terminal result가
+아니다. Remote User Spot close도 exact SpotRef, owner generation·StoreVersion과 target lifecycle을 가진 별도
+terminal service operation이며 active Actor membership과 relocation 상태를 target admission 전에 확인한다.
+
 1. Runtime이 global key, stable type, optional Mesh·placement와 durable creation input을 고정하고 role, type
    capability, active·pending capacity를 만족하는 positive node-wide weight 후보를 선택한다.
 2. Actor·User Spot manager create는 coordinator가 `Reserve`를 호출한다. Instance Spot은 source가 first-message

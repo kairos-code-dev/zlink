@@ -66,7 +66,7 @@ raw frame 조합, codec table 또는 maintenance field를 노출하지 않는다
 
 ## 3. Command space
 
-Wire v1은 다음 37개 command를 사용한다. `7..15`와 `47..255`는 reserved이며 다른 의미로 재사용하지 않는다.
+Wire v1은 다음 39개 command를 사용한다. `7..15`와 `49..255`는 reserved이며 다른 의미로 재사용하지 않는다.
 
 | ID | Command | 역할 |
 |---:|---|---|
@@ -107,6 +107,8 @@ Wire v1은 다음 37개 command를 사용한다. `7..15`와 `47..255`는 reserve
 | 44 | `sessionRelocationRoute` | session route 교체 요청 |
 | 45 | `sessionRelocationRouted` | session route 교체 ACK |
 | 46 | `replyRelayAck` | relayed terminal result ACK |
+| 47 | `userSpotCreate` | provider reservation에 고정한 remote User Spot create |
+| 48 | `userSpotClose` | exact generation에 고정한 remote User Spot close |
 
 Command별 body, metadata·payload 허용 여부와 direction은 schema의 closed definition을 따른다. 알 수 없는 command,
 반대 direction의 infrastructure command와 topology에서 허용하지 않은 command는 application queue에 넣지 않는다.
@@ -179,7 +181,8 @@ lease token은 process 전체가 공유한다.
 Actor와 User Spot manager create와 target-owned Instance activation은 generic reservation으로 final object·owner generation과
 `Creating` row를 만든다. Creation record는 object kind, global key, stable type, target descriptor, capacity delta,
 provider-issued fence와 최대 1 MiB complete request envelope의 content reference·hash를 보존한다. Pending current
-row의 recovery projection으로 exact fence와 receipt를 scan 뒤 복원할 수 있다. Factory, initialize와 initial
+row에 보존된 이 값을 stored creation intent라고 하며, recovery projection으로 exact fence와 receipt를 scan 뒤
+복원할 수 있다. Factory, initialize와 initial
 membership이 끝나면 같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Target-owned Instance cold
 activation만 commit 전에 durable activation inbox first record도 확정한다. Manager `Find`와 ID-only messaging은
 `Ready`만 사용한다.
@@ -209,6 +212,25 @@ admission만으로 pointer를 제거하지 않는다.
 Reactivation 실패는 local barrier를 seal하고 request를 한 번만 terminal 처리한 뒤 one-way drop event를 기록한다.
 그 다음 exact fenced delete와 read reconcile을 수행한다. Delete 전 process가 종료되면 target scan은 retry-safe
 factory를 다시 실행할 수 있다. `Missing`이 확인되기 전에는 새 activation을 시작하지 않는다.
+
+### 8.1 User Spot terminal service operation
+
+User Spot remote create는 command 47을 사용한다. Source는 generic Reserve 이후 correlation·operation ID와 source
+node lifecycle, global Spot RID·stable type, provider-issued reservation fence와 deadline을 exact target으로
+보낸다. Reservation fence가 expected StoreVersion, object·owner generation, target node lifecycle·owner lease와
+pending capacity를 함께 보존한다. Target은 Pending creation projection의 immutable content를 Location Store에서
+읽으므로 command 47에는 application payload나 metadata가 없다.
+
+User Spot remote close는 command 48을 사용한다. Source node lifecycle과 operation identity 외에 exact SpotRef,
+target node lifecycle, AuthorityOwnerGeneration과 StoreVersion을 보낸다. Target은 current authority와 active
+Actor membership·relocation state를 admission 전에 검사한다. 두 command는 RouteMesh infrastructure command이며
+flags와 payload를 허용하지 않는다.
+
+두 operation은 기존 command 20 reply envelope를 그대로 사용한다. Create 성공 tail은
+`Existing`·`Created`·`Rejected` discriminator와 exact SpotRef이고, Close 성공 tail은 `closed` bool 하나다.
+Create의 application reply는 `Existing`에서 금지하고 `Created` 또는 `Rejected`에서만 선택적으로 허용한다.
+Source operation table은 source RID·lifecycle과 operation ID로 terminal-once를 보장한다. Location row polling과
+application packet으로 만든 control message는 reply를 대신하지 않는다.
 
 ## 9. Maintenance capture와 relocation envelope
 

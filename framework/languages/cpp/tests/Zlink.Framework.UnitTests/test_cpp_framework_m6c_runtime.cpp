@@ -545,6 +545,223 @@ void test_envelope_round_trip (test_context_t &test)
                   "inventory digest must round-trip");
     test.require (maintenance_runtime_t::crc32c (encoded) != 0,
                   "CRC32C must be computed for the immutable root");
+
+    auto excessive_count = encoded;
+    constexpr std::size_t pending_count_offset = 59;
+    excessive_count[pending_count_offset] = 0;
+    excessive_count[pending_count_offset + 1] = 0;
+    excessive_count[pending_count_offset + 2] = 0x10;
+    excessive_count[pending_count_offset + 3] = 0x01;
+    test.require (
+      !maintenance_runtime_t::decode (excessive_count),
+      "decoder must reject pending counts above the explicit maximum");
+
+    auto duplicate_sequence = encoded;
+    constexpr std::size_t first_sequence_offset = 63;
+    constexpr std::size_t second_sequence_offset = 77;
+    std::copy_n (
+      duplicate_sequence.begin ()
+        + static_cast<std::ptrdiff_t> (first_sequence_offset),
+      8,
+      duplicate_sequence.begin ()
+        + static_cast<std::ptrdiff_t> (second_sequence_offset));
+    test.require (
+      !maintenance_runtime_t::decode (duplicate_sequence),
+      "decoder must reject duplicate or unordered queue sequences");
+
+    auto unordered = frozen;
+    unordered.pending_application[1].sequence = 1;
+    test.require (
+      maintenance_runtime_t::encode (unordered, digest).empty (),
+      "encoder must reject duplicate or unordered queue sequences");
+}
+
+void test_aggregate_envelope_and_crash_recovery (test_context_t &test)
+{
+    stateful_object_runtime_t source;
+    const auto spot =
+      create_spot (source, object_kind_t::user_spot, "spot-aggregate");
+    const auto actor = create_actor (source, "actor-aggregate");
+    const auto [join_error, join] =
+      source.begin_membership_move (actor, spot);
+    const auto [commit_error, joined_actor] =
+      source.commit_membership_move (join);
+    test.require (
+      join_error == stateful_error_t::none
+        && commit_error == stateful_error_t::none,
+      "aggregate setup must join the Actor to the User Spot");
+    (void) source.enqueue (
+      spot, turn_domain_t::application, {1, {10}});
+    (void) source.enqueue (
+      joined_actor, turn_domain_t::application, {2, {20}});
+    (void) source.register_timer (spot, {11, 100, 25, 3});
+    (void) source.register_timer (
+      joined_actor, {12, 200, 0, 4});
+
+    auto roots = std::make_shared<memory_relocation_store_t> ();
+    auto authority = std::make_shared<memory_authority_store_t> ();
+    auto aggregates =
+      std::make_shared<memory_aggregate_authority_t> (authority);
+    auto targets = std::make_shared<target_preflight_t> ();
+    maintenance_runtime_t coordinator (
+      source,
+      maintenance_provider_set_t{
+        authority, aggregates, roots, targets});
+    const auto digest = digest_with (0x6a);
+    const std::vector<object_ref_t> participants{spot, joined_actor};
+    const auto moved = coordinator.relocate_aggregate (
+      participants, "node-b", {"owner-b", 7},
+      {{"capacity-spot"}, {"capacity-actor"}},
+      1024 * 1024, digest);
+    test.require (
+      moved.terminal == relocation_terminal_t::completed
+        && moved.authority.size () == 2,
+      "aggregate authority commit must publish every participant");
+
+    const auto root =
+      roots->get (moved.authority.front ().relocation_reference);
+    const auto decoded =
+      root ? maintenance_runtime_t::decode_aggregate (*root)
+           : std::nullopt;
+    test.require (
+      decoded && decoded->first.size () == 2
+        && decoded->second == digest,
+      "aggregate envelope must decode every participant and digest");
+    if (root) {
+        auto excessive_participants = *root;
+        excessive_participants[4] = 0;
+        excessive_participants[5] = 0;
+        excessive_participants[6] = 0x04;
+        excessive_participants[7] = 0x01;
+        test.require (
+          !maintenance_runtime_t::decode_aggregate (
+            excessive_participants),
+          "aggregate decoder must reject participant counts above the explicit maximum");
+    }
+
+    stateful_object_runtime_t recovered;
+    const auto recovery =
+      coordinator.recover_aggregate (participants, recovered);
+    test.require (
+      recovery.terminal == relocation_terminal_t::recovery_required
+        && recovery.reason == relocation_reason_t::restore_failed
+        && recovery.authority.size () == 2,
+      "materialized aggregate must remain recovery-required until lifecycle and ACK completion");
+
+    const auto target_spot =
+      authority->read (object_kind_t::user_spot, "spot-aggregate");
+    const auto target_actor =
+      authority->read (object_kind_t::actor, "actor-aggregate");
+    test.require (
+      target_spot && target_actor
+        && recovered.pending (
+             target_spot->target, turn_domain_t::application)
+             == 1
+        && recovered.pending (
+             target_actor->target, turn_domain_t::application)
+             == 1
+        && recovered.timers (target_spot->target).size () == 1
+        && recovered.timers (target_actor->target).size () == 1,
+      "aggregate recovery must restore each queue and logical timer");
+    test.require (
+      target_actor
+        && recovered.actor_membership (target_actor->target)
+             == std::optional<std::string>{"spot-aggregate"},
+      "aggregate recovery must restore canonical User Spot membership");
+    const auto staged = recovered.inventory ();
+    test.require (
+      staged.size () == 2
+        && std::all_of (
+          staged.begin (), staged.end (),
+          [] (const object_inventory_t &entry) {
+              return entry.state == object_state_t::recovering;
+          }),
+      "recovered participants must remain admission-sealed");
+    if (target_actor) {
+        const auto [claim_error, claim] =
+          recovered.try_claim (
+            target_actor->target, turn_domain_t::application);
+        test.require (
+          claim_error == stateful_error_t::moving && !claim,
+          "staged recovery must not expose application replay as ready");
+        test.require (
+          recovered.enqueue_timer_tick (
+            target_actor->target, 12, {99})
+            == stateful_error_t::moving,
+          "staged recovery must not start logical timers before completion");
+    }
+
+    const auto repeated =
+      coordinator.recover_aggregate (participants, recovered);
+    test.require (
+      repeated.terminal == relocation_terminal_t::recovery_required
+        && recovered.inventory ().size () == 2,
+      "exact staged recovery retry must remain idempotent and fail closed");
+
+    if (decoded && target_spot && target_actor) {
+        std::vector<object_ref_t> restore_targets{
+          target_spot->target, target_actor->target};
+        const auto wrong_root =
+          recovered.restore_relocation_aggregate (
+            decoded->first, restore_targets,
+            {"wrong-root",
+             moved.authority.front ().checksum_crc32c,
+             digest});
+        test.require (
+          wrong_root == stateful_error_t::conflict,
+          "same refs with a different root identity must not be idempotent");
+
+        auto wrong_payload = decoded->first;
+        wrong_payload.front ().stable_type = "different-type";
+        const auto partial_state =
+          recovered.restore_relocation_aggregate (
+            std::move (wrong_payload), std::move (restore_targets),
+            {moved.authority.front ().relocation_reference,
+             moved.authority.front ().checksum_crc32c,
+             digest});
+        test.require (
+          partial_state == stateful_error_t::conflict,
+          "same refs with different restored state must not be idempotent");
+
+        const auto spot_frozen = std::find_if (
+          decoded->first.begin (), decoded->first.end (),
+          [] (const frozen_object_state_t &participant) {
+              return participant.owner.kind
+                     == object_kind_t::user_spot;
+          });
+        stateful_object_runtime_t partial;
+        const auto partial_seed =
+          spot_frozen == decoded->first.end ()
+            ? stateful_error_t::invalid
+            : partial.restore_relocation (
+                *spot_frozen, target_spot->target,
+                {moved.authority.front ().relocation_reference,
+                 moved.authority.front ().checksum_crc32c,
+                 digest});
+        const auto partial_retry =
+          coordinator.recover_aggregate (participants, partial);
+        test.require (
+          partial_seed == stateful_error_t::none
+            && partial_retry.terminal
+                 == relocation_terminal_t::recovery_required
+            && partial.inventory ().size () == 1,
+          "partial same-ref restore must not add missing participants or report completion");
+    }
+
+    if (target_actor) {
+        authority->rows[authority_key (
+          object_kind_t::actor, "actor-aggregate")]
+          .relocation_reference = "different-root";
+    }
+    stateful_object_runtime_t rejected;
+    const auto inconsistent =
+      coordinator.recover_aggregate (participants, rejected);
+    test.require (
+      inconsistent.terminal == relocation_terminal_t::data_lost
+        && inconsistent.reason
+             == relocation_reason_t::inventory_mismatch
+        && rejected.inventory ().empty (),
+      "inconsistent aggregate authority must not partially restore");
 }
 
 void test_publication_and_handoff (test_context_t &test)
@@ -674,8 +891,10 @@ void test_recovery_and_data_loss (test_context_t &test)
     stateful_object_runtime_t recovered;
     const auto recovery = coordinator.recover (
       object_kind_t::actor, "actor-recovery", recovered);
-    test.require (recovery.terminal == relocation_terminal_t::completed,
-                  "published root must restore into an empty target runtime");
+    test.require (
+      recovery.terminal == relocation_terminal_t::recovery_required
+        && recovery.reason == relocation_reason_t::restore_failed,
+      "published root must remain staged until lifecycle and ACK completion");
     test.require (
       moved.authority
         && recovered.pending (
@@ -683,6 +902,14 @@ void test_recovery_and_data_loss (test_context_t &test)
              == 1
         && recovered.timers (moved.authority->target).size () == 1,
       "recovery must restore queue and logical timer state");
+    if (moved.authority) {
+        const auto [claim_error, claim] =
+          recovered.try_claim (
+            moved.authority->target, turn_domain_t::application);
+        test.require (
+          claim_error == stateful_error_t::moving && !claim,
+          "single recovery must keep application admission sealed");
+    }
 
     if (moved.authority)
         roots->erase_without_authority_change (
@@ -1091,6 +1318,7 @@ int main ()
 {
     test_context_t test;
     test_envelope_round_trip (test);
+    test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);
     test_conflict_aborts_without_losing_ingress (test);
     test_recovery_and_data_loss (test);

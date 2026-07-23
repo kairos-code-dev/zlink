@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -27,7 +28,8 @@ enum class object_state_t
     creating,
     ready,
     moving,
-    closing
+    closing,
+    recovering
 };
 
 enum class stateful_error_t
@@ -142,6 +144,16 @@ struct frozen_object_state_t
                             const frozen_object_state_t &) = default;
 };
 
+struct relocation_restore_identity_t
+{
+    std::string reference;
+    std::uint32_t checksum_crc32c = 0;
+    std::array<std::uint8_t, 32> inventory_digest{};
+
+    friend bool operator== (const relocation_restore_identity_t &,
+                            const relocation_restore_identity_t &) = default;
+};
+
 struct relocation_seal_t
 {
     std::uint64_t token = 0;
@@ -233,7 +245,12 @@ class stateful_object_runtime_t
       std::uint64_t token, std::string target_node_id);
     stateful_error_t restore_relocation (
       frozen_object_state_t frozen,
-      object_ref_t target);
+      object_ref_t target,
+      relocation_restore_identity_t identity);
+    stateful_error_t restore_relocation_aggregate (
+      std::vector<frozen_object_state_t> frozen,
+      std::vector<object_ref_t> targets,
+      relocation_restore_identity_t identity);
 
   private:
     struct object_key_t
@@ -262,6 +279,7 @@ class stateful_object_runtime_t
         object_state_t state = object_state_t::creating;
         std::uint64_t attempt = 0;
         std::string membership;
+        std::optional<relocation_restore_identity_t> restore_identity;
         queue_t queue;
         std::map<std::uint64_t, logical_timer_t> timers;
     };

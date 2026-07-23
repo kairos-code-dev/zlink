@@ -17,6 +17,9 @@ constexpr std::array<std::uint8_t, 4> envelope_magic{'Z', 'L', 'R', '1'};
 constexpr std::array<std::uint8_t, 4> aggregate_envelope_magic{
   'Z', 'L', 'R', 'A'};
 constexpr std::chrono::hours relocation_retention{24};
+constexpr std::size_t max_envelope_bytes = 256u * 1024u * 1024u;
+constexpr std::uint32_t max_pending_records = 4096;
+constexpr std::uint32_t max_logical_timers = 4096;
 
 void append_u32 (std::vector<std::uint8_t> &output, std::uint32_t value)
 {
@@ -82,10 +85,12 @@ class reader_t
         return value;
     }
 
-    std::optional<std::vector<std::uint8_t>> bytes ()
+    std::optional<std::vector<std::uint8_t>> bytes (
+      std::size_t maximum = max_envelope_bytes)
     {
         const auto size = u32 ();
-        if (!size || *size > _input.size () - _offset)
+        if (!size || *size > maximum
+            || *size > _input.size () - _offset)
             return std::nullopt;
         std::vector<std::uint8_t> result (
           _input.begin () + static_cast<std::ptrdiff_t> (_offset),
@@ -96,7 +101,7 @@ class reader_t
 
     std::optional<std::string> text ()
     {
-        const auto value = bytes ();
+        const auto value = bytes (255);
         return value
                  ? std::make_optional (
                      std::string (value->begin (), value->end ()))
@@ -104,6 +109,10 @@ class reader_t
     }
 
     bool done () const noexcept { return _offset == _input.size (); }
+    std::size_t remaining () const noexcept
+    {
+        return _input.size () - _offset;
+    }
 
   private:
     const std::vector<std::uint8_t> &_input;
@@ -175,7 +184,17 @@ relocation_result_t maintenance_runtime_t::relocate (
            std::nullopt});
     }
 
-    auto payload = encode (seal.frozen, inventory_digest);
+    std::vector<std::uint8_t> payload;
+    try {
+        payload = encode (seal.frozen, inventory_digest);
+    }
+    catch (...) {
+        (void) _objects.abort_relocation (seal.token);
+        return finish (
+          {relocation_terminal_t::store_failed,
+           relocation_reason_t::store_write_failed,
+           std::nullopt});
+    }
     if (payload.empty () || payload.size () > encoded_upper_bound) {
         (void) _objects.abort_relocation (seal.token);
         return finish (
@@ -329,7 +348,17 @@ relocation_result_t maintenance_runtime_t::recover (
            relocation_reason_t::checksum_mismatch,
            authority});
     }
-    auto decoded = decode (*payload);
+    std::optional<
+      std::pair<frozen_object_state_t, inventory_digest_t>> decoded;
+    try {
+        decoded = decode (*payload);
+    }
+    catch (...) {
+        return finish (
+          {relocation_terminal_t::recovery_required,
+           relocation_reason_t::restore_failed,
+           authority});
+    }
     if (!decoded
         || decoded->second != authority->inventory_digest) {
         return finish (
@@ -337,9 +366,20 @@ relocation_result_t maintenance_runtime_t::recover (
            relocation_reason_t::inventory_mismatch,
            authority});
     }
-    const auto restored =
-      target.restore_relocation (
-        std::move (decoded->first), authority->target);
+    stateful_error_t restored = stateful_error_t::conflict;
+    try {
+        restored = target.restore_relocation (
+          std::move (decoded->first), authority->target,
+          {authority->relocation_reference,
+           authority->checksum_crc32c,
+           authority->inventory_digest});
+    }
+    catch (...) {
+        return finish (
+          {relocation_terminal_t::recovery_required,
+           relocation_reason_t::restore_failed,
+           authority});
+    }
     if (restored != stateful_error_t::none
         && !(restored == stateful_error_t::already_exists
              && target.find (kind, key) == authority->target)) {
@@ -349,9 +389,185 @@ relocation_result_t maintenance_runtime_t::recover (
            authority});
     }
     return finish (
-      {relocation_terminal_t::completed,
-       relocation_reason_t::none,
+      {relocation_terminal_t::recovery_required,
+       relocation_reason_t::restore_failed,
        authority});
+}
+
+aggregate_relocation_result_t maintenance_runtime_t::recover_aggregate (
+  const std::vector<object_ref_t> &sources,
+  stateful_object_runtime_t &target)
+{
+    if (sources.size () < 2 || sources.size () > 1024) {
+        return {
+          relocation_terminal_t::conflict,
+          relocation_reason_t::inventory_mismatch,
+          {}};
+    }
+    std::vector<authority_relocation_reference_t> authority;
+    try {
+        auto canonical_sources = sources;
+        std::sort (
+          canonical_sources.begin (), canonical_sources.end (),
+          [] (const object_ref_t &left, const object_ref_t &right) {
+              if (left.kind != right.kind)
+                  return left.kind < right.kind;
+              return left.key < right.key;
+          });
+        for (std::size_t index = 1;
+             index != canonical_sources.size (); ++index) {
+            if (canonical_sources[index - 1].kind
+                  == canonical_sources[index].kind
+                && canonical_sources[index - 1].key
+                     == canonical_sources[index].key) {
+                return {
+                  relocation_terminal_t::conflict,
+                  relocation_reason_t::inventory_mismatch,
+                  {}};
+            }
+        }
+        authority.reserve (sources.size ());
+        for (const auto &source : sources) {
+            const auto current =
+              _authority->read (source.kind, source.key);
+            if (!current || current->source != source) {
+                return {
+                  relocation_terminal_t::conflict,
+                  relocation_reason_t::authority_conflict,
+                  {}};
+            }
+            authority.push_back (*current);
+        }
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::authority_publish_failed,
+          {}};
+    }
+
+    const auto &root = authority.front ();
+    for (const auto &current : authority) {
+        if (current.relocation_reference != root.relocation_reference
+            || current.checksum_crc32c != root.checksum_crc32c
+            || current.inventory_digest != root.inventory_digest
+            || current.target.node_id != root.target.node_id
+            || current.target.mesh_name != root.target.mesh_name
+            || current.target_owner.owner_id
+                 != root.target_owner.owner_id
+            || current.target_owner.lease_generation
+                 != root.target_owner.lease_generation) {
+            return {
+              relocation_terminal_t::data_lost,
+              relocation_reason_t::inventory_mismatch,
+              authority};
+        }
+    }
+
+    std::optional<std::vector<std::uint8_t>> payload;
+    try {
+        payload = _relocations->get (root.relocation_reference);
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::store_write_failed,
+          authority};
+    }
+    if (!payload) {
+        return {
+          relocation_terminal_t::data_lost,
+          relocation_reason_t::payload_missing,
+          authority};
+    }
+    if (crc32c (*payload) != root.checksum_crc32c) {
+        return {
+          relocation_terminal_t::data_lost,
+          relocation_reason_t::checksum_mismatch,
+          authority};
+    }
+    std::optional<
+      std::pair<std::vector<frozen_object_state_t>,
+                inventory_digest_t>> decoded;
+    try {
+        decoded = decode_aggregate (*payload);
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          authority};
+    }
+    if (!decoded || decoded->second != root.inventory_digest
+        || decoded->first.size () != authority.size ()) {
+        return {
+          relocation_terminal_t::data_lost,
+          relocation_reason_t::inventory_mismatch,
+          authority};
+    }
+
+    std::vector<object_ref_t> targets;
+    auto frozen = std::move (decoded->first);
+    try {
+        std::sort (
+          frozen.begin (), frozen.end (),
+          [] (const frozen_object_state_t &left,
+              const frozen_object_state_t &right) {
+              if (left.owner.kind != right.owner.kind)
+                  return left.owner.kind < right.owner.kind;
+              return left.owner.key < right.owner.key;
+          });
+        std::sort (
+          authority.begin (), authority.end (),
+          [] (const authority_relocation_reference_t &left,
+              const authority_relocation_reference_t &right) {
+              if (left.source.kind != right.source.kind)
+                  return left.source.kind < right.source.kind;
+              return left.source.key < right.source.key;
+          });
+        targets.reserve (authority.size ());
+        for (std::size_t index = 0; index != authority.size (); ++index) {
+            if (frozen[index].owner != authority[index].source) {
+                return {
+                  relocation_terminal_t::data_lost,
+                  relocation_reason_t::inventory_mismatch,
+                  authority};
+            }
+            targets.push_back (authority[index].target);
+        }
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          authority};
+    }
+
+    stateful_error_t restored = stateful_error_t::conflict;
+    try {
+        restored = target.restore_relocation_aggregate (
+          std::move (frozen), std::move (targets),
+          {root.relocation_reference,
+           root.checksum_crc32c,
+           root.inventory_digest});
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          authority};
+    }
+    if (restored != stateful_error_t::none
+        && restored != stateful_error_t::already_exists) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          authority};
+    }
+    return {
+      relocation_terminal_t::recovery_required,
+      relocation_reason_t::restore_failed,
+      authority};
 }
 
 aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
@@ -386,8 +602,18 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
             : relocation_reason_t::restore_failed,
           {}};
     }
-    auto payload = encode_aggregate (
-      seal.participants, inventory_digest);
+    std::vector<std::uint8_t> payload;
+    try {
+        payload = encode_aggregate (
+          seal.participants, inventory_digest);
+    }
+    catch (...) {
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::store_failed,
+          relocation_reason_t::store_write_failed,
+          {}};
+    }
     if (payload.empty () || payload.size () > encoded_upper_bound) {
         (void) _objects.abort_relocation (seal.token);
         return {
@@ -549,10 +775,8 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
         || frozen.owner.mesh_name.empty ()
         || frozen.owner.node_id.empty ()
         || frozen.stable_type.empty ()
-        || frozen.pending_application.size ()
-             > std::numeric_limits<std::uint32_t>::max ()
-        || frozen.timers.size ()
-             > std::numeric_limits<std::uint32_t>::max ()) {
+        || frozen.pending_application.size () > max_pending_records
+        || frozen.timers.size () > max_logical_timers) {
         return {};
     }
     std::vector<std::uint8_t> output (
@@ -569,14 +793,26 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
     append_u32 (
       output,
       static_cast<std::uint32_t> (frozen.pending_application.size ()));
+    std::uint64_t previous_sequence = 0;
     for (const auto &record : frozen.pending_application) {
+        if (record.sequence == 0
+            || record.sequence <= previous_sequence)
+            return {};
+        previous_sequence = record.sequence;
         append_u64 (output, record.sequence);
         if (!append_bytes (output, record.payload))
             return {};
     }
     append_u32 (
       output, static_cast<std::uint32_t> (frozen.timers.size ()));
+    std::uint64_t previous_timer = 0;
     for (const auto &timer : frozen.timers) {
+        if (timer.timer_id == 0 || timer.timer_id <= previous_timer
+            || timer.due_after_milliseconds == 0
+            || timer.next_tick_sequence == 0) {
+            return {};
+        }
+        previous_timer = timer.timer_id;
         append_u64 (output, timer.timer_id);
         append_u64 (output, timer.due_after_milliseconds);
         append_u64 (output, timer.period_milliseconds);
@@ -589,9 +825,11 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode (
 
 std::optional<std::pair<frozen_object_state_t, inventory_digest_t>>
 maintenance_runtime_t::decode (
-  const std::vector<std::uint8_t> &payload)
+  const std::vector<std::uint8_t> &payload) noexcept
+try
 {
-    if (payload.size () < envelope_magic.size ()
+    if (payload.size () > max_envelope_bytes
+        || payload.size () < envelope_magic.size ()
                            + 1 + inventory_digest_t{}.size ()
         || !std::equal (
           envelope_magic.begin (), envelope_magic.end (), payload.begin ())) {
@@ -613,7 +851,11 @@ maintenance_runtime_t::decode (
         || !key || key->empty () || !stable_type || stable_type->empty ()
         || !mesh_name || mesh_name->empty () || !node_id || node_id->empty ()
         || !object_generation || *object_generation == 0
-        || !owner_generation || *owner_generation == 0 || !pending_count) {
+        || !owner_generation || *owner_generation == 0 || !pending_count
+        || *pending_count > max_pending_records
+        || reader.remaining ()
+             < static_cast<std::size_t> (*pending_count) * 12u
+                 + 4u + inventory_digest_t{}.size ()) {
         return std::nullopt;
     }
 
@@ -630,27 +872,36 @@ maintenance_runtime_t::decode (
       .pending_application = {},
       .timers = {}};
     frozen.pending_application.reserve (*pending_count);
+    std::uint64_t previous_sequence = 0;
     for (std::uint32_t index = 0; index != *pending_count; ++index) {
         const auto sequence = reader.u64 ();
         auto bytes = reader.bytes ();
-        if (!sequence || *sequence == 0 || !bytes)
+        if (!sequence || *sequence == 0
+            || *sequence <= previous_sequence || !bytes)
             return std::nullopt;
+        previous_sequence = *sequence;
         frozen.pending_application.push_back (
           turn_record_t{*sequence, std::move (*bytes)});
     }
     const auto timer_count = reader.u32 ();
-    if (!timer_count)
+    if (!timer_count || *timer_count > max_logical_timers
+        || reader.remaining ()
+             < static_cast<std::size_t> (*timer_count) * 32u
+                 + inventory_digest_t{}.size ())
         return std::nullopt;
     frozen.timers.reserve (*timer_count);
+    std::uint64_t previous_timer = 0;
     for (std::uint32_t index = 0; index != *timer_count; ++index) {
         const auto timer_id = reader.u64 ();
         const auto due = reader.u64 ();
         const auto period = reader.u64 ();
         const auto next = reader.u64 ();
-        if (!timer_id || *timer_id == 0 || !due || *due == 0
+        if (!timer_id || *timer_id == 0
+            || *timer_id <= previous_timer || !due || *due == 0
             || !period || !next || *next == 0) {
             return std::nullopt;
         }
+        previous_timer = *timer_id;
         frozen.timers.push_back (
           logical_timer_t{*timer_id, *due, *period, *next});
     }
@@ -664,6 +915,10 @@ maintenance_runtime_t::decode (
     if (!reader.done ())
         return std::nullopt;
     return std::make_pair (std::move (frozen), digest);
+}
+catch (...)
+{
+    return std::nullopt;
 }
 
 std::vector<std::uint8_t> maintenance_runtime_t::encode_aggregate (
@@ -685,6 +940,87 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode_aggregate (
     output.insert (
       output.end (), inventory_digest.begin (), inventory_digest.end ());
     return output;
+}
+
+std::optional<
+  std::pair<std::vector<frozen_object_state_t>, inventory_digest_t>>
+maintenance_runtime_t::decode_aggregate (
+  const std::vector<std::uint8_t> &payload) noexcept
+try
+{
+    if (payload.size () > max_envelope_bytes
+        || payload.size () < aggregate_envelope_magic.size () + 4
+                           + inventory_digest_t{}.size ()
+        || !std::equal (
+          aggregate_envelope_magic.begin (),
+          aggregate_envelope_magic.end (), payload.begin ())) {
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> encoded (
+      payload.begin ()
+        + static_cast<std::ptrdiff_t> (aggregate_envelope_magic.size ()),
+      payload.end ());
+    reader_t reader (encoded);
+    const auto participant_count = reader.u32 ();
+    if (!participant_count || *participant_count < 2
+        || *participant_count > 1024
+        || reader.remaining ()
+             < static_cast<std::size_t> (*participant_count) * 4u
+                 + inventory_digest_t{}.size ()) {
+        return std::nullopt;
+    }
+
+    std::vector<frozen_object_state_t> participants;
+    participants.reserve (*participant_count);
+    std::optional<inventory_digest_t> participant_digest;
+    for (std::uint32_t index = 0; index != *participant_count; ++index) {
+        const auto participant_payload = reader.bytes ();
+        if (!participant_payload)
+            return std::nullopt;
+        auto participant = decode (*participant_payload);
+        if (!participant)
+            return std::nullopt;
+        if (participant_digest
+            && *participant_digest != participant->second) {
+            return std::nullopt;
+        }
+        participant_digest = participant->second;
+        participants.push_back (std::move (participant->first));
+    }
+    inventory_digest_t root_digest{};
+    for (auto &byte : root_digest) {
+        const auto value = reader.u8 ();
+        if (!value)
+            return std::nullopt;
+        byte = *value;
+    }
+    if (!reader.done () || !participant_digest
+        || *participant_digest != root_digest) {
+        return std::nullopt;
+    }
+
+    std::sort (
+      participants.begin (), participants.end (),
+      [] (const frozen_object_state_t &left,
+          const frozen_object_state_t &right) {
+          if (left.owner.kind != right.owner.kind)
+              return left.owner.kind < right.owner.kind;
+          return left.owner.key < right.owner.key;
+      });
+    for (std::size_t index = 1; index != participants.size (); ++index) {
+        if (participants[index - 1].owner.kind
+              == participants[index].owner.kind
+            && participants[index - 1].owner.key
+                 == participants[index].owner.key) {
+            return std::nullopt;
+        }
+    }
+    return std::make_pair (
+      std::move (participants), root_digest);
+}
+catch (...)
+{
+    return std::nullopt;
 }
 
 maintenance_runtime_t::permit_t::permit_t (

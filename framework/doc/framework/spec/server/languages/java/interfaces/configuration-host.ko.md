@@ -140,7 +140,11 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 ClientServer는 manual endpoint와 location store automatic discovery를 함께 사용할 수 있다. 두 source가 같은
 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
-않는다.
+않는다. 같은 ChannelName에는 Client와 Server를 각각 한 번 등록할 수 있고 `(ChannelName, Role)` key의
+별도 registration으로 하나의 ClientServer topology를 공유한다. 같은 역할을 두 번 등록하면 startup이
+실패하며 RouteMesh ChannelName 충돌 규칙은
+유지한다. Local Server도 listener와 service admission 뒤 remote Server와 같은 readiness·weight·drain
+조건으로 선택하며 local 우선순위나 direct handler 호출을 사용하지 않는다.
 
 Fanout에서는 Publisher가 descriptor만 게시하고 outbound connect를 시작하지 않는다. Subscriber만 publisher
 endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection intent

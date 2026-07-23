@@ -131,6 +131,10 @@ public interface IZLinkRouteClient
 Node direct는 target RID 하나로 submit한다. Channel operation은 process-local route index에서 ChannelName으로
 유일한 RouteMesh 또는 ClientServer 송신 경로를 선택한다. Ready positive-weight member 하나를
 round-robin으로 선택하고 같은 operation에서 submit하며 client는 선택된 RID를 반환하지 않는다.
+ClientServer의 같은 ChannelName에 local Server가 있으면 remote Server와 같은 readiness·weight·drain
+조건으로 candidate에 포함하고 local 우선순위나 remote 제외를 적용하지 않는다. Local Server를 선택해도
+Client DEALER에서 Server ROUTER로 실제 transport message를 전달하므로 codec, HWM, timeout,
+cancellation, correlation과 terminal completion을 우회하지 않는다.
 
 `IZLinkHandlerContext`는 nullable ChannelName을 제공한다. Channel context는 non-null ChannelName을 제공하고,
 Node direct 전용 context만 MeshName과 source·target RID를 추가로 제공한다. Correlation ID는 request에서 non-null이고

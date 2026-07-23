@@ -40,6 +40,8 @@ export const ServiceWireCommand = {
   sessionRelocationRoute: 44,
   sessionRelocationRouted: 45,
   replyRelayAck: 46,
+  userSpotCreate: 47,
+  userSpotClose: 48,
 } as const;
 export const ServiceWireFlag = {
   metadata: 1,
@@ -71,5 +73,7 @@ export const ServiceWireFrameworkErrorCode = {
   workerFailed: 20,
   actorLocationStale: 21,
   actorCreateRejected: 22,
+  spotGenerationStale: 33,
+  spotMoving: 34,
   relocationDataLost: 35,
 } as const;

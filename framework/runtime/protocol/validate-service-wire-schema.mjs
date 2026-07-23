@@ -1279,6 +1279,46 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       replay: "does-not-restart-or-extend-deadline",
       send: "no-operation-timeout",
     }],
+    ["user-spot-terminal-operation-integrity", {
+      commands: {
+        create: "userSpotCreate",
+        close: "userSpotClose",
+        terminal: "reply",
+      },
+      scope: "route-mesh-object-client-or-server-to-exact-object-server-only",
+      operationIdentity: "source-node-rid-source-node-generation-and-operation-id-terminal-once",
+      deadline: "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
+      create: {
+        authorityKey: "global-spot-rid-user-kind-only",
+        reservation: "provider-issued-reservation-id-exact-store-version-object-generation-authority-owner-generation-target-node-lifecycle-owner-lease-and-pending-capacity",
+        content: "target-exact-reads-immutable-pending-creation-content-from-location-store-never-command-payload",
+        admissionOrder: [
+          "authenticate-source-and-exact-target-lifecycle",
+          "exact-read-pending-user-spot-authority",
+          "compare-key-stable-type-reservation-store-version-owner-and-target-fences",
+          "factory-and-initialize",
+          "same-reservation-commit",
+        ],
+        terminalStates: ["existing", "created", "rejected"],
+        terminalTail: "exact-spot-ref-for-all-three-states",
+        applicationReply: "forbidden-for-existing-optional-for-created-or-rejected",
+      },
+      close: {
+        target: "exact-spot-ref-target-node-lifecycle-authority-owner-generation-and-store-version",
+        admissionOrder: [
+          "authenticate-source-and-exact-target-lifecycle",
+          "exact-read-current-user-spot-authority",
+          "reject-object-generation-or-authority-owner-generation-or-store-version-mismatch",
+          "reject-relocation-or-closing-conflict",
+          "reject-nonempty-active-actor-membership",
+          "closing-cas-and-local-admission-seal",
+        ],
+        terminalTail: "closed-bool-false-only-for-idempotent-missing-or-active-membership",
+        retarget: "forbidden",
+      },
+      polling: "location-row-polling-is-not-terminal-completion",
+      applicationControlPacket: "forbidden",
+    }],
     ["relocation-authority-phase-boundaries", {
       authorityType: "authority-payload-v1",
       writes: "exact-store-version-cas-each-phase",
@@ -1399,6 +1439,8 @@ function validateSemanticConstraints(constraints, contexts, fail) {
           workerFailed: "internalError",
           actorLocationStale: "conflict",
           actorCreateRejected: "rejected",
+          spotGenerationStale: "conflict",
+          spotMoving: "conflict",
           relocationDataLost: "internalError",
         },
       },
@@ -1406,7 +1448,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       publicMapping: "wire-value-minus-one",
       reservedWireValues: {
         first: 23,
-        last: 34,
+        last: 32,
         reason: "public-only-framework-errors-not-valid-on-service-wire",
       },
     }],
@@ -3980,6 +4022,10 @@ function validateServiceInvariants(schema, types, fail) {
     "requestProtocolError", "requestFailed", "workerQueueFull", "workerTimedOut", "workerFailed",
     "actorLocationStale", "actorCreateRejected",
   ].map((name, value) => ({ name, value }));
+  expectedFrameworkErrors.push(
+    { name: "spotGenerationStale", value: 33 },
+    { name: "spotMoving", value: 34 },
+  );
   expectedFrameworkErrors.push({ name: "relocationDataLost", value: 35 });
   if (frameworkError?.encoding !== "u32"
       || JSON.stringify(frameworkError.values) !== JSON.stringify(expectedFrameworkErrors)) {
@@ -4213,6 +4259,96 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "targetOwnerLeaseGeneration", $ref: "nonzero-u64" },
     { name: "pendingCapacityDelta", $ref: "nonzero-u32" },
   ], "$.types", "generic reservation must carry exact object, target owner and capacity fences");
+  requireFields(commands.get("userSpotCreate")?.body, [
+    { name: "correlation", $ref: "nonzero-u64" },
+    { name: "operation", $ref: "operation-id" },
+    { name: "sourceNodeRid", $ref: "rid" },
+    { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
+    { name: "spotRid", $ref: "rid" },
+    { name: "stableType", $ref: "text8" },
+    { name: "reservation", $ref: "object-reservation-fence" },
+    { name: "deadlineUnixMs", $ref: "nonzero-u64" },
+  ], "$.commands", "User Spot create must carry exact operation, source lifecycle, authority key, type, reservation and deadline");
+  requireFields(types.get("user-spot-close-fence-v1")?.body, [
+    { name: "spot", $ref: "spot-ref" },
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
+    { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
+    { name: "expectedStoreVersion", $ref: "authority-store-version" },
+  ], "$.types", "User Spot close target must carry exact ref, target lifecycle, authority generation and StoreVersion");
+  requireFields(commands.get("userSpotClose")?.body, [
+    { name: "correlation", $ref: "nonzero-u64" },
+    { name: "operation", $ref: "operation-id" },
+    { name: "sourceNodeRid", $ref: "rid" },
+    { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
+    { name: "target", $ref: "user-spot-close-fence-v1" },
+    { name: "deadlineUnixMs", $ref: "nonzero-u64" },
+  ], "$.commands", "User Spot close must carry exact operation, source lifecycle, target authority fence and deadline");
+  for (const [name, id] of [["userSpotCreate", 47], ["userSpotClose", 48]]) {
+    const command = commands.get(name);
+    if (command?.id !== id
+        || command?.domain !== "infrastructure"
+        || command?.payload !== "forbidden"
+        || JSON.stringify(command?.allowedFlags) !== "[]"
+        || JSON.stringify(command?.requiredFlags) !== "[]") {
+      fail("$.commands", `${name} must use its fixed infrastructure command ID without flags, metadata or payload`);
+    }
+  }
+  const operationKinds = types.get("mesh-operation-kind");
+  const expectedOperationKinds = [
+    "none", "nodeRequest", "channelRequest", "spotRequest", "actorRequest", "actorLookup",
+    "actorDestroy", "actorJoin", "actorLeave", "streamBind", "streamUnbind", "streamClose",
+    "instanceSpotRequest", "userSpotCreate", "userSpotClose",
+  ].map((name, value) => ({ name, value }));
+  if (operationKinds?.encoding !== "u32"
+      || JSON.stringify(operationKinds?.values) !== JSON.stringify(expectedOperationKinds)) {
+    fail("$.types", "operation discriminator must keep stable values and add only User Spot create=13 and close=14");
+  }
+  const requestTail = types.get("request-specific-tail");
+  const expectedRequestTailCases = new Map([
+    ["actorLookup:ok", [
+      { name: "actor", $ref: "actor-ref" },
+      { name: "spotRid", $ref: "rid" },
+      { name: "spotGeneration", $ref: "nonzero-u64" },
+      { name: "authorityOwnerGeneration", $ref: "nonzero-u64" },
+    ]],
+    ["actorJoin:ok", [{ name: "join", $ref: "actor-join-reply-tail" }]],
+    ["streamBind:ok", [
+      { name: "bindingGeneration", $ref: "nonzero-u64" },
+      { name: "authorityOwnerGeneration", $ref: "nonzero-u64" },
+    ]],
+    ["userSpotCreate:ok", [
+      { name: "createResult", $ref: "user-spot-create-result" },
+      { name: "spot", $ref: "spot-ref" },
+    ]],
+    ["userSpotClose:ok", [{ name: "closed", $ref: "bool8" }]],
+  ]);
+  const requestTailCases = requestTail?.cases ?? [];
+  if (requestTailCases.length !== expectedRequestTailCases.size
+      || requestTail?.otherwise?.fields?.length !== 0) {
+    fail("$.types", "reply tail must remain closed with exactly five successful operation-specific cases");
+  } else {
+    const seenReplyCases = new Set();
+    for (const replyCase of requestTailCases) {
+      const key = `${replyCase.when?.originalOperationKind}:${replyCase.when?.terminalResult}`;
+      if (seenReplyCases.has(key)
+          || !expectedRequestTailCases.has(key)
+          || JSON.stringify(fieldShape(replyCase.fields))
+            !== JSON.stringify(expectedRequestTailCases.get(key))) {
+        fail("$.types", `reply tail case ${key} violates the exact operation discriminator or tail cardinality`);
+      }
+      seenReplyCases.add(key);
+    }
+  }
+  const createResults = types.get("user-spot-create-result");
+  if (createResults?.encoding !== "u8"
+      || JSON.stringify(createResults?.values) !== JSON.stringify([
+        { name: "existing", value: 1 },
+        { name: "created", value: 2 },
+        { name: "rejected", value: 3 },
+      ])) {
+    fail("$.types", "User Spot create result must be the closed Existing, Created or Rejected discriminator");
+  }
   const reservation = types.get("generic-object-reservation-v1");
   if (JSON.stringify((reservation?.cases ?? []).map((entry) => entry.when))
       !== JSON.stringify([
@@ -5959,6 +6095,58 @@ function runSelfTests(schema) {
       const command = candidate.commands.find((entry) => entry.name === "instanceSpot");
       command.body.splice(-1, 0, { name: "timeoutMs", $ref: "u32" });
     }],
+    ["User Spot create reservation omitted", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "userSpotCreate");
+      command.body = command.body.filter((field) => field.name !== "reservation");
+    }],
+    ["User Spot create source lifecycle omitted", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "userSpotCreate");
+      command.body = command.body.filter((field) => field.name !== "sourceNodeGeneration");
+    }],
+    ["User Spot create deadline omitted", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "userSpotCreate");
+      command.body = command.body.filter((field) => field.name !== "deadlineUnixMs");
+    }],
+    ["User Spot close StoreVersion omitted", (candidate) => {
+      const fence = candidate.types.find((type) => type.name === "user-spot-close-fence-v1");
+      fence.body = fence.body.filter((field) => field.name !== "expectedStoreVersion");
+    }],
+    ["User Spot close authority generation omitted", (candidate) => {
+      const fence = candidate.types.find((type) => type.name === "user-spot-close-fence-v1");
+      fence.body = fence.body.filter(
+        (field) => field.name !== "expectedAuthorityOwnerGeneration",
+      );
+    }],
+    ["User Spot close target lifecycle omitted", (candidate) => {
+      const fence = candidate.types.find((type) => type.name === "user-spot-close-fence-v1");
+      fence.body = fence.body.filter((field) => field.name !== "targetNodeGeneration");
+    }],
+    ["User Spot operation discriminator changed", (candidate) => {
+      const operationKinds = candidate.types.find((type) => type.name === "mesh-operation-kind");
+      operationKinds.values.find((entry) => entry.name === "userSpotCreate").value = 14;
+    }],
+    ["User Spot create reply tail loses exact SpotRef", (candidate) => {
+      const tail = candidate.types.find((type) => type.name === "request-specific-tail");
+      const create = tail.cases.find(
+        (entry) => entry.when?.originalOperationKind === "userSpotCreate",
+      );
+      create.fields = create.fields.filter((field) => field.name !== "spot");
+    }],
+    ["User Spot close reply tail duplicated", (candidate) => {
+      const tail = candidate.types.find((type) => type.name === "request-specific-tail");
+      tail.cases.push(clone(tail.cases.find(
+        (entry) => entry.when?.originalOperationKind === "userSpotClose",
+      )));
+    }],
+    ["User Spot create accepts command payload", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "userSpotCreate");
+      command.payload = "optional";
+      command.payloadType = { $ref: "application-payload-envelope-v1" };
+    }],
+    ["legacy reply envelope field changed", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "reply");
+      command.body[0].name = "operation";
+    }],
     ["Instance owner lease fence omitted", (candidate) => {
       const fence = candidate.types.find((type) => type.name === "authority-generation-fence");
       fence.fields = fence.fields.filter((field) => field.name !== "leaseGeneration");
@@ -6211,11 +6399,33 @@ function runSelfTests(schema) {
       const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
       errorCodes.values.find((entry) => entry.name === "relocationDataLost").value = 23;
     }],
+    ["SpotGenerationStale failure omitted", (candidate) => {
+      const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
+      errorCodes.values = errorCodes.values.filter(
+        (entry) => entry.name !== "spotGenerationStale",
+      );
+    }],
+    ["SpotMoving failure omitted", (candidate) => {
+      const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
+      errorCodes.values = errorCodes.values.filter(
+        (entry) => entry.name !== "spotMoving",
+      );
+    }],
+    ["SpotGenerationStale wire value changed", (candidate) => {
+      const errorCodes = candidate.types.find((type) => type.name === "framework-error-code");
+      errorCodes.values.find((entry) => entry.name === "spotGenerationStale").value = 34;
+    }],
     ["framework error reserved wire gap narrowed", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
         (entry) => entry.kind === "terminal-failure-integrity",
       );
-      constraint.reservedWireValues.last = 33;
+      constraint.reservedWireValues.last = 31;
+    }],
+    ["SpotMoving mapping changed", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "terminal-failure-integrity",
+      );
+      constraint.typedFrameworkFailure.exactResultByFailureCode.spotMoving = "internalError";
     }],
     ["RelocationDataLost mapping changed", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
@@ -6681,9 +6891,40 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
       "spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration",
       "authorityOwnerGeneration",
     ],
+    terminalServiceOperations: {
+      commands: {
+        userSpotCreate: 47,
+        userSpotClose: 48,
+        terminalReply: 20,
+        reservedFirst: 49,
+      },
+      replyEnvelopeFields: ["correlation", "terminalResult", "failureCode", "tail"],
+      createRequestFields: [
+        "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "spotRid",
+        "stableType", "reservation", "deadlineUnixMs",
+      ],
+      createReservationFences: [
+        "reservationId", "expectedStoreVersion", "objectGeneration",
+        "authorityOwnerGeneration", "targetNodeRid", "targetNodeGeneration", "targetOwnerId",
+        "targetOwnerLeaseGeneration", "pendingCapacityDelta",
+      ],
+      createTerminalStates: ["existing", "created", "rejected"],
+      createTerminalTail: ["createResult", "spot"],
+      createContentSource: "location-pending-creation-exact-read",
+      closeRequestFields: [
+        "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "target",
+        "deadlineUnixMs",
+      ],
+      closeTargetFences: [
+        "spot", "targetNodeRid", "targetNodeGeneration",
+        "expectedAuthorityOwnerGeneration", "expectedStoreVersion",
+      ],
+      closeTerminalTail: ["closed"],
+      terminalOnceIdentity: ["sourceNodeRid", "sourceNodeGeneration", "operation"],
+    },
   };
   if (JSON.stringify(fixture) !== JSON.stringify(expected)) {
-    fail(location, "must match the exact CA-D01..D30 amendment fixture");
+    fail(location, "must match the exact CA-D01..D56 amendment fixture");
   }
 }
 
@@ -6723,6 +6964,24 @@ function runContractAmendmentFixtureSelfTests(schemaPath) {
     }],
     ["exact ref drops generation", (candidate) => {
       candidate.exactRefRoute.actor.splice(1, 1);
+    }],
+    ["User Spot create drops StoreVersion fence", (candidate) => {
+      candidate.terminalServiceOperations.createReservationFences =
+        candidate.terminalServiceOperations.createReservationFences.filter(
+          (field) => field !== "expectedStoreVersion",
+        );
+    }],
+    ["User Spot close drops target lifecycle", (candidate) => {
+      candidate.terminalServiceOperations.closeTargetFences =
+        candidate.terminalServiceOperations.closeTargetFences.filter(
+          (field) => field !== "targetNodeGeneration",
+        );
+    }],
+    ["User Spot reply envelope changes legacy order", (candidate) => {
+      candidate.terminalServiceOperations.replyEnvelopeFields.reverse();
+    }],
+    ["User Spot terminal identity drops source lifecycle", (candidate) => {
+      candidate.terminalServiceOperations.terminalOnceIdentity.splice(1, 1);
     }],
   ];
   for (const [label, mutate] of tests) {

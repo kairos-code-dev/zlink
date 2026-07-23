@@ -16,7 +16,8 @@ ClientServer Channel은 RouteMesh의 option이 아니다. Node direct, Spot, Act
 
 ## 2. Client와 server 역할
 
-한 process의 ClientServer Channel 등록은 `Client` 또는 `Server` 역할 중 하나다.
+한 process는 같은 ChannelName의 ClientServer Channel에 `Client`, `Server` 또는 두 역할을 함께 등록할 수
+있다. Registration key는 `(ChannelName, Role)`이며 역할별 등록은 최대 한 번만 허용한다.
 
 | 역할 | 허용되는 동작 |
 |---|---|
@@ -27,9 +28,11 @@ Server에는 연결된 client를 대상으로 새 업무 send나 request를 시�
 request의 reply는 반대 방향 업무 호출이 아니며 같은 request의 terminal completion이다. Client가 제출한
 request와 일치하지 않는 server message는 업무 handler에 전달하지 않고 protocol 오류로 관측한다.
 
-같은 ChannelName의 server를 여러 process에 등록할 수 있다. 같은 process에서 ChannelName을 RouteMesh와
-ClientServer에 동시에 등록하거나, 서로 다른 ClientServer 등록에 중복 사용하면 역할과 관계없이 host
-startup이 실패한다.
+같은 ChannelName의 server를 여러 process에 등록할 수 있다. 같은 process에서 Client와 Server를 각각 한 번
+등록하면 별도 registration을 유지하면서 하나의 ClientServer topology를 공유한다. 같은 역할을 두 번
+등록하거나 같은 ChannelName을
+RouteMesh와 ClientServer에 동시에 등록하면 host startup이 실패한다. RouteMesh와 fanout의 기존
+ChannelName 충돌 규칙은 바꾸지 않는다.
 
 ## 3. Endpoint와 발견
 
@@ -70,6 +73,12 @@ RouteMesh peer admission으로 변환하지 않는다. Manual과 automatic sourc
 Server weight 범위는 `0..100`이고 기본값은 `100`이다. Positive weight의 ready server는 weight 비율을
 반영해 선택하며 같은 weight의 server는 순환 방식으로 선택한다. Weight `0` 또는 draining server는 새
 send와 request의 대상에서 제외한다.
+
+같은 process에 등록한 local Server도 remote Server와 같은 candidate 집합에 포함한다. Listener와 service
+admission을 마쳐 ready이고, weight가 양수이며, draining 상태가 아닐 때만 선택한다. Local이라는 이유로
+우선 선택하거나 remote Server를 제외하지 않는다. 선택된 local Server에도 Client DEALER에서 Server
+ROUTER로 실제 transport message를 전달하며 handler를 직접 호출하지 않는다. 이 경로는 codec, HWM,
+timeout, cancellation, correlation과 terminal completion 규칙을 우회하지 않는다.
 
 대상 선택과 submit은 한 operation이다. Application에 선택한 server identity를 중간 결과로 반환하지
 않는다. Submit 뒤 연결 종료, timeout 또는 cancellation이 발생해도 다른 server로 자동 재전송하지 않는다.
@@ -119,7 +128,11 @@ lease를 갱신하지 못해 fencing deadline에 도달하면 새 업무 admissi
 
 - Server에서 client 대상 업무 호출을 시작하는 공개 기능이 없고 unsolicited server message를 client 업무
   handler에 전달하지 않는다.
+- 같은 process의 같은 ChannelName에 Client와 Server를 각각 한 번 등록할 수 있고, 같은 역할의 중복 등록과
+  RouteMesh 충돌은 startup 오류다.
 - 같은 ChannelName의 여러 server가 weight, weight `0`과 drain state를 반영해 선택된다.
+- Local Server도 remote Server와 같은 readiness·weight·drain 규칙으로 선택하며 실제 transport를 거쳐
+  handler에 도달한다.
 - Automatic discovery가 전용 ClientServer server descriptor를 사용하며 MeshNode descriptor와 섞이지 않는다.
 - Automatic과 manual ClientServer 모두 Client만 server endpoint로 connect하고, automatic Client는 같은
   ChannelName의 descriptor마다 connection intent 하나를 유지한다.

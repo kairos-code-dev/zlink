@@ -278,6 +278,16 @@
         "publicValue": 21
       },
       {
+        "name": "spotGenerationStale",
+        "wireValue": 33,
+        "publicValue": 32
+      },
+      {
+        "name": "spotMoving",
+        "wireValue": 34,
+        "publicValue": 33
+      },
+      {
         "name": "relocationDataLost",
         "wireValue": 35,
         "publicValue": 34
@@ -285,7 +295,7 @@
     ],
     "reservedWireValues": {
       "first": 23,
-      "last": 34,
+      "last": 32,
       "reason": "public-only-framework-errors-not-valid-on-service-wire"
     },
     "malformed": [
@@ -296,7 +306,7 @@
       },
       {
         "name": "reservedPublicOnlyLast",
-        "wireValue": 34,
+        "wireValue": 32,
         "error": "unknown-framework-error"
       },
       {

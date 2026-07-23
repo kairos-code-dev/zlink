@@ -13,6 +13,9 @@ bean은 해당 Java accessor의 반환값과 reference identity가 같다.
 ClientServer server 상태는 Java `ZLinkClientServerServerState`, fanout publisher 연결 상태는
 `ZLinkFanoutPublisherConnectionState`를 그대로 사용한다. Host의 `ZLinkFrameworkRuntimeState`나 MeshNode의
 `ZLinkMeshNodeState`를 이 두 connection 상태에 대신 사용하지 않는다.
+같은 ChannelName에 Client와 Server를 함께 등록한 snapshot의 local role은 Java
+`ZLinkClientServerRole.CLIENT_AND_SERVER`로 나타낸다. 이는 별도 role registration 두 개의 aggregate
+projection일 뿐 builder role이나 registration key가 아니다. Kotlin 전용 enum이나 변환 값을 만들지 않는다.
 
 Fanout ready 의미도 Java 계약을 그대로 사용한다. Publisher 전용 SUB socket의 native-ready만으로 ready가
 되지 않으며, 같은 socket에서 첫 valid application record 또는 liveness beacon까지 받아야 한다. 15초 inbound

@@ -18,24 +18,27 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 - `golden/authority-key-v1.json`: MeshName과 독립적인 global ActorId·SpotRid를 canonical Store key로 만드는
   정상 encoding fixture
 - `golden/contract-amendment-v1.json`: object role·capacity descriptor, durable creation intent, generic
-  Reserve·Commit·Abort fence, User Spot aggregate, bounded forwarding과 exact-ref route의 공통 golden fixture
+  Reserve·Commit·Abort fence, User Spot aggregate, bounded forwarding, exact-ref route와 command 47·48 terminal
+  service operation의 공통 golden fixture
 - `golden/`: service frame의 정상·경계·오류 fixture를 추가하는 위치
 - `generate-service-wire-assets.mjs`: 검증한 schema에서 네 언어 command·flag·Framework wire error 상수와
   공통 decoder fixture를 생성하고 `--check`로 drift를 차단하는 도구
 - `generated/`: C++·.NET·JVM·Node.js runtime이 복사하지 않고 사용하는 생성 상수
 - `traces/`: schema 승인 뒤 생성하는 normalized behavior trace
 
-Codec table이나 fixture를 생성하기 전에 다음 명령이 성공해야 한다. 현재 gate는 37개 command, 151개 type,
-4개 flag, 35개 bound, durable fixture 3개와 logical·JSON·authority key fixture를 확인한다. `--self-test`는
-contract amendment fixture 1개와 159가지 invalid mutation이 실제로
+Codec table이나 fixture를 생성하기 전에 다음 명령이 성공해야 한다. 현재 gate는 39개 command, 163개 type,
+4개 flag, 36개 bound, durable fixture 4개와 logical·JSON·authority key fixture를 확인한다. `--self-test`는
+contract amendment fixture 1개와 219가지 invalid mutation이 실제로
 거부되는지도 확인한다. 여기에는 integer overflow, length capacity 초과, 잘못된 정렬 field, enum domain 이탈,
 conditional discriminator 오류, TLV 순서·required capability 제약 변경, relocation vector 불일치, durable
 magic·version·length·checksum·semantic·order·range 훼손, relocation graph·policy 오류와 fanout socket·beacon·deadline
 변경이 포함된다.
 
 Framework error는 `none=0`, 그 외에는 `wire value = public error kind + 1`로 변환한다. Service wire에서
-사용하지 않는 public-only error에 대응하는 wire `23..34`는 예약 구간이다. `RelocationDataLost`는 wire `35`에서
-public `34`로 decode하며, decoder fixture가 예약 구간과 이 변환을 함께 검증한다.
+사용하지 않는 public-only error에 대응하는 wire `23..32`는 예약 구간이다. `SpotGenerationStale`은
+wire `33`에서 public `32`로, `SpotMoving`은 wire `34`에서 public `33`으로 decode한다.
+`RelocationDataLost`는 wire `35`에서 public `34`로 decode하며, decoder fixture가 예약 구간과 이 변환을
+함께 검증한다.
 
 ```bash
 node framework/runtime/protocol/validate-service-wire-schema.mjs \

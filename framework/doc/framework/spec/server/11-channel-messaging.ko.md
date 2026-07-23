@@ -27,8 +27,10 @@ Node direct는 지정한 RouteMesh MeshNode를 사용한다. ChannelName은 소�
 ChannelName을 추가해도 ROUTER나 peer 연결을 별도로 만들지 않는다.
 
 한 process에 서로 다른 MeshName의 MeshNode와 ClientServer client를 여러 개 등록할 수 있다. 같은
-ChannelName을 물리 송신 경로 둘 이상에 등록할 수 없으며, 등록하지 않은 ChannelName을 호출해도 다른
-MeshNode나 ClientServer client로 자동 전달하거나 fallback하지 않는다.
+ChannelName을 물리 topology 둘 이상에 등록할 수 없다. 같은 ClientServer ChannelName의 Client와 Server를
+각각 한 번 등록한 구성은 Client 송신 경로 하나와 그 경로가 선택할 수 있는 local Server 하나를 함께
+만드는 것이며 두 송신 경로로 계산하지 않는다. 등록하지 않은 ChannelName을 호출해도 다른 MeshNode나
+ClientServer client로 자동 전달하거나 fallback하지 않는다.
 
 ## 3. 선택과 submit
 
@@ -42,6 +44,12 @@ ChannelName select-one은 다음 기준을 하나의 원자적 operation으로 �
    server만 선택 대상으로 삼는다.
 3. Weight가 0인 target과 drain 중인 target을 새 선택에서 제외한다.
 4. Positive weight 선택으로 한 target을 고르고 즉시 submit한다.
+
+ClientServer의 local Server도 remote Server와 같은 후보다. Listener와 ClientServer service admission이
+ready이고 weight가 양수이며 draining이 아닐 때만 후보에 포함한다. 같은 process라는 이유로 먼저 선택하거나
+제외하지 않는다. 선택되면 local handler를 직접 호출하지 않고 Client DEALER에서 Server ROUTER로 실제
+ClientServer record를 전송한다. Codec, admission, HWM, timeout, correlation과 reply 처리를 생략하는 local
+transport bypass는 제공하지 않는다.
 
 Framework는 선택한 RID를 중간 결과로 호출자에게 반환하지 않고 같은 operation에서 submit한다. request를 보낸
 뒤 연결 종료나 timeout이 발생해도 다른 member에 자동 재전송하지 않는다. 이미 실행된 request를 중복
@@ -120,6 +128,8 @@ label로 사용하지 않는다.
 - Node direct가 지정한 RID 이외의 node로 전달되지 않는다.
 - ChannelName이 process-local 송신 경로 하나만 선택하고 미등록 이름을 다른 경로로 fallback하지 않는다.
 - ChannelName select-one이 RouteMesh membership 또는 ClientServer server의 weight, ready와 drain 상태를 함께 반영한다.
+- 같은 process의 ClientServer Server도 remote와 같은 후보 집합과 transport 경로를 사용하며 local 우선 선택,
+  local 제외와 direct handler 호출이 없다.
 - RouteMesh의 Node direct와 ChannelName이 같은 MeshNode ROUTER를 사용하고 ChannelName별 소켓을 만들지
   않으며, ClientServer 송신 경로는 별도 client transport를 사용한다.
 - 서로 다른 MeshName 사이에 target이나 handler namespace가 섞이지 않는다.

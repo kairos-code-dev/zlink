@@ -237,7 +237,9 @@ runtime이 activation envelope를 수락한 뒤 reservation을 만드는 §6.1�
    `Missing → Creating` authority, creation intent와 target pending capacity를 하나의 atomic transaction으로
    기록한다. ObjectGeneration과 AuthorityOwnerGeneration은 이때 발급한다.
 3. Target은 reservation에 고정한 exact authority, descriptor lifecycle과 owner lease를 확인하고 factory와 initialization을
-   실행한다.
+   실행한다. Remote target이면 source는 reservation 이후 command 47 `userSpotCreate`를 보내며 creation request
+   bytes를 wire payload로 중복 전송하지 않는다. Target은 command의 source lifecycle, key·type,
+   provider-issued reservation·StoreVersion과 target lifecycle을 Pending authority exact read와 비교한다.
 4. Framework는 Ready authority payload를 encode한다. Generic `Commit`은 payload를 해석하지 않고 같은
    reservation의 target descriptor lifecycle과 owner lease를 다시 확인한 뒤 `Creating → Ready`와 pending-to-active
    capacity 전환을 atomic하게 수행한다. Stale이면 mutation 0으로 끝내고 reservation을 recovery가 정리하도록
@@ -255,6 +257,9 @@ Factory 또는 Ready commit 실패는 같은 reservation의 generic `Abort`로 C
 fence로 attempt를 takeover하거나 abort한다.
 Caller cancellation, timeout이나 response loss는 commit 실패를 의미하지 않으므로 exact read로 결과를 확인한다.
 Original creation payload와 일반 message를 다른 owner에 hidden retry하지 않는다.
+그러나 exact read는 recovery와 다음 call의 reconcile 근거일 뿐 현재 call의 terminal completion이 아니다.
+Remote create는 command 20 reply가 `Existing`·`Created`·`Rejected`, exact SpotRef와 optional application reply를
+한 번 반환해야 완료된다.
 
 ### 6.1 Instance Spot direct cold activation
 
@@ -316,6 +321,12 @@ Manager `Find(global ID)`는 existing Ready authority만 반환하며 create를 
 Destroy와 Close는 exact ref를 받는다. 같은 incarnation이 없으면 idempotent `false`, 다른 generation이면
 stale-generation error, moving이면 typed moving error다. Runtime은 current ref를 다시 찾아 새 incarnation을 종료하지
 않는다.
+
+Remote User Spot Close는 command 48 `userSpotClose`를 current owner로 보낸다. Command는 source lifecycle과
+operation identity, exact SpotRef, target lifecycle, AuthorityOwnerGeneration, StoreVersion과 deadline을 고정한다.
+Target은 current authority와 active Actor membership·moving state를 검사한 뒤에만 Closing CAS를 수행하고 command
+20 reply의 `closed` bool로 한 번 완료한다. Location polling이나 reserved application packet은 create·close의
+terminal result를 대신할 수 없다.
 
 ### 6.3 Route cache와 stale-route forwarding
 
@@ -581,6 +592,8 @@ runtime-owned resource보다 늦게 남지 않는다.
 - Opaque 4096-byte scan cursor, 1000-item·4-MiB page와 snapshot consistency가 유지된다.
 - Actor·Spot global key가 MeshName과 독립적으로 같은 authority row에 수렴한다.
 - `Create`와 `GetOrCreate` 경쟁이 같은 Creating attempt에 수렴하고 CAS loser가 별도 factory를 시작하지 않는다.
+- Remote User Spot create·close가 command 47·48의 source·target lifecycle, operation identity,
+  reservation·StoreVersion과 exact generation fence를 검사하고 command 20으로 terminal-once 완료된다.
 - Generic reservation이 Creating authority와 pending capacity를 atomic하게 reserve·commit·abort한다.
 - Authority snapshot의 provider-owned allocation이 Pending·Active state, kind·stable type, descriptor
   lifecycle과 capacity delta를 빠짐없이 반환하고 opaque payload와 중복되지 않는다.

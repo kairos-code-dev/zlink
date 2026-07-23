@@ -258,7 +258,10 @@ export interface ZLinkCodecRegistryBuilder {
 설정을 runtime validation까지 미루지 않고 TypeScript type 단계에서 막는다. Server membership이 없는
 MeshNode도 시작할 수 있다. `addClientServerChannel(channelName)`의
 client는 send/request를 시작하고
-server는 수신한 send/request 처리와 reply만 수행한다.
+server는 수신한 send/request 처리와 reply만 수행한다. ClientServer builder에서는 `client()`와
+`server()` 중 하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만 등록한다. 같은 ChannelName의
+두 역할은 `(ChannelName, Role)` key의 별도 registration으로 하나의 topology를 공유하고 같은 역할의
+중복은 startup 오류다. RouteMesh 역할 단일 선택과 ChannelName 충돌 규칙은 바꾸지 않는다.
 
 Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
 connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
@@ -269,6 +272,12 @@ Client는 manual endpoint와 location store automatic discovery를 함께 사용
 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
 않는다.
+
+같은 process에 Client와 Server를 모두 등록하면 listener와 service admission을 마친 local Server도 remote
+Server와 같은 candidate 집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하며
+local 우선순위나 remote 제외는 없다. Local Server를 선택해도 Client DEALER에서 Server ROUTER로 실제
+transport message를 전달하고 handler 직접 호출로 codec, HWM, timeout, cancellation, correlation 또는
+terminal completion을 우회하지 않는다.
 
 Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
 Disabled·Recreate는 유지한다. Snapshot policy는 adapter `Type` 하나만 보유한다. Actor factory에는

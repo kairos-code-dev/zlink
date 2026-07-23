@@ -258,6 +258,9 @@ class maintenance_runtime_t
       object_kind_t kind,
       const std::string &key,
       stateful_object_runtime_t &target);
+    aggregate_relocation_result_t recover_aggregate (
+      const std::vector<object_ref_t> &sources,
+      stateful_object_runtime_t &target);
     aggregate_relocation_result_t relocate_aggregate (
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
@@ -275,10 +278,13 @@ class maintenance_runtime_t
       const frozen_object_state_t &frozen,
       const inventory_digest_t &inventory_digest);
     static std::optional<std::pair<frozen_object_state_t, inventory_digest_t>>
-    decode (const std::vector<std::uint8_t> &payload);
+    decode (const std::vector<std::uint8_t> &payload) noexcept;
     static std::vector<std::uint8_t> encode_aggregate (
       const std::vector<frozen_object_state_t> &participants,
       const inventory_digest_t &inventory_digest);
+    static std::optional<
+      std::pair<std::vector<frozen_object_state_t>, inventory_digest_t>>
+    decode_aggregate (const std::vector<std::uint8_t> &payload) noexcept;
 
   private:
     class permit_t

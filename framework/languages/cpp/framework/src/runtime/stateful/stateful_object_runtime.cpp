@@ -14,6 +14,7 @@ namespace
 {
 
 constexpr std::size_t max_creation_request_bytes = 1024u * 1024u;
+constexpr std::size_t max_restored_timers = 4096;
 
 std::uint64_t stable_hash (const std::string &value)
 {
@@ -94,7 +95,8 @@ create_result_t stateful_object_runtime_t::begin_create (
                     record.reference,
                     false};
         }
-        if (record.state == object_state_t::moving) {
+        if (record.state == object_state_t::moving
+            || record.state == object_state_t::recovering) {
             return {create_status_t::failed,
                     stateful_error_t::moving,
                     0,
@@ -386,7 +388,8 @@ stateful_error_t stateful_object_runtime_t::destroy_actor (
     if (actor.kind != object_kind_t::actor) {
         return stateful_error_t::invalid;
     }
-    if (record->state == object_state_t::moving) {
+    if (record->state == object_state_t::moving
+        || record->state == object_state_t::recovering) {
         return stateful_error_t::moving;
     }
     if (record->membership.rfind ("entry:", 0) != 0) {
@@ -418,7 +421,8 @@ stateful_object_runtime_t::close_spot (const object_ref_t &spot)
     if (spot.kind == object_kind_t::actor) {
         return {stateful_error_t::invalid, false};
     }
-    if (record->state == object_state_t::moving) {
+    if (record->state == object_state_t::moving
+        || record->state == object_state_t::recovering) {
         return {stateful_error_t::moving, false};
     }
     if (spot.kind == object_kind_t::user_spot) {
@@ -445,7 +449,8 @@ stateful_error_t stateful_object_runtime_t::enqueue (
     if (object == nullptr) {
         return error;
     }
-    if (object->state == object_state_t::moving
+    if ((object->state == object_state_t::moving
+         || object->state == object_state_t::recovering)
         && domain == turn_domain_t::application) {
         if (object->queue.held_application.size ()
             >= _application_capacity) {
@@ -478,6 +483,10 @@ stateful_object_runtime_t::try_claim (
     if (object == nullptr) {
         return {error, std::nullopt};
     }
+    if (object->state == object_state_t::recovering
+        && domain == turn_domain_t::application) {
+        return {stateful_error_t::moving, std::nullopt};
+    }
     auto &queue = domain == turn_domain_t::application
                     ? object->queue.application
                     : object->queue.infrastructure;
@@ -503,6 +512,9 @@ stateful_error_t stateful_object_runtime_t::complete_claim (
     if (object == nullptr) {
         return error;
     }
+    if (object->state == object_state_t::recovering
+        && domain == turn_domain_t::application)
+        return stateful_error_t::moving;
     auto &active = domain == turn_domain_t::application
                      ? object->queue.application_active
                      : object->queue.infrastructure_active;
@@ -523,6 +535,8 @@ stateful_error_t stateful_object_runtime_t::yield_claim (
     if (object == nullptr) {
         return error;
     }
+    if (object->state == object_state_t::recovering)
+        return stateful_error_t::moving;
     if (!object->queue.application_active) {
         return stateful_error_t::conflict;
     }
@@ -564,6 +578,8 @@ stateful_error_t stateful_object_runtime_t::register_timer (
     if (object == nullptr) {
         return error;
     }
+    if (object->state == object_state_t::recovering)
+        return stateful_error_t::moving;
     if (!object->timers.emplace (timer.timer_id, timer).second) {
         return stateful_error_t::conflict;
     }
@@ -580,6 +596,8 @@ stateful_error_t stateful_object_runtime_t::cancel_timer (
     if (object == nullptr) {
         return error;
     }
+    if (object->state == object_state_t::recovering)
+        return stateful_error_t::moving;
     return object->timers.erase (timer_id) == 1
              ? stateful_error_t::none
              : stateful_error_t::not_found;
@@ -596,6 +614,8 @@ stateful_error_t stateful_object_runtime_t::enqueue_timer_tick (
     if (object == nullptr) {
         return error;
     }
+    if (object->state == object_state_t::recovering)
+        return stateful_error_t::moving;
     const auto timer = object->timers.find (timer_id);
     if (timer == object->timers.end ()) {
         return stateful_error_t::not_found;
@@ -837,33 +857,259 @@ stateful_object_runtime_t::commit_relocation_aggregate (
 
 stateful_error_t stateful_object_runtime_t::restore_relocation (
   frozen_object_state_t frozen,
-  object_ref_t target)
+  object_ref_t target,
+  relocation_restore_identity_t identity)
+try
 {
     if (!valid_text (frozen.stable_type)
         || frozen.owner.kind != target.kind
         || frozen.owner.key != target.key
         || frozen.owner.object_generation != target.object_generation
+        || frozen.owner.mesh_name != target.mesh_name
         || target.authority_owner_generation
              <= frozen.owner.authority_owner_generation
-        || !valid_text (target.node_id)) {
+        || !valid_text (target.mesh_name)
+        || !valid_text (target.node_id)
+        || identity.reference.empty ()
+        || frozen.pending_application.size () > _application_capacity
+        || frozen.timers.size () > max_restored_timers) {
         return stateful_error_t::invalid;
     }
+    std::uint64_t previous_sequence = 0;
+    for (const auto &pending : frozen.pending_application) {
+        if (pending.sequence == 0 || pending.sequence <= previous_sequence)
+            return stateful_error_t::invalid;
+        previous_sequence = pending.sequence;
+    }
+    std::uint64_t previous_timer = 0;
+    for (const auto &timer : frozen.timers) {
+        if (timer.timer_id == 0 || timer.timer_id <= previous_timer
+            || timer.due_after_milliseconds == 0
+            || timer.next_tick_sequence == 0) {
+            return stateful_error_t::invalid;
+        }
+        previous_timer = timer.timer_id;
+    }
+
     std::lock_guard lock (_mutex);
     const auto key = key_for (target);
-    if (_objects.contains (key)) {
+    const auto existing = _objects.find (key);
+    if (existing != _objects.end ()) {
+        const auto &record = existing->second;
+        if (!same_exact_ref (record.reference, target)
+            || record.state != object_state_t::recovering
+            || record.restore_identity
+                 != std::optional<relocation_restore_identity_t>{identity}
+            || record.stable_type != frozen.stable_type
+            || !record.membership.empty ()
+            || record.queue.application.size ()
+                 != frozen.pending_application.size ()
+            || record.timers.size () != frozen.timers.size ()) {
+            return stateful_error_t::conflict;
+        }
+        auto pending = record.queue.application.begin ();
+        for (const auto &expected : frozen.pending_application) {
+            if (*pending++ != expected)
+                return stateful_error_t::conflict;
+        }
+        auto timer = record.timers.begin ();
+        for (const auto &expected : frozen.timers) {
+            if (timer == record.timers.end ()
+                || timer->second != expected) {
+                return stateful_error_t::conflict;
+            }
+            ++timer;
+        }
         return stateful_error_t::already_exists;
     }
+    const auto last = _last_generation.find (key);
+    if (last != _last_generation.end ()
+        && last->second >= target.object_generation) {
+        return stateful_error_t::generation_stale;
+    }
+
     object_record_t record;
     record.reference = std::move (target);
     record.stable_type = std::move (frozen.stable_type);
-    record.state = object_state_t::ready;
+    record.state = object_state_t::recovering;
+    record.restore_identity = std::move (identity);
     for (auto &pending : frozen.pending_application)
         record.queue.application.push_back (std::move (pending));
     for (auto &timer : frozen.timers)
         record.timers.emplace (timer.timer_id, std::move (timer));
-    _last_generation[key] = record.reference.object_generation;
-    _objects.emplace (key, std::move (record));
+
+    auto next_objects = _objects;
+    auto next_generations = _last_generation;
+    next_generations[key] = record.reference.object_generation;
+    next_objects.emplace (key, std::move (record));
+    _objects.swap (next_objects);
+    _last_generation.swap (next_generations);
     return stateful_error_t::none;
+}
+catch (...)
+{
+    return stateful_error_t::backpressured;
+}
+
+stateful_error_t stateful_object_runtime_t::restore_relocation_aggregate (
+  std::vector<frozen_object_state_t> frozen,
+  std::vector<object_ref_t> targets,
+  relocation_restore_identity_t identity)
+try
+{
+    if (frozen.size () < 2 || frozen.size () != targets.size ()
+        || identity.reference.empty ())
+        return stateful_error_t::invalid;
+
+    std::sort (
+      frozen.begin (), frozen.end (),
+      [] (const frozen_object_state_t &left,
+          const frozen_object_state_t &right) {
+          return key_for (left.owner) < key_for (right.owner);
+      });
+    std::sort (
+      targets.begin (), targets.end (),
+      [] (const object_ref_t &left, const object_ref_t &right) {
+          return key_for (left) < key_for (right);
+      });
+
+    std::optional<std::string> user_spot_key;
+    std::size_t actor_count = 0;
+    for (std::size_t index = 0; index != frozen.size (); ++index) {
+        const auto &source = frozen[index];
+        const auto &target = targets[index];
+        if (!valid_text (source.stable_type)
+            || source.owner.kind != target.kind
+            || source.owner.key != target.key
+            || source.owner.object_generation != target.object_generation
+            || source.owner.mesh_name != target.mesh_name
+            || target.authority_owner_generation
+                 <= source.owner.authority_owner_generation
+            || !valid_text (target.mesh_name)
+            || !valid_text (target.node_id)
+            || source.pending_application.size ()
+                 > _application_capacity
+            || source.timers.size () > max_restored_timers
+            || (index != 0
+                && key_for (targets[index - 1]) == key_for (target))) {
+            return stateful_error_t::invalid;
+        }
+        std::uint64_t previous_sequence = 0;
+        for (const auto &pending : source.pending_application) {
+            if (pending.sequence == 0
+                || pending.sequence <= previous_sequence) {
+                return stateful_error_t::invalid;
+            }
+            previous_sequence = pending.sequence;
+        }
+        std::uint64_t previous_timer = 0;
+        for (const auto &timer : source.timers) {
+            if (timer.timer_id == 0 || timer.timer_id <= previous_timer
+                || timer.due_after_milliseconds == 0
+                || timer.next_tick_sequence == 0) {
+                return stateful_error_t::invalid;
+            }
+            previous_timer = timer.timer_id;
+        }
+        if (target.kind == object_kind_t::user_spot) {
+            if (user_spot_key)
+                return stateful_error_t::invalid;
+            user_spot_key = target.key;
+        } else if (target.kind == object_kind_t::actor)
+            ++actor_count;
+        else
+            return stateful_error_t::invalid;
+    }
+    if (!user_spot_key || actor_count + 1 != targets.size ())
+        return stateful_error_t::invalid;
+
+    std::lock_guard lock (_mutex);
+    std::size_t exact_existing = 0;
+    for (std::size_t index = 0; index != targets.size (); ++index) {
+        const auto &target = targets[index];
+        const auto &source = frozen[index];
+        const auto key = key_for (target);
+        const auto existing = _objects.find (key);
+        if (existing != _objects.end ()) {
+            const auto &record = existing->second;
+            const auto expected_membership =
+              target.kind == object_kind_t::actor ? *user_spot_key
+                                                  : std::string{};
+            if (!same_exact_ref (record.reference, target)
+                || record.state != object_state_t::recovering
+                || record.restore_identity
+                     != std::optional<relocation_restore_identity_t>{
+                       identity}
+                || record.stable_type != source.stable_type
+                || record.membership != expected_membership
+                || record.queue.application.size ()
+                     != source.pending_application.size ()
+                || record.timers.size () != source.timers.size ()) {
+                return stateful_error_t::conflict;
+            }
+            auto pending = record.queue.application.begin ();
+            for (const auto &expected : source.pending_application) {
+                if (*pending++ != expected)
+                    return stateful_error_t::conflict;
+            }
+            auto timer = record.timers.begin ();
+            for (const auto &expected : source.timers) {
+                if (timer == record.timers.end ()
+                    || timer->second != expected) {
+                    return stateful_error_t::conflict;
+                }
+                ++timer;
+            }
+            ++exact_existing;
+        } else {
+            const auto last = _last_generation.find (key);
+            if (last != _last_generation.end ()
+                && last->second >= target.object_generation) {
+                return stateful_error_t::generation_stale;
+            }
+        }
+    }
+    if (exact_existing != 0)
+        return exact_existing == targets.size ()
+                 ? stateful_error_t::already_exists
+                 : stateful_error_t::conflict;
+
+    std::vector<std::pair<object_key_t, object_record_t>> records;
+    records.reserve (targets.size ());
+    for (std::size_t index = 0; index != targets.size (); ++index) {
+        object_record_t record;
+        record.reference = std::move (targets[index]);
+        record.stable_type = std::move (frozen[index].stable_type);
+        record.state = object_state_t::recovering;
+        record.restore_identity = identity;
+        if (record.reference.kind == object_kind_t::actor && user_spot_key)
+            record.membership = *user_spot_key;
+        for (auto &pending : frozen[index].pending_application)
+            record.queue.application.push_back (std::move (pending));
+        for (auto &timer : frozen[index].timers) {
+            if (timer.timer_id == 0
+                || !record.timers.emplace (
+                     timer.timer_id, std::move (timer)).second) {
+                return stateful_error_t::invalid;
+            }
+        }
+        records.emplace_back (
+          key_for (record.reference), std::move (record));
+    }
+
+    auto next_objects = _objects;
+    auto next_generations = _last_generation;
+    for (auto &[key, record] : records) {
+        next_generations[key] = record.reference.object_generation;
+        next_objects.emplace (key, std::move (record));
+    }
+    _objects.swap (next_objects);
+    _last_generation.swap (next_generations);
+    return stateful_error_t::none;
+}
+catch (...)
+{
+    return stateful_error_t::backpressured;
 }
 
 bool stateful_object_runtime_t::valid_text (const std::string &value)

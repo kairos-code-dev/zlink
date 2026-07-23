@@ -14,6 +14,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         ValidateLocations(registration);
         ValidateActorTransferOptions(registration);
+        ValidateRelocationStoreRequirement(registration);
 
         foreach (var channel in registration.Channels.Values)
             ValidateChannel(
@@ -58,6 +59,26 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Actor factory registration is ambiguous because more than one SpotNode owns actor factories.");
 
         registration.ActorCatalog.Build(registration.SpotNodes.Values);
+    }
+
+    private static void ValidateRelocationStoreRequirement(
+        ZLinkFrameworkRegistration registration)
+    {
+        var requiresRelocationStore = registration.SpotNodes.Values.Any(
+            static node =>
+                node.InstanceSpotFactories.Count > 0
+                || node.SpotRelocations.Values.Any(
+                    static relocation => relocation.PolicyKind != 0)
+                || node.ActorRelocations.Values.Any(
+                    static relocation => relocation.PolicyKind != 0));
+        if (!requiresRelocationStore)
+            return;
+
+        if (registration.Locations.RelocationStoreInstance is null)
+            throw new ZLinkConfigurationException(
+                "An Object Server with a Recreate or Snapshot relocation policy, "
+                + "or any Instance Spot factory, requires exactly one Relocation Store. "
+                + "Register it via AddRelocationStore(...) before startup.");
     }
 
     private static void ValidateDispatchOptions(ZLinkDispatchOptionsModel options)

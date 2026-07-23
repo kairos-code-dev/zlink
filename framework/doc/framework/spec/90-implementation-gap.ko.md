@@ -64,7 +64,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.36 | C++ | `Retire`·`Shutdown`, terminal result, factory-attached relocation policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
 | §12.37 | `.NET` | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.38 | Java/Kotlin | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
-| §12.39 | 전 언어 | ChannelName 단일 주소, role builder, ClientServer 전용 discovery·runtime과 listener network identity가 source·package에 적용되지 않았다 |
+| §12.39 | 전 언어 | ChannelName 단일 주소, ClientServer dual-role·local Server transport 선택, 전용 discovery·runtime과 listener network identity가 source·package에 적용되지 않았다 |
 | §12.40 | 전 언어 | classic fanout 전용 publisher descriptor·store·RID allocation과 endpoint 없는 automatic subscriber가 적용되지 않았다 |
 | §12.41 | 전 언어 | MeshNode별 drain policy가 남아 있고 current-turn boundary, permit-before-seal, queue·journal·timer relocation, User Spot aggregate와 Entry maintenance callback을 구현하지 않았다 |
 | §12.43 | 전 언어 | 다섯 언어의 공개 one-way call은 비동기 결과로 전환됐다. 그러나 언어별 admission runtime에 signal 없는 재시도, blocking executor, terminal queue cleanup과 Logical Multicast commit barrier 차이가 남아 있고 Config 13 process E2E가 없다 |
@@ -453,6 +453,9 @@ status·monitor가 다음
 RouteMesh descriptor를 재사용하지 않고 ChannelName+ServerRid key의 전용 descriptor와 runtime을
 사용한다. Listener는 root BindHost·AdvertiseHost 기본값, listener별 override와 automatic
 discovery port `0` 규칙을 같이 적용한다.
+같은 ClientServer ChannelName에는 Client와 Server를 각각 한 번 등록할 수 있고, local Server도 remote와
+같은 readiness·weight·drain 조건으로 실제 DEALER→ROUTER transport를 거쳐 선택한다. Monitoring의 local
+role은 `(ChannelName, Role)`의 별도 registration 두 개를 aggregate projection으로 손실 없이 나타낸다.
 Logical Multicast도 ChannelName과 topic만 받고 process-local channel index가 owner MeshNode를 선택한다.
 선택된 MeshName은 runtime monitoring에 남지만 caller-facing signature에 노출하지 않는다.
 
@@ -467,12 +470,15 @@ Logical Multicast도 ChannelName과 topic만 받고 process-local channel index�
 - C++은 ChannelName 단일 client 호출과 기존 ClientServer builder의 일부를 제공하지만
   `enable_client/enable_server` 표면과 endpoint 문자열을 사용한다. RouteMesh role builder,
   전용 discovery·runtime과 공통 network identity 표면이 없다.
+- 다섯 언어 source에는 ClientServer dual-role snapshot 값과 같은 역할 중복 검증이 없으며, local Server를
+  remote와 동일한 candidate·transport 경로로 선택하는 contract test와 process E2E도 없다.
 - Logical Multicast source는 .NET과 Node.js에서 여전히 MeshName+ChannelName+topic을 받고,
   Java는 이 기존 overload와 ChannelName+topic overload를 함께 노출하여 Kotlin에도 기존 overload가
   보인다. C++ source는 ChannelName+topic 표면을 사용한다.
 
 **고쳐야 할 것:** 각 언어의 source, package contract fixture, sample과 E2E를 exact interface에
-맞추고 ChannelName 충돌, role 중복, wildcard advertise, 경로별 error·completion 규칙을
+맞추고 ChannelName 충돌, 역할별 중복, Client+Server 동시 등록, local·remote 동일 선택과 transport,
+wildcard advertise, 경로별 error·completion 규칙을
 contract test와 process E2E로 고정한다. Logical Multicast의 기존 MeshName overload는 compatibility
 alias로 남기지 않고 다섯 언어 package 표면에서 제거한다.
 

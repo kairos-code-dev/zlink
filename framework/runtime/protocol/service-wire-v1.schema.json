@@ -350,6 +350,47 @@
       "send": "no-operation-timeout"
     },
     {
+      "kind": "user-spot-terminal-operation-integrity",
+      "commands": {
+        "create": "userSpotCreate",
+        "close": "userSpotClose",
+        "terminal": "reply"
+      },
+      "scope": "route-mesh-object-client-or-server-to-exact-object-server-only",
+      "operationIdentity": "source-node-rid-source-node-generation-and-operation-id-terminal-once",
+      "deadline": "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
+      "create": {
+        "authorityKey": "global-spot-rid-user-kind-only",
+        "reservation": "provider-issued-reservation-id-exact-store-version-object-generation-authority-owner-generation-target-node-lifecycle-owner-lease-and-pending-capacity",
+        "content": "target-exact-reads-immutable-pending-creation-content-from-location-store-never-command-payload",
+        "admissionOrder": [
+          "authenticate-source-and-exact-target-lifecycle",
+          "exact-read-pending-user-spot-authority",
+          "compare-key-stable-type-reservation-store-version-owner-and-target-fences",
+          "factory-and-initialize",
+          "same-reservation-commit"
+        ],
+        "terminalStates": ["existing", "created", "rejected"],
+        "terminalTail": "exact-spot-ref-for-all-three-states",
+        "applicationReply": "forbidden-for-existing-optional-for-created-or-rejected"
+      },
+      "close": {
+        "target": "exact-spot-ref-target-node-lifecycle-authority-owner-generation-and-store-version",
+        "admissionOrder": [
+          "authenticate-source-and-exact-target-lifecycle",
+          "exact-read-current-user-spot-authority",
+          "reject-object-generation-or-authority-owner-generation-or-store-version-mismatch",
+          "reject-relocation-or-closing-conflict",
+          "reject-nonempty-active-actor-membership",
+          "closing-cas-and-local-admission-seal"
+        ],
+        "terminalTail": "closed-bool-false-only-for-idempotent-missing-or-active-membership",
+        "retarget": "forbidden"
+      },
+      "polling": "location-row-polling-is-not-terminal-completion",
+      "applicationControlPacket": "forbidden"
+    },
+    {
       "kind": "relocation-authority-phase-boundaries",
       "authorityType": "authority-payload-v1",
       "writes": "exact-store-version-cas-each-phase",
@@ -470,6 +511,8 @@
           "workerFailed": "internalError",
           "actorLocationStale": "conflict",
           "actorCreateRejected": "rejected",
+          "spotGenerationStale": "conflict",
+          "spotMoving": "conflict",
           "relocationDataLost": "internalError"
         }
       },
@@ -477,7 +520,7 @@
       "publicMapping": "wire-value-minus-one",
       "reservedWireValues": {
         "first": 23,
-        "last": 34,
+        "last": 32,
         "reason": "public-only-framework-errors-not-valid-on-service-wire"
       }
     },
@@ -1783,7 +1826,9 @@
         { "name": "streamBind", "value": 9 },
         { "name": "streamUnbind", "value": 10 },
         { "name": "streamClose", "value": 11 },
-        { "name": "instanceSpotRequest", "value": 12 }
+        { "name": "instanceSpotRequest", "value": 12 },
+        { "name": "userSpotCreate", "value": 13 },
+        { "name": "userSpotClose", "value": 14 }
       ]
     },
     {
@@ -1835,6 +1880,8 @@
         { "name": "workerFailed", "value": 20 },
         { "name": "actorLocationStale", "value": 21 },
         { "name": "actorCreateRejected", "value": 22 },
+        { "name": "spotGenerationStale", "value": 33 },
+        { "name": "spotMoving", "value": 34 },
         { "name": "relocationDataLost", "value": 35 }
       ]
     },
@@ -1845,6 +1892,16 @@
       "values": [
         { "name": "send", "value": 1 },
         { "name": "request", "value": 2 }
+      ]
+    },
+    {
+      "name": "user-spot-create-result",
+      "kind": "enum",
+      "encoding": "u8",
+      "values": [
+        { "name": "existing", "value": 1 },
+        { "name": "created", "value": 2 },
+        { "name": "rejected", "value": 3 }
       ]
     },
     {
@@ -2224,6 +2281,20 @@
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+      ],
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "user-spot-close-fence-v1",
+      "kind": "versioned-length-delimited",
+      "version": { "$ref": "u8", "constant": 1 },
+      "length": { "$ref": "u16", "covers": "body" },
+      "body": [
+        { "name": "spot", "$ref": "spot-ref" },
+        { "name": "targetNodeRid", "$ref": "rid" },
+        { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" },
+        { "name": "expectedStoreVersion", "$ref": "authority-store-version" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -3176,6 +3247,25 @@
           "fields": [
             { "name": "bindingGeneration", "$ref": "nonzero-u64" },
             { "name": "authorityOwnerGeneration", "$ref": "nonzero-u64" }
+          ]
+        },
+        {
+          "when": {
+            "originalOperationKind": "userSpotCreate",
+            "terminalResult": "ok"
+          },
+          "fields": [
+            { "name": "createResult", "$ref": "user-spot-create-result" },
+            { "name": "spot", "$ref": "spot-ref" }
+          ]
+        },
+        {
+          "when": {
+            "originalOperationKind": "userSpotClose",
+            "terminalResult": "ok"
+          },
+          "fields": [
+            { "name": "closed", "$ref": "bool8" }
           ]
         }
       ],
@@ -4375,6 +4465,40 @@
         { "name": "status", "$ref": "reply-relay-ack-status" }
       ],
       "payload": "forbidden"
+    },
+    {
+      "id": 47,
+      "name": "userSpotCreate",
+      "domain": "infrastructure",
+      "allowedFlags": [],
+      "requiredFlags": [],
+      "body": [
+        { "name": "correlation", "$ref": "nonzero-u64" },
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "sourceNodeRid", "$ref": "rid" },
+        { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "spotRid", "$ref": "rid" },
+        { "name": "stableType", "$ref": "text8" },
+        { "name": "reservation", "$ref": "object-reservation-fence" },
+        { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
+      ],
+      "payload": "forbidden"
+    },
+    {
+      "id": 48,
+      "name": "userSpotClose",
+      "domain": "infrastructure",
+      "allowedFlags": [],
+      "requiredFlags": [],
+      "body": [
+        { "name": "correlation", "$ref": "nonzero-u64" },
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "sourceNodeRid", "$ref": "rid" },
+        { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "target", "$ref": "user-spot-close-fence-v1" },
+        { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
+      ],
+      "payload": "forbidden"
     }
   ],
   "relocationStateMachine": {
@@ -4552,6 +4676,6 @@
   },
   "reservedCommandRanges": [
     { "first": 7, "last": 15 },
-    { "first": 47, "last": 255 }
+    { "first": 49, "last": 255 }
   ]
 }

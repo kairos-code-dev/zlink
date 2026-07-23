@@ -46,8 +46,13 @@ ChannelName은 하나의 process에서 물리 Channel topology 하나에만 대�
 ChannelName을 한 번만 등록한다는 뜻이 아니다. 서로 다른 process의 여러 Server MeshNode는 같은 ChannelName
 membership에 참여할 수 있다. 호출을 시작하는 역할에서는
 그 topology의 송신 경로 하나를 가리킨다. 같은 이름을 서로 다른 RouteMesh, RouteMesh와 ClientServer 또는
-서로 다른 ClientServer 등록에 사용하면 역할과 관계없이 startup이 실패한다. 같은 RouteMesh 또는 같은
-ClientServer target 집합의 여러 process가 같은 Server ChannelName에 참여하는 것은 허용한다.
+ClientServer와 fanout에 사용하면 startup이 실패한다. RouteMesh에서는 같은 ChannelName을 같은 process에
+다시 등록하는 기존 충돌 규칙을 유지한다. ClientServer registration key는 `(ChannelName, Role)`이다. 따라서
+같은 process의 같은 ChannelName에 Client 역할 하나와 Server 역할 하나를 별도로 등록할 수 있지만 Client
+또는 Server 역할을 각각 두 번 이상 등록하면 startup이 실패한다. 두 registration은 하나의 ClientServer
+topology와 target 집합을 공유하며 두 물리 송신 경로로 계산하지 않는다. 같은 RouteMesh 또는 같은
+ClientServer target 집합의 여러 process가 같은 Server
+ChannelName에 참여하는 것은 허용한다.
 서로 연결되지 않은 process의 전체 등록을 검사하기 위해 location store나 전역 catalog를 요구하지 않는다.
 Process 밖의 이름 일관성은 배포 구성이 검증하며 runtime의 중복 판정은 local 등록을 기준으로 한다.
 
@@ -160,7 +165,9 @@ message에는 source connection identity가 없으므로 socket을 공유하면 
 ## 8. 검증 요구
 
 - 같은 process의 중복 MeshName이 startup에서 실패한다.
-- 같은 process에서 ChannelName이 서로 다른 물리 송신 경로에 중복 등록되면 startup에서 실패한다.
+- 같은 process에서 ChannelName이 서로 다른 물리 topology에 중복 등록되면 startup에서 실패한다.
+- ClientServer의 같은 ChannelName에는 Client와 Server를 각각 한 번 등록할 수 있고 같은 역할의 중복은
+  startup에서 실패한다. RouteMesh의 같은 이름 중복 규칙은 바뀌지 않는다.
 - 서로 다른 MeshName의 RID와 ChannelName member가 섞이지 않는다.
 - 한 MeshNode의 복수 ChannelName이 같은 ROUTER peer 연결을 사용한다.
 - Client role은 descriptor에 target membership으로 게시되지 않고 Server role만 weight와 handler를 가진다.

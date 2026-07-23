@@ -46,6 +46,8 @@ internal static class ServiceWireConstants
         SessionRelocationRoute = 44,
         SessionRelocationRouted = 45,
         ReplyRelayAck = 46,
+        UserSpotCreate = 47,
+        UserSpotClose = 48,
     }
     [System.Flags]
     internal enum Flag : byte
@@ -81,6 +83,8 @@ internal static class ServiceWireConstants
         WorkerFailed = 20,
         ActorLocationStale = 21,
         ActorCreateRejected = 22,
+        SpotGenerationStale = 33,
+        SpotMoving = 34,
         RelocationDataLost = 35,
     }
 }

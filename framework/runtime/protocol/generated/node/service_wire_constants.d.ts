@@ -39,6 +39,8 @@ export declare const ServiceWireCommand: {
     readonly sessionRelocationRoute: 44;
     readonly sessionRelocationRouted: 45;
     readonly replyRelayAck: 46;
+    readonly userSpotCreate: 47;
+    readonly userSpotClose: 48;
 };
 export declare const ServiceWireFlag: {
     readonly metadata: 1;
@@ -70,5 +72,7 @@ export declare const ServiceWireFrameworkErrorCode: {
     readonly workerFailed: 20;
     readonly actorLocationStale: 21;
     readonly actorCreateRejected: 22;
+    readonly spotGenerationStale: 33;
+    readonly spotMoving: 34;
     readonly relocationDataLost: 35;
 };

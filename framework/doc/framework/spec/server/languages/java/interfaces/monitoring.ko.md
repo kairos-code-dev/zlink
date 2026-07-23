@@ -121,7 +121,8 @@ public record ZLinkInstanceSpotTypeSnapshot(
 
 public enum ZLinkClientServerRole {
     CLIENT,
-    SERVER
+    SERVER,
+    CLIENT_AND_SERVER
 }
 
 public enum ZLinkClientServerServerState {
@@ -241,6 +242,11 @@ public interface ZLinkFanoutRuntime {
         String channelName, int capacity);
 }
 ```
+
+같은 ChannelName에 Client와 Server를 함께 등록한 snapshot의 `localRole`은
+`ZLinkClientServerRole.CLIENT_AND_SERVER`다. 이 값은 `(ChannelName, Role)`의 별도 registration 두 개가
+하나의 ClientServer topology를 공유한다는 aggregate projection이다. Builder에서 선택하거나 registration
+key로 사용할 수 없다.
 
 `ZLinkInstanceSpotTypeSnapshot`은 startup에 등록한 Instance type별 aggregate다. 개별 Spot RID, owner ID,
 `ObjectGeneration`, `AuthorityOwnerGeneration`, `StoreVersion`과 owner lease fence는 포함하지 않는다.

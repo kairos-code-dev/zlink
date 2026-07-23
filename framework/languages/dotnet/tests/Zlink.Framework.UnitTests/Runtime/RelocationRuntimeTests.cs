@@ -555,6 +555,84 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public void InstanceSpotFactoryRequiresRelocationStoreBeforeRuntimeStartup()
+    {
+        var registration = NewObjectServerRegistration(out var server);
+        var options = new ZLinkFrameworkOptionsBuilder(registration);
+        options.UseTestLocationStore();
+        server.AddInstanceSpotFactory<TestInstanceSpot>(
+            "Game.Session",
+            null,
+            ZLinkRelocationPolicy<TestInstanceSpot>.Disabled);
+
+        var failure = Assert.Throws<ZLinkConfigurationException>(
+            () => ZLinkFrameworkRegistrationValidator.Validate(registration));
+
+        Assert.Contains("requires exactly one Relocation Store", failure.Message);
+    }
+
+    [Fact]
+    public void RecreateAndSnapshotPoliciesRequireRelocationStoreButDisabledDoesNot()
+    {
+        var disabled = NewObjectServerRegistration(out var disabledServer);
+        var disabledOptions = new ZLinkFrameworkOptionsBuilder(disabled);
+        disabledOptions.UseTestLocationStore();
+        disabledServer.AddSpotFactory<TestRelocatableSpot>(
+            "Game.DisabledRoom",
+            null,
+            ZLinkRelocationPolicy<TestRelocatableSpot>.Disabled);
+        ZLinkFrameworkRegistrationValidator.Validate(disabled);
+
+        foreach (var policyKind in new byte[] { 1, 2 })
+        {
+            var registration = NewObjectServerRegistration(out var server);
+            var options = new ZLinkFrameworkOptionsBuilder(registration);
+            options.UseTestLocationStore();
+            var relocation = policyKind == 1
+                ? ZLinkRelocationPolicy<TestRelocatableActor>.Recreate
+                : ZLinkRelocationPolicy<TestRelocatableActor>
+                    .Snapshot<TestActorRelocationAdapter>();
+            server.AddActorFactory<
+                TestRelocatableActor,
+                TestRelocatableActorFactory>(
+                $"Game.Actor.{policyKind}",
+                null,
+                relocation);
+
+            var failure = Assert.Throws<ZLinkConfigurationException>(
+                () => ZLinkFrameworkRegistrationValidator.Validate(registration));
+            Assert.Contains("requires exactly one Relocation Store", failure.Message);
+        }
+    }
+
+    [Fact]
+    public void RegisteredRelocationStoreSatisfiesDurableObjectServerRequirement()
+    {
+        var registration = NewObjectServerRegistration(out var server);
+        var options = new ZLinkFrameworkOptionsBuilder(registration);
+        options.UseTestLocationStore();
+        options.AddRelocationStore(new RecordingRelocationStore());
+        server.AddInstanceSpotFactory<TestInstanceSpot>(
+            "Game.Session",
+            null,
+            ZLinkRelocationPolicy<TestInstanceSpot>.Disabled);
+
+        ZLinkFrameworkRegistrationValidator.Validate(registration);
+    }
+
+    private static ZLinkFrameworkRegistration NewObjectServerRegistration(
+        out IZLinkMeshObjectServerBuilder server)
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var node = new ZLinkFrameworkOptionsBuilder(registration)
+            .AddRouteMesh("objects")
+            .Listen("inproc://objects");
+        node.ChannelName("objects");
+        server = node.Objects().Server();
+        return registration;
+    }
+
+    [Fact]
     public void ObjectServerRegistrationKeepsPlacementPolicyAndAdapterTogether()
     {
         var registration = new ZLinkSpotNodeRegistration
@@ -1286,6 +1364,11 @@ public sealed class RelocationRuntimeTests
         public IZLinkSpotContext Context { get; } = context;
     }
 
+    private sealed class TestInstanceSpot : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context => null!;
+    }
+
     private sealed class TestSpotRelocationAdapter
         : IZLinkSpotRelocationAdapter<TestRelocatableSpot>
     {
@@ -1319,5 +1402,20 @@ public sealed class RelocationRuntimeTests
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(
                 new TestRelocatableActor(actorId, context));
+    }
+
+    private sealed class TestActorRelocationAdapter
+        : IZLinkActorRelocationAdapter<TestRelocatableActor>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            TestRelocatableActor actor,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(Array.Empty<byte>());
+
+        public ValueTask RestoreAsync(
+            TestRelocatableActor actor,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
     }
 }

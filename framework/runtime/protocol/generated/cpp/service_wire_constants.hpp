@@ -46,6 +46,8 @@ enum class command : std::uint8_t {
     sessionRelocationRoute = 44,
     sessionRelocationRouted = 45,
     replyRelayAck = 46,
+    userSpotCreate = 47,
+    userSpotClose = 48,
 };
 enum class flag : std::uint8_t {
     metadata = 1,
@@ -77,6 +79,8 @@ enum class framework_error_code : std::uint32_t {
     workerFailed = 20,
     actorLocationStale = 21,
     actorCreateRejected = 22,
+    spotGenerationStale = 33,
+    spotMoving = 34,
     relocationDataLost = 35,
 };
 inline constexpr std::uint64_t ridBytes = 255ULL;

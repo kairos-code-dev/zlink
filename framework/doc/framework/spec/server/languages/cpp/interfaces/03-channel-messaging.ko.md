@@ -300,7 +300,7 @@ public:
     virtual bool is_ready(std::string mesh_name) const = 0;
 };
 
-enum class client_server_role_t { client, server };
+enum class client_server_role_t { client, server, client_and_server };
 
 enum class client_server_server_state_t {
     configured,
@@ -459,7 +459,11 @@ payload byte 수를 제한한다. 두 값은 startup 전에만 설정한다. `0`
 `channel(channel_name)` 뒤에는 `client()` 또는 `server()`를 정확히 한 번 호출한다.
 `server()`가 반환한 builder만 weight와 handler를 설정한다. Server membership이 없는
 MeshNode도 시작할 수 있다. `add_client_server_channel(channel_name)`은 단방향
-request 시작 권한을 client에만 두며 server는 수신한 send/request 처리와 reply만 수행한다.
+request 시작 권한을 client에만 두며 server는 수신한 send/request 처리와 reply만 수행한다. ClientServer
+builder에서는 `client()`와 `server()` 중 하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만
+등록한다. Registration key는 `(ChannelName, Role)`이고 같은 역할의 중복 등록은 startup 오류다. 서로 다른
+역할은 별도 registration으로 같은 ChannelName의 topology를 공유한다. RouteMesh의 역할 단일 선택과
+ChannelName 충돌 규칙은 바꾸지 않는다.
 
 Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가 아닌 BindHost를
 사용하고, wildcard BindHost에서는 AdvertiseHost를 반드시 명시한다. Automatic discovery
@@ -568,6 +572,13 @@ ClientServer client는 manual endpoint와 location store automatic discovery를 
 같은 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다.
 Automatic과 manual 모두 client만 server로 connect하며 server는 client endpoint를 찾거나 outbound connect를
 시작하지 않는다.
+
+같은 process에 Client와 Server를 모두 등록하면 listener와 service admission을 마친 local Server도 remote
+Server와 같은 candidate 집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하고
+local 우선순위나 remote 제외 규칙을 두지 않는다. Local Server가 선택되어도 client DEALER에서 server
+ROUTER로 실제 transport message를 전달한다. Handler 직접 호출로 codec, HWM, timeout, cancellation,
+correlation 또는 terminal completion을 우회하지 않는다. `client_and_server`는 channel snapshot의 aggregate
+projection에만 사용하며 builder에서 선택하거나 registration key로 사용하지 않는다.
 
 Location store를 등록한 fanout publisher는 fixed Publisher RID와 automatic RID prefix 중 하나를 startup 전에
 선택하고 전용 descriptor를 게시한다. Store가 없는 publisher는 listener endpoint를 수동으로 전달하는

@@ -47,6 +47,9 @@ ClientServer Channel snapshot은 MeshName을 요구하지 않으며 다음 값�
 | Client | connection intent 수, ready target 수, pending request 수 |
 | Location | store configured 여부, ready·degraded state, 마지막 성공·실패 시각 |
 
+Local role은 `(ChannelName, Role)`의 registration을 집계한 값이다. `client_and_server`는 Client와 Server
+registration이 각각 존재한다는 snapshot projection이며 builder role이나 registration key가 아니다.
+
 Automatic fanout subscriber snapshot은 MeshName을 요구하지 않으며 다음 값을 함께 제공한다.
 
 | 영역 | 공개 관찰 값 |
@@ -147,7 +150,7 @@ discriminated union 또는 variant로 이 닫힌 관계를 보존한다.
 | Framework runtime state | `preparing`, `serving`, `retiring`, `draining`, `stopped`, `error` |
 | MeshNode service state | `starting`, `serving`, `draining`, `drained`, `force_stopping`, `stopped`, `faulted` |
 | Peer state | `configured`, `connecting`, `admitted`, `ready`, `draining`, `disconnected`, `rejected` |
-| ClientServer role | `client`, `server` |
+| ClientServer role | `client`, `server`, `client_and_server` |
 | ClientServer server state | `configured`, `connecting`, `ready`, `draining`, `disconnected`, `rejected` |
 | Fanout publisher connection state | `connecting`, `ready`, `disconnected`, `reconnecting`, `excluded_draining`, `excluded_stale` |
 | Mailbox domain | `application`, `infrastructure` |

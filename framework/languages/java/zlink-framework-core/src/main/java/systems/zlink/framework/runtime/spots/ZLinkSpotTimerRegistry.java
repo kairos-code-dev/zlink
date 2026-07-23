@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.spots;
 import java.lang.reflect.InvocationTargetException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private final Dispatch dispatch;
     private final Map<String, ManagedTimer> timers = new LinkedHashMap<>();
     private ZLinkSpot<?> spot;
+    private boolean frozen;
 
     ZLinkSpotTimerRegistry(
         RoutingId spotRid,
@@ -65,6 +67,10 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         Duration period,
         Class<?> handlerType,
         ZLinkTimerOptions options) {
+        if (frozen) {
+            throw new ZLinkConfigurationException(
+                "timer registration is sealed for relocation");
+        }
         if (name == null || name.isBlank()) {
             throw new ZLinkConfigurationException("timer name is required");
         }
@@ -94,10 +100,44 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         return CompletableFuture.completedFuture(timer);
     }
 
+    synchronized FrozenTimers freeze() {
+        if (!frozen) {
+            frozen = true;
+            timers.values().forEach(ManagedTimer::freeze);
+        }
+        return new FrozenTimers(timers.values().stream()
+            .filter(timer -> !timer.isDisposed())
+            .map(ManagedTimer::snapshot)
+            .sorted(Comparator.comparing(TimerSnapshot::name))
+            .toList());
+    }
+
+    synchronized void resume() {
+        if (!frozen) {
+            return;
+        }
+        frozen = false;
+        timers.values().forEach(ManagedTimer::resume);
+    }
+
+    synchronized void restore(FrozenTimers state) {
+        close();
+        frozen = false;
+        for (TimerSnapshot snapshot : state.timers()) {
+            ManagedTimer timer = new ManagedTimer(snapshot);
+            if (timers.put(snapshot.name(), timer) != null) {
+                throw new ZLinkConfigurationException(
+                    "duplicate timer in relocation envelope: " + snapshot.name());
+            }
+            timer.resume();
+        }
+    }
+
     @Override
     public synchronized void close() {
         timers.values().forEach(ManagedTimer::close);
         timers.clear();
+        frozen = false;
     }
 
     private synchronized void removeTimer(String name, ManagedTimer timer) {
@@ -166,6 +206,8 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         private final ZLinkSpotTimerSchedule schedule;
         private volatile boolean disposed;
         private ScheduledFuture<?> future;
+        private Instant nextScheduledAt;
+        private ZLinkSpotTimerSchedule.PendingTick pendingTick;
 
         ManagedTimer(
             String name,
@@ -178,43 +220,76 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
             this.schedule = new ZLinkSpotTimerSchedule(name, period, options);
         }
 
+        ManagedTimer(TimerSnapshot snapshot) {
+            this.name = snapshot.name();
+            this.handlerType = snapshot.handlerType();
+            this.options = snapshot.schedule().options();
+            this.schedule = new ZLinkSpotTimerSchedule(snapshot.schedule());
+            this.nextScheduledAt = snapshot.nextScheduledAt().orElse(null);
+            this.pendingTick = snapshot.pendingTick().orElse(null);
+        }
+
         void start() {
             scheduleNext(schedule.initialDelayNanos());
         }
 
         private void scheduleNext(long delayNanos) {
-            if (disposed) {
+            if (disposed || frozen) {
                 return;
             }
+            long boundedDelay = Math.max(0L, delayNanos);
+            nextScheduledAt = safePlusNanos(Instant.now(), boundedDelay);
             future = executor.schedule(
                 this::run,
-                Math.max(0L, delayNanos),
+                boundedDelay,
                 TimeUnit.NANOSECONDS);
         }
 
         private void run() {
-            if (disposed) {
-                return;
+            ZLinkSpotTimerSchedule.PendingTick selected;
+            synchronized (ZLinkSpotTimerRegistry.this) {
+                if (disposed || frozen) {
+                    return;
+                }
+                selected = schedule.nextTick(
+                    schedule.startedElapsedNanos(),
+                    Instant.now());
+                pendingTick = selected;
+                nextScheduledAt = null;
             }
-            ZLinkSpotTimerSchedule.PendingTick pendingTick =
-                schedule.nextTick(schedule.startedElapsedNanos(), Instant.now());
-            ZLinkTimerTick tick = pendingTick.tick();
-            dispatch.enqueue(() -> disposed
-                    ? CompletableFuture.completedFuture(null)
-                    : invokeHandler(handlerType, tick))
+            dispatchPending(selected);
+        }
+
+        private void dispatchPending(
+            ZLinkSpotTimerSchedule.PendingTick selected) {
+            ZLinkTimerTick tick = selected.tick();
+            dispatch.enqueue(() -> {
+                synchronized (ZLinkSpotTimerRegistry.this) {
+                    if (disposed || frozen || pendingTick != selected) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+                }
+                return invokeHandler(handlerType, tick);
+            })
                 .whenComplete((ignored, error) -> {
                     boolean stopped = false;
-                    if (error == null) {
-                        schedule.markDelivered(pendingTick);
-                    } else {
-                        stopped = options.stopOnUnhandledException();
-                        if (stopped) {
-                            close();
+                    synchronized (ZLinkSpotTimerRegistry.this) {
+                        if (frozen || disposed || pendingTick != selected) {
+                            return;
                         }
-                        publishFailure(this, tick, error, stopped);
-                    }
-                    if (!stopped) {
-                        scheduleAfterDispatch();
+                        if (error == null) {
+                            schedule.markDelivered(selected);
+                        } else {
+                            stopped = options.stopOnUnhandledException();
+                            if (stopped) {
+                                close();
+                            }
+                            publishFailure(this, tick, error, stopped);
+                        }
+                        pendingTick = null;
+                        if (!stopped) {
+                            scheduleAfterDispatch();
+                        }
                     }
                 });
         }
@@ -223,6 +298,37 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
             if (!disposed) {
                 scheduleNext(schedule.delayAfterDispatchNanos());
             }
+        }
+
+        void freeze() {
+            if (future != null) {
+                future.cancel(false);
+                future = null;
+            }
+        }
+
+        void resume() {
+            if (disposed) {
+                return;
+            }
+            if (pendingTick != null) {
+                dispatchPending(pendingTick);
+                return;
+            }
+            Instant scheduledAt = nextScheduledAt;
+            long delay = scheduledAt == null
+                ? schedule.delayAfterDispatchNanos()
+                : nanosUntil(scheduledAt);
+            scheduleNext(delay);
+        }
+
+        TimerSnapshot snapshot() {
+            return new TimerSnapshot(
+                name,
+                handlerType,
+                schedule.snapshot(),
+                Optional.ofNullable(nextScheduledAt),
+                Optional.ofNullable(pendingTick));
         }
 
         @Override
@@ -242,7 +348,63 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
             disposed = true;
             if (future != null) {
                 future.cancel(false);
+                future = null;
             }
+        }
+    }
+
+    record FrozenTimers(List<TimerSnapshot> timers) {
+        FrozenTimers {
+            timers = List.copyOf(timers);
+            long distinctNames = timers.stream()
+                .map(TimerSnapshot::name)
+                .distinct()
+                .count();
+            if (distinctNames != timers.size()) {
+                throw new ZLinkConfigurationException(
+                    "duplicate timer in relocation envelope");
+            }
+        }
+    }
+
+    record TimerSnapshot(
+        String name,
+        Class<?> handlerType,
+        ZLinkSpotTimerSchedule.State schedule,
+        Optional<Instant> nextScheduledAt,
+        Optional<ZLinkSpotTimerSchedule.PendingTick> pendingTick) {
+        TimerSnapshot {
+            if (name == null
+                || name.isBlank()
+                || handlerType == null
+                || schedule == null
+                || nextScheduledAt == null
+                || pendingTick == null) {
+                throw new ZLinkConfigurationException(
+                    "invalid timer relocation state");
+            }
+            if (nextScheduledAt.isPresent() == pendingTick.isPresent()) {
+                throw new ZLinkConfigurationException(
+                    "timer relocation state must contain exactly one next action");
+            }
+        }
+    }
+
+    private static long nanosUntil(Instant deadline) {
+        try {
+            return Duration.between(Instant.now(), deadline).toNanos();
+        } catch (ArithmeticException error) {
+            return deadline.isAfter(Instant.now())
+                ? Long.MAX_VALUE
+                : Long.MIN_VALUE;
+        }
+    }
+
+    private static Instant safePlusNanos(Instant now, long nanos) {
+        try {
+            return now.plusNanos(nanos);
+        } catch (RuntimeException error) {
+            return Instant.MAX;
         }
     }
 

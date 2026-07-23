@@ -199,6 +199,21 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         timers.close();
     }
 
+    byte[] freezeTimerRelocationEnvelope() {
+        return ZLinkSpotTimerRelocationEnvelope.encode(timers.freeze());
+    }
+
+    void resumeTimersAfterRelocationAbort() {
+        timers.resume();
+    }
+
+    void restoreTimerRelocationEnvelope(byte[] envelope) {
+        ClassLoader loader = spot.getClass().getClassLoader();
+        timers.restore(ZLinkSpotTimerRelocationEnvelope.decode(
+            envelope,
+            name -> loadTimerHandler(loader, name)));
+    }
+
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
@@ -227,6 +242,19 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     void bindSubscriptions(ZLinkBackendSpot spot) {
         for (String topic : handlerCatalog.subscriptionTopics()) {
             spot.setSubscription(topic);
+        }
+    }
+
+    private static Class<?> loadTimerHandler(
+        ClassLoader loader,
+        String name) {
+        try {
+            return Class.forName(name, false, loader);
+        } catch (ClassNotFoundException error) {
+            throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                "timer handler is not available on the relocation target: "
+                    + name,
+                error);
         }
     }
 }

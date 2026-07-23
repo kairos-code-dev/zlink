@@ -179,7 +179,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
             ZLinkRouteClient route = context.getBean(ZLinkRouteClient.class);
 
             assertThrows(ZLinkConfigurationException.class, () ->
-                fanout.publish("missing", "topic", "payload").submit());
+                fanout.publish("missing", "payload").submit());
             assertThrows(ZLinkConfigurationException.class, () ->
                 route.requestToNode("missing", RoutingId.from("target"), "payload"));
         }

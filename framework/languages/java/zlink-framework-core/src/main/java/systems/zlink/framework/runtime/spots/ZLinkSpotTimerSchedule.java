@@ -10,17 +10,55 @@ final class ZLinkSpotTimerSchedule {
     private final String name;
     private final Duration period;
     private final ZLinkTimerOptions options;
-    private final Instant startedAt = Instant.now();
-    private final long startedNanos = System.nanoTime();
+    private final Instant startedAt;
+    private final long startedNanos;
     private final long periodNanos;
     private long deliveryIndex;
     private long lastScheduledIndex;
 
     ZLinkSpotTimerSchedule(String name, Duration period, ZLinkTimerOptions options) {
+        this(
+            name,
+            period,
+            options,
+            Instant.now(),
+            0L,
+            0L);
+    }
+
+    ZLinkSpotTimerSchedule(State state) {
+        this(
+            state.name(),
+            state.period(),
+            state.options(),
+            state.startedAt(),
+            state.deliveryIndex(),
+            state.lastScheduledIndex());
+    }
+
+    private ZLinkSpotTimerSchedule(
+        String name,
+        Duration period,
+        ZLinkTimerOptions options,
+        Instant startedAt,
+        long deliveryIndex,
+        long lastScheduledIndex) {
         this.name = name;
         this.period = period;
         this.options = options;
+        this.startedAt = startedAt;
+        long restoredElapsed;
+        try {
+            restoredElapsed = Math.max(
+                0L,
+                Duration.between(startedAt, Instant.now()).toNanos());
+        } catch (ArithmeticException error) {
+            restoredElapsed = Long.MAX_VALUE;
+        }
+        this.startedNanos = System.nanoTime() - restoredElapsed;
         this.periodNanos = Math.max(1L, period.toNanos());
+        this.deliveryIndex = deliveryIndex;
+        this.lastScheduledIndex = lastScheduledIndex;
     }
 
     long initialDelayNanos() {
@@ -54,6 +92,16 @@ final class ZLinkSpotTimerSchedule {
 
     void markDelivered(PendingTick pendingTick) {
         lastScheduledIndex = pendingTick.scheduledIndex();
+    }
+
+    State snapshot() {
+        return new State(
+            name,
+            period,
+            options,
+            startedAt,
+            deliveryIndex,
+            lastScheduledIndex);
     }
 
     long delayAfterDispatchNanos() {
@@ -92,5 +140,14 @@ final class ZLinkSpotTimerSchedule {
     }
 
     record PendingTick(long scheduledIndex, ZLinkTimerTick tick) {
+    }
+
+    record State(
+        String name,
+        Duration period,
+        ZLinkTimerOptions options,
+        Instant startedAt,
+        long deliveryIndex,
+        long lastScheduledIndex) {
     }
 }

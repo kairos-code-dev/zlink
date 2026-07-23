@@ -24,6 +24,7 @@ import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.ActorTransferPrepare;
 import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
 import systems.zlink.contracts.service.spot.ActorTransferToken;
+import systems.zlink.contracts.service.spot.ActorTransferTokenFixture;
 import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
 import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.service.spot.OwnerKind;
@@ -84,7 +85,6 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.runtime.nativeapi.ContractAccess;
 
 public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapterProvider {
     private final List<String> calls = Collections.synchronizedList(new ArrayList<>());
@@ -1006,7 +1006,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             Duration timeout) {
             record("prepareActorTransfer." + prepare.actor().actorId());
             ActorTransferToken token =
-                ContractAccess.actorTransferTokenCreate(new byte[64]);
+                ActorTransferTokenFixture.create(new byte[64]);
             return new PrepareActorTransferResult(
                 token,
                 new ActorTransferPrepareResult(

@@ -16,7 +16,7 @@ import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
 final class HostTest {
     @Test
-    void springShutdownUsesFrameworkDefaultDrainDeadline() throws Exception {
+    void springShutdownUsesFrameworkTerminationDeadline() throws Exception {
         var field = ZLinkFrameworkLifecycle.class
             .getDeclaredField("SPRING_SHUTDOWN_DRAIN_DEADLINE");
         field.setAccessible(true);

@@ -86,7 +86,7 @@ public final class ZLinkFrameworkLifecycle
             running = false;
             return;
         }
-        current.drain(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
+        current.shutdown(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
             synchronized (ZLinkFrameworkLifecycle.this) {
                 if (runtime == current) {
                     runtime = null;
@@ -106,8 +106,8 @@ public final class ZLinkFrameworkLifecycle
                 return;
             }
         }
-        // Host-driven shutdown uses the same 30-second framework drain contract.
-        current.drain(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
+        // Spring shutdown must not start maintenance relocation.
+        current.shutdown(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
             synchronized (ZLinkFrameworkLifecycle.this) {
                 runtime = null;
                 running = false;

@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.locations;
 
 import systems.zlink.framework.locations.ZLinkActorLocationStore;
 import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWatchStore;
@@ -53,5 +54,17 @@ public record ZLinkRegisteredLocationStores(
         if (unifiedStore != null) {
             services.add(ZLinkLocationStore.class, unifiedStore);
         }
+        if (clientServerStore() != null) {
+            services.add(
+                ZLinkClientServerLocationStore.class,
+                clientServerStore());
+        }
+    }
+
+    public ZLinkClientServerLocationStore clientServerStore() {
+        return unifiedStore
+            instanceof ZLinkClientServerLocationStore clientServer
+                ? clientServer
+                : null;
     }
 }

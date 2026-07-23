@@ -568,8 +568,16 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeAllByOwner(String ownerId) {
+    public CompletionStage<Long> removeAllByOwner(
+        ZLinkLocationOwnerToken owner) {
+        Objects.requireNonNull(owner, "owner");
         synchronized (gate) {
+            if (!isExactOwnerLeaseLive(owner)) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "Owner cleanup token is stale."));
+            }
+            String ownerId = owner.ownerId();
             long removed = 0;
             List<String> descriptorKeys = meshNodes.rows.entrySet()
                 .stream()

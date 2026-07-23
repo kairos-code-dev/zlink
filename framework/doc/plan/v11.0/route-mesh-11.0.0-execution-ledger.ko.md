@@ -1203,6 +1203,20 @@ admit/reject 뒤에만 ready target으로 승격하고 descriptor weight selecto
 작업이 남아 있다. 따라서 이 checkpoint도 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+JVM ClientServer provider checkpoint(2026-07-24)에서 Java public source에 exact
+`ZLinkClientServerServerDescriptor`, key와 선택 capability인 `ZLinkClientServerLocationStore`를 추가하고
+공식 Redis provider가 이를 직접 구현하도록 연결했다. Redis row는 fixture와 같은 field 순서·상태 이름을
+사용하며 ChannelName과 Server RID key, owner lease·lifecycle·revision·immutable field fence, channel별
+정렬 index, 기본 100개·최대 1000개·encoded 4 MiB page와 exact remove를 구현한다.
+`removeAllByOwner`는 Java·Kotlin public source, in-memory, runtime과 Redis에서 owner ID 문자열 대신 exact
+`ZLinkLocationOwnerToken`을 사용하고 lease generation·expiry를 확인한다. 제거된 예전
+`renewOwnerLease(String, RoutingId, Duration)`를 호출하던 JVM contract test도 current claim contract로
+수정했다. Java core compile·test와 focused Location contract, Kotlin test가 통과했다. 실제 Redis는
+ClientServer fixture·operation을 포함해 25/25가 통과했고 외부 cross-language harness 2건만 skip했다.
+현재 JVM automatic ClientServer runtime은 아직 generic peer enumeration을 사용하므로 dedicated Store
+publication·discovery와 service admission으로 교체하기 전에는 `V11-M6A-JVM`을 완료로 판정하지 않는다.
+Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

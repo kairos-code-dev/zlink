@@ -177,6 +177,153 @@ final class ZLinkRedisLocationScripts {
         return {'stored', tonumber(ARGV[2]), nowMs}
         """;
 
+    static final String WRITE_CLIENT_SERVER = PROLOGUE + """
+
+        local intent = ARGV[1]
+        local owner = ARGV[2]
+        local leaseGeneration = ARGV[3]
+        local lifecycle = ARGV[4]
+        local revision = tonumber(ARGV[5])
+        local immutable = ARGV[6]
+        local json = ARGV[7]
+        local lease = redis.call(
+            'HMGET', KEYS[4], 'ownerId', 'generation', 'expiresAt')
+        if lease[1] ~= owner or lease[2] ~= leaseGeneration
+            or tonumber(lease[3] or '0') <= nowMs then
+            return {'conflict', 0, nowMs}
+        end
+
+        local function nextGeneration()
+            local current =
+                redis.call('HGET', KEYS[5], 'descriptorGeneration')
+                    or '0'
+            if current == '9223372036854775807' then
+                return nil
+            end
+            redis.call(
+                'HINCRBY', KEYS[5], 'descriptorGeneration', 1)
+            return redis.call(
+                'HGET', KEYS[5], 'descriptorGeneration')
+        end
+
+        local function store(gen)
+            redis.call('HSET', KEYS[1],
+                'owner', owner,
+                'gen', gen,
+                'json', json,
+                'updatedAtMs', nowMs,
+                'channel', ARGV[10])
+            redis.call('HSET', KEYS[2],
+                'descriptorKey', ARGV[11],
+                'lifecycleGeneration', lifecycle,
+                'descriptorRevision', revision,
+                'immutableDigest', immutable,
+                'ownerId', owner,
+                'ownerLeaseGeneration', leaseGeneration,
+                'runtimeState', ARGV[8],
+                'weight', ARGV[9])
+            redis.call('SADD', KEYS[3], ARGV[11])
+            redis.call('SADD', KEYS[6], ARGV[11])
+            redis.call('ZADD', KEYS[11], 0, ARGV[11])
+            redis.call('INCR', KEYS[9])
+            redis.call('INCR', KEYS[10])
+        end
+
+        if redis.call('EXISTS', KEYS[1]) == 0 then
+            if intent ~= 'new' and intent ~= 'takeover' then
+                return {'stale', 0, nowMs}
+            end
+            local gen = nextGeneration()
+            if not gen then
+                return {'exhausted', 0, nowMs}
+            end
+            store(gen)
+            return {'stored', gen, nowMs}
+        end
+
+        local storedOwner =
+            redis.call('HGET', KEYS[2], 'ownerId')
+        local storedLeaseGeneration =
+            redis.call(
+                'HGET', KEYS[2], 'ownerLeaseGeneration')
+        if storedOwner ~= owner
+            or storedLeaseGeneration ~= leaseGeneration then
+            if storedOwner ~= ARGV[12]
+                or storedLeaseGeneration ~= ARGV[13] then
+                return {'stale', 0, nowMs}
+            end
+            local oldLease = redis.call(
+                'HMGET', KEYS[7],
+                'ownerId', 'generation', 'expiresAt')
+            if oldLease[1] == storedOwner
+                and oldLease[2] == storedLeaseGeneration
+                and tonumber(oldLease[3] or '0') > nowMs then
+                return {'conflict', 0, nowMs}
+            end
+            if intent ~= 'new' and intent ~= 'takeover' then
+                return {'stale', 0, nowMs}
+            end
+            local gen = nextGeneration()
+            if not gen then
+                return {'exhausted', 0, nowMs}
+            end
+            redis.call('SREM', KEYS[8], ARGV[11])
+            store(gen)
+            return {'stored', gen, nowMs}
+        end
+
+        local storedRevision =
+            tonumber(redis.call(
+                'HGET', KEYS[2], 'descriptorRevision'))
+        if redis.call(
+                'HGET', KEYS[2], 'lifecycleGeneration') == lifecycle
+            and redis.call(
+                'HGET', KEYS[2], 'immutableDigest') == immutable
+            and revision == storedRevision then
+            if redis.call('HGET', KEYS[1], 'json') == json then
+                return {
+                    'stored',
+                    redis.call('HGET', KEYS[1], 'gen'),
+                    redis.call('HGET', KEYS[1], 'updatedAtMs')
+                }
+            end
+            return {'protocol-error', 0, nowMs}
+        end
+        if redis.call(
+                'HGET', KEYS[2], 'lifecycleGeneration') ~= lifecycle
+            or redis.call(
+                'HGET', KEYS[2], 'immutableDigest') ~= immutable
+            or revision <= storedRevision then
+            return {
+                'stale',
+                redis.call('HGET', KEYS[1], 'gen'),
+                nowMs
+            }
+        end
+        local gen = redis.call('HGET', KEYS[1], 'gen')
+        store(gen)
+        return {'stored', gen, nowMs}
+        """;
+
+    static final String REMOVE_CLIENT_SERVER = PROLOGUE + """
+
+        local owner = redis.call('HGET', KEYS[2], 'ownerId')
+        local leaseGeneration = redis.call(
+            'HGET', KEYS[2], 'ownerLeaseGeneration')
+        if not owner or owner ~= ARGV[1]
+            or leaseGeneration ~= ARGV[2] then
+            return {'stale', 0, nowMs}
+        end
+        local generation = redis.call('HGET', KEYS[1], 'gen')
+        redis.call('DEL', KEYS[1], KEYS[2])
+        redis.call('SREM', KEYS[3], ARGV[3])
+        redis.call('SREM', KEYS[4], ARGV[3])
+        redis.call('INCR', KEYS[5])
+        redis.call('INCR', KEYS[6])
+        redis.call('ZREM', KEYS[7], ARGV[3])
+        return {'stored', generation, nowMs}
+        """;
+
     static final String REMOVE = PROLOGUE + """
 
         local currentOwner = redis.call('HGET', KEYS[1], 'owner')
@@ -194,12 +341,18 @@ final class ZLinkRedisLocationScripts {
         return {'stored', tonumber(ARGV[2]), nowMs}
         """;
 
-    static final String REMOVE_ALL_BY_OWNER = """
-        if redis.replicate_commands then redis.replicate_commands() end
+    static final String REMOVE_ALL_BY_OWNER = PROLOGUE + """
+        local lease = redis.call(
+            'HMGET', KEYS[9], 'ownerId', 'generation', 'expiresAt')
+        if lease[1] ~= ARGV[9]
+            or lease[2] ~= ARGV[10]
+            or tonumber(lease[3] or '0') <= nowMs then
+            return -1
+        end
         local removed = 0
         for i = 1, 4 do
             local ownerIndex = KEYS[i]
-            local kindIndex = KEYS[i + 5]
+            local kindIndex = KEYS[i + 4]
             local rowPrefix = ARGV[i]
             local stampBase = ARGV[i + 5]
             local rowKeys = redis.call('SMEMBERS', ownerIndex)
@@ -223,10 +376,17 @@ final class ZLinkRedisLocationScripts {
 
     static final String REMOVE_ALL_MESH_NODES = PROLOGUE + """
 
+        local lease = redis.call(
+            'HMGET', KEYS[4], 'ownerId', 'generation', 'expiresAt')
+        if lease[1] ~= ARGV[1]
+            or lease[2] ~= ARGV[2]
+            or tonumber(lease[3] or '0') <= nowMs then
+            return -1
+        end
         local removed = 0
-        for index = 1, #ARGV - 1 do
-            local keyOffset = 4 + (index - 1) * 3
-            local rowKey = ARGV[index + 1]
+        for index = 3, #ARGV do
+            local keyOffset = 5 + (index - 3) * 3
+            local rowKey = ARGV[index]
             if redis.call('HGET', KEYS[keyOffset], 'owner')
                     == ARGV[1] then
                 redis.call('DEL', KEYS[keyOffset])

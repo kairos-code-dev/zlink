@@ -172,6 +172,41 @@ final class ZLinkRedisLocationKeys {
         return sha256Hex(encodedKey);
     }
 
+    String clientServerDescriptorRowKey(String encodedKey) {
+        return domainBase() + ":descriptor:client-server:"
+            + sha256Hex(encodedKey);
+    }
+
+    String clientServerDescriptorMetadataKey(String encodedKey) {
+        return domainBase() + ":descriptor-admission:client-server:"
+            + sha256Hex(encodedKey);
+    }
+
+    String clientServerDescriptorIndexKey() {
+        return domainBase() + ":descriptor:client-server:index";
+    }
+
+    String clientServerDescriptorChannelIndexKey(String channelName) {
+        return domainBase() + ":descriptor:client-server:channel:"
+            + sha256Hex(channelName);
+    }
+
+    String clientServerOwnerTokenIndexKey(
+        String ownerId,
+        long leaseGeneration) {
+        return domainBase() + ":descriptor:client-server:owner:"
+            + sha256Hex(ownerId + "\0" + leaseGeneration);
+    }
+
+    String clientServerDescriptorStampKey(String channelName) {
+        return domainBase() + ":descriptor:client-server:stamp:"
+            + sha256Hex(channelName);
+    }
+
+    String clientServerDescriptorGlobalStampKey() {
+        return domainBase() + ":descriptor:client-server:stamp";
+    }
+
     String encodedAuthorityKey(String authorityKey) {
         return HexFormat.of().formatHex(
             authorityKey.getBytes(StandardCharsets.UTF_8));

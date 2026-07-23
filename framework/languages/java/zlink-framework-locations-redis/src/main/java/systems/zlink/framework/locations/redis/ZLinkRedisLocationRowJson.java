@@ -25,6 +25,7 @@ import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
@@ -127,6 +128,72 @@ final class ZLinkRedisLocationRowJson {
         capacity.put("PendingLimit", row.capacity().pendingLimit());
         node.set("Capacity", capacity);
         return write(node);
+    }
+
+    static String serializeClientServer(
+        ZLinkClientServerServerDescriptor row) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("ChannelName", row.channelName());
+        putRid(node, "ServerRid", row.serverRid());
+        node.put("LifecycleGeneration", row.lifecycleGeneration());
+        node.put("DescriptorRevision", row.descriptorRevision());
+        node.put("Endpoint", row.endpoint());
+        node.put("Weight", row.weight());
+        node.put("State", runtimeStateName(row.state()));
+        node.put("SecurityIdentity", row.securityIdentity());
+        node.put("OwnerId", row.ownerId());
+        node.put("OwnerLeaseGeneration", row.leaseGeneration());
+        putInstant(node, "UpdatedAt", row.updatedAt());
+        return write(node);
+    }
+
+    static ZLinkClientServerServerDescriptor deserializeClientServer(
+        String json,
+        long storeGeneration,
+        Instant updatedAt) {
+        JsonNode node = read(json);
+        long encodedLifecycle =
+            node.path("LifecycleGeneration").asLong();
+        return new ZLinkClientServerServerDescriptor(
+            text(node, "ChannelName"),
+            rid(node, "ServerRid"),
+            encodedLifecycle,
+            node.path("DescriptorRevision").asLong(),
+            text(node, "Endpoint"),
+            node.path("Weight").asInt(),
+            runtimeState(text(node, "State")),
+            text(node, "SecurityIdentity"),
+            text(node, "OwnerId"),
+            node.path("OwnerLeaseGeneration").asLong(),
+            updatedAt);
+    }
+
+    static String clientServerImmutableFingerprint(
+        ZLinkClientServerServerDescriptor row) {
+        StringBuilder preimage = new StringBuilder();
+        appendImmutableSegment(
+            preimage,
+            "zlink-client-server-immutable-v1");
+        appendImmutableSegment(preimage, row.channelName());
+        appendImmutableSegment(
+            preimage,
+            row.serverRid().toHex().toLowerCase(
+                java.util.Locale.ROOT));
+        appendImmutableSegment(
+            preimage,
+            Long.toString(row.lifecycleGeneration()));
+        appendImmutableSegment(preimage, row.endpoint());
+        appendImmutableSegment(preimage, row.securityIdentity());
+        try {
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(
+                    preimage.toString().getBytes(
+                        StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(
+                "SHA-256 is unavailable",
+                impossible);
+        }
     }
 
     static String meshNodeImmutableFingerprint(
@@ -546,6 +613,32 @@ final class ZLinkRedisLocationRowJson {
     private static String nullableText(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? null : value.asText();
+    }
+
+    private static String runtimeStateName(
+        ZLinkFrameworkRuntimeState state) {
+        return switch (state) {
+            case PREPARING -> "Preparing";
+            case SERVING -> "Serving";
+            case RETIRING -> "Retiring";
+            case DRAINING -> "Draining";
+            case STOPPED -> "Stopped";
+            case ERROR -> "Error";
+        };
+    }
+
+    private static ZLinkFrameworkRuntimeState runtimeState(
+        String state) {
+        return switch (state) {
+            case "Preparing" -> ZLinkFrameworkRuntimeState.PREPARING;
+            case "Serving" -> ZLinkFrameworkRuntimeState.SERVING;
+            case "Retiring" -> ZLinkFrameworkRuntimeState.RETIRING;
+            case "Draining" -> ZLinkFrameworkRuntimeState.DRAINING;
+            case "Stopped" -> ZLinkFrameworkRuntimeState.STOPPED;
+            case "Error" -> ZLinkFrameworkRuntimeState.ERROR;
+            default -> throw new IllegalArgumentException(
+                "invalid Framework runtime state");
+        };
     }
 
     private static void putStringMap(ObjectNode node, String field, Map<String, String> value) {

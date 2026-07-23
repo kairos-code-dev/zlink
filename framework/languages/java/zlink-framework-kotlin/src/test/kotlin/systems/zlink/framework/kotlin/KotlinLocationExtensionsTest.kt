@@ -319,7 +319,7 @@ class KotlinLocationExtensionsTest {
             token: ZLinkLocationOwnerToken,
         ): ZLinkOwnerLeaseReleaseResult = ZLinkOwnerLeaseReleaseResult.STALE
 
-        override suspend fun removeAllByOwnerSuspending(ownerId: String): Long = 0
+        override suspend fun removeAllByOwnerSuspending(owner: ZLinkLocationOwnerToken): Long = 0
     }
 
     companion object {

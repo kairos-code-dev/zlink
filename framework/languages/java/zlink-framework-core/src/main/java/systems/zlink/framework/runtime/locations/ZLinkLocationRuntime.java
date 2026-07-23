@@ -138,7 +138,10 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         }
 
         ZLinkLocationOwnerToken token = ownerToken;
-        return stores.unifiedStore().removeAllByOwner(ownerId)
+        CompletionStage<Long> cleanup = token == null
+            ? CompletableFuture.completedFuture(0L)
+            : stores.unifiedStore().removeAllByOwner(token);
+        return cleanup
             .thenCompose(ignored -> token == null
                 ? CompletableFuture.completedFuture(null)
                 : stores.ownerLeaseStore().releaseOwnerLease(token)

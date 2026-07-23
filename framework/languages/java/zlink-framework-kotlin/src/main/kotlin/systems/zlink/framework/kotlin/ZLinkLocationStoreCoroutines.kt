@@ -164,8 +164,8 @@ suspend fun ZLinkLocationStore.releaseOwnerLease(
 ): ZLinkOwnerLeaseReleaseResult =
     awaitFrameworkStage(this.releaseOwnerLease(token))
 
-suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long =
-    awaitFrameworkStage(this.removeAllByOwner(ownerId))
+suspend fun ZLinkLocationStore.removeAllByOwner(owner: ZLinkLocationOwnerToken): Long =
+    awaitFrameworkStage(this.removeAllByOwner(owner))
 
 suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
     awaitFrameworkStage(this.listLivePeers(filter))

@@ -33,9 +33,15 @@ final class LocationStoreContractTest {
     @Test
     void storeIssuesGenerationsAndGuardsWritesWithOwnerTokens() throws Exception {
         ZLinkInMemoryLocationStore store = newStore();
-        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
+        ZLinkOwnerLeaseClaimed ownerB =
+            (ZLinkOwnerLeaseClaimed) store.claimOwnerLease(
+                    "owner-b",
+                    Duration.ofSeconds(30))
+                .toCompletableFuture()
+                .get();
 
         ZLinkLocationWriteResult claimed = store.updateActor(
                 actor("owner-a", 0),
@@ -72,7 +78,11 @@ final class LocationStoreContractTest {
         assertEquals(2, takeover.generation());
         assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, stale.status());
 
-        assertEquals(1, store.removeAllByOwner("owner-b").toCompletableFuture().get());
+        assertEquals(
+            1,
+            store.removeAllByOwner(ownerB.token())
+                .toCompletableFuture()
+                .get());
     }
 
     @Test
@@ -146,7 +156,7 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get().isEmpty());
 
-        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
         store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)

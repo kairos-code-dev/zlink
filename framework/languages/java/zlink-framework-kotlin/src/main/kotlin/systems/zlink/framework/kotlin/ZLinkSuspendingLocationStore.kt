@@ -254,8 +254,8 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkOwnerLeaseReleaseResult> =
         async { releaseOwnerLeaseSuspending(token) }
 
-    final override fun removeAllByOwner(ownerId: String): CompletionStage<Long> =
-        async { removeAllByOwnerSuspending(ownerId) }
+    final override fun removeAllByOwner(owner: ZLinkLocationOwnerToken): CompletionStage<Long> =
+        async { removeAllByOwnerSuspending(owner) }
 
     protected abstract suspend fun readAuthoritySuspending(
         key: String,
@@ -413,7 +413,7 @@ abstract class ZLinkSuspendingLocationStore(
         token: ZLinkLocationOwnerToken,
     ): ZLinkOwnerLeaseReleaseResult
 
-    protected abstract suspend fun removeAllByOwnerSuspending(ownerId: String): Long
+    protected abstract suspend fun removeAllByOwnerSuspending(owner: ZLinkLocationOwnerToken): Long
 }
 
 private fun dispatcherScope(dispatcher: CoroutineDispatcher): CoroutineScope =

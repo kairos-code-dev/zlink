@@ -387,7 +387,8 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<Long> removeAllByOwner(String ownerId) {
+        public CompletionStage<Long> removeAllByOwner(
+            ZLinkLocationOwnerToken owner) {
             return CompletableFuture.completedFuture(0L);
         }
 

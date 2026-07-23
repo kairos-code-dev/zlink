@@ -3,6 +3,7 @@ package systems.zlink.framework.locations.redis;
 import java.nio.charset.StandardCharsets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
@@ -30,6 +31,25 @@ final class ZLinkRedisLocationKeyCodec {
 
     static String encodeMeshNodeKey(ZLinkMeshNodeDescriptorKey key) {
         return encode(key.meshName(), key.rid().toHex());
+    }
+
+    static String encodeClientServerKey(
+        ZLinkClientServerServerDescriptorKey key) {
+        return encode(key.channelName(), key.serverRid().toHex());
+    }
+
+    static ZLinkClientServerServerDescriptorKey
+        decodeClientServerKey(String encoded) {
+        byte[] bytes = encoded.getBytes(StandardCharsets.UTF_8);
+        Segment channel = decodeSegment(bytes, 0);
+        Segment rid = decodeSegment(bytes, channel.nextOffset);
+        if (rid.nextOffset != bytes.length) {
+            throw new IllegalStateException(
+                "invalid stored ClientServer descriptor key");
+        }
+        return new ZLinkClientServerServerDescriptorKey(
+            channel.value,
+            RoutingId.fromHex(rid.value));
     }
 
     static ZLinkMeshNodeDescriptorKey decodeMeshNodeKey(String encoded) {

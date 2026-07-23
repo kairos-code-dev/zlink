@@ -9,8 +9,12 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
+import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
+import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
@@ -56,6 +60,7 @@ import systems.zlink.framework.locations.ZLinkStoreCancellation;
 
 public final class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
+    ZLinkClientServerLocationStore,
     ZLinkLocationChangeStampStore,
     ZLinkRoutingIdSlotAllocationStore,
     AutoCloseable {
@@ -108,6 +113,41 @@ public final class ZLinkRedisLocationStore implements
             ZLinkRedisLocationRowJson::deserializeMeshNode,
             row -> row.meshName().equals(meshName),
             page).thenCompose(authority::projectMeshNodeCapacity);
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteResult>
+        updateClientServer(
+            ZLinkClientServerServerDescriptor descriptor,
+            ZLinkLocationWriteIntent intent) {
+        return scripts.writeClientServer(
+            Objects.requireNonNull(descriptor, "descriptor"),
+            Objects.requireNonNull(intent, "intent"));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteStatus>
+        removeClientServer(
+            ZLinkClientServerServerDescriptorKey key,
+            ZLinkLocationOwnerToken owner) {
+        return scripts.removeClientServer(
+            Objects.requireNonNull(key, "key"),
+            Objects.requireNonNull(owner, "owner"));
+    }
+
+    @Override
+    public CompletionStage<
+        ZLinkLocationPage<ZLinkClientServerServerDescriptor>>
+        listClientServers(
+            String channelName,
+            ZLinkPageRequest page) {
+        if (channelName == null
+            || channelName.isBlank()
+            || channelName.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException(
+                "channelName must be non-blank text without NUL");
+        }
+        return rows.listClientServers(channelName, page);
     }
 
     CompletionStage<byte[]> readAuthorityMembershipMutation(
@@ -321,8 +361,9 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Long> removeAllByOwner(String ownerId) {
-        return scripts.removeAllByOwnerAsync(ownerId);
+    public CompletionStage<Long> removeAllByOwner(
+        ZLinkLocationOwnerToken owner) {
+        return scripts.removeAllByOwnerAsync(owner);
     }
 
     @Override

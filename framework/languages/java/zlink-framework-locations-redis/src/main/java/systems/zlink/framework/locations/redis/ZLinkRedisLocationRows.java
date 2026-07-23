@@ -5,8 +5,10 @@ import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
 import io.lettuce.core.ValueScanCursor;
 import io.lettuce.core.api.async.RedisAsyncCommands;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -15,10 +17,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
 import systems.zlink.framework.locations.ZLinkLocationPage;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 
 final class ZLinkRedisLocationRows {
     private static final String[] ROW_FIELDS = {"json", "gen", "updatedAtMs"};
+    private static final int DESCRIPTOR_PAGE_MAX_BYTES =
+        4 * 1024 * 1024;
 
     private final ZLinkRedisLocationConnection connection;
     private final ZLinkRedisLocationKeys keys;
@@ -63,6 +68,166 @@ final class ZLinkRedisLocationRows {
             .thenCompose(redis -> redis.sscan(keys.kindIndexKey(tag), ScanCursor.of(cursor), scanArgs)
                 .thenCompose(scan -> loadRows(redis, tag, scan.getValues(), deserializer)
                     .thenApply(rows -> toScannedPage(scan, rows, matches))));
+    }
+
+    CompletionStage<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>
+        listClientServers(
+            String channelName,
+            ZLinkPageRequest page) {
+        ZLinkPageRequest safePage =
+            page == null ? ZLinkPageRequest.firstPage() : page;
+        int pageSize =
+            safePage.pageSize() <= 0 ? 100 : safePage.pageSize();
+        if (pageSize > 1000) {
+            throw new IllegalArgumentException(
+                "ClientServer page size must be in 1..1000");
+        }
+        int offset = decodeClientServerCursor(
+            channelName,
+            safePage.continuationToken());
+        return connection.commands()
+            .thenCompose(redis -> redis.zrange(
+                    keys.clientServerDescriptorChannelIndexKey(
+                        channelName),
+                    offset,
+                    offset + pageSize)
+                .thenCompose(members -> loadClientServerPage(
+                        redis,
+                        members,
+                        pageSize)
+                    .thenApply(loaded -> {
+                        boolean hasMore =
+                            loaded.consumed() < members.size()
+                                || members.size() > pageSize;
+                        return new ZLinkLocationPage<>(
+                            List.copyOf(loaded.items()),
+                            hasMore
+                                ? encodeClientServerCursor(
+                                    channelName,
+                                    offset + loaded.consumed())
+                                : null);
+                    })));
+    }
+
+    private CompletionStage<ClientServerPageAccumulator>
+        loadClientServerPage(
+            RedisAsyncCommands<String, String> redis,
+            List<String> members,
+            int pageSize) {
+        return loadClientServerPage(
+            redis,
+            members,
+            pageSize,
+            0,
+            new ClientServerPageAccumulator(
+                new ArrayList<>(),
+                0,
+                0));
+    }
+
+    private CompletionStage<ClientServerPageAccumulator>
+        loadClientServerPage(
+            RedisAsyncCommands<String, String> redis,
+            List<String> members,
+            int pageSize,
+            int index,
+            ClientServerPageAccumulator accumulator) {
+        if (index >= members.size()
+            || accumulator.items().size() >= pageSize) {
+            return CompletableFuture.completedFuture(accumulator);
+        }
+        String rowKey = members.get(index);
+        return redis.hmget(
+                keys.clientServerDescriptorRowKey(rowKey),
+                ROW_FIELDS)
+            .thenCompose(fields -> {
+                String json = field(fields, "json");
+                if (json == null) {
+                    return loadClientServerPage(
+                        redis,
+                        members,
+                        pageSize,
+                        index + 1,
+                        new ClientServerPageAccumulator(
+                            accumulator.items(),
+                            accumulator.encodedBytes(),
+                            accumulator.consumed() + 1));
+                }
+                int rowBytes =
+                    json.getBytes(StandardCharsets.UTF_8).length;
+                if (!accumulator.items().isEmpty()
+                    && accumulator.encodedBytes() + rowBytes
+                        > DESCRIPTOR_PAGE_MAX_BYTES) {
+                    return CompletableFuture.completedFuture(
+                        accumulator);
+                }
+                ZLinkClientServerServerDescriptor row =
+                    materialize(
+                        fields,
+                        ZLinkRedisLocationRowJson
+                            ::deserializeClientServer);
+                if (row != null) {
+                    accumulator.items().add(row);
+                }
+                return loadClientServerPage(
+                    redis,
+                    members,
+                    pageSize,
+                    index + 1,
+                    new ClientServerPageAccumulator(
+                        accumulator.items(),
+                        accumulator.encodedBytes() + rowBytes,
+                        accumulator.consumed() + 1));
+            });
+    }
+
+    private static String encodeClientServerCursor(
+        String channelName,
+        int offset) {
+        return Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(
+                (channelName + "\0" + offset)
+                    .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static int decodeClientServerCursor(
+        String channelName,
+        String token) {
+        if (token == null || token.isBlank()) {
+            return 0;
+        }
+        if (token.getBytes(StandardCharsets.UTF_8).length > 4096) {
+            throw new IllegalArgumentException(
+                "ClientServer continuation token is invalid");
+        }
+        try {
+            String decoded = new String(
+                Base64.getUrlDecoder().decode(token),
+                StandardCharsets.UTF_8);
+            int separator = decoded.lastIndexOf('\0');
+            if (separator <= 0
+                || !decoded.substring(0, separator)
+                    .equals(channelName)) {
+                throw new IllegalArgumentException();
+            }
+            int offset = Integer.parseInt(
+                decoded.substring(separator + 1));
+            if (offset < 0) {
+                throw new IllegalArgumentException();
+            }
+            return offset;
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException(
+                "ClientServer continuation token is invalid",
+                error);
+        }
+    }
+
+    private record ClientServerPageAccumulator(
+        List<ZLinkClientServerServerDescriptor> items,
+        int encodedBytes,
+        int consumed) {
     }
 
     private <T> CompletionStage<List<T>> loadRows(

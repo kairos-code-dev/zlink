@@ -146,6 +146,42 @@ class ZLinkRedisLocationStoreTest {
     }
 
     @Test
+    void clientServerDescriptorPhysicalEncodingMatchesSharedFixture()
+        throws Exception {
+        JsonNode fixture = redisFixture(
+            "client-server-server-descriptor-v1.json");
+        JsonNode row = fixture.path("row");
+        JsonNode hash = row.path("hash");
+        var descriptor =
+            new systems.zlink.framework.locations
+                .ZLinkClientServerServerDescriptor(
+                    "orders",
+                    RoutingId.from("orders-a"),
+                    7,
+                    3,
+                    "tcp://10.0.0.2:7400",
+                    100,
+                    systems.zlink.framework.runtime.host
+                        .ZLinkFrameworkRuntimeState.SERVING,
+                    "cluster-a",
+                    "channel-owner-a",
+                    5,
+                    Instant.parse(
+                        "2024-07-15T00:00:00Z"));
+        assertEquals(
+            row.path("key").asText(),
+            ZLinkRedisLocationKeyCodec.encodeClientServerKey(
+                new systems.zlink.framework.locations
+                    .ZLinkClientServerServerDescriptorKey(
+                        descriptor.channelName(),
+                        descriptor.serverRid())));
+        assertEquals(
+            hash.path("json").asText(),
+            ZLinkRedisLocationRowJson.serializeClientServer(
+                descriptor));
+    }
+
+    @Test
     void redisLocationSchemaGateRejectsIncompatibleMarker()
         throws Exception {
         String endpoint =
@@ -1237,12 +1273,111 @@ class ZLinkRedisLocationStoreTest {
                     .toCompletableFuture().get());
             assertEquals(
                 1,
-                store.removeAllByOwner(owner.ownerId())
+                store.removeAllByOwner(owner)
                     .toCompletableFuture().get());
             assertEquals(
                 List.of(),
                 store.listMeshNodes(
                         "game",
+                        ZLinkPageRequest.firstPage())
+                    .toCompletableFuture().get().items());
+        }
+    }
+
+    @Test
+    void redisClientServerDescriptorUsesDedicatedFencedStore()
+        throws Exception {
+        String endpoint =
+            System.getenv("ZLINK_REDIS_LOCATION_ENDPOINT");
+        assumeTrue(
+            endpoint != null && !endpoint.isBlank(),
+            "ZLINK_REDIS_LOCATION_ENDPOINT is not set");
+        try (ZLinkRedisLocationStore store =
+            new ZLinkRedisLocationStore(
+                new ZLinkRedisLocationOptions()
+                    .setConnectionString(endpoint)
+                    .setKeyPrefix(
+                        "zlink:client-server-descriptor-test:"
+                            + UUID.randomUUID()))) {
+            ZLinkLocationOwnerToken owner = assertInstanceOf(
+                ZLinkOwnerLeaseClaimed.class,
+                store.claimOwnerLease(
+                        "client-server-owner",
+                        Duration.ofSeconds(30))
+                    .toCompletableFuture().get()).token();
+            RoutingId serverRid = RoutingId.from("orders-a");
+            var initial =
+                new systems.zlink.framework.locations
+                    .ZLinkClientServerServerDescriptor(
+                        "orders",
+                        serverRid,
+                        7,
+                        1,
+                        "tcp://127.0.0.1:7400",
+                        100,
+                        systems.zlink.framework.runtime.host
+                            .ZLinkFrameworkRuntimeState.SERVING,
+                        "cluster-a",
+                        owner.ownerId(),
+                        owner.leaseGeneration(),
+                        UPDATED_AT);
+            assertEquals(
+                ZLinkLocationWriteStatus.STORED,
+                store.updateClientServer(
+                        initial,
+                        ZLinkLocationWriteIntent.NEW_CLAIM)
+                    .toCompletableFuture().get().status());
+
+            var changed = new systems.zlink.framework.locations
+                .ZLinkClientServerServerDescriptor(
+                    initial.channelName(),
+                    initial.serverRid(),
+                    initial.lifecycleGeneration(),
+                    2,
+                    initial.endpoint(),
+                    25,
+                    initial.state(),
+                    initial.securityIdentity(),
+                    initial.ownerId(),
+                    initial.leaseGeneration(),
+                    initial.updatedAt());
+            assertEquals(
+                ZLinkLocationWriteStatus.STORED,
+                store.updateClientServer(
+                        changed,
+                        ZLinkLocationWriteIntent.RENEW)
+                    .toCompletableFuture().get().status());
+
+            var page = store.listClientServers(
+                    "orders",
+                    new ZLinkPageRequest(1, null))
+                .toCompletableFuture().get();
+            assertEquals(1, page.items().size());
+            assertEquals(
+                changed.channelName(),
+                page.items().getFirst().channelName());
+            assertEquals(
+                changed.serverRid(),
+                page.items().getFirst().serverRid());
+            assertEquals(
+                changed.descriptorRevision(),
+                page.items().getFirst().descriptorRevision());
+            assertEquals(
+                changed.weight(),
+                page.items().getFirst().weight());
+            assertEquals(
+                ZLinkLocationWriteStatus.STORED,
+                store.removeClientServer(
+                        new systems.zlink.framework.locations
+                            .ZLinkClientServerServerDescriptorKey(
+                                "orders",
+                                serverRid),
+                        owner)
+                    .toCompletableFuture().get());
+            assertEquals(
+                List.of(),
+                store.listClientServers(
+                        "orders",
                         ZLinkPageRequest.firstPage())
                     .toCompletableFuture().get().items());
         }

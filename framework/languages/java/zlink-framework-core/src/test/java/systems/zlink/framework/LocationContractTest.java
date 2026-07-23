@@ -223,7 +223,7 @@ final class LocationContractTest {
             ZLinkLocationOwnerToken.class);
         Method removeAllByOwner = ZLinkLocationStore.class.getMethod(
             "removeAllByOwner",
-            String.class);
+            ZLinkLocationOwnerToken.class);
         Method updateMeshNode =
             systems.zlink.framework.locations
                 .ZLinkMeshNodeLocationStore.class.getMethod(

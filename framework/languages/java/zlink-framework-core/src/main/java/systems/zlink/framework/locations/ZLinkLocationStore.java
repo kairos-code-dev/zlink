@@ -10,5 +10,5 @@ public interface ZLinkLocationStore extends
     ZLinkRouteLocationStore,
     ZLinkOwnerLeaseStore,
     ZLinkAuthorityStore {
-    CompletionStage<Long> removeAllByOwner(String ownerId);
+    CompletionStage<Long> removeAllByOwner(ZLinkLocationOwnerToken owner);
 }

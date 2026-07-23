@@ -7,15 +7,20 @@ import io.lettuce.core.RedisCommandTimeoutException;
 import io.lettuce.core.RedisConnectionException;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.KeyValue;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
@@ -366,6 +371,137 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
 
+    CompletionStage<ZLinkLocationWriteResult> writeClientServer(
+        ZLinkClientServerServerDescriptor descriptor,
+        ZLinkLocationWriteIntent intent) {
+        ZLinkClientServerServerDescriptorKey key =
+            new ZLinkClientServerServerDescriptorKey(
+                descriptor.channelName(),
+                descriptor.serverRid());
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeClientServerKey(key);
+        String json =
+            ZLinkRedisLocationRowJson.serializeClientServer(
+                descriptor);
+        if (json.getBytes(StandardCharsets.UTF_8).length
+            > 1024 * 1024) {
+            throw new IllegalArgumentException(
+                "encoded ClientServer descriptor exceeds 1 MiB");
+        }
+        String descriptorRow =
+            keys.clientServerDescriptorRowKey(rowKey);
+        String metadata =
+            keys.clientServerDescriptorMetadataKey(rowKey);
+        return connection.commands()
+            .thenCompose(redis -> redis.hmget(
+                    metadata,
+                    "ownerId",
+                    "ownerLeaseGeneration")
+                .thenCompose(previous -> {
+                    String previousOwner =
+                        hashField(previous, "ownerId");
+                    String previousLease =
+                        hashField(
+                            previous,
+                            "ownerLeaseGeneration");
+                    String placeholder = keys.schemaKey();
+                    return redis.<List<Object>>eval(
+                        ZLinkRedisLocationScripts
+                            .WRITE_CLIENT_SERVER,
+                        ScriptOutputType.MULTI,
+                        new String[] {
+                            descriptorRow,
+                            metadata,
+                            keys.clientServerDescriptorIndexKey(),
+                            keys.leaseKey(descriptor.ownerId()),
+                            keys.counterKey(),
+                            keys.clientServerOwnerTokenIndexKey(
+                                descriptor.ownerId(),
+                                descriptor.leaseGeneration()),
+                            previousOwner == null
+                                ? placeholder
+                                : keys.leaseKey(previousOwner),
+                            previousOwner == null
+                                || previousLease == null
+                                ? placeholder
+                                : keys
+                                    .clientServerOwnerTokenIndexKey(
+                                        previousOwner,
+                                        Long.parseLong(
+                                            previousLease)),
+                            keys.clientServerDescriptorGlobalStampKey(),
+                            keys.clientServerDescriptorStampKey(
+                                descriptor.channelName()),
+                            keys.clientServerDescriptorChannelIndexKey(
+                                descriptor.channelName())
+                        },
+                        intentName(intent),
+                        descriptor.ownerId(),
+                        Long.toString(
+                            descriptor.leaseGeneration()),
+                        Long.toString(
+                            descriptor.lifecycleGeneration()),
+                        Long.toString(
+                            descriptor.descriptorRevision()),
+                        ZLinkRedisLocationRowJson
+                            .clientServerImmutableFingerprint(
+                                descriptor),
+                        json,
+                        descriptor.state().name()
+                            .toLowerCase(
+                                java.util.Locale.ROOT),
+                        Integer.toString(descriptor.weight()),
+                        descriptor.channelName(),
+                        rowKey,
+                        previousOwner == null
+                            ? ""
+                            : previousOwner,
+                        previousLease == null
+                            ? ""
+                            : previousLease);
+                }))
+            .thenApply(
+                ZLinkRedisLocationScriptsClient::toWriteResult)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient
+                    ::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkLocationWriteStatus>
+        removeClientServer(
+            ZLinkClientServerServerDescriptorKey key,
+            ZLinkLocationOwnerToken owner) {
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeClientServerKey(key);
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.REMOVE_CLIENT_SERVER,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.clientServerDescriptorRowKey(rowKey),
+                    keys.clientServerDescriptorMetadataKey(rowKey),
+                    keys.clientServerDescriptorIndexKey(),
+                    keys.clientServerOwnerTokenIndexKey(
+                        owner.ownerId(),
+                        owner.leaseGeneration()),
+                    keys.clientServerDescriptorGlobalStampKey(),
+                    keys.clientServerDescriptorStampKey(
+                        key.channelName()),
+                    keys.clientServerDescriptorChannelIndexKey(
+                        key.channelName())
+                },
+                owner.ownerId(),
+                Long.toString(owner.leaseGeneration()),
+                rowKey))
+            .thenApply(raw ->
+                "stored".equals(string(raw.getFirst()))
+                    ? ZLinkLocationWriteStatus.STORED
+                    : ZLinkLocationWriteStatus.IGNORED_STALE)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient
+                    ::propagateWriteFailure);
+    }
+
     CompletionStage<Map<String, String>> readMeshNodeHashFields(
         ZLinkMeshNodeDescriptorKey key) {
         String rowKey =
@@ -376,7 +512,10 @@ final class ZLinkRedisLocationScriptsClient {
             .thenApply(Map::copyOf);
     }
 
-    CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
+    CompletionStage<Long> removeAllByOwnerAsync(
+        ZLinkLocationOwnerToken owner) {
+        Objects.requireNonNull(owner, "owner");
+        String ownerId = owner.ownerId();
         return connection.commands()
             .thenCompose(redis -> redis.<Long>eval(
                     ZLinkRedisLocationScripts.REMOVE_ALL_BY_OWNER,
@@ -389,7 +528,8 @@ final class ZLinkRedisLocationScriptsClient {
                         keys.kindIndexKey("peer"),
                         keys.kindIndexKey("spot"),
                         keys.kindIndexKey("actor"),
-                        keys.kindIndexKey("route")
+                        keys.kindIndexKey("route"),
+                        keys.leaseKey(ownerId)
                     },
                     keys.rowHashKeyPrefix("peer"),
                     keys.rowHashKeyPrefix("spot"),
@@ -398,20 +538,19 @@ final class ZLinkRedisLocationScriptsClient {
                     keys.stampKey("peer", null),
                     keys.stampKey("spot", null),
                     keys.stampKey("actor", null),
-                    keys.stampKey("route", null))
+                    keys.stampKey("route", null),
+                    ownerId,
+                    Long.toString(owner.leaseGeneration()))
                 .thenCompose(genericRemoved -> {
-                    return redis.hget(
-                            keys.leaseKey(ownerId),
-                            "generation")
-                        .thenCompose(leaseGeneration -> {
-                            if (leaseGeneration == null) {
-                                return CompletableFuture
-                                    .completedFuture(genericRemoved);
-                            }
+                    if (genericRemoved < 0) {
+                        return CompletableFuture.failedFuture(
+                            new IllegalStateException(
+                                "Owner cleanup token is stale."));
+                    }
                             String ownerIndex =
                                 keys.meshNodeOwnerTokenIndexKey(
                                     ownerId,
-                                    Long.parseLong(leaseGeneration));
+                                    owner.leaseGeneration());
                             return redis.smembers(ownerIndex)
                         .thenCompose(indexed -> {
                             List<String> members =
@@ -443,9 +582,14 @@ final class ZLinkRedisLocationScriptsClient {
                                         keys.stampKey(
                                             "mesh-node",
                                             null));
+                                    scriptKeys.add(
+                                        keys.leaseKey(ownerId));
                                     List<String> arguments =
                                         new ArrayList<>();
                                     arguments.add(ownerId);
+                                    arguments.add(
+                                        Long.toString(
+                                            owner.leaseGeneration()));
                                     for (int index = 0;
                                         index < members.size();
                                         index++) {
@@ -482,12 +626,48 @@ final class ZLinkRedisLocationScriptsClient {
                                                 String[]::new),
                                             arguments.toArray(
                                                 String[]::new))
-                                        .thenApply(meshRemoved ->
-                                            genericRemoved
-                                                + meshRemoved);
+                                        .thenCompose(meshRemoved ->
+                                            meshRemoved < 0
+                                                ? CompletableFuture
+                                                    .failedFuture(
+                                                        new IllegalStateException(
+                                                            "Owner cleanup token is stale."))
+                                                : CompletableFuture
+                                                    .completedFuture(
+                                                        genericRemoved
+                                                            + meshRemoved));
                                 });
                         });
-                        });
+                }))
+            .thenCompose(removed ->
+                removeAllClientServersByOwner(owner)
+                    .thenApply(clientServerRemoved ->
+                        removed + clientServerRemoved));
+    }
+
+    private CompletionStage<Long> removeAllClientServersByOwner(
+        ZLinkLocationOwnerToken owner) {
+        return connection.commands()
+            .thenCompose(redis -> redis.smembers(
+                    keys.clientServerOwnerTokenIndexKey(
+                        owner.ownerId(),
+                        owner.leaseGeneration()))
+                .thenCompose(members -> {
+                    CompletionStage<Long> removed =
+                        CompletableFuture.completedFuture(0L);
+                    for (String member : members) {
+                        var key = ZLinkRedisLocationKeyCodec
+                            .decodeClientServerKey(member);
+                        removed = removed.thenCompose(count ->
+                            removeClientServer(key, owner)
+                                .thenApply(status ->
+                                    status
+                                        == ZLinkLocationWriteStatus
+                                            .STORED
+                                            ? count + 1
+                                            : count));
+                    }
+                    return removed;
                 }));
     }
 
@@ -661,7 +841,7 @@ final class ZLinkRedisLocationScriptsClient {
             case "stored" -> ZLinkLocationWriteResult.stored(number(result.get(1)), fromUnixMs(number(result.get(2))));
             case "conflict" -> ZLinkLocationWriteResult.rejectedConflict();
             case "protocol-error" -> throw new IllegalStateException(
-                "same MeshNode descriptor revision has different bytes");
+                "same descriptor revision has different bytes");
             default -> ZLinkLocationWriteResult.ignoredStale();
         };
     }
@@ -692,6 +872,17 @@ final class ZLinkRedisLocationScriptsClient {
             case RENEW -> "renew";
             case TAKEOVER -> "takeover";
         };
+    }
+
+    private static String hashField(
+        List<KeyValue<String, String>> fields,
+        String name) {
+        return fields.stream()
+            .filter(field -> name.equals(field.getKey()))
+            .findFirst()
+            .filter(KeyValue::hasValue)
+            .map(KeyValue::getValue)
+            .orElse(null);
     }
 
     private static long number(Object value) {

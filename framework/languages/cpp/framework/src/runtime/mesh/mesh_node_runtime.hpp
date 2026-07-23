@@ -43,6 +43,7 @@ struct mesh_node_builder_state_t
     std::string listen_endpoint;
     std::optional<zlink::routing_id_t> routing_id;
     std::map<std::string, mesh_channel_registration_t> channels;
+    std::function<void (const std::string &)> channel_name_observer;
     route_handler_registry_t handlers;
     std::vector<mesh_peer_connection_t> peer_connections;
     std::size_t allocation_slot_count = 0;

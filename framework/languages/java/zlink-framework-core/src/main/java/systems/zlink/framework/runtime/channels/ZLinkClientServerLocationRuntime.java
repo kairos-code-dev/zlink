@@ -297,8 +297,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         for (ZLinkClientServerServerDescriptor descriptor : descriptors) {
             if (!descriptor.channelName().equals(channelName)
                 || descriptor.state() == ZLinkFrameworkRuntimeState.STOPPED
-                || descriptor.state() == ZLinkFrameworkRuntimeState.ERROR
-                || isLocal(descriptor)) {
+                || descriptor.state() == ZLinkFrameworkRuntimeState.ERROR) {
                 continue;
             }
             desired.put(connectionId(descriptor), descriptor);
@@ -484,15 +483,6 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             return;
         }
         sockets.removeClientServerConnection(connectionId);
-    }
-
-    private boolean isLocal(
-        ZLinkClientServerServerDescriptor descriptor) {
-        PublishedServer local = published.get(descriptor.channelName());
-        return local != null
-            && local.serverRid().equals(descriptor.serverRid())
-            && local.lifecycleGeneration()
-                == descriptor.lifecycleGeneration();
     }
 
     private ZLinkClientServerServerDescriptor descriptor(

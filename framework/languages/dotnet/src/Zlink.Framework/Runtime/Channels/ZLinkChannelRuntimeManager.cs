@@ -31,7 +31,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             if (state.ClientServerClientBundles.TryGetValue(channelName, out var bundle))
                 return bundle;
             if (!registration.Channels.TryGetValue(channelName, out var channel)
-                || channel.ClientServerRole != ZLinkClientServerRole.Client)
+                || !channel.HasClientServerClient)
                 throw new ZLinkConfigurationException(
                     $"ClientServer client channel '{channelName}' is not registered.");
             throw new ZLinkConfigurationException(
@@ -63,7 +63,7 @@ internal sealed class ZLinkChannelRuntimeManager(
             var channelName = entry.Key;
             var channel = entry.Value;
 
-            if (channel.ClientServerRole == ZLinkClientServerRole.Server)
+            if (channel.HasClientServerServer)
             {
                 var bundle = await _bundleFactory.CreateClientServerServerBundleAsync(
                         state,
@@ -105,7 +105,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         foreach (var entry in registration.Channels)
         {
-            if (entry.Value.ClientServerRole == ZLinkClientServerRole.Client)
+            if (entry.Value.HasClientServerClient)
             {
                 var channel = entry.Value;
                 var runtime = new ZLinkClientServerClientRuntime(

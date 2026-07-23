@@ -55,10 +55,12 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         var hasHandlers = exposedKinds.Contains(ZLinkMessageKind.Command)
                           || exposedKinds.Contains(ZLinkMessageKind.Request);
-        if (channel.ClientServerRole == ZLinkClientServerRole.Client && hasHandlers)
+        if (channel.HasClientServerClient
+            && !channel.HasClientServerServer
+            && hasHandlers)
             throw new ZLinkConfigurationException(
                 $"ClientServer channel '{channel.ChannelName}' client cannot expose handlers.");
-        if (channel.ClientServerRole == ZLinkClientServerRole.Server && !hasHandlers)
+        if (channel.HasClientServerServer && !hasHandlers)
             throw new ZLinkConfigurationException(
                 $"ClientServer channel '{channel.ChannelName}' server must expose a send or request handler.");
         if (channel.PublishHandlers.Count > 0)
@@ -89,13 +91,13 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         if (channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer)
         {
-            var validClient = channel.ClientServerRole == ZLinkClientServerRole.Client
-                              && channel.Client is not null && channel.Server is null;
-            var validServer = channel.ClientServerRole == ZLinkClientServerRole.Server
-                              && channel.Server is not null && channel.Client is null;
-            if (!validClient && !validServer)
+            var validClient = channel.HasClientServerClient == (channel.Client is not null);
+            var validServer = channel.HasClientServerServer == (channel.Server is not null);
+            if ((!channel.HasClientServerClient && !channel.HasClientServerServer)
+                || !validClient
+                || !validServer)
                 throw new ZLinkConfigurationException(
-                    $"ClientServer channel '{channel.ChannelName}' must select Client or Server exactly once.");
+                    $"ClientServer channel '{channel.ChannelName}' must register Client or Server at least once, and each role at most once.");
             if (channel.Publisher is not null || channel.Subscriber is not null)
                 throw new ZLinkConfigurationException(
                     $"ClientServer channel '{channel.ChannelName}' cannot enable fanout capabilities.");

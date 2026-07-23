@@ -35,6 +35,7 @@ export function validateFrameworkRegistration(
 
   const peerLocationConfigured = hasLocationStores(registration);
   validateChannelCapabilities(options.channels, peerLocationConfigured);
+  validateChannelTopologyNames(registration);
   validateSpotNodes(registration);
   validateRouteChannels(registration, peerLocationConfigured);
   validateStreamNodes(registration);
@@ -45,6 +46,29 @@ export function validateFrameworkRegistration(
   validateFanoutLocationStore(registration);
   validateActorTransferAuthority(registration);
   validateRoutingIdAllocations(registration);
+}
+
+function validateChannelTopologyNames(registration: ZLinkFrameworkRegistration): void {
+  const clientServerChannels = new Set(
+    [...registration.channels]
+      .filter(([, channel]) => channel.client !== undefined || channel.server !== undefined)
+      .map(([channelName]) => channelName)
+  );
+  if (clientServerChannels.size === 0) return;
+
+  const routeMeshChannels = new Set(registration.routeChannels);
+  for (const spotNode of registration.spotNodes.values()) {
+    for (const channelName of Object.keys(spotNode.meshChannels ?? {})) {
+      routeMeshChannels.add(channelName);
+    }
+  }
+  for (const channelName of clientServerChannels) {
+    if (routeMeshChannels.has(channelName)) {
+      throw new ZLinkConfigurationException(
+        `ChannelName '${channelName}' is registered on both RouteMesh and ClientServer physical paths.`
+      );
+    }
+  }
 }
 
 function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): number {

@@ -1359,9 +1359,14 @@ mesh_channel_builder_t mesh_node_builder_t::channel_name (std::string channel_na
     if (channel_name.empty ()) {
         throw detail::configuration_error ("ChannelName is required");
     }
+    std::function<void (const std::string &)> observer;
     {
         std::lock_guard lock (_state->mutex);
         _state->channels.try_emplace (channel_name);
+        observer = _state->channel_name_observer;
+    }
+    if (observer) {
+        observer (channel_name);
     }
     return mesh_channel_builder_t (_state, std::move (channel_name));
 }

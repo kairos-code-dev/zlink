@@ -1713,8 +1713,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         options.add_client_server_channel ("orders")
           .set_routing_id (zlink::routing_id_t::from ("orders-router"))
           .enable_server (endpoint)
-          .enable_client ()
           .use_handler_group ("orders");
+        options.add_client_server_channel ("orders").enable_client ();
     });
     auto service = std::make_unique<auto_connect_request_client_t> (app);
     client = service.get ();
@@ -1724,6 +1724,101 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
     EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      ClientServerDuplicateRoleRegistrationFailsBeforeSocketBind)
+{
+    EXPECT_THROW (
+      {
+          auto app = zlink::framework::app_t::create ();
+          app.add_zlink_framework (
+            [] (zlink::framework::zlink_framework_options_t &options) {
+                auto channel = options.add_client_server_channel ("orders");
+                channel.enable_client ("tcp://127.0.0.1:29711");
+                channel.enable_client ("tcp://127.0.0.1:29712");
+            });
+      },
+      zlink::framework::framework_exception_t);
+
+    EXPECT_THROW (
+      {
+          auto app = zlink::framework::app_t::create ();
+          app.add_zlink_framework (
+            [] (zlink::framework::zlink_framework_options_t &options) {
+                options.handlers ()
+                  .group ("orders")
+                  .add<auto_connect_request_handler_t> ();
+                auto channel = options.add_client_server_channel ("orders");
+                channel.enable_server ("tcp://127.0.0.1:29713");
+                channel.enable_server ("tcp://127.0.0.1:29714");
+                channel.use_handler_group ("orders");
+            });
+      },
+      zlink::framework::framework_exception_t);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      RouteMeshAndClientServerChannelNameCollisionFailsInEitherBindOrder)
+{
+    EXPECT_THROW (
+      {
+          auto app = zlink::framework::app_t::create ();
+          app.add_zlink_framework (
+            [] (zlink::framework::zlink_framework_options_t &options) {
+                options.add_route_mesh ("mesh-a").channel_name ("orders");
+                options.add_client_server_channel ("orders").enable_client (
+                  "tcp://127.0.0.1:29715");
+            });
+      },
+      zlink::framework::framework_exception_t);
+
+    const auto mesh_send = [] (
+                             zlink::framework::runtime::messaging::message_parts_t) {
+        return zlink::framework::result_t<void>::success ();
+    };
+    const auto mesh_request = [] (
+                                zlink::framework::runtime::messaging::message_parts_t parts,
+                                std::chrono::milliseconds) {
+        return zlink::framework::result_t<
+          zlink::framework::runtime::messaging::message_parts_t>::success (
+          std::move (parts));
+    };
+    const auto client_server_send = [] (
+                                      std::string,
+                                      std::string,
+                                      zlink::message_t,
+                                      std::chrono::milliseconds) {
+        return zlink::framework::result_t<void>::success ();
+    };
+    const auto client_server_request = [] (
+                                         std::string,
+                                         std::string,
+                                         zlink::message_t message,
+                                         std::chrono::milliseconds) {
+        return zlink::framework::result_t<zlink::message_t>::success (
+          std::move (message));
+    };
+
+    zlink::framework::zlink_builder_t mesh_first_builder;
+    auto mesh_first = zlink::framework::detail::channel_runtime_t::from (
+      mesh_first_builder.message_bus ());
+    mesh_first.bind_mesh_channel_transport ("orders", mesh_send, mesh_request);
+    EXPECT_THROW (
+      mesh_first.bind_client_server_transport (
+        "orders", client_server_send, client_server_request),
+      zlink::framework::framework_exception_t);
+
+    zlink::framework::zlink_builder_t client_server_first_builder;
+    auto client_server_first =
+      zlink::framework::detail::channel_runtime_t::from (
+        client_server_first_builder.message_bus ());
+    client_server_first.bind_client_server_transport (
+      "orders", client_server_send, client_server_request);
+    EXPECT_THROW (
+      client_server_first.bind_mesh_channel_transport (
+        "orders", mesh_send, mesh_request),
+      zlink::framework::framework_exception_t);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConnect)

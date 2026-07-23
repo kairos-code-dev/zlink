@@ -164,10 +164,11 @@ internal sealed class ZLinkMetadataPolicyRegistration
     public HashSet<string> ActorToSessionKeys { get; } = new(StringComparer.Ordinal);
 }
 
+[Flags]
 internal enum ZLinkClientServerRole
 {
-    Client,
-    Server
+    Client = 1,
+    Server = 2
 }
 
 // Mesh channel marker: AddRouteMesh(meshName) registers the mesh discovery
@@ -182,6 +183,12 @@ internal sealed class ZLinkChannelRegistration
     public ZLinkLocationAutoConnectType AutoConnectType { get; set; }
 
     public ZLinkClientServerRole? ClientServerRole { get; set; }
+
+    public bool HasClientServerClient =>
+        (ClientServerRole.GetValueOrDefault() & ZLinkClientServerRole.Client) != 0;
+
+    public bool HasClientServerServer =>
+        (ClientServerRole.GetValueOrDefault() & ZLinkClientServerRole.Server) != 0;
 
     public ZLinkChannelServerCapabilityRegistration? Server { get; set; }
 

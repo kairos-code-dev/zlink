@@ -1,7 +1,9 @@
 package systems.zlink.framework.runtime.configuration;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -36,7 +38,9 @@ import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
 public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions {
     private final ZLinkFrameworkRegistration registration = new ZLinkFrameworkRegistration();
-    private final Set<String> channelNames = new HashSet<>();
+    private final Map<String, ChannelKind> channelKinds = new HashMap<>();
+    private final Map<String, ChannelRegistration> clientServerChannels =
+        new HashMap<>();
     private final Set<String> spotMeshNames = new HashSet<>();
     private final Set<String> routeMeshNames = new HashSet<>();
     private final Set<Class<?>> spotFactoryTypes = new HashSet<>();
@@ -90,16 +94,26 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
 
     public ClientServerChannelBuilder addClientServerChannel(String channelName)
     {
-        addChannel(channelName);
-        ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.CLIENT_SERVER);
-        registration.channels().add(channel);
+        String name = requireName(channelName, "channel");
+        ChannelKind existing = channelKinds.get(name);
+        if (existing != null && existing != ChannelKind.CLIENT_SERVER) {
+            throw new ZLinkConfigurationException(
+                "duplicate channel name: " + name);
+        }
+        ChannelRegistration channel = clientServerChannels.get(name);
+        if (channel == null) {
+            channel = new ChannelRegistration(name, ChannelKind.CLIENT_SERVER);
+            clientServerChannels.put(name, channel);
+            channelKinds.put(name, ChannelKind.CLIENT_SERVER);
+            registration.channels().add(channel);
+        }
         return ChannelBuilders.clientServer(channel);
     }
 
     @Override
     public FanoutChannelBuilder addFanoutChannel(String channelName)
     {
-        addChannel(channelName);
+        addChannel(channelName, ChannelKind.FANOUT);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.FANOUT);
         registration.channels().add(channel);
         return ChannelBuilders.fanout(channel);
@@ -108,7 +122,7 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public RouteMeshChannelBuilder addRouteMeshChannel(String channelName)
     {
-        addChannel(channelName);
+        addChannel(channelName, ChannelKind.ROUTE_MESH);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.ROUTE_MESH);
         registration.channels().add(channel);
         return ChannelBuilders.routeMesh(channel);
@@ -189,8 +203,12 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         registration.useSuspendHandlerInvoker(invoker);
     }
 
-    private void addChannel(String channelName) {
-        addUnique(channelNames, channelName, "channel");
+    private void addChannel(String channelName, ChannelKind kind) {
+        String name = requireName(channelName, "channel");
+        if (channelKinds.putIfAbsent(name, kind) != null) {
+            throw new ZLinkConfigurationException(
+                "duplicate channel name: " + name);
+        }
     }
 
     private void addSpotFactoryType(Class<?> spotFactory) {

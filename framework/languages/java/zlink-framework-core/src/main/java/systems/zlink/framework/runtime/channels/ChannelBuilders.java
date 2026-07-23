@@ -27,7 +27,7 @@ public final class ChannelBuilders {
     private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
         @Override
         public ClientServerChannelBuilder enableServer(String endpoint) {
-            registration.enableServer();
+            registration.declareServer();
             registration.addServerBind(endpoint);
             return this;
         }
@@ -45,13 +45,13 @@ public final class ChannelBuilders {
 
         @Override
         public ClientServerChannelBuilder enableClient() {
-            registration.enableClient();
+            registration.declareClient();
             return this;
         }
 
         @Override
         public ClientServerChannelBuilder enableClient(String endpoint) {
-            registration.enableClient();
+            registration.declareClient();
             registration.addClientManualEndpoint(endpoint);
             return this;
         }

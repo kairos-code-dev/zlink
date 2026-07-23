@@ -341,6 +341,56 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void clientServerChannelAllowsClientAndServerRolesTogether() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+
+        options.addClientServerChannel("orders").enableClient();
+        var server = options.addClientServerChannel("orders")
+            .enableServer("inproc://orders");
+        server.addRequestHandler(
+            EchoHandler.class, String.class, String.class, "Echo");
+
+        assertDoesNotThrow(options::validate);
+        assertEquals(1, options.registration().channels().size());
+    }
+
+    @Test
+    void clientServerChannelRejectsDuplicateClientRole() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("orders")
+            .enableClient("inproc://orders");
+        options.addClientServerChannel("orders").enableClient();
+
+        assertThrows(
+            ZLinkConfigurationException.class,
+            options::validate);
+    }
+
+    @Test
+    void clientServerChannelRejectsDuplicateServerRole() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("orders")
+            .enableServer("inproc://orders-a");
+        options.addClientServerChannel("orders")
+            .enableServer("inproc://orders-b");
+
+        assertThrows(
+            ZLinkConfigurationException.class,
+            options::validate);
+    }
+
+    @Test
+    void clientServerAndRouteMeshChannelNameCollisionIsRejected() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("orders");
+
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.addRouteMeshChannel("orders"));
+    }
+
+    @Test
     void routeMeshClientWithManualConnectionDoesNotRequireBindEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

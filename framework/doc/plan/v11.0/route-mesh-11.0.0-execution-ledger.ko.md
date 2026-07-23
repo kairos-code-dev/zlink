@@ -1421,6 +1421,24 @@ build와 CTest 6/6, 실제 Redis focused 4/4, in-memory 1000-row·4 MiB page, sc
 `git diff --check`가 통과했다. Core·bindings와 Sample·E2E source를 변경하거나 실행하지 않았다.
 다른 M6A·review 잔여가 있으므로 `V11-M6A-CPP` 상태는 계속 `수정 진행`으로 유지한다.
 
+ClientServer dual-role runtime checkpoint(2026-07-24)에서 C++·.NET·JVM·Node.js는 같은
+ClientServer ChannelName에 Client와 Server를 각각 한 번 등록할 수 있도록 registration을 합쳤다.
+같은 역할을 두 번 등록하면 startup configuration error로 실패하고, RouteMesh와 ClientServer가 같은
+ChannelName을 사용해도 startup에서 거부한다. 같은 process의 Server는 local 우선이나 제외 없이
+Ready·positive weight·non-draining 조건과 remote Server에 사용하는 weight 계산을 그대로 적용한다.
+선택된 local Server도 handler를 직접 호출하지 않고 실제 DEALER→ROUTER admission·request/reply 경계를
+통과한다. C++ focused 29/29, .NET 신규 focused 4/4, JVM focused 75/75·전체 core unit 462/462·Kotlin
+compile, Node focused 30/30·M6A 6/6·TypeScript build·changed-source ESLint와 `git diff --check`가
+통과했다. .NET 전체 unit의 기존 문서 7건과 ClientServer liveness 2건, JVM integration compile의 기존
+Stream relay 1건과 Fanout publish 4건은 이 변경과 무관한 선행 API drift로 분리했다. 다섯 언어 exact
+interface에 정의된 ClientServer monitoring public surface가 runtime에 아직 없어 `ClientAndServer`
+계열 aggregate snapshot projection은 후속 M6 monitoring gap으로 유지한다. Core·bindings와 Sample·E2E
+source를 변경하거나 실행하지 않았다. 독립 Codex review에서 발견한 C++ keyed action의 state self-reference
+cycle을 merged action value snapshot capture로 수정하고, contract trace에 새 callable helper가 들어가지
+않도록 제거했다. Clean-first C++ contract headers·target contract·app host·store/location 4/4와
+resolver 29/29가 다시 통과했으며 post-fix review는 `APPROVE`로 끝났다. 따라서 네 `V11-M6A-*` 행은
+계속 `수정 진행`으로 유지한다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

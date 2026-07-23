@@ -168,7 +168,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   }
 
   addClientServerChannel(name: string): ZLinkClientServerChannelRoleBuilder {
-    return new DefaultClientServerChannelRoleBuilder(name, this.channel(name));
+    return new DefaultClientServerChannelRoleBuilder(name, this.clientServerChannel(name));
   }
 
   addStreamNode(name: string): ZLinkStreamNodeBuilder {
@@ -211,6 +211,22 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     const channel: MutableChannelOptions = {};
     this.options.channels[name] = channel;
     return channel;
+  }
+
+  private clientServerChannel(name: string): MutableChannelOptions {
+    if (name.trim().length === 0 || name.trim() !== name) {
+      throw new ZLinkConfigurationException('Channel name must not be empty or padded.');
+    }
+    if (!Object.prototype.hasOwnProperty.call(this.options.channels, name)) {
+      const channel: MutableChannelOptions = {};
+      this.options.channels[name] = channel;
+      return channel;
+    }
+    const current = this.options.channels[name];
+    if (current.publisher !== undefined || current.subscriber !== undefined) {
+      throw new ZLinkConfigurationException(`Duplicate channel '${name}'.`);
+    }
+    return current;
   }
 
   private spotNodeOptions(name: string): MutableSpotNodeOptions {
@@ -374,32 +390,31 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
 }
 
 class DefaultClientServerChannelRoleBuilder implements ZLinkClientServerChannelRoleBuilder {
-  private selected = false;
-
   constructor(
     private readonly name: string,
     private readonly channel: MutableChannelOptions
   ) {}
 
   client(): ZLinkClientServerChannelClientBuilder {
-    this.select();
+    if (this.channel.client !== undefined) {
+      throw this.duplicate('Client');
+    }
     this.channel.client = { manualConnections: [] };
     return new DefaultClientServerChannelClientBuilder(this.name, this.channel.client);
   }
 
   server(): ZLinkClientServerChannelServerBuilder {
-    this.select();
+    if (this.channel.server !== undefined) {
+      throw this.duplicate('Server');
+    }
     this.channel.server = {};
     return new DefaultClientServerChannelServerBuilder(this.name, this.channel);
   }
 
-  private select(): void {
-    if (this.selected) {
-      throw new ZLinkConfigurationException(
-        `ClientServer channel '${this.name}' role is already selected.`
-      );
-    }
-    this.selected = true;
+  private duplicate(role: 'Client' | 'Server'): ZLinkConfigurationException {
+    return new ZLinkConfigurationException(
+      `ClientServer channel '${this.name}' ${role} role is already registered.`
+    );
   }
 }
 

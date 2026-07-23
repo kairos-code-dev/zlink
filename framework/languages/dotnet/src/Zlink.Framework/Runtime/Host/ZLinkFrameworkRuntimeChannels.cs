@@ -25,7 +25,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ReadOnlyMemory<byte> metadata = default)
     {
         if (Registration.Channels.TryGetValue(channelName, out var channel)
-            && channel.ClientServerRole == ZLinkClientServerRole.Client)
+            && channel.HasClientServerClient)
         {
             if (!metadata.IsEmpty)
                 throw ZLinkClassicCallSupport.MetadataNotSupported();
@@ -48,7 +48,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ReadOnlyMemory<byte> metadata = default)
     {
         if (Registration.Channels.TryGetValue(channelName, out var channel)
-            && channel.ClientServerRole == ZLinkClientServerRole.Client)
+            && channel.HasClientServerClient)
         {
             if (!metadata.IsEmpty)
                 throw ZLinkClassicCallSupport.MetadataNotSupported();

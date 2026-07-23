@@ -37,6 +37,33 @@ inline void validate_framework_options (const framework_options_state_t &options
                                          "client/server channel '" + channel_name
                                            + "' must enable server or client capability");
         }
+        const auto client_count =
+          options.client_server_client_registration_counts.contains (channel_name)
+            ? options.client_server_client_registration_counts.at (channel_name)
+            : 0;
+        const auto server_count =
+          options.client_server_server_registration_counts.contains (channel_name)
+            ? options.client_server_server_registration_counts.at (channel_name)
+            : 0;
+        if (client_count > 1) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "client/server channel '" + channel_name
+                + "' registers the Client role more than once");
+        }
+        if (server_count > 1) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "client/server channel '" + channel_name
+                + "' registers the Server role more than once");
+        }
+        if (options.route_mesh_channels.contains (channel_name)
+            || options.mesh_node_channel_names.contains (channel_name)) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "ChannelName '" + channel_name
+                + "' cannot be registered by both ClientServer and RouteMesh");
+        }
     }
     for (const auto &channel_name : options.fanout_channels) {
         if (!options.fanout_channels_with_publisher.contains (channel_name)

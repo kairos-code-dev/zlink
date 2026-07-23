@@ -393,7 +393,7 @@ final class ZLinkClientServerM6ARuntimeTest {
     }
 
     @Test
-    void storeDiscoveredConnectionBecomesReadyOnlyAfterExactAdmission() {
+    void sameProcessServerUsesStoreDiscoveryAndExactDealerRouterAdmission() {
         ZLinkClientServerServerDescriptor descriptor =
             descriptor(
                 "orders",
@@ -406,6 +406,7 @@ final class ZLinkClientServerM6ARuntimeTest {
                 70);
         ZLinkChannelSocketRegistry sockets =
             new ZLinkChannelSocketRegistry();
+        sockets.setClientServerServerDescriptor("orders", descriptor);
         ZLinkBackendDealerSocket dealer =
             admittingDealer("automatic", descriptor);
         ZLinkChannelBackendAdapter adapter =
@@ -461,8 +462,19 @@ final class ZLinkClientServerM6ARuntimeTest {
                 100,
                 null,
                 List.of());
+        ZLinkChannelRuntime.AutoConnectSurface server =
+            new ZLinkChannelRuntime.AutoConnectSurface(
+                systems.zlink.framework.locations
+                    .ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                systems.zlink.framework.locations.ZLinkLocationRole.ROUTER,
+                descriptor.serverRid(),
+                descriptor.endpoint(),
+                descriptor.weight(),
+                null,
+                List.of());
 
-        runtime.start(List.of(client)).toCompletableFuture().join();
+        runtime.start(List.of(client, server)).toCompletableFuture().join();
 
         assertSame(dealer, sockets.clientForOutbound("orders"));
         runtime.stop().toCompletableFuture().join();

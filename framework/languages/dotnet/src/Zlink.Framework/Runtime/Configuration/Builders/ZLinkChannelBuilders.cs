@@ -20,10 +20,11 @@ internal sealed class ZLinkClientServerChannelRoleBuilder(
 
     private void SelectRole(ZLinkClientServerRole role)
     {
-        if (registration.ClientServerRole is not null)
+        if ((registration.ClientServerRole.GetValueOrDefault() & role) != 0)
             throw new ZLinkConfigurationException(
-                $"ClientServer channel '{registration.ChannelName}' role must be selected exactly once.");
-        registration.ClientServerRole = role;
+                $"ClientServer channel '{registration.ChannelName}' role '{role}' is already registered.");
+        registration.ClientServerRole =
+            registration.ClientServerRole.GetValueOrDefault() | role;
     }
 }
 

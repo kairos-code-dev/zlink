@@ -27,7 +27,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
     {
         foreach (var (channelName, registration) in state.Registration.Channels)
         {
-            if (registration.ClientServerRole == ZLinkClientServerRole.Server
+            if (registration.HasClientServerServer
                 && state.ClientServerServerBundles.TryGetValue(channelName, out var serverBundle))
             {
                 var router = (IZLinkBackendRouterSocket)serverBundle.Socket;
@@ -45,7 +45,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
                 _servers.Add(server);
             }
 
-            if (registration.ClientServerRole == ZLinkClientServerRole.Client
+            if (registration.HasClientServerClient
                 && state.ClientServerClientRuntimes.TryGetValue(
                     channelName,
                     out var clientRuntime))

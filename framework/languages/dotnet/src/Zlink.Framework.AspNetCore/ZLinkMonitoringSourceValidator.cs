@@ -71,6 +71,8 @@ internal sealed class ZLinkMonitoringSourceValidator(
         {
             "subscriber" => channel.Subscriber is not null,
             "publisher" => channel.Publisher is not null,
+            "client" => channel.HasClientServerClient,
+            "server" => channel.HasClientServerServer,
             _ => false
         };
     }

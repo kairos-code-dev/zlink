@@ -191,6 +191,7 @@ class mesh_node_builder_t
 
   private:
     friend class zlink_builder_t;
+    friend class zlink_framework_options_t;
     friend class detail::mesh_node_runtime_t;
     explicit mesh_node_builder_t (std::shared_ptr<detail::mesh_node_builder_state_t> state);
     template <typename THandler, typename TMessage>

@@ -198,6 +198,12 @@ test('production ClientServer outbound socket selection uses admitted descriptor
     Array.from({ length: 4 }, () => sockets.clientDealerForOutbound('orders').id),
     ['dealer-1', 'dealer-1', 'dealer-1', 'dealer-1']
   );
+  sockets.admitClientServerConnection({
+    ...discoveryDescriptor('server-b', 3),
+    descriptorRevision: 2n,
+    state: 'retiring'
+  }, 'orders-b:7');
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
   await sockets.dispose();
 });
 
@@ -729,6 +735,49 @@ test('ClientServer server publishes its concrete endpoint then drains and remove
 
   await discovery.stop();
   assert.equal((await store.listClientServers('orders')).items.length, 0);
+  await runtime.stop();
+});
+
+test('same-process ClientServer Server is discovered through the normal DEALER transport', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const runtime = new internal.ZLinkLocationRuntime({
+    stores: stores(store),
+    ownerId: 'local-owner'
+  });
+  await runtime.start('local-host');
+  const registration = internal.createFrameworkRegistration({
+    channels: {
+      orders: {
+        client: { manualConnections: [] },
+        server: { bind: 'tcp://0.0.0.0:0', advertiseHost: '127.0.0.1', weight: 75 },
+        sendHandlers: [{ packetName: 'notice', handler: { handle() {} } }]
+      }
+    },
+    locations: { useInMemoryStores: true }
+  });
+  const sockets = automaticClientServerSockets();
+  sockets.clientServerServerIdentity = () => ({
+    serverRid: 'local-server',
+    lifecycleGeneration: 11n,
+    endpoint: 'tcp://127.0.0.1:49152'
+  });
+  sockets.clientServerServerSocket = () => ({ peerWeight: 75 });
+  const discovery = new internal.ZLinkClientServerLocationRuntime(
+    registration,
+    sockets,
+    runtime,
+    stores(store),
+    { pollingIntervalMs: 60_000 }
+  );
+
+  await discovery.start();
+  assert.deepEqual(sockets.calls, ['connect:tcp://127.0.0.1:49152']);
+  const published = (await store.listClientServers('orders')).items[0];
+  assert.equal(published.ownerId, 'local-owner');
+  await sockets.admit(published);
+  assert.equal(discovery.activeTargets('orders')[0].serverRid, 'local-server');
+
+  await discovery.stop();
   await runtime.stop();
 });
 

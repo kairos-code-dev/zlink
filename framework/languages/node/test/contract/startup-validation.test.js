@@ -219,15 +219,15 @@ test('Node live socket send timeout setter applies the same public range', () =>
   assert.equal(socket.sendTimeoutMs, 2_147_483_647);
 });
 
-test('ClientServer role builders map only the selected role into the channel runtime', () => {
+test('ClientServer role builders allow one Client and one Server for the same ChannelName', () => {
   class NoticeHandler {}
   class QueryHandler {}
 
   const options = framework.createFrameworkOptions((builder) => {
-    builder.addClientServerChannel('orders.client')
+    builder.addClientServerChannel('orders')
       .client()
       .connect('tcp://127.0.0.1:9401');
-    builder.addClientServerChannel('orders.server')
+    builder.addClientServerChannel('orders')
       .server()
       .setBindHost('0.0.0.0')
       .setAdvertiseHost('orders.internal')
@@ -237,18 +237,15 @@ test('ClientServer role builders map only the selected role into the channel run
       .addRequestHandler(QueryHandler);
   });
   const registration = framework.createFrameworkRegistration(options);
-  const client = registration.channels.get('orders.client');
-  const server = registration.channels.get('orders.server');
+  const channel = registration.channels.get('orders');
 
-  assert.deepEqual(client.client.manualConnections, ['tcp://127.0.0.1:9401']);
-  assert.equal(client.server, undefined);
-  assert.equal(server.client, undefined);
-  assert.equal(server.server.bind, 'tcp://0.0.0.0:9401');
-  assert.equal(server.server.advertiseHost, 'orders.internal');
-  assert.equal(server.server.weight, 75);
-  assert.deepEqual(server.sendHandlers.map((handler) => handler.handlerType), [NoticeHandler]);
-  assert.deepEqual(server.requestHandlers.map((handler) => handler.handlerType), [QueryHandler]);
-  assert.deepEqual([...registration.channelClients], ['orders.client']);
+  assert.deepEqual(channel.client.manualConnections, ['tcp://127.0.0.1:9401']);
+  assert.equal(channel.server.bind, 'tcp://0.0.0.0:9401');
+  assert.equal(channel.server.advertiseHost, 'orders.internal');
+  assert.equal(channel.server.weight, 75);
+  assert.deepEqual(channel.sendHandlers.map((handler) => handler.handlerType), [NoticeHandler]);
+  assert.deepEqual(channel.requestHandlers.map((handler) => handler.handlerType), [QueryHandler]);
+  assert.deepEqual([...registration.channelClients], ['orders']);
 });
 
 test('ClientServer registration rejects duplicate topology names and repeated role selection', () => {
@@ -258,10 +255,60 @@ test('ClientServer registration rejects duplicate topology names and repeated ro
   }), /Duplicate channel 'orders'/);
 
   assert.throws(() => framework.createFrameworkOptions((builder) => {
-    const role = builder.addClientServerChannel('orders');
-    role.client();
-    role.server();
-  }), /role is already selected/);
+    builder.addClientServerChannel('orders').client();
+    builder.addClientServerChannel('orders').client();
+  }), /Client role is already registered/);
+
+  assert.throws(() => framework.createFrameworkOptions((builder) => {
+    builder.addClientServerChannel('orders').server();
+    builder.addClientServerChannel('orders').server();
+  }), /Server role is already registered/);
+
+  assert.throws(() => framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('orders').client().connect('tcp://127.0.0.1:9401');
+      builder.addRouteMesh('mesh')
+        .listen('tcp://127.0.0.1:0')
+        .routingId('mesh-node')
+        .channelName('orders');
+    })
+  ), /registered on both RouteMesh and ClientServer physical paths/);
+});
+
+test('ClientServer registration allows repeated roles for different ChannelNames', () => {
+  const registration = framework.createFrameworkRegistration(
+    framework.createFrameworkOptions((builder) => {
+      builder.addClientServerChannel('orders').client().connect('tcp://127.0.0.1:9501');
+      builder.addClientServerChannel('billing').client().connect('tcp://127.0.0.1:9502');
+      builder.addClientServerChannel('shipping').server()
+        .listen(9401)
+        .addSendHandler(class ShippingHandler {});
+      builder.addClientServerChannel('inventory').server()
+        .listen(9402)
+        .addSendHandler(class InventoryHandler {});
+    })
+  );
+
+  assert.equal(registration.channels.get('orders').client !== undefined, true);
+  assert.equal(registration.channels.get('billing').client !== undefined, true);
+  assert.equal(registration.channels.get('shipping').server !== undefined, true);
+  assert.equal(registration.channels.get('inventory').server !== undefined, true);
+});
+
+test('NestJS ClientServer builder preserves same-name Client and Server roles', () => {
+  const builder = nestjs.zlinkFramework();
+  builder.addClientServerChannel('orders').client().connect('tcp://127.0.0.1:9401');
+  builder.addClientServerChannel('orders').server().listen(9401);
+  const options = builder.build();
+
+  assert.deepEqual(
+    options.clientServerChannels.orders.client.manualConnections,
+    ['tcp://127.0.0.1:9401']
+  );
+  assert.equal(options.clientServerChannels.orders.server.port, 9401);
+
+  assert.throws(() => builder.addClientServerChannel('orders').client(), /Client role is already registered/);
+  assert.throws(() => builder.addClientServerChannel('orders').server(), /Server role is already registered/);
 });
 
 async function assertNestStartupRejects(options, pattern) {

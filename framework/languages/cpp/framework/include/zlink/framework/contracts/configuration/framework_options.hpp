@@ -344,6 +344,8 @@ class client_server_channel_builder_t
     client_server_channel_builder_t &enable_server (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "client/server server endpoint is required");
+        ++_options->client_server_server_registration_counts[_channel_name];
+        _options->client_server_channels_with_server.insert (_channel_name);
         _server_endpoint = std::move (endpoint);
         apply_channel ();
         return *this;
@@ -386,6 +388,8 @@ class client_server_channel_builder_t
 
     client_server_channel_builder_t &enable_client ()
     {
+        ++_options->client_server_client_registration_counts[_channel_name];
+        _options->client_server_channels_with_client.insert (_channel_name);
         _client_enabled = true;
         _client_uses_discovery = true;
         apply_channel ();
@@ -395,6 +399,8 @@ class client_server_channel_builder_t
     client_server_channel_builder_t &enable_client (std::string endpoint)
     {
         detail::require_non_blank (endpoint, "client/server client endpoint is required");
+        ++_options->client_server_client_registration_counts[_channel_name];
+        _options->client_server_channels_with_client.insert (_channel_name);
         _client_enabled = true;
         client_connections ().connect (std::move (endpoint));
         apply_channel ();
@@ -474,28 +480,15 @@ class client_server_channel_builder_t
         const auto client_max_message_size = _client_max_message_size;
         const auto client_peer_weight = _client_peer_weight;
         const auto default_request_timeout = _default_request_timeout;
+        if (default_request_timeout) {
+            _options->client_server_default_request_timeouts[channel_name] =
+              default_request_timeout;
+        }
         if (!server_endpoint.empty ()) {
-            _options->client_server_channels_with_server.insert (channel_name);
-        } else {
-            _options->client_server_channels_with_server.erase (channel_name);
-        }
-        if (client_enabled) {
-            _options->client_server_channels_with_client.insert (channel_name);
-        } else {
-            _options->client_server_channels_with_client.erase (channel_name);
-        }
-        _options->set_zlink_action (
-          "client_server_channel:" + channel_name,
-          [channel_name, server_endpoint, routing_id, server_send_high_water_mark,
-           server_receive_high_water_mark, server_max_message_size, server_peer_weight,
-           client_enabled, client_endpoints, client_uses_discovery, client_send_high_water_mark,
-           client_receive_high_water_mark, client_max_message_size, client_peer_weight,
-           default_request_timeout] (zlink_builder_t &zlink) {
-              auto channel = zlink.channel (channel_name);
-              if (default_request_timeout) {
-                  channel.default_request_timeout (*default_request_timeout);
-              }
-              if (!server_endpoint.empty ()) {
+            _options->client_server_server_actions[channel_name] =
+              [server_endpoint, routing_id, server_send_high_water_mark,
+               server_receive_high_water_mark, server_max_message_size,
+               server_peer_weight] (channel_builder_t &channel) {
                   auto server = channel.enable_server ();
                   if (routing_id) {
                       server.set_routing_id (*routing_id);
@@ -513,8 +506,14 @@ class client_server_channel_builder_t
                       server.peer_weight (*server_peer_weight);
                   }
                   server.bind (server_endpoint);
-              }
-              if (client_enabled) {
+              };
+        }
+        if (client_enabled) {
+            _options->client_server_client_actions[channel_name] =
+              [client_endpoints, client_uses_discovery,
+               client_send_high_water_mark, client_receive_high_water_mark,
+               client_max_message_size, client_peer_weight] (
+                channel_builder_t &channel) {
                   auto client = channel.enable_client ();
                   if (client_send_high_water_mark) {
                       client.send_high_water_mark (*client_send_high_water_mark);
@@ -534,6 +533,31 @@ class client_server_channel_builder_t
                   if (client_uses_discovery) {
                       (void) channel.enable_client ();
                   }
+              };
+        }
+        const auto merged_timeout =
+          _options->client_server_default_request_timeouts[channel_name];
+        const auto merged_server =
+          _options->client_server_server_actions.contains (channel_name)
+            ? _options->client_server_server_actions.at (channel_name)
+            : std::function<void (channel_builder_t &)>{};
+        const auto merged_client =
+          _options->client_server_client_actions.contains (channel_name)
+            ? _options->client_server_client_actions.at (channel_name)
+            : std::function<void (channel_builder_t &)>{};
+        _options->set_zlink_action (
+          "client_server_channel:" + channel_name,
+          [channel_name, merged_timeout, merged_server,
+           merged_client] (zlink_builder_t &zlink) {
+              auto channel = zlink.channel (channel_name);
+              if (merged_timeout) {
+                  channel.default_request_timeout (*merged_timeout);
+              }
+              if (merged_server) {
+                  merged_server (channel);
+              }
+              if (merged_client) {
+                  merged_client (channel);
               }
           });
     }
@@ -1109,10 +1133,7 @@ class zlink_framework_options_t
         return fanout_channel_builder_t (std::move (channel_name), _options, _handler_groups);
     }
 
-    mesh_node_builder_t add_route_mesh (std::string mesh_name)
-    {
-        return _zlink->add_route_mesh (std::move (mesh_name));
-    }
+    mesh_node_builder_t add_route_mesh (std::string mesh_name);
 
     stream_node_options_builder_t add_stream_node (std::string stream_name)
     {

@@ -2,6 +2,7 @@
 
 #include "channel_runtime.hpp"
 
+#include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink.hpp>
@@ -543,6 +544,11 @@ void channel_runtime_t::bind_mesh_channel_transport (
   channel_runtime_state_t::mesh_channel_request_t request)
 {
     std::lock_guard lock (_state->mutex);
+    if (_state->client_server_senders.contains (channel_name)) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "ChannelName is registered by both RouteMesh and ClientServer: " + channel_name);
+    }
     if (_state->mesh_channel_senders.contains (channel_name)) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
@@ -558,6 +564,11 @@ void channel_runtime_t::bind_client_server_transport (
   channel_runtime_state_t::client_server_request_t request)
 {
     std::lock_guard lock (_state->mutex);
+    if (_state->mesh_channel_senders.contains (channel_name)) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "ChannelName is registered by both ClientServer and RouteMesh: " + channel_name);
+    }
     if (_state->client_server_senders.contains (channel_name)) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
@@ -2123,6 +2134,21 @@ mesh_node_builder_t zlink_builder_t::add_route_mesh (std::string mesh_name)
     state->spot_builder._state->snapshot.discovery_channel_name = mesh_name;
     _state->mesh_nodes.emplace (std::move (mesh_name), state);
     return mesh_node_builder_t (std::move (state));
+}
+
+mesh_node_builder_t zlink_framework_options_t::add_route_mesh (
+  std::string mesh_name)
+{
+    auto builder = _zlink->add_route_mesh (std::move (mesh_name));
+    std::weak_ptr<detail::framework_options_state_t> options = _options;
+    std::lock_guard lock (builder._state->mutex);
+    builder._state->channel_name_observer =
+      [options] (const std::string &channel_name) {
+          if (const auto state = options.lock ()) {
+              state->mesh_node_channel_names.insert (channel_name);
+          }
+      };
+    return builder;
 }
 
 message_bus_t zlink_builder_t::message_bus () const

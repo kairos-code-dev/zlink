@@ -33,7 +33,9 @@ public final class ChannelRegistration {
     public ChannelRegistration(String name, ChannelKind kind) {
         this.name = name;
         this.kind = kind;
-        clientConnections = new RuntimeEndpointConnections(this::enableClient, clientServer.manualEndpoints);
+        clientConnections = new RuntimeEndpointConnections(
+            this::enableClientFromConnection,
+            clientServer.manualEndpoints);
         subscriberConnections = new RuntimeEndpointConnections(this::enableSubscriber, fanout.subscriberManualEndpoints);
         routeConnections = new RuntimeEndpointConnections(this::enableClient, routeMesh.manualEndpoints);
     }
@@ -173,8 +175,29 @@ public final class ChannelRegistration {
         }
     }
 
+    void declareClient() {
+        if (clientServer.clientDeclared) {
+            clientServer.duplicateClientDeclaration = true;
+        }
+        clientServer.clientDeclared = true;
+        enableClient();
+    }
+
+    private void enableClientFromConnection() {
+        clientServer.clientDeclared = true;
+        enableClient();
+    }
+
     void enableServer() {
         clientServer.serverEnabled = true;
+    }
+
+    void declareServer() {
+        if (clientServer.serverDeclared) {
+            clientServer.duplicateServerDeclaration = true;
+        }
+        clientServer.serverDeclared = true;
+        enableServer();
     }
 
     void enablePublisher() {
@@ -302,6 +325,14 @@ public final class ChannelRegistration {
     private void validateClientServer(
         boolean locationAutoConnectEnabled,
         ZLinkScannedHandlerCatalog handlerCatalog) {
+        if (clientServer.duplicateClientDeclaration) {
+            throw new ZLinkConfigurationException(
+                "duplicate client/server client role: " + name);
+        }
+        if (clientServer.duplicateServerDeclaration) {
+            throw new ZLinkConfigurationException(
+                "duplicate client/server server role: " + name);
+        }
         if (clientServer.clientEnabled
             && !locationAutoConnectEnabled
             && clientServer.manualEndpoints.isEmpty()) {
@@ -517,6 +548,10 @@ public final class ChannelRegistration {
         private final List<ChannelRequestHandlerRegistration> requestHandlers = new ArrayList<>();
         private boolean clientEnabled;
         private boolean serverEnabled;
+        private boolean clientDeclared;
+        private boolean serverDeclared;
+        private boolean duplicateClientDeclaration;
+        private boolean duplicateServerDeclaration;
     }
 
     private static final class FanoutState {

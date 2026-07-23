@@ -386,21 +386,198 @@ public sealed class ClientServerChannelRuntimeTests
     }
 
     [Fact]
-    public void ClientServerRegistration_SelectsExactlyOneRole()
+    public void ClientServerRegistration_AllowsEachRoleOnceAndRejectsDuplicateRole()
     {
         var unselected = Assert.Throws<ZLinkConfigurationException>(() =>
             new ServiceCollection().AddZLinkFramework(
                 options => options.AddClientServerChannel("work")));
-        Assert.Contains("exactly once", unselected.Message, StringComparison.Ordinal);
+        Assert.Contains("at least once", unselected.Message, StringComparison.Ordinal);
 
         var services = new ServiceCollection();
-        Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
+        services.AddSingleton<EchoProbe>();
+        services.AddSingleton(new ServerIdentity("local"));
+        services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("work").Client().Connect("tcp://127.0.0.1:7001");
+            options.AddClientServerChannel("work")
+                .Server()
+                .Listen(0)
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+        });
+
+        var duplicateClient = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
             {
-                var channel = options.AddClientServerChannel("work");
-                channel.Client();
-                channel.Server();
+                options.AddClientServerChannel("work").Client().Connect("tcp://127.0.0.1:7001");
+                options.AddClientServerChannel("work").Client().Connect("tcp://127.0.0.1:7002");
             }));
+        Assert.Contains("role 'Client' is already registered", duplicateClient.Message, StringComparison.Ordinal);
+
+        var duplicateServer = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.AddClientServerChannel("work")
+                    .Server()
+                    .Listen(0)
+                    .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+                options.AddClientServerChannel("work").Server();
+            }));
+        Assert.Contains("role 'Server' is already registered", duplicateServer.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClientServerRegistration_AllowsDifferentNamesAndRejectsRouteMeshCollision()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<EchoProbe>();
+        services.AddSingleton(new ServerIdentity("local"));
+        services.AddZLinkFramework(options =>
+        {
+            options.AddClientServerChannel("orders").Client().Connect("tcp://127.0.0.1:7001");
+            options.AddClientServerChannel("billing").Client().Connect("tcp://127.0.0.1:7002");
+            options.AddClientServerChannel("orders-server")
+                .Server()
+                .Listen(0)
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+            options.AddClientServerChannel("billing-server")
+                .Server()
+                .Listen(0)
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+        });
+
+        var collision = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.AddRouteMesh("mesh")
+                    .Listen("tcp://127.0.0.1:0")
+                    .ChannelName("orders");
+                options.AddClientServerChannel("orders")
+                    .Client()
+                    .Connect("tcp://127.0.0.1:7001");
+            }));
+        Assert.Contains(
+            "registered on both RouteMesh and ClientServer physical paths",
+            collision.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AutomaticClient_IncludesSameProcessServerWithoutLocalPreferenceOrBypass()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        await using var local = CreateAutomaticClientAndServer(store, "local");
+        await using var remote = CreateAutomaticServer(store, "remote");
+        var providers = new[] { local, remote };
+
+        foreach (var provider in providers)
+            await provider.GetRequiredService<ZLinkLocationRuntime>()
+                .StartAsync(RoutingId.From(Guid.NewGuid().ToString("N")));
+        foreach (var provider in providers)
+            await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                .StartAsync(CancellationToken.None);
+
+        try
+        {
+            foreach (var provider in providers)
+                await provider.GetRequiredService<ZLinkLocationAutoConnectHost>()
+                    .StartAsync(await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                        .EnsureStartedStateAsync(CancellationToken.None));
+
+            var transport = local.GetRequiredService<ZLinkFrameworkRuntime>()
+                .GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 2,
+                TimeSpan.FromSeconds(10));
+
+            var route = local.GetRequiredService<IZLinkRouteClient>();
+            var selected = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < 12; index++)
+            {
+                var reply = await route.RequestToChannel(
+                        "work",
+                        new EchoRequest(index.ToString()))
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async<EchoReply>();
+                selected.Add(reply.Value.Split(':', 2)[0]);
+            }
+
+            Assert.Equal(
+                new[] { "local", "remote" },
+                selected.OrderBy(static value => value, StringComparer.Ordinal));
+
+            Assert.True(
+                await local.GetRequiredService<ZLinkLocationAutoConnectHost>()
+                    .MarkDrainingAsync());
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+            var afterDrain = await route.RequestToChannel(
+                    "work",
+                    new EchoRequest("after-drain"))
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<EchoReply>();
+            Assert.Equal("remote:after-drain", afterDrain.Value);
+        }
+        finally
+        {
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkLocationAutoConnectHost>().StopAsync();
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                    .StopAsync(CancellationToken.None);
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkLocationRuntime>().StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task AutomaticClient_ExcludesSameProcessZeroWeightServer()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        await using var local = CreateAutomaticClientAndServer(
+            store,
+            "local",
+            weight: 0);
+        await using var remote = CreateAutomaticServer(store, "remote");
+        var providers = new[] { local, remote };
+
+        foreach (var provider in providers)
+            await provider.GetRequiredService<ZLinkLocationRuntime>()
+                .StartAsync(RoutingId.From(Guid.NewGuid().ToString("N")));
+        foreach (var provider in providers)
+            await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                .StartAsync(CancellationToken.None);
+
+        try
+        {
+            foreach (var provider in providers)
+                await provider.GetRequiredService<ZLinkLocationAutoConnectHost>()
+                    .StartAsync(await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                        .EnsureStartedStateAsync(CancellationToken.None));
+
+            var transport = local.GetRequiredService<ZLinkFrameworkRuntime>()
+                .GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 1
+                    && transport.AdmissionCompletedCount == 2,
+                TimeSpan.FromSeconds(10));
+
+            var reply = await local.GetRequiredService<IZLinkRouteClient>()
+                .RequestToChannel("work", new EchoRequest("weighted"))
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<EchoReply>();
+            Assert.Equal("remote:weighted", reply.Value);
+        }
+        finally
+        {
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkLocationAutoConnectHost>().StopAsync();
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkFrameworkRuntime>()
+                    .StopAsync(CancellationToken.None);
+            foreach (var provider in providers.Reverse())
+                await provider.GetRequiredService<ZLinkLocationRuntime>().StopAsync();
+        }
     }
 
     [Fact]
@@ -802,6 +979,28 @@ public sealed class ClientServerChannelRuntimeTests
         {
             options.AddLocationStore(store);
             options.AddClientServerChannel("work").Client();
+        });
+        return services.BuildServiceProvider();
+    }
+
+    private static ServiceProvider CreateAutomaticClientAndServer(
+        ZLinkInMemoryLocationStore store,
+        string name,
+        int weight = 100)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<EchoProbe>();
+        services.AddSingleton(new ServerIdentity(name));
+        services.AddZLinkFramework(options =>
+        {
+            options.AddLocationStore(store);
+            options.AddClientServerChannel("work").Client();
+            options.AddClientServerChannel("work")
+                .Server()
+                .Listen(0)
+                .SetWeight(weight)
+                .AddSendHandler<EchoSendHandler, EchoSend>()
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
         });
         return services.BuildServiceProvider();
     }

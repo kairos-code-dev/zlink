@@ -131,9 +131,24 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public IZLinkClientServerChannelRoleBuilder AddClientServerChannel(
         string channelName)
     {
-        var channel = AddChannelRegistration(
-            channelName,
-            ZLinkLocationAutoConnectType.ClientServer);
+        if (string.IsNullOrWhiteSpace(channelName))
+            throw new ZLinkConfigurationException("Channel name must not be empty.");
+
+        if (!_registration.Channels.TryGetValue(channelName, out var channel))
+        {
+            channel = new ZLinkChannelRegistration
+            {
+                ChannelName = channelName,
+                AutoConnectType = ZLinkLocationAutoConnectType.ClientServer
+            };
+            _registration.Channels.Add(channelName, channel);
+        }
+        else if (channel.AutoConnectType != ZLinkLocationAutoConnectType.ClientServer)
+        {
+            throw new ZLinkConfigurationException(
+                $"Duplicate channel name '{channelName}'.");
+        }
+
         return new ZLinkClientServerChannelRoleBuilder(channel);
     }
 

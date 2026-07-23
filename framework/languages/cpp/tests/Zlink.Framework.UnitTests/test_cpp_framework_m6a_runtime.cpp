@@ -262,19 +262,12 @@ void verify_manual_and_automatic_classic_fanout ()
     assert (!manual.ready (publisher_id));
 
     fanout::raw_fanout_subscriber_t automatic;
-    locations::service_descriptor_record_t automatic_descriptor{
-      {locations::service_descriptor_kind_t::fanout, "events",
-       publisher_id},
-      1,
+    fanout::fanout_publisher_intent_t automatic_descriptor{
+      publisher_id,
       1,
       publisher.endpoint (),
-      "security-a",
-      1024 * 1024,
-      mesh::service_node_state_t::serving,
-      100,
-      "owner-a",
-      1};
-    automatic.reconcile_automatic ({1, {automatic_descriptor}});
+      mesh::service_node_state_t::serving};
+    automatic.reconcile_automatic ({automatic_descriptor});
     assert (automatic.publisher_count () == 1);
     bool automatic_ready = false;
     for (std::size_t attempt = 0; attempt < 100 && !automatic_ready;
@@ -296,14 +289,12 @@ void verify_manual_and_automatic_classic_fanout ()
     assert (automatic.ready (publisher_id));
 
     automatic_descriptor.lifecycle_generation = 2;
-    automatic_descriptor.descriptor_revision = 1;
-    automatic.reconcile_automatic ({2, {automatic_descriptor}});
+    automatic.reconcile_automatic ({automatic_descriptor});
     assert (automatic.publisher_count () == 1);
     assert (!automatic.ready (publisher_id));
 
     automatic_descriptor.state = mesh::service_node_state_t::draining;
-    automatic_descriptor.descriptor_revision = 2;
-    automatic.reconcile_automatic ({3, {automatic_descriptor}});
+    automatic.reconcile_automatic ({automatic_descriptor});
     assert (automatic.publisher_count () == 0);
 
     bool reserved_rejected = false;

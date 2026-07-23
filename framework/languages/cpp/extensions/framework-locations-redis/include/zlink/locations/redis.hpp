@@ -258,6 +258,131 @@ redis.call('INCR', KEYS[6])
 return {'stored', generation, tostring(nowMs)}
 )";
 
+    static constexpr std::string_view write_fanout_publisher = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local intent = ARGV[1]
+local owner = ARGV[2]
+local leaseGeneration = ARGV[3]
+local lifecycle = ARGV[4]
+local revision = tonumber(ARGV[5])
+local immutable = ARGV[6]
+local json = ARGV[7]
+local lease = redis.call('HMGET', KEYS[4], 'ownerId', 'generation', 'expiresAt')
+if lease[1] ~= owner or lease[2] ~= leaseGeneration
+    or tonumber(lease[3] or '0') <= nowMs then
+    return {'conflict', '0', tostring(nowMs)}
+end
+
+local function nextGeneration()
+    local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
+    if current == '9223372036854775807' then return nil end
+    redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
+    return redis.call('HGET', KEYS[5], 'descriptorGeneration')
+end
+
+local function store(gen)
+    redis.call('HSET', KEYS[1],
+        'owner', owner,
+        'gen', gen,
+        'json', json,
+        'updatedAtMs', nowMs,
+        'channel', ARGV[9])
+    redis.call('HSET', KEYS[2],
+        'descriptorKey', ARGV[10],
+        'lifecycleGeneration', lifecycle,
+        'descriptorRevision', revision,
+        'immutableDigest', immutable,
+        'ownerId', owner,
+        'ownerLeaseGeneration', leaseGeneration,
+        'runtimeState', ARGV[8])
+    redis.call('SADD', KEYS[3], ARGV[10])
+    redis.call('SADD', KEYS[6], ARGV[10])
+    redis.call('ZADD', KEYS[11], 0, ARGV[10])
+    redis.call('INCR', KEYS[9])
+    redis.call('INCR', KEYS[10])
+end
+
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    if intent ~= 'new' and intent ~= 'takeover' then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local gen = nextGeneration()
+    if not gen then return {'exhausted', '0', tostring(nowMs)} end
+    store(gen)
+    return {'stored', gen, tostring(nowMs)}
+end
+
+local storedOwner = redis.call('HGET', KEYS[2], 'ownerId')
+local storedLeaseGeneration =
+    redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+if storedOwner ~= owner or storedLeaseGeneration ~= leaseGeneration then
+    if storedOwner ~= ARGV[11]
+        or storedLeaseGeneration ~= ARGV[12] then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local oldLease = redis.call(
+        'HMGET', KEYS[7], 'ownerId', 'generation', 'expiresAt')
+    if oldLease[1] == storedOwner
+        and oldLease[2] == storedLeaseGeneration
+        and tonumber(oldLease[3] or '0') > nowMs then
+        return {'conflict', '0', tostring(nowMs)}
+    end
+    if intent ~= 'new' and intent ~= 'takeover' then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local gen = nextGeneration()
+    if not gen then return {'exhausted', '0', tostring(nowMs)} end
+    redis.call('SREM', KEYS[8], ARGV[10])
+    store(gen)
+    return {'stored', gen, tostring(nowMs)}
+end
+
+local storedRevision =
+    tonumber(redis.call('HGET', KEYS[2], 'descriptorRevision') or '0')
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') == lifecycle
+    and redis.call('HGET', KEYS[2], 'immutableDigest') == immutable
+    and revision == storedRevision
+    and redis.call('HGET', KEYS[1], 'json') == json then
+    return {'stored', redis.call('HGET', KEYS[1], 'gen'),
+        redis.call('HGET', KEYS[1], 'updatedAtMs')}
+end
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') ~= lifecycle
+    or redis.call('HGET', KEYS[2], 'immutableDigest') ~= immutable then
+    return {'conflict', redis.call('HGET', KEYS[1], 'gen'), tostring(nowMs)}
+end
+if revision == storedRevision then
+    return {'conflict', redis.call('HGET', KEYS[1], 'gen'), tostring(nowMs)}
+end
+if revision < storedRevision then
+    return {'stale', redis.call('HGET', KEYS[1], 'gen'), tostring(nowMs)}
+end
+local gen = redis.call('HGET', KEYS[1], 'gen')
+store(gen)
+return {'stored', gen, tostring(nowMs)}
+)";
+
+    static constexpr std::string_view remove_fanout_publisher = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local owner = redis.call('HGET', KEYS[2], 'ownerId')
+local leaseGeneration =
+    redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+if not owner or owner ~= ARGV[1] or leaseGeneration ~= ARGV[2] then
+    return {'stale', '0', tostring(nowMs)}
+end
+local generation = redis.call('HGET', KEYS[1], 'gen') or '0'
+redis.call('DEL', KEYS[1], KEYS[2])
+redis.call('SREM', KEYS[3], ARGV[3])
+redis.call('SREM', KEYS[4], ARGV[3])
+redis.call('ZREM', KEYS[7], ARGV[3])
+redis.call('INCR', KEYS[5])
+redis.call('INCR', KEYS[6])
+return {'stored', generation, tostring(nowMs)}
+)";
+
     static constexpr std::string_view write = R"(
 if redis.replicate_commands then redis.replicate_commands() end
 local time = redis.call('TIME')
@@ -1882,6 +2007,80 @@ class redis_location_key_schema_t
                      prefix, "stamp", "channel-server");
     }
 
+    static std::string encode_fanout_publisher_key (
+      const fanout_publisher_descriptor_key_t &key)
+    {
+        return encode (
+          key.channel_name, key.publisher_rid.to_hex ());
+    }
+
+    static fanout_publisher_descriptor_key_t
+    decode_fanout_publisher_key (std::string_view encoded)
+    {
+        const auto parts = decode (encoded, 2);
+        return {
+          parts[0],
+          zlink::routing_id_t::from_hex (parts[1])};
+    }
+
+    static std::string fanout_publisher_key (
+      std::string_view prefix, std::string_view canonical_key)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor",
+          "fanout-publisher", sha256_hex (canonical_key));
+    }
+
+    static std::string fanout_publisher_admission_key (
+      std::string_view prefix, std::string_view canonical_key)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor-admission",
+          "fanout-publisher", sha256_hex (canonical_key));
+    }
+
+    static std::string fanout_publisher_keys_key (
+      std::string_view prefix)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor",
+          "fanout-publisher", "index");
+    }
+
+    static std::string fanout_publisher_channel_keys_key (
+      std::string_view prefix, std::string_view channel_name)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor",
+          "fanout-publisher", "channel",
+          sha256_hex (channel_name));
+    }
+
+    static std::string fanout_publisher_owner_keys_key (
+      std::string_view prefix, std::string_view owner_id,
+      std::int64_t lease_generation)
+    {
+        std::string token (owner_id);
+        token.push_back ('\0');
+        token += std::to_string (lease_generation);
+        return join (
+          domain_prefix (prefix), "descriptor",
+          "fanout-publisher", "owner",
+          sha256_hex (token));
+    }
+
+    static std::string fanout_publisher_stamp_key (
+      std::string_view prefix,
+      std::optional<std::string_view> channel_name = std::nullopt)
+    {
+        return channel_name
+                 ? join (
+                     prefix, "stamp", "fanout-publisher",
+                     *channel_name)
+                 : join (
+                     prefix, "stamp", "fanout-publisher");
+    }
+
     static std::string encode_peer_key (const peer_location_key_t &key)
     {
         const auto identity = key.node_rid ? key.node_rid->to_hex ()
@@ -2902,6 +3101,87 @@ class redis_location_row_codec_t
           client_server_immutable_preimage (row));
     }
 
+    static std::string encode_fanout_publisher (
+      const fanout_publisher_descriptor_t &row)
+    {
+        nlohmann::ordered_json json;
+        json["ChannelName"] = row.channel_name;
+        json["PublisherRid"] =
+          row.publisher_rid.to_hex ();
+        json["LifecycleGeneration"] =
+          row.lifecycle_generation;
+        json["DescriptorRevision"] =
+          row.descriptor_revision;
+        json["Endpoint"] = row.endpoint;
+        json["State"] = runtime_state_name (row.state);
+        json["SecurityIdentity"] =
+          row.security_identity;
+        json["OwnerId"] = row.owner_id;
+        json["OwnerLeaseGeneration"] =
+          row.lease_generation;
+        json["UpdatedAt"] =
+          format_updated_at (row.updated_at);
+        return json.dump ();
+    }
+
+    static fanout_publisher_descriptor_t
+    decode_fanout_publisher (std::string_view value)
+    {
+        const auto json = nlohmann::json::parse (value);
+        fanout_publisher_descriptor_t row;
+        row.channel_name =
+          json.at ("ChannelName").get<std::string> ();
+        row.publisher_rid =
+          zlink::routing_id_t::from_hex (
+            json.at ("PublisherRid").get<std::string> ());
+        row.lifecycle_generation =
+          json.at ("LifecycleGeneration")
+            .get<std::uint64_t> ();
+        row.descriptor_revision =
+          json.at ("DescriptorRevision")
+            .get<std::uint64_t> ();
+        row.endpoint =
+          json.at ("Endpoint").get<std::string> ();
+        row.state = parse_runtime_state (
+          json.at ("State").get<std::string> ());
+        row.security_identity =
+          json.at ("SecurityIdentity").get<std::string> ();
+        row.owner_id =
+          json.at ("OwnerId").get<std::string> ();
+        row.lease_generation =
+          json.at ("OwnerLeaseGeneration")
+            .get<std::int64_t> ();
+        row.updated_at = parse_updated_at (
+          json.at ("UpdatedAt").get<std::string> ());
+        return row;
+    }
+
+    static std::string fanout_publisher_immutable_preimage (
+      const fanout_publisher_descriptor_t &row)
+    {
+        const std::array<std::string, 6> segments{
+          "zlink-fanout-publisher-immutable-v1",
+          row.channel_name,
+          row.publisher_rid.to_hex (),
+          std::to_string (row.lifecycle_generation),
+          row.endpoint,
+          row.security_identity};
+        std::string preimage;
+        for (const auto &segment : segments) {
+            preimage += std::to_string (segment.size ());
+            preimage += ':';
+            preimage += segment;
+        }
+        return preimage;
+    }
+
+    static std::string fanout_publisher_immutable_digest (
+      const fanout_publisher_descriptor_t &row)
+    {
+        return redis_location_key_schema_t::sha256_hex (
+          fanout_publisher_immutable_preimage (row));
+    }
+
     static std::string encode_peer (const peer_location_t &row)
     {
         nlohmann::ordered_json json;
@@ -3316,6 +3596,7 @@ class redis_location_worker_t
 
 class redis_location_store_t final : public location_store_t,
                                      public client_server_location_store_t,
+                                     public fanout_location_store_t,
                                      public location_change_stamp_store_t
 {
   public:
@@ -3929,6 +4210,343 @@ class redis_location_store_t final : public location_store_t,
         (void) offset;
         return unavailable_read<location_page_t<
           client_server_server_descriptor_t>> ();
+#endif
+    }
+
+    task_t<location_write_result_t>
+    update_fanout_publisher (
+      fanout_publisher_descriptor_t descriptor,
+      location_write_intent_t intent) override
+    {
+        if (!valid_fanout_publisher_descriptor (
+              descriptor))
+            throw std::invalid_argument (
+              "fanout publisher descriptor is incomplete");
+        const auto json =
+          detail::redis_location_row_codec_t::
+            encode_fanout_publisher (descriptor);
+        if (json.size () > 1024u * 1024u)
+            throw std::invalid_argument (
+              "fanout publisher descriptor exceeds 1 MiB");
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_write_result_t> (
+          [this, descriptor = std::move (descriptor),
+           intent, json] {
+              try {
+                  const auto canonical_key =
+                    detail::redis_location_key_schema_t::
+                      encode_fanout_publisher_key (
+                        {descriptor.channel_name,
+                         descriptor.publisher_rid});
+                  const auto admission_key =
+                    detail::redis_location_key_schema_t::
+                      fanout_publisher_admission_key (
+                        _options.key_prefix,
+                        canonical_key);
+                  const auto current = redis_get (
+                    client ().hmget<std::vector<
+                      sw::redis::OptionalString>> (
+                      admission_key,
+                      {"ownerId",
+                       "ownerLeaseGeneration"}));
+                  const auto current_owner =
+                    current.size () > 0 && current[0]
+                      ? *current[0]
+                      : std::string{};
+                  const auto current_lease =
+                    current.size () > 1 && current[1]
+                      ? *current[1]
+                      : std::string{};
+                  const auto placeholder =
+                    detail::redis_location_key_schema_t::
+                      schema_key (_options.key_prefix);
+                  const auto old_owner_index =
+                    current_owner.empty ()
+                      ? placeholder
+                      : detail::redis_location_key_schema_t::
+                          fanout_publisher_owner_keys_key (
+                            _options.key_prefix,
+                            current_owner,
+                            std::stoll (current_lease));
+                  const auto keys =
+                    std::vector<std::string>{
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_key (
+                          _options.key_prefix,
+                          canonical_key),
+                      admission_key,
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_keys_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        lease_key (
+                          _options.key_prefix,
+                          descriptor.owner_id),
+                      detail::redis_location_key_schema_t::
+                        owner_lease_generation_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_owner_keys_key (
+                          _options.key_prefix,
+                          descriptor.owner_id,
+                          descriptor.lease_generation),
+                      current_owner.empty ()
+                        ? placeholder
+                        : detail::redis_location_key_schema_t::
+                            lease_key (
+                              _options.key_prefix,
+                              current_owner),
+                      old_owner_index,
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix,
+                          descriptor.channel_name),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_channel_keys_key (
+                          _options.key_prefix,
+                          descriptor.channel_name)};
+                  const auto args =
+                    std::vector<std::string>{
+                      intent_name (intent),
+                      descriptor.owner_id,
+                      std::to_string (
+                        descriptor.lease_generation),
+                      std::to_string (
+                        descriptor.lifecycle_generation),
+                      std::to_string (
+                        descriptor.descriptor_revision),
+                      detail::redis_location_row_codec_t::
+                        fanout_publisher_immutable_digest (
+                          descriptor),
+                      json,
+                      std::to_string (
+                        static_cast<int> (
+                          descriptor.state)),
+                      descriptor.channel_name,
+                      canonical_key,
+                      current_owner,
+                      current_lease};
+                  const auto result = redis_get (
+                    client ().eval<std::tuple<
+                      std::string,
+                      std::string,
+                      std::string>> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          write_fanout_publisher),
+                      keys.begin (), keys.end (),
+                      args.begin (), args.end ()));
+                  return detail::
+                    redis_location_script_result_t::
+                      write_result (
+                        std::get<0> (result),
+                        std::stoll (std::get<1> (result)),
+                        std::stoll (std::get<2> (result)));
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) descriptor;
+        (void) intent;
+        return unavailable_write ();
+#endif
+    }
+
+    task_t<location_write_status_t>
+    remove_fanout_publisher (
+      fanout_publisher_descriptor_key_t key,
+      location_owner_token_t owner) override
+    {
+        if (!valid_descriptor_text (key.channel_name)
+            || key.publisher_rid.size () == 0
+            || !valid_descriptor_text (owner.owner_id)
+            || owner.lease_generation <= 0)
+            throw std::invalid_argument (
+              "fanout publisher descriptor removal is incomplete");
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_write_status_t> (
+          [this, key = std::move (key),
+           owner = std::move (owner)] {
+              try {
+                  const auto canonical_key =
+                    detail::redis_location_key_schema_t::
+                      encode_fanout_publisher_key (key);
+                  const auto keys =
+                    std::vector<std::string>{
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_key (
+                          _options.key_prefix,
+                          canonical_key),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_admission_key (
+                          _options.key_prefix,
+                          canonical_key),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_keys_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_owner_keys_key (
+                          _options.key_prefix,
+                          owner.owner_id,
+                          owner.lease_generation),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix,
+                          key.channel_name),
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_channel_keys_key (
+                          _options.key_prefix,
+                          key.channel_name)};
+                  const auto args =
+                    std::vector<std::string>{
+                      owner.owner_id,
+                      std::to_string (
+                        owner.lease_generation),
+                      canonical_key};
+                  const auto result = redis_get (
+                    client ().eval<std::tuple<
+                      std::string,
+                      std::string,
+                      std::string>> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          remove_fanout_publisher),
+                      keys.begin (), keys.end (),
+                      args.begin (), args.end ()));
+                  return std::get<0> (result) == "stored"
+                           ? location_write_status_t::stored
+                           : location_write_status_t::
+                               ignored_stale;
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) key;
+        (void) owner;
+        return unavailable_read<location_write_status_t> ();
+#endif
+    }
+
+    task_t<location_page_t<
+      fanout_publisher_descriptor_t>>
+    list_fanout_publishers (
+      std::string channel_name,
+      location_page_request_t page = {}) override
+    {
+        if (!valid_descriptor_text (channel_name))
+            throw std::invalid_argument (
+              "fanout channel name must contain 1..255 bytes without NUL");
+        if (page.page_size < 1 || page.page_size > 1000)
+            throw std::invalid_argument (
+              "fanout publisher descriptor page size must be 1..1000");
+        const auto offset =
+          decode_fanout_publisher_page_token (
+            page.continuation_token, channel_name);
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_page_t<
+          fanout_publisher_descriptor_t>> (
+          [this, channel_name = std::move (channel_name),
+           page, offset] {
+              try {
+                  const auto members = redis_get (
+                    client ().command<
+                      std::vector<std::string>> (
+                      "ZRANGE",
+                      detail::redis_location_key_schema_t::
+                        fanout_publisher_channel_keys_key (
+                          _options.key_prefix,
+                          channel_name),
+                      std::to_string (offset),
+                      std::to_string (
+                        offset
+                        + static_cast<std::size_t> (
+                          page.page_size))));
+                  location_page_t<
+                    fanout_publisher_descriptor_t> result;
+                  std::size_t encoded_bytes = 0;
+                  std::size_t consumed = 0;
+                  for (const auto &canonical_key : members) {
+                      if (result.items.size ()
+                          == static_cast<std::size_t> (
+                            page.page_size))
+                          break;
+                      const auto fields = redis_get (
+                        client ().hmget<std::vector<
+                          sw::redis::OptionalString>> (
+                          detail::redis_location_key_schema_t::
+                            fanout_publisher_key (
+                              _options.key_prefix,
+                              canonical_key),
+                          {"json", "gen", "updatedAtMs"}));
+                      if (fields.size () < 3 || !fields[0]) {
+                          ++consumed;
+                          continue;
+                      }
+                      auto descriptor =
+                        detail::redis_location_row_codec_t::
+                          decode_fanout_publisher (
+                            *fields[0]);
+                      if (descriptor.channel_name
+                          != channel_name) {
+                          ++consumed;
+                          continue;
+                      }
+                      if (fields[2])
+                          descriptor.updated_at =
+                            detail::
+                              redis_location_script_result_t::
+                                from_unix_ms (
+                                  std::stoll (*fields[2]));
+                      const auto row_bytes =
+                        detail::redis_location_row_codec_t::
+                          encode_fanout_publisher (
+                            descriptor)
+                          .size ();
+                      if (!result.items.empty ()
+                          && encoded_bytes + row_bytes
+                               > 4u * 1024u * 1024u)
+                          break;
+                      result.items.push_back (
+                        std::move (descriptor));
+                      encoded_bytes += row_bytes;
+                      ++consumed;
+                  }
+                  if (consumed < members.size ()
+                      || members.size ()
+                           > static_cast<std::size_t> (
+                             page.page_size))
+                      result.continuation_token =
+                        encode_fanout_publisher_page_token (
+                          channel_name,
+                          offset + consumed);
+                  return result;
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) channel_name;
+        (void) page;
+        (void) offset;
+        return unavailable_read<location_page_t<
+          fanout_publisher_descriptor_t>> ();
 #endif
     }
 
@@ -6223,6 +6841,93 @@ class redis_location_store_t final : public location_store_t,
                     ++removed;
             }
             redis.del (descriptor_owner_index);
+
+            const auto fanout_owner_index =
+              detail::redis_location_key_schema_t::
+                fanout_publisher_owner_keys_key (
+                  _options.key_prefix,
+                  owner.owner_id,
+                  owner.lease_generation);
+            std::vector<std::string> fanout_keys;
+            redis.smembers (
+              fanout_owner_index,
+              std::back_inserter (fanout_keys));
+            for (const auto &canonical_key : fanout_keys) {
+                const auto row_key =
+                  detail::redis_location_key_schema_t::
+                    fanout_publisher_key (
+                      _options.key_prefix,
+                      canonical_key);
+                const auto admission_key =
+                  detail::redis_location_key_schema_t::
+                    fanout_publisher_admission_key (
+                      _options.key_prefix,
+                      canonical_key);
+                const auto stored_owner =
+                  redis.hget (
+                    admission_key, "ownerId");
+                const auto stored_generation =
+                  redis.hget (
+                    admission_key,
+                    "ownerLeaseGeneration");
+                const auto channel =
+                  redis.hget (row_key, "channel");
+                if (!stored_owner
+                    || *stored_owner != owner.owner_id
+                    || !stored_generation
+                    || *stored_generation
+                         != std::to_string (
+                           owner.lease_generation)
+                    || !channel) {
+                    redis.srem (
+                      fanout_owner_index,
+                      canonical_key);
+                    continue;
+                }
+                const auto keys =
+                  std::vector<std::string>{
+                    row_key,
+                    admission_key,
+                    detail::
+                      redis_location_key_schema_t::
+                        fanout_publisher_keys_key (
+                          _options.key_prefix),
+                    fanout_owner_index,
+                    detail::
+                      redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix),
+                    detail::
+                      redis_location_key_schema_t::
+                        fanout_publisher_stamp_key (
+                          _options.key_prefix,
+                          *channel),
+                    detail::
+                      redis_location_key_schema_t::
+                        fanout_publisher_channel_keys_key (
+                          _options.key_prefix,
+                          *channel)};
+                const auto args =
+                  std::vector<std::string>{
+                    owner.owner_id,
+                    std::to_string (
+                      owner.lease_generation),
+                    canonical_key};
+                const auto result = redis_get (
+                  client ().eval<std::tuple<
+                    std::string,
+                    std::string,
+                    std::string>> (
+                    std::string (
+                      detail::
+                        redis_location_scripts_t::
+                          remove_fanout_publisher),
+                    keys.begin (), keys.end (),
+                    args.begin (), args.end ()));
+                if (std::get<0> (result) == "stored")
+                    ++removed;
+            }
+            redis.del (fanout_owner_index);
             return removed;
         });
 #else
@@ -6316,6 +7021,88 @@ class redis_location_store_t final : public location_store_t,
     {
         return nlohmann::ordered_json{
           {"kind", "client-server-v1"},
+          {"channelName", channel_name},
+          {"offset", offset}}
+          .dump ();
+    }
+
+    static bool valid_fanout_publisher_descriptor (
+      const fanout_publisher_descriptor_t &descriptor) noexcept
+    {
+        const auto state =
+          static_cast<unsigned int> (descriptor.state);
+        return valid_descriptor_text (
+                 descriptor.channel_name)
+               && descriptor.publisher_rid.size () > 0
+               && descriptor.lifecycle_generation > 0
+               && descriptor.lifecycle_generation
+                    <= static_cast<std::uint64_t> (
+                      std::numeric_limits<
+                        std::int64_t>::max ())
+               && descriptor.descriptor_revision > 0
+               && descriptor.descriptor_revision
+                    <= static_cast<std::uint64_t> (
+                      std::numeric_limits<
+                        std::int64_t>::max ())
+               && valid_descriptor_text (
+                 descriptor.endpoint)
+               && state
+                    <= static_cast<unsigned int> (
+                      framework_runtime_state_t::error)
+               && valid_descriptor_text (
+                 descriptor.security_identity)
+               && valid_descriptor_text (
+                 descriptor.owner_id)
+               && descriptor.lease_generation > 0;
+    }
+
+    static std::size_t
+    decode_fanout_publisher_page_token (
+      const std::optional<std::string> &token,
+      std::string_view channel_name)
+    {
+        if (!token)
+            return 0;
+        if (token->size () > 4096)
+            throw std::invalid_argument (
+              "fanout publisher descriptor continuation token is invalid");
+        try {
+            const auto value =
+              nlohmann::json::parse (*token);
+            if (value.at ("kind").get<std::string> ()
+                  != "fanout-publisher-v1"
+                || value.at ("channelName")
+                     .get<std::string> ()
+                     != channel_name
+                || !value.at ("offset")
+                      .is_number_unsigned ())
+                throw std::invalid_argument (
+                  "invalid token");
+            const auto offset =
+              value.at ("offset")
+                .get<std::uint64_t> ();
+            if (offset
+                > static_cast<std::uint64_t> (
+                  std::numeric_limits<
+                    std::size_t>::max () - 1000))
+                throw std::invalid_argument (
+                  "invalid token");
+            return static_cast<std::size_t> (
+              offset);
+        }
+        catch (...) {
+            throw std::invalid_argument (
+              "fanout publisher descriptor continuation token is invalid");
+        }
+    }
+
+    static std::string
+    encode_fanout_publisher_page_token (
+      std::string_view channel_name,
+      std::size_t offset)
+    {
+        return nlohmann::ordered_json{
+          {"kind", "fanout-publisher-v1"},
           {"channelName", channel_name},
           {"offset", offset}}
           .dump ();

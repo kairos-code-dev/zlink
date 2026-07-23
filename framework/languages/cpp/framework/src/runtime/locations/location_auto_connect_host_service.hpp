@@ -4,6 +4,7 @@
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/client_server/client_server_location_runtime.hpp"
+#include "runtime/fanout/fanout_location_runtime.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_value_codec.hpp"
@@ -86,27 +87,28 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             _client_server->start ();
         }
 
-        for (const auto &channel : _channels) {
-            if (channel.publisher.enabled && channel.publisher.discovery) {
-                for (const auto &endpoint : channel.publisher.bind_endpoints) {
-                    add_loop (make_local (location_auto_connect_type_t::fanout, channel.name,
-                                          location_role_t::pub, channel.publisher, endpoint),
-                              nullptr);
-                }
-            }
-            if (channel.subscriber.enabled && channel.subscriber.discovery) {
-                auto &bundle = manager.get_or_create_subscriber_bundle (channel.name);
-                auto local = make_local (location_auto_connect_type_t::fanout, channel.name,
-                                         location_role_t::sub, channel.subscriber, {});
-                if (!local.node_rid && channel.publisher.routing_id) {
-                    local.node_rid = derive_role_rid (*channel.publisher.routing_id, "sub");
-                }
-                if (local.node_rid && channel.publisher.routing_id
-                    && local.node_rid->to_hex () == channel.publisher.routing_id->to_hex ()) {
-                    local.node_rid = derive_role_rid (*channel.publisher.routing_id, "sub");
-                }
-                add_loop (std::move (local), &bundle);
-            }
+        auto *fanout_store =
+          dynamic_cast<fanout_location_store_t *> (
+            &location_store);
+        const auto needs_fanout =
+          std::any_of (
+            _channels.begin (), _channels.end (),
+            [] (const auto &channel) {
+                return (channel.publisher.enabled
+                        && channel.publisher.discovery)
+                       || (channel.subscriber.enabled
+                           && channel.subscriber.discovery);
+            });
+        if (needs_fanout && fanout_store == nullptr)
+            throw std::invalid_argument (
+              "the configured location store does not implement the fanout location contract");
+        if (fanout_store != nullptr) {
+            _fanout = std::make_unique<
+              fanout::fanout_location_runtime_t> (
+              _bus, _channels, *_runtime, *fanout_store,
+              location_store, services, *_serializers,
+              *_handlers);
+            _fanout->start ();
         }
         std::set<std::string> route_loop_meshes;
         for (const auto &route_channel_id : manager.route_channel_ids ()) {
@@ -187,6 +189,10 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         if (_client_server) {
             _client_server->stop ();
             _client_server.reset ();
+        }
+        if (_fanout) {
+            _fanout->stop ();
+            _fanout.reset ();
         }
         for (auto &loop : _loops) {
             if (loop.thread.joinable ()) {
@@ -273,26 +279,6 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             total = _peers_total;
         }
         _runtime->observe_discovered_peers (total);
-    }
-
-    static local_t make_local (location_auto_connect_type_t type,
-                               std::string mesh_name,
-                               location_role_t role,
-                               const channel_capability_snapshot_t &capability,
-                               std::string endpoint)
-    {
-        return local_t{type,
-                       std::move (mesh_name),
-                       role,
-                       capability.routing_id,
-                       std::move (endpoint),
-                       capability.peer_weight ? capability.peer_weight->value () : 100u};
-    }
-
-    static zlink::routing_id_t derive_role_rid (const zlink::routing_id_t &base,
-                                                std::string_view role)
-    {
-        return zlink::routing_id_t::from (base.to_string () + ":" + std::string (role));
     }
 
     void add_loop (local_t local,
@@ -517,7 +503,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             case location_auto_connect_type_t::dealer_mesh:
                 return role == location_role_t::dealer;
             case location_auto_connect_type_t::fanout:
-                return role == location_role_t::pub || role == location_role_t::sub;
+                return false;
             case location_auto_connect_type_t::spot_mesh:
                 return role == location_role_t::spot || role == location_role_t::router;
             case location_auto_connect_type_t::invalid:
@@ -542,7 +528,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 return local.role == location_role_t::dealer
                        && peer.role == location_role_t::router;
             case location_auto_connect_type_t::fanout:
-                return local.role == location_role_t::sub && peer.role == location_role_t::pub;
+                return false;
             case location_auto_connect_type_t::route_mesh:
                 return local.role == location_role_t::router && peer.role == location_role_t::router
                        && local_is_initiator (local, peer);
@@ -714,6 +700,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::unique_ptr<
       client_server::client_server_location_runtime_t>
       _client_server;
+    std::unique_ptr<fanout::fanout_location_runtime_t>
+      _fanout;
 };
 
 } // namespace zlink::framework::runtime

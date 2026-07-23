@@ -40,6 +40,21 @@ class client_server_location_store_t
                          location_page_request_t page = {}) = 0;
 };
 
+class fanout_location_store_t
+{
+  public:
+    virtual ~fanout_location_store_t () = default;
+    virtual task_t<location_write_result_t> update_fanout_publisher (
+      fanout_publisher_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_fanout_publisher (
+      fanout_publisher_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<fanout_publisher_descriptor_t>>
+    list_fanout_publishers (std::string channel_name,
+                            location_page_request_t page = {}) = 0;
+};
+
 class peer_location_store_t
 {
   public:

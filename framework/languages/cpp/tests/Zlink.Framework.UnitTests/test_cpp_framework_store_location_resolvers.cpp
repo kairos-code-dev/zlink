@@ -935,19 +935,6 @@ void seed_peer (in_memory_location_store_t &store,
                  .status);
 }
 
-std::vector<peer_location_t> wait_for_peer_count (in_memory_location_store_t &store,
-                                                  std::size_t expected)
-{
-    for (int attempt = 0; attempt < 40; ++attempt) {
-        auto rows = store.list_peers ({}).result ().value ();
-        if (rows.size () >= expected) {
-            return rows;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (25));
-    }
-    return store.list_peers ({}).result ().value ();
-}
-
 bool wait_until (const std::function<bool ()> &predicate)
 {
     for (int attempt = 0; attempt < 40; ++attempt) {
@@ -1643,8 +1630,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
       handlers, serializers);
     service.start (provider);
 
-    const auto rows = wait_for_peer_count (*store, 2);
-    ASSERT_EQ (2u, rows.size ());
+    const auto rows = store->list_peers ({}).result ().value ();
+    ASSERT_TRUE (rows.empty ());
     const auto client_servers =
       store->list_client_servers ("orders").result ().value ();
     ASSERT_EQ (1u, client_servers.items.size ());
@@ -1656,19 +1643,24 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
     EXPECT_NE ("tcp://127.0.0.1:0",
                client_servers.items.front ().endpoint);
     EXPECT_EQ (7, client_servers.items.front ().weight);
-    EXPECT_NE (rows.end (), std::find_if (rows.begin (), rows.end (), [] (const auto &row) {
-                   return row.auto_connect_type == location_auto_connect_type_t::fanout
-                          && row.mesh_name == "events" && row.role == location_role_t::pub
-                          && row.endpoint == "inproc://events-pub";
-               }));
-    EXPECT_NE (rows.end (), std::find_if (rows.begin (), rows.end (), [] (const auto &row) {
-                   return row.auto_connect_type == location_auto_connect_type_t::fanout
-                          && row.mesh_name == "events" && row.role == location_role_t::sub
-                          && row.node_rid.has_value ();
-               }));
+    const auto fanout_publishers =
+      store->list_fanout_publishers ("events").result ().value ();
+    ASSERT_EQ (1u, fanout_publishers.items.size ());
+    EXPECT_EQ ("events",
+               fanout_publishers.items.front ().channel_name);
+    EXPECT_EQ ("events-pub",
+               fanout_publishers.items.front ().publisher_rid.to_string ());
+    EXPECT_EQ ("inproc://events-pub",
+               fanout_publishers.items.front ().endpoint);
+    EXPECT_EQ (zlink::framework::framework_runtime_state_t::serving,
+               fanout_publishers.items.front ().state);
 
     service.stop ();
     EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
+    EXPECT_TRUE (
+      store->list_client_servers ("orders").result ().value ().items.empty ());
+    EXPECT_TRUE (
+      store->list_fanout_publishers ("events").result ().value ().items.empty ());
     runtime->stop ();
 }
 

@@ -521,6 +521,7 @@ void channel_host_service_t::start (service_provider_t &services)
     }
     for (const auto &channel : _channels) {
         if (!channel.subscriber.enabled
+            || channel.subscriber.discovery
             || (!channel.subscriber.discovery && channel.subscriber.connect_endpoints.empty ())) {
             continue;
         }

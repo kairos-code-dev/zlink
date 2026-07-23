@@ -16,6 +16,7 @@ namespace zlink::framework::runtime
 
 class in_memory_location_store_t final : public location_store_t,
                                          public client_server_location_store_t,
+                                         public fanout_location_store_t,
                                          public location_change_stamp_store_t
 {
   public:
@@ -249,6 +250,143 @@ class in_memory_location_store_t final : public location_store_t,
         const auto next = offset + result.items.size ();
         if (next < matched.size ())
             result.continuation_token = std::to_string (next);
+        return completed (std::move (result));
+    }
+
+    task_t<location_write_result_t> update_fanout_publisher (
+      fanout_publisher_descriptor_t descriptor,
+      location_write_intent_t intent) override
+    {
+        if (!valid_fanout_descriptor (descriptor))
+            throw std::invalid_argument (
+              "fanout publisher descriptor is incomplete");
+        std::lock_guard lock (_gate);
+        const auto now = clock_t::now ();
+        const auto key = fanout_key (
+          descriptor.channel_name, descriptor.publisher_rid);
+        const auto found = _fanout_publishers.find (key);
+        const auto token = location_owner_token_t{
+          descriptor.owner_id, descriptor.lease_generation};
+        if (!owner_token_is_live (token, now))
+            return completed (location_write_result_t{
+              location_write_status_t::ignored_stale, 0, {}});
+
+        if (intent == location_write_intent_t::new_claim
+            || intent == location_write_intent_t::takeover) {
+            if (found != _fanout_publishers.end ()
+                && owner_token_is_live (
+                  {found->second.owner_id,
+                   found->second.lease_generation},
+                  now)
+                && (found->second.owner_id
+                      != descriptor.owner_id
+                    || found->second.lease_generation
+                         != descriptor.lease_generation))
+                return completed (location_write_result_t{
+                  location_write_status_t::rejected_conflict, 0, {}});
+        } else if (intent != location_write_intent_t::renew) {
+            return completed (location_write_result_t{
+              location_write_status_t::rejected_conflict, 0, {}});
+        }
+
+        if (found != _fanout_publishers.end ()
+            && found->second.owner_id == descriptor.owner_id
+            && found->second.lease_generation
+                 == descriptor.lease_generation) {
+            if (!same_fanout_identity (
+                  found->second, descriptor))
+                return completed (location_write_result_t{
+                  location_write_status_t::rejected_conflict, 0, {}});
+            if (descriptor.descriptor_revision
+                < found->second.descriptor_revision)
+                return completed (location_write_result_t{
+                  location_write_status_t::ignored_stale, 0, {}});
+            if (descriptor.descriptor_revision
+                  == found->second.descriptor_revision) {
+                if (!same_fanout_descriptor (
+                      found->second, descriptor))
+                    return completed (location_write_result_t{
+                      location_write_status_t::rejected_conflict, 0, {}});
+                return completed (
+                  location_write_result_t::stored (
+                    static_cast<std::int64_t> (
+                      descriptor.descriptor_revision),
+                    found->second.updated_at));
+            }
+        } else if (intent == location_write_intent_t::renew) {
+            return completed (location_write_result_t{
+              location_write_status_t::ignored_stale, 0, {}});
+        }
+
+        descriptor.updated_at = now;
+        _fanout_publishers[key] = descriptor;
+        return completed (
+          location_write_result_t::stored (
+            static_cast<std::int64_t> (
+              descriptor.descriptor_revision),
+            now));
+    }
+
+    task_t<location_write_status_t> remove_fanout_publisher (
+      fanout_publisher_descriptor_key_t key,
+      location_owner_token_t owner) override
+    {
+        std::lock_guard lock (_gate);
+        const auto found = _fanout_publishers.find (
+          fanout_key (key.channel_name, key.publisher_rid));
+        if (found == _fanout_publishers.end ()
+            || found->second.owner_id != owner.owner_id
+            || found->second.lease_generation
+                 != owner.lease_generation)
+            return completed (
+              location_write_status_t::ignored_stale);
+        _fanout_publishers.erase (found);
+        return completed (location_write_status_t::stored);
+    }
+
+    task_t<location_page_t<fanout_publisher_descriptor_t>>
+    list_fanout_publishers (
+      std::string channel_name,
+      location_page_request_t page = {}) override
+    {
+        if (channel_name.empty () || page.page_size < 1
+            || page.page_size > 1000)
+            throw std::invalid_argument (
+              "fanout publisher list arguments are invalid");
+        std::lock_guard lock (_gate);
+        const auto offset =
+          page.continuation_token
+            ? parse_offset (*page.continuation_token)
+            : 0;
+        location_page_t<fanout_publisher_descriptor_t> result;
+        std::size_t matched = 0;
+        std::size_t encoded_bytes = 0;
+        for (const auto &[_, descriptor] :
+             _fanout_publishers) {
+            if (descriptor.channel_name != channel_name)
+                continue;
+            if (matched++ < offset)
+                continue;
+            const auto row_bytes =
+              fanout_descriptor_encoded_size_upper_bound (
+                descriptor);
+            if (result.items.size ()
+                  == static_cast<std::size_t> (
+                    page.page_size)
+                || (!result.items.empty ()
+                    && encoded_bytes + row_bytes
+                         > 4u * 1024u * 1024u)) {
+                result.continuation_token =
+                  std::to_string (
+                    offset + result.items.size ());
+                break;
+            }
+            encoded_bytes += row_bytes;
+            result.items.push_back (descriptor);
+        }
+        if (matched < offset)
+            throw std::invalid_argument (
+              "fanout publisher continuation token is invalid");
         return completed (std::move (result));
     }
 
@@ -1523,6 +1661,18 @@ class in_memory_location_store_t final : public location_store_t,
             _client_servers.erase (key);
         removed += static_cast<std::int64_t> (
           client_server_keys.size ());
+        std::vector<std::string> fanout_keys;
+        for (const auto &[key, descriptor] :
+             _fanout_publishers) {
+            if (descriptor.owner_id == owner.owner_id
+                && descriptor.lease_generation
+                     == owner.lease_generation)
+                fanout_keys.push_back (key);
+        }
+        for (const auto &key : fanout_keys)
+            _fanout_publishers.erase (key);
+        removed += static_cast<std::int64_t> (
+          fanout_keys.size ());
         return completed (removed);
     }
 
@@ -1867,6 +2017,77 @@ class in_memory_location_store_t final : public location_store_t,
                     == right.lease_generation;
     }
 
+    static bool valid_fanout_descriptor (
+      const fanout_publisher_descriptor_t &descriptor)
+    {
+        return valid_fanout_descriptor_text (
+                 descriptor.channel_name)
+               && descriptor.publisher_rid.size () != 0
+               && descriptor.lifecycle_generation != 0
+               && descriptor.lifecycle_generation
+                    <= max_generation
+               && descriptor.descriptor_revision != 0
+               && descriptor.descriptor_revision <= max_generation
+               && valid_fanout_descriptor_text (
+                 descriptor.endpoint)
+               && valid_fanout_descriptor_text (
+                 descriptor.security_identity)
+               && valid_fanout_descriptor_text (
+                 descriptor.owner_id)
+               && descriptor.lease_generation > 0
+               && static_cast<unsigned int> (descriptor.state)
+                    <= static_cast<unsigned int> (
+                      framework_runtime_state_t::error);
+    }
+
+    static bool valid_fanout_descriptor_text (
+      std::string_view value) noexcept
+    {
+        return !value.empty () && value.size () <= 255
+               && value.find ('\0')
+                    == std::string_view::npos;
+    }
+
+    static std::size_t
+    fanout_descriptor_encoded_size_upper_bound (
+      const fanout_publisher_descriptor_t &descriptor)
+      noexcept
+    {
+        const auto escaped_text_bytes =
+          descriptor.channel_name.size ()
+          + descriptor.endpoint.size ()
+          + descriptor.security_identity.size ()
+          + descriptor.owner_id.size ();
+        return 512u + escaped_text_bytes * 6u
+               + descriptor.publisher_rid.size () * 2u;
+    }
+
+    static bool same_fanout_identity (
+      const fanout_publisher_descriptor_t &left,
+      const fanout_publisher_descriptor_t &right)
+    {
+        return left.channel_name == right.channel_name
+               && left.publisher_rid == right.publisher_rid
+               && left.lifecycle_generation
+                    == right.lifecycle_generation
+               && left.endpoint == right.endpoint
+               && left.security_identity
+                    == right.security_identity;
+    }
+
+    static bool same_fanout_descriptor (
+      const fanout_publisher_descriptor_t &left,
+      const fanout_publisher_descriptor_t &right)
+    {
+        return same_fanout_identity (left, right)
+               && left.descriptor_revision
+                    == right.descriptor_revision
+               && left.state == right.state
+               && left.owner_id == right.owner_id
+               && left.lease_generation
+                    == right.lease_generation;
+    }
+
     static bool same_channel_names (
       const std::map<std::string, int> &left,
       const std::map<std::string, int> &right)
@@ -1895,6 +2116,13 @@ class in_memory_location_store_t final : public location_store_t,
     }
 
     static std::string client_server_key (
+      const std::string &channel_name,
+      const zlink::routing_id_t &rid)
+    {
+        return channel_name + "\x1f" + rid.to_hex ();
+    }
+
+    static std::string fanout_key (
       const std::string &channel_name,
       const zlink::routing_id_t &rid)
     {
@@ -2431,6 +2659,8 @@ class in_memory_location_store_t final : public location_store_t,
     std::map<std::string, mesh_node_descriptor_t> _mesh_nodes;
     std::map<std::string, client_server_server_descriptor_t>
       _client_servers;
+    std::map<std::string, fanout_publisher_descriptor_t>
+      _fanout_publishers;
     std::map<std::string, owner_lease_t> _leases;
     std::map<std::string, std::int64_t> _active_lease_generations;
     std::uint64_t _lease_generation = 0;

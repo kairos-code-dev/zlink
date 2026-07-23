@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include "runtime/locations/service_descriptor_registry.hpp"
+#include "runtime/mesh/service_topology_registry.hpp"
 #include "runtime/protocol/service_wire_codec.hpp"
 
 #include <chrono>
@@ -41,6 +41,15 @@ struct fanout_received_t
     protocol::application_payload_t payload;
 };
 
+struct fanout_publisher_intent_t
+{
+    std::vector<std::uint8_t> publisher_routing_id;
+    std::uint64_t lifecycle_generation = 0;
+    std::string endpoint;
+    mesh::service_node_state_t state =
+      mesh::service_node_state_t::preparing;
+};
+
 class raw_fanout_publisher_t
 {
   public:
@@ -76,7 +85,7 @@ class raw_fanout_subscriber_t
     bool connect_manual (std::vector<std::uint8_t> publisher_routing_id,
                          std::string endpoint);
     void reconcile_automatic (
-      const locations::service_descriptor_snapshot_t &snapshot);
+      const std::vector<fanout_publisher_intent_t> &publishers);
     bool disconnect (const std::vector<std::uint8_t> &publisher_routing_id);
     void close () noexcept;
 

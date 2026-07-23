@@ -24,6 +24,9 @@ using zlink::framework::actor_ref_t;
 using zlink::framework::client_server_location_store_t;
 using zlink::framework::client_server_server_descriptor_key_t;
 using zlink::framework::client_server_server_descriptor_t;
+using zlink::framework::fanout_location_store_t;
+using zlink::framework::fanout_publisher_descriptor_key_t;
+using zlink::framework::fanout_publisher_descriptor_t;
 using zlink::framework::framework_runtime_state_t;
 using zlink::framework::location_auto_connect_type_t;
 using zlink::framework::location_kind_t;
@@ -217,6 +220,31 @@ nlohmann::json read_client_server_descriptor_fixture ()
       "client-server-server-descriptor-v1.json fixture was not found");
 }
 
+nlohmann::json read_fanout_publisher_descriptor_fixture ()
+{
+    std::vector<std::filesystem::path> candidates;
+    auto current = std::filesystem::current_path ();
+    for (int i = 0; i < 8; ++i) {
+        candidates.push_back (
+          current
+          / "framework/testdata/location/redis/fanout-publisher-descriptor-v1.json");
+        candidates.push_back (
+          current
+          / "testdata/location/redis/fanout-publisher-descriptor-v1.json");
+        candidates.push_back (
+          current
+          / "../../testdata/location/redis/fanout-publisher-descriptor-v1.json");
+        current = current.parent_path ();
+    }
+    for (const auto &candidate : candidates) {
+        std::ifstream input (candidate);
+        if (input)
+            return nlohmann::json::parse (input);
+    }
+    throw std::runtime_error (
+      "fanout-publisher-descriptor-v1.json fixture was not found");
+}
+
 nlohmann::json read_authority_store_fixture ()
 {
     std::vector<std::filesystem::path> candidates;
@@ -292,6 +320,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
 
     zlink::framework::location_store_t *location_store = &store;
     client_server_location_store_t *client_server_store = &store;
+    fanout_location_store_t *fanout_store = &store;
     zlink::framework::peer_location_store_t *peer_store = &store;
     zlink::framework::spot_location_store_t *spot_store = &store;
     zlink::framework::actor_location_store_t *actor_store = &store;
@@ -301,6 +330,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
 
     EXPECT_NE (nullptr, location_store);
     EXPECT_NE (nullptr, client_server_store);
+    EXPECT_NE (nullptr, fanout_store);
     EXPECT_NE (nullptr, peer_store);
     EXPECT_NE (nullptr, spot_store);
     EXPECT_NE (nullptr, actor_store);
@@ -308,6 +338,76 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
     EXPECT_NE (nullptr, lease_store);
     EXPECT_NE (nullptr, stamp_store);
     EXPECT_EQ ("zlink:test", store.options ().key_prefix);
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      FanoutPublisherDescriptorCodecMatchesCanonicalFixture)
+{
+    const auto fixture =
+      read_fanout_publisher_descriptor_fixture ();
+    const auto &row = fixture.at ("row");
+    const auto &hash = row.at ("hash");
+    EXPECT_EQ (
+      "fanout-publisher",
+      row.at ("kind").get<std::string> ());
+    EXPECT_EQ (
+      "fanout-owner-a",
+      hash.at ("owner").get<std::string> ());
+    EXPECT_EQ (
+      "5",
+      hash.at ("gen").get<std::string> ());
+    EXPECT_EQ (
+      "1721001600000",
+      hash.at ("updatedAtMs").get<std::string> ());
+    EXPECT_EQ (
+      "events",
+      hash.at ("channel").get<std::string> ());
+    const auto updated_at =
+      std::chrono::system_clock::time_point{
+        std::chrono::milliseconds{1721001600000}};
+    const fanout_publisher_descriptor_t descriptor{
+      .channel_name = "events",
+      .publisher_rid =
+        zlink::routing_id_t::from ("events-pub-a"),
+      .lifecycle_generation = 7,
+      .descriptor_revision = 3,
+      .endpoint = "tcp://10.0.0.3:7500",
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "cluster-a",
+      .owner_id = "fanout-owner-a",
+      .lease_generation = 5,
+      .updated_at = updated_at};
+
+    EXPECT_EQ (
+      row.at ("key").get<std::string> (),
+      redis_location_key_schema_t::
+        encode_fanout_publisher_key (
+          {descriptor.channel_name,
+           descriptor.publisher_rid}));
+    EXPECT_EQ (
+      hash.at ("json").get<std::string> (),
+      redis_location_row_codec_t::
+        encode_fanout_publisher (descriptor));
+    const auto decoded =
+      redis_location_row_codec_t::
+        decode_fanout_publisher (
+          hash.at ("json").get<std::string> ());
+    EXPECT_EQ (descriptor.channel_name,
+               decoded.channel_name);
+    EXPECT_EQ (descriptor.publisher_rid,
+               decoded.publisher_rid);
+    EXPECT_EQ (descriptor.lifecycle_generation,
+               decoded.lifecycle_generation);
+    EXPECT_EQ (descriptor.descriptor_revision,
+               decoded.descriptor_revision);
+    EXPECT_EQ (descriptor.endpoint, decoded.endpoint);
+    EXPECT_EQ (descriptor.state, decoded.state);
+    EXPECT_EQ (descriptor.security_identity,
+               decoded.security_identity);
+    EXPECT_EQ (descriptor.owner_id, decoded.owner_id);
+    EXPECT_EQ (descriptor.lease_generation,
+               decoded.lease_generation);
+    EXPECT_EQ (descriptor.updated_at, decoded.updated_at);
 }
 
 TEST (ZLinkFrameworkLocationsRedis,
@@ -2005,6 +2105,422 @@ TEST (ZLinkFrameworkLocationsRedis,
            .release_owner_lease (owner_b)
            .result ()
            .value ()));
+#endif
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      FanoutPublisherUsesDedicatedRedisSchemaAndExactFences)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    using namespace zlink::framework;
+    const auto options = find_redis_options ();
+    if (!options)
+        GTEST_SKIP () << "Redis server is not available";
+
+    redis_location_store_t store (*options);
+    const auto owner_a =
+      claim_owner (store, "fanout-owner-a");
+    const auto owner_b =
+      claim_owner (store, "fanout-owner-b");
+    const auto owner_c =
+      claim_owner (store, "fanout-owner-c");
+    fanout_publisher_descriptor_t descriptor{
+      .channel_name = "events",
+      .publisher_rid =
+        zlink::routing_id_t::from ("events-pub-a"),
+      .lifecycle_generation = 7,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:7500",
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "cluster-a",
+      .owner_id = owner_a.owner_id,
+      .lease_generation =
+        owner_a.lease_generation};
+    const auto first_write =
+      store
+        .update_fanout_publisher (
+          descriptor,
+          location_write_intent_t::new_claim)
+        .result ()
+        .value ();
+    ASSERT_EQ (location_write_status_t::stored,
+               first_write.status);
+    ASSERT_GT (first_write.generation, 0);
+
+    const auto canonical_key =
+      redis_location_key_schema_t::
+        encode_fanout_publisher_key (
+          {descriptor.channel_name,
+           descriptor.publisher_rid});
+    sw::redis::Redis redis (
+      options->connection_string);
+    const auto physical_key =
+      redis_location_key_schema_t::
+        fanout_publisher_key (
+          options->key_prefix, canonical_key);
+    std::vector<std::string> physical_fields;
+    redis.hkeys (
+      physical_key,
+      std::back_inserter (physical_fields));
+    std::sort (
+      physical_fields.begin (),
+      physical_fields.end ());
+    auto expected_fields =
+      read_fanout_publisher_descriptor_fixture ()
+        .at ("hashFields")
+        .get<std::vector<std::string>> ();
+    std::sort (
+      expected_fields.begin (),
+      expected_fields.end ());
+    EXPECT_EQ (expected_fields, physical_fields);
+
+    const auto admission_key =
+      redis_location_key_schema_t::
+        fanout_publisher_admission_key (
+          options->key_prefix, canonical_key);
+    std::vector<std::pair<std::string, std::string>>
+      admission_entries;
+    redis.hgetall (
+      admission_key,
+      std::back_inserter (admission_entries));
+    const std::map<std::string, std::string> admission (
+      admission_entries.begin (),
+      admission_entries.end ());
+    EXPECT_EQ (canonical_key,
+               admission.at ("descriptorKey"));
+    EXPECT_EQ ("7",
+               admission.at ("lifecycleGeneration"));
+    EXPECT_EQ ("1",
+               admission.at ("descriptorRevision"));
+    EXPECT_EQ (owner_a.owner_id,
+               admission.at ("ownerId"));
+    EXPECT_EQ (
+      std::to_string (owner_a.lease_generation),
+      admission.at ("ownerLeaseGeneration"));
+    EXPECT_EQ ("1", admission.at ("runtimeState"));
+    EXPECT_EQ (0u, admission.count ("weight"));
+    EXPECT_EQ (
+      64u, admission.at ("immutableDigest").size ());
+    EXPECT_TRUE (
+      redis.sismember (
+        redis_location_key_schema_t::
+          fanout_publisher_owner_keys_key (
+            options->key_prefix,
+            owner_a.owner_id,
+            owner_a.lease_generation),
+        canonical_key));
+    EXPECT_TRUE (
+      static_cast<bool> (
+        redis.zscore (
+          redis_location_key_schema_t::
+            fanout_publisher_channel_keys_key (
+              options->key_prefix, "events"),
+          canonical_key)));
+
+    auto live_takeover = descriptor;
+    live_takeover.lifecycle_generation = 8;
+    live_takeover.endpoint =
+      "tcp://127.0.0.1:7501";
+    live_takeover.owner_id = owner_b.owner_id;
+    live_takeover.lease_generation =
+      owner_b.lease_generation;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          live_takeover,
+          location_write_intent_t::takeover)
+        .result ()
+        .value ()
+        .status);
+
+    descriptor.descriptor_revision = 2;
+    descriptor.state =
+      framework_runtime_state_t::draining;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          descriptor,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto same_revision_conflict = descriptor;
+    same_revision_conflict.state =
+      framework_runtime_state_t::serving;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          same_revision_conflict,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto immutable_change = descriptor;
+    immutable_change.descriptor_revision = 3;
+    immutable_change.endpoint =
+      "tcp://127.0.0.1:7599";
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          immutable_change,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto stale_revision = descriptor;
+    stale_revision.descriptor_revision = 1;
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .update_fanout_publisher (
+          stale_revision,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+
+    auto second = descriptor;
+    second.publisher_rid =
+      zlink::routing_id_t::from ("events-pub-b");
+    second.lifecycle_generation = 1;
+    second.descriptor_revision = 1;
+    second.endpoint = "tcp://127.0.0.1:7502";
+    second.state =
+      framework_runtime_state_t::serving;
+    second.owner_id = owner_c.owner_id;
+    second.lease_generation =
+      owner_c.lease_generation;
+    ASSERT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          second,
+          location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    EXPECT_THROW (
+      store.list_fanout_publishers (
+        "events", {.page_size = 0}),
+      std::invalid_argument);
+    EXPECT_THROW (
+      store.list_fanout_publishers (
+        "events", {.page_size = 1001}),
+      std::invalid_argument);
+    const auto first_page =
+      store
+        .list_fanout_publishers (
+          "events", {.page_size = 1})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, first_page.items.size ());
+    ASSERT_TRUE (
+      first_page.continuation_token.has_value ());
+    const auto second_page =
+      store
+        .list_fanout_publishers (
+          "events",
+          {.page_size = 1,
+           .continuation_token =
+             first_page.continuation_token})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, second_page.items.size ());
+    EXPECT_FALSE (
+      second_page.continuation_token.has_value ());
+    EXPECT_NE (
+      first_page.items.front ().publisher_rid,
+      second_page.items.front ().publisher_rid);
+    EXPECT_THROW (
+      store.list_fanout_publishers (
+        "other",
+        {.page_size = 1,
+         .continuation_token =
+           first_page.continuation_token}),
+      std::invalid_argument);
+
+    auto stale_cleanup = owner_c;
+    --stale_cleanup.lease_generation;
+    EXPECT_EQ (
+      0,
+      store.remove_all_by_owner (
+        stale_cleanup)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      2u,
+      store.list_fanout_publishers ("events")
+        .result ()
+        .value ()
+        .items.size ());
+    EXPECT_EQ (
+      1,
+      store.remove_all_by_owner (owner_c)
+        .result ()
+        .value ());
+
+    EXPECT_NE (
+      nullptr,
+      std::get_if<owner_lease_released_t> (
+        &store
+           .release_owner_lease (owner_a)
+           .result ()
+           .value ()));
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          live_takeover,
+          location_write_intent_t::takeover)
+        .result ()
+        .value ()
+        .status);
+    EXPECT_EQ (
+      1u,
+      store.list_fanout_publishers ("events")
+        .result ()
+        .value ()
+        .items.size ());
+    EXPECT_EQ (
+      0,
+      store.remove_all_by_owner (owner_a)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .remove_fanout_publisher (
+          fanout_publisher_descriptor_key_t{
+            .channel_name = "events",
+            .publisher_rid =
+              zlink::routing_id_t::from (
+                "events-pub-a")},
+          owner_a)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .remove_fanout_publisher (
+          fanout_publisher_descriptor_key_t{
+            .channel_name = "events",
+            .publisher_rid =
+              zlink::routing_id_t::from (
+                "events-pub-a")},
+          owner_b)
+        .result ()
+        .value ());
+    EXPECT_TRUE (
+      store.list_fanout_publishers ("events")
+        .result ()
+        .value ()
+        .items.empty ());
+    (void) store.release_owner_lease (owner_b);
+    (void) store.release_owner_lease (owner_c);
+#endif
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      FanoutPublisherPageStopsAtFourMiB)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    using namespace zlink::framework;
+    const auto options = find_redis_options ();
+    if (!options)
+        GTEST_SKIP () << "Redis server is not available";
+
+    redis_location_store_t store (*options);
+    const auto owner =
+      claim_owner (store, "fanout-page-owner",
+                   std::chrono::seconds (60));
+    const std::string maximal_escaped_text (
+      255, '\x01');
+    for (std::size_t index = 0; index < 1000;
+         ++index) {
+        fanout_publisher_descriptor_t descriptor{
+          .channel_name = maximal_escaped_text,
+          .publisher_rid =
+            zlink::routing_id_t::from (
+              "page-publisher-"
+              + std::to_string (index)),
+          .lifecycle_generation = 1,
+          .descriptor_revision = 1,
+          .endpoint = maximal_escaped_text,
+          .state =
+            framework_runtime_state_t::serving,
+          .security_identity =
+            maximal_escaped_text,
+          .owner_id = owner.owner_id,
+          .lease_generation =
+            owner.lease_generation};
+        ASSERT_EQ (
+          location_write_status_t::stored,
+          store
+            .update_fanout_publisher (
+              std::move (descriptor),
+              location_write_intent_t::new_claim)
+            .result ()
+            .value ()
+            .status);
+    }
+
+    const auto first =
+      store
+        .list_fanout_publishers (
+          maximal_escaped_text,
+          {.page_size = 1000})
+        .result ()
+        .value ();
+    ASSERT_FALSE (first.items.empty ());
+    ASSERT_LT (first.items.size (), 1000u);
+    ASSERT_TRUE (
+      first.continuation_token.has_value ());
+    std::size_t first_encoded_bytes = 0;
+    for (const auto &descriptor : first.items)
+        first_encoded_bytes +=
+          redis_location_row_codec_t::
+            encode_fanout_publisher (
+              descriptor)
+            .size ();
+    EXPECT_LE (first_encoded_bytes,
+               4u * 1024u * 1024u);
+
+    const auto second =
+      store
+        .list_fanout_publishers (
+          maximal_escaped_text,
+          {.page_size = 1000,
+           .continuation_token =
+             first.continuation_token})
+        .result ()
+        .value ();
+    EXPECT_EQ (
+      1000u,
+      first.items.size () + second.items.size ());
+    EXPECT_FALSE (
+      second.continuation_token.has_value ());
+    EXPECT_EQ (
+      1000,
+      store.remove_all_by_owner (owner)
+        .result ()
+        .value ());
+    EXPECT_TRUE (
+      store
+        .list_fanout_publishers (
+          maximal_escaped_text)
+        .result ()
+        .value ()
+        .items.empty ());
+    (void) store.release_owner_lease (owner);
 #endif
 }
 

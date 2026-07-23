@@ -575,6 +575,28 @@ void channel_runtime_t::unbind_client_server_transport (
     _state->client_server_requesters.erase (channel_name);
 }
 
+void channel_runtime_t::bind_fanout_transport (
+  std::string channel_name,
+  channel_runtime_state_t::fanout_publish_t publish)
+{
+    std::lock_guard lock (_state->mutex);
+    if (_state->fanout_publishers.contains (channel_name)) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "fanout ChannelName is registered more than once: "
+            + channel_name);
+    }
+    _state->fanout_publishers.emplace (
+      std::move (channel_name), std::move (publish));
+}
+
+void channel_runtime_t::unbind_fanout_transport (
+  const std::string &channel_name) noexcept
+{
+    std::lock_guard lock (_state->mutex);
+    _state->fanout_publishers.erase (channel_name);
+}
+
 dispatch_options_t channel_runtime_t::dispatch_options () const
 {
     return _state->dispatch;

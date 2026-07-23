@@ -171,7 +171,7 @@ bool raw_fanout_subscriber_t::connect_manual (
 }
 
 void raw_fanout_subscriber_t::reconcile_automatic (
-  const locations::service_descriptor_snapshot_t &snapshot)
+  const std::vector<fanout_publisher_intent_t> &publishers)
 {
     std::lock_guard lock (_mutex);
     if (_automatic_mode && !*_automatic_mode) {
@@ -180,25 +180,27 @@ void raw_fanout_subscriber_t::reconcile_automatic (
     }
     _automatic_mode = true;
     std::set<publisher_intent_key_t> desired;
-    for (const auto &record : snapshot.records) {
-        if (record.key.kind != locations::service_descriptor_kind_t::fanout
-            || record.state != mesh::service_node_state_t::serving) {
+    for (const auto &publisher : publishers) {
+        if (publisher.state
+            != mesh::service_node_state_t::serving) {
             continue;
         }
         const publisher_intent_key_t intent{
-          record.key.routing_id, record.lifecycle_generation};
+          publisher.publisher_routing_id,
+          publisher.lifecycle_generation};
         desired.insert (intent);
         const auto found = _connections.find (intent);
         if (found == _connections.end ()) {
             (void) connect_locked (
-              record.key.routing_id,
-              record.lifecycle_generation,
-              record.endpoint,
+              publisher.publisher_routing_id,
+              publisher.lifecycle_generation,
+              publisher.endpoint,
               true);
         } else if (found->second.automatic
-                   && found->second.endpoint != record.endpoint) {
+                   && found->second.endpoint
+                        != publisher.endpoint) {
             found->second.socket->close ();
-            found->second.endpoint = record.endpoint;
+            found->second.endpoint = publisher.endpoint;
             reopen_locked (found->second);
         }
     }

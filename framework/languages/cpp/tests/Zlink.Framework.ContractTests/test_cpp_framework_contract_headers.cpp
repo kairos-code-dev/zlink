@@ -416,6 +416,9 @@ static_assert (
   std::is_polymorphic_v<
     zlink::framework::client_server_location_store_t>);
 static_assert (
+  std::is_polymorphic_v<
+    zlink::framework::fanout_location_store_t>);
+static_assert (
   std::is_same_v<
     decltype (std::declval<
                 zlink::framework::
@@ -473,6 +476,57 @@ static_assert (
       zlink::framework::location_page_t<
         zlink::framework::
           client_server_server_descriptor_t>>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  fanout_publisher_descriptor_t> ()
+                .publisher_rid),
+    zlink::routing_id_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  fanout_publisher_descriptor_t> ()
+                .descriptor_revision),
+    std::uint64_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  fanout_location_store_t &> ()
+                .update_fanout_publisher (
+                  std::declval<zlink::framework::
+                    fanout_publisher_descriptor_t> (),
+                  zlink::framework::
+                    location_write_intent_t::new_claim)),
+    zlink::framework::task_t<
+      zlink::framework::location_write_result_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  fanout_location_store_t &> ()
+                .remove_fanout_publisher (
+                  std::declval<zlink::framework::
+                    fanout_publisher_descriptor_key_t> (),
+                  std::declval<zlink::framework::
+                    location_owner_token_t> ())),
+    zlink::framework::task_t<
+      zlink::framework::location_write_status_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  fanout_location_store_t &> ()
+                .list_fanout_publishers (
+                  std::declval<std::string> (),
+                  std::declval<zlink::framework::
+                    location_page_request_t> ())),
+    zlink::framework::task_t<
+      zlink::framework::location_page_t<
+        zlink::framework::
+          fanout_publisher_descriptor_t>>>);
 static_assert (std::is_base_of_v<zlink::framework::peer_location_store_t,
                                  zlink::framework::location_store_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_location_store_t,

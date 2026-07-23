@@ -13,6 +13,9 @@ namespace
 using zlink::framework::actor_location_filter_t;
 using zlink::framework::actor_location_key_t;
 using zlink::framework::actor_location_t;
+using zlink::framework::fanout_publisher_descriptor_key_t;
+using zlink::framework::fanout_publisher_descriptor_t;
+using zlink::framework::framework_runtime_state_t;
 using zlink::framework::location_auto_connect_type_t;
 using zlink::framework::location_change_stamp_scope_t;
 using zlink::framework::location_kind_t;
@@ -945,6 +948,260 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
         .result ()
         .value ();
     EXPECT_EQ (1u, invalid_page.items.size ());
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      FanoutPublisherRowsFenceIdentityRevisionAndCleanup)
+{
+    in_memory_location_store_t store;
+    const auto owner_a = claim_owner (store, "fanout-owner-a");
+    const auto owner_b = claim_owner (store, "fanout-owner-b");
+    const auto owner_c = claim_owner (store, "fanout-owner-c");
+
+    const fanout_publisher_descriptor_t original{
+      .channel_name = "events",
+      .publisher_rid = zlink::routing_id_t::from ("publisher-a"),
+      .lifecycle_generation = 7,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:7500",
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "cluster-a",
+      .owner_id = owner_a.owner_id,
+      .lease_generation = owner_a.lease_generation};
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          original, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    auto conflicting = original;
+    conflicting.owner_id = owner_b.owner_id;
+    conflicting.lease_generation = owner_b.lease_generation;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          conflicting, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    auto immutable_change = original;
+    immutable_change.descriptor_revision = 2;
+    immutable_change.endpoint = "tcp://127.0.0.1:7501";
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          immutable_change, location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+
+    auto draining = original;
+    draining.descriptor_revision = 2;
+    draining.state = framework_runtime_state_t::draining;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          draining, location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto same_revision_conflict = draining;
+    same_revision_conflict.state =
+      framework_runtime_state_t::serving;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_fanout_publisher (
+          same_revision_conflict,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .update_fanout_publisher (
+          original, location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+
+    EXPECT_NE (
+      nullptr,
+      std::get_if<zlink::framework::owner_lease_released_t> (
+        &store.release_owner_lease (owner_a).result ().value ()));
+    auto replacement = original;
+    replacement.lifecycle_generation = 8;
+    replacement.endpoint = "tcp://127.0.0.1:7501";
+    replacement.owner_id = owner_b.owner_id;
+    replacement.lease_generation = owner_b.lease_generation;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          replacement, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    auto second = original;
+    second.publisher_rid = zlink::routing_id_t::from ("publisher-b");
+    second.lifecycle_generation = 1;
+    second.owner_id = owner_c.owner_id;
+    second.lease_generation = owner_c.lease_generation;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_fanout_publisher (
+          second, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    const auto first_page =
+      store
+        .list_fanout_publishers (
+          "events", location_page_request_t{.page_size = 1})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, first_page.items.size ());
+    ASSERT_TRUE (first_page.continuation_token.has_value ());
+    const auto second_page =
+      store
+        .list_fanout_publishers (
+          "events",
+          location_page_request_t{
+            .page_size = 1,
+            .continuation_token =
+              first_page.continuation_token})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, second_page.items.size ());
+    EXPECT_FALSE (second_page.continuation_token.has_value ());
+
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .remove_fanout_publisher (
+          fanout_publisher_descriptor_key_t{
+            .channel_name = original.channel_name,
+            .publisher_rid = original.publisher_rid},
+          owner_a)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .remove_fanout_publisher (
+          fanout_publisher_descriptor_key_t{
+            .channel_name = replacement.channel_name,
+            .publisher_rid = replacement.publisher_rid},
+          owner_b)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      1u,
+      store.remove_all_by_owner (owner_c).result ().value ());
+    EXPECT_TRUE (
+      store
+        .list_fanout_publishers ("events")
+        .result ()
+        .value ()
+        .items.empty ());
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      FanoutPublisherPageStopsAtFourMiB)
+{
+    in_memory_location_store_t store;
+    const std::string maximal_escaped_text (
+      255, '\x01');
+    const auto owner =
+      claim_owner (
+        store, maximal_escaped_text,
+        std::chrono::seconds (60));
+    for (std::size_t index = 0; index < 1000;
+         ++index) {
+        const fanout_publisher_descriptor_t descriptor{
+          .channel_name = maximal_escaped_text,
+          .publisher_rid =
+            zlink::routing_id_t::from (
+              "page-publisher-"
+              + std::to_string (index)),
+          .lifecycle_generation = 1,
+          .descriptor_revision = 1,
+          .endpoint = maximal_escaped_text,
+          .state =
+            framework_runtime_state_t::serving,
+          .security_identity =
+            maximal_escaped_text,
+          .owner_id = owner.owner_id,
+          .lease_generation =
+            owner.lease_generation};
+        ASSERT_EQ (
+          location_write_status_t::stored,
+          store
+            .update_fanout_publisher (
+              descriptor,
+              location_write_intent_t::new_claim)
+            .result ()
+            .value ()
+            .status);
+    }
+
+    const auto first =
+      store
+        .list_fanout_publishers (
+          maximal_escaped_text,
+          location_page_request_t{
+            .page_size = 1000})
+        .result ()
+        .value ();
+    ASSERT_FALSE (first.items.empty ());
+    ASSERT_LT (first.items.size (), 1000u);
+    ASSERT_TRUE (
+      first.continuation_token.has_value ());
+    std::size_t encoded_upper_bound = 0;
+    for (const auto &descriptor : first.items) {
+        const auto escaped_text_bytes =
+          descriptor.channel_name.size ()
+          + descriptor.endpoint.size ()
+          + descriptor.security_identity.size ()
+          + descriptor.owner_id.size ();
+        encoded_upper_bound +=
+          512u + escaped_text_bytes * 6u
+          + descriptor.publisher_rid.size () * 2u;
+    }
+    EXPECT_LE (encoded_upper_bound,
+               4u * 1024u * 1024u);
+
+    const auto second =
+      store
+        .list_fanout_publishers (
+          maximal_escaped_text,
+          location_page_request_t{
+            .page_size = 1000,
+            .continuation_token =
+              first.continuation_token})
+        .result ()
+        .value ();
+    EXPECT_EQ (
+      1000u,
+      first.items.size () + second.items.size ());
+    EXPECT_FALSE (
+      second.continuation_token.has_value ());
+    EXPECT_EQ (
+      1000,
+      store.remove_all_by_owner (owner)
+        .result ()
+        .value ());
 }
 
 } // namespace

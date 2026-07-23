@@ -147,6 +147,20 @@ client_server_requester (const std::shared_ptr<channel_runtime_state_t> &state,
                  found->second);
 }
 
+std::optional<channel_runtime_state_t::fanout_publish_t>
+fanout_publisher (const std::shared_ptr<channel_runtime_state_t> &state,
+                  const std::string &channel_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found =
+      state->fanout_publishers.find (channel_name);
+    return found == state->fanout_publishers.end ()
+             ? std::nullopt
+             : std::optional<
+                 channel_runtime_state_t::fanout_publish_t> (
+                 found->second);
+}
+
 bool channel_runtime_accepts_outbound_locked (const channel_runtime_state_t &state) noexcept
 {
     return !state.shutdown && !state.closed;
@@ -1219,6 +1233,39 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
     }
     if (_state->serializers != nullptr && publisher != nullptr
         && (!publisher->bind_endpoints.empty () || !publisher->connect_endpoints.empty ())) {
+        if (const auto publish =
+              fanout_publisher (_state, channel_name)) {
+            try {
+                auto payload =
+                  detail::encoded_payload_to_raw (
+                    encode_payload (*_state->serializers));
+                if (publisher->max_message_size
+                    && publisher->max_message_size->bytes () > 0
+                    && static_cast<std::int64_t> (
+                         payload.size ())
+                         > publisher->max_message_size->bytes ()) {
+                    return result_t<void>::failure (
+                      framework_error_kind_t::request_failed,
+                      "channel message exceeds configured max message size");
+                }
+                return (*publish) (
+                  std::move (topic),
+                  call_packet_name,
+                  _state->serializers->content_type (
+                    event_type),
+                  std::move (payload),
+                  resolve_send_wait_timeout (timeout));
+            }
+            catch (const framework_exception_t &error) {
+                return detail::result_access_t::failure<void> (
+                  error);
+            }
+            catch (const std::exception &error) {
+                return result_t<void>::failure (
+                  framework_error_kind_t::request_failed,
+                  error.what ());
+            }
+        }
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::publish,

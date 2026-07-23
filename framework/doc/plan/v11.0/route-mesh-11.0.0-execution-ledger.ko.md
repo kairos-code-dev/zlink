@@ -1305,6 +1305,19 @@ Runtime gate에서 제외한 기존
 E2E source를 다시 활성화하는 단계에서 exact read 기반 관측 시나리오로 migration해야 한다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+C++ dedicated fanout checkpoint(2026-07-24)에서 exact `fanout_publisher_descriptor_t`와 key,
+`fanout_location_store_t`를 추가하고 in-memory와 공식 Redis provider가 new claim·renew·higher-lifecycle
+takeover, immutable identity·revision fence, exact owner cleanup과 1..1000개·encoded 4 MiB bounded page를
+구현하도록 연결했다. Redis page는 store time으로 `updated_at`을 교체한 최종 JSON 크기를 기준으로
+4 MiB 경계를 계산하며 공식 fixture의 kind·key·field order·hash를 byte 단위로 검증한다. Runtime은
+generic peer publication·reconcile을 사용하지 않고 publisher의 실제 bind endpoint를 전용 Store에
+게시한다. Automatic subscriber는 publisher RID·lifecycle별 SUB와 monitor를 소유하고 first
+beacon/application payload 뒤에만 ready가 되며, lifecycle 교체와 5초 beacon·15초 deadline은 다른
+publisher의 connection 상태를 변경하지 않는다. Manual fanout 경로는 그대로 유지한다. 관련 6개 target
+build와 CTest 6/6, 실제 Redis focused 4/4, in-memory 1000-row·4 MiB page, scoped
+`git diff --check`가 통과했다. Core·bindings와 Sample·E2E source를 변경하거나 실행하지 않았다.
+다른 M6A·review 잔여가 있으므로 `V11-M6A-CPP` 상태는 계속 `수정 진행`으로 유지한다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

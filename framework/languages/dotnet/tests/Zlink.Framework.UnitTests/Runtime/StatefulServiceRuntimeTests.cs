@@ -202,6 +202,38 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task RequestOperationCapacityBackpressuresBeforeAllocatingMoreWork()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(
+            context,
+            "mesh",
+            maxPendingOperations: 1);
+        node.SetRoutingId(RoutingId.From("capacity-node"));
+        var actor = node.CreateActor("capacity-actor");
+        DrainAndDispose(node);
+
+        using var request = Message.From(new byte[] { 4 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.RequestToActor(
+                actor,
+                [request],
+                out var first,
+                TimeSpan.FromSeconds(30)));
+        Assert.NotEqual(default, first);
+
+        Assert.Equal(
+            SubmitResult.Backpressured,
+            node.RequestToActor(
+                actor,
+                [request],
+                out var rejected,
+                TimeSpan.FromSeconds(30)));
+        Assert.Equal(default, rejected);
+    }
+
+    [Fact]
     public async Task TransferFenceBlocksAdmissionUntilAbort()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();

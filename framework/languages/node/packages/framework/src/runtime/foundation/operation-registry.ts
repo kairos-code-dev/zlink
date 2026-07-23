@@ -17,6 +17,13 @@ export class OperationCancelledError extends Error {
   }
 }
 
+export class OperationCapacityExceededError extends Error {
+  constructor(readonly maxPendingOperations: number) {
+    super(`Operation capacity ${maxPendingOperations} is exhausted.`);
+    this.name = 'OperationCapacityExceededError';
+  }
+}
+
 export interface PendingOperation<T> {
   readonly id: bigint;
   readonly promise: Promise<T>;
@@ -42,17 +49,29 @@ const systemClock: OperationClock = {
 
 /** Owns request completion so reply, timeout, cancellation, and shutdown race safely. */
 export class OperationRegistry<T> {
+  static readonly DEFAULT_MAX_PENDING_OPERATIONS = 65_536;
+
   private readonly entries = new Map<bigint, Entry<T>>();
   private nextId = 1n;
   private generation = 1n;
   private closed = false;
 
-  constructor(private readonly clock: OperationClock = systemClock) {}
+  constructor(
+    private readonly clock: OperationClock = systemClock,
+    private readonly maxPendingOperations = OperationRegistry.DEFAULT_MAX_PENDING_OPERATIONS
+  ) {
+    if (!Number.isSafeInteger(maxPendingOperations) || maxPendingOperations <= 0) {
+      throw new RangeError('maxPendingOperations must be a positive safe integer.');
+    }
+  }
 
   reserve(timeoutMs: number): PendingOperation<T> {
     if (this.closed) throw new Error('Operation registry is closed.');
     if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
       throw new RangeError('timeoutMs must be a non-negative finite number.');
+    }
+    if (this.entries.size >= this.maxPendingOperations) {
+      throw new OperationCapacityExceededError(this.maxPendingOperations);
     }
 
     const id = this.nextId++;

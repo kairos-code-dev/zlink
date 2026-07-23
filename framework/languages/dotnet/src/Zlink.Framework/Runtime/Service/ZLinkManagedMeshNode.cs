@@ -10,14 +10,17 @@ namespace Zlink.Framework.Runtime.Service;
 internal sealed class ZLinkManagedMeshNode : IMeshNode
 {
     private const int ReceiveBatchSize = 64;
+    private const int DefaultMaxPendingOperations = 65_536;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan AdmissionRetryInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly IContext _context;
     private readonly string _meshName;
+    private readonly int _maxPendingOperations;
     private readonly object _gate = new();
     private readonly object _socketGate = new();
     private readonly object _readyGate = new();
+    private readonly object _operationGate = new();
     private readonly Dictionary<string, uint> _channels = new(StringComparer.Ordinal);
     private readonly Dictionary<ulong, Peer> _peersByIntent = new();
     private readonly Dictionary<RoutingId, Peer> _peersByRid = new();
@@ -49,11 +52,17 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private int _readyPosted;
     private int _disposed;
 
-    internal ZLinkManagedMeshNode(IContext context, string meshName)
+    internal ZLinkManagedMeshNode(
+        IContext context,
+        string meshName,
+        int maxPendingOperations = DefaultMaxPendingOperations)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        if (maxPendingOperations <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxPendingOperations));
         _meshName = meshName;
+        _maxPendingOperations = maxPendingOperations;
     }
 
     public RoutingId RoutingId => _routingId;
@@ -642,7 +651,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         out MeshOperationId operationId,
         TimeSpan timeout = default)
     {
-        var operation = BeginOperation(MeshOperationKind.ActorRequest, timeout);
+        if (!TryBeginOperation(
+                MeshOperationKind.ActorRequest,
+                timeout,
+                out var operation))
+        {
+            operationId = default;
+            Publish(MeshMonitorEventKind.Backpressured);
+            return SubmitResult.Backpressured;
+        }
         operationId = operation.OperationId;
         var result = SubmitActor(
             actor,
@@ -776,9 +793,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             {
             }
 
-        foreach (var pending in _operations.Values)
+        PendingOperation[] pendingOperations;
+        lock (_operationGate)
+        {
+            pendingOperations = _operations.Values.ToArray();
+            _operations.Clear();
+        }
+        foreach (var pending in pendingOperations)
             pending.Cancel();
-        _operations.Clear();
         foreach (var mailbox in _ownedMailboxes.Values)
             mailbox.Dispose();
         _ownedMailboxes.Clear();
@@ -828,7 +850,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        var operation = BeginOperation(MeshOperationKind.SpotRequest, timeout);
+        if (!TryBeginOperation(
+                MeshOperationKind.SpotRequest,
+                timeout,
+                out var operation))
+        {
+            operationId = default;
+            Publish(MeshMonitorEventKind.Backpressured);
+            return SubmitResult.Backpressured;
+        }
         operationId = operation.OperationId;
         var result = SubmitSpot(
             targetRid,
@@ -1271,24 +1301,71 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         MeshOperationKind kind,
         TimeSpan timeout)
     {
-        var correlation = Interlocked.Increment(ref _nextOperation);
-        if (correlation == 0)
-            throw new InvalidOperationException("The operation id space was exhausted.");
-        var operation = new PendingOperation(
-            new MeshOperationId(_lifecycleGeneration, correlation),
-            kind);
-        if (!_operations.TryAdd(correlation, operation))
-            throw new InvalidOperationException("The operation id was reused.");
+        if (!TryBeginOperation(kind, timeout, out var operation))
+            throw new ZlinkSubmitException(
+                ZlinkSubmitException.ErrorCode.Backpressured);
+        return operation;
+    }
+
+    private bool TryBeginOperation(
+        MeshOperationKind kind,
+        TimeSpan timeout,
+        out PendingOperation operation)
+    {
+        if (!TryCreateOperation(kind, out var correlation, out operation))
+            return false;
         _ = ExpireOperationAsync(
             correlation,
             operation,
             timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : timeout);
-        return operation;
+        return true;
+    }
+
+    private bool TryCreateOperation(
+        MeshOperationKind kind,
+        out ulong correlation,
+        out PendingOperation operation)
+    {
+        lock (_operationGate)
+        {
+            if (_operations.Count >= _maxPendingOperations)
+            {
+                correlation = 0;
+                operation = null!;
+                return false;
+            }
+            correlation = ++_nextOperation;
+            if (correlation == 0)
+                throw new InvalidOperationException(
+                    "The operation id space was exhausted.");
+            operation = new PendingOperation(
+                new MeshOperationId(_lifecycleGeneration, correlation),
+                kind);
+            if (!_operations.TryAdd(correlation, operation))
+                throw new InvalidOperationException(
+                    "The operation id was reused.");
+            return true;
+        }
+    }
+
+    private bool TryRemoveOperation(
+        ulong correlation,
+        out PendingOperation operation)
+    {
+        lock (_operationGate)
+            return _operations.TryRemove(correlation, out operation!);
+    }
+
+    private bool TryRemoveOperation(
+        KeyValuePair<ulong, PendingOperation> operation)
+    {
+        lock (_operationGate)
+            return _operations.TryRemove(operation);
     }
 
     private void RemoveManagedOperation(PendingOperation operation)
     {
-        _operations.TryRemove(
+        TryRemoveOperation(
             new KeyValuePair<ulong, PendingOperation>(
                 operation.OperationId.Low,
                 operation));
@@ -1302,7 +1379,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         IReadOnlyList<Message> parts,
         MeshRecordPayload? kindData = null)
     {
-        if (!_operations.TryRemove(
+        if (!TryRemoveOperation(
                 new KeyValuePair<ulong, PendingOperation>(
                     operation.OperationId.Low,
                     operation))
@@ -1727,23 +1804,47 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
 
         Peer peer;
+        ZLinkServiceAdmissionDecision decision;
         lock (_gate)
         {
             peer = FindPeerForAdmission(sourceRid) ??
                    new Peer(checked(++_nextIntent), admission.AdvertisedEndpoint, sourceRid);
-            if (!_peersByIntent.ContainsKey(peer.Intent))
-                _peersByIntent.Add(peer.Intent, peer);
             if (peer.ExpectedRid is { } expected && expected != sourceRid)
             {
                 peer.State = MeshPeerState.Error;
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
                 return;
             }
+            decision = ZLinkServiceAdmissionGuard.Evaluate(
+                peer.Admission,
+                command,
+                admission);
+            if (decision == ZLinkServiceAdmissionDecision.Reject)
+            {
+                if (_peersByIntent.ContainsKey(peer.Intent))
+                {
+                    peer.State = MeshPeerState.Error;
+                    peer.Admitted = false;
+                    _peersByRid.Remove(sourceRid);
+                }
+                Publish(MeshMonitorEventKind.ProtocolError, peerRid: sourceRid);
+                Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
+                return;
+            }
+            if (decision == ZLinkServiceAdmissionDecision.Idempotent)
+            {
+                if (command == ServiceWireConstants.Command.Hello)
+                    SendAdmission(peer, ServiceWireConstants.Command.Admit);
+                return;
+            }
+            if (!_peersByIntent.ContainsKey(peer.Intent))
+                _peersByIntent.Add(peer.Intent, peer);
             peer.RoutingId = sourceRid;
             peer.PhysicalRoutingId = sourceRid;
             peer.LifecycleGeneration = admission.LifecycleGeneration;
             peer.DescriptorRevision = admission.DescriptorRevision;
             peer.Channels = admission.Channels;
+            peer.Admission = admission;
             peer.State = MeshPeerState.Admitted;
             peer.Admitted = true;
             peer.Liveness = new ZLinkServiceLiveness(Stopwatch.GetTimestamp());
@@ -1833,20 +1934,19 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ReadOnlyMemory<byte> metadata,
         out MeshOperationId operationId)
     {
-        var correlation = Interlocked.Increment(ref _nextOperation);
-        if (correlation == 0)
-            throw new InvalidOperationException("The request operation id space was exhausted.");
-        operationId = new MeshOperationId(_lifecycleGeneration, correlation);
         var effectiveTimeout = timeout <= TimeSpan.Zero
             ? TimeSpan.FromSeconds(30)
             : timeout;
-        var pending = new PendingOperation(
-            operationId,
-            command == ServiceWireConstants.Command.NodeRequest
-                ? MeshOperationKind.NodeRequest
-                : MeshOperationKind.ChannelRequest);
-        if (!_operations.TryAdd(correlation, pending))
-            throw new InvalidOperationException("The request operation id was reused.");
+        var kind = command == ServiceWireConstants.Command.NodeRequest
+            ? MeshOperationKind.NodeRequest
+            : MeshOperationKind.ChannelRequest;
+        if (!TryCreateOperation(kind, out var correlation, out var pending))
+        {
+            operationId = default;
+            Publish(MeshMonitorEventKind.Backpressured, peerRid: targetRid);
+            return SubmitResult.Backpressured;
+        }
+        operationId = pending.OperationId;
 
         var result = SubmitApplication(
             targetRid,
@@ -1858,7 +1958,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             metadata);
         if (result != SubmitResult.Ok)
         {
-            _operations.TryRemove(correlation, out _);
+            TryRemoveOperation(correlation, out _);
             pending.Cancel();
             operationId = default;
             return result;
@@ -1992,7 +2092,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ZLinkServiceWireCodec.ReplyRecord reply,
         Received received)
     {
-        if (!_operations.TryRemove(reply.Correlation, out var pending)
+        if (!TryRemoveOperation(reply.Correlation, out var pending)
             || !pending.TryComplete())
             return;
         var parts = received.Parts.Skip(1).Select(Message.From).ToArray();
@@ -2008,7 +2108,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ulong correlation,
         IReadOnlyList<Message> replyParts)
     {
-        if (!_operations.TryRemove(correlation, out var pending)
+        if (!TryRemoveOperation(correlation, out var pending)
             || !pending.TryComplete())
             return;
         EnqueueCompletion(
@@ -2032,7 +2132,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         {
             return;
         }
-        if (_operations.TryRemove(correlation, out var current)
+        if (TryRemoveOperation(correlation, out var current)
             && ReferenceEquals(current, pending)
             && pending.TryComplete())
             EnqueueCompletion(
@@ -2373,6 +2473,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         internal ulong DescriptorRevision { get; set; }
         internal IReadOnlyDictionary<string, uint> Channels { get; set; } =
             new Dictionary<string, uint>(StringComparer.Ordinal);
+        internal ZLinkServiceWireCodec.AdmissionRecord? Admission { get; set; }
         internal MeshPeerState State { get; set; } = MeshPeerState.Configured;
         internal bool Admitted { get; set; }
         internal ZLinkServiceLiveness? Liveness { get; set; }

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 using Systems.Zlink.Framework.Runtime.Protocol;
@@ -84,6 +85,128 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal(23UL, admission.DescriptorRevision);
         Assert.Equal(0U, admission.Channels["admin"]);
         Assert.Equal(75U, admission.Channels["worker"]);
+        Assert.Equal("none", admission.SecurityIdentity);
+        Assert.Equal((uint)int.MaxValue, admission.EffectiveMaxMessageBytes);
+        Assert.Equal(1, admission.RuntimeState);
+        Assert.Equal(0, admission.ApplicationVersion);
+        Assert.Equal(0, admission.ObjectRole);
+        Assert.Equal(100U, admission.PlacementWeight);
+        Assert.Equal(10_000U, admission.ActiveCapacityLimit);
+        Assert.Equal(128U, admission.PendingCapacityLimit);
+        Assert.Equal(0U, admission.ActiveCapacityUsed);
+        Assert.Equal(0U, admission.PendingCapacityUsed);
+        Assert.Equal(
+            new byte[] { 1, 2, 6, 7, 8, 9, 10, 11, 12 },
+            admission.ExtensionFields.Keys);
+    }
+
+    [Fact]
+    public void RouteAdmission_PreservesUnknownExtensionFields()
+    {
+        var encoded = ZLinkServiceWireCodec.EncodeRouteAdmission(
+            ServiceWireConstants.Command.Hello,
+            "orders",
+            "tcp://127.0.0.1:7070",
+            17,
+            23,
+            new Dictionary<string, uint>(StringComparer.Ordinal)
+            {
+                ["worker"] = 75
+            });
+        var extended = AppendDescriptorExtension(encoded, 13, [0xaa, 0xbb]);
+
+        Assert.True(ZLinkServiceWireCodec.TryDecodeRouteAdmission(
+            extended,
+            out _,
+            out var admission,
+            out var error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        Assert.Equal(new byte[] { 0xaa, 0xbb }, admission.ExtensionFields[13]);
+        Assert.Equal(extended.AsSpan(10).ToArray(), admission.DescriptorBytes);
+    }
+
+    [Fact]
+    public void AdmissionGuard_ValidatesRevisionAndImmutableFieldsBeforeMutation()
+    {
+        var channels = new Dictionary<string, uint>(StringComparer.Ordinal)
+        {
+            ["worker"] = 75
+        };
+        var current = DecodeAdmission(
+            ZLinkServiceWireCodec.EncodeRouteAdmission(
+                ServiceWireConstants.Command.Hello,
+                "orders",
+                "tcp://127.0.0.1:7070",
+                17,
+                23,
+                channels));
+
+        Assert.Equal(
+            ZLinkServiceAdmissionDecision.Idempotent,
+            ZLinkServiceAdmissionGuard.Evaluate(
+                current,
+                ServiceWireConstants.Command.Update,
+                current));
+
+        var newer = DecodeAdmission(
+            ZLinkServiceWireCodec.EncodeRouteAdmission(
+                ServiceWireConstants.Command.Update,
+                "orders",
+                "tcp://127.0.0.1:7070",
+                17,
+                24,
+                new Dictionary<string, uint>(StringComparer.Ordinal)
+                {
+                    ["worker"] = 25
+                }));
+        Assert.Equal(
+            ZLinkServiceAdmissionDecision.Accept,
+            ZLinkServiceAdmissionGuard.Evaluate(
+                current,
+                ServiceWireConstants.Command.Update,
+                newer));
+
+        var sameRevisionDifferentBytes = DecodeAdmission(
+            ZLinkServiceWireCodec.EncodeRouteAdmission(
+                ServiceWireConstants.Command.Update,
+                "orders",
+                "tcp://127.0.0.1:7070",
+                17,
+                23,
+                new Dictionary<string, uint>(StringComparer.Ordinal)
+                {
+                    ["worker"] = 25
+                }));
+        Assert.Equal(
+            ZLinkServiceAdmissionDecision.Reject,
+            ZLinkServiceAdmissionGuard.Evaluate(
+                current,
+                ServiceWireConstants.Command.Update,
+                sameRevisionDifferentBytes));
+
+        var immutableMutationBytes = ZLinkServiceWireCodec.EncodeRouteAdmission(
+            ServiceWireConstants.Command.Update,
+            "orders",
+            "tcp://127.0.0.1:7070",
+            17,
+            24,
+            channels);
+        var securityOffset = FindSequence(immutableMutationBytes, "none"u8);
+        "evil"u8.CopyTo(immutableMutationBytes.AsSpan(securityOffset));
+        var immutableMutation = DecodeAdmission(immutableMutationBytes);
+        Assert.Equal(
+            ZLinkServiceAdmissionDecision.Reject,
+            ZLinkServiceAdmissionGuard.Evaluate(
+                current,
+                ServiceWireConstants.Command.Update,
+                immutableMutation));
+
+        Assert.Equal(
+            ZLinkServiceAdmissionDecision.Reject,
+            ZLinkServiceAdmissionGuard.Evaluate(
+                null,
+                ServiceWireConstants.Command.Update,
+                newer));
     }
 
     [Fact]
@@ -342,6 +465,62 @@ public sealed class ServiceRuntimeFoundationTests
             "trailing-byte" => ZLinkServiceWireCodec.DecodeError.TrailingByte,
             _ => throw new InvalidOperationException(error)
         };
+
+    private static ZLinkServiceWireCodec.AdmissionRecord DecodeAdmission(byte[] bytes)
+    {
+        Assert.True(ZLinkServiceWireCodec.TryDecodeRouteAdmission(
+            bytes,
+            out _,
+            out var admission,
+            out var error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        return admission;
+    }
+
+    private static byte[] AppendDescriptorExtension(
+        byte[] encoded,
+        byte id,
+        ReadOnlySpan<byte> value)
+    {
+        var offset = 10;
+        offset += 1 + encoded[offset];
+        offset += 1 + encoded[offset];
+        offset += sizeof(uint) + sizeof(ulong) + sizeof(ulong);
+        var endpointLength = BinaryPrimitives.ReadUInt16BigEndian(encoded.AsSpan(offset));
+        offset += sizeof(ushort) + endpointLength;
+        var channelCount = BinaryPrimitives.ReadUInt16BigEndian(encoded.AsSpan(offset));
+        offset += sizeof(ushort);
+        for (var index = 0; index < channelCount; index++)
+        {
+            offset += 1 + encoded[offset];
+            offset += sizeof(uint);
+        }
+
+        var previousLength = BinaryPrimitives.ReadUInt32BigEndian(encoded.AsSpan(offset));
+        var result = new byte[encoded.Length + 1 + sizeof(uint) + value.Length];
+        encoded.CopyTo(result, 0);
+        BinaryPrimitives.WriteUInt32BigEndian(
+            result.AsSpan(offset),
+            checked(previousLength + (uint)(1 + sizeof(uint) + value.Length)));
+        var tail = encoded.Length;
+        result[tail] = id;
+        BinaryPrimitives.WriteUInt32BigEndian(
+            result.AsSpan(tail + 1),
+            checked((uint)value.Length));
+        value.CopyTo(result.AsSpan(tail + 1 + sizeof(uint)));
+        BinaryPrimitives.WriteUInt32BigEndian(
+            result.AsSpan(6),
+            checked((uint)(result.Length - 10)));
+        return result;
+    }
+
+    private static int FindSequence(byte[] bytes, ReadOnlySpan<byte> sequence)
+    {
+        for (var offset = 0; offset <= bytes.Length - sequence.Length; offset++)
+            if (bytes.AsSpan(offset, sequence.Length).SequenceEqual(sequence))
+                return offset;
+        throw new InvalidOperationException("Test sequence was not found.");
+    }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

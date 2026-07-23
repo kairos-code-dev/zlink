@@ -47,10 +47,22 @@ internal static class ZLinkServiceWireCodec
 
     internal readonly record struct AdmissionRecord(
         string MeshName,
+        string SecurityIdentity,
+        uint EffectiveMaxMessageBytes,
         string AdvertisedEndpoint,
         ulong LifecycleGeneration,
         ulong DescriptorRevision,
-        IReadOnlyDictionary<string, uint> Channels);
+        IReadOnlyDictionary<string, uint> Channels,
+        byte RuntimeState,
+        long ApplicationVersion,
+        byte ObjectRole,
+        uint PlacementWeight,
+        uint ActiveCapacityLimit,
+        uint PendingCapacityLimit,
+        uint ActiveCapacityUsed,
+        uint PendingCapacityUsed,
+        IReadOnlyDictionary<byte, byte[]> ExtensionFields,
+        byte[] DescriptorBytes);
 
     internal static byte[] EncodeLiveness(
         ServiceWireConstants.Command command,
@@ -535,7 +547,7 @@ internal static class ZLinkServiceWireCodec
             return false;
         }
         if (!reader.TryText8(out var meshName)
-            || !reader.TryText8(out _)
+            || !reader.TryText8(out var securityIdentity)
             || !reader.TryU32(out var maxMessageBytes)
             || maxMessageBytes == 0
             || !reader.TryU64(out var lifecycleGeneration)
@@ -568,7 +580,17 @@ internal static class ZLinkServiceWireCodec
             previousChannel = channel;
         }
 
-        if (!TryDecodeDescriptorExtension(ref reader))
+        if (!TryDecodeDescriptorExtension(
+                ref reader,
+                out var runtimeState,
+                out var applicationVersion,
+                out var objectRole,
+                out var placementWeight,
+                out var activeCapacityLimit,
+                out var pendingCapacityLimit,
+                out var activeCapacityUsed,
+                out var pendingCapacityUsed,
+                out var extensionFields))
         {
             error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
             return false;
@@ -581,10 +603,22 @@ internal static class ZLinkServiceWireCodec
 
         admission = new AdmissionRecord(
             meshName,
+            securityIdentity,
+            maxMessageBytes,
             endpoint,
             lifecycleGeneration,
             descriptorRevision,
-            channels);
+            channels,
+            runtimeState,
+            applicationVersion,
+            objectRole,
+            placementWeight,
+            activeCapacityLimit,
+            pendingCapacityLimit,
+            activeCapacityUsed,
+            pendingCapacityUsed,
+            extensionFields,
+            bytes[10..].ToArray());
         error = DecodeError.None;
         return true;
     }
@@ -644,8 +678,27 @@ internal static class ZLinkServiceWireCodec
         return result.ToArray();
     }
 
-    private static bool TryDecodeDescriptorExtension(ref WireReader reader)
+    private static bool TryDecodeDescriptorExtension(
+        ref WireReader reader,
+        out byte runtimeState,
+        out long applicationVersion,
+        out byte objectRole,
+        out uint placementWeight,
+        out uint activeCapacityLimit,
+        out uint pendingCapacityLimit,
+        out uint activeCapacityUsed,
+        out uint pendingCapacityUsed,
+        out IReadOnlyDictionary<byte, byte[]> fields)
     {
+        runtimeState = 0;
+        applicationVersion = 0;
+        objectRole = 0;
+        placementWeight = 0;
+        activeCapacityLimit = 0;
+        pendingCapacityLimit = 0;
+        activeCapacityUsed = 0;
+        pendingCapacityUsed = 0;
+        fields = new Dictionary<byte, byte[]>();
         if (!reader.TryU32(out var length) || length > reader.Remaining)
             return false;
         if (!reader.TrySlice(checked((int)length), out var extensionBytes))
@@ -653,6 +706,7 @@ internal static class ZLinkServiceWireCodec
 
         var extension = new WireReader(extensionBytes);
         var required = new HashSet<byte>();
+        var preserved = new Dictionary<byte, byte[]>();
         byte previousId = 0;
         var hasCapability = false;
         while (extension.Remaining > 0)
@@ -664,29 +718,162 @@ internal static class ZLinkServiceWireCodec
                 || !extension.TrySlice(checked((int)fieldLength), out var field))
                 return false;
             previousId = id;
+            preserved.Add(id, field.ToArray());
             if (id is 1 or 2 or 6 or 7 or 8 or 9 or 10 or 11 or 12)
                 required.Add(id);
-            if (id == 6)
+            var value = new WireReader(field);
+            switch (id)
             {
-                var capabilityReader = new WireReader(field);
-                if (!capabilityReader.TryU16(out var count))
-                    return false;
-                for (var index = 0; index < count; index++)
-                {
-                    if (!capabilityReader.TryText8(out var capability))
+                case 1:
+                    if (!value.TryU8(out runtimeState)
+                        || runtimeState > 4
+                        || value.Remaining != 0)
                         return false;
-                    hasCapability |= string.Equals(
-                        capability,
-                        ServiceWireConstants.RequiredCapability,
-                        StringComparison.Ordinal);
+                    break;
+                case 2:
+                {
+                    if (!value.TryU64(out var encodedVersion)
+                        || encodedVersion > long.MaxValue
+                        || value.Remaining != 0)
+                        return false;
+                    applicationVersion = checked((long)encodedVersion);
+                    break;
                 }
-                if (capabilityReader.Remaining != 0)
-                    return false;
+                case 3:
+                    if (!TryDecodeSortedText8Vector(ref value)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 4:
+                    if (!TryDecodeStatefulCapabilities(ref value)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 5:
+                    if (!value.TryOptionalText8(out _)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 6:
+                {
+                    if (!value.TryU16(out var count) || count > 1024)
+                        return false;
+                    byte[]? previousCapability = null;
+                    for (var index = 0; index < count; index++)
+                    {
+                        if (!value.TryText8(out var capability))
+                            return false;
+                        var encodedCapability = Encoding.UTF8.GetBytes(capability);
+                        if (previousCapability is not null
+                            && previousCapability.AsSpan()
+                                .SequenceCompareTo(encodedCapability) >= 0)
+                            return false;
+                        previousCapability = encodedCapability;
+                        hasCapability |= string.Equals(
+                            capability,
+                            ServiceWireConstants.RequiredCapability,
+                            StringComparison.Ordinal);
+                    }
+                    if (value.Remaining != 0)
+                        return false;
+                    break;
+                }
+                case 7:
+                    if (!value.TryU8(out objectRole)
+                        || objectRole > 2
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 8:
+                    if (!value.TryU32(out placementWeight)
+                        || placementWeight > 100
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 9:
+                    if (!value.TryU32(out activeCapacityLimit)
+                        || activeCapacityLimit == 0
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 10:
+                    if (!value.TryU32(out pendingCapacityLimit)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 11:
+                    if (!value.TryU32(out activeCapacityUsed)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
+                case 12:
+                    if (!value.TryU32(out pendingCapacityUsed)
+                        || value.Remaining != 0)
+                        return false;
+                    break;
             }
         }
 
-        return hasCapability
-               && required.SetEquals(new byte[] { 1, 2, 6, 7, 8, 9, 10, 11, 12 });
+        if (!hasCapability
+            || !required.SetEquals(new byte[] { 1, 2, 6, 7, 8, 9, 10, 11, 12 })
+            || activeCapacityUsed > activeCapacityLimit
+            || pendingCapacityUsed > pendingCapacityLimit)
+            return false;
+        fields = preserved;
+        return true;
+    }
+
+    private static bool TryDecodeSortedText8Vector(ref WireReader reader)
+    {
+        if (!reader.TryU16(out var count) || count > 1024)
+            return false;
+        byte[]? previous = null;
+        for (var index = 0; index < count; index++)
+        {
+            if (!reader.TryText8(out var item))
+                return false;
+            var current = Encoding.UTF8.GetBytes(item);
+            if (previous is not null
+                && previous.AsSpan().SequenceCompareTo(current) >= 0)
+                return false;
+            previous = current;
+        }
+        return true;
+    }
+
+    private static bool TryDecodeStatefulCapabilities(ref WireReader reader)
+    {
+        if (!reader.TryU16(out var count) || count > 1024)
+            return false;
+        byte previousKind = 0;
+        byte[]? previousType = null;
+        for (var index = 0; index < count; index++)
+        {
+            if (!reader.TryU8(out var objectKind)
+                || objectKind is < 1 or > 3
+                || !reader.TryText8(out var type)
+                || !reader.TryU8(out var relocationPolicy)
+                || relocationPolicy > 2
+                || !TryDecodeSortedText8Vector(ref reader)
+                || !reader.TryU32(out var activeCapacityLimit)
+                || activeCapacityLimit == 0
+                || !reader.TryU32(out _)
+                || !reader.TryU8(out var hasSnapshotAdapter)
+                || hasSnapshotAdapter > 1
+                || !reader.TryU64(out var available)
+                || available > long.MaxValue)
+                return false;
+
+            var encodedType = Encoding.UTF8.GetBytes(type);
+            if (objectKind < previousKind
+                || (objectKind == previousKind
+                    && previousType is not null
+                    && previousType.AsSpan().SequenceCompareTo(encodedType) >= 0))
+                return false;
+            previousKind = objectKind;
+            previousType = encodedType;
+        }
+        return true;
     }
 
     private static bool TryDecodePrefix(
@@ -908,6 +1095,26 @@ internal static class ZLinkServiceWireCodec
                 return false;
             }
             return TryUtf8(length, out value);
+        }
+        internal bool TryOptionalText8(out string? value)
+        {
+            if (!TryU8(out var length))
+            {
+                value = null;
+                return false;
+            }
+            if (length == 0)
+            {
+                value = null;
+                return true;
+            }
+            if (!TryUtf8(length, out var decoded))
+            {
+                value = null;
+                return false;
+            }
+            value = decoded;
+            return true;
         }
         internal bool TryRid(out RoutingId value)
         {

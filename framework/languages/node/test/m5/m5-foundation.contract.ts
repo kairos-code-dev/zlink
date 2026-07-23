@@ -13,6 +13,7 @@ import {
   EventLoopWorkQueues
 } from '../../packages/framework/src/runtime/foundation/event-loop-resources';
 import {
+  OperationCapacityExceededError,
   OperationCancelledError,
   OperationRegistry,
   OperationTimeoutError,
@@ -106,6 +107,20 @@ test('Promise completion is terminal once across reply, timeout, and shutdown', 
   const cancelled = operations.reserve(100);
   operations.close();
   await assert.rejects(cancelled.promise, OperationCancelledError);
+  assert.equal(operations.size, 0);
+});
+
+test('operation registry rejects work before allocating beyond its capacity', async () => {
+  const clock = new ManualClock();
+  const operations = new OperationRegistry<string>(clock, 1);
+  const pending = operations.reserve(100);
+  assert.throws(
+    () => operations.reserve(100),
+    OperationCapacityExceededError
+  );
+  assert.equal(operations.size, 1);
+  operations.complete(pending.id, 'reply');
+  assert.equal(await pending.promise, 'reply');
   assert.equal(operations.size, 0);
 });
 

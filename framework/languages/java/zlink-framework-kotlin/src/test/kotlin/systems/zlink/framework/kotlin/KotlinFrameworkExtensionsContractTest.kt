@@ -32,7 +32,10 @@ import systems.zlink.framework.channels.ZLinkSubmitResult
 import systems.zlink.framework.channels.ZLinkSubmitStatus
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
+import systems.zlink.framework.errors.ZLinkConfigurationException
 import systems.zlink.framework.messaging.ZLinkMessage
+import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
+import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResult
@@ -41,6 +44,17 @@ import systems.zlink.framework.spots.ZLinkSpotInfo
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class KotlinFrameworkExtensionsContractTest {
+    @Test
+    fun `fanout automatic and manual subscriber configuration is rejected`() {
+        val options = DefaultZLinkFrameworkOptions()
+        options.addLocationStore(ZLinkInMemoryLocationStore())
+        val channel = options.addFanoutChannel("events")
+        channel.enableSubscriber()
+        channel.subscriberConnections().connect("inproc://events")
+
+        assertThrows<ZLinkConfigurationException> { options.validate() }
+    }
+
     @Test
     fun `coroutine cancellation projects to completion stage cancel false`() = runBlocking {
         val stage = RecordingCancellationFuture<String>()

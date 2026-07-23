@@ -139,6 +139,7 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       peer.routingId !== null &&
       peer.endpoint === target.endpoint &&
       (target.nodeRid === undefined || String(peer.routingId) === String(target.nodeRid)) &&
+      peer.lifecycleGeneration === target.lifecycleGeneration &&
       peer.state === 3);
   }
 
@@ -179,7 +180,7 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
 }
 
 function connectionKey(target: ZLinkAutoConnectTarget): string {
-  return `${target.nodeRid ?? ''}\0${target.endpoint}`;
+  return `${target.nodeRid ?? ''}\0${target.lifecycleGeneration}\0${target.endpoint}`;
 }
 
 function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {

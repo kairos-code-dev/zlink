@@ -50,6 +50,7 @@ export const ZLinkAutoConnectPlanner = Object.freeze({
       const target: ZLinkAutoConnectTarget = {
         targetKey: autoConnectTargetKeyOf(peer),
         nodeRid: peer.nodeRid,
+        lifecycleGeneration: peer.generation,
         role: peer.role,
         endpoint: peer.endpoint,
         metadata: peer.metadata,
@@ -96,7 +97,7 @@ export function formatAutoConnectRid(rid: RoutingId | undefined): string {
 
 function autoConnectTargetKeyOf(peer: ZLinkPeerLocation): string {
   const identity = peer.nodeRid === undefined ? peer.endpoint : encodeRoutingIdHex(peer.nodeRid);
-  return `${zlinkLocationRoleName(peer.role)}|${identity}`;
+  return `${zlinkLocationRoleName(peer.role)}|${identity}|${peer.generation}`;
 }
 
 function isAutoConnectSelf(local: ZLinkAutoConnectLocal, peer: ZLinkPeerLocation): boolean {

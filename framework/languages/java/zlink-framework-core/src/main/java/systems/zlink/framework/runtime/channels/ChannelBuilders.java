@@ -130,7 +130,7 @@ public final class ChannelBuilders {
 
         @Override
         public FanoutChannelBuilder enableSubscriber() {
-            registration.enableSubscriber();
+            registration.enableAutomaticSubscriber();
             return this;
         }
 

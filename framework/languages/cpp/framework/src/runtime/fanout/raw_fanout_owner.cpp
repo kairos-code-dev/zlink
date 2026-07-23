@@ -167,7 +167,7 @@ bool raw_fanout_subscriber_t::connect_manual (
 {
     std::lock_guard lock (_mutex);
     return connect_locked (
-      std::move (publisher_routing_id), std::move (endpoint), false);
+      std::move (publisher_routing_id), 0, std::move (endpoint), false);
 }
 
 void raw_fanout_subscriber_t::reconcile_automatic (
@@ -179,17 +179,22 @@ void raw_fanout_subscriber_t::reconcile_automatic (
           "manual and automatic fanout subscriber modes cannot be combined");
     }
     _automatic_mode = true;
-    std::set<std::vector<std::uint8_t>, byte_vector_less_t> desired;
+    std::set<publisher_intent_key_t> desired;
     for (const auto &record : snapshot.records) {
         if (record.key.kind != locations::service_descriptor_kind_t::fanout
             || record.state != mesh::service_node_state_t::serving) {
             continue;
         }
-        desired.insert (record.key.routing_id);
-        const auto found = _connections.find (record.key.routing_id);
+        const publisher_intent_key_t intent{
+          record.key.routing_id, record.lifecycle_generation};
+        desired.insert (intent);
+        const auto found = _connections.find (intent);
         if (found == _connections.end ()) {
             (void) connect_locked (
-              record.key.routing_id, record.endpoint, true);
+              record.key.routing_id,
+              record.lifecycle_generation,
+              record.endpoint,
+              true);
         } else if (found->second.automatic
                    && found->second.endpoint != record.endpoint) {
             found->second.socket->close ();
@@ -209,10 +214,15 @@ void raw_fanout_subscriber_t::reconcile_automatic (
 }
 
 bool raw_fanout_subscriber_t::disconnect (
-  const std::vector<std::uint8_t> &publisher_routing_id)
+    const std::vector<std::uint8_t> &publisher_routing_id)
 {
     std::lock_guard lock (_mutex);
-    const auto found = _connections.find (publisher_routing_id);
+    const auto found = std::find_if (
+      _connections.begin (),
+      _connections.end (),
+      [&publisher_routing_id] (const auto &entry) {
+          return entry.first.routing_id == publisher_routing_id;
+      });
     if (found == _connections.end ()) {
         return false;
     }
@@ -256,7 +266,7 @@ raw_fanout_subscriber_t::try_receive (
   std::chrono::steady_clock::time_point now)
 {
     std::lock_guard lock (_mutex);
-    for (auto &[publisher, connection] : _connections) {
+    for (auto &[intent, connection] : _connections) {
         zlink::topic_message_t message;
         const auto result =
           connection.socket->subscribe (message, zlink::recv_flags_t::dontwait);
@@ -293,7 +303,7 @@ raw_fanout_subscriber_t::try_receive (
             return {
               fanout_receive_status_t::application,
               fanout_received_t{
-                publisher, message.topic (), std::move (payload)}};
+                intent.routing_id, message.topic (), std::move (payload)}};
         }
         catch (const protocol::service_wire_error_t &) {
             reopen_locked (connection);
@@ -308,9 +318,9 @@ std::vector<std::vector<std::uint8_t>> raw_fanout_subscriber_t::tick (
 {
     std::lock_guard lock (_mutex);
     std::vector<std::vector<std::uint8_t>> timed_out;
-    for (auto &[publisher, connection] : _connections) {
+    for (auto &[intent, connection] : _connections) {
         if (connection.ready && now >= connection.deadline) {
-            timed_out.push_back (publisher);
+            timed_out.push_back (intent.routing_id);
             reopen_locked (connection);
         }
     }
@@ -321,8 +331,13 @@ bool raw_fanout_subscriber_t::ready (
   const std::vector<std::uint8_t> &publisher_routing_id) const
 {
     std::lock_guard lock (_mutex);
-    const auto found = _connections.find (publisher_routing_id);
-    return found != _connections.end () && found->second.ready;
+    return std::any_of (
+      _connections.begin (),
+      _connections.end (),
+      [&publisher_routing_id] (const auto &entry) {
+          return entry.first.routing_id == publisher_routing_id
+                 && entry.second.ready;
+      });
 }
 
 std::size_t raw_fanout_subscriber_t::publisher_count () const
@@ -331,16 +346,9 @@ std::size_t raw_fanout_subscriber_t::publisher_count () const
     return _connections.size ();
 }
 
-bool raw_fanout_subscriber_t::byte_vector_less_t::operator() (
-  const std::vector<std::uint8_t> &left,
-  const std::vector<std::uint8_t> &right) const noexcept
-{
-    return std::lexicographical_compare (
-      left.begin (), left.end (), right.begin (), right.end ());
-}
-
 bool raw_fanout_subscriber_t::connect_locked (
   std::vector<std::uint8_t> publisher_routing_id,
+  std::uint64_t lifecycle_generation,
   std::string endpoint,
   bool automatic)
 {
@@ -352,15 +360,16 @@ bool raw_fanout_subscriber_t::connect_locked (
         return false;
     }
     _automatic_mode = automatic;
-    if (_connections.contains (publisher_routing_id)) {
+    publisher_intent_key_t intent{
+      std::move (publisher_routing_id), lifecycle_generation};
+    if (_connections.contains (intent)) {
         return false;
     }
     connection_t connection;
     connection.endpoint = std::move (endpoint);
     connection.automatic = automatic;
     reopen_locked (connection);
-    _connections.emplace (
-      std::move (publisher_routing_id), std::move (connection));
+    _connections.emplace (std::move (intent), std::move (connection));
     return true;
 }
 

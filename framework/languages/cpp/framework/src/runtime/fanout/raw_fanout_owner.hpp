@@ -89,10 +89,22 @@ class raw_fanout_subscriber_t
     std::size_t publisher_count () const;
 
   private:
-    struct byte_vector_less_t
+    struct publisher_intent_key_t
     {
-        bool operator() (const std::vector<std::uint8_t> &left,
-                         const std::vector<std::uint8_t> &right) const noexcept;
+        std::vector<std::uint8_t> routing_id;
+        std::uint64_t lifecycle_generation = 0;
+
+        friend bool operator< (const publisher_intent_key_t &left,
+                               const publisher_intent_key_t &right) noexcept
+        {
+            if (left.routing_id < right.routing_id) {
+                return true;
+            }
+            if (right.routing_id < left.routing_id) {
+                return false;
+            }
+            return left.lifecycle_generation < right.lifecycle_generation;
+        }
     };
 
     struct connection_t
@@ -105,14 +117,14 @@ class raw_fanout_subscriber_t
     };
 
     bool connect_locked (std::vector<std::uint8_t> publisher_routing_id,
+                         std::uint64_t lifecycle_generation,
                          std::string endpoint,
                          bool automatic);
     void reopen_locked (connection_t &connection);
 
     mutable std::mutex _mutex;
     std::unique_ptr<zlink::context_t> _context;
-    std::map<std::vector<std::uint8_t>, connection_t, byte_vector_less_t>
-      _connections;
+    std::map<publisher_intent_key_t, connection_t> _connections;
     std::optional<bool> _automatic_mode;
     bool _closed = false;
 };

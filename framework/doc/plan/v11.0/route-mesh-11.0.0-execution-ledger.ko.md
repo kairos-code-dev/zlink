@@ -1152,10 +1152,22 @@ spec을 수정했다. ClientServer는 Client만 server별 `(RID, lifecycle gener
 fanout은 Subscriber만 publisher별 intent를 만들며 automatic·manual subscriber 혼합 등록은 startup
 configuration error로 고정했다. .NET planner의 연결 방향과 RouteMesh pairwise ordering은 계약과
 일치했다. 다섯 언어 exact interface에는 RouteMesh initiator와 duplicate admission을 직접 고정했고,
-ClientServer와 fanout의 비대칭 연결 방향도 공통 계약과 일치시켰다. C++·JVM·Node intent key의 lifecycle
-누락, 세 언어 fanout 혼합 설정의 삭제·병합 처리와 .NET·Node ClientServer public/runtime surface 누락은
-production source gap으로 남아 있다. 이 항목은 완료 증거가 아니므로 해당 M6A language row를 다시
-검증하고 구현 gap을 닫기 전까지 `V11-R5C` 이후 review gate를 시작하지 않는다.
+ClientServer와 fanout의 비대칭 연결 방향도 공통 계약과 일치시켰다. Initial source audit에서는
+C++·JVM·Node intent key의 lifecycle 누락, 세 언어 fanout 혼합 설정의 삭제·병합 처리와 .NET·Node
+ClientServer public/runtime surface 누락을 확인했다. 아래 correction checkpoint가 앞의 두 gap을 닫으며,
+dedicated ClientServer surface와 언어별 전체 regression은 계속 완료 조건으로 남는다.
+
+Topology source correction checkpoint(2026-07-23)에서 C++ fanout connection intent를 Publisher RID와
+lifecycle generation의 tuple로 바꾸고 같은 RID의 새 lifecycle에서 socket과 readiness fence를 교체했다.
+C++ M6A runtime과 mixed-mode startup focused test가 통과했다. JVM planner도 role·RID 또는 endpoint와
+lifecycle generation을 intent key로 사용하고 manual peer handover에서 stable peer identity로 이전 lifecycle을
+교체한다. No-arg subscriber만 automatic mode를 선택하며 manual endpoint와 섞으면 startup error로 끝낸다.
+Java core focused 74건과 Kotlin contract test가 통과했다. Node planner와 SpotNode executor도 lifecycle
+generation을 intent와 disconnected 판정에 포함했고 Framework·NestJS builder가 automatic·manual subscriber
+혼합을 양쪽 호출 순서에서 거부한다. Workspace typecheck, forced Framework·NestJS build, changed-source
+lint, lifecycle 1/1과 startup validation 9/9가 통과했다. Node의 제거된 legacy ClientServer·SpotMesh enum을
+참조하는 기존 unit scenario 6건과 .NET·Node dedicated ClientServer public/runtime surface는 계속 source
+gap으로 유지한다. 이 checkpoint는 해당 gap을 숨기거나 `V11-M6A-*`를 완료로 판정하지 않는다.
 
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 이후 v11-first C++ public member review가 승인된 baseline

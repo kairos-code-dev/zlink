@@ -555,6 +555,33 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutManualSubscriberRemainsManualWhenLocationStoreIsRegistered() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber("inproc://events");
+            channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
+    void fanoutRejectsAutomaticAndManualSubscriberConfiguration() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        { var channel = options.addFanoutChannel("events"); channel.enableSubscriber();
+            channel.subscriberConnections().connect("inproc://events");
+            channel.addPublishHandler(EventHandler.class, String.class, "Event"); };
+
+        ZLinkConfigurationException failure = assertThrows(
+            ZLinkConfigurationException.class,
+            options::validate);
+        assertTrue(failure.getMessage().contains(
+            "cannot combine automatic subscriber discovery"));
+    }
+
+    @Test
     void fanoutChannelRejectsDuplicatePublishHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

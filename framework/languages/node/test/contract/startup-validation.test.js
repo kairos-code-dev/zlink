@@ -15,6 +15,34 @@ test('Node registration rejects subscriber capability without matching handlers'
   );
 });
 
+test('Node registration rejects mixed automatic and manual fanout subscriber sources', () => {
+  for (const automaticFirst of [true, false]) {
+    assert.throws(
+      () => framework.createFrameworkOptions((builder) => {
+        const fanout = builder.addFanoutChannel(`events-${automaticFirst}`);
+        if (automaticFirst) {
+          fanout.enableSubscriber();
+          fanout.enableSubscriber('tcp://127.0.0.1:7001');
+        } else {
+          fanout.enableSubscriber('tcp://127.0.0.1:7001');
+          fanout.enableSubscriber();
+        }
+      }),
+      /cannot combine automatic and manual subscriber sources/
+    );
+  }
+});
+
+test('Node module registration rejects mixed automatic and manual fanout subscriber sources', () => {
+  assert.throws(
+    () => nestjs.zlinkFramework()
+      .addFanoutChannel('events')
+        .enableSubscriber()
+        .enableSubscriber('tcp://127.0.0.1:7001'),
+    /cannot combine automatic and manual subscriber sources/
+  );
+});
+
 test('Node module registration rejects subscriber capability without matching handlers', () => {
   assert.throws(
     () => nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()

@@ -293,6 +293,8 @@ function defaultDispatchOptions(): ZLinkDispatchOptions {
 }
 
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
+  private subscriberMode?: 'automatic' | 'manual';
+
   constructor(
     private readonly name: string,
     private readonly channel: MutableChannelOptions
@@ -330,6 +332,7 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   }
 
   enableSubscriber(endpoint?: string): this {
+    this.selectSubscriberMode(endpoint === undefined ? 'automatic' : 'manual');
     this.channel.subscriber ??= { manualConnections: [] };
     if (endpoint !== undefined) {
       this.channel.subscriber.manualConnections ??= [];
@@ -339,9 +342,19 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   }
 
   subscriberConnections(): ZLinkEndpointConnections {
+    this.selectSubscriberMode('manual');
     this.channel.subscriber ??= { manualConnections: [] };
     this.channel.subscriber.manualConnections ??= [];
     return endpointConnections(this.channel.subscriber, this.channel.subscriber.manualConnections);
+  }
+
+  private selectSubscriberMode(mode: 'automatic' | 'manual'): void {
+    if (this.subscriberMode !== undefined && this.subscriberMode !== mode) {
+      throw new ZLinkConfigurationException(
+        `Fanout channel '${this.name}' cannot combine automatic and manual subscriber sources.`
+      );
+    }
+    this.subscriberMode = mode;
   }
 }
 

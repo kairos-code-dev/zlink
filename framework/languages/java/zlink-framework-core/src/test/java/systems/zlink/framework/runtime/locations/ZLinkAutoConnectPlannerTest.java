@@ -88,21 +88,71 @@ final class ZLinkAutoConnectPlannerTest {
         assertTrue(hasTarget(reverse, lowerPeer));
     }
 
+    @Test
+    void connectionIntentIdentityIncludesLifecycleGeneration() {
+        var local = local(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkLocationRole.DEALER,
+            "client-local",
+            "");
+        var first = peer(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkLocationRole.ROUTER,
+            "server",
+            "inproc://server");
+        var replacement = new ZLinkPeerLocation(
+            first.autoConnectType(),
+            first.meshName(),
+            first.nodeRid(),
+            first.role(),
+            first.endpoint(),
+            first.weight(),
+            first.draining(),
+            first.value(),
+            first.metadata(),
+            first.capabilities(),
+            "replacement-owner",
+            2,
+            first.updatedAt());
+
+        var desired = ZLinkAutoConnectPlanner.computeDesired(
+            local,
+            List.of(first, replacement));
+
+        assertEquals(2, desired.size());
+        assertTrue(desired.containsKey(targetKey(
+            ZLinkLocationRole.ROUTER,
+            first.nodeRid(),
+            1)));
+        assertTrue(desired.containsKey(targetKey(
+            ZLinkLocationRole.ROUTER,
+            first.nodeRid(),
+            2)));
+    }
+
     private static boolean hasTarget(
         ZLinkAutoConnectPlanner.Local local,
         ZLinkPeerLocation peer) {
         return ZLinkAutoConnectPlanner.computeDesired(local, List.of(peer))
-            .containsKey(targetKey(peer.role(), peer.nodeRid()));
+            .containsKey(targetKey(
+                peer.role(),
+                peer.nodeRid(),
+                peer.generation()));
     }
 
     private static String targetKey(ZLinkLocationRole role, String rid) {
-        return targetKey(role, RoutingId.from(rid));
+        return targetKey(role, RoutingId.from(rid), 1);
     }
 
-    private static String targetKey(ZLinkLocationRole role, RoutingId rid) {
+    private static String targetKey(
+        ZLinkLocationRole role,
+        RoutingId rid,
+        long lifecycleGeneration) {
         return role.name().toLowerCase(java.util.Locale.ROOT)
             + "|"
-            + rid.toHex();
+            + rid.toHex()
+            + "|"
+            + lifecycleGeneration;
     }
 
     private static ZLinkAutoConnectPlanner.Local local(

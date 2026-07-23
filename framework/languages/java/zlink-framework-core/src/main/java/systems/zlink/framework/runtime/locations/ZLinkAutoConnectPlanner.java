@@ -26,7 +26,8 @@ final class ZLinkAutoConnectPlanner {
         ZLinkLocationRole role,
         String endpoint,
         Map<String, String> metadata,
-        String ownerId) {
+        String ownerId,
+        long lifecycleGeneration) {
     }
 
     record PeerDecision(
@@ -111,7 +112,8 @@ final class ZLinkAutoConnectPlanner {
             peer.role(),
             peer.endpoint(),
             peer.metadata(),
-            peer.ownerId());
+            peer.ownerId(),
+            peer.generation());
     }
 
     private static PeerDecision skip(ZLinkPeerLocation peer, String reason) {
@@ -122,7 +124,11 @@ final class ZLinkAutoConnectPlanner {
         String identity = hasRid(peer.nodeRid())
             ? peer.nodeRid().toHex()
             : peer.endpoint();
-        return peer.role().name().toLowerCase(java.util.Locale.ROOT) + "|" + identity;
+        return peer.role().name().toLowerCase(java.util.Locale.ROOT)
+            + "|"
+            + identity
+            + "|"
+            + peer.generation();
     }
 
     private static boolean isSelf(Local local, ZLinkPeerLocation peer) {

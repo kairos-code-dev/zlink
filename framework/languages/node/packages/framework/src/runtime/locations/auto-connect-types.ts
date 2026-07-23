@@ -19,6 +19,7 @@ export interface ZLinkAutoConnectLocal {
 export interface ZLinkAutoConnectTarget {
   readonly targetKey: string;
   readonly nodeRid?: RoutingId;
+  readonly lifecycleGeneration: bigint;
   readonly role: ZLinkLocationRole;
   readonly endpoint: string;
   readonly metadata?: Readonly<Record<string, string>>;

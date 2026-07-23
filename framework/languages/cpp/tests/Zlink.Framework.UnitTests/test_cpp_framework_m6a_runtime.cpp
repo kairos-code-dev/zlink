@@ -276,9 +276,34 @@ void verify_manual_and_automatic_classic_fanout ()
       1};
     automatic.reconcile_automatic ({1, {automatic_descriptor}});
     assert (automatic.publisher_count () == 1);
+    bool automatic_ready = false;
+    for (std::size_t attempt = 0; attempt < 100 && !automatic_ready;
+         ++attempt) {
+        (void) publisher.tick (
+          receive_now
+          + fanout::fanout_beacon_interval
+              * static_cast<int> (beacon_tick++));
+        const auto [status, received] =
+          automatic.try_receive (receive_now);
+        static_cast<void> (received);
+        automatic_ready =
+          status == fanout::fanout_receive_status_t::beacon;
+        if (!automatic_ready) {
+            std::this_thread::sleep_for (2ms);
+        }
+    }
+    assert (automatic_ready);
+    assert (automatic.ready (publisher_id));
+
+    automatic_descriptor.lifecycle_generation = 2;
+    automatic_descriptor.descriptor_revision = 1;
+    automatic.reconcile_automatic ({2, {automatic_descriptor}});
+    assert (automatic.publisher_count () == 1);
+    assert (!automatic.ready (publisher_id));
+
     automatic_descriptor.state = mesh::service_node_state_t::draining;
     automatic_descriptor.descriptor_revision = 2;
-    automatic.reconcile_automatic ({2, {automatic_descriptor}});
+    automatic.reconcile_automatic ({3, {automatic_descriptor}});
     assert (automatic.publisher_count () == 0);
 
     bool reserved_rejected = false;

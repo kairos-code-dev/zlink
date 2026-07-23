@@ -161,6 +161,10 @@ public final class ChannelRegistration {
         return fanout.subscriberEnabled;
     }
 
+    boolean automaticSubscriberEnabled() {
+        return fanout.automaticSubscriberEnabled;
+    }
+
     void enableClient() {
         if (kind == ChannelKind.ROUTE_MESH) {
             routeMesh.clientEnabled = true;
@@ -179,6 +183,11 @@ public final class ChannelRegistration {
 
     void enableSubscriber() {
         fanout.subscriberEnabled = true;
+    }
+
+    void enableAutomaticSubscriber() {
+        fanout.subscriberEnabled = true;
+        fanout.automaticSubscriberEnabled = true;
     }
 
     void addServerBind(String endpoint) {
@@ -349,8 +358,17 @@ public final class ChannelRegistration {
                 "fanout channel publisher requires at least one bind endpoint: " + name);
         }
         if (fanout.subscriberEnabled
-            && !locationAutoConnectEnabled
-            && fanout.subscriberManualEndpoints.isEmpty()) {
+            && fanout.automaticSubscriberEnabled
+            && !fanout.subscriberManualEndpoints.isEmpty()) {
+            throw new ZLinkConfigurationException(
+                "fanout channel cannot combine automatic subscriber discovery "
+                    + "with manual subscriber connections: " + name);
+        }
+        if (fanout.subscriberEnabled
+            && ((fanout.automaticSubscriberEnabled
+                    && !locationAutoConnectEnabled)
+                || (!fanout.automaticSubscriberEnabled
+                    && fanout.subscriberManualEndpoints.isEmpty()))) {
             throw new ZLinkConfigurationException(
                 "fanout channel subscriber requires location auto-connect or manual connections: " + name);
         }
@@ -507,6 +525,7 @@ public final class ChannelRegistration {
         private final List<ChannelPublishHandlerRegistration> publishHandlers = new ArrayList<>();
         private boolean publisherEnabled;
         private boolean subscriberEnabled;
+        private boolean automaticSubscriberEnabled;
     }
 
     private static final class RouteMeshState {

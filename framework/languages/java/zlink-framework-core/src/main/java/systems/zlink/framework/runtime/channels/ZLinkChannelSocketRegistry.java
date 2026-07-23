@@ -207,7 +207,7 @@ final class ZLinkChannelSocketRegistry {
             }
         }
         ZLinkBackendSubscriberSocket subscriber = subscribers.get(channel.name());
-        if (subscriber != null) {
+        if (subscriber != null && channel.automaticSubscriberEnabled()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
                 ZLinkLocationAutoConnectType.FANOUT,
                 channel.name(),

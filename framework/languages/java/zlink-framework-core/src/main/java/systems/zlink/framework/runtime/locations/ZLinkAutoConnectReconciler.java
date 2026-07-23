@@ -138,11 +138,17 @@ final class ZLinkAutoConnectReconciler {
                 continue;
             }
             manualSnapshot.put(target.key(), target);
-            ZLinkAutoConnectPlanner.Target previous = observedManual.get(target.key());
+            ZLinkAutoConnectPlanner.Target previous = observedManual.values()
+                .stream()
+                .filter(candidate -> samePeerIdentity(candidate, target))
+                .findFirst()
+                .orElse(null);
             if (previous != null
-                && (!previous.endpoint().equals(target.endpoint())
+                && (!previous.key().equals(target.key())
+                    || !previous.endpoint().equals(target.endpoint())
                     || !Objects.equals(previous.ownerId(), target.ownerId()))) {
                 executor.replace(previous, target);
+                observedManual.remove(previous.key());
             }
         }
         observedManual.putAll(manualSnapshot);
@@ -176,6 +182,18 @@ final class ZLinkAutoConnectReconciler {
                 }
             }
         }
+    }
+
+    private static boolean samePeerIdentity(
+        ZLinkAutoConnectPlanner.Target left,
+        ZLinkAutoConnectPlanner.Target right) {
+        if (ZLinkAutoConnectPlanner.hasRid(left.nodeRid())
+            && ZLinkAutoConnectPlanner.hasRid(right.nodeRid())) {
+            return left.role() == right.role()
+                && left.nodeRid().equals(right.nodeRid());
+        }
+        return left.role() == right.role()
+            && left.endpoint().equals(right.endpoint());
     }
 
     private void retryPendingTargetsWithinStoreFailureGrace() {

@@ -61,6 +61,7 @@ test('spot auto-connect removes a pending intent without disconnecting a peer th
   );
   const target = {
     targetKey: 'remote',
+    lifecycleGeneration: 0n,
     endpoint: 'tcp://remote',
     role: framework.ZLinkLocationRole.Spot,
     connectionKind: 'spot-router'
@@ -91,6 +92,27 @@ test('spot auto-connect publishes the concrete endpoint resolved by the started 
 
   assert.equal(capability.local.endpoint, 'tcp://127.0.0.1:43127');
   assert.equal(capability.localRow.endpoint, 'tcp://127.0.0.1:43127');
+});
+
+test('auto-connect planner keys one intent per peer lifecycle generation', () => {
+  const routeLocal = local(framework.ZLinkLocationAutoConnectType.RouteMesh,
+    framework.ZLinkLocationRole.Router, 'node-a', 'tcp://a');
+  const lifecycleOne = {
+    ...peer('owner-b', framework.ZLinkLocationAutoConnectType.RouteMesh,
+      framework.ZLinkLocationRole.Router, 'node-b', 'tcp://b'),
+    generation: 1n
+  };
+  const lifecycleTwo = { ...lifecycleOne, generation: 2n };
+  assert.notEqual(
+    internal.ZLinkAutoConnectPlanner.targetKeyOf(lifecycleOne),
+    internal.ZLinkAutoConnectPlanner.targetKeyOf(lifecycleTwo)
+  );
+  assert.equal(
+    [...internal.ZLinkAutoConnectPlanner.computeDesired(
+      routeLocal, [lifecycleTwo]
+    ).values()][0].lifecycleGeneration,
+    2n
+  );
 });
 
 test('auto-connect planner applies role policy pairwise initiator and dial-only exception', () => {

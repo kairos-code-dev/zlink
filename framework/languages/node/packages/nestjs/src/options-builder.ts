@@ -268,6 +268,8 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder imple
 }
 
 class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestFanoutChannelBuilder {
+  private subscriberMode?: 'automatic' | 'manual';
+
   constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
     super(state);
   }
@@ -295,6 +297,13 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
   }
 
   enableSubscriber(endpoint?: string | readonly string[]): this {
+    const mode = endpoint === undefined ? 'automatic' : 'manual';
+    if (this.subscriberMode !== undefined && this.subscriberMode !== mode) {
+      throw new framework.ZLinkConfigurationException(
+        `Fanout channel '${this.name}' cannot combine automatic and manual subscriber sources.`
+      );
+    }
+    this.subscriberMode = mode;
     this.channelOptions.subscriber = endpoint === undefined ? {} : { manualConnections: endpointList(endpoint) };
     return this;
   }

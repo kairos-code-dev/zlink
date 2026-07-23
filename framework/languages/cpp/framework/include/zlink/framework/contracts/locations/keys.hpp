@@ -77,7 +77,7 @@ struct route_location_filter_t
 
 struct location_page_request_t
 {
-    int page_size = 0;
+    int page_size = 100;
     std::optional<std::string> continuation_token;
 };
 

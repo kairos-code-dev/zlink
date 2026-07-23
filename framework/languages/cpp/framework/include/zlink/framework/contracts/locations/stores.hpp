@@ -25,6 +25,21 @@ class mesh_node_location_store_t
                      location_page_request_t page = {}) = 0;
 };
 
+class client_server_location_store_t
+{
+  public:
+    virtual ~client_server_location_store_t () = default;
+    virtual task_t<location_write_result_t> update_client_server (
+      client_server_server_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_client_server (
+      client_server_server_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<client_server_server_descriptor_t>>
+    list_client_servers (std::string channel_name,
+                         location_page_request_t page = {}) = 0;
+};
+
 class peer_location_store_t
 {
   public:
@@ -89,11 +104,6 @@ class owner_lease_store_t
       std::chrono::milliseconds lease_ttl) = 0;
     virtual task_t<owner_lease_release_result_t> release_owner_lease (
       location_owner_token_t token) = 0;
-
-    virtual task_t<owner_lease_renewal_t> renew_owner_lease (
-      std::string owner_id, zlink::routing_id_t node_rid, std::chrono::milliseconds lease_ttl) = 0;
-    virtual task_t<bool> remove_owner_lease (std::string owner_id) = 0;
-    virtual task_t<owner_lease_snapshot_t> list_owner_leases () = 0;
 };
 
 class location_store_t : public mesh_node_location_store_t,
@@ -108,7 +118,8 @@ class location_store_t : public mesh_node_location_store_t,
 {
   public:
     ~location_store_t () override = default;
-    virtual task_t<std::int64_t> remove_all_by_owner (std::string owner_id) = 0;
+    virtual task_t<std::int64_t> remove_all_by_owner (
+      location_owner_token_t owner) = 0;
 };
 
 class location_watch_store_t

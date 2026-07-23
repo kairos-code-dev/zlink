@@ -412,6 +412,67 @@ static_assert (std::is_polymorphic_v<zlink::http_client::coroutine_resume_schedu
 static_assert (std::is_base_of_v<zlink::http_client::coroutine_resume_scheduler_t,
                                  zlink::http_client::framework_resume_scheduler_t>);
 static_assert (std::is_polymorphic_v<zlink::framework::location_store_t>);
+static_assert (
+  std::is_polymorphic_v<
+    zlink::framework::client_server_location_store_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_server_descriptor_t> ()
+                .channel_name),
+    std::string>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_server_descriptor_t> ()
+                .server_rid),
+    zlink::routing_id_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_server_descriptor_t> ()
+                .descriptor_revision),
+    std::uint64_t>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_location_store_t &> ()
+                .update_client_server (
+                  std::declval<zlink::framework::
+                    client_server_server_descriptor_t> (),
+                  zlink::framework::
+                    location_write_intent_t::new_claim)),
+    zlink::framework::task_t<
+      zlink::framework::location_write_result_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_location_store_t &> ()
+                .remove_client_server (
+                  std::declval<zlink::framework::
+                    client_server_server_descriptor_key_t> (),
+                  std::declval<zlink::framework::
+                    location_owner_token_t> ())),
+    zlink::framework::task_t<
+      zlink::framework::location_write_status_t>>);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<
+                zlink::framework::
+                  client_server_location_store_t &> ()
+                .list_client_servers (
+                  std::declval<std::string> (),
+                  std::declval<zlink::framework::
+                    location_page_request_t> ())),
+    zlink::framework::task_t<
+      zlink::framework::location_page_t<
+        zlink::framework::
+          client_server_server_descriptor_t>>>);
 static_assert (std::is_base_of_v<zlink::framework::peer_location_store_t,
                                  zlink::framework::location_store_t>);
 static_assert (std::is_base_of_v<zlink::framework::spot_location_store_t,
@@ -424,17 +485,31 @@ static_assert (std::is_base_of_v<zlink::framework::owner_lease_store_t,
                                  zlink::framework::location_store_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
-                             .remove_all_by_owner ("owner")),
+                             .remove_all_by_owner (
+                               std::declval<zlink::framework::
+                                 location_owner_token_t> ())),
                  zlink::framework::task_t<std::int64_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
-                             .renew_owner_lease ("owner", zlink::routing_id_t::from ("node"),
-                                                 std::chrono::milliseconds (10))),
-                 zlink::framework::task_t<zlink::framework::owner_lease_renewal_t>>);
+                             .claim_owner_lease (
+                               "owner", std::chrono::milliseconds (10))),
+                 zlink::framework::task_t<
+                   zlink::framework::owner_lease_claim_result_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
-                             .remove_owner_lease ("owner")),
-                 zlink::framework::task_t<bool>>);
+                             .renew_owner_lease (
+                               std::declval<zlink::framework::
+                                 location_owner_token_t> (),
+                               std::chrono::milliseconds (10))),
+                 zlink::framework::task_t<
+                   zlink::framework::owner_lease_renew_result_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
+                             .release_owner_lease (
+                               std::declval<zlink::framework::
+                                 location_owner_token_t> ())),
+                 zlink::framework::task_t<
+                   zlink::framework::owner_lease_release_result_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::zlink_framework_options_t &> ()
                              .add_location_store (

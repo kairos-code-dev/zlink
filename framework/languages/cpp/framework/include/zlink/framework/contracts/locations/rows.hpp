@@ -61,6 +61,30 @@ struct mesh_node_descriptor_key_t
       zlink::routing_id_t::from (std::uint32_t{0});
 };
 
+struct client_server_server_descriptor_t
+{
+    std::string channel_name;
+    zlink::routing_id_t server_rid =
+      zlink::routing_id_t::from (std::uint32_t{0});
+    std::uint64_t lifecycle_generation = 0;
+    std::uint64_t descriptor_revision = 0;
+    std::string endpoint;
+    int weight = 0;
+    framework_runtime_state_t state =
+      framework_runtime_state_t::preparing;
+    std::string security_identity;
+    std::string owner_id;
+    std::int64_t lease_generation = 0;
+    std::chrono::system_clock::time_point updated_at{};
+};
+
+struct client_server_server_descriptor_key_t
+{
+    std::string channel_name;
+    zlink::routing_id_t server_rid =
+      zlink::routing_id_t::from (std::uint32_t{0});
+};
+
 struct peer_location_t
 {
     location_auto_connect_type_t auto_connect_type = location_auto_connect_type_t::invalid;

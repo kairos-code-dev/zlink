@@ -137,6 +137,127 @@ redis.call('SREM', KEYS[4], ARGV[3])
 return 'stored'
 )";
 
+    static constexpr std::string_view write_client_server = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local intent = ARGV[1]
+local owner = ARGV[2]
+local leaseGeneration = ARGV[3]
+local lifecycle = ARGV[4]
+local revision = tonumber(ARGV[5])
+local immutable = ARGV[6]
+local json = ARGV[7]
+local lease = redis.call('HMGET', KEYS[4], 'ownerId', 'generation', 'expiresAt')
+if lease[1] ~= owner or lease[2] ~= leaseGeneration
+    or tonumber(lease[3] or '0') <= nowMs then
+    return {'conflict', '0', tostring(nowMs)}
+end
+
+local function nextGeneration()
+    local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
+    if current == '9223372036854775807' then return nil end
+    redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
+    return redis.call('HGET', KEYS[5], 'descriptorGeneration')
+end
+
+local function store(gen)
+    redis.call('HSET', KEYS[1],
+        'owner', owner,
+        'gen', gen,
+        'json', json,
+        'updatedAtMs', nowMs,
+        'channel', ARGV[10])
+    redis.call('HSET', KEYS[2],
+        'descriptorKey', ARGV[11],
+        'lifecycleGeneration', lifecycle,
+        'descriptorRevision', revision,
+        'immutableDigest', immutable,
+        'ownerId', owner,
+        'ownerLeaseGeneration', leaseGeneration,
+        'runtimeState', ARGV[8],
+        'weight', ARGV[9])
+    redis.call('SADD', KEYS[3], ARGV[11])
+    redis.call('SADD', KEYS[6], ARGV[11])
+    redis.call('ZADD', KEYS[11], 0, ARGV[11])
+    redis.call('INCR', KEYS[9])
+    redis.call('INCR', KEYS[10])
+end
+
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    if intent ~= 'new' and intent ~= 'takeover' then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local gen = nextGeneration()
+    if not gen then return {'exhausted', '0', tostring(nowMs)} end
+    store(gen)
+    return {'stored', gen, tostring(nowMs)}
+end
+
+local storedOwner = redis.call('HGET', KEYS[2], 'ownerId')
+local storedLeaseGeneration =
+    redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+if storedOwner ~= owner or storedLeaseGeneration ~= leaseGeneration then
+    if storedOwner ~= ARGV[12]
+        or storedLeaseGeneration ~= ARGV[13] then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local oldLease = redis.call(
+        'HMGET', KEYS[7], 'ownerId', 'generation', 'expiresAt')
+    if oldLease[1] == storedOwner
+        and oldLease[2] == storedLeaseGeneration
+        and tonumber(oldLease[3] or '0') > nowMs then
+        return {'conflict', '0', tostring(nowMs)}
+    end
+    if intent ~= 'new' and intent ~= 'takeover' then
+        return {'stale', '0', tostring(nowMs)}
+    end
+    local gen = nextGeneration()
+    if not gen then return {'exhausted', '0', tostring(nowMs)} end
+    redis.call('SREM', KEYS[8], ARGV[11])
+    store(gen)
+    return {'stored', gen, tostring(nowMs)}
+end
+
+local storedRevision =
+    tonumber(redis.call('HGET', KEYS[2], 'descriptorRevision') or '0')
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') == lifecycle
+    and redis.call('HGET', KEYS[2], 'immutableDigest') == immutable
+    and revision == storedRevision
+    and redis.call('HGET', KEYS[1], 'json') == json then
+    return {'stored', redis.call('HGET', KEYS[1], 'gen'),
+        redis.call('HGET', KEYS[1], 'updatedAtMs')}
+end
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') ~= lifecycle
+    or redis.call('HGET', KEYS[2], 'immutableDigest') ~= immutable
+    or revision <= storedRevision then
+    return {'stale', redis.call('HGET', KEYS[1], 'gen'), tostring(nowMs)}
+end
+local gen = redis.call('HGET', KEYS[1], 'gen')
+store(gen)
+return {'stored', gen, tostring(nowMs)}
+)";
+
+    static constexpr std::string_view remove_client_server = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local owner = redis.call('HGET', KEYS[2], 'ownerId')
+local leaseGeneration =
+    redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+if not owner or owner ~= ARGV[1] or leaseGeneration ~= ARGV[2] then
+    return {'stale', '0', tostring(nowMs)}
+end
+local generation = redis.call('HGET', KEYS[1], 'gen') or '0'
+redis.call('DEL', KEYS[1], KEYS[2])
+redis.call('SREM', KEYS[3], ARGV[3])
+redis.call('SREM', KEYS[4], ARGV[3])
+redis.call('ZREM', KEYS[7], ARGV[3])
+redis.call('INCR', KEYS[5])
+redis.call('INCR', KEYS[6])
+return {'stored', generation, tostring(nowMs)}
+)";
+
     static constexpr std::string_view write = R"(
 if redis.replicate_commands then redis.replicate_commands() end
 local time = redis.call('TIME')
@@ -212,31 +333,6 @@ redis.call('SREM', KEYS[3], ARGV[3])
 redis.call('INCR', KEYS[4])
 if ARGV[4] == '1' then redis.call('INCR', KEYS[5]) end
 return {'stored', tonumber(ARGV[2]), nowMs}
-)";
-
-    static constexpr std::string_view renew_lease = R"(
-if redis.replicate_commands then redis.replicate_commands() end
-local time = redis.call('TIME')
-local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-
-local expiresAtMs = nowMs + tonumber(ARGV[3])
-redis.call('HSET', KEYS[1],
-    'ownerId', ARGV[1],
-    'generation', redis.call('HGET', KEYS[1], 'generation') or '0',
-    'expiresAt', expiresAtMs)
-redis.call('PEXPIRE', KEYS[1], ARGV[3])
-redis.call('HSET', KEYS[2], ARGV[1], ARGV[2] .. '|' .. nowMs)
-return nowMs
-)";
-
-    static constexpr std::string_view remove_lease = R"(
-if redis.replicate_commands then redis.replicate_commands() end
-local time = redis.call('TIME')
-local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-
-local removed = redis.call('DEL', KEYS[1])
-redis.call('HDEL', KEYS[2], ARGV[1])
-return {nowMs, removed}
 )";
 
     static constexpr std::string_view claim_owner_lease = R"(
@@ -1715,6 +1811,77 @@ class redis_location_key_schema_t
           sha256_hex (token));
     }
 
+    static std::string encode_client_server_key (
+      const client_server_server_descriptor_key_t &key)
+    {
+        return encode (key.channel_name, key.server_rid.to_hex ());
+    }
+
+    static client_server_server_descriptor_key_t
+    decode_client_server_key (std::string_view encoded)
+    {
+        const auto parts = decode (encoded, 2);
+        return {
+          parts[0],
+          zlink::routing_id_t::from_hex (parts[1])};
+    }
+
+    static std::string client_server_key (
+      std::string_view prefix, std::string_view canonical_key)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor", "client-server",
+          sha256_hex (canonical_key));
+    }
+
+    static std::string client_server_admission_key (
+      std::string_view prefix, std::string_view canonical_key)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor-admission",
+          "client-server", sha256_hex (canonical_key));
+    }
+
+    static std::string client_server_keys_key (
+      std::string_view prefix)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor", "client-server",
+          "index");
+    }
+
+    static std::string client_server_channel_keys_key (
+      std::string_view prefix, std::string_view channel_name)
+    {
+        return join (
+          domain_prefix (prefix), "descriptor", "client-server",
+          "channel", sha256_hex (channel_name));
+    }
+
+    static std::string client_server_owner_keys_key (
+      std::string_view prefix, std::string_view owner_id,
+      std::int64_t lease_generation)
+    {
+        std::string token (owner_id);
+        token.push_back ('\0');
+        token += std::to_string (lease_generation);
+        return join (
+          domain_prefix (prefix), "descriptor", "client-server",
+          "owner", sha256_hex (token));
+    }
+
+    static std::string client_server_stamp_key (
+      std::string_view prefix,
+      std::optional<std::string_view> channel_name = std::nullopt)
+    {
+        return channel_name
+                 ? join (
+                     prefix, "stamp", "channel-server",
+                     *channel_name)
+                 : join (
+                     prefix, "stamp", "channel-server");
+    }
+
     static std::string encode_peer_key (const peer_location_key_t &key)
     {
         const auto identity = key.node_rid ? key.node_rid->to_hex ()
@@ -1789,15 +1956,15 @@ class redis_location_key_schema_t
           domain_prefix (prefix), "owner-lease", sha256_hex (owner_id));
     }
 
-    static std::string leases_key (std::string_view prefix)
-    {
-        return join (domain_prefix (prefix), "leases");
-    }
-
     static std::string owner_lease_generation_key (
       std::string_view prefix)
     {
         return join (domain_prefix (prefix), "counter");
+    }
+
+    static std::string schema_key (std::string_view prefix)
+    {
+        return join (domain_prefix (prefix), "schema");
     }
 
     static std::string authority_key (
@@ -2664,6 +2831,77 @@ class redis_location_row_codec_t
         return json.dump ();
     }
 
+    static std::string encode_client_server (
+      const client_server_server_descriptor_t &row)
+    {
+        nlohmann::ordered_json json;
+        json["ChannelName"] = row.channel_name;
+        json["ServerRid"] = row.server_rid.to_hex ();
+        json["LifecycleGeneration"] = row.lifecycle_generation;
+        json["DescriptorRevision"] = row.descriptor_revision;
+        json["Endpoint"] = row.endpoint;
+        json["Weight"] = row.weight;
+        json["State"] = runtime_state_name (row.state);
+        json["SecurityIdentity"] = row.security_identity;
+        json["OwnerId"] = row.owner_id;
+        json["OwnerLeaseGeneration"] = row.lease_generation;
+        json["UpdatedAt"] = format_updated_at (row.updated_at);
+        return json.dump ();
+    }
+
+    static client_server_server_descriptor_t
+    decode_client_server (std::string_view value)
+    {
+        const auto json = nlohmann::json::parse (value);
+        client_server_server_descriptor_t row;
+        row.channel_name =
+          json.at ("ChannelName").get<std::string> ();
+        row.server_rid = zlink::routing_id_t::from_hex (
+          json.at ("ServerRid").get<std::string> ());
+        row.lifecycle_generation =
+          json.at ("LifecycleGeneration").get<std::uint64_t> ();
+        row.descriptor_revision =
+          json.at ("DescriptorRevision").get<std::uint64_t> ();
+        row.endpoint = json.at ("Endpoint").get<std::string> ();
+        row.weight = json.at ("Weight").get<int> ();
+        row.state = parse_runtime_state (
+          json.at ("State").get<std::string> ());
+        row.security_identity =
+          json.at ("SecurityIdentity").get<std::string> ();
+        row.owner_id = json.at ("OwnerId").get<std::string> ();
+        row.lease_generation =
+          json.at ("OwnerLeaseGeneration").get<std::int64_t> ();
+        row.updated_at = parse_updated_at (
+          json.at ("UpdatedAt").get<std::string> ());
+        return row;
+    }
+
+    static std::string client_server_immutable_preimage (
+      const client_server_server_descriptor_t &row)
+    {
+        const std::array<std::string, 6> segments{
+          "zlink-client-server-immutable-v1",
+          row.channel_name,
+          row.server_rid.to_hex (),
+          std::to_string (row.lifecycle_generation),
+          row.endpoint,
+          row.security_identity};
+        std::string preimage;
+        for (const auto &segment : segments) {
+            preimage += std::to_string (segment.size ());
+            preimage += ':';
+            preimage += segment;
+        }
+        return preimage;
+    }
+
+    static std::string client_server_immutable_digest (
+      const client_server_server_descriptor_t &row)
+    {
+        return redis_location_key_schema_t::sha256_hex (
+          client_server_immutable_preimage (row));
+    }
+
     static std::string encode_peer (const peer_location_t &row)
     {
         nlohmann::ordered_json json;
@@ -2841,6 +3079,46 @@ class redis_location_row_codec_t
     }
 
   private:
+    static std::string runtime_state_name (
+      framework_runtime_state_t state)
+    {
+        switch (state) {
+        case framework_runtime_state_t::preparing:
+            return "Preparing";
+        case framework_runtime_state_t::serving:
+            return "Serving";
+        case framework_runtime_state_t::retiring:
+            return "Retiring";
+        case framework_runtime_state_t::draining:
+            return "Draining";
+        case framework_runtime_state_t::stopped:
+            return "Stopped";
+        case framework_runtime_state_t::error:
+            return "Error";
+        }
+        throw std::invalid_argument (
+          "unknown Framework runtime state");
+    }
+
+    static framework_runtime_state_t parse_runtime_state (
+      std::string_view state)
+    {
+        if (state == "Preparing")
+            return framework_runtime_state_t::preparing;
+        if (state == "Serving")
+            return framework_runtime_state_t::serving;
+        if (state == "Retiring")
+            return framework_runtime_state_t::retiring;
+        if (state == "Draining")
+            return framework_runtime_state_t::draining;
+        if (state == "Stopped")
+            return framework_runtime_state_t::stopped;
+        if (state == "Error")
+            return framework_runtime_state_t::error;
+        throw std::invalid_argument (
+          "unknown Framework runtime state");
+    }
+
     static std::string format_updated_at (std::chrono::system_clock::time_point value)
     {
         if (value == std::chrono::system_clock::time_point{}) {
@@ -3037,6 +3315,7 @@ class redis_location_worker_t
 #endif
 
 class redis_location_store_t final : public location_store_t,
+                                     public client_server_location_store_t,
                                      public location_change_stamp_store_t
 {
   public:
@@ -3329,6 +3608,327 @@ class redis_location_store_t final : public location_store_t,
         (void) page;
         return unavailable_read<
           location_page_t<mesh_node_descriptor_t>> ();
+#endif
+    }
+
+    task_t<location_write_result_t> update_client_server (
+      client_server_server_descriptor_t descriptor,
+      location_write_intent_t intent) override
+    {
+        if (!valid_client_server_descriptor (descriptor))
+            throw std::invalid_argument (
+              "ClientServer descriptor is incomplete");
+        const auto json =
+          detail::redis_location_row_codec_t::
+            encode_client_server (descriptor);
+        if (json.size () > 1024u * 1024u)
+            throw std::invalid_argument (
+              "ClientServer descriptor exceeds 1 MiB");
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_write_result_t> (
+          [this, descriptor = std::move (descriptor),
+           intent, json] {
+              try {
+                  const auto canonical_key =
+                    detail::redis_location_key_schema_t::
+                      encode_client_server_key (
+                        {descriptor.channel_name,
+                         descriptor.server_rid});
+                  const auto admission_key =
+                    detail::redis_location_key_schema_t::
+                      client_server_admission_key (
+                        _options.key_prefix, canonical_key);
+                  const auto current = redis_get (
+                    client ().hmget<std::vector<
+                      sw::redis::OptionalString>> (
+                      admission_key,
+                      {"ownerId", "ownerLeaseGeneration"}));
+                  const auto current_owner =
+                    current.size () > 0 && current[0]
+                      ? *current[0]
+                      : std::string{};
+                  const auto current_lease =
+                    current.size () > 1 && current[1]
+                      ? *current[1]
+                      : std::string{};
+                  const auto placeholder =
+                    detail::redis_location_key_schema_t::
+                      schema_key (_options.key_prefix);
+                  const auto old_owner_index =
+                    current_owner.empty ()
+                      ? placeholder
+                      : detail::redis_location_key_schema_t::
+                          client_server_owner_keys_key (
+                            _options.key_prefix,
+                            current_owner,
+                            std::stoll (current_lease));
+                  const auto keys = std::vector<std::string>{
+                    detail::redis_location_key_schema_t::
+                      client_server_key (
+                        _options.key_prefix, canonical_key),
+                    admission_key,
+                    detail::redis_location_key_schema_t::
+                      client_server_keys_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      lease_key (
+                        _options.key_prefix,
+                        descriptor.owner_id),
+                    detail::redis_location_key_schema_t::
+                      owner_lease_generation_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      client_server_owner_keys_key (
+                        _options.key_prefix,
+                        descriptor.owner_id,
+                        descriptor.lease_generation),
+                    current_owner.empty ()
+                      ? placeholder
+                      : detail::redis_location_key_schema_t::
+                          lease_key (
+                            _options.key_prefix,
+                            current_owner),
+                    old_owner_index,
+                    detail::redis_location_key_schema_t::
+                      client_server_stamp_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      client_server_stamp_key (
+                        _options.key_prefix,
+                        descriptor.channel_name),
+                    detail::redis_location_key_schema_t::
+                      client_server_channel_keys_key (
+                        _options.key_prefix,
+                        descriptor.channel_name)};
+                  const auto args = std::vector<std::string>{
+                    intent_name (intent),
+                    descriptor.owner_id,
+                    std::to_string (
+                      descriptor.lease_generation),
+                    std::to_string (
+                      descriptor.lifecycle_generation),
+                    std::to_string (
+                      descriptor.descriptor_revision),
+                    detail::redis_location_row_codec_t::
+                      client_server_immutable_digest (
+                        descriptor),
+                    json,
+                    std::to_string (
+                      static_cast<int> (
+                        descriptor.state)),
+                    std::to_string (descriptor.weight),
+                    descriptor.channel_name,
+                    canonical_key,
+                    current_owner,
+                    current_lease};
+                  const auto result = redis_get (
+                    client ().eval<std::tuple<
+                      std::string,
+                      std::string,
+                      std::string>> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          write_client_server),
+                      keys.begin (), keys.end (),
+                      args.begin (), args.end ()));
+                  return detail::
+                    redis_location_script_result_t::
+                      write_result (
+                        std::get<0> (result),
+                        std::stoll (std::get<1> (result)),
+                        std::stoll (std::get<2> (result)));
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) descriptor;
+        (void) intent;
+        return unavailable_write ();
+#endif
+    }
+
+    task_t<location_write_status_t> remove_client_server (
+      client_server_server_descriptor_key_t key,
+      location_owner_token_t owner) override
+    {
+        if (!valid_descriptor_text (key.channel_name)
+            || key.server_rid.size () == 0
+            || !valid_descriptor_text (owner.owner_id)
+            || owner.lease_generation <= 0)
+            throw std::invalid_argument (
+              "ClientServer descriptor removal is incomplete");
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_write_status_t> (
+          [this, key = std::move (key),
+           owner = std::move (owner)] {
+              try {
+                  const auto canonical_key =
+                    detail::redis_location_key_schema_t::
+                      encode_client_server_key (key);
+                  const auto keys = std::vector<std::string>{
+                    detail::redis_location_key_schema_t::
+                      client_server_key (
+                        _options.key_prefix, canonical_key),
+                    detail::redis_location_key_schema_t::
+                      client_server_admission_key (
+                        _options.key_prefix, canonical_key),
+                    detail::redis_location_key_schema_t::
+                      client_server_keys_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      client_server_owner_keys_key (
+                        _options.key_prefix,
+                        owner.owner_id,
+                        owner.lease_generation),
+                    detail::redis_location_key_schema_t::
+                      client_server_stamp_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      client_server_stamp_key (
+                        _options.key_prefix,
+                        key.channel_name),
+                    detail::redis_location_key_schema_t::
+                      client_server_channel_keys_key (
+                        _options.key_prefix,
+                        key.channel_name)};
+                  const auto args = std::vector<std::string>{
+                    owner.owner_id,
+                    std::to_string (
+                      owner.lease_generation),
+                    canonical_key};
+                  const auto result = redis_get (
+                    client ().eval<std::tuple<
+                      std::string,
+                      std::string,
+                      std::string>> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          remove_client_server),
+                      keys.begin (), keys.end (),
+                      args.begin (), args.end ()));
+                  return std::get<0> (result) == "stored"
+                           ? location_write_status_t::stored
+                           : location_write_status_t::
+                               ignored_stale;
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) key;
+        (void) owner;
+        return unavailable_read<location_write_status_t> ();
+#endif
+    }
+
+    task_t<location_page_t<
+      client_server_server_descriptor_t>>
+    list_client_servers (
+      std::string channel_name,
+      location_page_request_t page = {}) override
+    {
+        if (!valid_descriptor_text (channel_name))
+            throw std::invalid_argument (
+              "ClientServer channel name must contain 1..255 bytes without NUL");
+        if (page.page_size < 1 || page.page_size > 1000)
+            throw std::invalid_argument (
+              "ClientServer descriptor page size must be 1..1000");
+        const auto offset =
+          decode_client_server_page_token (
+            page.continuation_token, channel_name);
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<location_page_t<
+          client_server_server_descriptor_t>> (
+          [this, channel_name = std::move (channel_name),
+           page, offset] {
+              try {
+                  const auto members = redis_get (
+                    client ().command<
+                      std::vector<std::string>> (
+                      "ZRANGE",
+                      detail::redis_location_key_schema_t::
+                        client_server_channel_keys_key (
+                          _options.key_prefix,
+                          channel_name),
+                      std::to_string (offset),
+                      std::to_string (
+                        offset
+                        + static_cast<std::size_t> (
+                          page.page_size))));
+                  location_page_t<
+                    client_server_server_descriptor_t> result;
+                  std::size_t encoded_bytes = 0;
+                  std::size_t consumed = 0;
+                  for (const auto &canonical_key : members) {
+                      if (result.items.size ()
+                          == static_cast<std::size_t> (
+                            page.page_size))
+                          break;
+                      const auto fields = redis_get (
+                        client ().hmget<std::vector<
+                          sw::redis::OptionalString>> (
+                          detail::redis_location_key_schema_t::
+                            client_server_key (
+                              _options.key_prefix,
+                              canonical_key),
+                          {"json", "gen", "updatedAtMs"}));
+                      if (fields.size () < 3 || !fields[0]) {
+                          ++consumed;
+                          continue;
+                      }
+                      const auto row_bytes =
+                        fields[0]->size ();
+                      if (!result.items.empty ()
+                          && encoded_bytes + row_bytes
+                               > 4u * 1024u * 1024u)
+                          break;
+                      auto descriptor =
+                        detail::redis_location_row_codec_t::
+                          decode_client_server (*fields[0]);
+                      if (descriptor.channel_name
+                          != channel_name) {
+                          ++consumed;
+                          continue;
+                      }
+                      if (fields[2])
+                          descriptor.updated_at =
+                            detail::
+                              redis_location_script_result_t::
+                                from_unix_ms (
+                                  std::stoll (*fields[2]));
+                      result.items.push_back (
+                        std::move (descriptor));
+                      encoded_bytes += row_bytes;
+                      ++consumed;
+                  }
+                  if (consumed < members.size ()
+                      || members.size ()
+                           > static_cast<std::size_t> (
+                             page.page_size))
+                      result.continuation_token =
+                        encode_client_server_page_token (
+                          channel_name, offset + consumed);
+                  return result;
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) channel_name;
+        (void) page;
+        (void) offset;
+        return unavailable_read<location_page_t<
+          client_server_server_descriptor_t>> ();
 #endif
     }
 
@@ -5437,60 +6037,6 @@ class redis_location_store_t final : public location_store_t,
 #endif
     }
 
-    task_t<owner_lease_renewal_t> renew_owner_lease (
-      std::string owner_id, zlink::routing_id_t node_rid, std::chrono::milliseconds lease_ttl) override
-    {
-        return renew_lease (std::move (owner_id), std::move (node_rid), lease_ttl);
-    }
-
-    task_t<bool> remove_owner_lease (std::string owner_id) override
-    {
-        return remove_lease (std::move (owner_id));
-    }
-
-    task_t<owner_lease_snapshot_t> list_owner_leases () override
-    {
-#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<owner_lease_snapshot_t> ([this] {
-          try {
-            owner_lease_snapshot_t snapshot;
-            snapshot.store_now =
-              detail::redis_location_script_result_t::
-                from_unix_ms (redis_time_ms_sync ());
-            sw::redis::Redis redis (
-              normalize_connection_string (
-                _options.connection_string));
-            std::unordered_map<std::string, std::string> owners;
-            redis.hgetall (
-              detail::redis_location_key_schema_t::
-                leases_key (_options.key_prefix),
-              std::inserter (owners, owners.end ()));
-            for (const auto &[owner_id, value] : owners) {
-                const auto lease_key =
-                  detail::redis_location_key_schema_t::
-                    lease_key (_options.key_prefix, owner_id);
-                const auto ttl = redis.pttl (lease_key);
-                if (ttl <= 0)
-                    continue;
-                auto lease =
-                  parse_lease_value (owner_id, value);
-                lease.lease_expires_at =
-                  snapshot.store_now
-                  + std::chrono::milliseconds (ttl);
-                snapshot.leases.push_back (std::move (lease));
-            }
-            return snapshot;
-          }
-          catch (const sw::redis::Error &error) {
-              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
-                                           true);
-          }
-        });
-#else
-        return unavailable_read<owner_lease_snapshot_t> ();
-#endif
-    }
-
     task_t<std::int64_t> get_change_stamp (location_change_stamp_scope_t scope) override
     {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
@@ -5506,13 +6052,31 @@ class redis_location_store_t final : public location_store_t,
 #endif
     }
 
-    task_t<std::int64_t> remove_all_by_owner (std::string owner_id) override
+    task_t<std::int64_t> remove_all_by_owner (
+      location_owner_token_t owner) override
     {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<std::int64_t> ([this, owner_id = std::move (owner_id)] {
+        return _worker.submit<std::int64_t> (
+          [this, owner = std::move (owner)] {
             sw::redis::Redis redis (
               normalize_connection_string (
                 _options.connection_string));
+            const auto lease_key =
+              detail::redis_location_key_schema_t::
+                lease_key (
+                  _options.key_prefix, owner.owner_id);
+            const auto lease_owner =
+              redis.hget (lease_key, "ownerId");
+            const auto lease_generation =
+              redis.hget (lease_key, "generation");
+            if (redis.pttl (lease_key) <= 0
+                || !lease_owner
+                || *lease_owner != owner.owner_id
+                || !lease_generation
+                || *lease_generation
+                     != std::to_string (
+                       owner.lease_generation))
+                return std::int64_t{0};
             std::int64_t removed = 0;
             for (const auto kind :
                  {location_kind_t::peer,
@@ -5522,7 +6086,8 @@ class redis_location_store_t final : public location_store_t,
                 const auto owner_key =
                   detail::redis_location_key_schema_t::
                     owner_key (
-                      _options.key_prefix, kind, owner_id);
+                      _options.key_prefix, kind,
+                      owner.owner_id);
                 for (;;) {
                     std::vector<std::string> rows;
                     redis.spop (
@@ -5540,7 +6105,8 @@ class redis_location_store_t final : public location_store_t,
                         const auto stored_owner =
                           redis.hget (physical, "owner");
                         if (!stored_owner
-                            || *stored_owner != owner_id)
+                            || *stored_owner
+                                 != owner.owner_id)
                             continue;
                         const auto mesh =
                           redis.hget (physical, "mesh");
@@ -5569,15 +6135,192 @@ class redis_location_store_t final : public location_store_t,
                     }
                 }
             }
+
+            const auto descriptor_owner_index =
+              detail::redis_location_key_schema_t::
+                client_server_owner_keys_key (
+                  _options.key_prefix,
+                  owner.owner_id,
+                  owner.lease_generation);
+            std::vector<std::string> descriptor_keys;
+            redis.smembers (
+              descriptor_owner_index,
+              std::back_inserter (descriptor_keys));
+            for (const auto &canonical_key :
+                 descriptor_keys) {
+                const auto row_key =
+                  detail::redis_location_key_schema_t::
+                    client_server_key (
+                      _options.key_prefix,
+                      canonical_key);
+                const auto admission_key =
+                  detail::redis_location_key_schema_t::
+                    client_server_admission_key (
+                      _options.key_prefix,
+                      canonical_key);
+                const auto stored_owner =
+                  redis.hget (
+                    admission_key, "ownerId");
+                const auto stored_generation =
+                  redis.hget (
+                    admission_key,
+                    "ownerLeaseGeneration");
+                const auto channel =
+                  redis.hget (row_key, "channel");
+                if (!stored_owner
+                    || *stored_owner != owner.owner_id
+                    || !stored_generation
+                    || *stored_generation
+                         != std::to_string (
+                           owner.lease_generation)
+                    || !channel) {
+                    redis.srem (
+                      descriptor_owner_index,
+                      canonical_key);
+                    continue;
+                }
+                const auto keys =
+                  std::vector<std::string>{
+                    row_key,
+                    admission_key,
+                    detail::
+                      redis_location_key_schema_t::
+                        client_server_keys_key (
+                          _options.key_prefix),
+                    descriptor_owner_index,
+                    detail::
+                      redis_location_key_schema_t::
+                        client_server_stamp_key (
+                          _options.key_prefix),
+                    detail::
+                      redis_location_key_schema_t::
+                        client_server_stamp_key (
+                          _options.key_prefix,
+                          *channel),
+                    detail::
+                      redis_location_key_schema_t::
+                        client_server_channel_keys_key (
+                          _options.key_prefix,
+                          *channel)};
+                const auto args =
+                  std::vector<std::string>{
+                    owner.owner_id,
+                    std::to_string (
+                      owner.lease_generation),
+                    canonical_key};
+                const auto result = redis_get (
+                  client ().eval<std::tuple<
+                    std::string,
+                    std::string,
+                    std::string>> (
+                    std::string (
+                      detail::
+                        redis_location_scripts_t::
+                          remove_client_server),
+                    keys.begin (), keys.end (),
+                    args.begin (), args.end ()));
+                if (std::get<0> (result) == "stored")
+                    ++removed;
+            }
+            redis.del (descriptor_owner_index);
             return removed;
         });
 #else
-        (void) owner_id;
+        (void) owner;
         return unavailable_read<std::int64_t> ();
 #endif
     }
 
   private:
+    static bool valid_descriptor_text (
+      std::string_view value) noexcept
+    {
+        return !value.empty () && value.size () <= 255
+               && value.find ('\0') == std::string_view::npos;
+    }
+
+    static bool valid_client_server_descriptor (
+      const client_server_server_descriptor_t &descriptor) noexcept
+    {
+        const auto state =
+          static_cast<unsigned int> (descriptor.state);
+        return valid_descriptor_text (
+                 descriptor.channel_name)
+               && descriptor.server_rid.size () > 0
+               && descriptor.lifecycle_generation > 0
+               && descriptor.lifecycle_generation
+                    <= static_cast<std::uint64_t> (
+                      std::numeric_limits<
+                        std::int64_t>::max ())
+               && descriptor.descriptor_revision > 0
+               && descriptor.descriptor_revision
+                    <= static_cast<std::uint64_t> (
+                      std::numeric_limits<
+                        std::int64_t>::max ())
+               && valid_descriptor_text (
+                 descriptor.endpoint)
+               && descriptor.weight >= 0
+               && descriptor.weight <= 100
+               && state
+                    <= static_cast<unsigned int> (
+                      framework_runtime_state_t::error)
+               && valid_descriptor_text (
+                 descriptor.security_identity)
+               && valid_descriptor_text (
+                 descriptor.owner_id)
+               && descriptor.lease_generation > 0;
+    }
+
+    static std::size_t decode_client_server_page_token (
+      const std::optional<std::string> &token,
+      std::string_view channel_name)
+    {
+        if (!token)
+            return 0;
+        if (token->size () > 4096)
+            throw std::invalid_argument (
+              "ClientServer descriptor continuation token is invalid");
+        try {
+            const auto value =
+              nlohmann::json::parse (*token);
+            if (value.at ("kind").get<std::string> ()
+                  != "client-server-v1"
+                || value.at ("channelName")
+                     .get<std::string> ()
+                     != channel_name
+                || !value.at ("offset")
+                      .is_number_unsigned ())
+                throw std::invalid_argument (
+                  "invalid token");
+            const auto offset =
+              value.at ("offset")
+                .get<std::uint64_t> ();
+            if (offset
+                > static_cast<std::uint64_t> (
+                  std::numeric_limits<
+                    std::size_t>::max () - 1000))
+                throw std::invalid_argument (
+                  "invalid token");
+            return static_cast<std::size_t> (
+              offset);
+        }
+        catch (...) {
+            throw std::invalid_argument (
+              "ClientServer descriptor continuation token is invalid");
+        }
+    }
+
+    static std::string encode_client_server_page_token (
+      std::string_view channel_name,
+      std::size_t offset)
+    {
+        return nlohmann::ordered_json{
+          {"kind", "client-server-v1"},
+          {"channelName", channel_name},
+          {"offset", offset}}
+          .dump ();
+    }
+
     static std::size_t parse_page_offset (
       const std::string &value)
     {
@@ -6451,69 +7194,6 @@ class redis_location_store_t final : public location_store_t,
         (void) mesh_name;
         (void) owner;
         return unavailable_write ();
-#endif
-    }
-
-    task_t<owner_lease_renewal_t> renew_lease (std::string owner_id,
-                                               zlink::routing_id_t node_rid,
-                                               std::chrono::milliseconds lease_ttl)
-    {
-#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<owner_lease_renewal_t> ([this, owner_id = std::move (owner_id),
-                                                       node_rid = std::move (node_rid),
-                                                       lease_ttl] {
-          try {
-            const auto ttl_ms = std::max<std::int64_t> (1, lease_ttl.count ());
-            const auto keys = std::vector<std::string>{
-              detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
-              detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
-            const auto args =
-              std::vector<std::string>{owner_id, node_rid.to_hex (), std::to_string (ttl_ms)};
-            const auto now_ms = redis_get (
-              client ().eval<long long> (
-                std::string (detail::redis_location_scripts_t::renew_lease), keys.begin (),
-                keys.end (), args.begin (), args.end ()));
-            const auto store_now = detail::redis_location_script_result_t::from_unix_ms (
-              static_cast<std::int64_t> (now_ms));
-            return owner_lease_renewal_t{store_now + std::chrono::milliseconds (ttl_ms),
-                                         store_now};
-          }
-          catch (const sw::redis::Error &error) {
-              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
-                                           true);
-          }
-        });
-#else
-        (void) owner_id;
-        (void) node_rid;
-        (void) lease_ttl;
-        return unavailable_read<owner_lease_renewal_t> ();
-#endif
-    }
-
-    task_t<bool> remove_lease (std::string owner_id)
-    {
-#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-        return _worker.submit<bool> ([this, owner_id = std::move (owner_id)] {
-          try {
-            const auto keys = std::vector<std::string>{
-              detail::redis_location_key_schema_t::lease_key (_options.key_prefix, owner_id),
-              detail::redis_location_key_schema_t::leases_key (_options.key_prefix)};
-            const auto args = std::vector<std::string>{owner_id};
-            const auto result = redis_get (
-              client ().eval<std::tuple<long long, long long>> (
-                std::string (detail::redis_location_scripts_t::remove_lease), keys.begin (),
-                keys.end (), args.begin (), args.end ()));
-            return std::get<1> (result) > 0;
-          }
-          catch (const sw::redis::Error &error) {
-              throw framework_exception_t (framework_error_kind_t::request_failed, error.what (),
-                                           true);
-          }
-        });
-#else
-        (void) owner_id;
-        return unavailable_read<bool> ();
 #endif
     }
 

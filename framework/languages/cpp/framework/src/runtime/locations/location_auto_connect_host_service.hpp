@@ -3,6 +3,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/client_server/client_server_location_runtime.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_value_codec.hpp"
@@ -35,11 +36,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
   public:
     location_auto_connect_host_service_t (message_bus_t bus,
                                           std::vector<channel_snapshot_t> channels,
+                                          handler_registry_t &handlers,
+                                          serializer_registry_t &serializers,
                                           std::set<std::string> route_mesh_client_channels = {},
                                           std::vector<std::shared_ptr<detail::mesh_node_runtime_t>>
                                             mesh_nodes = {}) :
         _bus (std::move (bus)),
         _channels (std::move (channels)),
+        _handlers (&handlers),
+        _serializers (&serializers),
         _route_mesh_client_channels (std::move (route_mesh_client_channels)),
         _mesh_nodes (std::move (mesh_nodes))
     {
@@ -56,27 +61,32 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         manager.initialize_client_channels ();
         manager.initialize_inbound_channels ();
 
+        auto &location_store =
+          services.get_required<location_store_t> ();
+        auto *client_server_store =
+          dynamic_cast<client_server_location_store_t *> (
+            &location_store);
+        const auto needs_client_server =
+          std::any_of (
+            _channels.begin (), _channels.end (),
+            [] (const auto &channel) {
+                return (channel.server.enabled
+                        && channel.server.discovery)
+                       || (channel.client.enabled
+                           && channel.client.discovery);
+            });
+        if (needs_client_server && client_server_store == nullptr)
+            throw std::invalid_argument (
+              "the configured location store does not implement the ClientServer location contract");
+        if (client_server_store != nullptr) {
+            _client_server = std::make_unique<
+              client_server::client_server_location_runtime_t> (
+              _bus, _channels, *_runtime, *client_server_store,
+              location_store, services, *_serializers, *_handlers);
+            _client_server->start ();
+        }
+
         for (const auto &channel : _channels) {
-            if (channel.server.enabled && channel.server.discovery) {
-                for (const auto &endpoint : channel.server.bind_endpoints) {
-                    add_loop (make_local (location_auto_connect_type_t::client_server, channel.name,
-                                          location_role_t::router, channel.server, endpoint),
-                              nullptr);
-                }
-            }
-            if (channel.client.enabled && channel.client.discovery) {
-                auto &bundle = manager.get_or_create_client_bundle (channel.name);
-                auto local = make_local (location_auto_connect_type_t::client_server, channel.name,
-                                         location_role_t::dealer, channel.client, {});
-                if (!local.node_rid && channel.server.routing_id) {
-                    local.node_rid = derive_role_rid (*channel.server.routing_id, "dealer");
-                }
-                if (local.node_rid && channel.server.routing_id
-                    && local.node_rid->to_hex () == channel.server.routing_id->to_hex ()) {
-                    local.node_rid = derive_role_rid (*channel.server.routing_id, "dealer");
-                }
-                add_loop (std::move (local), &bundle);
-            }
             if (channel.publisher.enabled && channel.publisher.discovery) {
                 for (const auto &endpoint : channel.publisher.bind_endpoints) {
                     add_loop (make_local (location_auto_connect_type_t::fanout, channel.name,
@@ -174,6 +184,10 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     void stop () noexcept override
     {
         _stop.store (true, std::memory_order_release);
+        if (_client_server) {
+            _client_server->stop ();
+            _client_server.reset ();
+        }
         for (auto &loop : _loops) {
             if (loop.thread.joinable ()) {
                 loop.thread.join ();
@@ -686,6 +700,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
 
     message_bus_t _bus;
     std::vector<channel_snapshot_t> _channels;
+    handler_registry_t *_handlers;
+    serializer_registry_t *_serializers;
     std::set<std::string> _route_mesh_client_channels;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;
@@ -695,6 +711,9 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::optional<std::size_t> _peers_observed;
     std::atomic_bool _stop{false};
     std::vector<loop_t> _loops;
+    std::unique_ptr<
+      client_server::client_server_location_runtime_t>
+      _client_server;
 };
 
 } // namespace zlink::framework::runtime

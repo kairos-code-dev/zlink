@@ -21,6 +21,7 @@ using zlink::framework::location_page_request_t;
 using zlink::framework::location_role_t;
 using zlink::framework::location_write_intent_t;
 using zlink::framework::location_write_status_t;
+using zlink::framework::owner_lease_found_t;
 using zlink::framework::owner_lease_store_t;
 using zlink::framework::peer_location_filter_t;
 using zlink::framework::peer_location_t;
@@ -89,6 +90,24 @@ location_owner_token_t owner_token (std::string owner_id, std::int64_t generatio
     return location_owner_token_t{std::move (owner_id), generation};
 }
 
+location_owner_token_t claim_owner (
+  in_memory_location_store_t &store,
+  std::string owner_id,
+  std::chrono::milliseconds ttl = std::chrono::seconds (15))
+{
+    const auto claimed =
+      store.claim_owner_lease (owner_id, ttl)
+        .result ()
+        .value ();
+    const auto *value =
+      std::get_if<zlink::framework::owner_lease_claimed_t> (
+        &claimed);
+    if (value == nullptr)
+        throw std::runtime_error (
+          "test owner lease claim failed");
+    return value->token;
+}
+
 zlink::framework::mesh_node_descriptor_t make_mesh_node (
   std::string rid,
   location_owner_token_t owner,
@@ -138,10 +157,7 @@ void publish_mesh_node (
 TEST (ZLinkFrameworkInMemoryLocationStore, SharesOneStoreForAllLocationRoles)
 {
     in_memory_location_store_t store;
-    store.renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
+    (void) claim_owner (store, "owner-a");
 
     const auto peer_write =
       store.update_peer (make_peer ("owner-a"), location_write_intent_t::new_claim)
@@ -188,20 +204,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 {
     using namespace zlink::framework;
     in_memory_location_store_t store;
-    store
-      .renew_owner_lease (
-        "owner-a", zlink::routing_id_t::from ("node-a"),
-        std::chrono::seconds (15))
-      .result ()
-      .value ();
-    store
-      .renew_owner_lease (
-        "owner-b", zlink::routing_id_t::from ("node-b"),
-        std::chrono::seconds (15))
-      .result ()
-      .value ();
-    const location_owner_token_t owner_a{"owner-a", 1};
-    const location_owner_token_t owner_b{"owner-b", 2};
+    const auto owner_a = claim_owner (store, "owner-a");
+    const auto owner_b = claim_owner (store, "owner-b");
     publish_mesh_node (store, "node-a", owner_a);
     publish_mesh_node (store, "node-b", owner_b);
 
@@ -481,20 +485,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 {
     using namespace zlink::framework;
     in_memory_location_store_t store;
-    store
-      .renew_owner_lease (
-        "owner-a", zlink::routing_id_t::from ("node-a"),
-        std::chrono::seconds (15))
-      .result ()
-      .value ();
-    store
-      .renew_owner_lease (
-        "owner-b", zlink::routing_id_t::from ("node-b"),
-        std::chrono::seconds (15))
-      .result ()
-      .value ();
-    const location_owner_token_t owner_a{"owner-a", 1};
-    const location_owner_token_t owner_b{"owner-b", 2};
+    const auto owner_a = claim_owner (store, "owner-a");
+    const auto owner_b = claim_owner (store, "owner-b");
     publish_mesh_node (store, "node-a", owner_a);
     publish_mesh_node (store, "node-b", owner_b);
 
@@ -648,16 +640,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 TEST (ZLinkFrameworkInMemoryLocationStore, IssuesGenerationsAndGuardsOwnerWrites)
 {
     in_memory_location_store_t store;
-    store
-      .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
-    store
-      .renew_owner_lease ("owner-b", zlink::routing_id_t::from ("node-b"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
+    (void) claim_owner (store, "owner-a");
+    (void) claim_owner (store, "owner-b");
 
     const auto claimed =
       store.update_actor (make_actor ("owner-a", 0), location_write_intent_t::new_claim)
@@ -694,17 +678,23 @@ TEST (ZLinkFrameworkInMemoryLocationStore, IssuesGenerationsAndGuardsOwnerWrites
         .value ();
     EXPECT_EQ (location_write_status_t::ignored_stale, stale.status);
 
-    const auto removed = store.remove_all_by_owner ("owner-b").result ().value ();
+    const auto owner_b =
+      std::get<owner_lease_found_t> (
+        store.read_owner_lease ("owner-b")
+          .result ()
+          .value ())
+        .token;
+    const auto removed =
+      store.remove_all_by_owner (owner_b)
+        .result ()
+        .value ();
     EXPECT_EQ (1, removed);
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore, PaginatesListsAndFiltersRows)
 {
     in_memory_location_store_t store;
-    store.renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-1"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
+    (void) claim_owner (store, "owner-a");
     store.update_spot (make_spot ("owner-a", "spot-1"), location_write_intent_t::new_claim)
       .result ()
       .value ();
@@ -750,16 +740,15 @@ TEST (ZLinkFrameworkInMemoryLocationStore, PaginatesListsAndFiltersRows)
 TEST (ZLinkFrameworkInMemoryLocationStore, MaintainsOwnerLeasesAndChangeStamps)
 {
     in_memory_location_store_t store;
-    store
-      .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
-
-    const auto leases = store.list_owner_leases ().result ().value ();
-    ASSERT_EQ (1u, leases.leases.size ());
-    EXPECT_EQ ("owner-a", leases.leases.front ().owner_id);
-    EXPECT_GT (leases.leases.front ().lease_expires_at, leases.store_now);
+    const auto owner = claim_owner (store, "owner-a");
+    const auto lease =
+      store.read_owner_lease ("owner-a").result ().value ();
+    const auto *found =
+      std::get_if<owner_lease_found_t> (&lease);
+    ASSERT_NE (nullptr, found);
+    EXPECT_EQ (owner.lease_generation,
+               found->token.lease_generation);
+    EXPECT_GT (found->lease_expires_at, found->store_now);
 
     const auto before =
       store.get_change_stamp (location_change_stamp_scope_t{location_kind_t::peer, "play"})
@@ -774,18 +763,24 @@ TEST (ZLinkFrameworkInMemoryLocationStore, MaintainsOwnerLeasesAndChangeStamps)
         .value ();
     EXPECT_EQ (before + 1, after);
 
-    EXPECT_TRUE (store.remove_owner_lease ("owner-a").result ().value ());
-    EXPECT_TRUE (store.list_owner_leases ().result ().value ().leases.empty ());
+    const auto released =
+      store.release_owner_lease (owner).result ().value ();
+    EXPECT_TRUE (
+      std::holds_alternative<
+        zlink::framework::owner_lease_released_t> (
+        released));
+    EXPECT_TRUE (
+      std::holds_alternative<
+        zlink::framework::owner_lease_missing_t> (
+        store.read_owner_lease ("owner-a")
+          .result ()
+          .value ()));
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore, RemovesRowsOnlyWithMatchingOwnerToken)
 {
     in_memory_location_store_t store;
-    store
-      .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
+    (void) claim_owner (store, "owner-a");
 
     const auto peer_claim =
       store.update_peer (make_peer ("owner-a"), location_write_intent_t::new_claim)
@@ -879,16 +874,9 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
 {
     in_memory_location_store_t store;
     live_location_reader_t live (store);
-    store
-      .renew_owner_lease ("owner-live", zlink::routing_id_t::from ("node-1"),
-                          std::chrono::seconds (15))
-      .result ()
-      .value ();
-    store
-      .renew_owner_lease ("owner-expired", zlink::routing_id_t::from ("node-2"),
-                          -std::chrono::seconds (1))
-      .result ()
-      .value ();
+    (void) claim_owner (store, "owner-live");
+    const auto expired_owner =
+      claim_owner (store, "owner-expired");
 
     auto live_peer = make_peer ("owner-live");
     live_peer.endpoint = "tcp://127.0.0.1:5001";
@@ -897,6 +885,23 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
     expired_peer.node_rid = zlink::routing_id_t::from ("node-2");
     store.update_peer (live_peer, location_write_intent_t::new_claim).result ().value ();
     store.update_peer (expired_peer, location_write_intent_t::new_claim).result ().value ();
+    auto live_actor = make_actor ("owner-live", 0);
+    live_actor.actor_id = "actor-live";
+    auto expired_actor = make_actor ("owner-expired", 0);
+    expired_actor.actor_id = "actor-expired";
+    expired_actor.owner_node_rid = zlink::routing_id_t::from ("node-2");
+    store.update_actor (live_actor, location_write_intent_t::new_claim).result ().value ();
+    store.update_actor (expired_actor, location_write_intent_t::new_claim).result ().value ();
+    auto live_route = make_route ("owner-live");
+    auto expired_route = make_route ("owner-expired");
+    expired_route.route_key = "session-expired";
+    expired_route.owner_node_rid = zlink::routing_id_t::from ("node-2");
+    store.update_route (live_route, location_write_intent_t::new_claim).result ().value ();
+    store.update_route (expired_route, location_write_intent_t::new_claim).result ().value ();
+    (void) store.release_owner_lease (expired_owner)
+      .result ()
+      .value ();
+
     EXPECT_EQ (1u, live.list_peers (peer_location_filter_t{.node_rid =
                                                              zlink::routing_id_t::from ("node-1")})
                      .result ()
@@ -908,13 +913,6 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
                    .value ()
                    .empty ());
 
-    auto live_actor = make_actor ("owner-live", 0);
-    live_actor.actor_id = "actor-live";
-    auto expired_actor = make_actor ("owner-expired", 0);
-    expired_actor.actor_id = "actor-expired";
-    expired_actor.owner_node_rid = zlink::routing_id_t::from ("node-2");
-    store.update_actor (live_actor, location_write_intent_t::new_claim).result ().value ();
-    store.update_actor (expired_actor, location_write_intent_t::new_claim).result ().value ();
     EXPECT_EQ (1u, live
                      .list_actors (actor_location_filter_t{.owner_node_rid =
                                                              zlink::routing_id_t::from ("node-1")})
@@ -928,12 +926,6 @@ TEST (ZLinkFrameworkInMemoryLocationStore, FiltersRowsAndHidesExpiredOwners)
                    .value ()
                    .items.empty ());
 
-    auto live_route = make_route ("owner-live");
-    auto expired_route = make_route ("owner-expired");
-    expired_route.route_key = "session-expired";
-    expired_route.owner_node_rid = zlink::routing_id_t::from ("node-2");
-    store.update_route (live_route, location_write_intent_t::new_claim).result ().value ();
-    store.update_route (expired_route, location_write_intent_t::new_claim).result ().value ();
     EXPECT_EQ (1u, live
                      .list_routes (route_location_filter_t{.owner_node_rid =
                                                              zlink::routing_id_t::from ("node-1")})

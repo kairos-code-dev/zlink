@@ -21,6 +21,10 @@ namespace
 using zlink::framework::actor_location_t;
 using zlink::framework::actor_location_key_t;
 using zlink::framework::actor_ref_t;
+using zlink::framework::client_server_location_store_t;
+using zlink::framework::client_server_server_descriptor_key_t;
+using zlink::framework::client_server_server_descriptor_t;
+using zlink::framework::framework_runtime_state_t;
 using zlink::framework::location_auto_connect_type_t;
 using zlink::framework::location_kind_t;
 using zlink::framework::location_owner_token_t;
@@ -68,6 +72,24 @@ std::vector<std::string> redis_test_endpoints ()
     return endpoints;
 }
 
+location_owner_token_t claim_owner (
+  redis_location_store_t &store,
+  std::string owner_id,
+  std::chrono::milliseconds ttl = std::chrono::seconds (30))
+{
+    const auto claimed =
+      store.claim_owner_lease (owner_id, ttl)
+        .result ()
+        .value ();
+    const auto *value =
+      std::get_if<zlink::framework::owner_lease_claimed_t> (
+        &claimed);
+    if (value == nullptr)
+        throw std::runtime_error (
+          "test owner lease claim failed");
+    return value->token;
+}
+
 std::optional<redis_location_options_t> find_redis_options ()
 {
 #if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
@@ -75,11 +97,17 @@ std::optional<redis_location_options_t> find_redis_options ()
         redis_location_options_t options{.connection_string = endpoint,
                                          .key_prefix = unique_prefix ()};
         redis_location_store_t store (options);
-        auto probe = store.renew_owner_lease ("probe-owner", zlink::routing_id_t::from ("probe"),
-                                              std::chrono::milliseconds (250));
-        if (probe.result ().has_value ()) {
-            auto cleanup = store.remove_owner_lease ("probe-owner");
-            (void) cleanup;
+        auto probe = store.claim_owner_lease (
+          "probe-owner", std::chrono::milliseconds (250));
+        if (probe.result ().has_value ()
+            && std::holds_alternative<
+                 zlink::framework::owner_lease_claimed_t> (
+                 probe.result ().value ())) {
+            const auto token =
+              std::get<zlink::framework::owner_lease_claimed_t> (
+                probe.result ().value ())
+                .token;
+            (void) store.release_owner_lease (token);
             return options;
         }
     }
@@ -99,6 +127,24 @@ std::optional<redis_location_options_t> cross_language_options (std::string lang
     }
     options->key_prefix = std::string (prefix) + ":" + std::move (language);
     return options;
+}
+
+location_owner_token_t live_owner_token (
+  redis_location_store_t &store,
+  const std::string &owner_id)
+{
+    const auto lease =
+      store.read_owner_lease (owner_id)
+        .result ()
+        .value ();
+    const auto *found =
+      std::get_if<
+        zlink::framework::owner_lease_found_t> (
+        &lease);
+    if (found == nullptr)
+        throw std::runtime_error (
+          "test owner lease is not active");
+    return found->token;
 }
 
 nlohmann::json read_redis_location_fixture ()
@@ -144,6 +190,31 @@ nlohmann::json read_mesh_node_descriptor_fixture ()
     }
     throw std::runtime_error (
       "mesh-node-descriptor-v1.json fixture was not found");
+}
+
+nlohmann::json read_client_server_descriptor_fixture ()
+{
+    std::vector<std::filesystem::path> candidates;
+    auto current = std::filesystem::current_path ();
+    for (int i = 0; i < 8; ++i) {
+        candidates.push_back (
+          current
+          / "framework/testdata/location/redis/client-server-server-descriptor-v1.json");
+        candidates.push_back (
+          current
+          / "testdata/location/redis/client-server-server-descriptor-v1.json");
+        candidates.push_back (
+          current
+          / "../../testdata/location/redis/client-server-server-descriptor-v1.json");
+        current = current.parent_path ();
+    }
+    for (const auto &candidate : candidates) {
+        std::ifstream input (candidate);
+        if (input)
+            return nlohmann::json::parse (input);
+    }
+    throw std::runtime_error (
+      "client-server-server-descriptor-v1.json fixture was not found");
 }
 
 nlohmann::json read_authority_store_fixture ()
@@ -220,6 +291,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
       .connection_string = "tcp://127.0.0.1:6379", .key_prefix = "zlink:test"});
 
     zlink::framework::location_store_t *location_store = &store;
+    client_server_location_store_t *client_server_store = &store;
     zlink::framework::peer_location_store_t *peer_store = &store;
     zlink::framework::spot_location_store_t *spot_store = &store;
     zlink::framework::actor_location_store_t *actor_store = &store;
@@ -228,6 +300,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
     zlink::framework::location_change_stamp_store_t *stamp_store = &store;
 
     EXPECT_NE (nullptr, location_store);
+    EXPECT_NE (nullptr, client_server_store);
     EXPECT_NE (nullptr, peer_store);
     EXPECT_NE (nullptr, spot_store);
     EXPECT_NE (nullptr, actor_store);
@@ -235,6 +308,62 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
     EXPECT_NE (nullptr, lease_store);
     EXPECT_NE (nullptr, stamp_store);
     EXPECT_EQ ("zlink:test", store.options ().key_prefix);
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      ClientServerDescriptorCodecMatchesCanonicalFixture)
+{
+    const auto fixture =
+      read_client_server_descriptor_fixture ();
+    const auto &row = fixture.at ("row");
+    const auto &hash = row.at ("hash");
+    const auto updated_at =
+      std::chrono::system_clock::time_point{
+        std::chrono::milliseconds{1721001600000}};
+    const client_server_server_descriptor_t descriptor{
+      .channel_name = "orders",
+      .server_rid =
+        zlink::routing_id_t::from ("orders-a"),
+      .lifecycle_generation = 7,
+      .descriptor_revision = 3,
+      .endpoint = "tcp://10.0.0.2:7400",
+      .weight = 100,
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "cluster-a",
+      .owner_id = "channel-owner-a",
+      .lease_generation = 5,
+      .updated_at = updated_at};
+
+    EXPECT_EQ (
+      row.at ("key").get<std::string> (),
+      redis_location_key_schema_t::
+        encode_client_server_key (
+          {descriptor.channel_name,
+           descriptor.server_rid}));
+    EXPECT_EQ (
+      hash.at ("json").get<std::string> (),
+      redis_location_row_codec_t::
+        encode_client_server (descriptor));
+    const auto decoded =
+      redis_location_row_codec_t::
+        decode_client_server (
+          hash.at ("json").get<std::string> ());
+    EXPECT_EQ (descriptor.channel_name,
+               decoded.channel_name);
+    EXPECT_EQ (descriptor.server_rid,
+               decoded.server_rid);
+    EXPECT_EQ (descriptor.lifecycle_generation,
+               decoded.lifecycle_generation);
+    EXPECT_EQ (descriptor.descriptor_revision,
+               decoded.descriptor_revision);
+    EXPECT_EQ (descriptor.endpoint, decoded.endpoint);
+    EXPECT_EQ (descriptor.weight, decoded.weight);
+    EXPECT_EQ (descriptor.state, decoded.state);
+    EXPECT_EQ (descriptor.security_identity,
+               decoded.security_identity);
+    EXPECT_EQ (descriptor.owner_id, decoded.owner_id);
+    EXPECT_EQ (descriptor.lease_generation,
+               decoded.lease_generation);
 }
 
 TEST (ZLinkFrameworkLocationsRedis,
@@ -318,8 +447,8 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     ASSERT_NE (nullptr, claim.result ().error ());
     EXPECT_TRUE (claim.result ().error ()->is_retriable ());
 
-    auto lease = store.renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
-                                          std::chrono::milliseconds (500));
+    auto lease = store.claim_owner_lease (
+      "owner-a", std::chrono::milliseconds (500));
     EXPECT_FALSE (lease.result ().has_value ());
     ASSERT_NE (nullptr, lease.result ().error ());
     EXPECT_TRUE (lease.result ().error ()->is_retriable ());
@@ -429,17 +558,19 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     ASSERT_NE (nullptr, removed_actor.result ().error ());
     EXPECT_TRUE (removed_actor.result ().error ()->is_retriable ());
 
-    auto removed = store.remove_all_by_owner ("owner-a");
+    auto removed = store.remove_all_by_owner (
+      location_owner_token_t{"owner-a", 1});
     EXPECT_FALSE (removed.result ().has_value ());
     ASSERT_NE (nullptr, removed.result ().error ());
     EXPECT_TRUE (removed.result ().error ()->is_retriable ());
 
-    auto removed_lease = store.remove_owner_lease ("owner-a");
+    auto removed_lease = store.release_owner_lease (
+      location_owner_token_t{"owner-a", 1});
     EXPECT_FALSE (removed_lease.result ().has_value ());
     ASSERT_NE (nullptr, removed_lease.result ().error ());
     EXPECT_TRUE (removed_lease.result ().error ()->is_retriable ());
 
-    auto leases = store.list_owner_leases ();
+    auto leases = store.read_owner_lease ("owner-a");
     EXPECT_FALSE (leases.result ().has_value ());
     ASSERT_NE (nullptr, leases.result ().error ());
     EXPECT_TRUE (leases.result ().error ()->is_retriable ());
@@ -463,12 +594,13 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
     }
 
     redis_location_store_t store (*options);
+    const auto owner_a_token =
+      claim_owner (store, "owner-a", std::chrono::seconds (5));
     const auto lease =
-      store
-        .renew_owner_lease ("owner-a", zlink::routing_id_t::from ("node-a"),
-                            std::chrono::seconds (5))
-        .result ()
-        .value ();
+      std::get<zlink::framework::owner_lease_found_t> (
+        store.read_owner_lease ("owner-a")
+          .result ()
+          .value ());
     EXPECT_GT (lease.lease_expires_at, lease.store_now);
 
     // The location store owns a persistent async connection. An idle interval
@@ -516,11 +648,10 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
     ASSERT_TRUE (page.result ().has_value ());
     ASSERT_EQ (1u, page.result ().value ().items.size ());
 
-    ASSERT_TRUE (store
-                   .renew_owner_lease ("publisher-owner", zlink::routing_id_t::from ("pub-a"),
-                                       std::chrono::seconds (5))
-                   .result ()
-                   .has_value ());
+    const auto publisher_token =
+      claim_owner (
+        store, "publisher-owner",
+        std::chrono::seconds (5));
     auto peer_claim = store.update_peer (
       peer_location_t{.auto_connect_type = location_auto_connect_type_t::fanout,
                       .mesh_name = "pubsub.events",
@@ -539,26 +670,28 @@ TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
     EXPECT_EQ (location_role_t::pub, peers.result ().value ()[0].role);
     EXPECT_EQ ("tcp://127.0.0.1:7007", peers.result ().value ()[0].endpoint);
 
-    auto leases = store.list_owner_leases ();
-    ASSERT_TRUE (leases.result ().has_value ());
     const auto owner_a =
-      std::find_if (leases.result ().value ().leases.begin (),
-                    leases.result ().value ().leases.end (),
-                    [] (const auto &lease) { return lease.owner_id == "owner-a"; });
-    ASSERT_NE (leases.result ().value ().leases.end (), owner_a);
-    EXPECT_EQ ("node-a", owner_a->node_rid.to_string ());
-    EXPECT_GT (owner_a->lease_expires_at, leases.result ().value ().store_now);
+      std::get<zlink::framework::owner_lease_found_t> (
+        store.read_owner_lease ("owner-a")
+          .result ()
+          .value ());
+    EXPECT_EQ (owner_a_token.lease_generation,
+               owner_a.token.lease_generation);
+    EXPECT_GT (owner_a.lease_expires_at, owner_a.store_now);
 
-    auto removed = store.remove_all_by_owner ("owner-a");
+    auto removed = store.remove_all_by_owner (
+      live_owner_token (store, "owner-a"));
     ASSERT_TRUE (removed.result ().has_value ());
     EXPECT_EQ (1, removed.result ().value ());
     auto missing = store.resolve_actor (
       actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
     ASSERT_TRUE (missing.result ().has_value ());
     EXPECT_FALSE (missing.result ().value ().has_value ());
-    (void) store.remove_all_by_owner ("publisher-owner");
-    (void) store.remove_owner_lease ("publisher-owner");
-    (void) store.remove_owner_lease ("owner-a");
+    (void) store.remove_all_by_owner (
+      live_owner_token (
+        store, "publisher-owner"));
+    (void) store.release_owner_lease (publisher_token);
+    (void) store.release_owner_lease (owner_a_token);
 #endif
 }
 
@@ -1064,11 +1197,10 @@ TEST (ZLinkFrameworkLocationsRedis, PagedActorListUsesOpaqueRedisScanCursor)
     }
 
     redis_location_store_t store (*options);
-    ASSERT_TRUE (store
-                   .renew_owner_lease ("scan-owner", zlink::routing_id_t::from ("scan-node"),
-                                       std::chrono::seconds (10))
-                   .result ()
-                   .has_value ());
+    const auto scan_owner =
+      claim_owner (
+        store, "scan-owner",
+        std::chrono::seconds (10));
 
     std::vector<std::string> expected;
     for (int index = 0; index < 25; ++index) {
@@ -1117,8 +1249,9 @@ TEST (ZLinkFrameworkLocationsRedis, PagedActorListUsesOpaqueRedisScanCursor)
     std::sort (actual.begin (), actual.end ());
     EXPECT_EQ (expected, actual);
     EXPECT_GT (page_count, 1);
-    (void) store.remove_all_by_owner ("scan-owner");
-    (void) store.remove_owner_lease ("scan-owner");
+    (void) store.remove_all_by_owner (
+      live_owner_token (store, "scan-owner"));
+    (void) store.release_owner_lease (scan_owner);
 #endif
 }
 
@@ -1133,11 +1266,9 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageWritesRowsForDotnetToRead)
     }
 
     redis_location_store_t store (*options);
-    ASSERT_TRUE (store
-                   .renew_owner_lease ("cpp-owner", zlink::routing_id_t::from ("cpp-node"),
-                                       std::chrono::seconds (30))
-                   .result ()
-                   .has_value ());
+    (void) claim_owner (
+      store, "cpp-owner",
+      std::chrono::seconds (30));
     EXPECT_EQ (location_write_status_t::stored,
                store.update_peer (
                       peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
@@ -1267,20 +1398,38 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
     EXPECT_NE (std::string::npos, remove.find ("redis.call('SREM', KEYS[3], ARGV[3])"));
     EXPECT_EQ (std::string::npos, remove.find ("DEL', KEYS[2]"));
 
-    const auto renew_lease = std::string (redis_location_scripts_t::renew_lease);
+    const auto claim_lease =
+      std::string (
+        redis_location_scripts_t::claim_owner_lease);
     EXPECT_NE (
       std::string::npos,
-      renew_lease.find ("redis.call('PEXPIRE', KEYS[1], ARGV[3])"));
+      claim_lease.find (
+        "redis.call('HINCRBY', KEYS[2], 'leaseGeneration', 1)"));
     EXPECT_NE (
       std::string::npos,
-      renew_lease.find ("'ownerId', ARGV[1]"));
-    EXPECT_NE (
-      std::string::npos,
-      renew_lease.find ("'expiresAt', expiresAtMs"));
+      claim_lease.find ("redis.call('PEXPIRE', KEYS[1], ARGV[2])"));
+
+    const auto renew_lease =
+      std::string (
+        redis_location_scripts_t::renew_owner_lease_exact);
     EXPECT_NE (
       std::string::npos,
       renew_lease.find (
-        "redis.call('HSET', KEYS[2], ARGV[1], ARGV[2] .. '|' .. nowMs)"));
+        "tonumber(generation) ~= tonumber(ARGV[1])"));
+    EXPECT_NE (
+      std::string::npos,
+      renew_lease.find ("redis.call('PEXPIRE', KEYS[1], ARGV[2])"));
+
+    const auto release_lease =
+      std::string (
+        redis_location_scripts_t::release_owner_lease);
+    EXPECT_NE (
+      std::string::npos,
+      release_lease.find (
+        "tonumber(generation) ~= tonumber(ARGV[1])"));
+    EXPECT_NE (
+      std::string::npos,
+      release_lease.find ("redis.call('DEL', KEYS[1])"));
 
     const auto reserve_relocation =
       std::string (
@@ -1384,8 +1533,6 @@ TEST (ZLinkFrameworkLocationsRedis, PhysicalKeysUseCommonRedisSchema)
       "zlink:test:{zlink-location-v1}:owner-lease:"
       "95256875151043abdcafdd26fd390c650d6311e1d7185df477ce50736b6a5d0b",
                redis_location_key_schema_t::lease_key ("zlink:test", "owner-a"));
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:leases",
-               redis_location_key_schema_t::leases_key ("zlink:test"));
     EXPECT_EQ ("zlink:test:{zlink-location-v1}:stamp:spot:mesh-a",
                redis_location_key_schema_t::stamp_key ("zlink:test", location_kind_t::spot,
                                                        std::string_view ("mesh-a")));
@@ -1546,6 +1693,319 @@ TEST (ZLinkFrameworkLocationsRedis, PeerRowJsonUsesDotnetFieldSchema)
     EXPECT_EQ ("node-a", decoded.node_rid->to_string ());
     EXPECT_EQ (location_role_t::router, decoded.role);
     EXPECT_EQ (17, decoded.value);
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      ClientServerDescriptorUsesDedicatedRedisSchemaAndExactFences)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    using namespace zlink::framework;
+    const auto options = find_redis_options ();
+    if (!options)
+        GTEST_SKIP () << "Redis server is not available";
+
+    redis_location_store_t store (*options);
+    const auto owner_a =
+      std::get<owner_lease_claimed_t> (
+        store
+          .claim_owner_lease (
+            "client-server-owner-a",
+            std::chrono::seconds (10))
+          .result ()
+          .value ())
+        .token;
+    const auto owner_b =
+      std::get<owner_lease_claimed_t> (
+        store
+          .claim_owner_lease (
+            "client-server-owner-b",
+            std::chrono::seconds (10))
+          .result ()
+          .value ())
+        .token;
+    const auto owner_c =
+      std::get<owner_lease_claimed_t> (
+        store
+          .claim_owner_lease (
+            "client-server-owner-c",
+            std::chrono::seconds (10))
+          .result ()
+          .value ())
+        .token;
+
+    client_server_server_descriptor_t descriptor{
+      .channel_name = "orders",
+      .server_rid =
+        zlink::routing_id_t::from ("orders-a"),
+      .lifecycle_generation = 7,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:7400",
+      .weight = 100,
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "cluster-a",
+      .owner_id = owner_a.owner_id,
+      .lease_generation =
+        owner_a.lease_generation};
+    const auto first_write =
+      store
+        .update_client_server (
+          descriptor,
+          location_write_intent_t::new_claim)
+        .result ()
+        .value ();
+    ASSERT_EQ (location_write_status_t::stored,
+               first_write.status);
+    ASSERT_GT (first_write.generation, 0);
+
+    const auto canonical_key =
+      redis_location_key_schema_t::
+        encode_client_server_key (
+          {descriptor.channel_name,
+           descriptor.server_rid});
+    sw::redis::Redis redis (
+      options->connection_string);
+    const auto physical_key =
+      redis_location_key_schema_t::
+        client_server_key (
+          options->key_prefix, canonical_key);
+    std::vector<std::string> physical_fields;
+    redis.hkeys (
+      physical_key,
+      std::back_inserter (physical_fields));
+    std::sort (
+      physical_fields.begin (),
+      physical_fields.end ());
+    auto expected_fields =
+      read_client_server_descriptor_fixture ()
+        .at ("hashFields")
+        .get<std::vector<std::string>> ();
+    std::sort (
+      expected_fields.begin (),
+      expected_fields.end ());
+    EXPECT_EQ (expected_fields, physical_fields);
+
+    const auto admission_key =
+      redis_location_key_schema_t::
+        client_server_admission_key (
+          options->key_prefix, canonical_key);
+    std::vector<std::pair<std::string, std::string>>
+      admission_entries;
+    redis.hgetall (
+      admission_key,
+      std::back_inserter (admission_entries));
+    const std::map<std::string, std::string> admission (
+      admission_entries.begin (),
+      admission_entries.end ());
+    EXPECT_EQ (canonical_key,
+               admission.at ("descriptorKey"));
+    EXPECT_EQ ("7",
+               admission.at ("lifecycleGeneration"));
+    EXPECT_EQ ("1",
+               admission.at ("descriptorRevision"));
+    EXPECT_EQ (owner_a.owner_id,
+               admission.at ("ownerId"));
+    EXPECT_EQ (
+      std::to_string (owner_a.lease_generation),
+      admission.at ("ownerLeaseGeneration"));
+    EXPECT_EQ ("1", admission.at ("runtimeState"));
+    EXPECT_EQ ("100", admission.at ("weight"));
+    EXPECT_EQ (
+      64u, admission.at ("immutableDigest").size ());
+    EXPECT_TRUE (
+      redis.sismember (
+        redis_location_key_schema_t::
+          client_server_owner_keys_key (
+            options->key_prefix,
+            owner_a.owner_id,
+            owner_a.lease_generation),
+        canonical_key));
+    EXPECT_TRUE (
+      static_cast<bool> (
+        redis.zscore (
+          redis_location_key_schema_t::
+            client_server_channel_keys_key (
+              options->key_prefix, "orders"),
+          canonical_key)));
+
+    auto second = descriptor;
+    second.server_rid =
+      zlink::routing_id_t::from ("orders-b");
+    second.endpoint = "tcp://127.0.0.1:7401";
+    second.owner_id = owner_c.owner_id;
+    second.lease_generation =
+      owner_c.lease_generation;
+    ASSERT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_client_server (
+          second,
+          location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+
+    const auto first_page =
+      store
+        .list_client_servers (
+          "orders", {.page_size = 1})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, first_page.items.size ());
+    ASSERT_TRUE (
+      first_page.continuation_token.has_value ());
+    const auto second_page =
+      store
+        .list_client_servers (
+          "orders",
+          {.page_size = 1,
+           .continuation_token =
+             first_page.continuation_token})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, second_page.items.size ());
+    EXPECT_FALSE (
+      second_page.continuation_token.has_value ());
+    EXPECT_NE (first_page.items.front ().server_rid,
+               second_page.items.front ().server_rid);
+    EXPECT_THROW (
+      store.list_client_servers (
+        "other",
+        {.page_size = 1,
+         .continuation_token =
+           first_page.continuation_token}),
+      std::invalid_argument);
+    auto stale_cleanup_token = owner_c;
+    --stale_cleanup_token.lease_generation;
+    EXPECT_EQ (
+      0,
+      store.remove_all_by_owner (
+        stale_cleanup_token)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      2u,
+      store.list_client_servers ("orders")
+        .result ()
+        .value ()
+        .items.size ());
+    EXPECT_EQ (
+      1,
+      store.remove_all_by_owner (owner_c)
+        .result ()
+        .value ());
+    ASSERT_EQ (
+      1u,
+      store.list_client_servers ("orders")
+        .result ()
+        .value ()
+        .items.size ());
+    EXPECT_NE (
+      nullptr,
+      std::get_if<owner_lease_released_t> (
+        &store
+           .release_owner_lease (owner_c)
+           .result ()
+           .value ()));
+
+    descriptor.descriptor_revision = 2;
+    descriptor.weight = 50;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_client_server (
+          descriptor,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto immutable_change = descriptor;
+    immutable_change.descriptor_revision = 3;
+    immutable_change.endpoint =
+      "tcp://127.0.0.1:7499";
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .update_client_server (
+          immutable_change,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    auto stale_revision = descriptor;
+    stale_revision.descriptor_revision = 1;
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .update_client_server (
+          stale_revision,
+          location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+
+    auto takeover = descriptor;
+    takeover.descriptor_revision = 1;
+    takeover.owner_id = owner_b.owner_id;
+    takeover.lease_generation =
+      owner_b.lease_generation;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_client_server (
+          takeover,
+          location_write_intent_t::takeover)
+        .result ()
+        .value ()
+        .status);
+    EXPECT_NE (
+      nullptr,
+      std::get_if<owner_lease_released_t> (
+        &store
+           .release_owner_lease (owner_a)
+           .result ()
+           .value ()));
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_client_server (
+          takeover,
+          location_write_intent_t::takeover)
+        .result ()
+        .value ()
+        .status);
+    EXPECT_EQ (
+      location_write_status_t::ignored_stale,
+      store
+        .remove_client_server (
+          {"orders",
+           zlink::routing_id_t::from ("orders-a")},
+          owner_a)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .remove_client_server (
+          {"orders",
+           zlink::routing_id_t::from ("orders-a")},
+          owner_b)
+        .result ()
+        .value ());
+    EXPECT_TRUE (
+      store.list_client_servers ("orders")
+        .result ()
+        .value ()
+        .items.empty ());
+    EXPECT_NE (
+      nullptr,
+      std::get_if<owner_lease_released_t> (
+        &store
+           .release_owner_lease (owner_b)
+           .result ()
+           .value ()));
+#endif
 }
 
 TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)

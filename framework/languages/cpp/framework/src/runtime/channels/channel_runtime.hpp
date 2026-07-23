@@ -101,6 +101,16 @@ class channel_runtime_state_t
     using mesh_channel_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
       runtime::messaging::message_parts_t,
       std::chrono::milliseconds)>;
+    using client_server_send_t = std::function<result_t<void> (
+      std::string,
+      std::string,
+      zlink::message_t,
+      std::chrono::milliseconds)>;
+    using client_server_request_t = std::function<result_t<zlink::message_t> (
+      std::string,
+      std::string,
+      zlink::message_t,
+      std::chrono::milliseconds)>;
     using spot_mesh_send_t = std::function<result_t<void> (
       const zlink::routing_id_t &,
       const zlink::routing_id_t &,
@@ -140,6 +150,8 @@ class channel_runtime_state_t
     std::map<std::string, mesh_node_request_t> mesh_node_requesters;
     std::map<std::string, mesh_channel_send_t> mesh_channel_senders;
     std::map<std::string, mesh_channel_request_t> mesh_channel_requesters;
+    std::map<std::string, client_server_send_t> client_server_senders;
+    std::map<std::string, client_server_request_t> client_server_requesters;
     std::map<std::string, spot_mesh_send_t> spot_mesh_senders;
     std::map<std::string, spot_mesh_request_t> spot_mesh_requesters;
     std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
@@ -223,6 +235,11 @@ class channel_runtime_t
       std::string channel_name,
       channel_runtime_state_t::mesh_channel_send_t send,
       channel_runtime_state_t::mesh_channel_request_t request);
+    void bind_client_server_transport (
+      std::string channel_name,
+      channel_runtime_state_t::client_server_send_t send,
+      channel_runtime_state_t::client_server_request_t request);
+    void unbind_client_server_transport (const std::string &channel_name) noexcept;
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
     void mark_auto_connect_active ();

@@ -15,6 +15,7 @@ namespace zlink::framework::runtime
 {
 
 class in_memory_location_store_t final : public location_store_t,
+                                         public client_server_location_store_t,
                                          public location_change_stamp_store_t
 {
   public:
@@ -130,6 +131,119 @@ class in_memory_location_store_t final : public location_store_t,
         for (std::size_t index = offset;
              index < matched.size ()
              && result.items.size () < page_size;
+             ++index)
+            result.items.push_back (matched[index]);
+        const auto next = offset + result.items.size ();
+        if (next < matched.size ())
+            result.continuation_token = std::to_string (next);
+        return completed (std::move (result));
+    }
+
+    task_t<location_write_result_t> update_client_server (
+      client_server_server_descriptor_t descriptor,
+      location_write_intent_t intent) override
+    {
+        if (!valid_client_server_descriptor (descriptor))
+            throw std::invalid_argument (
+              "ClientServer descriptor is incomplete");
+        std::lock_guard lock (_gate);
+        const auto now = clock_t::now ();
+        const auto key = client_server_key (
+          descriptor.channel_name, descriptor.server_rid);
+        const auto found = _client_servers.find (key);
+        const auto token = location_owner_token_t{
+          descriptor.owner_id, descriptor.lease_generation};
+        if (!owner_token_is_live (token, now))
+            return completed (location_write_result_t{
+              location_write_status_t::ignored_stale, 0, {}});
+
+        if (intent == location_write_intent_t::new_claim) {
+            if (found != _client_servers.end ()
+                && owner_token_is_live (
+                  {found->second.owner_id,
+                   found->second.lease_generation},
+                  now))
+                return completed (location_write_result_t{
+                  location_write_status_t::rejected_conflict, 0, {}});
+        } else if (intent == location_write_intent_t::renew) {
+            if (found == _client_servers.end ()
+                || found->second.owner_id != descriptor.owner_id
+                || found->second.lease_generation
+                     != descriptor.lease_generation
+                || descriptor.descriptor_revision
+                     < found->second.descriptor_revision)
+                return completed (location_write_result_t{
+                  location_write_status_t::ignored_stale, 0, {}});
+            if (!same_client_server_identity (
+                  found->second, descriptor))
+                return completed (location_write_result_t{
+                  location_write_status_t::rejected_conflict, 0, {}});
+            if (descriptor.descriptor_revision
+                  == found->second.descriptor_revision) {
+                if (!same_client_server_descriptor (
+                      found->second, descriptor))
+                    return completed (location_write_result_t{
+                      location_write_status_t::rejected_conflict, 0, {}});
+                return completed (
+                  location_write_result_t::stored (
+                    static_cast<std::int64_t> (
+                      descriptor.descriptor_revision),
+                    found->second.updated_at));
+            }
+        } else {
+            return completed (location_write_result_t{
+              location_write_status_t::rejected_conflict, 0, {}});
+        }
+
+        descriptor.updated_at = now;
+        _client_servers[key] = descriptor;
+        return completed (
+          location_write_result_t::stored (
+            static_cast<std::int64_t> (
+              descriptor.descriptor_revision),
+            now));
+    }
+
+    task_t<location_write_status_t> remove_client_server (
+      client_server_server_descriptor_key_t key,
+      location_owner_token_t owner) override
+    {
+        std::lock_guard lock (_gate);
+        const auto found = _client_servers.find (
+          client_server_key (key.channel_name, key.server_rid));
+        if (found == _client_servers.end ()
+            || found->second.owner_id != owner.owner_id
+            || found->second.lease_generation
+                 != owner.lease_generation)
+            return completed (
+              location_write_status_t::ignored_stale);
+        _client_servers.erase (found);
+        return completed (location_write_status_t::stored);
+    }
+
+    task_t<location_page_t<client_server_server_descriptor_t>>
+    list_client_servers (std::string channel_name,
+                         location_page_request_t page = {}) override
+    {
+        if (channel_name.empty () || page.page_size < 1
+            || page.page_size > 1000)
+            throw std::invalid_argument (
+              "ClientServer list arguments are invalid");
+        std::lock_guard lock (_gate);
+        std::vector<client_server_server_descriptor_t> matched;
+        for (const auto &[_, descriptor] : _client_servers) {
+            if (descriptor.channel_name == channel_name)
+                matched.push_back (descriptor);
+        }
+        const auto offset =
+          page.continuation_token
+            ? parse_offset (*page.continuation_token)
+            : 0;
+        location_page_t<client_server_server_descriptor_t> result;
+        for (std::size_t index = offset;
+             index < matched.size ()
+             && result.items.size ()
+                  < static_cast<std::size_t> (page.page_size);
              ++index)
             result.items.push_back (matched[index]);
         const auto next = offset + result.items.size ();
@@ -369,45 +483,6 @@ class in_memory_location_store_t final : public location_store_t,
         return completed (
           owner_lease_release_result_t{
             owner_lease_released_t{}});
-    }
-
-    task_t<owner_lease_renewal_t> renew_owner_lease (std::string owner_id,
-                                                     zlink::routing_id_t node_rid,
-                                                     std::chrono::milliseconds lease_ttl) override
-    {
-        std::lock_guard lock (_gate);
-        const auto now = clock_t::now ();
-        const auto expires_at = now + lease_ttl;
-        const auto existing = _leases.find (owner_id);
-        if (existing == _leases.end ()
-            || existing->second.lease_expires_at <= now) {
-            if (_lease_generation
-                < static_cast<std::uint64_t> (
-                  std::numeric_limits<std::int64_t>::max ()))
-                ++_lease_generation;
-            _active_lease_generations[owner_id] =
-              static_cast<std::int64_t> (_lease_generation);
-        }
-        _leases[owner_id] = owner_lease_t{owner_id, std::move (node_rid), expires_at, now};
-        return completed (owner_lease_renewal_t{expires_at, now});
-    }
-
-    task_t<bool> remove_owner_lease (std::string owner_id) override
-    {
-        std::lock_guard lock (_gate);
-        _active_lease_generations.erase (owner_id);
-        return completed (_leases.erase (owner_id) > 0);
-    }
-
-    task_t<owner_lease_snapshot_t> list_owner_leases () override
-    {
-        std::lock_guard lock (_gate);
-        owner_lease_snapshot_t snapshot;
-        snapshot.store_now = clock_t::now ();
-        for (const auto &[_, lease] : _leases) {
-            snapshot.leases.push_back (lease);
-        }
-        return completed (std::move (snapshot));
     }
 
     task_t<std::int64_t> get_change_stamp (location_change_stamp_scope_t scope) override
@@ -1416,24 +1491,38 @@ class in_memory_location_store_t final : public location_store_t,
         return completed (aggregate_abort_result_t::aborted);
     }
 
-    task_t<std::int64_t> remove_all_by_owner (std::string owner_id) override
+    task_t<std::int64_t> remove_all_by_owner (
+      location_owner_token_t owner) override
     {
         std::lock_guard lock (_gate);
+        if (!owner_token_is_live (owner, clock_t::now ()))
+            return completed (std::int64_t{0});
         std::int64_t removed = 0;
         removed += remove_by_owner_locked (
-          _peers, owner_id, location_kind_t::peer,
+          _peers, owner.owner_id, location_kind_t::peer,
           [] (const peer_location_t &row) { return std::optional<std::string> (row.mesh_name); });
         removed += remove_by_owner_locked (
-          _spots, owner_id, location_kind_t::spot,
+          _spots, owner.owner_id, location_kind_t::spot,
           [] (const spot_location_t &row) { return std::optional<std::string> (row.mesh_name); });
         removed += remove_by_owner_locked (
-          _actors, owner_id, location_kind_t::actor,
+          _actors, owner.owner_id, location_kind_t::actor,
           [] (const actor_location_t &row) {
               return std::optional<std::string>{row.mesh_name};
           });
         removed += remove_by_owner_locked (
-          _routes, owner_id, location_kind_t::route,
+          _routes, owner.owner_id, location_kind_t::route,
           [] (const route_location_t &) { return std::optional<std::string>{}; });
+        std::vector<std::string> client_server_keys;
+        for (const auto &[key, descriptor] : _client_servers) {
+            if (descriptor.owner_id == owner.owner_id
+                && descriptor.lease_generation
+                     == owner.lease_generation)
+                client_server_keys.push_back (key);
+        }
+        for (const auto &key : client_server_keys)
+            _client_servers.erase (key);
+        removed += static_cast<std::int64_t> (
+          client_server_keys.size ());
         return completed (removed);
     }
 
@@ -1735,6 +1824,49 @@ class in_memory_location_store_t final : public location_store_t,
                     == right.lease_generation;
     }
 
+    static bool valid_client_server_descriptor (
+      const client_server_server_descriptor_t &descriptor)
+    {
+        return !descriptor.channel_name.empty ()
+               && descriptor.server_rid.size () != 0
+               && descriptor.lifecycle_generation != 0
+               && descriptor.descriptor_revision != 0
+               && descriptor.descriptor_revision <= max_generation
+               && !descriptor.endpoint.empty ()
+               && descriptor.weight >= 0
+               && descriptor.weight <= 100
+               && !descriptor.security_identity.empty ()
+               && !descriptor.owner_id.empty ()
+               && descriptor.lease_generation > 0;
+    }
+
+    static bool same_client_server_identity (
+      const client_server_server_descriptor_t &left,
+      const client_server_server_descriptor_t &right)
+    {
+        return left.channel_name == right.channel_name
+               && left.server_rid == right.server_rid
+               && left.lifecycle_generation
+                    == right.lifecycle_generation
+               && left.endpoint == right.endpoint
+               && left.security_identity
+                    == right.security_identity;
+    }
+
+    static bool same_client_server_descriptor (
+      const client_server_server_descriptor_t &left,
+      const client_server_server_descriptor_t &right)
+    {
+        return same_client_server_identity (left, right)
+               && left.descriptor_revision
+                    == right.descriptor_revision
+               && left.weight == right.weight
+               && left.state == right.state
+               && left.owner_id == right.owner_id
+               && left.lease_generation
+                    == right.lease_generation;
+    }
+
     static bool same_channel_names (
       const std::map<std::string, int> &left,
       const std::map<std::string, int> &right)
@@ -1760,6 +1892,13 @@ class in_memory_location_store_t final : public location_store_t,
       const std::string &rid)
     {
         return mesh_name + "\x1f" + rid;
+    }
+
+    static std::string client_server_key (
+      const std::string &channel_name,
+      const zlink::routing_id_t &rid)
+    {
+        return channel_name + "\x1f" + rid.to_hex ();
     }
 
     static bool next_generation (std::uint64_t &counter)
@@ -2290,6 +2429,8 @@ class in_memory_location_store_t final : public location_store_t,
 
     mutable std::mutex _gate;
     std::map<std::string, mesh_node_descriptor_t> _mesh_nodes;
+    std::map<std::string, client_server_server_descriptor_t>
+      _client_servers;
     std::map<std::string, owner_lease_t> _leases;
     std::map<std::string, std::int64_t> _active_lease_generations;
     std::uint64_t _lease_generation = 0;

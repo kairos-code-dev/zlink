@@ -146,6 +146,43 @@ raw_client_server_server_t::descriptor () const
     return _options.descriptor;
 }
 
+void raw_client_server_server_t::update_descriptor (
+  protocol::client_server_server_admission_t descriptor)
+{
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    std::vector<std::vector<std::uint8_t>> clients;
+    {
+        std::lock_guard lock (_mutex);
+        if (descriptor.channel_name
+              != _options.descriptor.channel_name
+            || descriptor.server_routing_id
+                 != _options.descriptor.server_routing_id
+            || descriptor.lifecycle_generation
+                 != _options.descriptor.lifecycle_generation
+            || descriptor.security_identity
+                 != _options.descriptor.security_identity
+            || descriptor.advertised_endpoint
+                 != _options.descriptor.advertised_endpoint
+            || descriptor.descriptor_revision
+                 <= _options.descriptor.descriptor_revision) {
+            throw std::invalid_argument (
+              "ClientServer descriptor update violates its immutable fence");
+        }
+        _options.descriptor = descriptor;
+        port = _port;
+        clients.reserve (_connections.size ());
+        for (const auto &[client, _] : _connections)
+            clients.push_back (client);
+    }
+    if (!port)
+        return;
+    const auto update =
+      protocol::encode_client_server_server_admission (
+        protocol::command::update, descriptor);
+    for (const auto &client : clients)
+        (void) port->send (client, {update});
+}
+
 mesh::service_mailbox_t &
 raw_client_server_server_t::mailbox () noexcept
 {

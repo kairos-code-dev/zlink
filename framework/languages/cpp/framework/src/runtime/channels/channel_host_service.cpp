@@ -508,7 +508,8 @@ void channel_host_service_t::start (service_provider_t &services)
     auto manager = detail::channel_runtime_manager_t::from (_bus);
     _stop.store (false, std::memory_order_release);
     for (const auto &channel : _channels) {
-        if (!channel.server.enabled || channel.server.bind_endpoints.empty ()) {
+        if (!channel.server.enabled || channel.server.discovery
+            || channel.server.bind_endpoints.empty ()) {
             continue;
         }
         auto loop = std::make_unique<server_loop_t> (

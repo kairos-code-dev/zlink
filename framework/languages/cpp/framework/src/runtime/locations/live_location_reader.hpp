@@ -25,8 +25,9 @@ class live_location_reader_t final
 {
   public:
     live_location_reader_t (location_store_t &store, location_options_t options = {}) :
-        _store (&store), _polling_interval (options.polling_interval)
+        _store (&store)
     {
+        static_cast<void> (options);
     }
 
     task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter)
@@ -102,9 +103,38 @@ class live_location_reader_t final
         return _store->list_routes (std::move (filter), std::move (page));
     }
 
-    std::set<std::string> live_owner_ids () { return live_owners (); }
-
-    task_t<owner_lease_snapshot_t> list_owner_leases () { return _store->list_owner_leases (); }
+    std::set<std::string> live_owner_ids ()
+    {
+        std::set<std::string> owner_ids;
+        for (const auto &row :
+             _store->list_peers ({}).result ().value ())
+            owner_ids.insert (row.owner_id);
+        collect_page_owner_ids (
+          owner_ids,
+          [this] (location_page_request_t page) {
+              return _store
+                ->list_spots ({}, page)
+                .result ()
+                .value ();
+          });
+        collect_page_owner_ids (
+          owner_ids,
+          [this] (location_page_request_t page) {
+              return _store
+                ->list_actors ({}, page)
+                .result ()
+                .value ();
+          });
+        collect_page_owner_ids (
+          owner_ids,
+          [this] (location_page_request_t page) {
+              return _store
+                ->list_routes ({}, page)
+                .result ()
+                .value ();
+          });
+        return live_owners (owner_ids);
+    }
 
   private:
     template <typename T> static task_t<T> completed (T value)
@@ -112,50 +142,36 @@ class live_location_reader_t final
         return task_t<T> (result_t<T>::success (std::move (value)));
     }
 
-    std::set<std::string> live_owners ()
+    template <typename PageLoader>
+    static void collect_page_owner_ids (
+      std::set<std::string> &owner_ids,
+      PageLoader load)
     {
-        const auto now = std::chrono::steady_clock::now ();
-        std::lock_guard lock (_lease_gate);
-        if (!_lease_fetched_at || _polling_interval <= std::chrono::milliseconds::zero ()
-            || now - *_lease_fetched_at >= _polling_interval) {
-            const auto snapshot = _store->list_owner_leases ().result ().value ();
-            _lease_expirations.clear ();
-            const auto trace_enabled = [] {
-                const char *value = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
-                return value != nullptr && *value != '\0';
-            } ();
-            if (trace_enabled) {
-                std::cerr << "zlink owner-lease snapshot"
-                          << " monotonicMs="
-                          << std::chrono::duration_cast<std::chrono::milliseconds> (
-                               now.time_since_epoch ())
-                               .count ()
-                          << " owners=" << snapshot.leases.size ();
-            }
-            for (const auto &lease : snapshot.leases) {
-                const auto remaining = lease.lease_expires_at - snapshot.store_now;
-                if (remaining > std::chrono::system_clock::duration::zero ()) {
-                    _lease_expirations[lease.owner_id] =
-                      now + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-                              remaining);
-                }
-                if (trace_enabled) {
-                    std::cerr << " owner=" << lease.owner_id
-                              << ",remainingMs="
-                              << std::chrono::duration_cast<std::chrono::milliseconds> (remaining)
-                                   .count ();
-                }
-            }
-            if (trace_enabled) {
-                std::cerr << '\n';
-            }
-            _lease_fetched_at = now;
-        }
+        location_page_request_t request;
+        do {
+            const auto page = load (request);
+            for (const auto &row : page.items)
+                owner_ids.insert (row.owner_id);
+            request.continuation_token =
+              page.continuation_token;
+        } while (request.continuation_token);
+    }
+
+    std::set<std::string> live_owners (
+      const std::set<std::string> &owner_ids)
+    {
         std::set<std::string> owners;
-        for (const auto &[owner_id, expires_at] : _lease_expirations) {
-            if (expires_at > now) {
+        for (const auto &owner_id : owner_ids) {
+            const auto lease =
+              _store->read_owner_lease (owner_id)
+                .result ()
+                .value ();
+            const auto *found =
+              std::get_if<owner_lease_found_t> (&lease);
+            if (found != nullptr
+                && found->lease_expires_at
+                     > found->store_now)
                 owners.insert (owner_id);
-            }
         }
         return owners;
     }
@@ -165,22 +181,22 @@ class live_location_reader_t final
         if (!row) {
             return std::nullopt;
         }
-        const auto owners = live_owners ();
+        const auto owners =
+          live_owners ({row->owner_id});
         return owners.contains (row->owner_id) ? std::move (row) : std::nullopt;
     }
 
     template <typename T> void filter_live (std::vector<T> &rows)
     {
-        const auto owners = live_owners ();
+        std::set<std::string> owner_ids;
+        for (const auto &row : rows)
+            owner_ids.insert (row.owner_id);
+        const auto owners = live_owners (owner_ids);
         std::erase_if (rows,
                        [&owners] (const T &row) { return !owners.contains (row.owner_id); });
     }
 
     location_store_t *_store;
-    std::chrono::milliseconds _polling_interval;
-    std::mutex _lease_gate;
-    std::optional<std::chrono::steady_clock::time_point> _lease_fetched_at;
-    std::map<std::string, std::chrono::steady_clock::time_point> _lease_expirations;
 };
 
 } // namespace zlink::framework::runtime

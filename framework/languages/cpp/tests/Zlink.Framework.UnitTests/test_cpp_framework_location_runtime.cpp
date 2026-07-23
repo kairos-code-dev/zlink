@@ -49,7 +49,12 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
 
     runtime.start (zlink::routing_id_t::from ("node-a"));
     EXPECT_TRUE (runtime.owner_lease_healthy ());
-    ASSERT_EQ (1u, store.list_owner_leases ().result ().value ().leases.size ());
+    EXPECT_TRUE (
+      std::holds_alternative<
+        zlink::framework::owner_lease_found_t> (
+        store.read_owner_lease ("owner-a")
+          .result ()
+          .value ()));
 
     const auto write =
       runtime.write_actor (make_actor ("actor-1"), location_write_intent_t::new_claim);
@@ -65,7 +70,12 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
     EXPECT_EQ ("play", row->mesh_name);
 
     runtime.stop ();
-    EXPECT_TRUE (store.list_owner_leases ().result ().value ().leases.empty ());
+    EXPECT_TRUE (
+      std::holds_alternative<
+        zlink::framework::owner_lease_missing_t> (
+        store.read_owner_lease ("owner-a")
+          .result ()
+          .value ()));
     EXPECT_FALSE (
       store.resolve_actor (
              actor_location_key_t{.mesh_name = "play", .actor_id = "actor-1"})

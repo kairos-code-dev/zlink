@@ -552,6 +552,29 @@ void channel_runtime_t::bind_mesh_channel_transport (
     _state->mesh_channel_requesters.emplace (std::move (channel_name), std::move (request));
 }
 
+void channel_runtime_t::bind_client_server_transport (
+  std::string channel_name,
+  channel_runtime_state_t::client_server_send_t send,
+  channel_runtime_state_t::client_server_request_t request)
+{
+    std::lock_guard lock (_state->mutex);
+    if (_state->client_server_senders.contains (channel_name)) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "ClientServer ChannelName is registered more than once: " + channel_name);
+    }
+    _state->client_server_senders.emplace (channel_name, std::move (send));
+    _state->client_server_requesters.emplace (std::move (channel_name), std::move (request));
+}
+
+void channel_runtime_t::unbind_client_server_transport (
+  const std::string &channel_name) noexcept
+{
+    std::lock_guard lock (_state->mutex);
+    _state->client_server_senders.erase (channel_name);
+    _state->client_server_requesters.erase (channel_name);
+}
+
 dispatch_options_t channel_runtime_t::dispatch_options () const
 {
     return _state->dispatch;

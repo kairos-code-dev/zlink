@@ -1204,8 +1204,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
     detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, {});
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
-      _state->zlink.message_bus (), channel_snapshot, options.route_mesh_client_channels (),
-      mesh_nodes));
+      _state->zlink.message_bus (), channel_snapshot, _state->handlers,
+      _state->serializers, options.route_mesh_client_channels (), mesh_nodes));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));

@@ -1243,6 +1243,27 @@ configuration dependency가 owner token supplier와 start·drain·stop lifecycle
 있으므로 `V11-M6A-JVM`을 완료로 판정하지 않는다. Core·bindings와 Sample·E2E source는 변경하거나
 실행하지 않았다.
 
+C++ ClientServer runtime checkpoint(2026-07-24)에서 exact descriptor·key·선택
+`client_server_location_store_t`와 공식 Redis capability를 추가하고, generic ClientServer peer
+publication·list를 dedicated Store runtime으로 교체했다. Discovery Server는 raw ROUTER가 bind한 실제
+`last_endpoint`를 exact owner token으로 게시하고, Client는 descriptor lifecycle마다 raw DEALER와
+`hello`·`admit` service admission, liveness와 ready fence를 소유한다. Positive-weight `Serving`
+connection만 실제 send·request weighted selection에 사용하며 같은 RID의 새 lifecycle이 ready가 된 뒤
+이전 connection을 제거한다. Service runtime state는 enum 수치를 cast하지 않고 explicit mapper를 사용해
+`Retiring`·`Draining`을 wire `draining`으로 통일했고, 설정되지 않은 message bound는 nonzero
+`0x7fffffff`로 정규화했다. Owner lease public surface와 runtime은 legacy owner-ID renew·remove·전체
+lease list를 제거하고 `claim(ownerId)→renew(token)→removeAll(token)→release(token)` exact 경로만
+사용한다. In-memory와 Redis provider, live reader와 contract test도 같은 계약으로 바꿨다. Focused
+M6A raw·contract header·target contract·in-memory·location runtime·resolver·Redis 7/7, resolver
+27/27, in-memory 10/10, location runtime 4/4가 통과했다. Redis는 20건이 통과하고 외부 환경 의존
+2건만 skip했으며 endpoint·default admission·전체 state mapping 3/3과 `git diff --check`가 통과했다.
+Exact 문서에 있는 dedicated fanout descriptor·Store·공식 Redis capability가 C++ source에 아직 없고
+generic peer 재사용 여부를 다음 audit에서 닫아야 하므로 `V11-M6A-CPP`를 완료로 판정하지 않는다.
+Runtime gate에서 제외한 기존
+`framework/languages/cpp/e2e/ObservabilityOps/Server/main.cpp`도 제거된 `list_owner_leases()`를 호출하므로,
+E2E source를 다시 활성화하는 단계에서 exact read 기반 관측 시나리오로 migration해야 한다.
+Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

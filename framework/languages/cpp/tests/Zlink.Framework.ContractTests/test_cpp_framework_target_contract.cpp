@@ -1267,7 +1267,9 @@ int main ()
     /* E2E-CP-39 — stores return raw rows; one runtime view owns the lease join. */
     gate.require (redis_hpp.find ("owner_is_live") == std::string::npos,
                   "E2E-CP-39", "Redis store still filters rows by owner lease");
-    gate.require (live_location_reader.find ("list_owner_leases") != std::string::npos
+    gate.require (live_location_reader.find ("list_owner_leases") == std::string::npos
+                    && live_location_reader.find ("read_owner_lease")
+                         != std::string::npos
                     && live_location_reader.find ("lease_expires_at") != std::string::npos
                     && live_location_reader.find ("store_now") != std::string::npos,
                   "E2E-CP-39", "framework has no centralized live-row lease join");
@@ -1389,13 +1391,15 @@ int main ()
                          == std::string::npos,
                   "E2E-CP-45", "SF-E1 does not control latency outside the application process");
 
-    /* IMP-CP-38 — lease removal and snapshot each execute as one Redis script. */
-    gate.require (redis_hpp.find ("eval<std::tuple<long long, long long>>")
+    /* IMP-CP-38 — exact lease release and read each execute as one Redis script. */
+    gate.require (redis_hpp.find (
+                    "std::tuple<std::string, long long>>")
                     != std::string::npos,
-                  "IMP-CP-38", "owner lease removal is not a single scripted decision");
-    gate.require (redis_hpp.find ("eval<std::tuple<long long, std::vector<std::string>>>")
+                  "IMP-CP-38", "exact owner lease release is not a single scripted decision");
+    gate.require (redis_hpp.find (
+                    "std::string,\n                      long long,\n                      long long,\n                      long long>>")
                     != std::string::npos,
-                  "IMP-CP-38", "owner lease snapshot is not returned by one Redis script");
+                  "IMP-CP-38", "exact owner lease read is not returned by one Redis script");
 
     /* IMP-CP-37 — actor physical rows use the common five-field, mesh-scoped schema. */
     gate.require (redis_hpp.find (

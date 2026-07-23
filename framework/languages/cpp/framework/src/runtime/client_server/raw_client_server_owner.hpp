@@ -55,6 +55,8 @@ class raw_client_server_server_t
     void close () noexcept;
     std::string endpoint () const;
     protocol::client_server_server_admission_t descriptor () const;
+    void update_descriptor (
+      protocol::client_server_server_admission_t descriptor);
     mesh::service_mailbox_t &mailbox () noexcept;
 
     std::size_t drain_monitor_events (

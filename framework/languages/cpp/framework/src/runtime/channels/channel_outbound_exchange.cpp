@@ -123,6 +123,30 @@ bool can_wait_for_client_endpoint (const std::shared_ptr<channel_runtime_state_t
     return state->auto_connect_active;
 }
 
+std::optional<channel_runtime_state_t::client_server_send_t>
+client_server_sender (const std::shared_ptr<channel_runtime_state_t> &state,
+                      const std::string &channel_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found = state->client_server_senders.find (channel_name);
+    return found == state->client_server_senders.end ()
+             ? std::nullopt
+             : std::optional<channel_runtime_state_t::client_server_send_t> (
+                 found->second);
+}
+
+std::optional<channel_runtime_state_t::client_server_request_t>
+client_server_requester (const std::shared_ptr<channel_runtime_state_t> &state,
+                         const std::string &channel_name)
+{
+    std::lock_guard lock (state->mutex);
+    const auto found = state->client_server_requesters.find (channel_name);
+    return found == state->client_server_requesters.end ()
+             ? std::nullopt
+             : std::optional<channel_runtime_state_t::client_server_request_t> (
+                 found->second);
+}
+
 bool channel_runtime_accepts_outbound_locked (const channel_runtime_state_t &state) noexcept
 {
     return !state.shutdown && !state.closed;
@@ -867,6 +891,59 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
         return message_bus_t::erased_request_result_t (detail::make_boundary_exception (detail::boundary_error_t::disconnected, "channel client is not connected"));
     }
     if (_state->serializers != nullptr && client != nullptr) {
+        if (const auto requester = client_server_requester (_state, channel_name)) {
+            try {
+                auto payload =
+                  detail::encoded_payload_to_raw (encode_payload (*_state->serializers));
+                if (client->max_message_size
+                    && client->max_message_size->bytes () > 0
+                    && static_cast<std::int64_t> (payload.size ())
+                         > client->max_message_size->bytes ()) {
+                    (void) runtime.cancel_outbound_request (reservation.value ());
+                    return message_bus_t::erased_request_result_t (
+                      framework_exception_t (
+                        framework_error_kind_t::request_failed,
+                        "channel message exceeds configured max message size"));
+                }
+                const auto effective_timeout =
+                  resolve_channel_wait_timeout (_state, channel_name, timeout);
+                auto reply = (*requester) (
+                  call_packet_name,
+                  _state->serializers->content_type (request_type),
+                  std::move (payload),
+                  effective_timeout);
+                if (!reply) {
+                    (void) runtime.cancel_outbound_request (reservation.value ());
+                    return message_bus_t::erased_request_result_t (
+                      reply.error () != nullptr
+                        ? *reply.error ()
+                        : framework_exception_t (
+                            framework_error_kind_t::request_failed,
+                            "ClientServer request failed"));
+                }
+                auto completion =
+                  runtime.complete_outbound_reply (reservation.value ());
+                if (!completion) {
+                    return message_bus_t::erased_request_result_t (
+                      completion.error () != nullptr
+                        ? *completion.error ()
+                        : framework_exception_t (
+                            framework_error_kind_t::request_failed,
+                            "channel request failed"));
+                }
+                return message_bus_t::erased_request_result_t (
+                  reply.value (), *_state->serializers);
+            }
+            catch (const framework_exception_t &error) {
+                (void) runtime.cancel_outbound_request (reservation.value ());
+                return message_bus_t::erased_request_result_t (error);
+            }
+            catch (const std::exception &error) {
+                (void) runtime.cancel_outbound_request (reservation.value ());
+                return message_bus_t::erased_request_result_t (
+                  map_native_request_exception (error));
+            }
+        }
         try {
             runtime::messaging::client_call_codec_t codec;
             const auto effective_timeout =
@@ -1027,6 +1104,32 @@ channel_outbound_exchange_t::submit_send (std::string channel_name,
                                         "channel client is not connected");
     }
     if (_state->serializers != nullptr && client != nullptr) {
+        if (const auto sender = client_server_sender (_state, channel_name)) {
+            try {
+                auto payload =
+                  detail::encoded_payload_to_raw (encode_payload (*_state->serializers));
+                if (client->max_message_size
+                    && client->max_message_size->bytes () > 0
+                    && static_cast<std::int64_t> (payload.size ())
+                         > client->max_message_size->bytes ()) {
+                    return result_t<void>::failure (
+                      framework_error_kind_t::request_failed,
+                      "channel message exceeds configured max message size");
+                }
+                return (*sender) (
+                  call_packet_name,
+                  _state->serializers->content_type (message_type),
+                  std::move (payload),
+                  resolve_send_wait_timeout (timeout));
+            }
+            catch (const framework_exception_t &error) {
+                return detail::result_access_t::failure<void> (error);
+            }
+            catch (const std::exception &error) {
+                return result_t<void>::failure (
+                  framework_error_kind_t::request_failed, error.what ());
+            }
+        }
         try {
             runtime::messaging::client_call_codec_t codec;
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::command,

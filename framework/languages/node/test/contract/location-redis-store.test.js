@@ -755,22 +755,12 @@ test('redis ClientServer descriptors enforce revision, lifecycle takeover, pagin
     assert.equal(storedHash.channel, initial.channelName);
     const storedJson = JSON.parse(storedHash.json);
     const expectedJson = JSON.parse(fixtureContract.row.hash.json);
-    for (const field of [
-      'ChannelName',
-      'ServerRid',
-      'LifecycleGeneration',
-      'Endpoint',
-      'SecurityIdentity',
-      'OwnerId',
-      'UpdatedAt'
-    ]) {
-      assert.deepEqual(storedJson[field], expectedJson[field]);
-    }
-    assert.equal(storedJson.OwnerLeaseGeneration, Number(ownerA.token.leaseGeneration));
-    assert.equal(storedJson.DescriptorRevision, 4);
-    assert.equal(storedJson.Weight, 50);
-    assert.equal(storedJson.State, 'Serving');
-    assert.equal('NormalizedEffectiveMaxMessageBytes' in storedJson, false);
+    assert.deepEqual(storedJson, {
+      ...expectedJson,
+      DescriptorRevision: 4,
+      Weight: 50,
+      OwnerLeaseGeneration: Number(ownerA.token.leaseGeneration)
+    });
 
     const second = clientServerDescriptor(
       'orders-b',

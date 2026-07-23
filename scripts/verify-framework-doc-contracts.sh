@@ -1432,8 +1432,8 @@ const validateHashRow = (fixtureName, row, expectedKey = undefined) => {
 const descriptorFieldOrder = {
   'client-server-server-descriptor-v1.json': [
     'ChannelName', 'ServerRid', 'LifecycleGeneration', 'DescriptorRevision',
-    'NormalizedEffectiveMaxMessageBytes', 'Endpoint', 'Weight', 'State',
-    'SecurityIdentity', 'OwnerId', 'OwnerLeaseGeneration', 'UpdatedAt',
+    'Endpoint', 'Weight', 'State', 'SecurityIdentity', 'OwnerId',
+    'OwnerLeaseGeneration', 'UpdatedAt',
   ],
   'fanout-publisher-descriptor-v1.json': [
     'ChannelName', 'PublisherRid', 'LifecycleGeneration', 'DescriptorRevision',
@@ -1476,12 +1476,6 @@ const validateDescriptorPayload = (name, payload) => {
   }
   if (typeof payload.OwnerId !== 'string' || payload.OwnerId.length === 0) {
     fail(`Redis descriptor OwnerId is missing: ${name}`);
-  }
-  if (name === 'client-server-server-descriptor-v1.json'
-      && (!Number.isSafeInteger(payload.NormalizedEffectiveMaxMessageBytes)
-        || payload.NormalizedEffectiveMaxMessageBytes <= 0
-        || payload.NormalizedEffectiveMaxMessageBytes > 0xffffffff)) {
-    fail(`Redis descriptor normalized message bound differs: ${name}`);
   }
   if (name !== 'mesh-node-descriptor-v1.json') return;
   const channelNames = Object.keys(payload.ChannelWeights || {});

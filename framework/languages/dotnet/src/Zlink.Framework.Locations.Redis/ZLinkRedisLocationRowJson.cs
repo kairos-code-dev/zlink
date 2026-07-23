@@ -28,7 +28,11 @@ internal static class ZLinkRedisLocationRowJson
     {
         if (row is ZLinkMeshNodeDescriptor descriptor)
             ValidateDescriptor(descriptor);
-        var json = JsonSerializer.Serialize(row, Options);
+        var json = row is ZLinkClientServerServerDescriptor clientServer
+            ? JsonSerializer.Serialize(
+                ClientServerDescriptorJson.From(clientServer),
+                Options)
+            : JsonSerializer.Serialize(row, Options);
         if (System.Text.Encoding.UTF8.GetByteCount(json) > 1024 * 1024)
             throw new JsonException(
                 "Location row JSON must not exceed 1 MiB.");
@@ -39,6 +43,15 @@ internal static class ZLinkRedisLocationRowJson
     {
         if (typeof(TRow) == typeof(ZLinkMeshNodeDescriptor))
             RequireCompleteDescriptor(json);
+        if (typeof(TRow) == typeof(ZLinkClientServerServerDescriptor))
+        {
+            var encoded = JsonSerializer.Deserialize<ClientServerDescriptorJson>(
+                              json,
+                              Options)
+                          ?? throw new InvalidOperationException(
+                              "ClientServer descriptor payload deserialized to null.");
+            return (TRow)(object)encoded.ToDescriptor();
+        }
 
         var row = JsonSerializer.Deserialize<TRow>(json, Options)
                   ?? throw new InvalidOperationException(
@@ -46,6 +59,50 @@ internal static class ZLinkRedisLocationRowJson
         if (row is ZLinkMeshNodeDescriptor descriptor)
             ValidateDescriptor(descriptor);
         return row;
+    }
+
+    private sealed record ClientServerDescriptorJson(
+        string ChannelName,
+        RoutingId ServerRid,
+        ulong LifecycleGeneration,
+        ulong DescriptorRevision,
+        string Endpoint,
+        int Weight,
+        [property: JsonConverter(typeof(JsonStringEnumConverter))]
+        ZLinkFrameworkRuntimeState State,
+        string SecurityIdentity,
+        string OwnerId,
+        long OwnerLeaseGeneration,
+        DateTimeOffset UpdatedAt)
+    {
+        internal static ClientServerDescriptorJson From(
+            ZLinkClientServerServerDescriptor descriptor) =>
+            new(
+                descriptor.ChannelName,
+                descriptor.ServerRid,
+                descriptor.LifecycleGeneration,
+                descriptor.DescriptorRevision,
+                descriptor.Endpoint,
+                descriptor.Weight,
+                descriptor.State,
+                descriptor.SecurityIdentity,
+                descriptor.OwnerId,
+                descriptor.LeaseGeneration,
+                descriptor.UpdatedAt);
+
+        internal ZLinkClientServerServerDescriptor ToDescriptor() =>
+            new(
+                ChannelName,
+                ServerRid,
+                LifecycleGeneration,
+                DescriptorRevision,
+                Endpoint,
+                Weight,
+                State,
+                SecurityIdentity,
+                OwnerId,
+                OwnerLeaseGeneration,
+                UpdatedAt);
     }
 
     private static void RequireCompleteDescriptor(string json)

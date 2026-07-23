@@ -51,6 +51,11 @@ ClientServer server descriptor는 MeshName, RouteMesh membership, Spot 또는 Ac
 않는다. MeshNode descriptor를 ClientServer discovery에 재사용하지 않으며, ClientServer descriptor를
 RouteMesh peer admission에 사용하지 않는다.
 
+Descriptor에는 normalized message size를 저장하지 않는다. 이 값은 실제 physical connection의 socket
+option과 transport 조건을 함께 반영한 결과이므로 Client와 Server가 service admission에서 교환하고, 그
+connection에만 적용한다. 아직 연결하지 않은 endpoint의 값을 Framework가 임의로 만들거나 Location Store에
+게시하지 않는다.
+
 Manual endpoint만 사용하면 location store가 필요하지 않다. Automatic discovery를 활성화했는데 location
 store가 없으면 listener bind 전에 startup이 실패한다.
 

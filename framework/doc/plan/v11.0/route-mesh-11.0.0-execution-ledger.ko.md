@@ -1194,11 +1194,11 @@ takeover, exact owner token cleanup을 구현했다. Descriptor page는 channel�
 통과했으며 외부 cross-language harness 2건만 skip했다. Node build·workspace typecheck와 실제 Redis를
 포함한 ClientServer runtime/provider 17/17이 통과했다.
 
-아직 두 계약 공백이 남아 있다. 공통 Redis fixture의
-`NormalizedEffectiveMaxMessageBytes`는 공통 spec이 immutable descriptor field로 요구하지만 다섯 언어
-exact ClientServer descriptor에는 선언되어 있지 않다. Provider가 임의 상수를 만들지 않으며 계약 review로
-공통 field 추가 또는 fixture 수정을 확정한다. 또한 transport `ConnectionReady`만으로는 ChannelName,
-lifecycle과 security identity의 service admission을 증명할 수 없다. Framework service hello와 exact
+독립 contract review에서 공통 Redis fixture의 `NormalizedEffectiveMaxMessageBytes`가 잘못된 것으로 판정했다.
+이 값은 Location descriptor가 아니라 실제 physical connection의 service admission에서 교환하는 transport
+결과다. 다섯 언어 exact descriptor를 확장하지 않고 fixture와 verifier에서 해당 field를 제거했으며, 정식
+ClientServer spec에 이 책임 경계를 명시했다. Transport `ConnectionReady`만으로는 ChannelName, lifecycle과
+security identity의 service admission을 증명할 수 없다. Framework service hello와 exact
 admit/reject 뒤에만 ready target으로 승격하고 descriptor weight selector를 실제 outbound submit에 연결하는
 작업이 남아 있다. 따라서 이 checkpoint도 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.

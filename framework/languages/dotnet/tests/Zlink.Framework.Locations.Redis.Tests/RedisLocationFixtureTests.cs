@@ -72,6 +72,52 @@ public sealed class RedisLocationFixtureTests
     }
 
     [Fact]
+    public void ClientServer_Descriptor_V1_Fixture_Matches_Current_Codec_Output()
+    {
+        using var document = JsonDocument.Parse(
+            File.ReadAllText(FixturePath(
+                "client-server-server-descriptor-v1.json")));
+        var root = document.RootElement;
+        Assert.Equal(
+            "client-server-server-descriptor-v1",
+            RequiredString(root, "format"));
+        Assert.Equal(
+            new[] { "owner", "gen", "json", "updatedAtMs", "channel" },
+            ReadStringArray(root.GetProperty("hashFields")));
+
+        var descriptor = new ZLinkClientServerServerDescriptor(
+            "orders",
+            RoutingId.From("orders-a"),
+            LifecycleGeneration: 7,
+            DescriptorRevision: 3,
+            "tcp://10.0.0.2:7400",
+            Weight: 100,
+            ZLinkFrameworkRuntimeState.Serving,
+            SecurityIdentity: "cluster-a",
+            OwnerId: "channel-owner-a",
+            LeaseGeneration: 5,
+            UpdatedAt: FixtureUpdatedAt);
+        var row = root.GetProperty("row");
+        Assert.Equal(
+            RequiredString(row, "key"),
+            ZLinkRedisLocationKeyCodec.EncodeClientServerKey(
+                new ZLinkClientServerServerDescriptorKey(
+                    descriptor.ChannelName,
+                    descriptor.ServerRid)));
+
+        var expectedJson = RequiredString(
+            row.GetProperty("hash"),
+            "json");
+        Assert.Equal(
+            expectedJson,
+            ZLinkRedisLocationRowJson.Serialize(descriptor));
+        Assert.Equal(
+            descriptor,
+            ZLinkRedisLocationRowJson
+                .Deserialize<ZLinkClientServerServerDescriptor>(expectedJson));
+    }
+
+    [Fact]
     public void Authority_Store_V1_Fixture_Uses_Hybrid_Physical_Schema()
     {
         using var document = JsonDocument.Parse(

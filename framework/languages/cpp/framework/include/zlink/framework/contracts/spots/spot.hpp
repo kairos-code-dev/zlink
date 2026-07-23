@@ -1291,7 +1291,7 @@ class spot_publisher_client_t
     {
         if (!_serializers) {
             return publish_call_t (
-              publish_result_t{.status = submit_status_t::shutdown});
+              publish_result_t{.status = submit_status_t::shutdown, .detail = {}});
         }
         try {
             auto payload =
@@ -1301,7 +1301,7 @@ class spot_publisher_client_t
         }
         catch (const framework_exception_t &) {
             return publish_call_t (
-              publish_result_t{.status = submit_status_t::shutdown});
+              publish_result_t{.status = submit_status_t::shutdown, .detail = {}});
         }
     }
 

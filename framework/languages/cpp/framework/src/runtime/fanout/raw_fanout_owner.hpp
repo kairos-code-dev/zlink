@@ -1,0 +1,120 @@
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
+#pragma once
+
+#include "runtime/locations/service_descriptor_registry.hpp"
+#include "runtime/protocol/service_wire_codec.hpp"
+
+#include <chrono>
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace zlink
+{
+class context_t;
+class pub_socket_t;
+class sub_socket_t;
+}
+
+namespace zlink::framework::runtime::fanout
+{
+
+inline constexpr std::chrono::seconds fanout_beacon_interval{5};
+inline constexpr std::chrono::seconds fanout_receive_deadline{15};
+
+enum class fanout_receive_status_t
+{
+    no_data,
+    beacon,
+    application,
+    protocol_error
+};
+
+struct fanout_received_t
+{
+    std::vector<std::uint8_t> publisher_routing_id;
+    std::string topic;
+    protocol::application_payload_t payload;
+};
+
+class raw_fanout_publisher_t
+{
+  public:
+    explicit raw_fanout_publisher_t (std::string endpoint);
+    ~raw_fanout_publisher_t () noexcept;
+
+    void start ();
+    void close () noexcept;
+    std::string endpoint () const;
+    bool publish (const std::string &topic,
+                  const protocol::application_payload_t &payload);
+    bool tick (std::chrono::steady_clock::time_point now);
+
+    static const std::string &reserved_topic ();
+    static const std::vector<std::uint8_t> &beacon_payload ();
+
+  private:
+    std::string _configured_endpoint;
+    mutable std::mutex _mutex;
+    std::unique_ptr<zlink::context_t> _context;
+    std::unique_ptr<zlink::pub_socket_t> _socket;
+    std::string _endpoint;
+    std::chrono::steady_clock::time_point _next_beacon{};
+    bool _closed = false;
+};
+
+class raw_fanout_subscriber_t
+{
+  public:
+    raw_fanout_subscriber_t ();
+    ~raw_fanout_subscriber_t () noexcept;
+
+    bool connect_manual (std::vector<std::uint8_t> publisher_routing_id,
+                         std::string endpoint);
+    void reconcile_automatic (
+      const locations::service_descriptor_snapshot_t &snapshot);
+    bool disconnect (const std::vector<std::uint8_t> &publisher_routing_id);
+    void close () noexcept;
+
+    std::pair<fanout_receive_status_t, std::optional<fanout_received_t>>
+    try_receive (std::chrono::steady_clock::time_point now);
+    std::vector<std::vector<std::uint8_t>>
+    tick (std::chrono::steady_clock::time_point now);
+    bool ready (
+      const std::vector<std::uint8_t> &publisher_routing_id) const;
+    std::size_t publisher_count () const;
+
+  private:
+    struct byte_vector_less_t
+    {
+        bool operator() (const std::vector<std::uint8_t> &left,
+                         const std::vector<std::uint8_t> &right) const noexcept;
+    };
+
+    struct connection_t
+    {
+        std::string endpoint;
+        std::unique_ptr<zlink::sub_socket_t> socket;
+        bool automatic = false;
+        bool ready = false;
+        std::chrono::steady_clock::time_point deadline{};
+    };
+
+    bool connect_locked (std::vector<std::uint8_t> publisher_routing_id,
+                         std::string endpoint,
+                         bool automatic);
+    void reopen_locked (connection_t &connection);
+
+    mutable std::mutex _mutex;
+    std::unique_ptr<zlink::context_t> _context;
+    std::map<std::vector<std::uint8_t>, connection_t, byte_vector_less_t>
+      _connections;
+    std::optional<bool> _automatic_mode;
+    bool _closed = false;
+};
+
+} // namespace zlink::framework::runtime::fanout

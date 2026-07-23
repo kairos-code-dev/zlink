@@ -85,10 +85,51 @@ if(NOT TARGET zlink::cpp)
   find_package(zlink_cpp ${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION} EXACT CONFIG REQUIRED)
 endif()
 
-add_library(zlink_framework STATIC
+set(ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES
+  framework/src/runtime/backend/native_route_backend.cpp
+  framework/src/runtime/backend/raw_dealer_port.cpp
   framework/src/runtime/backend/raw_route_port.cpp
   framework/src/runtime/foundation/operation_registry.cpp
   framework/src/runtime/protocol/service_wire_codec.cpp
+  framework/src/runtime/mesh/raw_mesh_node_owner.cpp
+  framework/src/runtime/mesh/service_liveness_registry.cpp
+  framework/src/runtime/mesh/service_mailbox.cpp
+  framework/src/runtime/mesh/service_topology_registry.cpp
+  framework/src/runtime/locations/service_descriptor_registry.cpp
+  framework/src/runtime/fanout/raw_fanout_owner.cpp
+  framework/src/runtime/client_server/raw_client_server_owner.cpp)
+
+set(ZLINK_FRAMEWORK_CPP_M6B_RUNTIME_SOURCES
+  framework/src/runtime/stateful/public_host_runtime.cpp
+  framework/src/runtime/stateful/raw_stateful_dispatch.cpp
+  framework/src/runtime/stateful/stateful_object_runtime.cpp
+  framework/src/runtime/stateful/stream_session_registry.cpp)
+
+add_library(zlink_framework_m6a_runtime STATIC
+  ${ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES})
+target_compile_features(zlink_framework_m6a_runtime PUBLIC cxx_std_20)
+target_include_directories(zlink_framework_m6a_runtime PRIVATE
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+  ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+target_link_libraries(zlink_framework_m6a_runtime PUBLIC
+  zlink::cpp
+  Threads::Threads)
+
+add_library(zlink_framework_m6b_runtime STATIC
+  ${ZLINK_FRAMEWORK_CPP_M6B_RUNTIME_SOURCES})
+target_compile_features(zlink_framework_m6b_runtime PUBLIC cxx_std_20)
+target_include_directories(zlink_framework_m6b_runtime PRIVATE
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+  ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+target_link_libraries(zlink_framework_m6b_runtime PUBLIC
+  zlink_framework_m6a_runtime
+  Threads::Threads)
+
+add_library(zlink_framework STATIC
+  ${ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES}
+  ${ZLINK_FRAMEWORK_CPP_M6B_RUNTIME_SOURCES}
   framework/src/runtime/channels/channel_packet_dispatcher.cpp
   framework/src/runtime/channels/channel_host_service.cpp
   framework/src/runtime/channels/channel_bundle_factory.cpp
@@ -702,7 +743,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
 
   add_executable(test_cpp_framework_service_wire_codec
     tests/Zlink.Framework.UnitTests/test_cpp_framework_service_wire_codec.cpp
-    framework/src/runtime/protocol/service_wire_codec.cpp)
+    framework/src/runtime/protocol/service_wire_codec.cpp
+    framework/src/runtime/mesh/service_topology_registry.cpp)
   target_compile_features(test_cpp_framework_service_wire_codec PRIVATE cxx_std_20)
   target_include_directories(test_cpp_framework_service_wire_codec PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
@@ -724,6 +766,36 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     COMMAND test_cpp_framework_operation_registry)
   set_tests_properties(test_cpp_framework_operation_registry PROPERTIES
     LABELS "framework-unit;framework-foundation;operation;resource"
+    TIMEOUT 30)
+
+  add_executable(test_cpp_framework_m6a_runtime
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_m6a_runtime.cpp)
+  target_compile_features(test_cpp_framework_m6a_runtime PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_m6a_runtime PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  target_link_libraries(test_cpp_framework_m6a_runtime PRIVATE
+    zlink_framework_m6a_runtime
+    Threads::Threads)
+  add_test(NAME test_cpp_framework_m6a_runtime
+    COMMAND test_cpp_framework_m6a_runtime)
+  set_tests_properties(test_cpp_framework_m6a_runtime PROPERTIES
+    LABELS "framework-unit;framework-m6-runtime;topology;mailbox;liveness;raw-binding"
+    TIMEOUT 30)
+
+  add_executable(test_cpp_framework_m6b_runtime
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_m6b_runtime.cpp)
+  target_compile_features(test_cpp_framework_m6b_runtime PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_m6b_runtime PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  target_link_libraries(test_cpp_framework_m6b_runtime PRIVATE
+    zlink_framework_m6b_runtime
+    Threads::Threads)
+  add_test(NAME test_cpp_framework_m6b_runtime
+    COMMAND test_cpp_framework_m6b_runtime)
+  set_tests_properties(test_cpp_framework_m6b_runtime PROPERTIES
+    LABELS "framework-unit;framework-m6-runtime;stateful;spot;actor;stream-session"
     TIMEOUT 30)
 
 endif()

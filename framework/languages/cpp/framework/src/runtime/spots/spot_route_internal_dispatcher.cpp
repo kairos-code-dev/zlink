@@ -247,38 +247,32 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                       framework_error_kind_t::request_failed,
                       "target Core MeshNode is unavailable");
                 }
-                zlink::service::actor_transfer_prepare_t core_prepare;
-                core_prepare.role = zlink::service::actor_transfer_role_t::target;
-                core_prepare.transfer_id.high = request.core_transfer_id_high;
-                core_prepare.transfer_id.low = request.core_transfer_id_low;
-                core_prepare.actor =
-                  zlink::service::mesh_node_t::remote_actor_ref (
+                const auto target_spot =
+                  zlink::routing_id_t::from (request.target_spot_rid);
+                runtime::host::actor_transfer_prepare_t transfer_prepare{
+                  .role = runtime::host::actor_transfer_role_t::target,
+                  .transfer_id = request.transfer_id,
+                  .actor = runtime::host::public_host_runtime_t::remote_actor_ref (
                     zlink::routing_id_t::from (request.actor_node_rid),
-                    request.actor_id, request.actor_generation);
-                core_prepare.expected_membership_epoch = request.core_membership_epoch;
-                core_prepare.peer_node_rid =
-                  zlink::routing_id_t::from (request.actor_node_rid);
-                core_prepare.final_sequence = request.core_final_sequence;
-                core_prepare.reserve_message_count = request.core_reserve_message_count;
-                core_prepare.reserve_byte_count = request.core_reserve_byte_count;
-                zlink::service::actor_transfer_token_t core_token;
-                zlink::service::actor_transfer_prepare_result_t core_result;
-                if (zlink::service::actor_transfer_prepare (
-                      *native, core_prepare, std::chrono::seconds (30),
-                      core_token, core_result)
-                    != zlink::request_result_t::ok) {
+                    request.actor_id, request.actor_generation),
+                  .source_spot_rid = target_spot,
+                  .target_spot_rid = target_spot,
+                  .target_node_rid = native->status ().routing_id ()};
+                runtime::host::actor_transfer_token_t transfer_token;
+                runtime::host::actor_transfer_prepare_result_t transfer_result;
+                if (!native->prepare_actor_transfer (
+                      transfer_prepare, transfer_token, transfer_result)) {
                     return result_t<zlink::message_t>::failure (
                       framework_error_kind_t::request_failed,
-                      "target Core Actor transfer prepare failed (errno "
-                        + std::to_string (errno) + ")");
+                      "target Framework Actor relocation prepare failed");
                 }
-                const auto next_membership_epoch = request.core_membership_epoch + 1;
-                if (core_token.commit (next_membership_epoch)
-                      != zlink::config_result_t::ok
-                    || core_token.activate () != zlink::config_result_t::ok) {
+                const auto next_membership_epoch =
+                  transfer_result.membership_epoch + 1;
+                if (!transfer_token.commit (next_membership_epoch)
+                    || !transfer_token.activate ()) {
                     return result_t<zlink::message_t>::failure (
                       framework_error_kind_t::request_failed,
-                      "target Core Actor transfer activation failed");
+                      "target Framework Actor relocation activation failed");
                 }
                 runtime.record_core_actor_transfer_activation (
                   request.actor_id, next_membership_epoch);

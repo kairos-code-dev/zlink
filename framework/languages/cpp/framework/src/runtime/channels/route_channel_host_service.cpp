@@ -119,7 +119,7 @@ class route_channel_host_service_t::route_loop_t
             catch (...) {
             }
         }
-        attach_spot_route_bridge (spot_nodes);
+        static_cast<void> (spot_nodes);
         _runtime->attach_native_backend (*_backend);
     }
 
@@ -136,7 +136,6 @@ class route_channel_host_service_t::route_loop_t
             drain_monitor_events ();
             sync_runtime_connections ();
             flush_replies ();
-            const int bridge_drained = _backend->drain_spot_route_bridge ();
             zlink::received_t received;
             int rc = static_cast<int> (zlink::recv_result_t::no_data);
             {
@@ -144,9 +143,7 @@ class route_channel_host_service_t::route_loop_t
                 rc = _router->recv (received, zlink::recv_flags_t::dontwait);
             }
             if (rc == static_cast<int> (zlink::recv_result_t::no_data)) {
-                if (bridge_drained <= 0) {
-                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
-                }
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
                 continue;
             }
             if (rc != static_cast<int> (zlink::recv_result_t::ok) || !received.routing_id ()) {
@@ -452,54 +449,6 @@ class route_channel_host_service_t::route_loop_t
                 trace_route_channel ("peer-disconnected channel=" + _route_channel_id
                                      + " peerRid=" + event->routing_id->to_string ());
             }
-        }
-    }
-
-    bool accepts_spot_routes_from (
-      const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes) const
-    {
-        return std::any_of (spot_nodes.begin (), spot_nodes.end (), [this] (const auto &spot_node) {
-            return std::any_of (spot_node.snapshot.accepted_route_channels.begin (),
-                                spot_node.snapshot.accepted_route_channels.end (),
-                                [this] (const accepted_spot_route_channel_t &accepted) {
-                                    return accepted.channel_name == _route_channel_id;
-                                });
-        });
-    }
-
-    void attach_spot_route_bridge (
-      const std::vector<route_channel_host_service_t::spot_node_runtime_t> &spot_nodes)
-    {
-        for (const auto &spot_node : spot_nodes) {
-            const bool accepts_channel =
-              std::any_of (spot_node.snapshot.accepted_route_channels.begin (),
-                           spot_node.snapshot.accepted_route_channels.end (),
-                           [this] (const accepted_spot_route_channel_t &accepted) {
-                               return accepted.channel_name == _route_channel_id;
-                           });
-            if (!accepts_channel) {
-                continue;
-            }
-            auto native_node = spot_node.runtime.native_node ();
-            if (!native_node) {
-                throw framework_exception_t (framework_error_kind_t::request_failed,
-                                             "accepted SPOT route channel '" + _route_channel_id
-                                               + "' requires an active native SpotNode");
-            }
-            auto bridge = std::make_unique<zlink::service::spot_route_bridge_t> (
-              native_node->create_route_bridge ());
-            try {
-                std::lock_guard route_lock (_backend->router_mutex ());
-                bridge->attach_router_channel (_route_channel_id, *_router);
-            }
-            catch (const std::exception &error) {
-                throw framework_exception_t (framework_error_kind_t::request_failed,
-                                             "route channel '" + _route_channel_id
-                                               + "' SPOT route bridge attach failed: "
-                                               + error.what ());
-            }
-            _backend->attach_spot_route_bridge (std::move (bridge), _route_channel_id);
-            return;
         }
     }
 

@@ -5,8 +5,8 @@
 
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/spots/spot_runtime.hpp"
+#include "runtime/stateful/public_host_runtime.hpp"
 
-#include <zlink/Contracts/Service/mesh_node.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 
 #include <atomic>
@@ -26,6 +26,7 @@ class zlink_builder_t;
 
 namespace zlink::framework::detail
 {
+namespace host = zlink::framework::runtime::host;
 
 struct mesh_channel_registration_t
 {
@@ -60,7 +61,7 @@ class mesh_node_runtime_t
   public:
     struct operation_completion_t
     {
-        zlink::service::receive_record_t record;
+        host::receive_record_t record;
         std::vector<zlink::message_t> parts;
     };
     explicit mesh_node_runtime_t (std::shared_ptr<mesh_node_builder_state_t> state);
@@ -78,7 +79,7 @@ class mesh_node_runtime_t
 
     zlink::submit_result_t send_to_node (const zlink::routing_id_t &target,
                                          const std::vector<zlink::message_t> &parts,
-                                         zlink::mesh_metadata_t metadata = {});
+                                         std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t
     send_to_node (const zlink::routing_id_t &target,
                   const std::vector<zlink::message_t> &parts,
@@ -86,18 +87,18 @@ class mesh_node_runtime_t
     zlink::submit_result_t request_to_node (
       const zlink::routing_id_t &target,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
-      zlink::mesh_metadata_t metadata = {});
+      std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_node (
       const zlink::routing_id_t &target,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
       const std::map<std::string, std::string> &metadata);
     zlink::submit_result_t send_to_channel (const std::string &channel_name,
                                             const std::vector<zlink::message_t> &parts,
-                                            zlink::mesh_metadata_t metadata = {});
+                                            std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t
     send_to_channel (const std::string &channel_name,
                      const std::vector<zlink::message_t> &parts,
@@ -105,57 +106,58 @@ class mesh_node_runtime_t
     zlink::submit_result_t request_to_channel (
       const std::string &channel_name,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
-      zlink::mesh_metadata_t metadata = {});
+      std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_channel (
       const std::string &channel_name,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
       const std::map<std::string, std::string> &metadata);
-    zlink::service::spot_t &get_or_create_spot (const zlink::routing_id_t &spot_rid);
+    host::spot_handle_t get_or_create_spot (const zlink::routing_id_t &spot_rid);
     zlink::submit_result_t send_to_spot (
       const zlink::routing_id_t &source_spot_rid,
       const zlink::routing_id_t &target_node_rid,
       const zlink::routing_id_t &target_spot_rid,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
-      zlink::mesh_metadata_t metadata = {});
+      std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_spot (
       const zlink::routing_id_t &source_spot_rid,
       const zlink::routing_id_t &target_node_rid,
       const zlink::routing_id_t &target_spot_rid,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
-      zlink::mesh_metadata_t metadata = {});
-    zlink::service::actor_t &create_actor (
+      std::vector<std::uint8_t> metadata = {});
+    host::actor_handle_t create_actor (
+      std::string actor_type,
       std::string actor_id,
       const std::vector<zlink::message_t> &creation_parts = {},
       std::chrono::milliseconds timeout = {});
     zlink::submit_result_t send_to_actor (
-      const zlink::actor_ref_t &target,
+      const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
-      zlink::mesh_metadata_t metadata = {});
+      std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_actor (
-      const zlink::actor_ref_t &target,
+      const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
-      zlink::service::operation_id_t &operation_id,
+      host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
-      zlink::mesh_metadata_t metadata = {});
+      std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t send_actor_bound_session (
-      const zlink::actor_ref_t &actor,
+      const actor_ref_t &actor,
       std::uint64_t expected_binding_generation,
       const std::vector<zlink::message_t> &parts);
     zlink::context_t &native_context ();
-    zlink::service::mesh_node_t &native_node ();
-    zlink::request_result_t prepare_actor_transfer (
-      const zlink::service::actor_transfer_prepare_t &prepare,
+    host::public_host_runtime_t &native_node ();
+    bool prepare_actor_transfer (
+      const host::actor_transfer_prepare_t &prepare,
       std::chrono::milliseconds timeout,
-      zlink::service::actor_transfer_token_t &token,
-      zlink::service::actor_transfer_prepare_result_t &result);
+      host::actor_transfer_token_t &token,
+      host::actor_transfer_prepare_result_t &result);
     result_t<actor_ref_t> create_application_actor (
       std::string actor_type,
       std::string actor_id,
@@ -190,17 +192,13 @@ class mesh_node_runtime_t
       std::chrono::milliseconds timeout);
     std::optional<actor_ref_t> forward_straggler_actor (const actor_ref_t &actor);
     result_t<operation_completion_t> wait_for_completion (
-      const zlink::service::operation_id_t &operation,
+      const host::operation_id_t &operation,
       std::chrono::milliseconds timeout);
-    int drain_ready (zlink::service::ready_domain_t domains,
-                     zlink::service::ready_batch_t &batch,
-                     bool &has_residue,
-                     zlink::recv_flags_t flags = zlink::recv_flags_t::none);
     std::size_t dispatch_ready (
-      const std::function<void (const zlink::service::ready_record_t &,
-                                const zlink::service::receive_record_t &,
+      const std::function<void (const host::ready_record_t &,
+                                const host::receive_record_t &,
                                 std::vector<zlink::message_t>)> &dispatch);
-    zlink::mesh_node_status_t status () const;
+    host::node_status_t status () const;
     std::string mesh_name () const;
     std::optional<zlink::routing_id_t> routing_id () const;
     std::string listen_endpoint () const;
@@ -220,15 +218,14 @@ class mesh_node_runtime_t
 
   private:
     result_t<actor_join_reply_t> wait_for_join_completion (
-      const zlink::service::operation_id_t &operation,
+      const host::operation_id_t &operation,
       const actor_ref_t &actor,
       std::chrono::milliseconds timeout);
     std::shared_ptr<mesh_node_builder_state_t> _state;
     serializer_registry_t *_serializers = nullptr;
-    std::unique_ptr<zlink::context_t> _context;
-    std::shared_ptr<zlink::service::mesh_node_t> _node;
-    std::map<std::string, std::unique_ptr<zlink::service::spot_t>> _spots;
-    std::map<std::string, std::unique_ptr<zlink::service::actor_t>> _actors;
+    std::shared_ptr<host::public_host_runtime_t> _node;
+    std::map<std::string, host::spot_handle_t> _spots;
+    std::map<std::string, host::actor_handle_t> _actors;
     std::mutex _peer_mutex;
     std::atomic_uint64_t _pending_application_callbacks{0};
     std::atomic_uint64_t _active_application_callbacks{0};

@@ -10,7 +10,6 @@
 
 #include <nlohmann/json.hpp>
 #include <zlink/Contracts/Messaging/operation_contracts.hpp>
-#include <zlink/Contracts/Service/stream_session.hpp>
 #include <zlink/Contracts/Sockets/stream_socket.hpp>
 
 #include <boost/asio/ip/tcp.hpp>
@@ -716,17 +715,20 @@ class stream_host_service_t::listener_t
         packet_stream_session_t *session;
         session_actor_manager_t *actors;
         stream_t stream;
+        runtime::stateful::stream_connection_t transport_connection;
         std::mutex gate;
         bool connected = false;
 
         core_session_t (service_scope_t scope_,
                         packet_stream_session_t &session_,
                         session_actor_manager_t &actors_,
-                        stream_t stream_) :
+                        stream_t stream_,
+                        runtime::stateful::stream_connection_t transport_connection_) :
             scope (std::move (scope_)),
             session (&session_),
             actors (&actors_),
-            stream (std::move (stream_))
+            stream (std::move (stream_)),
+            transport_connection (std::move (transport_connection_))
         {
         }
     };
@@ -759,10 +761,6 @@ class stream_host_service_t::listener_t
                                         std::move (payload));
               });
             _core_socket->bind (_stream.bind_endpoint);
-            _core_session_service =
-              std::make_unique<zlink::service::stream_session_service_t> (
-                _mesh_node->native_node (), *_core_socket);
-            _core_session_service->start ();
             mark_started ();
             while (!_stop->load (std::memory_order_acquire)) {
                 std::this_thread::sleep_for (std::chrono::milliseconds (20));
@@ -775,11 +773,6 @@ class stream_host_service_t::listener_t
         if (_core_monitor) {
             _core_monitor->close ();
             _core_monitor.reset ();
-        }
-        if (_core_session_service) {
-            (void) _core_session_service->shutdown (std::chrono::seconds (5));
-            (void) _core_session_service->close ();
-            _core_session_service.reset ();
         }
         if (_core_socket) {
             runtime::messaging::shutdown_submit_owner (_core_socket.get ());
@@ -805,9 +798,11 @@ class stream_host_service_t::listener_t
         auto &session = _session_factory (scope.provider ());
         auto &actors = scope.provider ().get_required<session_actor_manager_t> ();
         auto stream = _runtime.open_session (_stream.name);
+        auto transport_connection =
+          _mesh_node->native_node ().sessions ().open (key);
         detail::session_actor_manager_access_t::attach (actors, stream);
         detail::session_actor_manager_access_t::bind_native (
-          actors, [this, rid] (const actor_ref_t &actor) {
+          actors, [this, transport_connection] (const actor_ref_t &actor) {
               if (!_mesh_node) {
                   return result_t<void>::failure (
                     framework_error_kind_t::actor_session_not_bound,
@@ -826,38 +821,27 @@ class stream_host_service_t::listener_t
                     actor, node_rid_t::from_string (local_node->to_string ()),
                     std::chrono::seconds (5));
               }
-              if (!_core_session_service) {
+              const auto native_actor =
+                runtime::host::public_host_runtime_t::remote_actor_ref (
+                  zlink::routing_id_t::from (
+                    std::string (actor.node_rid ().value ())),
+                  std::string (actor.actor_id ()), actor.generation ());
+              const auto resolved =
+                _mesh_node->native_node ().resolve_actor (native_actor);
+              if (!resolved) {
                   return result_t<void>::failure (
                     framework_error_kind_t::actor_session_not_bound,
-                    "Core STREAM session service is not started");
+                    "Framework STREAM actor authority is unavailable");
               }
-              const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
-                zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
-                std::string (actor.actor_id ()), actor.generation ());
-              const auto deadline =
-                std::chrono::steady_clock::now () + std::chrono::seconds (5);
-              zlink::service::operation_id_t operation;
-              zlink::submit_result_t submitted;
-              do {
-                  submitted = _core_session_service->bind_actor (
-                    rid, native_actor, operation, std::chrono::seconds (5));
-                  if (submitted != zlink::submit_result_t::not_connected)
-                      break;
-                  std::this_thread::sleep_for (std::chrono::milliseconds (10));
-              } while (std::chrono::steady_clock::now () < deadline);
-              if (submitted != zlink::submit_result_t::ok) {
+              const auto [error, binding] =
+                _mesh_node->native_node ().sessions ().bind (
+                  transport_connection, *resolved);
+              if (error != runtime::stateful::stateful_error_t::none) {
                   return result_t<void>::failure (
                     framework_error_kind_t::actor_session_not_bound,
-                    "Core rejected STREAM actor binding");
+                    "Framework rejected STREAM actor binding");
               }
-              auto completion =
-                _mesh_node->wait_for_completion (operation, std::chrono::seconds (5));
-              if (!completion) {
-                  return result_t<void>::failure (
-                    completion.error_kind (),
-                    completion.error () ? completion.error ()->what ()
-                                        : "Core STREAM actor binding did not complete");
-              }
+              (void) binding;
               return result_t<void>::success ();
           });
         _runtime.attach_transport_writer (
@@ -905,7 +889,8 @@ class stream_host_service_t::listener_t
                               "Core STREAM packet send is backpressured", true);
           });
         auto created = std::make_shared<core_session_t> (
-          std::move (scope), session, actors, std::move (stream));
+          std::move (scope), session, actors, std::move (stream),
+          std::move (transport_connection));
         auto connected = _runtime.dispatch_connected_async (
           *created->session, created->stream,
           [this, created, rid] (const result_t<void> &result) {
@@ -941,6 +926,8 @@ class stream_host_service_t::listener_t
             return;
 
         std::lock_guard session_lock (current->gate);
+        (void) _mesh_node->native_node ().sessions ().close (
+          current->transport_connection);
         if (current->connected) {
             _runtime.mark_disconnected (current->stream);
             auto finalize = [current] (const result_t<void> &) {
@@ -1950,7 +1937,6 @@ class stream_host_service_t::listener_t
     std::vector<std::weak_ptr<native_tcp_connection_t>> _native_connections;
     std::unique_ptr<zlink::stream_socket_t> _core_socket;
     std::unique_ptr<zlink::socket_monitor_t> _core_monitor;
-    std::unique_ptr<zlink::service::stream_session_service_t> _core_session_service;
     std::mutex _core_sessions_mutex;
     std::map<std::string, std::shared_ptr<core_session_t>> _core_sessions;
     std::mutex _workers_mutex;

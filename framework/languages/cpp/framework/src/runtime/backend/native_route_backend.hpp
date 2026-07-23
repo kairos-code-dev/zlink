@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include "runtime/backend/raw_route_port.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 
 #include <zlink/Contracts/Core/routing_id.hpp>
-#include <zlink/Contracts/Service/spot_node.hpp>
 
 #include <chrono>
 #include <atomic>
@@ -30,9 +30,6 @@ class native_route_backend_t
                             std::atomic_bool &stop,
                             dispatch_options_t dispatch);
 
-    void attach_spot_route_bridge (std::unique_ptr<zlink::service::spot_route_bridge_t> bridge,
-                                   std::string channel_name);
-
     result_t<void> submit_send (const zlink::routing_id_t &target_node_rid,
                                 const std::optional<zlink::routing_id_t> &target_spot_rid,
                                 const runtime::messaging::message_parts_t &parts);
@@ -47,7 +44,6 @@ class native_route_backend_t
                                  std::vector<zlink::message_t> &parts,
                                  std::optional<std::uint64_t> request_seq);
 
-    int drain_spot_route_bridge ();
     void close () noexcept;
     std::mutex &router_mutex () noexcept;
 
@@ -56,9 +52,8 @@ class native_route_backend_t
 
     zlink::router_socket_t *_router;
     std::mutex _router_mutex;
+    std::shared_ptr<raw_route_port_t> _raw_port;
     std::atomic_bool *_stop = nullptr;
-    std::shared_ptr<zlink::service::spot_route_bridge_t> _spot_route_bridge;
-    std::string _spot_route_channel_name;
     dispatch_options_t _dispatch;
 };
 

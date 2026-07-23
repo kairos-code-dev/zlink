@@ -486,7 +486,7 @@ class channel_native_client_t
   private:
     struct transport_t
     {
-        transport_t (std::string channel_name, const channel_capability_snapshot_t &client) :
+        explicit transport_t (const channel_capability_snapshot_t &client) :
             context (std::make_unique<zlink::context_t> ()),
             socket (std::make_unique<zlink::dealer_socket_t> (*context))
         {
@@ -494,7 +494,6 @@ class channel_native_client_t
             if (client.routing_id) {
                 socket->set_routing_id (*client.routing_id);
             }
-            socket->channel_name (channel_name);
             socket->options ().immediate (true);
             monitor = socket->monitor_open (zlink::monitor_event::connected
                                             | zlink::monitor_event::connection_ready
@@ -652,7 +651,7 @@ class channel_native_client_t
 
     std::shared_ptr<transport_t> make_transport ()
     {
-        auto transport = std::make_shared<transport_t> (_channel_name, _client);
+        auto transport = std::make_shared<transport_t> (_client);
         transport->socket->set_send_ready_handler ([this] {
             runtime::messaging::notify_submit_ready ("channel:" + _channel_name, this);
         });

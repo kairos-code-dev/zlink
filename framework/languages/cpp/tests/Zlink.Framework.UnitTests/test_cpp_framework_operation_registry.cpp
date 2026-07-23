@@ -41,6 +41,23 @@ int main ()
     assert (registry.shutdown () == 0);
     assert (!registry.register_operation (id (4), now, [] (auto, auto) {}));
 
+    int failed_terminals = 0;
+    foundation::operation_registry_t failed_registry (1);
+    assert (failed_registry.register_operation (
+      id (4), now + std::chrono::seconds (1),
+      [&] (foundation::operation_terminal_t terminal,
+           std::vector<std::uint8_t> payload) {
+          assert (terminal
+                  == foundation::operation_terminal_t::transport_failed);
+          assert (payload.empty ());
+          ++failed_terminals;
+      }));
+    assert (failed_registry.fail (
+      id (4), foundation::operation_terminal_t::transport_failed));
+    assert (!failed_registry.fail (
+      id (4), foundation::operation_terminal_t::transport_failed));
+    assert (failed_terminals == 1);
+
     int shutdown_terminals = 0;
     {
         foundation::operation_registry_t scoped_registry (2);

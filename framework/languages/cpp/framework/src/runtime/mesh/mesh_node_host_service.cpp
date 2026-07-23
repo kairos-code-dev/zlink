@@ -29,13 +29,14 @@ void trace_mesh_host_stop (const char *stage)
         std::cerr << "zlink-cpp-host-stop stage=mesh-host-" << stage << std::endl;
 }
 
-void reject_application_request (const zlink::service::receive_record_t &record,
+void reject_application_request (
+  const host::receive_record_t &record,
                                  std::vector<zlink::message_t> parts)
 {
-    const bool request = record.kind == zlink::service::record_kind_t::node_request
-                         || record.kind == zlink::service::record_kind_t::channel_request
-                         || record.kind == zlink::service::record_kind_t::spot_request
-                         || record.kind == zlink::service::record_kind_t::actor_request;
+    const bool request = record.kind == host::record_kind_t::node_request
+                         || record.kind == host::record_kind_t::channel_request
+                         || record.kind == host::record_kind_t::spot_request
+                         || record.kind == host::record_kind_t::actor_request;
     if (!request)
         return;
     messaging::message_parts_t encoded (std::move (parts));
@@ -50,7 +51,7 @@ void reject_application_request (const zlink::service::receive_record_t &record,
         framework_exception_t (framework_error_kind_t::request_rejected,
                                "MeshNode is draining and rejects new application work")),
       zlink::message_t::from (""));
-    (void) zlink::service::reply (record.reply_token, reply.items ());
+    (void) host::reply (record.reply_token, reply.items ());
 }
 
 } // namespace
@@ -93,14 +94,14 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         _threads.emplace_back ([this, node, registration] {
             while (!_stop.load (std::memory_order_acquire)) {
                 const auto count = node->dispatch_ready (
-                  [&] (const zlink::service::ready_record_t &owner,
-                       const zlink::service::receive_record_t &record,
+                  [&] (const host::ready_record_t &owner,
+                       const host::receive_record_t &record,
                        std::vector<zlink::message_t> parts) {
                       detail::spot_node_runtime_t spot_runtime (registration->spot_state);
                       const bool transfer_dispatch =
-                        owner.owner_kind == zlink::service::owner_kind_t::actor
-                        && (record.kind == zlink::service::record_kind_t::actor_send
-                            || record.kind == zlink::service::record_kind_t::actor_request)
+                        owner.owner_kind == host::owner_kind_t::actor
+                        && (record.kind == host::record_kind_t::actor_send
+                            || record.kind == host::record_kind_t::actor_request)
                         && spot_runtime.actor_transfer_in_progress (
                           owner.actor.actor_id ());
                       auto run_direct = [this] (auto &&work) {
@@ -132,7 +133,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           });
                           return;
                       }
-                      if (owner.domain == zlink::service::ready_domain_t::application) {
+                      if (owner.domain == host::ready_domain_t::application) {
                           bool accepted = false;
                           {
                               std::lock_guard lock (_dispatch_gate_mutex);
@@ -313,9 +314,9 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
                       if (!bytes.empty ())
                           std::memcpy (owned_parts.back ().data (), bytes.data (), bytes.size ());
                   }
-                  zlink::service::receive_record_t record;
-                  record.kind = zlink::service::record_kind_t::node_send;
-                  record.domain = zlink::service::ready_domain_t::application;
+                  host::receive_record_t record;
+                  record.kind = host::record_kind_t::node_send;
+                  record.domain = host::ready_domain_t::application;
                   record.source_node_rid = *source_rid;
                   detail::mesh_record_dispatcher_t dispatcher (
                     *_services, *_serializers, registration->handlers, _dispatch_options);

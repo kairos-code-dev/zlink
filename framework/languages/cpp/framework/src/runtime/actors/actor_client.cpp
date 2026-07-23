@@ -7,7 +7,6 @@
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 
-#include <zlink/Contracts/Service/mesh_node.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <atomic>
@@ -112,7 +111,7 @@ namespace
 
 result_t<messaging::message_parts_t> wait_for_actor_completion (
   detail::mesh_node_runtime_t &node,
-  const zlink::service::operation_id_t &operation_id,
+  const detail::host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout)
 {
     auto completion = node.wait_for_completion (operation_id, timeout);
@@ -304,7 +303,7 @@ class actor_client_impl_t final : public actor_client_t
     struct resolved_actor_t
     {
         actor_ref_t framework_ref;
-        zlink::actor_ref_t native_ref;
+        actor_ref_t native_ref;
         node_rid_t node_rid;
         spot_rid_t spot_rid;
     };
@@ -316,12 +315,9 @@ class actor_client_impl_t final : public actor_client_t
               framework_error_kind_t::actor_route_not_found,
               "actor send requires a non-empty actor ref and node rid");
         }
-        auto native = zlink::service::mesh_node_t::remote_actor_ref (
-          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
-          std::string (actor_ref.actor_id ()), actor_ref.generation ());
         return result_t<resolved_actor_t>::success (
           resolved_actor_t{
-            actor_ref, std::move (native), actor_ref.node_rid (),
+            actor_ref, actor_ref, actor_ref.node_rid (),
             spot_rid_t::from_string (std::string (actor_ref.node_rid ().value ())) });
     }
 
@@ -359,12 +355,8 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor SPOT location became stale",
               policy == stale_policy_t::location_stale);
         }
-        auto native = zlink::service::mesh_node_t::remote_actor_ref (
-          zlink::routing_id_t::from (std::string (row.value ()->actor_ref.node_rid ().value ())),
-          std::string (row.value ()->actor_ref.actor_id ()),
-          row.value ()->actor_ref.generation ());
         return result_t<resolved_actor_t>::success (
-          resolved_actor_t{row.value ()->actor_ref, std::move (native),
+          resolved_actor_t{row.value ()->actor_ref, row.value ()->actor_ref,
                            node_rid_t::from_string (
                              row.value ()->owner_node_rid.to_string ()),
                            spot_rid_t::from_string (
@@ -469,7 +461,7 @@ class actor_client_impl_t final : public actor_client_t
                 }
                 return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
             }
-            zlink::service::operation_id_t operation_id;
+            detail::host::operation_id_t operation_id;
             const auto submit =
               runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout);
             if (submit != zlink::submit_result_t::ok) {
@@ -482,7 +474,7 @@ class actor_client_impl_t final : public actor_client_t
                 return result_t<std::optional<zlink::message_t>>::failure (
                   reply.error_kind (),
                   std::string ("actor request completion failed for node/generation '")
-                    + actor.native_ref.node_rid ().to_string () + "/"
+                    + std::string (actor.native_ref.node_rid ().value ()) + "/"
                     + std::to_string (actor.native_ref.generation ()) + "': "
                     + (reply.error () ? reply.error ()->what () : "unknown failure"),
                   reply.error () && reply.error ()->is_retriable ());

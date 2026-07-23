@@ -7,13 +7,11 @@
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
+#include "runtime/stateful/public_host_runtime.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
-#include <zlink/Contracts/Service/actor.hpp>
-#include <zlink/Contracts/Service/actor_models.hpp>
-#include <zlink/Contracts/Service/mesh_node.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -37,7 +35,7 @@ namespace zlink::framework::detail
 
 namespace runtime = zlink::framework::runtime;
 
-namespace service = zlink::service;
+namespace service = zlink::framework::runtime::host;
 
 class spot_node_builder_state_t
 {
@@ -151,7 +149,7 @@ class spot_node_builder_state_t
     std::optional<route_client_t> route_client;
     struct queued_actor_packet_t
     {
-        zlink::service::receive_record_t record;
+        service::receive_record_t record;
         std::vector<zlink::message_t> parts;
     };
     std::vector<queued_actor_packet_t> queued_actor_packets;
@@ -420,8 +418,8 @@ class spot_node_runtime_t
                                      serializer_registry_t &serializers);
     std::size_t drain_subscriptions (service_provider_t &services,
                                      serializer_registry_t &serializers) const;
-    bool dispatch_mesh_record (const zlink::service::ready_record_t &owner,
-                               const zlink::service::receive_record_t &record,
+    bool dispatch_mesh_record (const service::ready_record_t &owner,
+                               const service::receive_record_t &record,
                                const std::vector<zlink::message_t> &parts,
                                service_provider_t &services,
                                serializer_registry_t &serializers);

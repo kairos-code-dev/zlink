@@ -92,6 +92,21 @@ bool operation_registry_t::cancel (const operation_id_t &id)
     return true;
 }
 
+bool operation_registry_t::fail (
+  const operation_id_t &id,
+  operation_terminal_t terminal)
+{
+    if (terminal == operation_terminal_t::completed) {
+        throw std::invalid_argument ("failure terminal cannot be completed");
+    }
+    callback_t callback;
+    if (!take (id, callback)) {
+        return false;
+    }
+    notify (callback, terminal, {});
+    return true;
+}
+
 std::size_t operation_registry_t::expire (clock_t::time_point now)
 {
     std::vector<callback_t> callbacks;

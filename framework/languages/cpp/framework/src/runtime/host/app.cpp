@@ -792,7 +792,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             std::uint64_t target_spot_generation,
             runtime::messaging::message_parts_t parts,
             std::chrono::milliseconds timeout) {
-              zlink::service::operation_id_t operation;
+              detail::host::operation_id_t operation;
               const auto submitted = mesh->request_to_spot (
                 source_spot_rid, target_node, target_spot, target_spot_generation,
                 parts.items (), operation, timeout);
@@ -852,7 +852,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           [mesh] (const zlink::routing_id_t &target,
                   runtime::messaging::message_parts_t parts,
                   std::chrono::milliseconds timeout) {
-              zlink::service::operation_id_t operation;
+              detail::host::operation_id_t operation;
               const auto submitted =
                 mesh->request_to_node (target, parts.items (), operation, timeout);
               if (submitted != zlink::submit_result_t::ok) {
@@ -887,7 +887,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               },
               [mesh, channel_name] (runtime::messaging::message_parts_t parts,
                                     std::chrono::milliseconds timeout) {
-                  zlink::service::operation_id_t operation;
+                  detail::host::operation_id_t operation;
                   const auto submitted = mesh->request_to_channel (
                     channel_name, parts.items (), operation, timeout);
                   if (submitted != zlink::submit_result_t::ok) {
@@ -1058,16 +1058,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               frame.insert (frame.end (), encoded_header.value ().begin (),
                             encoded_header.value ().end ());
               frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
-              const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
-                zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
-                std::string (actor.actor_id ()), actor.generation ());
               const std::vector<zlink::message_t> parts{
                 zlink::message_t::from (frame)};
               const auto submitted =
                 application_mesh->send_actor_bound_session (
-                  native_actor, expected_binding_generation, parts);
+                  actor, expected_binding_generation, parts);
               return one_way_native_submit_result (
-                submitted, "Core actor bound session send");
+                submitted, "Framework actor bound session send");
           });
     }
     if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {

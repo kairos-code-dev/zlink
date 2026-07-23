@@ -22,13 +22,15 @@ mesh_record_dispatcher_t::mesh_record_dispatcher_t (
 }
 
 result_t<void>
-mesh_record_dispatcher_t::dispatch (const zlink::service::receive_record_t &record,
+mesh_record_dispatcher_t::dispatch (
+  const runtime::host::receive_record_t &record,
                                     std::vector<zlink::message_t> parts) const
 {
-    if (record.kind != zlink::service::record_kind_t::node_send
-        && record.kind != zlink::service::record_kind_t::node_request
-        && record.kind != zlink::service::record_kind_t::channel_send
-        && record.kind != zlink::service::record_kind_t::channel_request) {
+    using record_kind_t = runtime::host::record_kind_t;
+    if (record.kind != record_kind_t::node_send
+        && record.kind != record_kind_t::node_request
+        && record.kind != record_kind_t::channel_send
+        && record.kind != record_kind_t::channel_request) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "record kind is not node or ChannelName messaging");
     }
@@ -50,13 +52,13 @@ mesh_record_dispatcher_t::dispatch (const zlink::service::receive_record_t &reco
     }
     if (!dispatched.value ())
         return result_t<void>::success ();
-    if (record.kind != zlink::service::record_kind_t::node_request
-        && record.kind != zlink::service::record_kind_t::channel_request) {
+    if (record.kind != record_kind_t::node_request
+        && record.kind != record_kind_t::channel_request) {
         return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                         "send handler produced a reply");
     }
-    const auto submit = zlink::service::reply (
-      record.reply_token, dispatched.value ()->parts.items (), zlink::send_flags_t::none);
+    const auto submit = runtime::host::reply (
+      record.reply_token, dispatched.value ()->parts.items ());
     if (submit != zlink::submit_result_t::ok) {
         return result_t<void>::failure (framework_error_kind_t::request_failed,
                                         "MeshNode reply submit failed");

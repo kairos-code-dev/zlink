@@ -3,8 +3,8 @@
 
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/route_internal_packet_dispatcher.hpp"
+#include "runtime/stateful/public_host_runtime.hpp"
 
-#include <zlink/Contracts/Service/dispatch.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 
 #include <vector>
@@ -20,7 +20,8 @@ class mesh_record_dispatcher_t
                               const route_handler_registry_t &handlers,
                               dispatch_options_t dispatch_options = {});
 
-    result_t<void> dispatch (const zlink::service::receive_record_t &record,
+    result_t<void> dispatch (
+      const runtime::host::receive_record_t &record,
                              std::vector<zlink::message_t> parts) const;
 
   private:

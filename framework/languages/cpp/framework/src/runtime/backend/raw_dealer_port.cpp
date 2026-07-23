@@ -1,0 +1,138 @@
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
+
+#include "runtime/backend/raw_dealer_port.hpp"
+
+#include <zlink.hpp>
+
+#include <cerrno>
+#include <stdexcept>
+#include <utility>
+
+namespace zlink::framework::detail::backend
+{
+namespace
+{
+
+raw_message_t copy_parts (
+  const std::vector<zlink::message_t> &parts)
+{
+    raw_message_t result;
+    result.reserve (parts.size ());
+    for (const auto &part : parts) {
+        result.push_back (part.to_bytes ());
+    }
+    return result;
+}
+
+std::vector<zlink::message_t> materialize_parts (
+  const raw_message_t &parts)
+{
+    std::vector<zlink::message_t> result;
+    result.reserve (parts.size ());
+    for (const auto &part : parts) {
+        result.push_back (zlink::message_t::from (part));
+    }
+    return result;
+}
+
+raw_request_result_t map_request_result (
+  zlink::request_result_t result) noexcept
+{
+    switch (result) {
+        case zlink::request_result_t::ok:
+            return raw_request_result_t::ok;
+        case zlink::request_result_t::timed_out:
+            return raw_request_result_t::timed_out;
+        case zlink::request_result_t::not_connected:
+            return raw_request_result_t::not_connected;
+        case zlink::request_result_t::terminated:
+            return raw_request_result_t::terminated;
+        default:
+            return raw_request_result_t::failed;
+    }
+}
+
+} // namespace
+
+raw_dealer_port_t::raw_dealer_port_t (
+  zlink::dealer_socket_t &socket,
+  std::mutex *shared_socket_mutex) noexcept :
+    _socket (&socket),
+    _socket_mutex (shared_socket_mutex != nullptr ? shared_socket_mutex
+                                                  : &_owned_socket_mutex)
+{
+}
+
+bool raw_dealer_port_t::send (const raw_message_t &parts)
+{
+    if (parts.empty ()) {
+        throw std::invalid_argument (
+          "raw dealer send requires message parts");
+    }
+    std::lock_guard lock (*_socket_mutex);
+    if (!_socket) {
+        return false;
+    }
+    auto messages = materialize_parts (parts);
+    auto operation = std::move (_socket->send ()).message (messages[0]);
+    for (std::size_t index = 1; index < messages.size (); ++index) {
+        operation = std::move (operation).message (messages[index]);
+    }
+    return std::move (operation).submit ();
+}
+
+bool raw_dealer_port_t::request (
+  const raw_message_t &parts,
+  std::chrono::milliseconds timeout,
+  raw_route_port_t::request_callback_t callback)
+{
+    if (parts.empty () || !callback) {
+        throw std::invalid_argument (
+          "raw dealer request requires parts and callback");
+    }
+    std::lock_guard lock (*_socket_mutex);
+    if (!_socket) {
+        return false;
+    }
+    auto messages = materialize_parts (parts);
+    auto operation =
+      std::move (_socket->request ()).message (messages[0]);
+    for (std::size_t index = 1; index < messages.size (); ++index) {
+        operation = std::move (operation).message (messages[index]);
+    }
+    return std::move (operation).timeout (timeout).submit (
+      [callback = std::move (callback)] (
+        zlink::request_result_t result,
+        std::vector<zlink::message_t> reply) mutable {
+          callback (map_request_result (result), copy_parts (reply));
+      });
+}
+
+std::optional<raw_message_t> raw_dealer_port_t::try_receive ()
+{
+    std::lock_guard lock (*_socket_mutex);
+    if (!_socket) {
+        return std::nullopt;
+    }
+    zlink::received_t received;
+    const auto result =
+      _socket->recv (received, zlink::recv_flags_t::dontwait);
+    if (result == static_cast<int> (zlink::recv_result_t::no_data)
+        || result == static_cast<int> (zlink::recv_result_t::busy)
+        || (result == -1
+            && (errno == EAGAIN || errno == EWOULDBLOCK))) {
+        return std::nullopt;
+    }
+    if (result != 0) {
+        throw std::runtime_error ("raw dealer receive failed");
+    }
+    return copy_parts (received.parts ());
+}
+
+void raw_dealer_port_t::close () noexcept
+{
+    std::lock_guard lock (*_socket_mutex);
+    _socket = nullptr;
+}
+
+} // namespace zlink::framework::detail::backend

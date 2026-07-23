@@ -20,6 +20,7 @@ enum class operation_terminal_t
     completed,
     timed_out,
     cancelled,
+    transport_failed,
     shutdown
 };
 
@@ -37,6 +38,7 @@ class operation_registry_t
                              callback_t callback);
     bool complete (const operation_id_t &id, std::vector<std::uint8_t> payload);
     bool cancel (const operation_id_t &id);
+    bool fail (const operation_id_t &id, operation_terminal_t terminal);
     std::size_t expire (clock_t::time_point now);
     std::size_t shutdown ();
     std::size_t size () const;

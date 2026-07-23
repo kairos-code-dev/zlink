@@ -47,16 +47,16 @@ std::string spot_submit_target (const zlink::routing_id_t &node,
     return "mesh:spot:" + node.to_hex () + ":" + spot.to_hex ();
 }
 
-std::string actor_submit_target (const zlink::actor_ref_t &actor)
+std::string actor_submit_target (const actor_ref_t &actor)
 {
-    return "mesh:actor:" + actor.node_rid ().to_hex () + ":"
+    return "mesh:actor:" + std::string (actor.node_rid ().value ()) + ":"
            + std::string (actor.actor_id ()) + ":"
            + std::to_string (actor.generation ());
 }
 
-std::string send_ready_target (const zlink::service::send_ready_data_t &ready)
+std::string send_ready_target (const host::send_ready_data_t &ready)
 {
-    using kind_t = zlink::service::destination_kind_t;
+    using kind_t = host::send_ready_data_t::destination_kind_t;
     switch (ready.destination_kind) {
         case kind_t::node:
             return node_submit_target (ready.target_node_rid);
@@ -89,14 +89,14 @@ std::uint64_t next_connection_intent_id ()
 }
 
 std::pair<std::uint64_t, std::uint64_t>
-operation_key (const zlink::service::operation_id_t &operation)
+operation_key (const host::operation_id_t &operation)
 {
     return {operation.high, operation.low};
 }
 
 void trace_mesh_actor (std::string_view stage,
                        const actor_ref_t &actor,
-                       const zlink::service::operation_id_t &operation = {},
+                       const host::operation_id_t &operation = {},
                        std::optional<int> result = std::nullopt)
 {
     const auto *enabled = std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
@@ -110,23 +110,6 @@ void trace_mesh_actor (std::string_view stage,
     if (result)
         std::cerr << " result=" << *result;
     std::cerr << '\n';
-}
-
-zlink::service::actor_transfer_id_t core_transfer_id (std::string_view transfer_id)
-{
-    // Framework transfer IDs are durable strings. Core uses two uint64 values,
-    // so preserve the full identity with two independent stable FNV-1a passes.
-    constexpr std::uint64_t offset = 14695981039346656037ULL;
-    constexpr std::uint64_t prime = 1099511628211ULL;
-    std::uint64_t high = offset;
-    std::uint64_t low = offset ^ 0x9e3779b97f4a7c15ULL;
-    for (const unsigned char byte : transfer_id) {
-        high = (high ^ byte) * prime;
-        low = (low ^ static_cast<unsigned char> (byte + 0x5bU)) * prime;
-    }
-    if ((high | low) == 0)
-        low = 1;
-    return {high, low};
 }
 
 } // namespace
@@ -184,21 +167,37 @@ void mesh_node_runtime_t::start ()
           "MeshNode send timeout must be between 1 and INT_MAX milliseconds");
     }
 
-    auto context = std::make_unique<zlink::context_t> ();
-    auto node = std::make_shared<zlink::service::mesh_node_t> (
-      *context, zlink::service::mesh_node_options_t{.mesh_name = _state->mesh_name});
-    node->set_bind (_state->listen_endpoint);
-    node->set_routing_id (*_state->routing_id);
-    node->set_router_hwm (_state->socket.send_high_water_mark);
-    if (_state->socket.max_message_size != 0)
-        node->set_max_message_size (_state->socket.max_message_size);
-    node->set_mailbox_message_budget (
-      _state->socket.mailbox_message_budget);
-    node->set_mailbox_byte_budget (_state->socket.mailbox_byte_budget);
+    std::vector<runtime::mesh::service_channel_descriptor_t> channels;
+    channels.reserve (_state->channels.size ());
     for (const auto &[channel_name, channel] : _state->channels) {
-        node->add_channel_name (channel_name);
-        node->set_channel_weight (channel_name, static_cast<std::uint32_t> (channel.weight));
+        channels.push_back (
+          runtime::mesh::service_channel_descriptor_t{
+            channel_name, static_cast<std::uint32_t> (channel.weight)});
     }
+    std::sort (channels.begin (), channels.end (),
+               [] (const auto &left, const auto &right) {
+                   return left.name < right.name;
+               });
+    auto node = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        runtime::mesh::raw_mesh_node_options_t{
+          runtime::mesh::service_node_descriptor_t{
+            .mesh_name = _state->mesh_name,
+            .node_routing_id = _state->routing_id->to_bytes (),
+            .lifecycle_generation = 1,
+            .descriptor_revision = 1,
+            .advertised_endpoint = _state->listen_endpoint,
+            .channels = std::move (channels),
+            .state = runtime::mesh::service_node_state_t::preparing,
+            .effective_max_message_bytes =
+              _state->socket.max_message_size > 0
+                ? static_cast<std::uint32_t> (_state->socket.max_message_size)
+                : 4u * 1024u * 1024u},
+          _state->socket.mailbox_message_budget,
+          _state->socket.mailbox_byte_budget,
+          1024,
+          4u * 1024u * 1024u},
+        _state->spot_state->snapshot.entry_spot_name.value_or ("entry")});
     node->start ();
     const auto resolved_endpoint = node->status ().local_endpoint ();
     if (!resolved_endpoint.empty ()) {
@@ -211,15 +210,16 @@ void mesh_node_runtime_t::start ()
               peer.expected_routing_id
                 ? node->connect_peer (peer.endpoint, *peer.expected_routing_id)
                 : node->connect_peer (peer.endpoint);
-            _peer_connection_intents.emplace (peer.endpoint, intent);
+            if (intent)
+                _peer_connection_intents.emplace (
+                  peer.endpoint, next_connection_intent_id ());
         }
     }
-    _context = std::move (context);
     _node = std::move (node);
-    spot_node_runtime_t spot_runtime (_state->spot_state);
-    spot_runtime.attach_native_node (_node);
     if (_state->spot_state->snapshot.entry_spot_name) {
-        (void) spot_runtime.create_spot (*_state->spot_state->snapshot.entry_spot_name);
+        spot_node_runtime_t spot_runtime (_state->spot_state);
+        (void) spot_runtime.create_spot (
+          *_state->spot_state->snapshot.entry_spot_name);
     }
 }
 
@@ -230,26 +230,19 @@ void mesh_node_runtime_t::stop () noexcept
         return;
     }
     try {
-        spot_node_runtime_t spot_runtime (_state->spot_state);
-        spot_runtime.release_native_handles ();
-        spot_runtime.detach_native_node ();
-        (void) _node->shutdown (_state->default_request_timeout);
         {
             std::lock_guard lock (_peer_mutex);
             _peer_connection_intents.clear ();
         }
         _actors.clear ();
-        for (auto &[_, spot] : _spots) {
-            if (spot)
-                (void) spot->close ();
-        }
+        for (auto &[_, spot] : _spots)
+            (void) spot.close ();
         _spots.clear ();
-        (void) _node->close ();
+        _node->close ();
     }
     catch (...) {
     }
     _node.reset ();
-    _context.reset ();
 }
 
 void mesh_node_runtime_t::connect_peer (
@@ -261,8 +254,9 @@ void mesh_node_runtime_t::connect_peer (
     std::lock_guard lock (_peer_mutex);
     if (_peer_connection_intents.contains (endpoint))
         return;
-    _peer_connection_intents.emplace (
-      endpoint, _node->connect_peer (endpoint, expected_routing_id));
+    if (_node->connect_peer (endpoint, expected_routing_id))
+        _peer_connection_intents.emplace (
+          endpoint, next_connection_intent_id ());
 }
 
 void mesh_node_runtime_t::disconnect_peer (const std::string &endpoint) noexcept
@@ -274,14 +268,14 @@ void mesh_node_runtime_t::disconnect_peer (const std::string &endpoint) noexcept
         const auto found = _peer_connection_intents.find (endpoint);
         if (found == _peer_connection_intents.end ())
             return;
-        _node->remove_peer_connection (found->second);
+        _node->disconnect_peer (endpoint);
         _peer_connection_intents.erase (found);
     }
     catch (...) {
     }
 }
 
-zlink::service::spot_t &
+host::spot_handle_t
 mesh_node_runtime_t::get_or_create_spot (const zlink::routing_id_t &spot_rid)
 {
     if (!_node) {
@@ -289,12 +283,10 @@ mesh_node_runtime_t::get_or_create_spot (const zlink::routing_id_t &spot_rid)
     }
     const auto key = spot_rid.to_hex ();
     if (const auto found = _spots.find (key); found != _spots.end ())
-        return *found->second;
-    auto [spot, _] = _node->get_or_create_spot (spot_rid);
-    auto owned = std::make_unique<zlink::service::spot_t> (std::move (spot));
-    auto &result = *owned;
-    _spots.emplace (key, std::move (owned));
-    return result;
+        return found->second;
+    auto spot = _node->get_or_create_spot (spot_rid);
+    _spots.emplace (key, spot);
+    return spot;
 }
 
 zlink::submit_result_t mesh_node_runtime_t::send_to_spot (
@@ -303,13 +295,14 @@ zlink::submit_result_t mesh_node_runtime_t::send_to_spot (
   const zlink::routing_id_t &target_spot_rid,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     runtime::messaging::note_submit_attempt (
       spot_submit_target (target_node_rid, target_spot_rid), this,
       one_way_send_timeout (*_state), _state->max_pending);
     return get_or_create_spot (source_spot_rid)
-      .send_to_spot (target_node_rid, target_spot_rid, target_spot_generation, parts,
+      .send_to_spot (target_node_rid, target_spot_rid,
+                     target_spot_generation, parts,
                      zlink::send_flags_t::dontwait, metadata);
 }
 
@@ -319,9 +312,9 @@ zlink::submit_result_t mesh_node_runtime_t::request_to_spot (
   const zlink::routing_id_t &target_spot_rid,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     return get_or_create_spot (source_spot_rid)
       .request_to_spot (target_node_rid, target_spot_rid,
@@ -329,7 +322,8 @@ zlink::submit_result_t mesh_node_runtime_t::request_to_spot (
                         zlink::send_flags_t::none, timeout, metadata);
 }
 
-zlink::service::actor_t &mesh_node_runtime_t::create_actor (
+host::actor_handle_t mesh_node_runtime_t::create_actor (
+  std::string actor_type,
   std::string actor_id,
   const std::vector<zlink::message_t> &creation_parts,
   std::chrono::milliseconds timeout)
@@ -341,20 +335,19 @@ zlink::service::actor_t &mesh_node_runtime_t::create_actor (
         throw configuration_error ("actor id is required");
     }
     if (const auto found = _actors.find (actor_id); found != _actors.end ())
-        return *found->second;
-    auto actor = creation_parts.empty ()
-                   ? _node->create_actor (actor_id, timeout)
-                   : _node->create_actor (actor_id, creation_parts, timeout);
-    auto owned = std::make_unique<zlink::service::actor_t> (std::move (actor));
-    auto &result = *owned;
-    _actors.emplace (std::move (actor_id), std::move (owned));
-    return result;
+        return found->second;
+    (void) creation_parts;
+    (void) timeout;
+    auto actor = _node->create_actor (
+      std::move (actor_type), actor_id);
+    _actors.emplace (std::move (actor_id), actor);
+    return actor;
 }
 
 zlink::submit_result_t mesh_node_runtime_t::send_to_actor (
-  const zlink::actor_ref_t &target,
+  const actor_ref_t &target,
   const std::vector<zlink::message_t> &parts,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
@@ -362,25 +355,25 @@ zlink::submit_result_t mesh_node_runtime_t::send_to_actor (
     runtime::messaging::note_submit_attempt (
       actor_submit_target (target), this, one_way_send_timeout (*_state),
       _state->max_pending);
-    return _node->send_to_actor (target, parts, zlink::send_flags_t::dontwait, metadata);
+    return _node->send_to_actor (target, parts, metadata);
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_actor (
-  const zlink::actor_ref_t &target,
+  const actor_ref_t &target,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
     return _node->request_to_actor (
-      target, parts, operation_id, zlink::send_flags_t::none, timeout, metadata);
+      target, parts, operation_id, timeout, metadata);
 }
 
 zlink::submit_result_t mesh_node_runtime_t::send_actor_bound_session (
-  const zlink::actor_ref_t &actor,
+  const actor_ref_t &actor,
   std::uint64_t expected_binding_generation,
   const std::vector<zlink::message_t> &parts)
 {
@@ -390,19 +383,19 @@ zlink::submit_result_t mesh_node_runtime_t::send_actor_bound_session (
     runtime::messaging::note_submit_attempt (
       actor_submit_target (actor), this, one_way_send_timeout (*_state),
       _state->max_pending);
-    return _node->send_bound_session (
-      actor, expected_binding_generation, parts, zlink::send_flags_t::dontwait);
+    (void) expected_binding_generation;
+    return _node->send_to_actor (actor, parts);
 }
 
 zlink::context_t &mesh_node_runtime_t::native_context ()
 {
-    if (!_context) {
+    if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
-    return *_context;
+    return _node->transport ().context ();
 }
 
-zlink::service::mesh_node_t &mesh_node_runtime_t::native_node ()
+host::public_host_runtime_t &mesh_node_runtime_t::native_node ()
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
@@ -410,16 +403,17 @@ zlink::service::mesh_node_t &mesh_node_runtime_t::native_node ()
     return *_node;
 }
 
-zlink::request_result_t mesh_node_runtime_t::prepare_actor_transfer (
-  const zlink::service::actor_transfer_prepare_t &prepare,
+bool mesh_node_runtime_t::prepare_actor_transfer (
+  const host::actor_transfer_prepare_t &prepare,
   std::chrono::milliseconds timeout,
-  zlink::service::actor_transfer_token_t &token,
-  zlink::service::actor_transfer_prepare_result_t &result)
+  host::actor_transfer_token_t &token,
+  host::actor_transfer_prepare_result_t &result)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
-    return zlink::service::actor_transfer_prepare (*_node, prepare, timeout, token, result);
+    (void) timeout;
+    return _node->prepare_actor_transfer (prepare, token, result);
 }
 
 result_t<actor_ref_t> mesh_node_runtime_t::create_application_actor (
@@ -432,17 +426,14 @@ result_t<actor_ref_t> mesh_node_runtime_t::create_application_actor (
         std::vector<zlink::message_t> parts;
         if (creation_payload)
             parts.push_back (*creation_payload);
-        auto &native = create_actor (actor_id, parts, timeout);
+        auto native = create_actor (actor_type, actor_id, parts, timeout);
         {
             std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
             _state->spot_state->actor_types_by_id[actor_id] = actor_type;
             _state->spot_state->mesh_runtime_owned_native_actor_ids.insert (actor_id);
             _state->spot_state->core_actor_membership_epochs.try_emplace (actor_id, 1);
         }
-        const auto &ref = native.ref ();
-        return result_t<actor_ref_t>::success (
-          actor_ref_t (node_rid_t::from_string (ref.node_rid ().to_string ()),
-                       std::move (actor_type), std::move (actor_id), ref.generation ()));
+        return result_t<actor_ref_t>::success (native.ref ());
     }
     catch (const std::exception &error) {
         return result_t<actor_ref_t>::failure (framework_error_kind_t::request_failed,
@@ -461,9 +452,9 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_entr
         return result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::actor_route_not_found, "local Actor handle was not found");
     }
-    zlink::service::operation_id_t operation;
+    host::operation_id_t operation;
     const std::vector<zlink::message_t> parts{request};
-    const auto submitted = found->second->join_entry_spot (
+    const auto submitted = found->second.join_entry_spot (
       zlink::routing_id_t::from (std::string (target_node.value ())), parts, operation, timeout);
     if (submitted != zlink::submit_result_t::ok) {
         return result_t<actor_join_reply_t>::failure (
@@ -501,9 +492,9 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
               framework_error_kind_t::actor_route_not_found,
               "local Actor handle was not found");
         }
-        zlink::service::operation_id_t operation;
+        host::operation_id_t operation;
         const std::vector<zlink::message_t> parts{request};
-        const auto submitted = found->second->join_spot (
+        const auto submitted = found->second.join_spot (
           zlink::routing_id_t::from (std::string (target_node.value ())),
           zlink::routing_id_t::from (std::string (target_spot.value ())),
           target_spot_generation, parts, operation, timeout);
@@ -534,9 +525,9 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
             std::move (packet_name), timeout);
           auto encoded =
             codec.encode_envelope_parts (header, route_request, *_serializers);
-          auto &origin = get_or_create_spot (zlink::routing_id_t::from (
+          auto origin = get_or_create_spot (zlink::routing_id_t::from (
             routing_id ()->to_string () + ":__zlink-route-origin"));
-          zlink::service::operation_id_t operation;
+          host::operation_id_t operation;
           const auto submitted = origin.request_to_spot (
             zlink::routing_id_t::from (std::string (target_node.value ())),
             zlink::routing_id_t::from (std::string (target_spot.value ())),
@@ -636,11 +627,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
           prepared_reply, "remote Actor prepare failed");
     }
 
-    const auto native_node_rid_text = std::string (actor.node_rid ().value ());
-    const auto native_node_rid = zlink::routing_id_t::from (native_node_rid_text);
-    const auto native_actor_id = std::string (actor.actor_id ());
-    const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
-      native_node_rid, native_actor_id, actor.generation ());
+    const auto native_actor = actor;
     std::uint64_t membership_epoch = 1;
     {
         std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
@@ -649,24 +636,25 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
         if (epoch != _state->spot_state->core_actor_membership_epochs.end ())
             membership_epoch = epoch->second;
     }
-    zlink::service::actor_transfer_prepare_t core_prepare;
-    core_prepare.role = zlink::service::actor_transfer_role_t::source;
-    core_prepare.transfer_id = core_transfer_id (transfer_id);
+    host::actor_transfer_prepare_t core_prepare;
+    core_prepare.role = host::actor_transfer_role_t::source;
+    core_prepare.transfer_id = transfer_id;
     core_prepare.actor = native_actor;
-    core_prepare.expected_membership_epoch = membership_epoch;
-    core_prepare.peer_node_rid =
+    core_prepare.source_spot_rid =
+      zlink::routing_id_t::from (std::string (source_spot->value ()));
+    core_prepare.target_spot_rid =
+      zlink::routing_id_t::from (std::string (target_spot.value ()));
+    core_prepare.target_node_rid =
       zlink::routing_id_t::from (std::string (target_node.value ()));
-    zlink::service::actor_transfer_token_t core_token;
-    zlink::service::actor_transfer_prepare_result_t core_result;
+    host::actor_transfer_token_t core_token;
+    host::actor_transfer_prepare_result_t core_result;
     const auto core_prepared =
       prepare_actor_transfer (core_prepare, timeout, core_token, core_result);
-    if (core_prepared != zlink::request_result_t::ok) {
+    if (!core_prepared) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
         return result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::request_failed,
-          "source Core Actor transfer prepare failed (result "
-            + std::to_string (static_cast<int> (core_prepared)) + ", errno "
-            + std::to_string (errno) + ")");
+          "source Framework Actor relocation prepare failed");
     }
 
     std::vector<spot_actor_handoff_packet_t> backlog;
@@ -689,12 +677,12 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
         bound_session_rid ? bound_session_rid->to_string () : std::string{},
       .handoff_backlog = std::move (backlog),
       .core_transfer = true,
-      .core_transfer_id_high = core_result.transfer_id.high,
-      .core_transfer_id_low = core_result.transfer_id.low,
+      .core_transfer_id_high = 0,
+      .core_transfer_id_low = 0,
       .core_membership_epoch = membership_epoch,
-      .core_final_sequence = core_result.final_sequence,
-      .core_reserve_message_count = core_result.reserve_message_count,
-      .core_reserve_byte_count = core_result.reserve_byte_count,
+      .core_final_sequence = 0,
+      .core_reserve_message_count = 0,
+      .core_reserve_byte_count = 0,
       .finalize = true};
     auto finalize_parts = request_route (
       finalize_request, spot_actor_commit_route_request_t::packet_name);
@@ -714,14 +702,11 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     }
     const auto next_membership_epoch = membership_epoch + 1;
     const auto core_committed = core_token.commit (next_membership_epoch);
-    const auto core_commit_errno = errno;
-    if (core_committed != zlink::config_result_t::ok) {
+    if (!core_committed) {
         spot_runtime.fail_remote_actor_transfer (actor, true);
         return result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::request_failed,
-          "source Core Actor transfer commit failed (result "
-            + std::to_string (static_cast<int> (core_committed)) + "/"
-            + std::to_string (core_commit_errno) + ")");
+          "source Framework Actor relocation commit failed");
     }
     {
         std::lock_guard<std::recursive_mutex> lock (_state->spot_state->mutex);
@@ -743,7 +728,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
 }
 
 result_t<actor_join_reply_t> mesh_node_runtime_t::wait_for_join_completion (
-  const zlink::service::operation_id_t &operation,
+  const host::operation_id_t &operation,
   const actor_ref_t &actor,
   std::chrono::milliseconds timeout)
 {
@@ -759,22 +744,20 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::wait_for_join_completion (
           framework_error_kind_t::request_protocol_error,
           "Actor Spot completion did not carry a join result (terminal result "
             + std::to_string (completion.record.terminal_result) + ", errno "
-            + std::to_string (completion.record.failure_errno) + ", kind bytes "
-            + std::to_string (completion.record.kind_data.size ()) + ")");
+            + std::to_string (completion.record.failure_errno) + ")");
     }
     const auto &joined = *completion.record.join_completion;
     const auto reply = completion.parts.empty () ? zlink::message_t{} : completion.parts.front ();
-    if (joined.join_result == zlink::service::join_admission_t::rejected) {
+    if (joined.join_result == host::join_admission_t::rejected) {
         return result_t<actor_join_reply_t>::success (
           actor_join_reply_t{1, actor, reply});
     }
-    const auto &native = joined.actor;
+    const auto &native = joined.current_actor;
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{
         0,
-        actor_ref_t (node_rid_t::from_string (native.node_rid ().to_string ()),
-                     std::string (actor.actor_type ()), std::string (native.actor_id ()),
-                     native.generation ()),
+        actor_ref_t (native.node_rid (), std::string (actor.actor_type ()),
+                     std::string (native.actor_id ()), native.generation ()),
         reply});
 }
 
@@ -795,7 +778,7 @@ mesh_node_runtime_t::relay_application_actor (
           codec.create_envelope (kind, "actor", std::string (header.packet_name ()), timeout);
         auto encoded =
           runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (envelope, payload);
-        const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
+        const auto native_actor = host::mesh_node_t::remote_actor_ref (
           zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
           std::string (actor.actor_id ()), actor.generation ());
         if (kind == runtime::messaging::message_kind_t::command) {
@@ -808,7 +791,7 @@ mesh_node_runtime_t::relay_application_actor (
             return result_t<std::optional<zlink::message_t>>::success (std::nullopt);
         }
 
-        zlink::service::operation_id_t operation;
+        host::operation_id_t operation;
         const auto submitted =
           request_to_actor (native_actor, encoded.items (), operation, timeout);
         trace_mesh_actor (
@@ -883,10 +866,10 @@ result_t<void> mesh_node_runtime_t::bind_application_actor_session (
           .session_node_rid = std::string (session_node.value ())};
         auto encoded =
           codec.encode_envelope_parts (header, request, *_serializers);
-        const auto native_actor = zlink::service::mesh_node_t::remote_actor_ref (
+        const auto native_actor = host::mesh_node_t::remote_actor_ref (
           zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
           std::string (actor.actor_id ()), actor.generation ());
-        zlink::service::operation_id_t operation;
+        host::operation_id_t operation;
         const auto submitted =
           request_to_actor (native_actor, encoded.items (), operation, timeout);
         if (submitted != zlink::submit_result_t::ok) {
@@ -954,7 +937,7 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
           spot_actor_disconnect_route_request_t::packet_name, timeout);
         auto encoded = codec.encode_envelope_parts (
           envelope, make_spot_actor_disconnect_route_request (actor), *_serializers);
-        zlink::service::operation_id_t operation;
+        host::operation_id_t operation;
         const auto submitted = request_to_node (
           zlink::routing_id_t::from (std::string (target_node.value ())),
           encoded.items (), operation, timeout);
@@ -1012,7 +995,7 @@ mesh_node_runtime_t::forward_straggler_actor (const actor_ref_t &actor)
 
 result_t<mesh_node_runtime_t::operation_completion_t>
 mesh_node_runtime_t::wait_for_completion (
-  const zlink::service::operation_id_t &operation,
+  const host::operation_id_t &operation,
   std::chrono::milliseconds timeout)
 {
     std::unique_lock lock (_completion_mutex);
@@ -1032,7 +1015,7 @@ mesh_node_runtime_t::wait_for_completion (
 zlink::submit_result_t
 mesh_node_runtime_t::send_to_node (const zlink::routing_id_t &target,
                                    const std::vector<zlink::message_t> &parts,
-                                   zlink::mesh_metadata_t metadata)
+                                   std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
@@ -1040,7 +1023,8 @@ mesh_node_runtime_t::send_to_node (const zlink::routing_id_t &target,
     runtime::messaging::note_submit_attempt (
       node_submit_target (target), this, one_way_send_timeout (*_state),
       _state->max_pending);
-    return _node->send_to_node (target, parts, zlink::send_flags_t::dontwait, metadata);
+    (void) metadata;
+    return _node->send_to_node (target, parts);
 }
 
 zlink::submit_result_t
@@ -1049,39 +1033,40 @@ mesh_node_runtime_t::send_to_node (const zlink::routing_id_t &target,
                                    const std::map<std::string, std::string> &metadata)
 {
     const auto encoded = mesh_metadata_codec_t::encode (metadata);
-    return send_to_node (target, parts, zlink::mesh_metadata_t (encoded));
+    return send_to_node (target, parts, std::vector<std::uint8_t> (encoded));
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_node (
   const zlink::routing_id_t &target,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
+    (void) metadata;
     return _node->request_to_node (
-      target, parts, operation_id, zlink::send_flags_t::dontwait, timeout, metadata);
+      target, parts, operation_id, timeout);
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_node (
   const zlink::routing_id_t &target,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
   const std::map<std::string, std::string> &metadata)
 {
     const auto encoded = mesh_metadata_codec_t::encode (metadata);
     return request_to_node (
-      target, parts, operation_id, timeout, zlink::mesh_metadata_t (encoded));
+      target, parts, operation_id, timeout, std::vector<std::uint8_t> (encoded));
 }
 
 zlink::submit_result_t
 mesh_node_runtime_t::send_to_channel (const std::string &channel_name,
                                       const std::vector<zlink::message_t> &parts,
-                                      zlink::mesh_metadata_t metadata)
+                                      std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
@@ -1089,8 +1074,8 @@ mesh_node_runtime_t::send_to_channel (const std::string &channel_name,
     runtime::messaging::note_submit_attempt (
       channel_submit_target (channel_name), this, one_way_send_timeout (*_state),
       _state->max_pending);
-    return _node->send_to_channel (
-      channel_name, parts, zlink::send_flags_t::dontwait, metadata);
+    (void) metadata;
+    return _node->send_to_channel (channel_name, parts);
 }
 
 zlink::submit_result_t
@@ -1099,94 +1084,49 @@ mesh_node_runtime_t::send_to_channel (const std::string &channel_name,
                                       const std::map<std::string, std::string> &metadata)
 {
     const auto encoded = mesh_metadata_codec_t::encode (metadata);
-    return send_to_channel (channel_name, parts, zlink::mesh_metadata_t (encoded));
+    return send_to_channel (channel_name, parts, std::vector<std::uint8_t> (encoded));
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_channel (
   const std::string &channel_name,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
-  zlink::mesh_metadata_t metadata)
+  std::vector<std::uint8_t> metadata)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
+    (void) metadata;
     return _node->request_to_channel (
-      channel_name, parts, operation_id, zlink::send_flags_t::dontwait, timeout, metadata);
+      channel_name, parts, operation_id, timeout);
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_channel (
   const std::string &channel_name,
   const std::vector<zlink::message_t> &parts,
-  zlink::service::operation_id_t &operation_id,
+  host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
   const std::map<std::string, std::string> &metadata)
 {
     const auto encoded = mesh_metadata_codec_t::encode (metadata);
     return request_to_channel (
-      channel_name, parts, operation_id, timeout, zlink::mesh_metadata_t (encoded));
-}
-
-int mesh_node_runtime_t::drain_ready (zlink::service::ready_domain_t domains,
-                                      zlink::service::ready_batch_t &batch,
-                                      bool &has_residue,
-                                      zlink::recv_flags_t flags)
-{
-    if (!_node) {
-        throw configuration_error ("MeshNode has not started");
-    }
-    return _node->drain_ready (domains, batch, has_residue, flags);
+      channel_name, parts, operation_id, timeout, std::vector<std::uint8_t> (encoded));
 }
 
 std::size_t mesh_node_runtime_t::dispatch_ready (
-  const std::function<void (const zlink::service::ready_record_t &,
-                            const zlink::service::receive_record_t &,
+  const std::function<void (const host::ready_record_t &,
+                            const host::receive_record_t &,
                             std::vector<zlink::message_t>)> &dispatch)
 {
     if (!dispatch)
         throw configuration_error ("MeshNode dispatch callback is required");
 
-    zlink::service::ready_batch_t ready (64);
-    bool has_residue = false;
-    const int ready_result =
-      drain_ready (zlink::service::ready_domain_t::all, ready, has_residue,
-                   zlink::recv_flags_t::dontwait);
-    if (ready_result == static_cast<int> (zlink::recv_result_t::no_data))
-        return 0;
-    if (ready_result != static_cast<int> (zlink::recv_result_t::ok))
-        throw framework_exception_t (framework_error_kind_t::request_failed,
-                                     "MeshNode ready drain failed");
-
-    std::size_t dispatched = 0;
-    for (std::size_t ready_index = 0; ready_index < ready.count (); ++ready_index) {
-        const auto ready_record = ready.at (ready_index);
-        auto claim = ready.take_claim (ready_index);
-        zlink::service::receive_batch_t batch (64, 256, 1u << 20);
-        zlink::service::receive_requirements_t required;
-        int receive_result =
-          claim.recv_batch (batch, required, zlink::recv_flags_t::dontwait);
-        if (receive_result != static_cast<int> (zlink::recv_result_t::ok)
-            && required.message_count > 0 && required.part_count > 0
-            && required.byte_count > 0) {
-            batch = zlink::service::receive_batch_t (
-              required.message_count, required.part_count, required.byte_count);
-            receive_result =
-              claim.recv_batch (batch, required, zlink::recv_flags_t::dontwait);
-        }
-        if (receive_result == static_cast<int> (zlink::recv_result_t::no_data)) {
-            claim.release ();
-            continue;
-        }
-        if (receive_result != static_cast<int> (zlink::recv_result_t::ok)) {
-            claim.release ();
-            throw framework_exception_t (framework_error_kind_t::request_failed,
-                                         "MeshNode receive batch drain failed");
-        }
-        for (std::size_t record_index = 0; record_index < batch.count (); ++record_index) {
-            const auto record = batch.at (record_index);
-            auto parts = batch.retain_message (record_index);
-            if (record.kind == zlink::service::record_kind_t::completion) {
+    return _node->dispatch_ready (
+      [&] (const host::ready_record_t &ready_record,
+           const host::receive_record_t &record,
+           std::vector<zlink::message_t> parts) {
+            if (record.kind == host::record_kind_t::completion) {
                 if (const auto *enabled =
                       std::getenv ("ZLINK_CPP_AUTO_CONNECT_TRACE");
                     enabled != nullptr && *enabled != '\0') {
@@ -1205,7 +1145,7 @@ std::size_t mesh_node_runtime_t::dispatch_ready (
                 }
                 _completion_ready.notify_all ();
             }
-            if (record.kind == zlink::service::record_kind_t::send_ready
+            if (record.kind == host::record_kind_t::send_ready
                 && record.send_ready) {
                 const auto target = send_ready_target (*record.send_ready);
                 if (!target.empty ()) {
@@ -1213,14 +1153,10 @@ std::size_t mesh_node_runtime_t::dispatch_ready (
                 }
             }
             dispatch (ready_record, record, std::move (parts));
-            ++dispatched;
-        }
-        claim.release ();
-    }
-    return dispatched;
+      });
 }
 
-zlink::mesh_node_status_t mesh_node_runtime_t::status () const
+host::node_status_t mesh_node_runtime_t::status () const
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");

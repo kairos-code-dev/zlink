@@ -41,7 +41,8 @@ class raw_route_port_t
     using request_callback_t =
       std::function<void (raw_request_result_t, raw_message_t)>;
 
-    explicit raw_route_port_t (zlink::router_socket_t &socket) noexcept;
+    explicit raw_route_port_t (zlink::router_socket_t &socket,
+                               std::mutex *shared_socket_mutex = nullptr) noexcept;
 
     bool send (const raw_bytes_t &target_routing_id, const raw_message_t &parts);
     bool request (const raw_bytes_t &target_routing_id,
@@ -54,7 +55,8 @@ class raw_route_port_t
 
   private:
     zlink::router_socket_t *_socket;
-    std::mutex _socket_mutex;
+    std::mutex _owned_socket_mutex;
+    std::mutex *_socket_mutex;
 };
 
 } // namespace zlink::framework::detail::backend

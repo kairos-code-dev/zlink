@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.locations;
 
 import systems.zlink.framework.locations.ZLinkActorLocationStore;
+import systems.zlink.framework.locations.ZLinkAuthorityStore;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWatchStore;
@@ -16,6 +17,7 @@ public record ZLinkRegisteredLocationStores(
     ZLinkActorLocationStore actorStore,
     ZLinkRouteLocationStore routeStore,
     ZLinkOwnerLeaseStore ownerLeaseStore,
+    ZLinkAuthorityStore authorityStore,
     ZLinkLocationChangeStampStore changeStampStore,
     ZLinkLocationWatchStore watchStore,
     ZLinkLocationStore unifiedStore) {
@@ -27,6 +29,9 @@ public record ZLinkRegisteredLocationStores(
             store,
             store,
             store,
+            store instanceof ZLinkAuthorityStore authority
+                ? authority
+                : null,
             store instanceof ZLinkLocationChangeStampStore stamps ? stamps : null,
             store instanceof ZLinkLocationWatchStore watch ? watch : null,
             store);
@@ -38,6 +43,9 @@ public record ZLinkRegisteredLocationStores(
         services.add(ZLinkActorLocationStore.class, actorStore);
         services.add(ZLinkRouteLocationStore.class, routeStore);
         services.add(ZLinkOwnerLeaseStore.class, ownerLeaseStore);
+        if (authorityStore != null) {
+            services.add(ZLinkAuthorityStore.class, authorityStore);
+        }
         if (changeStampStore != null) {
             services.add(ZLinkLocationChangeStampStore.class, changeStampStore);
         }

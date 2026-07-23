@@ -1,5 +1,9 @@
 package systems.zlink.framework.execution;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
@@ -17,8 +21,13 @@ public final class ZLinkAsyncSerialQueue {
 
     private final boolean releaseOnIncompleteStage;
     private final int pendingCapacity;
-    private CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+    private final ArrayDeque<Entry> pending = new ArrayDeque<>();
     private int outstanding;
+    private long nextSequence = 1L;
+    private long nextRelocationSerial = 1L;
+    private Entry active;
+    private RelocationState relocation;
+    private boolean relocated;
     private Runnable capacityAvailable = () -> { };
 
     public ZLinkAsyncSerialQueue() {
@@ -38,14 +47,36 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     public synchronized CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation) {
-        return enqueueAccepted(operation);
+        return enqueueAccepted(null, operation);
+    }
+
+    public synchronized CompletionStage<Void> enqueueRelocatable(
+        byte[] record,
+        Supplier<CompletionStage<Void>> operation) {
+        java.util.Objects.requireNonNull(record, "record");
+        if (relocated) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("queue owner has relocated"));
+        }
+        return enqueueAccepted(record.clone(), operation);
     }
 
     public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
         if (outstanding > pendingCapacity) {
             return false;
         }
-        enqueueAccepted(operation);
+        enqueueAccepted(null, operation);
+        return true;
+    }
+
+    public synchronized boolean tryEnqueueRelocatable(
+        byte[] record,
+        Supplier<CompletionStage<Void>> operation) {
+        java.util.Objects.requireNonNull(record, "record");
+        if (relocated || outstanding > pendingCapacity) {
+            return false;
+        }
+        enqueueAccepted(record.clone(), operation);
         return true;
     }
 
@@ -54,29 +85,136 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     private CompletionStage<Void> enqueueAccepted(
+        byte[] record,
         Supplier<CompletionStage<Void>> operation) {
+        java.util.Objects.requireNonNull(operation, "operation");
+        if (nextSequence == Long.MAX_VALUE) {
+            throw new IllegalStateException("queue sequence exhausted");
+        }
         outstanding++;
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        ZLinkFlowContext.State flow = ZLinkFlowContext.current();
-        CompletionStage<Void> gate = tail
-            .handle((ignored, error) -> null)
-            .thenCompose(ignored -> invoke(operation, result, flow));
-        tail = gate.handle((ignored, error) -> null);
-        gate.whenComplete((ignored, error) -> releaseCapacity());
-        return result;
+        Entry entry = new Entry(
+            nextSequence++,
+            record,
+            operation,
+            new CompletableFuture<>(),
+            ZLinkFlowContext.current());
+        if (record != null && relocation != null) {
+            relocation.held.addLast(entry);
+        } else {
+            pending.addLast(entry);
+            startNext();
+        }
+        return entry.result;
     }
 
-    private void releaseCapacity() {
+    private void startNext() {
+        if (active != null || pending.isEmpty()) {
+            return;
+        }
+        Entry entry = pending.removeFirst();
+        active = entry;
+        CompletionStage<Void> gate = invoke(
+            entry.operation,
+            entry.result,
+            entry.flow);
+        gate.whenComplete((ignored, error) -> finish(entry));
+    }
+
+    private void finish(Entry entry) {
         Runnable notify = null;
         synchronized (this) {
+            if (active != entry) {
+                return;
+            }
+            active = null;
             boolean wasFull = outstanding > pendingCapacity;
             outstanding--;
             if (wasFull && outstanding <= pendingCapacity) {
                 notify = capacityAvailable;
             }
+            startNext();
         }
         if (notify != null) {
             HANDLER_EXECUTOR.execute(notify);
+        }
+    }
+
+    public synchronized Optional<RelocationSeal> trySealRelocation() {
+        if (relocated || relocation != null) {
+            return Optional.empty();
+        }
+        if (active != null && CURRENT.get() != this) {
+            return Optional.empty();
+        }
+        if (nextRelocationSerial == Long.MAX_VALUE) {
+            throw new IllegalStateException("relocation serial exhausted");
+        }
+        ArrayDeque<Entry> captured = new ArrayDeque<>();
+        ArrayDeque<Entry> infrastructure = new ArrayDeque<>();
+        while (!pending.isEmpty()) {
+            Entry entry = pending.removeFirst();
+            if (entry.record == null) {
+                infrastructure.addLast(entry);
+            } else {
+                captured.addLast(entry);
+            }
+        }
+        pending.addAll(infrastructure);
+        long serial = nextRelocationSerial++;
+        relocation = new RelocationState(serial, captured);
+        return Optional.of(new RelocationSeal(
+            serial,
+            captured.stream().map(Entry::queuedRecord).toList()));
+    }
+
+    public synchronized boolean abortRelocation(RelocationSeal seal) {
+        if (!matches(seal)) {
+            return false;
+        }
+        ArrayDeque<Entry> restored = new ArrayDeque<>();
+        while (!pending.isEmpty()) {
+            restored.addLast(pending.removeFirst());
+        }
+        restored.addAll(relocation.captured);
+        restored.addAll(relocation.held);
+        pending.addAll(restored);
+        relocation = null;
+        startNext();
+        return true;
+    }
+
+    public synchronized Optional<List<QueuedRecord>> commitRelocation(
+        RelocationSeal seal) {
+        if (!matches(seal)) {
+            return Optional.empty();
+        }
+        List<QueuedRecord> held = relocation.held.stream()
+            .map(Entry::queuedRecord)
+            .toList();
+        List<Entry> released = new ArrayList<>(
+            relocation.captured.size() + relocation.held.size());
+        released.addAll(relocation.captured);
+        released.addAll(relocation.held);
+        relocation = null;
+        relocated = true;
+        for (Entry entry : released) {
+            entry.result.complete(null);
+            releaseRelocatedCapacity();
+        }
+        return Optional.of(held);
+    }
+
+    private boolean matches(RelocationSeal seal) {
+        return seal != null
+            && relocation != null
+            && relocation.serial == seal.serial;
+    }
+
+    private void releaseRelocatedCapacity() {
+        boolean wasFull = outstanding > pendingCapacity;
+        outstanding--;
+        if (wasFull && outstanding <= pendingCapacity) {
+            HANDLER_EXECUTOR.execute(capacityAvailable);
         }
     }
 
@@ -274,5 +412,72 @@ public final class ZLinkAsyncSerialQueue {
         CURRENT_RELEASE_DEFERRED.set(true);
         entered.whenComplete((ignored, error) -> gate.complete(null));
         return entered;
+    }
+
+    public record QueuedRecord(long sequence, byte[] payload) {
+        public QueuedRecord {
+            if (sequence <= 0) {
+                throw new IllegalArgumentException(
+                    "queue record sequence must be positive");
+            }
+            payload = java.util.Objects.requireNonNull(
+                payload,
+                "payload").clone();
+        }
+
+        @Override
+        public byte[] payload() {
+            return payload.clone();
+        }
+    }
+
+    public record RelocationSeal(
+        long serial,
+        List<QueuedRecord> captured) {
+        public RelocationSeal {
+            if (serial <= 0) {
+                throw new IllegalArgumentException(
+                    "relocation seal serial must be positive");
+            }
+            captured = List.copyOf(captured);
+        }
+    }
+
+    private static final class Entry {
+        private final long sequence;
+        private final byte[] record;
+        private final Supplier<CompletionStage<Void>> operation;
+        private final CompletableFuture<Void> result;
+        private final ZLinkFlowContext.State flow;
+
+        private Entry(
+            long sequence,
+            byte[] record,
+            Supplier<CompletionStage<Void>> operation,
+            CompletableFuture<Void> result,
+            ZLinkFlowContext.State flow) {
+            this.sequence = sequence;
+            this.record = record;
+            this.operation = operation;
+            this.result = result;
+            this.flow = flow;
+        }
+
+        private QueuedRecord queuedRecord() {
+            return new QueuedRecord(sequence, record);
+        }
+    }
+
+    private static final class RelocationState {
+        private final long serial;
+        private final ArrayDeque<Entry> captured;
+        private final ArrayDeque<Entry> held = new ArrayDeque<>();
+
+        private RelocationState(
+            long serial,
+            ArrayDeque<Entry> captured) {
+            this.serial = serial;
+            this.captured = captured;
+        }
     }
 }

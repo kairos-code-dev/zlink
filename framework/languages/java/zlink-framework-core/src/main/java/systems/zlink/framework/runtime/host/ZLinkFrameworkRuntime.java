@@ -156,6 +156,11 @@ public final class ZLinkFrameworkRuntime
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
         ZLinkFrameworkLocationSubsystem locationSubsystem =
             ZLinkFrameworkLocationSubsystem.create(this.registration, runtimeHandlers);
+        if (this.registration.relocationStore() != null) {
+            runtimeHandlers.add(
+                systems.zlink.framework.locations.ZLinkRelocationStore.class,
+                this.registration.relocationStore());
+        }
         this.locationStores = locationSubsystem.locationStores();
         if (locationSubsystem.enabled()) {
             this.locationRuntime = locationSubsystem.locationRuntime();

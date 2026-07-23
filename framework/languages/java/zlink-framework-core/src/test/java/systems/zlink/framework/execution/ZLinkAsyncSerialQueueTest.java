@@ -2,12 +2,14 @@ package systems.zlink.framework.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.configuration.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
@@ -202,5 +204,118 @@ final class ZLinkAsyncSerialQueueTest {
         assertFalse(first.isDone());
         afterYield.complete(null);
         first.get(3, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void relocationSealHoldsIngressAndAbortRestoresArrivalOrder()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> sealNow = new CompletableFuture<>();
+        CompletableFuture<Void> intentStarted = new CompletableFuture<>();
+        CompletableFuture<ZLinkAsyncSerialQueue.RelocationSeal> sealed =
+            new CompletableFuture<>();
+        List<String> handled =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        queue.enqueue(() -> {
+            intentStarted.complete(null);
+            sealNow.join();
+            sealed.complete(queue.trySealRelocation().orElseThrow());
+            return CompletableFuture.completedFuture(null);
+        });
+        intentStarted.get(3, TimeUnit.SECONDS);
+        queue.enqueueRelocatable(
+            new byte[] {1},
+            () -> {
+                handled.add("one");
+                return CompletableFuture.completedFuture(null);
+            });
+        queue.enqueueRelocatable(
+            new byte[] {2},
+            () -> {
+                handled.add("two");
+                return CompletableFuture.completedFuture(null);
+        });
+        sealNow.complete(null);
+        ZLinkAsyncSerialQueue.RelocationSeal seal =
+            sealed.get(3, TimeUnit.SECONDS);
+
+        queue.enqueueRelocatable(
+            new byte[] {3},
+            () -> {
+                handled.add("three");
+                return CompletableFuture.completedFuture(null);
+            });
+        CompletableFuture<Void> infrastructure = queue.enqueue(() -> {
+            handled.add("infrastructure");
+            return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        infrastructure.get(3, TimeUnit.SECONDS);
+        assertEquals(List.of("infrastructure"), handled);
+        assertEquals(2, seal.captured().size());
+
+        assertTrue(queue.abortRelocation(seal));
+        waitForSize(handled, 4);
+        assertEquals(
+            List.of("infrastructure", "one", "two", "three"),
+            handled);
+    }
+
+    @Test
+    void relocationCommitReturnsOnlyHeldIngressAndRejectsNewOwnerWork()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> sealNow = new CompletableFuture<>();
+        CompletableFuture<Void> intentStarted = new CompletableFuture<>();
+        CompletableFuture<ZLinkAsyncSerialQueue.RelocationSeal> sealed =
+            new CompletableFuture<>();
+        AtomicReference<Boolean> ran = new AtomicReference<>(false);
+
+        queue.enqueue(() -> {
+            intentStarted.complete(null);
+            sealNow.join();
+            sealed.complete(queue.trySealRelocation().orElseThrow());
+            return CompletableFuture.completedFuture(null);
+        });
+        intentStarted.get(3, TimeUnit.SECONDS);
+        CompletableFuture<Void> captured = queue.enqueueRelocatable(
+            new byte[] {1},
+            () -> {
+                ran.set(true);
+                return CompletableFuture.completedFuture(null);
+        }).toCompletableFuture();
+        sealNow.complete(null);
+        ZLinkAsyncSerialQueue.RelocationSeal seal =
+            sealed.get(3, TimeUnit.SECONDS);
+        CompletableFuture<Void> held = queue.enqueueRelocatable(
+            new byte[] {2},
+            () -> {
+                ran.set(true);
+                return CompletableFuture.completedFuture(null);
+            }).toCompletableFuture();
+
+        List<ZLinkAsyncSerialQueue.QueuedRecord> relay =
+            queue.commitRelocation(seal).orElseThrow();
+        captured.get(3, TimeUnit.SECONDS);
+        held.get(3, TimeUnit.SECONDS);
+
+        assertFalse(ran.get());
+        assertEquals(1, relay.size());
+        assertArrayEquals(new byte[] {2}, relay.getFirst().payload());
+        assertTrue(queue.enqueueRelocatable(
+            new byte[] {3},
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture()
+            .isCompletedExceptionally());
+    }
+
+    private static void waitForSize(
+        List<String> values,
+        int expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+        while (values.size() < expected && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        assertEquals(expected, values.size());
     }
 }

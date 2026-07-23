@@ -208,6 +208,38 @@ export class ZLinkSpotNodeRuntimeManager {
       const completions = new ZLinkMeshCompletionTable();
       try {
         node.setBind(bind);
+        const stableTypes = [
+          ...Object.keys(spotNode.spotFactoryRegistrations ?? {}),
+          ...Object.keys(spotNode.instanceSpotFactoryRegistrations ?? {}),
+          ...Object.keys(spotNode.actorFactoryRegistrations ?? {})
+        ];
+        const profileCapabilities = [
+          ...Object.entries(spotNode.spotFactoryRegistrations ?? {}),
+          ...Object.entries(spotNode.instanceSpotFactoryRegistrations ?? {}),
+          ...Object.entries(spotNode.actorFactoryRegistrations ?? {})
+        ].flatMap(([stableType, registration]) =>
+          (registration.placement?.placementProfiles ?? [])
+            .map(profile => `object-profile:${stableType}:${profile}`)
+        );
+        const hasLegacyObjectFactories =
+          (spotNode.spotFactories?.length ?? 0) > 0
+          || Object.keys(spotNode.instanceSpotFactories ?? {}).length > 0
+          || (
+            spotNode.actorFactories instanceof Map
+              ? spotNode.actorFactories.size
+              : Object.keys(spotNode.actorFactories ?? {}).length
+          ) > 0;
+        node.configureObjectPlacement({
+          role: spotNode.objectRole
+            ?? (hasLegacyObjectFactories ? 'server' : 'none'),
+          placementWeight: spotNode.placementWeight ?? 100,
+          activeCapacityLimit: spotNode.maxActiveObjects ?? 10_000,
+          pendingCapacityLimit: spotNode.maxPendingActivations ?? 128,
+          objectCapabilities: [
+            ...stableTypes.map(type => `object-type:${type}`),
+            ...profileCapabilities
+          ]
+        });
         for (const [channelName, channel] of Object.entries(spotNode.meshChannels ?? {})) {
           node.addChannelName(channelName);
           if (channel.weight !== undefined) {

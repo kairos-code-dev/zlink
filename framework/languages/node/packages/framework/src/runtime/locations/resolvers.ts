@@ -3,6 +3,7 @@ import type {
   ZLinkPeerLocationStore,
   ZLinkRouteLocationStore
 } from '../../contracts/Locations/Stores';
+import type { ZLinkAuthorityStore } from '../../contracts/Locations/Authority';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationKind,
@@ -22,12 +23,16 @@ import {
   type ZLinkSpotLocation,
   type ZLinkSpotLocationKey,
 } from '../../contracts/Locations';
+import { decodeServiceReadySpotAuthority } from '../foundation/service-authority-payload-codec';
+import { encodeAuthorityKey } from './authority-key-codec';
 import {
-  ZLinkSpotKind,
-  type SpotHandle,
-  type ZLinkActorSpotHandleResolver,
-  type ZLinkSpotHandleResolver
+  ZLinkSpotKind
 } from '../../contracts/Spots';
+import type {
+  SpotHandle,
+  ZLinkActorSpotHandleResolver,
+  ZLinkSpotHandleResolver
+} from '../spots/spot-handle';
 import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contracts/Errors';
 import type {
   ZLinkSpotRouteResolver,
@@ -352,6 +357,54 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotRouteNotFound,
       `SPOT '${spotRid}' has no live location row in any registered spot mesh.`
+    );
+  }
+}
+
+export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
+  constructor(
+    private readonly store: ZLinkAuthorityStore,
+    private readonly routerChannelIdForMesh: (meshName: string) => string,
+    private readonly fallback?: ZLinkSpotRouteResolver
+  ) {}
+
+  async resolve(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget> {
+    const current = await this.store.readAuthority(
+      encodeAuthorityKey('user_spot', String(spotRid)),
+      signal
+    );
+    if (current.kind === 'snapshot' && current.allocation.state === 'active') {
+      const decoded = decodeServiceReadySpotAuthority(current.payload);
+      if (
+        decoded !== undefined
+        && decoded.spotRid === String(spotRid)
+        && decoded.ownerId === current.ownerId
+        && decoded.ownerLeaseGeneration === current.ownerLeaseGeneration
+      ) {
+        return {
+          routerChannelId: this.routerChannelIdForMesh(decoded.ownerMeshName),
+          targetNodeRid: decoded.ownerNodeRid,
+          spotRid,
+          spotKind: decoded.kind === 'instance_spot'
+            ? ZLinkSpotKind.Instance
+            : ZLinkSpotKind.User,
+          stableType: decoded.stableType,
+          targetSpotGeneration: current.objectGeneration
+        };
+      }
+    }
+    if (current.kind === 'snapshot') {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotRouteNotFound,
+        `SPOT '${spotRid}' authority has not crossed the Ready barrier.`
+      );
+    }
+    if (this.fallback !== undefined) {
+      return await this.fallback.resolve(spotRid, signal);
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotRouteNotFound,
+      `SPOT '${spotRid}' has no Ready authority.`
     );
   }
 }

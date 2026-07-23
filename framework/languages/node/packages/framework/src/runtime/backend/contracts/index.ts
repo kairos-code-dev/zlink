@@ -48,6 +48,48 @@ export interface ZLinkBackendMeshNode {
   close(): void;
   addChannelName(name: string): void;
   setChannelWeight(name: string, weight: number): void;
+  configureObjectPlacement(options: {
+    readonly role: 'none' | 'client' | 'server';
+    readonly placementWeight: number;
+    readonly activeCapacityLimit: number;
+    readonly pendingCapacityLimit: number;
+    readonly objectCapabilities: readonly string[];
+  }): void;
+  selectObjectPlacement(
+    stableType: string,
+    placementProfile?: string,
+    affinityKey?: string
+  ): {
+    readonly targetNodeRid: string;
+    readonly targetNodeGeneration: bigint;
+    readonly descriptorVersion: string;
+  } | undefined;
+  sendToMissingInstanceSpot(
+    target: {
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly targetSpotRid: string;
+      readonly stableType: string;
+      readonly descriptorVersion: string;
+    },
+    parts: MessageLike | readonly MessageLike[],
+    deadlineUnixMs: bigint,
+    sourceSpotRid?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): SubmitResult;
+  requestToMissingInstanceSpot(
+    target: {
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly targetSpotRid: string;
+      readonly stableType: string;
+      readonly descriptorVersion: string;
+    },
+    parts: MessageLike | readonly MessageLike[],
+    timeoutMs: number,
+    sourceSpotRid?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): MeshOperationId;
   connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint;
   removePeerConnection(intentId: bigint): void;
   disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void;

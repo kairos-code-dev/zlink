@@ -276,8 +276,8 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
     async onInitialize() {
       events.push('onInitialize');
     }
-    async onClosing() {
-      events.push('onClosing');
+    async onClosing(context) {
+      events.push(`onClosing:${context.reason}`);
     }
   }
 
@@ -291,7 +291,12 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
   assert.equal(await manager.close('test.mesh', created.spotRid), true);
   assert.equal(await manager.close('test.mesh', created.spotRid), false);
   assert.equal(await manager.find('test.mesh', created.spotRid), null);
-  assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize', 'onClosing']);
+  assert.deepEqual(events, [
+    'configure',
+    'onCreate:open',
+    'onInitialize',
+    `onClosing:${framework.ZLinkSpotCloseReason.ExplicitClose}`
+  ]);
 });
 
 test('ZLinkSpotManager consumes MeshNode Spot send and request records', async () => {
@@ -379,6 +384,70 @@ test('ZLinkSpotManager drain closes every local Spot in the selected mesh', asyn
   assert.equal(await manager.find('test.mesh', recreated.spotRid), null);
   assert.equal(await manager.find('test.mesh', natural.spotRid), null);
   assert.deepEqual(closed.sort(), ['natural', 'recreated']);
+});
+
+test('ZLinkSpotManager reports HostShutdown only for shutdown-drained User and Instance Spots', async () => {
+  const reasons = new Map();
+  const record = (name) => async (context) => {
+    reasons.set(name, context.reason);
+  };
+  class ExplicitUserSpot {
+    onClosing = record('explicit-user');
+  }
+  class ShutdownUserSpot {
+    onClosing = record('shutdown-user');
+  }
+  class ExplicitInstanceSpot {
+    onClosing = record('explicit-instance');
+  }
+  class ShutdownInstanceSpot {
+    onClosing = record('shutdown-instance');
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [ExplicitUserSpot, ShutdownUserSpot],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([
+        ['explicit-instance', ExplicitInstanceSpot],
+        ['shutdown-instance', ShutdownInstanceSpot]
+      ])
+    ]])
+  });
+  const explicitUser = await manager.create('test.mesh', ExplicitUserSpot);
+  await manager.create('test.mesh', ShutdownUserSpot);
+  const explicitInstanceRid = zlink.RoutingId.from('explicit-instance-rid');
+  const shutdownInstanceRid = zlink.RoutingId.from('shutdown-instance-rid');
+  await manager.materializeInstance(
+    'test.mesh',
+    'explicit-instance',
+    explicitInstanceRid
+  );
+  await manager.materializeInstance(
+    'test.mesh',
+    'shutdown-instance',
+    shutdownInstanceRid
+  );
+
+  assert.equal(await manager.close('test.mesh', explicitUser.spotRid), true);
+  assert.equal(await manager.close('test.mesh', explicitInstanceRid), true);
+  await manager.drainForShutdown('test.mesh');
+
+  assert.equal(
+    reasons.get('explicit-user'),
+    framework.ZLinkSpotCloseReason.ExplicitClose
+  );
+  assert.equal(
+    reasons.get('explicit-instance'),
+    framework.ZLinkSpotCloseReason.ExplicitClose
+  );
+  assert.equal(
+    reasons.get('shutdown-user'),
+    framework.ZLinkSpotCloseReason.HostShutdown
+  );
+  assert.equal(
+    reasons.get('shutdown-instance'),
+    framework.ZLinkSpotCloseReason.HostShutdown
+  );
 });
 
 test('ZLinkSpotManager shares concurrent close and finishes cleanup after onClosing failure', async () => {
@@ -2019,6 +2088,59 @@ test('spot outbound routed calls require runtime transport', async () => {
     }, 'notice'),
     framework.ZLinkConfigurationException
   );
+});
+
+test('SpotRid outbound keeps Missing Instance placement intent behind the public call builder', async () => {
+  const calls = [];
+  const addressTransport = {
+    async sendToSpotAddress(spotRid, message, options) {
+      calls.push({ kind: 'send', spotRid, message, options });
+      return { status: framework.ZLinkSubmitStatus.Accepted };
+    },
+    async requestToSpotAddress(spotRid, request, options) {
+      calls.push({ kind: 'request', spotRid, request, options });
+      return 'ready-reply';
+    }
+  };
+  const outbound = new framework.DefaultZLinkSpotOutbound(
+    new framework.ZLinkSpotSerialExecutor(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'source.mesh',
+    undefined,
+    addressTransport
+  );
+
+  await outbound.sendToSpot('instance-42', { value: 1 })
+    .metadata('trace', 'abc')
+    .instanceSpot('chat-room')
+    .inMesh('target.mesh')
+    .placementProfile('interactive')
+    .affinityKey('tenant-7')
+    .submit();
+  const reply = await outbound.requestToSpot('instance-42', { value: 2 })
+    .instanceSpot()
+    .timeout(1500)
+    .submit();
+
+  assert.equal(reply, 'ready-reply');
+  assert.equal(calls[0].spotRid, 'instance-42');
+  assert.equal(calls[0].options.instanceSpotType, 'chat-room');
+  assert.equal(calls[0].options.initialMeshName, 'target.mesh');
+  assert.equal(calls[0].options.placementProfile, 'interactive');
+  assert.equal(calls[0].options.affinityKey, 'tenant-7');
+  assert.equal(calls[0].options.metadata.get('trace'), 'abc');
+  assert.equal(calls[1].options.instanceSpot, true);
+  assert.equal(calls[1].options.instanceSpotType, undefined);
+  assert.equal(calls[1].options.timeoutMs, 1500);
+
+  const reused = outbound.sendToSpot('instance-43', 'payload').instanceSpot();
+  await reused.submit();
+  assert.throws(() => reused.submit(), framework.ZLinkConfigurationException);
 });
 
 test('spot timer dispatches handler on the spot serial executor with dotnet tick metadata', async () => {

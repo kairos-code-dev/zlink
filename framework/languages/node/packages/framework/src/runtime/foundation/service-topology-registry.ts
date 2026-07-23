@@ -153,6 +153,46 @@ export class ServiceTopologyRegistry {
     );
   }
 
+  selectObjectPlacement(
+    stableType: string,
+    placementProfile?: string,
+    affinityKey?: string
+  ): ServiceNodeDescriptor | undefined {
+    requireText(stableType, 'stableType');
+    const capability = `object-type:${stableType}`;
+    const profileCapability = placementProfile === undefined
+      ? undefined
+      : `object-profile:${stableType}:${placementProfile}`;
+    const candidates = [
+      this.local,
+      ...this.peers().map(peer => peer.descriptor)
+    ].filter(descriptor =>
+      descriptor.state === 'serving'
+      && descriptor.objectRole === 'server'
+      && descriptor.placementWeight > 0
+      && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
+      && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit
+      && descriptor.protocolCapabilities.includes(capability)
+      && (
+        profileCapability === undefined
+        || descriptor.protocolCapabilities.includes(profileCapability)
+      )
+    );
+    if (affinityKey !== undefined) {
+      requireText(affinityKey, 'affinityKey');
+      return selectWeightedAt(
+        candidates,
+        descriptor => descriptor.placementWeight,
+        stableHash(affinityKey)
+      );
+    }
+    return this.selectWeighted(
+      `object:${stableType}`,
+      candidates,
+      descriptor => descriptor.placementWeight
+    );
+  }
+
   private selectWeighted<T>(
     key: string,
     eligible: readonly T[],
@@ -170,6 +210,31 @@ export class ServiceTopologyRegistry {
     }
     return eligible.at(-1);
   }
+}
+
+function selectWeightedAt<T>(
+  values: readonly T[],
+  weight: (value: T) => number,
+  selected: bigint
+): T | undefined {
+  const total = values.reduce((sum, value) => sum + BigInt(weight(value)), 0n);
+  if (total === 0n) return undefined;
+  const point = selected % total;
+  let offset = 0n;
+  for (const value of values) {
+    offset += BigInt(weight(value));
+    if (point < offset) return value;
+  }
+  return values.at(-1);
+}
+
+function stableHash(value: string): bigint {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(value)) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash;
 }
 
 export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {

@@ -1,7 +1,6 @@
-import { ZLinkSpotKind } from '../../contracts';
+import { ZLinkSpotKind, ZLinkSubmitStatus } from '../../contracts';
 import type {
   RoutingId,
-  SpotHandle,
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkPublishCall,
@@ -10,6 +9,10 @@ import type {
   ZLinkMessageMetadata,
   ZLinkSubmitResult,
   ZLinkSpotOutbound,
+  ZLinkSpotRequestCall,
+  ZLinkSpotSendCall,
+  ZLinkPlacementProfile,
+  ZLinkAffinityKey,
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
@@ -27,6 +30,7 @@ import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import {
   refreshSpotHandle,
   resolveSpotHandle,
+  type SpotHandle,
   type ResolvedSpotHandle
 } from './spot-handle';
 
@@ -40,10 +44,23 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly spotRouterChannelIdForMesh: (meshName: string) => string = (meshName) => meshName,
     private readonly sourceSpotProvider?: () => ZLinkBackendSpot | undefined,
     private readonly meshName?: string,
-    _channelMeshNameForChannel?: (channelName: string) => string | undefined
+    _channelMeshNameForChannel?: (channelName: string) => string | undefined,
+    private readonly addressTransport?: ZLinkSpotAddressTransport
   ) {}
 
-  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall {
+  sendToSpot(spotRid: RoutingId, message: unknown): ZLinkSpotSendCall;
+  /** @internal Compatibility path for an already resolved handle. */
+  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
+  sendToSpot(spot: RoutingId | SpotHandle, message: unknown): ZLinkSpotSendCall | ZLinkSendCall {
+    if (typeof spot !== 'object') {
+      return createAddressedSpotSendCall(
+        this.serial,
+        this.requireAddressTransport(),
+        spot,
+        message,
+        this.sourceSpotProvider
+      );
+    }
     return wrapRoutedSpotSendCall(
       this.serial,
       this.requireRoutedTransport(),
@@ -54,7 +71,19 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall {
+  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkSpotRequestCall;
+  /** @internal Compatibility path for an already resolved handle. */
+  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
+  requestToSpot(spot: RoutingId | SpotHandle, request: unknown): ZLinkSpotRequestCall | ZLinkRequestCall {
+    if (typeof spot !== 'object') {
+      return createAddressedSpotRequestCall(
+        this.serial,
+        this.requireAddressTransport(),
+        spot,
+        request,
+        this.sourceSpotProvider
+      );
+    }
     return wrapRoutedSpotRequestCall(
       this.serial,
       this.requireRoutedTransport(),
@@ -109,6 +138,42 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     }
     return this.routedTransport;
   }
+
+  private requireAddressTransport(): ZLinkSpotAddressTransport {
+    if (this.addressTransport === undefined) {
+      throw new ZLinkConfigurationException('Spot address outbound runtime is not started.');
+    }
+    return this.addressTransport;
+  }
+}
+
+export interface ZLinkSpotAddressCallOptions {
+  readonly metadata?: ReadonlyMap<string, string>;
+  readonly instanceSpot: boolean;
+  readonly instanceSpotType?: string;
+  readonly initialMeshName?: string;
+  readonly placementProfile?: ZLinkPlacementProfile;
+  readonly affinityKey?: ZLinkAffinityKey;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+  readonly sourceSpot?: ZLinkBackendSpot;
+}
+
+/**
+ * Resolves current authority and owns Missing Instance placement and
+ * activation. Public callers never handle an owner or generation fence.
+ */
+export interface ZLinkSpotAddressTransport {
+  sendToSpotAddress(
+    spotRid: RoutingId,
+    message: unknown,
+    options: ZLinkSpotAddressCallOptions
+  ): Promise<ZLinkSubmitResult>;
+  requestToSpotAddress<TReply = unknown>(
+    spotRid: RoutingId,
+    request: unknown,
+    options: ZLinkSpotAddressCallOptions
+  ): Promise<TReply>;
 }
 
 export interface ZLinkSpotRoutedTransport {
@@ -144,6 +209,232 @@ export interface ZLinkSpotRoutedSendOptions {
 
 export interface ZLinkSpotRoutedRequestOptions extends ZLinkSpotRoutedSendOptions {
   readonly timeoutMs?: number;
+}
+
+interface MutableAddressCallOptions {
+  readonly metadata: Map<string, string>;
+  metadataPresent: boolean;
+  instanceSpot: boolean;
+  instanceSpotType?: string;
+  initialMeshName?: string;
+  placementProfile?: ZLinkPlacementProfile;
+  affinityKey?: ZLinkAffinityKey;
+  timeoutMs?: number;
+  submitted: boolean;
+  readonly selected: Set<string>;
+}
+
+function createAddressedSpotSendCall(
+  serial: ZLinkSpotSerialExecutor,
+  transport: ZLinkSpotAddressTransport,
+  spotRid: RoutingId,
+  message: unknown,
+  sourceSpotProvider?: () => ZLinkBackendSpot | undefined
+): ZLinkSpotSendCall {
+  const options = newAddressCallOptions();
+  return {
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      addMetadata(options, key, value);
+      return this;
+    },
+    instanceSpot(instanceSpotType?: string) {
+      selectOnce(options, 'instanceSpot');
+      options.instanceSpot = true;
+      if (instanceSpotType !== undefined) {
+        options.instanceSpotType = requireAddressValue(
+          instanceSpotType,
+          'Instance Spot type',
+          255
+        );
+      }
+      return this;
+    },
+    inMesh(meshName: string) {
+      selectOnce(options, 'inMesh');
+      options.initialMeshName = requireAddressValue(meshName, 'Mesh name', 255);
+      return this;
+    },
+    placementProfile(placementProfile: ZLinkPlacementProfile) {
+      selectOnce(options, 'placementProfile');
+      options.placementProfile = requireAddressValue(
+        placementProfile,
+        'Placement profile',
+        255
+      );
+      return this;
+    },
+    affinityKey(affinityKey: ZLinkAffinityKey) {
+      selectOnce(options, 'affinityKey');
+      options.affinityKey = requireAddressValue(affinityKey, 'Affinity key', 255);
+      return this;
+    },
+    submit(signal?: AbortSignal) {
+      markSubmitted(options);
+      return serial.execute(() => transport.sendToSpotAddress(
+        spotRid,
+        message,
+        freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
+      ));
+    }
+  };
+}
+
+function createAddressedSpotRequestCall(
+  serial: ZLinkSpotSerialExecutor,
+  transport: ZLinkSpotAddressTransport,
+  spotRid: RoutingId,
+  request: unknown,
+  sourceSpotProvider?: () => ZLinkBackendSpot | undefined
+): ZLinkSpotRequestCall {
+  const options = newAddressCallOptions();
+  const begin = <TReply>(signal?: AbortSignal) => {
+    markSubmitted(options);
+    return startRequestOnSerial<TReply>(serial, () => ({
+      pending: transport.requestToSpotAddress<TReply>(
+        spotRid,
+        request,
+        freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
+      )
+    }));
+  };
+  return {
+    metadata(key: string | ZLinkMessageMetadata, value?: string) {
+      addMetadata(options, key, value);
+      return this;
+    },
+    instanceSpot(instanceSpotType?: string) {
+      selectOnce(options, 'instanceSpot');
+      options.instanceSpot = true;
+      if (instanceSpotType !== undefined) {
+        options.instanceSpotType = requireAddressValue(
+          instanceSpotType,
+          'Instance Spot type',
+          255
+        );
+      }
+      return this;
+    },
+    inMesh(meshName: string) {
+      selectOnce(options, 'inMesh');
+      options.initialMeshName = requireAddressValue(meshName, 'Mesh name', 255);
+      return this;
+    },
+    placementProfile(placementProfile: ZLinkPlacementProfile) {
+      selectOnce(options, 'placementProfile');
+      options.placementProfile = requireAddressValue(
+        placementProfile,
+        'Placement profile',
+        255
+      );
+      return this;
+    },
+    affinityKey(affinityKey: ZLinkAffinityKey) {
+      selectOnce(options, 'affinityKey');
+      options.affinityKey = requireAddressValue(affinityKey, 'Affinity key', 255);
+      return this;
+    },
+    timeout(timeoutMs: number) {
+      selectOnce(options, 'timeout');
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+        throw new ZLinkConfigurationException('Spot request timeout must be a positive safe integer.');
+      }
+      options.timeoutMs = timeoutMs;
+      return this;
+    },
+    submit<TReply>(signal?: AbortSignal) {
+      const pending = begin<TReply>(signal);
+      return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
+    },
+    yield<TReply>(signal?: AbortSignal) {
+      const pending = begin<TReply>(signal);
+      const executionTurn = captureZLinkExecutionTurn();
+      return executionTurn?.yieldPromise(pending)
+        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
+    }
+  };
+}
+
+function newAddressCallOptions(): MutableAddressCallOptions {
+  return {
+    metadata: new Map(),
+    metadataPresent: false,
+    instanceSpot: false,
+    submitted: false,
+    selected: new Set()
+  };
+}
+
+function selectOnce(options: MutableAddressCallOptions, name: string): void {
+  if (options.submitted) {
+    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+  }
+  if (options.selected.has(name)) {
+    throw new ZLinkConfigurationException(`Spot call option '${name}' was already selected.`);
+  }
+  options.selected.add(name);
+}
+
+function addMetadata(
+  options: MutableAddressCallOptions,
+  key: string | ZLinkMessageMetadata,
+  value?: string
+): void {
+  if (options.submitted) {
+    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+  }
+  options.metadataPresent = true;
+  if (typeof key === 'string') {
+    options.metadata.set(key, value!);
+    return;
+  }
+  for (const [metadataKey, metadataValue] of key.values) {
+    options.metadata.set(metadataKey, metadataValue);
+  }
+}
+
+function markSubmitted(options: MutableAddressCallOptions): void {
+  if (options.submitted) {
+    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+  }
+  if (!options.instanceSpot && (
+    options.instanceSpotType !== undefined
+    || options.initialMeshName !== undefined
+    || options.placementProfile !== undefined
+    || options.affinityKey !== undefined
+  )) {
+    throw new ZLinkConfigurationException(
+      'Mesh and placement options require an Instance Spot intent.'
+    );
+  }
+  options.submitted = true;
+}
+
+function freezeAddressCallOptions(
+  options: MutableAddressCallOptions,
+  signal: AbortSignal | undefined,
+  sourceSpot: ZLinkBackendSpot | undefined
+): ZLinkSpotAddressCallOptions {
+  return {
+    ...(options.metadataPresent ? { metadata: new Map(options.metadata) } : {}),
+    instanceSpot: options.instanceSpot,
+    instanceSpotType: options.instanceSpotType,
+    initialMeshName: options.initialMeshName,
+    placementProfile: options.placementProfile,
+    affinityKey: options.affinityKey,
+    timeoutMs: options.timeoutMs,
+    signal,
+    sourceSpot
+  };
+}
+
+function requireAddressValue(value: string, label: string, maxBytes: number): string {
+  const byteLength = Buffer.byteLength(value, 'utf8');
+  if (byteLength < 1 || byteLength > maxBytes || value.includes('\0')) {
+    throw new ZLinkConfigurationException(
+      `${label} must contain 1..${maxBytes} UTF-8 bytes and no NUL.`
+    );
+  }
+  return value;
 }
 
 function wrapSendCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkSendCall): ZLinkSendCall {
@@ -312,22 +603,37 @@ export async function sendToSpotHandle(
   options: ZLinkSpotHandleCallOptions = {}
 ): Promise<ZLinkSubmitResult> {
   const packetName = resolveFrameworkPacketName(message, undefined, 'SPOT');
-  const target = spotRefToSpotRouteTarget(
-    await requireSpotRef(spot, options.signal),
-    options.spotRouterChannelIdForMesh
-  );
-  if (options.sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
-    return await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
+  const sendResolved = async (resolved: ResolvedSpotHandle): Promise<ZLinkSubmitResult> => {
+    const target = spotRefToSpotRouteTarget(
+      resolved,
+      options.spotRouterChannelIdForMesh
+    );
+    if (options.sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
+      return await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
+        packetName,
+        signal: options.signal,
+        metadata: options.metadata
+      });
+    }
+    return await transport.sendToSpot(target, message, {
       packetName,
       signal: options.signal,
       metadata: options.metadata
     });
+  };
+
+  let first: ZLinkSubmitResult;
+  try {
+    first = await sendResolved(await requireSpotRef(spot, options.signal));
+  } catch (error) {
+    if (!isSafeStaleSpotFailure(error)) throw error;
+    const refreshed = await refreshSpotHandle(spot, options.signal);
+    if (refreshed === undefined) throw error;
+    return await sendResolved(refreshed);
   }
-  return await transport.sendToSpot(target, message, {
-    packetName,
-    signal: options.signal,
-    metadata: options.metadata
-  });
+  if (!isSafeStaleSpotSubmit(first)) return first;
+  const refreshed = await refreshSpotHandle(spot, options.signal);
+  return refreshed === undefined ? first : await sendResolved(refreshed);
 }
 
 export async function requestToSpotHandle<TReply = unknown>(
@@ -380,6 +686,12 @@ function isSafeStaleSpotFailure(error: unknown): boolean {
     error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
     || error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
   );
+}
+
+function isSafeStaleSpotSubmit(result: unknown): boolean {
+  const status = (result as { readonly status?: unknown } | null)?.status;
+  return status === ZLinkSubmitStatus.TargetNotFound
+    || status === ZLinkSubmitStatus.RouteNotConnected;
 }
 
 async function requireSpotRef(handle: SpotHandle, signal?: AbortSignal): Promise<ResolvedSpotHandle> {

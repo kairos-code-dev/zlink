@@ -8,6 +8,9 @@ import type {
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,
   ZLinkMeshNodeBuilder,
+  ZLinkMeshObjectClientBuilder,
+  ZLinkMeshObjectRoleBuilder,
+  ZLinkMeshObjectServerBuilder,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
@@ -15,6 +18,7 @@ import type {
   ZLinkRuntimeErrorSink,
   ZLinkSpotPublisherConfig,
   ZLinkHandlerFilter,
+  ZLinkInstanceSpot,
   ZLinkSpot,
   ZLinkActorTransferAdapter,
   ZLinkClientServerChannelClientBuilder,
@@ -26,6 +30,10 @@ import type {
   ZLinkSession,
   ZLinkSessionFactory
 } from '../../contracts';
+import type {
+  ZLinkObjectPlacementOptions,
+  ZLinkRelocationPolicy
+} from './ObjectRoles';
 import type { ZLinkSpotNodeBuilder } from '../Spots/Builders';
 import { readZLinkDecoratorMetadata } from '../../contracts';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
@@ -645,6 +653,21 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>
+  ): this {
+    requireRegistrationName(instanceSpotType, 'Instance Spot type');
+    this.spotNode.instanceSpotFactories ??= {};
+    if (Object.hasOwn(this.spotNode.instanceSpotFactories, instanceSpotType)) {
+      throw new ZLinkConfigurationException(
+        `Duplicate Instance Spot factory '${instanceSpotType}' on RouteMesh '${this.name}'.`
+      );
+    }
+    this.spotNode.instanceSpotFactories[instanceSpotType] = implementation;
+    return this;
+  }
+
   actorFactory(actorType: string, factoryType: Type): this {
     this.spotNode.actorFactories = typeMapToRecord(this.spotNode.actorFactories);
     registerActorFactory(this.spotNode, actorType, factoryType);
@@ -699,6 +722,23 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
+  setPlacementWeight(weight: number): this {
+    this.node.placementWeight = requirePositiveCapacity(weight, 'Placement weight');
+    return this;
+  }
+
+  setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this {
+    this.node.maxActiveObjects = requirePositiveCapacity(
+      maxActiveObjects,
+      'Maximum active objects'
+    );
+    this.node.maxPendingActivations = requirePositiveCapacity(
+      maxPendingActivations,
+      'Maximum pending activations'
+    );
+    return this;
+  }
+
   configureRouterSocket(): ZLinkMeshNodeSocketConfig {
     this.node.router ??= {};
     return this.node.router as ZLinkMeshNodeSocketConfig;
@@ -720,6 +760,10 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
       `RouteMesh '${this.name}' default request timeout`
     );
     return this;
+  }
+
+  objects(): ZLinkMeshObjectRoleBuilder {
+    return new DefaultMeshObjectRoleBuilder(this.name, this.node);
   }
 
   addRouteSendHandler<TMessage>(handlerType: Type<import('../Handlers').ZLinkRouteSendHandler<TMessage>>): this {
@@ -751,6 +795,14 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>
+  ): this {
+    this.spot.addInstanceSpotFactory(instanceSpotType, implementation);
+    return this;
+  }
+
   actorFactory(actorType: string, factoryType: Type): this {
     this.spot.actorFactory(actorType, factoryType);
     return this;
@@ -774,6 +826,100 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
+}
+
+class DefaultMeshObjectRoleBuilder implements ZLinkMeshObjectRoleBuilder {
+  constructor(
+    private readonly meshName: string,
+    private readonly node: MutableSpotNodeOptions
+  ) {}
+
+  client(): ZLinkMeshObjectClientBuilder {
+    this.node.objectRole = 'client';
+    return {};
+  }
+
+  server(): ZLinkMeshObjectServerBuilder {
+    this.node.objectRole = 'server';
+    return new DefaultMeshObjectServerBuilder(this.meshName, this.node);
+  }
+}
+
+class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
+  constructor(
+    private readonly meshName: string,
+    private readonly node: MutableSpotNodeOptions
+  ) {}
+
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this {
+    registerEntrySpot(this.node, entrySpotType);
+    return this;
+  }
+
+  addSpotFactory<TSpot extends ZLinkSpot>(
+    spotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this {
+    const stableType = requireStableObjectType(spotType, 'User Spot type');
+    validateObjectPlacement(placement);
+    validateRelocationPolicy(relocation);
+    this.node.spotFactoryRegistrations ??= {};
+    rejectDuplicateObjectType(this.node.spotFactoryRegistrations, stableType, this.meshName);
+    this.node.spotFactoryRegistrations[stableType] = {
+      implementation,
+      placement,
+      relocation
+    };
+    registerSpotFactory(this.node, implementation);
+    return this;
+  }
+
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this {
+    const stableType = requireStableObjectType(instanceSpotType, 'Instance Spot type');
+    validateObjectPlacement(placement);
+    validateRelocationPolicy(relocation);
+    this.node.instanceSpotFactories ??= {};
+    if (Object.hasOwn(this.node.instanceSpotFactories, stableType)) {
+      throw new ZLinkConfigurationException(
+        `Duplicate Instance Spot factory '${stableType}' on RouteMesh '${this.meshName}'.`
+      );
+    }
+    this.node.instanceSpotFactories[stableType] = implementation;
+    this.node.instanceSpotFactoryRegistrations ??= {};
+    this.node.instanceSpotFactoryRegistrations[stableType] = {
+      implementation,
+      placement,
+      relocation
+    };
+    return this;
+  }
+
+  addActorFactory<TActor extends ZLinkActor>(
+    actorType: string,
+    implementation: Type<TActor>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TActor>
+  ): this {
+    const stableType = requireStableObjectType(actorType, 'Actor type');
+    validateObjectPlacement(placement);
+    validateRelocationPolicy(relocation);
+    this.node.actorFactories = typeMapToRecord(this.node.actorFactories);
+    registerActorFactory(this.node, stableType, implementation);
+    this.node.actorFactoryRegistrations ??= {};
+    this.node.actorFactoryRegistrations[stableType] = {
+      implementation,
+      placement,
+      relocation
+    };
+    return this;
+  }
 }
 
 class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
@@ -845,6 +991,56 @@ class DefaultMeshPeerConnections implements ZLinkMeshPeerConnections {
 
 function endpointList(endpoint: string | readonly string[]): string[] {
   return typeof endpoint === 'string' ? [endpoint] : [...endpoint];
+}
+
+function requireStableObjectType(value: string, label: string): string {
+  const byteLength = Buffer.byteLength(value, 'utf8');
+  if (byteLength < 1 || byteLength > 255 || value.includes('\0')) {
+    throw new ZLinkConfigurationException(
+      `${label} must contain 1..255 UTF-8 bytes and no NUL.`
+    );
+  }
+  return value;
+}
+
+function requirePositiveCapacity(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 0x7fff_ffff) {
+    throw new ZLinkConfigurationException(`${label} must be an integer in 1..2147483647.`);
+  }
+  return value;
+}
+
+function validateObjectPlacement(options: ZLinkObjectPlacementOptions | undefined): void {
+  if (options === undefined) return;
+  for (const profile of options.placementProfiles ?? []) {
+    requireStableObjectType(profile, 'Placement profile');
+  }
+  for (const [name, value] of [
+    ['maxActiveObjects', options.maxActiveObjects],
+    ['maxPendingActivations', options.maxPendingActivations]
+  ] as const) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      throw new ZLinkConfigurationException(`${name} must be a positive safe integer.`);
+    }
+  }
+}
+
+function validateRelocationPolicy<T>(policy: ZLinkRelocationPolicy<T>): void {
+  if (policy.kind === 'snapshot' && typeof policy.adapterType !== 'function') {
+    throw new ZLinkConfigurationException('Snapshot relocation requires an adapter type.');
+  }
+}
+
+function rejectDuplicateObjectType(
+  registrations: Readonly<Record<string, unknown>>,
+  stableType: string,
+  meshName: string
+): void {
+  if (Object.hasOwn(registrations, stableType)) {
+    throw new ZLinkConfigurationException(
+      `Duplicate object factory '${stableType}' on RouteMesh '${meshName}'.`
+    );
+  }
 }
 
 interface MutableFrameworkRegistrationOptions {
@@ -926,6 +1122,10 @@ export interface MutableStreamCompressionOptions {
 }
 
 interface MutableSpotNodeOptions {
+  objectRole?: 'client' | 'server';
+  placementWeight?: number;
+  maxActiveObjects?: number;
+  maxPendingActivations?: number;
   routingId?: string;
   routingIdAllocation?: MutableRoutingIdAllocationOptions;
   router?: MutableSpotRouterCapabilityOptions;
@@ -933,7 +1133,14 @@ interface MutableSpotNodeOptions {
   entrySpot?: ZLinkEntrySpotOptions;
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
+  spotFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<ZLinkSpot>>;
+  instanceSpotFactories?: Record<string, Type<ZLinkInstanceSpot>>;
+  instanceSpotFactoryRegistrations?: Record<
+    string,
+    MutableObjectFactoryRegistration<ZLinkInstanceSpot>
+  >;
   actorFactories?: Record<string, Type>;
+  actorFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<ZLinkActor>>;
   meshChannels?: Record<string, MutableMeshChannelOptions>;
   routeSendHandlers?: Array<{ packetName: string; handlerType: Type }>;
   routeRequestHandlers?: Array<{ packetName: string; handlerType: Type }>;
@@ -943,6 +1150,12 @@ interface MutableSpotNodeOptions {
     sendTimeoutMs?: number;
     lingerMs?: number;
   };
+}
+
+interface MutableObjectFactoryRegistration<T> {
+  readonly implementation: Type<T>;
+  readonly placement?: ZLinkObjectPlacementOptions;
+  readonly relocation: ZLinkRelocationPolicy<T>;
 }
 
 interface MutableMeshChannelOptions {

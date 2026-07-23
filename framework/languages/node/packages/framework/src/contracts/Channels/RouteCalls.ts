@@ -1,5 +1,4 @@
 import type { RoutingId } from '../Common';
-import type { SpotHandle } from '../Spots';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from './Calls';
 
 export interface ZLinkRouteClient {
@@ -7,8 +6,6 @@ export interface ZLinkRouteClient {
   requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
-  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
-  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
 }
 
 export interface ZLinkSpotPublisherClient {

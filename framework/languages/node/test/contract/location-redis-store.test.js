@@ -367,6 +367,12 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     };
     const reserved = await storeA.reserve(creation);
     assert.equal(reserved.kind, 'reserved');
+    assert.deepEqual(reserved.creating.pendingCreation, {
+      reservationId: reserved.reservationId,
+      requestContentReference: creation.intent.requestContentReference,
+      requestSha256: creation.intent.requestSha256,
+      requestEncodedSize: creation.intent.requestEncodedSize
+    });
     const duplicate = await storeB.reserve(creation);
     assert.equal(duplicate.kind, 'conflict');
     const ready = await storeA.commit({
@@ -377,6 +383,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       readyPayload: Buffer.from('ready')
     });
     assert.equal(ready.kind, 'committed');
+    assert.equal(ready.ready.pendingCreation, undefined);
 
     const secondCreation = {
       ...creation,
@@ -395,7 +402,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
 
     const relocationRequest = {
       reservationId: '11111111-1111-4111-8111-111111111111',
-      authorityKey: { value: 'instance_spot:instance-1' },
+      authorityKey: { value: 'zla1:s:10:instance-1' },
       expectedStoreVersion: ready.ready.storeVersion,
       objectKind: 'instance_spot',
       stableType: 'room',
@@ -424,7 +431,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     assert.equal(moved.kind, 'stored');
     assert.equal(moved.ownerId, 'target-owner');
     assert.equal(moved.objectGeneration, ready.ready.objectGeneration);
-    const secondKey = { value: 'instance_spot:instance-2' };
+    const secondKey = { value: 'zla1:s:10:instance-2' };
     const secondCapacity = await storeA.reserveRelocationCapacity({
       ...relocationRequest,
       reservationId: '22222222-2222-4222-8222-222222222222',
@@ -448,7 +455,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     assert.equal(aggregate.kind, 'prepared');
     assert.equal((await storeB.commitAggregate(aggregate.fence)).kind, 'committed');
     assert.equal((await storeA.commitAggregate(aggregate.fence)).kind, 'alreadyCommitted');
-    const authorityKey = 'instance_spot:instance-1';
+    const authorityKey = 'zla1:s:10:instance-1';
     const authorityHash = createHash('sha256')
       .update(authorityKey, 'utf8').digest('hex');
     const authorityRedisKey =
@@ -474,7 +481,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       }
     );
 
-    const firstPage = await storeA.listAuthorities('instance_spot:', undefined, 1);
+    const firstPage = await storeA.listAuthorities('zla1:s:', undefined, 1);
     assert.equal(firstPage.kind, 'page');
     assert.equal(firstPage.items.length, 1);
     assert.notEqual(firstPage.nextCursor, undefined);
@@ -505,7 +512,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     }
     assert.equal(physicalHistory[`${historyRevision}:deleted`], '0');
     const secondPage = await storeA.listAuthorities(
-      'instance_spot:', firstPage.nextCursor, 1
+      'zla1:s:', firstPage.nextCursor, 1
     );
     assert.equal(secondPage.kind, 'page');
     assert.equal(secondPage.items.length, 1);
@@ -515,7 +522,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     );
     assert.equal(
       (await storeA.listAuthorities(
-        'instance_spot:', firstPage.nextCursor, 1
+        'zla1:s:', firstPage.nextCursor, 1
       )).kind,
       'scanExpired'
     );

@@ -122,6 +122,7 @@ export class ZLinkMeshDispatchPump {
                     this.schedule();
                   }
                   await this.options.dispatch(drained.records[index], record);
+                  await record.onTerminalCompletion?.();
                 } finally {
                   for (const part of record.parts) {
                     part.close();

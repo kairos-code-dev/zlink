@@ -37,7 +37,20 @@ export enum ZLinkFrameworkErrorKind {
   WorkerTimedOut = 'workerTimedOut',
   WorkerFailed = 'workerFailed',
   ActorLocationStale = 'actorLocationStale',
-  ActorCreateRejected = 'actorCreateRejected'
+  ActorCreateRejected = 'actorCreateRejected',
+  ObjectClientNotConfigured = 'objectClientNotConfigured',
+  MeshSelectionRequired = 'meshSelectionRequired',
+  MeshNotFound = 'meshNotFound',
+  InvalidConfiguration = 'invalidConfiguration',
+  AlreadySubmitted = 'alreadySubmitted',
+  ActorGenerationStale = 'actorGenerationStale',
+  ActorMoving = 'actorMoving',
+  DeadlineExceeded = 'deadlineExceeded',
+  PlacementCapacityExhausted = 'placementCapacityExhausted',
+  RoutingIdConflict = 'routingIdConflict',
+  SpotGenerationStale = 'spotGenerationStale',
+  SpotMoving = 'spotMoving',
+  RelocationDataLost = 'relocationDataLost'
 }
 
 export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkErrorKind, number>> = Object.freeze({
@@ -62,10 +75,27 @@ export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkEr
   [ZLinkFrameworkErrorKind.WorkerTimedOut]: 18,
   [ZLinkFrameworkErrorKind.WorkerFailed]: 19,
   [ZLinkFrameworkErrorKind.ActorLocationStale]: 20,
-  [ZLinkFrameworkErrorKind.ActorCreateRejected]: 21
+  [ZLinkFrameworkErrorKind.ActorCreateRejected]: 21,
+  [ZLinkFrameworkErrorKind.ObjectClientNotConfigured]: 22,
+  [ZLinkFrameworkErrorKind.MeshSelectionRequired]: 23,
+  [ZLinkFrameworkErrorKind.MeshNotFound]: 24,
+  [ZLinkFrameworkErrorKind.InvalidConfiguration]: 25,
+  [ZLinkFrameworkErrorKind.AlreadySubmitted]: 26,
+  [ZLinkFrameworkErrorKind.ActorGenerationStale]: 27,
+  [ZLinkFrameworkErrorKind.ActorMoving]: 28,
+  [ZLinkFrameworkErrorKind.DeadlineExceeded]: 29,
+  [ZLinkFrameworkErrorKind.PlacementCapacityExhausted]: 30,
+  [ZLinkFrameworkErrorKind.RoutingIdConflict]: 31,
+  [ZLinkFrameworkErrorKind.SpotGenerationStale]: 32,
+  [ZLinkFrameworkErrorKind.SpotMoving]: 33,
+  [ZLinkFrameworkErrorKind.RelocationDataLost]: 34
 });
 
 export function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean {
   return kind === ZLinkFrameworkErrorKind.RouteNotConnected
-    || kind === ZLinkFrameworkErrorKind.ActorLocationStale;
+    || kind === ZLinkFrameworkErrorKind.ActorLocationStale
+    || kind === ZLinkFrameworkErrorKind.ActorMoving
+    || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+    || kind === ZLinkFrameworkErrorKind.PlacementCapacityExhausted
+    || kind === ZLinkFrameworkErrorKind.SpotMoving;
 }

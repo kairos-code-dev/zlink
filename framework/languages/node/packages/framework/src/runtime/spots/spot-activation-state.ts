@@ -4,6 +4,7 @@ import type {
   ZLinkActor,
   ZLinkSpot
 } from '../../contracts';
+import { ZLinkSpotCloseReason } from '../../contracts';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import type { ZLinkSpotActorHandlerRegistryRuntime } from '../actors';
 import type { DefaultZLinkSpotHandlerRegistry } from './spot-handler-registry';
@@ -22,7 +23,7 @@ export interface ZLinkSpotActivationOptions {
   readonly handlers: DefaultZLinkSpotHandlerRegistry;
   readonly externalActorCount?: () => number;
   readonly nativeSpot?: ZLinkBackendSpot;
-  readonly closeWhenReady?: () => void;
+  readonly closeWhenReady?: (reason: ZLinkSpotCloseReason) => void;
   actorDispatch?: ZLinkSpotActorJoinDispatch;
 }
 
@@ -41,9 +42,10 @@ export class ZLinkSpotActivation {
   private readonly joinedActors = new Map<string, ZLinkActor>();
   private readonly departedActorIds = new Set<string>();
   private readonly externalActorCount: () => number;
-  private readonly closeWhenReady?: () => void;
+  private readonly closeWhenReady?: (reason: ZLinkSpotCloseReason) => void;
   private closeRequested = false;
   private drainCloseRequested = false;
+  private drainCloseReason = ZLinkSpotCloseReason.HostShutdown;
 
   constructor(options: ZLinkSpotActivationOptions) {
     this.meshName = options.meshName;
@@ -111,15 +113,16 @@ export class ZLinkSpotActivation {
     this.closeRequested = true;
   }
 
-  requestDrainClose(): void {
+  requestDrainClose(reason: ZLinkSpotCloseReason): void {
     this.closeRequested = true;
     this.drainCloseRequested = true;
+    this.drainCloseReason = reason;
     this.notifyCloseReady();
   }
 
   private notifyCloseReady(): void {
     if (this.drainCloseRequested && this.canClose()) {
-      this.closeWhenReady?.();
+      this.closeWhenReady?.(this.drainCloseReason);
     }
   }
 

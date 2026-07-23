@@ -966,6 +966,7 @@ failure 의미는 같아야 한다.
 | `CA-D53` | Automatic RouteMesh initiator와 duplicate-pipe admission을 한 문장으로 설명 / 시작 규칙과 안전장치를 분리 | Automatic RouteMesh는 canonical RID가 더 작은 MeshNode만 pairwise connect를 시작한다. Manual topology의 양방향 connect와 automatic의 경합·stale discovery 후보만 공통 duplicate-pipe admission에서 RID·lifecycle generation을 확인해 하나의 ready connection으로 수렴한다. ClientServer는 Client가 server별 intent를 만들고 classic fanout은 Subscriber가 publisher별 intent를 만드는 비대칭 topology다. | `10-channel-topology.ko.md`, `12-client-server-channel.ko.md`, `21-mesh-node.ko.md`, topology regression |
 | `CA-D54` | Immutable digest를 언어별 descriptor serialization hash로 계산 / 공통 canonical preimage hash | Admission HASH의 `immutableDigest`는 `zlink-mesh-node-immutable-v1` domain부터 immutable descriptor·capability field를 UTF-8 byte length-prefix segment로 연결한 preimage의 SHA-256 lower-hex다. Channel name, capability와 placement profile은 unsigned UTF-8 byte lexical order로 정렬한다. Descriptor revision, weight 값, maintenance wave, runtime state, owner token, timestamp와 usage count는 제외한다. | Redis Location Store 공통 spec·MeshNode fixture, 네 provider byte-level contract test |
 | `CA-D55` | Instance first message를 process-local reservation·queue로만 유지 / complete activation recovery envelope와 provider-issued Pending creation projection | Target-owned Instance cold activation은 command 39의 optional metadata presence·frame까지 포함한 complete first-message envelope를 Relocation Store에 먼저 저장한다. Location Reserve는 provider-issued reservation ID, reference, SHA-256과 encoded size를 Pending authority current·history row에 함께 기록한다. Pending snapshot은 이 projection을 exact read로 반환하고 Active에서는 제거한다. Factory·initialize 뒤 durable activation inbox first record를 Ready 전에 확정하되 handler는 barrier로 막는다. Ready Instance authority만 recovery root·inbox sequence·replay cursor를 유지하며 queue head restore 뒤 barrier를 연다. 첫 handler terminal completion을 durable하게 기록하고 cursor를 sequence까지 갱신한 뒤에만 Preserve CAS로 pointer를 release하고 root를 삭제한다. Actor·User Spot generic create에는 ZLIA와 durable inbox를 사용하지 않는다. Instance Spot factory가 하나라도 있는 Object Server는 relocation policy와 관계없이 Relocation Store를 정확히 하나 등록한다. | `20`·`24`·`40`·`41`·`42`, protocol schema·golden·validator, 다섯 authority exact interface·registration, Config 14 `IS-F08`·`IS-P07`·`IS-E2E-32/34/35/36`, `V11-M6B-*` |
+| `CA-D56` | User Spot remote create·close를 Location polling이나 local manager로 대체 / exact terminal service operation | User Spot create는 Location Store의 generic Pending creation content와 provider-issued reservation을 사용하되 source와 target 사이에 별도 generation-fenced service operation을 둔다. Create request는 operation correlation, source·target node lifecycle, authority key, stable type, exact reservation·StoreVersion과 deadline을 전달한다. Target은 Pending row의 immutable creation content를 exact read한 뒤 factory·initialize·Commit을 실행하고 `Existing`·`Created`·`Rejected`, exact `SpotRef`와 optional application reply를 terminal-once로 반환한다. User Spot close도 current owner로 exact `SpotRef`, authority owner generation과 target lifecycle을 전달하는 별도 operation을 사용하며 active Actor membership, moving state와 generation을 target admission 전에 검증한다. Location row polling은 terminal reply·rejection을 보존하지 못하고 application packet으로 reserved control을 흉내 내면 handler 경계가 누출되므로 사용하지 않는다. Protocol schema·golden과 네 runtime을 같은 command identity로 갱신하기 전에는 remote create·close를 완료로 판정하지 않는다. | Spot manager exact interface, `20`·`23`·`24`·`40`, protocol schema·golden·validator, 네 runtime·M6B contract |
 
 `CA-D55` review checkpoint(2026-07-24)에서 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet이
 수정된 공통 spec, Redis current·history 13/17 field, 다섯 언어 exact interface, Config 14와
@@ -976,6 +977,30 @@ trace drift(`expected=4367`, `actual=4386`)에서 중단됐으므로 reviewed tr
 않았다. Node production runtime은 Pending·Ready startup recovery, exact metadata, application
 Instance factory와 handler terminal 뒤 recovery root release까지 연결했지만 public Spot address
 transport와 User Spot generic creation coordinator가 남아 있어 `V11-M6B-NODE`는 계속 `진행`이다.
+
+Node Spot address·manager checkpoint(2026-07-24)에서 exact single-use create/get-or-create builder,
+authority-first Ready routing, Missing Instance target selection과 command 39 activation, User Spot generic
+Reserve·factory·initialize·Commit coordinator를 public host에 연결했다. User Spot creation content는
+Location reservation domain만 사용하고 Relocation Store를 요구하지 않는다. 하나의 deadline signal을
+store·factory·initialize·commit과 concurrent waiter에 적용하며 `Rejected`는 예외로 바꾸지 않고 Pending을
+Abort한 뒤 terminal result로 반환한다. Ready authority는 User·Instance kind와 stable type을 exact
+검증하고 ZLIA의 최초 message metadata를 target dispatch까지 보존한다. Handler terminal completion은
+replay cursor를 inbox sequence까지 올리는 durable CAS와 recovery pointer를 해제하는 CAS의 두 단계로
+분리하며 중간 crash recovery는 handler를 다시 실행하지 않고 pointer release만 재개한다. Public
+`SpotHandle`·resolver와 Instance Spot의 Actor·subscription handler surface를 제거하고
+`onClosing(context, AbortSignal)`을 exact interface에 맞췄다. Host Shutdown drain은 User·Instance Spot에
+`HostShutdown`, explicit close는 `ExplicitClose`를 전달하고 deadline 뒤 callback 대기를 종료한다.
+Automatic create는 kind·type·owner와 관계없이 generated RID 충돌을 새 RID로 재시도하고 explicit
+get-or-create의 remote owner는 fail-closed한다. Placement와 Store·commit 실패는
+`PlacementCapacityExhausted`·`RequestFailed`로 구분한다. TypeScript typecheck·build, M6B 32/32,
+M6C 31/31, public contract 27/27, wire validator, scoped ESLint와 `git diff --check`가 통과했다. Codex
+`gpt-5.6-sol xhigh`와 Claude Sonnet의 최종 독립 review는 P0·P1·P2 finding 0으로 수렴했다.
+
+Remote User Spot create와 remote Spot close는 현재 service wire에 generation-fenced create·close operation과
+terminal correlation이 없어 local-only 구현을 remote 성공으로 확장하지 않았다. Location polling은
+`Rejected`·application reply를 보존하지 못하므로 금지하고 두 operation은 명시적으로 실패한다. 이 gap은
+`CA-D56`의 protocol schema·네 runtime owner가 소유하며, 해당 command와 cross-node contract가 구현되기
+전에는 `V11-M6B-NODE`를 완료로 판정하지 않는다. Sample·E2E source는 변경하거나 실행하지 않았다.
 
 `CA-D16`은 두 값을 공개하지만 invalid 조합을 runtime에 넘기지 않는다. `CA-D23`의 기본 capacity는 deployment가
 별도 설정 없이도 bounded pending admission을 갖게 하며, 더 큰 값을 선택하면 descriptor와 Store reservation이

@@ -21,12 +21,15 @@ import type {
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
+  ZLinkMeshNodeDescriptor,
   ZLinkProviderResolver,
   ZLinkRouteMeshRuntime,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
   ZLinkMessageFlowLogMode,
   ZLinkSubmitStatus
 } from '../../contracts';
@@ -61,6 +64,7 @@ import {
 } from '../diagnostics';
 import {
   DefaultZLinkSpotManager,
+  ZLinkPublicSpotManager,
   ZLinkRuntimeSpotPublisherTransport,
   ZLinkSpotNodeRuntimeManager,
   type ZLinkDetachedTaskRunner,
@@ -87,6 +91,7 @@ import {
 import {
   ZLinkOwnerCleanupError,
   ZLinkAllocatedRoutingIdRuntime,
+  ZLinkAuthoritySpotRouteResolver,
   type ZLinkLocationRuntime,
   type ZLinkStoreLocationResolvers
 } from '../locations';
@@ -113,6 +118,14 @@ import { collectRoutingIdAllocationMembers } from '../../contracts/Configuration
 import { ZLinkConfigurationException } from '../../contracts/Configuration/ConfigurationException';
 import type { ZLinkAllocatedRoutingId, ZLinkAllocatedRoutingIdProvider } from '../../contracts/Locations';
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
+import { ZLinkStatefulAuthorityRouteRuntime } from './stateful-authority-route-runtime';
+import { ZLinkInstanceActivationAuthority } from './instance-activation-authority';
+import type { ServiceAsyncInstanceActivationAuthority } from '../foundation/service-stateful-runtime';
+import {
+  hasObjectClientCapability,
+  ZLinkHostSpotAddressTransport
+} from './spot-address-transport';
+import { ZLinkUserSpotCreationCoordinator } from './user-spot-creation-coordinator';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -140,6 +153,7 @@ export class ZLinkFrameworkRuntimeHost implements
   private streamRuntime?: ZLinkStreamRuntimeManager;
   private monitoringRuntime?: ZLinkMonitoringRuntime;
   private allocatedRoutingIdRuntime?: ZLinkAllocatedRoutingIdRuntime;
+  private statefulAuthorityRoutes?: ZLinkStatefulAuthorityRouteRuntime;
   private readonly locationOwner: ZLinkLocationRuntimeOwner;
   private readonly meshRouters: MeshRouterResolver;
   private readonly boundSessionRelay: ZLinkBoundSessionRelay;
@@ -175,6 +189,7 @@ export class ZLinkFrameworkRuntimeHost implements
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly channelRuntimeOptions = new DefaultZLinkChannelRuntimeOptions(() => this.channelRuntime);
   readonly routeTransport: ZLinkRuntimeRouteTransport;
+  readonly spotAddressTransport: ZLinkHostSpotAddressTransport;
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
   readonly streamBindingRuntime: ZLinkStreamBindingRuntime;
   readonly boundSessionFactory: DefaultZLinkBoundSessionFactory;
@@ -199,6 +214,21 @@ export class ZLinkFrameworkRuntimeHost implements
       (meshName, sourceNodeRid, parts) =>
         this.submitLocalMeshRoute(meshName, sourceNodeRid, parts)
     );
+    this.spotAddressTransport = new ZLinkHostSpotAddressTransport({
+      resolver: () => this.createLocationSpotRouteResolver(),
+      routed: this.routeTransport,
+      meshNames: () => [...this.options.registration.spotNodes]
+        .filter(([, node]) => hasObjectClientCapability(node.objectRole))
+        .map(([meshName]) => meshName),
+      isMeshConfigured: (meshName) => this.options.registration.spotNodes.has(meshName),
+      instanceTypes: (meshName) => Object.keys(
+        this.options.registration.spotNodes.get(meshName)?.instanceSpotFactories ?? {}
+      ),
+      meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
+      completions: (meshName) => this.spotNodeRuntime?.meshCompletionTable(meshName),
+      codecs: { serializers: options.registration.messageSerializers },
+      defaultRequestTimeoutMs: options.registration.requestTimeoutMs ?? 30_000
+    });
     this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
     this.allocatedRoutingIdGroupNames = new Set(
       collectRoutingIdAllocationMembers(options.registration).map((member) => member.groupName)
@@ -424,6 +454,7 @@ export class ZLinkFrameworkRuntimeHost implements
     let streamRuntime: ZLinkStreamRuntimeManager | undefined;
     let startedLocationRuntime: ZLinkLocationRuntime | undefined;
     let allocatedRoutingIdRuntime: ZLinkAllocatedRoutingIdRuntime | undefined;
+    let statefulAuthorityRoutes: ZLinkStatefulAuthorityRouteRuntime | undefined;
     try {
       this.state = new ZLinkFrameworkExecutionState(context);
       // Seed the shared live-mode cell from the configured mode (default errorsOnly).
@@ -482,6 +513,60 @@ export class ZLinkFrameworkRuntimeHost implements
         channelRuntime
       );
       startedLocationRuntime = locationRuntime;
+      const locationStore = this.locationOwner.currentStores?.locationStore;
+      if (locationStore !== undefined) {
+        for (const [meshName, node] of spotNodeRuntime.meshNodesByName) {
+          const activationNode = node as typeof node & {
+            registerAsyncInstanceActivationAuthority?: (
+              authority: ServiceAsyncInstanceActivationAuthority
+            ) => void;
+            registerInstanceApplicationLifecycle?: (
+              lifecycle: import('../foundation/service-stateful-runtime')
+                .ServiceInstanceApplicationLifecycle
+            ) => void;
+          };
+          const spotManager = this.spotManager;
+          if (spotManager !== undefined) {
+            activationNode.registerInstanceApplicationLifecycle?.({
+              materialize: (target) =>
+                spotManager.materializeInstance(
+                  meshName,
+                  target.stableType,
+                  target.targetSpotRid as never,
+                  this.state?.abortController.signal
+                ),
+              discard: (target) =>
+                spotManager.discardInstance(meshName, target.targetSpotRid as never)
+            });
+          }
+          activationNode.registerAsyncInstanceActivationAuthority?.(
+            new ZLinkInstanceActivationAuthority({
+              store: locationStore,
+              relocationStore:
+                this.options.registration.locations.relocationStoreInstance,
+              meshName,
+              owner: () => this.locationOwner.currentRuntime?.currentOwnerToken
+            })
+          );
+        }
+        statefulAuthorityRoutes = new ZLinkStatefulAuthorityRouteRuntime({
+          store: locationStore,
+          relocationStore:
+            this.options.registration.locations.relocationStoreInstance,
+          meshNodes: spotNodeRuntime.meshNodesByName,
+          pollingIntervalMs:
+            this.options.registration.locations.options.pollingIntervalMs
+            ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+          pageSize: 1000,
+          reportError: (error) =>
+            this.runtimeOrPreStartErrorSink.reportRuntimeTaskException(
+              'stateful authority route reconciliation',
+              error
+            )
+        });
+        await statefulAuthorityRoutes.start(this.state.abortController.signal);
+        this.statefulAuthorityRoutes = statefulAuthorityRoutes;
+      }
       this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
         registration: this.options.registration,
@@ -520,6 +605,7 @@ export class ZLinkFrameworkRuntimeHost implements
       allocatedRoutingIdRuntime?.markReady();
     } catch (error) {
       allocatedRoutingIdRuntime?.fail(error);
+      await statefulAuthorityRoutes?.stop();
       await rollbackRuntimeStart({
         context,
         startedLocationRuntime,
@@ -535,6 +621,7 @@ export class ZLinkFrameworkRuntimeHost implements
       this.streamRuntime = undefined;
       this.monitoringRuntime = undefined;
       this.allocatedRoutingIdRuntime = undefined;
+      this.statefulAuthorityRoutes = undefined;
       this.locationOwner.clearForStop();
       this.resetAllocationRuntimeReady();
       throw error;
@@ -556,6 +643,7 @@ export class ZLinkFrameworkRuntimeHost implements
     const streamRuntime = this.streamRuntime;
     const monitoringRuntime = this.monitoringRuntime;
     const allocatedRoutingIdRuntime = this.allocatedRoutingIdRuntime;
+    const statefulAuthorityRoutes = this.statefulAuthorityRoutes;
     const locationSnapshot = this.locationOwner.clearForStop();
     this.state = undefined;
     this.channelRuntime = undefined;
@@ -563,7 +651,9 @@ export class ZLinkFrameworkRuntimeHost implements
     this.streamRuntime = undefined;
     this.monitoringRuntime = undefined;
     this.allocatedRoutingIdRuntime = undefined;
+    this.statefulAuthorityRoutes = undefined;
     this.lifecycleSink?.push('framework:stop');
+    await statefulAuthorityRoutes?.stop();
     await stopRuntimeParts({
       state,
       locationSnapshot,
@@ -712,6 +802,25 @@ export class ZLinkFrameworkRuntimeHost implements
 
   setSpotManager(spotManager: DefaultZLinkSpotManager): void {
     this.spotManager = spotManager;
+    for (const [meshName, node] of this.spotNodeRuntime?.meshNodesByName ?? []) {
+      const activationNode = node as typeof node & {
+        registerInstanceApplicationLifecycle?: (
+          lifecycle: import('../foundation/service-stateful-runtime')
+            .ServiceInstanceApplicationLifecycle
+        ) => void;
+      };
+      activationNode.registerInstanceApplicationLifecycle?.({
+        materialize: (target) =>
+          spotManager.materializeInstance(
+            meshName,
+            target.stableType,
+            target.targetSpotRid as never,
+            this.state?.abortController.signal
+          ),
+        discard: (target) =>
+          spotManager.discardInstance(meshName, target.targetSpotRid as never)
+      });
+    }
   }
 
   createActorManagerOptions(spotRouteResolver?: ZLinkSpotRouteResolver): Pick<
@@ -751,12 +860,16 @@ export class ZLinkFrameworkRuntimeHost implements
       registration: this.options.registration,
       channelTransport: this.channelTransport,
       routeTransport: this.routeTransport,
+      addressTransport: this.spotAddressTransport,
       spotPublisherTransport: this.spotPublisherTransport,
       meshRouters: this.meshRouters,
       runtimeEventPublisher: this.runtimeEventPublisher,
       spotNodeRuntime: () => this.spotNodeRuntime,
       actorManager: () => this.actorManager,
-      locationLifecycle: () => this.locationOwner.currentLifecycle,
+      // User Spot visibility is published only by the generic authority
+      // coordinator after application initialization. The legacy location
+      // claim would expose a Creating object before that Ready barrier.
+      locationLifecycle: () => undefined,
       createLocationSpotRouteResolver: () => this.createLocationSpotRouteResolver(),
       boundSessionRelay: this.boundSessionRelay,
       actorHandoff: this.actorHandoff,
@@ -766,6 +879,103 @@ export class ZLinkFrameworkRuntimeHost implements
       metrics: this.metrics,
       admission: this.admission
     }).create(this.actorTransferRuntime);
+  }
+
+  createPublicSpotManager(local: DefaultZLinkSpotManager): import('../../contracts').ZLinkSpotManager {
+    const stores = this.locationOwner.currentStores;
+    const locationStore = stores?.locationStore;
+    if (locationStore === undefined) {
+      throw new ZLinkConfigurationException(
+        'User Spot creation requires a Location Store.'
+      );
+    }
+    const coordinator = new ZLinkUserSpotCreationCoordinator({
+      store: locationStore,
+      target: async (request, signal) => {
+        const clientMeshes = [...this.options.registration.spotNodes]
+          .filter(([, node]) => hasObjectClientCapability(node.objectRole))
+          .map(([meshName]) => meshName);
+        const meshes = request.meshName === undefined ? clientMeshes : [request.meshName];
+        if (meshes.length === 0) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+            'No object-client RouteMesh is configured.'
+          );
+        }
+        if (request.meshName === undefined && meshes.length > 1) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.MeshSelectionRequired,
+            'Multiple object-client RouteMeshes are configured; call inMesh(...).'
+          );
+        }
+        const meshName = meshes[0]!;
+        if (!this.options.registration.spotNodes.has(meshName)) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.MeshNotFound,
+            `RouteMesh '${meshName}' is not configured.`
+          );
+        }
+        if (!clientMeshes.includes(meshName)) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+            `RouteMesh '${meshName}' has no object-client role.`
+          );
+        }
+        const descriptors = (await locationStore.listMeshNodes(meshName, signal))
+          .filter(descriptor => {
+            const capability = descriptor.objectCapabilities.find(candidate =>
+              candidate.objectKind === 'user_spot'
+              && candidate.stableType === request.stableType
+              && (
+                request.placementProfile === undefined
+                || candidate.placementProfiles.includes(request.placementProfile)
+              ));
+            return descriptor.state === 1
+              && descriptor.objectRole === 'server'
+              && descriptor.placementWeight > 0
+              && descriptor.objectCapacity.activeObjects < descriptor.objectCapacity.maxActiveObjects
+              && descriptor.objectCapacity.pendingActivations
+                < descriptor.objectCapacity.maxPendingActivations
+              && capability !== undefined;
+          });
+        const selected = selectLocationPlacementDescriptor(
+          descriptors,
+          request.affinityKey
+        );
+        if (selected === undefined) return undefined;
+        const localStatus = this.spotNodeRuntime?.meshNode(meshName)?.status();
+        return {
+          meshName,
+          nodeRid: selected.rid,
+          nodeGeneration: selected.lifecycleGeneration,
+          owner: {
+            ownerId: selected.ownerId,
+            leaseGeneration: selected.leaseGeneration
+          },
+          isLocal: localStatus !== undefined
+            && String(localStatus.routingId) === String(selected.rid)
+            && localStatus.lifecycleGeneration === selected.lifecycleGeneration
+        };
+      }
+    });
+    const factories = new Map(
+      [...this.options.registration.spotNodes].map(([meshName, node]) => [
+        meshName,
+        new Map(Object.entries(node.spotFactoryRegistrations ?? {}))
+      ])
+    );
+    return new ZLinkPublicSpotManager({
+      local,
+      coordinator,
+      factories,
+      resolver: () => this.createLocationSpotRouteResolver(),
+      isLocalNode: (meshName, nodeRid) => {
+        const status = this.spotNodeRuntime?.meshNode(meshName)?.status();
+        return status !== undefined && String(status.routingId) === String(nodeRid);
+      },
+      defaultTimeoutMs: this.options.registration.requestTimeoutMs ?? 30_000,
+      messageSerializers: this.options.registration.messageSerializers
+    });
   }
 
   private actorRuntimeOptionsFactory(): ZLinkActorRuntimeOptionsFactory {
@@ -920,6 +1130,14 @@ export class ZLinkFrameworkRuntimeHost implements
       case ReceiveKind.SpotMulticast:
         return this.admission.run(meshName, 'RouteMesh Spot dispatch', () =>
           this.dispatchMeshSpotRecord(meshName, owner, record));
+      case ReceiveKind.InstanceSpotActivation:
+        if (this.spotManager === undefined) {
+          throw new ZLinkConfigurationException(
+            'MeshNode Instance Spot dispatch requires the Spot manager.'
+          );
+        }
+        return this.admission.run(meshName, 'RouteMesh Instance Spot dispatch', () =>
+          this.spotManager!.dispatchMeshInstance(meshName, owner, record));
       case ReceiveKind.SpotControl:
         if (this.spotManager === undefined) {
           throw new ZLinkConfigurationException('MeshNode Spot control dispatch requires the Spot manager.');
@@ -1084,11 +1302,19 @@ export class ZLinkFrameworkRuntimeHost implements
 
   private createLocationSpotRouteResolver(): ZLinkSpotRouteResolver | undefined {
     this.ensureLocationRuntime();
-    return this.locationOwner.createSpotRouteResolver(
+    const legacy = this.locationOwner.createSpotRouteResolver(
       this.meshRouters.spotLocationMeshNames(),
       this.meshRouters.spotRouterChannelIdByMesh(),
       (spotRid) => this.spotManager?.resolveLocalSpotRoute(spotRid)
     );
+    const authority = this.locationOwner.currentStores?.locationStore;
+    return authority === undefined
+      ? legacy
+      : new ZLinkAuthoritySpotRouteResolver(
+          authority,
+          this.meshRouters.spotRouterChannelIdByMesh(),
+          legacy
+        );
   }
 
   private createActorLocationResolver(): ZLinkStoreLocationResolvers | undefined {
@@ -1110,6 +1336,16 @@ export {
   transferIdString
 } from './actor-transfer-authority-runtime';
 export { ZLinkRouteMeshRuntimeCoordinator } from './route-mesh-runtime';
+export {
+  ZLinkHostSpotAddressTransport,
+  type ZLinkHostSpotAddressTransportOptions
+} from './spot-address-transport';
+export {
+  ZLinkUserSpotCreationCoordinator,
+  type ZLinkUserSpotCreationCoordinatorOptions,
+  type ZLinkUserSpotCreationRequest,
+  type ZLinkUserSpotCreationResult
+} from './user-spot-creation-coordinator';
 
 function waitForAllocationRuntime<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (signal === undefined) return operation;
@@ -1184,4 +1420,33 @@ function isStreamPayloadCodec(codec: unknown): codec is ZLinkStreamPayloadCodec 
   return typeof codec === 'object'
     && codec !== null
     && typeof (codec as { encode?: unknown }).encode === 'function';
+}
+
+function selectLocationPlacementDescriptor(
+  descriptors: readonly ZLinkMeshNodeDescriptor[],
+  affinityKey?: string
+): ZLinkMeshNodeDescriptor | undefined {
+  const total = descriptors.reduce(
+    (sum, descriptor) => sum + BigInt(descriptor.placementWeight),
+    0n
+  );
+  if (total === 0n) return undefined;
+  let point = affinityKey === undefined
+    ? BigInt(Math.floor(Math.random() * Number(total)))
+    : stablePlacementHash(affinityKey) % total;
+  for (const descriptor of descriptors) {
+    const weight = BigInt(descriptor.placementWeight);
+    if (point < weight) return descriptor;
+    point -= weight;
+  }
+  return descriptors.at(-1);
+}
+
+function stablePlacementHash(value: string): bigint {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(value)) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash;
 }

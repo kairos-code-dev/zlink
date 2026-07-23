@@ -10,6 +10,9 @@
   },
   "include": [
     "packages/framework/src/runtime/foundation/**/*.ts",
+    "packages/framework/src/runtime/host/user-spot-creation-coordinator.ts",
+    "packages/framework/src/runtime/spots/spot-manager-public.ts",
+    "packages/framework/src/runtime/spots/spot-closing.ts",
     "test/m6c/**/*.ts"
   ]
 }

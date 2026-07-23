@@ -13,7 +13,7 @@ export class ZLinkSpotSerialExecutor {
 
   constructor(
     private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
-    private readonly kind: 'entry' | 'user' = 'user'
+    private readonly kind: 'entry' | 'user' | 'instance' = 'user'
   ) {}
 
   get isExecuting(): boolean {

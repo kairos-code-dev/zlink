@@ -301,7 +301,8 @@ export function encodeInstanceSpotHeader(
   sourceSpotRid: string | undefined,
   operationKind: 'send' | 'request',
   operation: { readonly high: bigint; readonly low: bigint },
-  replyRouteId?: bigint
+  replyRouteId?: bigint,
+  hasMetadata = false
 ): Buffer {
   const routeBody = concat(
     rid(route.targetNodeRid, 'targetNodeRid'),
@@ -323,7 +324,10 @@ export function encodeInstanceSpotHeader(
     throw new RangeError('Instance Spot request requires a non-zero operation.');
   }
   return concat(
-    prefix(M6bServiceWireCommand.instanceSpot),
+    prefix(
+      M6bServiceWireCommand.instanceSpot,
+      hasMetadata ? M6bServiceWireFlag.metadata : 0
+    ),
     Buffer.of(1),
     u16(routeBody.byteLength),
     routeBody,
@@ -347,7 +351,8 @@ export function encodeInstanceSpotActivationHeader(
   operationKind: 'send' | 'request',
   operation: { readonly high: bigint; readonly low: bigint },
   deadlineUnixMs: bigint,
-  replyRouteId?: bigint
+  replyRouteId?: bigint,
+  hasMetadata = false
 ): Buffer {
   if (operation.high === 0n && operation.low === 0n) {
     throw new RangeError('Instance Spot activation requires a non-zero operation identity.');
@@ -366,7 +371,10 @@ export function encodeInstanceSpotActivationHeader(
     text16(target.descriptorVersion, 'descriptorVersion')
   );
   return concat(
-    prefix(M6bServiceWireCommand.instanceSpot),
+    prefix(
+      M6bServiceWireCommand.instanceSpot,
+      hasMetadata ? M6bServiceWireFlag.metadata : 0
+    ),
     Buffer.of(2),
     u16(targetBody.byteLength),
     targetBody,
@@ -500,7 +508,9 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       };
     }
     case M6bServiceWireCommand.instanceSpot: {
-      requireFlags(command.flags, 0);
+      if ((command.flags & ~M6bServiceWireFlag.metadata) !== 0) {
+        fail(`Invalid command flags '${command.flags}'.`);
+      }
       const version = reader.u8('instanceRoute.version');
       if (version !== 1 && version !== 2) fail('Unsupported Instance route version.');
       const routeLength = reader.u16('instanceRoute.length');

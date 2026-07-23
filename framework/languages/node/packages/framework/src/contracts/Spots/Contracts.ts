@@ -1,10 +1,19 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
-import type { RoutingId, Type, ZLinkMessage } from '../Common';
+import type {
+  RoutingId,
+  Type,
+  ZLinkMessage,
+  ZLinkMessageMetadata
+} from '../Common';
+import type {
+  ZLinkAffinityKey,
+  ZLinkPlacementProfile
+} from '../Locations';
+import type { ZLinkSubmitResult } from '../RouteMesh';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
-import type { ZLinkEntrySpot, ZLinkSpot } from './ZLinkSpot';
-import type { SpotHandle } from './SpotHandle';
+import type { ZLinkEntrySpot, ZLinkInstanceSpot, ZLinkSpot } from './ZLinkSpot';
 
 export interface ZLinkActorHandlerRegistry {
   addHandler<THandler>(handlerType: Type<THandler>): this;
@@ -18,6 +27,10 @@ export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
 export interface ZLinkSpotHandlerRegistry {
   addPacket<THandler>(handlerType: Type<THandler>): this;
   addSubscribe<THandler>(handlerType: Type<THandler>, channelName: string, topic: string): this;
+}
+
+export interface ZLinkInstanceSpotHandlerRegistry {
+  addPacket<THandler>(handlerType: Type<THandler>): this;
 }
 
 export interface ZLinkWorkerCall<T> {
@@ -35,7 +48,6 @@ export interface ZLinkSpotCommonContext<
   readonly spotRid: RoutingId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
-  readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
   addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -58,6 +70,13 @@ export interface ZLinkSpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TSpot> {
+  readonly handlers: ZLinkSpotHandlerRegistry;
+  close(signal?: AbortSignal): Promise<boolean>;
+}
+
+export interface ZLinkInstanceSpotContext
+  extends ZLinkSpotCommonContext<ZLinkActor, ZLinkInstanceSpot> {
+  readonly handlers: ZLinkInstanceSpotHandlerRegistry;
   close(signal?: AbortSignal): Promise<boolean>;
 }
 
@@ -65,6 +84,7 @@ export interface ZLinkEntrySpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
+  readonly handlers: ZLinkSpotHandlerRegistry;
   destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -73,11 +93,44 @@ export interface ZLinkSpotActorReplyOptions {
 }
 
 export interface ZLinkSpotOutbound {
-  sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
-  requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
+  sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall;
+  requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall;
   publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+}
+
+export type SpotRid = RoutingId;
+
+export interface SpotRef {
+  readonly spotRid: SpotRid;
+  readonly objectGeneration: bigint;
+  readonly meshName: string;
+  readonly nodeRid: RoutingId;
+}
+
+export interface ZLinkSpotSendCall {
+  metadata(key: string, value: string): this;
+  metadata(metadata: ZLinkMessageMetadata): this;
+  instanceSpot(): this;
+  instanceSpot(instanceSpotType: string): this;
+  inMesh(meshName: string): this;
+  placementProfile(placementProfile: ZLinkPlacementProfile): this;
+  affinityKey(affinityKey: ZLinkAffinityKey): this;
+  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+}
+
+export interface ZLinkSpotRequestCall {
+  metadata(key: string, value: string): this;
+  metadata(metadata: ZLinkMessageMetadata): this;
+  instanceSpot(): this;
+  instanceSpot(instanceSpotType: string): this;
+  inMesh(meshName: string): this;
+  placementProfile(placementProfile: ZLinkPlacementProfile): this;
+  affinityKey(affinityKey: ZLinkAffinityKey): this;
+  timeout(timeoutMs: number): this;
+  submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+  yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
 export enum ZLinkSpotCreateState {
@@ -87,7 +140,7 @@ export enum ZLinkSpotCreateState {
 }
 
 export interface ZLinkSpotCreateResult {
-  readonly spotRid: RoutingId;
+  readonly spot: SpotRef;
   readonly state: ZLinkSpotCreateState;
   readonly reply?: unknown;
 }
@@ -97,44 +150,19 @@ export interface ZLinkSpotInfo {
 }
 
 export interface ZLinkSpotManager {
-  create<TSpot extends ZLinkSpot>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  create<TSpot extends ZLinkSpot>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    request: ZLinkMessage,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  create<TSpot extends ZLinkSpot, TRequest>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    request: TRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  getOrCreate<TSpot extends ZLinkSpot>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    spotRid: RoutingId,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  getOrCreate<TSpot extends ZLinkSpot>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    spotRid: RoutingId,
-    request: ZLinkMessage,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  getOrCreate<TSpot extends ZLinkSpot, TRequest>(
-    meshName: string,
-    spotType: Type<TSpot>,
-    spotRid: RoutingId,
-    request: TRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult>;
-  find(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
-  list(meshName: string, signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
-  close(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
+  create(spotType: string): ZLinkSpotCreateCall;
+  getOrCreate(spotRid: SpotRid, spotType: string): ZLinkSpotGetOrCreateCall;
+  find(spotRid: SpotRid, signal?: AbortSignal): Promise<SpotRef | undefined>;
+  close(spot: SpotRef, signal?: AbortSignal): Promise<boolean>;
 }
+
+export interface ZLinkSpotCreateCall {
+  inMesh(meshName: string): this;
+  request(request: unknown): this;
+  placementProfile(placementProfile: ZLinkPlacementProfile): this;
+  affinityKey(affinityKey: ZLinkAffinityKey): this;
+  timeout(timeoutMs: number): this;
+  submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+}
+
+export interface ZLinkSpotGetOrCreateCall extends ZLinkSpotCreateCall {}

@@ -26,13 +26,21 @@ export interface ZLinkLocalSpotRouteDispatcher {
     spotRid: RoutingId,
     packetName: string | undefined,
     message: unknown,
-    context: { readonly channelName: string; readonly signal?: AbortSignal }
+    context: {
+      readonly channelName: string;
+      readonly signal?: AbortSignal;
+      readonly metadata?: ReadonlyMap<string, string>;
+    }
   ): Promise<void>;
   request<TReply>(
     spotRid: RoutingId,
     packetName: string | undefined,
     request: unknown,
-    context: { readonly channelName: string; readonly signal?: AbortSignal }
+    context: {
+      readonly channelName: string;
+      readonly signal?: AbortSignal;
+      readonly metadata?: ReadonlyMap<string, string>;
+    }
   ): Promise<TReply>;
 }
 
@@ -91,7 +99,8 @@ export class ZLinkSpotRouteDispatchStrategy {
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void> {
     throwIfAborted(signal);
     const localSpotRouteNode = this.targets.localRouteNode(spotRouteTarget);
@@ -101,7 +110,8 @@ export class ZLinkSpotRouteDispatchStrategy {
         spotRouteTarget.spotRid,
         packetName,
         message,
-        signal
+        signal,
+        metadata
       );
       return;
     }
@@ -114,7 +124,8 @@ export class ZLinkSpotRouteDispatchStrategy {
       undefined,
       codecsForFrameworkPacket(packetName, this.options.codecs),
       undefined,
-      this.options.flowCreationEnabled?.() ?? true
+      this.options.flowCreationEnabled?.() ?? true,
+      metadata
     ) as readonly Message[];
     if (this.targets.hasNamedSpotNode(spotRouteTarget.routerChannelId)
       && await this.spotNodeTransport.send(spotRouteTarget, parts, signal)) {
@@ -233,9 +244,17 @@ export class ZLinkSpotRouteDispatchStrategy {
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void> {
-    await this.sourceSpotRouter.send(sourceSpot, spotRouteTarget, packetName, message, signal);
+    await this.sourceSpotRouter.send(
+      sourceSpot,
+      spotRouteTarget,
+      packetName,
+      message,
+      signal,
+      metadata
+    );
   }
 
   async routeRequestRawFromSpotToSpot(

@@ -2,6 +2,7 @@ import type {
   Type,
   ZLinkActor,
   ZLinkEntrySpot,
+  ZLinkInstanceSpotHandlerRegistry,
   ZLinkSpot,
   ZLinkSpotHandlerRegistry,
 } from '../../contracts';
@@ -136,6 +137,23 @@ export class DefaultZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkAc
 
   snapshot(): readonly ZLinkSpotHandlerRegistration[] {
     return [...this.entries];
+  }
+}
+
+/**
+ * Exposes only the actor-free handler surface permitted for Instance Spots while
+ * retaining the common immutable registration snapshot used by dispatch.
+ */
+export class DefaultZLinkInstanceSpotHandlerRegistry implements ZLinkInstanceSpotHandlerRegistry {
+  constructor(private readonly registrations: DefaultZLinkSpotHandlerRegistry) {}
+
+  addPacket<THandler>(handlerType: Type<THandler>): this {
+    this.registrations.addPacket(handlerType);
+    return this;
+  }
+
+  snapshot(): readonly ZLinkSpotHandlerRegistration[] {
+    return this.registrations.snapshot();
   }
 }
 

@@ -8,8 +8,8 @@ import type {
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
   ZLinkRuntimeEventPublisher,
+  ZLinkInstanceSpot,
   ZLinkSpot,
-  ZLinkSpotCreateResult,
   ZLinkSpotCreateResponse,
   ZLinkSpotPublisherClient,
 } from '../../contracts';
@@ -21,6 +21,7 @@ import type {
   ZLinkSpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
 import {
+  ZLinkSpotCloseReason,
   ZLinkSpotCreateState
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
@@ -42,9 +43,14 @@ import {
   wrapFrameworkPayloadMessage
 } from '../messaging/payload-codec';
 import { createFreshProviderInstance } from './spot-provider';
-import { DefaultZLinkSpotOutbound, type ZLinkSpotRoutedTransport } from './spot-outbound';
+import {
+  DefaultZLinkSpotOutbound,
+  type ZLinkSpotAddressTransport,
+  type ZLinkSpotRoutedTransport
+} from './spot-outbound';
 import {
   applySpotHandlerRegistrations,
+  DefaultZLinkInstanceSpotHandlerRegistry,
   DefaultZLinkSpotHandlerRegistry
 } from './spot-handler-registry';
 import {
@@ -62,6 +68,8 @@ import type {
   ZLinkSpotActorTransferRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
+import type { ZLinkLocalSpotCreateResult } from './spot-manager-internal-contracts';
+import { invokeSpotClosing } from './spot-closing';
 
 export interface ZLinkSpotActivationLifecycleOptions {
   readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
@@ -76,6 +84,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly fanoutClient?: ZLinkFanoutClient;
   readonly spotPublisherClient?: ZLinkSpotPublisherClient;
   readonly routedTransport?: ZLinkSpotRoutedTransport;
+  readonly addressTransport?: ZLinkSpotAddressTransport;
   readonly spotRouterChannelIdForMesh?: (meshName: string) => string;
   readonly channelMeshNameForChannel?: (channelName: string) => string | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -92,7 +101,12 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
   readonly leaveActor: (spotRid: RoutingId, actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
-  readonly closeSpot: (meshName: string, spotRid: RoutingId, signal?: AbortSignal) => Promise<boolean>;
+  readonly closeSpot: (
+    meshName: string,
+    spotRid: RoutingId,
+    signal?: AbortSignal,
+    reason?: ZLinkSpotCloseReason
+  ) => Promise<boolean>;
   readonly registerActivation: (activation: ZLinkSpotActivation) => void;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
 }
@@ -115,6 +129,128 @@ export class ZLinkSpotActivationLifecycle {
     this.actorAdmission = new ZLinkSpotActorAdmissionCoordinator(options);
   }
 
+  async materializeInstance<TSpot extends ZLinkInstanceSpot>(
+    meshName: string,
+    instanceType: string,
+    implementation: Type<TSpot>,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotActivation> {
+    const serial = new ZLinkSpotSerialExecutor(this.options.metrics, 'instance');
+    const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
+    const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
+    const instanceHandlers = new DefaultZLinkInstanceSpotHandlerRegistry(handlers);
+    applySpotHandlerRegistrations(handlers, implementation as unknown as Type<ZLinkSpot>, {
+      packetHandlers: this.options.spotPacketHandlers
+    });
+    const timers = new ZLinkSpotTimerRegistry(
+      this.options.metrics,
+      () => this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    );
+    const outbound = new DefaultZLinkSpotOutbound(
+      serial,
+      this.options.channelClient,
+      this.options.fanoutClient,
+      this.options.spotPublisherClient,
+      this.options.routedTransport,
+      this.options.spotRouterChannelIdForMesh ?? ((selectedMesh) => selectedMesh),
+      undefined,
+      meshName,
+      undefined,
+      this.options.addressTransport
+    );
+    let instance: TSpot | undefined;
+    const context = {
+      ...createSpotContext({
+        meshName,
+        spotRid,
+        handlers,
+        outbound,
+        timers,
+        serial,
+        getSpot: () => instance as unknown as ZLinkSpot,
+        nodeRid: this.options.nodeRid,
+        nodeRidProvider: () => this.options.nodeRidProvider?.(meshName),
+        providerResolver: this.options.providerResolver,
+        runtimeEventPublisher: this.options.runtimeEventPublisher,
+        workerRuntime: this.options.workerRuntime,
+        close: (contextSignal) => this.options.closeSpot(meshName, spotRid, contextSignal)
+      }),
+      handlers: instanceHandlers
+    };
+    instance = await createFreshProviderInstance(
+      implementation,
+      this.options.providerResolver,
+      context
+    );
+    Object.defineProperty(instance, 'context', {
+      configurable: true,
+      enumerable: false,
+      value: context
+    });
+    const activation = new ZLinkSpotActivation({
+      meshName,
+      spotRid,
+      spotType: implementation as unknown as Type<ZLinkSpot>,
+      spot: instance as unknown as ZLinkSpot,
+      serial,
+      timers,
+      actorHandlers,
+      handlers,
+      externalActorCount: () => 0,
+      closeWhenReady: (reason) => this.scheduleDrainClose(meshName, spotRid, reason)
+    });
+    try {
+      await instance.configure?.();
+      await addSpotTimerRegistrations(
+        timers,
+        implementation as unknown as Type<ZLinkSpot>,
+        spotRid,
+        instance as unknown as ZLinkSpot,
+        serial,
+        { timerHandlers: this.options.spotTimerHandlers },
+        {
+          providerResolver: this.options.providerResolver,
+          runtimeEventPublisher: this.options.runtimeEventPublisher,
+          signal
+        }
+      );
+      await serial.execute(() => instance!.onInitialize?.());
+      this.options.registerActivation(activation);
+      return activation;
+    } catch (error) {
+      await timers.dispose();
+      throw new AggregateError(
+        [error],
+        `Instance Spot '${instanceType}' materialization failed for '${String(spotRid)}'.`
+      );
+    }
+  }
+
+  async discardInstance(activation: ZLinkSpotActivation): Promise<void> {
+    const errors: unknown[] = [];
+    try {
+      await activation.serial.execute(() => invokeSpotClosing(
+        activation.spot.onClosing?.bind(activation.spot),
+        ZLinkSpotCloseReason.ExplicitClose
+      ));
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await activation.timers.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        `Instance Spot '${String(activation.spotRid)}' cleanup failed.`
+      );
+    }
+  }
+
   resourcesReleased(activation: ZLinkSpotActivation): boolean {
     const state = this.cleanupStates.get(activation);
     return state?.timersDisposed === true &&
@@ -128,7 +264,7 @@ export class ZLinkSpotActivationLifecycle {
     spotRid: RoutingId,
     request: Message,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult> {
+  ): Promise<ZLinkLocalSpotCreateResult> {
     const serial = new ZLinkSpotSerialExecutor(this.options.metrics, 'user');
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
@@ -152,7 +288,8 @@ export class ZLinkSpotActivationLifecycle {
       this.options.spotRouterChannelIdForMesh ?? ((meshName) => meshName),
       () => nativeSpot,
       meshName,
-      this.options.channelMeshNameForChannel
+      this.options.channelMeshNameForChannel,
+      this.options.addressTransport
     );
     // Core owns the lifecycle generation. Publish the location only after the
     // formal Spot exists, so no synthetic generation can escape into routing.
@@ -240,7 +377,7 @@ export class ZLinkSpotActivationLifecycle {
         handlers,
         externalActorCount: () => this.options.actorCountProvider?.(spotRid) ?? 0,
         nativeSpot,
-        closeWhenReady: () => this.scheduleDrainClose(meshName, spotRid)
+        closeWhenReady: (reason) => this.scheduleDrainClose(meshName, spotRid, reason)
       });
       const nativeDispatch = this.actorAdmission.attachNativeActorJoinDispatch(activation, nativeSpot);
       activation.actorDispatch = nativeDispatch;
@@ -287,7 +424,7 @@ export class ZLinkSpotActivationLifecycle {
     outbound: DefaultZLinkSpotOutbound,
     locationClaim: UserSpotLocationClaim,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult> {
+  ): Promise<ZLinkLocalSpotCreateResult> {
     let spot: ZLinkSpot | undefined;
     const context = createSpotContext({
       meshName,
@@ -316,29 +453,44 @@ export class ZLinkSpotActivationLifecycle {
       actorHandlers,
       handlers,
       externalActorCount: () => this.options.actorCountProvider?.(spotRid) ?? 0,
-      closeWhenReady: () => this.scheduleDrainClose(meshName, spotRid)
+      closeWhenReady: (reason) => this.scheduleDrainClose(meshName, spotRid, reason)
     });
     return await this.runCreateLifecycle(activation, spotType, request, locationClaim, undefined, signal);
   }
 
-  private scheduleDrainClose(meshName: string, spotRid: RoutingId): void {
-    const close = async () => { await this.options.closeSpot(meshName, spotRid); };
+  private scheduleDrainClose(
+    meshName: string,
+    spotRid: RoutingId,
+    reason: ZLinkSpotCloseReason
+  ): void {
+    const close = async () => {
+      await this.options.closeSpot(meshName, spotRid, undefined, reason);
+    };
     this.options.detachedTaskRunner?.runDetached(`spot drain close ${String(spotRid)}`, close);
     if (this.options.detachedTaskRunner === undefined) {
       void close().catch(() => undefined);
     }
   }
 
-  async close(activation: ZLinkSpotActivation, signal?: AbortSignal): Promise<void> {
-    await activation.serial.execute(() => this.closeInsideSerial(activation, signal));
+  async close(
+    activation: ZLinkSpotActivation,
+    signal?: AbortSignal,
+    reason = ZLinkSpotCloseReason.ExplicitClose
+  ): Promise<void> {
+    await activation.serial.execute(() => this.closeInsideSerial(activation, signal, reason));
   }
 
-  async closeInsideSerial(activation: ZLinkSpotActivation, signal?: AbortSignal): Promise<void> {
+  async closeInsideSerial(
+    activation: ZLinkSpotActivation,
+    signal?: AbortSignal,
+    reason = ZLinkSpotCloseReason.ExplicitClose
+  ): Promise<void> {
     await this.cleanupActivation(
       activation,
       activation.meshName,
       true,
-      signal
+      signal,
+      reason
     );
   }
 
@@ -367,7 +519,7 @@ export class ZLinkSpotActivationLifecycle {
     locationClaim: UserSpotLocationClaim,
     nativeDispatch: ZLinkSpotActorJoinDispatch | undefined,
     signal?: AbortSignal
-  ): Promise<ZLinkSpotCreateResult> {
+  ): Promise<ZLinkLocalSpotCreateResult> {
     try {
       await activation.spot.configure?.();
       nativeDispatch?.configureSubscriptions(activation.handlers.snapshot());
@@ -422,7 +574,8 @@ export class ZLinkSpotActivationLifecycle {
     activation: ZLinkSpotActivation,
     locationMeshName: string,
     notifyClosing: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    reason = ZLinkSpotCloseReason.ExplicitClose
   ): Promise<void> {
     throwIfAborted(signal);
     const state = this.cleanupStates.get(activation) ?? {
@@ -433,7 +586,7 @@ export class ZLinkSpotActivationLifecycle {
     };
     this.cleanupStates.set(activation, state);
     if (state.inFlight !== undefined) return await state.inFlight;
-    state.inFlight = this.runCleanup(activation, locationMeshName, notifyClosing, state)
+    state.inFlight = this.runCleanup(activation, locationMeshName, notifyClosing, reason, state)
       .finally(() => { state.inFlight = undefined; });
     return await state.inFlight;
   }
@@ -442,6 +595,7 @@ export class ZLinkSpotActivationLifecycle {
     activation: ZLinkSpotActivation,
     locationMeshName: string,
     notifyClosing: boolean,
+    reason: ZLinkSpotCloseReason,
     state: {
       closingAttempted: boolean;
       timersDisposed: boolean;
@@ -460,7 +614,10 @@ export class ZLinkSpotActivationLifecycle {
     };
     if (notifyClosing && !state.closingAttempted) {
       state.closingAttempted = true;
-      await cleanup(() => activation.spot.onClosing?.(), () => undefined);
+      await cleanup(() => invokeSpotClosing(
+        activation.spot.onClosing?.bind(activation.spot),
+        reason
+      ), () => undefined);
     }
     if (!state.timersDisposed) {
       await cleanup(() => activation.timers.dispose(), () => { state.timersDisposed = true; });

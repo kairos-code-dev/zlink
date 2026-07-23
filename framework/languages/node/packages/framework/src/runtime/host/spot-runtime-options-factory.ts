@@ -28,6 +28,7 @@ import type {
   ZLinkDetachedTaskRunner,
   ZLinkSpotManagerOptions,
   ZLinkSpotNodeRuntimeManager,
+  ZLinkSpotAddressTransport,
   ZLinkSpotRoutedTransport
 } from '../spots';
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
@@ -39,6 +40,7 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly channelTransport: ZLinkChannelClientTransport;
   readonly routeTransport: ZLinkRouteClientTransport & ZLinkSpotRoutedTransport;
+  readonly addressTransport: ZLinkSpotAddressTransport;
   readonly spotPublisherTransport: ZLinkSpotPublisherClientTransport;
   readonly meshRouters: MeshRouterResolver;
   readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
@@ -101,6 +103,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
         this.options.spotPublisherTransport
       ),
       routedTransport: this.options.routeTransport,
+      addressTransport: this.options.addressTransport,
       spotRouterChannelIdForMesh: this.options.meshRouters.spotRouterChannelIdByMesh(),
       channelMeshNameForChannel: (channelName) => {
         const matches = [...this.options.registration.spotNodes.entries()]

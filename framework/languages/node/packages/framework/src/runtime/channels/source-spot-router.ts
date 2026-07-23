@@ -79,14 +79,16 @@ export class ZLinkSourceSpotRouter {
     target: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void> {
     throwIfAborted(signal);
     const parts = [encodeSpotDirectEnvelope(
       ZLinkChannelMessageKind.Command,
       target.routerChannelId,
       packetName,
-      message
+      message,
+      metadata
     )] as readonly Message[];
     try {
       await this.submitWhenReady(

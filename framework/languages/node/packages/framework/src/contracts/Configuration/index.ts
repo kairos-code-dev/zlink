@@ -5,6 +5,9 @@ export type {
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,
+  ZLinkMeshObjectClientBuilder,
+  ZLinkMeshObjectRoleBuilder,
+  ZLinkMeshObjectServerBuilder,
   ZLinkMeshNodeBuilder,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
@@ -20,4 +23,5 @@ export type {
   ZLinkSpotPublisherConfig
 } from './Configs';
 export * from './Connections';
+export * from './ObjectRoles';
 export type { ZLinkWorkerOptions } from './RegistrationTypes';

@@ -30,6 +30,7 @@ import {
 import {
   ZLinkManagedTimer
 } from '../../packages/framework/src/runtime/spots/spot-timer';
+import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
 import {
   ZLinkTimerOverrunPolicy
 } from '../../packages/framework/src/contracts';
@@ -199,7 +200,7 @@ test('durable relocation stores payload before Location CAS and clears authority
   const events: string[] = [];
   const authority = authorityStore();
   const key = authorityKey('spot:room');
-  const initial = await createAuthority(authority, key);
+  const initial = await createAuthority(authority, 'spot:room');
   const authorityPort = {
     readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
       authority.readAuthority(...args),
@@ -236,7 +237,7 @@ test('failed publication removes only the orphan and published data loss never r
   const events: string[] = [];
   const authority = authorityStore();
   const key = authorityKey('actor:a');
-  const initial = await createAuthority(authority, key);
+  const initial = await createAuthority(authority, 'actor:a');
   await authority.compareExchangeAuthority(
     key,
     initial.storeVersion,
@@ -277,7 +278,7 @@ test('authority response loss reconciles a committed publication without deletin
   const events: string[] = [];
   const authority = authorityStore();
   const key = authorityKey('spot:response-loss');
-  const initial = await createAuthority(authority, key);
+  const initial = await createAuthority(authority, 'spot:response-loss');
   const authorityPort = {
     readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
       authority.readAuthority(...args),
@@ -315,7 +316,7 @@ function authorityStore(): ZLinkInMemoryAuthorityStore {
 
 async function createAuthority(
   authority: ZLinkInMemoryAuthorityStore,
-  key: ZLinkAuthorityKey
+  globalId: string
 ): Promise<ZLinkAuthoritySnapshot> {
   const target: ZLinkObjectCreationTarget = {
     meshName: 'mesh',
@@ -323,7 +324,6 @@ async function createAuthority(
     nodeLifecycleGeneration: 1n,
     owner: owner('owner-a', 1n)
   };
-  const globalId = key.value.slice('user_spot:'.length);
   const reserved = await authority.reserve({
     key: { kind: 'user_spot', globalId },
     intent: {
@@ -351,7 +351,7 @@ async function createAuthority(
 }
 
 function authorityKey(value: string): ZLinkAuthorityKey {
-  return { value: `user_spot:${value}` } as ZLinkAuthorityKey;
+  return encodeAuthorityKey('user_spot', value);
 }
 
 function owner(ownerId: string, leaseGeneration: bigint): ZLinkLocationOwnerToken {

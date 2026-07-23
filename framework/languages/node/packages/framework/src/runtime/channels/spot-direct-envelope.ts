@@ -11,14 +11,16 @@ export function encodeSpotDirectEnvelope(
   kind: ZLinkChannelMessageKind.Request | ZLinkChannelMessageKind.Command,
   channelName: string,
   packetName: string | undefined,
-  payload: unknown
+  payload: unknown,
+  metadata?: ReadonlyMap<string, string>
 ): MessageLike {
   return Buffer.from(JSON.stringify({
     marker: SPOT_DIRECT_ENVELOPE,
     kind,
     channelName,
     packetName,
-    payload
+    payload,
+    metadata: Object.fromEntries(metadata ?? [])
   }));
 }
 

@@ -120,7 +120,7 @@ end
 
 local function snapshot(row)
     if not row or row.deleted == '1' then return missing() end
-    return {
+    local result = {
         kind = 'snapshot',
         storeVersion = row.storeVersion,
         payload = row.payload,
@@ -131,13 +131,24 @@ local function snapshot(row)
         allocation = allocation(row),
         storeNowMs = nowMs
     }
+    if row.allocationState == 'pending' then
+        result.pendingCreation = {
+            reservationId = row.creationReservationId,
+            requestContentReference = row.creationRequestContentReference,
+            requestSha256 = row.creationRequestSha256,
+            requestEncodedSize = row.creationRequestEncodedSize
+        }
+    end
+    return result
 end
 
 local historyFields = {
     'authorityKey', 'payload', 'storeVersion', 'objectGeneration',
     'authorityOwnerGeneration', 'ownerId', 'ownerLeaseGeneration',
     'allocationState', 'objectKind', 'stableType', 'descriptorKey',
-    'descriptorLifecycleGeneration', 'capacityDelta'
+    'descriptorLifecycleGeneration', 'capacityDelta',
+    'creationReservationId', 'creationRequestContentReference',
+    'creationRequestSha256', 'creationRequestEncodedSize'
 }
 
 local function archiveCurrent(currentKey, historyKey, revisionIndexKey)
@@ -146,7 +157,9 @@ local function archiveCurrent(currentKey, historyKey, revisionIndexKey)
     local revision = decimalToHex(row.storeVersion)
     redis.call('HSET', historyKey, revision .. ':deleted', '0')
     for _, field in ipairs(historyFields) do
-        redis.call('HSET', historyKey, revision .. ':' .. field, row[field])
+        if row[field] ~= nil then
+            redis.call('HSET', historyKey, revision .. ':' .. field, row[field])
+        end
     end
     redis.call('ZADD', revisionIndexKey, 0, revision)
 end
@@ -409,7 +422,11 @@ if op == 'reserve' then
         stableType = request.stableType,
         descriptorKey = request.target.descriptorKey,
         descriptorLifecycleGeneration = request.target.lifecycleGeneration,
-        capacityDelta = request.capacityDelta
+        capacityDelta = request.capacityDelta,
+        creationReservationId = request.reservationId,
+        creationRequestContentReference = request.intent.requestContentReference,
+        creationRequestSha256 = request.intent.requestSha256,
+        creationRequestEncodedSize = request.intent.requestEncodedSize
     }
     writeRow(KEYS[1], row)
     redis.call('HSET', KEYS[14],
@@ -448,6 +465,10 @@ if op == 'commit' then
     row.storeVersion = nextCounter('storeRevision')
     row.payload = request.payload
     row.allocationState = 'active'
+    row.creationReservationId = nil
+    row.creationRequestContentReference = nil
+    row.creationRequestSha256 = nil
+    row.creationRequestEncodedSize = nil
     writeRow(KEYS[1], row)
     capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
     capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))

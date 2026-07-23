@@ -3,6 +3,7 @@ import type {
   ZLinkActorTransferAdapter,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
+  ZLinkInstanceSpot,
   ZLinkSpot
 } from '../Spots';
 import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } from '../Streams';
@@ -17,6 +18,10 @@ import type {
 import type { RoutingId, Type } from '../Common';
 import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSpotPublisherConfig } from './Configs';
+import type {
+  ZLinkObjectPlacementOptions,
+  ZLinkRelocationPolicy
+} from './ObjectRoles';
 import type {
   ZLinkRequestHandler,
   ZLinkRouteRequestHandler,
@@ -96,19 +101,55 @@ export interface ZLinkMeshNodeBuilder {
   routingId(routingId: RoutingId): this;
   useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
   setRoutingIdAllocationGroup(groupName: string): this;
+  setPlacementWeight(weight: number): this;
+  setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;
   setDefaultRequestTimeout(timeoutMs: number): this;
+  objects(): ZLinkMeshObjectRoleBuilder;
   addRouteSendHandler<TMessage>(handlerType: Type<ZLinkRouteSendHandler<TMessage>>): this;
   addRouteRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRouteRequestHandler<TRequest, TReply>>): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>
+  ): this;
   actorFactory(actorType: string, factoryType: Type): this;
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: string,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this;
+}
+
+export interface ZLinkMeshObjectRoleBuilder {
+  client(): ZLinkMeshObjectClientBuilder;
+  server(): ZLinkMeshObjectServerBuilder;
+}
+
+export interface ZLinkMeshObjectClientBuilder {}
+
+export interface ZLinkMeshObjectServerBuilder {
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(
+    spotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this;
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this;
+  addActorFactory<TActor extends ZLinkActor>(
+    actorType: string,
+    implementation: Type<TActor>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TActor>
   ): this;
 }
 

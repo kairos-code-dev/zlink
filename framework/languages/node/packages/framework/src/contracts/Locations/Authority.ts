@@ -31,6 +31,13 @@ export interface ZLinkPlacementAllocation {
   readonly capacityDelta: number;
 }
 
+export interface ZLinkPendingObjectCreation {
+  readonly reservationId: string;
+  readonly requestContentReference: string;
+  readonly requestSha256: Uint8Array;
+  readonly requestEncodedSize: bigint;
+}
+
 export interface ZLinkAuthoritySnapshot {
   readonly kind: 'snapshot';
   readonly storeVersion: ZLinkAuthorityStoreVersion;
@@ -40,6 +47,7 @@ export interface ZLinkAuthoritySnapshot {
   readonly ownerId: string;
   readonly ownerLeaseGeneration: bigint;
   readonly allocation: ZLinkPlacementAllocation;
+  readonly pendingCreation?: ZLinkPendingObjectCreation;
   readonly storeNow: Date;
 }
 

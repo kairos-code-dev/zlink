@@ -1,4 +1,28 @@
-import type { RoutingId, SpotHandle, ZLinkSpotKind } from '../../contracts';
+import type { RoutingId, ZLinkSpotKind } from '../../contracts';
+
+declare const spotHandleBrand: unique symbol;
+
+export interface SpotHandle {
+  readonly meshName: string;
+  readonly spotRid: RoutingId;
+  readonly [spotHandleBrand]: never;
+}
+
+export interface ZLinkSpotHandleResolver {
+  resolveSpotHandle(
+    meshName: string,
+    spotRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<SpotHandle | undefined>;
+}
+
+export interface ZLinkActorSpotHandleResolver {
+  resolveActorSpotHandle(
+    meshName: string,
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<SpotHandle | undefined>;
+}
 
 export interface ResolvedSpotHandle {
   readonly meshName: string;

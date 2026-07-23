@@ -261,19 +261,15 @@ test('actor join and one-way calls expose only their target terminators', () => 
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
-test('spot manager create surface exposes ZLinkMessage and typed request overloads only', () => {
+test('spot manager exposes exact single-use stable-type calls and generation-fenced refs', () => {
   const declarations = readTree(declarationsRoot);
   const spotManager = declarationBody(declarations, 'ZLinkSpotManager');
 
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /create<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: ZLinkMessage,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  assert.match(spotManager, /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/);
-  const oldOptionalAnyRequest = ['request?:', 'unknown'].join(' ');
-  assert.equal(spotManager.includes(oldOptionalAnyRequest), false);
-  assert.equal(spotManager.includes(`${oldOptionalAnyRequest} | ZLinkMessage`), false);
+  assert.match(spotManager, /create\(spotType: string\): ZLinkSpotCreateCall/);
+  assert.match(spotManager, /getOrCreate\(spotRid: SpotRid, spotType: string\): ZLinkSpotGetOrCreateCall/);
+  assert.match(spotManager, /find\(spotRid: SpotRid, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/);
+  assert.match(spotManager, /close\(spot: SpotRef, signal\?: AbortSignal\): Promise<boolean>/);
+  assert.doesNotMatch(spotManager, /Type<TSpot>|meshName: string,\s*spotType/);
 });
 
 test('location wire enums retain numeric values while Node-facing result enums use strings', () => {
@@ -405,7 +401,20 @@ test('framework error kind values and retriable defaults match the shared table'
     ['WorkerTimedOut', 'workerTimedOut', 18, false],
     ['WorkerFailed', 'workerFailed', 19, false],
     ['ActorLocationStale', 'actorLocationStale', 20, true],
-    ['ActorCreateRejected', 'actorCreateRejected', 21, false]
+    ['ActorCreateRejected', 'actorCreateRejected', 21, false],
+    ['ObjectClientNotConfigured', 'objectClientNotConfigured', 22, false],
+    ['MeshSelectionRequired', 'meshSelectionRequired', 23, false],
+    ['MeshNotFound', 'meshNotFound', 24, false],
+    ['InvalidConfiguration', 'invalidConfiguration', 25, false],
+    ['AlreadySubmitted', 'alreadySubmitted', 26, false],
+    ['ActorGenerationStale', 'actorGenerationStale', 27, false],
+    ['ActorMoving', 'actorMoving', 28, true],
+    ['DeadlineExceeded', 'deadlineExceeded', 29, true],
+    ['PlacementCapacityExhausted', 'placementCapacityExhausted', 30, true],
+    ['RoutingIdConflict', 'routingIdConflict', 31, false],
+    ['SpotGenerationStale', 'spotGenerationStale', 32, false],
+    ['SpotMoving', 'spotMoving', 33, true],
+    ['RelocationDataLost', 'relocationDataLost', 34, false]
   ];
 
   assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, expected.length);
@@ -435,9 +444,9 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
   assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.match(declarationBody(declarations, 'ZLinkSpotHandleResolver'), /resolveSpotHandle\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
-  assert.match(declarationBody(declarations, 'ZLinkActorSpotHandleResolver'), /resolveActorSpotHandle\(meshName: string, actorId: string, signal\?: AbortSignal\): Promise<SpotHandle \| undefined>/);
-  assert.equal(declarations.includes('interface SpotRef'), false);
+  assert.equal(declarations.includes('ZLinkSpotHandleResolver'), false);
+  assert.equal(declarations.includes('ZLinkActorSpotHandleResolver'), false);
+  assert.equal(declarations.includes('interface SpotRef'), true);
   assert.equal(declarations.includes('IZLink' + 'SpotAddressResolver'), false);
   assert.equal(declarations.includes('ZLink' + 'SpotAddress'), false);
   assert.equal(declarations.includes('IZLinkRouteLocationResolver'), false);
@@ -547,7 +556,7 @@ test('one-way call declarations expose async admission results only', () => {
   }
 });
 
-test('route client surface scopes node routing by MeshName and resolves channels and Spots globally', () => {
+test('route client surface scopes node routing by MeshName and resolves channels globally', () => {
   const declarations = readTree(declarationsRoot);
   const routeClient = declarationBody(declarations, 'ZLinkRouteClient');
 
@@ -555,8 +564,22 @@ test('route client surface scopes node routing by MeshName and resolves channels
   assert.match(routeClient, /requestToNode\(meshName: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
   assert.match(routeClient, /sendToChannel\(channelName: string, message: unknown\): ZLinkSendCall/);
   assert.match(routeClient, /requestToChannel\(channelName: string, request: unknown\): ZLinkRequestCall/);
-  assert.match(routeClient, /sendToSpot\(spot: SpotHandle, message: unknown\): ZLinkSendCall/);
-  assert.match(routeClient, /requestToSpot\(spot: SpotHandle, request: unknown\): ZLinkRequestCall/);
+  assert.doesNotMatch(routeClient, /SpotHandle|sendToSpot|requestToSpot/);
+});
+
+test('Spot public declarations use SpotRid calls and keep Instance handlers actor-free', () => {
+  const declarations = readTree(declarationsRoot);
+  const spotOutbound = declarationBody(declarations, 'ZLinkSpotOutbound');
+  const instanceContext = declarationBody(declarations, 'ZLinkInstanceSpotContext');
+  const instanceHandlers = declarationBody(declarations, 'ZLinkInstanceSpotHandlerRegistry');
+  const spotsIndex = fs.readFileSync(path.join(declarationsRoot, 'Spots', 'index.d.ts'), 'utf8');
+
+  assert.match(spotOutbound, /sendToSpot\(spotRid: SpotRid, message: unknown\): ZLinkSpotSendCall/);
+  assert.match(spotOutbound, /requestToSpot\(spotRid: SpotRid, request: unknown\): ZLinkSpotRequestCall/);
+  assert.match(instanceContext, /readonly handlers: ZLinkInstanceSpotHandlerRegistry/);
+  assert.match(instanceHandlers, /addPacket<THandler>\(handlerType: Type<THandler>\): this/);
+  assert.doesNotMatch(instanceHandlers, /addSubscribe|addActor/);
+  assert.doesNotMatch(spotsIndex, /SpotHandle/);
 });
 
 test('old public contract names from the redesign rename table do not re-enter node surfaces', () => {

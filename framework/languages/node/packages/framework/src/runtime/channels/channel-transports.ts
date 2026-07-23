@@ -146,7 +146,11 @@ export interface ZLinkRouteClientTransport {
   sendToSpot?(
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
-    options: { readonly packetName?: string; readonly signal?: AbortSignal }
+    options: {
+      readonly packetName?: string;
+      readonly signal?: AbortSignal;
+      readonly metadata?: ReadonlyMap<string, string>;
+    }
   ): Promise<ZLinkSubmitResult>;
   requestToSpot?<TReply = unknown>(
     spotRouteTarget: ZLinkSpotRouteTarget,
@@ -227,14 +231,16 @@ interface ZLinkChannelTransportRuntime {
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void>;
   routeSendFromSpotToSpot(
     sourceSpot: ZLinkBackendSpot,
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void>;
   routeRequestToSpot<TReply>(
     spotRouteTarget: ZLinkSpotRouteTarget,
@@ -572,7 +578,11 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
   async sendToSpot(
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
-    options: { readonly packetName?: string; readonly signal?: AbortSignal }
+    options: {
+      readonly packetName?: string;
+      readonly signal?: AbortSignal;
+      readonly metadata?: ReadonlyMap<string, string>;
+    }
   ): Promise<ZLinkSubmitResult> {
     const node = this.meshNode(spotRouteTarget.routerChannelId);
     if (node === undefined) {
@@ -580,7 +590,8 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
         spotRouteTarget,
         options.packetName,
         message,
-        options.signal
+        options.signal,
+        options.metadata
       );
       return { status: ZLinkSubmitStatus.Submitted };
     }
@@ -596,7 +607,9 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
             ZLinkChannelMessageKind.Command,
             spotRouteTarget.routerChannelId,
             options.packetName,
-            message
+            message,
+            undefined,
+            options.metadata
           ),
           { flags: 1 }
         ));
@@ -610,14 +623,19 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     sourceSpot: ZLinkBackendSpot,
     spotRouteTarget: ZLinkSpotRouteTarget,
     message: unknown,
-    options: { readonly packetName?: string; readonly signal?: AbortSignal }
+    options: {
+      readonly packetName?: string;
+      readonly signal?: AbortSignal;
+      readonly metadata?: ReadonlyMap<string, string>;
+    }
   ): Promise<ZLinkSubmitResult> {
     await this.requireManager().routeSendFromSpotToSpot(
       sourceSpot,
       spotRouteTarget,
       options.packetName,
       message,
-      options.signal
+      options.signal,
+      options.metadata
     );
     return { status: ZLinkSubmitStatus.Submitted };
   }

@@ -241,6 +241,38 @@ test('ZLinkRouteClient sends through SpotHandle snapshots and refreshes one stal
   assert.equal(refreshCount, 1);
 });
 
+test('ZLinkRouteClient refreshes and retries a Spot send that was not admitted on a stale route', async () => {
+  const oldTarget = {
+    meshName: 'play',
+    nodeRid: 'node-old',
+    spotRid: 'spot-1',
+    spotKind: framework.ZLinkSpotKind.User
+  };
+  const newTarget = { ...oldTarget, nodeRid: 'node-new' };
+  const handle = framework.createSpotHandle('spot-1', oldTarget, async () => newTarget);
+  const targets = [];
+  const client = new framework.DefaultZLinkRouteClient(
+    framework.createFrameworkRegistration(),
+    {
+      submit() {},
+      async request() {},
+      async sendToSpot(target) {
+        targets.push(String(target.targetNodeRid));
+        return {
+          status: targets.length === 1
+            ? framework.ZLinkSubmitStatus.TargetNotFound
+            : framework.ZLinkSubmitStatus.Submitted
+        };
+      },
+      async requestToSpot() {}
+    }
+  );
+
+  const result = await client.sendToSpot(handle, typedPacket('Notice', { id: 1 })).submit();
+  assert.equal(result.status, framework.ZLinkSubmitStatus.Submitted);
+  assert.deepEqual(targets, ['node-old', 'node-new']);
+});
+
 test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failure', async () => {
   const target = {
     meshName: 'play.route',

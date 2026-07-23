@@ -27,6 +27,7 @@ import type {
   ZLinkRelocationCapacityReservationRequest,
   ZLinkRelocationCapacityReserveResult
 } from '../../contracts/Locations';
+import { encodeAuthorityKey } from './authority-key-codec';
 
 const MAX_GENERATION = 0x7fff_ffff_ffff_ffffn;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
@@ -269,7 +270,13 @@ export class ZLinkInMemoryAuthorityStore {
       authorityOwnerGeneration: ++this.ownerGeneration,
       ownerId: target.owner.ownerId,
       ownerLeaseGeneration: target.owner.leaseGeneration,
-      allocation
+      allocation,
+      pendingCreation: {
+        reservationId,
+        requestContentReference: request.intent.requestContentReference,
+        requestSha256: Buffer.from(request.intent.requestSha256),
+        requestEncodedSize: request.intent.requestEncodedSize
+      }
     };
     this.rows.set(key, { snapshot, creation: { reservationId, target } });
     this.adjust(this.pendingCapacity, allocationCapacityKey(allocation), allocation.capacityDelta);
@@ -309,8 +316,9 @@ export class ZLinkInMemoryAuthorityStore {
     this.adjust(this.pendingCapacity, allocationCapacityKey(pending), -pending.capacityDelta);
     const active = { ...pending, state: 'active' as const };
     this.adjust(this.activeCapacity, allocationCapacityKey(active), active.capacityDelta);
+    const { pendingCreation: _, ...creating } = row.snapshot;
     row.snapshot = {
-      ...row.snapshot,
+      ...creating,
       storeVersion: version(nextVersion),
       payload: Buffer.from(request.readyPayload),
       allocation: active
@@ -591,6 +599,14 @@ export class ZLinkInMemoryAuthorityStore {
       ...snapshot,
       payload: Buffer.from(snapshot.payload),
       allocation: cloneAllocation(snapshot.allocation),
+      ...(snapshot.pendingCreation === undefined
+        ? {}
+        : {
+            pendingCreation: {
+              ...snapshot.pendingCreation,
+              requestSha256: Buffer.from(snapshot.pendingCreation.requestSha256)
+            }
+          }),
       storeNow: this.now()
     };
   }
@@ -665,9 +681,14 @@ function validateAuthorityMutation(mutation: ZLinkAuthorityMutation): void {
 function validateReserve(request: ZLinkObjectReserveRequest): void {
   requireText(request.key.globalId, 'object global ID');
   requireText(request.intent.stableType, 'stable type');
+  requireText(request.intent.requestContentReference, 'creation content reference');
   validatePayload(request.creatingPayload);
   validateCapacityDelta(request.pendingCapacityDelta);
-  if (request.intent.requestSha256.byteLength !== 32 || request.intent.requestEncodedSize < 0n) {
+  if (
+    request.intent.requestSha256.byteLength !== 32
+    || request.intent.requestEncodedSize < 0n
+    || request.intent.requestEncodedSize > BigInt(MAX_PAYLOAD_BYTES)
+  ) {
     throw new TypeError('Object creation content receipt is invalid.');
   }
 }
@@ -796,7 +817,7 @@ function capacityKey(
 }
 
 function creationKey(key: ZLinkObjectReserveRequest['key']): string {
-  return `${key.kind}:${key.globalId}`;
+  return encodeAuthorityKey(key.kind, key.globalId).value;
 }
 
 function authorityKey(value: string): ZLinkAuthorityKey {

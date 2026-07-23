@@ -10,6 +10,8 @@ export interface ZLinkSpotRouteTarget {
   readonly targetNodeRid: RoutingId;
   readonly spotRid: RoutingId;
   readonly spotKind: ZLinkSpotKind;
+  /** Stable registered type for authority-backed User and Instance Spots. */
+  readonly stableType?: string;
   /** Required for user Spot operations and absent for an Entry Spot route. */
   readonly targetSpotGeneration?: bigint;
 }

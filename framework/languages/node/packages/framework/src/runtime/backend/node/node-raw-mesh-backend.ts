@@ -33,6 +33,9 @@ import {
 import {
   ServiceStatefulRuntime,
   statefulMailboxData,
+  type ServiceAsyncInstanceActivationAuthority,
+  type ServiceInstanceApplicationLifecycle,
+  type ServicePendingInstanceActivation,
   type ServiceStatefulMailboxData,
   type ServiceStatefulPendingOperation,
   type ServiceStatefulResult
@@ -41,7 +44,15 @@ import type {
   ServiceActorRef,
   ServiceSpotState
 } from '../../foundation/service-stateful-registry';
-import type { ServiceInstanceRouteFence } from '../../foundation/service-stateful-wire-codec';
+import type {
+  ServiceInstanceActivationTarget,
+  ServiceInstanceRouteFence,
+  ServiceSpotRouteFence
+} from '../../foundation/service-stateful-wire-codec';
+import { encodeServiceMetadataFrame } from '../../foundation/service-metadata-codec';
+import type {
+  ServiceInstanceActivationRecoveryEnvelope
+} from '../../foundation/service-instance-activation-recovery-codec';
 import type {
   ServiceMailboxClaim,
   ServiceMailboxRecord
@@ -84,6 +95,11 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   private pollTimer?: NodeJS.Timeout;
   private nextPeerIntent = 1n;
   private closed = false;
+  private objectRole: ServiceNodeDescriptor['objectRole'] = 'none';
+  private placementWeight = 100;
+  private activeCapacityLimit = 10_000;
+  private pendingCapacityLimit = 128;
+  private objectCapabilities: readonly string[] = [];
 
   constructor(
     private readonly meshName: string,
@@ -94,6 +110,81 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       throw new TypeError('M6A raw MeshNode requires a routing id.');
     }
     this.routingId = routingId;
+  }
+
+  configureObjectPlacement(options: {
+    readonly role: ServiceNodeDescriptor['objectRole'];
+    readonly placementWeight: number;
+    readonly activeCapacityLimit: number;
+    readonly pendingCapacityLimit: number;
+    readonly objectCapabilities: readonly string[];
+  }): void {
+    this.requireNotStarted();
+    this.objectRole = options.role;
+    this.placementWeight = requirePositivePlacementValue(
+      options.placementWeight,
+      'placementWeight'
+    );
+    this.activeCapacityLimit = requirePositivePlacementValue(
+      options.activeCapacityLimit,
+      'activeCapacityLimit'
+    );
+    this.pendingCapacityLimit = requirePositivePlacementValue(
+      options.pendingCapacityLimit,
+      'pendingCapacityLimit'
+    );
+    this.objectCapabilities = [...new Set(options.objectCapabilities)].sort();
+  }
+
+  selectObjectPlacement(stableType: string, placementProfile?: string, affinityKey?: string) {
+    const descriptor = this.requireRuntime().topology.selectObjectPlacement(
+      stableType,
+      placementProfile,
+      affinityKey
+    );
+    return descriptor === undefined
+      ? undefined
+      : {
+          targetNodeRid: descriptor.nodeRoutingId,
+          targetNodeGeneration: descriptor.lifecycleGeneration,
+          descriptorVersion: descriptor.descriptorRevision.toString()
+        };
+  }
+
+  sendToMissingInstanceSpot(
+    target: ServiceInstanceActivationTarget,
+    parts: MessageLike | readonly MessageLike[],
+    deadlineUnixMs: bigint,
+    sourceSpotRid?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): SubmitResult {
+    const result = this.requireStateful().sendToMissingInstanceSpot(
+      target,
+      encodeMultipart(parts),
+      deadlineUnixMs,
+      sourceSpotRid,
+      metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
+    );
+    return result as SubmitResult;
+  }
+
+  requestToMissingInstanceSpot(
+    target: ServiceInstanceActivationTarget,
+    parts: MessageLike | readonly MessageLike[],
+    timeoutMs: number,
+    sourceSpotRid?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): MeshOperationId {
+    return this.observeStateful(
+      OperationKind.InstanceSpotRequest,
+      this.requireStateful().requestToMissingInstanceSpot(
+        target,
+        encodeMultipart(parts),
+        timeoutMs,
+        sourceSpotRid,
+        metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
+      )
+    );
   }
 
   setRoutingId(routingId: unknown): void {
@@ -378,6 +469,63 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void {
     this.requireStateful().registerInstanceIntent(instanceType, route);
+  }
+
+  registerAsyncInstanceActivationAuthority(
+    authority: ServiceAsyncInstanceActivationAuthority
+  ): void {
+    this.requireStateful().registerAsyncInstanceActivationAuthority(authority);
+  }
+
+  registerInstanceApplicationLifecycle(
+    lifecycle: ServiceInstanceApplicationLifecycle
+  ): void {
+    this.requireStateful().registerInstanceApplicationLifecycle(lifecycle);
+  }
+
+  recoverInstanceActivation(
+    envelope: ServiceInstanceActivationRecoveryEnvelope,
+    route: ServiceInstanceRouteFence
+  ): Promise<void> {
+    return this.requireStateful().recoverInstanceActivation(envelope, route);
+  }
+
+  recoverPendingInstanceActivation(
+    envelope: ServiceInstanceActivationRecoveryEnvelope,
+    pending: ServicePendingInstanceActivation
+  ): Promise<void> {
+    return this.requireStateful().recoverPendingInstanceActivation(envelope, pending);
+  }
+
+  completeRecoveredInstanceActivation(
+    target: ServiceInstanceActivationTarget,
+    route: ServiceInstanceRouteFence
+  ): Promise<ServiceInstanceRouteFence> {
+    return this.requireStateful().completeRecoveredInstanceActivation(target, route);
+  }
+
+  forgetInstanceIntent(
+    spotRid: string,
+    authorityOwnerGeneration: bigint,
+    storeVersion?: string
+  ): void {
+    this.requireStateful().forgetInstanceIntent(
+      spotRid,
+      authorityOwnerGeneration,
+      storeVersion
+    );
+  }
+
+  rememberSpotRoute(route: ServiceSpotRouteFence, storeVersion?: string): void {
+    this.requireStateful().rememberSpotRoute(route, storeVersion);
+  }
+
+  forgetSpotRoute(
+    spot: ServiceSpotRouteFence['spot'],
+    authorityOwnerGeneration: bigint,
+    storeVersion?: string
+  ): void {
+    this.requireStateful().forgetSpotRoute(spot, authorityOwnerGeneration, storeVersion);
   }
 
   requestInstanceSpot(
@@ -668,11 +816,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       securityIdentity: 'default',
       effectiveMaxMessageBytes: 4 * 1024 * 1024,
       applicationVersion: 0n,
-      protocolCapabilities: ['framework-service-v11'],
-      objectRole: 'none',
-      placementWeight: 100,
-      activeCapacityLimit: 10_000,
-      pendingCapacityLimit: 128,
+      protocolCapabilities: [
+        'framework-service-v11',
+        ...this.objectCapabilities
+      ],
+      objectRole: this.objectRole,
+      placementWeight: this.placementWeight,
+      activeCapacityLimit: this.activeCapacityLimit,
+      pendingCapacityLimit: this.pendingCapacityLimit,
       activeCapacityUsed: 0,
       pendingCapacityUsed: 0
     };
@@ -1236,6 +1387,8 @@ function decodeMultipartRecord(
     channelName,
     topic: null,
     applicationMetadata: null,
+    packetName: application.packetName,
+    contentType: application.contentType,
     kindData: null,
     terminalResult: 0,
     failureErrno: 0,
@@ -1271,11 +1424,20 @@ function decodeStatefulRecord(
     operationKind: stateful.operationKind,
     channelName: stateful.channelName ?? null,
     topic: stateful.topic ?? null,
-    applicationMetadata: null,
+    applicationMetadata: stateful.applicationMetadata ?? null,
+    ...(application === undefined
+      ? {}
+      : {
+          packetName: application.packetName,
+          contentType: application.contentType
+        }),
     kindData: stateful.kindData ?? null,
     terminalResult: 0,
     failureErrno: 0,
     parts: application === undefined ? [] : decodeMultipart(application.payload),
+    ...(stateful.onTerminalCompletion === undefined
+      ? {}
+      : { onTerminalCompletion: stateful.onTerminalCompletion }),
     reply(parts) {
       if (stateful.reply === undefined) return SubmitResult.InvalidState;
       return stateful.reply(
@@ -1391,7 +1553,7 @@ function decodeApplicationEnvelope(frame: Uint8Array) {
   ) {
     throw new Error('Unexpected M6A application payload.');
   }
-  return { payload: bytes.subarray(offset) };
+  return { packetName, contentType, payload: bytes.subarray(offset) };
 }
 
 function decodeMultipart(payload: Uint8Array): Message[] {
@@ -1429,4 +1591,11 @@ function requireRawReadyBatch(batch: ReadyBatch): RawReadyBatch {
 
 function stateCode(state: ServiceNodeDescriptor['state']): number {
   return ['preparing', 'serving', 'retiring', 'draining', 'stopped', 'error'].indexOf(state) + 1;
+}
+
+function requirePositivePlacementValue(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 0x7fff_ffff) {
+    throw new RangeError(`${name} must be an integer in 1..2147483647.`);
+  }
+  return value;
 }

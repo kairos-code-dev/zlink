@@ -2,9 +2,9 @@ import type {
   RoutingId,
   Type,
   ZLinkSpot,
-  ZLinkSpotCreateResult,
   ZLinkSpotInfo
 } from '../../contracts';
+import type { ZLinkLocalSpotCreateResult } from './spot-manager-internal-contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
@@ -18,12 +18,12 @@ export { ZLinkSpotActivation } from './spot-activation-state';
 
 interface PendingSpotActivation {
   readonly spotType: Type<ZLinkSpot>;
-  readonly ready: Promise<ZLinkSpotCreateResult>;
+  readonly ready: Promise<ZLinkLocalSpotCreateResult>;
 }
 
 export interface ZLinkSpotActivationOperation {
   readonly owner: boolean;
-  readonly ready: Promise<ZLinkSpotCreateResult>;
+  readonly ready: Promise<ZLinkLocalSpotCreateResult>;
 }
 
 export interface ZLinkSpotCloseOperation {
@@ -185,7 +185,7 @@ export class ZLinkSpotActivationRegistry {
     meshName: string,
     spotType: Type<ZLinkSpot>,
     spotRid: RoutingId,
-    create: () => Promise<ZLinkSpotCreateResult>
+    create: () => Promise<ZLinkLocalSpotCreateResult>
   ): ZLinkSpotActivationOperation {
     const key = spotActivationKey(meshName, spotRid);
     const closing = this.closing.get(key);

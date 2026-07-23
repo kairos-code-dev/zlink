@@ -37,10 +37,10 @@ import type {
   ZLinkSpotManager,
   ZLinkSpotOutbound,
   ZLinkSpotPublisherClient,
-  ZLinkSpotHandleResolver,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec
 } from './contracts';
+import type { ZLinkSpotHandleResolver } from './runtime/spots/spot-handle';
 import type { ZLinkBoundSessionFactory } from './runtime/streams/session-context';
 import type { ZLinkFrameworkRegistration } from './contracts/Configuration/Registration';
 import type {
@@ -188,6 +188,12 @@ export function createIntegrationSpotManager(
   const runtimeOptions = host.createSpotManagerOptions();
   const manager = new DefaultZLinkSpotManager({
     spotFactories: [...registration.spotFactories],
+    instanceSpotFactories: new Map(
+      [...registration.spotNodes].map(([meshName, spotNode]) => [
+        meshName,
+        new Map(Object.entries(spotNode.instanceSpotFactories ?? {}))
+      ])
+    ),
     spotTimerHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
     spotPacketHandlers: [...registration.spotNodes.values()]
@@ -205,7 +211,7 @@ export function createIntegrationSpotManager(
     workerRuntime: new ZLinkWorkerRuntime(registration.worker)
   });
   host.setSpotManager(manager);
-  return manager;
+  return host.createPublicSpotManager(manager);
 }
 
 export function createIntegrationSpotOutbound(runtime: ZLinkNestIntegrationRuntimeHost): ZLinkSpotOutbound {
@@ -217,7 +223,11 @@ export function createIntegrationSpotOutbound(runtime: ZLinkNestIntegrationRunti
     undefined,
     undefined,
     host.routeTransport,
-    runtimeOptions.spotRouterChannelIdForMesh
+    runtimeOptions.spotRouterChannelIdForMesh,
+    undefined,
+    undefined,
+    undefined,
+    host.spotAddressTransport
   );
 }
 

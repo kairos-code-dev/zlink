@@ -6,5 +6,4 @@ export {
   ZLinkSpotPeerState
 } from './MonitoringModels';
 export * from './SpotKind';
-export * from './SpotHandle';
 export * from './ZLinkSpot';

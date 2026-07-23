@@ -41,6 +41,7 @@ import {
   WRITE_SCRIPT
 } from './redis-scripts';
 import { AUTHORITY_HYBRID_SCRIPT } from './redis-authority-scripts';
+import { encodeAuthorityKey } from './authority-key-codec';
 import {
   kindActor,
   kindClientServer,
@@ -999,12 +1000,19 @@ export class ZLinkRedisLocationStore implements
     validateCapacityDelta(request.pendingCapacityDelta);
     validateAuthorityPayload(request.creatingPayload);
     requireText(request.intent.requestContentReference, 'creation content reference');
-    if (request.intent.requestSha256.byteLength !== 32 || request.intent.requestEncodedSize < 0n) {
+    if (
+      request.intent.requestSha256.byteLength !== 32
+      || request.intent.requestEncodedSize < 0n
+      || request.intent.requestEncodedSize > 1024n * 1024n
+    ) {
       throw new TypeError('Object creation content receipt is invalid.');
     }
     const reservationId = randomUUID();
     const raw = await this.authorityCall('reserve', {
-      key: `${request.key.kind}:${requireText(request.key.globalId, 'object global ID')}`,
+      key: encodeAuthorityKey(
+        request.key.kind,
+        requireText(request.key.globalId, 'object global ID')
+      ),
       objectKind: request.key.kind,
       stableType: requireText(request.intent.stableType, 'stable type'),
       placementProfile: request.intent.placementProfile ?? '',
@@ -1029,7 +1037,10 @@ export class ZLinkRedisLocationStore implements
   ): Promise<ZLinkObjectCommitResult> {
     validateAuthorityPayload(request.readyPayload);
     const raw = await this.authorityCall('commit', {
-      key: `${request.key.kind}:${requireText(request.key.globalId, 'object global ID')}`,
+      key: encodeAuthorityKey(
+        request.key.kind,
+        requireText(request.key.globalId, 'object global ID')
+      ),
       reservationId: request.reservationId,
       expectedStoreVersion: request.expectedStoreVersion,
       target: creationTargetJson(request.target),
@@ -1044,7 +1055,10 @@ export class ZLinkRedisLocationStore implements
     signal?: AbortSignal
   ): Promise<ZLinkObjectAbortResult> {
     return await this.authorityCall('abort', {
-      key: `${request.key.kind}:${requireText(request.key.globalId, 'object global ID')}`,
+      key: encodeAuthorityKey(
+        request.key.kind,
+        requireText(request.key.globalId, 'object global ID')
+      ),
       reservationId: request.reservationId,
       expectedStoreVersion: request.expectedStoreVersion,
       target: creationTargetJson(request.target)
@@ -1701,6 +1715,12 @@ interface AuthorityJson {
     readonly descriptorLifecycleGeneration: string;
     readonly capacityDelta: number;
   };
+  readonly pendingCreation?: {
+    readonly reservationId: string;
+    readonly requestContentReference: string;
+    readonly requestSha256: string;
+    readonly requestEncodedSize: string;
+  };
   readonly storeNowMs?: number;
 }
 
@@ -1712,6 +1732,37 @@ function authorityRead(raw: unknown): ZLinkAuthorityReadResult {
 }
 
 function authoritySnapshot(value: AuthorityJson, storeNowMs: number): ZLinkAuthoritySnapshot {
+  const pendingCreation = value.pendingCreation === undefined
+    ? undefined
+    : {
+        reservationId: requireText(
+          value.pendingCreation.reservationId,
+          'creation reservation ID'
+        ),
+        requestContentReference: requireText(
+          value.pendingCreation.requestContentReference,
+          'creation content reference'
+        ),
+        requestSha256: Buffer.from(value.pendingCreation.requestSha256, 'base64'),
+        requestEncodedSize: BigInt(value.pendingCreation.requestEncodedSize)
+      };
+  if (
+    value.allocation.state === 'pending'
+      ? pendingCreation === undefined
+      : pendingCreation !== undefined
+  ) {
+    throw new Error('Redis authority creation projection does not match its allocation state.');
+  }
+  if (
+    pendingCreation !== undefined
+    && (
+      pendingCreation.requestSha256.byteLength !== 32
+      || pendingCreation.requestEncodedSize < 0n
+      || pendingCreation.requestEncodedSize > 1024n * 1024n
+    )
+  ) {
+    throw new Error('Redis authority creation projection is invalid.');
+  }
   return {
     kind: 'snapshot',
     storeVersion: { value: value.storeVersion } as ZLinkAuthorityStoreVersion,
@@ -1728,6 +1779,7 @@ function authoritySnapshot(value: AuthorityJson, storeNowMs: number): ZLinkAutho
       },
       descriptorLifecycleGeneration: BigInt(value.allocation.descriptorLifecycleGeneration)
     },
+    ...(pendingCreation === undefined ? {} : { pendingCreation }),
     storeNow: fromUnixMs(storeNowMs)
   };
 }

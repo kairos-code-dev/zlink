@@ -161,10 +161,13 @@ export interface ReceiveRecord {
   readonly channelName: string | null;
   readonly topic: string | null;
   readonly applicationMetadata: Buffer | null;
+  readonly packetName?: string;
+  readonly contentType?: string;
   readonly kindData: ReceiveKindData | null;
   readonly terminalResult: number;
   readonly failureErrno: number;
   readonly parts: Message[];
+  readonly onTerminalCompletion?: () => void | Promise<void>;
   reply(parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
   replyActorJoin(
     joinResult: number,

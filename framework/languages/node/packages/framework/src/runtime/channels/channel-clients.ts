@@ -8,10 +8,10 @@ import type {
   ZLinkRequestCall,
   ZLinkRouteClient,
   ZLinkSendCall,
-  SpotHandle,
   ZLinkSpotPublisherClient,
   ZLinkSubmitResult
 } from '../../contracts';
+import type { SpotHandle } from '../spots/spot-handle';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration

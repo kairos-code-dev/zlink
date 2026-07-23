@@ -57,6 +57,7 @@ interface ZLinkSpotDirectEnvelope {
   readonly channelName: string;
   readonly packetName?: string;
   readonly payload: unknown;
+  readonly metadata: Readonly<Record<string, string>>;
 }
 
 export class ZLinkSpotRoutePacketDispatch {
@@ -234,7 +235,7 @@ export class ZLinkSpotRoutePacketDispatch {
           response = await handler.handle(spot, envelope.payload, {
             channelName: envelope.channelName,
             packetName: envelope.packetName,
-            metadata: zlinkMessageMetadata({})
+            metadata: zlinkMessageMetadata(envelope.metadata)
           });
         }
       });
@@ -283,6 +284,7 @@ function decodeSpotDirectEnvelope(parts: readonly BindingMessage[]): ZLinkSpotDi
       readonly channelName?: unknown;
       readonly packetName?: unknown;
       readonly payload?: unknown;
+      readonly metadata?: unknown;
     };
     if (
       decoded.marker !== SPOT_DIRECT_ENVELOPE ||
@@ -291,11 +293,20 @@ function decodeSpotDirectEnvelope(parts: readonly BindingMessage[]): ZLinkSpotDi
     ) {
       return undefined;
     }
+    const metadata = decoded.metadata ?? {};
+    if (
+      typeof metadata !== 'object'
+      || Array.isArray(metadata)
+      || !Object.values(metadata).every(value => typeof value === 'string')
+    ) {
+      return undefined;
+    }
     return {
       kind: decoded.kind,
       channelName: decoded.channelName,
       packetName: typeof decoded.packetName === 'string' ? decoded.packetName : undefined,
-      payload: decoded.payload
+      payload: decoded.payload,
+      metadata: metadata as Readonly<Record<string, string>>
     };
   } catch {
     return undefined;

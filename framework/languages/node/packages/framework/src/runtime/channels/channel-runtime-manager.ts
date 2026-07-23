@@ -276,9 +276,16 @@ export class ZLinkChannelRuntimeManager {
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void> {
-    return this.spotRoutes.routeSendToSpot(spotRouteTarget, packetName, message, signal);
+    return this.spotRoutes.routeSendToSpot(
+      spotRouteTarget,
+      packetName,
+      message,
+      signal,
+      metadata
+    );
   }
 
   async routeRequestToSpot<TReply>(
@@ -315,9 +322,17 @@ export class ZLinkChannelRuntimeManager {
     spotRouteTarget: ZLinkSpotRouteTarget,
     packetName: string | undefined,
     message: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    metadata?: ReadonlyMap<string, string>
   ): Promise<void> {
-    return this.spotRoutes.routeSendFromSpotToSpot(sourceSpot, spotRouteTarget, packetName, message, signal);
+    return this.spotRoutes.routeSendFromSpotToSpot(
+      sourceSpot,
+      spotRouteTarget,
+      packetName,
+      message,
+      signal,
+      metadata
+    );
   }
 
   async routeRequestRawFromSpotToSpot(

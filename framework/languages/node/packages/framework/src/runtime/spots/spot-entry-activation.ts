@@ -14,6 +14,7 @@ import type {
   ZLinkSpot,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import { ZLinkSpotCloseReason } from '../../contracts';
 import type {
   ZLinkEntrySpotActorRequestHandlerRegistration,
   ZLinkEntrySpotActorSendHandlerRegistration,
@@ -54,6 +55,7 @@ import {
 } from './spot-outbound';
 import { createProviderInstance } from './spot-provider';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import { invokeSpotClosing } from './spot-closing';
 import {
   addEntrySpotTimerRegistrations,
   ZLinkSpotTimerRegistry
@@ -271,7 +273,10 @@ export class ZLinkEntrySpotActivation {
       }
     };
     if (this.initialized) {
-      await cleanup(() => this.serial.execute(() => this.entrySpot.onClosing?.()));
+      await cleanup(() => this.serial.execute(() => invokeSpotClosing(
+        this.entrySpot.onClosing?.bind(this.entrySpot),
+        ZLinkSpotCloseReason.HostShutdown
+      )));
     }
     await cleanup(() => this.actorDispatch?.dispose());
     await cleanup(() => this.timers.dispose());

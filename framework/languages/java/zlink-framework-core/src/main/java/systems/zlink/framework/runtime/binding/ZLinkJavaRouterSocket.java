@@ -65,6 +65,10 @@ record ZLinkJavaRouterSocket(RouterSocket socket)
         ZLinkJavaSocketSupport.submitReply(socket.reply(routingId, requestSeq), parts);
     }
 
+    @Override public void disconnectPeer(RoutingId routingId) {
+        socket.disconnectRid(routingId);
+    }
+
     @Override public void close() {
         notifyAdmissionShutdown();
         socket.close();

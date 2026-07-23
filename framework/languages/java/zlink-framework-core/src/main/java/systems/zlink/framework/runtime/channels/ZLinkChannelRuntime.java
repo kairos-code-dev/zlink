@@ -129,6 +129,7 @@ public final class ZLinkChannelRuntime
     private final ZLinkBackendAdapterProvider backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final ZLinkChannelBackendAdapter channelBackend;
+    private final ZLinkMonitoringBackendAdapter clientServerMonitoringBackend;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private final ZLinkChannelDispatchReporter dispatchReporter;
     private final ZLinkChannelMessageDispatcher messageDispatcher;
@@ -352,6 +353,11 @@ public final class ZLinkChannelRuntime
             this::resolveSpotRouteBridgeForDispatch);
         this.context = Objects.requireNonNull(context, "context");
         this.ownsContext = ownsContext;
+        this.clientServerMonitoringBackend =
+            tryCreateClientServerMonitoringBackend(
+                backendFactory,
+                adapterOptions,
+                registration.channels());
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         ZLinkChannelHandlerCatalog channelHandlers =
@@ -364,13 +370,15 @@ public final class ZLinkChannelRuntime
             channelHandlers,
             this::startRequestLoop,
             this::startRouteLoop,
-            this::startSubscribeLoop);
+            this::startSubscribeLoop,
+            clientServerMonitoringBackend != null);
         for (ChannelRegistration channel : registration.channels()) {
             sockets.registerChannel(channel);
             configurator.configure(channel);
         }
-        if (backendFactory == null) {
-            sockets.enableLegacyClientFallback();
+        if (backendFactory == null
+            || clientServerMonitoringBackend == null) {
+            sockets.enableUnmanagedBackendClientMode();
             for (ChannelRegistration channel : registration.channels()) {
                 ZLinkBackendDealerSocket client =
                     sockets.client(channel.name());
@@ -383,6 +391,12 @@ public final class ZLinkChannelRuntime
                 "runtime-" + java.util.UUID.randomUUID());
             attachManualClientServerAdmissions(
                 registration.channels());
+            timeoutExecutor.scheduleAtFixedRate(
+                () -> sockets.tickClientServerLiveness(
+                    System.nanoTime(), defaultRequestTimeout),
+                100,
+                100,
+                TimeUnit.MILLISECONDS);
         }
         installClientServerLocationRuntime(handlerFactory);
     }
@@ -439,6 +453,25 @@ public final class ZLinkChannelRuntime
             });
     }
 
+    private static ZLinkMonitoringBackendAdapter
+        tryCreateClientServerMonitoringBackend(
+            ZLinkBackendAdapterProvider backendFactory,
+            ZLinkBackendAdapterOptions adapterOptions,
+            List<ChannelRegistration> registrations) {
+        if (backendFactory == null
+            || registrations.stream().noneMatch(
+                channel -> channel.kind() == ChannelKind.CLIENT_SERVER
+                    && channel.clientEnabled())) {
+            return null;
+        }
+        try {
+            return backendFactory.createMonitoringAdapter(
+                adapterOptions);
+        } catch (UnsupportedOperationException unavailable) {
+            return null;
+        }
+    }
+
     private void attachManualClientServerAdmissions(
         List<ChannelRegistration> registrations) {
         for (ChannelRegistration registration : registrations) {
@@ -468,8 +501,9 @@ public final class ZLinkChannelRuntime
 
                     @Override
                     public void disconnect(String endpoint) {
-                        sockets.removeClientServerConnection(
-                            manualConnectionId(channelName, endpoint));
+                        String connectionId =
+                            manualConnectionId(channelName, endpoint);
+                        sockets.removeClientServerConnection(connectionId);
                     }
 
                     @Override
@@ -503,24 +537,57 @@ public final class ZLinkChannelRuntime
         try {
             sockets.addClientServerConnection(
                 connectionId, pending, dealer);
-            dealer.connect(endpoint);
-            byte[] hello = ZLinkClientServerServiceWire.encodeHello(
-                new ZLinkClientServerServiceWire.Hello(
-                    channelName, "default", Integer.MAX_VALUE));
-            try (Message message = Message.from(hello)) {
-                boolean submitted = dealer.request(
-                    List.of(message),
-                    reply -> completeManualClientServerAdmission(
-                        connectionId, channelName, endpoint, reply),
-                    SendFlags.DONT_WAIT,
-                    defaultRequestTimeout(channelName));
-                if (!submitted) {
-                    sockets.removeClientServerConnection(connectionId);
+            ZLinkBackendSocketMonitor monitor =
+                clientServerMonitoringBackend.openSocketMonitor(dealer);
+            sockets.registerClientServerMonitor(connectionId, monitor);
+            monitor.onEvent(event -> {
+                if (isConnectionReady(event.event())) {
+                    ZLinkChannelSocketRegistry.AdmissionFence fence =
+                        sockets.clientServerTransportReady(
+                            connectionId, dealer);
+                    if (fence != null) {
+                        requestManualClientServerAdmission(
+                            connectionId,
+                            channelName,
+                            endpoint,
+                            dealer,
+                            fence);
+                    }
+                } else if (isConnectionTerminated(event.event())) {
+                    sockets.clientServerTransportTerminated(
+                        connectionId, dealer);
                 }
-            }
+            });
+            dealer.connect(endpoint);
         } catch (RuntimeException failure) {
             sockets.removeClientServerConnection(connectionId);
             throw failure;
+        }
+    }
+
+    private void requestManualClientServerAdmission(
+        String connectionId,
+        String channelName,
+        String endpoint,
+        ZLinkBackendDealerSocket dealer,
+        ZLinkChannelSocketRegistry.AdmissionFence fence) {
+        byte[] hello = ZLinkClientServerServiceWire.encodeHello(
+            new ZLinkClientServerServiceWire.Hello(
+                channelName, "default", Integer.MAX_VALUE));
+        try (Message message = Message.from(hello)) {
+            boolean submitted = dealer.request(
+                List.of(message),
+                reply -> completeManualClientServerAdmission(
+                    connectionId,
+                    channelName,
+                    endpoint,
+                    fence,
+                    reply),
+                SendFlags.DONT_WAIT,
+                defaultRequestTimeout(channelName));
+            if (!submitted) {
+                sockets.reconnectClientServerConnection(connectionId);
+            }
         }
     }
 
@@ -534,11 +601,12 @@ public final class ZLinkChannelRuntime
         String connectionId,
         String channelName,
         String endpoint,
+        ZLinkChannelSocketRegistry.AdmissionFence fence,
         ZLinkBackendReceived reply) {
         try (reply) {
             if (reply.result() != ZLinkBackendRequestResult.OK
                 || reply.parts().size() != 1) {
-                sockets.removeClientServerConnection(connectionId);
+                sockets.reconnectClientServerConnection(connectionId);
                 return;
             }
             ZLinkClientServerServiceWire.Control control =
@@ -547,7 +615,7 @@ public final class ZLinkChannelRuntime
             if (!(control instanceof ZLinkClientServerServiceWire.Admit admit)
                 || !admit.admission().channelName().equals(channelName)
                 || !admit.admission().securityIdentity().equals("default")) {
-                sockets.removeClientServerConnection(connectionId);
+                sockets.reconnectClientServerConnection(connectionId);
                 return;
             }
             ZLinkClientServerServiceWire.Admission value =
@@ -566,10 +634,25 @@ public final class ZLinkChannelRuntime
                     1,
                     java.time.Instant.EPOCH);
             sockets.admitClientServerConnection(
-                connectionId, descriptor);
+                connectionId, descriptor, fence);
         } catch (RuntimeException failure) {
-            sockets.removeClientServerConnection(connectionId);
+            sockets.reconnectClientServerConnection(connectionId);
         }
+    }
+
+    private static boolean isConnectionReady(String event) {
+        return "CONNECTION_READY".equals(event)
+            || "ConnectionReady".equals(event);
+    }
+
+    private static boolean isConnectionTerminated(String event) {
+        return "DISCONNECTED".equals(event)
+            || "CLOSED".equals(event)
+            || "HANDSHAKE_FAILED_NO_DETAIL".equals(event)
+            || "HANDSHAKE_FAILED_PROTOCOL".equals(event)
+            || "HANDSHAKE_FAILED_AUTH".equals(event)
+            || "Disconnected".equals(event)
+            || "Closed".equals(event);
     }
 
     @Override
@@ -593,7 +676,7 @@ public final class ZLinkChannelRuntime
                 encoded.payload(),
                 Optional.of(encoded.packetName()));
         }
-        if (sockets.client(channelName) != null) {
+        if (sockets.hasClientRegistration(channelName)) {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
                 "client/server channel has no admitted server: " + channelName);
@@ -625,7 +708,7 @@ public final class ZLinkChannelRuntime
                 Optional.of(encoded.packetName()),
                 defaultRequestTimeout(channelName));
         }
-        if (sockets.client(channelName) != null) {
+        if (sockets.hasClientRegistration(channelName)) {
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
                 "client/server channel has no admitted server: " + channelName);

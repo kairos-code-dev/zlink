@@ -1257,6 +1257,20 @@ configuration dependency가 owner token supplier와 start·drain·stop lifecycle
 있으므로 `V11-M6A-JVM`을 완료로 판정하지 않는다. Core·bindings와 Sample·E2E source는 변경하거나
 실행하지 않았다.
 
+JVM ClientServer connection completion checkpoint(2026-07-24)에서 manual endpoint와 automatic
+descriptor의 physical lifecycle을 monitor event와 admission attempt token으로 fence했다. 같은
+Server RID·lifecycle을 가리키는 두 source는 ref/alias로 실제 DEALER와 monitor 하나만 공유하며 어느
+source를 먼저 제거해도 남은 source가 ready connection을 유지하고 마지막 alias에서만 resource를
+닫는다. Client와 Server는 application traffic과 무관하게 5초 probe·15초 deadline을 적용한다.
+Outstanding probe가 있으면 같은 ID를 재전송하고 current physical connection의 exact ACK만 deadline을
+갱신한다. ROUTER의 peer deadline은 raw `disconnectRid`로 physical connection을 닫으며 send
+backpressure는 deadline 전 disconnect 증거로 사용하지 않는다. Server-pushed higher-revision update는
+immutable identity가 일치할 때만 적용하고 malformed·unsolicited control은 reconnect 뒤 새 admission을
+요구한다. Production shared client fallback도 제거했다. JVM focused ClientServer 11/11, Java core
+test·assemble과 Kotlin main·test compile, `git diff --check`가 통과했다. Core·bindings와 Sample·E2E
+source를 변경하거나 실행하지 않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로
+`V11-M6A-JVM` 상태는 계속 `수정 진행`으로 유지한다.
+
 C++ ClientServer runtime checkpoint(2026-07-24)에서 exact descriptor·key·선택
 `client_server_location_store_t`와 공식 Redis capability를 추가하고, generic ClientServer peer
 publication·list를 dedicated Store runtime으로 교체했다. Discovery Server는 raw ROUTER가 bind한 실제

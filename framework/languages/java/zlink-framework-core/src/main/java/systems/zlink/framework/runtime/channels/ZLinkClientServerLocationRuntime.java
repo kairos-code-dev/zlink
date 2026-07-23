@@ -29,6 +29,8 @@ import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
@@ -39,9 +41,11 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private final ZLinkClientServerLocationStore store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
     private final ZLinkChannelBackendAdapter backend;
+    private final ZLinkBackendAdapterProvider backendFactory;
     private final ZLinkBackendContext context;
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final ZLinkChannelSocketRegistry sockets;
+    private ZLinkMonitoringBackendAdapter monitoring;
     private final Duration pollingInterval;
     private final int pageSize;
     private final Map<String, PublishedServer> published = new LinkedHashMap<>();
@@ -66,7 +70,9 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         int pageSize) {
         this.store = Objects.requireNonNull(store, "store");
         this.owner = Objects.requireNonNull(owner, "owner");
-        this.backend = Objects.requireNonNull(backendFactory, "backendFactory")
+        this.backendFactory = Objects.requireNonNull(
+            backendFactory, "backendFactory");
+        this.backend = this.backendFactory
             .createChannelAdapter(adapterOptions);
         this.context = Objects.requireNonNull(context, "context");
         this.adapterOptions = Objects.requireNonNull(
@@ -84,6 +90,17 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 return CompletableFuture.completedFuture(null);
             }
             running = true;
+            if (surfaces.stream().anyMatch(surface ->
+                    surface.type()
+                        == systems.zlink.framework.locations
+                            .ZLinkLocationAutoConnectType.CLIENT_SERVER
+                    && surface.role()
+                        == systems.zlink.framework.locations
+                            .ZLinkLocationRole.DEALER)
+                && monitoring == null) {
+                monitoring = backendFactory.createMonitoringAdapter(
+                    adapterOptions);
+            }
             initializePublishedServers(surfaces);
         }
         return tick(surfaces).whenComplete((ignored, failure) -> {
@@ -294,12 +311,22 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 openConnection(entry.getKey(), entry.getValue());
             } else if (entry.getValue().descriptorRevision()
                 > current.expected().descriptorRevision()) {
+                if (!sockets.ownsClientServerPhysical(
+                        entry.getKey(), current.dealer())) {
+                    connections.put(
+                        entry.getKey(),
+                        current.withExpected(entry.getValue(), true));
+                    continue;
+                }
                 Connection pending = current.withExpected(
                     entry.getValue(), false);
                 connections.put(entry.getKey(), pending);
                 sockets.updateClientServerConnection(
                     entry.getKey(), entry.getValue(), false);
-                requestAdmission(pending);
+                ZLinkChannelSocketRegistry.AdmissionFence fence =
+                    sockets.clientServerTransportReady(
+                        entry.getKey(), current.dealer());
+                requestAdmission(pending, fence);
             }
         }
 
@@ -331,8 +358,32 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             sockets.addClientServerConnection(
                 connectionId, descriptor, dealer);
             connections.put(connectionId, connection);
+            ZLinkBackendSocketMonitor monitor =
+                Objects.requireNonNull(
+                    monitoring, "monitoring")
+                    .openSocketMonitor(dealer);
+            sockets.registerClientServerMonitor(connectionId, monitor);
+            monitor.onEvent(event -> {
+                if (isConnectionReady(event.event())) {
+                    ZLinkChannelSocketRegistry.AdmissionFence fence =
+                        sockets.clientServerTransportReady(
+                            connectionId, dealer);
+                    requestAdmission(connection, fence);
+                } else if (isConnectionTerminated(event.event())) {
+                    sockets.clientServerTransportTerminated(
+                        connectionId, dealer);
+                    synchronized (this) {
+                        Connection current = connections.get(connectionId);
+                        if (current != null) {
+                            connections.put(
+                                connectionId,
+                                current.withExpected(
+                                    current.expected(), false));
+                        }
+                    }
+                }
+            });
             dealer.connect(descriptor.endpoint());
-            requestAdmission(connection);
         } catch (RuntimeException failure) {
             connections.remove(connectionId);
             sockets.removeClientServerConnection(connectionId);
@@ -340,7 +391,12 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         }
     }
 
-    private void requestAdmission(Connection connection) {
+    private void requestAdmission(
+        Connection connection,
+        ZLinkChannelSocketRegistry.AdmissionFence fence) {
+        if (fence == null) {
+            return;
+        }
         byte[] hello = ZLinkClientServerServiceWire.encodeHello(
             new ZLinkClientServerServiceWire.Hello(
                 connection.expected().channelName(),
@@ -350,7 +406,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             boolean submitted = connection.dealer().request(
                 List.of(message),
                 reply -> completeAdmission(
-                    connection.connectionId(), reply),
+                    connection.connectionId(), fence, reply),
                 SendFlags.DONT_WAIT,
                 adapterOptions.defaultRequestTimeout());
             if (!submitted) {
@@ -361,6 +417,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
 
     private void completeAdmission(
         String connectionId,
+        ZLinkChannelSocketRegistry.AdmissionFence fence,
         systems.zlink.framework.runtime.backend.ZLinkBackendReceived reply) {
         try (reply) {
             ZLinkClientServerServerDescriptor expected;
@@ -399,8 +456,10 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 }
                 connections.put(
                     connectionId, current.withExpected(expected, true));
-                sockets.admitClientServerConnection(
-                    connectionId, expected);
+                if (!sockets.admitClientServerConnection(
+                        connectionId, expected, fence)) {
+                    return;
+                }
                 for (Connection other :
                     List.copyOf(connections.values())) {
                     if (!other.connectionId().equals(connectionId)
@@ -423,10 +482,6 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         Connection current = connections.remove(connectionId);
         if (current == null) {
             return;
-        }
-        try {
-            current.dealer().disconnect(current.expected().endpoint());
-        } catch (RuntimeException ignored) {
         }
         sockets.removeClientServerConnection(connectionId);
     }
@@ -503,6 +558,21 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             }
         }
         return result;
+    }
+
+    private static boolean isConnectionReady(String event) {
+        return "CONNECTION_READY".equals(event)
+            || "ConnectionReady".equals(event);
+    }
+
+    private static boolean isConnectionTerminated(String event) {
+        return "DISCONNECTED".equals(event)
+            || "CLOSED".equals(event)
+            || "HANDSHAKE_FAILED_NO_DETAIL".equals(event)
+            || "HANDSHAKE_FAILED_PROTOCOL".equals(event)
+            || "HANDSHAKE_FAILED_AUTH".equals(event)
+            || "Disconnected".equals(event)
+            || "Closed".equals(event);
     }
 
     static String connectionId(

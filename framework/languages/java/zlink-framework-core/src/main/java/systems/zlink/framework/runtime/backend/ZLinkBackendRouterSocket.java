@@ -39,4 +39,9 @@ public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
         Duration timeout);
 
     void reply(RoutingId routingId, long requestSeq, List<Message> parts);
+
+    default void disconnectPeer(RoutingId routingId) {
+        throw new UnsupportedOperationException(
+            "router peer disconnect is not available");
+    }
 }

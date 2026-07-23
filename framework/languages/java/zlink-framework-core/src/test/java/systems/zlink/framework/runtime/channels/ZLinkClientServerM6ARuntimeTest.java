@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -13,10 +14,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
@@ -31,6 +36,10 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
@@ -54,6 +63,106 @@ final class ZLinkClientServerM6ARuntimeTest {
             rid.toBytes(), decoded.admission().serverRid().toBytes());
         assertEquals(7, decoded.admission().lifecycleGeneration());
         assertEquals(11, decoded.admission().descriptorRevision());
+    }
+
+    @Test
+    void serviceWireRoundTripsExactLivenessProbeAndAck() {
+        ZLinkClientServerServiceWire.LivenessProbe probe =
+            (ZLinkClientServerServiceWire.LivenessProbe)
+                ZLinkClientServerServiceWire.decode(
+                    ZLinkClientServerServiceWire
+                        .encodeLivenessProbe(91));
+        ZLinkClientServerServiceWire.LivenessAck ack =
+            (ZLinkClientServerServiceWire.LivenessAck)
+                ZLinkClientServerServiceWire.decode(
+                    ZLinkClientServerServiceWire
+                        .encodeLivenessAck(91));
+        assertEquals(91, probe.probeId());
+        assertEquals(91, ack.probeId());
+    }
+
+    @Test
+    void reconnectAdmissionFenceRejectsPreviousPhysicalPipeReply() {
+        ZLinkChannelSocketRegistry sockets =
+            new ZLinkChannelSocketRegistry();
+        ControlledDealer dealer = new ControlledDealer();
+        ZLinkClientServerServerDescriptor value =
+            descriptor(
+                "orders", RoutingId.from("server"), 7, 1,
+                "tcp://127.0.0.1:7001", 100);
+        sockets.addClientServerConnection("manual", value, dealer);
+        ZLinkChannelSocketRegistry.AdmissionFence oldFence =
+            sockets.clientServerTransportReady("manual");
+        sockets.clientServerTransportTerminated("manual");
+        ZLinkChannelSocketRegistry.AdmissionFence currentFence =
+            sockets.clientServerTransportReady("manual");
+
+        assertFalse(sockets.admitClientServerConnection(
+            "manual", value, oldFence));
+        assertNull(sockets.clientForOutbound("orders"));
+        assertTrue(sockets.admitClientServerConnection(
+            "manual", value, currentFence));
+        assertSame(dealer, sockets.clientForOutbound("orders"));
+    }
+
+    @Test
+    void clientLivenessAndPushedUpdateAreConnectionFenced() {
+        ZLinkChannelSocketRegistry sockets =
+            new ZLinkChannelSocketRegistry();
+        ControlledDealer dealer = new ControlledDealer();
+        ZLinkClientServerServerDescriptor value =
+            descriptor(
+                "orders", RoutingId.from("server"), 7, 1,
+                "tcp://127.0.0.1:7001", 100);
+        sockets.addClientServerConnection("automatic", value, dealer);
+        ZLinkChannelSocketRegistry.AdmissionFence fence =
+            sockets.clientServerTransportReady("automatic");
+        assertTrue(sockets.admitClientServerConnection(
+            "automatic", value, fence));
+
+        long base = System.nanoTime();
+        sockets.tickClientServerLiveness(
+            base + TimeUnit.SECONDS.toNanos(6),
+            Duration.ofSeconds(1));
+        ZLinkClientServerServiceWire.LivenessProbe probe =
+            (ZLinkClientServerServiceWire.LivenessProbe)
+                ZLinkClientServerServiceWire.decode(
+                    dealer.requests.get(0));
+        dealer.reply(0, ZLinkClientServerServiceWire.encodeLivenessAck(
+            probe.probeId() + 1));
+        sockets.tickClientServerLiveness(
+            base + TimeUnit.SECONDS.toNanos(16),
+            Duration.ofSeconds(1));
+        assertNull(sockets.clientForOutbound("orders"));
+
+        ZLinkChannelSocketRegistry.AdmissionFence nextFence =
+            sockets.clientServerTransportReady("automatic");
+        assertTrue(sockets.admitClientServerConnection(
+            "automatic", value, nextFence));
+        ZLinkClientServerServerDescriptor updated =
+            descriptor(
+                "orders", value.serverRid(), 7, 2,
+                value.endpoint(), 25);
+        dealer.inbound.add(received(
+            ZLinkClientServerServiceWire.encodeUpdate(
+                updated, Integer.MAX_VALUE)));
+        sockets.tickClientServerLiveness(
+            System.nanoTime(), Duration.ofSeconds(1));
+        assertEquals(
+            25,
+            sockets.clientServerConnectionDescriptor(
+                "automatic").weight());
+
+        ZLinkClientServerServerDescriptor conflict =
+            descriptor(
+                "orders", value.serverRid(), 7, 2,
+                value.endpoint(), 50);
+        dealer.inbound.add(received(
+            ZLinkClientServerServiceWire.encodeUpdate(
+                conflict, Integer.MAX_VALUE)));
+        sockets.tickClientServerLiveness(
+            System.nanoTime(), Duration.ofSeconds(1));
+        assertNull(sockets.clientForOutbound("orders"));
     }
 
     @Test
@@ -144,6 +253,48 @@ final class ZLinkClientServerM6ARuntimeTest {
     }
 
     @Test
+    void manualAndAutomaticAliasOneTargetThenSourceRemovalKeepsOtherReady() {
+        ZLinkChannelSocketRegistry sockets =
+            new ZLinkChannelSocketRegistry();
+        ZLinkBackendDealerSocket automatic = dealer("automatic");
+        ZLinkBackendDealerSocket manual = dealer("manual");
+        ZLinkClientServerServerDescriptor value =
+            descriptor(
+                "orders", RoutingId.from("server"), 7, 1,
+                "tcp://127.0.0.1:7001", 100);
+        sockets.addClientServerConnection(
+            "z-automatic", value, automatic);
+        sockets.addClientServerConnection(
+            "a-manual", value, manual);
+        sockets.admitClientServerConnection("z-automatic", value);
+        sockets.admitClientServerConnection("a-manual", value);
+
+        assertEquals(1, sockets.clientServerPhysicalConnectionCount());
+        assertSame(automatic, sockets.clientForOutbound("orders"));
+        sockets.removeClientServerConnection("a-manual");
+        assertSame(automatic, sockets.clientForOutbound("orders"));
+        assertEquals(1, sockets.clientServerPhysicalConnectionCount());
+
+        ZLinkChannelSocketRegistry reverse =
+            new ZLinkChannelSocketRegistry();
+        ZLinkBackendDealerSocket reverseManual = dealer("manual-first");
+        ZLinkBackendDealerSocket reverseAutomatic =
+            dealer("automatic-second");
+        reverse.addClientServerConnection(
+            "a-manual", value, reverseManual);
+        reverse.addClientServerConnection(
+            "z-automatic", value, reverseAutomatic);
+        reverse.admitClientServerConnection("a-manual", value);
+        reverse.admitClientServerConnection("z-automatic", value);
+
+        assertEquals(1, reverse.clientServerPhysicalConnectionCount());
+        assertSame(reverseManual, reverse.clientForOutbound("orders"));
+        reverse.removeClientServerConnection("a-manual");
+        assertSame(reverseManual, reverse.clientForOutbound("orders"));
+        assertEquals(1, reverse.clientServerPhysicalConnectionCount());
+    }
+
+    @Test
     void reservedHelloIsConsumedBeforeApplicationDispatch() {
         ZLinkChannelSocketRegistry sockets =
             new ZLinkChannelSocketRegistry();
@@ -184,6 +335,64 @@ final class ZLinkClientServerM6ARuntimeTest {
     }
 
     @Test
+    void serverLivenessFencesAckByRoutingIdAndDisconnectsTimedOutPeer() {
+        ZLinkChannelSocketRegistry sockets =
+            new ZLinkChannelSocketRegistry();
+        ZLinkClientServerServerDescriptor value =
+            descriptor(
+                "orders", RoutingId.from("server"), 5, 1,
+                "tcp://127.0.0.1:7001", 100);
+        sockets.setClientServerServerDescriptor("orders", value);
+        ControlledRouter router = new ControlledRouter();
+        RoutingId client = RoutingId.from("client-a");
+        Message hello = Message.from(
+            ZLinkClientServerServiceWire.encodeHello(
+                new ZLinkClientServerServiceWire.Hello(
+                    "orders", "default", 4096)));
+        ZLinkBackendReceived received = new ZLinkBackendReceived(
+            Optional.of(client),
+            Optional.empty(),
+            Optional.of(1L),
+            List.of(hello),
+            parts -> { });
+        assertTrue(sockets.tryHandleClientServerControl(
+            "orders", router, received));
+
+        long base = System.nanoTime();
+        sockets.tickClientServerLiveness(
+            base + TimeUnit.SECONDS.toNanos(6),
+            Duration.ofSeconds(1));
+        ZLinkClientServerServiceWire.LivenessProbe probe =
+            (ZLinkClientServerServiceWire.LivenessProbe)
+                ZLinkClientServerServiceWire.decode(
+                    router.sent.get(0));
+        router.acceptSend = false;
+        sockets.tickClientServerLiveness(
+            base + TimeUnit.SECONDS.toNanos(12),
+            Duration.ofSeconds(1));
+        ZLinkClientServerServiceWire.LivenessProbe retry =
+            (ZLinkClientServerServiceWire.LivenessProbe)
+                ZLinkClientServerServiceWire.decode(
+                    router.sent.get(1));
+        assertEquals(probe.probeId(), retry.probeId());
+        Message wrongAck = Message.from(
+            ZLinkClientServerServiceWire.encodeLivenessAck(
+                probe.probeId()));
+        sockets.tryHandleClientServerControl(
+            "orders",
+            router,
+            new ZLinkBackendReceived(
+                Optional.of(RoutingId.from("client-b")),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(wrongAck)));
+        sockets.tickClientServerLiveness(
+            base + TimeUnit.SECONDS.toNanos(16),
+            Duration.ofSeconds(1));
+        assertEquals(List.of(client), router.disconnected);
+    }
+
+    @Test
     void storeDiscoveredConnectionBecomesReadyOnlyAfterExactAdmission() {
         ZLinkClientServerServerDescriptor descriptor =
             descriptor(
@@ -214,6 +423,8 @@ final class ZLinkClientServerM6ARuntimeTest {
                 new Class<?>[] {ZLinkBackendAdapterProvider.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "createChannelAdapter" -> adapter;
+                    case "createMonitoringAdapter" ->
+                        immediateReadyMonitoringAdapter();
                     default -> throw new UnsupportedOperationException(
                         method.getName());
                 });
@@ -386,5 +597,162 @@ final class ZLinkClientServerM6ARuntimeTest {
                 default -> throw new UnsupportedOperationException(
                     method.getName());
             });
+    }
+
+    private static ZLinkMonitoringBackendAdapter
+        immediateReadyMonitoringAdapter() {
+        return socket -> (ZLinkBackendSocketMonitor)
+            Proxy.newProxyInstance(
+                ZLinkBackendSocketMonitor.class.getClassLoader(),
+                new Class<?>[] {ZLinkBackendSocketMonitor.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "name" -> "monitor";
+                    case "onEvent" -> {
+                        systems.zlink.framework.runtime.backend
+                            .ZLinkBackendSocketMonitorHandler handler =
+                                (systems.zlink.framework.runtime.backend
+                                    .ZLinkBackendSocketMonitorHandler)
+                                    arguments[0];
+                        handler.handle(new ZLinkBackendSocketMonitorEvent(
+                            "CONNECTION_READY",
+                            Optional.empty(),
+                            "",
+                            ""));
+                        yield null;
+                    }
+                    case "close" -> null;
+                    case "recv" -> null;
+                    default -> throw new UnsupportedOperationException(
+                        method.getName());
+                });
+    }
+
+    private static ZLinkBackendReceived received(byte[] frame) {
+        return new ZLinkBackendReceived(
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            List.of(Message.from(frame)));
+    }
+
+    private static final class ControlledDealer
+        implements ZLinkBackendDealerSocket {
+        private final Deque<ZLinkBackendReceived> inbound =
+            new ArrayDeque<>();
+        private final List<byte[]> requests = new ArrayList<>();
+        private final List<ZLinkBackendRequestCallback> callbacks =
+            new ArrayList<>();
+
+        @Override public String name() {
+            return "controlled";
+        }
+
+        @Override public void setChannelName(String channelName) {
+        }
+
+        @Override public void bind(String endpoint) {
+        }
+
+        @Override public void connect(String endpoint) {
+        }
+
+        @Override public void disconnect(String endpoint) {
+        }
+
+        @Override public boolean send(
+            List<Message> parts,
+            SendFlags flags) {
+            return true;
+        }
+
+        @Override public boolean request(
+            List<Message> parts,
+            ZLinkBackendRequestCallback callback,
+            SendFlags flags,
+            Duration timeout) {
+            requests.add(parts.get(0).toByteArray());
+            callbacks.add(callback);
+            return true;
+        }
+
+        @Override public ZLinkBackendReceived recv(
+            ZLinkBackendRecvMode mode) {
+            return inbound.pollFirst();
+        }
+
+        void reply(int index, byte[] frame) {
+            callbacks.get(index).handle(received(frame));
+        }
+
+        @Override public void close() {
+            while (!inbound.isEmpty()) {
+                inbound.removeFirst().close();
+            }
+        }
+    }
+
+    private static final class ControlledRouter
+        implements ZLinkBackendRouterSocket {
+        private final List<byte[]> sent = new ArrayList<>();
+        private final List<RoutingId> disconnected =
+            new ArrayList<>();
+        private boolean acceptSend = true;
+
+        @Override public String name() {
+            return "controlled-router";
+        }
+        @Override public void bind(String endpoint) {
+        }
+        @Override public void connect(String endpoint) {
+        }
+        @Override public void disconnect(String endpoint) {
+        }
+        @Override public void setChannelName(String channelName) {
+        }
+        @Override public void setRoutingId(RoutingId routingId) {
+        }
+        @Override public void setConnectRoutingId(RoutingId routingId) {
+        }
+        @Override public void setProbe(boolean enabled) {
+        }
+        @Override public long maxMessageSize() {
+            return 4096;
+        }
+        @Override public void setMaxMessageSize(long value) {
+        }
+        @Override public int peerWeight() {
+            return 100;
+        }
+        @Override public void setPeerWeight(int weight) {
+        }
+        @Override public ZLinkBackendReceived recv(
+            ZLinkBackendRecvMode mode) {
+            return null;
+        }
+        @Override public boolean send(
+            RoutingId routingId,
+            List<Message> parts,
+            SendFlags flags) {
+            sent.add(parts.get(0).toByteArray());
+            return acceptSend;
+        }
+        @Override public boolean request(
+            RoutingId routingId,
+            List<Message> parts,
+            ZLinkBackendRequestCallback callback,
+            SendFlags flags,
+            Duration timeout) {
+            return false;
+        }
+        @Override public void reply(
+            RoutingId routingId,
+            long requestSeq,
+            List<Message> parts) {
+        }
+        @Override public void disconnectPeer(RoutingId routingId) {
+            disconnected.add(routingId);
+        }
+        @Override public void close() {
+        }
     }
 }

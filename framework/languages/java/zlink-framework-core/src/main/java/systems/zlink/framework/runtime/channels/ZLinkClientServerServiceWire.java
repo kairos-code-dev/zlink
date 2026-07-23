@@ -23,6 +23,8 @@ final class ZLinkClientServerServiceWire {
     private static final int COMMAND_ADMIT = 2;
     private static final int COMMAND_REJECT = 3;
     private static final int COMMAND_UPDATE = 4;
+    private static final int COMMAND_LIVENESS_PROBE = 5;
+    private static final int COMMAND_LIVENESS_ACK = 6;
     private static final int MAX_DESCRIPTOR_BYTES = 1024 * 1024;
 
     private ZLinkClientServerServiceWire() {
@@ -46,6 +48,13 @@ final class ZLinkClientServerServiceWire {
             COMMAND_ADMIT, descriptor, normalizedEffectiveMaxMessageBytes);
     }
 
+    static byte[] encodeUpdate(
+        ZLinkClientServerServerDescriptor descriptor,
+        int normalizedEffectiveMaxMessageBytes) {
+        return encodeServerAdmission(
+            COMMAND_UPDATE, descriptor, normalizedEffectiveMaxMessageBytes);
+    }
+
     static byte[] encodeReject(int reason) {
         if (reason < 1 || reason > 12) {
             throw protocol("ClientServer reject reason must be in 1..12");
@@ -53,6 +62,14 @@ final class ZLinkClientServerServiceWire {
         Writer result = prefix(COMMAND_REJECT);
         result.u32(reason);
         return result.toByteArray();
+    }
+
+    static byte[] encodeLivenessProbe(long probeId) {
+        return encodeLiveness(COMMAND_LIVENESS_PROBE, probeId);
+    }
+
+    static byte[] encodeLivenessAck(long probeId) {
+        return encodeLiveness(COMMAND_LIVENESS_ACK, probeId);
     }
 
     static boolean isControlFrame(byte[] frame) {
@@ -84,6 +101,14 @@ final class ZLinkClientServerServiceWire {
                 throw protocol("ClientServer reject reason is invalid");
             }
             return new Reject(reason);
+        }
+        if (command == COMMAND_LIVENESS_PROBE
+            || command == COMMAND_LIVENESS_ACK) {
+            long probeId = reader.nonzeroU64("probeId");
+            reader.end();
+            return command == COMMAND_LIVENESS_PROBE
+                ? new LivenessProbe(probeId)
+                : new LivenessAck(probeId);
         }
         if (command != COMMAND_HELLO
             && command != COMMAND_ADMIT
@@ -177,6 +202,12 @@ final class ZLinkClientServerServiceWire {
         return result.toByteArray();
     }
 
+    private static byte[] encodeLiveness(int command, long probeId) {
+        Writer result = prefix(command);
+        result.nonzeroU64(probeId, "probeId");
+        return result.toByteArray();
+    }
+
     private static Writer prefix(int command) {
         Writer result = new Writer();
         result.u8(MAGIC_0);
@@ -224,7 +255,8 @@ final class ZLinkClientServerServiceWire {
         };
     }
 
-    sealed interface Control permits Hello, Admit, Update, Reject {
+    sealed interface Control permits Hello, Admit, Update, Reject,
+        LivenessProbe, LivenessAck {
     }
 
     record Hello(
@@ -264,6 +296,12 @@ final class ZLinkClientServerServiceWire {
     }
 
     record Reject(int reason) implements Control {
+    }
+
+    record LivenessProbe(long probeId) implements Control {
+    }
+
+    record LivenessAck(long probeId) implements Control {
     }
 
     private static IllegalArgumentException protocol(String message) {

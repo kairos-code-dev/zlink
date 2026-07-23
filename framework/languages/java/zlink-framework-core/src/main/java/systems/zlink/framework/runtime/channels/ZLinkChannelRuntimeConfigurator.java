@@ -17,6 +17,7 @@ final class ZLinkChannelRuntimeConfigurator {
     private final BiConsumer<String, ZLinkBackendRouterSocket> startRequestLoop;
     private final BiConsumer<String, ZLinkBackendRouterSocket> startRouteLoop;
     private final BiConsumer<String, ZLinkBackendSubscriberSocket> startSubscribeLoop;
+    private final boolean dedicatedClientServerRuntime;
 
     ZLinkChannelRuntimeConfigurator(
         ZLinkChannelBackendAdapter backend,
@@ -26,7 +27,8 @@ final class ZLinkChannelRuntimeConfigurator {
         ZLinkChannelHandlerCatalog handlers,
         BiConsumer<String, ZLinkBackendRouterSocket> startRequestLoop,
         BiConsumer<String, ZLinkBackendRouterSocket> startRouteLoop,
-        BiConsumer<String, ZLinkBackendSubscriberSocket> startSubscribeLoop) {
+        BiConsumer<String, ZLinkBackendSubscriberSocket> startSubscribeLoop,
+        boolean dedicatedClientServerRuntime) {
         this.backend = backend;
         this.context = context;
         this.sockets = sockets;
@@ -35,6 +37,7 @@ final class ZLinkChannelRuntimeConfigurator {
         this.startRequestLoop = startRequestLoop;
         this.startRouteLoop = startRouteLoop;
         this.startSubscribeLoop = startSubscribeLoop;
+        this.dedicatedClientServerRuntime = dedicatedClientServerRuntime;
     }
 
     void configure(ChannelRegistration channel) {
@@ -48,7 +51,7 @@ final class ZLinkChannelRuntimeConfigurator {
     }
 
     private void configureClientServer(ChannelRegistration channel) {
-        if (channel.clientEnabled()) {
+        if (channel.clientEnabled() && !dedicatedClientServerRuntime) {
             ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
             dealer.setChannelName(channel.name());
             sockets.registerClient(channel.name(), dealer);

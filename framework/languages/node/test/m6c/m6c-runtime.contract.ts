@@ -4,6 +4,20 @@ import {
   ServiceMaintenanceRuntime,
   classifyRelocationRecovery
 } from '../../packages/framework/src/runtime/foundation/service-maintenance-runtime';
+import {
+  InMemoryServiceLocationAuthority
+} from '../../packages/framework/src/runtime/foundation/service-location-authority';
+import {
+  ServiceDurableRelocationRuntime,
+  ServiceRelocationDataLostError,
+  crc32c,
+  decodeServiceRelocationEnvelope,
+  encodeServiceRelocationEnvelope,
+  type ServiceRelocationAuthorityCodec,
+  type ServiceRelocationEnvelope,
+  type ServiceRelocationPublication,
+  type ServiceRelocationStorePort
+} from '../../packages/framework/src/runtime/foundation/service-relocation-runtime';
 
 test('Retire preflight precedes publication and ready units use bounded permits', async () => {
   const events: string[] = [];
@@ -86,3 +100,191 @@ test('recovery never rolls a published missing or corrupt root back to source', 
   assert.equal(classifyRelocationRecovery(true, true, true, false), 'relocationDataLost');
   assert.equal(classifyRelocationRecovery(true, true, true, true), 'resume');
 });
+
+test('relocation envelope preserves queued work and logical timers deterministically', () => {
+  const envelope = relocationEnvelope();
+  const encoded = encodeServiceRelocationEnvelope(envelope);
+  const decoded = decodeServiceRelocationEnvelope(encoded);
+  assert.deepEqual(
+    decoded.participants.map(({ key }) => key),
+    ['actor:a', 'spot:room']
+  );
+  assert.deepEqual(
+    decoded.queuedMessages.map(({ sequence }) => sequence),
+    [1n, 2n]
+  );
+  assert.deepEqual(
+    decoded.timers.map(({ timerId }) => timerId),
+    ['heartbeat', 'idle']
+  );
+  assert.deepEqual(
+    encodeServiceRelocationEnvelope(decoded),
+    encoded
+  );
+});
+
+test('durable relocation stores payload before Location CAS and clears authority before delete', async () => {
+  const events: string[] = [];
+  const authority = new InMemoryServiceLocationAuthority(() => 100);
+  const initial = authority.compareExchange(
+    'spot:room',
+    { kind: 'missing' },
+    { kind: 'newObject', payload: Buffer.from('owner-state') }
+  );
+  assert.equal(initial.kind, 'stored');
+  if (initial.kind !== 'stored') return;
+  const authorityPort = {
+    read: (key: string) => authority.read(key),
+    compareExchange: (...args: Parameters<InMemoryServiceLocationAuthority['compareExchange']>) => {
+      events.push('authority-cas');
+      return authority.compareExchange(...args);
+    }
+  };
+  const store = new MemoryRelocationStore(events);
+  const runtime = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
+  const published = await runtime.captureAndPublish('spot:room', initial, relocationEnvelope());
+  assert.deepEqual(events.slice(0, 2), ['payload-put', 'authority-cas']);
+  assert.equal(published.authority.objectGeneration, initial.objectGeneration);
+  assert.equal(
+    published.authority.authorityOwnerGeneration,
+    initial.authorityOwnerGeneration
+  );
+  const restored = await runtime.restore(published.authority);
+  assert.deepEqual(
+    restored.queuedMessages.map(({ sequence }) => sequence),
+    [1n, 2n]
+  );
+  assert.equal(restored.timers[0]?.pendingTicks, 1);
+
+  events.length = 0;
+  const released = await runtime.release('spot:room', published.authority);
+  assert.deepEqual(events, ['authority-cas', 'payload-delete']);
+  assert.equal(authorityCodec.read(released.payload), undefined);
+});
+
+test('failed publication removes only the orphan and published data loss never rolls back', async () => {
+  const events: string[] = [];
+  const authority = new InMemoryServiceLocationAuthority(() => 100);
+  const initial = authority.compareExchange(
+    'actor:a',
+    { kind: 'missing' },
+    { kind: 'newObject', payload: Buffer.from('owner-state') }
+  );
+  assert.equal(initial.kind, 'stored');
+  if (initial.kind !== 'stored') return;
+  authority.compareExchange(
+    'actor:a',
+    { kind: 'snapshot', storeVersion: initial.storeVersion },
+    { kind: 'preserve', payload: Buffer.from('concurrent-update') }
+  );
+  const store = new MemoryRelocationStore(events);
+  const runtime = new ServiceDurableRelocationRuntime(authority, store, authorityCodec);
+  await assert.rejects(
+    runtime.captureAndPublish('actor:a', initial, relocationEnvelope()),
+    /rejected relocation publication/
+  );
+  assert.deepEqual(events, ['payload-put', 'payload-delete']);
+
+  const current = authority.read('actor:a');
+  assert.equal(current.kind, 'snapshot');
+  if (current.kind !== 'snapshot') return;
+  const published = await runtime.captureAndPublish('actor:a', current, relocationEnvelope());
+  await store.delete(published.publication.reference);
+  await assert.rejects(
+    runtime.restore(published.authority),
+    ServiceRelocationDataLostError
+  );
+  const afterLoss = authority.read('actor:a');
+  assert.equal(afterLoss.kind, 'snapshot');
+  if (afterLoss.kind === 'snapshot') {
+    assert.equal(
+      authorityCodec.read(afterLoss.payload)?.reference,
+      published.publication.reference
+    );
+  }
+});
+
+function relocationEnvelope(): ServiceRelocationEnvelope {
+  return {
+    participants: [
+      {
+        key: 'spot:room',
+        applicationState: Buffer.from('spot-state'),
+        acceptedJournal: Buffer.from('spot-journal')
+      },
+      {
+        key: 'actor:a',
+        applicationState: Buffer.from('actor-state'),
+        acceptedJournal: Buffer.from('actor-journal')
+      }
+    ],
+    queuedMessages: [
+      { sequence: 2n, payload: Buffer.from('second') },
+      { sequence: 1n, payload: Buffer.from('first') }
+    ],
+    timers: [
+      { timerId: 'idle', dueAtUnixMs: 1_000, pendingTicks: 0 },
+      { timerId: 'heartbeat', dueAtUnixMs: 500, intervalMs: 100, pendingTicks: 1 }
+    ]
+  };
+}
+
+const authorityCodec: ServiceRelocationAuthorityCodec = {
+  publish(currentPayload, publication) {
+    return Buffer.from(JSON.stringify({
+      base: Buffer.from(currentPayload).toString('base64'),
+      relocation: publication
+    }));
+  },
+  read(payload) {
+    try {
+      const value = JSON.parse(Buffer.from(payload).toString()) as {
+        readonly relocation?: ServiceRelocationPublication;
+      };
+      return value.relocation;
+    } catch {
+      return undefined;
+    }
+  },
+  clear(currentPayload, expectedReference) {
+    const value = JSON.parse(Buffer.from(currentPayload).toString()) as {
+      readonly base: string;
+      readonly relocation?: ServiceRelocationPublication;
+    };
+    assert.equal(value.relocation?.reference, expectedReference);
+    return Buffer.from(value.base, 'base64');
+  }
+};
+
+class MemoryRelocationStore implements ServiceRelocationStorePort {
+  private readonly values = new Map<string, Buffer>();
+  private nextReference = 1;
+
+  constructor(private readonly events: string[]) {}
+
+  async put(payload: Uint8Array, retentionMs: number) {
+    assert.equal(retentionMs, 24 * 60 * 60 * 1_000);
+    this.events.push('payload-put');
+    const reference = `root-${this.nextReference++}`;
+    const stored = Buffer.from(payload);
+    this.values.set(reference, stored);
+    return {
+      reference,
+      checksumCrc32c: crc32c(stored),
+      storeNowMs: 100,
+      expiresAtMs: 100 + retentionMs
+    };
+  }
+
+  async get(reference: string) {
+    const payload = this.values.get(reference);
+    return payload === undefined
+      ? { kind: 'missing' as const }
+      : { kind: 'found' as const, payload: Buffer.from(payload) };
+  }
+
+  async delete(reference: string) {
+    this.events.push('payload-delete');
+    return this.values.delete(reference) ? 'deleted' as const : 'missing' as const;
+  }
+}

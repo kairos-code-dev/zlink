@@ -6,6 +6,7 @@ export * from './service-liveness-registry';
 export * from './service-location-authority';
 export * from './service-mailbox';
 export * from './service-maintenance-runtime';
+export * from './service-relocation-runtime';
 export * from './service-topology-registry';
 export * from './service-wire-codec';
 export * from './service-wire-m6a-codec';

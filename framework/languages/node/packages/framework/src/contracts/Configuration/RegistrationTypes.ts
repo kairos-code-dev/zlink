@@ -18,7 +18,7 @@ import type {
 } from '../../contracts';
 import type { ZLinkMessageSerializer } from '../Codecs';
 import type { ZLinkDispatchOptions } from '../Dispatch';
-import type { ZLinkLocationStore } from '../Locations';
+import type { ZLinkLocationStore, ZLinkRelocationStore } from '../Locations';
 import type { ZLinkLocationOptionValues } from '../RouteMesh';
 
 export interface ZLinkFrameworkRegistration {
@@ -50,6 +50,7 @@ export interface ZLinkFrameworkRegistration {
 export interface ZLinkLocationRegistration {
   readonly useInMemoryStores: boolean;
   readonly storeInstance?: ZLinkLocationStore;
+  readonly relocationStoreInstance?: ZLinkRelocationStore;
   readonly options: Partial<ZLinkLocationOptionValues>;
 }
 
@@ -108,6 +109,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
     readonly storeInstance?: ZLinkLocationStore;
+    readonly relocationStoreInstance?: ZLinkRelocationStore;
     readonly options?: Partial<ZLinkLocationOptionValues>;
   };
 }

@@ -9,6 +9,7 @@ import type {
   ZLinkLocationOptions,
   ZLinkLocationOptionValues,
   ZLinkLocationStore,
+  ZLinkRelocationStore,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
   ZLinkMonitoringOptions,
@@ -84,6 +85,7 @@ export interface ZLinkFrameworkRegistration {
 export interface ZLinkLocationRegistration {
   readonly useInMemoryStores: boolean;
   readonly storeInstance?: ZLinkLocationStore;
+  readonly relocationStoreInstance?: ZLinkRelocationStore;
   readonly options: ZLinkLocationOptions;
 }
 
@@ -130,6 +132,7 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly locations?: {
     readonly useInMemoryStores?: boolean;
     readonly storeInstance?: ZLinkLocationStore;
+    readonly relocationStoreInstance?: ZLinkRelocationStore;
     readonly options?: Partial<ZLinkLocationOptionValues>;
   };
 }

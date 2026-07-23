@@ -11,6 +11,7 @@ import type {
   ZLinkHandlerFilter,
   ZLinkLocationStore,
   ZLinkLocationOptions,
+  ZLinkRelocationStore,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnections,
   ZLinkMetricsOptions,
@@ -183,6 +184,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   codecs(): ZLinkNestCodecRegistryBuilder;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   addLocationStore(store: ZLinkLocationStore): this;
+  addRelocationStore(store: ZLinkRelocationStore): this;
   setActorTransferTimeout(timeoutMs: number): this;
   setActorTransferForwardWindow(timeoutMs: number): this;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;

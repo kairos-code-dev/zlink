@@ -87,6 +87,21 @@ test('worker options expose the formal scheduler limits', () => {
   assert.equal(workerOptions.includes('idleTimeoutMs'), true);
 });
 
+test('location and relocation stores have separate public registration surfaces', () => {
+  const declarations = readTree(declarationsRoot);
+  const frameworkOptions = declarationBody(declarations, 'ZLinkFrameworkOptions');
+  const relocationStore = declarationBody(declarations, 'ZLinkRelocationStore');
+
+  assert.equal(frameworkOptions.includes('addLocationStore'), true);
+  assert.equal(frameworkOptions.includes('addRelocationStore'), true);
+  assert.equal(relocationStore.includes('putRelocation'), true);
+  assert.equal(relocationStore.includes('getRelocation'), true);
+  assert.equal(relocationStore.includes('renewRelocation'), true);
+  assert.equal(relocationStore.includes('deleteRelocation'), true);
+  assert.equal(frameworkOptions.includes('addRedis'), false);
+  assert.equal(frameworkOptions.includes('addStores'), false);
+});
+
 test('diagnostics options do not expose inert native diagnostics configuration', () => {
   const declarations = readTree(declarationsRoot);
   const diagnosticsOptions = declarationBody(declarations, 'ZLinkDiagnosticsOptions');

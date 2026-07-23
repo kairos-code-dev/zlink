@@ -10,6 +10,7 @@ import type {
   ZLinkLocationStore,
   ZLinkLocationOptionValues,
   ZLinkLocationOptions,
+  ZLinkRelocationStore,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
@@ -112,6 +113,17 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
       locations: {
         ...(this.state.additionalOptions.locations ?? {}),
         storeInstance: store
+      }
+    };
+    return this;
+  }
+
+  addRelocationStore(store: ZLinkRelocationStore): this {
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      locations: {
+        ...(this.state.additionalOptions.locations ?? {}),
+        relocationStoreInstance: store
       }
     };
     return this;

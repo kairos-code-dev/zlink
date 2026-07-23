@@ -9,7 +9,11 @@ import type { ZLinkSession, ZLinkSessionFactory, ZLinkStreamCompressionCodec } f
 import type { ZLinkEndpointConnections } from './Connections';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type { ZLinkDispatchOptionsBuilder } from '../Dispatch';
-import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
+import type {
+  ZLinkLocationOptions,
+  ZLinkLocationStore,
+  ZLinkRelocationStore
+} from '../Locations';
 import type { RoutingId, Type } from '../Common';
 import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSpotPublisherConfig } from './Configs';
@@ -29,6 +33,7 @@ export interface ZLinkFrameworkOptions {
   configureWorker(options: ZLinkWorkerOptions): this;
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   addLocationStore(store: ZLinkLocationStore): this;
+  addRelocationStore(store: ZLinkRelocationStore): this;
   setActorTransferTimeout(timeoutMs: number): this;
   /** Overrides the 5 second source forwarding window for stale actor references. */
   setActorTransferForwardWindow(timeoutMs: number): this;

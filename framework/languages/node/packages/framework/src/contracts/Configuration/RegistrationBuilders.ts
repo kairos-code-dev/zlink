@@ -38,7 +38,11 @@ import {
 } from './DispatchObserverRegistration';
 import { endpointConnections } from './RuntimeEndpointConnections';
 import type { ZLinkEndpointConnections } from './Connections';
-import type { ZLinkLocationStore, ZLinkLocationOptions } from '../Locations';
+import type {
+  ZLinkLocationOptions,
+  ZLinkLocationStore,
+  ZLinkRelocationStore
+} from '../Locations';
 import { ZLinkConfigurationException } from './ConfigurationException';
 import {
   RegistrationCodecRegistryBuilder,
@@ -105,6 +109,12 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   addLocationStore(store: ZLinkLocationStore): this {
     this.options.locations ??= { options: {} };
     this.options.locations.storeInstance = store;
+    return this;
+  }
+
+  addRelocationStore(store: ZLinkRelocationStore): this {
+    this.options.locations ??= { options: {} };
+    this.options.locations.relocationStoreInstance = store;
     return this;
   }
 
@@ -719,6 +729,7 @@ interface MutableFrameworkRegistrationOptions {
 interface MutableLocationRegistrationOptions {
   useInMemoryStores?: boolean;
   storeInstance?: ZLinkLocationStore;
+  relocationStoreInstance?: ZLinkRelocationStore;
   options?: MutableLocationOptionValues;
 }
 

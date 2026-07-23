@@ -6,22 +6,28 @@ const framework = require('../../packages/framework/dist/internal');
 const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
 const nestjs = require('../../packages/nestjs/dist');
 
-test('framework and NestJS builders register one explicit location store', async () => {
+test('framework and NestJS builders register separate location and relocation stores', async () => {
   const store = new framework.ZLinkInMemoryLocationStore();
+  const relocationStore = {};
 
   const options = framework.createFrameworkOptions((builder) => {
     builder.addLocationStore(store);
+    builder.addRelocationStore(relocationStore);
     builder.configureLocations().heartbeatIntervalMs(123);
   });
   const registration = framework.createFrameworkRegistration(options);
   assert.equal(registration.locations.storeInstance, store);
+  assert.equal(registration.locations.relocationStoreInstance, relocationStore);
   assert.equal(registration.locations.options.heartbeatIntervalMs, 123);
 
-  const nestBuilder = nestjs.zlinkFramework().addLocationStore(store);
+  const nestBuilder = nestjs.zlinkFramework()
+    .addLocationStore(store)
+    .addRelocationStore(relocationStore);
   nestBuilder.configureLocations().ownerLeaseTtlMs(456);
   const nestModule = nestjs.ZLinkModule.forRoot(nestBuilder.build());
   const nestRegistration = await resolveFrameworkRegistration(nestModule);
   assert.equal(nestRegistration.locations.storeInstance, store);
+  assert.equal(nestRegistration.locations.relocationStoreInstance, relocationStore);
   assert.equal(nestRegistration.locations.options.ownerLeaseTtlMs, 456);
 
 });

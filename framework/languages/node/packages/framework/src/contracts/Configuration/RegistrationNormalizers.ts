@@ -230,6 +230,7 @@ export function normalizeLocationRegistration(
   return {
     useInMemoryStores: value?.useInMemoryStores === true,
     storeInstance: value?.storeInstance,
+    relocationStoreInstance: value?.relocationStoreInstance,
     options: value?.options === undefined ? {} : { ...value.options }
   };
 }

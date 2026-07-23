@@ -88,6 +88,15 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         return ownerId;
     }
 
+    ZLinkLocationOwnerToken ownerTokenSnapshot() {
+        ZLinkLocationOwnerToken current = ownerToken;
+        if (current == null) {
+            throw new IllegalStateException(
+                "Location runtime owner lease is not ready.");
+        }
+        return current;
+    }
+
     public boolean ownerLeaseHealthy() {
         return ownerLeaseHealthy;
     }

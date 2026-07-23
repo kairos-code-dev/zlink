@@ -1228,6 +1228,21 @@ ClientServer fixture·operation을 포함해 25/25가 통과했고 외부 cross-
 publication·discovery와 service admission으로 교체하기 전에는 `V11-M6A-JVM`을 완료로 판정하지 않는다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+JVM ClientServer runtime checkpoint(2026-07-24)에서 generic `ZLinkPeerLocation` ClientServer loop를
+제거하고 dedicated `ZLinkClientServerLocationStore` publication·bounded list·reconcile로 교체했다.
+Automatic descriptor lifecycle과 manual endpoint마다 전용 DEALER를 만들고 exact
+`hello`·`admit`·`reject` 뒤에만 ready target으로 승격한다. RID는 service wire의 opaque `bytes8`을
+보존하며 human-readable `toString()`이 같은 서로 다른 RID도 raw hex connection key로 구분한다.
+Positive-weight `Serving` target만 deterministic weighted selector가 실제 send·request에 사용하고, 같은
+RID의 새 lifecycle은 admission 성공 전까지 이전 ready connection을 유지한 뒤 connection ID fence로 늦은
+callback을 차단한다. Reserved control frame은 application dispatch에 전달하지 않는다. Host 내부
+configuration dependency가 owner token supplier와 start·drain·stop lifecycle을 연결하며 application이
+호출할 새 public ClientServer API나 service locator는 추가하지 않았다. JVM core assemble과 unit
+436/436, 신규 focused 6/6, `JavaTargetContractGapTest`와 `git diff --check`가 통과했다.
+`livenessProbe`·`livenessAck`, server-pushed descriptor update와 manual endpoint reconnect retry는 남아
+있으므로 `V11-M6A-JVM`을 완료로 판정하지 않는다. Core·bindings와 Sample·E2E source는 변경하거나
+실행하지 않았다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

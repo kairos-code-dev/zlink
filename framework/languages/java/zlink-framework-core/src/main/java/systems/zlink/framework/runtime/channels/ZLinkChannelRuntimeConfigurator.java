@@ -51,7 +51,6 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.clientEnabled()) {
             ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
             dealer.setChannelName(channel.name());
-            channel.clientConnections().attach(dealer);
             sockets.registerClient(channel.name(), dealer);
         }
         if (channel.serverBinds().isEmpty()) {
@@ -59,14 +58,17 @@ final class ZLinkChannelRuntimeConfigurator {
         }
         ZLinkBackendRouterSocket router = backend.createRouterSocket(context);
         router.setChannelName(channel.name());
-        if (channel.routingId() != null) {
-            router.setRoutingId(channel.routingId());
-        }
+        systems.zlink.contracts.core.RoutingId serverRoutingId =
+            channel.routingId() == null
+                ? systems.zlink.contracts.core.RoutingId.from(
+                    java.util.UUID.randomUUID())
+                : channel.routingId();
+        router.setRoutingId(serverRoutingId);
         applyServerSocketOptions(channel, router);
         for (String endpoint : channel.serverBinds()) {
             router.bind(endpoint);
         }
-        sockets.registerServer(channel.name(), router);
+        sockets.registerServer(channel.name(), serverRoutingId, router);
         dispatchRegistry.registerClientServer(
             channel.name(),
             handlers.sendHandlers(channel),

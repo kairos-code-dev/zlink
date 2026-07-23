@@ -72,6 +72,8 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
@@ -88,6 +90,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
+import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
@@ -125,6 +128,7 @@ public final class ZLinkChannelRuntime
     private final ZLinkSpotRouteBridgeDrainer spotRouteBridgeDrainer;
     private final ZLinkBackendAdapterProvider backendFactory;
     private final ZLinkBackendAdapterOptions adapterOptions;
+    private final ZLinkChannelBackendAdapter channelBackend;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private final ZLinkChannelDispatchReporter dispatchReporter;
     private final ZLinkChannelMessageDispatcher messageDispatcher;
@@ -318,6 +322,7 @@ public final class ZLinkChannelRuntime
             this::reportSpotRouteBridgeDrainFailure);
         this.backendFactory = backendFactory;
         this.adapterOptions = adapterOptions;
+        this.channelBackend = Objects.requireNonNull(backend, "backend");
         this.dispatchErrors = new ZLinkDispatchErrorReporter(
             registration.dispatchOptions(),
             handlerFactory,
@@ -364,17 +369,214 @@ public final class ZLinkChannelRuntime
             sockets.registerChannel(channel);
             configurator.configure(channel);
         }
+        if (backendFactory == null) {
+            sockets.enableLegacyClientFallback();
+            for (ChannelRegistration channel : registration.channels()) {
+                ZLinkBackendDealerSocket client =
+                    sockets.client(channel.name());
+                if (client != null) {
+                    channel.clientConnections().attach(client);
+                }
+            }
+        } else {
+            sockets.initializeClientServerServerDescriptors(
+                "runtime-" + java.util.UUID.randomUUID());
+            attachManualClientServerAdmissions(
+                registration.channels());
+        }
+        installClientServerLocationRuntime(handlerFactory);
     }
 
 
     public List<AutoConnectSurface> autoConnectSurfaces() {
         return sockets.autoConnectSurfaces();
     }
+
+    private void installClientServerLocationRuntime(
+        ZLinkHandlerActivator activator) {
+        ZLinkClientServerRuntimeConfiguration configuration;
+        try {
+            configuration = (ZLinkClientServerRuntimeConfiguration)
+                activator.create(
+                    ZLinkClientServerRuntimeConfiguration.class);
+        } catch (RuntimeException unavailable) {
+            return;
+        }
+        if (configuration == null || configuration.store() == null) {
+            return;
+        }
+        if (backendFactory == null || adapterOptions == null) {
+            throw new ZLinkConfigurationException(
+                "automatic ClientServer discovery requires a backend provider");
+        }
+        ZLinkClientServerLocationRuntime runtime =
+            new ZLinkClientServerLocationRuntime(
+                configuration.store(),
+                configuration.owner(),
+                backendFactory,
+                context,
+                adapterOptions,
+                sockets,
+                configuration.options().pollingInterval(),
+                configuration.options().listPageSize());
+        List<AutoConnectSurface> surfaces = autoConnectSurfaces();
+        configuration.install(
+            new ZLinkClientServerRuntimeConfiguration.Lifecycle() {
+                @Override
+                public CompletionStage<Void> start() {
+                    return runtime.start(surfaces);
+                }
+
+                @Override
+                public CompletionStage<Void> markDraining() {
+                    return runtime.markDraining();
+                }
+
+                @Override
+                public CompletionStage<Void> stop() {
+                    return runtime.stop();
+                }
+            });
+    }
+
+    private void attachManualClientServerAdmissions(
+        List<ChannelRegistration> registrations) {
+        for (ChannelRegistration registration : registrations) {
+            if (registration.kind() != ChannelKind.CLIENT_SERVER
+                || !registration.clientEnabled()) {
+                continue;
+            }
+            String channelName = registration.name();
+            registration.clientConnections().attach(
+                new ZLinkBackendConnectableSocket() {
+                    @Override
+                    public String name() {
+                        return "clientServerAdmissionController";
+                    }
+
+                    @Override
+                    public void bind(String endpoint) {
+                        throw new UnsupportedOperationException(
+                            "ClientServer client controller cannot bind");
+                    }
+
+                    @Override
+                    public void connect(String endpoint) {
+                        openManualClientServerConnection(
+                            channelName, endpoint);
+                    }
+
+                    @Override
+                    public void disconnect(String endpoint) {
+                        sockets.removeClientServerConnection(
+                            manualConnectionId(channelName, endpoint));
+                    }
+
+                    @Override
+                    public void close() {
+                    }
+                });
+        }
+    }
+
+    private void openManualClientServerConnection(
+        String channelName,
+        String endpoint) {
+        String connectionId =
+            manualConnectionId(channelName, endpoint);
+        ZLinkBackendDealerSocket dealer =
+            channelBackend.createDealerSocket(context);
+        dealer.setChannelName(channelName);
+        ZLinkClientServerServerDescriptor pending =
+            new ZLinkClientServerServerDescriptor(
+                channelName,
+                RoutingId.from(java.util.UUID.randomUUID()),
+                1,
+                1,
+                endpoint,
+                0,
+                ZLinkFrameworkRuntimeState.PREPARING,
+                "default",
+                "manual",
+                1,
+                java.time.Instant.EPOCH);
+        try {
+            sockets.addClientServerConnection(
+                connectionId, pending, dealer);
+            dealer.connect(endpoint);
+            byte[] hello = ZLinkClientServerServiceWire.encodeHello(
+                new ZLinkClientServerServiceWire.Hello(
+                    channelName, "default", Integer.MAX_VALUE));
+            try (Message message = Message.from(hello)) {
+                boolean submitted = dealer.request(
+                    List.of(message),
+                    reply -> completeManualClientServerAdmission(
+                        connectionId, channelName, endpoint, reply),
+                    SendFlags.DONT_WAIT,
+                    defaultRequestTimeout(channelName));
+                if (!submitted) {
+                    sockets.removeClientServerConnection(connectionId);
+                }
+            }
+        } catch (RuntimeException failure) {
+            sockets.removeClientServerConnection(connectionId);
+            throw failure;
+        }
+    }
+
+    private static String manualConnectionId(
+        String channelName,
+        String endpoint) {
+        return "manual\0" + channelName + '\0' + endpoint;
+    }
+
+    private void completeManualClientServerAdmission(
+        String connectionId,
+        String channelName,
+        String endpoint,
+        ZLinkBackendReceived reply) {
+        try (reply) {
+            if (reply.result() != ZLinkBackendRequestResult.OK
+                || reply.parts().size() != 1) {
+                sockets.removeClientServerConnection(connectionId);
+                return;
+            }
+            ZLinkClientServerServiceWire.Control control =
+                ZLinkClientServerServiceWire.decode(
+                    reply.parts().get(0).toByteArray());
+            if (!(control instanceof ZLinkClientServerServiceWire.Admit admit)
+                || !admit.admission().channelName().equals(channelName)
+                || !admit.admission().securityIdentity().equals("default")) {
+                sockets.removeClientServerConnection(connectionId);
+                return;
+            }
+            ZLinkClientServerServiceWire.Admission value =
+                admit.admission();
+            ZLinkClientServerServerDescriptor descriptor =
+                new ZLinkClientServerServerDescriptor(
+                    value.channelName(),
+                    value.serverRid(),
+                    value.lifecycleGeneration(),
+                    value.descriptorRevision(),
+                    value.advertisedEndpoint(),
+                    value.weight(),
+                    value.state(),
+                    value.securityIdentity(),
+                    "manual",
+                    1,
+                    java.time.Instant.EPOCH);
+            sockets.admitClientServerConnection(
+                connectionId, descriptor);
+        } catch (RuntimeException failure) {
+            sockets.removeClientServerConnection(connectionId);
+        }
+    }
+
     @Override
     public ZLinkSendCall sendToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
-        ZLinkBackendDealerSocket client = sockets.client(channelName);
+        ZLinkBackendDealerSocket client = sockets.clientForOutbound(channelName);
         if (client != null) {
             return new SendCall(
                 callRuntime,
@@ -391,6 +593,11 @@ public final class ZLinkChannelRuntime
                 encoded.payload(),
                 Optional.of(encoded.packetName()));
         }
+        if (sockets.client(channelName) != null) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                "client/server channel has no admitted server: " + channelName);
+        }
         throw new ZLinkConfigurationException(
             "channel is not configured: " + channelName);
     }
@@ -399,7 +606,7 @@ public final class ZLinkChannelRuntime
     public ZLinkRequestCall requestToChannel(String channelName, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
-        ZLinkBackendDealerSocket client = sockets.client(channelName);
+        ZLinkBackendDealerSocket client = sockets.clientForOutbound(channelName);
         if (client != null) {
             return new RequestCall(
                 callRuntime,
@@ -417,6 +624,11 @@ public final class ZLinkChannelRuntime
                 encoded.payload(),
                 Optional.of(encoded.packetName()),
                 defaultRequestTimeout(channelName));
+        }
+        if (sockets.client(channelName) != null) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                "client/server channel has no admitted server: " + channelName);
         }
         throw new ZLinkConfigurationException(
             "channel is not configured: " + channelName);
@@ -954,6 +1166,10 @@ public final class ZLinkChannelRuntime
         receiveLoops.startRequest(
             router,
             received -> {
+                if (sockets.tryHandleClientServerControl(
+                    channelName, router, received)) {
+                    return;
+                }
                 if (routeDispatcher.dispatchBridgePacket(channelName, received)) {
                     received.close();
                 } else {

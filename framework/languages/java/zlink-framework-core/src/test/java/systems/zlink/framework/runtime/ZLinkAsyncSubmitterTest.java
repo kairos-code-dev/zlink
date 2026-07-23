@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeoutException;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.CloseResult;
@@ -251,6 +255,10 @@ final class ZLinkAsyncSubmitterTest {
                     SendFlags flags,
                     Duration timeout) {
                     RecordingRequestBackend.this.timeout = timeout;
+                    if (isClientServerHello(parts)) {
+                        return super.request(
+                            parts, callback, flags, timeout);
+                    }
                     return true;
                 }
             };
@@ -269,10 +277,84 @@ final class ZLinkAsyncSubmitterTest {
             ZLinkBackendRequestCallback callback,
             SendFlags flags,
             Duration timeout) {
+            if (isClientServerHello(parts)) {
+                Message response = Message.from(clientServerAdmit());
+                callback.handle(new ZLinkBackendReceived(
+                    ZLinkBackendRequestResult.OK,
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.empty(),
+                    List.of(response)));
+            }
             return true;
         }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return null; }
         @Override public void close() { }
+    }
+
+    private static boolean isClientServerHello(List<Message> parts) {
+        if (parts.size() != 1) {
+            return false;
+        }
+        byte[] value = parts.get(0).toByteArray();
+        return value.length >= 5
+            && value[0] == 0x5a
+            && value[1] == 0x4d
+            && value[2] == 1
+            && value[3] == 1;
+    }
+
+    private static byte[] clientServerAdmit() {
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        text8(body, "profile");
+        body.write(1);
+        bytes8(body, RoutingId.from("fake-server").toBytes());
+        body.writeBytes(ByteBuffer.allocate(8)
+            .order(ByteOrder.BIG_ENDIAN).putLong(1).array());
+        body.writeBytes(ByteBuffer.allocate(8)
+            .order(ByteOrder.BIG_ENDIAN).putLong(1).array());
+        body.writeBytes(ByteBuffer.allocate(4)
+            .order(ByteOrder.BIG_ENDIAN).putInt(100).array());
+        body.write(1);
+        text8(body, "default");
+        body.writeBytes(ByteBuffer.allocate(4)
+            .order(ByteOrder.BIG_ENDIAN)
+            .putInt(Integer.MAX_VALUE).array());
+        byte[] endpoint =
+            "inproc://profile".getBytes(StandardCharsets.UTF_8);
+        body.writeBytes(ByteBuffer.allocate(2)
+            .order(ByteOrder.BIG_ENDIAN)
+            .putShort((short) endpoint.length).array());
+        body.writeBytes(endpoint);
+
+        ByteArrayOutputStream admission = new ByteArrayOutputStream();
+        admission.write(2);
+        admission.writeBytes(ByteBuffer.allocate(2)
+            .order(ByteOrder.BIG_ENDIAN)
+            .putShort((short) body.size()).array());
+        admission.writeBytes(body.toByteArray());
+
+        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        result.writeBytes(new byte[] {0x5a, 0x4d, 1, 2, 0});
+        result.write(2);
+        result.writeBytes(ByteBuffer.allocate(4)
+            .order(ByteOrder.BIG_ENDIAN)
+            .putInt(admission.size()).array());
+        result.writeBytes(admission.toByteArray());
+        return result.toByteArray();
+    }
+
+    private static void text8(
+        ByteArrayOutputStream output,
+        String value) {
+        bytes8(output, value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void bytes8(
+        ByteArrayOutputStream output,
+        byte[] value) {
+        output.write(value.length);
+        output.writeBytes(value);
     }
 
     private static final class CloseFailureDealer extends NoReplyDealer {

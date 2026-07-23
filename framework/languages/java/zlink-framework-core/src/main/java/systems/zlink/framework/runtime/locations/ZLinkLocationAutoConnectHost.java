@@ -18,6 +18,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendConnectableSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
+import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
@@ -30,15 +31,25 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     private final ZLinkLocationRuntime runtime;
     private final ZLinkPeerLocationResolver peers;
     private final ZLinkLocationOptions options;
+    private final ZLinkClientServerRuntimeConfiguration clientServers;
     private final List<ZLinkAutoConnectLoop> loops = new ArrayList<>();
 
     public ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
         ZLinkPeerLocationResolver peers,
         ZLinkLocationOptions options) {
+        this(runtime, peers, options, null);
+    }
+
+    public ZLinkLocationAutoConnectHost(
+        ZLinkLocationRuntime runtime,
+        ZLinkPeerLocationResolver peers,
+        ZLinkLocationOptions options,
+        ZLinkClientServerRuntimeConfiguration clientServers) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.peers = Objects.requireNonNull(peers, "peers");
         this.options = Objects.requireNonNull(options, "options");
+        this.clientServers = clientServers;
     }
 
     public CompletionStage<Void> start(
@@ -53,7 +64,19 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         Objects.requireNonNull(spotNodesByName, "spotNodesByName");
 
         List<ZLinkChannelRuntime.AutoConnectSurface> surfaces = channels.autoConnectSurfaces();
+        boolean hasAutomaticClientServer = surfaces.stream().anyMatch(
+            surface -> surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER);
+        if (hasAutomaticClientServer
+            && (clientServers == null || clientServers.store() == null)) {
+            return CompletableFuture.failedFuture(
+                new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "automatic ClientServer channels require "
+                        + "ZLinkClientServerLocationStore"));
+        }
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
+            if (surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER) {
+                continue;
+            }
             addChannelLoop(surface);
         }
         for (MeshNodeRegistration mesh : registration.meshNodes()) {
@@ -104,7 +127,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 capabilities.isEmpty() ? null : capabilities);
         }
 
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        CompletionStage<Void> chain = hasAutomaticClientServer
+            ? startClientServers()
+            : CompletableFuture.completedFuture(null);
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.start());
         }
@@ -112,11 +137,15 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     public CompletionStage<Void> stop() {
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        CompletionStage<Void> chain = clientServers == null
+            ? CompletableFuture.completedFuture(null)
+            : clientServers.stop();
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.stop());
         }
-        return chain.whenComplete((ignored, failure) -> loops.clear());
+        return chain.whenComplete((ignored, failure) -> {
+            loops.clear();
+        });
     }
 
     static List<String> actorCapabilities(java.util.Collection<String> actorTypes) {
@@ -127,8 +156,15 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             .toList();
     }
 
+    private CompletionStage<Void> startClientServers() {
+        clientServers.setOwner(runtime.ownerTokenSnapshot());
+        return clientServers.start();
+    }
+
     public CompletionStage<Void> markDraining() {
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        CompletionStage<Void> chain = clientServers == null
+            ? CompletableFuture.completedFuture(null)
+            : clientServers.markDraining();
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.markDraining());
         }

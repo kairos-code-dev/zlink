@@ -12,6 +12,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationRuntimeQueryServic
 import systems.zlink.framework.runtime.locations.ZLinkLocationStoreResolver;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
+import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ActorSpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkStoreSpotHandleResolver;
@@ -75,10 +76,18 @@ final class ZLinkFrameworkLocationSubsystem {
         ZLinkLocationLifecycle locationLifecycle = new ZLinkLocationLifecycle(locationRuntime);
         ZLinkStoreLocationResolvers storeLocationResolvers =
             new ZLinkStoreLocationResolvers(locationStores, liveLocationRows);
+        ZLinkClientServerRuntimeConfiguration clientServerConfiguration =
+            new ZLinkClientServerRuntimeConfiguration(
+                locationStores.clientServerStore(),
+                registration.locations().options());
+        runtimeHandlers.add(
+            ZLinkClientServerRuntimeConfiguration.class,
+            clientServerConfiguration);
         ZLinkLocationAutoConnectHost locationAutoConnectHost = new ZLinkLocationAutoConnectHost(
             locationRuntime,
             storeLocationResolvers,
-            registration.locations().options());
+            registration.locations().options(),
+            clientServerConfiguration);
         ZLinkStoreLocationResolvers.AddressResolvers locationAddressResolvers =
             new ZLinkStoreLocationResolvers.AddressResolvers(
                 spotMeshNames(registration),

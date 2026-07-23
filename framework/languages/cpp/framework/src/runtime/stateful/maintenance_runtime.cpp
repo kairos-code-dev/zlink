@@ -14,6 +14,8 @@ namespace
 {
 
 constexpr std::array<std::uint8_t, 4> envelope_magic{'Z', 'L', 'R', '1'};
+constexpr std::array<std::uint8_t, 4> aggregate_envelope_magic{
+  'Z', 'L', 'R', 'A'};
 constexpr std::chrono::hours relocation_retention{24};
 
 void append_u32 (std::vector<std::uint8_t> &output, std::uint32_t value)
@@ -130,6 +132,21 @@ maintenance_runtime_t::maintenance_runtime_t (
         || _limits.payload_bytes == 0) {
         throw std::invalid_argument ("maintenance runtime configuration is invalid");
     }
+}
+
+maintenance_runtime_t::maintenance_runtime_t (
+  stateful_object_runtime_t &objects,
+  maintenance_provider_set_t providers,
+  relocation_limits_t limits,
+  observer_t observer) :
+    maintenance_runtime_t (
+      objects, std::move (providers.authority),
+      std::move (providers.relocations), limits, std::move (observer))
+{
+    _aggregate_authority = std::move (providers.aggregate_authority);
+    if (!_aggregate_authority || !providers.targets)
+        throw std::invalid_argument (
+          "maintenance provider set is incomplete");
 }
 
 relocation_result_t maintenance_runtime_t::relocate (
@@ -332,6 +349,167 @@ relocation_result_t maintenance_runtime_t::recover (
        authority});
 }
 
+aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
+  const std::vector<object_ref_t> &sources,
+  std::string target_node_id,
+  std::size_t encoded_upper_bound,
+  inventory_digest_t inventory_digest)
+{
+    if (!_aggregate_authority || sources.size () < 2) {
+        return {
+          relocation_terminal_t::blocked,
+          relocation_reason_t::restore_failed,
+          {}};
+    }
+    auto permit = try_acquire (encoded_upper_bound);
+    if (!permit) {
+        return {
+          relocation_terminal_t::blocked,
+          relocation_reason_t::permit_unavailable,
+          {}};
+    }
+    auto [seal_error, seal] =
+      _objects.try_seal_relocation_aggregate (sources);
+    if (seal_error != stateful_error_t::none) {
+        return {
+          relocation_terminal_t::blocked,
+          seal_error == stateful_error_t::backpressured
+            ? relocation_reason_t::turn_active
+            : relocation_reason_t::restore_failed,
+          {}};
+    }
+    auto payload = encode_aggregate (
+      seal.participants, inventory_digest);
+    if (payload.empty () || payload.size () > encoded_upper_bound) {
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::blocked,
+          relocation_reason_t::payload_bound_exceeded,
+          {}};
+    }
+    const auto checksum = crc32c (payload);
+    relocation_stored_t stored;
+    try {
+        stored = _relocations->put (payload, relocation_retention);
+    }
+    catch (...) {
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::store_failed,
+          relocation_reason_t::store_write_failed,
+          {}};
+    }
+    if (stored.reference.empty () || stored.checksum_crc32c != checksum) {
+        if (!stored.reference.empty ()) {
+            try {
+                _relocations->remove (stored.reference);
+            }
+            catch (...) {
+            }
+        }
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::store_failed,
+          relocation_reason_t::checksum_mismatch,
+          {}};
+    }
+
+    aggregate_publish_result_t prepared;
+    try {
+        prepared = _aggregate_authority->prepare (
+          sources, target_node_id, stored.reference, checksum,
+          inventory_digest);
+    }
+    catch (...) {
+        try {
+            _relocations->remove (stored.reference);
+        }
+        catch (...) {
+        }
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::store_failed,
+          relocation_reason_t::authority_publish_failed,
+          {}};
+    }
+    if (prepared.status != aggregate_publish_status_t::prepared
+        || prepared.fence.value == 0) {
+        try {
+            _relocations->remove (stored.reference);
+        }
+        catch (...) {
+        }
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          prepared.status == aggregate_publish_status_t::conflict
+            ? relocation_terminal_t::conflict
+            : relocation_terminal_t::store_failed,
+          prepared.status == aggregate_publish_status_t::conflict
+            ? relocation_reason_t::authority_conflict
+            : relocation_reason_t::authority_publish_failed,
+          prepared.current};
+    }
+
+    aggregate_publish_result_t committed;
+    try {
+        committed = _aggregate_authority->commit (prepared.fence);
+    }
+    catch (...) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::authority_publish_failed,
+          prepared.current};
+    }
+    if (committed.status != aggregate_publish_status_t::committed
+        || committed.current.size () != sources.size ()) {
+        if (committed.status == aggregate_publish_status_t::conflict) {
+            try {
+                _aggregate_authority->abort (prepared.fence);
+            }
+            catch (...) {
+            }
+            try {
+                _relocations->remove (stored.reference);
+            }
+            catch (...) {
+            }
+            (void) _objects.abort_relocation (seal.token);
+            return {
+              relocation_terminal_t::conflict,
+              relocation_reason_t::authority_conflict,
+              committed.current};
+        }
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::authority_publish_failed,
+          committed.current};
+    }
+    const auto [commit_error, local] =
+      _objects.commit_relocation_aggregate (
+        seal.token, std::move (target_node_id));
+    if (commit_error != stateful_error_t::none
+        || local.size () != committed.current.size ()) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          committed.current};
+    }
+    for (const auto &current : committed.current) {
+        const auto match = std::find (
+          local.begin (), local.end (), current.target);
+        if (match == local.end ()) {
+            return {
+              relocation_terminal_t::recovery_required,
+              relocation_reason_t::restore_failed,
+              committed.current};
+        }
+    }
+    return {
+      relocation_terminal_t::completed,
+      relocation_reason_t::none,
+      committed.current};
+}
+
 relocation_gate_snapshot_t maintenance_runtime_t::gate_snapshot () const
 {
     std::lock_guard lock (_gate_mutex);
@@ -478,6 +656,27 @@ maintenance_runtime_t::decode (
     return std::make_pair (std::move (frozen), digest);
 }
 
+std::vector<std::uint8_t> maintenance_runtime_t::encode_aggregate (
+  const std::vector<frozen_object_state_t> &participants,
+  const inventory_digest_t &inventory_digest)
+{
+    if (participants.size () < 2 || participants.size () > 1024)
+        return {};
+    std::vector<std::uint8_t> output (
+      aggregate_envelope_magic.begin (),
+      aggregate_envelope_magic.end ());
+    append_u32 (
+      output, static_cast<std::uint32_t> (participants.size ()));
+    for (const auto &participant : participants) {
+        const auto encoded = encode (participant, inventory_digest);
+        if (encoded.empty () || !append_bytes (output, encoded))
+            return {};
+    }
+    output.insert (
+      output.end (), inventory_digest.begin (), inventory_digest.end ());
+    return output;
+}
+
 maintenance_runtime_t::permit_t::permit_t (
   maintenance_runtime_t *owner,
   std::size_t payload) :
@@ -567,25 +766,458 @@ relocation_result_t maintenance_runtime_t::finish (
     return result;
 }
 
+host_maintenance_runtime_t::host_maintenance_runtime_t (
+  stateful_object_runtime_t &objects,
+  stream_session_registry_t &sessions,
+  maintenance_runtime_t &relocation,
+  std::shared_ptr<target_preflight_port_t> targets,
+  observer_t observer) :
+    _objects (objects),
+    _sessions (sessions),
+    _relocation (relocation),
+    _targets (std::move (targets)),
+    _observer (std::move (observer))
+{
+    if (!_targets)
+        throw std::invalid_argument ("target preflight provider is missing");
+}
+
+void host_maintenance_runtime_t::mark_serving ()
+{
+    std::lock_guard lock (_mutex);
+    if (_state != host_runtime_state_t::preparing)
+        throw std::logic_error ("host can become serving only from preparing");
+    _state = host_runtime_state_t::serving;
+}
+
+void host_maintenance_runtime_t::mark_error ()
+{
+    std::lock_guard lock (_mutex);
+    if (_state != host_runtime_state_t::stopped)
+        _state = host_runtime_state_t::error;
+}
+
+host_runtime_state_t host_maintenance_runtime_t::state () const
+{
+    std::lock_guard lock (_mutex);
+    return _state;
+}
+
+std::optional<termination_result_t>
+host_maintenance_runtime_t::terminal_result () const
+{
+    std::lock_guard lock (_mutex);
+    return _terminal;
+}
+
+std::optional<termination_intent_t>
+host_maintenance_runtime_t::intent_snapshot () const
+{
+    std::lock_guard lock (_mutex);
+    if (_shutdown_claimed)
+        return termination_intent_t::shutdown;
+    return _effective_intent;
+}
+
+termination_result_t host_maintenance_runtime_t::terminate (
+  termination_intent_t intent)
+{
+    std::uint64_t attempt = 0;
+    {
+        std::unique_lock lock (_mutex);
+        if (_terminal)
+            return *_terminal;
+        if (_state == host_runtime_state_t::stopped) {
+            return {
+              intent, termination_outcome_t::stopped,
+              termination_reason_t::none};
+        }
+        if (_active) {
+            attempt = _active_attempt;
+            if (intent == termination_intent_t::shutdown
+                && !_effective_intent) {
+                _shutdown_claimed = true;
+            }
+            _changed.wait (
+              lock,
+              [&] { return _attempt_results.contains (attempt); });
+            return _attempt_results.at (attempt);
+        }
+        if (intent == termination_intent_t::retire
+            && _state != host_runtime_state_t::serving) {
+            return {
+              intent, termination_outcome_t::blocked,
+              termination_reason_t::runtime_not_ready};
+        }
+        _active = true;
+        _shutdown_claimed = false;
+        _effective_intent.reset ();
+        attempt = _next_attempt++;
+        _active_attempt = attempt;
+        if (intent == termination_intent_t::shutdown)
+            _effective_intent = termination_intent_t::shutdown;
+    }
+
+    const auto result =
+      intent == termination_intent_t::retire
+        ? run_retire ()
+        : run_shutdown (termination_intent_t::shutdown);
+    complete_attempt (attempt, result);
+    return result;
+}
+
+std::vector<relocation_unit_t>
+host_maintenance_runtime_t::inventory_units (
+  std::vector<object_inventory_t> inventory)
+{
+    std::sort (
+      inventory.begin (), inventory.end (),
+      [] (const object_inventory_t &left,
+          const object_inventory_t &right) {
+          if (left.owner.kind != right.owner.kind)
+              return left.owner.kind < right.owner.kind;
+          return left.owner.key < right.owner.key;
+      });
+    std::vector<relocation_unit_t> units;
+    std::map<std::string, std::size_t> user_spots;
+    for (const auto &object : inventory) {
+        if (object.owner.kind != object_kind_t::user_spot)
+            continue;
+        user_spots.emplace (object.owner.key, units.size ());
+        units.push_back ({{object.owner}});
+    }
+    for (const auto &object : inventory) {
+        if (object.owner.kind == object_kind_t::actor) {
+            const auto spot = user_spots.find (object.membership);
+            if (spot != user_spots.end ())
+                units[spot->second].participants.push_back (object.owner);
+            else
+                units.push_back ({{object.owner}});
+        } else if (object.owner.kind == object_kind_t::instance_spot) {
+            units.push_back ({{object.owner}});
+        }
+    }
+    for (auto &unit : units) {
+        std::sort (
+          unit.participants.begin (), unit.participants.end (),
+          [] (const object_ref_t &left, const object_ref_t &right) {
+              if (left.kind != right.kind)
+                  return left.kind < right.kind;
+              return left.key < right.key;
+          });
+    }
+    return units;
+}
+
+termination_result_t host_maintenance_runtime_t::run_retire ()
+{
+    auto inventory = _objects.try_begin_maintenance_inventory ();
+    if (!inventory) {
+        return {
+          termination_intent_t::retire,
+          termination_outcome_t::blocked,
+          termination_reason_t::runtime_not_ready};
+    }
+    {
+        std::lock_guard lock (_mutex);
+        _inventory_sealed = true;
+    }
+    for (const auto &object : *inventory) {
+        if (object.state != object_state_t::ready) {
+            _objects.end_maintenance_inventory ();
+            {
+                std::lock_guard lock (_mutex);
+                _inventory_sealed = false;
+            }
+            return {
+              termination_intent_t::retire,
+              termination_outcome_t::blocked,
+              termination_reason_t::state_incompatible};
+        }
+    }
+    const auto units = inventory_units (std::move (*inventory));
+    target_preflight_result_t preflight;
+    try {
+        preflight = _targets->preflight (units);
+    }
+    catch (...) {
+        preflight.status = target_preflight_status_t::store_unavailable;
+    }
+
+    bool exact_preflight = preflight.units.size () == units.size ();
+    if (exact_preflight) {
+        for (std::size_t index = 0; index != units.size (); ++index) {
+            if (preflight.units[index].unit != units[index]) {
+                exact_preflight = false;
+                break;
+            }
+        }
+    }
+    {
+        std::lock_guard lock (_mutex);
+        if (_shutdown_claimed) {
+            _effective_intent = termination_intent_t::shutdown;
+            _state = host_runtime_state_t::draining;
+        } else if (preflight.status
+                   == target_preflight_status_t::eligible
+                   && exact_preflight) {
+            _effective_intent = termination_intent_t::retire;
+            _state = host_runtime_state_t::retiring;
+        } else {
+            termination_reason_t reason =
+              termination_reason_t::target_unavailable;
+            switch (preflight.status) {
+            case target_preflight_status_t::store_unavailable:
+                reason = termination_reason_t::store_unavailable;
+                break;
+            case target_preflight_status_t::relocation_disabled:
+                reason = termination_reason_t::relocation_disabled;
+                break;
+            case target_preflight_status_t::state_incompatible:
+                reason = termination_reason_t::state_incompatible;
+                break;
+            case target_preflight_status_t::eligible:
+                reason = termination_reason_t::state_incompatible;
+                break;
+            default:
+                break;
+            }
+            _objects.end_maintenance_inventory ();
+            _inventory_sealed = false;
+            return {
+              termination_intent_t::retire,
+              termination_outcome_t::blocked, reason};
+        }
+    }
+    if (_effective_intent == termination_intent_t::shutdown)
+        return run_shutdown (termination_intent_t::shutdown);
+
+    std::size_t committed_units = 0;
+    const auto fail_relocation =
+      [&] (termination_reason_t blocked_reason, bool irreversible = false) {
+          if (committed_units == 0 && !irreversible) {
+              return termination_result_t{
+                termination_intent_t::retire,
+                termination_outcome_t::blocked, blocked_reason};
+          }
+          {
+              std::lock_guard lock (_mutex);
+              _state = host_runtime_state_t::draining;
+          }
+          _sessions.force_close_all ();
+          {
+              std::lock_guard lock (_mutex);
+              _state = host_runtime_state_t::stopped;
+          }
+          return termination_result_t{
+            termination_intent_t::retire,
+            termination_outcome_t::force_stopped,
+            termination_reason_t::relocation_failed};
+      };
+    for (const auto &eligible : preflight.units) {
+        if (eligible.unit.participants.empty ()
+            || eligible.target_node_id.empty ()
+            || eligible.encoded_upper_bound == 0) {
+            return fail_relocation (
+              termination_reason_t::state_incompatible);
+        }
+
+        std::vector<stream_barrier_t> barriers;
+        bool barrier_ready = true;
+        for (const auto &participant : eligible.unit.participants) {
+            if (participant.kind != object_kind_t::actor)
+                continue;
+            auto [error, barrier] =
+              _sessions.try_seal_actor (participant);
+            if (error != stateful_error_t::none) {
+                barrier_ready = false;
+                break;
+            }
+            barriers.push_back (barrier);
+        }
+        if (!barrier_ready) {
+            for (const auto &barrier : barriers)
+                (void) _sessions.abort_barrier (barrier);
+            return fail_relocation (
+              termination_reason_t::state_incompatible);
+        }
+
+        std::vector<authority_relocation_reference_t> current;
+        relocation_terminal_t terminal = relocation_terminal_t::blocked;
+        if (eligible.unit.participants.size () == 1) {
+            const auto result = _relocation.relocate (
+              eligible.unit.participants.front (),
+              eligible.target_node_id, eligible.encoded_upper_bound,
+              eligible.inventory_digest);
+            terminal = result.terminal;
+            if (result.authority)
+                current.push_back (*result.authority);
+        } else {
+            const auto result = _relocation.relocate_aggregate (
+              eligible.unit.participants, eligible.target_node_id,
+              eligible.encoded_upper_bound,
+              eligible.inventory_digest);
+            terminal = result.terminal;
+            current = result.authority;
+        }
+        if (terminal != relocation_terminal_t::completed) {
+            for (const auto &barrier : barriers)
+                (void) _sessions.abort_barrier (barrier);
+            return fail_relocation (
+              termination_reason_t::store_unavailable,
+              terminal == relocation_terminal_t::recovery_required
+                || terminal == relocation_terminal_t::data_lost);
+        }
+        for (const auto &barrier : barriers) {
+            const auto target = std::find_if (
+              current.begin (), current.end (),
+              [&] (const authority_relocation_reference_t &reference) {
+                  return reference.source == barrier.actor;
+              });
+            if (target == current.end ()
+                || _sessions.commit_barrier (
+                     barrier, target->target)
+                     != stateful_error_t::none) {
+                return fail_relocation (
+                  termination_reason_t::relocation_failed, true);
+            }
+        }
+        ++committed_units;
+    }
+    {
+        std::lock_guard lock (_mutex);
+        _state = host_runtime_state_t::draining;
+    }
+    if (!_sessions.try_seal_all ()) {
+        _sessions.force_close_all ();
+        {
+            std::lock_guard lock (_mutex);
+            _state = host_runtime_state_t::stopped;
+        }
+        return {
+          termination_intent_t::retire,
+          termination_outcome_t::force_stopped,
+          termination_reason_t::relocation_failed};
+    }
+    {
+        std::lock_guard lock (_mutex);
+        _state = host_runtime_state_t::stopped;
+    }
+    return {
+      termination_intent_t::retire,
+      termination_outcome_t::stopped,
+      termination_reason_t::none};
+}
+
+termination_result_t host_maintenance_runtime_t::run_shutdown (
+  termination_intent_t effective_intent)
+{
+    bool acquire_inventory = false;
+    {
+        std::lock_guard lock (_mutex);
+        _effective_intent = effective_intent;
+        _state = host_runtime_state_t::draining;
+        acquire_inventory = !_inventory_sealed;
+    }
+    if (acquire_inventory) {
+        const auto inventory =
+          _objects.try_begin_maintenance_inventory ();
+        if (!inventory) {
+            {
+                std::lock_guard lock (_mutex);
+                _state = host_runtime_state_t::stopped;
+            }
+            return {
+              effective_intent,
+              termination_outcome_t::force_stopped,
+              termination_reason_t::teardown_failed};
+        }
+        std::lock_guard lock (_mutex);
+        _inventory_sealed = true;
+    }
+    const auto sealed = _sessions.try_seal_all ();
+    if (!sealed)
+        _sessions.force_close_all ();
+    {
+        std::lock_guard lock (_mutex);
+        _state = host_runtime_state_t::stopped;
+    }
+    return {
+      effective_intent,
+      sealed ? termination_outcome_t::stopped
+             : termination_outcome_t::force_stopped,
+      sealed ? termination_reason_t::none
+             : termination_reason_t::teardown_failed};
+}
+
+void host_maintenance_runtime_t::complete_attempt (
+  std::uint64_t attempt,
+  const termination_result_t &result)
+{
+    bool release_inventory = false;
+    {
+        std::lock_guard lock (_mutex);
+        _attempt_results[attempt] = result;
+        _active = false;
+        _active_attempt = 0;
+        _shutdown_claimed = false;
+        _effective_intent.reset ();
+        if (result.outcome != termination_outcome_t::blocked)
+            _terminal = result;
+        else {
+            release_inventory = _inventory_sealed;
+            _inventory_sealed = false;
+            if (_state == host_runtime_state_t::retiring)
+                _state = host_runtime_state_t::serving;
+        }
+    }
+    if (release_inventory)
+        _objects.end_maintenance_inventory ();
+    _changed.notify_all ();
+    if (_observer) {
+        try {
+            _observer (result);
+        }
+        catch (...) {
+        }
+    }
+}
+
 } // namespace zlink::framework::runtime::stateful
 
 namespace zlink::framework::runtime::host
 {
 
 void public_host_runtime_t::configure_maintenance (
-  std::shared_ptr<stateful::authority_relocation_port_t> authority,
-  std::shared_ptr<stateful::relocation_store_port_t> relocations,
+  stateful::maintenance_provider_set_t providers,
   stateful::relocation_limits_t limits,
-  stateful::maintenance_runtime_t::observer_t observer)
+  stateful::maintenance_runtime_t::observer_t relocation_observer,
+  stateful::host_maintenance_runtime_t::observer_t
+    termination_observer)
 {
     std::lock_guard lock (_mutex);
-    if (_started || _maintenance) {
+    if (_started || _maintenance || _termination) {
         throw std::logic_error (
           "maintenance providers must be configured once before host start");
     }
-    _maintenance = std::make_unique<stateful::maintenance_runtime_t> (
-      _objects, std::move (authority), std::move (relocations),
-      limits, std::move (observer));
+    auto targets = providers.targets;
+    auto maintenance =
+      std::make_unique<stateful::maintenance_runtime_t> (
+      _objects, std::move (providers), limits,
+      std::move (relocation_observer));
+    auto termination =
+      std::make_unique<stateful::host_maintenance_runtime_t> (
+        _objects, _sessions, *maintenance, std::move (targets),
+        std::move (termination_observer));
+    _maintenance = std::move (maintenance);
+    _termination = std::move (termination);
+    _maintenance_started = [this] {
+        _termination->mark_serving ();
+    };
+    _maintenance_closing = [this] {
+        (void) _termination->terminate (
+          stateful::termination_intent_t::shutdown);
+    };
 }
 
 stateful::maintenance_runtime_t *
@@ -593,6 +1225,13 @@ public_host_runtime_t::maintenance () noexcept
 {
     std::lock_guard lock (_mutex);
     return _maintenance.get ();
+}
+
+stateful::host_maintenance_runtime_t *
+public_host_runtime_t::termination () noexcept
+{
+    std::lock_guard lock (_mutex);
+    return _termination.get ();
 }
 
 } // namespace zlink::framework::runtime::host

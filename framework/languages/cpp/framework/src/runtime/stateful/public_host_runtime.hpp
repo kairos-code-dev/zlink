@@ -349,11 +349,13 @@ class public_host_runtime_t :
     stateful::stateful_object_runtime_t &objects () noexcept;
     stateful::stream_session_registry_t &sessions () noexcept;
     void configure_maintenance (
-      std::shared_ptr<stateful::authority_relocation_port_t> authority,
-      std::shared_ptr<stateful::relocation_store_port_t> relocations,
+      stateful::maintenance_provider_set_t providers,
       stateful::relocation_limits_t limits = {},
-      stateful::maintenance_runtime_t::observer_t observer = {});
+      stateful::maintenance_runtime_t::observer_t relocation_observer = {},
+      stateful::host_maintenance_runtime_t::observer_t
+        termination_observer = {});
     stateful::maintenance_runtime_t *maintenance () noexcept;
+    stateful::host_maintenance_runtime_t *termination () noexcept;
 
     spot_handle_t entry_spot ();
     spot_handle_t get_or_create_spot (const zlink::routing_id_t &routing_id);
@@ -433,6 +435,9 @@ class public_host_runtime_t :
     stateful::stateful_object_runtime_t _objects;
     stateful::stream_session_registry_t _sessions;
     std::unique_ptr<stateful::maintenance_runtime_t> _maintenance;
+    std::unique_ptr<stateful::host_maintenance_runtime_t> _termination;
+    std::function<void ()> _maintenance_started;
+    std::function<void ()> _maintenance_closing;
     mutable std::mutex _mutex;
     std::map<std::pair<std::uint64_t, std::uint64_t>,
              std::pair<receive_record_t, std::vector<zlink::message_t>>>

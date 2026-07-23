@@ -148,6 +148,23 @@ struct relocation_seal_t
     frozen_object_state_t frozen;
 };
 
+struct object_inventory_t
+{
+    object_ref_t owner;
+    std::string stable_type;
+    object_state_t state = object_state_t::creating;
+    std::string membership;
+
+    friend bool operator== (const object_inventory_t &,
+                            const object_inventory_t &) = default;
+};
+
+struct aggregate_relocation_seal_t
+{
+    std::uint64_t token = 0;
+    std::vector<frozen_object_state_t> participants;
+};
+
 class stateful_object_runtime_t
 {
   public:
@@ -199,11 +216,21 @@ class stateful_object_runtime_t
       std::vector<std::uint8_t> payload);
     std::vector<logical_timer_t> timers (
       const object_ref_t &owner) const;
+    std::vector<object_inventory_t> inventory () const;
+    std::optional<std::vector<object_inventory_t>>
+    try_begin_maintenance_inventory ();
+    void end_maintenance_inventory () noexcept;
     std::pair<stateful_error_t, relocation_seal_t>
     try_seal_relocation (const object_ref_t &owner);
+    std::pair<stateful_error_t, aggregate_relocation_seal_t>
+    try_seal_relocation_aggregate (
+      const std::vector<object_ref_t> &participants);
     stateful_error_t abort_relocation (std::uint64_t token);
     std::pair<stateful_error_t, object_ref_t>
     commit_relocation (std::uint64_t token, std::string target_node_id);
+    std::pair<stateful_error_t, std::vector<object_ref_t>>
+    commit_relocation_aggregate (
+      std::uint64_t token, std::string target_node_id);
     stateful_error_t restore_relocation (
       frozen_object_state_t frozen,
       object_ref_t target);
@@ -215,6 +242,8 @@ class stateful_object_runtime_t
         std::string key;
 
         bool operator< (const object_key_t &other) const noexcept;
+        friend bool operator== (const object_key_t &,
+                                const object_key_t &) = default;
     };
 
     struct queue_t
@@ -245,8 +274,8 @@ class stateful_object_runtime_t
 
     struct relocation_seal_state_t
     {
-        object_key_t key;
-        frozen_object_state_t frozen;
+        std::vector<object_key_t> keys;
+        std::vector<frozen_object_state_t> frozen;
     };
 
     static bool valid_text (const std::string &value);
@@ -271,6 +300,7 @@ class stateful_object_runtime_t
     std::map<std::uint64_t, object_key_t> _attempts;
     std::map<std::uint64_t, membership_move_t> _membership_moves;
     std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
+    bool _maintenance_inventory_active = false;
     std::uint64_t _next_attempt = 1;
     std::uint64_t _next_membership_token = 1;
     std::uint64_t _next_relocation_token = 1;

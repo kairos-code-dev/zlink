@@ -414,15 +414,29 @@ void public_host_runtime_t::start ()
     }
     _transport->start ();
     _started = true;
+    if (_maintenance_started)
+        _maintenance_started ();
 }
 
 void public_host_runtime_t::close () noexcept
 {
+    std::function<void ()> maintenance_closing;
     {
         std::lock_guard lock (_mutex);
         if (!_started) {
             return;
         }
+        maintenance_closing = _maintenance_closing;
+    }
+    if (maintenance_closing) {
+        try {
+            maintenance_closing ();
+        }
+        catch (...) {
+        }
+    }
+    {
+        std::lock_guard lock (_mutex);
         _started = false;
         _completions.clear ();
     }

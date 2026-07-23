@@ -40,7 +40,7 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly spotRouterChannelIdForMesh: (meshName: string) => string = (meshName) => meshName,
     private readonly sourceSpotProvider?: () => ZLinkBackendSpot | undefined,
     private readonly meshName?: string,
-    private readonly channelMeshNameForChannel?: (channelName: string) => string | undefined
+    _channelMeshNameForChannel?: (channelName: string) => string | undefined
   ) {}
 
   sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall {
@@ -78,14 +78,14 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall {
     return wrapSendCall(
       this.serial,
-      this.requireChannelClient().sendToChannel(this.resolveChannelMeshName(channelName), channelName, message)
+      this.requireChannelClient().sendToChannel(channelName, message)
     );
   }
 
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
     return wrapRequestCall(
       this.serial,
-      this.requireChannelClient().requestToChannel(this.resolveChannelMeshName(channelName), channelName, request)
+      this.requireChannelClient().requestToChannel(channelName, request)
     );
   }
 
@@ -101,10 +101,6 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
       throw new ZLinkConfigurationException('Spot channel outbound requires a MeshName context.');
     }
     return this.meshName;
-  }
-
-  private resolveChannelMeshName(channelName: string): string {
-    return this.channelMeshNameForChannel?.(channelName) ?? this.requireMeshName();
   }
 
   private requireRoutedTransport(): ZLinkSpotRoutedTransport {

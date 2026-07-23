@@ -128,7 +128,7 @@ export function createIntegrationChannelClient(
   registration: ZLinkFrameworkRegistration,
   runtime: ZLinkNestIntegrationRuntimeHost
 ): ZLinkChannelClient {
-  return new DefaultZLinkChannelClient(registration, runtimeHost(runtime).routeTransport);
+  return new DefaultZLinkChannelClient(registration, runtimeHost(runtime).channelTransport);
 }
 
 export function createIntegrationFanoutClient(

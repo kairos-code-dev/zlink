@@ -504,14 +504,14 @@ test('one-way call declarations expose async admission results only', () => {
   }
 });
 
-test('route client surface exposes MeshName-scoped node, channel, and SpotHandle routing', () => {
+test('route client surface scopes node routing by MeshName and resolves channels and Spots globally', () => {
   const declarations = readTree(declarationsRoot);
   const routeClient = declarationBody(declarations, 'ZLinkRouteClient');
 
   assert.match(routeClient, /sendToNode\(meshName: string, targetNodeRid: RoutingId, message: unknown\): ZLinkSendCall/);
   assert.match(routeClient, /requestToNode\(meshName: string, targetNodeRid: RoutingId, request: unknown\): ZLinkRequestCall/);
-  assert.match(routeClient, /sendToChannel\(meshName: string, channelName: string, message: unknown\): ZLinkSendCall/);
-  assert.match(routeClient, /requestToChannel\(meshName: string, channelName: string, request: unknown\): ZLinkRequestCall/);
+  assert.match(routeClient, /sendToChannel\(channelName: string, message: unknown\): ZLinkSendCall/);
+  assert.match(routeClient, /requestToChannel\(channelName: string, request: unknown\): ZLinkRequestCall/);
   assert.match(routeClient, /sendToSpot\(spot: SpotHandle, message: unknown\): ZLinkSendCall/);
   assert.match(routeClient, /requestToSpot\(spot: SpotHandle, request: unknown\): ZLinkRequestCall/);
 });

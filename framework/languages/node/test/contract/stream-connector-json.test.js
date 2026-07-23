@@ -42,6 +42,7 @@ test('stream connector json codec writes json payload frame through connector', 
   assert.equal(header.name, 'Ready');
   assert.equal(header.metadata.get('trace'), 'json-1');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { ready: true });
+  await instance.close();
 });
 
 test('stream connector close drains submitted one-way send writes', async () => {
@@ -92,6 +93,7 @@ test('stream connector json codec decodes reply payload through connector', asyn
 
   await instance.dispatch();
   assert.deepEqual(await pending, { accepted: true });
+  await instance.close();
 });
 
 test('stream connector json codec decodes plain-object request replies through connector', async () => {
@@ -124,6 +126,7 @@ test('stream connector json codec decodes plain-object request replies through c
 
   await instance.dispatch();
   assert.deepEqual(await pending, { accepted: true });
+  await instance.close();
 });
 
 test('stream connector json codec dispatches typed payloads through connector', async () => {
@@ -152,6 +155,7 @@ test('stream connector json codec dispatches typed payloads through connector', 
 
   await instance.dispatch();
   assert.deepEqual(received, [{ notice: 1 }]);
+  await instance.close();
 });
 
 test('stream connector json codec wait resolves matching typed payload', async () => {
@@ -192,6 +196,7 @@ test('stream connector json codec wait resolves matching typed payload', async (
   await instance.dispatch();
 
   assert.deepEqual((await pending).payload, { notice: 2 });
+  await instance.close();
 });
 
 test('stream connector wait consumes a matching message received before registration', async () => {
@@ -220,6 +225,7 @@ test('stream connector wait consumes a matching message received before registra
     .submit();
 
   assert.deepEqual(received.payload, { round: 7 });
+  await instance.close();
 });
 
 test('stream connector json codec wait uses connector request timeout by default', async () => {
@@ -249,6 +255,7 @@ test('stream connector json codec wait uses connector request timeout by default
   await instance.dispatch();
 
   assert.deepEqual((await pending).payload, { notice: 3 });
+  await instance.close();
 });
 
 class MemoryTransportFactory {

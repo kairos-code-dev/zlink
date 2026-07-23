@@ -3,19 +3,19 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 
-test('node binding exposes the public API required by framework P2-P8', () => {
+test('node binding exposes the raw public API required by the framework runtime', () => {
   for (const name of [
     'createContext',
     'createDealerSocket',
     'createRouterSocket',
     'createPubSocket',
     'createSubSocket',
-    'createMeshNode',
     'createStreamSocket'
   ]) {
     assert.equal(typeof zlink[name], 'function', `${name} must be public`);
   }
   for (const name of [
+    'createMeshNode',
     'createDiscovery',
     'createRegistry',
     'createRegistryQueryClient'
@@ -24,7 +24,7 @@ test('node binding exposes the public API required by framework P2-P8', () => {
   }
 });
 
-test('node binding public API covers formal MeshNode monitor and stream-session wrappers', () => {
+test('node binding public API covers raw socket monitor and stream wrappers', () => {
   const context = zlink.createContext();
   const closeables = [];
 
@@ -33,20 +33,15 @@ test('node binding public API covers formal MeshNode monitor and stream-session 
     const router = zlink.createRouterSocket(context);
     const publisher = zlink.createPubSocket(context);
     const subscriber = zlink.createSubSocket(context);
-    const meshNode = zlink.createMeshNode(context, { meshName: 'binding-parity' });
     const stream = zlink.createStreamSocket(context);
     const monitor = dealer.monitorOpen();
 
-    closeables.push(monitor, stream, meshNode, subscriber, publisher, router, dealer);
+    closeables.push(monitor, stream, subscriber, publisher, router, dealer);
 
     assert.equal(dealer.attachDiscovery, undefined);
     assert.equal(router.attachDiscovery, undefined);
     assert.equal(publisher.attachDiscovery, undefined);
     assert.equal(subscriber.attachDiscovery, undefined);
-    assert.equal(meshNode.attachDiscovery, undefined);
-    assert.equal(typeof meshNode.createActor, 'function');
-    assert.equal(typeof meshNode.openMonitor, 'function');
-    assert.equal(typeof meshNode.createStreamSessionService, 'function');
     assert.equal(typeof stream.setPacketHandler, 'function');
     assert.equal(typeof monitor.onEvent, 'function');
     assert.equal(typeof monitor.recv, 'function');

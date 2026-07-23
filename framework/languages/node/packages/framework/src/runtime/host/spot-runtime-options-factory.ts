@@ -94,7 +94,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
           fallbackActorRef
         );
       },
-      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.routeTransport),
+      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.options.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(
         this.options.registration,

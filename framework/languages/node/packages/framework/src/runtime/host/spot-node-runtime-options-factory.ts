@@ -52,7 +52,7 @@ export class ZLinkSpotNodeRuntimeOptionsFactory {
       primaryMeshName: this.options.meshRouters.primaryMeshName(),
       backendAdapterFactory: this.options.backendAdapterFactory,
       context: this.options.context,
-      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.routeTransport),
+      channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.options.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(
         this.options.registration,

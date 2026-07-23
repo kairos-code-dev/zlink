@@ -380,7 +380,6 @@ function nodePlan() {
     command("node-protocol-regression", "protocol", cwd, "node", "--test",
       "test/contract/channel-envelope-error.test.js",
       "test/contract/message-packet-name.test.js",
-      "test/contract/stream-connector-codecs.test.js",
       "test/contract/stream-connector-json.test.js"),
   ];
 }

@@ -5,8 +5,8 @@ import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from './Calls'
 export interface ZLinkRouteClient {
   sendToNode(meshName: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
   requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
-  sendToChannel(meshName: string, channelName: string, message: unknown): ZLinkSendCall;
-  requestToChannel(meshName: string, channelName: string, request: unknown): ZLinkRequestCall;
+  sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
+  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
   sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
   requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
 }

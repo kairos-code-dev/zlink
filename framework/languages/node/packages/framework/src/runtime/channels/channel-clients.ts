@@ -34,15 +34,14 @@ import { resolveFrameworkPacketName } from '../messaging/packet-name';
 export class DefaultZLinkChannelClient implements ZLinkChannelClient {
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
-    private readonly transport?: ZLinkRouteClientTransport
+    private readonly transport?: ZLinkChannelClientTransport
   ) {}
 
-  sendToChannel(meshName: string, channelName: string, message: unknown): ZLinkSendCall {
+  sendToChannel(channelName: string, message: unknown): ZLinkSendCall {
     return new DefaultZLinkSendCall(
-      () => this.requireMeshChannel(meshName, channelName),
+      () => this.requireChannel(channelName),
       async (packetName, metadata, signal) =>
-        normalizeSubmitResult(await this.requireTransport().submitToChannel(
-          meshName,
+        normalizeSubmitResult(await this.requireTransport().send(
           channelName,
           packetName,
           message,
@@ -52,12 +51,11 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
     );
   }
 
-  requestToChannel(meshName: string, channelName: string, request: unknown): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
     return new DefaultZLinkRequestCall(
-      () => this.requireMeshChannel(meshName, channelName),
+      () => this.requireChannel(channelName),
       (packetName, timeoutMs, metadata, signal) =>
-        this.requireTransport().requestToChannel(
-          meshName,
+        this.requireTransport().request(
           channelName,
           packetName,
           request,
@@ -65,29 +63,25 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
           signal,
           metadata
         ),
-      this.defaultRequestTimeout(meshName)
+      this.defaultRequestTimeout(channelName)
     );
   }
 
-  private defaultRequestTimeout(meshName: string): number {
-    return this.registration.spotNodes.get(meshName)?.requestTimeoutMs
-      ?? this.registration.routeChannelOptions.get(meshName)?.requestTimeoutMs
+  private defaultRequestTimeout(channelName: string): number {
+    return this.registration.channels.get(channelName)?.requestTimeoutMs
       ?? this.registration.requestTimeoutMs
       ?? 30_000;
   }
 
-  private requireMeshChannel(meshName: string, channelName: string): void {
-    const mesh = this.registration.spotNodes.get(meshName);
-    if (mesh === undefined || !Object.prototype.hasOwnProperty.call(mesh.meshChannels ?? {}, channelName)) {
-      throw new ZLinkConfigurationException(
-        `Channel '${channelName}' is not registered in RouteMesh '${meshName}'.`
-      );
+  private requireChannel(channelName: string): void {
+    if (!this.registration.channelClients.has(channelName)) {
+      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
     }
   }
 
-  private requireTransport(): ZLinkRouteClientTransport {
+  private requireTransport(): ZLinkChannelClientTransport {
     if (this.transport === undefined) {
-      throw new ZLinkConfigurationException('Route channel runtime is not started.');
+      throw new ZLinkConfigurationException('Channel runtime is not started.');
     }
     return this.transport;
   }
@@ -168,26 +162,29 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     );
   }
 
-  sendToChannel(meshName: string, channelName: string, message: unknown): ZLinkSendCall {
+  sendToChannel(channelName: string, message: unknown): ZLinkSendCall {
     return new DefaultZLinkSendCall(
-      () => this.requireMeshChannel(meshName, channelName),
-      async (packetName, metadata, signal) =>
-        normalizeSubmitResult(await this.requireTransport().submitToChannel(
+      () => { this.resolveMeshChannel(channelName); },
+      async (packetName, metadata, signal) => {
+        const meshName = this.resolveMeshChannel(channelName);
+        return normalizeSubmitResult(await this.requireTransport().submitToChannel(
           meshName,
           channelName,
           packetName,
           message,
           signal,
           metadata
-        ))
+        ));
+      }
     );
   }
 
-  requestToChannel(meshName: string, channelName: string, request: unknown): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
     return new DefaultZLinkRequestCall(
-      () => this.requireMeshChannel(meshName, channelName),
-      (packetName, timeoutMs, metadata, signal) =>
-        this.requireTransport().requestToChannel(
+      () => { this.resolveMeshChannel(channelName); },
+      (packetName, timeoutMs, metadata, signal) => {
+        const meshName = this.resolveMeshChannel(channelName);
+        return this.requireTransport().requestToChannel(
           meshName,
           channelName,
           packetName,
@@ -195,8 +192,9 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
           timeoutMs,
           signal,
           metadata
-        ),
-      this.defaultRequestTimeout(meshName)
+        );
+      },
+      this.defaultRequestTimeoutForChannel(channelName)
     );
   }
 
@@ -245,13 +243,27 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     }
   }
 
-  private requireMeshChannel(meshName: string, channelName: string): void {
-    const mesh = this.registration.spotNodes.get(meshName);
-    if (mesh === undefined || !Object.prototype.hasOwnProperty.call(mesh.meshChannels ?? {}, channelName)) {
+  private resolveMeshChannel(channelName: string): string {
+    const matches = [...this.registration.spotNodes.entries()]
+      .filter(([, mesh]) => Object.prototype.hasOwnProperty.call(mesh.meshChannels ?? {}, channelName))
+      .map(([meshName]) => meshName);
+    if (matches.length === 0) {
+      throw new ZLinkConfigurationException(`RouteMesh channel '${channelName}' is not registered.`);
+    }
+    if (matches.length !== 1) {
       throw new ZLinkConfigurationException(
-        `Channel '${channelName}' is not registered in RouteMesh '${meshName}'.`
+        `RouteMesh channel '${channelName}' must be unique across the Framework host.`
       );
     }
+    return matches[0]!;
+  }
+
+  private defaultRequestTimeoutForChannel(channelName: string): number {
+    const match = [...this.registration.spotNodes.entries()]
+      .find(([, mesh]) => Object.prototype.hasOwnProperty.call(mesh.meshChannels ?? {}, channelName));
+    return match?.[1].requestTimeoutMs
+      ?? this.registration.requestTimeoutMs
+      ?? 30_000;
   }
 
   private requireTransport(): ZLinkRouteClientTransport {

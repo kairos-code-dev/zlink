@@ -4,6 +4,8 @@
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
+#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
+
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -47,6 +49,7 @@ struct authority_relocation_reference_t
     std::string relocation_reference;
     std::uint32_t checksum_crc32c = 0;
     inventory_digest_t inventory_digest{};
+    location_owner_token_t target_owner;
 };
 
 enum class authority_publish_status_t
@@ -69,6 +72,8 @@ class authority_relocation_port_t
     virtual authority_publish_result_t publish (
       const object_ref_t &source,
       std::string target_node_id,
+      location_owner_token_t target_owner,
+      relocation_capacity_fence_t relocation_capacity_fence,
       std::string relocation_reference,
       std::uint32_t checksum_crc32c,
       inventory_digest_t inventory_digest) = 0;
@@ -103,6 +108,9 @@ class aggregate_authority_port_t
     virtual aggregate_publish_result_t prepare (
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
+      location_owner_token_t target_owner,
+      std::vector<relocation_capacity_fence_t>
+        relocation_capacity_fences,
       std::string relocation_reference,
       std::uint32_t checksum_crc32c,
       inventory_digest_t inventory_digest) = 0;
@@ -123,6 +131,9 @@ struct eligible_relocation_unit_t
 {
     relocation_unit_t unit;
     std::string target_node_id;
+    location_owner_token_t target_owner;
+    std::vector<relocation_capacity_fence_t>
+      relocation_capacity_fences;
     std::size_t encoded_upper_bound = 0;
     inventory_digest_t inventory_digest{};
 };
@@ -239,6 +250,8 @@ class maintenance_runtime_t
     relocation_result_t relocate (
       const object_ref_t &source,
       std::string target_node_id,
+      location_owner_token_t target_owner,
+      relocation_capacity_fence_t relocation_capacity_fence,
       std::size_t encoded_upper_bound,
       inventory_digest_t inventory_digest);
     relocation_result_t recover (
@@ -248,6 +261,9 @@ class maintenance_runtime_t
     aggregate_relocation_result_t relocate_aggregate (
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
+      location_owner_token_t target_owner,
+      std::vector<relocation_capacity_fence_t>
+        relocation_capacity_fences,
       std::size_t encoded_upper_bound,
       inventory_digest_t inventory_digest);
 

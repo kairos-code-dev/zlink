@@ -38,6 +38,101 @@ std::string authority_key (object_kind_t kind, const std::string &key)
 
 inventory_digest_t digest_with (std::uint8_t value);
 
+class public_memory_authority_store_t final :
+    public zlink::framework::authority_store_t
+{
+  public:
+    zlink::framework::task_t<
+      zlink::framework::authority_read_result_t>
+    read_authority (
+      zlink::framework::authority_key_t,
+      std::stop_token) override
+    {
+        if (!snapshot)
+            return completed (
+              zlink::framework::authority_read_result_t{
+                zlink::framework::authority_missing_t{
+                  std::chrono::system_clock::now ()}});
+        return completed (
+          zlink::framework::authority_read_result_t{*snapshot});
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::authority_compare_exchange_result_t>
+    compare_exchange_authority (
+      zlink::framework::authority_key_t,
+      zlink::framework::authority_expectation_t expectation,
+      zlink::framework::authority_mutation_t mutation,
+      std::stop_token) override
+    {
+        const auto *expected =
+          std::get_if<
+            zlink::framework::authority_expect_found_t> (
+            &expectation);
+        const auto *put =
+          std::get_if<zlink::framework::authority_put_t> (
+            &mutation);
+        if (!snapshot || !expected || !put
+            || expected->store_version
+                 != snapshot->store_version
+            || put->generation_transition
+                 != zlink::framework::
+                      authority_generation_transition_t::new_owner
+            || !put->target_owner
+            || !put->relocation_capacity_fence)
+            return completed (
+              zlink::framework::
+                authority_compare_exchange_result_t{
+                  zlink::framework::authority_conflict_t{
+                    snapshot
+                      ? zlink::framework::authority_read_result_t{
+                          *snapshot}
+                      : zlink::framework::authority_read_result_t{
+                          zlink::framework::authority_missing_t{
+                            std::chrono::system_clock::now ()}}}});
+        observed_target_owner = put->target_owner;
+        observed_capacity_fence =
+          put->relocation_capacity_fence;
+        snapshot->store_version = "2";
+        snapshot->payload = put->payload;
+        ++snapshot->authority_owner_generation;
+        snapshot->owner = *put->target_owner;
+        snapshot->store_now = std::chrono::system_clock::now ();
+        return completed (
+          zlink::framework::
+            authority_compare_exchange_result_t{
+              zlink::framework::authority_stored_t{*snapshot}});
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::authority_scan_result_t>
+    list_authorities (
+      std::string,
+      std::optional<zlink::framework::authority_scan_cursor_t>,
+      std::size_t,
+      std::stop_token) override
+    {
+        return completed (
+          zlink::framework::authority_scan_result_t{
+            zlink::framework::authority_page_t{}});
+    }
+
+    std::optional<zlink::framework::authority_snapshot_t> snapshot;
+    std::optional<zlink::framework::location_owner_token_t>
+      observed_target_owner;
+    std::optional<zlink::framework::relocation_capacity_fence_t>
+      observed_capacity_fence;
+
+  private:
+    template <typename T>
+    static zlink::framework::task_t<T> completed (T value)
+    {
+        return zlink::framework::task_t<T> (
+          zlink::framework::result_t<T>::success (
+            std::move (value)));
+    }
+};
+
 class public_memory_relocation_store_t final :
     public zlink::framework::relocation_store_t
 {
@@ -179,6 +274,8 @@ class memory_authority_store_t final : public authority_relocation_port_t
     authority_publish_result_t publish (
       const object_ref_t &source,
       std::string target_node_id,
+      zlink::framework::location_owner_token_t target_owner,
+      zlink::framework::relocation_capacity_fence_t,
       std::string relocation_reference,
       std::uint32_t checksum_crc32c,
       inventory_digest_t inventory_digest) override
@@ -199,7 +296,8 @@ class memory_authority_store_t final : public authority_relocation_port_t
           .target = target,
           .relocation_reference = std::move (relocation_reference),
           .checksum_crc32c = checksum_crc32c,
-          .inventory_digest = inventory_digest};
+          .inventory_digest = inventory_digest,
+          .target_owner = std::move (target_owner)};
         rows[authority_key (source.kind, source.key)] = reference;
         if (throw_after_publish)
             throw std::runtime_error ("response lost after authority commit");
@@ -243,13 +341,18 @@ class memory_aggregate_authority_t final : public aggregate_authority_port_t
     aggregate_publish_result_t prepare (
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
+      zlink::framework::location_owner_token_t target_owner,
+      std::vector<zlink::framework::relocation_capacity_fence_t>
+        relocation_capacity_fences,
       std::string relocation_reference,
       std::uint32_t checksum_crc32c,
       inventory_digest_t inventory_digest) override
     {
         std::lock_guard lock (mutex);
         ++prepare_count;
-        if (sources.size () < 2 || prepared)
+        if (sources.size () < 2 || prepared
+            || relocation_capacity_fences.size ()
+                 != sources.size ())
             return {aggregate_publish_status_t::conflict, {}, {}};
         pending.clear ();
         for (const auto &source : sources) {
@@ -261,7 +364,8 @@ class memory_aggregate_authority_t final : public aggregate_authority_port_t
                .target = target,
                .relocation_reference = relocation_reference,
                .checksum_crc32c = checksum_crc32c,
-               .inventory_digest = inventory_digest});
+               .inventory_digest = inventory_digest,
+               .target_owner = target_owner});
         }
         prepared = true;
         return {
@@ -328,6 +432,22 @@ class target_preflight_t final : public target_preflight_port_t
             result.units.push_back (
               {.unit = units[index],
                .target_node_id = "node-b",
+               .target_owner = {"owner-b", 1},
+               .relocation_capacity_fences = [&] {
+                   std::vector<zlink::framework::
+                                 relocation_capacity_fence_t>
+                     fences;
+                   for (std::size_t participant = 0;
+                        participant
+                          != units[index].participants.size ();
+                        ++participant)
+                       fences.push_back ({
+                         "capacity-"
+                         + std::to_string (index + 1)
+                         + "-"
+                         + std::to_string (participant + 1)});
+                   return fences;
+               } (),
                .encoded_upper_bound = 1024 * 1024,
                .inventory_digest =
                  digest_with (
@@ -466,7 +586,9 @@ void test_publication_and_handoff (test_context_t &test)
       source, authority, roots, {},
       [&] (const relocation_result_t &) { ++terminal_observations; });
     const auto result = runtime.relocate (
-      actor, "node-b", 1024 * 1024, digest_with (1));
+      actor, "node-b", {"owner-b", 1},
+      {"capacity-durable"},
+      1024 * 1024, digest_with (1));
     test.require (result.terminal == relocation_terminal_t::completed,
                   "durable relocation must complete");
     test.require (terminal_observations == 1,
@@ -525,7 +647,9 @@ void test_conflict_aborts_without_losing_ingress (test_context_t &test)
     };
     maintenance_runtime_t runtime (source, authority, roots);
     const auto result = runtime.relocate (
-      actor, "node-b", 1024 * 1024, digest_with (2));
+      actor, "node-b", {"owner-b", 1},
+      {"capacity-conflict"},
+      1024 * 1024, digest_with (2));
     test.require (result.terminal == relocation_terminal_t::conflict,
                   "authority CAS conflict must be closed");
     test.require (roots->removed.size () == 1,
@@ -546,7 +670,9 @@ void test_recovery_and_data_loss (test_context_t &test)
     auto authority = std::make_shared<memory_authority_store_t> ();
     maintenance_runtime_t coordinator (source, authority, roots);
     const auto moved = coordinator.relocate (
-      actor, "node-b", 1024 * 1024, digest_with (3));
+      actor, "node-b", {"owner-b", 1},
+      {"capacity-recovery"},
+      1024 * 1024, digest_with (3));
     test.require (moved.authority.has_value (),
                   "published relocation must expose recovery authority");
 
@@ -602,14 +728,18 @@ void test_permit_precedes_seal (test_context_t &test)
     relocation_result_t first_result;
     std::thread worker ([&] {
         first_result = runtime.relocate (
-          first, "node-b", 1024, digest_with (4));
+          first, "node-b", {"owner-b", 1},
+          {"capacity-first"},
+          1024, digest_with (4));
     });
     {
         std::unique_lock lock (gate);
         changed.wait (lock, [&] { return entered; });
     }
     const auto second_result = runtime.relocate (
-      second, "node-b", 1024, digest_with (5));
+      second, "node-b", {"owner-b", 1},
+      {"capacity-second"},
+      1024, digest_with (5));
     test.require (
       second_result.terminal == relocation_terminal_t::blocked
         && second_result.reason
@@ -910,6 +1040,56 @@ void test_public_relocation_store_adapter (test_context_t &test)
       "public relocation adapter must map delete and missing results");
 }
 
+void test_public_authority_store_adapter (test_context_t &test)
+{
+    public_memory_authority_store_t store;
+    store.snapshot =
+      zlink::framework::authority_snapshot_t{
+        "1",
+        {std::byte{0x01}},
+        7,
+        11,
+        {"owner-a", 3},
+        std::chrono::system_clock::now ()};
+    public_authority_store_adapter_t adapter (store);
+    const object_ref_t source{
+      object_kind_t::actor,
+      "actor-public",
+      7,
+      11,
+      "mesh",
+      "node-a"};
+    const zlink::framework::location_owner_token_t target_owner{
+      "owner-b", 5};
+    const auto published = adapter.publish (
+      source, "node-b", target_owner, {"capacity-public"},
+      "root-public", 42,
+      digest_with (9));
+    test.require (
+      published.status == authority_publish_status_t::published
+        && published.current
+        && published.current->target.node_id == "node-b"
+        && published.current->target.authority_owner_generation == 12,
+      "public authority adapter must publish exact NewOwner generation");
+    test.require (
+      store.observed_target_owner
+        && store.observed_target_owner->owner_id == "owner-b"
+        && store.observed_target_owner->lease_generation == 5
+        && store.observed_capacity_fence
+        && store.observed_capacity_fence->value
+             == "capacity-public"
+        && store.snapshot->owner.owner_id == "owner-b",
+      "public authority adapter must pass exact target owner and capacity fence");
+    const auto read =
+      adapter.read (object_kind_t::actor, "actor-public");
+    test.require (
+      read && read->relocation_reference == "root-public"
+        && read->checksum_crc32c == 42
+        && read->inventory_digest == digest_with (9)
+        && read->target_owner.lease_generation == 5,
+      "public authority adapter must decode only its Framework-owned payload");
+}
+
 } // namespace
 
 int main ()
@@ -925,5 +1105,6 @@ int main ()
     test_shutdown_wins_during_retire_preflight (test);
     test_post_commit_failure_is_force_stopped (test);
     test_public_relocation_store_adapter (test);
+    test_public_authority_store_adapter (test);
     return test.failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

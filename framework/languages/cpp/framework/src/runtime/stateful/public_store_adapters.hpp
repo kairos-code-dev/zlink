@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 namespace zlink::framework::runtime::stateful
 {
@@ -71,6 +72,313 @@ class public_relocation_store_adapter_t final :
   private:
     std::shared_ptr<zlink::framework::relocation_store_t> _owner;
     zlink::framework::relocation_store_t *_store;
+};
+
+class public_authority_store_adapter_t final :
+    public authority_relocation_port_t
+{
+  public:
+    explicit public_authority_store_adapter_t (
+      zlink::framework::authority_store_t &store) noexcept :
+        _store (&store)
+    {
+    }
+
+    authority_publish_result_t publish (
+      const object_ref_t &source,
+      std::string target_node_id,
+      location_owner_token_t target_owner,
+      relocation_capacity_fence_t relocation_capacity_fence,
+      std::string relocation_reference,
+      std::uint32_t checksum_crc32c,
+      inventory_digest_t inventory_digest) override
+    {
+        const auto key = authority_key (source);
+        const auto read =
+          _store->read_authority (key).result ().value ();
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&read);
+        if (!snapshot
+            || snapshot->object_generation
+                 != source.object_generation
+            || snapshot->authority_owner_generation
+                 != source.authority_owner_generation)
+            return {authority_publish_status_t::conflict,
+                    decode_current (read)};
+
+        authority_relocation_reference_t reference{
+          source,
+          source,
+          std::move (relocation_reference),
+          checksum_crc32c,
+          inventory_digest,
+          target_owner};
+        reference.target.node_id = std::move (target_node_id);
+        reference.target.authority_owner_generation =
+          source.authority_owner_generation + 1;
+        const auto exchanged =
+          _store
+            ->compare_exchange_authority (
+              key,
+              authority_expect_found_t{
+                snapshot->store_version},
+              authority_put_t{
+                encode (reference),
+                authority_generation_transition_t::new_owner,
+                target_owner,
+                std::move (relocation_capacity_fence)})
+            .result ()
+            .value ();
+        if (const auto *stored =
+              std::get_if<authority_stored_t> (&exchanged)) {
+            auto current = decode (stored->snapshot);
+            if (!current
+                || !same_owner (
+                  stored->snapshot.owner, target_owner))
+                return {authority_publish_status_t::failed,
+                        std::move (current)};
+            return {authority_publish_status_t::published,
+                    std::move (current)};
+        }
+        if (const auto *conflict =
+              std::get_if<authority_conflict_t> (&exchanged))
+            return {authority_publish_status_t::conflict,
+                    decode_current (conflict->current)};
+        return {authority_publish_status_t::failed, std::nullopt};
+    }
+
+    std::optional<authority_relocation_reference_t>
+    read (object_kind_t kind, const std::string &key) override
+    {
+        const auto result =
+          _store
+            ->read_authority (
+              authority_key (
+                object_ref_t{.kind = kind, .key = key}))
+            .result ()
+            .value ();
+        return decode_current (result);
+    }
+
+  private:
+    static bool same_owner (
+      const location_owner_token_t &left,
+      const location_owner_token_t &right) noexcept
+    {
+        return left.owner_id == right.owner_id
+               && left.lease_generation == right.lease_generation;
+    }
+
+    static authority_key_t authority_key (
+      const object_ref_t &object)
+    {
+        const auto prefix =
+          object.kind == object_kind_t::actor ? "actor:" : "spot:";
+        return {std::string (prefix) + object.key};
+    }
+
+    static void append_u32 (
+      std::vector<std::byte> &output,
+      std::uint32_t value)
+    {
+        for (int shift = 24; shift >= 0; shift -= 8)
+            output.push_back (
+              static_cast<std::byte> (
+                (value >> shift) & 0xffu));
+    }
+
+    static void append_u64 (
+      std::vector<std::byte> &output,
+      std::uint64_t value)
+    {
+        for (int shift = 56; shift >= 0; shift -= 8)
+            output.push_back (
+              static_cast<std::byte> (
+                (value >> shift) & 0xffu));
+    }
+
+    static void append_text (
+      std::vector<std::byte> &output,
+      std::string_view value)
+    {
+        append_u32 (
+          output, static_cast<std::uint32_t> (value.size ()));
+        for (const auto character : value)
+            output.push_back (
+              static_cast<std::byte> (
+                static_cast<unsigned char> (character)));
+    }
+
+    static std::vector<std::byte> encode (
+      const authority_relocation_reference_t &reference)
+    {
+        std::vector<std::byte> output;
+        for (const auto value : std::string_view ("ZLRA1"))
+            output.push_back (
+              static_cast<std::byte> (
+                static_cast<unsigned char> (value)));
+        output.push_back (
+          static_cast<std::byte> (reference.source.kind));
+        append_text (output, reference.source.key);
+        append_text (output, reference.source.mesh_name);
+        append_text (output, reference.source.node_id);
+        append_u64 (output, reference.source.object_generation);
+        append_u64 (
+          output,
+          reference.source.authority_owner_generation);
+        append_text (output, reference.target.node_id);
+        append_text (output, reference.relocation_reference);
+        append_u32 (output, reference.checksum_crc32c);
+        for (const auto value : reference.inventory_digest)
+            output.push_back (static_cast<std::byte> (value));
+        return output;
+    }
+
+    class reader_t
+    {
+      public:
+        explicit reader_t (
+          const std::vector<std::byte> &input) :
+            _input (input)
+        {
+        }
+
+        bool consume_magic ()
+        {
+            constexpr std::string_view magic = "ZLRA1";
+            if (_input.size () < magic.size ())
+                return false;
+            for (const auto value : magic) {
+                if (read_byte ()
+                    != static_cast<std::uint8_t> (value))
+                    return false;
+            }
+            return true;
+        }
+
+        std::optional<std::uint8_t> byte ()
+        {
+            if (_offset >= _input.size ())
+                return std::nullopt;
+            return read_byte ();
+        }
+
+        std::optional<std::uint32_t> u32 ()
+        {
+            std::uint32_t value = 0;
+            for (int index = 0; index != 4; ++index) {
+                const auto next = byte ();
+                if (!next)
+                    return std::nullopt;
+                value = (value << 8) | *next;
+            }
+            return value;
+        }
+
+        std::optional<std::uint64_t> u64 ()
+        {
+            std::uint64_t value = 0;
+            for (int index = 0; index != 8; ++index) {
+                const auto next = byte ();
+                if (!next)
+                    return std::nullopt;
+                value = (value << 8) | *next;
+            }
+            return value;
+        }
+
+        std::optional<std::string> text ()
+        {
+            const auto size = u32 ();
+            if (!size || _offset + *size > _input.size ())
+                return std::nullopt;
+            std::string value;
+            value.reserve (*size);
+            for (std::uint32_t index = 0; index != *size; ++index)
+                value.push_back (
+                  static_cast<char> (read_byte ()));
+            return value;
+        }
+
+        bool done () const noexcept
+        {
+            return _offset == _input.size ();
+        }
+
+      private:
+        std::uint8_t read_byte ()
+        {
+            return std::to_integer<std::uint8_t> (
+              _input[_offset++]);
+        }
+
+        const std::vector<std::byte> &_input;
+        std::size_t _offset = 0;
+    };
+
+    static std::optional<authority_relocation_reference_t>
+    decode (const authority_snapshot_t &snapshot)
+    {
+        reader_t reader (snapshot.payload);
+        if (!reader.consume_magic ())
+            return std::nullopt;
+        const auto kind = reader.byte ();
+        const auto key = reader.text ();
+        const auto mesh = reader.text ();
+        const auto source_node = reader.text ();
+        const auto object_generation = reader.u64 ();
+        const auto source_owner_generation = reader.u64 ();
+        const auto target_node = reader.text ();
+        const auto relocation_reference = reader.text ();
+        const auto checksum = reader.u32 ();
+        if (!kind || !key || !mesh || !source_node
+            || !object_generation || !source_owner_generation
+            || !target_node || !relocation_reference || !checksum)
+            return std::nullopt;
+        inventory_digest_t digest{};
+        for (auto &value : digest) {
+            const auto next = reader.byte ();
+            if (!next)
+                return std::nullopt;
+            value = *next;
+        }
+        if (!reader.done ())
+            return std::nullopt;
+        const auto object_kind =
+          static_cast<object_kind_t> (*kind);
+        if (object_kind != object_kind_t::actor
+            && object_kind != object_kind_t::user_spot
+            && object_kind != object_kind_t::instance_spot)
+            return std::nullopt;
+        object_ref_t source{
+          object_kind,
+          std::move (*key),
+          *object_generation,
+          *source_owner_generation,
+          std::move (*mesh),
+          std::move (*source_node)};
+        auto target = source;
+        target.node_id = std::move (*target_node);
+        target.authority_owner_generation =
+          snapshot.authority_owner_generation;
+        return authority_relocation_reference_t{
+          std::move (source),
+          std::move (target),
+          std::move (*relocation_reference),
+          *checksum,
+          digest,
+          snapshot.owner};
+    }
+
+    static std::optional<authority_relocation_reference_t>
+    decode_current (const authority_read_result_t &current)
+    {
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&current);
+        return snapshot ? decode (*snapshot) : std::nullopt;
+    }
+
+    zlink::framework::authority_store_t *_store;
 };
 
 } // namespace zlink::framework::runtime::stateful

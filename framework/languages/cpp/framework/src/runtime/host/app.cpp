@@ -608,6 +608,22 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
+    if (_state->services.contains (
+          std::type_index (typeid (authority_store_t)))
+        && !_state->services.contains (
+          std::type_index (
+            typeid (runtime::stateful::authority_relocation_port_t)))) {
+        _state->services.add_factory<
+          runtime::stateful::authority_relocation_port_t> (
+          [] (service_provider_t &provider) {
+              return std::unique_ptr<
+                runtime::stateful::authority_relocation_port_t> (
+                std::make_unique<
+                  runtime::stateful::public_authority_store_adapter_t> (
+                  provider.get_required<authority_store_t> ()));
+          },
+          service_lifetime_t::singleton);
+    }
     if (!_state->services.contains (std::type_index (typeid (location_store_t)))) {
         auto store = std::make_shared<runtime::in_memory_location_store_t> ();
         _state->services.add_factory<location_store_t> (

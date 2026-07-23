@@ -199,6 +199,99 @@ class test_location_store_t : public zlink::framework::location_store_t
         return _inner.remove_all_by_owner (std::move (owner_id));
     }
 
+    zlink::framework::task_t<zlink::framework::authority_read_result_t>
+    read_authority (zlink::framework::authority_key_t key,
+                    std::stop_token cancellation = {}) override
+    {
+        return _inner.read_authority (std::move (key), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::authority_compare_exchange_result_t>
+    compare_exchange_authority (
+      zlink::framework::authority_key_t key,
+      zlink::framework::authority_expectation_t expectation,
+      zlink::framework::authority_mutation_t mutation,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.compare_exchange_authority (
+          std::move (key), std::move (expectation), std::move (mutation),
+          cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::authority_scan_result_t>
+    list_authorities (
+      std::string prefix,
+      std::optional<zlink::framework::authority_scan_cursor_t> cursor,
+      std::size_t limit,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.list_authorities (
+          std::move (prefix), std::move (cursor), limit, cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::object_reserve_result_t>
+    reserve (zlink::framework::object_reserve_request_t request,
+             std::stop_token cancellation = {}) override
+    {
+        return _inner.reserve (std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::object_commit_result_t>
+    commit (zlink::framework::object_commit_request_t request,
+            std::stop_token cancellation = {}) override
+    {
+        return _inner.commit (std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::object_abort_result_t>
+    abort (zlink::framework::object_abort_request_t request,
+           std::stop_token cancellation = {}) override
+    {
+        return _inner.abort (std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::relocation_capacity_reserve_result_t>
+    reserve_relocation_capacity (
+      zlink::framework::relocation_capacity_reserve_request_t request,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.reserve_relocation_capacity (
+          std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::relocation_capacity_abort_result_t>
+    abort_relocation_capacity (
+      zlink::framework::relocation_capacity_fence_t fence,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.abort_relocation_capacity (
+          std::move (fence), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::aggregate_prepare_result_t>
+    prepare_aggregate (
+      zlink::framework::aggregate_prepare_request_t request,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.prepare_aggregate (std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::aggregate_commit_result_t>
+    commit_aggregate (zlink::framework::aggregate_fence_t fence,
+                      std::stop_token cancellation = {}) override
+    {
+        return _inner.commit_aggregate (std::move (fence), cancellation);
+    }
+
+    zlink::framework::task_t<zlink::framework::aggregate_abort_result_t>
+    abort_aggregate (zlink::framework::aggregate_fence_t fence,
+                     std::stop_token cancellation = {}) override
+    {
+        return _inner.abort_aggregate (std::move (fence), cancellation);
+    }
+
   private:
     in_memory_location_store_t _inner;
 };

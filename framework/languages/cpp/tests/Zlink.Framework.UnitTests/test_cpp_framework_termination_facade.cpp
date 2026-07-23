@@ -97,6 +97,11 @@ int main ()
         std::cerr << "Shutdown must complete the shared termination operation\n";
         return EXIT_FAILURE;
     }
+    if (app.retire ().result ().value () != shutdown) {
+        std::cerr << "later intent must observe the shared terminal result\n";
+        return EXIT_FAILURE;
+    }
+
     auto running = zlink::framework::app_t::create ();
     auto service = std::make_unique<blocking_stop_service_t> ();
     auto *service_view = service.get ();

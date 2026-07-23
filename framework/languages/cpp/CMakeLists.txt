@@ -1161,7 +1161,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     GTest::gtest_main)
   target_include_directories(test_cpp_framework_store_location_resolvers PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   zlink_framework_cpp_add_boost_headers(test_cpp_framework_store_location_resolvers)
   add_test(NAME test_cpp_framework_store_location_resolvers
     COMMAND test_cpp_framework_store_location_resolvers)

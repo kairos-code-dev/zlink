@@ -152,6 +152,8 @@ maintenance_runtime_t::maintenance_runtime_t (
 relocation_result_t maintenance_runtime_t::relocate (
   const object_ref_t &source,
   std::string target_node_id,
+  location_owner_token_t target_owner,
+  relocation_capacity_fence_t relocation_capacity_fence,
   std::size_t encoded_upper_bound,
   inventory_digest_t inventory_digest)
 {
@@ -213,7 +215,10 @@ relocation_result_t maintenance_runtime_t::relocate (
     bool publish_uncertain = false;
     try {
         published = _authority->publish (
-          source, std::move (target_node_id), stored.reference,
+          source, std::move (target_node_id),
+          std::move (target_owner),
+          std::move (relocation_capacity_fence),
+          stored.reference,
           checksum, inventory_digest);
     }
     catch (...) {
@@ -352,6 +357,9 @@ relocation_result_t maintenance_runtime_t::recover (
 aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
   const std::vector<object_ref_t> &sources,
   std::string target_node_id,
+  location_owner_token_t target_owner,
+  std::vector<relocation_capacity_fence_t>
+    relocation_capacity_fences,
   std::size_t encoded_upper_bound,
   inventory_digest_t inventory_digest)
 {
@@ -417,7 +425,9 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
     aggregate_publish_result_t prepared;
     try {
         prepared = _aggregate_authority->prepare (
-          sources, target_node_id, stored.reference, checksum,
+          sources, target_node_id, std::move (target_owner),
+          std::move (relocation_capacity_fences),
+          stored.reference, checksum,
           inventory_digest);
     }
     catch (...) {
@@ -1017,6 +1027,8 @@ termination_result_t host_maintenance_runtime_t::run_retire ()
     for (const auto &eligible : preflight.units) {
         if (eligible.unit.participants.empty ()
             || eligible.target_node_id.empty ()
+            || eligible.relocation_capacity_fences.size ()
+                 != eligible.unit.participants.size ()
             || eligible.encoded_upper_bound == 0) {
             return fail_relocation (
               termination_reason_t::state_incompatible);
@@ -1047,7 +1059,9 @@ termination_result_t host_maintenance_runtime_t::run_retire ()
         if (eligible.unit.participants.size () == 1) {
             const auto result = _relocation.relocate (
               eligible.unit.participants.front (),
-              eligible.target_node_id, eligible.encoded_upper_bound,
+              eligible.target_node_id, eligible.target_owner,
+              eligible.relocation_capacity_fences.front (),
+              eligible.encoded_upper_bound,
               eligible.inventory_digest);
             terminal = result.terminal;
             if (result.authority)
@@ -1055,6 +1069,8 @@ termination_result_t host_maintenance_runtime_t::run_retire ()
         } else {
             const auto result = _relocation.relocate_aggregate (
               eligible.unit.participants, eligible.target_node_id,
+              eligible.target_owner,
+              eligible.relocation_capacity_fences,
               eligible.encoded_upper_bound,
               eligible.inventory_digest);
             terminal = result.terminal;

@@ -3,6 +3,7 @@
 
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/locations/diagnostics.hpp>
+#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
 #include <zlink/framework/contracts/locations/watch.hpp>
 #include <zlink/framework/contracts/locations/writes.hpp>
 
@@ -73,7 +74,10 @@ class location_store_t : public peer_location_store_t,
                          public spot_location_store_t,
                          public actor_location_store_t,
                          public route_location_store_t,
-                         public owner_lease_store_t
+                         public owner_lease_store_t,
+                         public authority_store_t,
+                         public object_creation_store_t,
+                         public relocation_capacity_store_t
 {
   public:
     ~location_store_t () override = default;

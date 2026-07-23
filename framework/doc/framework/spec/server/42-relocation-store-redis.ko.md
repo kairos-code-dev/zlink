@@ -26,8 +26,12 @@ CRC32C와 ordered `(reference, length, CRC32C)`를 포함한다. Payload bytes�
 않으며 completion을 추가할 때도 새 root를 만든다.
 
 Process의 encoded payload in-flight 기본 상한 256 MiB는 Framework coordinator gate이며 Store object 크기나 logical
-stream ceiling이 아니다. Framework는 source queue를 seal하기 전에 예상 encoded payload byte permit을 얻는다. 한
-relocation unit이 gate보다 크면 다른 payload가 in-flight가 아닌 동안에만 oversized unit 하나로 저장·복원한다.
+stream ceiling이 아니다. Framework는 source queue를 seal하기 전에 Snapshot participant마다 64 MiB와 이미
+Framework가 소유한 section의 deterministic encoded upper bound를 합한 byte permit을 얻는다. `Capture` 뒤에는 actual
+encoded size로 permit을 축소만 한다. 한 User Spot aggregate의 reservation이 gate보다 크면 다른 payload가
+in-flight가 아닌 동안에만 exclusive oversized aggregate 하나로 저장·복원한다. Standalone Actor와 Instance Spot
+unit은 gate 안에서만 admit한다. Permit attempt는 all-or-nothing이며 실패한 unit은 일부 permit을 보유한 채
+기다리지 않는다.
 
 User Spot aggregate와 maintenance inventory의 권한 원본은 Location Store의 bounded canonical participant set이다.
 Relocation manifest는 participant별 state·journal payload를 찾기 위한 projection과 같은 canonical inventory digest를

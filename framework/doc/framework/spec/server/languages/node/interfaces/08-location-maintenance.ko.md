@@ -43,8 +43,9 @@ payload를 만들지 않고, `Disabled` cross-node 이동은 capture 전에 거�
 5000밀리초 작아야 한다. `ownerLeaseRenewIntervalMs`의 첫 번째 값은 Store owner lease 갱신
 주기이며 service connection의 liveness interval이 아니다.
 Relocation 제한의 기본값은 active outbound 64, active inbound 64, concurrent Capture 8, concurrent Restore 8,
-encoded payload in flight 268,435,456 bytes다. 다섯 값은 모두 양수여야 하며 같은 process의 모든 MeshNode가
-공유한다. Framework는 active unit, callback과 byte permit을 모두 얻기 전에는 source queue를 seal하지 않는다.
+encoded payload in flight 268,435,456 bytes다. 다섯 값은 모두 `Number.isSafeInteger(value) && value > 0`을
+만족해야 하며 `NaN`, infinity와 fraction은 socket bind 전 configuration error다. 같은 process의 모든 MeshNode가
+값을 공유한다. Framework는 active unit, callback과 byte permit을 모두 얻기 전에는 source queue를 seal하지 않는다.
 Byte 한도를 넘는 단일 User Spot aggregate는 다른 relocation payload 단계와 겹치지 않는 조건으로 단독 실행한다.
 Location Store와 owner lease runtime을 사용하는 모든 host는
 `ownerLeaseRenewIntervalMs + ownerLeaseRenewTimeoutMs < ownerLeaseTtlMs - ownerLeaseFencingMarginMs`를

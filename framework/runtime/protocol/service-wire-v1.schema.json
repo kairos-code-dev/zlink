@@ -347,7 +347,11 @@
         },
         {
           "phase": "prepared",
-          "after": ["relocation-reserved-ack-validated"],
+          "after": [
+            "relocation-reserved-ack-validated",
+            "target-factory-restore-complete",
+            "journal-timer-staging-complete"
+          ],
           "relocation": "present",
           "targetReservation": "present"
         }
@@ -385,10 +389,13 @@
       "kind": "participant-sequence-domain",
       "sequenceFields": [
         "journal-entry.sequence",
+        "relocation-pending-timer-tick.sequence",
         "request-completion-entry.sequence",
         "relocationData.sequence",
         "reply-relay-context.maintenanceRelocation.sequence"
       ],
+      "relocationQueueOrdering": "journal-entry-and-pending-timer-tick-share-one-strictly-increasing-participant-sequence",
+      "crossVectorDuplicate": "forbidden",
       "sequenceStart": 1,
       "zeroMeaning": "no-accepted-or-replayed-record",
       "progressFields": ["acceptedBoundary", "replayCursor", "highWater"],
@@ -798,44 +805,45 @@
       "userSpotMember": "preflight-blocked-relocationDisabled-state-and-admission-unchanged",
       "targetOffer": "compatible-initialized-target-entry-spot-rid-object-generation-and-kind",
       "commit": "newOwner-cas-atomically-updates-owner-authority-owner-generation-and-current-target-entry-spot",
-      "targetOrder": "factory-restore-then-target-entry-onJoinedActor-then-journal-replay",
-      "sourceCleanup": "source-onLeaveActor-and-old-entry-membership-removal-durable-before-completed",
+      "callbackOrder": "factory-restore-and-staging-then-owner-entry-membership-commit-then-target-entry-onActorRelocated-then-source-entry-onLeaveActor-and-old-entry-membership-durable-cleanup-or-source-crash-durable-cleanup-terminal-then-journal-replay",
+      "targetCallback": "target-entry-onActorRelocated-after-commit-never-onJoinedActor",
+      "sourceCleanup": "source-entry-onLeaveActor-and-old-entry-membership-removal-durable-before-replay-or-source-crash-durable-cleanup-terminal-substitutes",
+      "userSpotAggregateCallbacks": "onActorJoin-onJoinedActor-onActorRelocated-onLeaveActor-all-forbidden",
       "targetAdmission": "sealed-through-completed-route-acks-and-steady-normalization",
-      "callbacks": "retry-safe-at-least-once"
+      "callbacks": "retry-safe-at-least-once-failure-never-rolls-back-committed-authority"
     },
     {
       "kind": "stateful-capability-integrity",
       "entryType": "stateful-capability-entry",
       "key": ["objectKind", "type"],
-      "disabled": { "readableStateContractIds": "empty" },
-      "recreate": { "readableStateContractIds": "empty" },
-      "snapshot": { "readableStateContractIds": "nonempty-sorted-unique" },
-      "eligibility": "same-entry-exact-object-kind-type-policy-required-contract-and-positive-available",
+      "disabled": { "hasSnapshotAdapter": false },
+      "recreate": { "hasSnapshotAdapter": false },
+      "snapshot": { "hasSnapshotAdapter": true },
+      "eligibility": "same-entry-exact-object-kind-type-policy-snapshot-adapter-availability-and-positive-available",
       "flat-set-cross-product": "forbidden",
       "startupValidation": "derive-complete-descriptor-then-validate-before-host-start",
       "bounds": {
         "encodedDescriptorBytesMaximum": 1048576,
-        "typeCapabilityEntriesMaximum": 1024,
-        "readableStateContractIdsPerTypeMaximum": 1024
+        "typeCapabilityEntriesMaximum": 1024
       },
       "overflow": "atomic-configuration-failure-never-truncate-split-or-publish-partial"
     },
     {
       "kind": "relocation-application-state-integrity",
       "stateType": "relocation-application-state",
-      "recreate": "hasState-false-no-contract-serializer-or-payload",
-      "snapshot": "hasState-true-nonempty-contract-frameworkJsonV1-and-nonempty-payload",
+      "recreate": "hasState-false-no-payload",
+      "snapshot": "hasState-true-opaque-payload-empty-valid",
+      "participantMapping": "exactly-one-sorted-application-state-entry-per-participant-id",
+      "participantPayloadMaximumBytes": { "$bound": "relocationChunkBytes" },
       "relocationPresence": "every-relocation-including-empty-recreate-writes-one-deterministic-envelope",
       "storage": "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
       "chunking": "ordered-byte-stream-may-split-within-a-frozen-record",
-      "unknownSerializer": "protocol-error-before-restore"
+      "applicationInterpretation": "forbidden-framework-validates-byte-count-and-relocation-checksum-only"
     },
     {
       "kind": "framework-json-v1-integrity",
       "profile": "frameworkJsonV1Profile",
       "applicationPayloadBytes": "opaque-after-profile-validation-no-byte-canonicalization",
-      "relocationStateBytes": "opaque-after-profile-validation-no-byte-canonicalization",
-      "stateContractId": "asserts-target-adapter-semantic-compatibility",
       "goldenFixture": "golden/framework-json-v1.json"
     },
     {
@@ -845,7 +853,7 @@
       "immutableExact": [
         "topologyKind", "meshName-or-channelName", "securityIdentity", "endpoint-connection-identity",
         "rid", "lifecycleGeneration", "normalizedEffectiveMaxMessageBytes", "channelMembershipKeys",
-        "protocolCapabilities", "typeCapabilities", "stateContractCapabilities", "applicationVersion"
+        "protocolCapabilities", "spotTypes", "statefulCapabilities", "applicationVersion"
       ],
       "revision": "strictly-increasing-same-revision-identical-bytes-idempotent-lower-stale-same-revision-different-protocol-error",
       "mutableOnly": ["existingChannelWeights", "runtimeState", "placementCapacity", "maintenanceWave"],
@@ -1026,7 +1034,7 @@
     "encoding": "utf-8-without-bom",
     "byteCanonicalization": "not-required-property-order-and-insignificant-whitespace-ignored",
     "propertyNames": "registered-contract-names-exact-and-case-sensitive",
-    "duplicateProperties": "reject-before-typed-dispatch-or-restore",
+    "duplicateProperties": "reject-before-typed-dispatch",
     "unknownProperties": "ignore-for-forward-compatible-reader",
     "missingRequiredProperties": "reject",
     "signedAndUnsigned64": "canonical-decimal-string-without-plus-or-redundant-leading-zero-with-declared-range-check",
@@ -1038,7 +1046,6 @@
     "null": "allowed-only-for-contract-declared-nullable-value",
     "noImplicitCrossLanguageTypes": ["dateTime", "decimal", "uuid", "languageCustomType"],
     "explicitRepresentationForOtherTypes": "contract-defined-string-or-dto",
-    "stateContractId": "selects-compatible-typed-snapshot-adapter-not-a-serializer-option",
     "applicationBytes": "framework-validates-then-stores-or-forwards-opaque-original-bytes",
     "goldenFixture": "golden/framework-json-v1.json"
   },
@@ -1046,12 +1053,36 @@
     "preflight": "validate-capability-eligibility-and-bounded-headroom-without-final-reservation",
     "reversibleSeal": "hold-new-submissions-without-admission-result",
     "sizingSnapshot": "exact-participant-boundaries-messages-and-bytes-after-seal",
-    "timerAdmissionSeal": "stop-new-tick-admission-and-wait-all-pre-seal-accepted-timer-turns",
-    "acceptedTimerTurns": "drain-on-source-before-relocation-and-exclude-from-journal-boundary",
-    "futureTimerSchedule": "not-relocated-recreated-only-by-target-lifecycle-or-snapshot-state",
+    "timerAdmissionSeal": "stop-new-tick-admission-at-turn-boundary-current-handler-only-completes",
+    "acceptedTimerTurns": "unstarted-pending-ticks-enter-deterministic-relocation-envelope",
+    "futureTimerSchedule": "logical-registration-and-next-schedule-cursor-relocated-and-restored-by-target-framework",
+    "timerNativeState": "native-handle-backend-state-and-callback-continuation-forbidden",
+    "readinessScheduling": "infrastructure-notification-per-unit-ready-turn-first-no-kind-or-registration-order",
+    "permitAcquisition": "nonblocking-all-or-nothing-outbound-inbound-capture-restore-and-byte-before-source-seal",
+    "permitFailure": "release-all-provisional-permits-keep-source-admission-open-and-requeue-notification",
+    "defaultPermits": {
+      "activeOutbound": 64,
+      "activeInbound": 64,
+      "captureCallbacks": 8,
+      "restoreCallbacks": 8,
+      "encodedPayloadBytesInFlight": 268435456
+    },
+    "permitConfiguration": "five-application-options-positive-runtime-update-affects-new-admission-only",
+    "aggregateUnit": "user-spot-and-member-actors-share-one-unit-permit-and-commit-generation",
+    "byteReservation": "before-seal-participant-64MiB-plus-deterministic-framework-owned-upper-bound",
+    "byteReconciliation": "after-capture-shrink-to-actual-encoded-size-never-increase",
+    "oversizedUnit": "single-unit-only-when-byte-window-empty-exclusive-until-byte-permit-release",
     "requestDrainBeforeCaptured": "all-connectionBound-accepted-work-and-boundSession-requests-must-be-terminal-and-are-never-journaled",
     "requestDrainFailure": "abort-before-captured-retire-blocked-relocationDisabled-and-restore-admission",
-    "phaseOrder": ["preparing-cas", "relocation-put", "captured-cas", "target-reserve", "prepared-cas"],
+    "phaseOrder": [
+      "preparing-cas",
+      "relocation-put",
+      "captured-cas",
+      "target-reserve",
+      "target-factory-and-restore",
+      "journal-and-timer-staging",
+      "prepared-cas"
+    ],
     "durableReplayBoundary": "complete-root-linked-by-captured-cas",
     "sourceCrashBeforeCaptured": "fenced-abort-no-maintenance-continuity-original-request-uses-normal-connection-failure-timeout-or-cancellation-terminal",
     "unlinkedPutAfterCrash": "orphan-cleanup-never-replay-authority",
@@ -1474,11 +1505,13 @@
       ]
     },
     {
-      "name": "relocation-serializer-kind",
+      "name": "timer-overrun-policy-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
-        { "name": "frameworkJsonV1", "value": 1 }
+        { "name": "skipLateTicks", "value": 1 },
+        { "name": "catchUpBounded", "value": 2 },
+        { "name": "delayNextTick", "value": 3 }
       ]
     },
     {
@@ -2497,7 +2530,7 @@
         { "name": "placementProfiles", "$ref": "sorted-text8-vector" },
         { "name": "activeCapacityLimit", "$ref": "object-capacity-limit" },
         { "name": "pendingCapacityLimit", "$ref": "object-pending-capacity-limit" },
-        { "name": "readableStateContractIds", "$ref": "sorted-text8-vector" },
+        { "name": "hasSnapshotAdapter", "$ref": "bool8" },
         { "name": "available", "$ref": "ordinal-or-zero" }
       ]
     },
@@ -2965,7 +2998,6 @@
         { "id": 4, "name": "reservationGeneration", "$ref": "nonzero-u64", "required": true },
         { "id": 5, "name": "relocationReference", "$ref": "relocation-reference", "required": false },
         { "id": 6, "name": "relocationChecksumCrc32c", "$ref": "u32", "required": false },
-        { "id": 7, "name": "stateContractId", "$ref": "text8", "required": false },
         { "id": 8, "name": "applicationVersion", "$ref": "application-version", "required": true },
         {
           "id": 9,
@@ -2991,25 +3023,7 @@
               "value": false
             }
           },
-          "forbid": ["relocationReference", "relocationChecksumCrc32c", "stateContractId"]
-        },
-        {
-          "when": {
-            "contextEquals": {
-              "name": "applicationSnapshotPresent",
-              "value": true
-            }
-          },
-          "require": ["relocationReference", "relocationChecksumCrc32c", "stateContractId"]
-        },
-        {
-          "when": {
-            "contextEquals": {
-              "name": "applicationSnapshotPresent",
-              "value": false
-            }
-          },
-          "forbid": ["stateContractId"]
+          "forbid": ["relocationReference", "relocationChecksumCrc32c"]
         }
       ],
       "encodingOrder": "ascending-field-id",
@@ -3412,8 +3426,8 @@
       "name": "durable-state-blob",
       "kind": "length-prefixed-bytes",
       "lengthType": { "$ref": "u64" },
-      "minimumBytes": 1,
-      "maximumBytes": { "$bound": "relocationLogicalBytes" }
+      "minimumBytes": 0,
+      "maximumBytes": { "$bound": "relocationChunkBytes" }
     },
     {
       "name": "relocation-chunk-entry-v1",
@@ -3472,8 +3486,6 @@
         {
           "when": { "hasState": "true" },
           "fields": [
-            { "name": "stateContractId", "$ref": "text8" },
-            { "name": "serializer", "$ref": "relocation-serializer-kind", "constant": "frameworkJsonV1" },
             { "name": "payload", "$ref": "durable-state-blob" }
           ]
         }
@@ -3482,15 +3494,95 @@
       "trailingBytes": "forbidden"
     },
     {
+      "name": "relocation-participant-application-state",
+      "kind": "struct",
+      "fields": [
+        { "name": "participantId", "$ref": "nonzero-u64" },
+        { "name": "applicationState", "$ref": "relocation-application-state" }
+      ]
+    },
+    {
+      "name": "relocation-participant-application-state-vector",
+      "kind": "vector",
+      "countType": { "$ref": "u32" },
+      "item": { "$ref": "relocation-participant-application-state" },
+      "constraints": [
+        { "kind": "sorted", "field": "participantId", "comparison": "unsigned-wire-value" },
+        { "kind": "unique", "field": "participantId" }
+      ]
+    },
+    {
+      "name": "relocation-timer-registration",
+      "kind": "struct",
+      "fields": [
+        { "name": "participantId", "$ref": "nonzero-u64" },
+        { "name": "name", "$ref": "text8" },
+        { "name": "handlerType", "$ref": "text8" },
+        { "name": "periodMilliseconds", "$ref": "nonzero-u64" },
+        { "name": "overrunPolicy", "$ref": "timer-overrun-policy-kind" },
+        { "name": "maxCatchUpTicks", "$ref": "nonzero-u64" },
+        { "name": "stopOnUnhandledException", "$ref": "bool8" },
+        { "name": "lastCompletedDeliveryIndex", "$ref": "ordinal-or-zero" },
+        { "name": "lastCompletedScheduledIndex", "$ref": "ordinal-or-zero" },
+        { "name": "nextScheduledAtUnixMilliseconds", "$ref": "u64" }
+      ]
+    },
+    {
+      "name": "relocation-timer-registration-vector",
+      "kind": "vector",
+      "countType": { "$ref": "u32" },
+      "item": { "$ref": "relocation-timer-registration" },
+      "constraints": [
+        {
+          "kind": "sorted",
+          "fields": ["participantId", "name"],
+          "comparison": "wire-value-then-utf-8-bytes"
+        },
+        { "kind": "unique", "fields": ["participantId", "name"] }
+      ]
+    },
+    {
+      "name": "relocation-pending-timer-tick",
+      "kind": "struct",
+      "fields": [
+        { "name": "participantId", "$ref": "nonzero-u64" },
+        { "name": "sequence", "$ref": "nonzero-u64" },
+        { "name": "timerName", "$ref": "text8" },
+        { "name": "deliveryIndex", "$ref": "nonzero-u64" },
+        { "name": "scheduledIndex", "$ref": "nonzero-u64" },
+        { "name": "scheduledAtUnixMilliseconds", "$ref": "u64" },
+        { "name": "skippedTicks", "$ref": "ordinal-or-zero" }
+      ]
+    },
+    {
+      "name": "relocation-pending-timer-tick-vector",
+      "kind": "vector",
+      "countType": { "$ref": "u32" },
+      "item": { "$ref": "relocation-pending-timer-tick" },
+      "constraints": [
+        {
+          "kind": "sorted",
+          "fields": ["participantId", "sequence"],
+          "comparison": "unsigned-wire-value"
+        },
+        { "kind": "unique", "fields": ["participantId", "sequence"] }
+      ]
+    },
+    {
       "name": "relocation-envelope-v1",
       "kind": "struct",
       "fields": [
         { "name": "relocation", "$ref": "relocation-id" },
         { "name": "object", "$ref": "relocation-object-identity" },
         { "name": "applicationVersion", "$ref": "application-version" },
-        { "name": "applicationState", "$ref": "relocation-application-state" },
+        {
+          "name": "applicationStates",
+          "$ref": "relocation-participant-application-state-vector"
+        },
         { "name": "participantProgress", "$ref": "participant-progress-vector" },
         { "name": "journal", "$ref": "journal-vector" },
+        { "name": "timerRegistrations", "$ref": "relocation-timer-registration-vector" },
+        { "name": "pendingTimerTicks", "$ref": "relocation-pending-timer-tick-vector" },
         { "name": "terminalCompletions", "$ref": "request-completion-vector" }
       ],
       "trailingBytes": "forbidden"
@@ -4150,7 +4242,11 @@
       },
       {
         "phase": "prepared",
-        "after": ["relocation-reserved-ack-validated"],
+        "after": [
+          "relocation-reserved-ack-validated",
+          "target-factory-restore-complete",
+          "journal-timer-staging-complete"
+        ],
         "relocation": "present",
         "targetReservation": "present"
       }

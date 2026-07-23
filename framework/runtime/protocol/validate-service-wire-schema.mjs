@@ -1274,7 +1274,11 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         },
         {
           phase: "prepared",
-          after: ["relocation-reserved-ack-validated"],
+          after: [
+            "relocation-reserved-ack-validated",
+            "target-factory-restore-complete",
+            "journal-timer-staging-complete",
+          ],
           relocation: "present",
           targetReservation: "present",
         },
@@ -1310,10 +1314,13 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     ["participant-sequence-domain", {
       sequenceFields: [
         "journal-entry.sequence",
+        "relocation-pending-timer-tick.sequence",
         "request-completion-entry.sequence",
         "relocationData.sequence",
         "reply-relay-context.maintenanceRelocation.sequence",
       ],
+      relocationQueueOrdering: "journal-entry-and-pending-timer-tick-share-one-strictly-increasing-participant-sequence",
+      crossVectorDuplicate: "forbidden",
       sequenceStart: 1,
       zeroMeaning: "no-accepted-or-replayed-record",
       progressFields: ["acceptedBoundary", "replayCursor", "highWater"],
@@ -1719,41 +1726,42 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       userSpotMember: "preflight-blocked-relocationDisabled-state-and-admission-unchanged",
       targetOffer: "compatible-initialized-target-entry-spot-rid-object-generation-and-kind",
       commit: "newOwner-cas-atomically-updates-owner-authority-owner-generation-and-current-target-entry-spot",
-      targetOrder: "factory-restore-then-target-entry-onJoinedActor-then-journal-replay",
-      sourceCleanup: "source-onLeaveActor-and-old-entry-membership-removal-durable-before-completed",
+      callbackOrder: "factory-restore-and-staging-then-owner-entry-membership-commit-then-target-entry-onActorRelocated-then-source-entry-onLeaveActor-and-old-entry-membership-durable-cleanup-or-source-crash-durable-cleanup-terminal-then-journal-replay",
+      targetCallback: "target-entry-onActorRelocated-after-commit-never-onJoinedActor",
+      sourceCleanup: "source-entry-onLeaveActor-and-old-entry-membership-removal-durable-before-replay-or-source-crash-durable-cleanup-terminal-substitutes",
+      userSpotAggregateCallbacks: "onActorJoin-onJoinedActor-onActorRelocated-onLeaveActor-all-forbidden",
       targetAdmission: "sealed-through-completed-route-acks-and-steady-normalization",
-      callbacks: "retry-safe-at-least-once",
+      callbacks: "retry-safe-at-least-once-failure-never-rolls-back-committed-authority",
     }],
     ["stateful-capability-integrity", {
       entryType: "stateful-capability-entry",
       key: ["objectKind", "type"],
-      disabled: { readableStateContractIds: "empty" },
-      recreate: { readableStateContractIds: "empty" },
-      snapshot: { readableStateContractIds: "nonempty-sorted-unique" },
-      eligibility: "same-entry-exact-object-kind-type-policy-required-contract-and-positive-available",
+      disabled: { hasSnapshotAdapter: false },
+      recreate: { hasSnapshotAdapter: false },
+      snapshot: { hasSnapshotAdapter: true },
+      eligibility: "same-entry-exact-object-kind-type-policy-snapshot-adapter-availability-and-positive-available",
       "flat-set-cross-product": "forbidden",
       startupValidation: "derive-complete-descriptor-then-validate-before-host-start",
       bounds: {
         encodedDescriptorBytesMaximum: 1048576,
         typeCapabilityEntriesMaximum: 1024,
-        readableStateContractIdsPerTypeMaximum: 1024,
       },
       overflow: "atomic-configuration-failure-never-truncate-split-or-publish-partial",
     }],
     ["relocation-application-state-integrity", {
       stateType: "relocation-application-state",
-      recreate: "hasState-false-no-contract-serializer-or-payload",
-      snapshot: "hasState-true-nonempty-contract-frameworkJsonV1-and-nonempty-payload",
+      recreate: "hasState-false-no-payload",
+      snapshot: "hasState-true-opaque-payload-empty-valid",
+      participantMapping: "exactly-one-sorted-application-state-entry-per-participant-id",
+      participantPayloadMaximumBytes: { $bound: "relocationChunkBytes" },
       relocationPresence: "every-relocation-including-empty-recreate-writes-one-deterministic-envelope",
       storage: "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
       chunking: "ordered-byte-stream-may-split-within-a-frozen-record",
-      unknownSerializer: "protocol-error-before-restore",
+      applicationInterpretation: "forbidden-framework-validates-byte-count-and-relocation-checksum-only",
     }],
     ["framework-json-v1-integrity", {
       profile: "frameworkJsonV1Profile",
       applicationPayloadBytes: "opaque-after-profile-validation-no-byte-canonicalization",
-      relocationStateBytes: "opaque-after-profile-validation-no-byte-canonicalization",
-      stateContractId: "asserts-target-adapter-semantic-compatibility",
       goldenFixture: "golden/framework-json-v1.json",
     }],
     ["service-admission-update-integrity", {
@@ -1762,7 +1770,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       immutableExact: [
         "topologyKind", "meshName-or-channelName", "securityIdentity", "endpoint-connection-identity",
         "rid", "lifecycleGeneration", "normalizedEffectiveMaxMessageBytes", "channelMembershipKeys",
-        "protocolCapabilities", "typeCapabilities", "stateContractCapabilities", "applicationVersion",
+        "protocolCapabilities", "spotTypes", "statefulCapabilities", "applicationVersion",
       ],
       revision: "strictly-increasing-same-revision-identical-bytes-idempotent-lower-stale-same-revision-different-protocol-error",
       mutableOnly: ["existingChannelWeights", "runtimeState", "placementCapacity", "maintenanceWave"],
@@ -2025,7 +2033,7 @@ class FixtureWriter {
 
 const FIXTURE_ENUMS = {
   authorityOperation: new Map([[0, "steady"], [1, "coldActivation"], [2, "maintenanceRelocation"], [3, "close"]]),
-  objectKind: new Map([[1, "actor"], [2, "instanceSpot"]]),
+  objectKind: new Map([[1, "actor"], [2, "userSpot"], [3, "instanceSpot"]]),
   authorityObjectKind: new Map([[1, "actor"], [2, "spot"]]),
   spotKind: new Map([[1, "entry"], [2, "user"], [3, "instance"]]),
   actorSpotKind: new Map([[1, "entry"], [2, "user"]]),
@@ -2033,7 +2041,9 @@ const FIXTURE_ENUMS = {
   actorAuthorityState: new Map([[0, "creating"], [1, "ready"]]),
   authorityState: new Map([[1, "coldActivating"], [2, "ready"], [3, "closing"], [4, "relocating"]]),
   frozenSourceKind: new Map([[1, "node"], [2, "spot"], [3, "actor"], [4, "boundSession"]]),
-  relocationSerializer: new Map([[1, "frameworkJsonV1"]]),
+  timerOverrunPolicy: new Map([
+    [1, "skipLateTicks"], [2, "catchUpBounded"], [3, "delayNextTick"],
+  ]),
   relocationPhase: new Map([
     [0, "none"], [1, "preparing"], [2, "captured"], [3, "prepared"], [4, "committed"],
     [5, "activating"], [6, "activated"], [7, "cleaning"], [8, "completed"], [9, "aborted"],
@@ -2093,6 +2103,13 @@ function decodeRelocationObject(reader) {
       objectKind: kind,
       actorId: body.text8(),
       actorGeneration: body.u64(),
+      expectedAuthorityOwnerGeneration: body.u64(),
+    };
+  } else if (kind === "userSpot") {
+    decoded = {
+      objectKind: kind,
+      spotRidUtf8Fixture: body.text8(),
+      spotGeneration: body.u64(),
       expectedAuthorityOwnerGeneration: body.u64(),
     };
   } else {
@@ -2185,6 +2202,87 @@ function decodeParticipantProgress(reader) {
     });
   }
   return progress;
+}
+
+function decodeRelocationApplicationState(reader) {
+  const hasState = reader.u8();
+  const stateBody = new FixtureReader(reader.bytes64());
+  let applicationState;
+  if (hasState === 0) {
+    applicationState = { hasState: false };
+  } else if (hasState === 1) {
+    applicationState = {
+      hasState: true,
+      payloadUtf8Fixture: stateBody.bytes64().toString("utf8"),
+    };
+  } else {
+    throw new Error("relocation application state has invalid presence flag");
+  }
+  stateBody.end();
+  return applicationState;
+}
+
+function decodeParticipantApplicationStates(reader) {
+  const count = reader.u32();
+  const states = [];
+  for (let index = 0; index < count; index += 1) {
+    states.push({
+      participantId: reader.u64(),
+      applicationState: decodeRelocationApplicationState(reader),
+    });
+  }
+  return states;
+}
+
+function decodeTimerRegistrations(reader) {
+  const count = reader.u32();
+  const registrations = [];
+  for (let index = 0; index < count; index += 1) {
+    const participantId = reader.u64();
+    const name = reader.text8();
+    const handlerType = reader.text8();
+    const periodMilliseconds = reader.u64();
+    const overrunPolicy = fixtureEnum(
+      FIXTURE_ENUMS.timerOverrunPolicy,
+      reader.u8(),
+      "timer overrun policy",
+    );
+    const maxCatchUpTicks = reader.u64();
+    const stopOnUnhandledExceptionValue = reader.u8();
+    if (stopOnUnhandledExceptionValue > 1) {
+      throw new Error("timer stopOnUnhandledException has invalid bool8 value");
+    }
+    registrations.push({
+      participantId,
+      name,
+      handlerType,
+      periodMilliseconds,
+      overrunPolicy,
+      maxCatchUpTicks,
+      stopOnUnhandledException: stopOnUnhandledExceptionValue === 1,
+      lastCompletedDeliveryIndex: reader.u64(),
+      lastCompletedScheduledIndex: reader.u64(),
+      nextScheduledAtUnixMilliseconds: reader.u64(),
+    });
+  }
+  return registrations;
+}
+
+function decodePendingTimerTicks(reader) {
+  const count = reader.u32();
+  const ticks = [];
+  for (let index = 0; index < count; index += 1) {
+    ticks.push({
+      participantId: reader.u64(),
+      sequence: reader.u64(),
+      timerName: reader.text8(),
+      deliveryIndex: reader.u64(),
+      scheduledIndex: reader.u64(),
+      scheduledAtUnixMilliseconds: reader.u64(),
+      skippedTicks: reader.u64(),
+    });
+  }
+  return ticks;
 }
 
 function decodeRequestCompletion(reader) {
@@ -2296,8 +2394,28 @@ function decodeFrozenRecord(reader) {
   ]);
   const replyRouteId = requestOperationKinds.has(operationKind) ? replyRouteBody.u64() : null;
   replyRouteBody.end();
+  if (recordKind === "spotRequest") {
+    return {
+      recordKind,
+      source,
+      metadata: null,
+      operationId,
+      operationKind,
+      replyRouteId,
+      body: {
+        targetSpot: {
+          spotRidUtf8Fixture: reader.text8(),
+          spotGeneration: reader.u64(),
+          targetNodeRidUtf8Fixture: reader.text8(),
+          targetNodeGeneration: reader.u64(),
+          expectedAuthorityOwnerGeneration: reader.u64(),
+        },
+        payload: decodeApplicationPayload(reader),
+      },
+    };
+  }
   if (recordKind !== "instanceSpotActivation") {
-    throw new Error("rich golden fixture must exercise the Instance Spot request record");
+    throw new Error("rich golden fixture must exercise a Spot request record");
   }
   const placement = decodeInstancePlacement(reader);
   const sourceNodeGeneration = reader.u64();
@@ -2422,34 +2540,16 @@ function decodeGoldenBody(formatName, bytes) {
     const relocationLow = reader.u64();
     const object = decodeRelocationObject(reader);
     const applicationVersion = reader.i64();
-    const hasState = reader.u8();
-    const stateBody = new FixtureReader(reader.bytes64());
-    let applicationState;
-    if (hasState === 0) {
-      applicationState = { hasState: false };
-    } else if (hasState === 1) {
-      applicationState = {
-        hasState: true,
-        stateContractId: stateBody.text8(),
-        serializer: fixtureEnum(
-          FIXTURE_ENUMS.relocationSerializer,
-          stateBody.u8(),
-          "relocation serializer",
-        ),
-        payloadUtf8Fixture: stateBody.bytes64().toString("utf8"),
-      };
-    } else {
-      throw new Error("relocation application state has invalid presence flag");
-    }
-    stateBody.end();
     decoded = {
       relocationHigh,
       relocationLow,
       object,
       applicationVersion,
-      applicationState,
+      applicationStates: decodeParticipantApplicationStates(reader),
       participantProgress: decodeParticipantProgress(reader),
       journal: decodeJournal(reader),
+      timerRegistrations: decodeTimerRegistrations(reader),
+      pendingTimerTicks: decodePendingTimerTicks(reader),
       terminalCompletions: decodeCompletionVector(reader),
     };
   } else {
@@ -2467,6 +2567,9 @@ function encodeRelocationObject(writer, object) {
   const body = new FixtureWriter();
   if (object.objectKind === "actor") {
     body.text8(object.actorId).u64(object.actorGeneration)
+      .u64(object.expectedAuthorityOwnerGeneration);
+  } else if (object.objectKind === "userSpot") {
+    body.text8(object.spotRidUtf8Fixture).u64(object.spotGeneration)
       .u64(object.expectedAuthorityOwnerGeneration);
   } else {
     body.text8(object.instanceType).text8(object.spotRidUtf8Fixture)
@@ -2521,6 +2624,56 @@ function encodeParticipantProgress(writer, progress) {
   writer.u32(progress.length);
   for (const entry of progress) {
     writer.u64(entry.participantId).u64(entry.acceptedBoundary).u64(entry.replayCursor);
+  }
+}
+
+function encodeRelocationApplicationState(writer, applicationState) {
+  const state = new FixtureWriter();
+  if (applicationState.hasState) {
+    state.bytes64(Buffer.from(applicationState.payloadUtf8Fixture, "utf8"));
+  }
+  const stateBytes = state.finish();
+  writer.u8(applicationState.hasState ? 1 : 0).u64(stateBytes.length).raw(stateBytes);
+}
+
+function encodeParticipantApplicationStates(writer, states) {
+  writer.u32(states.length);
+  for (const state of states) {
+    writer.u64(state.participantId);
+    encodeRelocationApplicationState(writer, state.applicationState);
+  }
+}
+
+function encodeTimerRegistrations(writer, registrations) {
+  writer.u32(registrations.length);
+  for (const registration of registrations) {
+    writer.u64(registration.participantId)
+      .text8(registration.name)
+      .text8(registration.handlerType)
+      .u64(registration.periodMilliseconds)
+      .u8(fixtureEnumValue(
+        FIXTURE_ENUMS.timerOverrunPolicy,
+        registration.overrunPolicy,
+        "timer overrun policy",
+      ))
+      .u64(registration.maxCatchUpTicks)
+      .u8(registration.stopOnUnhandledException ? 1 : 0)
+      .u64(registration.lastCompletedDeliveryIndex)
+      .u64(registration.lastCompletedScheduledIndex)
+      .u64(registration.nextScheduledAtUnixMilliseconds);
+  }
+}
+
+function encodePendingTimerTicks(writer, ticks) {
+  writer.u32(ticks.length);
+  for (const tick of ticks) {
+    writer.u64(tick.participantId)
+      .u64(tick.sequence)
+      .text8(tick.timerName)
+      .u64(tick.deliveryIndex)
+      .u64(tick.scheduledIndex)
+      .u64(tick.scheduledAtUnixMilliseconds)
+      .u64(tick.skippedTicks);
   }
 }
 
@@ -2601,8 +2754,17 @@ function encodeFrozenRecord(writer, record) {
   }
   const replyRouteBytes = replyRoute.finish();
   writer.u16(replyRouteBytes.length).raw(replyRouteBytes);
+  if (record.recordKind === "spotRequest") {
+    writer.text8(record.body.targetSpot.spotRidUtf8Fixture)
+      .u64(record.body.targetSpot.spotGeneration)
+      .text8(record.body.targetSpot.targetNodeRidUtf8Fixture)
+      .u64(record.body.targetSpot.targetNodeGeneration)
+      .u64(record.body.targetSpot.expectedAuthorityOwnerGeneration);
+    encodeApplicationPayload(writer, record.body.payload);
+    return;
+  }
   if (record.recordKind !== "instanceSpotActivation") {
-    throw new Error("golden fixture encoder requires an Instance Spot activation record");
+    throw new Error("golden fixture encoder requires a Spot request record");
   }
   encodeInstancePlacement(writer, record.body.placement);
   writer.u64(record.body.sourceNodeGeneration)
@@ -2668,20 +2830,11 @@ function encodeGoldenBody(formatName, decoded) {
     writer.u64(decoded.relocationHigh).u64(decoded.relocationLow);
     encodeRelocationObject(writer, decoded.object);
     writer.i64(decoded.applicationVersion);
-    const state = new FixtureWriter();
-    if (decoded.applicationState.hasState) {
-      state.text8(decoded.applicationState.stateContractId)
-        .u8(fixtureEnumValue(
-          FIXTURE_ENUMS.relocationSerializer,
-          decoded.applicationState.serializer,
-          "relocation serializer",
-        ))
-        .bytes64(Buffer.from(decoded.applicationState.payloadUtf8Fixture, "utf8"));
-    }
-    const stateBytes = state.finish();
-    writer.u8(decoded.applicationState.hasState ? 1 : 0).u64(stateBytes.length).raw(stateBytes);
+    encodeParticipantApplicationStates(writer, decoded.applicationStates);
     encodeParticipantProgress(writer, decoded.participantProgress);
     encodeJournal(writer, decoded.journal);
+    encodeTimerRegistrations(writer, decoded.timerRegistrations);
+    encodePendingTimerTicks(writer, decoded.pendingTimerTicks);
     encodeCompletionVector(writer, decoded.terminalCompletions);
     return writer.finish();
   }
@@ -2786,13 +2939,13 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
     return;
   }
   const progress = decoded.participantProgress;
-  if (decoded.applicationState?.hasState !== true
-      || decoded.applicationState.serializer !== "frameworkJsonV1"
-      || decoded.applicationState.stateContractId.length === 0
-      || decoded.applicationState.payloadUtf8Fixture.length === 0) {
-    fail(location, "relocation golden must exercise the closed Snapshot application state case");
-  }
   validateGoldenOrder(progress, (entry) => [entry.participantId], `${location}.participantProgress`, fail);
+  validateGoldenOrder(
+    decoded.applicationStates,
+    (entry) => [entry.participantId],
+    `${location}.applicationStates`,
+    fail,
+  );
   validateGoldenOrder(
     decoded.journal,
     (entry) => [entry.participantId, entry.sequence],
@@ -2805,8 +2958,36 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
     `${location}.terminalCompletions`,
     fail,
   );
-  if (decoded.journal.length === 0 || decoded.terminalCompletions.length === 0 || progress.length === 0) {
-    fail(location, "relocation golden must contain progress, a frozen request and a completion");
+  validateGoldenOrder(
+    decoded.timerRegistrations,
+    (entry) => [
+      entry.participantId,
+      `0x${Buffer.from(entry.name, "utf8").toString("hex")}`,
+    ],
+    `${location}.timerRegistrations`,
+    fail,
+  );
+  validateGoldenOrder(
+    decoded.pendingTimerTicks,
+    (entry) => [entry.participantId, entry.sequence],
+    `${location}.pendingTimerTicks`,
+    fail,
+  );
+  const participantIds = progress.map((entry) => entry.participantId);
+  const applicationStateParticipantIds = decoded.applicationStates.map(
+    (entry) => entry.participantId,
+  );
+  if (JSON.stringify(applicationStateParticipantIds) !== JSON.stringify(participantIds)
+      || !decoded.applicationStates.some(
+        (entry) => entry.applicationState.hasState
+          && entry.applicationState.payloadUtf8Fixture.length === 0,
+      )) {
+    fail(location, "relocation golden must carry one application-state entry per participant and exercise an empty Snapshot payload");
+  }
+  if (decoded.journal.length === 0 || decoded.timerRegistrations.length === 0
+      || decoded.pendingTimerTicks.length === 0
+      || decoded.terminalCompletions.length === 0 || progress.length === 0) {
+    fail(location, "relocation golden must contain progress, a frozen request, logical timer state and a completion");
     return;
   }
   for (const entry of decoded.journal) {
@@ -2831,8 +3012,12 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
       && entry.record.replyRouteId !== null
       && entry.record.source.sourceOwnerId.length > 0
       && BigInt(entry.record.source.sourceOwnerLeaseGeneration) > 0n
-      && entry.record.recordKind === "instanceSpotActivation"
-      && entry.record.body.operationKind === "request"
+      && (
+        (entry.record.recordKind === "instanceSpotActivation"
+          && entry.record.body.operationKind === "request")
+        || (entry.record.recordKind === "spotRequest"
+          && entry.record.operationKind === "spotRequest")
+      )
     ));
     if (!matching) {
       fail(location, "terminal completion must match an accepted request record");
@@ -2841,6 +3026,46 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
       completion.deliveryState,
     )) {
       fail(location, "terminal completion must carry a closed monotonic delivery state");
+    }
+  }
+  for (const registration of decoded.timerRegistrations) {
+    if (BigInt(registration.periodMilliseconds) === 0n
+        || BigInt(registration.maxCatchUpTicks) === 0n
+        || registration.name.length === 0
+        || registration.handlerType.length === 0) {
+      fail(location, "logical timer registration must be restorable without a native timer handle");
+    }
+  }
+  for (const tick of decoded.pendingTimerTicks) {
+    const participant = progress.find((candidate) => candidate.participantId === tick.participantId);
+    const registration = decoded.timerRegistrations.find(
+      (candidate) => candidate.participantId === tick.participantId
+        && candidate.name === tick.timerName,
+    );
+    if (!participant || BigInt(tick.sequence) > BigInt(participant.acceptedBoundary)
+        || !registration) {
+      fail(location, "pending timer tick must reference a registered timer within its participant boundary");
+    }
+  }
+  const mergedQueue = [
+    ...decoded.journal.map((entry) => ({
+      participantId: entry.participantId,
+      sequence: entry.sequence,
+    })),
+    ...decoded.pendingTimerTicks.map((entry) => ({
+      participantId: entry.participantId,
+      sequence: entry.sequence,
+    })),
+  ].sort((left, right) => compareUnsignedTuple(
+    [left.participantId, left.sequence],
+    [right.participantId, right.sequence],
+  ));
+  for (let index = 1; index < mergedQueue.length; index += 1) {
+    if (compareUnsignedTuple(
+      [mergedQueue[index - 1].participantId, mergedQueue[index - 1].sequence],
+      [mergedQueue[index].participantId, mergedQueue[index].sequence],
+    ) === 0) {
+      fail(location, "journal and pending timer tick cannot reuse one participant sequence");
     }
   }
 }
@@ -2990,6 +3215,40 @@ function validateRelocationLogicalFixture(schema, schemaPath) {
     throw new SchemaValidationError(errors);
   }
   return 1;
+}
+
+function runRelocationLogicalFixtureSelfTests(schema, schemaPath) {
+  const profile = schema.relocationLogicalStreamFormat;
+  const fixturePath = path.resolve(path.dirname(schemaPath), profile.goldenFixture);
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  const tests = [
+    ["journal and timer reuse participant sequence", (candidate) => {
+      candidate.decoded.pendingTimerTicks[0].sequence = candidate.decoded.journal[0].sequence;
+    }],
+    ["participant application state omitted", (candidate) => {
+      candidate.decoded.applicationStates.pop();
+    }],
+    ["participant application states out of order", (candidate) => {
+      candidate.decoded.applicationStates.reverse();
+    }],
+  ];
+  for (const [label, mutate] of tests) {
+    const candidate = clone(fixture);
+    mutate(candidate);
+    const bytes = encodeGoldenBody(profile.name, candidate.decoded);
+    const decoded = decodeGoldenBody(profile.name, bytes);
+    const errors = [];
+    validateGoldenFixtureSemantics(
+      profile.name,
+      decoded,
+      `logical-fixture-self-test:${label}`,
+      (location, message) => errors.push(`${location}: ${message}`),
+    );
+    if (errors.length === 0) {
+      throw new Error(`negative self-test did not fail: ${profile.name}: ${label}`);
+    }
+  }
+  return tests.length;
 }
 
 function validateFrameworkJsonFixture(schema, schemaPath) {
@@ -3240,14 +3499,18 @@ function validateRelocationStateMachine(machine, commands, types, fail) {
     },
     {
       phase: "prepared",
-      after: ["relocation-reserved-ack-validated"],
+      after: [
+        "relocation-reserved-ack-validated",
+        "target-factory-restore-complete",
+        "journal-timer-staging-complete",
+      ],
       relocation: "present",
       targetReservation: "present",
     },
   ];
   if (JSON.stringify(machine.authorityCommitOrder) !== JSON.stringify(expectedCommitOrder)) {
     fail("$.relocationStateMachine.authorityCommitOrder",
-      "must CAS Preparing after the local seal, Captured after relocation Put, then Prepared after target reservation");
+      "must CAS Preparing after the local seal, Captured after relocation Put, then Prepared after target restore and staging");
   }
   const transitionSet = new Set();
   if (!Array.isArray(machine.transitions)) {
@@ -4150,9 +4413,14 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "placementProfiles", $ref: "sorted-text8-vector" },
     { name: "activeCapacityLimit", $ref: "object-capacity-limit" },
     { name: "pendingCapacityLimit", $ref: "object-pending-capacity-limit" },
-    { name: "readableStateContractIds", $ref: "sorted-text8-vector" },
+    { name: "hasSnapshotAdapter", $ref: "bool8" },
     { name: "available", $ref: "ordinal-or-zero" },
-  ], "$.types", "stateful capability must keep kind, type, policy, readers and capacity in one record");
+  ], "$.types", "stateful capability must keep kind, type, policy, Snapshot adapter presence and capacity in one record");
+  if ((types.get("stateful-capability-entry")?.fields ?? []).some(
+    (field) => field.name === "readableStateContractIds",
+  )) {
+    fail("$.types", "stateful capability cannot publish application state contract IDs");
+  }
   const relocationReference = types.get("relocation-reference");
   if (relocationReference?.lengthType?.$ref !== "u16"
       || relocationReference?.maximumBytes?.$bound !== "relocationReferenceBytes") {
@@ -4350,13 +4618,27 @@ function validateServiceInvariants(schema, types, fail) {
     fail("$.types", "frozen completion must use the stable Framework failure code");
   }
   const relocationEnvelope = types.get("relocation-envelope-v1");
-  if (relocationEnvelope?.fields?.find((field) => field.name === "applicationState")?.$ref
-      !== "relocation-application-state"
+  if (relocationEnvelope?.fields?.find((field) => field.name === "applicationStates")?.$ref
+      !== "relocation-participant-application-state-vector"
       || (relocationEnvelope?.fields ?? []).some((field) => [
-        "capturedStoreTimeMs", "stateContractId", "serializerIdentity",
+        "applicationState", "capturedStoreTimeMs", "stateContractId", "serializerIdentity",
       ].includes(field.name))) {
-    fail("$.types", "relocation application state must use the closed Recreate or Snapshot union");
+    fail("$.types", "relocation application state must use the participant-indexed opaque state vector");
   }
+  requireFields(relocationEnvelope?.fields, [
+    { name: "relocation", $ref: "relocation-id" },
+    { name: "object", $ref: "relocation-object-identity" },
+    { name: "applicationVersion", $ref: "application-version" },
+    {
+      name: "applicationStates",
+      $ref: "relocation-participant-application-state-vector",
+    },
+    { name: "participantProgress", $ref: "participant-progress-vector" },
+    { name: "journal", $ref: "journal-vector" },
+    { name: "timerRegistrations", $ref: "relocation-timer-registration-vector" },
+    { name: "pendingTimerTicks", $ref: "relocation-pending-timer-tick-vector" },
+    { name: "terminalCompletions", $ref: "request-completion-vector" },
+  ], "$.types", "Relocation envelope must carry deterministic queue, timer and completion state");
   requireFields(types.get("relocation-manifest-v1")?.fields, [
     { name: "logicalFormatVersion", $ref: "u8", constant: 1 },
     { name: "totalLength", $ref: "relocation-logical-length" },
@@ -4370,12 +4652,45 @@ function validateServiceInvariants(schema, types, fail) {
   if (relocationState?.bodyLengthType?.$ref !== "u64"
       || JSON.stringify(recreateState?.fields) !== "[]"
       || JSON.stringify(fieldShape(snapshotState?.fields)) !== JSON.stringify([
-        { name: "stateContractId", $ref: "text8" },
-        { name: "serializer", $ref: "relocation-serializer-kind", constant: "frameworkJsonV1" },
         { name: "payload", $ref: "durable-state-blob" },
       ])) {
-    fail("$.types", "relocation state must be a closed Recreate or framework JSON Snapshot union");
+    fail("$.types", "relocation state must be a closed Recreate or opaque Snapshot union");
   }
+  const durableStateBlob = types.get("durable-state-blob");
+  if (durableStateBlob?.minimumBytes !== 0
+      || durableStateBlob?.maximumBytes?.$bound !== "relocationChunkBytes") {
+    fail("$.types", "participant Snapshot bytes must allow empty payloads and cap each adapter result at 64 MiB");
+  }
+  requireFields(types.get("relocation-participant-application-state")?.fields, [
+    { name: "participantId", $ref: "nonzero-u64" },
+    { name: "applicationState", $ref: "relocation-application-state" },
+  ], "$.types", "each relocation participant must carry exactly one policy-selected application state");
+  requireFields(types.get("relocation-timer-registration")?.fields, [
+    { name: "participantId", $ref: "nonzero-u64" },
+    { name: "name", $ref: "text8" },
+    { name: "handlerType", $ref: "text8" },
+    { name: "periodMilliseconds", $ref: "nonzero-u64" },
+    { name: "overrunPolicy", $ref: "timer-overrun-policy-kind" },
+    { name: "maxCatchUpTicks", $ref: "nonzero-u64" },
+    { name: "stopOnUnhandledException", $ref: "bool8" },
+    { name: "lastCompletedDeliveryIndex", $ref: "ordinal-or-zero" },
+    { name: "lastCompletedScheduledIndex", $ref: "ordinal-or-zero" },
+    { name: "nextScheduledAtUnixMilliseconds", $ref: "u64" },
+  ], "$.types", "logical timer registration must carry only deterministic Framework-owned state");
+  if ((types.get("relocation-timer-registration")?.fields ?? []).some(
+    (field) => /native|timerHandle|backend|continuation/i.test(field.name),
+  )) {
+    fail("$.types", "logical timer registration cannot contain native handle or backend state");
+  }
+  requireFields(types.get("relocation-pending-timer-tick")?.fields, [
+    { name: "participantId", $ref: "nonzero-u64" },
+    { name: "sequence", $ref: "nonzero-u64" },
+    { name: "timerName", $ref: "text8" },
+    { name: "deliveryIndex", $ref: "nonzero-u64" },
+    { name: "scheduledIndex", $ref: "nonzero-u64" },
+    { name: "scheduledAtUnixMilliseconds", $ref: "u64" },
+    { name: "skippedTicks", $ref: "ordinal-or-zero" },
+  ], "$.types", "pending timer tick must carry deterministic mailbox ordering state");
   const relayContext = types.get("reply-relay-context");
   if (JSON.stringify((relayContext?.cases ?? []).map((entry) => entry.when))
       !== JSON.stringify([{ contextKind: "coldActivation" }, { contextKind: "maintenanceRelocation" }])) {
@@ -4968,7 +5283,7 @@ function validateFrameworkJsonV1Profile(profile, fail) {
     encoding: "utf-8-without-bom",
     byteCanonicalization: "not-required-property-order-and-insignificant-whitespace-ignored",
     propertyNames: "registered-contract-names-exact-and-case-sensitive",
-    duplicateProperties: "reject-before-typed-dispatch-or-restore",
+    duplicateProperties: "reject-before-typed-dispatch",
     unknownProperties: "ignore-for-forward-compatible-reader",
     missingRequiredProperties: "reject",
     signedAndUnsigned64: "canonical-decimal-string-without-plus-or-redundant-leading-zero-with-declared-range-check",
@@ -4980,7 +5295,6 @@ function validateFrameworkJsonV1Profile(profile, fail) {
     null: "allowed-only-for-contract-declared-nullable-value",
     noImplicitCrossLanguageTypes: ["dateTime", "decimal", "uuid", "languageCustomType"],
     explicitRepresentationForOtherTypes: "contract-defined-string-or-dto",
-    stateContractId: "selects-compatible-typed-snapshot-adapter-not-a-serializer-option",
     applicationBytes: "framework-validates-then-stores-or-forwards-opaque-original-bytes",
     goldenFixture: "golden/framework-json-v1.json",
   };
@@ -4994,12 +5308,36 @@ function validateMaintenanceAdmissionProfile(profile, fail) {
     preflight: "validate-capability-eligibility-and-bounded-headroom-without-final-reservation",
     reversibleSeal: "hold-new-submissions-without-admission-result",
     sizingSnapshot: "exact-participant-boundaries-messages-and-bytes-after-seal",
-    timerAdmissionSeal: "stop-new-tick-admission-and-wait-all-pre-seal-accepted-timer-turns",
-    acceptedTimerTurns: "drain-on-source-before-relocation-and-exclude-from-journal-boundary",
-    futureTimerSchedule: "not-relocated-recreated-only-by-target-lifecycle-or-snapshot-state",
+    timerAdmissionSeal: "stop-new-tick-admission-at-turn-boundary-current-handler-only-completes",
+    acceptedTimerTurns: "unstarted-pending-ticks-enter-deterministic-relocation-envelope",
+    futureTimerSchedule: "logical-registration-and-next-schedule-cursor-relocated-and-restored-by-target-framework",
+    timerNativeState: "native-handle-backend-state-and-callback-continuation-forbidden",
+    readinessScheduling: "infrastructure-notification-per-unit-ready-turn-first-no-kind-or-registration-order",
+    permitAcquisition: "nonblocking-all-or-nothing-outbound-inbound-capture-restore-and-byte-before-source-seal",
+    permitFailure: "release-all-provisional-permits-keep-source-admission-open-and-requeue-notification",
+    defaultPermits: {
+      activeOutbound: 64,
+      activeInbound: 64,
+      captureCallbacks: 8,
+      restoreCallbacks: 8,
+      encodedPayloadBytesInFlight: 268435456,
+    },
+    permitConfiguration: "five-application-options-positive-runtime-update-affects-new-admission-only",
+    aggregateUnit: "user-spot-and-member-actors-share-one-unit-permit-and-commit-generation",
+    byteReservation: "before-seal-participant-64MiB-plus-deterministic-framework-owned-upper-bound",
+    byteReconciliation: "after-capture-shrink-to-actual-encoded-size-never-increase",
+    oversizedUnit: "single-unit-only-when-byte-window-empty-exclusive-until-byte-permit-release",
     requestDrainBeforeCaptured: "all-connectionBound-accepted-work-and-boundSession-requests-must-be-terminal-and-are-never-journaled",
     requestDrainFailure: "abort-before-captured-retire-blocked-relocationDisabled-and-restore-admission",
-    phaseOrder: ["preparing-cas", "relocation-put", "captured-cas", "target-reserve", "prepared-cas"],
+    phaseOrder: [
+      "preparing-cas",
+      "relocation-put",
+      "captured-cas",
+      "target-reserve",
+      "target-factory-and-restore",
+      "journal-and-timer-staging",
+      "prepared-cas",
+    ],
     durableReplayBoundary: "complete-root-linked-by-captured-cas",
     sourceCrashBeforeCaptured: "fenced-abort-no-maintenance-continuity-original-request-uses-normal-connection-failure-timeout-or-cancellation-terminal",
     unlinkedPutAfterCrash: "orphan-cleanup-never-replay-authority",
@@ -5553,11 +5891,94 @@ function runSelfTests(schema) {
       extension.totalLengthType.$ref = "u16";
       extension.fieldLengthType.$ref = "u16";
     }],
+    ["relocation Snapshot adds application contract metadata", (candidate) => {
+      const state = candidate.types.find((type) => type.name === "relocation-application-state");
+      state.cases.find((entry) => entry.when.hasState === "true").fields.unshift(
+        { name: "stateContractId", $ref: "text8" },
+      );
+    }],
+    ["relocation Snapshot rejects empty bytes", (candidate) => {
+      const state = candidate.types.find((type) => type.name === "durable-state-blob");
+      state.minimumBytes = 1;
+    }],
+    ["relocation participant state widens beyond 64 MiB", (candidate) => {
+      const state = candidate.types.find((type) => type.name === "durable-state-blob");
+      state.maximumBytes = { $bound: "relocationLogicalBytes" };
+    }],
+    ["relocation aggregate collapses participant states", (candidate) => {
+      const envelope = candidate.types.find((type) => type.name === "relocation-envelope-v1");
+      const field = envelope.fields.find((entry) => entry.name === "applicationStates");
+      field.name = "applicationState";
+      field.$ref = "relocation-application-state";
+    }],
+    ["relocation timer registration omitted", (candidate) => {
+      const envelope = candidate.types.find((type) => type.name === "relocation-envelope-v1");
+      envelope.fields = envelope.fields.filter((field) => field.name !== "timerRegistrations");
+    }],
+    ["relocation timer leaks native handle", (candidate) => {
+      const registration = candidate.types.find(
+        (type) => type.name === "relocation-timer-registration",
+      );
+      registration.fields.push({ name: "nativeTimerHandle", $ref: "u64" });
+    }],
+    ["maintenance drains pending timer ticks on source", (candidate) => {
+      candidate.maintenanceAdmissionProfile.acceptedTimerTurns =
+        "drain-on-source-before-relocation";
+    }],
+    ["maintenance Entry callback uses ordinary join", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "actor-retire-membership-integrity",
+      );
+      constraint.targetCallback = "target-entry-onJoinedActor";
+    }],
+    ["maintenance Entry replay precedes durable source cleanup", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "actor-retire-membership-integrity",
+      );
+      constraint.sourceCleanup = "source-entry-onLeaveActor-before-completed";
+    }],
+    ["User Spot aggregate invokes Actor relocation callback", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "actor-retire-membership-integrity",
+      );
+      constraint.userSpotAggregateCallbacks = "onActorRelocated-allowed";
+    }],
+    ["pending timer tick leaves shared sequence domain", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "participant-sequence-domain",
+      );
+      constraint.sequenceFields = constraint.sequenceFields.filter(
+        (field) => field !== "relocation-pending-timer-tick.sequence",
+      );
+    }],
+    ["maintenance permit defaults narrowed", (candidate) => {
+      candidate.maintenanceAdmissionProfile.defaultPermits.activeOutbound = 4;
+    }],
+    ["maintenance permit configuration accepts zero", (candidate) => {
+      candidate.maintenanceAdmissionProfile.permitConfiguration =
+        "application-options-may-be-zero";
+    }],
+    ["maintenance permit acquired after source seal", (candidate) => {
+      candidate.maintenanceAdmissionProfile.permitAcquisition =
+        "source-seal-before-blocking-permit-acquisition";
+    }],
+    ["maintenance byte permit can grow after Capture", (candidate) => {
+      candidate.maintenanceAdmissionProfile.byteReconciliation =
+        "after-capture-grow-or-shrink-to-actual-encoded-size";
+    }],
+    ["maintenance oversized aggregate overlaps normal unit", (candidate) => {
+      candidate.maintenanceAdmissionProfile.oversizedUnit =
+        "may-overlap-normal-unit";
+    }],
     ["unknown semantic constraint", (candidate) => {
       candidate.semanticConstraints.push({ kind: "accept-all" });
     }],
     ["relocation authority commit order changed", (candidate) => {
       candidate.relocationStateMachine.authorityCommitOrder[1].phase = "prepared";
+    }],
+    ["Prepared CAS precedes target restore", (candidate) => {
+      candidate.relocationStateMachine.authorityCommitOrder[2].after =
+        ["relocation-reserved-ack-validated"];
     }],
     ["participant sequence accepts zero", (candidate) => {
       const command = candidate.commands.find((entry) => entry.name === "relocationData");
@@ -5659,6 +6080,16 @@ function runSelfTests(schema) {
     }],
     ["framework JSON permits unpadded base64", (candidate) => {
       candidate.frameworkJsonV1Profile.bytes = "unpadded-base64";
+    }],
+    ["framework JSON profile claims relocation restore", (candidate) => {
+      candidate.frameworkJsonV1Profile.duplicateProperties =
+        "reject-before-typed-dispatch-or-restore";
+    }],
+    ["service update restores state contract capability", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "service-admission-update-integrity",
+      );
+      constraint.immutableExact.push("stateContractCapabilities");
     }],
     ["service update mutates immutable message bound", (candidate) => {
       const constraint = candidate.semanticConstraints.find(
@@ -5964,6 +6395,19 @@ if (process.argv[1] && scriptPath === path.resolve(process.argv[1])) {
         const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
         console.log(`${format.name} ${encodeGoldenEnvelope(format, fixture.decoded).toString("hex")}`);
       }
+      const logicalProfile = schema.relocationLogicalStreamFormat;
+      const logicalFixturePath = path.resolve(
+        path.dirname(schemaPath),
+        logicalProfile.goldenFixture,
+      );
+      const logicalFixture = JSON.parse(fs.readFileSync(logicalFixturePath, "utf8"));
+      const logicalBytes = encodeGoldenBody(logicalProfile.name, logicalFixture.decoded);
+      console.log(
+        `${logicalProfile.name} ${logicalBytes.toString("hex")}`,
+      );
+      console.log(
+        `${logicalProfile.name}-metadata length=${logicalBytes.length} crc32c=${crc32c(logicalBytes)}`,
+      );
       process.exit(0);
     }
     const summary = validateSchema(schema);
@@ -5974,6 +6418,7 @@ if (process.argv[1] && scriptPath === path.resolve(process.argv[1])) {
     const amendmentFixtureCount = validateContractAmendmentFixture(schemaPath);
     const selfTestCount = selfTest
       ? runSelfTests(schema) + runGoldenFixtureSelfTests(schema, schemaPath)
+        + runRelocationLogicalFixtureSelfTests(schema, schemaPath)
         + runAuthorityKeyFixtureSelfTests(schema, schemaPath)
         + runContractAmendmentFixtureSelfTests(schemaPath)
       : 0;

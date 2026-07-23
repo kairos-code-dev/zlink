@@ -303,9 +303,10 @@ timer logical registration·pending tick, relocation manifest와 Framework metad
 
 Framework는 active unit, callback과 예상 payload byte permit을 모두 nonblocking으로 확보한 queue turn 경계에서만
 source unit을 seal한다. Permit을 얻지 못하면 application message와 timer dispatch를 계속하고 intent notification을
-다시 예약한다. User Spot aggregate를 포함한 단일 relocation unit의 encoded payload가 byte 상한보다 크면 다른
-payload가 in-flight가 아닌 동안에만 oversized unit 하나로 진행한다. 실행 중 option 변경은 새 relocation admission에만
-적용하며 이미 permit을 얻은 unit의 상한을 줄이지 않는다.
+다시 예약한다. 단일 User Spot aggregate의 encoded payload reservation이 byte 상한보다 크면 다른 payload가
+in-flight가 아닌 동안에만 oversized aggregate 하나로 진행한다. Standalone Actor와 Instance Spot unit은 configured
+byte gate 안에서만 admit한다. 실행 중 option 변경은 새 relocation admission에만 적용하며 이미 permit을 얻은
+unit의 상한을 줄이지 않는다.
 
 ## 11. Classic fanout
 

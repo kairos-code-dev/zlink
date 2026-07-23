@@ -12,7 +12,11 @@ fence와 relocation reference의 의미를 바꾸지 않는다.
 Kotlin configuration은 Java `ZLinkLocationOptions`의 relocation 제한을 그대로 사용한다. 기본값은 active outbound
 64, active inbound 64, concurrent Capture 8, concurrent Restore 8, encoded payload in flight 268,435,456 bytes다.
 다섯 값은 모두 양수이고 같은 process의 모든 MeshNode가 공유한다. 모든 permit을 얻기 전에는 source queue를
-seal하지 않으며 byte 한도를 넘는 단일 User Spot aggregate만 다른 payload 단계와 겹치지 않게 단독 실행한다.
+seal하지 않으며 byte 한도를 넘는 단일 User Spot aggregate는 다른 payload 단계와 겹치지 않게 단독 실행한다.
+Byte reservation은 Snapshot participant마다 64 MiB와 Framework-owned section의 deterministic encoded upper
+bound를 합하며 `Capture` 뒤 actual encoded size로만 축소한다.
+다섯 getter와 다섯 setter는 Java exact public member inventory의 JVM method를 그대로 호출한다. Kotlin 전용
+property, relocation limit wrapper와 `$default` member는 생성하지 않는다.
 
 Global authority key는 ActorId 또는 SpotRid를 기준으로 정한다. ActorId, SpotRid와 stable type은 UTF-8
 1..255 bytes의 case-sensitive exact value다. Authority snapshot의 object generation과 owner generation은

@@ -27,8 +27,8 @@ framework는 메트릭 계기와 host 종료 시의 drain 절차를 제공한다
 |---|---|
 | Meter / 계기(instrument) | .NET 표준 메트릭 방출 단위. counter·gauge·histogram이 계기다 |
 | OpenTelemetry(OTel) | 메트릭·트레이스 수집 표준. Prometheus 등 exporter로 내보낸다 |
-| drain | 신규 배정은 막고, 진행 중인 작업은 마무리하거나 넘긴 뒤 종료하는 절차 |
-| handoff | drain 중인 노드의 actor를 다른 노드로 옮기는 것 |
+| Retire | continuity를 target으로 relocation한 뒤 host를 종료하는 operation |
+| Shutdown | 새 relocation 없이 local resource를 bounded cleanup하는 operation |
 | readiness probe | "새 요청을 받아도 되는가"를 묻는 배포 인프라의 상태 확인 |
 
 ## 1. 런타임 메트릭
@@ -64,14 +64,17 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.actor.count` | 활성 Actor 수 |
 | `zlink.actor.queue.depth` | Actor application queue의 pending payload 수 |
 | `zlink.actor.queue.wait.duration` | Actor payload admission부터 turn 시작까지의 시간 |
-| `zlink.actor.transfers` | Actor transfer 결과 누계 |
-| `zlink.actor.transfer.duration` | Actor transfer 시작부터 terminal까지의 시간 |
+| `zlink.relocation.started` | Actor·User·Instance Spot relocation 시작 누계 |
+| `zlink.relocation.completed` | relocation terminal 결과 누계 |
+| `zlink.relocation.duration` | prepare부터 terminal phase까지의 시간 |
+| `zlink.relocation.recovered` | recovery coordinator가 이어서 처리한 relocation 수 |
+| `zlink.relocation.journal.messages` | relocation root에 포함한 accepted message 수 |
+| `zlink.relocation.bytes` | immutable relocation envelope 크기 |
 | `zlink.instance_spot.activations` | Instance Spot activation 결과 누계 |
 | `zlink.instance_spot.activation.duration` | 첫 주소 확인부터 Ready 또는 terminal 실패까지의 시간 |
 | `zlink.instance_spot.pending.messages` | activation barrier 앞에서 기다리는 message 수 |
 | `zlink.instance_spot.pending.bytes` | activation barrier 앞에서 예약한 payload byte 수 |
 | `zlink.instance_spot.claim.conflicts` | Instance location claim 충돌 누계 |
-| `zlink.instance_spot.takeovers` | 만료된 owner row 교체 결과 누계 |
 | `zlink.mesh_node.peers.configured` | descriptor에 존재하는 peer 수 |
 | `zlink.mesh_node.peers.connected` | transport가 연결된 peer 수 |
 | `zlink.mesh_node.peers.ready` | admission과 handler readiness를 통과한 peer 수 |
@@ -98,108 +101,75 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.location.owner_lease.renew.failures` | owner lease 갱신 실패 누계 |
 | `zlink.location.owner_lease.renew.lateness` | 예정 시각 대비 owner lease 갱신 지연 |
 | `zlink.observability.events.overflow` | monitoring·trace observer queue overflow 누계 |
-| `zlink.drain.state` | 현재 drain state |
-| `zlink.drain.duration` | drain 시작부터 terminal result까지의 시간 |
-| `zlink.drain.requests.completed` | drain 중 정상 완료된 request 수 |
-| `zlink.drain.actors.handed_off` | 성공한 Actor handoff 수 |
-| `zlink.drain.stream_barriers.completed` | 성공한 STREAM barrier 수 |
-| `zlink.drain.forced` | force stop에서 남은 work 수 |
+| `zlink.termination.state` | 현재 host Framework runtime state |
+| `zlink.termination.duration` | Retire·Shutdown 시작부터 terminal result까지의 시간 |
+| `zlink.termination.blocked` | admission을 바꾸지 않고 끝난 Retire 수 |
+| `zlink.termination.forced` | bounded teardown으로 끝난 operation 수 |
 
-## 2. Graceful drain — 무중단 종료
+## 2. Retire — continuity를 유지하는 host 종료
 
-무상태 서버는 그냥 내려도 된다. 그러나 라이브 room과 바인딩된 actor, 활성 STREAM
-세션을 가진 노드를 `SIGTERM`으로 즉시 죽이면 접속 유저가 전부 튕기고 진행 중 room이
-유실된다. drain은 이를 막는 명시적 절차다.
+라이브 User Spot, Actor와 활성 STREAM session이 있는 host는 `Retire`로 다른 Serving node에 continuity를
+이전한 뒤 종료한다. `Retire`는 host 전체 operation이며 MeshName별 종료 정책을 받지 않는다.
 
-drain의 수명주기는 상태 4개로 고정되어 있다.
+1. Preflight에서 모든 stateful object, target capability·capacity와 Relocation Store를 확인한다. Eligible
+   target이 없으면 source admission을 바꾸지 않고 `Blocked`로 끝난다.
+2. Host를 `Retiring`으로 게시하고 standalone Actor, Instance Spot과 User Spot aggregate execution queue에
+   infrastructure notification을 예약한다.
+3. Notification이 turn boundary에 도달했을 때 현재 실행 중인 turn만 source에서 완료한다. Outbound·inbound,
+   `Capture`·`Restore`와 encoded payload permit을 모두 얻은 ready unit만 queue를 seal한다. Permit을 얻지
+   못한 unit은 source에서 application message와 timer를 계속 처리한다.
+4. Seal 시점에 실행하지 않은 message, accepted journal, logical timer registration·pending tick과 optional
+   Snapshot bytes를 immutable relocation root에 저장한다. Target factory·`Restore`와 journal staging은
+   owner·membership commit 전에 끝낸다.
+5. User Spot과 member Actor는 하나의 aggregate commit으로 owner·membership을 함께 바꾼다. Standalone Entry
+   member Actor는 commit 뒤 target Entry Spot `OnActorRelocatedAsync`, source `OnLeaveActorAsync` 완료 또는
+   durable source cleanup, journal replay 순서로 진행한다. 일반 join의 `OnJoinedActorAsync`는 사용하지 않는다.
+6. Frozen queue·timer를 target에 복원하고 seal 뒤 source hold를 target으로 relay한다. Source cleanup,
+   `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
+7. 모든 unit이 source dispatch에서 분리되면 `Draining`으로 전환하고 topology resource를 bounded cleanup한다.
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> Serving: 시작
-    Serving --> Draining: host 종료 / DrainAsync(meshName)
-    Draining --> Drained: 신규 차단 + 기존 마무리·handoff 완료
-    Draining --> ForceStopping: deadline 초과 (기본 30s)
-    Drained --> [*]: 종료 안전
-    ForceStopping --> [*]: 강제 종료 + 잔여 통지
-```
+첫 relocation commit 전 failure는 source queue와 admission을 복원할 수 있다. 첫 commit 뒤에는 source로
+rollback하지 않고 target recovery를 계속하며 deadline을 넘기면 `ForceStopped`로 끝낸다.
 
-**앱 코드는 필요 없다.** framework hosted service가 host 종료(`IHostApplicationLifetime`)에
-참여해 `StopAsync`에서 자동으로 drain한다. Draining 동안 일어나는 일은 다음 순서로
-고정되어 있으며 MeshNode마다 다른 정리 방식을 선택하지 않는다.
+## 3. Shutdown — relocation 없는 bounded cleanup
 
-1. local MeshNode state와 readiness를 먼저 `Draining`으로 바꾸고 새 Node·Spot·Actor admission과
-   새 transfer 배정을 막는다.
-2. local admission을 닫은 뒤 location store descriptor 또는 manual peer control에 drain state를 게시하고,
-   새 ChannelName·Logical Multicast 선택에서 제외한다. 기존 연결은 유지된다
-   ([10-location §2](10-location.ko.md)).
-3. drain 전에 수락한 application callback과 request가 완료될 때까지 deadline 안에서 기다린다.
-4. 이동 가능한 Actor의 handoff를 처리하고 진행 중인 transfer를 종단 상태로 만든다.
-5. STREAM binding과 session을 종단 상태로 만든다.
-6. application이 이미 종료를 요청한 Spot을 포함해 남은 local Spot을 lifecycle 순서에 맞춰
-   종료한다.
-7. Spot·Actor ownership, MeshNode descriptor·owner lease와 peer resource를 정리하고
-   `Drained`로 전이한다.
-8. deadline(기본 30초)을 넘기거나 필수 정리가 실패하면 `ForceStopping`으로 전이해 제한된
-   강제 종료를 수행하고, 모든 대기자는 같은 종단 결과를 받는다.
+Hosting stop은 `ShutdownAsync(...)`를 호출한다. `Shutdown`은 새 relocation을 시작하지 않고 진행 중인 work를
+deadline 안에서 terminal 상태로 만든 뒤 Entry·User·Instance Spot에 `OnClosingAsync`를
+`HostShutdown` reason으로 알린다. Callback 완료 뒤 scope, authority, session과 topology resource를 정리한다.
+Continuity가 필요한 배포 자동화는 hosting stop 전에 `RetireAsync(...)`를 명시적으로 호출해야 한다.
 
-## 3. SPOT 종료와 다시 만들기
-
-일반 request가 완료됐다는 이유만으로 Spot을 종료하지 않는다. drain 때는 위의 고정 순서에
-따라 남은 local Spot을 종료하지만, framework가 Spot 상태를 다른 MeshNode로 복사하거나 원격에서
-Spot을 자동으로 만들지는 않는다.
-
-location row가 정리된 뒤 기존 `SpotHandle`로 호출하면 stale handle 또는 target-not-found로
-끝난다. Spot이 다시 필요하면 application이 대상 프로세스의 local `IZLinkSpotManager`에서
-`GetOrCreateAsync`를 명시적으로 호출하고, 필요한 상태는 application이 복원한다. 이 호출은
-다른 serving MeshNode를 선택해 원격 생성을 요청하는 API가 아니다.
-
-`InstanceSpotAddress`는 이 기존 SpotHandle·Spot manager 계약과 분리된 주소다. Instance factory를 등록한
-serving MeshNode가 있으면 이 주소의 첫 direct send/request가 location claim과 actor-free Instance Spot
-activation을 시작할 수 있다. Drain operation이 기존 Spot을 다른 node로 옮기는 것은 아니며, Instance Spot도
-close와 owner release가 끝난 뒤 시작한 새 주소 호출에서만 새 generation으로 activation된다.
+일반 request가 끝났다는 이유만으로 User·Instance Spot을 닫지 않는다. `Retire`에서는 User Spot aggregate와
+Instance Spot을 target으로 relocation하며 logical ID와 `ObjectGeneration`을 유지한다. Missing Instance Spot의
+cold activation은 별도 address나 manager create가 아니라 global SpotRid direct fluent call의 explicit
+Instance marker만 시작한다.
 
 ## 4. 명시 제어와 readiness
 
-배포 자동화가 종료 시점을 직접 통제하려면 `IZLinkRouteMeshRuntime`(DI singleton)에서
-등록한 mesh 이름을 지정해 drain을 시작한다. 대부분의 앱은 자동 drain으로 충분해서 이
-표면을 직접 쓸 일이 없다.
+`IZLinkFrameworkRuntime`은 host maintenance를 소유하는 DI singleton이다.
 
 ```csharp
-var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
-var result = await meshRuntime.DrainAsync(
-    "game.room",                       // 등록한 MeshName의 고정 drain을 시작한다.
-    TimeSpan.FromSeconds(25),
+var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
+var result = await runtime.RetireAsync(
+    TimeSpan.FromSeconds(25),           // host 전체 continuity 이전 deadline
     cancellationToken: ct);
 
-if (result is ZLinkMeshDrainResult.ForceStopped forced)
-    Console.Error.WriteLine($"mesh drain force-stopped: {forced.Reason}");
+if (result.Outcome == ZLinkFrameworkTerminationOutcome.ForceStopped)
+    Console.Error.WriteLine($"host retire force-stopped: {result.Reason}");
 ```
 
-- `DrainAsync(meshName, deadline, cancellationToken)`는 멱등이다. 첫 호출이 공유 deadline을
-  고정하고, 이후 호출은 같은 결과에 합류한다. `deadline`을 생략하거나 `null`로 넘기면
-  기본 30초를 쓴다.
-- `AwaitDrainedAsync(meshName, cancellationToken)`는 drain을 시작하지 않고 완료만 기다린다.
-  drain 시작 전에 호출해도 같은 결과를 받는다.
-- 결과는 `ZLinkMeshDrainResult.Drained` 또는
-  `ZLinkMeshDrainResult.ForceStopped(string Reason)`이다. 강제 종료 reason은
-  `deadline_exceeded`, `drain_state_publish_failed`, `owner_cleanup_failed`,
-  `teardown_failed` 중 하나다.
+`RetireAsync(...)`와 `ShutdownAsync(...)`의 `deadline == null`은 30초다. 먼저 확정된 operation의 deadline과
+effective intent를 공유하며, cancellation은 해당 waiter만 끝낸다. `Retire` preflight의 `Blocked`는 host
+terminal state로 저장하지 않는다.
 
-readiness는 framework 전용 health check 확장을 등록하는 방식이 아니다. 앱이 운영할
-mesh의 상태를 `IsReady(meshName)`으로 읽고 기존 HTTP endpoint에 연결한다.
+Readiness는 host `IZLinkFrameworkRuntime.IsReady`와 업무에 필요한 component runtime의 readiness를 함께
+확인해 기존 HTTP endpoint에 연결한다.
 
 ```csharp
-// Serving일 때만 200을 반환해 배포 인프라가 신규 요청을 배정하도록 한다.
-app.MapGet("/healthz/ready", (IZLinkRouteMeshRuntime runtime) =>
-    runtime.IsReady("game.room")
+app.MapGet("/healthz/ready", (IZLinkFrameworkRuntime runtime) =>
+    runtime.IsReady
         ? Results.Ok()
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
 ```
-
-`IsReady(meshName)`은 해당 mesh가 `Serving`일 때만 `true`다. 여러 mesh를 운영하는 앱은
-외부 트래픽을 받기 위해 필요한 mesh들을 정하고, 그 결과를 조합하는 readiness 정책을
-앱의 endpoint에 둔다.
 
 Kubernetes 배포에 연결하면 다음 개념이 된다.
 
@@ -226,8 +196,8 @@ meshOptions.Channel("game.room").Weight = 0;                          // 신규 
 Multicast 원격 대상에서 빼는 값이라, 재배포 전 트래픽을 빼는 용도로 쓴다. 등록되지
 않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
 
-**상태 조회 — `IZLinkRouteMeshRuntime`.** mesh 하나에 대해 일관된 snapshot 한 장,
-순서 있는 이벤트 스트림, drain 진입점을 제공한다.
+**상태 조회 — `IZLinkRouteMeshRuntime`.** Mesh 하나에 대해 일관된 snapshot 한 장과
+순서 있는 component 이벤트 스트림을 제공한다. Host termination은 `IZLinkFrameworkRuntime`이 소유한다.
 
 ```csharp
 var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
@@ -242,33 +212,28 @@ await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellati
 }
 ```
 
-`DrainAsync(meshName, ...)`와 `AwaitDrainedAsync(meshName, ...)`는 §4의 공개 drain
-진입점이다. 첫 `DrainAsync` 호출이 공유 deadline을 고정하고, 이후 호출과 대기자는 모두
-같은 `ZLinkMeshDrainResult` 종단 결과를 받는다.
+## 6. Host termination 상태 관측
 
-## 6. drain 상태 관측
-
-drain 상태 전이는 `IZLinkRouteMeshRuntime`의 MeshName별 bounded event stream에서 관측한다. 별도 전역
-drain control이나 guide에만 존재하는 event handler interface를 등록하지 않는다.
+Host `Retire`·`Shutdown` 상태 전이는 `IZLinkFrameworkRuntime`의 bounded event stream에서 관측한다. MeshName별
+runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
 ```csharp
-var runtime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
+var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
 
-await foreach (var meshEvent in runtime.ObserveAsync(
-    "game.room", cancellationToken: ct))
+await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
 {
-    // 이 MeshName의 event 중 drain 상태 전이만 선택한다.
-    if (meshEvent.Identifier == "zlink.runtime.mesh_node.drain_changed" &&
-        meshEvent.State is { } state)
-        logger.LogInformation("mesh drain: {Mesh} {State} {Reason}",
-            meshEvent.MeshName, state, meshEvent.Reason);
+    // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+    logger.LogInformation("host termination: {State} {Intent} {Outcome} {Reason}",
+        hostEvent.State,
+        hostEvent.EffectiveIntent,
+        hostEvent.Outcome,
+        hostEvent.Reason);
 }
 ```
 
-`zlink.runtime.mesh_node.drain_changed` 이벤트의 `State`로
-`Serving`/`Draining`/`Drained`/`ForceStopping` 전이를 구분한다. 이벤트의 `MeshName`은
-관측한 mesh를 나타내고 `Reason`은 전이 사유를 담는다. 수치로 보려면 §1의
-`zlink.drain.*` 계기를 쓴다.
+`ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Retiring`·`Draining`·`Stopped`·`Error`를 그대로
+관측한다. Terminal event의 intent·outcome·reason은 `RetireAsync` 또는 `ShutdownAsync` 결과와 같아야 한다.
+수치로 보려면 §1의 `zlink.termination.*` 계기를 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

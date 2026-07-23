@@ -6,9 +6,9 @@
 
 ## 1. 목적
 
-이 문서는 Node.js service runtime이 Actor와 Instance Spot owner 변경을 Location Store의 opaque CAS와
-Checkpoint Store 위에서 구현하는 내부 구조를 설명한다. Application adapter는 typed state만 다루며
-authority key, Store version, checkpoint reference와 wire frame을 알지 않는다.
+이 문서는 Node.js service runtime이 Actor·User Spot aggregate·Instance Spot owner 변경을 Location Store의
+opaque CAS와 Relocation Store 위에서 구현하는 내부 구조를 설명한다. Application adapter는 opaque bytes만
+capture·restore하며 authority key, Store version, relocation reference와 wire frame을 알지 않는다.
 
 ## 2. 내부 모듈
 
@@ -18,9 +18,9 @@ authority key, Store version, checkpoint reference와 wire frame을 알지 않�
 +----------------------------------------------------------+
 | Object coordinator: phase validation and recovery        |
 +----------------------------------------------------------+
-| Authority codec       | Checkpoint envelope codec        |
+| Authority codec       | Relocation envelope codec        |
 +----------------------------------------------------------+
-| Location Store port   | Checkpoint Store port            |
+| Location Store port   | Relocation Store port            |
 +----------------------------------------------------------+
 ```
 
@@ -46,42 +46,60 @@ write를 모두 stale 결과로 끝낸다.
 
 ## 4. Phase driver
 
-`Preparing`은 source admission seal과 accepted queue boundary를 함께 기록한다. `Captured`는 application state와
-accepted journal을 immutable checkpoint envelope으로 만든 상태다. `Prepared`는 target reservation과
-checkpoint reference를 authority에 고정한다. 이 세 phase에서는 current coordinator가 실패를 복구하거나
-`Aborted`로 끝낼 수 있다.
+Host `Retire`는 standalone Actor, Instance Spot과 User Spot aggregate queue에 infrastructure notification을
+예약한다. Notification이 turn boundary에 도달하면 현재 실행 중인 turn만 source에서 완료한다. Process
+outbound·target inbound unit, 필요한 `Capture`·`Restore` callback과 deterministic encoded upper-bound byte
+permit을 모두 얻은 unit만 source admission을 reversible하게 seal한다. Permit을 얻지 못하면 notification을
+다시 예약하고 application message와 timer를 계속 처리한다.
 
-`Committed`에서 owner fence가 target으로 바뀐다. 이후 source owner로 rollback하지 않는다. Target은
-`Activating`에서 factory와 restore를 수행하고, accepted journal을 operation ID와 completion table로
-deduplicate하며 replay한다. Ready route를 게시한 뒤 `Activated`, source cleanup 뒤 `Cleaning`, 모든 participant
-정리 뒤 `Completed`로 전환한다.
+`Preparing`은 permit을 가진 source seal과 accepted queue boundary를 함께 기록한다. `Captured`는 optional
+application state, 실행하지 않은 message, accepted journal과 logical timer registration·pending tick을 immutable
+relocation root로 저장하고 Location authority에 reference를 연결한 상태다. `Prepared` 전에 target reservation,
+factory·restore와 journal validation·staging을 끝낸다. 이 세 phase에서는 current coordinator가 failure를
+recovery하거나 `Aborted`로 끝낼 수 있다.
+
+`Committed`에서 owner와 membership fence가 target으로 바뀐다. 이후 source owner로 rollback하지 않는다.
+Target은 commit 뒤 필요한 lifecycle callback을 실행한다. Entry Spot standalone Actor maintenance는 target
+`OnActorRelocated`, source `OnLeaveActor` 완료 또는 durable source cleanup 뒤 accepted journal을 replay한다.
+일반 application join만 target `OnJoinedActor`를 사용한다. User Spot aggregate는 membership이 유지되므로
+member Actor의 join·leave·relocation callback을 호출하지 않는다.
+
+`Activated`는 callback과 replay가 끝났지만 admission은 sealed인 상태다. `Cleaning`에서 남은 source scope와
+participant state를 정리한다. `Completed` CAS, bound STREAM route ACK와 steady normalization을 모두 끝낸 뒤에만
+Ready route와 application admission을 공개한다.
 
 각 phase callback은 CAS 성공 뒤 한 번 실행해야 하는 동작과 CAS 전에 재실행해도 안전한 동작을 분리한다.
 Process가 중단된 뒤 recovery coordinator가 같은 phase를 다시 읽어도 application handler가 중복 실행되지
 않도록 accepted journal cursor와 request completion을 authority payload에 포함한다.
 
-## 5. Checkpoint envelope
+## 5. Relocation envelope
 
-Checkpoint payload는 다음 section을 versioned binary envelope 하나에 기록한다.
+Relocation payload는 다음 section을 deterministic binary stream으로 기록한다.
 
-- object kind, logical identity와 transaction generation
-- state contract ID, serializer ID와 application version
-- typed application state section과 checksum
-- accepted queue boundary, journal entries와 durable replay cursor
-- request operation ID와 이미 확정된 completion
+- object kind, logical identity, object·owner generation과 aggregate participant manifest
+- Snapshot adapter가 반환한 opaque application bytes와 checksum
+- 실행하지 않은 message queue, accepted journal과 durable replay cursor
+- logical timer registration, pending tick과 frozen ordering boundary
+- request operation ID, reply route와 이미 확정된 completion
 
-`Disabled`는 maintenance transfer를 시작하지 않는다. `Recreate`는 application state section을 비워 두지만
-accepted journal envelope은 기록한다. `Snapshot`만 typed adapter의 capture 결과를 state section에 넣는다.
-Framework는 Checkpoint Store에 24시간 retention을 전달하며 public option으로 노출하지 않는다.
+Application이 byte format, version, compatibility와 migration을 소유한다. Framework는 state contract ID,
+serializer ID, generic state type과 relocation codec을 제공하거나 descriptor·metric에 싣지 않는다.
+`Disabled`는 cross-node relocation을 capture 전에 거부한다. `Recreate`는 application state section만 비워 두고
+queue·journal·timer를 포함한 complete envelope을 기록한다. `Snapshot`만 adapter의 `Capture` 결과를 application
+state section에 넣는다. Participant별 captured application state는 최대 64 MiB다.
 
-Authority CAS가 checkpoint 기록 뒤 실패하면 reference를 새 authority에 재사용하지 않는다. 즉시 idempotent
-delete를 시도하고 실패하면 Store retention이 orphan을 정리한다. `Get`의 missing은 먼저 authority를 다시
-읽어 stale reference와 current checkpoint loss를 구분한다.
+Framework는 participant별 capture 상한과 Framework-owned section의 deterministic upper bound로 byte permit을
+seal 전에 all-or-nothing으로 확보하고, `Capture` 뒤 actual encoded size로 reservation을 줄인다. 한 aggregate의
+upper bound가 payload window를 넘으면 window가 빈 상태에서 exclusive unit으로만 진행한다.
+
+Authority CAS가 relocation root 기록 뒤 실패하면 reference를 새 authority에 재사용하지 않는다. 즉시
+idempotent delete를 시도하고 실패하면 Store retention이 orphan을 정리한다. `Get`의 missing은 먼저 authority를
+다시 읽어 stale reference와 current relocation data loss를 구분한다.
 
 ## 6. Target selection과 replacement
 
-Target 후보는 `Serving` descriptor 중 source보다 낮지 않은 application version, factory type, state reader,
-maintenance wave와 capacity 조건을 모두 만족해야 한다. Descriptor capacity 읽기는 reservation이 아니다.
+Target 후보는 `Serving` descriptor 중 source보다 낮지 않은 application version, factory type, Snapshot adapter
+capability, maintenance wave와 capacity 조건을 모두 만족해야 한다. Descriptor capacity 읽기는 reservation이 아니다.
 Target runtime의 infrastructure mailbox가 reservation token을 발급하고, `Prepared` CAS 전에 node generation과
 lease를 다시 확인한다.
 
@@ -94,16 +112,21 @@ completion은 generation fence로 거부한다.
 
 물리 STREAM connection은 이동하지 않는다. Actor owner commit 전에는 source binding generation으로 relay하고,
 commit 뒤에는 target owner와 새 binding generation만 accept한다. Pending request completion과 reply route가
-terminal 상태가 될 때까지 infrastructure mailbox가 barrier를 유지한다. Runtime timer handle도 이동하지 않으며
-Snapshot state에 업무 timer 정보를 기록한 경우 target이 새 timer를 등록한다.
+terminal 상태가 될 때까지 infrastructure mailbox가 barrier를 유지한다. Native timer handle과 callback
+continuation은 이동하지 않는다. Framework가 relocation envelope의 logical timer registration으로 target native
+timer를 만들고 pending tick을 frozen queue ordering boundary에 맞춰 복원한다. Application `Restore`가 timer를
+다시 등록하지 않는다.
 
 ## 8. 검증 지점
 
 - 동일 expected Store version으로 coordinator 둘이 성공하지 않는다.
 - Store clock에서 변환한 local deadline 뒤 stale owner admission이 닫힌다.
-- Checkpoint reference를 authority commit 전에 target이 사용하지 않는다.
+- Relocation reference를 Location authority가 publish하기 전에 target이 사용하지 않는다.
 - Committed 뒤 source rollback이 발생하지 않는다.
 - Replay cursor와 operation completion이 process 재시작 뒤에도 중복 handler 실행을 막는다.
 - Target replacement가 이전 reservation과 activation completion을 generation으로 fence한다.
-- Checkpoint delete가 missing이어도 cleanup은 성공으로 끝난다.
-- User Spot은 state 추론 없이 Retire preflight를 `TransferDisabled`로 차단한다.
+- Relocation delete가 missing이어도 cleanup은 성공으로 끝난다.
+- Current turn만 source에서 끝나고 frozen queue·journal·timer는 target에서 순서를 보존해 복원된다.
+- User Spot과 member Actor가 하나의 aggregate permit·root·commit generation을 사용한다.
+- Entry maintenance는 `OnActorRelocated`, source leave cleanup, journal replay 순서를 지키고 일반 join만
+  `OnJoinedActor`를 사용한다.

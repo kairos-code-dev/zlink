@@ -1371,20 +1371,25 @@ Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `
 
 ### 17.3 Graceful Drain
 
-`Play`를 drain할 때 application은 MeshNode나 Spot별 종료 정책을 선택하지 않는다. Framework는 새
-admission을 닫고 이미 받은 room turn을 완료한 뒤, bound actor handoff와 STREAM 연속성 barrier를 거쳐
-local room Spot을 닫고 location row를 제거하는 고정 순서를 사용한다.
+`Play`를 `Retire`할 때 application은 MeshNode나 Spot별 종료 정책을 선택하지 않는다. Framework는 room User
+Spot과 current member Actor를 하나의 bounded aggregate로 취급하고, ready unit부터 target으로 relocation한다.
+Infrastructure notification이 room queue의 turn boundary에 도달하면 현재 실행 중인 turn만 source에서
+완료한다. 아직 실행하지 않은 message, accepted journal, logical timer registration과 pending tick은 immutable
+relocation root에 저장하고 target에서 순서를 보존해 복원한다.
 
-Bingo regression은 정상 request가 끝났다는 이유만으로 room Spot이 닫히지 않는지 먼저 확인한다. Drain을
-시작한 뒤 이미 accepted된 turn은 완료되지만 새 turn은 handler에 들어가지 않아야 한다. Bound actor가
-`play-b`로 이동하고 STREAM barrier가 끝나기 전에는 `play-a`의 room Spot close가 기록되면 안 된다.
+Bingo regression은 permit을 얻기 전에 room queue를 seal하지 않는지 확인한다. Permit을 얻은 뒤에는 room
+Spot과 member Actor 전체의 factory·Snapshot adapter restore와 journal staging을 target admission이 닫힌
+상태로 준비한다. Location Store의 한 aggregate commit이 owner와 membership을 함께 target으로 전환하며,
+member Actor의 join·leave·relocation callback은 호출하지 않는다. Source room에는
+`OnClosing(RelocationOut)`을 한 번 전달하지만 logical room identity와 `ObjectGeneration`은 유지한다.
 
-row 제거 전에 얻은 `SpotHandle`은 제거 뒤 stale handle이다. 이 handle로 보낸 request는 공개 route
-failure로 끝나야 하며 Framework가 `play-b`에서 remote `GetOrCreate`를 자동으로 실행하면 안 된다. 같은
-논리 room이 다시 필요하면 application이 serving node의 local Spot manager에서 명시적으로
-`GetOrCreate`한 뒤 새 generation의 handle을 사용한다. Drain terminal result와 terminal lifecycle event는
-각각 한 번만 기록한다. 상세 실행 gate와 증거 순서는
-[Config 11 OBS-C3](../../e2e/config-11-observability-ops.ko.md#obs-c3-고정-spot-drain-순서와-명시적-재생성)가 소유한다.
+Commit 뒤 Framework가 frozen queue·journal·timer를 복원하고 seal 중 source hold를 target으로 relay한다.
+Bound STREAM route ACK와 steady normalization까지 끝난 뒤에만 target admission을 연다. Commit 전 failure는
+source queue를 frozen message 뒤 hold message 순서로 복원하며, commit 뒤 failure는 일부 participant를
+source로 되돌리지 않고 같은 aggregate relocation을 recovery한다. `Retire` terminal result와 terminal
+lifecycle event는 각각 한 번만 기록한다. 상세 실행 gate와 증거 순서는
+[Config 5 RL-F11~F14](../../e2e/config-5-resilience-lifecycle.ko.md#rl-f11-readiness-first-relocation과-느린-turn-격리)와
+[Config 11 OBS-C3](../../e2e/config-11-observability-ops.ko.md#obs-c3-user-spot-aggregate-retire-handoff)가 소유한다.
 
 ### 17.4 언어별 표면
 

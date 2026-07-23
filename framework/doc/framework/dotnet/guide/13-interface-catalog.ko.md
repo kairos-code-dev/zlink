@@ -209,10 +209,15 @@ options.ConfigureMetadata()
     .AllowSessionToActor("trace-id")                // session에서 Actor로 전달할 metadata key를 허용한다.
     .AllowActorToSession("trace-id");               // Actor에서 session으로 전달할 metadata key를 허용한다.
 var spot = options.AddRouteMesh("play-spots");
-spot.AddActorFactory<PlayerActorFactory>("player");
-spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player"); // remote 이동 state가 있을 때만 등록
+spot.Objects().Server().AddActorFactory<PlayerActor, PlayerActorFactory>(
+    "player",
+    placement: null,
+    ZLinkRelocationPolicy<PlayerActor>
+        .Snapshot<PlayerActorRelocationAdapter>()); // factory policy에 opaque-state adapter를 연결한다.
 options.AddLocationStore(new ZLinkRedisLocationStore(r => r
     .SetConnectionString("redis:6379").SetKeyPrefix("app")));      // 자동 연결·위치 조회의 저장소(§8)
+options.AddRelocationStore(new ZLinkRedisRelocationStore(r => r
+    .SetConnectionString("redis:6379").SetKeyPrefix("app-relocation"))); // immutable relocation payload 저장소
 options.UseFilter<AuditingFilter>();
 options.ConfigureDispatch()
     .MessageFlow(ZLinkMessageFlowMode.ErrorsOnly);                // 오류 흐름만 구조화해 기록
@@ -221,7 +226,7 @@ options.ConfigureDispatch()
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, location store, filter와 dispatch 설정을 소유 |
-| `IZLinkMeshNodeBuilder` | MeshNode의 `Listen`·`Channel(name).Client()/Server()` 역할, Entry Spot, Spot factory, actor factory와 actor transfer adapter 등록을 소유 |
+| `IZLinkMeshNodeBuilder` | MeshNode의 `Listen`·`Channel(name).Client()/Server()` 역할과 Object Server 진입점을 소유한다. Actor·Spot relocation adapter는 각 factory의 policy에 연결한다 |
 | `IZLinkMetadataPolicyBuilder` | session→Actor와 Actor→session 방향별 metadata key 허용 목록(`AllowSessionToActor`/`AllowActorToSession`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
@@ -521,13 +526,14 @@ ActorRef resolved = await manager.ResolveAsync(
 | `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
 | `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
-| `IZLinkActorTransferAdapter<TActor>` | remote transfer에서 선택적으로 actor state를 `ZLinkMessage`로 만들고 target actor를 materialize한다. 미등록이면 기본 빈 state transfer를 사용한다 |
+| `IZLinkActorRelocationAdapter<TActor>` | `Snapshot` relocation에서 actor state를 opaque bytes로 capture하고 factory가 만든 target actor에 restore한다 |
 | `IZLinkActorManager` | MeshName을 명시하는 actor 생성·조회·삭제(`CreateAsync`, `ResolveAsync`, `DestroyAsync`) |
 
-`TransferInAsync(actorId, context, state, ct)`의 `state`는 source node의
-`TransferOutAsync(actor, ct)`가 반환한 `ZLinkMessage`다. framework가 content type과 payload를 target으로
-전달하며, join admission의 request와는 별도 message다. 전체 사용 흐름과 예제는
-[07-actor-spot §3](07-actor-spot.ko.md#transferinasync의-state는-어디서-오는가)을 참고한다.
+`RestoreAsync(actor, payload, ct)`의 `payload`는 source node의
+`CaptureAsync(actor, ct)`가 반환한 byte 배열이다. Framework는 payload를 opaque하게 복사·저장하며 state
+contract ID, state type이나 relocation codec을 제공하지 않는다. Target factory가 만든 actor instance에
+restore한 뒤 owner·membership을 commit한다. 전체 흐름과 예제는
+[07-actor-spot §3](07-actor-spot.ko.md#restoreasync의-payload는-어디서-오는가)을 참고한다.
 
 검증: `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`.
 
@@ -679,26 +685,29 @@ builder.Services.AddOpenTelemetry().WithMetrics(m =>
     m.AddMeter("zlink.framework")); // Framework가 계기를 방출하는 정식 meter 이름이다.
 
 var runtime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
-ZLinkMeshDrainResult result = await runtime.DrainAsync(
-    "game.room", TimeSpan.FromSeconds(25), ct); // MeshName 하나의 drain을 시작한다.
 
 await foreach (ZLinkMeshRuntimeEvent meshEvent in
     runtime.ObserveAsync("game.room", cancellationToken: ct))
 {
-    // 같은 MeshNode의 상태와 drain 전이를 Sequence 순서로 관측한다.
+    // 같은 MeshNode의 component 상태 전이를 Sequence 순서로 관측한다.
 }
+
+var host = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
+ZLinkFrameworkTerminationResult termination =
+    await host.RetireAsync(TimeSpan.FromSeconds(30), ct); // host 전체 continuity 이전을 시작한다.
 ```
 
-MeshNode drain은 별도 정책 설정을 받지 않고 고정된 순서로 실행된다. 신규 작업 수락 차단, 이미 수락한
-작업 완료, Actor handoff, STREAM 종료 장벽, 남은 local Spot 종료, ownership 정리를 차례로 수행한다. 종료된
-Spot은 원격에서 자동으로 다시 만들어지지 않으며, 필요하면 대상 프로세스의 local
-`IZLinkSpotManager.GetOrCreateAsync(...)`를 application이 명시적으로 호출한다.
+Host `Retire`는 별도 MeshNode 정책을 받지 않는다. Current turn을 끝낸 ready unit만 permit을 얻어 seal하며,
+미실행 queue·journal·timer를 target에 복원한다. User Spot과 member Actor는 하나의 aggregate로 relocation하고
+Entry member Actor maintenance는 target `OnActorRelocatedAsync`를 사용한다. `Shutdown`은 새 relocation 없이
+local resource를 bounded cleanup한다.
 
 | 계약 | 역할 |
 |------|------|
 | `System.Diagnostics.Metrics` | meter 이름 `"zlink.framework"`를 구독한다. 별도 zlink 메트릭 인터페이스는 없다 |
-| `IZLinkRouteMeshRuntime` | MeshName별 snapshot·readiness·event 관측과 `DrainAsync(meshName, deadline, ct)`·`AwaitDrainedAsync(meshName, ct)`를 제공하는 DI singleton |
-| `ZLinkMeshDrainResult` | MeshNode drain terminal result — `Drained` 또는 `ForceStopped(string Reason)` |
+| `IZLinkRouteMeshRuntime` | MeshName별 component snapshot·readiness·event를 관측하는 DI singleton |
+| `IZLinkFrameworkRuntime` | host state·snapshot·event와 `RetireAsync`·`ShutdownAsync`를 제공하는 DI singleton |
+| `ZLinkFrameworkTerminationResult` | effective intent, `Stopped`·`Blocked`·`ForceStopped` outcome과 닫힌 reason을 제공하는 host terminal result |
 | `ZLinkMeshRuntimeEvent` | MeshName과 sequence를 포함하는 MeshNode 상태 전이 event. `ObserveAsync(meshName, ...)`의 bounded stream으로 관측한다 |
 | `ZLinkMessageFlowEvent` | `FlowOrigin`은 `inbound`/`timer`/`application`/`lifecycle` 중 하나이거나 값이 없는 문자열 필드다 |
 
@@ -724,31 +733,30 @@ await timer.CancelAsync();   // IZLinkTimer
 > [공통 스펙](../../spec/server/40-location-runtime.ko.md). 검증 클래스는 `LocationContractTests`.
 
 ```csharp
-// 등록 — 통합 store 인스턴스 하나 (Redis extension 또는 사용자 구현)
+// Authority와 immutable relocation payload는 별도 public capability로 등록한다.
 options.AddLocationStore(new ZLinkRedisLocationStore(r => r
-    .SetConnectionString("redis:6379").SetKeyPrefix("app")));
+    .SetConnectionString("redis:6379").SetKeyPrefix("app-location")));
+options.AddRelocationStore(new ZLinkRedisRelocationStore(r => r
+    .SetConnectionString("redis:6379").SetKeyPrefix("app-relocation")));
+
 var loc = options.ConfigureLocations();
 loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 
-// 메시징 조회 — SpotHandle를 한 번 받아 보관한다 (DI 주입)
-SpotHandle? spot = await spots.ResolveSpotHandleAsync("game.room", spotRid, ct);          // IZLinkSpotHandleResolver
-SpotHandle? actorSpot = await actors.ResolveActorSpotHandleAsync("game.room", "p-1", ct); // IZLinkActorSpotHandleResolver
-
+ActorRef? actor = await actorManager.FindAsync("player-1", ct); // current Ready Actor ref만 조회한다.
+SpotRef? spot = await spotManager.FindAsync(spotRid, ct);       // current Ready User Spot ref만 조회한다.
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkLocationStore` | MeshNode·ClientServer·fanout descriptor, Spot·Actor location, owner lease와 Actor transfer를 함께 제공하는 통합 계약. `AddLocationStore(instance)`로 등록 |
-| `IZLinkMeshNodeLocationStore` / `IZLinkClientServerLocationStore` / `IZLinkFanoutLocationStore` | 물리 listener descriptor의 update/remove/list 계약. MeshName과 ChannelName record 종류를 섞지 않는다 |
-| `IZLinkSpotLocationStore` / `IZLinkActorLocationStore` | 논리 object location의 update/remove/resolve 계약 |
-| `IZLinkOwnerLeaseStore` | runtime instance 별 owner lease(생존 신고) 저장 계약 |
-| `IZLinkActorTransferStore` | Actor transfer authority(participant CAS·transfer token·recovery lease) — location row와 같은 물리 store를 공유해 한 시계로 fencing 한다 |
-| `IZLinkLocationChangeStampStore` | (선택) scope 별 change stamp — 변경 번호만 읽어 변경 유무를 싸게 감지하는 최적화 |
-| `IZLinkSpotHandleResolver` | MeshName + spot rid → `SpotHandle` 메시징 조회 |
-| `IZLinkActorSpotHandleResolver` | MeshName + actor id → 그 actor가 있는 spot의 `SpotHandle` |
+| `IZLinkLocationStore` | descriptor, owner lease, Actor·Spot authority·membership, relocation phase와 reference를 expected-version CAS로 관리한다 |
+| `IZLinkRelocationStore` | application bytes, 실행하지 않은 queue·journal·timer와 replay payload를 immutable root로 저장한다 |
+| `ZLinkRedisLocationStore` | 공식 Redis Location Store 구현. Relocation Store와 별도 class·key prefix를 사용한다 |
+| `ZLinkRedisRelocationStore` | 공식 Redis Relocation Store 구현. 같은 Redis deployment 또는 별도 Redis를 사용할 수 있다 |
+| `IZLinkActorManager` / `IZLinkSpotManager` | global ID로 current Ready ref를 조회한다. Manager create는 Actor와 User Spot만 대상으로 한다 |
 
-Resolver와 store 조회는 유효한 owner lease를 기준으로 결과를 판단한다. 비활성 listener와 object의 row는
-lease가 만료된 뒤 성공 결과에 포함하지 않는다.
+두 Store 사이의 distributed transaction은 요구하지 않는다. Relocation root를 먼저 저장하고 Location Store의
+CAS가 reference와 checksum을 publish해야 target이 payload를 복원 근거로 사용한다. Public manager 조회는
+유효한 owner lease와 `Ready` authority만 반환한다.
 
 검증: `LocationContractTests` (store 계약 — in-memory와 Redis가 같은 시나리오를 통과).
 

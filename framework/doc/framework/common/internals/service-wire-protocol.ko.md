@@ -205,9 +205,13 @@ factory를 다시 실행할 수 있다. `Missing`이 확인되기 전에는 새 
 ## 9. Maintenance capture와 relocation envelope
 
 Host `Retiring` publication은 unit queue에 wire callback이 아닌 local infrastructure intent notification을 예약한다.
-Queue turn 경계에서 outbound·inbound unit, 필요한 `Capture`·`Restore` callback과 예상 encoded byte permit을 모두
-얻은 unit만 seal하고 accepted boundary를 고정한다. Permit 실패는 wire command를 보내거나 queue를 seal하지 않으며
-notification만 다시 예약한다. 기본 gate는 `64/64`, `8/8`, 256 MiB이고 oversized unit은 payload window에서 단독이다.
+Queue turn 경계에서 outbound·inbound unit, 필요한 `Capture`·`Restore` callback과 encoded byte permit을 모두 얻은
+unit만 seal하고 accepted boundary를 고정한다. Byte reservation은 Snapshot participant마다 64 MiB와 이미
+Framework가 소유한 queue·journal·timer·manifest·metadata의 deterministic encoded upper bound를 합한다. `Capture`
+뒤 permit은 actual encoded size로만 축소한다. Permit 실패는 모든 provisional permit을 반환하고 wire command를
+보내거나 queue를 seal하지 않으며 notification만 다시 예약한다. 기본 gate는 `64/64`, `8/8`, 256 MiB이고
+oversized User Spot aggregate는 empty payload window에서 exclusive하다. Standalone Actor와 Instance Spot unit은
+gate 안에서만 admit한다.
 
 Source lifetime이 `connectionBound`인 accepted send·request와 모든
 bound-session request는 `Captured` 전에 terminal state까지 drain한다. 이 work는 frozen journal에 기록하지 않는다.

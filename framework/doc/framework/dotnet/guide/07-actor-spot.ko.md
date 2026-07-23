@@ -133,20 +133,22 @@ actor는 factory로 만든다. factory는 `actorType` 짧은 문자열로 등록
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    var spot = options.AddRouteMesh("play-spots");
-    spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate가 이 키로 factory를 고른다.
-    spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player");
-    // remote 이동 때 보존할 actor state가 있을 때만 custom adapter를 등록한다.
+    var objectServer = options.AddRouteMesh("play-spots").Objects().Server();
+    objectServer.AddActorFactory<PlayerActor, PlayerActorFactory>(
+        "player",                                        // GetOrCreate가 factory를 선택하는 stable actor type이다.
+        placement: null,
+        ZLinkRelocationPolicy<PlayerActor>
+            .Snapshot<PlayerActorRelocationAdapter>()); // cross-node 이동에서 opaque state를 보존한다.
     // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 MeshNode 쪽에서
     // ([08-actor-session](08-actor-session.ko.md) §6 등록 코드)
 });
 
-public sealed class PlayerActorFactory : IZLinkActorFactory
+public sealed class PlayerActorFactory : IZLinkActorFactory<PlayerActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<PlayerActor> CreateAsync(
         string actorId, IZLinkActorContext context, CancellationToken ct)
         // 같은 actorId는 framework가 한 인스턴스만 유지 — CreateAsync는 그 actorId의 최초 1회만 불린다.
-        => ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+        => ValueTask.FromResult(new PlayerActor(actorId, context));
 }
 
 public sealed class PlayerActor(string actorId, IZLinkActorContext context)
@@ -211,28 +213,21 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
 
 > create payload가 필요 없으면 `GetOrCreateAsync(actorId, actorType, ct)` 오버로드를 쓴다.
 >
-### `Generation` — 옛 주소로 잘못 배달되지 않게 막는 세대 번호
+### `ObjectGeneration` — 같은 ID의 새 incarnation을 구분하는 세대 번호
 
-ref 3종 중 `NodeRid`·`ActorId`는 "그 actor가 누구이고 어느 노드에 있나"를 가리킨다.
-`Generation`은 "이 ref가 아직 **현재 유효한 그 actor**를 가리키는가"를 판별하는
-fencing token이다.
+`ActorRef.ObjectGeneration`은 같은 Actor ID를 delete한 뒤 다시 만들었는지 판별하는 fencing token이다.
+Same-node join과 cross-node relocation에서는 logical incarnation이 유지되므로 증가하지 않는다.
+Relocation은 내부 `AuthorityOwnerGeneration`을 증가시키지만 이 값은 public `ActorRef`에 노출하지 않는다.
 
-동작 규칙은 네 가지다.
-
-1. **노드를 넘는 transfer 때만 +1 된다.** store가 원자적으로 새 세대를 발급한다(§3
-   "actor 이동"). 같은 노드 안에서 Spot만 옮기면(Entry Spot ↔ 같은 노드의 user Spot)
-   인스턴스를 그대로 쓰므로 세대도 그대로다.
-2. **이동 직후의 옛 ref 호출은 전달로 흡수한다.** source node가 기본 5초 동안 옛
-   세대로 온 packet을 새 node로 전달한다.
-3. **전달 창이 지나면 stale로 판정해 되돌린다**(`ActorLocationStale`). 사용할 수 없는 노드나
-   엉뚱한 노드로 조용히 배달하지 않는다. caller는 resolver에서 새 live ref를 얻어
-   재호출한다.
-4. 그 사이 **옛 노드에서 handler가 잘못 실행되는 일은 없다.**
+일반 messaging은 global Actor ID로 current owner를 resolve한다. Relocation 직후 이전 route로 도착한 message는
+기본 30초 `RelocationForwardingWindow` 안에서 committed source→target mapping으로 relay할 수 있다. Exact
+destroy 같은 mutation은 `ActorRef`의 `ObjectGeneration`을 검사하며, Actor를 delete한 뒤 같은 ID로 새로 만든
+경우 이전 ref는 새 incarnation을 변경하지 못한다.
 
 fencing 규칙 전체는 [spec/aspnet-core-location](../../spec/server/languages/dotnet/01-system-structure.ko.md)이 다룬다.
 
-> 5초는 `ActorTransferForwardWindow`의 기본값이다. 값을 늘리면 stale ref를 더 오래
-> 흡수하는 대신, source node가 forwarding mapping을 더 오래 보관한다. 이 값은 bound
+> 30초는 `RelocationForwardingWindow`의 기본값이다. 값을 늘리면 stale route를 더 오래
+> 흡수하는 대신 source node가 forwarding mapping을 더 오래 보관한다. 이 값은 bound
 > session의 packet 순서 보장과는 무관하다.
 
 ## 3. Spot이 actor를 호스팅 — 콜백과 트리거 함수
@@ -266,9 +261,10 @@ framework가 actor lifecycle의 특정 시점마다 그 Spot의 **콜백 메서�
 ### actor 이동 — 무슨 일이 일어나나 (로컬 vs 크로스노드)
 
 `JoinSpot`으로 actor가 한 Spot에서 다른 Spot으로 옮길 때, 대상 Spot이 **같은 MeshNode**에
-있느냐 **다른 MeshNode**에 있느냐로 동작이 갈린다. 노드가 graceful drain으로 내려갈
-때도 같은 크로스노드 메커니즘으로 framework가 actor를 다른 노드로 자동 handoff한다
-([12-operations §2](12-operations.ko.md)).
+있느냐 **다른 MeshNode**에 있느냐로 동작이 갈린다. Host `Retire`도 같은 relocation factory와 Snapshot
+adapter를 사용하지만 membership lifecycle은 application join과 다르다. Source Entry Spot의 Actor를 target
+Entry Spot에 복원할 때는 target `OnActorRelocatedAsync`와 source `OnLeaveActorAsync`를 사용하고
+`OnActorJoinAsync`·`OnJoinedActorAsync`를 호출하지 않는다([12-operations §2](12-operations.ko.md)).
 
 **① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
 
@@ -297,152 +293,103 @@ sequenceDiagram
 
 > admission이 **Reject** 면 이동·leave 없이 actor는 Entry Spot에 그대로 남는다.
 
-**② 다른 노드 — actor transfer(인스턴스 이주).** source node의 actor state를 transfer adapter가
-`ZLinkMessage`로 만들고, target node가 그 message로 actor instance를 materialize한다. `OnActorJoinAsync`
-는 target admission만 결정하고, remote materialize는 새 actor 생성이 아니므로 Entry Spot
-`OnCreateActorAsync`는 호출하지 않는다.
+**② 다른 노드 — actor relocation(인스턴스 이주).** Source node의 actor state를 relocation adapter가
+opaque byte 배열로 capture한다. Target node는 factory로 먼저 actor instance를 만든 뒤 adapter가 같은
+instance에 payload를 restore한다. `OnActorJoinAsync`는 target admission만 결정하고, remote materialize는
+새 logical Actor 생성이 아니므로 Entry Spot `OnCreateActorAsync`는 호출하지 않는다.
 
-먼저 큰 그림 — actor 인스턴스가 **A 노드의 Spot에서 벗어나 B 노드의 Spot에서 다시 만들어진다**. 같은
-`actorId` 지만 노드를 넘었으므로 `generation`이 +1 되고, client의 bound STREAM도 A→B로 함께 옮겨져
-push가 끊기지 않는다.
-
-```mermaid
-flowchart LR
-  C(["client"])
-  subgraph NA["Node A — 이주 전"]
-    SA["Source Spot"]
-    AA["actor id=X<br/>generation=N"]
-    SA --- AA
-  end
-  subgraph NB["Node B — 이주 후"]
-    SB["user Spot (BingoRoom)"]
-    AB["actor id=X<br/>generation=N+1"]
-    SB --- AB
-  end
-  C -- "bound STREAM (이주 전)" --- AA
-  AA == "actor state: TransferOut → ZLinkMessage → TransferIn" ==> AB
-  C == "같은 STREAM이 B로 함께 이동 (push 유지)" ==> AB
-  linkStyle 0,1 stroke-width:1px
-  linkStyle 2 stroke:#64748b,stroke-width:1.5px
-  linkStyle 3,4 stroke:#d97706,stroke-width:3px
-```
-
-> 굵은 주황선 둘(`actor state` + `같은 STREAM`)이 **같이 B로 이동**하는 짝이다. 얇은 회색 실선은
-> 이주 전 client↔A의 bind로, 이동이 끝나면 client는 끊김 없이 B의 actor로 push를 받는다.
-
-- A의 인스턴스는 state를 넘긴 뒤 **retire**(이후 접근하면 stale), B가 그 state로 새 인스턴스를 materialize.
-- 이동 후 caller가 옛 ref(`generation=N`)로 부르면 `ActorLocationStale` — 새 ref(`N+1`)로 re-resolve 한다.
-
-아래는 이 이주에서 프레임워크가 부르는 **콜백 순서**를 단계별로 편 것이다.
+Actor의 `actorId`와 `ObjectGeneration`은 유지되고 `AuthorityOwnerGeneration`만 증가한다. Client의 bound
+STREAM route도 target으로 전환되어 push가 이어진다.
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant CA as Framework at Node A
-  participant EA as Source Spot at A
-  participant CB as Framework at Node B
-  participant R as BingoRoom at B
-  Note over CA: JoinSpot(roomRid at B)
-  CA->>CB: Admission request
-  CB->>R: OnActorJoinAsync(actorId, req)
-  R-->>CB: Accept(reply)
-  CB-->>CA: Admission accepted
-  CA->>CA: TransferOutAsync(actor) -> state
-  CA->>EA: OnLeaveActorAsync
-  CA->>CB: commit(state)
-  CB->>CB: TransferInAsync or actor factory
-  Note over CB: Commit membership
-  CB->>R: OnJoinedActorAsync
-  Note over CB: Commit actor location
-  CB-->>CA: Commit ack
-  CA-->>CA: Update actor ref and bound session
-  Note over CA: Retire source actor and release old location
+  participant S as Source Framework
+  participant L as Source Spot
+  participant T as Target Framework
+  participant R as Target Spot
+  S->>T: Join admission request
+  T->>R: OnActorJoinAsync(actorId, request)
+  R-->>T: Accept(reply)
+  S->>S: CaptureAsync(actor) returns bytes
+  S->>T: Store immutable relocation root
+  T->>T: Factory creates actor
+  T->>T: RestoreAsync(actor, bytes)
+  Note over T: Commit owner and membership
+  T->>R: OnJoinedActorAsync(actor)
+  S->>L: OnLeaveActorAsync(actor)
+  T->>T: Replay accepted journal
+  Note over S,T: Cleanup, route ACK, then open admission
 ```
 
-#### `TransferInAsync`의 `state`는 어디서 오는가
+#### `RestoreAsync`의 `payload`는 어디서 오는가
 
-`TransferInAsync`의 `state`는 target application이 별도로 조회하거나 만드는 값이 아니다. source node에서
-같은 actor type의 adapter가 `TransferOutAsync(sourceActor, ct)`로 반환한 `ZLinkMessage`를 framework가
-target node까지 전달한 값이다.
+`RestoreAsync`의 `payload`는 target application이 별도로 조회하거나 만드는 값이 아니다. Source node의
+같은 Actor type adapter가 `CaptureAsync(sourceActor, ct)`로 반환한 byte 배열을 Framework가 immutable
+relocation root에 저장하고 target까지 전달한 값이다.
 
-흐름은 다음과 같다.
+1. Target `OnActorJoinAsync(actorId, request, ct)`가 application join admission을 accept한다.
+2. Source가 `CaptureAsync(actor, ct)`를 호출해 opaque bytes를 얻는다.
+3. Framework가 bytes와 accepted queue·journal·timer metadata를 immutable relocation root에 저장한다.
+4. Target factory가 Actor instance를 만들고, owner·membership commit 전에
+   `RestoreAsync(actor, payload, ct)`로 state를 적용한다.
+5. Framework가 owner·membership을 commit한 뒤 target `OnJoinedActorAsync`, source
+   `OnLeaveActorAsync`와 journal replay를 완료하고 target admission을 연다.
 
-1. target `OnActorJoinAsync(actorId, request, ct)`가 admission을 accept한다.
-2. source node가 `TransferOutAsync(actor, ct)`를 호출한다.
-3. adapter가 반환한 `ZLinkMessage`의 content type과 payload를 framework가 remote commit에 담아 전달한다.
-4. target node가 전달받은 message를 `TransferInAsync(actorId, newContext, state, ct)`의 `state`로 넘긴다.
-5. target adapter가 state를 decode해 target actor instance를 만들고, framework가 commit과
-   `OnJoinedActorAsync(actor, ct)`를 이어서 수행한다.
-
-join의 `request`와 actor 이동 `state`는 서로 다른 message다. `request`는 target Spot이 입장을 허용할지
-판단하는 입력이고, `state`는 source actor의 이동 가능한 domain 상태다. application은 raw byte나
-transport frame을 직접 다루지 않고 `ZLinkMessage.From(...)`과 `Decode<T>()`를 사용한다.
-
-> **샘플에서 보기.** [Bingo](../../common/sample/bingo/README.ko.md)는 actor가 Entry
-> Spot에서 room으로, 그리고 다른 노드의 room으로 이동하는 전체 사슬을 보여준다.
-> [GameQuest](../../common/sample/event/gamequest.ko.md)는 player actor를 owner로 두고 quest
-> 이벤트를 누적하는 장기 상태 actor의 예다.
+Join의 `request`와 relocation payload는 서로 다른 데이터다. Request는 target Spot이 입장을 허용할지
+판단하는 typed message이고, payload는 application이 format·version·compatibility를 관리하는 opaque bytes다.
+Framework는 state contract ID, state type이나 relocation codec을 제공하지 않는다.
 
 ```csharp
-public sealed class PlayerActorTransferAdapter
-    : IZLinkActorTransferAdapter<PlayerActor>
+public sealed class PlayerActorRelocationAdapter
+    : IZLinkActorRelocationAdapter<PlayerActor>
 {
-    public ValueTask<ZLinkMessage> TransferOutAsync(
+    public ValueTask<byte[]> CaptureAsync(
         PlayerActor actor,
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        // 이 반환값이 target TransferInAsync의 state 인자가 된다.
-        return ValueTask.FromResult(ZLinkMessage.From(new PlayerTransferState(
-            actor.DisplayName,
-            actor.RoomId)));
+        // Application이 소유한 JSON format을 opaque bytes로 반환한다.
+        return ValueTask.FromResult(JsonSerializer.SerializeToUtf8Bytes(
+            new PlayerRelocationState(actor.DisplayName, actor.RoomId)));
     }
 
-    public ValueTask<PlayerActor> TransferInAsync(
-        string actorId,
-        IZLinkActorContext context,
-        ZLinkMessage state,
+    public ValueTask RestoreAsync(
+        PlayerActor actor,
+        ReadOnlyMemory<byte> payload,
         CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        // source가 반환한 message를 같은 domain state 타입으로 복원한다.
-        var transferred = state.Decode<PlayerTransferState>();
-        var actor = new PlayerActor(actorId, context);
-        actor.SetDisplayName(transferred.DisplayName);
-        if (!string.IsNullOrEmpty(transferred.RoomId))
-            actor.JoinRoom(transferred.RoomId);
-        return ValueTask.FromResult(actor);
+        // Factory가 만든 target instance에 source state를 적용한다.
+        var restored = JsonSerializer.Deserialize<PlayerRelocationState>(payload.Span)
+            ?? throw new InvalidDataException("Missing player relocation state.");
+        actor.SetDisplayName(restored.DisplayName);
+        if (!string.IsNullOrEmpty(restored.RoomId))
+            actor.JoinRoom(restored.RoomId);
+        return ValueTask.CompletedTask;
     }
 
-    private sealed record PlayerTransferState(string DisplayName, string RoomId);
+    private sealed record PlayerRelocationState(string DisplayName, string RoomId);
 }
 ```
 
-source와 target의 adapter는 같은 객체 인스턴스가 아니다. 각 node의 DI container가 자기 adapter를 만들고,
-node 사이에는 `ZLinkMessage`의 content type과 payload만 전달된다. 따라서 같은 actor type을 호스팅하는
-모든 node는 동일한 adapter 등록과 호환되는 state schema를 사용해야 한다.
+Source와 target의 adapter는 같은 객체 인스턴스가 아니다. 각 node의 DI container가 자기 adapter를 만들고,
+node 사이에는 Framework가 복사한 byte sequence만 전달된다. 따라서 같은 actor type을 호스팅하는 모든
+node는 같은 Snapshot adapter와 호환되는 application state format을 사용해야 한다.
 
-> transfer adapter를 등록하지 않은 actor type도 remote transfer할 수 있다. 이 경우 source는 빈
-> `ZLinkMessage`를 보내고 target은 기존 actor factory 경로로 actor를 만든다. state를 옮겨야 하면
-> `AddActorTransferAdapter<TActor, TAdapter>(actorType)`를 등록하고, adapter의 `TransferOutAsync`에서
-> state message를 만들고 `TransferInAsync(actorId, context, state, ct)`에서 target actor를 만든다.
-> custom adapter가 빈 `ZLinkMessage`를 반환하는 것도 정상이다. target actor는 `OnJoinedActorAsync`에서
-> 필요하면 별도 저장소의 도메인 상태를 읽을 수 있다.
-> 같은 node 안에서 Spot만 이동할 때는 기존 actor instance를 그대로 사용하므로 `TransferOutAsync`와
-> `TransferInAsync`를 호출하지 않는다.
->
-> **bound session(STREAM)은 A→B로 transfer** 되어 client push는 끊기지 않는다(이주 후 B의 actor가
-> `BoundSession.Send` → 같은 client).
+> Application state를 옮기지 않는 type은 factory registration에 `Recreate`를 명시한다. `Snapshot`은 adapter가
+> 필요하며 빈 byte 배열도 유효한 state다. `Disabled`는 cross-node materialization을 capture 전에 거부한다.
+> Same-node join은 policy와 adapter를 사용하지 않고 기존 actor instance를 그대로 사용한다.
 
-| | 같은 노드 | 다른 노드(migration) |
+| | 같은 노드 | 다른 노드 relocation |
 |---|---|---|
-| actor 인스턴스 | 그대로(route만 갱신) | A retire + B materialize |
-| in-memory 상태 | 유지 | **transfer adapter state** 또는 기본 빈 state |
-| OnLeave / OnJoined | 같은 노드에서 둘 다 | B에서 admission accept 후 A에서 OnLeave / B에서 TransferIn·OnJoined |
-| bound session | 그대로 | A→B transfer |
-| 식별 | 같은 `actorId` | 같은 `actorId`, `generation+1` |
+| actor 인스턴스 | 그대로(route만 갱신) | source cleanup + target factory materialize |
+| in-memory 상태 | 유지 | `Snapshot` opaque bytes 또는 `Recreate` |
+| membership callback | target OnJoined + source OnLeave | target OnJoined + source OnLeave |
+| bound session | 그대로 | route를 target으로 commit |
+| 식별 | 같은 `actorId`·`ObjectGeneration` | 같은 `actorId`·`ObjectGeneration` |
 
 > **규칙 — join이 성공(Accept)하면 그 `actor` 객체를 더 접근하지 않는다.** join이 끝나면 actor는 이
 > Spot을 떠났고, **크로스노드면 이 노드의 인스턴스는 retire** 된다(접근하면 stale). 호출한 handler는

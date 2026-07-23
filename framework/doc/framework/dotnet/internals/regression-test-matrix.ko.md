@@ -381,9 +381,9 @@ backend gate 와 별도로 유지한다.
 | event 필드(추가) | `string ZLinkMessageFlowEvent.FlowId`, `ZLinkFlowOrigin? ZLinkMessageFlowEvent.FlowOrigin` — dispatch 오류 이벤트에도 동일 |
 | 공통 개념 | `.NET` |
 | 자동 Shutdown | framework hosted service가 `IHostApplicationLifetime` 종료에 참여하고 `StopAsync`에서 host `ShutdownAsync(...)` terminal result를 기다린다 |
-| Retire 순서 | all-or-none preflight → admission seal → accepted work → Actor·Instance transfer → STREAM barrier → authority·descriptor → listener·raw socket cleanup |
-| User Spot blocker | User Spot instance가 하나라도 남아 있으면 state를 추론하지 않고 `Blocked/TransferDisabled`이며 admission은 유지된다 |
-| Spot 생성 경계 | `CreateAsync`·`GetOrCreateAsync`는 local-only, `ResolveAsync`는 existing-only다. Missing Instance의 cold activation은 `InstanceSpotAddress` call만 시작한다 |
+| Retire 순서 | all-or-none preflight → admission seal → current turn completion → queue·journal·timer freeze → Actor·Spot relocation → STREAM barrier → authority·descriptor → listener·raw socket cleanup |
+| User Spot aggregate | User Spot과 소속 Actor를 하나의 aggregate로 relocation하며 participant 전체와 generation을 Location Store commit에서 검증한다 |
+| Spot 생성 경계 | direct Spot send/request의 fluent builder에 Instance marker를 지정한다. Missing Instance는 marker가 정확히 한 factory type을 선택할 때만 cold placement를 시작한다 |
 | terminal result | `ZLinkFrameworkTerminationResult(EffectiveIntent, Outcome, Reason)`의 enum 숫자와 허용 조합이 공통 54와 일치한다 |
 | 명시 제어 | DI singleton `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 host shared operation을 제공하고 `deadline == null`은 30초다 |
 | first intent | `Draining` 이후 cross-intent waiter는 first operation의 `EffectiveIntent`, deadline과 terminal result를 공유한다. `Blocked`는 terminal cache에 넣지 않는다 |

@@ -158,8 +158,11 @@ contract ID를 비교하지 않는다.
 
 Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하는 sliding window 안에서 다음 순서로 진행한다.
 
-1. Queue turn 경계에서 source outbound unit, target inbound unit, 필요한 `Capture`·`Restore` callback과 예상 encoded
-   payload byte permit을 nonblocking으로 획득한다. 어느 permit이든 실패하면 unit을 seal하지 않는다.
+1. Queue turn 경계에서 source outbound unit, target inbound unit, 필요한 `Capture`·`Restore` callback과 encoded
+   payload byte permit을 nonblocking으로 획득한다. Byte reservation은 Snapshot participant마다 adapter가 반환할
+   수 있는 최대 64 MiB와 Framework가 이미 소유한 queue·journal bytes, timer·manifest·metadata의 deterministic
+   encoded upper bound를 더한 값이다. 어느 permit이든 실패하면 provisional permit을 모두 즉시 반환하고 unit을
+   seal하지 않는다.
 2. Permit을 모두 얻은 같은 turn 경계에서 application ingress와 timer dispatch를 원자적으로 seal한다. 실행 중인
    turn은 이미 끝났으므로 새 application callback을 시작하지 않는다.
 3. Seal 시점에 실행하지 않은 message queue, accepted journal, timer logical registration·pending tick과 Framework
@@ -178,10 +181,27 @@ Location option으로 바꿀 수 있지만 실행 중인 attempt에는 변경 �
 unit·byte permit과 독립적으로 적용한다.
 
 Payload byte에는 application state, seal 시점의 미실행 message queue, accepted journal, timer logical
-registration·pending tick, relocation manifest와 Framework metadata를 모두 포함한다. Encoded payload 예상치는
-unit을 seal하기 전에 예약하며 exact bytes가 permit을 초과할 수 있는 estimate를 사용해서는 안 된다. 256 MiB보다 큰
-단일 User Spot aggregate나 다른 unit은 payload window가 비어 있고 outbound·inbound unit permit을 얻었을 때만
-oversized unit 하나로 진행한다. 이 예외 중에는 다른 payload를 admit하지 않는다.
+registration·pending tick, relocation manifest와 Framework metadata를 모두 포함한다. Queue turn 경계에서
+Framework는 admission sequencing fence를 잠시 유지해 현재 accepted framework-owned bytes와 count를 고정한다.
+Permit 획득에 실패하면 fence를 해제하고 새 ingress를 source queue에 계속 수락하며 semantic seal이나 ingress hold를
+만들지 않는다. Permit 획득에 성공하면 같은 경계에서 seal하므로 그 뒤 도착한 ingress는 reservation 계산에 섞지 않고
+source ingress hold로 보낸다.
+
+Application state 크기를 미리 묻는 public callback이나 application 제공 estimate는 두지 않는다. Snapshot participant
+하나의 reservation은 [23 Spot Actor](23-spot-actor.ko.md)가 정한 64 MiB 최대값을 사용한다. Framework-owned
+section은 이미 encode된 bytes와 bounded field count·길이로 계산한 deterministic upper bound를 사용하며, envelope와
+chunk framing overhead도 포함한다. `Capture`가 끝나면 reservation을 actual encoded size로만 축소할 수 있고
+늘릴 수 없다. Adapter가 64 MiB를 넘기면 adapter contract violation으로 precommit abort하고 source normalization 뒤
+`Blocked/StateIncompatible`로 끝낸다. Framework encoder의 upper bound는 실제 encoded size보다 작아서는 안 되며
+runtime은 seal 뒤 permit을 추가로 얻어 이 구현 오류를 우회하지 않는다.
+
+Coordinator는 unit, callback과 byte permit을 하나의 nonblocking admission attempt로 처리한다. 실패한 attempt가
+일부 permit을 보유한 채 기다리거나 다음 notification까지 넘기면 안 된다. Reservation이 256 MiB보다 큰
+단일 User Spot aggregate는 payload window의 사용량과 다른 oversized admission이 모두 0일 때만 exclusive
+oversized permit 하나로 진행한다. 이 permit이 유지되는 동안 normal·oversized payload를 새로 admit하지 않는다.
+Actual size로 축소한 뒤 window 안에 들어오더라도 해당 aggregate가 byte permit을 반환할 때까지 exclusive 상태를
+유지한다. 따라서 큰 aggregate와 normal unit이 서로의 partial permit을 보유한 채 대기하지 않는다. Standalone
+Actor와 Instance Spot unit은 configured byte gate 안에서만 admit한다.
 
 Seal 뒤 source로 들어온 application ingress는 relocation payload에 추가하지 않고 bounded source ingress hold에
 보관한다. Commit 전 abort는 hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 target으로 relay한다.
@@ -371,7 +391,11 @@ relocation 진행을 막지 않는다.
 - `Retire` intent notification은 application callback을 호출하지 않으며 queue turn 경계에서 permit을 얻은 unit만
   seal한다. Permit을 얻지 못한 unit은 application message와 timer를 계속 처리한다.
 - Process별 기본 gate가 outbound 64, inbound 64, payload in-flight 256 MiB, `Capture`·`Restore` 각각 8이고
-  oversized unit은 payload window에서 단독으로 진행된다.
+  oversized User Spot aggregate는 payload window에서 단독으로 진행된다.
+- Seal 전 byte reservation은 Snapshot participant별 64 MiB와 Framework-owned encoded upper bound를 포함하며
+  `Capture` 뒤 actual size로만 축소된다.
+- Permit admission은 all-or-nothing이고 oversized User Spot aggregate는 empty payload window에서 exclusive하게 진행하므로
+  normal unit과 partial permit deadlock을 만들지 않는다.
 - Seal 시점의 미실행 message·journal·timer registration·pending tick이 payload에 포함되고, seal 뒤 ingress는
   commit 후 target relay 또는 abort 후 source queue 복원을 따른다.
 - Target Framework가 timer를 자동 복원하므로 application `Restore`는 timer를 다시 등록하지 않는다.

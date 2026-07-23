@@ -34,16 +34,18 @@ reconnect 계약은 각 기능 spec이 소유하며 여기서 반복하지 않�
 ## 3. Retire와 Shutdown
 
 `RetireAsync(...)` preflight와 `ShutdownAsync(...)` seal은 같은 host maintenance barrier에서 순서를 정한다.
-Retire는 User Spot 잔존 여부, Actor·Instance policy, target version·capability·capacity·wave와 Store를 모두
-확인한 뒤에만 `Draining`을 commit한다. User Spot 하나라도 남으면 state와 admission을 바꾸지 않고
-`Blocked/TransferDisabled`로 끝낸다.
+Retire는 Actor·Spot policy, target version·capability·capacity·wave와 Store를 모두 확인한 뒤에만
+`Draining`을 commit한다. `Disabled` policy인 Actor·Spot이 남아 있거나 필요한 target·Store가 없으면 state와
+admission을 바꾸지 않고 해당 `Blocked` reason으로 끝낸다.
 
 `Draining`부터 first intent와 deadline을 shared operation에 고정한다. Cross-intent caller는 같은 operation과
 `EffectiveIntent` result를 기다린다. Caller token은 waiter completion만 취소하고 shared operation이나 transfer를
 취소하지 않는다. `Blocked`는 preflight waiter에게만 전달하고 terminal cache에 넣지 않는다.
 
-Retire는 admission seal, accepted work, Actor·Instance transfer, session barrier, authority cleanup, listener와 raw
-socket cleanup 순서로 진행한다. Shutdown은 admission을 seal하되 새 transfer와 reservation을 시작하지 않는다.
+Retire는 admission seal 뒤 현재 turn만 완료하고, 다음 queued job·accepted journal·timer를 freeze한다.
+Framework는 byte permit을 확보한 aggregate부터 Actor·Spot relocation을 시작하며 User Spot과 소속 Actor는
+하나의 aggregate로 이동한다. 이어서 session barrier, authority cleanup, listener와 raw socket cleanup을
+진행한다. Shutdown은 admission을 seal하되 새 relocation과 reservation을 시작하지 않는다.
 ASP.NET Core `StopAsync`는 `ShutdownAsync()`를 사용하고 terminal result를 확인한 뒤 hosted service를 끝낸다.
 두 operation의 기본 deadline은 30초다.
 
@@ -52,9 +54,9 @@ ASP.NET Core `StopAsync`는 `ShutdownAsync()`를 사용하고 terminal result를
 유지하며 host `Retire` preflight와 transfer를 시작하지 않는다. 두 compatibility surface의 public 이름과
 signature는 Core service 구현 이관 때문에 바꾸지 않는다.
 
-`IZLinkSpotManager.CreateAsync`와 `GetOrCreateAsync`는 local owner만 만들고 `ResolveAsync`는 existing-only다.
-Missing Instance Spot을 cold activation하는 경로는 `InstanceSpotAddress` call뿐이다. Maintenance target
-materialization은 application manager call을 재사용하지 않는 Framework internal operation이다.
+Application은 global Spot RID를 대상으로 direct Spot send/request를 구성하고 fluent builder에서 Instance marker를
+지정한다. Missing Instance는 marker가 정확히 한 factory type을 선택할 때만 cold placement를 시작한다.
+Maintenance target materialization은 이 application call을 재사용하지 않는 Framework internal operation이다.
 
 ## 4. 책임 경계
 
@@ -65,8 +67,8 @@ materialization은 application manager call을 재사용하지 않는 Framework 
 - monitoring hosted service는 다른 runtime이 준비된 뒤 source를 붙이고 가장 먼저
   분리한다.
 
-Application callback과 provider callback에 authority version, phase, checkpoint reference와 raw socket을
-노출하지 않는다. Typed transfer adapter는 application state만 capture·restore한다.
+Application callback과 provider callback에 authority version, phase, relocation reference와 raw socket을
+노출하지 않는다. Relocation adapter는 application state를 opaque bytes로만 capture·restore한다.
 
 ## 5. Transport liveness와 binding 경계
 

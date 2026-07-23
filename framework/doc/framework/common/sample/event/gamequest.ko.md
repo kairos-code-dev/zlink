@@ -201,17 +201,17 @@ GameQuest의 Channel 역할과 물리 연결은 [공통 topology 기준](../READ
 따른다. GameApi와 QuestMission은 `gamequest` RouteMesh 하나를 공유한다. 양쪽이 독립 업무 호출을 시작하고
 Spot·Actor·session route도 이어지므로 방향별 ClientServer Channel을 추가하지 않는다.
 
-이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId`에서 Spot RID를 만들고
-`(gamequest, gamequest.player-quest, PlayerId RID)`의 `InstanceSpotAddress`로 direct send/request를 수행한다.
-QuestMission은 actor-free `PlayerQuestSpot` Instance factory를 등록하고 GameApi는 호출 전용 membership 0개
-MeshNode로 같은 RouteMesh에 참여한다. Caller는 Spot manager의 `GetOrCreate`, SpotHandle resolve, owner node
-RID나 endpoint 선택을 수행하지 않는다. `gamequest.mission.*` 같은 wildcard ChannelName이나 실행 중 역할
-추가도 사용하지 않는다.
+이 샘플은 mission별 ChannelName도 등록하지 않는다. `PlayerId`에서 global SpotRid를 만들고 Spot direct
+send/request call에 `InstanceSpot("gamequest.player-quest")` marker를 명시한다. QuestMission은 actor-free
+`PlayerQuestSpot` Instance factory를 등록하고 GameApi는 호출 전용 membership 0개 MeshNode로 같은 RouteMesh에
+참여한다. Caller는 Spot manager의 `GetOrCreate`, handle resolve, owner node RID나 endpoint 선택을 수행하지
+않는다. `gamequest.mission.*` 같은 wildcard ChannelName이나 실행 중 역할 추가도 사용하지 않는다.
 
-Gameplay event의 one-way 호출은 public async submit만 사용한다. Framework는 row가 없을 때만 cold placement를
-실행하고, `Ready` owner가 있으면 node RID, Spot RID와 Spot generation으로 고정한 기존 exact Spot direct route를
-내부에서 사용한다. `PlayerQuestSpot`은 message 없는 actor-free initialize lifecycle에서 event stream 상태를
-복구하며 기존 Spot create callback에 빈 message를 전달하지 않는다.
+Gameplay event의 one-way 호출은 public async submit만 사용한다. Framework는 Instance marker가 있는 call에서
+global SpotRid authority가 `Missing`일 때만 cold placement를 실행한다. `Ready` owner가 있으면 Location
+authority의 current route를 사용하며 caller가 owner route나 generation을 고정하지 않는다. `PlayerQuestSpot`은
+message 없는 actor-free initialize lifecycle에서 event stream 상태를 복구하며 기존 Spot create callback에 빈
+message를 전달하지 않는다.
 
 ```mermaid
 graph LR

@@ -3,33 +3,35 @@
 [인터페이스 목차](README.ko.md) · [Location runtime](../../../40-location-runtime.ko.md)
 
 ```java
+// Public declaration excerpt. Method bodies are omitted; the exact JVM
+// inventory later in this document is authoritative.
 public final class ZLinkLocationOptions {
-    Duration ownerLeaseRenewInterval();
-    void setOwnerLeaseRenewInterval(Duration value);
-    Duration ownerLeaseTtl();
-    void setOwnerLeaseTtl(Duration value);
-    Duration pollingInterval();
-    void setPollingInterval(Duration value);
-    Duration storeFailureGrace();
-    void setStoreFailureGrace(Duration value);
-    Duration ownerLeaseFencingMargin();
-    void setOwnerLeaseFencingMargin(Duration value);
-    Duration ownerLeaseRenewTimeout();
-    void setOwnerLeaseRenewTimeout(Duration value);
-    Duration routeCacheMaxAge();
-    void setRouteCacheMaxAge(Duration value);
-    Duration relocationForwardingWindow();
-    void setRelocationForwardingWindow(Duration value);
-    int maxActiveOutboundRelocations();
-    void setMaxActiveOutboundRelocations(int value);
-    int maxActiveInboundRelocations();
-    void setMaxActiveInboundRelocations(int value);
-    int maxConcurrentRelocationCaptures();
-    void setMaxConcurrentRelocationCaptures(int value);
-    int maxConcurrentRelocationRestores();
-    void setMaxConcurrentRelocationRestores(int value);
-    long maxRelocationPayloadInFlightBytes();
-    void setMaxRelocationPayloadInFlightBytes(long value);
+    public Duration ownerLeaseRenewInterval();
+    public void setOwnerLeaseRenewInterval(Duration value);
+    public Duration ownerLeaseTtl();
+    public void setOwnerLeaseTtl(Duration value);
+    public Duration pollingInterval();
+    public void setPollingInterval(Duration value);
+    public Duration storeFailureGrace();
+    public void setStoreFailureGrace(Duration value);
+    public Duration ownerLeaseFencingMargin();
+    public void setOwnerLeaseFencingMargin(Duration value);
+    public Duration ownerLeaseRenewTimeout();
+    public void setOwnerLeaseRenewTimeout(Duration value);
+    public Duration routeCacheMaxAge();
+    public void setRouteCacheMaxAge(Duration value);
+    public Duration relocationForwardingWindow();
+    public void setRelocationForwardingWindow(Duration value);
+    public int maxActiveOutboundRelocations();
+    public void setMaxActiveOutboundRelocations(int value);
+    public int maxActiveInboundRelocations();
+    public void setMaxActiveInboundRelocations(int value);
+    public int maxConcurrentRelocationCaptures();
+    public void setMaxConcurrentRelocationCaptures(int value);
+    public int maxConcurrentRelocationRestores();
+    public void setMaxConcurrentRelocationRestores(int value);
+    public long maxRelocationPayloadInFlightBytes();
+    public void setMaxRelocationPayloadInFlightBytes(long value);
 }
 
 public final class ZLinkRedisLocationOptions {
@@ -77,6 +79,8 @@ forwarding을 끈다. 둘 다 양수이면 cache age가 forwarding window보다 
 Relocation 제한의 기본값은 active outbound 64, active inbound 64, concurrent Capture 8, concurrent Restore 8,
 encoded payload in flight 268,435,456 bytes다. 다섯 값은 모두 양수여야 하며 같은 process의 모든 MeshNode가
 공유한다. Framework는 active unit, callback과 byte permit을 모두 얻기 전에는 source queue를 seal하지 않는다.
+Byte reservation은 Snapshot participant마다 64 MiB와 Framework-owned section의 deterministic encoded upper
+bound를 합하며 `Capture` 뒤 actual encoded size로만 축소한다.
 Byte 한도를 넘는 단일 User Spot aggregate는 다른 relocation payload 단계와 겹치지 않는 조건으로 단독 실행한다.
 Location Store와 owner lease runtime을 사용하는 모든 host는
 `ownerLeaseRenewInterval + ownerLeaseRenewTimeout < ownerLeaseTtl - ownerLeaseFencingMargin`을 startup에서
@@ -654,6 +658,16 @@ public final class systems.zlink.framework.locations.ZLinkLocationOptions {
   public void setRouteCacheMaxAge(java.time.Duration);
   public java.time.Duration relocationForwardingWindow();
   public void setRelocationForwardingWindow(java.time.Duration);
+  public int maxActiveOutboundRelocations();
+  public void setMaxActiveOutboundRelocations(int);
+  public int maxActiveInboundRelocations();
+  public void setMaxActiveInboundRelocations(int);
+  public int maxConcurrentRelocationCaptures();
+  public void setMaxConcurrentRelocationCaptures(int);
+  public int maxConcurrentRelocationRestores();
+  public void setMaxConcurrentRelocationRestores(int);
+  public long maxRelocationPayloadInFlightBytes();
+  public void setMaxRelocationPayloadInFlightBytes(long);
 }
 public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions {
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions();

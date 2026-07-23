@@ -35,13 +35,12 @@ Internal transport를 Core service object에서 public raw socket으로 바꾸�
 | 추가 | `IZLinkFrameworkRuntime`, `ZLinkFrameworkRuntimeState`, termination intent·outcome·reason·result·snapshot·event | host 단위 Retire·Shutdown과 first-intent-wins를 표현함 |
 | 유지 | `ZLinkMeshNodeState`, Mesh drain snapshot·result와 `IZLinkRouteMeshRuntime.DrainAsync(...)`·`AwaitDrainedAsync(...)` | 기존 MeshName scoped non-continuity operation이며 host `Retire`와 의미가 다름 |
 | 유지 | `IZLinkDrainControl`, `ZLinkDrainResult`, `Drained`, `ForceStopped` | 기존 host-wide drain을 `Shutdown` compatibility facade로 연결함 |
-| 추가 | `SetApplicationVersion(long)`, `SetMaintenanceWave(...)`, descriptor version·capability·capacity·wave·state | transfer target compatibility와 reservation을 판정함 |
-| 추가 | `IZLinkTransferStateAdapter<TInstance,TState>`, `ZLinkTransferPolicy<TInstance>`와 typed factory overload | factory type과 `Disabled/Recreate/Snapshot`을 한 등록에 고정함 |
-| 유지 | `IZLinkActorTransferAdapter<TActor>`, `AddActorTransferAdapter(...)`, transfer timeout·forward window | typed factory policy와 별도인 Actor transfer 계약을 보존함 |
+| 추가 | `SetApplicationVersion(long)`, `SetMaintenanceWave(...)`, descriptor version·capability·capacity·wave·state | relocation target compatibility와 reservation을 판정함 |
+| 추가 | `IZLinkActorRelocationAdapter<TActor>`, `IZLinkSpotRelocationAdapter<TSpot>`, `ZLinkRelocationPolicy<TInstance>`와 typed factory overload | factory type과 `Disabled/Recreate/Snapshot`을 한 등록에 고정하고 Snapshot application state를 opaque bytes로 capture·restore함 |
 | 유지 | `IZLinkActorFactory`, 기존 Actor·Instance factory overload | 기존 등록은 `Disabled` policy로 해석해 source compatibility를 보존함 |
-| 유지 | `IZLinkActorTransferStore`와 Actor-only phase DTO | 기존 provider capability와 positional DTO를 보존함 |
-| 추가 | `IZLinkAuthorityStore`의 opaque expected-version CAS | Actor와 Instance owner·phase를 한 authority payload로 fence함 |
-| 추가 | `IZLinkCheckpointStore`와 closed put/get/delete result | accepted journal과 typed snapshot을 24시간 보관함 |
+| 추가 | `IZLinkLocationStore`와 `AddLocationStore(...)` | owner·phase·participant set·generation·relocation reference를 하나의 authority transaction으로 commit함 |
+| 추가 | `IZLinkRelocationStore`와 `AddRelocationStore(...)` | application state·accepted journal·timer·queue payload를 immutable relocation root로 저장함 |
+| 추가 | `ZLinkRedisLocationStore`, `ZLinkRedisRelocationStore` | 두 Store를 같은 Redis deployment 또는 별도 deployment에 구성할 수 있게 분리함 |
 | 유지 | `HeartbeatInterval` | owner lease 갱신 주기를 정하며 transport liveness와 구분함 |
 
 `ZLinkFrameworkRuntimeState`는 기존 `ZLinkMeshNodeState`를 rename하거나 숫자를 덮어쓴 타입이 아니다. 전자는

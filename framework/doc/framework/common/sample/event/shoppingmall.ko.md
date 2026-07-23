@@ -208,9 +208,9 @@ spot으로 라우팅되면(②) 그 spot은 `Created`까지만 만들고 그 상
 호출·조회 모델 갱신을 전부 소유한다(구현 방식은 spot 자신의 handler가 직접 처리할 수도, spot
 활성화를 보장한 뒤 같은 owner 보장 위에서 동작하는 서비스가 처리할 수도 있다 — 어느 쪽이든
 per-order 직렬화는 owner routing이 보장한다). `CommerceApi`는 Order ID로
-`InstanceSpotAddress`를 만들며 owner node나 endpoint를 고르지 않는다. Framework는 같은 RouteMesh에서
-`OrderWorkflowSpot` type을 제공하는 serving node를 찾고, Location Store의 원자 claim으로 owner 하나를
-정한다. 공유 Redis location store만 등록하면 descriptor·lease·Instance row 처리는 Framework가 수행한다.
+global SpotRid를 만들고 Spot direct call에 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시하며
+owner node나 endpoint를 고르지 않는다. Framework는 같은 RouteMesh에서 `OrderWorkflowSpot` type을 제공하는
+serving node를 찾고, Location Store의 generic reservation으로 owner 하나와 pending capacity를 함께 확보한다.
 
 §3의 조각이 왜 사라지는가 — 주문당 순서 처리와 상태 소유를 base system이 대신하기 때문이다.
 
@@ -447,7 +447,8 @@ owner spot을 무엇에 매칭할지는 "가장 자연스러운 엔티티"가 �
 
 - `CommerceApi`는 `OrderWorkflowSpot`을 호스팅하지 않는다.
 - `CommerceApi`는 `OrderAggregate`나 `OrderEventStore` 기록, 조회 모델 재생성을 직접 호출하지 않는다.
-- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 `StartOrderWorkflowReq`를 Order ID의 `InstanceSpotAddress`로 보낸다.
+- `CommerceApi`는 `StartOrderReq`를 검증한 뒤 Order ID의 global SpotRid로
+  `StartOrderWorkflowReq` direct call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다.
 - 주문 시작·재개·조회 모델 재생성은 `OrderWorkflowSpot`으로 보내는 명시적 명령 메시지로 처리한다.
 - Caller는 `GetOrCreate`, SpotHandle resolve나 owner node 선택을 수행하지 않는다. 첫 업무 message는 activation
   payload로 소비하지 않고 Ready 뒤 일반 handler에서 처리한다.

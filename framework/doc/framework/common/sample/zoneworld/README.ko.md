@@ -51,7 +51,7 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 
 이 샘플이 보여 주는 것:
 
-- 플레이어가 **경계를 넘으면 actor가 인접 zone 노드로 transfer** 된다. client 연결은
+- 플레이어가 **경계를 넘으면 actor가 인접 zone 노드로 relocation** 된다. client 연결은
   유지된다.
 - 경계 근처 상태를 **인접 zone에 Logical Multicast으로 동기화**한다.
 - 관제 콘솔이 **runtime event로 노드 등록·연결 상태를 관찰**한다.
@@ -114,12 +114,12 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
    - **zone 불변**: actor가 현재 zone의 `SpotHandle`로 `UpdatePositionMsg`를 보내 좌표 사본을 갱신한다.
      actor handler와 Spot은 서로 다른 application turn이므로 mutable 상태를 함께 받지 않는다.
    - **zone 변경**: 새 zone spot에 **join**한다(`EnterZoneMsg`가 그 admission payload다). join이
-     zone 이동이고, 노드가 바뀌면 그 join이 곧 actor transfer다(§2.6). 이전 spot의 퇴장은 framework의
+     zone 이동이고, 노드가 바뀌면 그 join이 곧 Actor relocation이다(§2.6). 이전 spot의 퇴장은 framework의
      `OnLeaveActor`가 알려 주므로 앱이 따로 보낼 메시지는 없다(§7.3).
 4. zone spot은 받은 값으로 map을 갱신한다. `ZoneStateNotify`는 tick에서 이 map으로 만든다.
 
 > **사본은 한 턴 늦다.** zone spot이 보관하는 좌표는 **사본**이므로(§2.1) actor의 상태 변화보다
-> 늦게 반영된다. 특히 transfer 직후에는 출발 zone에 해당 플레이어의 사본이 잠시 남을 수 있다.
+> 늦게 반영된다. 특히 relocation 직후에는 출발 zone에 해당 플레이어의 사본이 잠시 남을 수 있다.
 > 이 창은 정상이며, 정본은 어떤 tick의 목록이 원자적이라고 약속하지 않는다.
 
 ### 2.2 이동 검증 순서
@@ -160,10 +160,11 @@ fanout이 여기서 두 번째로 쓰인다 — `Ops`는 노드 목록을 갖지
 노드가 늘어도 발행 코드가 바뀌지 않는다.
 
 > **캐시 유실 시.** fanout은 best-effort이므로 캐시가 최신이 아닐 수 있다. 그 경우 출발
-> 노드가 이동을 허용하고 목표 노드가 actor transfer를 받는다. **목표 노드는 자기 점검
-> 상태를 권위로 다시 판정**하고, 점검 중이면 transfer를 거부한다. 출발 노드는 거부를 받아
-> 좌표를 되돌리고 `MoveRejectedNotify(ZoneMaintenance)`를 push한다. 즉 캐시는 최적화이고
-> **권위는 목표 노드에 있다.**
+> 노드의 cache가 stale이면 application join proposal이 target에 도달할 수 있다. Target
+> `OnActorJoin`은 자신의 현재 점검 상태로 admission을 판정하며, 거부하면 relocation capture와 owner commit을
+> 시작하지 않는다. Source는 Actor state와 membership을 유지하고
+> `MoveRejectedNotify(ZoneMaintenance)`를 push한다. Cache는 조기 거부 최적화이고 target join admission이
+> application 정책의 최종 판정 지점이다.
 
 ### 2.4 플레이어 목록 규칙
 
@@ -195,25 +196,26 @@ zone spot 생성 시 `Tick = 0`이다. timer callback은 다음 순서로 동작
 
 노드 배치가 두 경우를 만든다.
 
-| 이동 | 예 | actor transfer |
+| 이동 | 예 | Actor relocation |
 |------|-----|----------------|
 | **노드 내부** | `zone-nw` → `zone-sw` (Y 경계) | **없음** — 같은 노드에서 spot만 바뀐다 |
-| **노드 간** | `zone-nw` → `zone-ne` (X 경계) | **있음** — actor가 `zone-node-2`로 transfer |
+| **노드 간** | `zone-nw` → `zone-ne` (X 경계) | **있음** — actor가 `zone-node-2`에서 materialize된다 |
 
-이 대비가 actor transfer의 값어치를 보인다. 둘 다 client 연결은 유지된다.
+이 대비가 Actor relocation의 필요성을 보인다. 둘 다 client 연결은 유지된다.
 
-**transfer adapter를 반드시 등록한다.** [spot-actor spec](../../../spec/server/23-spot-actor.ko.md) §6에
-따르면 **adapter를 등록하지 않으면 target actor가 factory로 처음부터 재생성되고 이전 state가
-유실된다.** player actor는 좌표·zone의 권위이므로(§2.1) adapter 없이는 transfer 직후 좌표가
-초기화되어 이 샘플이 성립하지 않는다.
+Player Actor factory에는 `Snapshot<PlayerActorRelocationAdapter>()` policy를 등록한다. Player Actor는
+좌표·zone의 권위이므로(§2.1) `Recreate`로 application state를 생략하면 relocation 뒤 좌표를 유지할 수 없다.
+Adapter는 state format을 application이 관리하는 opaque bytes로 반환하며 Framework message나 state contract
+ID를 사용하지 않는다.
 
-| 방향 | 싣는 값 |
+| 단계 | application이 처리하는 값 |
 |---|---|
-| `TransferOut` | `PlayerId`, `X`, `Y`, `ZoneId`, `IsBot`, (봇이면) `DirX`, `DirY` |
-| `TransferIn` | 같은 값으로 actor state를 복원한 뒤, 목표 zone spot에 `EnterZoneMsg`를 보낸다 |
+| `Capture` | `PlayerId`, `X`, `Y`, `ZoneId`, `IsBot`, (봇이면) `DirX`, `DirY`를 byte 배열로 encode한다 |
+| `Restore` | Target factory가 만든 Actor에 같은 값을 decode해 적용한다 |
 
-목표 노드는 `TransferIn` 시점에 **자기 점검 상태를 권위로 재판정**하고(§2.3), 점검 중이면
-transfer를 거부한다.
+Framework는 target factory와 `Restore`를 owner·membership commit 전에 끝낸다. Target의 application version,
+maintenance wave, type·adapter capability와 capacity 적합성은 target reservation 전에 Framework가 판정한다.
+Application adapter가 target 점검 상태를 별도 relocation protocol로 해석하지 않는다.
 
 ### 2.7 봇 — bound session 없는 actor
 
@@ -281,12 +283,12 @@ spot의 `spotRid`다. 노드 점검 정책은 그 노드의 **모든 zone**에 �
 ### 3.1 entry spot은 `ZoneNode`가 소유한다
 
 player actor는 `ZoneNode`에 존재한다. actor는 생성된 entry Spot에서 zone Spot으로 join하며,
-**join이 곧 zone 이동이고 노드를 넘으면 그것이 transfer다**(§2.6). 그래서 actor를 만드는 자리는
+**join이 곧 zone 이동이고 노드를 넘으면 그것이 relocation이다**(§2.6). 그래서 actor를 만드는 자리는
 actor를 유지할 노드와 같아야 한다.
 
 `Gateway`는 entry spot을 두지 않는다. MeshNode에 **참여만** 하면 원격 노드의 actor에 session을
 bind하고 relay할 수 있다. Gateway에 entry spot을 두면 actor가 Gateway에서 태어나 첫 zone 진입부터
-transfer가 되고, Gateway가 player를 잠시 호스팅하는 노드가 된다 — 어느 쪽도 이 샘플이 보이려는
+relocation이 되고, Gateway가 player를 잠시 호스팅하는 노드가 된다 — 어느 쪽도 이 샘플이 보이려는
 것이 아니다.
 
 ```mermaid
@@ -546,7 +548,7 @@ Server/ZoneNode/
       Actors/
         PlayerActor
         PlayerActorFactory
-        PlayerActorTransferAdapter   Transfer coordinates and zone state
+        PlayerActorRelocationAdapter   Capture and restore coordinates and zone state
         ZoneNodeBootstrap            Restore maintenance and create zones and bots
       Handlers/
         EnsurePlayerActorHandler
@@ -598,7 +600,7 @@ Server/Ops/
 | `NodeMaintenancePolicy` | 점검 모드 판정(§2.3)과 전 노드 상태 캐시 |
 | `ZoneSpot` · `ZoneState` | `PlayerId → (X, Y, IsBot, ActorRef)` **사본** 보관, tick, 경계 동기화. mutable actor instance를 보관하지 않는다(§8.3) |
 | `PlayerActor` | 좌표 권위(§2.1), zone 변경·transfer 판정. 봇도 같은 타입이며 bound session만 없다(§2.7) |
-| `PlayerActorTransferAdapter` | 노드 간 transfer에서 좌표·zone·봇 방향을 싣는다(§2.6) |
+| `PlayerActorRelocationAdapter` | 노드 간 relocation에서 좌표·zone·봇 방향을 opaque bytes로 capture·restore한다(§2.6) |
 | `BotPatrolPolicy` · `ZoneNodeBootstrap` | 봇 순찰 규칙(§2.7)과 시작 시 생성 |
 | `WorldAnnounceSubscriber` | fanout subscriber → **자기 노드의** zone spot으로 send |
 | `LocalSpotEventHandler` | local spot runtime event → `Ops` 보고 |

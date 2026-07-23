@@ -582,16 +582,20 @@ monitor callback이 남지 않는가.
   수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
   target Entry Spot RID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
-  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit하고, target Entry Spot `OnActorRelocated`와
-  journal replay를 수행한다. 이어서 source Entry Spot `OnLeaveActor`와 old Entry membership 제거를 durable
-  source cleanup으로 완료한다.
+  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Commit 뒤 evidence 순서는 target Entry
+  Spot `OnActorRelocated` → source Entry Spot `OnLeaveActor` 완료와 old Entry membership의 durable cleanup →
+  accepted journal replay다. Source process 종료 반복에서는 fenced durable source cleanup terminal이
+  `OnLeaveActor` 완료를 대신한 뒤에만 replay를 시작한다. Maintenance 반복에서 target `OnJoinedActor` 또는
+  `OnActorJoin`이 한 번이라도 호출되거나 source lifecycle gate보다 journal replay가 먼저 시작되면 실패다.
   이 `Restore` 검증은 `Snapshot` participant에만 적용하며 RL-F10에 `Recreate` 반복을 섞지 않는다.
   Callback·replay·cleanup은 current attempt에서 retry-safe하며 source cleanup 뒤 `Completed`, bound-session
   route ACK와 steady normalization 전까지 admission을 닫는다. User Spot member가 있는
   반복은 Spot과 current member Actor 전체의 Snapshot payload와 accepted journal을 하나의 immutable relocation
   root에 저장하고 membership을 유지한 채 owner·membership aggregate commit에 성공한다. User Spot aggregate는
-  Actor join·leave·relocation callback을 호출하지 않는다. `RelocationDisabled` blocker가 필요하면 이 성공 반복을
-  바꾸지 않고 별도의 `Disabled` participant fixture로 preflight abort와 source authority 보존을 검증한다.
+  Actor `OnActorJoin`·`OnJoinedActor`·`OnActorRelocated`·`OnLeaveActor` evidence가 모두 0건이어야 하며 aggregate
+  journal은 commit 뒤에 replay한다. 일반 join용 `OnJoinedActor`를 maintenance 완료 신호로 사용하면 실패다.
+  `RelocationDisabled` blocker가 필요하면 이 성공 반복을 바꾸지 않고 별도의 `Disabled` participant fixture로
+  preflight abort와 source authority 보존을 검증한다.
 
 #### RL-F11 readiness-first relocation과 느린 turn 격리
 
@@ -632,13 +636,21 @@ monitor callback이 남지 않는가.
 
 - 절차: 첫 반복은 encoded relocation payload가 각각 약 1 MiB인 80개의 standalone Actor를 동시에 ready로
   만든다. 두 번째 반복은 64 MiB payload를 반환하는 Actor를 여덟 개 준비한다. Capture·Restore adapter와
-  instrumented Relocation Store가 active operation, callback concurrency와 encoded bytes in flight의 high-water를
-  기록한다. 별도 반복에서는 256 MiB를 넘는 하나의 User Spot aggregate를 준비한다.
+  instrumented Relocation Store가 active operation, callback concurrency, seal 전 byte reservation과 Capture 뒤
+  actual encoded bytes in flight의 high-water를 기록한다. 별도 반복에서는 participant별 Snapshot state의
+  64 MiB reservation과 Framework-owned encoded upper bound를 합하면 256 MiB를 넘는 하나의 User Spot aggregate를
+  준비한다. Aggregate가 exclusive permit을 기다리는 동안 normal unit도 계속 ready로 만들고 permit 획득 실패를
+  반복한다. 마지막 반복에서는 adapter가 64 MiB보다 1 byte 큰 결과를 반환한다.
 - 검증: 기본 설정에서 active outbound·inbound relocation high-water는 각각 64 이하이고 Capture·Restore
   callback은 각각 8 이하이며 encoded payload in flight는 256 MiB 이하이다. 1 MiB 반복은 active unit 64개까지
   진행하고 나머지는 source admission을 유지한다. 64 MiB 반복은 payload 단계가 동시에 네 개를 넘지 않는다.
-  256 MiB를 넘는 단일 aggregate는 다른 relocation과 겹치지 않고 단독 진행한다. Count·callback·byte permit을
-  모두 확보하기 전에 해당 unit의 source queue를 seal하면 실패다.
+  256 MiB를 넘는 reservation의 단일 aggregate는 payload window가 빈 뒤에만 exclusive하게 진행하고 다른
+  relocation과 겹치지 않는다. Permit attempt가 실패할 때 unit·callback permit high-water가 남지 않으며 normal
+  unit과 aggregate가 서로를 기다리지 않고 deadline 안에 terminal 상태에 도달한다. Count·callback·byte permit을
+  모두 확보하기 전에 해당 unit의 source queue를 seal하면 실패다. Seal 전 reservation은 participant별 64 MiB와
+  Framework-owned section의 deterministic encoded upper bound보다 작지 않고, Capture 뒤 permit은 actual encoded
+  size로 감소하지만 증가하지 않는다. 64 MiB를 넘긴 adapter 결과는 relocation root나 owner commit을 만들지 않고
+  precommit abort와 source normalization 뒤 `Blocked/StateIncompatible`로 끝난다.
 - 세부 동작: 기본 `64/64`, `8/8`, 256 MiB의 독립 gate와 oversized aggregate 단독 실행.
 
 #### RL-F14 precommit abort의 frozen·hold queue 복원

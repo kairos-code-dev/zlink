@@ -325,13 +325,17 @@ owner·Entry membership commit 뒤에는 target Entry Spot의 `OnActorRelocated`
 Preflight는 capability와 bounded headroom만 확인하며 final target reservation을 만들지 않는다. Host `Retire`는
 User Spot aggregate, standalone Actor와 Instance Spot queue에 infrastructure intent notification을 예약한다.
 Application callback이나 public readiness API는 사용하지 않는다. Notification을 처리한 turn 경계에서 process의
-outbound·target inbound active unit, 필요한 `Capture`·`Restore` callback과 예상 encoded payload byte permit을
-nonblocking으로 모두 얻은 unit만 source message·timer admission을 reversible하게 seal한다. Permit을 얻지 못하면
-notification을 다시 예약하고 application turn을 계속 처리한다.
+outbound·target inbound active unit, 필요한 `Capture`·`Restore` callback과 encoded payload byte permit을
+nonblocking으로 모두 얻은 unit만 source message·timer admission을 reversible하게 seal한다. Byte reservation은
+Snapshot participant마다 최대 64 MiB와 현재 queue turn에서 이미 Framework가 소유한 queue·journal bytes,
+timer·manifest·metadata의 deterministic encoded upper bound를 합한다. Permit을 얻지 못하면 provisional permit을
+모두 반환하고 notification을 다시 예약하며 application turn을 계속 처리한다.
 
 Process 기본 상한은 outbound 64, inbound 64, concurrent `Capture` 8, concurrent `Restore` 8과 encoded payload
-in-flight 268,435,456 bytes(256 MiB)다. 단일 unit이 byte 상한을 넘으면 payload window가 비어 있을 때만 oversized
-unit 하나로 진행한다. Permit은 queue seal 전에 얻으며 실행 중 option 변경은 새 admission에만 적용한다.
+in-flight 268,435,456 bytes(256 MiB)다. 단일 User Spot aggregate가 byte 상한을 넘으면 payload window가 비어
+있을 때만 oversized aggregate 하나로 진행한다. Permit은 queue seal 전에 all-or-nothing으로 얻고 `Capture` 뒤
+actual encoded size로만 축소한다. Oversized aggregate는 byte permit을 반환할 때까지 exclusive 상태를 유지한다.
+실행 중 option 변경은 새 admission에만 적용한다.
 
 Seal 시점에는 실행하지 않은 application message queue, accepted journal, timer logical registration과 pending tick,
 application state, relocation manifest와 Framework metadata를 deterministic relocation stream에 포함한다. Native timer
@@ -471,7 +475,7 @@ runtime-owned resource보다 늦게 남지 않는다.
 - Forwarding chain이 8 hops, mapping별 1024 message·16 MiB bound와 generation 증가를 검증한다.
 - Preflight가 final reservation을 만들지 않고 queue turn 경계에서 모든 permit을 얻은 unit만 seal해 Prepared를 만든다.
 - 기본 outbound·inbound 64, `Capture`·`Restore` 8, payload in-flight 256 MiB gate가 독립적으로 적용되고 oversized
-  unit은 단독으로 진행된다.
+  User Spot aggregate는 단독으로 진행된다.
 - Frozen payload가 미실행 message·journal·timer registration·pending tick을 포함하고 target Framework가 timer를
   자동 복원한다.
 - Seal 뒤 ingress hold가 precommit abort에서는 source queue로 복원되고 commit 뒤에는 target으로 relay된다.

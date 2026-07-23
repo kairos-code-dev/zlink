@@ -83,8 +83,8 @@ framework/doc/framework/common/sample/fixtures/
 | TicTacToe | Play: `tictactoe.api`; Api: `play-0`, `play-1` | Api: `tictactoe.api`; 각 Play: 자기 play Channel; milestone 대상은 Play만 등록 |
 | SupportChat | Session: api·support; Api: support; Support: api | Api: api; Support: support |
 | DeliveryDispatch | CourierActorNode: dispatch; ClientServer의 Dispatch: tracking | RouteMesh의 Dispatch: dispatch; ClientServer의 Tracking: tracking |
-| ShoppingMall | 없음. CommerceApi는 Order ID의 `InstanceSpotAddress`를 사용 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |
-| GameQuest | 없음. GameApi는 Player ID의 `InstanceSpotAddress`를 사용 | 없음. QuestMission은 `PlayerQuestSpot` Instance factory만 제공 |
+| ShoppingMall | 없음. CommerceApi는 Order ID의 global SpotRid로 direct Spot call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |
+| GameQuest | 없음. GameApi는 Player ID의 global SpotRid로 direct Spot call을 시작하고 `InstanceSpot("gamequest.player-quest")` marker를 명시한다 | 없음. QuestMission은 `PlayerQuestSpot` Instance factory만 제공 |
 | ZoneWorld | Gateway: actors; ZoneNode: report | actor 생성 ZoneNode: actors; Ops: report; zone multicast 대상은 ZoneNode만 등록 |
 
 TicTacToe의 수동 peer initiator는 API-A→API-B, API-A→Play-A/Play-B, API-B→Play-A/Play-B,

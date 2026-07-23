@@ -82,10 +82,11 @@ lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 �
 
 `onActorRelocated?(actor)`는 default no-op이 가능한 maintenance 전용 async Entry Spot callback이다. Maintenance가
 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter `restore(...)`를 먼저 완료하고 Recreate는
-payload restore 없이 factory materialization을 완료한다. Accepted journal replay도 target staging에서 끝낸 뒤
-Prepared CAS와 Location authority·Entry membership commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
-`onLeaveActor(...)`를 실행한다. 두 callback, durable source cleanup, Completed CAS, route ACK와 steady normalization을
-모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
+payload restore 없이 factory materialization을 완료한다. Accepted journal은 checksum, 순서와 fence만 검증해
+application handler가 실행하지 않는 target staging queue에 준비한 뒤 Prepared CAS와 Location
+authority·Entry membership commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
+`onLeaveActor(...)`를 완료한 다음 accepted journal을 replay한다. 두 callback과 replay, durable source cleanup,
+Completed CAS, route ACK와 steady normalization을 모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
 중 하나가 throw하거나 rejected Promise로 끝나도 authority를 source로 rollback하지 않고 target을 sealed 상태로
 유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수 있으므로 retry-safe해야 한다.
 

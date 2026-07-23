@@ -42,7 +42,8 @@ deadline이 끝나면 reservation을 정리하고 `Blocked`를 반환한다. Hos
 Preflight가 성공하면 host를 `Retiring`으로 게시하고 새 placement·membership·inbound relocation target을 닫는다.
 Coordinator는 User Spot aggregate, standalone Actor와 Instance Spot queue에 infrastructure intent notification을
 예약한다. Application callback이나 public readiness API는 없다. Notification을 처리한 turn 경계에서 outbound,
-target inbound, 필요한 `Capture`·`Restore` callback과 예상 payload byte permit을 nonblocking으로 모두 얻은 unit만
+target inbound, 필요한 `Capture`·`Restore` callback, participant별 64 MiB capture 상한과 Framework-owned
+section의 deterministic encoded upper bound로 계산한 payload byte permit을 nonblocking으로 모두 얻은 unit만
 reversible하게 seal한다. Permit을 얻지 못하면 notification을 다시 예약하고 application turn을 계속 처리한다.
 
 모든 unit이 source dispatch에서 분리된 뒤 host를 `Draining`으로 전환한다. 첫 relocation commit 전 failure는 모든
@@ -85,12 +86,16 @@ authority와 다르면 message, timer, reply completion과 CAS write를 거부�
 
 ## 4. Explicit creation과 reactivation
 
-Actor와 User·Instance Spot은 manager의 explicit `Create`·`GetOrCreate`만 생성 intent를 만든다. Generic
-`Reserve`는 object kind, global ActorId, global SpotRid, stable type, target descriptor, capacity delta와 fence를 원자적으로
-기록한다. `NewObject` CAS는 final `ObjectGeneration`, `AuthorityOwnerGeneration`과 `Creating` row를 만든다.
-Factory·initialize와 initial membership이 끝난 뒤 같은 fence로 reservation을 commit하고 `Ready`를 publish한다.
-Manager `Find`와 ID-only messaging은 `Ready`만 사용한다. Entry Spot은 host startup 중 initialize하며 caller가
-생성하지 않는다.
+Actor와 User Spot은 manager의 explicit `Create`·`GetOrCreate`만 생성 intent를 만든다. Instance Spot은 manager
+creation 대상이 아니다. Spot direct fluent call이 Instance marker를 명시했고 global SpotRid가 `Missing`일 때만
+cold activation intent를 만든다. Marker가 없는 일반 send·request와 manager `Find`는 existing `Ready`
+authority만 사용하며, `Missing`이면 factory나 creation reservation을 시작하지 않는다.
+
+두 creation 진입점은 같은 generic `Reserve`를 사용한다. `Reserve`는 object kind, global ActorId, global
+SpotRid, stable type, target descriptor, capacity delta와 fence를 원자적으로 기록한다. `NewObject` CAS는 final
+`ObjectGeneration`, `AuthorityOwnerGeneration`과 `Creating` row를 만든다. Factory·initialize와 initial
+membership이 끝난 뒤 같은 fence로 reservation을 commit하고 `Ready`를 publish한다. Entry Spot은 host startup
+중 initialize하며 caller가 생성하지 않는다.
 
 Factory failure는 local barrier를 failed 상태로 seal한다. Waiting request는 한 번만 terminal 처리하고 one-way
 operation은 drop event를 남긴다. Coordinator는 exact Store version, object·owner generation과 owner lease로 row를
@@ -98,10 +103,10 @@ operation은 drop event를 남긴다. Coordinator는 exact Store version, object
 유지한다. 그 다음 caller만 새 `NewObject`를 시작한다.
 
 Creation intent는 최대 1 MiB request의 content reference와 hash, placement input을 durable하게 보존한다. Target
-host의 initial scan과 bounded background scan은 자신이 소유한 `Creating` intent를 재개한다. Instance runtime이
-사라져도 같은 stored intent로 reactivation하며 normal message에서 type, Mesh와 placement를 재구성하지 않는다.
-Reservation은 TTL을 사용하지 않고 Creating authority와 owner lease로 복구한다. 실패하면 exact `Abort`로 pending
-capacity를 회수한다.
+host의 initial scan과 bounded background scan은 자신이 소유한 `Creating` intent를 재개한다. Direct fluent
+marker로 시작한 Instance activation의 runtime이 사라져도 같은 stored intent로 reactivation하며 normal
+message에서 type, Mesh와 placement를 재구성하지 않는다. Reservation은 TTL을 사용하지 않고 Creating authority와
+owner lease로 복구한다. 실패하면 exact `Abort`로 pending capacity를 회수한다.
 
 Object `Client`와 `Server` role은 Location Store를 요구한다. Object `None` role은 manager, factory와 hidden local
 object runtime을 만들지 않는다.
@@ -136,9 +141,11 @@ payload를 덮어쓰지 않고 current snapshot을 다시 분류한다. Applicat
 ## 6. Permit, capture와 durability boundary
 
 Process gate의 기본값은 active outbound·inbound unit 각각 64, concurrent `Capture`·`Restore` 각각 8, encoded
-payload in-flight 256 MiB다. 세 gate는 독립적이며 모두 queue seal 전에 예약한다. 하나라도 즉시 얻지 못하면
-seal하지 않는다. 단일 unit의 encoded payload가 256 MiB를 넘으면 payload window가 빈 상태에서만 oversized unit
-하나로 진행한다.
+payload in-flight 256 MiB다. 세 gate는 독립적이며 모두 queue seal 전에 예약한다. Payload permit은 각
+participant의 capture 상한과 Framework-owned queue·journal·timer·manifest의 deterministic encoded upper bound를
+합쳐 all-or-nothing으로 얻는다. `Capture` 뒤 actual encoded size가 작으면 reservation을 줄인다. 하나라도 즉시
+얻지 못하면 seal하지 않는다. 단일 User Spot aggregate의 upper bound가 256 MiB를 넘으면 payload window가 빈
+상태에서만 oversized aggregate 하나로 진행한다. Standalone Actor와 Instance Spot unit은 gate 안에서만 admit한다.
 
 Reversible seal이 participant별 accepted boundary를 고정하면 source lifetime별로 work를 분류한다.
 
@@ -209,10 +216,20 @@ authority가 아니다. 두 digest가 일치하지 않으면 target restore를 �
 
 Target reservation은 Spot과 member Actor의 global identity, ObjectGeneration과 kind를 고정한다. `Committed` CAS는
 aggregate owner와 membership visibility를 원자적으로 바꾼다. Target은 commit 전에 factory·restore와 journal
-validation·staging을 끝내고 commit 뒤 joined callback, message·journal replay와 logical timer 복원을 실행한다.
-Timer scheduler는 새 native handle을 만들고 pending tick을 frozen ordering boundary에 넣는다. Application
-`Restore`는 Framework timer를 다시 등록하지 않는다. Source leave callback과 old membership removal은 durable
-source cleanup에 포함한다.
+validation·staging을 끝낸다.
+
+Source Entry Spot의 standalone Actor를 maintenance relocation한 경우 commit 뒤 target Entry Spot의
+`OnActorRelocated`를 먼저 실행한다. 이어 source Entry Spot의 `OnLeaveActor`와 old Entry membership cleanup을
+완료하고, source process가 callback을 실행할 수 없으면 같은 fence의 durable source cleanup이 그 완료를
+대신한다. 이 두 lifecycle gate가 끝난 뒤에만 target이 accepted message·journal을 replay한다. Application이
+요청한 일반 same-node·cross-node join은 maintenance callback을 호출하지 않고 target `OnJoinedActor`를 사용한다.
+
+Whole User Spot aggregate는 membership을 유지하므로 member Actor에 대해 target `OnJoinedActor`·
+`OnActorRelocated`나 source `OnLeaveActor`를 호출하지 않는다. Aggregate commit 뒤 lifecycle membership callback
+없이 accepted message·journal을 replay하고 logical timer를 복원한다. Timer scheduler는 새 native handle을
+만들고 pending tick을 frozen ordering boundary에 넣는다. Application `Restore`는 Framework timer를 다시
+등록하지 않는다. 이후 `Cleaning` phase는 callback 완료로 이미 정리한 old Entry membership을 중복 변경하지
+않고 남은 source scope와 participant state를 fenced cleanup한다.
 
 Physical STREAM connection은 이동하지 않는다. Session owner는 ingress를 reversible하게 seal하고 high-water를
 source에 전달한다. Target restore와 replay가 high-water까지 끝나도 route를 즉시 바꾸지 않는다. `Completed` CAS 뒤
@@ -267,12 +284,17 @@ incarnation으로 자동 retarget하지 않는다.
 - Retire intent notification이 application callback을 호출하지 않고 permit 실패 시 queue를 seal하지 않는다.
 - Outbound·inbound 64, `Capture`·`Restore` 8과 payload 256 MiB 기본 gate가 독립적으로 제한한다.
 - Factory 실패와 ambiguous delete가 새 owner를 잘못 Ready로 publish하지 않는다.
+- Instance Spot은 direct fluent marker가 있는 `Missing` call만 generic creation reservation을 시작하며 manager
+  creation이나 marker 없는 message가 cold activation을 시작하지 않는다.
 - Connection-bound work가 durable journal에 포함되지 않는다.
 - Frozen payload가 미실행 message, accepted journal과 logical timer·pending tick을 포함한다.
 - Seal 뒤 ingress hold가 abort 뒤 source queue 또는 commit 뒤 target relay 중 하나로 정리된다.
 - `Captured` CAS 전 crash에서 relocation replay를 시작하지 않는다.
 - Target replacement가 stable RelocationId와 relocation root를 바꾸지 않는다.
 - Actor owner와 target Entry Spot membership이 같은 commit에서 바뀐다.
+- Maintenance Entry relocation은 target `OnActorRelocated`, source `OnLeaveActor` 완료 또는 durable source
+  cleanup, journal replay 순서를 지키며 일반 join의 `OnJoinedActor`와 구분된다.
+- Whole User Spot aggregate는 유지되는 Actor membership에 join·leave·relocation callback을 호출하지 않는다.
 - `Activated`부터 route ACK·steady normalization 전까지 target admission이 닫혀 있다.
 - Request terminal completion과 relay ACK가 같은 durable identity로 한 번만 수렴한다.
 - Preflight와 첫 commit 전 failure는 admission을 복원하고, 첫 commit 뒤 failure는 `ForceStopped`로 끝난다.

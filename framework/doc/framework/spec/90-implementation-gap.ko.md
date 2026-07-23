@@ -66,7 +66,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.38 | Java/Kotlin | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.39 | 전 언어 | ChannelName 단일 주소, role builder, ClientServer 전용 discovery·runtime과 listener network identity가 source·package에 적용되지 않았다 |
 | §12.40 | 전 언어 | classic fanout 전용 publisher descriptor·store·RID allocation과 endpoint 없는 automatic subscriber가 적용되지 않았다 |
-| §12.41 | 전 언어 | MeshNode별 drain policy가 남아 있고 accepted work, Actor·STREAM barrier, local Spot close와 ownership cleanup의 고정 순서를 충족하지 않는다 |
+| §12.41 | 전 언어 | MeshNode별 drain policy가 남아 있고 current-turn boundary, permit-before-seal, queue·journal·timer relocation, User Spot aggregate와 Entry maintenance callback을 구현하지 않았다 |
 | §12.43 | 전 언어 | 다섯 언어의 공개 one-way call은 비동기 결과로 전환됐다. 그러나 언어별 admission runtime에 signal 없는 재시도, blocking executor, terminal queue cleanup과 Logical Multicast commit barrier 차이가 남아 있고 Config 13 process E2E가 없다 |
 | §12.44 | 전 언어 | Instance Spot exact public surface, opaque authority CAS 기반 cold activation과 네 언어 runtime의 actor-free lifecycle·fencing·recovery가 완성되지 않았다 |
 
@@ -510,31 +510,36 @@ lease 만료·drain·재게시 reconcile과 manual publisher/subscriber의 store
 
 ### 12.41 전 언어 MeshNode 고정 drain 계약 미적용
 
-정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Drain은 신규 admission을 차단하고 그 전에 수락한
-application turn을 마친 뒤 Actor handoff, STREAM barrier, 남은 local Spot close, location ownership과 peer
-resource cleanup을 순서대로 수행한다. Location row가 제거된 뒤 stale route snapshot은 remote Spot 생성으로
-해석하지 않는다.
+정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Retire`는 standalone Actor, Instance Spot과
+User Spot aggregate queue에 infrastructure notification을 예약하고, 현재 turn을 끝낸 ready unit부터 bounded
+sliding relocation을 수행한다. Permit을 모두 얻기 전에는 queue를 seal하지 않는다. Seal 시점에 실행하지 않은
+message, accepted journal, logical timer registration과 pending tick은 Relocation Store에 저장해 target에서
+복원한다. `Shutdown`만 새 relocation 없이 local resource를 bounded cleanup한다.
 
 현재 source·package 차이는 다음과 같다.
 
 - `.NET`, Java/Kotlin과 Node는 MeshNode drain policy enum과 builder option을 공개하며 policy별 local Spot
-  cleanup 분기를 유지한다. 세 runtime 모두 다른 serving MeshNode에 Spot 생성 요청을 전달하지 않는다.
+  cleanup 분기를 유지한다. User Spot과 member Actor를 하나의 aggregate로 target에 materialize하는 runtime이
+  없다.
 - Node package에는 모든 MeshNode를 함께 제어하는 `ZLinkDrainControl`과 `ZLINK_DRAIN_CONTROL` provider가
   남아 있다. 목표 계약의 명시 제어는 `ZLinkRouteMeshRuntime`에서 MeshName별로만 제공한다.
 - C++은 public policy enum과 builder setter를 제공하지만 runtime이 저장된 값을 drain 동작에 사용하지
   않는다.
-- `.NET`과 Node는 inbound Spot turn을 shared drain의 accepted application work로 완전히 추적하지 않으며,
-  현재 cleanup 단계도 Actor handoff와 STREAM barrier 뒤의 local Spot close 순서로 고정되지 않았다.
-- Java/Kotlin은 비동기 handler가 반환한 `CompletionStage`의 terminal completion, Actor handoff, STREAM
-  barrier와 Spot close를 하나의 drain operation에서 순서대로 기다리는 구현이 부족하다.
-- C++ host drain은 MeshNode application turn, Actor, STREAM과 Spot lifecycle barrier를 함께 조정하지
-  않는다.
+- 네 runtime 모두 execution queue turn boundary의 infrastructure notification, permit-before-seal,
+  readiness-first 재예약과 source hold relay를 완성하지 않았다.
+- Seal 시점의 미실행 message·accepted journal·logical timer registration·pending tick을 deterministic
+  relocation root에 저장하고 target native timer로 복원하는 공통 runtime이 없다.
+- Entry Spot standalone Actor maintenance에서 target `OnActorRelocated`, source `OnLeaveActor` 완료 또는
+  durable source cleanup, journal replay 순서를 보장하는 recovery path가 없다. 일반 application join의
+  `OnJoinedActor`를 maintenance 완료 callback으로 사용하면 안 된다.
+- User Spot과 member Actor는 하나의 aggregate permit·root·commit generation으로 이전해야 하며 유지되는
+  membership에 join·leave·relocation callback을 호출하지 않아야 한다.
 
-각 언어는 policy enum·builder·registration과 runtime 분기를 제거하고 내부 accepted-work tracker와 lifecycle
-barrier를 고정 순서로 연결해야 한다. Contract test와 Config 11 `OBS-C3`는 평상시 request 뒤 Spot 유지,
-drain 뒤 신규 admission 거부, accepted turn 완료, Actor·STREAM barrier 선행, local Spot close와 row 제거,
-hidden remote `GetOrCreate` 금지, explicit local `GetOrCreate`, bounded force stop과 terminal result 한 번을
-검증해야 한다.
+각 언어는 policy enum·builder·registration과 runtime 분기를 제거하고 host maintenance barrier, object
+coordinator, Relocation Store와 execution queue를 연결해야 한다. Contract test와 Config 5 `RL-F10~F14`,
+Config 11 `OBS-C3`는 느린 current turn 격리, permit-before-seal, frozen queue·journal·timer 복원, hold relay,
+Entry callback 순서, User Spot aggregate commit, precommit source 복원, bounded force stop과 terminal result
+한 번을 검증해야 한다.
 
 ### 12.43 전 언어 one-way async-only admission 계약 미적용
 

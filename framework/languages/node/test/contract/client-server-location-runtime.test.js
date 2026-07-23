@@ -201,6 +201,254 @@ test('production ClientServer outbound socket selection uses admitted descriptor
   await sockets.dispose();
 });
 
+test('manual ClientServer endpoints use dedicated monitored admission and reconnect', async () => {
+  const endpoint = 'tcp://10.0.0.1:9401';
+  const registration = internal.createFrameworkRegistration({
+    channels: { orders: { client: { manualConnections: [endpoint] } } }
+  });
+  const dealers = [];
+  let monitorHandler;
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    {
+      createDealerSocket() {
+        const dealer = fakeDealer(`manual-${dealers.length}`);
+        dealer.requests = [];
+        dealer.connect = value => { dealer.connected = value; };
+        dealer.request = (message, callback) => {
+          dealer.requests.push({ frame: Buffer.from(message.data()), callback });
+          return true;
+        };
+        dealers.push(dealer);
+        return dealer;
+      }
+    },
+    {},
+    {
+      openSocketMonitor() {
+        return {
+          nativeInstance: {},
+          onEvent(handler) { monitorHandler = handler; },
+          async dispose() {}
+        };
+      }
+    }
+  );
+
+  sockets.startManualClientServerConnections();
+  assert.equal(dealers.length, 1);
+  assert.equal(dealers[0].connected, endpoint);
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(clientServerWire.decodeClientServerControl(dealers[0].requests[0].frame).kind, 'hello');
+  dealers[0].requests[0].callback(0, [
+    zlink.Message.from(clientServerWire.encodeClientServerAdmit({
+      ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+      securityIdentity: 'default'
+    }, 4096))
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sockets.clientDealerForOutbound('orders'), dealers[0]);
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(dealers[0].requests.length, 2);
+  await sockets.dispose();
+});
+
+test('manual ClientServer reconnect fences a late admission from the previous physical pipe', async () => {
+  const endpoint = 'tcp://10.0.0.1:9401';
+  const registration = internal.createFrameworkRegistration({
+    channels: { orders: { client: { manualConnections: [endpoint] } } }
+  });
+  const dealer = fakeDealer('manual-race');
+  const requests = [];
+  dealer.request = (message, callback) => {
+    requests.push({ frame: Buffer.from(message.data()), callback });
+    return true;
+  };
+  let monitorHandler;
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createDealerSocket() { return dealer; } },
+    {},
+    {
+      openSocketMonitor() {
+        return {
+          nativeInstance: {},
+          onEvent(handler) { monitorHandler = handler; },
+          async dispose() {}
+        };
+      }
+    }
+  );
+  sockets.startManualClientServerConnections();
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, 1);
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    routingId: 'server-a',
+    remoteAddr: endpoint
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, 2);
+
+  const admitted = {
+    ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+    securityIdentity: 'default'
+  };
+  requests[0].callback(0, [
+    zlink.Message.from(clientServerWire.encodeClientServerAdmit(admitted, 4096))
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+
+  requests[1].callback(0, [
+    zlink.Message.from(clientServerWire.encodeClientServerAdmit(admitted, 4096))
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sockets.clientDealerForOutbound('orders'), dealer);
+  await sockets.dispose();
+});
+
+test('ClientServer liveness ACK is fenced to the current probe and application traffic does not refresh it', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: { orders: { client: { manualConnections: [] } } },
+    locations: { useInMemoryStores: true }
+  });
+  const dealer = fakeDealer('liveness');
+  const requests = [];
+  const inbound = [];
+  const sent = [];
+  dealer.recv = () => inbound.shift();
+  dealer.send = message => {
+    sent.push(Buffer.from(message.data()));
+    return true;
+  };
+  dealer.request = (message, callback) => {
+    requests.push({ frame: Buffer.from(message.data()), callback });
+    return true;
+  };
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createDealerSocket() { return dealer; } },
+    {},
+    {
+      openSocketMonitor() {
+        return { nativeInstance: {}, onEvent() {}, async dispose() {} };
+      }
+    }
+  );
+  sockets.openClientServerConnection(
+    'orders',
+    'connection-a',
+    'tcp://10.0.0.1:9401',
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  sockets.admitClientServerConnection(discoveryDescriptor('server-a', 100), 'connection-a');
+
+  const base = performance.now();
+  inbound.push(receivedControl(clientServerWire.encodeClientServerLivenessProbe(91n)));
+  sockets.tickClientServerLiveness(base);
+  const serverProbeAck = clientServerWire.decodeClientServerControl(sent[0]);
+  assert.equal(serverProbeAck.kind, 'livenessAck');
+  assert.equal(serverProbeAck.probeId, 91n);
+  sockets.tickClientServerLiveness(base + 5_001);
+  const probe = clientServerWire.decodeClientServerControl(requests[0].frame);
+  assert.equal(probe.kind, 'livenessProbe');
+  sockets.tickClientServerLiveness(base + 10_002);
+  const retransmit = clientServerWire.decodeClientServerControl(requests[1].frame);
+  assert.equal(retransmit.kind, 'livenessProbe');
+  assert.equal(retransmit.probeId, probe.probeId);
+  requests[0].callback(0, [
+    zlink.Message.from(clientServerWire.encodeClientServerLivenessAck(probe.probeId + 1n))
+  ]);
+  sockets.tickClientServerLiveness(base + 15_001);
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+  await sockets.dispose();
+});
+
+test('ClientServer pushed descriptor updates accept only current higher revision', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: { orders: { client: { manualConnections: [] } } },
+    locations: { useInMemoryStores: true }
+  });
+  const dealer = fakeDealer('updates');
+  const inbound = [];
+  dealer.recv = () => inbound.shift();
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createDealerSocket() { return dealer; } },
+    {},
+    {
+      openSocketMonitor() {
+        return { nativeInstance: {}, onEvent() {}, async dispose() {} };
+      }
+    }
+  );
+  sockets.openClientServerConnection(
+    'orders',
+    'connection-a',
+    'tcp://10.0.0.1:9401',
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  sockets.admitClientServerConnection(discoveryDescriptor('server-a', 100), 'connection-a');
+  inbound.push(receivedControl(clientServerWire.encodeClientServerUpdate({
+    ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+    descriptorRevision: 2n,
+    weight: 25,
+    securityIdentity: 'cluster-a'
+  }, 1024)));
+  sockets.tickClientServerLiveness();
+  assert.equal(sockets.clientServerActiveTargets('orders')[0].weight, 25);
+
+  inbound.push(receivedControl(clientServerWire.encodeClientServerUpdate({
+    ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+    descriptorRevision: 1n,
+    weight: 100,
+    securityIdentity: 'cluster-a'
+  }, 1024)));
+  sockets.tickClientServerLiveness();
+  assert.equal(sockets.clientServerActiveTargets('orders')[0].weight, 25);
+
+  inbound.push(receivedControl(clientServerWire.encodeClientServerUpdate({
+    ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+    descriptorRevision: 2n,
+    weight: 50,
+    securityIdentity: 'cluster-a'
+  }, 1024)));
+  sockets.tickClientServerLiveness();
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+  await sockets.dispose();
+});
+
 test('ClientServer reserved hello is consumed before application dispatch and returns exact admit', async () => {
   const registration = internal.createFrameworkRegistration({
     channels: {
@@ -264,6 +512,87 @@ test('ClientServer reserved hello is consumed before application dispatch and re
   assert.equal(decoded.admission.lifecycleGeneration, server.lifecycleGeneration);
   assert.equal(decoded.admission.securityIdentity, server.securityIdentity);
   assert.equal(decoded.admission.normalizedEffectiveMaxMessageBytes, 4096);
+  await sockets.dispose();
+});
+
+test('ClientServer server probes each admitted client and fences ACK by routing identity', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: {
+      orders: {
+        server: { bind: 'tcp://127.0.0.1:9401' },
+        sendHandlers: [{ packetName: 'notice', handler: { handle() {} } }]
+      }
+    }
+  });
+  const sent = [];
+  const router = {
+    nativeInstance: {},
+    lastEndpoint: 'tcp://127.0.0.1:9401',
+    peerWeight: 100,
+    sendHighWaterMark: 0,
+    receiveHighWaterMark: 0,
+    sendTimeoutMs: -1,
+    maxMessageSize: 4096,
+    setChannelName() {},
+    setRoutingId() {},
+    onSendReady() {},
+    bind() {},
+    send(routingId, message) {
+      sent.push({ routingId, frame: Buffer.from(message.data()) });
+      return true;
+    },
+    reply() {},
+    async dispose() {}
+  };
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createRouterSocket() { return router; } },
+    {}
+  );
+  sockets.clientServerServerIdentity('orders');
+  const server = {
+    ...descriptor({ token: { ownerId: 'owner', leaseGeneration: 1n } }),
+    securityIdentity: 'default'
+  };
+  sockets.setClientServerServerDescriptor(server, 'orders');
+  const hello = zlink.Message.from(clientServerWire.encodeClientServerHello({
+    channelName: 'orders',
+    securityIdentity: 'default',
+    normalizedEffectiveMaxMessageBytes: 4096
+  }));
+  sockets.tryHandleClientServerControl('orders', {
+    parts: [hello],
+    requestSeq: 1n,
+    routingId: 'client-a'
+  }, router);
+  hello.close();
+
+  const base = performance.now();
+  sockets.tickClientServerLiveness(base + 5_001);
+  const probe = clientServerWire.decodeClientServerControl(sent.at(-1).frame);
+  assert.equal(probe.kind, 'livenessProbe');
+  sockets.tickClientServerLiveness(base + 10_002);
+  const retransmit = clientServerWire.decodeClientServerControl(sent.at(-1).frame);
+  assert.equal(retransmit.kind, 'livenessProbe');
+  assert.equal(retransmit.probeId, probe.probeId);
+  const wrongAck = zlink.Message.from(
+    clientServerWire.encodeClientServerLivenessAck(probe.probeId)
+  );
+  assert.equal(sockets.tryHandleClientServerControl('orders', {
+    parts: [wrongAck],
+    requestSeq: null,
+    routingId: 'client-b'
+  }, router), true);
+  wrongAck.close();
+  sockets.tickClientServerLiveness(base + 15_001);
+
+  const beforeUpdate = sent.length;
+  sockets.setClientServerServerDescriptor({
+    ...server,
+    descriptorRevision: 2n,
+    weight: 25
+  }, 'orders');
+  assert.equal(sent.length, beforeUpdate);
   await sockets.dispose();
 });
 
@@ -615,5 +944,13 @@ function discoveryDescriptor(serverRoutingId, weight) {
     securityIdentity: 'cluster-a',
     effectiveMaxMessageBytes: 1024,
     advertisedEndpoint: `tcp://10.0.0.${serverRoutingId.endsWith('a') ? 1 : 2}:9401`
+  };
+}
+
+function receivedControl(frame) {
+  const message = zlink.Message.from(frame);
+  return {
+    parts: [message],
+    close() { message.close(); }
   };
 }

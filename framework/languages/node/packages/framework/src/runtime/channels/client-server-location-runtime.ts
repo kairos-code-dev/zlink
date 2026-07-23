@@ -266,20 +266,14 @@ export class ZLinkClientServerLocationRuntime {
 
   private async handleTransportReady(
     connectionId: string,
-    routingId: string,
-    endpoint: string
+    _routingId: string,
+    _endpoint: string
   ): Promise<void> {
     const current = this.connections.get(connectionId);
     if (current === undefined
       || current.state === 'ready'
       || current.handshakeInFlight) {
       return;
-    }
-    if (routingId !== String(current.descriptor.serverRid)
-      || endpoint !== current.descriptor.endpoint) {
-      throw new ZLinkConfigurationException(
-        `ClientServer '${current.descriptor.channelName}' transport identity does not match its descriptor.`
-      );
     }
     const dealer = current.dealer;
     if (dealer === undefined) return;

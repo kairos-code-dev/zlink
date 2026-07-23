@@ -12,6 +12,8 @@ const COMMAND_HELLO = 1;
 const COMMAND_ADMIT = 2;
 const COMMAND_REJECT = 3;
 const COMMAND_UPDATE = 4;
+const COMMAND_LIVENESS_PROBE = 5;
+const COMMAND_LIVENESS_ACK = 6;
 const MAX_DESCRIPTOR_BYTES = 1024 * 1024;
 const MAX_U32 = 0xffff_ffff;
 const MAX_GENERATION = 0x7fff_ffff_ffff_ffffn;
@@ -38,7 +40,9 @@ export type ZLinkClientServerControlRecord =
   | { readonly kind: 'hello'; readonly hello: ZLinkClientServerHello }
   | { readonly kind: 'admit'; readonly admission: ZLinkClientServerAdmission }
   | { readonly kind: 'update'; readonly admission: ZLinkClientServerAdmission }
-  | { readonly kind: 'reject'; readonly reason: number };
+  | { readonly kind: 'reject'; readonly reason: number }
+  | { readonly kind: 'livenessProbe'; readonly probeId: bigint }
+  | { readonly kind: 'livenessAck'; readonly probeId: bigint };
 
 export class ZLinkClientServerServiceWireError extends Error {
   constructor(message: string) {
@@ -81,6 +85,14 @@ export function encodeClientServerReject(reason: number): Buffer {
   return concat(prefix(COMMAND_REJECT), encodeU32(reason));
 }
 
+export function encodeClientServerLivenessProbe(probeId: bigint): Buffer {
+  return encodeLiveness(COMMAND_LIVENESS_PROBE, probeId);
+}
+
+export function encodeClientServerLivenessAck(probeId: bigint): Buffer {
+  return encodeLiveness(COMMAND_LIVENESS_ACK, probeId);
+}
+
 export function isClientServerControlFrame(frame: Uint8Array): boolean {
   return frame.byteLength >= 5
     && frame[0] === MAGIC_0
@@ -103,6 +115,13 @@ export function decodeClientServerControl(frame: Uint8Array): ZLinkClientServerC
     reader.end();
     if (reason < 1 || reason > 12) fail('ClientServer reject reason is invalid.');
     return { kind: 'reject', reason };
+  }
+  if (command === COMMAND_LIVENESS_PROBE || command === COMMAND_LIVENESS_ACK) {
+    const probeId = reader.nonZeroU64('probeId');
+    reader.end();
+    return command === COMMAND_LIVENESS_PROBE
+      ? { kind: 'livenessProbe', probeId }
+      : { kind: 'livenessAck', probeId };
   }
   if (command !== COMMAND_HELLO && command !== COMMAND_ADMIT && command !== COMMAND_UPDATE) {
     fail('ClientServer control command is invalid.');
@@ -127,6 +146,10 @@ export function decodeClientServerControl(frame: Uint8Array): ZLinkClientServerC
   return command === COMMAND_ADMIT
     ? { kind: 'admit', admission }
     : { kind: 'update', admission };
+}
+
+function encodeLiveness(command: number, probeId: bigint): Buffer {
+  return concat(prefix(command), encodeNonZeroU64(probeId, 'probeId'));
 }
 
 function encodeServerAdmission(

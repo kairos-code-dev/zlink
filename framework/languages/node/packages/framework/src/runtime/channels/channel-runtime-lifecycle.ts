@@ -290,12 +290,7 @@ export class ZLinkChannelRuntimeLifecycle {
   }
 
   private openOutboundSockets(): void {
-    for (const channelName of this.options.registration.channelClients) {
-      const client = this.options.registration.channels.get(channelName)?.client;
-      if ((client?.manualConnections?.length ?? 0) > 0) {
-        this.options.sockets.clientDealer(channelName);
-      }
-    }
+    this.options.sockets.startManualClientServerConnections();
     for (const channelName of this.options.registration.fanoutPublishers) {
       this.options.sockets.publisher(channelName);
     }

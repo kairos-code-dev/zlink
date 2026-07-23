@@ -1,4 +1,5 @@
 import {
+  ZLinkFrameworkRuntimeState,
   ZLinkSocketNativeEventType,
   type RoutingId,
   type ZLinkClientServerServerDescriptor
@@ -13,6 +14,7 @@ import type {
   ZLinkBackendPublisherSocket,
   ZLinkBackendRouterSocket,
   ZLinkBackendSocketMonitor,
+  ZLinkBackendSocketMonitorEvent,
   ZLinkBackendSubscriberSocket,
   ZLinkChannelBackendAdapter,
   ZLinkMonitoringBackendAdapter
@@ -27,11 +29,18 @@ import { ServiceDiscoveryRegistry } from '../foundation/service-discovery-regist
 import {
   decodeClientServerControl,
   encodeClientServerAdmit,
+  encodeClientServerHello,
+  encodeClientServerLivenessAck,
+  encodeClientServerLivenessProbe,
   encodeClientServerReject,
-  isClientServerControlFrame
+  encodeClientServerUpdate,
+  isClientServerControlFrame,
+  type ZLinkClientServerAdmission
 } from './client-server-service-wire';
 
 const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
+const CLIENT_SERVER_PROBE_INTERVAL_MS = 5_000;
+const CLIENT_SERVER_PEER_DEADLINE_MS = 15_000;
 
 export interface ZLinkClientServerServerSocketIdentity {
   readonly serverRid: string;
@@ -42,6 +51,7 @@ export interface ZLinkClientServerServerSocketIdentity {
 export interface ZLinkClientServerConnectionCallbacks {
   readonly onTransportReady: (routingId: string, endpoint: string) => void;
   readonly onTerminated: (routingId: string | undefined, endpoint: string) => void;
+  readonly reconnectOnTermination?: boolean;
 }
 
 export class ZLinkChannelSocketRegistry {
@@ -60,6 +70,12 @@ export class ZLinkChannelSocketRegistry {
     readonly endpoint: string;
     readonly dealer: ZLinkBackendDealerSocket;
     readonly monitor: ZLinkBackendSocketMonitor;
+    readonly callbacks: ZLinkClientServerConnectionCallbacks;
+    physicalConnectionId: symbol;
+    nextProbeAt?: number;
+    deadlineAt?: number;
+    outstandingProbeId?: bigint;
+    admissionAttempt?: symbol;
   }>();
   private readonly clientServerDiscovery = new ServiceDiscoveryRegistry();
   private readonly clientServerReadyIdentities = new Map<string, {
@@ -68,9 +84,22 @@ export class ZLinkChannelSocketRegistry {
   }>();
   private readonly clientServerServerDescriptors =
     new Map<string, ZLinkClientServerServerDescriptor>();
+  private readonly clientServerAdmittedClients = new Map<string, Set<RoutingId>>();
+  private readonly clientServerServerPeers = new Map<string, {
+    readonly channelName: string;
+    readonly routingId: RoutingId;
+    readonly physicalConnectionId: symbol;
+    nextProbeAt: number;
+    deadlineAt: number;
+    outstandingProbeId?: bigint;
+  }>();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
   private readonly ownedMonitors = new Set<ZLinkBackendSocketMonitor>();
+  private clientServerLivenessTimer?: NodeJS.Timeout;
+  private nextClientServerProbeId = 1n;
+  private readonly clientServerMonitorHandlers =
+    new Map<string, Set<(event: ZLinkBackendSocketMonitorEvent) => void>>();
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
@@ -93,6 +122,13 @@ export class ZLinkChannelSocketRegistry {
     this.clientServerConnections.clear();
     this.clientServerReadyIdentities.clear();
     this.clientServerServerDescriptors.clear();
+    this.clientServerAdmittedClients.clear();
+    this.clientServerServerPeers.clear();
+    this.clientServerMonitorHandlers.clear();
+    if (this.clientServerLivenessTimer !== undefined) {
+      clearInterval(this.clientServerLivenessTimer);
+      this.clientServerLivenessTimer = undefined;
+    }
     this.channelRouters.clear();
     this.publishers.clear();
     this.subscribers.clear();
@@ -138,12 +174,6 @@ export class ZLinkChannelSocketRegistry {
     }
     applySocketConfig(dealer, client);
     this.trackSubmitter(dealer);
-    if ((client.manualConnections ?? []).length > 0) {
-      for (const endpoint of client.manualConnections ?? []) {
-        dealer.connect(endpoint);
-      }
-    }
-    attachEndpointConnections(client, dealer);
     this.clientDealers.set(channelName, dealer);
     return dealer;
   }
@@ -176,7 +206,38 @@ export class ZLinkChannelSocketRegistry {
     applySocketConfig(router, channel.server);
     this.trackSubmitter(router);
     router.bind(channel.server.bind);
+    if (this.monitoringAdapter !== undefined) {
+      const monitor = this.monitoringAdapter.openSocketMonitor(router);
+      this.ownedMonitors.add(monitor);
+      monitor.onEvent((event) => {
+        if (event.routingId === undefined) return;
+        if (event.nativeEvent !== ZLinkSocketNativeEventType.Disconnected
+          && event.nativeEvent !== ZLinkSocketNativeEventType.Closed
+          && event.nativeEvent !== ZLinkSocketNativeEventType.HandshakeFailedNoDetail
+          && event.nativeEvent !== ZLinkSocketNativeEventType.HandshakeFailedProtocol
+          && event.nativeEvent !== ZLinkSocketNativeEventType.HandshakeFailedAuth) return;
+        const routingId = String(event.routingId);
+        this.clientServerServerPeers.delete(clientServerServerPeerKey(channelName, routingId));
+        this.clientServerAdmittedClients.get(channelName)?.delete(routingId);
+      });
+    }
     this.channelRouters.set(channelName, router);
+    if (!this.clientServerServerDescriptors.has(channelName)) {
+      const boundEndpoint = router.lastEndpoint ?? channel.server.bind;
+      this.clientServerServerDescriptors.set(channelName, {
+        channelName,
+        serverRid: identity.serverRid,
+        lifecycleGeneration: identity.lifecycleGeneration,
+        descriptorRevision: 1n,
+        endpoint: advertisedEndpoint(boundEndpoint, channel.server.advertiseHost),
+        weight: channel.server.weight ?? 100,
+        state: ZLinkFrameworkRuntimeState.Serving,
+        securityIdentity: 'default',
+        ownerId: 'manual',
+        leaseGeneration: 1n,
+        updatedAt: new Date()
+      });
+    }
     return router;
   }
 
@@ -235,15 +296,25 @@ export class ZLinkChannelSocketRegistry {
       channelName,
       endpoint,
       dealer,
-      monitor
+      monitor,
+      callbacks,
+      physicalConnectionId: Symbol(connectionId)
     });
+    this.ensureClientServerLivenessTimer();
     try {
       monitor.onEvent((event) => {
         if (!this.clientServerConnections.has(connectionId)) return;
+        for (const handler of this.clientServerMonitorHandlers.get(channelName) ?? []) {
+          handler(event);
+        }
         const routingId = event.routingId === undefined ? undefined : String(event.routingId);
-        if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady
-          && routingId !== undefined) {
-          callbacks.onTransportReady(routingId, event.remoteAddr);
+        if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady) {
+          const current = this.clientServerConnections.get(connectionId);
+          if (current !== undefined) {
+            current.physicalConnectionId = Symbol(connectionId);
+            current.admissionAttempt = undefined;
+          }
+          callbacks.onTransportReady(routingId ?? '', event.remoteAddr);
           return;
         }
         if (event.nativeEvent === ZLinkSocketNativeEventType.Disconnected
@@ -251,6 +322,11 @@ export class ZLinkChannelSocketRegistry {
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedNoDetail
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedProtocol
           || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedAuth) {
+          const current = this.clientServerConnections.get(connectionId);
+          if (current !== undefined) {
+            current.physicalConnectionId = Symbol(connectionId);
+            current.admissionAttempt = undefined;
+          }
           callbacks.onTerminated(routingId, event.remoteAddr);
         }
       });
@@ -318,10 +394,28 @@ export class ZLinkChannelSocketRegistry {
     if (!this.clientServerConnections.has(connectionId)) return false;
     const admitted = this.clientServerDiscovery.admitClientServer(descriptor, connectionId);
     if (admitted) {
+      const now = performance.now();
+      const connection = this.clientServerConnections.get(connectionId);
+      if (connection !== undefined) {
+        connection.nextProbeAt = now + CLIENT_SERVER_PROBE_INTERVAL_MS;
+        connection.deadlineAt = now + CLIENT_SERVER_PEER_DEADLINE_MS;
+        connection.outstandingProbeId = undefined;
+      }
+      const duplicates = [...this.clientServerReadyIdentities]
+        .filter(([otherConnectionId, identity]) =>
+          otherConnectionId !== connectionId
+          && identity.channelName === descriptor.channelName
+          && identity.serverRoutingId === descriptor.serverRoutingId)
+        .map(([otherConnectionId]) => otherConnectionId);
       this.clientServerReadyIdentities.set(connectionId, {
         channelName: descriptor.channelName,
         serverRoutingId: descriptor.serverRoutingId
       });
+      for (const duplicate of duplicates) {
+        this.clientServerReadyIdentities.delete(duplicate);
+        void this.closeClientServerConnection(duplicate)
+          .catch(error => this.oneWayFailureSink?.(error));
+      }
     }
     return admitted;
   }
@@ -351,9 +445,62 @@ export class ZLinkChannelSocketRegistry {
     if (channel?.client === undefined) {
       throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
     }
-    return (channel.client.manualConnections?.length ?? 0) > 0
-      ? this.clientDealer(channelName)
-      : this.selectClientServerDealer(channelName);
+    return this.selectClientServerDealer(channelName);
+  }
+
+  startManualClientServerConnections(): void {
+    for (const [channelName, channel] of this.registration.channels) {
+      const client = channel.client;
+      if (client === undefined) continue;
+      const endpoints = channel.client?.manualConnections ?? [];
+      if (endpoints.length === 0) continue;
+      const open = (endpoint: string) => this.openManualClientServerConnection(channelName, endpoint);
+      const close = (endpoint: string) => {
+        void this.closeClientServerConnection(manualClientServerConnectionId(channelName, endpoint))
+          .catch(error => this.oneWayFailureSink?.(error));
+      };
+      attachEndpointConnections(client, { connect: open, disconnect: close });
+      for (const endpoint of endpoints) {
+        open(endpoint);
+      }
+    }
+  }
+
+  clientServerMonitoringSource(channelName: string): ZLinkBackendSocketMonitor {
+    if (this.registration.channels.get(channelName)?.client === undefined) {
+      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
+    }
+    let disposed = false;
+    let handler: ((event: ZLinkBackendSocketMonitorEvent) => void) | undefined;
+    return {
+      nativeInstance: {},
+      onEvent: (next) => {
+        if (disposed) return;
+        if (handler !== undefined) {
+          this.clientServerMonitorHandlers.get(channelName)?.delete(handler);
+        }
+        handler = next;
+        let handlers = this.clientServerMonitorHandlers.get(channelName);
+        if (handlers === undefined) {
+          handlers = new Set();
+          this.clientServerMonitorHandlers.set(channelName, handlers);
+        }
+        handlers.add(next);
+      },
+      recv: () => {
+        throw new ZLinkConfigurationException(
+          'ClientServer aggregate monitoring supports event callbacks only.'
+        );
+      },
+      dispose: async () => {
+        disposed = true;
+        if (handler !== undefined) {
+          const handlers = this.clientServerMonitorHandlers.get(channelName);
+          handlers?.delete(handler);
+          if (handlers?.size === 0) this.clientServerMonitorHandlers.delete(channelName);
+        }
+      }
+    };
   }
 
   clientServerActiveTargets(
@@ -370,6 +517,7 @@ export class ZLinkChannelSocketRegistry {
       this.clientServerServerDescriptors.delete(channelName);
     } else {
       this.clientServerServerDescriptors.set(channelName, descriptor);
+      this.pushClientServerDescriptorUpdate(channelName, descriptor);
     }
   }
 
@@ -388,7 +536,20 @@ export class ZLinkChannelSocketRegistry {
     let reply: Buffer;
     try {
       const record = decodeClientServerControl(first.data());
-      if (record.kind !== 'hello'
+      if (record.kind === 'livenessProbe'
+        && received.parts.length === 1
+        && received.requestSeq !== null) {
+        reply = encodeClientServerLivenessAck(record.probeId);
+      } else if (record.kind === 'livenessAck'
+        && received.parts.length === 1
+        && received.requestSeq === null) {
+        this.acceptClientServerServerLivenessAck(
+          channelName,
+          String(received.routingId),
+          record.probeId
+        );
+        return true;
+      } else if (record.kind !== 'hello'
         || received.parts.length !== 1
         || received.requestSeq === null) {
         reply = encodeClientServerReject(1);
@@ -402,6 +563,10 @@ export class ZLinkChannelSocketRegistry {
           reply = encodeClientServerAdmit(
             descriptor,
             normalizedMessageLimit(router.maxMessageSize)
+          );
+          this.admitClientServerServerPeer(
+            channelName,
+            String(received.routingId)
           );
         }
       }
@@ -417,6 +582,326 @@ export class ZLinkChannelSocketRegistry {
       }
     }
     return true;
+  }
+
+  tickClientServerLiveness(nowMs = performance.now()): void {
+    for (const [connectionId, connection] of [...this.clientServerConnections]) {
+      this.drainClientServerControl(connectionId, connection);
+      if (connection.deadlineAt === undefined) continue;
+      if (nowMs >= connection.deadlineAt) {
+        this.removeReadyConnection(connectionId);
+        connection.callbacks.onTerminated(undefined, connection.endpoint);
+        if (connection.callbacks.reconnectOnTermination === true
+          && this.clientServerConnections.get(connectionId) === connection) {
+          try {
+            connection.dealer.disconnect(connection.endpoint);
+            connection.dealer.connect(connection.endpoint);
+          } catch (error) {
+            this.oneWayFailureSink?.(error);
+          }
+        }
+        continue;
+      }
+      if (connection.nextProbeAt === undefined || nowMs < connection.nextProbeAt) continue;
+      connection.nextProbeAt = nowMs + CLIENT_SERVER_PROBE_INTERVAL_MS;
+      const probeId = connection.outstandingProbeId ?? this.allocateClientServerProbeId();
+      connection.outstandingProbeId = probeId;
+      this.requestClientServerLiveness(connectionId, connection, probeId);
+    }
+
+    for (const [key, peer] of [...this.clientServerServerPeers]) {
+      if (nowMs >= peer.deadlineAt) {
+        this.clientServerServerPeers.delete(key);
+        this.clientServerAdmittedClients.get(peer.channelName)?.delete(peer.routingId);
+        continue;
+      }
+      if (nowMs < peer.nextProbeAt) continue;
+      peer.nextProbeAt = nowMs + CLIENT_SERVER_PROBE_INTERVAL_MS;
+      const probeId = peer.outstandingProbeId ?? this.allocateClientServerProbeId();
+      peer.outstandingProbeId = probeId;
+      this.requestClientServerServerLiveness(peer, probeId);
+    }
+  }
+
+  private openManualClientServerConnection(channelName: string, endpoint: string): void {
+    const connectionId = manualClientServerConnectionId(channelName, endpoint);
+    if (this.clientServerConnections.has(connectionId)) return;
+    this.openClientServerConnection(channelName, connectionId, endpoint, {
+      onTransportReady: () => {
+        void this.admitManualClientServerConnection(channelName, connectionId)
+          .catch(error => {
+            this.removeReadyConnection(connectionId);
+            this.oneWayFailureSink?.(error);
+          });
+      },
+      onTerminated: () => this.removeReadyConnection(connectionId),
+      reconnectOnTermination: true
+    });
+  }
+
+  private async admitManualClientServerConnection(
+    channelName: string,
+    connectionId: string
+  ): Promise<void> {
+    const connection = this.clientServerConnections.get(connectionId);
+    if (connection === undefined) return;
+    const physicalConnectionId = connection.physicalConnectionId;
+    if (connection.admissionAttempt !== undefined) return;
+    const admissionAttempt = Symbol(connectionId);
+    connection.admissionAttempt = admissionAttempt;
+    try {
+      const admission = await requestClientServerAdmission(
+        connection.dealer,
+        channelName,
+        'default',
+        15_000
+      );
+      if (this.clientServerConnections.get(connectionId) !== connection
+        || connection.physicalConnectionId !== physicalConnectionId
+        || connection.admissionAttempt !== admissionAttempt) return;
+      if (admission.channelName !== channelName
+        || admission.securityIdentity !== 'default') {
+        throw new ZLinkConfigurationException(
+          `Manual ClientServer '${channelName}' admission does not match its configured identity.`
+        );
+      }
+      if (!this.admitClientServerConnection(
+        admissionToDiscoveryDescriptor(admission),
+        connectionId
+      )) {
+        throw new ZLinkConfigurationException(
+          `Manual ClientServer '${channelName}' admission was stale.`
+        );
+      }
+    } finally {
+      if (this.clientServerConnections.get(connectionId) === connection
+        && connection.admissionAttempt === admissionAttempt) {
+        connection.admissionAttempt = undefined;
+      }
+    }
+  }
+
+  private drainClientServerControl(
+    connectionId: string,
+    connection: {
+      readonly channelName: string;
+      readonly dealer: ZLinkBackendDealerSocket;
+      readonly physicalConnectionId: symbol;
+    }
+  ): void {
+    for (;;) {
+      const received = connection.dealer.recv(1);
+      if (received === undefined) return;
+      try {
+        if (received.parts.length !== 1
+          || !isClientServerControlFrame(received.parts[0]!.data())) {
+          throw new ZLinkConfigurationException(
+            `ClientServer '${connection.channelName}' received an unsolicited application frame.`
+          );
+        }
+        const record = decodeClientServerControl(received.parts[0]!.data());
+        if (record.kind === 'livenessProbe') {
+          const ack = BindingMessage.from(encodeClientServerLivenessAck(record.probeId));
+          try {
+            if (!connection.dealer.send(ack, 0)) {
+              throw new ZLinkConfigurationException(
+                `ClientServer '${connection.channelName}' liveness ACK was not submitted.`
+              );
+            }
+          } finally {
+            ack.close();
+          }
+          continue;
+        }
+        if (record.kind !== 'update') {
+          throw new ZLinkConfigurationException(
+            `ClientServer '${connection.channelName}' received an invalid pushed control record.`
+          );
+        }
+        this.applyClientServerDescriptorUpdate(connectionId, connection, record.admission);
+      } catch (error) {
+        this.removeReadyConnection(connectionId);
+        this.oneWayFailureSink?.(error);
+      } finally {
+        received.close();
+      }
+    }
+  }
+
+  private applyClientServerDescriptorUpdate(
+    connectionId: string,
+    connection: { readonly channelName: string; readonly physicalConnectionId: symbol },
+    admission: ZLinkClientServerAdmission
+  ): void {
+    const currentConnection = this.clientServerConnections.get(connectionId);
+    if (currentConnection === undefined
+      || currentConnection.physicalConnectionId !== connection.physicalConnectionId) return;
+    const identity = this.clientServerReadyIdentities.get(connectionId);
+    if (identity === undefined) return;
+    const current = this.clientServerDiscovery.clientServerDescriptors(connection.channelName)
+      .find(value =>
+        value.serverRoutingId === identity.serverRoutingId);
+    if (current === undefined) return;
+    if (admission.channelName !== current.channelName
+      || admission.serverRid !== current.serverRoutingId
+      || admission.lifecycleGeneration !== current.lifecycleGeneration
+      || admission.securityIdentity !== current.securityIdentity
+      || admission.advertisedEndpoint !== current.advertisedEndpoint) {
+      throw new ZLinkConfigurationException(
+        `ClientServer '${connection.channelName}' descriptor update changed immutable identity.`
+      );
+    }
+    const candidate = admissionToDiscoveryDescriptor(admission);
+    if (candidate.descriptorRevision < current.descriptorRevision) return;
+    if (candidate.descriptorRevision === current.descriptorRevision) {
+      if (!sameClientServerDiscoveryDescriptor(candidate, current)) {
+        throw new ZLinkConfigurationException(
+          `ClientServer '${connection.channelName}' descriptor revision conflicts.`
+        );
+      }
+      return;
+    }
+    if (!this.admitClientServerConnection(candidate, connectionId)) {
+      throw new ZLinkConfigurationException(
+        `ClientServer '${connection.channelName}' descriptor update was fenced.`
+      );
+    }
+  }
+
+  private ensureClientServerLivenessTimer(): void {
+    if (this.clientServerLivenessTimer !== undefined) return;
+    this.clientServerLivenessTimer = setInterval(
+      () => this.tickClientServerLiveness(),
+      100
+    );
+    this.clientServerLivenessTimer.unref();
+  }
+
+  private removeReadyConnection(connectionId: string): void {
+    const identity = this.clientServerReadyIdentities.get(connectionId);
+    if (identity === undefined) return;
+    this.clientServerDiscovery.removeClientServer(
+      identity.channelName,
+      identity.serverRoutingId,
+      connectionId
+    );
+    this.clientServerReadyIdentities.delete(connectionId);
+    const connection = this.clientServerConnections.get(connectionId);
+    if (connection !== undefined) {
+      connection.deadlineAt = undefined;
+      connection.nextProbeAt = undefined;
+      connection.outstandingProbeId = undefined;
+    }
+  }
+
+  private requestClientServerLiveness(
+    connectionId: string,
+    connection: {
+      readonly dealer: ZLinkBackendDealerSocket;
+      readonly physicalConnectionId: symbol;
+      outstandingProbeId?: bigint;
+      deadlineAt?: number;
+    },
+    probeId: bigint
+  ): void {
+    const message = BindingMessage.from(encodeClientServerLivenessProbe(probeId));
+    const submitted = connection.dealer.request(message, (result, parts) => {
+      try {
+        const current = this.clientServerConnections.get(connectionId);
+        if (current === undefined
+          || current.physicalConnectionId !== connection.physicalConnectionId
+          || current.outstandingProbeId !== probeId
+          || result !== 0
+          || parts.length !== 1) return;
+        const record = decodeClientServerControl(parts[0]!.data());
+        if (record.kind !== 'livenessAck' || record.probeId !== probeId) return;
+        current.outstandingProbeId = undefined;
+        current.deadlineAt = performance.now() + CLIENT_SERVER_PEER_DEADLINE_MS;
+      } finally {
+        message.close();
+        closeMessages(parts);
+      }
+    }, 0, CLIENT_SERVER_PEER_DEADLINE_MS);
+    if (!submitted) message.close();
+  }
+
+  private admitClientServerServerPeer(channelName: string, routingId: RoutingId): void {
+    const key = clientServerServerPeerKey(channelName, routingId);
+    const now = performance.now();
+    const peer = {
+      channelName,
+      routingId,
+      physicalConnectionId: Symbol(key),
+      nextProbeAt: now + CLIENT_SERVER_PROBE_INTERVAL_MS,
+      deadlineAt: now + CLIENT_SERVER_PEER_DEADLINE_MS
+    };
+    this.clientServerServerPeers.set(key, peer);
+    let clients = this.clientServerAdmittedClients.get(channelName);
+    if (clients === undefined) {
+      clients = new Set();
+      this.clientServerAdmittedClients.set(channelName, clients);
+    }
+    clients.add(routingId);
+    this.ensureClientServerLivenessTimer();
+  }
+
+  private requestClientServerServerLiveness(
+    peer: {
+      readonly channelName: string;
+      readonly routingId: RoutingId;
+      readonly physicalConnectionId: symbol;
+      outstandingProbeId?: bigint;
+      deadlineAt: number;
+    },
+    probeId: bigint
+  ): void {
+    const router = this.channelRouters.get(peer.channelName);
+    if (router === undefined) return;
+    const message = BindingMessage.from(encodeClientServerLivenessProbe(probeId));
+    try {
+      router.send(peer.routingId, message, 0);
+    } finally {
+      message.close();
+    }
+  }
+
+  private acceptClientServerServerLivenessAck(
+    channelName: string,
+    routingId: RoutingId,
+    probeId: bigint
+  ): void {
+    const peer = this.clientServerServerPeers.get(
+      clientServerServerPeerKey(channelName, routingId)
+    );
+    if (peer === undefined || peer.outstandingProbeId !== probeId) return;
+    peer.outstandingProbeId = undefined;
+    peer.deadlineAt = performance.now() + CLIENT_SERVER_PEER_DEADLINE_MS;
+  }
+
+  private pushClientServerDescriptorUpdate(
+    channelName: string,
+    descriptor: ZLinkClientServerServerDescriptor
+  ): void {
+    const router = this.channelRouters.get(channelName);
+    const clients = this.clientServerAdmittedClients.get(channelName);
+    if (router === undefined || clients === undefined) return;
+    for (const routingId of [...clients]) {
+      const message = BindingMessage.from(encodeClientServerUpdate(
+        descriptor,
+        normalizedMessageLimit(router.maxMessageSize)
+      ));
+      try {
+        if (!router.send(routingId, message, 0)) clients.delete(routingId);
+      } finally {
+        message.close();
+      }
+    }
+  }
+
+  private allocateClientServerProbeId(): bigint {
+    const result = this.nextClientServerProbeId;
+    this.nextClientServerProbeId = result === 0xffff_ffff_ffff_ffffn ? 1n : result + 1n;
+    return result;
   }
 
   publisher(channelName: string): ZLinkBackendPublisherSocket {
@@ -574,6 +1059,117 @@ export class ZLinkChannelSocketRegistry {
       ));
     });
   }
+}
+
+function manualClientServerConnectionId(channelName: string, endpoint: string): string {
+  return `manual:${channelName.length}:${channelName}:${endpoint.length}:${endpoint}`;
+}
+
+function clientServerServerPeerKey(channelName: string, routingId: RoutingId): string {
+  return `${channelName.length}:${channelName}:${String(routingId)}`;
+}
+
+function requestClientServerAdmission(
+  dealer: ZLinkBackendDealerSocket,
+  channelName: string,
+  securityIdentity: string,
+  timeoutMs: number
+): Promise<ZLinkClientServerAdmission> {
+  const message = BindingMessage.from(encodeClientServerHello({
+    channelName,
+    securityIdentity,
+    normalizedEffectiveMaxMessageBytes: normalizedMessageLimit(dealer.maxMessageSize)
+  }));
+  return new Promise((resolve, reject) => {
+    let submitted = false;
+    try {
+      submitted = dealer.request(message, (result, parts) => {
+        try {
+          if (result !== 0 || parts.length !== 1) {
+            reject(new ZLinkConfigurationException(
+              `ClientServer '${channelName}' admission request failed with result ${result}.`
+            ));
+            return;
+          }
+          const record = decodeClientServerControl(parts[0]!.data());
+          if (record.kind === 'reject') {
+            reject(new ZLinkConfigurationException(
+              `ClientServer '${channelName}' admission was rejected (${record.reason}).`
+            ));
+            return;
+          }
+          if (record.kind !== 'admit') {
+            reject(new ZLinkConfigurationException(
+              `ClientServer '${channelName}' admission reply has an invalid command.`
+            ));
+            return;
+          }
+          resolve(record.admission);
+        } catch (error) {
+          reject(error);
+        } finally {
+          message.close();
+          closeMessages(parts);
+        }
+      }, 0, timeoutMs);
+    } catch (error) {
+      message.close();
+      reject(error);
+      return;
+    }
+    if (!submitted) {
+      message.close();
+      reject(new ZLinkConfigurationException(
+        `ClientServer '${channelName}' admission request was not submitted.`
+      ));
+    }
+  });
+}
+
+function admissionToDiscoveryDescriptor(admission: ZLinkClientServerAdmission) {
+  return {
+    channelName: admission.channelName,
+    serverRoutingId: admission.serverRid,
+    lifecycleGeneration: admission.lifecycleGeneration,
+    descriptorRevision: admission.descriptorRevision,
+    weight: admission.weight,
+    state: runtimeStateName(admission.state),
+    securityIdentity: admission.securityIdentity,
+    effectiveMaxMessageBytes: admission.normalizedEffectiveMaxMessageBytes,
+    advertisedEndpoint: admission.advertisedEndpoint
+  };
+}
+
+function runtimeStateName(
+  state: ZLinkFrameworkRuntimeState
+): 'preparing' | 'serving' | 'retiring' | 'stopped' | 'error' {
+  switch (state) {
+    case ZLinkFrameworkRuntimeState.Preparing: return 'preparing';
+    case ZLinkFrameworkRuntimeState.Serving: return 'serving';
+    case ZLinkFrameworkRuntimeState.Retiring:
+    case ZLinkFrameworkRuntimeState.Draining: return 'retiring';
+    case ZLinkFrameworkRuntimeState.Stopped: return 'stopped';
+    default: return 'error';
+  }
+}
+
+function sameClientServerDiscoveryDescriptor(
+  left: ReturnType<typeof admissionToDiscoveryDescriptor>,
+  right: ReturnType<typeof admissionToDiscoveryDescriptor>
+): boolean {
+  return left.channelName === right.channelName
+    && left.serverRoutingId === right.serverRoutingId
+    && left.lifecycleGeneration === right.lifecycleGeneration
+    && left.descriptorRevision === right.descriptorRevision
+    && left.weight === right.weight
+    && left.state === right.state
+    && left.securityIdentity === right.securityIdentity
+    && left.effectiveMaxMessageBytes === right.effectiveMaxMessageBytes
+    && left.advertisedEndpoint === right.advertisedEndpoint;
+}
+
+function closeMessages(parts: readonly Message[]): void {
+  for (const part of parts) part.close();
 }
 
 function deriveRoutingId(baseRoutingId: string, suffix: string): string {

@@ -1214,6 +1214,20 @@ focused 20/20, changed-source ESLint와 `git diff --check`가 통과했다. Manu
 동일 service admission, liveness probe·ACK와 server-pushed descriptor update는 남아 있으므로
 `V11-M6A-NODE`를 완료로 판정하지 않는다. Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+Node ClientServer connection completion checkpoint(2026-07-24)에서 manual endpoint마다 shared socket이
+아닌 전용 DEALER와 monitor를 만들고 transport reconnect마다 새 `hello`·`admit`을 수행하도록 연결했다.
+Automatic과 manual source가 같은 Server RID·lifecycle을 승인하면 하나의 ready target만 유지한다. 이전
+physical connection의 늦은 admission callback은 physical token과 attempt token으로 차단하며 새 connection은
+이전 callback 완료를 기다리지 않는다. Client와 Server는 application traffic과 무관하게 5초마다
+`livenessProbe`를 보내고 current physical connection의 outstanding ID와 일치하는 `livenessAck`만 15초
+deadline을 갱신한다. Server가 보낸 더 큰 revision의 descriptor update는 immutable identity가 일치할 때만
+weight·state를 교체하며 reserved control은 application dispatch에 전달하지 않는다. Framework build,
+workspace typecheck, changed-source ESLint, focused ClientServer 15/15, M6A 6/6과 `git diff --check`가
+통과했다. 기존 `channel-client` 전체 runner의 실패는 admission 뒤 packet name을 요구하는 별도 current
+contract migration으로 분리했고 timeout이 남긴 자식 process는 정리했다. Core·bindings와 Sample·E2E
+source를 변경하거나 실행하지 않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로
+`V11-M6A-NODE` 상태는 계속 `수정 진행`으로 유지한다.
+
 JVM ClientServer provider checkpoint(2026-07-24)에서 Java public source에 exact
 `ZLinkClientServerServerDescriptor`, key와 선택 capability인 `ZLinkClientServerLocationStore`를 추가하고
 공식 Redis provider가 이를 직접 구현하도록 연결했다. Redis row는 fixture와 같은 field 순서·상태 이름을

@@ -17,7 +17,8 @@ internal static class ZLinkRedisLocationRowJson
         {
             new RoutingIdJsonConverter(),
             new ActorRefJsonConverter(),
-            new ChannelWeightsJsonConverter()
+            new ChannelWeightsJsonConverter(),
+            new StringSetJsonConverter()
         }
     };
 
@@ -75,6 +76,44 @@ internal static class ZLinkRedisLocationRowJson
                          static pair => pair.Key, StringComparer.Ordinal))
                 writer.WriteNumber(name, weight);
             writer.WriteEndObject();
+        }
+    }
+
+    private sealed class StringSetJsonConverter : JsonConverter<IReadOnlySet<string>>
+    {
+        public override IReadOnlySet<string> Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartArray)
+                throw new JsonException("String set must be a JSON array.");
+            var values = new HashSet<string>(StringComparer.Ordinal);
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                    return values;
+                if (reader.TokenType != JsonTokenType.String)
+                    throw new JsonException("String set entries must be strings.");
+                var value = reader.GetString()
+                            ?? throw new JsonException(
+                                "String set entries must not be null.");
+                if (!values.Add(value))
+                    throw new JsonException(
+                        $"Duplicate string set entry '{value}'.");
+            }
+            throw new JsonException("String set array was not closed.");
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            IReadOnlySet<string> value,
+            JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (var entry in value.Order(StringComparer.Ordinal))
+                writer.WriteStringValue(entry);
+            writer.WriteEndArray();
         }
     }
 

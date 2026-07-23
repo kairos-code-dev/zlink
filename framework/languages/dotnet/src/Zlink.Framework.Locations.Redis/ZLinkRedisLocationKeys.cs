@@ -27,6 +27,37 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
     public RedisKey RoutingIdAllocationGroupKey(string groupName) =>
         $"{prefix}:ridalloc:{groupName}";
 
+    public RedisKey AuthorityCountersKey() => $"{prefix}:authority:counters";
+
+    public RedisKey AuthorityVersionsKey() => $"{prefix}:authority:versions";
+
+    public RedisKey AuthorityPayloadsKey() => $"{prefix}:authority:payloads";
+
+    public RedisKey AuthorityObjectGenerationsKey() =>
+        $"{prefix}:authority:object-generations";
+
+    public RedisKey AuthorityOwnerGenerationsKey() =>
+        $"{prefix}:authority:owner-generations";
+
+    public RedisKey AuthorityOwnerIdsKey() => $"{prefix}:authority:owner-ids";
+
+    public RedisKey AuthorityOwnerLeaseGenerationsKey() =>
+        $"{prefix}:authority:owner-lease-generations";
+
+    public RedisKey AuthorityMembershipsKey() =>
+        $"{prefix}:authority:memberships";
+
+    public RedisKey AuthorityIndexKey() => $"{prefix}:authority:index";
+
+    public RedisKey AuthorityScanKey(string scanId) =>
+        $"{prefix}:authority:scan:{scanId}";
+
+    public RedisKey AuthorityReservationKey(string reservationVersion) =>
+        $"{prefix}:authority:reservation:{reservationVersion}";
+
+    public RedisKey AuthorityAggregateKey(ZLinkAggregateFence fence) =>
+        $"{prefix}:authority:aggregate:{fence.AggregateId:N}:{fence.AggregateGeneration}";
+
     // Actor transfer authority keys (spec 41 §2/§3.1). actorRowKey is the
     // length-prefixed MeshName + Actor ID; the transfer HASH is per transfer id
     // and P:transfer-by-actor holds the single active transfer id per actor.

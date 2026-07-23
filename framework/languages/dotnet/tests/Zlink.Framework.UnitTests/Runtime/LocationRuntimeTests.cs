@@ -594,5 +594,57 @@ public sealed class LocationRuntimeTests
         public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
             CancellationToken cancellationToken = default) =>
             inner.ListOwnerLeasesAsync(cancellationToken);
+
+        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+            ZLinkAuthorityKey key,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAuthorityAsync(key, cancellationToken);
+
+        public ValueTask<ZLinkAuthorityCompareExchangeResult>
+            CompareExchangeAuthorityAsync(
+                ZLinkAuthorityKey key,
+                ZLinkAuthorityExpectation expectation,
+                ZLinkAuthorityMutation mutation,
+                CancellationToken cancellationToken = default) =>
+            inner.CompareExchangeAuthorityAsync(
+                key, expectation, mutation, cancellationToken);
+
+        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+            string prefix,
+            ZLinkAuthorityScanCursor? cursor,
+            int limit,
+            CancellationToken cancellationToken = default) =>
+            inner.ListAuthoritiesAsync(prefix, cursor, limit, cancellationToken);
+
+        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+            ZLinkObjectReservationRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.ReserveAsync(request, cancellationToken);
+
+        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
+            ZLinkObjectReservation reservation,
+            ReadOnlyMemory<byte> readyPayload,
+            CancellationToken cancellationToken = default) =>
+            inner.CommitAsync(reservation, readyPayload, cancellationToken);
+
+        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
+            ZLinkObjectReservation reservation,
+            CancellationToken cancellationToken = default) =>
+            inner.AbortAsync(reservation, cancellationToken);
+
+        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
+            ZLinkAggregatePrepareRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.PrepareAggregateAsync(request, cancellationToken);
+
+        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
+            ZLinkAggregateFence fence,
+            CancellationToken cancellationToken = default) =>
+            inner.CommitAggregateAsync(fence, cancellationToken);
+
+        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
+            ZLinkAggregateFence fence,
+            CancellationToken cancellationToken = default) =>
+            inner.AbortAggregateAsync(fence, cancellationToken);
     }
 }

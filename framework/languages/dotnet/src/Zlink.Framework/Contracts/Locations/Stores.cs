@@ -18,7 +18,8 @@ public interface IZLinkLocationStore :
     IZLinkSpotLocationStore,
     IZLinkActorLocationStore,
     IZLinkOwnerLeaseStore,
-    IZLinkActorTransferStore
+    IZLinkActorTransferStore,
+    IZLinkAuthorityStore
 {
     /// <summary>
     /// Removes every location row left by an owner, regardless of kind.

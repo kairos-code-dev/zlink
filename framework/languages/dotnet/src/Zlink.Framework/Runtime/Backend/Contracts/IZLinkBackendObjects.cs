@@ -23,6 +23,19 @@ internal readonly record struct ZLinkBackendActorRef(
     string ActorId,
     ulong Generation);
 
+internal interface IZLinkBackendAuthorityObserver
+{
+    void ObserveActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration);
+
+    void ObserveSpotAuthority(
+        RoutingId nodeRid,
+        RoutingId spotRid,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration);
+}
+
 internal readonly record struct ZLinkBackendActorJoinResult(
     RequestResult Result,
     int JoinResultCode,

@@ -96,6 +96,7 @@
         <Compile Include="Runtime/SpotAutoRegistrationScannerTests.cs"/>
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
         <Compile Include="Runtime/ReconciliationRunnerTests.cs"/>
+        <Compile Include="Runtime/RelocationRuntimeTests.cs"/>
         <Compile Include="Runtime/RouteCodecTests.cs"/>
         <Compile Include="Runtime/RuntimeConcurrencyBoundaryTests.cs"/>
         <Compile Include="Runtime/RuntimeMetricsTests.cs"/>

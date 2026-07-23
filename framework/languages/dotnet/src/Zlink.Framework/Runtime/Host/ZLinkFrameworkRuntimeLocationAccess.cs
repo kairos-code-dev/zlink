@@ -35,7 +35,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,
-                ZLinkSpotKind.Instance),
+                ZLinkSpotKind.Instance,
+                row.LocationGeneration),
             row.LocationGeneration,
             async token =>
             {
@@ -52,7 +53,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                         location.OwnerNodeRid,
                         location.SpotRid,
                         location.SpotGeneration,
-                        ZLinkSpotKind.Instance),
+                        ZLinkSpotKind.Instance,
+                        location.LocationGeneration),
                     location.LocationGeneration);
             });
     }

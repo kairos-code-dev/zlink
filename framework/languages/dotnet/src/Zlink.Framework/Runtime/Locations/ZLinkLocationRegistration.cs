@@ -16,6 +16,8 @@ internal sealed class ZLinkLocationRegistration
     /// watch) are registered automatically.</summary>
     public IZLinkLocationStore? StoreInstance { get; set; }
 
+    public IZLinkRelocationStore? RelocationStoreInstance { get; set; }
+
     public ZLinkLocationOptions Options { get; } = new();
 
     public bool Enabled => UseInMemoryStores || StoreInstance is not null;

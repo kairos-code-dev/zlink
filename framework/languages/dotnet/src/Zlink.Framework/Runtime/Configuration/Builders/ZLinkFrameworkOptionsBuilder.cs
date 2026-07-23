@@ -113,7 +113,20 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     {
         ArgumentNullException.ThrowIfNull(store);
 
+        if (_registration.Locations.StoreInstance is not null)
+            throw new ZLinkConfigurationException(
+                "A Location Store is already registered.");
         _registration.Locations.StoreInstance = store;
+    }
+
+    public void AddRelocationStore(IZLinkRelocationStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+
+        if (_registration.Locations.RelocationStoreInstance is not null)
+            throw new ZLinkConfigurationException(
+                "A Relocation Store is already registered.");
+        _registration.Locations.RelocationStoreInstance = store;
     }
 
     public ZLinkLocationOptions ConfigureLocations()

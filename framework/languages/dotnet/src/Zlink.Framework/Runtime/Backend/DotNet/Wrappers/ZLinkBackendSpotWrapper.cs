@@ -1,10 +1,14 @@
+using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
+
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 // RouteMesh 10.0.0 spot seam over the binding ISpot plus the node dispatch pump.
 // Inbound route/subscribe/actor-join/lifecycle records are pulled from the pump's
 // per-spot queues (fed by the node DrainReady loop); outbound requests register a
 // completion in the node completion table.
-internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
+internal sealed class ZLinkBackendSpotWrapper :
+    IZLinkBackendSpot,
+    IZLinkBackendAuthorityObserver
 {
     private readonly IMeshNode _node;
     private readonly ISpot _spot;
@@ -32,6 +36,33 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
     public RoutingId RoutingId => _spot.RoutingId;
 
     public ulong LifecycleGeneration => _spot.Status().LifecycleGeneration;
+
+    public void ObserveActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        RequireManagedNode().ObserveActorAuthority(
+            actor.ToNative(),
+            authorityOwnerGeneration);
+    }
+
+    public void ObserveSpotAuthority(
+        RoutingId nodeRid,
+        RoutingId spotRid,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration)
+    {
+        RequireManagedNode().ObserveSpotAuthority(
+            nodeRid,
+            spotRid,
+            objectGeneration,
+            authorityOwnerGeneration);
+    }
+
+    private ZLinkManagedMeshNode RequireManagedNode() =>
+        _node as ZLinkManagedMeshNode
+        ?? throw new InvalidOperationException(
+            "Authority fencing requires the Framework managed MeshNode.");
 
     internal ISpot NativeSpot => _spot;
 

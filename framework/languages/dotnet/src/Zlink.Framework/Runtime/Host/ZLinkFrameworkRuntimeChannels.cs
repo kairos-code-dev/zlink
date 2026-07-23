@@ -53,6 +53,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
@@ -68,6 +69,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 targetNodeRid,
                 targetSpotRid,
                 targetSpotGeneration,
+                authorityOwnerGeneration,
                 parts,
                 cancellationToken,
                 metadata);
@@ -93,6 +95,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
@@ -103,6 +106,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             targetNodeRid,
             targetSpotRid,
             targetSpotGeneration,
+            authorityOwnerGeneration,
             parts,
             metadata);
     }
@@ -112,6 +116,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
         CancellationToken cancellationToken,
@@ -131,6 +136,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                         targetNodeRid,
                         targetSpotRid,
                         targetSpotGeneration,
+                        authorityOwnerGeneration,
                         parts,
                         timeout,
                         cancellationToken,

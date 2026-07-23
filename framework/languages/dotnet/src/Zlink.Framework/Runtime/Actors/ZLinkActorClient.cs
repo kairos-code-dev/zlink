@@ -44,7 +44,15 @@ internal sealed class ZLinkActorClient(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
         cancellationToken.ThrowIfCancellationRequested();
+        var authorityOwnerGeneration = await ResolveActorAuthorityAsync(
+                actor,
+                cancellationToken)
+            .ConfigureAwait(false);
         var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
+        if (authorityOwnerGeneration != 0)
+            nodeRuntime.ObserveActorAuthority(
+                actor.ToBackend(),
+                authorityOwnerGeneration);
         EnsureRouteAvailable(nodeRuntime, actor);
         var parts = CreatePacketParts(
             ZlinkStreamMessageKind.Send,
@@ -78,8 +86,15 @@ internal sealed class ZLinkActorClient(
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
-        await ValidateActorLocationAsync(actor, cancellationToken).ConfigureAwait(false);
+        var authorityOwnerGeneration = await ResolveActorAuthorityAsync(
+                actor,
+                cancellationToken)
+            .ConfigureAwait(false);
         var nodeRuntime = await GetActorSpotNodeAsync(meshName, cancellationToken).ConfigureAwait(false);
+        if (authorityOwnerGeneration != 0)
+            nodeRuntime.ObserveActorAuthority(
+                actor.ToBackend(),
+                authorityOwnerGeneration);
         EnsureRouteAvailable(nodeRuntime, actor);
         var node = nodeRuntime.Node;
         var parts = CreatePacketParts(
@@ -98,11 +113,11 @@ internal sealed class ZLinkActorClient(
             .ConfigureAwait(false);
     }
 
-    private async ValueTask ValidateActorLocationAsync(
+    private async ValueTask<ulong> ResolveActorAuthorityAsync(
         ActorRef actor,
         CancellationToken cancellationToken)
     {
-        if (MeshRows is not { } meshRows) return;
+        if (MeshRows is not { } meshRows) return 0;
         var (row, rowPresent) = await meshRows.ResolveActorWithPresenceAsync(
                 actor.ActorId, cancellationToken)
             .ConfigureAwait(false);
@@ -112,7 +127,7 @@ internal sealed class ZLinkActorClient(
             // successor claimed it with an unpublished generation-0 ref). The
             // caller's concrete ref still addresses the source incarnation,
             // whose capture pipeline preserves in-flight order — proceed.
-            if (rowPresent) return;
+            if (rowPresent) return 0;
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor route '{actor.ActorId}' was not found.");
@@ -126,6 +141,12 @@ internal sealed class ZLinkActorClient(
                 $"Actor ref for '{actor.ActorId}' does not match the current location generation.",
                 true);
         }
+        if (row.AuthorityOwnerGeneration == 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor route '{actor.ActorId}' does not carry an authority owner generation.",
+                true);
+        return row.AuthorityOwnerGeneration;
     }
 
     private void TraceSent(

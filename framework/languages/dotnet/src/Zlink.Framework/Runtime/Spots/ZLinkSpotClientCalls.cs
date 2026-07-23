@@ -171,6 +171,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
                     snapshot.NodeRid,
                     snapshot.SpotRid,
                     (ulong)snapshot.Generation,
+                    snapshot.AuthorityOwnerGeneration,
                     parts,
                     cancellationToken,
                     _metadata.Encode())
@@ -245,6 +246,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
                         snapshot.NodeRid,
                         snapshot.SpotRid,
                         (ulong)snapshot.Generation,
+                        snapshot.AuthorityOwnerGeneration,
                         parts,
                         timeout,
                         cancellationToken,

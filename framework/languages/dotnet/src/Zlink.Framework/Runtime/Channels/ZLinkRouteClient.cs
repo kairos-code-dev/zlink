@@ -340,6 +340,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
                     snapshot.NodeRid,
                     snapshot.SpotRid,
                     (ulong)snapshot.Generation,
+                    snapshot.AuthorityOwnerGeneration,
                     parts,
                     cancellationToken,
                     _metadata.Encode())
@@ -416,6 +417,7 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
                         snapshot.NodeRid,
                         snapshot.SpotRid,
                         (ulong)snapshot.Generation,
+                        snapshot.AuthorityOwnerGeneration,
                         parts,
                         timeout,
                         cancellationToken,

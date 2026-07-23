@@ -26,7 +26,8 @@ internal sealed class ZLinkSpotHandleRegistry
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,
-                row.SpotKind),
+                row.SpotKind,
+                row.AuthorityOwnerGeneration),
             row.SpotGeneration));
 
     internal void RemoveSpot(ZLinkSpotLocationKey key, ulong spotGeneration)
@@ -45,13 +46,15 @@ internal sealed class ZLinkSpotHandleRegistry
                 row.OwnerNodeRid,
                 row.OwnerNodeRid,
                 row.SpotGeneration,
-                ZLinkSpotKind.Entry)
+                ZLinkSpotKind.Entry,
+                row.AuthorityOwnerGeneration)
             : new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,
-                ZLinkSpotKind.User);
+                ZLinkSpotKind.User,
+                row.AuthorityOwnerGeneration);
 
     internal void RemoveActor(ZLinkActorLocationKey key)
         => Apply(_actors, key, static handle => handle.InvalidateCurrent());

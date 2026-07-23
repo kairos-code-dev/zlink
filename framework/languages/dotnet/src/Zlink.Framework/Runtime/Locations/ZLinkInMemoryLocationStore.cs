@@ -83,7 +83,11 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             intent,
             spot.OwnerId,
             static row => row.OwnerId,
-            static (row, now, generation) => row with { UpdatedAt = now },
+            static (row, now, generation) => row with
+            {
+                UpdatedAt = now,
+                AuthorityOwnerGeneration = generation
+            },
             ZLinkLocationChangeScopeKind.Spot,
             spot.MeshName));
 
@@ -295,7 +299,11 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             intent,
             actor.OwnerId,
             static row => row.OwnerId,
-            static (row, now, generation) => row with { UpdatedAt = now },
+            static (row, now, generation) => row with
+            {
+                UpdatedAt = now,
+                AuthorityOwnerGeneration = generation
+            },
             ZLinkLocationChangeScopeKind.Actor,
             actor.MeshName));
 

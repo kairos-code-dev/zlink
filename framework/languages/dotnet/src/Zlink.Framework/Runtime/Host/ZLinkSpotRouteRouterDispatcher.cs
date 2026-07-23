@@ -11,6 +11,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
@@ -19,6 +20,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             targetNodeRid,
             targetSpotRid,
             targetSpotGeneration,
+            authorityOwnerGeneration,
             parts,
             cancellationToken,
             metadata);
@@ -31,11 +33,17 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
         return ResolveMeshNode(routerChannelId).EntryOutbound.TrySendToSpotOnce(
-            targetNodeRid, targetSpotRid, targetSpotGeneration, parts, metadata);
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            authorityOwnerGeneration,
+            parts,
+            metadata);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestAsync(
@@ -43,6 +51,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
         CancellationToken cancellationToken,
@@ -52,6 +61,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 targetNodeRid,
                 targetSpotRid,
                 targetSpotGeneration,
+                authorityOwnerGeneration,
                 parts,
                 timeout,
                 cancellationToken,

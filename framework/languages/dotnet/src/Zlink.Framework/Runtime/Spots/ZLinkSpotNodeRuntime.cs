@@ -210,6 +210,16 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             cancellationToken);
     }
 
+    internal void ObserveActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        if (Node is not IZLinkBackendAuthorityObserver observer)
+            throw new InvalidOperationException(
+                "The MeshNode backend does not support authority fencing.");
+        observer.ObserveActorAuthority(actor, authorityOwnerGeneration);
+    }
+
     internal ValueTask<IReadOnlyList<Message>> RequestToNodeAsync(
         RoutingId targetNodeRid,
         IReadOnlyList<Message> parts,

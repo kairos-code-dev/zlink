@@ -362,10 +362,17 @@ public sealed class StatefulServiceRuntimeTests
 
         var actor = target.CreateActor("remote-player");
         var spotRid = RoutingId.From("remote-room");
-        var spot = target.GetOrCreateSpot(spotRid, out _);
+        var spot = (ZLinkManagedSpot)target.GetOrCreateSpot(spotRid, out _);
         DrainAndDispose(target);
 
         using var payload = Message.From(new byte[] { 8 });
+        Assert.True(target.TryGetActorAuthority(actor, out var actorAuthority));
+        source.ObserveActorAuthority(actor, actorAuthority);
+        source.ObserveSpotAuthority(
+            target.RoutingId,
+            spotRid,
+            spot.LifecycleGeneration,
+            spot.AuthorityOwnerGeneration);
         Assert.Equal(SubmitResult.Ok, source.SendToActor(actor, [payload]));
         Assert.Equal(
             SubmitResult.Ok,

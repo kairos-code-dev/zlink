@@ -9,7 +9,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// </summary>
 internal static class ZLinkRedisLocationRows
 {
-    internal static readonly RedisValue[] Fields = ["json", "updatedAtMs"];
+    internal static readonly RedisValue[] Fields = ["json", "updatedAtMs", "gen"];
 
     internal static async Task<List<TRow>> LoadAsync<TRow>(
         IDatabase database,
@@ -60,6 +60,7 @@ internal static class ZLinkRedisLocationRows
         var row = ZLinkRedisLocationRowJson.Deserialize<TRow>((string)fields[0]!);
         return kind.Finalize(
             row,
-            DateTimeOffset.FromUnixTimeMilliseconds((long)fields[1]));
+            DateTimeOffset.FromUnixTimeMilliseconds((long)fields[1]),
+            (ulong)fields[2]);
     }
 }

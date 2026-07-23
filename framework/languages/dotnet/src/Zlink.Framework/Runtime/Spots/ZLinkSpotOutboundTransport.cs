@@ -42,9 +42,15 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
+        ObserveSpotAuthority(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            authorityOwnerGeneration);
         return ZLinkSubmitFailureMapper.AcceptOrThrow(
             nativeSpot.SendToSpot(
                 targetNodeRid,
@@ -60,10 +66,16 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        ObserveSpotAuthority(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            authorityOwnerGeneration);
         return _submitter.SubmitAsync(
             parts,
             pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
@@ -76,6 +88,24 @@ internal sealed class ZLinkSpotOutboundTransport(
                     metadata),
                 $"SPOT '{targetSpotRid}' on node '{targetNodeRid}'"),
             cancellationToken);
+    }
+
+    private void ObserveSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration)
+    {
+        if (targetNodeRid == default || authorityOwnerGeneration == 0)
+            return;
+        if (nativeSpot is not IZLinkBackendAuthorityObserver observer)
+            throw new InvalidOperationException(
+                "The Spot backend does not support authority fencing.");
+        observer.ObserveSpotAuthority(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            authorityOwnerGeneration);
     }
 
     /// <summary>Performs the first non-blocking ChannelName select-one
@@ -141,11 +171,17 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        ObserveSpotAuthority(
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            authorityOwnerGeneration);
         return _submitter.SubmitRequestAsync<IReadOnlyList<Message>>(
             parts,
             (pending, complete, fail) => nativeSpot.RequestToSpot(

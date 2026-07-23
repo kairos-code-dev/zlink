@@ -104,6 +104,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken,
@@ -114,6 +115,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             targetNodeRid,
             targetSpotRid,
             targetSpotGeneration,
+            authorityOwnerGeneration,
             parts,
             timeout ?? activation.DefaultRequestTimeout,
             cancellationToken,
@@ -153,6 +155,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
@@ -161,6 +164,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             targetNodeRid,
             targetSpotRid,
             targetSpotGeneration,
+            authorityOwnerGeneration,
             parts,
             metadata);
     }
@@ -170,6 +174,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
         ulong targetSpotGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
@@ -179,6 +184,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             targetNodeRid,
             targetSpotRid,
             targetSpotGeneration,
+            authorityOwnerGeneration,
             parts,
             cancellationToken,
             metadata);

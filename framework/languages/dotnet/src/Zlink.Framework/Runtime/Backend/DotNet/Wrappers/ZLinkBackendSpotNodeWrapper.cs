@@ -8,7 +8,9 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // return an out MeshOperationId whose reply is resolved by the node dispatch pump
 // through the completion table, and pull dispatch replaces the per-spot receive
 // loops.
-internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
+internal sealed class ZLinkBackendSpotNodeWrapper :
+    IZLinkBackendSpotNode,
+    IZLinkBackendAuthorityObserver
 {
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions = new();
@@ -40,6 +42,33 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     internal ZLinkMeshCompletionTable Completions => _completions;
 
     public RoutingId RoutingId => _node.RoutingId;
+
+    public void ObserveActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        RequireManagedNode().ObserveActorAuthority(
+            actor.ToNative(),
+            authorityOwnerGeneration);
+    }
+
+    public void ObserveSpotAuthority(
+        RoutingId nodeRid,
+        RoutingId spotRid,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration)
+    {
+        RequireManagedNode().ObserveSpotAuthority(
+            nodeRid,
+            spotRid,
+            objectGeneration,
+            authorityOwnerGeneration);
+    }
+
+    private ZLinkManagedMeshNode RequireManagedNode() =>
+        _node as ZLinkManagedMeshNode
+        ?? throw new InvalidOperationException(
+            "Authority fencing requires the Framework managed MeshNode.");
 
     public void SetRoutingId(RoutingId routingId)
     {

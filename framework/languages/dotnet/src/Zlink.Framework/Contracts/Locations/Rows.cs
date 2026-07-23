@@ -64,7 +64,10 @@ public sealed record ZLinkSpotLocation(
     ZLinkSpotKind SpotKind,
     string SpotType,
     string OwnerId,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    public ulong AuthorityOwnerGeneration { get; init; }
+}
 
 public sealed record InstanceSpotLocation(
     string MeshName,
@@ -155,7 +158,10 @@ public sealed record ZLinkActorLocation(
     ZLinkSpotKind SpotKind,
     ulong MembershipEpoch,
     string OwnerId,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt)
+{
+    public ulong AuthorityOwnerGeneration { get; init; }
+}
 
 /// <summary>
 /// One lease per framework runtime instance. Location rows are live only

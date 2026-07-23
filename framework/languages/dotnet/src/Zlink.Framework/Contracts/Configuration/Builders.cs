@@ -91,6 +91,8 @@ public interface IZLinkFrameworkOptions
     /// </summary>
     void AddLocationStore(Locations.IZLinkLocationStore store);
 
+    void AddRelocationStore(Locations.IZLinkRelocationStore store);
+
     Locations.ZLinkLocationOptions ConfigureLocations();
 
     void UseFilter<TFilter>()

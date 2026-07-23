@@ -26,7 +26,7 @@ internal sealed class ZLinkRedisLocationKind<TRow>
     /// tracked store token explicitly instead.</summary>
     public required Func<TRow, ulong> GenerationOf { get; init; }
 
-    public required Func<TRow, DateTimeOffset, TRow> Finalize { get; init; }
+    public required Func<TRow, DateTimeOffset, ulong, TRow> Finalize { get; init; }
 }
 
 internal static class ZLinkRedisLocationKinds
@@ -39,7 +39,10 @@ internal static class ZLinkRedisLocationKinds
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static _ => 0,
-        Finalize = static (row, updatedAt) => row with { UpdatedAt = updatedAt }
+        Finalize = static (row, updatedAt, generation) => row with
+        {
+            UpdatedAt = updatedAt
+        }
     };
 
     internal static readonly ZLinkRedisLocationKind<ZLinkSpotLocation> Spot = new()
@@ -50,7 +53,11 @@ internal static class ZLinkRedisLocationKinds
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static _ => 0,
-        Finalize = static (row, updatedAt) => row with { UpdatedAt = updatedAt }
+        Finalize = static (row, updatedAt, generation) => row with
+        {
+            UpdatedAt = updatedAt,
+            AuthorityOwnerGeneration = generation
+        }
     };
 
     internal static readonly ZLinkRedisLocationKind<ZLinkActorLocation> Actor = new()
@@ -61,6 +68,10 @@ internal static class ZLinkRedisLocationKinds
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static _ => 0,
-        Finalize = static (row, updatedAt) => row with { UpdatedAt = updatedAt }
+        Finalize = static (row, updatedAt, generation) => row with
+        {
+            UpdatedAt = updatedAt,
+            AuthorityOwnerGeneration = generation
+        }
     };
 }

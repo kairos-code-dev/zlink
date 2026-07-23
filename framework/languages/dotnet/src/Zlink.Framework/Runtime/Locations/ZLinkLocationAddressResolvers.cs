@@ -90,7 +90,8 @@ internal sealed class ZLinkLocationAddressResolvers :
             row.OwnerNodeRid,
             row.SpotRid,
             row.SpotGeneration,
-            row.SpotKind);
+            row.SpotKind,
+            row.AuthorityOwnerGeneration);
 
     internal ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
         => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
@@ -99,13 +100,15 @@ internal sealed class ZLinkLocationAddressResolvers :
                 row.OwnerNodeRid,
                 row.OwnerNodeRid,
                 row.SpotGeneration,
-                ZLinkSpotKind.Entry)
+                ZLinkSpotKind.Entry,
+                row.AuthorityOwnerGeneration)
             : new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotRid,
                 row.SpotGeneration,
-                ZLinkSpotKind.User);
+                ZLinkSpotKind.User,
+                row.AuthorityOwnerGeneration);
 }
 
 internal readonly record struct ZLinkSpotHandleSnapshot(
@@ -113,7 +116,8 @@ internal readonly record struct ZLinkSpotHandleSnapshot(
     RoutingId NodeRid,
     RoutingId SpotRid,
     ulong Generation,
-    ZLinkSpotKind SpotKind = ZLinkSpotKind.User);
+    ZLinkSpotKind SpotKind = ZLinkSpotKind.User,
+    ulong AuthorityOwnerGeneration = 0);
 
 internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 {

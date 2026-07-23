@@ -30,6 +30,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private readonly ConcurrentDictionary<string, ManagedActor> _actors =
         new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<ActorTransferToken, ManagedTransfer> _transfers = new();
+    private readonly ConcurrentDictionary<ObservedSpotAuthorityKey, ulong>
+        _observedSpotAuthorities = new();
+    private readonly ConcurrentDictionary<ObservedActorAuthorityKey, ulong>
+        _observedActorAuthorities = new();
     private readonly List<RawMeshMonitor> _monitors = new();
     private readonly ulong _lifecycleGeneration = NewNonZeroToken();
 
@@ -46,6 +50,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private ulong _nextOperation;
     private ulong _nextActorGeneration;
     private ulong _nextSpotGeneration;
+    private ulong _nextAuthorityOwnerGeneration;
     private long _nextChannelSelection;
     private long _queuedMessages;
     private long _queuedBytes;
@@ -342,7 +347,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             value => new ZLinkManagedSpot(
                 this,
                 value,
-                Interlocked.Increment(ref _nextSpotGeneration)));
+                Interlocked.Increment(ref _nextSpotGeneration),
+                NextAuthorityOwnerGeneration()));
     }
 
     public ISpot EntrySpot()
@@ -355,7 +361,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             value => new ZLinkManagedSpot(
                 this,
                 value,
-                Interlocked.Increment(ref _nextSpotGeneration)));
+                Interlocked.Increment(ref _nextSpotGeneration),
+                NextAuthorityOwnerGeneration()));
     }
 
     public ISpot GetOrCreateSpot(RoutingId spotRid, out bool created)
@@ -371,7 +378,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         var candidate = new ZLinkManagedSpot(
             this,
             spotRid,
-            Interlocked.Increment(ref _nextSpotGeneration));
+            Interlocked.Increment(ref _nextSpotGeneration),
+            NextAuthorityOwnerGeneration());
         var spot = _spots.GetOrAdd(spotRid, candidate);
         created = ReferenceEquals(spot, candidate);
         if (!created)
@@ -398,7 +406,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             actorRef,
             entry.RoutingId,
             entry.LifecycleGeneration,
-            membershipEpoch: 1);
+            membershipEpoch: 1,
+            NextAuthorityOwnerGeneration());
         if (!_actors.TryAdd(actorId, actor))
             throw new InvalidOperationException($"Actor '{actorId}' already exists.");
         entry.AddActor();
@@ -421,6 +430,56 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             return true;
         }
         location = default!;
+        return false;
+    }
+
+    internal void ObserveSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration)
+    {
+        ValidateObservedAuthority(
+            targetNodeRid,
+            objectGeneration,
+            authorityOwnerGeneration);
+        if (targetSpotRid.IsEmpty)
+            throw new ArgumentException(
+                "The observed Spot routing id is required.",
+                nameof(targetSpotRid));
+        _observedSpotAuthorities[
+            new ObservedSpotAuthorityKey(
+                targetNodeRid,
+                targetSpotRid,
+                objectGeneration)] = authorityOwnerGeneration;
+    }
+
+    internal void ObserveActorAuthority(
+        ActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        ValidateObservedAuthority(
+            actor.NodeRid,
+            actor.Generation,
+            authorityOwnerGeneration);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actor.ActorId);
+        _observedActorAuthorities[
+            new ObservedActorAuthorityKey(
+                actor.NodeRid,
+                actor.ActorId,
+                actor.Generation)] = authorityOwnerGeneration;
+    }
+
+    internal bool TryGetActorAuthority(
+        ActorRef actor,
+        out ulong authorityOwnerGeneration)
+    {
+        if (TryGetActor(actor, out var current))
+        {
+            authorityOwnerGeneration = current.AuthorityOwnerGeneration;
+            return true;
+        }
+        authorityOwnerGeneration = 0;
         return false;
     }
 
@@ -1134,7 +1193,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _peersByRid.TryGetValue(targetNodeRid, out peer);
             if (peer is null || !peer.Admitted)
                 return SubmitResult.NotConnected;
-            var generation = targetSpotGeneration == 0 ? 1UL : targetSpotGeneration;
+            if (targetSpotGeneration == 0
+                || !_observedSpotAuthorities.TryGetValue(
+                    new ObservedSpotAuthorityKey(
+                        targetNodeRid,
+                        targetSpotRid,
+                        targetSpotGeneration),
+                    out var authorityOwnerGeneration))
+                return SubmitResult.NotFound;
             var head = ZLinkServiceWireCodec.EncodeSpot(
                 request
                     ? ServiceWireConstants.Command.SpotRequest
@@ -1142,10 +1208,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 operation?.OperationId.Low ?? 0,
                 sourceSpotRid,
                 targetSpotRid,
-                generation,
+                targetSpotGeneration,
                 targetNodeRid,
                 peer.LifecycleGeneration,
-                authorityOwnerGeneration: 1,
+                authorityOwnerGeneration,
                 !metadata.IsEmpty);
             return SubmitStatefulWire(
                 peer,
@@ -1216,6 +1282,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _peersByRid.TryGetValue(actorRef.NodeRid, out peer);
             if (peer is null || !peer.Admitted)
                 return SubmitResult.NotConnected;
+            if (!_observedActorAuthorities.TryGetValue(
+                    new ObservedActorAuthorityKey(
+                        actorRef.NodeRid,
+                        actorRef.ActorId,
+                        actorRef.Generation),
+                    out var authorityOwnerGeneration))
+                return SubmitResult.NotFound;
             var head = ZLinkServiceWireCodec.EncodeActor(
                 request
                     ? ServiceWireConstants.Command.ActorRequest
@@ -1224,7 +1297,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 actorRef,
                 actorRef.NodeRid,
                 peer.LifecycleGeneration,
-                authorityOwnerGeneration: 1,
+                authorityOwnerGeneration,
                 hasMetadata: false);
             return SubmitStatefulWire(
                 peer,
@@ -1716,7 +1789,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             or ServiceWireConstants.Command.SpotRequest)
         {
             if (!_spots.TryGetValue(stateful.TargetSpotRid, out var spot)
-                || spot.LifecycleGeneration != stateful.TargetSpotGeneration)
+                || spot.LifecycleGeneration != stateful.TargetSpotGeneration
+                || spot.AuthorityOwnerGeneration
+                    != stateful.AuthorityOwnerGeneration)
             {
                 DisposeParts(parts);
                 if (request)
@@ -1736,6 +1811,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         else
         {
             if (!TryGetActor(stateful.TargetActor, out var actor)
+                || actor.AuthorityOwnerGeneration
+                    != stateful.AuthorityOwnerGeneration
                 || actor.IsSealed)
             {
                 DisposeParts(parts);
@@ -2453,6 +2530,30 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return BinaryPrimitives.ReadUInt64BigEndian(bytes);
     }
 
+    private ulong NextAuthorityOwnerGeneration()
+    {
+        var generation = Interlocked.Increment(ref _nextAuthorityOwnerGeneration);
+        if (generation == 0 || generation > long.MaxValue)
+            throw new InvalidOperationException(
+                "The authority owner generation space was exhausted.");
+        return generation;
+    }
+
+    private static void ValidateObservedAuthority(
+        RoutingId targetNodeRid,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration)
+    {
+        if (targetNodeRid.IsEmpty)
+            throw new ArgumentException(
+                "The observed owner node routing id is required.",
+                nameof(targetNodeRid));
+        if (objectGeneration is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(objectGeneration));
+        if (authorityOwnerGeneration is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(authorityOwnerGeneration));
+    }
+
     private static long Add(long timestamp, TimeSpan duration)
     {
         var delta = (long)Math.Ceiling(duration.TotalSeconds * Stopwatch.Frequency);
@@ -2528,6 +2629,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 default,
                 actor.Ref);
     }
+
+    private readonly record struct ObservedSpotAuthorityKey(
+        RoutingId NodeRid,
+        RoutingId SpotRid,
+        ulong ObjectGeneration);
+
+    private readonly record struct ObservedActorAuthorityKey(
+        RoutingId NodeRid,
+        string ActorId,
+        ulong ObjectGeneration);
 
     private sealed class OwnedMailbox : IDisposable
     {
@@ -2635,7 +2746,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ActorRef actorRef,
         RoutingId spotRid,
         ulong spotGeneration,
-        ulong membershipEpoch)
+        ulong membershipEpoch,
+        ulong authorityOwnerGeneration)
     {
         private readonly object _gate = new();
         private long _sequence;
@@ -2647,6 +2759,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         internal RoutingId SpotRid { get; private set; } = spotRid;
         internal ulong SpotGeneration { get; private set; } = spotGeneration;
         internal ulong MembershipEpoch { get; private set; } = membershipEpoch;
+        internal ulong AuthorityOwnerGeneration { get; private set; } =
+            authorityOwnerGeneration;
         internal bool Draining
         {
             get
@@ -2870,7 +2984,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 internal sealed class ZLinkManagedSpot(
     ZLinkManagedMeshNode node,
     RoutingId routingId,
-    ulong lifecycleGeneration) : ISpot
+    ulong lifecycleGeneration,
+    ulong authorityOwnerGeneration) : ISpot
 {
     private readonly Dictionary<string, HashSet<string>> _subscriptions =
         new(StringComparer.Ordinal);
@@ -2879,6 +2994,7 @@ internal sealed class ZLinkManagedSpot(
 
     public RoutingId RoutingId { get; } = routingId;
     public ulong LifecycleGeneration { get; } = lifecycleGeneration;
+    internal ulong AuthorityOwnerGeneration { get; } = authorityOwnerGeneration;
     internal int ActorCount => Volatile.Read(ref _actorCount);
 
     public void SetRoutingId(RoutingId routingId)

@@ -270,6 +270,42 @@ test('failed publication removes only the orphan and published data loss never r
   }
 });
 
+test('authority response loss reconciles a committed publication without deleting its root', async () => {
+  const events: string[] = [];
+  const authority = new InMemoryServiceLocationAuthority(() => 100);
+  const initial = authority.compareExchange(
+    'spot:response-loss',
+    { kind: 'missing' },
+    { kind: 'newObject', payload: Buffer.from('owner-state') }
+  );
+  assert.equal(initial.kind, 'stored');
+  if (initial.kind !== 'stored') return;
+  const authorityPort = {
+    read: (key: string) => authority.read(key),
+    compareExchange: (...args: Parameters<InMemoryServiceLocationAuthority['compareExchange']>) => {
+      events.push('authority-cas');
+      const committed = authority.compareExchange(...args);
+      assert.equal(committed.kind, 'stored');
+      throw new Error('authority response lost');
+    }
+  };
+  const store = new MemoryRelocationStore(events);
+  const runtime = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
+
+  const published = await runtime.captureAndPublish(
+    'spot:response-loss',
+    initial,
+    relocationEnvelope()
+  );
+
+  assert.deepEqual(events, ['payload-put', 'authority-cas']);
+  assert.equal(
+    authorityCodec.read(published.authority.payload)?.reference,
+    published.publication.reference
+  );
+  assert.equal((await store.get(published.publication.reference)).kind, 'found');
+});
+
 function relocationEnvelope(): ServiceRelocationEnvelope {
   return {
     participants: [

@@ -139,7 +139,18 @@ export class ServiceDurableRelocationRuntime {
         signal
       );
     } catch (error) {
-      await this.store.delete(stored.reference, signal);
+      const reconciled = await this.reconcilePublication(
+        key,
+        expected,
+        publication,
+        signal
+      );
+      if (reconciled.kind === 'published') {
+        return { authority: reconciled.authority, publication };
+      }
+      if (reconciled.kind === 'notCommitted') {
+        await this.store.delete(stored.reference, signal);
+      }
       throw error;
     }
     if (
@@ -151,6 +162,34 @@ export class ServiceDurableRelocationRuntime {
       throw new Error('Location authority rejected relocation publication.');
     }
     return { authority: result, publication };
+  }
+
+  private async reconcilePublication(
+    key: string,
+    expected: ServiceAuthoritySnapshot,
+    publication: ServiceRelocationPublication,
+    signal?: AbortSignal
+  ): Promise<
+    | { readonly kind: 'published'; readonly authority: ServiceAuthoritySnapshot }
+    | { readonly kind: 'notCommitted' }
+    | { readonly kind: 'unknown' }
+  > {
+    let current: ServiceAuthorityRead;
+    try {
+      current = await this.authority.read(key, signal);
+    } catch {
+      return { kind: 'unknown' };
+    }
+    if (current.kind !== 'snapshot') {
+      return { kind: 'unknown' };
+    }
+    const observed = this.codec.read(current.payload);
+    if (samePublication(observed, publication)) {
+      return { kind: 'published', authority: current };
+    }
+    return current.storeVersion === expected.storeVersion
+      ? { kind: 'notCommitted' }
+      : { kind: 'unknown' };
   }
 
   async restore(
@@ -346,6 +385,15 @@ export function crc32c(payload: Uint8Array): number {
     }
   }
   return (crc ^ 0xffff_ffff) >>> 0;
+}
+
+function samePublication(
+  left: ServiceRelocationPublication | undefined,
+  right: ServiceRelocationPublication
+): boolean {
+  return left?.reference === right.reference
+    && left.checksumCrc32c === right.checksumCrc32c
+    && left.inventoryDigest === right.inventoryDigest;
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

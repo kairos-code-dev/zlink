@@ -44,6 +44,18 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
     public RedisKey AuthorityOwnerLeaseGenerationsKey() =>
         $"{prefix}:authority:owner-lease-generations";
 
+    public RedisKey AuthorityAllocationStatesKey() =>
+        $"{prefix}:authority:allocation-states";
+
+    public RedisKey AuthorityAllocationsKey() =>
+        $"{prefix}:authority:allocations";
+
+    public RedisKey AuthorityActiveCapacityKey() =>
+        $"{prefix}:authority:active-capacity";
+
+    public RedisKey AuthorityPendingCapacityKey() =>
+        $"{prefix}:authority:pending-capacity";
+
     public RedisKey AuthorityMembershipsKey() =>
         $"{prefix}:authority:memberships";
 

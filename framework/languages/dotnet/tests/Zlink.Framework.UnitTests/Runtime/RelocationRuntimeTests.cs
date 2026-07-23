@@ -22,6 +22,12 @@ public sealed class RelocationRuntimeTests
             await store.ClaimOwnerLeaseAsync(
                 "target-owner",
                 TimeSpan.FromMinutes(1)));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("source", source.Token.OwnerId),
+            ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("target", target.Token.OwnerId),
+            ZLinkLocationWriteIntent.NewClaim);
         var key = new ZLinkAuthorityKey("actor:mesh:actor-1");
         var creating = new byte[] { 0x11, 0x00, 0xff };
         var ready = new byte[] { 0x22, 0x00, 0xfe };
@@ -39,12 +45,22 @@ public sealed class RelocationRuntimeTests
                     new ZLinkMeshNodeDescriptorKey(
                         "mesh",
                         RoutingId.From("source")),
+                    1,
                     source.Token,
                     creating,
                     1)));
         var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(reservation.Reservation, ready));
         Assert.Equal(ready, committed.Snapshot.Payload.ToArray());
+        Assert.Equal(
+            (0L, 1L),
+            store.GetPlacementCapacityUsage(
+                new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("source")),
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
 
         var capacity = Assert.IsType<
             ZLinkRelocationCapacityReserveResult.Reserved>(
@@ -58,18 +74,28 @@ public sealed class RelocationRuntimeTests
                     new ZLinkMeshNodeDescriptorKey(
                         "mesh",
                         RoutingId.From("source")),
+                    1,
                     source.Token,
                     new ZLinkMeshNodeDescriptorKey(
                         "mesh",
                         RoutingId.From("target")),
+                    1,
                     target.Token,
                     1)));
+        Assert.Equal(
+            (1L, 0L),
+            store.GetPlacementCapacityUsage(
+                new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("target")),
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
         var opaque = new byte[] { 0xde, 0xad, 0x00, 0xbe, 0xef };
         var moved = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
             await store.CompareExchangeAuthorityAsync(
                 key,
-                new ZLinkAuthorityExpectation.Found(
-                    committed.Snapshot.StoreVersion),
+                committed.Snapshot.StoreVersion,
                 new ZLinkAuthorityMutation.Put(
                     opaque,
                     ZLinkAuthorityGenerationTransition.NewOwner,
@@ -84,6 +110,213 @@ public sealed class RelocationRuntimeTests
         Assert.Equal(
             ZLinkRelocationCapacityAbortResult.AlreadyCommitted,
             await store.AbortRelocationCapacityAsync(capacity.Fence));
+        Assert.Equal(
+            (0L, 0L),
+            store.GetPlacementCapacityUsage(
+                new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("source")),
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+        Assert.Equal(
+            (0L, 1L),
+            store.GetPlacementCapacityUsage(
+                new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("target")),
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+    }
+
+    [Fact]
+    public async Task Creation_abort_and_delete_release_exact_capacity_bucket()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "capacity-owner",
+                TimeSpan.FromMinutes(1)));
+        var descriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("capacity-node"));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("capacity-node", owner.Token.OwnerId),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var abortedReservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:aborted",
+                    descriptor,
+                    owner.Token,
+                    capacityDelta: 3)));
+        Assert.Equal(
+            (3L, 0L),
+            store.GetPlacementCapacityUsage(
+                descriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+        Assert.IsType<ZLinkObjectAbortResult.Aborted>(
+            await store.AbortAsync(abortedReservation.Reservation));
+        Assert.Equal(
+            (0L, 0L),
+            store.GetPlacementCapacityUsage(
+                descriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+
+        var committedReservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:deleted",
+                    descriptor,
+                    owner.Token,
+                    capacityDelta: 5)));
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                committedReservation.Reservation,
+                new byte[] { 0x44 }));
+        Assert.Equal(
+            (0L, 5L),
+            store.GetPlacementCapacityUsage(
+                descriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                new ZLinkAuthorityKey("actor:mesh:deleted"),
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.Equal(
+            (0L, 0L),
+            store.GetPlacementCapacityUsage(
+                descriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+    }
+
+    [Fact]
+    public async Task Aggregate_prepare_is_idempotent_only_for_exact_canonical_request()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "aggregate-source",
+                TimeSpan.FromMinutes(1)));
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "aggregate-target",
+                TimeSpan.FromMinutes(1)));
+        var sourceDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("aggregate-source"));
+        var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("aggregate-target"));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("aggregate-source", source.Token.OwnerId),
+            ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("aggregate-target", target.Token.OwnerId),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var key = new ZLinkAuthorityKey("actor:mesh:aggregate-1");
+        var creation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    key.Value,
+                    sourceDescriptor,
+                    source.Token,
+                    capacityDelta: 7)));
+        var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                creation.Reservation,
+                new byte[] { 0x01 }));
+        var capacity = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await store.ReserveRelocationCapacityAsync(
+                new ZLinkRelocationCapacityReservationRequest(
+                    Guid.NewGuid(),
+                    key,
+                    ready.Snapshot.StoreVersion,
+                    ZLinkPlacementObjectKind.Actor,
+                    "Game.Actor",
+                    sourceDescriptor,
+                    1,
+                    source.Token,
+                    targetDescriptor,
+                    1,
+                    target.Token,
+                    7)));
+        var participant = new ZLinkAggregateParticipant(
+            key,
+            ready.Snapshot.StoreVersion,
+            ZLinkAuthorityGenerationTransition.NewOwner,
+            new byte[] { 0x02 },
+            new byte[] { 0x03 });
+        var request = new ZLinkAggregatePrepareRequest(
+            Guid.NewGuid(),
+            1,
+            [participant],
+            Enumerable.Repeat((byte)0x5a, 32).ToArray(),
+            [capacity.Fence],
+            target.Token);
+
+        var prepared = Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
+            await store.PrepareAggregateAsync(request));
+        Assert.IsType<ZLinkAggregatePrepareResult.AlreadyPrepared>(
+            await store.PrepareAggregateAsync(
+                request with
+                {
+                    Participants =
+                    [
+                        participant with
+                        {
+                            AuthorityPayload =
+                                participant.AuthorityPayload.ToArray(),
+                            MembershipMutation =
+                                participant.MembershipMutation.ToArray()
+                        }
+                    ],
+                    InventoryDigest = request.InventoryDigest.ToArray(),
+                    TargetReservations = request.TargetReservations.ToArray()
+                }));
+        Assert.IsType<ZLinkAggregatePrepareResult.Conflict>(
+            await store.PrepareAggregateAsync(
+                request with
+                {
+                    Participants =
+                    [
+                        participant with
+                        {
+                            AuthorityPayload = new byte[] { 0xff }
+                        }
+                    ]
+                }));
+
+        Assert.Equal(
+            ZLinkAggregateCommitResult.Committed,
+            await store.CommitAggregateAsync(prepared.Fence));
+        Assert.Equal(
+            (0L, 0L),
+            store.GetPlacementCapacityUsage(
+                sourceDescriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
+        Assert.Equal(
+            (0L, 7L),
+            store.GetPlacementCapacityUsage(
+                targetDescriptor,
+                1,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor"));
     }
 
     [Fact]
@@ -454,13 +687,63 @@ public sealed class RelocationRuntimeTests
         ZLinkRelocationEnvelope envelope) =>
         new(
             new ZLinkAuthorityKey("spot:mesh:room"),
-            new ZLinkAuthorityExpectation.Missing(),
-            ZLinkAuthorityGenerationTransition.NewObject,
+            "v0",
+            ZLinkAuthorityGenerationTransition.Preserve,
             "target-owner",
             9,
             new byte[] { 8, 8 },
             null,
             envelope);
+
+    private static ZLinkPlacementAllocation TestAllocation() =>
+        new(
+            ZLinkPlacementAllocationState.Active,
+            ZLinkPlacementObjectKind.Actor,
+            "Test.Actor",
+            new ZLinkMeshNodeDescriptorKey(
+                "mesh",
+                RoutingId.From("target")),
+            1,
+            1);
+
+    private static ZLinkObjectReservationRequest ObjectReservation(
+        string authorityKey,
+        ZLinkMeshNodeDescriptorKey descriptor,
+        ZLinkLocationOwnerToken owner,
+        int capacityDelta) =>
+        new(
+            ZLinkPlacementObjectKind.Actor,
+            new ZLinkAuthorityKey(authorityKey),
+            "Game.Actor",
+            null,
+            null,
+            $"intent:{authorityKey}",
+            SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(authorityKey)),
+            System.Text.Encoding.UTF8.GetByteCount(authorityKey),
+            descriptor,
+            1,
+            owner,
+            new byte[] { 0x10 },
+            capacityDelta);
+
+    private static ZLinkMeshNodeDescriptor AuthorityDescriptor(
+        string rid,
+        string ownerId) =>
+        new(
+            "mesh",
+            RoutingId.From(rid),
+            LifecycleGeneration: 1,
+            DescriptorRevision: 1,
+            $"inproc://{rid}",
+            new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["mesh"] = 100
+            },
+            Draining: false,
+            SecurityIdentity: string.Empty,
+            OwnerId: ownerId,
+            UpdatedAt: DateTimeOffset.UtcNow);
 
     private static ZLinkManagedMeshNode NewNode(
         IContext context,
@@ -589,7 +872,7 @@ public sealed class RelocationRuntimeTests
         public ValueTask<ZLinkAuthorityCompareExchangeResult>
             CompareExchangeAuthorityAsync(
                 ZLinkAuthorityKey key,
-                ZLinkAuthorityExpectation expectation,
+                string expectedStoreVersion,
                 ZLinkAuthorityMutation mutation,
                 CancellationToken cancellationToken = default)
         {
@@ -599,8 +882,10 @@ public sealed class RelocationRuntimeTests
                     new ZLinkAuthorityCompareExchangeResult.Conflict(
                         new ZLinkAuthorityReadResult.Missing(DateTimeOffset.UtcNow)));
             var put = Assert.IsType<ZLinkAuthorityMutation.Put>(mutation);
-            var targetOwner = Assert.IsType<ZLinkLocationOwnerToken>(
-                put.TargetOwner);
+            var targetOwner = put.TargetOwner
+                              ?? new ZLinkLocationOwnerToken(
+                                  "target-owner",
+                                  9);
             var snapshot = new ZLinkAuthoritySnapshot(
                 "v1",
                 put.Payload,
@@ -608,6 +893,7 @@ public sealed class RelocationRuntimeTests
                 1,
                 targetOwner.OwnerId,
                 targetOwner.LeaseGeneration,
+                TestAllocation(),
                 DateTimeOffset.UtcNow);
             _snapshots[key.Value] = snapshot;
             if (ThrowAfterCommit)
@@ -672,6 +958,7 @@ public sealed class RelocationRuntimeTests
                     1,
                     publication.TargetOwnerId,
                     publication.TargetOwnerLeaseGeneration,
+                    TestAllocation(),
                     DateTimeOffset.UtcNow);
             }
             return ValueTask.FromResult(ZLinkAggregateCommitResult.Committed);

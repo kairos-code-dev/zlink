@@ -603,11 +603,11 @@ public sealed class LocationRuntimeTests
         public ValueTask<ZLinkAuthorityCompareExchangeResult>
             CompareExchangeAuthorityAsync(
                 ZLinkAuthorityKey key,
-                ZLinkAuthorityExpectation expectation,
+                string expectedStoreVersion,
                 ZLinkAuthorityMutation mutation,
                 CancellationToken cancellationToken = default) =>
             inner.CompareExchangeAuthorityAsync(
-                key, expectation, mutation, cancellationToken);
+                key, expectedStoreVersion, mutation, cancellationToken);
 
         public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
             string prefix,

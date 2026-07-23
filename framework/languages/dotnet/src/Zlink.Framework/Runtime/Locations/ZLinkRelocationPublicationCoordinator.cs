@@ -4,7 +4,7 @@ namespace Zlink.Framework.Runtime.Locations;
 
 internal sealed record ZLinkRelocationPublicationRequest(
     ZLinkAuthorityKey AuthorityKey,
-    ZLinkAuthorityExpectation Expectation,
+    string ExpectedStoreVersion,
     ZLinkAuthorityGenerationTransition GenerationTransition,
     string TargetOwnerId,
     long TargetOwnerLeaseGeneration,
@@ -74,7 +74,7 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
                 .ConfigureAwait(false);
             var result = await authorityStore.CompareExchangeAuthorityAsync(
                     request.AuthorityKey,
-                    request.Expectation,
+                    request.ExpectedStoreVersion,
                     new ZLinkAuthorityMutation.Put(
                         publishedPayload,
                         request.GenerationTransition,

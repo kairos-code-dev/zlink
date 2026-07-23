@@ -1,4 +1,7 @@
+using System.Buffers.Binary;
 using System.Text;
+using System.Text.Json;
+using System.Security.Cryptography;
 using StackExchange.Redis;
 
 namespace Zlink.Framework.Locations.Redis;
@@ -22,7 +25,9 @@ public sealed partial class ZLinkRedisLocationStore
                         _keys.AuthorityObjectGenerationsKey(),
                         _keys.AuthorityOwnerGenerationsKey(),
                         _keys.AuthorityOwnerIdsKey(),
-                        _keys.AuthorityOwnerLeaseGenerationsKey()
+                        _keys.AuthorityOwnerLeaseGenerationsKey(),
+                        _keys.AuthorityAllocationStatesKey(),
+                        _keys.AuthorityAllocationsKey()
                     ],
                     [key.Value]).ConfigureAwait(false))!,
                 cancellationToken)
@@ -37,25 +42,21 @@ public sealed partial class ZLinkRedisLocationStore
     public async ValueTask<ZLinkAuthorityCompareExchangeResult>
         CompareExchangeAuthorityAsync(
             ZLinkAuthorityKey key,
-            ZLinkAuthorityExpectation expectation,
+            string expectedStoreVersion,
             ZLinkAuthorityMutation mutation,
             CancellationToken cancellationToken = default)
     {
         ValidateAuthorityKey(key);
-        ArgumentNullException.ThrowIfNull(expectation);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedStoreVersion);
         ArgumentNullException.ThrowIfNull(mutation);
         if (mutation is ZLinkAuthorityMutation.Put put)
         {
             ValidateAuthorityPayload(put.Payload);
-            ValidateAuthorityMutation(put, expectation);
+            ValidateAuthorityMutation(put);
         }
 
-        var expectationName = expectation is ZLinkAuthorityExpectation.Missing
-            ? "missing"
-            : "found";
-        var expectedVersion = expectation is ZLinkAuthorityExpectation.Found found
-            ? found.StoreVersion
-            : string.Empty;
+        const string expectationName = "found";
+        var expectedVersion = expectedStoreVersion;
         var mutationName = mutation is ZLinkAuthorityMutation.Delete
             ? "delete"
             : "put";
@@ -67,7 +68,6 @@ public sealed partial class ZLinkRedisLocationStore
             {
                 ZLinkAuthorityGenerationTransition.Preserve => "preserve",
                 ZLinkAuthorityGenerationTransition.NewOwner => "new-owner",
-                ZLinkAuthorityGenerationTransition.NewObject => "new-object",
                 _ => throw new ArgumentOutOfRangeException(nameof(mutation))
             }
             : string.Empty;
@@ -77,11 +77,21 @@ public sealed partial class ZLinkRedisLocationStore
             }
             ? owner
             : default;
+        var validationOwner = targetOwner;
+        if (validationOwner.OwnerId is null)
+        {
+            var current = await ReadAuthorityAsync(key, cancellationToken)
+                .ConfigureAwait(false);
+            if (current is ZLinkAuthorityReadResult.Found found)
+                validationOwner = new ZLinkLocationOwnerToken(
+                    found.Snapshot.OwnerId,
+                    found.Snapshot.OwnerLeaseGeneration);
+        }
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.CompareExchange,
                     AuthorityKeys(
-                        targetOwner.OwnerId,
+                        validationOwner.OwnerId,
                         mutation is ZLinkAuthorityMutation.Put
                         {
                             RelocationCapacityFence: { } capacityFence
@@ -95,8 +105,8 @@ public sealed partial class ZLinkRedisLocationStore
                         mutationName,
                         payload,
                         transition,
-                        targetOwner.OwnerId ?? string.Empty,
-                        targetOwner.LeaseGeneration
+                        validationOwner.OwnerId ?? string.Empty,
+                        validationOwner.LeaseGeneration
                     ]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -149,6 +159,8 @@ public sealed partial class ZLinkRedisLocationStore
                             _keys.AuthorityOwnerGenerationsKey(),
                             _keys.AuthorityOwnerIdsKey(),
                             _keys.AuthorityOwnerLeaseGenerationsKey(),
+                            _keys.AuthorityAllocationStatesKey(),
+                            _keys.AuthorityAllocationsKey(),
                             _keys.AuthorityMembershipsKey(),
                             _keys.AuthorityIndexKey(),
                             _keys.AuthorityScanKey(scanId)
@@ -183,8 +195,8 @@ public sealed partial class ZLinkRedisLocationStore
         var now = DateTimeOffset.FromUnixTimeMilliseconds((long)result[0]);
         var total = checked((int)(long)result[1]);
         var fields = (RedisResult[])result[2]!;
-        var entries = new List<ZLinkAuthorityEntry>(fields.Length / 7);
-        for (var index = 0; index + 6 < fields.Length; index += 7)
+        var entries = new List<ZLinkAuthorityEntry>(fields.Length / 9);
+        for (var index = 0; index + 8 < fields.Length; index += 9)
         {
             entries.Add(new ZLinkAuthorityEntry(
                 new ZLinkAuthorityKey((string)fields[index]!),
@@ -216,9 +228,13 @@ public sealed partial class ZLinkRedisLocationStore
                         _keys.AuthorityOwnerGenerationsKey(),
                         _keys.AuthorityOwnerIdsKey(),
                         _keys.AuthorityOwnerLeaseGenerationsKey(),
+                        _keys.AuthorityAllocationStatesKey(),
+                        _keys.AuthorityAllocationsKey(),
                         _keys.AuthorityIndexKey(),
                         _keys.LeaseKey(request.TargetOwner.OwnerId),
-                        _keys.AuthorityReservationKey(reservationVersion)
+                        _keys.AuthorityReservationKey(reservationVersion),
+                        _keys.AuthorityPendingCapacityKey(),
+                        DescriptorRowKey(request.TargetDescriptor)
                     ],
                     [
                         request.Key.Value,
@@ -226,7 +242,17 @@ public sealed partial class ZLinkRedisLocationStore
                         request.TargetOwner.OwnerId,
                         request.TargetOwner.LeaseGeneration,
                         request.TargetDescriptor.MeshName,
-                        request.TargetDescriptor.Rid.ToHex()
+                        request.TargetDescriptor.Rid.ToHex(),
+                        request.TargetNodeLifecycleGeneration,
+                        (int)request.ObjectKind,
+                        request.StableType,
+                        EncodeAllocation(
+                            request.ObjectKind,
+                            request.StableType,
+                            request.TargetDescriptor,
+                            request.TargetNodeLifecycleGeneration,
+                            request.PendingCapacityDelta),
+                        request.PendingCapacityDelta
                     ]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -244,6 +270,8 @@ public sealed partial class ZLinkRedisLocationStore
         }
         if (status == "exhausted")
             return new ZLinkObjectReserveResult.GenerationExhausted();
+        if (status == "capacity-exhausted")
+            return new ZLinkObjectReserveResult.PlacementCapacityExhausted();
         if (status != "reserved")
             throw new InvalidOperationException(
                 $"Unknown Redis authority reserve result '{status}'.");
@@ -256,6 +284,7 @@ public sealed partial class ZLinkRedisLocationStore
                 ParseGeneration(result[4]),
                 reservationVersion,
                 request.TargetDescriptor,
+                request.TargetNodeLifecycleGeneration,
                 request.TargetOwner));
     }
 
@@ -275,10 +304,12 @@ public sealed partial class ZLinkRedisLocationStore
             request.StableType,
             request.SourceDescriptor.MeshName,
             request.SourceDescriptor.Rid.ToHex(),
+            request.SourceNodeLifecycleGeneration,
             request.SourceOwner.OwnerId,
             request.SourceOwner.LeaseGeneration,
             request.TargetDescriptor.MeshName,
             request.TargetDescriptor.Rid.ToHex(),
+            request.TargetNodeLifecycleGeneration,
             request.TargetOwner.OwnerId,
             request.TargetOwner.LeaseGeneration,
             request.CapacityDelta);
@@ -289,9 +320,12 @@ public sealed partial class ZLinkRedisLocationStore
                         _keys.AuthorityVersionsKey(),
                         _keys.AuthorityOwnerIdsKey(),
                         _keys.AuthorityOwnerLeaseGenerationsKey(),
+                        _keys.AuthorityAllocationStatesKey(),
+                        _keys.AuthorityAllocationsKey(),
                         _keys.AuthorityRelocationCapacityKey(fence.Value),
-                        _keys.LeaseKey(request.SourceOwner.OwnerId),
-                        _keys.LeaseKey(request.TargetOwner.OwnerId)
+                        _keys.LeaseKey(request.TargetOwner.OwnerId),
+                        _keys.AuthorityPendingCapacityKey(),
+                        DescriptorRowKey(request.TargetDescriptor)
                     ],
                     [
                         signature,
@@ -301,7 +335,26 @@ public sealed partial class ZLinkRedisLocationStore
                         request.SourceOwner.OwnerId,
                         request.SourceOwner.LeaseGeneration,
                         request.TargetOwner.OwnerId,
-                        request.TargetOwner.LeaseGeneration
+                        request.TargetOwner.LeaseGeneration,
+                        EncodeAllocation(
+                            request.ObjectKind,
+                            request.StableType,
+                            request.SourceDescriptor,
+                            request.SourceNodeLifecycleGeneration,
+                            request.CapacityDelta),
+                        EncodeAllocation(
+                            request.ObjectKind,
+                            request.StableType,
+                            request.TargetDescriptor,
+                            request.TargetNodeLifecycleGeneration,
+                            request.CapacityDelta),
+                        request.TargetDescriptor.MeshName,
+                        request.TargetDescriptor.Rid.ToHex(),
+                        request.TargetNodeLifecycleGeneration,
+                        (int)request.ObjectKind,
+                        request.StableType,
+                        request.CapacityDelta,
+                        DescriptorRowKey(request.TargetDescriptor).ToString()
                     ]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -330,7 +383,10 @@ public sealed partial class ZLinkRedisLocationStore
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.AbortRelocationCapacity,
-                    [_keys.AuthorityRelocationCapacityKey(fence.Value)],
+                    [
+                        _keys.AuthorityRelocationCapacityKey(fence.Value),
+                        _keys.AuthorityPendingCapacityKey()
+                    ],
                     []).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -356,11 +412,16 @@ public sealed partial class ZLinkRedisLocationStore
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.CommitReservation,
-                    ReservationKeys(reservation.ReservationVersion),
+                    ReservationKeys(reservation),
                     [
                         reservation.Key.Value,
                         reservation.StoreVersion,
-                        readyPayload.ToArray()
+                        readyPayload.ToArray(),
+                        reservation.TargetDescriptor.MeshName,
+                        reservation.TargetDescriptor.Rid.ToHex(),
+                        reservation.TargetNodeLifecycleGeneration,
+                        reservation.TargetOwner.OwnerId,
+                        reservation.TargetOwner.LeaseGeneration
                     ]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -387,8 +448,16 @@ public sealed partial class ZLinkRedisLocationStore
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.AbortReservation,
-                    ReservationKeys(reservation.ReservationVersion),
-                    [reservation.Key.Value, reservation.StoreVersion])
+                    ReservationKeys(reservation),
+                    [
+                        reservation.Key.Value,
+                        reservation.StoreVersion,
+                        reservation.TargetDescriptor.MeshName,
+                        reservation.TargetDescriptor.Rid.ToHex(),
+                        reservation.TargetNodeLifecycleGeneration,
+                        reservation.TargetOwner.OwnerId,
+                        reservation.TargetOwner.LeaseGeneration
+                    ])
                     .ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -412,8 +481,9 @@ public sealed partial class ZLinkRedisLocationStore
             request.AggregateId,
             request.AggregateGeneration);
         var arguments = new List<RedisValue>(
-            4 + request.Participants.Count * 5)
+            5 + request.Participants.Count * 5)
         {
+            AggregateSignature(request),
             request.TargetOwner.OwnerId,
             request.TargetOwner.LeaseGeneration,
             request.Participants.Count,
@@ -456,10 +526,19 @@ public sealed partial class ZLinkRedisLocationStore
         CancellationToken cancellationToken = default)
     {
         ValidateFence(fence);
+        var targetOwnerId = await ExecuteAsync(
+                async database => await database.HashGetAsync(
+                        _keys.AuthorityAggregateKey(fence),
+                        "targetOwner")
+                    .ConfigureAwait(false),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (targetOwnerId.IsNullOrEmpty)
+            return ZLinkAggregateCommitResult.Stale;
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.CommitAggregate,
-                    AggregateKeys(fence, ownerId: string.Empty),
+                    AggregateKeys(fence, (string)targetOwnerId!),
                     []).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -482,7 +561,10 @@ public sealed partial class ZLinkRedisLocationStore
         var result = await ExecuteAsync(
                 async database => (RedisResult[])(await database.ScriptEvaluateAsync(
                     ZLinkRedisAuthorityScripts.AbortAggregate,
-                    [_keys.AuthorityAggregateKey(fence)],
+                    [
+                        _keys.AuthorityAggregateKey(fence),
+                        _keys.AuthorityPendingCapacityKey()
+                    ],
                     []).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -507,6 +589,8 @@ public sealed partial class ZLinkRedisLocationStore
         _keys.AuthorityOwnerGenerationsKey(),
         _keys.AuthorityOwnerIdsKey(),
         _keys.AuthorityOwnerLeaseGenerationsKey(),
+        _keys.AuthorityAllocationStatesKey(),
+        _keys.AuthorityAllocationsKey(),
         _keys.AuthorityMembershipsKey(),
         _keys.AuthorityIndexKey(),
         string.IsNullOrEmpty(targetOwnerId)
@@ -515,10 +599,12 @@ public sealed partial class ZLinkRedisLocationStore
         string.IsNullOrEmpty(relocationCapacityFence)
             ? _keys.AuthorityRelocationCapacityKey("__unused__")
             : _keys.AuthorityRelocationCapacityKey(
-                relocationCapacityFence)
+                relocationCapacityFence),
+        _keys.AuthorityActiveCapacityKey(),
+        _keys.AuthorityPendingCapacityKey()
     ];
 
-    private RedisKey[] ReservationKeys(string reservationVersion) =>
+    private RedisKey[] ReservationKeys(ZLinkObjectReservation reservation) =>
     [
         _keys.AuthorityCountersKey(),
         _keys.AuthorityVersionsKey(),
@@ -527,8 +613,14 @@ public sealed partial class ZLinkRedisLocationStore
         _keys.AuthorityOwnerGenerationsKey(),
         _keys.AuthorityOwnerIdsKey(),
         _keys.AuthorityOwnerLeaseGenerationsKey(),
+        _keys.AuthorityAllocationStatesKey(),
+        _keys.AuthorityAllocationsKey(),
         _keys.AuthorityIndexKey(),
-        _keys.AuthorityReservationKey(reservationVersion)
+        _keys.LeaseKey(reservation.TargetOwner.OwnerId),
+        _keys.AuthorityReservationKey(reservation.ReservationVersion),
+        _keys.AuthorityActiveCapacityKey(),
+        _keys.AuthorityPendingCapacityKey(),
+        DescriptorRowKey(reservation.TargetDescriptor)
     ];
 
     private RedisKey[] AggregateKeys(
@@ -541,13 +633,89 @@ public sealed partial class ZLinkRedisLocationStore
         _keys.AuthorityOwnerGenerationsKey(),
         _keys.AuthorityOwnerIdsKey(),
         _keys.AuthorityOwnerLeaseGenerationsKey(),
+        _keys.AuthorityAllocationStatesKey(),
+        _keys.AuthorityAllocationsKey(),
         _keys.AuthorityMembershipsKey(),
         _keys.AuthorityCountersKey(),
         _keys.AuthorityAggregateKey(fence),
         string.IsNullOrEmpty(ownerId)
             ? _keys.LeaseKey("__unused__")
-            : _keys.LeaseKey(ownerId)
+            : _keys.LeaseKey(ownerId),
+        _keys.AuthorityActiveCapacityKey(),
+        _keys.AuthorityPendingCapacityKey()
     ];
+
+    private RedisKey DescriptorRowKey(
+        ZLinkMeshNodeDescriptorKey descriptor) =>
+        _keys.RowHashKey(
+            ZLinkRedisLocationKinds.MeshNode.Tag,
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(descriptor));
+
+    private static string AggregateSignature(
+        ZLinkAggregatePrepareRequest request)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        AppendSignature(hash, request.AggregateId.ToByteArray());
+        AppendSignature(hash, request.AggregateGeneration);
+        AppendSignature(hash, request.TargetOwner.OwnerId);
+        AppendSignature(hash, request.TargetOwner.LeaseGeneration);
+        AppendSignature(hash, request.InventoryDigest.Span);
+        AppendSignature(hash, request.TargetReservations.Count);
+        foreach (var reservation in request.TargetReservations)
+            AppendSignature(hash, reservation.Value);
+        AppendSignature(hash, request.Participants.Count);
+        foreach (var participant in request.Participants)
+        {
+            AppendSignature(hash, participant.Key.Value);
+            AppendSignature(hash, participant.ExpectedStoreVersion);
+            AppendSignature(hash, (int)participant.OwnerTransition);
+            AppendSignature(hash, participant.AuthorityPayload.Span);
+            AppendSignature(hash, participant.MembershipMutation.Span);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static void AppendSignature(
+        IncrementalHash hash,
+        string value) =>
+        AppendSignature(hash, Encoding.UTF8.GetBytes(value));
+
+    private static void AppendSignature(
+        IncrementalHash hash,
+        long value)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(long)];
+        BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+        AppendSignature(hash, bytes);
+    }
+
+    private static void AppendSignature(
+        IncrementalHash hash,
+        ulong value)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+        AppendSignature(hash, bytes);
+    }
+
+    private static void AppendSignature(
+        IncrementalHash hash,
+        int value)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+        AppendSignature(hash, bytes);
+    }
+
+    private static void AppendSignature(
+        IncrementalHash hash,
+        ReadOnlySpan<byte> value)
+    {
+        Span<byte> length = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(length, value.Length);
+        hash.AppendData(length);
+        hash.AppendData(value);
+    }
 
     private static ZLinkAuthoritySnapshot Snapshot(
         RedisResult[] values,
@@ -560,7 +728,49 @@ public sealed partial class ZLinkRedisLocationStore
             ParseGeneration(values[offset + 3]),
             (string)values[offset + 4]!,
             checked((long)ParseGeneration(values[offset + 5])),
+            DecodeAllocation(
+                (string)values[offset + 6]!,
+                ToBytes(values[offset + 7])),
             storeNow);
+
+    private static byte[] EncodeAllocation(
+        ZLinkPlacementObjectKind objectKind,
+        string stableType,
+        ZLinkMeshNodeDescriptorKey descriptor,
+        ulong descriptorLifecycleGeneration,
+        int capacityDelta) =>
+        JsonSerializer.SerializeToUtf8Bytes(
+            new AllocationEnvelope(
+                (int)objectKind,
+                stableType,
+                descriptor.MeshName,
+                descriptor.Rid.ToHex(),
+                descriptorLifecycleGeneration,
+                capacityDelta));
+
+    private static ZLinkPlacementAllocation DecodeAllocation(
+        string state,
+        byte[] encoded)
+    {
+        var value = JsonSerializer.Deserialize<AllocationEnvelope>(encoded)
+                    ?? throw new InvalidDataException(
+                        "Redis authority allocation was unexpectedly empty.");
+        return new ZLinkPlacementAllocation(
+            state switch
+            {
+                "pending" => ZLinkPlacementAllocationState.Pending,
+                "active" => ZLinkPlacementAllocationState.Active,
+                _ => throw new InvalidDataException(
+                    $"Redis authority allocation state '{state}' is invalid.")
+            },
+            (ZLinkPlacementObjectKind)value.ObjectKind,
+            value.StableType,
+            new ZLinkMeshNodeDescriptorKey(
+                value.MeshName,
+                RoutingId.FromHex(value.Rid)),
+            value.DescriptorLifecycleGeneration,
+            value.CapacityDelta);
+    }
 
     private static byte[] ToBytes(RedisResult result) =>
         (byte[]?)(RedisValue)result!
@@ -569,6 +779,14 @@ public sealed partial class ZLinkRedisLocationStore
 
     private static ulong ParseGeneration(RedisResult result) =>
         ulong.Parse((string)result!, System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed record AllocationEnvelope(
+        int ObjectKind,
+        string StableType,
+        string MeshName,
+        string Rid,
+        ulong DescriptorLifecycleGeneration,
+        int CapacityDelta);
 
     private static (string ScanId, int Position) ParseCursor(
         ZLinkAuthorityScanCursor cursor)
@@ -595,25 +813,17 @@ public sealed partial class ZLinkRedisLocationStore
     }
 
     private static void ValidateAuthorityMutation(
-        ZLinkAuthorityMutation.Put put,
-        ZLinkAuthorityExpectation expectation)
+        ZLinkAuthorityMutation.Put put)
     {
         var preserve =
             put.GenerationTransition == ZLinkAuthorityGenerationTransition.Preserve;
         var newOwner =
             put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner;
-        var newObject =
-            put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewObject;
-        if (!preserve && !newOwner && !newObject
+        if (!preserve && !newOwner
             || preserve && (put.TargetOwner is not null
-                            || put.RelocationCapacityFence is not null
-                            || expectation is not ZLinkAuthorityExpectation.Found)
+                            || put.RelocationCapacityFence is not null)
             || newOwner && (put.TargetOwner is null
-                            || put.RelocationCapacityFence is null
-                            || expectation is not ZLinkAuthorityExpectation.Found)
-            || newObject && (put.TargetOwner is null
-                             || put.RelocationCapacityFence is not null
-                             || expectation is not ZLinkAuthorityExpectation.Missing)
+                            || put.RelocationCapacityFence is null)
             || put.TargetOwner is { } owner
             && (string.IsNullOrWhiteSpace(owner.OwnerId)
                 || owner.LeaseGeneration <= 0))
@@ -667,6 +877,19 @@ public sealed partial class ZLinkRedisLocationStore
         if (request.Participants.Any(static value =>
                 value.AuthorityPayload.Length > 1024 * 1024))
             throw new ArgumentOutOfRangeException(nameof(request));
+        var participantKeys =
+            request.Participants.Select(static value => value.Key.Value)
+                .ToArray();
+        if (participantKeys.Distinct(StringComparer.Ordinal).Count()
+            != participantKeys.Length
+            || !participantKeys.SequenceEqual(
+                participantKeys.OrderBy(
+                    static value => value,
+                    StringComparer.Ordinal),
+                StringComparer.Ordinal))
+            throw new ArgumentException(
+                "Aggregate participant keys must be unique and canonically sorted.",
+                nameof(request));
     }
 
     private static void ValidateFence(ZLinkAggregateFence fence)

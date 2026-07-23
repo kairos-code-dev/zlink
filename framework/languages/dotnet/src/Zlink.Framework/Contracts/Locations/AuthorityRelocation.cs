@@ -9,6 +9,20 @@ public enum ZLinkPlacementObjectKind
 
 public readonly record struct ZLinkAuthorityKey(string Value);
 
+public enum ZLinkPlacementAllocationState
+{
+    Pending = 1,
+    Active = 2
+}
+
+public sealed record ZLinkPlacementAllocation(
+    ZLinkPlacementAllocationState State,
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    ZLinkMeshNodeDescriptorKey Descriptor,
+    ulong DescriptorLifecycleGeneration,
+    int CapacityDelta);
+
 public sealed record ZLinkAuthoritySnapshot(
     string StoreVersion,
     ReadOnlyMemory<byte> Payload,
@@ -16,6 +30,7 @@ public sealed record ZLinkAuthoritySnapshot(
     ulong AuthorityOwnerGeneration,
     string OwnerId,
     long OwnerLeaseGeneration,
+    ZLinkPlacementAllocation Allocation,
     DateTimeOffset StoreNow);
 
 public abstract record ZLinkAuthorityReadResult
@@ -27,17 +42,6 @@ public abstract record ZLinkAuthorityReadResult
     public sealed record Missing(DateTimeOffset StoreNow) : ZLinkAuthorityReadResult;
 
     public sealed record Found(ZLinkAuthoritySnapshot Snapshot) : ZLinkAuthorityReadResult;
-}
-
-public abstract record ZLinkAuthorityExpectation
-{
-    private protected ZLinkAuthorityExpectation()
-    {
-    }
-
-    public sealed record Missing : ZLinkAuthorityExpectation;
-
-    public sealed record Found(string StoreVersion) : ZLinkAuthorityExpectation;
 }
 
 public sealed record ZLinkAuthorityEntry(
@@ -94,8 +98,7 @@ public abstract record ZLinkAuthorityMutation
 public enum ZLinkAuthorityGenerationTransition
 {
     Preserve = 1,
-    NewOwner = 2,
-    NewObject = 3
+    NewOwner = 2
 }
 
 public readonly record struct ZLinkRelocationCapacityFence(string Value);
@@ -128,6 +131,7 @@ public sealed record ZLinkObjectReservationRequest(
     ReadOnlyMemory<byte> CreationIntentHash,
     int CreationIntentEncodedSize,
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner,
     ReadOnlyMemory<byte> CreatingPayload,
     int PendingCapacityDelta);
@@ -139,6 +143,7 @@ public sealed record ZLinkObjectReservation(
     ulong AuthorityOwnerGeneration,
     string ReservationVersion,
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner);
 
 public abstract record ZLinkObjectReserveResult
@@ -203,8 +208,10 @@ public sealed record ZLinkRelocationCapacityReservationRequest(
     ZLinkPlacementObjectKind ObjectKind,
     string StableType,
     ZLinkMeshNodeDescriptorKey SourceDescriptor,
+    ulong SourceNodeLifecycleGeneration,
     ZLinkLocationOwnerToken SourceOwner,
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner,
     int CapacityDelta);
 
@@ -297,7 +304,7 @@ public interface IZLinkAuthorityStore
 
     ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
         ZLinkAuthorityKey key,
-        ZLinkAuthorityExpectation expectation,
+        string expectedStoreVersion,
         ZLinkAuthorityMutation mutation,
         CancellationToken cancellationToken = default);
 

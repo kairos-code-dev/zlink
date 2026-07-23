@@ -127,6 +127,20 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
         }
     }
 
+    public Task<IReadOnlyList<Message>> RequestAsync(
+        Message message,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            return nativeSocket.Request()
+                .Message(message)
+                .Timeout(timeout)
+                .Async(cancellationToken);
+        }
+    }
+
     public Received? Recv(RecvFlags flags = RecvFlags.None)
     {
         var received = Received.Create();
@@ -137,6 +151,18 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
         received.Dispose();
         return null;
+    }
+
+    public bool Reply(
+        Received received,
+        Message message)
+    {
+        lock (_gate)
+        {
+            return received.Send()
+                .Message(message)
+                .Submit();
+        }
     }
 
     public ValueTask DisposeAsync()

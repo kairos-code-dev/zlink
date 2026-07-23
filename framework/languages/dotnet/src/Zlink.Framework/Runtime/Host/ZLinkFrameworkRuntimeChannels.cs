@@ -12,6 +12,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
     }
 
+    internal ZLinkClientServerClientRuntime GetClientServerClientRuntime(
+        string channelName) =>
+        _channels.GetClientServerClientRuntime(
+            GetOrStartState(),
+            channelName);
+
     internal async ValueTask<ZLinkSubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
@@ -23,15 +29,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             if (!metadata.IsEmpty)
                 throw ZLinkClassicCallSupport.MetadataNotSupported();
-            var bundle = _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
-            var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-            return await (bundle.Submitter
-                          ?? throw new InvalidOperationException(
-                              $"ClientServer client '{channelName}' submitter is not initialized."))
-                .SubmitAsync(
-                    parts,
-                    pending => dealer.Send(pending, SendFlags.DontWait),
-                    cancellationToken)
+            return await GetClientServerClientRuntime(channelName)
+                .SendAsync(parts, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -53,20 +52,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             if (!metadata.IsEmpty)
                 throw ZLinkClassicCallSupport.MetadataNotSupported();
-            var bundle = _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
-            var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
-            return await ZLinkRawRequestSubmitter.SubmitAsync(
-                    bundle.Submitter
-                    ?? throw new InvalidOperationException(
-                        $"ClientServer client '{channelName}' submitter is not initialized."),
+            return await GetClientServerClientRuntime(channelName)
+                .RequestAsync(
                     parts,
-                    (pending, callback, nativeTimeout) => dealer.Request(
-                        pending,
-                        callback,
-                        SendFlags.DontWait,
-                        nativeTimeout),
                     timeout,
-                    $"ClientServer request failed for '{channelName}': {{0}}.",
                     cancellationToken)
                 .ConfigureAwait(false);
         }

@@ -32,27 +32,28 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
             {
                 var router = (IZLinkBackendRouterSocket)serverBundle.Socket;
                 var server = new LocalServer(
-                    channelName,
-                    RoutingId.From(serverBundle.LocalRid!),
-                    CreateLifecycleGeneration(),
+                    serverBundle.ClientServerServer
+                    ?? throw new InvalidOperationException(
+                        "ClientServer server identity is not initialized."),
                     AdvertisedEndpoint(
                         router.GetLastEndpoint(),
                         registration.Server!.AdvertiseHost),
-                    registration.Server!.SocketConfig.Weight,
                     router);
+                server.Identity.SetAdvertisedEndpoint(server.Endpoint);
                 await PublishAsync(server, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
                     .ConfigureAwait(false);
                 _servers.Add(server);
             }
 
             if (registration.ClientServerRole == ZLinkClientServerRole.Client
-                && state.ClientServerClientBundles.TryGetValue(channelName, out var clientBundle))
+                && state.ClientServerClientRuntimes.TryGetValue(
+                    channelName,
+                    out var clientRuntime))
             {
                 var loop = new ClientLoop(
                     channelName,
                     _store,
-                    clientBundle,
-                    (IZLinkBackendDealerSocket)clientBundle.Socket,
+                    clientRuntime,
                     _options,
                     _leases,
                     state.ErrorSink);
@@ -68,10 +69,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         var published = true;
         foreach (var server in _servers)
         {
-            server.Router.SetPeerWeight(0);
-            server.State = ZLinkFrameworkRuntimeState.Draining;
-            server.Weight = 0;
-            server.Revision++;
+            server.Identity.MarkDraining();
             var result = await PublishAsync(
                     server,
                     ZLinkLocationWriteIntent.Renew,
@@ -103,7 +101,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
                 _ = await _store.RemoveClientServerAsync(
                         new ZLinkClientServerServerDescriptorKey(
                             server.ChannelName,
-                            server.Rid),
+                            server.Identity.ServerRid),
                         _locationRuntime.OwnerToken,
                         CancellationToken.None)
                     .ConfigureAwait(false);
@@ -112,6 +110,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
             {
                 failures.Add(exception);
             }
+
         _servers.Clear();
 
         if (failures.Count == 1)
@@ -126,15 +125,16 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var owner = _locationRuntime.OwnerToken;
+        var snapshot = server.Identity.Read();
         var descriptor = new ZLinkClientServerServerDescriptor(
             server.ChannelName,
-            server.Rid,
-            server.LifecycleGeneration,
-            server.Revision,
+            server.Identity.ServerRid,
+            server.Identity.LifecycleGeneration,
+            snapshot.Revision,
             server.Endpoint,
-            server.Weight,
-            server.State,
-            ZLinkTransportSecurityIdentity.Plaintext,
+            snapshot.Weight,
+            snapshot.State,
+            server.Identity.SecurityIdentity,
             owner.OwnerId,
             owner.LeaseGeneration,
             default);
@@ -156,18 +156,6 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         return result;
     }
 
-    private static ulong CreateLifecycleGeneration()
-    {
-        Span<byte> bytes = stackalloc byte[sizeof(ulong)];
-        ulong value;
-        do
-        {
-            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
-            value = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(bytes);
-        } while (value == 0);
-        return value;
-    }
-
     private static string AdvertisedEndpoint(
         string boundEndpoint,
         string? advertiseHost)
@@ -180,34 +168,24 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
     }
 
     private sealed class LocalServer(
-        string channelName,
-        RoutingId rid,
-        ulong lifecycleGeneration,
+        ZLinkClientServerServerIdentity identity,
         string endpoint,
-        int weight,
         IZLinkBackendRouterSocket router)
     {
-        internal string ChannelName { get; } = channelName;
-        internal RoutingId Rid { get; } = rid;
-        internal ulong LifecycleGeneration { get; } = lifecycleGeneration;
+        internal ZLinkClientServerServerIdentity Identity { get; } = identity;
+        internal string ChannelName => Identity.ChannelName;
         internal string Endpoint { get; } = endpoint;
-        internal int Weight { get; set; } = weight;
-        internal ulong Revision { get; set; } = 1;
-        internal ZLinkFrameworkRuntimeState State { get; set; } =
-            ZLinkFrameworkRuntimeState.Serving;
         internal IZLinkBackendRouterSocket Router { get; } = router;
     }
 
     private sealed class ClientLoop(
         string channelName,
         IZLinkClientServerLocationStore store,
-        ZLinkChannelRuntimeBundle bundle,
-        IZLinkBackendDealerSocket socket,
+        ZLinkClientServerClientRuntime runtime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases,
         IZLinkRuntimeErrorSink errorSink) : IAsyncDisposable
     {
-        private readonly Dictionary<string, Target> _active = new(StringComparer.Ordinal);
         private readonly Dictionary<string, ulong> _observedRevisions = new(StringComparer.Ordinal);
         private CancellationTokenSource? _stop;
         private Task? _loop;
@@ -277,28 +255,10 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
                     && row.Weight > 0);
             }
 
-            foreach (var key in _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray())
-            {
-                var target = _active[key];
-                if (bundle.DisconnectAuto(socket, target.Endpoint))
-                    _active.Remove(key);
-            }
-
-            foreach (var (key, target) in desired)
-            {
-                if (_active.TryGetValue(key, out var active)
-                    && StringComparer.Ordinal.Equals(active.Endpoint, target.Endpoint))
-                {
-                    _active[key] = target;
-                    continue;
-                }
-                if (!target.Selectable)
-                    continue;
-                if (_active.TryGetValue(key, out active))
-                    bundle.DisconnectAuto(socket, active.Endpoint);
-                if (bundle.ConnectAuto(socket, target.Endpoint))
-                    _active[key] = target;
-            }
+            runtime.ReplaceAutomatic(
+                rows.Where(row => desired.ContainsKey(
+                        $"{row.ServerRid.ToHex()}:{row.LifecycleGeneration}"))
+                    .ToArray());
         }
 
         private async ValueTask<IReadOnlyList<ZLinkClientServerServerDescriptor>>
@@ -336,9 +296,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
                 _stop = null;
                 _loop = null;
             }
-            foreach (var target in _active.Values)
-                bundle.DisconnectAuto(socket, target.Endpoint);
-            _active.Clear();
+            runtime.ReplaceAutomatic([]);
         }
 
         private sealed record Target(

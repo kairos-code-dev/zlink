@@ -58,7 +58,16 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
         SendFlags flags,
         TimeSpan? timeout);
 
+    Task<IReadOnlyList<Message>> RequestAsync(
+        Message message,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+
     Received? Recv(RecvFlags flags = RecvFlags.None);
+
+    bool Reply(
+        Received received,
+        Message message);
 }
 
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
@@ -79,6 +88,8 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
     void SetMandatory(bool mandatory);
 
     void SetHandover(bool enabled);
+
+    void DisconnectPeer(RoutingId routingId);
 
     Received? Recv(RecvFlags flags = RecvFlags.None);
 

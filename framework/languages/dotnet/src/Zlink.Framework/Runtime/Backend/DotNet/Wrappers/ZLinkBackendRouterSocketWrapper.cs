@@ -75,6 +75,11 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         nativeSocket.Options.Handover = enabled;
     }
 
+    public void DisconnectPeer(RoutingId routingId)
+    {
+        nativeSocket.DisconnectRid(routingId);
+    }
+
     public void SetPeerWeight(int weight)
     {
         nativeSocket.Options.PeerWeight = weight;

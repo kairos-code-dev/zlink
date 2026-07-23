@@ -47,6 +47,9 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
     public Dictionary<string, ZLinkChannelRuntimeBundle> ClientServerClientBundles { get; } =
         new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkClientServerClientRuntime>
+        ClientServerClientRuntimes { get; } = new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkChannelRuntimeBundle> ClientServerServerBundles { get; } =
         new(StringComparer.Ordinal);
 
@@ -96,6 +99,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
                     SpotNodes.Values.ToArray(),
                     StreamNodes.Values.ToArray(),
                     ClientServerClientBundles.Values.ToArray(),
+                    ClientServerClientRuntimes.Values.ToArray(),
                     ClientServerServerBundles.Values.ToArray(),
                     PublisherBundles.Values.ToArray(),
                     SubscriberBundles.Values.ToArray(),
@@ -124,6 +128,9 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
         foreach (var bundle in resources.ClientServerClientBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
+
+        foreach (var runtime in resources.ClientServerClientRuntimes)
+            await CaptureAsync(() => DisposeSafelyAsync(runtime)).ConfigureAwait(false);
 
         foreach (var bundle in resources.ClientServerServerBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
@@ -199,6 +206,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         ZLinkSpotNodeRuntime[] SpotNodes,
         ZLinkStreamNodeRuntime[] StreamNodes,
         ZLinkChannelRuntimeBundle[] ClientServerClientBundles,
+        ZLinkClientServerClientRuntime[] ClientServerClientRuntimes,
         ZLinkChannelRuntimeBundle[] ClientServerServerBundles,
         ZLinkChannelRuntimeBundle[] PublisherBundles,
         ZLinkChannelRuntimeBundle[] SubscriberBundles,

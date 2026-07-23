@@ -1203,6 +1203,27 @@ admit/reject 뒤에만 ready target으로 승격하고 descriptor weight selecto
 작업이 남아 있다. 따라서 이 checkpoint도 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+.NET ClientServer connection completion checkpoint(2026-07-24)에서 automatic descriptor와 manual
+endpoint마다 dedicated DEALER·monitor와 exact `hello`·`admit`·`reject`를 연결하고, positive-weight
+`Serving` target의 deterministic weighted selection을 실제 send·request에 사용한다. 같은 Server
+RID·lifecycle의 두 source는 하나의 physical connection을 공유하며 source 제거 순서와 lifecycle successor
+admission을 reference·physical generation·attempt token으로 fence한다. Client와 Server는 5초 probe·15초
+deadline, exact outstanding ACK, server-pushed higher-revision update와 malformed control 뒤 reconnect
+readmission을 구현한다. TCP endpoint의 disconnect 뒤 즉시 reconnect하지 않고 25ms asynchronous handover를
+사용하며 중복 reconnect와 disposal을 같은 tracked task로 직렬화한다.
+
+이 검증에서 public DEALER `Request→Reply` 뒤 ROUTER가 보낸 unsolicited raw frame을 `Recv`가 받지 못하는
+Core 결함을 재현했다. Request dispatcher는 frame을 internal queue로 옮겼지만 DEALER part receive는 native
+pipe만 읽고 있었다. Dispatcher 설치 전에 queue를 준비하고 활성 dispatcher가 있으면 DEALER receive와
+multipart continuation이 그 queue를 사용하도록 Core를 최소 수정했으며 .NET binding에 TCP
+request·unsolicited receive·disconnect 회귀를 추가했다. Core request/reply 14/14와 관련 CTest 9/9,
+binding request/reply 12/12, Framework ClientServer 12/12 clean exit, Framework build warning·error 0,
+`git diff --check`가 통과했다. Framework 전체 unit 731건 중 runtime 724건이 통과했고 실패 7건은 기존
+documentation regression의 ledger·E2E ID·public symbol 문자열 불일치다. Sample·E2E source는 변경하거나
+실행하지 않았다. 새 Core candidate와 독립 review provenance를 만든 뒤 official Core·.NET local package를
+11.0.0 위치에 다시 배포해야 하며, 다른 M6A·public-contract parity 잔여가 있으므로 `V11-M6A-DN` 상태는
+계속 `수정 진행`으로 유지한다.
+
 Node ClientServer service admission checkpoint(2026-07-24)에서 automatic descriptor lifecycle마다
 전용 DEALER와 monitor를 만들고 transport identity 확인 뒤 Framework `hello`와 exact `admit`·`reject`를
 교환하도록 연결했다. Admission 전 connection은 outbound target에 포함하지 않으며, admitted

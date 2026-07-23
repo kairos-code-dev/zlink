@@ -397,7 +397,16 @@ public sealed class RouteCodecTests
             SendFlags flags,
             TimeSpan? timeout) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<Message>> RequestAsync(
+            Message message,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Received? Recv(RecvFlags flags = RecvFlags.None) => throw new NotSupportedException();
+
+        public bool Reply(Received received, Message message) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RecordingRouter : IZLinkBackendRouterSocket
@@ -508,6 +517,11 @@ public sealed class RouteCodecTests
         public void SetHandover(bool enabled)
         {
             Handover = enabled;
+        }
+
+        public void DisconnectPeer(RoutingId routingId)
+        {
+            throw new NotSupportedException();
         }
 
         public Received? Recv(RecvFlags flags = RecvFlags.None)

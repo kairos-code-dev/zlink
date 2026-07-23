@@ -60,12 +60,22 @@ internal sealed class ZLinkChannelBundleFactory(
             ApplySocketConfig(router, channel.Server!.SocketConfig);
             router.SetMandatory(true);
             router.SetHandover(true);
-            router.SetPeerWeight(channel.Server.SocketConfig.Weight);
             router.Bind(channel.Server.BindEndpoint);
+            var actualEndpoint = router.GetLastEndpoint();
+            var identity = new ZLinkClientServerServerIdentity(
+                channelName,
+                serverRid,
+                CreateLifecycleGeneration(),
+                ZLinkTransportSecurityIdentity.Plaintext,
+                channel.Server.SocketConfig.Weight,
+                ZLinkClientServerControlProtocol.NormalizeMaximumMessageBytes(
+                    channel.Server.SocketConfig.MaxMessageSize),
+                actualEndpoint);
             bundle = new ZLinkChannelRuntimeBundle(
                 router,
                 localRid: serverRid,
-                socketRole: "server");
+                socketRole: "server",
+                clientServerServer: identity);
             return bundle;
         }
         catch (Exception initializationFailure)
@@ -160,6 +170,19 @@ internal sealed class ZLinkChannelBundleFactory(
         IZLinkSocketConfig config)
     {
         socket.ApplySocketConfig(config);
+    }
+
+    private static ulong CreateLifecycleGeneration()
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ulong)];
+        ulong value;
+        do
+        {
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            value = System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(
+                bytes);
+        } while (value is 0 or > long.MaxValue);
+        return value;
     }
 
     private static async ValueTask ThrowAfterCleanupAsync(
